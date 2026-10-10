@@ -1,10 +1,10 @@
 import { Select } from './Select.js';
 import { bookmarkOriginalRange, normalizeBookmarkBody } from '@mygitnotes/core/bookmark-anchor';
-import React, { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import React, { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Bold, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, type LucideIcon, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
-import type { LiveMarkdownHandle } from './LiveMarkdownEditor.js';
+import type { LiveEditorCarry, LiveMarkdownHandle } from './LiveMarkdownEditor.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
 import { noteCompletionAt, useNoteCandidates } from '../lib/note-completion.js';
 import { noteLinkHref, noteMarkdownLink } from '@mygitnotes/core/workspace-links';
@@ -54,6 +54,8 @@ interface Props {
   lineNumberOffset?: number;
   /** Opens the notebook's image picker; the toolbar's Insert group offers it only when present. */
   onInsertImage?: () => void;
+  /** Keeps the live editor's caret and undo history across this editor being rebuilt in another frame of the same note. */
+  carry?: MutableRefObject<LiveEditorCarry | null>;
 }
 
 /** The formatting toolbar's groups; a format with a KEYMAP entry shows its key in the button's label. */
@@ -80,7 +82,7 @@ export function MarkdownEditorModeSwitch({ mode, onChange }: { mode: MarkdownEdi
   );
 }
 
-export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage }, ref) => {
+export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage, carry }, ref) => {
   const { t } = useTranslation();
   const [caret, setCaret] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -499,7 +501,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       {mode === 'live' && isMarkdown
         ? (
           <React.Suspense fallback={<LoadingStatus className='p-6 text-sm text-muted'>{t('editor.loadingEditor')}</LoadingStatus>}>
-            <LiveMarkdownEditor key={path} ref={live} content={content} notePath={path} notebookId={notebookId} readOnly={readOnly} onChange={onChange} onCaret={onCaret} ariaLabel={ariaLabel} showLineNumbers={showLineNumbers} lineNumberOffset={lineNumberOffset} onCopyLines={copyLines} continuous={continuous} />
+            <LiveMarkdownEditor key={path} ref={live} content={content} notePath={path} notebookId={notebookId} readOnly={readOnly} onChange={onChange} onCaret={onCaret} ariaLabel={ariaLabel} showLineNumbers={showLineNumbers} lineNumberOffset={lineNumberOffset} onCopyLines={copyLines} continuous={continuous} carry={carry} />
           </React.Suspense>
         )
         : (

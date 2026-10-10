@@ -1,7 +1,8 @@
-import type { RefObject } from 'react';
+import type { MutableRefObject, RefObject } from 'react';
 import { Code2, Eye, ListOrdered } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import type { NoteItem } from '../../lib/types.js';
+import type { LiveEditorCarry } from '../LiveMarkdownEditor.js';
 import { MarkdownEditor, type MarkdownEditorHandle, type MarkdownEditorMode } from '../MarkdownEditor.js';
 import { NoteExportMenu } from '../NoteExportMenu.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
@@ -16,17 +17,18 @@ interface NoteCompactFrameProps {
   showLineNumbers: boolean;
   toggleLineNumbers: () => void;
   onCaret?: (position: number) => void;
+  carry: MutableRefObject<LiveEditorCarry | null>;
 }
 
 /** A graph card's editor: the body alone with a status bar of mode, line number and export actions. */
-export function NoteCompactFrame({ note, session, editorRef, isMarkdown, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, onCaret }: NoteCompactFrameProps) {
+export function NoteCompactFrame({ note, session, editorRef, isMarkdown, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, onCaret, carry }: NoteCompactFrameProps) {
   const { t } = useTranslation();
   const live = editorMode === 'live';
   const modeLabel = t(live ? 'editor.source' : 'editor.livePreview');
   return (
     <>
       <div className='note-editor-body'>
-        <MarkdownEditor ref={editorRef} compact content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked} onChange={session.setContent} onCaret={onCaret} ariaLabel='Note content' showLineNumbers={showLineNumbers} lineNumberOffset={session.baseNote.lineNumberOffset} />
+        <MarkdownEditor ref={editorRef} compact content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked} onChange={session.setContent} onCaret={onCaret} ariaLabel='Note content' showLineNumbers={showLineNumbers} lineNumberOffset={session.baseNote.lineNumberOffset} carry={carry} />
       </div>
       <div className='note-compact-bar'>
         {isMarkdown && <button type='button' className='ui-icon-button' data-mode-toggle={editorMode} title={modeLabel} aria-label={modeLabel} onClick={() => setEditorMode(live ? 'raw' : 'live')}>{live ? <Code2 size={14} aria-hidden='true' /> : <Eye size={14} aria-hidden='true' />}</button>}

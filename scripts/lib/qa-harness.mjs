@@ -124,3 +124,13 @@ export async function assertReadingLayout(page, scope, reading, label, { fills =
   }
   return found;
 }
+
+/** The key CodeMirror's `Mod` is on this platform. */
+export const MOD_KEY = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+/** Presses `key` while `modifiers` are held: `await pressChord(page, 'KeyZ', MOD_KEY, 'Shift')` redoes. */
+export async function pressChord(page, key, ...modifiers) {
+  for (const modifier of modifiers) await page.keyboard.down(modifier);
+  await page.keyboard.press(key);
+  for (const modifier of modifiers.toReversed()) await page.keyboard.up(modifier);
+}

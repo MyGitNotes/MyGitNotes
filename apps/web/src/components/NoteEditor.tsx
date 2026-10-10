@@ -6,6 +6,7 @@ import { NoteQuickActions } from './note-editor/NoteQuickActions.js';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { parseNoteFile } from '@mygitnotes/core/note-file';
 import { currentNoteFile } from '../lib/current-note-file.js';
+import type { LiveEditorCarry } from './LiveMarkdownEditor.js';
 import { MarkdownEditor, type MarkdownEditorHandle, type MarkdownEditorMode } from './MarkdownEditor.js';
 import type { NoteItem } from '../lib/types.js';
 import { usePanelContext } from '../lib/panel-context.js';
@@ -91,6 +92,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   const viewPreferences = useNoteViewPreferences();
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null);
   const editorRef = useRef<MarkdownEditorHandle>(null);
+  // The editor's view is rebuilt when the note moves between frames, as a zoom borrows it from a card or a Book section; this hands its caret and undo history over.
+  const carry = useRef<LiveEditorCarry | null>(null);
   const [caret] = useState(createCaretStore);
   const trackCaret = (position: number, end?: number) => {
     caret.set(position, end);
@@ -166,7 +169,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
             {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
           </p>
         )}
-        <NoteInlineFrame note={note} session={session} editorRef={editorRef} onCaret={onCaret} />
+        <NoteInlineFrame note={note} session={session} editorRef={editorRef} onCaret={onCaret} carry={carry} />
       </div>
     );
   }
@@ -185,7 +188,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
             {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
           </p>
         )}
-        <NoteCompactFrame note={note} session={session} editorRef={editorRef} isMarkdown={isMarkdown} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={showLineNumbers} toggleLineNumbers={toggleLineNumbers} onCaret={onCaret} />
+        <NoteCompactFrame note={note} session={session} editorRef={editorRef} isMarkdown={isMarkdown} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={showLineNumbers} toggleLineNumbers={toggleLineNumbers} onCaret={onCaret} carry={carry} />
       </div>
     );
   }
@@ -203,7 +206,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
       )}
       {showFormatToolbar && !reading && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       <div className='note-editor-body'>
-        <MarkdownEditor ref={editorRef} content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked || reading} onChange={session.setContent} onCaret={trackCaret} toolbarSlot={showFormatToolbar ? toolbarSlot : null} ariaLabel='Note content' showLineNumbers={showLineNumbers} lineNumberOffset={session.baseNote.lineNumberOffset} onInsertImage={session.locked ? undefined : () => setImagePickerOpen(true)} />
+        <MarkdownEditor ref={editorRef} content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked || reading} onChange={session.setContent} onCaret={trackCaret} toolbarSlot={showFormatToolbar ? toolbarSlot : null} ariaLabel='Note content' showLineNumbers={showLineNumbers} lineNumberOffset={session.baseNote.lineNumberOffset} onInsertImage={session.locked ? undefined : () => setImagePickerOpen(true)} carry={carry} />
         <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />
       </div>
       <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={<NoteQuickActions {...footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) })} changes={changes} disabled={session.isSaving} />} />

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { SUPPORTED_SCHEMA_VERSION } from '../packages/core/dist/config.js';
-import { assertReadingLayout, createQaWorkspace, launchQaBrowser, product, qaRequire, slotReading, startQaServer } from './lib/qa-harness.mjs';
+import { assertReadingLayout, createQaWorkspace, launchQaBrowser, MOD_KEY, pressChord, product, qaRequire, slotReading, startQaServer } from './lib/qa-harness.mjs';
 
 // Lane cards of a compilation: the narrow vertical layout (L1-L5) and that changing layout never writes a file (S7), then editing a note in its card (E1-E12, E15, E16, L6, L7) and the Graph arrangement's own in-place editing (G1).
 const require = qaRequire();
@@ -391,6 +391,8 @@ try {
   // E4: the title opens the note in zoom on the same editing session; closing zoom gives the editor back to the card.
   await page.waitForFunction(editorFocused);
   await page.keyboard.type('EDIT-B ');
+  // The caret sits inside the typed text: zoom's editor is a new CodeMirror view, which starts from this caret and this undo history (E4).
+  for (let step = 0; step < 3; step++) await page.keyboard.press('ArrowLeft');
   await click(`${cardSel('b')} .screen-card-title`);
   await page.waitForSelector('[role="dialog"][aria-label="Note editor"] .cm-content');
   const zoomText = await page.$eval('[role="dialog"][aria-label="Note editor"] .cm-content', element => element.textContent);
@@ -399,6 +401,18 @@ try {
   await click('button[aria-label="Close note"]');
   await page.waitForSelector(`${cardSel('b')}[data-editing] .cm-content`);
   assert.ok((await page.$eval(`${cardSel('b')} .cm-content`, element => element.textContent)).includes('EDIT-B'), 'The card lost its text after zoom');
+  // The editor that came back continues the session: the caret is where it was, and undo steps back through what was typed before zoom.
+  const cardEditorText = () => page.$eval(`${cardSel('b')} .cm-content`, element => element.textContent);
+  await page.focus(`${cardSel('b')} .cm-content`);
+  await page.keyboard.type('Q');
+  assert.ok((await cardEditorText()).startsWith('EDITQ-B '), `The caret moved while zoom was open: ${(await cardEditorText()).slice(0, 30)}`);
+  await pressChord(page, 'KeyZ', MOD_KEY);
+  assert.ok((await cardEditorText()).startsWith('EDIT-B '), 'Undo after zoom did not remove the last typed text');
+  await pressChord(page, 'KeyZ', MOD_KEY);
+  assert.ok(!(await cardEditorText()).includes('EDIT-B'), 'The undo history from before zoom is gone');
+  await pressChord(page, 'KeyZ', MOD_KEY, 'Shift');
+  assert.ok((await cardEditorText()).startsWith('EDIT-B '), 'Redo did not bring back the text typed before zoom');
+  console.log("PASS zoom and back keeps the card editor's caret and undo history (E4)");
   // Escape typed in the borrowed zoom editor does not end the card's slot behind it: after zoom closes, the card is still editing with its text.
   await click(`${cardSel('b')} .screen-card-title`);
   await page.waitForSelector('[role="dialog"][aria-label="Note editor"] .cm-content');

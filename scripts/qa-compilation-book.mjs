@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { assertReadingLayout, collectPageErrors, createQaWorkspace, launchQaBrowser, product, qaRequire, slotReading, startQaServer } from './lib/qa-harness.mjs';
+import { assertReadingLayout, collectPageErrors, createQaWorkspace, launchQaBrowser, MOD_KEY, pressChord, product, qaRequire, slotReading, startQaServer } from './lib/qa-harness.mjs';
 
 // Book arrangement against the built app and a disposable local workspace: a legacy `stack` file opens as Book without being
 // written, the contents follow scrolling and jump, the drawer serves a narrow compilation, and a section edits in place.
@@ -155,6 +155,8 @@ try {
   // E4: the title opens the note in zoom on the same editing session, and closing zoom returns the editor to the section.
   await page.focus(`${section(5)} .cm-content`);
   await page.keyboard.type('UNSAVED-SESSION ');
+  // The caret sits inside the typed text: zoom's editor is a new CodeMirror view, which starts from this caret and this undo history.
+  for (let step = 0; step < 9; step++) await page.keyboard.press('ArrowLeft');
   const padding = () => page.$eval('.note-overlay', overlay => getComputedStyle(overlay).paddingRight);
   const overlayPadding = await padding();
   await page.click(`${section(5)} .compilation-book-title`);
@@ -167,6 +169,18 @@ try {
   assert.equal(await padding(), overlayPadding, 'The compilation frame changed width after a note was opened and closed');
   assert.equal(await page.evaluate(() => document.activeElement?.className.includes('compilation-book-title')), true, 'Focus did not return to the title that opened the note');
   assert.ok((await page.$eval(`${section(5)} .cm-content`, element => element.textContent)).includes('UNSAVED-SESSION'), 'The section lost its text after zoom');
+  // The editor that came back continues the session: the caret is where it was, and undo steps back through what was typed before zoom.
+  const sectionText = () => page.$eval(`${section(5)} .cm-content`, element => element.textContent);
+  await page.focus(`${section(5)} .cm-content`);
+  await page.keyboard.type('Q');
+  assert.ok((await sectionText()).includes('UNSAVEDQ-SESSION '), `The caret moved while zoom was open: ${(await sectionText()).slice(0, 40)}`);
+  await pressChord(page, 'KeyZ', MOD_KEY);
+  assert.ok((await sectionText()).includes('UNSAVED-SESSION '), 'Undo after zoom did not remove the last typed text');
+  await pressChord(page, 'KeyZ', MOD_KEY);
+  assert.ok(!(await sectionText()).includes('UNSAVED-SESSION'), 'The undo history from before zoom is gone');
+  await pressChord(page, 'KeyZ', MOD_KEY, 'Shift');
+  assert.ok((await sectionText()).includes('UNSAVED-SESSION '), 'Redo did not bring back the text typed before zoom');
+  console.log("PASS zoom and back keeps the section editor's caret and undo history (E4)");
   // Escape typed in the borrowed zoom editor does not end the section's slot behind it: after zoom closes, the section is still editing with its text.
   await page.click(`${section(5)} .compilation-book-title`);
   await page.waitForSelector('[role="dialog"][aria-label="Note editor"] .cm-content');

@@ -1,8 +1,8 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { Compartment, EditorState, StateEffect, StateField, Transaction } from '@codemirror/state';
+import { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useRef } from 'react';
+import { Compartment, EditorState, type Extension, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { type DecorationSet, drawSelection, EditorView, highlightActiveLineGutter, lineNumbers } from '@codemirror/view';
 import { autocompletion } from '@codemirror/autocomplete';
-import { history, isolateHistory } from '@codemirror/commands';
+import { history, historyField, isolateHistory } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { codeMirrorTokenTheme, tokenHighlightStyle } from '../lib/codemirror-theme.js';
@@ -50,6 +50,15 @@ export interface LiveMarkdownHandle {
   format: (format: MarkdownFormat) => void;
   outline: (command: OutlineCommand) => void;
 }
+/**
+ * An editor's text, selection and undo history as it was when its view went away. A note's editor moves between frames (a card or a Book
+ * section, zoom, a graph card) that render different trees, so each frame builds its own view; the one that leaves hands this to the next
+ * so the caret and the history carry over.
+ */
+export interface LiveEditorCarry {
+  doc: string;
+  state: unknown;
+}
 interface Props {
   content: string;
   notePath: string;
@@ -65,10 +74,12 @@ interface Props {
   onCopyLines?: (firstLine: number, lastLine?: number) => void;
   /** The note as it reads, in a column with no page: no paper behind the text, no page breaks or page numbers. */
   continuous?: boolean;
+  /** Where the view leaves its state for the next view of the same note to start from; used once, and only while the text is unchanged. */
+  carry?: MutableRefObject<LiveEditorCarry | null>;
 }
 const focusChanged = StateEffect.define<boolean>();
 let youtubeEditorSequence = 0;
-export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false }, ref) => {
+export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry }, ref) => {
   const { t } = useTranslation();
   const linkLabel = t('links.open');
   const tableLabel = t('preview.scrollableTable'), pageLabel = t('editor.page');
@@ -174,11 +185,14 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
       },
       provide: field => EditorView.decorations.from(field, value => value.decorations),
     });
+    // A view of the same note that went away just before hands over its caret and undo history, unless the text changed since.
+    const carried = carry?.current;
+    if (carry) carry.current = null;
+    const startState = (config: { extensions: Extension; }) => carried && carried.doc === content ? EditorState.fromJSON(carried.state, config, { history: historyField }) : EditorState.create({ doc: content, ...config });
     const view = new EditorView({
       parent: host.current!,
       dispatchTransactions: anchorMermaidSwap,
-      state: EditorState.create({
-        doc: content,
+      state: startState({
         extensions: [
           markdown({ base: markdownLanguage, extensions: [cjkEmphasis] }),
           history(),
@@ -249,6 +263,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
     editor.current = view;
     return () => {
       detachGutterLineCopy();
+      if (carry) carry.current = { doc: view.state.doc.toString(), state: view.state.toJSON({ history: historyField }) };
       view.destroy();
       editor.current = undefined;
     };
