@@ -1,5 +1,6 @@
 import type { HistoryEntry, NoteVersion } from '@mygitnotes/core/note-versions';
 import { responseError } from './api.js';
+import { followPage } from './page-events.js';
 
 const API_BASE = '/api';
 
@@ -83,37 +84,39 @@ export interface HistoryChange {
 }
 
 const historyListeners = new Set<(change: HistoryChange) => void>();
-let historyEvents: EventSource | undefined;
+/** Ends the shared stream and stops following the page. */
+let stopHistoryEvents: (() => void) | undefined;
 /** The server closed the stream for good, as a serverless deployment does with 204; panels then read again only after the app's own saves. */
 let historyStreamEnded = false;
 
 /** Hears of commits from the server's history stream, which every open history panel shares; returns the unsubscribe. */
 export function onHistoryChanged(listener: (change: HistoryChange) => void): () => void {
   historyListeners.add(listener);
-  if (!historyEvents && !historyStreamEnded && typeof EventSource !== 'undefined') {
-    const events = new EventSource(`${API_BASE}/history/events`);
-    historyEvents = events;
-    // EventSource retries a dropped connection itself and gives up only on an answer such as 204, which needs no error shown.
-    events.addEventListener('error', () => {
-      if (events.readyState !== EventSource.CLOSED) return;
-      historyStreamEnded = true;
-      if (historyEvents === events) historyEvents = undefined;
-    });
-    events.addEventListener('history', event => {
-      // An event that cannot be read still names a commit, so every panel reads its history again.
-      let change: HistoryChange = { repositories: [] };
-      try {
-        change = JSON.parse((event as MessageEvent<string>).data) as HistoryChange;
-      } catch {
-        console.warn('[history] unreadable history event');
-      }
-      for (const each of historyListeners) each(change);
+  if (!stopHistoryEvents && !historyStreamEnded && typeof EventSource !== 'undefined') {
+    stopHistoryEvents = followPage(() => {
+      const events = new EventSource(`${API_BASE}/history/events`);
+      // EventSource retries a dropped connection itself and gives up only on an answer such as 204, which needs no error shown.
+      events.addEventListener('error', () => {
+        if (events.readyState !== EventSource.CLOSED) return;
+        historyStreamEnded = true;
+      });
+      events.addEventListener('history', event => {
+        // An event that cannot be read still names a commit, so every panel reads its history again.
+        let change: HistoryChange = { repositories: [] };
+        try {
+          change = JSON.parse((event as MessageEvent<string>).data) as HistoryChange;
+        } catch {
+          console.warn('[history] unreadable history event');
+        }
+        for (const each of historyListeners) each(change);
+      });
+      return events;
     });
   }
   return () => {
     historyListeners.delete(listener);
     if (historyListeners.size) return;
-    historyEvents?.close();
-    historyEvents = undefined;
+    stopHistoryEvents?.();
+    stopHistoryEvents = undefined;
   };
 }

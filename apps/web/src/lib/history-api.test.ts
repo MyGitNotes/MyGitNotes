@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 /** An EventSource the test drives: `end` is the browser giving up after an answer such as 204. */
@@ -52,8 +53,9 @@ it('keeps reconnecting through dropped connections', async () => {
   const [events] = FakeEventSource.opened;
   events.dispatchEvent(new Event('error'));
   stop();
-  onHistoryChanged(() => {});
+  const stopAgain = onHistoryChanged(() => {});
   expect(FakeEventSource.opened).toHaveLength(2);
+  stopAgain();
 });
 
 it('stops asking for the stream once the server ends it, as a serverless deployment does', async () => {
@@ -66,4 +68,15 @@ it('stops asking for the stream once the server ends it, as a serverless deploym
   expect(FakeEventSource.opened).toHaveLength(1);
   stopAgain();
   expect(listener).not.toHaveBeenCalled();
+});
+
+it('closes the stream when the page is hidden and opens it again when the back/forward cache restores the page', async () => {
+  const { onHistoryChanged } = await import('./history-api.js');
+  const stop = onHistoryChanged(() => {});
+  window.dispatchEvent(new Event('pagehide'));
+  expect(FakeEventSource.opened[0].readyState).toBe(FakeEventSource.CLOSED);
+  window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+  expect(FakeEventSource.opened).toHaveLength(2);
+  stop();
+  expect(FakeEventSource.opened[1].readyState).toBe(FakeEventSource.CLOSED);
 });

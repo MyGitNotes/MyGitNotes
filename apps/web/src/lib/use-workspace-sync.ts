@@ -9,6 +9,7 @@ import { pendingDocumentDrafts } from './use-workspace-document.js';
 import { WORKSPACE_DOCUMENT_CLIENTS } from './workspace-document-clients.js';
 import { AssetItem, FolderItem, GitStatus, NoteItem, WorkspaceConfig } from './types.js';
 import { fetchAssets, fetchFolders, fetchGitStatus, fetchWorkspace, openWorkspaceEvents } from './api.js';
+import { followPage } from './page-events.js';
 import { clearCommittedNotes, readStoredWorkingNotes, readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from './working-notes.js';
 import { isNotebookKey, resolveBareId } from './notebook-keys.js';
 import { sameValue } from './merge-note.js';
@@ -226,12 +227,14 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
   const watchedRepositories = remote || !sourceId ? '' : repositories.map(repository => repository.id).join('\n');
   useEffect(() => {
     if (!watchedRepositories) return;
-    const events = openWorkspaceEvents();
-    events.addEventListener('change', event => {
-      announceWorkspaceFilesChanged();
-      void (membershipEvent(event) ? membershipChanged() : refreshWorkspace());
+    return followPage(() => {
+      const events = openWorkspaceEvents();
+      events.addEventListener('change', event => {
+        announceWorkspaceFilesChanged();
+        void (membershipEvent(event) ? membershipChanged() : refreshWorkspace());
+      });
+      return events;
     });
-    return () => events.close();
   }, [watchedRepositories, refreshWorkspace, membershipChanged]);
 
   useEffect(() => {

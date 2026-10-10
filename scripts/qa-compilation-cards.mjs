@@ -33,20 +33,15 @@ const browser = await launchQaBrowser(require);
 const shots = process.env.QA_SHOTS || path.join(product, 'artifacts/qa/compilation-cards');
 fs.mkdirSync(shots, { recursive: true });
 const errors = [];
-let page;
 let size = { width: 1440, height: 900 };
-/** A new page of the current size. Every page holds a workspace event stream open, and the sixth would wait behind the browser's six connections per host, so each load gets a page of its own. */
-const freshPage = async () => {
-  await page?.close();
-  page = await browser.newPage();
-  page.on('pageerror', error => errors.push(error.message));
-  if (process.env.QA_DEBUG) {
-    page.on('console', message => console.log('console', message.text()));
-    page.on('response', response => response.status() >= 400 && console.log('http', response.status(), response.url()));
-  }
-  await page.evaluateOnNewDocument(() => localStorage.setItem('github-notes:language', 'en'));
-  await page.setViewport(size);
-};
+const page = await browser.newPage();
+page.on('pageerror', error => errors.push(error.message));
+if (process.env.QA_DEBUG) {
+  page.on('console', message => console.log('console', message.text()));
+  page.on('response', response => response.status() >= 400 && console.log('http', response.status(), response.url()));
+}
+await page.evaluateOnNewDocument(() => localStorage.setItem('github-notes:language', 'en'));
+await page.setViewport(size);
 
 const fileText = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 const compilationFiles = ['pins', 'thumbs', 'medium', 'short', 'many', 'recent', 'graphed', 'unpin'].map(id => `notes/work/${id}.compilation.yml`);
@@ -63,9 +58,8 @@ const viewport = (width, height = 900) => {
   size = { width, height };
   return page.setViewport(size);
 };
-/** Loads `url` in a fresh page until `selector` shows. */
+/** Loads `url` in the page until `selector` shows. */
 const load = async (url, selector) => {
-  await freshPage();
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(selector, { timeout: 20000 });
 };
@@ -147,7 +141,6 @@ const waitOrder = async (rel, expected) => {
 const titles = scope => page.$$eval(`${scope} .screen-card-title`, cards => cards.map(card => card.textContent));
 const before = Object.fromEntries(compilationFiles.map(file => [file, fileText(file)]));
 
-await freshPage();
 try {
   // L2: a wide compilation keeps the strip, its scroll buttons and Alt+wheel; no card is wider than the lane.
   await zoom('pins', 1440, 900);
