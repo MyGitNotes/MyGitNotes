@@ -621,16 +621,18 @@ try {
   await page.click('[data-graph-note] .cm-content');
   await page.keyboard.type('GRAPH-EDIT ');
   assert.ok((await page.$eval('[data-graph-note] .cm-content', element => element.textContent)).includes('GRAPH-EDIT'), 'The typed text did not land in the node editor');
-  // Closing the compilation saves what the card edited, as it does for a lane card (E8). The graph card's own debounced autosave is not asserted:
-  // inside a zoomed compilation it does not fire on the baseline either (ee56d62), so the guard checks the edit and the flush that exist today.
+  // The card's own debounced autosave writes the note while the compilation stays open, as a lane card's does.
+  await waitFile(graphFile, 'GRAPH-EDIT');
+  assert.ok(await page.$('.compilation-view [data-graph-note] .cm-content'), 'The compilation closed before the card saved');
+  // Closing the compilation then leaves nothing more to save (E8).
   await page.keyboard.press('Escape');
   if (await dialogOpen('Compilation')) {
     await settle(300);
     await page.keyboard.press('Escape');
   }
   await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-label="Compilation"]'), { timeout: 10000 });
-  await waitFile(graphFile, 'GRAPH-EDIT');
-  console.log('PASS a Graph node expands and edits in place inside a compilation, and closing saves it (G1)');
+  assert.ok(fileText(graphFile).includes('GRAPH-EDIT'), "Closing the compilation lost the card's edit");
+  console.log('PASS a Graph node expands and edits in place inside a compilation, and its debounced autosave writes the note while the compilation stays open (G1)');
 
   assert.deepEqual(errors, []);
   console.log('PASS no page errors');

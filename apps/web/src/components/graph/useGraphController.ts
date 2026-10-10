@@ -6,6 +6,7 @@ import { COMPILATION_MAX_ITEMS, type CompilationRow, type GraphLayout } from '@m
 import { arrangeGraphLayout, graphLaneViewport, type GraphPlacement } from '../../lib/graph-layout.js';
 import { optimizeGraphLayout } from '../../lib/graph-topology-layout.js';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { sameValue } from '../../lib/merge-note.js';
 import { GRAPH_APPEARANCE_KEY, type GraphAppearance, readGraphAppearance } from '../../lib/graph-colors.js';
 import { useGraphMinimap } from './useGraphMinimap.js';
 import { useGraphNoteSessions } from './useGraphNoteSessions.js';
@@ -214,7 +215,9 @@ export function useGraphController({ notebooks, filters, screen, lane, folders =
   const captureLaneGeometry = () => {
     if (!lane) return;
     const visible = new Set(graphData.nodes.map(node => node.id));
-    setLaneGeometry({ nodes: currentLayout().nodes.filter(node => visible.has(node.id)).map(node => ({ ...node, expanded: node.expanded || closing.has(node.id) })) });
+    const next = { nodes: currentLayout().nodes.filter(node => visible.has(node.id)).map(node => ({ ...node, expanded: node.expanded || closing.has(node.id) })) };
+    // A measurement that found nothing new must not render again: its own effect would measure again, and a card's editor would never get a quiet moment to autosave.
+    setLaneGeometry(previous => sameValue(previous, next) ? previous : next);
   };
   const laneViewport = graphLaneViewport(laneGeometry, size.width);
   /* eslint-disable react-hooks/exhaustive-deps -- The 200 ms measurement reads current simulation coordinates after dragging settles; render-created helper identity must not restart the timer. */

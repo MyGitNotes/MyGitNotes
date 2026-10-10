@@ -1,6 +1,8 @@
+import { useRef } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import type { NoteListItem, NotePaths, NoteQuery } from '@mygitnotes/core/note-query';
+import { sameValue } from './merge-note.js';
 import { notePathsOptions, useNoteList, useNoteLookup, useNotePaths, useNoteQueryScope } from './use-note-queries.js';
 
 /** Whether a dynamic lane follows the order the user set by hand. */
@@ -53,6 +55,12 @@ export function useLanePaths(rows: CompilationRow[]): { paths: Map<string, strin
     if (row.kind === 'custom') paths.set(row.id, row.items.flatMap(item => item.kind === 'note' ? [item.path] : []));
   }
   dynamic.forEach((row, index) => paths.set(row.id, ((results[index]?.data as NotePaths | undefined)?.notes ?? []).map(note => note.path)));
+  // The map is rebuilt every render; consumers key memos and effects on it, so it keeps its identity while the membership is unchanged.
+  const held = useRef(paths);
+  /* eslint-disable react/refs -- A stable value for memo dependencies is held in a ref and replaced only when the lanes' members change. */
+  if (!sameValue([...held.current], [...paths])) held.current = paths;
+  const stable = held.current;
+  /* eslint-enable react/refs */
   const failed = results.find(result => result.error);
-  return { paths, loading: results.some(result => result.isPending), error: failed?.error instanceof Error ? failed.error.message : '' };
+  return { paths: stable, loading: results.some(result => result.isPending), error: failed?.error instanceof Error ? failed.error.message : '' };
 }
