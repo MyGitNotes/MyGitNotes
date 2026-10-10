@@ -124,6 +124,8 @@ try {
     if (width < 768) {
       const controls = await bounds('.note-controls');
       assert(controls.height <= 48, `Note toolbar wraps on mobile at ${width}px: ${controls.height}px tall`);
+      // One row is only honest if nothing is cut off: either every control fits, or the row scrolls sideways to the rest.
+      assert(await page.$eval('.note-controls', e => e.scrollWidth <= e.clientWidth + 1 || ['auto', 'scroll'].includes(getComputedStyle(e).overflowX)), `Note toolbar clips controls at ${width}px`);
       const close = await bounds('button[aria-label="Close note"]');
       assert(close.width >= 44 && close.height >= 44, 'Small Close target');
       await page.screenshot({ path: product + '/artifacts/qa/mobile-note-' + width + '.png' });
