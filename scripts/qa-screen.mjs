@@ -1,49 +1,59 @@
+import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { SUPPORTED_SCHEMA_VERSION } from '../packages/core/dist/config.js';
 import { createQaWorkspace, launchQaBrowser, product, qaRequire, startQaServer } from './lib/qa-harness.mjs';
 
+// The controls of a compilation's lane (this script was the Screen board's QA): native and Alt+wheel scrolling, the size tabs,
+// a dynamic compilation's sort and rename (which renames its file) written to disk, a custom compilation's manual order, and the former Screen URLs.
 const require = qaRequire();
 const { root, write, commitFixture } = createQaWorkspace('github-notes-screen-qa-');
-write('.github-notes.yaml', 'schema_version: 1\nworkspace:\n  title: Screen QA\n  default_notebook: example\nnotebooks:\n  - id: example\n    title: Example\n    root: notes/example\n  - id: archive\n    title: Archive\n    root: notes/archive\n');
+write('.github-notes.yaml', `schema_version: ${SUPPORTED_SCHEMA_VERSION}\nworkspace:\n  title: Screen QA\n  default_notebook: example\nnotebooks:\n  - id: example\n    title: Example\n    root: notes/example\n`);
 for (let i = 0; i < 6; i++) write(`notes/example/note-${i}.md`, `---\ntags: [example-tag]\n---\n# Note ${i}\n\n${'A long paragraph for native vertical scrolling.\n\n'.repeat(40)}`);
-write('notes/archive/archive-note.md', '---\ntags: [archive-only]\n---\n# Archive Note\n');
-// A version 1 layout exercises migration into notebook-owned lanes.
-write('.github-notes-screen.yaml', JSON.stringify({ version: 1, rows: [{ id: 'reading', name: 'Reading', kind: 'dynamic', view: 'medium', source: { kind: 'folder', notebookId: 'example', path: 'notes/example', recursive: true } }, { id: 'pins', name: 'Pins', kind: 'custom', view: 'small', items: [] }, { id: 'mixed', name: 'Mixed', kind: 'custom', view: 'small', items: [{ id: 'pin-example', kind: 'note', notebookId: 'example', path: 'notes/example/note-0.md' }, { id: 'pin-archive', kind: 'note', notebookId: 'archive', path: 'notes/archive/archive-note.md' }] }, { id: 'every', name: 'Every notebook', kind: 'dynamic', view: 'small', source: { kind: 'tag', tag: 'archive-only' } }] }));
+write('notes/example/reading.compilation.yml', 'version: 1\nid: reading\ntitle: Reading\narrangement: lane\nsize: medium\nsource:\n  kind: folder\n  path: notes/example\n  recursive: false\nsort:\n  field: title\n  order: asc\n');
+write('notes/example/pins.compilation.yml', 'version: 1\nid: pins\ntitle: Pins\narrangement: lane\nsize: small\nitems:\n  - id: pin-0\n    kind: note\n    path: notes/example/note-0.md\n  - id: pin-1\n    kind: note\n    path: notes/example/note-1.md\n');
 commitFixture('QA');
-const { server } = await startQaServer(root);
+const { server, base } = await startQaServer(root);
 const browser = await launchQaBrowser(require);
-const assert = (value, message) => {
-  if (!value) throw Error(message);
+const errors = [];
+const page = await browser.newPage();
+page.on('pageerror', error => errors.push(error.message));
+await page.evaluateOnNewDocument(() => localStorage.setItem('github-notes:language', 'en'));
+await page.setViewport({ width: 1440, height: 1000 });
+
+const fileText = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+const lane = '.compilation-view .screen-lane', body = `${lane} .screen-card-content`, strip = `${lane} .screen-lane-strip`;
+const open = async id => {
+  await page.goto(`${base}/notebooks/example/notes/${id}.compilation.yml`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector(`${lane} .screen-card-title`);
 };
-let page;
+const titles = () => page.$$eval(`${lane} .screen-card-title`, cards => cards.map(card => card.textContent));
+const saved = async (rel, text) => {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    if (fs.existsSync(path.join(root, rel)) && fileText(rel).includes(text)) return;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.fail(`${rel} does not contain ${text}`);
+};
+
 try {
-  page = await browser.newPage();
-  await page.setViewport({ width: 1440, height: 1000 });
-  const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
-  let failAssets = true;
-  await page.setRequestInterception(true);
-  page.on('request', request => {
-    if (new URL(request.url()).pathname === '/api/assets' && failAssets) void request.respond({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Temporary asset outage' }) });
-    else void request.continue();
-  });
-  await page.goto(`http://127.0.0.1:${server.address().port}/screen`, { waitUntil: 'networkidle0' });
-  await page.waitForSelector('.screen-error');
+  await open('reading');
   const headerHeight = await page.$eval('.header-layout', e => e.getBoundingClientRect().height);
-  assert(headerHeight <= 56, `Desktop navigation is too tall: ${headerHeight}`);
-  const lane = '#screen-lane-reading', body = `${lane} .screen-card-content`, strip = `${lane} .screen-lane-strip`;
-  const first = await page.$(body);
-  const rect = await first.boundingBox();
+  assert.ok(headerHeight <= 56, `Desktop navigation is too tall: ${headerHeight}`);
+
+  // The wheel scrolls a card's note natively; Alt+wheel moves the strip and leaves the note alone, and is not taken at the strip's end.
+  await page.waitForSelector(body);
+  const rect = await (await page.$(body)).boundingBox();
   await page.mouse.move(rect.x + 100, rect.y + 100);
   await page.mouse.wheel({ deltaY: 180 });
   await page.waitForFunction(selector => document.querySelector(selector).scrollTop > 0, {}, body);
-  assert(await page.$eval(strip, e => e.scrollLeft === 0), 'Native wheel unexpectedly moved lane');
+  assert.ok(await page.$eval(strip, e => e.scrollLeft === 0), 'Native wheel unexpectedly moved the strip');
   const vertical = await page.$eval(body, e => e.scrollTop);
   await page.keyboard.down('Alt');
   await page.mouse.wheel({ deltaY: 180 });
   await page.keyboard.up('Alt');
   await page.waitForFunction(selector => document.querySelector(selector).scrollLeft > 0, {}, strip);
-  assert(await page.$eval(body, (e, before) => e.scrollTop === before, vertical), 'Alt wheel was intercepted by note scrolling');
+  assert.ok(await page.$eval(body, (e, before) => e.scrollTop === before, vertical), 'Alt wheel was intercepted by note scrolling');
   await page.$eval(strip, e => {
     e.scrollLeft = e.scrollWidth;
   });
@@ -53,142 +63,76 @@ try {
     e.dispatchEvent(event);
     return event.defaultPrevented;
   });
-  assert(edgeResult && await page.$eval(strip, (e, x) => e.scrollLeft === x, edge), 'Alt wheel escaped at lane boundary');
+  assert.ok(edgeResult && await page.$eval(strip, (e, x) => e.scrollLeft === x, edge), 'Alt wheel escaped at the strip boundary');
   console.log('PASS native note scrolling, Alt horizontal scrolling and boundary containment');
 
+  // The size tabs change the lane without writing the file.
+  const before = fileText('notes/example/reading.compilation.yml');
   for (const [label, value] of [['Thumbnail', 'thumbnail'], ['Small', 'small'], ['Medium', 'medium']]) {
-    await page.click(`${lane} button[aria-label="${label}"]`);
-    await page.waitForSelector(`${lane}.screen-view-${value} button[aria-label="${label}"][aria-pressed="true"]`);
+    await page.click(`.compilation-view button[aria-label="${label}"]`);
+    await page.waitForSelector(`${lane}.screen-view-${value}`);
+    assert.equal(await page.$eval(`.compilation-view button[aria-label="${label}"]`, e => e.getAttribute('aria-pressed')), 'true');
   }
+  assert.equal(fileText('notes/example/reading.compilation.yml'), before, 'A size change wrote the compilation file');
+  console.log('PASS size tabs switch the lane without writing the file');
+
+  // A dynamic compilation sorts independently and keeps the choice in its file; a custom one keeps its manual order and has no sort.
   for (const [value, title] of [['title:desc', 'Note 5'], ['title:asc', 'Note 0'], ['title:desc', 'Note 5']]) {
     await page.click(`${lane} .screen-sort-select`);
     await page.waitForSelector(`[data-option-value="${value}"]`);
     await page.click(`[data-option-value="${value}"]`);
     await page.waitForFunction((selector, expected) => document.querySelector(`${selector} .screen-card-title`)?.textContent === expected, {}, lane, title);
   }
-  assert(!await page.$('#screen-lane-pins .screen-sort-select'), 'Custom lane must retain manual ordering');
-  console.log('PASS independent dynamic lane sorting');
-  const inset = await page.$eval(lane, e => {
-    const a = e.getBoundingClientRect(), b = e.querySelector('h3').getBoundingClientRect();
-    return { x: b.x - a.x, y: b.y - a.y };
-  });
-  assert(inset.x >= 8 && inset.y >= 8, `Lane heading lacks top/left padding: ${JSON.stringify(inset)}`);
-  assert(!await page.$('.screen-sidebar button[aria-label="Edit swimlanes"]'), 'Old lane editor remains');
-  const ensureSidebar = async () => {
-    const isOpen = await page.$eval('.workspace-responsive-sidebar', el => el.classList.contains('is-open')).catch(() => false);
-    if (!isOpen) {
-      await page.click('[data-sidebar-toggle]');
-      await page.waitForFunction(() => document.querySelector('.workspace-responsive-sidebar')?.classList.contains('is-open'));
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-  };
-  await ensureSidebar();
-  await page.click('.screen-sidebar-controls .screen-sidebar-action');
-  await page.waitForSelector('dialog[open]');
-  let dialogSelects = await page.$$('dialog[open] .select-trigger');
-  await dialogSelects[0].click();
-  await page.click('[data-option-value="tag"]');
-  await page.waitForFunction(() => [...document.querySelectorAll('dialog[open] label')].map(label => label.textContent.trim())[2]?.startsWith('Tag'));
-  assert(!await page.$$eval('dialog[open] label', labels => labels.some(label => label.textContent.trim().startsWith('Notebooks'))), 'Lane dialog still offers a notebook picker');
-  assert(await page.$$eval('#screen-tags option', options => options.map(option => option.value).join(',') === 'example-tag'), 'Tag suggestions were not scoped to the current notebook');
-  await page.type('dialog[open] input[list="screen-tags"]', 'example-tag');
-  await page.click('dialog[open] button.ui-button-primary');
-  await page.waitForFunction(() => [...document.querySelectorAll('.screen-lane')].some(lane => lane.querySelector('.screen-dynamic-label')?.textContent.includes('#example-tag') && lane.querySelector('.screen-card-title')?.textContent.startsWith('Note ')));
-  console.log('PASS tag lane created inside the current notebook without a notebook picker');
+  await saved('notes/example/reading.compilation.yml', 'order: desc');
+  await open('reading');
+  assert.equal((await titles())[0], 'Note 5', 'The sort did not persist');
+  await open('pins');
+  assert.ok(!await page.$('.compilation-view .screen-sort-select'), 'A custom compilation must keep its manual ordering');
+  console.log('PASS independent dynamic sorting persisted in the file, with manual ordering kept for a custom compilation');
 
-  await ensureSidebar();
-  await page.click('[aria-label="Edit swimlane: Reading"]');
-  await page.waitForSelector('input[aria-label="Swimlane name"]');
-  dialogSelects = await page.$$('dialog[open] .select-trigger');
-  await dialogSelects[0].click();
-  await page.click('[data-option-value="tag"]');
-  await page.type('dialog[open] input[list="screen-tags"]', 'example-tag');
-  await page.focus('input[aria-label="Swimlane name"]');
-  await page.$eval('input[aria-label="Swimlane name"]', input => input.select());
+  // Renaming from the heading changes the title in the file and survives a reload.
+  await open('reading');
+  await page.click('.compilation-view .title-rename');
+  await page.waitForSelector('dialog[open] input');
+  await page.$eval('dialog[open] input', input => input.select());
   await page.keyboard.type('Renamed');
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.querySelector('#screen-lane-reading h3')?.textContent === 'Renamed' && document.querySelector('#screen-lane-reading .screen-dynamic-label')?.textContent.includes('#example-tag') && document.querySelector('#screen-lane-reading .screen-card-title')?.textContent === 'Note 5');
-  await ensureSidebar();
-  const hasHandle = await page.$('[aria-label="Move swimlane: Renamed"]');
-  if (!hasHandle) await page.click('.reorder-toggle');
-  await page.focus('[aria-label="Move swimlane: Renamed"]');
-  await page.keyboard.press('Space');
-  await page.waitForFunction(() => document.querySelector('[aria-label="Move swimlane: Renamed"]')?.getAttribute('aria-pressed') === 'true');
-  await page.waitForFunction(() => [...document.querySelectorAll('[role="status"]')].some(e => e.textContent.includes('over droppable area reading')));
-  await page.keyboard.press('ArrowDown');
-  await page.waitForFunction(() => [...document.querySelectorAll('[role="status"]')].some(e => e.textContent.includes('over droppable area pins')));
-  await page.keyboard.press('Space');
-  await page.waitForFunction(() => document.querySelector('.screen-lane')?.id === 'screen-lane-pins');
-  const handle = await page.$('[aria-label="Move swimlane: Renamed"]'), target = await page.$('[aria-label="Move swimlane: Pins"]');
-  const a = await handle.boundingBox(), b = await target.boundingBox();
-  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
-  await page.mouse.up();
-  const closeSidebar = async () => {
-    const isOpen = await page.$eval('.workspace-responsive-sidebar', el => el.classList.contains('is-open')).catch(() => false);
-    if (isOpen) {
-      await page.keyboard.press('Escape');
-      await page.waitForFunction(() => !document.querySelector('.workspace-responsive-sidebar')?.classList.contains('is-open'));
-      await new Promise(resolve => setTimeout(resolve, 200));
-    }
-  };
-  await closeSidebar();
-  failAssets = false;
-  await page.click('button[aria-label="Retry assets"]');
-  await page.waitForFunction(() => !document.querySelector('.screen-error'));
-  assert(await page.$eval('#screen-lane-reading h3', e => e.textContent === 'Renamed'), 'Resource retry discarded lane edits');
-  await page.waitForFunction(() => !Object.keys(localStorage).some(key => key.startsWith('github-notes:screen-draft:')));
-  await page.reload({ waitUntil: 'networkidle0' });
-  assert(await page.$eval('.screen-lane', e => e.id === 'screen-lane-reading' && e.querySelector('h3').textContent === 'Renamed'), 'Lane changes did not persist');
-  assert(await page.$$eval('.screen-lane', lanes => lanes.some(lane => lane.querySelector('h3')?.textContent === 'Dynamic swimlane' && lane.querySelector('.screen-dynamic-label')?.textContent.includes('#example-tag'))), 'Notebook tag lane did not persist');
-  assert(await page.$eval(`${lane} .screen-sort-select`, e => e.getAttribute('value') === 'title:desc'), 'Sort selection did not persist');
-  assert(await page.$eval(`${lane} .screen-card-title`, e => e.textContent === 'Note 5'), 'Edited dynamic source did not persist');
-  const titles = selector => page.$$eval(`${selector} .screen-card-title`, cards => cards.map(card => card.textContent));
-  const laneIds = () => page.$$eval('.screen-lane', lanes => lanes.map(lane => lane.id));
-  const stored = fs.readFileSync(path.join(root, '.github-notes-screen.yaml'), 'utf8');
-  assert(stored.startsWith('version: 2') && !stored.includes('"version":1'), 'Saved Screen layout was not migrated to version 2');
-  const exampleLanes = await laneIds();
-  assert(exampleLanes.length === 5 && JSON.stringify(exampleLanes.slice(0, 4)) === JSON.stringify(['screen-lane-reading', 'screen-lane-pins', 'screen-lane-mixed', 'screen-lane-every']) && !exampleLanes.includes('screen-lane-mixed-archive'), `Example notebook shows lanes from another notebook: ${exampleLanes}`);
-  assert(JSON.stringify(await titles('#screen-lane-mixed')) === JSON.stringify(['Note 0']), 'Mixed lane kept an item from another notebook');
-  assert((await titles('#screen-lane-every')).length === 0, 'Legacy all-notebook tag lane still reads another notebook');
-  await page.goto(`http://127.0.0.1:${server.address().port}/screen?notebook=archive`, { waitUntil: 'networkidle0' });
-  await page.waitForSelector('#screen-lane-mixed-archive');
-  assert(JSON.stringify(await laneIds()) === JSON.stringify(['screen-lane-mixed-archive']), `Archive notebook shows foreign lanes: ${await laneIds()}`);
-  assert(JSON.stringify(await titles('#screen-lane-mixed-archive')) === JSON.stringify(['Archive Note']), 'Split archive lane lost its item');
-  await page.click('#screen-lane-mixed-archive button[aria-label="Add item: Mixed"]');
-  await page.waitForSelector('dialog[open] .screen-item-option small');
-  assert(!await page.$$eval('dialog[open] label', labels => labels.some(label => label.textContent.trim().startsWith('Notebooks'))), 'Item dialog still offers a notebook picker');
-  assert(await page.$$eval('dialog[open] .screen-item-option small', paths => paths.length > 0 && paths.every(item => item.textContent.startsWith('notes/archive/'))), 'Item dialog lists notes from another notebook');
-  await page.keyboard.press('Escape');
-  console.log('PASS version 1 layout migrates into notebook-owned lanes and each notebook shows only its lanes');
-  await page.goto(`http://127.0.0.1:${server.address().port}/screen/lanes/mixed-archive`, { waitUntil: 'networkidle0' });
-  await page.waitForFunction(() => new URLSearchParams(location.search).get('notebook') === 'archive' && document.querySelector('.screen-study-session#screen-lane-mixed-archive'));
-  assert(!await page.$('.screen-board-empty'), 'Lane route reported a missing lane while switching notebooks');
-  console.log('PASS lane route opens its own notebook');
-  await page.goto(`http://127.0.0.1:${server.address().port}/screen`, { waitUntil: 'networkidle0' });
-  await page.waitForSelector(lane);
+  await page.waitForFunction(() => document.querySelector('.compilation-view .screen-lane-heading h3')?.textContent === 'Renamed');
+  // The file takes the new name along with the title.
+  await saved('notes/example/renamed.compilation.yml', 'title: Renamed');
+  assert.ok(!fs.existsSync(path.join(root, 'notes/example/reading.compilation.yml')), 'The old file name remains after the rename');
+  await page.waitForFunction(() => location.pathname.endsWith('/renamed.compilation.yml'), { timeout: 8000 }).catch(() => assert.fail(`The route still names the old file after the rename: ${page.url()}`));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.querySelector('.compilation-view .screen-lane-heading h3')?.textContent === 'Renamed');
+  console.log('PASS rename from the heading is written and persists');
+
+  // Controls stay inside narrow viewports.
   for (const width of [320, 390, 1440]) {
     await page.setViewport({ width, height: 1000 });
-    const fit = await page.$eval('.screen-lane-actions', e => {
+    const fit = await page.$eval('.compilation-view .screen-lane-actions', e => {
       const r = e.getBoundingClientRect();
       return r.left >= 0 && r.right <= innerWidth;
     });
-    assert(fit, `Lane controls overflow at ${width}`);
+    assert.ok(fit, `Compilation controls overflow at ${width}`);
     const navFits = await page.$$eval('.header-nav button', buttons =>
       buttons.filter(button => button.getBoundingClientRect().width > 0).every(button => {
         const r = button.getBoundingClientRect();
         return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth && r.height >= 32;
       }));
-    assert(navFits, `Navigation buttons clipped or undersized at ${width}`);
+    assert.ok(navFits, `Navigation buttons clipped or undersized at ${width}`);
   }
   fs.mkdirSync(path.join(product, 'artifacts/qa'), { recursive: true });
   await page.screenshot({ path: path.join(product, 'artifacts/qa/screen-lanes.png') });
-  assert(!errors.length, errors.join('; '));
-  console.log('PASS size tabs, heading inset, sidebar reorder, dynamic source persistence and non-destructive asset retry');
-} catch (error) {
-  console.log(await page.evaluate(() => ({ lanes: [...document.querySelectorAll('.screen-lane')].map(lane => ({ source: lane.querySelector('.screen-dynamic-label')?.textContent, titles: [...lane.querySelectorAll('.screen-card-title')].map(title => title.textContent) })), focus: document.activeElement?.outerHTML, nav: document.querySelector('.screen-sidebar-lanes')?.innerText, status: [...document.querySelectorAll('[role="status"]')].map(e => e.textContent), alerts: [...document.querySelectorAll('[role="alert"]')].map(e => e.textContent) })));
-  throw error;
+  console.log('PASS compilation controls and navigation fit at 320, 390 and 1440');
+
+  // A former Screen URL goes to the notes list, or to the study session of the compilation that kept the lane's id.
+  await page.setViewport({ width: 1440, height: 1000 });
+  await page.goto(`${base}/screen`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => location.pathname === '/notes');
+  await page.goto(`${base}/screen/lanes/pins`, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => location.pathname === '/notes/study' && new URLSearchParams(location.search).get('path') === 'pins.compilation.yml');
+  console.log("PASS former Screen URLs redirect to the notes list and the lane id's compilation");
+  assert.deepEqual(errors, []);
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));
