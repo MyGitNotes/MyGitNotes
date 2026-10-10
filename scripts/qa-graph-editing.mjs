@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { SUPPORTED_SCHEMA_VERSION } from '../packages/core/dist/config.js';
 import { collectPageErrors, createQaWorkspace, launchQaBrowser, product, qaRequire, startQaServer } from './lib/qa-harness.mjs';
 const require = qaRequire();
 fs.mkdirSync(path.join(product, 'artifacts/qa'), { recursive: true });
 const { stringify, parse } = require('yaml');
 const { root, write, commitFixture } = createQaWorkspace('notes-graph-editing-');
-write('.github-notes.yaml', stringify({ schema_version: 1, workspace: { title: '關聯圖試用', default_notebook: 'a' }, notebooks: [{ id: 'a', title: '研究', root: 'notes/a' }, { id: 'b', title: '案例', root: 'notes/b' }] }));
+write('.github-notes.yaml', stringify({ schema_version: SUPPORTED_SCHEMA_VERSION, workspace: { title: '關聯圖試用', default_notebook: 'a' }, notebooks: [{ id: 'a', title: '研究', root: 'notes/a' }, { id: 'b', title: '案例', root: 'notes/b' }] }));
 const fixtures = [['notes/a/a.md', 'Alpha', '第一則筆記。'], ['notes/a/b.md', 'Beta', '第二則筆記。'], ['notes/b/c.md', '中文案例', '案例內容。'], ['notes/b/d.md', 'Delta', '其他案例。']];
-for (const [file, title, body] of fixtures) write(file, `---\ntitle: ${title}\ntags: [research]\n---\n${body}\n`);
-write('.github-notes-screen.yaml', stringify({ version: 1, rows: [{ id: 'dynamic', name: '動態研究', kind: 'dynamic', view: 'small', source: { kind: 'tag', tag: 'research' } }, { id: 'mixed', name: '筆記與附件', kind: 'custom', view: 'small', items: [{ id: 'ma', kind: 'note', path: 'notes/a/a.md', notebookId: 'a' }, { id: 'mf', kind: 'folder', path: 'notes/b', notebookId: 'b' }] }] }));
+for (const [file, title, body] of fixtures) {
+  write(file, `---\ntitle: ${title}\ntags: [research]\n---\n${body}\n`);
+}
+// Notebook a holds the compilations: one that follows a tag, and one pinning a note beside an asset, which the graph leaves out.
+write('notes/a/pixel.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'));
+write('notes/a/dynamic.compilation.yml', stringify({ version: 1, id: 'dynamic', title: '動態研究', arrangement: 'lane', size: 'small', source: { kind: 'tag', tag: 'research' } }));
+write('notes/a/mixed.compilation.yml', stringify({ version: 1, id: 'mixed', title: '筆記與附件', arrangement: 'lane', size: 'small', items: [{ id: 'ma', kind: 'note', path: 'notes/a/a.md' }, { id: 'mf', kind: 'asset', path: 'notes/a/pixel.png' }] }));
 commitFixture('Graph QA');
 const { server, base } = await startQaServer(root);
 const browser = await launchQaBrowser(require, { chromeEnv: 'GRAPH_QA_CHROME' });
@@ -27,19 +33,24 @@ const click = async (text, within = '') => {
   }
   throw new Error('Missing button ' + text);
 };
-const cardA = '[data-graph-note="a:notes/a/a.md"]', cardB = '[data-graph-note="a:notes/a/b.md"]';
+// A node is keyed by its notebook's repository-qualified id, which carries the temporary repository's name.
+const cardA = '[data-graph-note$=":notes/a/a.md"]', cardB = '[data-graph-note$=":notes/a/b.md"]';
 const setMode = async (card, mode) => {
   const toggle = await page.$(card + ' [data-mode-toggle]');
-  if (await toggle.evaluate(el => el.dataset.modeToggle) !== mode) await toggle.click();
+  if ((await toggle.evaluate(el => el.dataset.modeToggle)) !== mode) {
+    await toggle.click();
+  }
 };
 const go = async route => {
-  await page.goto(base + route, { waitUntil: 'networkidle0' });
+  await page.goto(base + route, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.graph-page-container');
 };
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const waitFile = async (file, text, present = true) => {
   for (let i = 0; i < 80; i++) {
-    if (fs.readFileSync(path.join(root, file), 'utf8').includes(text) === present) return;
+    if (fs.readFileSync(path.join(root, file), 'utf8').includes(text) === present) {
+      return;
+    }
     await pause(100);
   }
   throw new Error(`${present ? 'Missing' : 'Lingering'} saved content ${file}: ${text}`);
@@ -51,16 +62,8 @@ const chord = async (keys, ...modifiers) => {
   await page.keyboard.press(keys);
   for (const key of [...modifiers].reverse()) await page.keyboard.up(key);
 };
-const clickRow = async title => {
-  const row = await page.evaluateHandle(title => [...document.querySelectorAll('.workspace-scroll :is(.note-list tbody tr, [data-notepath], .cursor-pointer.rounded-xl)')].find(row => row.textContent.includes(title)), title);
-  assert(row.asElement(), `Browse row ${title} is missing`);
-  const label = await row.evaluateHandle((row, title) => [...row.querySelectorAll('*')].reverse().find(el => el.textContent.trim() === title), title);
-  await (label.asElement() ?? row.asElement()).click();
-};
-const menuItem = async label => {
-  const item = await page.waitForFunction(label => [...document.querySelectorAll('.focus-menu [role^="menuitem"]')].find(item => item.textContent.trim() === label), {}, label);
-  await item.asElement().click();
-};
+// The compilation's Alpha card is expanded as well, so Beta's editors are the ones outside it.
+const betaEditors = () => page.evaluate(alpha => [...document.querySelectorAll('.note-editor')].filter(el => !el.closest(alpha)).length, cardA);
 try {
   await go('/graph?notebook=all');
   await page.waitForFunction(() => document.querySelector('[data-graph-nodes]')?.dataset.graphNodes === '4');
@@ -116,7 +119,7 @@ try {
   // Undo and redo autosave like any edit; the redone link is read from disk because the live editor renders it as a chip once the caret leaves it.
   await page.focus(cardA + ' .cm-content');
   await chord('KeyZ', mod);
-  assert(!await page.$eval(cardA + ' .cm-content', el => el.textContent.includes('[Beta](b.md)')));
+  assert(!(await page.$eval(cardA + ' .cm-content', el => el.textContent.includes('[Beta](b.md)'))));
   await waitFile('notes/a/a.md', '[Beta](b.md)', false);
   await chord('KeyZ', mod, 'Shift');
   await waitFile('notes/a/a.md', '[Beta](b.md)');
@@ -142,13 +145,22 @@ try {
   await page.keyboard.press('Enter');
   await waitFile('notes/a/a.md', '[delta](../b/d.md)');
   console.log('PASS live-mode note completion');
-  await click('Save as lane');
+  await click('Save as compilation');
   await page.waitForSelector('dialog[open]');
-  await page.type('input[aria-label="Swimlane name"]', 'Graph selection');
-  await click('Save as lane', 'dialog[open]');
+  await page.type('input[aria-label="Compilation name"]', 'Graph selection');
+  await click('Save as compilation', 'dialog[open]');
+  // The compilation is a file of notebook a, found by its title among that notebook's compilation files.
+  const compilationFile = title => {
+    const dir = path.join(root, 'notes/a');
+    for (const name of fs.readdirSync(dir).filter(name => name.endsWith('.compilation.yml'))) {
+      const row = parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+      if (row.title === title) return { ...row, file: name };
+    }
+    return undefined;
+  };
   let saved;
-  for (let i = 0; i < 60; i++) {
-    saved = parse(fs.readFileSync(path.join(root, '.github-notes-screen.yaml'), 'utf8')).rows.find(row => row.name === 'Graph selection');
+  for (let i = 0; i < 80; i++) {
+    saved = compilationFile('Graph selection');
     if (saved) break;
     await pause(100);
   }
@@ -184,19 +196,13 @@ try {
   console.log('PASS save selected membership, restore layout, collapse independently');
   // Items 36–37: a graph card, a Focus pane and zoom edit one note through one mounted editor and one draft.
   // The lane keeps the saved layout, so Beta is the card still expanded inside the pane.
-  await page.goto(base + '/notebooks/a?view=list', { waitUntil: 'networkidle0' });
-  await page.click('.focus-switcher .select-button-primary');
-  await page.waitForSelector('.focus-area');
-  await page.click('.focus-division-trigger');
-  await menuItem('Left and right');
-  await page.waitForFunction(() => document.querySelectorAll('[data-focus-pane]').length === 2);
-  await clickRow('Beta');
+  // A Focus shows Beta in its left pane and the saved compilation, whose graph holds Beta as an expanded card, in its right one.
+  fs.writeFileSync(path.join(root, '.github-notes-focus.yaml'), JSON.stringify({ version: 1, focuses: [{ id: 'shared', notebookId: 'a', name: 'Shared', division: 'columns-2', panes: [{ tabs: [{ kind: 'note', path: 'notes/a/b.md' }] }, { tabs: [{ kind: 'note', path: `notes/a/${saved.file}` }] }] }] }));
+  await page.goto(base + '/notebooks/a?view=list&focus=shared', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[data-focus-pane="0"] .note-editor[data-frame="pane"]');
-  await page.click('[data-focus-pane="1"] .focus-menu-trigger');
-  await menuItem('Graph selection');
   const laneCardB = '[data-focus-pane="1"] ' + cardB;
   await page.waitForSelector(laneCardB + ' .note-preview');
-  assert.equal(await page.$$eval('.note-editor', els => els.length), 1, 'One editor for a note shown in a pane and a card');
+  assert.equal(await betaEditors(), 1, 'One editor for a note shown in a pane and a card');
   // The card scales in while the lane camera settles on its fit; its controls are clickable once both stop moving.
   await page.$eval(laneCardB, el => Promise.all(el.getAnimations({ subtree: true }).map(animation => animation.finished)));
   await page.waitForFunction(
@@ -212,7 +218,7 @@ try {
   await click('Edit here', laneCardB);
   await page.waitForSelector(laneCardB + ' .note-editor[data-frame="compact"]');
   await page.waitForSelector('[data-focus-pane="0"] .note-preview');
-  assert.equal(await page.$$eval('.note-editor', els => els.length), 1, 'Claiming moves the one editor into the card');
+  assert.equal(await betaEditors(), 1, 'Claiming moves the one editor into the card');
   await setMode(laneCardB, 'live');
   await page.waitForSelector(laneCardB + ' .cm-content');
   await page.click(laneCardB + ' .cm-content');
@@ -221,7 +227,7 @@ try {
   assert.equal(await page.$eval(laneCardB + ' .note-compact-status', el => el.dataset.state), 'pending');
   await page.click('[data-focus-pane="0"] .focus-pane-actions [aria-label="Open in zoom"]');
   await page.waitForSelector('.note-editor[data-frame="zoom"]');
-  assert.equal(await page.$$eval('.note-editor', els => els.length), 1, 'Zoom borrows the card editor instead of mounting another');
+  assert.equal(await betaEditors(), 1, 'Zoom borrows the card editor instead of mounting another');
   assert(await page.$eval('.note-editor[data-frame="zoom"] .cm-content', el => el.textContent.includes('Shared draft.')), 'Zoom shows the card draft');
   await page.click('.note-editor[data-frame="zoom"] .cm-content');
   await chord('End', 'Control');
@@ -232,15 +238,19 @@ try {
   await waitFile('notes/a/b.md', 'Shared draft.');
   await waitFile('notes/a/b.md', 'Zoom edit.');
   console.log('PASS graph card, Focus pane and zoom share one editor and one draft');
-  await page.goto(base + '/screen', { waitUntil: 'networkidle0' });
-  await page.waitForSelector('#screen-lane-' + saved.id + ' .graph-page-container');
-  await page.click('#screen-lane-dynamic button[aria-label="Graph"]');
-  await page.waitForSelector('#screen-lane-dynamic .graph-page-container');
-  // The version 1 all-notebook tag lane migrates into default notebook a.
-  await page.waitForSelector('#screen-lane-dynamic [data-graph-nodes="2"]');
-  await page.click('#screen-lane-mixed button[aria-label="Graph"]');
-  await page.waitForSelector('#screen-lane-mixed [data-graph-nodes="1"]');
-  console.log('PASS embedded custom/dynamic lane graphs and non-note exclusion');
+  // A compilation shows its notes as a graph when its arrangement is Graph; a pinned asset, which has no node, is left out.
+  const openCompilation = async file => {
+    await page.goto(base + `/notebooks/a/notes/${file}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.compilation-view');
+  };
+  await openCompilation('dynamic.compilation.yml');
+  await page.click('.compilation-view button[aria-label="Graph"]');
+  await page.waitForSelector('.compilation-view .graph-page-container');
+  await page.waitForSelector('.compilation-view [data-graph-nodes="2"]');
+  await openCompilation('mixed.compilation.yml');
+  await page.click('.compilation-view button[aria-label="Graph"]');
+  await page.waitForSelector('.compilation-view [data-graph-nodes="1"]');
+  console.log('PASS embedded custom/dynamic compilation graphs and non-note exclusion');
   await go('/graph?notebook=all&lanes=' + saved.id);
   await page.setViewport({ width: 390, height: 844 });
   await pause(300);
@@ -248,8 +258,10 @@ try {
   await page.setViewport({ width: 1500, height: 1050 });
   await go('/graph?notebook=all&lanes=' + saved.id);
   await page.waitForSelector(cardB);
+  // The page fits its cards once it has loaded; Reset view after that fit settles puts both cards inside the canvas.
+  await pause(1200);
   await page.click('button[aria-label="Reset view"]');
-  await pause(400);
+  await pause(600);
   const beforeMove = await (await page.$(cardB)).boundingBox(), header = await (await page.$(cardB + ' .graph-note-title')).boundingBox();
   await page.mouse.move(header.x + 20, header.y + header.height / 2);
   await page.mouse.down();
@@ -268,6 +280,14 @@ try {
   const afterResize = await (await page.$(cardB)).boundingBox();
   assert(afterResize.width > afterMove.width + 50);
   assert(afterResize.height > afterMove.height + 30);
+  // Dragging and resizing change the compilation's layout; Save compilation writes it to the file.
+  await click('Choose or edit a compilation');
+  await click('Save compilation', '.graph-lane-panel');
+  const resizedBeta = row => row?.graph?.nodes.some(node => node.path === 'notes/a/b.md' && node.expanded && node.width > 360);
+  for (let i = 0; i < 80 && !resizedBeta(compilationFile('Graph selection')); i++) {
+    await pause(100);
+  }
+  assert(resizedBeta(compilationFile('Graph selection')), 'The saved compilation lacks the resized, expanded Beta card');
   console.log('PASS note dragging and resizing');
   await go('/graph?notebook=all');
   await pause(1600);
@@ -299,15 +319,15 @@ try {
   assert.equal(await page.$$eval('[data-graph-note] .graph-note-actions', els => els.length), 0);
   assert(await page.$eval('[data-graph-note] header', el => el.offsetHeight < 45));
   assert(await page.$eval('[data-graph-note]', el => el.style.borderColor && el.style.getPropertyValue('--graph-node-color')));
-  await click('Choose or edit a swimlane');
+  await click('Choose or edit a compilation');
   await page.select('.graph-lane-panel select', saved.id);
   await page.waitForFunction(() => document.querySelector('[data-graph-nodes]')?.dataset.graphNodes === '2');
-  await click('Minimize swimlane panel');
+  await click('Minimize compilation panel');
   assert.equal(await page.$eval('.graph-lane-label', el => el.textContent), 'Graph selection');
   assert.equal(await page.$$('.graph-lane-panel').then(els => els.length), 0);
-  assert.equal(await page.$eval('button[aria-label="Choose or edit a swimlane"]', el => el.getAttribute('aria-pressed')), 'true');
+  assert.equal(await page.$eval('button[aria-label="Choose or edit a compilation"]', el => el.getAttribute('aria-pressed')), 'true');
   assert(
-    await page.$eval('button[aria-label="Choose or edit a swimlane"]', el => {
+    await page.$eval('button[aria-label="Choose or edit a compilation"]', el => {
       const probe = document.createElement('span');
       probe.style.color = 'var(--color-primary)';
       el.append(probe);
@@ -317,54 +337,50 @@ try {
     }),
   );
   await page.click('.graph-lane-label');
-  const savedLayoutResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/screen-page' && response.request().method() === 'PUT');
-  await click('Save swimlane', '.graph-lane-panel');
-  const savedLayoutRecord = await (await savedLayoutResponse).json();
-  const savedLayoutRow = savedLayoutRecord.page.rows.find(row => row.id === saved.id);
-  assert(savedLayoutRow.graph.nodes.some(node => node.path === 'notes/a/b.md' && node.expanded && node.width > 360));
   assert(await page.$eval('.graph-save-hint', el => el.textContent.includes('positions') && el.textContent.includes('expanded')));
-  console.log('PASS minimized swimlane name, primary active tool, explicit layout save');
+  console.log('PASS minimized compilation name and primary active tool');
   await page.click('.graph-lane-panel input[type="checkbox"]');
   // An active lane scopes the graph to its notebook, so outside notes and picker choices come only from notebook a.
-  await page.waitForFunction(() => new URLSearchParams(location.search).get('notebook') === 'a' && document.querySelector('[data-graph-nodes]')?.dataset.graphNodes === '2');
+  await page.waitForFunction(() => new URLSearchParams(location.search).get('notebook')?.endsWith('~a') && document.querySelector('[data-graph-nodes]')?.dataset.graphNodes === '2');
   await click('Select notes (0)');
   assert.deepEqual(await page.$$eval('.graph-note-selector label', labels => labels.map(label => label.textContent.trim()).sort()), ['Alpha', 'Beta']);
   const labels = await page.$$('.graph-note-selector label');
-  for (const label of labels) if (await label.evaluate(el => el.textContent.includes('Beta'))) await label.click();
+  for (const label of labels) {
+    if (await label.evaluate(el => el.textContent.includes('Beta'))) {
+      await label.click();
+    }
+  }
   await click('Select notes (1)');
-  const savedRow = () => parse(fs.readFileSync(path.join(root, '.github-notes-screen.yaml'), 'utf8')).rows.find(row => row.id === saved.id);
-  await click('Choose or edit a swimlane');
-  await click('Remove selection from swimlane');
-  for (let i = 0; i < 60 && savedRow().items.length !== 1; i++) await pause(100);
+  const savedRow = () => compilationFile('Graph selection');
+  await click('Choose or edit a compilation');
+  await click('Remove selection from compilation');
+  for (let i = 0; i < 60 && savedRow().items.length !== 1; i++) {
+    await pause(100);
+  }
   assert.equal(savedRow().items.length, 1);
   assert(fs.existsSync(path.join(root, 'notes/a/b.md')));
   await page.waitForSelector('.graph-card-position.is-outside-lane');
   assert(await page.$eval('.graph-card-position.is-outside-lane', el => Number(getComputedStyle(el).opacity) < 1));
-  await click('Add selection to swimlane');
-  for (let i = 0; i < 60 && savedRow().items.length !== 2; i++) await pause(100);
+  await click('Add selection to compilation');
+  for (let i = 0; i < 60 && savedRow().items.length !== 2; i++) {
+    await pause(100);
+  }
   assert.equal(savedRow().items.length, 2);
   await page.select('.graph-lane-panel select', 'dynamic');
   await pause(100);
   assert.equal(await page.$$eval('.graph-lane-membership', els => els.length), 0);
-  await click('Edit swimlane', '.graph-lane-panel');
+  await click('Edit compilation', '.graph-lane-panel');
   await page.waitForSelector('dialog[open]');
   await page.keyboard.press('Escape');
-  console.log('PASS compact card controls, colored borders, swimlane selection and membership edits');
-  await page.goto(base + '/screen', { waitUntil: 'networkidle0' });
-  const embedded = '#screen-lane-' + saved.id;
+  console.log('PASS compact card controls, colored borders, compilation selection and membership edits');
+  await openCompilation(saved.file);
+  const embedded = '.compilation-view';
   await page.waitForSelector(embedded + ' ' + cardB);
-  await page.$eval(embedded, el => el.scrollIntoView({ block: 'start' }));
   await pause(500);
-  await page.click('.workspace-sidebar-toggle');
-  await pause(250);
-  assert(
-    await page.$eval('.workspace-responsive-sidebar.is-open', el => {
-      const r = el.getBoundingClientRect();
-      return Boolean(document.elementFromPoint(r.left + 50, r.top + 180)?.closest('.workspace-responsive-sidebar'));
-    }),
-  );
-  await page.click('.workspace-sidebar-toggle');
-  await pause(250);
+  // Both cards were saved expanded; collapsing Alpha leaves a node to expand again from its hover button.
+  await page.click(embedded + ' ' + cardA + ' button[aria-label="Collapse notes"]');
+  await page.waitForFunction(selector => !document.querySelector(selector), {}, embedded + ' ' + cardA);
+  await pause(1000);
   assert.equal(await page.$$eval(embedded + ' .graph-selection-toolbar', els => els.length), 0);
   assert.equal(await page.$$eval(embedded + ' .graph-controls', els => els.length), 0);
   const nodePositions = savedRow().graph.nodes, layoutA = nodePositions.find(node => node.path === 'notes/a/a.md'), layoutB = nodePositions.find(node => node.path === 'notes/a/b.md');
@@ -393,10 +409,10 @@ try {
   await page.waitForSelector(embedded + ' ' + cardA);
   await page.click(embedded + ' .graph-fullscreen-tool button');
   await page.waitForFunction(id => location.pathname === '/graph' && new URLSearchParams(location.search).get('lanes') === id, {}, saved.id);
-  console.log('PASS embedded hover and Enter expansion, hidden toolbars, full-page swimlane navigation');
+  console.log('PASS embedded hover and Enter expansion, hidden toolbars, full-page compilation navigation');
   await page.waitForFunction(() => {
     const cards = [...document.querySelectorAll('[data-graph-note]')];
-    return cards.length === 2 && cards.every(card => card.getBoundingClientRect().width < 650);
+    return (cards.length === 2 && cards.every(card => card.getBoundingClientRect().width < 650));
   });
   await pause(300);
   await page.screenshot({ path: `${product}/artifacts/qa/graph-editing.png`, fullPage: true });
@@ -416,4 +432,6 @@ try {
   await browser.close();
   if (!process.argv.includes('--serve')) server.close();
 }
-if (process.argv.includes('--serve')) console.log('PREVIEW ' + base + '/graph?notebook=all');
+if (process.argv.includes('--serve')) {
+  console.log('PREVIEW ' + base + '/graph?notebook=all');
+}
