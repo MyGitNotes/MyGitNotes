@@ -22,6 +22,10 @@ function persistedLayout(placement: GraphPlacement, notebookId: string): GraphLa
   const prefix = `${notebookId}:`;
   return { nodes: placement.nodes.filter(node => node.id.startsWith(prefix)).map(({ id, ...node }) => ({ ...node, path: id.slice(prefix.length) })) };
 }
+/** A measurement that found nothing new must not render again: its own effect would measure again, and a card's editor would never get a quiet moment to autosave. */
+export function keepLaneGeometry<T>(previous: T, next: T): T {
+  return sameValue(previous, next) ? previous : next;
+}
 export function useGraphController({ notebooks, filters, screen, lane, folders = [] }: GraphPageProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -217,8 +221,7 @@ export function useGraphController({ notebooks, filters, screen, lane, folders =
     if (!lane) return;
     const visible = new Set(graphData.nodes.map(node => node.id));
     const next = { nodes: currentLayout().nodes.filter(node => visible.has(node.id)).map(node => ({ ...node, expanded: node.expanded || closing.has(node.id) })) };
-    // A measurement that found nothing new must not render again: its own effect would measure again, and a card's editor would never get a quiet moment to autosave.
-    setLaneGeometry(previous => sameValue(previous, next) ? previous : next);
+    setLaneGeometry(previous => keepLaneGeometry(previous, next));
   };
   const laneViewport = graphLaneViewport(laneGeometry, size.width);
   /* eslint-disable react-hooks/exhaustive-deps -- The 200 ms measurement reads current simulation coordinates after dragging settles; render-created helper identity must not restart the timer. */
