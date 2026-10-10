@@ -1,19 +1,22 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { SUPPORTED_SCHEMA_VERSION } from '../packages/core/dist/config.js';
 import { chooseSelect } from './browser-select.mjs';
 import { createQaWorkspace, launchQaBrowser, product, qaRequire, startQaServer } from './lib/qa-harness.mjs';
 
 const require = qaRequire();
 const { root, write, commitFixture } = createQaWorkspace('github-notes-focus-qa-');
-write('.github-notes.yaml', 'schema_version: 1\nworkspace:\n  title: Focus QA\n  default_notebook: work\nnotebooks:\n  - id: work\n    title: Work\n    root: notes/work\n  - id: other\n    title: Other\n    root: notes/other\n');
+write('.github-notes.yaml', `schema_version: ${SUPPORTED_SCHEMA_VERSION}\nworkspace:\n  title: Focus QA\n  default_notebook: work\nnotebooks:\n  - id: work\n    title: Work\n    root: notes/work\n  - id: other\n    title: Other\n    root: notes/other\n`);
+// The app keys each notebook id with its workspace id.
+const work = `${path.basename(root).toLowerCase()}~work`;
 const notes = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'];
 const tags = { Alpha: ['project'], Gamma: ['project'], Beta: ['personal'] };
 notes.forEach((title, index) => write(`notes/work/${title.toLowerCase()}.md`, `---\ntitle: ${title}\nstatus: ${index % 2 ? 'doing' : 'todo'}\nupdated: 2026-09-${String(10 + index).padStart(2, '0')}\n${tags[title] ? `tags: [${tags[title].join(', ')}]\n` : ''}---\n# ${title}\n\n${title} body.\n\n${title === 'Delta' ? '[Open Epsilon](epsilon.md)\n' : ''}`));
 write('notes/work/sub/omega.md', '---\ntitle: Omega\nstatus: todo\nupdated: 2026-09-16\ntags: [project]\n---\n# Omega\n\nOmega body.\n');
 write('notes/work/sub/nested/deep.md', '---\ntitle: Deep\nstatus: todo\nupdated: 2026-09-17\n---\n# Deep\n\nDeep body.\n');
 write('notes/other/outside.md', '---\ntitle: Outside\n---\n# Outside\n');
-write('.github-notes-screen.yaml', JSON.stringify({ version: 2, rows: [{ id: 'pins', name: 'Pins', kind: 'custom', view: 'small', notebookId: 'work', items: [{ id: 'pin-gamma', kind: 'note', notebookId: 'work', path: 'notes/work/gamma.md' }] }] }));
+write('notes/work/pins.compilation.yml', 'version: 1\nid: pins\ntitle: Pins\narrangement: lane\nsize: small\nitems:\n  - id: pin-gamma\n    kind: note\n    path: notes/work/gamma.md\n');
 commitFixture();
 const { server, base } = await startQaServer(root);
 const browser = await launchQaBrowser(require);
@@ -36,14 +39,35 @@ const activePane = page => page.$eval('[data-focus-pane][data-active]', pane => 
 const BROWSE_ROW_SELECTOR = '.workspace-scroll :is(.note-list tbody tr, [data-notepath], .cursor-pointer.rounded-xl)';
 /** A note in the browse region: a list row, a card or a Kanban card. */
 const browseRow = (page, title) => page.evaluateHandle((selector, title) => [...document.querySelectorAll(selector)].find(row => row.textContent.includes(title)), BROWSE_ROW_SELECTOR, title);
+/** A Focus opens with the browse region collapsed; the notes to put in it come from there. */
+const showBrowse = async page => {
+  const collapsed = await page.$('.browse-dock-toggle[data-collapsed]');
+  if (!collapsed) return;
+  await collapsed.click();
+  await page.waitForSelector('.browse-dock-toggle:not([data-collapsed])');
+};
 /** Clicks a browse item's title, away from its status and action controls.
  *  A view switch (e.g. to Kanban) renders its columns before their notes finish loading, so this waits for the row itself. */
-const clickRow = async (page, title) => {
+/** Opens the browse region and waits for the row of a note: after a page load it fills in a moment later. */
+const waitRow = async (page, title) => {
+  await showBrowse(page);
   await page.waitForFunction((selector, title) => [...document.querySelectorAll(selector)].some(row => row.textContent.includes(title)), { timeout: 5000 }, BROWSE_ROW_SELECTOR, title).catch(() => assert.fail(`Browse row ${title} is missing`));
-  const row = await browseRow(page, title);
+  return browseRow(page, title);
+};
+const clickRow = async (page, title) => {
+  const row = await waitRow(page, title);
   const label = await row.evaluateHandle((row, title) => [...row.querySelectorAll('*')].reverse().find(element => element.textContent.trim() === title), title);
   await (label.asElement() ?? row.asElement()).click();
 };
+/** A compilation opens from the Compilations list; `leave` returns the browse region to the notebook's notes. */
+const openCompilation = async (page, title) => {
+  await showBrowse(page);
+  await page.click('.desktop-views > button:nth-child(1)');
+  await new Promise(r => setTimeout(r, 500));
+  await page.evaluate(() => [...document.querySelectorAll('.sidebar-compilations-row')].find(row => row.textContent.includes('Compilations')).querySelector('button').click());
+  await clickRow(page, title);
+};
+const leaveCompilations = page => page.evaluate(() => document.querySelector('.sidebar-notebook-group > *').querySelector('button:not([aria-expanded])').click());
 const clickTagOption = async (page, tag) => {
   const label = await page.waitForFunction(tag => [...document.querySelectorAll('.focus-batch-dialog .filter-options label')].find(item => item.textContent.trim() === `#${tag}`), {}, tag);
   await (await label.asElement().$('input')).click();
@@ -126,18 +150,18 @@ const waitTabs = (page, pane, labels) =>
 let page, device;
 try {
   page = await newPage(1440);
-  await page.goto(`${base}/notebooks/work?view=list`, { waitUntil: 'networkidle0' });
+  await page.goto(`${base}/notebooks/work?view=list`, { waitUntil: 'domcontentloaded' });
 
   // 1. Normal browsing opens zoom and closing returns to the list.
   await clickRow(page, 'Alpha');
   await page.waitForSelector('.note-editor[data-frame="zoom"]');
   await page.click('[aria-label="Close note"]');
   await page.waitForFunction(() => !document.querySelector('.note-editor'));
-  assert.equal(new URL(page.url()).pathname, '/notebooks/work');
+  assert.equal(new URL(page.url()).pathname, `/notebooks/${work}`);
   console.log('PASS 1 normal browsing opens zoom and returns to the list');
 
   // 2. Show (current), dock the list left, use major-left, open three notes, drag one to the top-right pane.
-  await page.click('.focus-switcher-menu');
+  await page.click('.focus-switcher .select-button-trigger');
   await menuItem(page, 'Scratch');
   await page.waitForSelector('.focus-area');
   assert.equal(search(page).get('focus'), 'current');
@@ -202,30 +226,39 @@ try {
   await shot(page, '1440-kanban');
   console.log('PASS 3 Kanban docks above the Focus and a card opens in the active pane');
 
-  // 4. A link in the bottom-right pane opens in the most recently used other pane; the source stays visible.
+  // 4. A link in the bottom-right pane opens as a tab of that same pane and leaves the other panes alone.
   await dragTo(page, await browseRow(page, 'Delta'), '[data-focus-pane="2"] .focus-pane-body');
   await waitTabs(page, 2, ['Delta']);
   // The browse-row drag copies Delta rather than moving it out of pane 1.
   await waitTabs(page, 1, ['Beta', 'Delta']);
   await page.click('[data-focus-pane="1"] [aria-label="Close Delta"]');
   await waitTabs(page, 1, ['Beta']);
-  const link = await page.waitForSelector('[data-focus-pane="2"] [data-workspace-link]');
+  // The editor owns plain clicks on its text, so a link opens from its explicit affordance beside it.
+  const link = await page.waitForSelector('[data-focus-pane="2"] .live-md-external-link');
   await link.click();
+  await waitTabs(page, 2, ['Delta', 'Epsilon']);
+  assert.equal(await shownTab(page, 2), 'Epsilon');
+  await waitTabs(page, 1, ['Beta']);
+  assert(await page.$('[data-focus-pane="2"] .note-editor[data-frame="pane"]'), 'The linked note opens in the pane');
+  await page.click('[data-focus-pane="2"] [aria-label="Close Epsilon"]');
+  await waitTabs(page, 2, ['Delta']);
+  // The later steps expect Epsilon beside Beta: a browse row opens in the active pane, so make pane 1 the active one.
+  await page.click('[data-focus-pane="1"] .focus-tab [role="tab"]');
+  await clickRow(page, 'Epsilon');
   await waitTabs(page, 1, ['Beta', 'Epsilon']);
   assert.equal(await shownTab(page, 1), 'Epsilon');
-  assert.equal(await shownTab(page, 2), 'Delta');
-  assert(await page.$('[data-focus-pane="2"] .note-editor[data-frame="pane"]'), 'The source note must stay visible');
-  // A lane opens as a tab from the pane's + menu and closes again.
-  await page.click('[data-focus-pane="2"] .focus-menu-trigger');
-  await menuItem(page, 'Pins');
+  // A compilation opens as a tab of the active pane from the Compilations list and closes again.
+  await page.click('[data-focus-pane="2"] .focus-tab [role="tab"]');
+  await openCompilation(page, 'Pins');
   await waitTabs(page, 2, ['Delta', 'Pins']);
-  await page.waitForFunction(() => document.querySelector('[data-focus-pane="2"] .focus-lane')?.textContent.includes('Gamma'));
+  await page.waitForFunction(() => document.querySelector('[data-focus-pane="2"] .compilation-view')?.textContent.includes('Gamma'));
   await page.click('[data-focus-pane="2"] [aria-label="Close Pins"]');
   await waitTabs(page, 2, ['Delta']);
-  console.log('PASS 4 a link opens in the most recently used other pane and lanes open as tabs');
+  await leaveCompilations(page);
+  console.log('PASS 4 a link opens as a tab of its own pane and lanes open as tabs');
 
-  // 5. Name (current); another device (empty storage) opens it from Screen with its panes and tabs.
-  await page.click('.focus-switcher-menu');
+  // 5. Name (current); another device (empty storage) opens it from the Focus switcher with its panes and tabs.
+  await page.click('.focus-switcher .select-button-trigger');
   await menuItem(page, 'Name this Focus…');
   await page.waitForSelector('.screen-form input');
   await page.type('.screen-form input', '週報');
@@ -245,19 +278,20 @@ try {
   device = await other.newPage();
   device.on('pageerror', error => errors.push(error.message));
   await device.setViewport({ width: 1440, height: 900 });
-  await device.goto(`${base}/screen`, { waitUntil: 'networkidle0' });
-  const entry = await device.waitForFunction(() => [...document.querySelectorAll('.focus-list button')].find(button => button.textContent.includes('週報')));
-  await entry.asElement().click();
+  await device.goto(`${base}/notebooks/work?view=list`, { waitUntil: 'domcontentloaded' });
+  await device.waitForSelector('.focus-switcher .select-button-trigger');
+  await device.click('.focus-switcher .select-button-trigger');
+  await menuItem(device, '週報');
   await device.waitForSelector('.focus-area');
   assert.equal(new URL(device.url()).searchParams.get('focus'), focusId);
   assert.equal(await paneCount(device), 3);
   await waitTabs(device, 0, ['Alpha', 'Gamma']);
   await waitTabs(device, 1, ['Beta', 'Epsilon']);
   await waitTabs(device, 2, ['Delta']);
-  console.log('PASS 5 a named Focus is written to the workspace and restores from Screen on another device');
+  console.log('PASS 5 a named Focus is written to the workspace and restores from the Focus switcher on another device');
 
   // 6. Zoom opened from Graph adds a note to the named Focus's left pane, closes the zoom and switches to Focus mode.
-  await device.goto(`${base}/notebooks/work/notes/zeta.md?returnTo=${encodeURIComponent('/graph?notebook=work')}`, { waitUntil: 'networkidle0' });
+  await device.goto(`${base}/notebooks/work/notes/zeta.md?returnTo=${encodeURIComponent('/graph?notebook=work')}`, { waitUntil: 'domcontentloaded' });
   await device.waitForSelector('.note-editor[data-frame="zoom"]');
   await device.click('.note-editor[data-frame="zoom"] [aria-label="Add to Focus"]');
   await device.waitForSelector('.focus-add-dialog .focus-division-thumbnail');
@@ -273,7 +307,7 @@ try {
 
   // 6a. The same close-and-switch behavior holds at a phone-width viewport.
   await device.setViewport({ width: 412, height: 900 });
-  await device.goto(`${base}/notebooks/work/notes/sub/omega.md?returnTo=${encodeURIComponent('/notebooks/work?view=list')}`, { waitUntil: 'networkidle0' });
+  await device.goto(`${base}/notebooks/work/notes/sub/omega.md?returnTo=${encodeURIComponent('/notebooks/work?view=list')}`, { waitUntil: 'domcontentloaded' });
   await device.waitForSelector('.note-editor[data-frame="zoom"]');
   await shot(device, 'phone-zoom-open');
   await device.click('.note-editor[data-frame="zoom"] [aria-label="Add to Focus"]');
@@ -298,7 +332,7 @@ try {
   const widths = { 412: [['Alpha', 'Gamma', 'Zeta', 'Beta', 'Epsilon', 'Delta']], 900: [['Alpha', 'Gamma', 'Zeta'], ['Beta', 'Epsilon', 'Delta']], 1440: [['Alpha', 'Gamma', 'Zeta'], ['Beta', 'Epsilon'], ['Delta']] };
   for (const [width, panes] of Object.entries(widths)) {
     await device.setViewport({ width: Number(width), height: 900 });
-    await device.goto(`${base}/notebooks/work?view=list&focus=${focusId}`, { waitUntil: 'networkidle0' });
+    await device.goto(`${base}/notebooks/work?view=list&focus=${focusId}`, { waitUntil: 'domcontentloaded' });
     await device.waitForSelector('.focus-area');
     assert.equal(await paneCount(device), panes.length, `${width}px shows ${panes.length} panes`);
     const displayed = await device.$$eval('[data-focus-pane]', elements => elements.map(element => Number(element.dataset.focusPane)));
@@ -348,7 +382,7 @@ try {
     assert.fail(`notes/work/${name}.md does not contain ${text}`);
   };
   // Naming moved the layout out of (current), which starts as one empty pane with a hint.
-  await page.goto(`${base}/notebooks/work?view=list&focus=current`, { waitUntil: 'networkidle0' });
+  await page.goto(`${base}/notebooks/work?view=list&focus=current`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.focus-area');
   assert.equal(await paneCount(page), 1);
   assert.deepEqual(await tabLabels(page, 0), []);
@@ -420,7 +454,7 @@ try {
   const twin = await other.newPage();
   twin.on('pageerror', error => errors.push(error.message));
   await twin.setViewport({ width: 1440, height: 900 });
-  await twin.goto(focusUrl, { waitUntil: 'networkidle0' });
+  await twin.goto(focusUrl, { waitUntil: 'domcontentloaded' });
   await twin.waitForSelector('.focus-area');
   // Only the front tab paints; the twin, now behind, is polled on a timer.
   await device.bringToFront();
@@ -428,8 +462,10 @@ try {
   await clickTab(device, 2, 'Delta');
   await twin.waitForFunction(() => document.querySelector('[data-focus-pane][data-active]')?.dataset.focusPane === '2' && document.querySelector('[data-focus-pane="1"] [role="tab"][aria-selected="true"]')?.textContent.trim() === 'Epsilon', { polling: 100 });
   await twin.close();
-  await device.reload({ waitUntil: 'networkidle0' });
+  await device.reload({ waitUntil: 'domcontentloaded' });
   await device.waitForSelector('.focus-area');
+  // A tab shows its file name until the note's title has loaded.
+  await device.waitForFunction(() => document.querySelector('[data-focus-pane="1"] .focus-tab [role="tab"][aria-selected="true"]')?.textContent.trim() === 'Epsilon');
   assert.equal(await activePane(device), 2);
   assert.equal(await shownTab(device, 1), 'Epsilon');
   console.log('PASS 8a the active pane and shown tabs follow in another tab and are restored after a reload');
@@ -461,12 +497,14 @@ try {
   await device.click('.right-panel-rail [aria-label="Outline"]');
   await device.waitForFunction(() => document.querySelector('.right-panel-document .note-document-panel[data-frame="rail"]')?.textContent.includes('Delta'));
   await device.$eval('.right-panel', panel => Promise.all(panel.getAnimations({ subtree: true }).map(animation => animation.finished)));
-  await device.click('[data-focus-pane="2"] .focus-menu-trigger');
-  await menuItem(device, 'Pins');
+  await openCompilation(device, 'Pins');
   await device.waitForFunction(() => document.querySelector('.right-panel-rail [aria-label="Outline"]').disabled && !document.querySelector('.right-panel-document'));
-  await device.click('[data-focus-pane="2"] [aria-label="Close Pins"]');
+  // The tab is named by its file until the compilation's title has loaded.
+  await device.waitForSelector('[aria-label="Close Pins"]');
+  await device.click('[aria-label="Close Pins"]');
+  await leaveCompilations(device);
   await device.waitForFunction(() => document.querySelector('.right-panel-document .note-document-panel[data-frame="rail"]')?.textContent.includes('Delta'));
-  console.log('PASS 8c the rail shows the active note’s document panel and disables it for lanes');
+  console.log('PASS 8c the rail shows the active note’s document panel and disables it for compilations');
 
   // Browse rows: a note already open in another pane opens a fresh copy in the active pane, not a jump to it.
   await clickRow(device, 'Beta');
@@ -503,8 +541,8 @@ try {
   console.log('PASS 8e tabs reorder within a pane and the browse panel collapses and expands');
 
   // Other notebooks' notes only open in zoom and cannot be dragged.
-  await device.goto(`${focusUrl}&allNotebooks=true`, { waitUntil: 'networkidle0' });
-  const outside = await browseRow(device, 'Outside');
+  await device.goto(`${focusUrl}&allNotebooks=true`, { waitUntil: 'domcontentloaded' });
+  const outside = await waitRow(device, 'Outside');
   assert.equal(await outside.evaluate(row => row.getAttribute('draggable')), 'false');
   await clickRow(device, 'Outside');
   await device.waitForSelector('.note-editor[data-frame="zoom"]');
@@ -514,7 +552,7 @@ try {
   console.log('PASS 8f notes of other notebooks open in zoom only');
 
   // Palette commands act on the displayed Focus; a smaller division appends removed panes' tabs to the last pane.
-  await device.goto(focusUrl, { waitUntil: 'networkidle0' });
+  await device.goto(focusUrl, { waitUntil: 'domcontentloaded' });
   await device.waitForSelector('.focus-area');
   const before = await activePane(device);
   await palette(device, 'Next pane');
@@ -532,14 +570,14 @@ try {
   console.log('PASS 8g palette commands move between panes and change the division without restoring tabs');
 
   // Rename and delete a named Focus; deleting keeps the notes.
-  await device.click('.focus-switcher-menu');
+  await device.click('.focus-switcher .select-button-trigger');
   await menuItem(device, 'Rename…');
   await device.waitForSelector('.screen-form input');
   await device.$eval('.screen-form input', input => input.select());
   await device.type('.screen-form input', '月報');
   await device.click('.screen-form button[type="submit"]');
   await saved('月報');
-  await device.click('.focus-switcher-menu');
+  await device.click('.focus-switcher .select-button-trigger');
   await menuItem(device, 'Delete…');
   const remove = await device.waitForFunction(() => [...document.querySelectorAll('.workspace-dialog-actions button')].find(button => button.textContent.trim() === 'Delete'));
   await remove.asElement().click();
