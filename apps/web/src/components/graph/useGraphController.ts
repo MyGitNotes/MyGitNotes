@@ -315,7 +315,11 @@ export function useGraphController({ notebooks, filters, screen, lane, folders =
     if (node && !expanded.has(node.id) && !closing.has(node.id)) setExpanded([node.id], true);
   };
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter' || !visibleSelected.length || (event.target as Element).closest('button,input,textarea,select,[contenteditable="true"],[role="dialog"]')) return;
+    if (event.key !== 'Enter' || !visibleSelected.length) return;
+    const target = event.target as Element;
+    // A graph zoomed in a compilation dialog is itself inside a dialog; only a dialog the graph contains (its save dialog) owns Enter.
+    const dialog = target.closest('[role="dialog"]');
+    if (target.closest('button,input,textarea,select,[contenteditable="true"]') || (dialog && event.currentTarget.contains(dialog))) return;
     event.preventDefault();
     setExpanded(visibleSelected, !visibleSelected.every(path => expanded.has(path)));
   };
