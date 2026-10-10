@@ -1,4 +1,5 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
+import { graphOwnsEnter } from './graph-keys.js';
 import { createGraphInteractions } from './createGraphInteractions.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -316,10 +317,7 @@ export function useGraphController({ notebooks, filters, screen, lane, folders =
   };
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Enter' || !visibleSelected.length) return;
-    const target = event.target as Element;
-    // A graph zoomed in a compilation dialog is itself inside a dialog; only a dialog the graph contains (its save dialog) owns Enter.
-    const dialog = target.closest('[role="dialog"]');
-    if (target.closest('button,input,textarea,select,[contenteditable="true"]') || (dialog && event.currentTarget.contains(dialog))) return;
+    if (!graphOwnsEnter(event.currentTarget, event.target as Element)) return;
     event.preventDefault();
     setExpanded(visibleSelected, !visibleSelected.every(path => expanded.has(path)));
   };
