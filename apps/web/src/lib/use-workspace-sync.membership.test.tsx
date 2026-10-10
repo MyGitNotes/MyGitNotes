@@ -61,8 +61,11 @@ it('holds one workspace event stream per page: closed when the page is hidden an
   expect(server.events).toHaveLength(1);
   window.dispatchEvent(new Event('pagehide'));
   expect(server.events[0].closed).toBe(true);
+  const requests = server.requests.length;
   window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
   expect(server.events).toHaveLength(2);
+  // The cached page missed the changes made while it was away, and the stream replays none, so it reads the workspace again.
+  await waitFor(() => expect(server.requests.length).toBeGreaterThan(requests));
   unmount();
   expect(server.events[1].closed).toBe(true);
 });

@@ -227,12 +227,17 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
   const watchedRepositories = remote || !sourceId ? '' : repositories.map(repository => repository.id).join('\n');
   useEffect(() => {
     if (!watchedRepositories) return;
-    return followPage(() => {
+    return followPage(restored => {
       const events = openWorkspaceEvents();
       events.addEventListener('change', event => {
         announceWorkspaceFilesChanged();
         void (membershipEvent(event) ? membershipChanged() : refreshWorkspace());
       });
+      // A page restored from the back/forward cache missed the changes made while it was away, and the stream replays none.
+      if (restored) {
+        announceWorkspaceFilesChanged();
+        void membershipChanged();
+      }
       return events;
     });
   }, [watchedRepositories, refreshWorkspace, membershipChanged]);

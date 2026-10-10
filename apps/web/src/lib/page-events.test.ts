@@ -6,7 +6,7 @@ const pageshow = (persisted: boolean) => window.dispatchEvent(Object.assign(new 
 
 function streams() {
   const opened: { close: ReturnType<typeof vi.fn>; }[] = [];
-  const open = vi.fn(() => {
+  const open = vi.fn((_restored: boolean) => {
     const stream = { close: vi.fn() };
     opened.push(stream);
     return stream;
@@ -32,6 +32,8 @@ it('opens the stream again only when the back/forward cache restores the page', 
   expect(opened).toHaveLength(1);
   pageshow(true);
   expect(opened).toHaveLength(2);
+  // The first open is not a restore; the second one tells the page it missed what happened while it was cached.
+  expect(open.mock.calls).toEqual([[false], [true]]);
   pageshow(true);
   expect(opened).toHaveLength(2);
   stop();

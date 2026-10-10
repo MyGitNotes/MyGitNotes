@@ -93,7 +93,9 @@ let historyStreamEnded = false;
 export function onHistoryChanged(listener: (change: HistoryChange) => void): () => void {
   historyListeners.add(listener);
   if (!stopHistoryEvents && !historyStreamEnded && typeof EventSource !== 'undefined') {
-    stopHistoryEvents = followPage(() => {
+    stopHistoryEvents = followPage(restored => {
+      // A server that ended the stream for good has nothing to reopen.
+      if (restored && historyStreamEnded) return { close() {} };
       const events = new EventSource(`${API_BASE}/history/events`);
       // EventSource retries a dropped connection itself and gives up only on an answer such as 204, which needs no error shown.
       events.addEventListener('error', () => {
@@ -110,6 +112,8 @@ export function onHistoryChanged(listener: (change: HistoryChange) => void): () 
         }
         for (const each of historyListeners) each(change);
       });
+      // A page restored from the back/forward cache missed the commits made while it was away: every panel reads its history again.
+      if (restored) { for (const each of historyListeners) each({ repositories: [] }); }
       return events;
     });
   }

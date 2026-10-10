@@ -80,3 +80,26 @@ it('closes the stream when the page is hidden and opens it again when the back/f
   stop();
   expect(FakeEventSource.opened[1].readyState).toBe(FakeEventSource.CLOSED);
 });
+
+it('has every panel read its history again when the back/forward cache restores the page, since the stream replays nothing', async () => {
+  const { onHistoryChanged } = await import('./history-api.js');
+  const listener = vi.fn();
+  const stop = onHistoryChanged(listener);
+  window.dispatchEvent(new Event('pagehide'));
+  expect(listener).not.toHaveBeenCalled();
+  window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+  expect(listener).toHaveBeenCalledWith({ repositories: [] });
+  stop();
+});
+
+it('does not reopen a stream the server ended when the page is restored', async () => {
+  const { onHistoryChanged } = await import('./history-api.js');
+  const stop = onHistoryChanged(() => {});
+  const [events] = FakeEventSource.opened;
+  events.end();
+  window.dispatchEvent(new Event('pagehide'));
+  const opened = FakeEventSource.opened.length;
+  window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }));
+  expect(FakeEventSource.opened).toHaveLength(opened);
+  stop();
+});
