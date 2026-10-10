@@ -1,10 +1,11 @@
 import { chooseSelect } from './browser-select.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
+import { SUPPORTED_SCHEMA_VERSION } from '../packages/core/dist/config.js';
 import { collectPageErrors, createQaWorkspace, launchQaBrowser, product, qaRequire, startQaServer } from './lib/qa-harness.mjs';
 const require = qaRequire();
 const { root, write, git, commitFixture } = createQaWorkspace('github-notes-browser-');
-write('notes/.github-notes.yaml', 'schema_version: 1\nworkspace:\n  title: Folder QA\n  default_notebook: example\nnotebooks:\n  - id: example\n    title: Example\n    root: notes/example\n');
+write('notes/.github-notes.yaml', `schema_version: ${SUPPORTED_SCHEMA_VERSION}\nworkspace:\n  title: Folder QA\n  default_notebook: example\nnotebooks:\n  - id: example\n    title: Example\n    root: notes/example\n`);
 write('notes/example/root.md', '# Root Note\n');
 write('notes/example/projects/_dir.yml', 'title: Projects\norder: -1\n');
 write('notes/example/projects/deep/_dir.yml', 'title: Deep work\n');
@@ -19,14 +20,18 @@ const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 1000 });
 const errors = collectPageErrors(page);
 const click = async text => {
-  const file = text === 'Workspace Guidelines' ? 'notes/AGENTS.md' : text === 'Notebook: Example Guidelines' ? 'notes/example/AGENTS.md' : null;
-  if (file) {
-    await page.waitForFunction(file => [...document.querySelectorAll('.agent-file')].some(button => button.title.split('\n')[0] === file && !button.disabled), {}, file);
-    await page.evaluate(file => [...document.querySelectorAll('.agent-file')].find(button => button.title.split('\n')[0] === file).click(), file);
-    return;
-  }
   await page.waitForFunction(text => Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === text && !b.disabled), {}, text);
   await page.evaluate(text => Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === text && !b.disabled).click(), text);
+};
+/** The agent workspace picker chooses the folder whose AGENTS.md the page edits: `notes` or `notes/example`. */
+const openWorkspace = async folder => {
+  const trigger = await page.waitForSelector('button[role="combobox"][aria-label="Agent workspace"]:not(:disabled)', { visible: true });
+  await trigger.click();
+  await page.waitForSelector('[role="listbox"]', { visible: true });
+  const choice = await page.$$eval('[role="option"]', (options, folder) => options.map(option => option.getAttribute('data-option-value')).find(value => value?.endsWith(`\n${folder}`)), folder);
+  if (!choice) throw Error(`Missing agent workspace: ${folder}`);
+  await page.evaluate(choice => [...document.querySelectorAll('[role="option"]')].find(option => option.getAttribute('data-option-value') === choice).click(), choice);
+  await page.waitForFunction(() => !document.querySelector('[role="listbox"]'));
 };
 const agentText = 'textarea[aria-label="Agent document content"]';
 // CodeMirror binds Mod-End (Command on macOS); the textarea needs the explicit editing command there.
@@ -65,12 +70,12 @@ page.on('request', request => {
   void request.continue();
 });
 try {
-  await page.goto(base + '/settings', { waitUntil: 'networkidle0' });
+  await page.goto(base + '/settings', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.body.innerText.includes('MCP Access Control'));
   if (!await page.$eval('input[aria-label="MCP client name"]', e => e.disabled)) throw Error('Local source offered a hosted grant');
   if (!await page.evaluate(() => document.body.innerText.includes('operating-system permissions'))) throw Error('Local access explanation missing');
   console.log('PASS local Settings includes the shared Access Control section and form');
-  await page.goto(base + '/notes?view=card', { waitUntil: 'networkidle0' });
+  await page.goto(base + '/notes?view=card', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('button[role="combobox"][aria-label="Status for Root Note"]');
   const statusSaved = page.waitForResponse(r => r.url().endsWith('/api/git/status') && r.status() === 200);
   await chooseSelect(page, 'button[role="combobox"][aria-label="Status for Root Note"]', 'done');
@@ -82,7 +87,8 @@ try {
   await page.waitForSelector('tbody button[role="combobox"][aria-label="Status for Root Note"]');
   if (await page.$eval('tbody button[role="combobox"][aria-label="Status for Root Note"]', e => e.value) !== 'done') throw Error('List status differs from card');
   console.log('PASS Card and List share editable status with no note navigation');
-  await page.goto(base + '/agent', { waitUntil: 'networkidle0' });
+  await page.goto(base + '/agent', { waitUntil: 'domcontentloaded' });
+  await openWorkspace('notes');
   await page.waitForSelector('.cm-content[aria-label="Agent document content"][contenteditable="true"]');
   if (!await page.$eval('button[aria-label="Restore"]', e => e.disabled)) throw Error('Clean Agent file restore enabled while another note is dirty');
   await append('.cm-content', '\nLive agent edit');
@@ -95,23 +101,23 @@ try {
   await append(agentText, '\nQueue first');
   await page.waitForFunction(() => document.body.innerText.includes('Saving…'));
   await append(agentText, ' and second');
-  await click('Notebook: Example Guidelines');
+  await openWorkspace('notes/example');
   await page.waitForFunction(() => document.querySelector('textarea[aria-label="Agent document content"]')?.value.includes('# Notebook Guidelines'));
   const rootText = fs.readFileSync(path.join(root, 'notes/AGENTS.md'), 'utf8');
   if (!rootText.includes('Queue first and second')) throw Error('Switch did not flush latest edits');
   if (fs.readFileSync(path.join(root, 'notes/example/AGENTS.md'), 'utf8') !== '# Notebook Guidelines\n\nPreserve frontmatter.\n') throw Error('Previous contents overwrote new file');
   if (savedRequests.slice(before).some(r => r.path !== 'notes/AGENTS.md')) throw Error('Save bound to wrong path');
   console.log('PASS shared agent editor saves both modes and serializes pending edits before switching');
-  await click('Workspace Guidelines');
+  await openWorkspace('notes');
   await page.waitForFunction(() => document.querySelector('textarea[aria-label="Agent document content"]')?.value.includes('# Workspace Guidelines'));
   delayReads = true;
   const lateRead = page.waitForResponse(r => {
     const u = new URL(r.url());
     return u.pathname === '/api/agent-resources/read' && u.searchParams.get('path') === 'notes/example/AGENTS.md';
   });
-  await click('Notebook: Example Guidelines');
-  await page.waitForFunction(() => document.body.innerText.includes('Loading document…'));
-  await click('Workspace Guidelines');
+  await openWorkspace('notes/example');
+  await page.waitForFunction(() => document.body.innerText.includes('Loading file…'));
+  await openWorkspace('notes');
   await page.waitForFunction(() => document.querySelector('textarea[aria-label="Agent document content"]')?.value.includes('# Workspace Guidelines'));
   // waitForNetworkIdle is unreliable while request interception is active; wait for the
   // specific delayed read to land instead, so its (discarded) response can't race the assertion
@@ -125,13 +131,13 @@ try {
   console.log('PASS late reads cannot replace the currently selected agent document');
   failSave = true;
   await append(agentText, '\nUnsaved retry');
-  await click('Notebook: Example Guidelines');
+  await openWorkspace('notes/example');
   await page.waitForFunction(() => document.querySelector('[role="alert"]')?.textContent.includes('Fixture save failure'));
   if (!await page.$eval(agentText, e => e.value.includes('Unsaved retry'))) throw Error('Failed save discarded the draft');
   failSave = false;
-  await click('Notebook: Example Guidelines');
+  await openWorkspace('notes/example');
   await page.waitForFunction(() => document.querySelector('textarea[aria-label="Agent document content"]')?.value.includes('# Notebook Guidelines'));
-  await click('Workspace Guidelines');
+  await openWorkspace('notes');
   await page.waitForFunction(() => document.querySelector('textarea[aria-label="Agent document content"]')?.value.includes('Unsaved retry'));
   await click('Restore');
   await click('Confirm Restore?');
