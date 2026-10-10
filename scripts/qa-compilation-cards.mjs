@@ -66,6 +66,8 @@ const load = async (url, selector) => {
 const zoom = async (id, width, height) => {
   await viewport(width, height);
   await load(`${base}/notebooks/work/notes/${id}.compilation.yml`, '.compilation-view .screen-card');
+  // A card is in the DOM before the lane gives it a height, so checks that measure cards start once every card has one.
+  await page.waitForFunction(() => [...document.querySelectorAll('.compilation-view .screen-card')].every(card => card.getBoundingClientRect().height > 0), { timeout: 20000 });
 };
 const focusUrl = id => `${base}/notebooks/work?view=list&focus=${id}`;
 const openFocus = async (id, width, height) => {
