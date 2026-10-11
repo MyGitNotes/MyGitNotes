@@ -43,10 +43,11 @@ const waitFile = async (file, text) => {
 const BODY = '.compilation-book';
 const anchor = id => `[data-book-anchor="chapter:${id}"]`;
 const section = n => `.compilation-book > .compilation-book-section:nth-child(${n})`;
-const open = async () => {
+/** Opens the compilation and waits for `anchors` headings: all 15 when reading continuously, one chapter's when paged. */
+const open = async (anchors = 15) => {
   await page.goto(`${base}/notebooks/a/notes/reading.compilation.yml`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.compilation-book-view', { timeout: 20000 });
-  await page.waitForFunction(() => document.querySelectorAll('.compilation-book [data-book-anchor]').length >= 15);
+  await page.waitForFunction(anchors => document.querySelectorAll('.compilation-book [data-book-anchor]').length >= anchors, {}, anchors);
 };
 const current = () => page.$$eval('.compilation-book-layout > .compilation-book-contents button[aria-current="location"]', buttons => buttons.map(button => button.textContent.trim()));
 const entries = () => page.$$eval('.compilation-book-layout > .compilation-book-contents button', buttons => buttons.map(button => button.textContent.trim()));
@@ -79,7 +80,7 @@ try {
   const names = await entries();
   assert.deepEqual(names, [...chapters.map(n => `Chapter ${two(n)}`), 'sub', 'Sub one', 'Sub two']);
   assert.equal(await page.$eval('.compilation-book-layout > .compilation-book-contents', nav => nav.getAttribute('aria-label')), 'Contents');
-  assert.equal(await page.$eval('.compilation-book-bar', bar => getComputedStyle(bar).display), 'none', 'The Contents button shows beside a wide contents list');
+  assert.equal(await page.$eval('.compilation-book-contents-button', button => getComputedStyle(button).display), 'none', 'The Contents button shows beside a wide contents list');
   await shot('reading');
   await finalShot('book-reading-1440');
 
@@ -212,7 +213,7 @@ try {
   await page.setViewport({ width: 390, height: 844 });
   await open();
   assert.equal(await page.$eval('.compilation-book-layout > .compilation-book-contents', nav => getComputedStyle(nav).display), 'none', 'The contents list stayed beside a narrow book');
-  assert.notEqual(await page.$eval('.compilation-book-bar', bar => getComputedStyle(bar).display), 'none', 'No Contents button in a narrow book');
+  assert.notEqual(await page.$eval('.compilation-book-contents-button', button => getComputedStyle(button).display), 'none', 'No Contents button in a narrow book');
   assert.ok(await page.$eval(BODY, body => body.getBoundingClientRect().width <= window.innerWidth), 'The book is wider than the screen');
   await page.click('.compilation-book-contents-button');
   await page.waitForSelector('[role="dialog"][aria-label="Contents"]');
@@ -240,10 +241,138 @@ try {
   for (const [width, drawer] of [[719, true], [720, false]]) {
     await page.setViewport({ width: width + Math.round(frame), height: 844 });
     await page.waitForFunction(expected => Math.round(document.querySelector('.compilation-book-view').getBoundingClientRect().width) === expected, {}, width);
-    assert.equal(await page.$eval('.compilation-book-contents-button', button => getComputedStyle(button.parentElement).display !== 'none'), drawer, `Contents button at ${width}px`);
+    assert.equal(await page.$eval('.compilation-book-contents-button', button => getComputedStyle(button).display !== 'none'), drawer, `Contents button at ${width}px`);
     assert.equal(await page.$eval('.compilation-book-layout > .compilation-book-contents', nav => getComputedStyle(nav).display !== 'none'), !drawer, `Contents list at ${width}px`);
   }
   console.log('PASS narrow contents drawer opens, jumps, closes and follows the 720px width');
+
+  // P1-P7: paged reading, at 1440 and then on a 390px touch screen.
+  await page.setViewport({ width: 1440, height: 1000 });
+  await open();
+  const fileBefore = read(compilationFile);
+  const MODES = '.compilation-book-modes';
+  const modeButton = label => page.evaluateHandle((selector, label) => [...document.querySelectorAll(`${selector} button`)].find(button => button.textContent.trim() === label), MODES, label).then(handle => handle.asElement());
+  assert.equal(await page.$$eval('.compilation-book > .compilation-book-section', sections => sections.length), 13, 'Continuous reading does not show every chapter');
+  assert.equal(await page.$('.compilation-book-pager'), null, 'The pager shows in continuous reading');
+  assert.equal(await page.evaluate(() => localStorage.getItem('github-notes:book-reading-mode')), null, 'The mode is stored before anyone chose it');
+  await finalShot('book-mode-switch-1440');
+  await (await modeButton('Paged')).click();
+  await page.waitForSelector('.compilation-book-pager');
+  const pageCount = () => page.$eval('.compilation-book-page-count', element => element.textContent.trim());
+  const pageIs = (count, title) => page.waitForFunction((count, title) => document.querySelector('.compilation-book-page-count')?.textContent.trim() === count && document.querySelector('.compilation-book > .compilation-book-section h2')?.textContent.trim() === title, {}, count, title);
+  const pagerButton = label => page.evaluateHandle(label => [...document.querySelectorAll('.compilation-book-pager button')].find(button => button.textContent.trim() === label), label).then(handle => handle.asElement());
+  await pageIs('1 / 13', 'Chapter 01');
+  assert.equal(await page.$$eval('.compilation-book > .compilation-book-section', sections => sections.length), 1, 'Paged reading shows more than one chapter');
+  assert.equal(await page.evaluate(() => localStorage.getItem('github-notes:book-reading-mode')), 'paged');
+  assert.equal(read(compilationFile), fileBefore, 'Switching to paged wrote the compilation file');
+  assert.equal(git('status', '--porcelain', '--', compilationFile).toString(), '', 'Switching to paged left the compilation file changed');
+  assert.equal(await page.$eval('.compilation-book-pager button', button => button.disabled), true, 'Previous is enabled on the first page');
+  assert.deepEqual(await current(), ['Chapter 01']);
+  await shot('paged-1440');
+  await finalShot('book-paged-1440');
+  // Next scrolls to the top of the new page and focuses its heading.
+  await page.$eval(BODY, body => void (body.scrollTop = 0));
+  await (await pagerButton('Next')).click();
+  await pageIs('2 / 13', 'Chapter 02');
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.bookAnchor), 'chapter:c02', 'The new page did not focus its heading');
+  assert.equal(await page.$eval(BODY, body => body.scrollTop), 0, 'The new page did not start at the top');
+  assert.deepEqual(await current(), ['Chapter 02']);
+  // ← and → turn pages from the heading.
+  await page.keyboard.press('ArrowRight');
+  await pageIs('3 / 13', 'Chapter 03');
+  await page.keyboard.press('ArrowLeft');
+  await pageIs('2 / 13', 'Chapter 02');
+  // The contents list goes to a page.
+  await page.click('.compilation-book-layout > .compilation-book-contents li:nth-child(9) button');
+  await pageIs('9 / 13', 'Chapter 09');
+  assert.deepEqual(await current(), ['Chapter 09']);
+  // Arrow keys belong to the editor while a section edits; Next saves the section before leaving.
+  await page.click(`${section(1)} .compilation-inline-reading p`);
+  await page.waitForSelector(`${section(1)}[data-editing] .cm-content`);
+  await page.waitForFunction(editorFocused);
+  await page.keyboard.type('TYPED-ON-A-PAGE ');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await pageCount(), '9 / 13', 'An arrow key in the editor turned the page');
+  await (await pagerButton('Next')).click();
+  await pageIs('10 / 13', 'Chapter 10');
+  await waitFile('notes/a/chapter-09.md', 'TYPED-ON-A-PAGE');
+  assert.equal(await page.$$eval('[data-editing]', editing => editing.length), 0, 'The page left an editor behind');
+  // A folder is one page with its notes in order.
+  await page.click('.compilation-book-layout > .compilation-book-contents li:nth-child(13) button');
+  await pageIs('13 / 13', 'sub');
+  assert.deepEqual(await page.$$eval('.compilation-book h3', headings => headings.map(heading => heading.textContent.trim())), ['Sub one', 'Sub two']);
+  assert.equal(await (await pagerButton('Next')).evaluate(button => button.disabled), true, 'Next is enabled on the last page');
+  // The mode survives a reload and nothing was written to the compilation.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.compilation-book-pager');
+  await pageIs('1 / 13', 'Chapter 01');
+  assert.equal(read(compilationFile), fileBefore, 'Paged reading wrote the compilation file');
+  assert.equal(git('status', '--porcelain', '--', compilationFile).toString(), '', 'Paged reading left the compilation file changed');
+  // Back to continuous keeps the chapter the reader was on.
+  await page.click('.compilation-book-layout > .compilation-book-contents li:nth-child(6) button');
+  await pageIs('6 / 13', 'Chapter 06');
+  await (await modeButton('Continuous')).click();
+  await page.waitForFunction(() => document.querySelectorAll('.compilation-book > .compilation-book-section').length === 13);
+  await page.waitForFunction(
+    selector => {
+      const body = document.querySelector('.compilation-book');
+      return Math.abs(body.querySelector(selector).getBoundingClientRect().top - body.getBoundingClientRect().top) < 12;
+    },
+    {},
+    anchor('c06'),
+  );
+  await page.waitForFunction(() => document.querySelector('.compilation-book-layout > .compilation-book-contents button[aria-current="location"]')?.textContent.trim() === 'Chapter 06');
+  await (await modeButton('Paged')).click();
+  await pageIs('6 / 13', 'Chapter 06');
+  console.log('PASS paged reading turns pages by button, arrow keys and contents, saves a section before leaving, survives a reload and writes nothing');
+
+  await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+  await open(1);
+  await page.waitForSelector('.compilation-book-pager');
+  await pageIs('1 / 13', 'Chapter 01');
+  assert.ok(await page.$eval('.compilation-book-view', view => view.scrollWidth <= view.clientWidth + 1), 'The paged book overflows sideways at 390px');
+  assert.ok(await page.$eval('.compilation-book-bar', bar => bar.scrollWidth <= bar.clientWidth + 1), 'The book bar overflows at 390px');
+  assert.ok(await page.$eval('.compilation-book-pager', pager => pager.getBoundingClientRect().bottom <= window.innerHeight), 'The pager is off screen at 390px');
+  assert.deepEqual(await page.$$eval('.compilation-book-pager button, .compilation-book-modes button', buttons => buttons.filter(button => button.getBoundingClientRect().height < 44).map(button => `${button.textContent.trim()} ${button.getBoundingClientRect().height}`)), [], 'A paging control is under 44px tall');
+  await shot('paged-390');
+  await finalShot('book-paged-390');
+  const touch = await page.createCDPSession();
+  const swipe = async (from, to) => {
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from[0], y: from[1] }] });
+    for (let step = 1; step <= 6; step++) await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from[0] + (to[0] - from[0]) * step / 6, y: from[1] + (to[1] - from[1]) * step / 6 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  await swipe([320, 400], [60, 410]);
+  await pageIs('2 / 13', 'Chapter 02');
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.bookAnchor), 'chapter:c02', 'A swipe did not focus the new heading');
+  await swipe([60, 400], [320, 390]);
+  await pageIs('1 / 13', 'Chapter 01');
+  // A vertical drag scrolls and does not turn the page.
+  await swipe([200, 600], [190, 200]);
+  assert.equal(await pageCount(), '1 / 13', 'A vertical drag turned the page');
+  // No swipe while a section edits.
+  await page.$eval('button[aria-label="Edit Chapter 01"]', button => button.click());
+  await page.waitForSelector(`${section(1)}[data-editing] .cm-content`);
+  await swipe([320, 500], [60, 500]);
+  assert.equal(await pageCount(), '1 / 13', 'A swipe turned the page while a section edited');
+  await page.$eval(`${section(1)} button.compilation-edit-toggle`, button => button.click());
+  await page.waitForFunction(selector => !document.querySelector(selector).hasAttribute('data-editing'), {}, section(1));
+  // The drawer goes to a page.
+  await page.click('.compilation-book-contents-button');
+  await page.waitForSelector('[role="dialog"][aria-label="Contents"]');
+  await shot('paged-drawer-390');
+  await page.evaluate(() => [...document.querySelectorAll('[role="dialog"][aria-label="Contents"] button')].find(button => button.textContent.trim() === 'Chapter 07').click());
+  await pageIs('7 / 13', 'Chapter 07');
+  assert.equal(await page.$('[role="dialog"][aria-label="Contents"]'), null, 'The drawer stayed open after choosing a page');
+  await (await pagerButton('Next')).click();
+  await pageIs('8 / 13', 'Chapter 08');
+  await (await modeButton('Continuous')).click();
+  await page.waitForFunction(() => document.querySelectorAll('.compilation-book > .compilation-book-section').length === 13);
+  await finalShot('book-mode-switch-390');
+  assert.equal(read(compilationFile), fileBefore, 'Reading on a phone wrote the compilation file');
+  console.log('PASS paged reading on a 390px touch screen swipes, ignores vertical drags and edits, and uses the drawer');
+  await page.setViewport({ width: 1440, height: 1000 });
+  await open();
 
   // S3: an arrangement change writes `book`, never `stack`.
   await page.setViewport({ width: 1440, height: 1000 });
