@@ -519,16 +519,33 @@ it('keeps the reader at the same chapter when the mode changes (P7)', async () =
   expect(localStorage.getItem(BOOK_READING_STORAGE_KEY)).toBe('continuous');
 });
 
-it('opens paged on the chapter that edits, so the editor is not left behind (P7)', async () => {
+it('opens paged on the chapter that edits without remounting its editor, so nothing typed is lost (P7)', async () => {
   laneOverride.current = lane([noteA, noteB]);
   render(book({ row: pairRow, readOnly: false }), { wrapper });
-  fireEvent.click(await screen.findByRole('button', { name: 'Edit Note B' }));
-  await waitFor(() => expect(chapters()[1]).toHaveAttribute('data-editing'));
-  fireEvent.click(screen.getByRole('button', { name: 'Paged' }));
+  await screen.findByRole('button', { name: 'Edit Note A' });
+  // The reader has scrolled to Note B, but it is Note A that edits.
+  const body = document.querySelector<HTMLElement>('.compilation-book')!;
+  body.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+  Object.defineProperty(body, 'clientHeight', { value: 800, configurable: true });
+  Object.defineProperty(body, 'scrollHeight', { value: 3000, configurable: true });
+  chapters().forEach((chapter, index) => {
+    within(chapter).getByRole('heading', { level: 2 }).getBoundingClientRect = () => ({ top: [-2000, 100][index] }) as DOMRect;
+  });
+  act(() => void body.dispatchEvent(new Event('scroll')));
+  await waitFor(() => expect(contentsButtons().filter(entry => entry.getAttribute('aria-current')).map(entry => entry.textContent)).toEqual(['Note B']));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Note A' }));
+  const editor = await screen.findByLabelText('Note content');
+  fireEvent.change(editor, { target: { value: 'typed and not yet saved' } });
+  const toggle = screen.getByRole('button', { name: 'Paged' });
+  toggle.focus();
+  fireEvent.click(toggle);
   await waitFor(() => expect(chapters()).toHaveLength(1));
   expect(chapters()[0]).toHaveAttribute('data-editing');
-  expect(within(chapters()[0]).getByLabelText('Note content')).toBeInTheDocument();
-  expect(count()).toBe('2 / 2');
+  expect(count()).toBe('1 / 2');
+  // The same editor, with its text, and the focus still on the button that was pressed.
+  expect(screen.getByLabelText('Note content')).toBe(editor);
+  expect(editor).toHaveValue('typed and not yet saved');
+  expect(toggle).toHaveFocus();
 });
 
 it('shows a folder chapter as one page with its notes in order', async () => {
@@ -613,4 +630,35 @@ it('lets the contents drawer leave the reader where it opened from when the page
   await waitFor(() => expect(flushEditors).toHaveBeenCalled());
   await waitFor(() => expect(open).toHaveFocus());
   expect(chapters()[0]).toHaveAttribute('data-editing');
+});
+
+it('leaves ← and → to a wide code block the reader clicked, though the click leaves focus on the page', async () => {
+  writeBookReadingMode('paged');
+  render(book(), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  const block = document.createElement('pre');
+  block.style.overflowX = 'auto';
+  Object.defineProperty(block, 'scrollWidth', { value: 900, configurable: true });
+  Object.defineProperty(block, 'clientWidth', { value: 300, configurable: true });
+  chapters()[0].appendChild(block);
+  fireEvent.pointerDown(block);
+  fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+  expect(pageTitle()).toEqual(['Note A']);
+  fireEvent.pointerDown(within(chapters()[0]).getByRole('heading', { level: 2 }));
+  fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
+});
+
+it('hands the arrow keys to a remaining Book when the one the reader used goes away', async () => {
+  writeBookReadingMode('paged');
+  laneOverride.current = lane([noteA, noteB]);
+  const both = (second: boolean) => createElement('div', null, book({ row: pairRow }), second ? book({ row: { ...pairRow, id: 'row-2' } }) : null);
+  const { rerender } = render(both(true), { wrapper });
+  const books = () => [...document.querySelectorAll<HTMLElement>('.compilation-book-view')];
+  await waitFor(() => expect(books()).toHaveLength(2));
+  fireEvent.pointerDown(within(books()[1]).getByRole('heading', { level: 2 }));
+  rerender(both(false));
+  await waitFor(() => expect(books()).toHaveLength(1));
+  fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+  await waitFor(() => expect(within(books()[0]).getByRole('heading', { level: 2 })).toHaveTextContent('Note B'));
 });

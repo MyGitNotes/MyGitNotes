@@ -1,8 +1,10 @@
 import { type TouchEvent, useEffect, useRef } from 'react';
-import { hasSelection, type PageStep, pagingKey, swipeStartsHere, swipeStep } from './book-paging.js';
+import { hasSelection, insideSidewaysScroll, type PageStep, pagingKey, swipeStartsHere, swipeStep } from './book-paging.js';
 
-/** The paged Book the reader last pointed at or focused: with nothing focused, ← and → turn that one's pages and not every open Book's. */
+/** The Books that read paged, and the one the reader last pointed at or focused: with nothing focused, ← and → turn that one's pages and not every open Book's. */
+const pagedBooks = new Set<HTMLElement>();
 let lastBook: HTMLElement | null = null;
+const keyOwner = () => lastBook && pagedBooks.has(lastBook) ? lastBook : pagedBooks.values().next().value ?? null;
 
 export interface BookPageInput {
   /** The Book reads paged; otherwise no key or touch turns anything. */
@@ -26,12 +28,18 @@ export function useBookPageInput({ active, book, editing, onStep }: BookPageInpu
   });
   useEffect(() => {
     if (!active || !book) return;
-    if (!lastBook?.isConnected) lastBook = book;
-    const claim = () => void (lastBook = book);
+    pagedBooks.add(book);
+    // What the reader last pressed on: a click in a wide block that scrolls sideways leaves focus on the page, and the arrows are still that block's.
+    let pressed: Element | null = null;
+    const claim = (event: Event) => {
+      lastBook = book;
+      pressed = event.target instanceof Element ? event.target : null;
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       const inside = target instanceof Node && book.contains(target);
-      if (!inside && !(target === document.body && lastBook === book)) return;
+      if (!inside && !(target === document.body && keyOwner() === book)) return;
+      if (target === document.body && pressed?.isConnected && insideSidewaysScroll(pressed)) return;
       // A dialog over the book, the contents drawer included, owns the arrow keys; the dialog the book itself sits in does not.
       if ([...document.querySelectorAll('[aria-modal="true"]')].some(dialog => !dialog.contains(book))) return;
       const direction = pagingKey(event);
@@ -46,6 +54,7 @@ export function useBookPageInput({ active, book, editing, onStep }: BookPageInpu
       book.removeEventListener('pointerdown', claim, true);
       book.removeEventListener('focusin', claim);
       document.removeEventListener('keydown', onKeyDown);
+      pagedBooks.delete(book);
       if (lastBook === book) lastBook = null;
     };
   }, [active, book]);

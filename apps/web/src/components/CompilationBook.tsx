@@ -60,33 +60,26 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
   const [position, setPosition] = useState<{ id: string | null; index: number; }>({ id: null, index: 0 });
   const pageIndex = resolvePage(chapters, position.id, position.index);
   const page = chapters.at(pageIndex);
-  // Kept in step before paint (not by a state update while rendering, which an external-store re-render does not survive).
-  useLayoutEffect(() => {
-    if (page && (position.id !== page.id || position.index !== pageIndex)) setPosition({ id: page.id, index: pageIndex });
-  }, [page, position, pageIndex]);
   const shown = paged && page ? [page] : chapters;
   const editingShown = editingEntry && entries.some(entry => entry.anchor === editingEntry) ? editingEntry : null;
   const active = editingShown ?? (paged ? page?.anchor ?? null : spied);
   const writable = !header.readOnly;
-  // Switching to paged, whoever switched it, opens the chapter in view, or the one that edits so its editor is not left behind (P7).
-  const adopted = useRef(readingMode);
+  // The position is kept in step before paint, not by a state update while rendering (an external-store re-render does not survive one). Reading continuously it
+  // follows the chapter in view, or the one that edits, so switching to paged, whoever switches it, opens that chapter and no editor is unmounted by the switch (P7).
   useLayoutEffect(() => {
-    if (adopted.current === readingMode) return;
-    adopted.current = readingMode;
-    const chapter = paged ? chapterOfAnchor(chapters, editingShown ?? spied ?? '') : undefined;
-    if (chapter) setPosition({ id: chapter.id, index: chapters.indexOf(chapter) });
-    // Only a change of mode adopts a chapter; what is in view at that moment is read from this render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readingMode]);
+    const current = paged ? page : chapterOfAnchor(chapters, editingShown ?? spied ?? '') ?? page;
+    if (current && (position.id !== current.id || position.index !== chapters.indexOf(current))) setPosition({ id: current.id, index: chapters.indexOf(current) });
+  }, [paged, page, position, chapters, editingShown, spied]);
   // What to do with the body once a new page has rendered: show its top, and for a page turn focus the heading or reveal the section the contents chose.
   const arrival = useRef<{ anchor: string; focus: boolean; } | null>(null);
   const turning = useRef(false);
   const shownBefore = useRef(readingMode);
   // A paged book mounts one chapter at a time, so a folder that leaves keeps its lines in the contents until its chapter does.
   const pagedNow = useRef(paged);
-  /* eslint-disable react/refs -- Read when a folder reports, never while rendering. */
-  pagedNow.current = paged;
-  /* eslint-enable react/refs */
+  // Written in a layout effect, which runs before the passive clean-up of a folder that the switch unmounts.
+  useLayoutEffect(() => {
+    pagedNow.current = paged;
+  }, [paged]);
 
   const onEntries = useCallback((chapterId: string, next: BookEntry[], leaving = false) => {
     if (leaving && pagedNow.current) return;
@@ -171,7 +164,8 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
     }
     if (modeChanged || pending) body.scrollTop = 0;
     if (!pending) return;
-    // The page's own heading is there at once; a folder's note section arrives with the folder's notes.
+    // The page's own heading is there at once, and takes focus; a folder's note section arrives with the folder's notes, and takes it then.
+    if (page && pending.anchor !== page.anchor) headings(body, page.anchor)?.focus({ preventScroll: true });
     const reveal = () => {
       const heading = headings(body, pending.anchor);
       if (!heading) return false;

@@ -35,7 +35,7 @@ const ARROW_WIDGETS = '[role="tablist"],[role="tab"],[role="radiogroup"],[role="
 const BOOK_FRAME = '.compilation-book,.compilation-book-view';
 
 /** Whether `target` or something around it, up to the book, scrolls sideways: a wide table or code block, which a key or a drag belongs to. */
-function insideSidewaysScroll(target: Element): boolean {
+export function insideSidewaysScroll(target: Element): boolean {
   for (let element: Element | null = target; element && !element.matches(BOOK_FRAME); element = element.parentElement) {
     if (element instanceof HTMLElement && element.scrollWidth > element.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(element).overflowX)) return true;
   }
