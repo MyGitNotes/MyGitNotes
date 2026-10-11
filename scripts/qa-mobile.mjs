@@ -68,10 +68,11 @@ const waitDisk = async (relative, text) => {
   }
   throw new Error('Content not saved: ' + relative);
 };
-const noHorizontalOverflow = async label => assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${label} overflows horizontally`);
+// A note opens in a fixed overlay, whose overflow never widens the root, so the overlay is measured as well.
+const noHorizontalOverflow = async label => assert(await page.evaluate(() => [document.documentElement, ...document.querySelectorAll('.note-overlay')].every(e => e.scrollWidth <= e.clientWidth + 1)), `${label} overflows horizontally`);
 // Icon buttons on a phone are at least 44px square (the touch-target guideline); `scope` limits the check to one surface.
 const touchSized = async (scope, label) => {
-  const small = await page.$$eval(`${scope} .ui-icon-button`, buttons => buttons.filter(e => e.getBoundingClientRect().width > 0).map(e => ({ name: e.getAttribute('aria-label') || e.title, size: `${Math.round(e.getBoundingClientRect().width)}x${Math.round(e.getBoundingClientRect().height)}` })).filter(b => parseInt(b.size) < 44 || parseInt(b.size.split('x')[1]) < 44));
+  const small = await page.$$eval(`${scope} .ui-icon-button`, buttons => buttons.map(e => ({ name: e.getAttribute('aria-label') || e.title, rect: e.getBoundingClientRect() })).filter(b => b.rect.width > 0 && (b.rect.width < 44 || b.rect.height < 44)).map(b => ({ name: b.name, size: `${b.rect.width}x${b.rect.height}` })));
   assert(small.length === 0, `${label} has icon buttons under 44px: ${JSON.stringify(small)}`);
 };
 const touchClient = await page.createCDPSession();
@@ -340,6 +341,8 @@ try {
   await page.waitForFunction(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--visual-height')) > 800);
   // Insert image is part of the formatting toolbar and opens the notebook's files to choose from.
   await tap('button[aria-label="Formatting toolbar"]');
+  await page.waitForSelector('.markdown-format-toolbar');
+  await touchSized('.markdown-format-toolbar', 'Formatting toolbar');
   await tap('button[aria-label="Insert image"]');
   await page.waitForSelector('.file-manager-dialog');
   await fits('.file-manager-dialog');
