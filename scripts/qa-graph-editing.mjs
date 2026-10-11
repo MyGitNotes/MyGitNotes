@@ -23,13 +23,17 @@ const page = await browser.newPage();
 const errors = collectPageErrors(page);
 await page.evaluateOnNewDocument(() => localStorage.setItem('github-notes:language', 'en'));
 await page.setViewport({ width: 1500, height: 1050 });
+// A button can appear a moment after the click that opens its panel, so the search retries for a few seconds.
 const click = async (text, within = '') => {
-  const elements = await page.$$(`${within} button`);
-  for (const element of elements) {
-    if (await element.evaluate((el, text) => (el.textContent.trim() === text || el.getAttribute('aria-label') === text) && !el.disabled, text)) {
-      await element.click();
-      return;
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const elements = await page.$$(`${within} button`);
+    for (const element of elements) {
+      if (await element.evaluate((el, text) => (el.textContent.trim() === text || el.getAttribute('aria-label') === text) && !el.disabled, text)) {
+        await element.click();
+        return;
+      }
     }
+    await pause(100);
   }
   throw new Error('Missing button ' + text);
 };
