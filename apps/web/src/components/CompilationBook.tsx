@@ -68,12 +68,18 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
   // follows the chapter in view, or the one that edits, so switching to paged, whoever switches it, opens that chapter and no editor is unmounted by the switch (P7).
   // The scroll position only says which chapter is in view once the reader has scrolled since the mode changed; a page turn does not move it.
   const [scrolled, setScrolled] = useState(false);
+  // Where the book's own jump left the scroll position: scroll events at that position are the jump's, not the reader's.
+  const jumped = useRef<number | null>(null);
   useEffect(() => {
-    if (!body) return;
-    const note = () => setScrolled(true);
+    if (!body || paged) return;
+    const note = () => {
+      if (jumped.current !== null && Math.abs(body.scrollTop - jumped.current) < 1) return;
+      jumped.current = null;
+      setScrolled(true);
+    };
     body.addEventListener('scroll', note, { passive: true });
     return () => body.removeEventListener('scroll', note);
-  }, [body]);
+  }, [body, paged]);
   useLayoutEffect(() => {
     setScrolled(false);
   }, [paged]);
@@ -171,7 +177,10 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
     arrival.current = null;
     if (!paged) {
       // Back to continuous, the reader is at the chapter the page showed, with focus left where it was.
-      if (modeChanged && page) jump(page.anchor, 'auto', false);
+      if (modeChanged && page) {
+        jump(page.anchor, 'auto', false);
+        jumped.current = body.scrollTop;
+      }
       return;
     }
     if (modeChanged || pending) body.scrollTop = 0;

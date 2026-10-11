@@ -699,3 +699,55 @@ it("stops treating a click in a wide code block as the reader's place once they 
   fireEvent.keyDown(document.body, { key: 'ArrowRight' });
   await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
 });
+
+it('does not take its own jump back to the chapter for the reader scrolling, even when the next chapter is short enough to be in view (P7)', async () => {
+  writeBookReadingMode('paged');
+  render(book(), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  const body = document.querySelector<HTMLElement>('.compilation-book')!;
+  body.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+  Object.defineProperty(body, 'clientHeight', { value: 800, configurable: true });
+  Object.defineProperty(body, 'scrollHeight', { value: 3000, configurable: true });
+  // A real scrollTo moves the position at once and the browser sends its scroll event afterwards.
+  body.scrollTo = (({ top }: { top: number; }) => {
+    body.scrollTop = top;
+    setTimeout(() => body.dispatchEvent(new Event('scroll')), 0);
+  }) as typeof body.scrollTo;
+  const tops: Record<string, number> = { 'Note A': 40, 'gone.md': 60, 'A talk': 900 };
+  const place = () =>
+    chapters().forEach(chapter => {
+      const heading = within(chapter).getByRole('heading', { level: 2 });
+      heading.getBoundingClientRect = () => ({ top: tops[heading.textContent!] ?? 900 }) as DOMRect;
+    });
+  place();
+  fireEvent.click(screen.getByRole('button', { name: 'Continuous' }));
+  await waitFor(() => expect(chapters()).toHaveLength(3));
+  place();
+  await waitFor(() => expect(body.scrollTop).toBe(40));
+  await waitFor(() => expect(contentsButtons().filter(entry => entry.getAttribute('aria-current')).map(entry => entry.textContent)).toEqual(['gone.md']));
+  // The scroll spy would name the second chapter, which is also in view; the reader never scrolled, so the page's chapter stays.
+  fireEvent.click(screen.getByRole('button', { name: 'Paged' }));
+  await waitFor(() => expect(chapters()).toHaveLength(1));
+  expect(pageTitle()).toEqual(['Note A']);
+});
+
+it('does not count scrolling within a page as scrolling the continuous book (P7)', async () => {
+  writeBookReadingMode('paged');
+  render(book(), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
+  const body = document.querySelector<HTMLElement>('.compilation-book')!;
+  act(() => void body.dispatchEvent(new Event('scroll')));
+  // The scroll spy measures the page the reader scrolled in.
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 60));
+  });
+  fireEvent.click(previous());
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  fireEvent.click(screen.getByRole('button', { name: 'Continuous' }));
+  await waitFor(() => expect(chapters()).toHaveLength(3));
+  fireEvent.click(screen.getByRole('button', { name: 'Paged' }));
+  await waitFor(() => expect(chapters()).toHaveLength(1));
+  expect(pageTitle()).toEqual(['Note A']);
+});
