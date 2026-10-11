@@ -3,8 +3,12 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { compilationFile, type CompilationRow, compilationSlug, parseCompilation, serializeCompilation, uniqueCompilationPath } from './compilation.js';
 import { FOCUS_PAGE_FILE, FocusPageSchema } from './focus-page.js';
+import { resolveNoteStatuses } from './note-status.js';
 import { readScreenPage, SCREEN_PAGE_FILE, type ScreenPage } from './screen-page.js';
+import type { NotebookConfig } from './types.js';
 import { serializeWorkspaceDocument } from './workspace-documents.js';
+
+type MigrationNotebook = Pick<NotebookConfig, 'id' | 'root'> & Partial<Pick<NotebookConfig, 'statuses'>>;
 
 /** Why a Screen file cannot become compilations; nothing is written until every lane converts. */
 export class ScreenMigrationError extends Error {
@@ -31,15 +35,16 @@ export interface ScreenMigrationPlan {
   touched: string[];
 }
 
-/** The lanes of a Screen page as compilation files, named after their lane and placed in their notebook's root. */
-export function legacyScreenToCompilations(page: ScreenPage, notebooks: readonly { id: string; root: string; }[], taken: (file: string, laneId: string) => boolean = () => false): ScreenMigrationLane[] {
+/** The lanes of a Screen page as compilation files, named after their lane and placed in their notebook's root; each starts with its notebook's first status, as a new compilation does. */
+export function legacyScreenToCompilations(page: ScreenPage, notebooks: readonly MigrationNotebook[], taken: (file: string, laneId: string) => boolean = () => false): ScreenMigrationLane[] {
   const planned = new Set<string>();
   return page.rows.map(row => {
     const notebook = notebooks.find(candidate => candidate.id === row.notebookId);
     if (!notebook) throw new ScreenMigrationError(`Lane "${row.name}" belongs to notebook "${row.notebookId}", which this repository does not serve.`);
     const file = uniqueCompilationPath(notebook.root, compilationSlug(row.name), candidate => planned.has(candidate) || taken(candidate, row.id));
     planned.add(file);
-    const content = serializeCompilation(compilationFile({ ...row, path: file } as CompilationRow));
+    const status = (row as { status?: string; }).status || resolveNoteStatuses(notebook)[0];
+    const content = serializeCompilation(compilationFile({ ...row, path: file, ...(status ? { status } : {}) } as CompilationRow));
     try {
       parseCompilation(content, notebook.root);
     } catch (error) {
@@ -87,7 +92,7 @@ export function migrateFocusLaneTabs(raw: unknown, paths: ReadonlyMap<string, st
  * What migrating one worktree takes: its Screen lanes as compilation files and its Focus rewritten to path tabs.
  * Returns null when the worktree has neither a Screen file nor a Focus lane tab. Reads only; `applyScreenMigration` writes.
  */
-export function planScreenMigration(root: string, notebooks: readonly { id: string; root: string; }[], defaultNotebook?: string): ScreenMigrationPlan | null {
+export function planScreenMigration(root: string, notebooks: readonly MigrationNotebook[], defaultNotebook?: string): ScreenMigrationPlan | null {
   const screenFile = path.join(root, SCREEN_PAGE_FILE);
   const hasScreen = fs.existsSync(screenFile);
   const focusFile = path.join(root, FOCUS_PAGE_FILE);

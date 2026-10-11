@@ -43,6 +43,10 @@ describe('legacyScreenToCompilations', () => {
     expect(tagged).toMatchObject({ id: 'tagged', arrangement: 'lane', size: 'thumbnail', source: { kind: 'tag', tag: 'clue' }, sort: { field: 'title', order: 'asc' } });
     expect(graph).toMatchObject({ id: 'graph', arrangement: 'graph', graph: { nodes: [{ path: 'notes/b/z.md', x: 10, y: 20 }] } });
   });
+  it("starts each compilation with its notebook's first status, or the default first status when the notebook defines none", () => {
+    const statuses = legacyScreenToCompilations(readScreenPage(screenV2, null), [{ id: 'a', root: 'notes/a', statuses: ['draft', 'done'] }, notebooks[1]]).map(lane => parseCompilation(lane.content).status);
+    expect(statuses).toEqual(['draft', 'draft', 'inbox']);
+  });
   it('reads a lane of a notebook this repository does not serve as an error', () => {
     expect(() => legacyScreenToCompilations(readScreenPage(screenV2, null), [notebooks[0]])).toThrow('belongs to notebook "b"');
   });
