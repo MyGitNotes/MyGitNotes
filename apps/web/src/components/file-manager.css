@@ -64,7 +64,7 @@
 .file-detail-title button { flex-shrink: 0; }
 @media (min-width: 1100px) { .file-content.has-selection { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.7fr); grid-template-rows: auto auto minmax(0, 1fr); column-gap: 20px; align-content: start; } .file-content.has-selection > .file-actions, .file-content.has-selection > .file-storage-hint { grid-column: 1/-1; } .file-content.has-selection > .file-list { grid-column: 1; grid-row: 3; overflow: auto; align-self: start; max-height: 100%; } .file-content.has-selection > .file-detail { grid-column: 2; grid-row: 3; margin-top: 0; overflow: auto; } .file-content.has-selection > .file-operation { grid-column: 1/-1; } }
 
-@media (max-width: 700px) { .file-manager-toolbar { flex-shrink: 0; } .file-manager-toolbar > .file-breadcrumbs { order: 1; flex: 1 1 100%; line-height: 1.6; } .file-toolbar-actions .ui-icon-button, .file-toolbar-view .ui-icon-button, .file-manager-toolbar > .file-tree-toggle { width: 36px; min-width: 36px; height: 36px; padding: 8px; } .file-toolbar-actions { padding-right: 4px; } }
+@media (max-width: 700px) { .file-manager-toolbar { flex-shrink: 0; } .file-manager-toolbar > .file-breadcrumbs { order: 1; flex: 1 1 100%; line-height: 1.6; } .file-toolbar-actions .ui-icon-button, .file-toolbar-view .ui-icon-button, .file-manager-toolbar > .file-tree-toggle { width: 44px; min-width: 44px; height: 44px; padding: 8px; } .file-toolbar-actions { padding-right: 4px; } }
 
 .file-detail-icons { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .file-metadata { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }

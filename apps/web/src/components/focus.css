@@ -105,7 +105,7 @@
 .focus-batch-result > svg { flex: none; width: 1rem; height: 1rem; margin-top: 0.1rem; color: var(--color-primary); }
 @media (max-width: 480px) { .focus-batch-dialog .filter-tag-mode { align-items: stretch; flex-direction: column; } .focus-batch-dialog .filter-tag-mode > button { flex-basis: auto; } }
 
-@media (max-width: 767px) { .focus-pane-bar { height: 44px; } .focus-tab-close { width: 32px; height: 32px; opacity: 1; } .focus-pane-actions .ui-icon-button { width: 40px; height: 40px; } }
+@media (max-width: 767px) { .focus-pane-bar { height: 44px; } .focus-tab-close { width: 32px; height: 32px; opacity: 1; } .focus-pane-actions .ui-icon-button { width: 44px; height: 44px; } }
 
 /* Screen's Focus section. */
 .focus-list { display: grid; gap: 8px; margin-bottom: 20px; }

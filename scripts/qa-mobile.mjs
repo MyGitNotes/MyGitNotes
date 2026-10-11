@@ -68,6 +68,12 @@ const waitDisk = async (relative, text) => {
   }
   throw new Error('Content not saved: ' + relative);
 };
+const noHorizontalOverflow = async label => assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${label} overflows horizontally`);
+// Icon buttons on a phone are at least 44px square (the touch-target guideline); `scope` limits the check to one surface.
+const touchSized = async (scope, label) => {
+  const small = await page.$$eval(`${scope} .ui-icon-button`, buttons => buttons.filter(e => e.getBoundingClientRect().width > 0).map(e => ({ name: e.getAttribute('aria-label') || e.title, size: `${Math.round(e.getBoundingClientRect().width)}x${Math.round(e.getBoundingClientRect().height)}` })).filter(b => parseInt(b.size) < 44 || parseInt(b.size.split('x')[1]) < 44));
+  assert(small.length === 0, `${label} has icon buttons under 44px: ${JSON.stringify(small)}`);
+};
 const touchClient = await page.createCDPSession();
 const swipe = async (from, to, cancel = false) => {
   await touchClient.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from[0], y: from[1] }] });
@@ -128,6 +134,8 @@ try {
       assert(await page.$eval('.note-controls', e => e.scrollWidth <= e.clientWidth + 1 || ['auto', 'scroll'].includes(getComputedStyle(e).overflowX)), `Note toolbar clips controls at ${width}px`);
       const close = await bounds('button[aria-label="Close note"]');
       assert(close.width >= 44 && close.height >= 44, 'Small Close target');
+      await touchSized('.note-controls', `Note toolbar at ${width}px`);
+      await noHorizontalOverflow(`Note at ${width}px`);
       await page.screenshot({ path: product + '/artifacts/qa/mobile-note-' + width + '.png' });
       await click('Line Numbers');
       await page.waitForSelector('[data-live-markdown] .cm-lineNumbers');
@@ -153,6 +161,8 @@ try {
     if (width < 768) {
       await fits('button[role="combobox"][aria-label="File"]');
       assert((await bounds('.agent-toolbar')).height <= 64, 'Agent toolbar wraps on mobile');
+      await touchSized('.agent-toolbar', `Agent toolbar at ${width}px`);
+      await noHorizontalOverflow(`Agent at ${width}px`);
     }
     console.log('PASS responsive geometry at ' + width + ' px');
   }
@@ -379,6 +389,8 @@ try {
   await page.waitForSelector('.file-manager-toolbar');
   await fits('.file-manager-toolbar');
   assert(new URL(page.url()).pathname === '/files', 'Files bottom navigation did not navigate');
+  await touchSized('.file-manager-toolbar', 'Files toolbar');
+  await noHorizontalOverflow('Files');
   await page.screenshot({ path: product + '/artifacts/qa/mobile-assets.png' });
   console.log('PASS mobile create, Live/Source, reduced-height editing, image insert, Agent save and Files navigation');
   // Hosted saving and access settings use fixture credentials and intercepted API calls.
