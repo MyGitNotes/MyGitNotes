@@ -66,10 +66,22 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
   const writable = !header.readOnly;
   // The position is kept in step before paint, not by a state update while rendering (an external-store re-render does not survive one). Reading continuously it
   // follows the chapter in view, or the one that edits, so switching to paged, whoever switches it, opens that chapter and no editor is unmounted by the switch (P7).
+  // The scroll position only says which chapter is in view once the reader has scrolled since the mode changed; a page turn does not move it.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    if (!body) return;
+    const note = () => setScrolled(true);
+    body.addEventListener('scroll', note, { passive: true });
+    return () => body.removeEventListener('scroll', note);
+  }, [body]);
   useLayoutEffect(() => {
-    const current = paged ? page : chapterOfAnchor(chapters, editingShown ?? spied ?? '') ?? page;
+    setScrolled(false);
+  }, [paged]);
+  useLayoutEffect(() => {
+    const inView = !paged && (editingShown || scrolled) ? chapterOfAnchor(chapters, editingShown ?? spied ?? '') : undefined;
+    const current = paged ? page : inView ?? page;
     if (current && (position.id !== current.id || position.index !== chapters.indexOf(current))) setPosition({ id: current.id, index: chapters.indexOf(current) });
-  }, [paged, page, position, chapters, editingShown, spied]);
+  }, [paged, page, position, chapters, editingShown, spied, scrolled]);
   // What to do with the body once a new page has rendered: show its top, and for a page turn focus the heading or reveal the section the contents chose.
   const arrival = useRef<{ anchor: string; focus: boolean; } | null>(null);
   const turning = useRef(false);

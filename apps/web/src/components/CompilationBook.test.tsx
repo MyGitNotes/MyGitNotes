@@ -522,18 +522,18 @@ it('keeps the reader at the same chapter when the mode changes (P7)', async () =
 it('opens paged on the chapter that edits without remounting its editor, so nothing typed is lost (P7)', async () => {
   laneOverride.current = lane([noteA, noteB]);
   render(book({ row: pairRow, readOnly: false }), { wrapper });
-  await screen.findByRole('button', { name: 'Edit Note A' });
-  // The reader has scrolled to Note B, but it is Note A that edits.
+  await screen.findByRole('button', { name: 'Edit Note B' });
+  // The reader has scrolled to Note A, but it is Note B that edits.
   const body = document.querySelector<HTMLElement>('.compilation-book')!;
   body.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
   Object.defineProperty(body, 'clientHeight', { value: 800, configurable: true });
   Object.defineProperty(body, 'scrollHeight', { value: 3000, configurable: true });
   chapters().forEach((chapter, index) => {
-    within(chapter).getByRole('heading', { level: 2 }).getBoundingClientRect = () => ({ top: [-2000, 100][index] }) as DOMRect;
+    within(chapter).getByRole('heading', { level: 2 }).getBoundingClientRect = () => ({ top: [100, 900][index] }) as DOMRect;
   });
   act(() => void body.dispatchEvent(new Event('scroll')));
-  await waitFor(() => expect(contentsButtons().filter(entry => entry.getAttribute('aria-current')).map(entry => entry.textContent)).toEqual(['Note B']));
-  fireEvent.click(screen.getByRole('button', { name: 'Edit Note A' }));
+  await waitFor(() => expect(contentsButtons().filter(entry => entry.getAttribute('aria-current')).map(entry => entry.textContent)).toEqual(['Note A']));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Note B' }));
   const editor = await screen.findByLabelText('Note content');
   fireEvent.change(editor, { target: { value: 'typed and not yet saved' } });
   const toggle = screen.getByRole('button', { name: 'Paged' });
@@ -541,7 +541,8 @@ it('opens paged on the chapter that edits without remounting its editor, so noth
   fireEvent.click(toggle);
   await waitFor(() => expect(chapters()).toHaveLength(1));
   expect(chapters()[0]).toHaveAttribute('data-editing');
-  expect(count()).toBe('1 / 2');
+  expect(pageTitle()).toEqual(['Editing notes/nb1/b.md']);
+  expect(count()).toBe('2 / 2');
   // The same editor, with its text, and the focus still on the button that was pressed.
   expect(screen.getByLabelText('Note content')).toBe(editor);
   expect(editor).toHaveValue('typed and not yet saved');
@@ -661,4 +662,40 @@ it('hands the arrow keys to a remaining Book when the one the reader used goes a
   await waitFor(() => expect(books()).toHaveLength(1));
   fireEvent.keyDown(document.body, { key: 'ArrowRight' });
   await waitFor(() => expect(within(books()[0]).getByRole('heading', { level: 2 })).toHaveTextContent('Note B'));
+});
+
+it('returns to the chapter the page showed, not to one a stale scroll position names, when the mode goes back and forth (P7)', async () => {
+  writeBookReadingMode('paged');
+  render(book(), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['A talk']));
+  fireEvent.click(previous());
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
+  fireEvent.click(previous());
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  fireEvent.click(screen.getByRole('button', { name: 'Continuous' }));
+  await waitFor(() => expect(chapters()).toHaveLength(3));
+  // Nothing scrolled, so the page's chapter is the one in view, whatever the scroll spy last measured.
+  fireEvent.click(screen.getByRole('button', { name: 'Paged' }));
+  await waitFor(() => expect(chapters()).toHaveLength(1));
+  expect(pageTitle()).toEqual(['Note A']);
+  expect(count()).toBe('1 / 3');
+});
+
+it("stops treating a click in a wide code block as the reader's place once they press anywhere else", async () => {
+  writeBookReadingMode('paged');
+  render(book(), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  const block = document.createElement('pre');
+  block.style.overflowX = 'auto';
+  Object.defineProperty(block, 'scrollWidth', { value: 900, configurable: true });
+  Object.defineProperty(block, 'clientWidth', { value: 300, configurable: true });
+  chapters()[0].appendChild(block);
+  fireEvent.pointerDown(block);
+  fireEvent.pointerDown(document.body);
+  fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
 });

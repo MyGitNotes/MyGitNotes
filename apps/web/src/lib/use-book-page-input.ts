@@ -29,11 +29,17 @@ export function useBookPageInput({ active, book, editing, onStep }: BookPageInpu
   useEffect(() => {
     if (!active || !book) return;
     pagedBooks.add(book);
-    // What the reader last pressed on: a click in a wide block that scrolls sideways leaves focus on the page, and the arrows are still that block's.
+    // What the reader last pressed on in this Book: a click in a wide block that scrolls sideways leaves focus on the page, and the arrows are still that block's.
+    // A press anywhere else, or focus moving to an element, ends that.
     let pressed: Element | null = null;
-    const claim = (event: Event) => {
+    const onPress = (event: Event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      pressed = target && book.contains(target) ? target : null;
+      if (pressed) lastBook = book;
+    };
+    const onFocus = () => {
+      pressed = null;
       lastBook = book;
-      pressed = event.target instanceof Element ? event.target : null;
     };
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
@@ -47,12 +53,12 @@ export function useBookPageInput({ active, book, editing, onStep }: BookPageInpu
       event.preventDefault();
       step.current(direction);
     };
-    book.addEventListener('pointerdown', claim, true);
-    book.addEventListener('focusin', claim);
+    document.addEventListener('pointerdown', onPress, true);
+    book.addEventListener('focusin', onFocus);
     document.addEventListener('keydown', onKeyDown);
     return () => {
-      book.removeEventListener('pointerdown', claim, true);
-      book.removeEventListener('focusin', claim);
+      document.removeEventListener('pointerdown', onPress, true);
+      book.removeEventListener('focusin', onFocus);
       document.removeEventListener('keydown', onKeyDown);
       pagedBooks.delete(book);
       if (lastBook === book) lastBook = null;
