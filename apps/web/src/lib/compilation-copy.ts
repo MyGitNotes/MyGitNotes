@@ -10,9 +10,10 @@ export interface CompilationCopy {
   title: string;
 }
 
-/** The copy of a compilation: `<title> copy` in `<name>-copy.compilation.yml` beside it, with a new id and new item ids. */
-export async function planCompilationCopy(row: CompilationRow): Promise<CompilationCopy> {
+/** The copy of a compilation: `<title> copy` in `<name>-copy.compilation.yml` beside it, with a new id and new item ids. It keeps the status; a source without one gives the copy `initialStatus`. */
+export async function planCompilationCopy(row: CompilationRow, initialStatus?: string): Promise<CompilationCopy> {
   const path = await firstFreePath(row.notebookId, taken => compilationCopyPath(row.path, taken));
-  const file = copyCompilation(compilationFile(row), (await listCompilations()).flatMap(note => typeof note.metadata.id === 'string' ? [note.metadata.id] : []));
-  return { path, content: serializeCompilation(file), metadata: compilationMetadata({ ...row, name: file.title }), title: file.title };
+  const source = compilationFile(row);
+  const file = copyCompilation(!source.status && initialStatus ? { ...source, status: initialStatus } : source, (await listCompilations()).flatMap(note => typeof note.metadata.id === 'string' ? [note.metadata.id] : []));
+  return { path, content: serializeCompilation(file), metadata: compilationMetadata({ ...row, name: file.title, ...(file.status ? { status: file.status } : {}) }), title: file.title };
 }

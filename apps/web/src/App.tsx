@@ -74,6 +74,7 @@ import { FocusControls } from './components/FocusControls.js';
 import { AddToFocusDialog } from './components/AddToFocusDialog.js';
 import { CompilationView } from './components/CompilationView.js';
 import { planNewCompilation } from './lib/compilation-create.js';
+import { initialCompilationStatus } from './lib/compilation-status.js';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import { usePhone } from './lib/use-phone.js';
 import { useFocusSearch } from './lib/focus-search.js';
@@ -364,7 +365,7 @@ export const AppContent: React.FC = () => {
     const notebook = config?.notebooks.find(nb => nb.id === row.notebookId);
     if (!notebook) return;
     try {
-      const plan = await planNewCompilation(row, notebook, '', UNTITLED_STEM);
+      const plan = await planNewCompilation(row, notebook, '', UNTITLED_STEM, initialCompilationStatus(config?.notebooks || [], notebook.id, facetsQuery.facets));
       void openFromBrowse(await compilationActions.create(notebook.id, plan.path, plan.content, plan.metadata));
     } catch (error) {
       setActionError((error as Error).message);

@@ -10,6 +10,7 @@ import { useCompilationActions } from '../lib/compilation-actions.js';
 import { CompilationEditingProvider, useCompilationEditing } from '../lib/compilation-editing.js';
 import { useOutlineActions } from '../lib/outline-actions.js';
 import { planCompilationCopy } from '../lib/compilation-copy.js';
+import { initialCompilationStatus } from '../lib/compilation-status.js';
 import { screenCollision, screenKeyboardCoordinates } from '../lib/compilation-drag.js';
 import { useLaneNotes } from '../lib/compilation-queries.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -97,7 +98,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   const copy = async () => {
     if (!row) return;
     try {
-      const next = await planCompilationCopy(row);
+      const next = await planCompilationCopy(row, initialCompilationStatus(notebooks, notebookId, facets.facets));
       await actions.create(notebookId, next.path, next.content, next.metadata);
       setNotice(t('compilation.copied', { title: next.title }));
     } catch (error) {

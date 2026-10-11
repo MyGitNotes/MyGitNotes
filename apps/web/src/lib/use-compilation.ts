@@ -4,7 +4,8 @@ import { type NoteListItem, type NoteRef, noteRefKey } from '@mygitnotes/core/no
 import { useCompilationActions } from './compilation-actions.js';
 import { compilationMetadata, compilationText, parseCompilationNote, type ParsedCompilation, planCompilationWrites } from './compilation-rows.js';
 import { useEditorRegistry } from './note-editing.js';
-import { useNoteList, useNoteLookup } from './use-note-queries.js';
+import { initialCompilationStatus } from './compilation-status.js';
+import { useNoteFacets, useNoteList, useNoteLookup } from './use-note-queries.js';
 import type { NotebookConfig } from './types.js';
 
 /** The pause after the last edit before a compilation file is written. */
@@ -36,10 +37,12 @@ interface ControllerInput {
   registryKey: string;
   /** Where a new row's file goes; without it a view cannot add rows. */
   newPath?: (row: CompilationRow, taken: ReadonlySet<string>) => string;
+  /** The status a new row without one starts with, as a new note of its notebook would. */
+  initialStatus?: (notebookId: string) => string | undefined;
 }
 
 /** Keeps edits made to rows as pending until the stored files show them, writes them after a pause, and reports failures. */
-function useCompilationController({ entries, notebooks, loading, error: loadError, registryKey, newPath }: ControllerInput): CompilationController {
+function useCompilationController({ entries, notebooks, loading, error: loadError, registryKey, newPath, initialStatus }: ControllerInput): CompilationController {
   const actions = useCompilationActions();
   const register = useEditorRegistry();
   const parsed = useMemo(() => entries.map(entry => parseCompilationNote(entry, notebooks)), [entries, notebooks]);
@@ -55,9 +58,9 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     return result;
   }, [stored, pending]);
 
-  const latest = useRef({ pending, stored, entries, rows, actions, newPath });
+  const latest = useRef({ pending, stored, entries, rows, actions, newPath, initialStatus });
   /* eslint-disable react/refs -- The write timer and the unmount flush read the newest state without restarting. */
-  latest.current = { pending, stored, entries, rows, actions, newPath };
+  latest.current = { pending, stored, entries, rows, actions, newPath, initialStatus };
   /* eslint-enable react/refs */
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inflight = useRef<Promise<void>>(Promise.resolve());
@@ -114,7 +117,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   }, [flush]);
 
   const change = useCallback((next: CompilationPage) => {
-    const { rows: current, actions: api, newPath: placeNew } = latest.current;
+    const { rows: current, actions: api, newPath: placeNew, initialStatus: startStatus } = latest.current;
     const writes = planCompilationWrites(current, next.rows);
     if (!writes.save.length && !writes.create.length && !writes.remove.length) return;
     const taken = new Set([...current.map(row => row.path), ...Object.keys(latest.current.pending)]);
@@ -123,7 +126,8 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
       if (!placeNew) return [];
       const path = placeNew(row, taken);
       taken.add(path);
-      return [{ ...row, path }];
+      const status = row.status || startStatus?.(row.notebookId);
+      return [{ ...row, path, ...(status ? { status } : {}) }];
     });
     const updates: Record<string, CompilationRow | null> = {};
     for (const row of [...writes.save, ...created]) {
@@ -172,7 +176,9 @@ export function useCompilations(notebookId: string, notebooks: readonly Notebook
     if (!notebook) throw new Error(`Notebook ${row.notebookId} is not configured.`);
     return newCompilationPath(notebook, row.name, path => taken.has(path));
   }, [notebooks]);
-  return useCompilationController({ entries, notebooks, loading: list.loading || hasMore, error: list.error, registryKey: `compilations:${notebookId}`, newPath });
+  const facets = useNoteFacets(false);
+  const initialStatus = useCallback((id: string) => initialCompilationStatus([...notebooks], id, facets.facets), [notebooks, facets.facets]);
+  return useCompilationController({ entries, notebooks, loading: list.loading || hasMore, error: list.error, registryKey: `compilations:${notebookId}`, newPath, initialStatus });
 }
 
 /** The path a new compilation named `name` is written to in the root of `notebook`, unused by the rows shown. */

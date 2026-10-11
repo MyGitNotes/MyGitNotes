@@ -643,6 +643,18 @@ try {
   assert.ok(fileText(graphFile).includes('GRAPH-EDIT'), "Closing the compilation lost the card's edit");
   console.log('PASS a Graph node expands and edits in place inside a compilation, and its debounced autosave writes the note while the compilation stays open (G1)');
 
+  // A compilation made from the toolbar starts with the first status of its notebook, as a new note does.
+  await viewport(1440, 900);
+  await load(`${base}/notebooks/work?view=flat`, 'button[aria-label="New menu"]');
+  await click('button[aria-label="New menu"]');
+  await page.waitForSelector('[role="menuitem"]', { visible: true });
+  await page.evaluate(() => [...document.querySelectorAll('[role="menuitem"]')].find(item => item.textContent.trim() === 'New compilation').click());
+  const created = 'notes/work/untitled.compilation.yml';
+  for (let attempt = 0; attempt < 120 && !fs.existsSync(path.join(root, created)); attempt++) await settle(100);
+  assert.ok(fs.existsSync(path.join(root, created)), 'The toolbar did not create a compilation');
+  assert.match(fileText(created), /^status: inbox$/m, 'A compilation created from the toolbar was written without the first status');
+  console.log('PASS a compilation created from the toolbar starts with the first status of its notebook');
+
   assert.deepEqual(errors, []);
   console.log('PASS no page errors');
 } catch (error) {
