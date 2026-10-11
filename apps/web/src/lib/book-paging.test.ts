@@ -51,14 +51,28 @@ it('turns the page on ← and → alone, never in a text field, a widget that us
   expect(press(document.getElementById('b')!, { key: 'ArrowRight' })).toBe('next');
 });
 
+it('leaves ← and → to a wide table or code block that scrolls sideways, even inside the book', () => {
+  document.body.innerHTML = '<section class="compilation-book-view"><div class="compilation-book"><div id="table" class="markdown-table-scroll" tabindex="0" style="overflow-x:auto"><span id="cell">cell</span></div><p id="plain">text</p></div></section>';
+  const table = document.getElementById('table')!;
+  Object.defineProperty(table, 'scrollWidth', { value: 900, configurable: true });
+  Object.defineProperty(table, 'clientWidth', { value: 300, configurable: true });
+  expect(press(table, { key: 'ArrowRight' })).toBeNull();
+  expect(press(document.getElementById('cell')!, { key: 'ArrowLeft' })).toBeNull();
+  // The book's own body may be wider than it shows without taking the keys from the page.
+  const body = document.querySelector('.compilation-book') as HTMLElement;
+  body.style.overflowX = 'auto';
+  Object.defineProperty(body, 'scrollWidth', { value: 900, configurable: true });
+  Object.defineProperty(body, 'clientWidth', { value: 300, configurable: true });
+  expect(press(document.getElementById('plain')!, { key: 'ArrowRight' })).toBe('next');
+});
+
 it('does not start a swipe in an editor, a section being edited or a block that scrolls sideways', () => {
   document.body.innerHTML = '<div id="body"><p id="p">text</p><section data-editing><p id="e">edit</p></section><div id="wide" style="overflow-x:auto"><span id="w">wide</span></div><textarea id="t"></textarea></div>';
-  const body = document.getElementById('body')!;
-  expect(swipeStartsHere(document.getElementById('p'), body)).toBe(true);
-  expect(swipeStartsHere(document.getElementById('e'), body)).toBe(false);
-  expect(swipeStartsHere(document.getElementById('t'), body)).toBe(false);
+  expect(swipeStartsHere(document.getElementById('p'))).toBe(true);
+  expect(swipeStartsHere(document.getElementById('e'))).toBe(false);
+  expect(swipeStartsHere(document.getElementById('t'))).toBe(false);
   const wide = document.getElementById('wide')!;
   Object.defineProperty(wide, 'scrollWidth', { value: 900, configurable: true });
   Object.defineProperty(wide, 'clientWidth', { value: 300, configurable: true });
-  expect(swipeStartsHere(document.getElementById('w'), body)).toBe(false);
+  expect(swipeStartsHere(document.getElementById('w'))).toBe(false);
 });

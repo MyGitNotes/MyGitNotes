@@ -19,8 +19,8 @@ export interface BookFolderProps {
   writable: boolean;
   onOpen: (item: CompilationItem, note?: NoteListItem) => void;
   onLiveTitle: (anchor: string, title: string | undefined) => void;
-  /** Reports the note sections the folder lists, for the contents list; an empty list once the folder leaves the book. */
-  onEntries: (chapterId: string, entries: BookEntry[]) => void;
+  /** Reports the note sections the folder lists, for the contents list; an empty list, with `leaving`, once the folder stops showing (a paged book turned away, or the chapter left). */
+  onEntries: (chapterId: string, entries: BookEntry[], leaving?: boolean) => void;
 }
 
 /** A folder chapter: its notes as sub-sections in title order, a page of 200 at a time, then its assets as a compact list. */
@@ -33,7 +33,7 @@ export function BookFolder({ item, anchor, title, assets, writable, onOpen, onLi
   const signature = members.map(note => `${note.path}\n${note.title}`).join('\n\n');
   useEffect(() => {
     onEntries(item.id, members.map(note => ({ anchor: sectionAnchor(item, note.path), title: note.title, level: 1 })));
-    return () => onEntries(item.id, []);
+    return () => onEntries(item.id, [], true);
     // The signature stands for the member list: the entries are rebuilt from it, not from the note objects' identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id, signature, onEntries]);

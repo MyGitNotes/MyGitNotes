@@ -1,15 +1,16 @@
-import { type ReactNode, type TouchEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { List } from 'lucide-react';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import type { NotebookFacets } from '@mygitnotes/core/note-query';
 import { type BookChapter as Chapter, bookChapters, bookEntries, type BookEntry, slotAnchor } from '../lib/book-chapters.js';
-import { chapterOfAnchor, hasSelection, type PageStep, pagingKey, resolvePage, swipeStartsHere, swipeStep } from '../lib/book-paging.js';
-import { type BookReadingMode, useBookReadingMode, writeBookReadingMode } from '../lib/book-reading.js';
+import { chapterOfAnchor, type PageStep, resolvePage } from '../lib/book-paging.js';
+import { useBookReadingMode, writeBookReadingMode } from '../lib/book-reading.js';
 import { useCompilationEditingContext, useHeldNotes, useHeldOrder } from '../lib/compilation-editing.js';
 import { compilationRowItems, studyRowItems } from '../lib/compilation-content.js';
 import { useLaneNotes } from '../lib/compilation-queries.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useScrollSpy } from '../lib/scroll-spy.js';
+import { useBookPageInput } from '../lib/use-book-page-input.js';
 import type { StudyController } from '../lib/use-study-workspace.js';
 import { BookChapter } from './BookChapter.js';
 import { BookPager } from './BookPager.js';
@@ -55,23 +56,40 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
   const editingEntry = editing ? slotAnchor(editing.slot, chapters) : null;
   const readingMode = useBookReadingMode();
   const paged = readingMode === 'paged';
-  // The page is a chapter's id, so a reorder or a chapter that arrives does not move the reader to another chapter.
-  const [pageId, setPageId] = useState<string | null>(null);
-  const lastIndex = useRef(0);
-  const pageIndex = resolvePage(chapters, pageId, lastIndex.current);
+  // The page is a chapter's id, so a reorder or a chapter that arrives does not move the reader to another chapter; the index is where the chapter was, for one that leaves.
+  const [position, setPosition] = useState<{ id: string | null; index: number; }>({ id: null, index: 0 });
+  const pageIndex = resolvePage(chapters, position.id, position.index);
   const page = chapters.at(pageIndex);
+  // Kept in step before paint (not by a state update while rendering, which an external-store re-render does not survive).
+  useLayoutEffect(() => {
+    if (page && (position.id !== page.id || position.index !== pageIndex)) setPosition({ id: page.id, index: pageIndex });
+  }, [page, position, pageIndex]);
   const shown = paged && page ? [page] : chapters;
   const editingShown = editingEntry && entries.some(entry => entry.anchor === editingEntry) ? editingEntry : null;
   const active = editingShown ?? (paged ? page?.anchor ?? null : spied);
   const writable = !header.readOnly;
-  // What to do with the body once a new page or mode has rendered: show the top of the page (and focus its heading for a page turn), or the chapter the reader was in.
+  // Switching to paged, whoever switched it, opens the chapter in view, or the one that edits so its editor is not left behind (P7).
+  const adopted = useRef(readingMode);
+  useLayoutEffect(() => {
+    if (adopted.current === readingMode) return;
+    adopted.current = readingMode;
+    const chapter = paged ? chapterOfAnchor(chapters, editingShown ?? spied ?? '') : undefined;
+    if (chapter) setPosition({ id: chapter.id, index: chapters.indexOf(chapter) });
+    // Only a change of mode adopts a chapter; what is in view at that moment is read from this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readingMode]);
+  // What to do with the body once a new page has rendered: show its top, and for a page turn focus the heading or reveal the section the contents chose.
   const arrival = useRef<{ anchor: string; focus: boolean; } | null>(null);
   const turning = useRef(false);
-  useEffect(() => {
-    lastIndex.current = pageIndex;
-  }, [pageIndex]);
+  const shownBefore = useRef(readingMode);
+  // A paged book mounts one chapter at a time, so a folder that leaves keeps its lines in the contents until its chapter does.
+  const pagedNow = useRef(paged);
+  /* eslint-disable react/refs -- Read when a folder reports, never while rendering. */
+  pagedNow.current = paged;
+  /* eslint-enable react/refs */
 
-  const onEntries = useCallback((chapterId: string, next: BookEntry[]) => {
+  const onEntries = useCallback((chapterId: string, next: BookEntry[], leaving = false) => {
+    if (leaving && pagedNow.current) return;
     setSections(current => {
       const same = (current.get(chapterId) ?? []).length === next.length && next.every((entry, index) => current.get(chapterId)![index].anchor === entry.anchor && current.get(chapterId)![index].title === entry.title);
       if (same || (!next.length && !current.has(chapterId))) return current;
@@ -81,6 +99,17 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
       return copy;
     });
   }, []);
+  const chapterIds = chapters.map(chapter => chapter.id).join('\n');
+  useEffect(() => {
+    const present = new Set(chapterIds.split('\n'));
+    setSections(current => {
+      const gone = [...current.keys()].filter(id => !present.has(id));
+      if (!gone.length) return current;
+      const copy = new Map(current);
+      for (const id of gone) copy.delete(id);
+      return copy;
+    });
+  }, [chapterIds]);
   const onLiveTitle = useCallback((anchor: string, title: string | undefined) => {
     setLiveTitles(current => {
       if (current.get(anchor) === title) return current;
@@ -91,23 +120,25 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
     });
   }, []);
 
-  // A jump puts the heading at the top of the body, smoothly unless the reader asked for less motion, and focuses it where it is.
-  const jump = (anchor: string, behavior: 'smooth' | 'auto' = 'smooth') => {
+  // A jump puts the heading at the top of the body, smoothly unless the reader asked for less motion, and focuses it where it is unless `focus` is off.
+  const jump = (anchor: string, behavior: 'smooth' | 'auto' = 'smooth', focus = true) => {
     const heading = headings(body, anchor);
     if (!body || !heading) return;
     const top = body.scrollTop + heading.getBoundingClientRect().top - body.getBoundingClientRect().top;
     const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     body.scrollTo({ top, behavior: reduced ? 'auto' : behavior });
-    heading.focus({ preventScroll: true });
+    if (focus) heading.focus({ preventScroll: true });
   };
-  // A page turn leaves a section that edits only once it is saved (P5); a failed save keeps the reader on the page with the editor's notice.
-  const goToPage = async (chapter: Chapter | undefined) => {
-    if (!chapter || turning.current || chapter.id === page?.id) return;
+  // A page turn leaves a section that edits only once it is saved (P5); a failed save keeps the reader on the page with the editor's notice. False when the page did not turn.
+  const goToPage = async (chapter: Chapter | undefined, anchor = chapter?.anchor) => {
+    if (!chapter || !anchor || turning.current) return false;
+    if (chapter.id === page?.id) return true;
     turning.current = true;
     try {
-      if (editing && !await finish()) return;
-      arrival.current = { anchor: chapter.anchor, focus: true };
-      setPageId(chapter.id);
+      if (editing && !await finish()) return false;
+      arrival.current = { anchor, focus: true };
+      setPosition({ id: chapter.id, index: chapters.indexOf(chapter) });
+      return true;
     } finally {
       turning.current = false;
     }
@@ -119,31 +150,43 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
     // The last loaded page: the next chapters are fetched before Next gives up (P6).
     else if (laneNotes.hasMore && !laneNotes.loadingMore) laneNotes.loadMore();
   };
-  const jumpTo = (anchor: string) => {
+  const jumpTo = async (anchor: string) => {
     const chapter = paged ? chapterOfAnchor(chapters, anchor) : undefined;
-    if (paged && chapter && chapter.id !== page?.id) void goToPage(chapter);
-    else jump(anchor);
-  };
-  // Switching modes keeps the reader at the same chapter: paged opens the chapter in view (the one editing, if any), continuous scrolls to the page's chapter (P7).
-  const changeMode = (next: BookReadingMode) => {
-    if (next === readingMode) return;
-    if (next === 'paged') {
-      const chapter = chapterOfAnchor(chapters, editingShown ?? spied ?? '') ?? page;
-      if (chapter) {
-        setPageId(chapter.id);
-        arrival.current = { anchor: chapter.anchor, focus: false };
-      }
-    } else if (page) arrival.current = { anchor: page.anchor, focus: false };
-    writeBookReadingMode(next);
+    if (!chapter || chapter.id === page?.id) {
+      jump(anchor);
+      return true;
+    }
+    return goToPage(chapter, anchor);
   };
   useEffect(() => {
+    if (!body) return;
+    const modeChanged = shownBefore.current !== readingMode;
+    shownBefore.current = readingMode;
     const pending = arrival.current;
-    if (!pending || !body) return;
     arrival.current = null;
-    if (paged) {
-      body.scrollTop = 0;
-      if (pending.focus) headings(body, pending.anchor)?.focus({ preventScroll: true });
-    } else jump(pending.anchor, 'auto');
+    if (!paged) {
+      // Back to continuous, the reader is at the chapter the page showed, with focus left where it was.
+      if (modeChanged && page) jump(page.anchor, 'auto', false);
+      return;
+    }
+    if (modeChanged || pending) body.scrollTop = 0;
+    if (!pending) return;
+    // The page's own heading is there at once; a folder's note section arrives with the folder's notes.
+    const reveal = () => {
+      const heading = headings(body, pending.anchor);
+      if (!heading) return false;
+      if (pending.anchor === page?.anchor) heading.focus({ preventScroll: true });
+      else jump(pending.anchor, 'auto');
+      return true;
+    };
+    if (reveal()) return;
+    const observer = new MutationObserver(() => reveal() && observer.disconnect());
+    observer.observe(body, { childList: true, subtree: true });
+    const stop = setTimeout(() => observer.disconnect(), 5000);
+    return () => {
+      observer.disconnect();
+      clearTimeout(stop);
+    };
     // `jump` reads only the body and the anchor; the effect runs when the page or the mode changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page?.id, paged, body]);
@@ -153,48 +196,7 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
     // `loadMore` is a new function each render; the page, the chapter count and the loading flags say when to ask.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paged, pageIndex, chapters.length, laneNotes.hasMore, laneNotes.loadingMore, laneNotes.loading, laneNotes.error]);
-  // ← and → turn the page while focus is on the book or on nothing, not in an editor, an input or a widget that moves with the arrows (P3).
-  const turn = useRef(step);
-  useEffect(() => {
-    turn.current = step;
-  });
-  useEffect(() => {
-    if (!paged || !book) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target;
-      if (target !== document.body && !(target instanceof Node && book.contains(target))) return;
-      // A dialog over the book, the contents drawer included, owns the arrow keys; the dialog the book itself sits in does not.
-      if ([...document.querySelectorAll('[aria-modal="true"]')].some(dialog => !dialog.contains(book))) return;
-      const direction = pagingKey(event);
-      if (!direction) return;
-      event.preventDefault();
-      turn.current(direction);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [paged, book]);
-  // A horizontal swipe on the page turns it, except while a section edits or text is selected (P3).
-  const touch = useRef<{ x: number; y: number; at: number; } | null>(null);
-  const swipe = paged
-    ? {
-      onTouchStart: (event: TouchEvent<HTMLElement>) => {
-        const point = event.touches[0];
-        touch.current = event.touches.length === 1 && !editing && body && swipeStartsHere(event.target, body) ? { x: point.clientX, y: point.clientY, at: performance.now() } : null;
-      },
-      onTouchMove: (event: TouchEvent<HTMLElement>) => {
-        if (event.touches.length > 1) touch.current = null;
-      },
-      onTouchCancel: () => void (touch.current = null),
-      onTouchEnd: (event: TouchEvent<HTMLElement>) => {
-        const start = touch.current;
-        touch.current = null;
-        const point = event.changedTouches[0];
-        if (!start || editing || hasSelection()) return;
-        const direction = swipeStep(point.clientX - start.x, point.clientY - start.y, performance.now() - start.at);
-        if (direction) step(direction);
-      },
-    }
-    : {};
+  const swipe = useBookPageInput({ active: paged, book, editing: Boolean(editing), onStep: step });
   const closeDrawer = () => {
     setDrawer(false);
     opener.current?.focus();
@@ -218,11 +220,11 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
           <List size={14} aria-hidden='true' />
           <span>{t('book.contents')}</span>
         </Button>
-        <BookReadingToggle mode={readingMode} onChange={changeMode} />
+        <BookReadingToggle mode={readingMode} onChange={writeBookReadingMode} />
       </div>
       <div className='compilation-book-layout'>
-        <BookContents {...contents} onJump={jumpTo} />
-        <div ref={setBody} className='compilation-book' aria-label={`${row.name} · ${t('screen.items')}`} {...swipe}>{shown.map(chapter => <BookChapter key={chapter.id} chapter={chapter} assets={assets} writable={writable} onOpen={onOpen} onLiveTitle={onLiveTitle} onEntries={onEntries} />)} {laneNotes.error && <p role='alert' className='screen-error'>{laneNotes.error}</p>} {laneNotes.loading && <LoadingStatus className='screen-lane-empty'>{t('notes.loading')}</LoadingStatus>} {!paged && <NoteListSentinel hasMore={laneNotes.hasMore} loading={laneNotes.loadingMore} error={laneNotes.error} onLoadMore={laneNotes.loadMore} className='screen-lane-sentinel' />} {!chapters.length && !laneNotes.loading && <div className='screen-lane-empty'>{t(row.kind === 'custom' ? 'screen.emptyCustom' : 'screen.emptyDynamic')}</div>}</div>
+        <BookContents {...contents} onJump={anchor => void jumpTo(anchor)} />
+        <div {...swipe} ref={setBody} className='compilation-book' aria-label={`${row.name} · ${t('screen.items')}`}>{shown.map(chapter => <BookChapter key={chapter.id} chapter={chapter} assets={assets} writable={writable} onOpen={onOpen} onLiveTitle={onLiveTitle} onEntries={onEntries} />)} {laneNotes.error && <p role='alert' className='screen-error'>{laneNotes.error}</p>} {laneNotes.loading && <LoadingStatus className='screen-lane-empty'>{t('notes.loading')}</LoadingStatus>} {!paged && <NoteListSentinel hasMore={laneNotes.hasMore} loading={laneNotes.loadingMore} error={laneNotes.error} onLoadMore={laneNotes.loadMore} className='screen-lane-sentinel' />} {!chapters.length && !laneNotes.loading && <div className='screen-lane-empty'>{t(row.kind === 'custom' ? 'screen.emptyCustom' : 'screen.emptyDynamic')}</div>}</div>
       </div>
       {paged && chapters.length > 0 && <BookPager index={pageIndex} total={chapters.length} hasMore={laneNotes.hasMore} loadingMore={laneNotes.loadingMore} onStep={step} />}
       {drawer && book && (
@@ -231,7 +233,8 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
           container={book}
           onJump={anchor => {
             setDrawer(false);
-            jumpTo(anchor);
+            // A page that stayed (a save that failed) leaves the reader where the drawer opened from.
+            void jumpTo(anchor).then(turned => turned || opener.current?.focus());
           }}
           onClose={closeDrawer}
         />

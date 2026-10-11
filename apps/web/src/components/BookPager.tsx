@@ -26,7 +26,7 @@ export function BookPager({ index, total, hasMore, loadingMore, onStep }: BookPa
         <ChevronLeft size={16} aria-hidden='true' />
         <span>{t('book.previousPage')}</span>
       </Button>
-      <span className='compilation-book-page-count' role='status' aria-label={t('book.pageOf', counts)}>{t(hasMore ? 'book.pageCountMore' : 'book.pageCount', counts)}</span>
+      <span className='compilation-book-page-count' role='status'>{t(hasMore ? 'book.pageCountMore' : 'book.pageCount', counts)}</span>
       <Button type='button' disabled={last && (!hasMore || loadingMore)} aria-keyshortcuts='ArrowRight' onClick={() => onStep('next')}>
         <span>{t('book.nextPage')}</span>
         <ChevronRight size={16} aria-hidden='true' />

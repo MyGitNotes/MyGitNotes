@@ -15,7 +15,7 @@ export interface BookChapterProps {
   writable: boolean;
   onOpen: (item: CompilationItem, note?: NoteListItem) => void;
   onLiveTitle: (anchor: string, title: string | undefined) => void;
-  onEntries: (chapterId: string, entries: BookEntry[]) => void;
+  onEntries: (chapterId: string, entries: BookEntry[], leaving?: boolean) => void;
 }
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;

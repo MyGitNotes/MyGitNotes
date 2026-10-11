@@ -475,7 +475,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'book.pages': '頁面',
   'book.previousPage': '上一頁',
   'book.nextPage': '下一頁',
-  'book.pageOf': '第 {page} 頁，共 {total} 頁',
   'book.pageCount': '{page} / {total}',
   'book.pageCountMore': '{page} / {total}+',
   'compilation.editNote': '編輯「{title}」',

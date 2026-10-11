@@ -541,3 +541,76 @@ it('shows a folder chapter as one page with its notes in order', async () => {
   fireEvent.click(next());
   await waitFor(() => expect(pageTitle()).toEqual(['A talk']));
 });
+
+it("keeps a folder's notes in the contents while the book is on another page, and a click on one goes to its page and section", async () => {
+  writeBookReadingMode('paged');
+  const mixed: CompilationRow = { ...row, items: [{ id: 'folder-1', kind: 'folder', notebookId: 'nb1', path: 'notes/nb1/sub' }, { id: 'item-3', kind: 'youtube', videoId: 'dQw4w9WgXcQ', start: 0, title: 'A talk' }] };
+  render(book({ row: mixed }), { wrapper });
+  await waitFor(() => expect(within(chapters()[0]).getByRole('heading', { level: 3, name: 'Note A' })).toBeInTheDocument());
+  await waitFor(() => expect(contentsButtons().map(entry => entry.textContent)).toEqual(['sub', 'Note A', 'A talk']));
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['A talk']));
+  expect(contentsButtons().map(entry => entry.textContent)).toEqual(['sub', 'Note A', 'A talk']);
+  fireEvent.click(contentsButtons()[1]);
+  await waitFor(() => expect(pageTitle()).toEqual(['sub']));
+  await waitFor(() => expect(within(chapters()[0]).getByRole('heading', { level: 3, name: 'Note A' })).toHaveFocus());
+});
+
+it('turns one page for two quick presses of Next while the section that edits is still saving (P5)', async () => {
+  writeBookReadingMode('paged');
+  render(book({ readOnly: false }), { wrapper });
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit Note A' }));
+  await waitFor(() => expect(chapters()[0]).toHaveAttribute('data-editing'));
+  let finishSave: (saved: boolean) => void = () => {};
+  flushEditors.mockReturnValueOnce(new Promise<boolean>(resolve => void (finishSave = resolve)));
+  fireEvent.click(next());
+  fireEvent.click(next());
+  await act(async () => finishSave(true));
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
+  expect(count()).toBe('2 / 3');
+  expect(flushEditors).toHaveBeenCalledTimes(1);
+});
+
+it('leaves focus on the mode button when the mode changes, in both directions', async () => {
+  render(book(), { wrapper });
+  await waitFor(() => expect(chapters()).toHaveLength(3));
+  const toggle = (name: string) => within(screen.getByRole('group', { name: 'Reading mode' })).getByRole('button', { name });
+  toggle('Paged').focus();
+  fireEvent.click(toggle('Paged'));
+  await screen.findByRole('navigation', { name: 'Pages' });
+  expect(toggle('Paged')).toHaveFocus();
+  toggle('Continuous').focus();
+  fireEvent.click(toggle('Continuous'));
+  await waitFor(() => expect(chapters()).toHaveLength(3));
+  expect(toggle('Continuous')).toHaveFocus();
+});
+
+it('turns only the Book the reader last used when ← or → is pressed with nothing focused', async () => {
+  writeBookReadingMode('paged');
+  laneOverride.current = lane([noteA, noteB]);
+  render(createElement('div', null, book({ row: pairRow }), book({ row: { ...pairRow, id: 'row-2' } })), { wrapper });
+  const books = () => [...document.querySelectorAll<HTMLElement>('.compilation-book-view')];
+  const titles = () => books().map(view => within(view).getByRole('heading', { level: 2 }).textContent);
+  await waitFor(() => expect(titles()).toEqual(['Note A', 'Note A']));
+  fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+  await waitFor(() => expect(titles()).toEqual(['Note B', 'Note A']));
+  fireEvent.pointerDown(within(books()[1]).getByRole('heading', { level: 2 }));
+  fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+  await waitFor(() => expect(titles()).toEqual(['Note B', 'Note B']));
+  fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
+  await waitFor(() => expect(titles()).toEqual(['Note B', 'Note A']));
+});
+
+it('lets the contents drawer leave the reader where it opened from when the page cannot turn', async () => {
+  writeBookReadingMode('paged');
+  render(book({ readOnly: false }), { wrapper });
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit Note A' }));
+  await waitFor(() => expect(chapters()[0]).toHaveAttribute('data-editing'));
+  flushEditors.mockResolvedValueOnce(false);
+  const open = screen.getByRole('button', { name: 'Show contents' });
+  fireEvent.click(open);
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Contents' })).getByRole('button', { name: /A talk/ }));
+  await waitFor(() => expect(flushEditors).toHaveBeenCalled());
+  await waitFor(() => expect(open).toHaveFocus());
+  expect(chapters()[0]).toHaveAttribute('data-editing');
+});

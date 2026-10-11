@@ -30,7 +30,17 @@ export function swipeStep(dx: number, dy: number, milliseconds: number): PageSte
 }
 
 /** Widgets that use the arrow keys themselves. */
-const ARROW_WIDGETS = '[role="tablist"],[role="tab"],[role="radiogroup"],[role="slider"],[role="menu"],[role="menubar"],[role="listbox"],[role="tree"],[role="grid"],[role="spinbutton"],video,audio,iframe,summary';
+const ARROW_WIDGETS = '[role="tablist"],[role="tab"],[role="radiogroup"],[role="radio"],[role="slider"],[role="toolbar"],[role="menu"],[role="menubar"],[role="listbox"],[role="tree"],[role="treegrid"],[role="grid"],[role="spinbutton"],video,audio,iframe,summary';
+/** The book's own body and frame: whether they could scroll sideways is not a reason to keep the arrows from the page. */
+const BOOK_FRAME = '.compilation-book,.compilation-book-view';
+
+/** Whether `target` or something around it, up to the book, scrolls sideways: a wide table or code block, which a key or a drag belongs to. */
+function insideSidewaysScroll(target: Element): boolean {
+  for (let element: Element | null = target; element && !element.matches(BOOK_FRAME); element = element.parentElement) {
+    if (element instanceof HTMLElement && element.scrollWidth > element.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(element).overflowX)) return true;
+  }
+  return false;
+}
 
 /**
  * The page a key press asks for, or `null` when the key is not for paging: ← and → alone, and not while focus
@@ -43,17 +53,13 @@ export function pagingKey(event: KeyboardEvent): PageStep | null {
   else if (matchesCommand(event, 'book.nextPage')) step = 'next';
   else return null;
   const target = event.target instanceof Element ? event.target : null;
-  if (isEditableTarget(target) || target?.closest(`${ARROW_WIDGETS},[data-key-scope]`)) return null;
+  if (!target || isEditableTarget(target) || target.closest(`${ARROW_WIDGETS},[data-key-scope]`) || insideSidewaysScroll(target)) return null;
   return step;
 }
 
 /** Whether a touch that began on `target` may turn the page: not inside an editor, a scrollable-sideways block or a control that drags. */
-export function swipeStartsHere(target: EventTarget | null, body: HTMLElement): boolean {
-  if (!(target instanceof Element) || isEditableTarget(target) || target.closest('[data-editing],iframe,input,[role="slider"]')) return false;
-  for (let element: Element | null = target; element && element !== body; element = element.parentElement) {
-    if (element instanceof HTMLElement && element.scrollWidth > element.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(element).overflowX)) return false;
-  }
-  return true;
+export function swipeStartsHere(target: EventTarget | null): boolean {
+  return target instanceof Element && !isEditableTarget(target) && !target.closest('[data-editing],iframe,input,[role="slider"]') && !insideSidewaysScroll(target);
 }
 
 /** Whether the reader has text selected, which a swipe must not interrupt. */

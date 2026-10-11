@@ -302,6 +302,13 @@ try {
   await pageIs('13 / 13', 'sub');
   assert.deepEqual(await page.$$eval('.compilation-book h3', headings => headings.map(heading => heading.textContent.trim())), ['Sub one', 'Sub two']);
   assert.equal(await (await pagerButton('Next')).evaluate(button => button.disabled), true, 'Next is enabled on the last page');
+  // The folder's notes stay in the contents from another page, and choosing one goes to the folder page and that note.
+  await page.click('.compilation-book-layout > .compilation-book-contents li:nth-child(1) button');
+  await pageIs('1 / 13', 'Chapter 01');
+  assert.ok((await entries()).includes('Sub two'), 'The folder notes left the contents after the page turned away');
+  await page.evaluate(() => [...document.querySelectorAll('.compilation-book-layout > .compilation-book-contents button')].find(button => button.textContent.trim() === 'Sub two').click());
+  await pageIs('13 / 13', 'sub');
+  await page.waitForFunction(() => document.activeElement?.dataset.bookAnchor?.endsWith('sub-two.md'));
   // The mode survives a reload and nothing was written to the compilation.
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.compilation-book-pager');

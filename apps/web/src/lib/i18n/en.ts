@@ -473,7 +473,6 @@ export const en = {
   'book.pages': 'Pages',
   'book.previousPage': 'Previous',
   'book.nextPage': 'Next',
-  'book.pageOf': 'Page {page} of {total}',
   'book.pageCount': '{page} / {total}',
   'book.pageCountMore': '{page} / {total}+',
   'compilation.editNote': 'Edit {title}',

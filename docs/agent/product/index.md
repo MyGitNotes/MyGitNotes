@@ -72,6 +72,7 @@ Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/
 舊版用戶端讀到 `book` 會把該合輯標為無效並附上原因，不會丟棄或改寫；Pro 與社群版要一起升級。
 書本的閱讀方式（連續捲動或分頁）是每台裝置的檢視偏好，存在瀏覽器 `localStorage`（`github-notes:book-reading-mode`，預設連續），切換不寫合輯檔案、不產生 commit。
 分頁以章節 `id` 追蹤，一次只繪製一章；← → 在 KEYMAP 的 `book` 範圍，觸控滑動由書本內文處理，兩者都不在編輯器、輸入框與正在編輯的區段內作用；離開正在編輯的頁面前走合輯編輯狀態的 `finish()`，儲存失敗就留在原頁。
+資料夾章節的小節要等該頁載入過才列進目錄，離開後仍保留到章節本身離開書本；有多本書同時開著時，焦點在頁面上（沒有聚焦任何元件）的 ← → 只翻最後操作過的那一本。
 
 舊版 `.github-notes-screen.yaml` 只由 `migrate-workspace`（schema 2 → 3）讀取：每條河道轉成 `<筆記本根目錄>/<slug(名稱)>.compilation.yml`，名稱衝突加 `-2`、`-3`，保留 `id`、排列、項目或來源、排序、學習設定與關聯圖；Focus 的 `lane` 分頁改為指向新檔的路徑分頁，河道已不存在的分頁刪除；每個儲存庫提交一個遷移 commit。
 `SUPPORTED_SCHEMA_VERSION` 為 3，本機啟動遇到 schema 2 會拒絕並指向 `pnpm migrate-workspace`。
