@@ -38,6 +38,13 @@ describe('KEYMAP', () => {
     expect(zhTW['shortcuts.scope.compilation-edit']).toBeTruthy();
   });
 
+  it('lists turning a Book page with the arrow keys in its own scope, without taking them from the editors', () => {
+    const turn = KEYMAP.filter(entry => entry.id.startsWith('book.'));
+    expect(turn.map(entry => [entry.id, entry.scopes, entry.handler, entry.bindings.map(binding => binding.keys)])).toEqual([['book.previousPage', ['book'], 'widget', ['ArrowLeft']], ['book.nextPage', ['book'], 'widget', ['ArrowRight']]]);
+    expect(en['shortcuts.scope.book']).toBeTruthy();
+    expect(zhTW['shortcuts.scope.book']).toBeTruthy();
+  });
+
   it('gives every dispatcher entry a phase and every other entry none', () => {
     for (const entry of KEYMAP) expect(entry.phase !== undefined, entry.id).toBe(entry.handler === 'dispatcher');
   });

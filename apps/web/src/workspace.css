@@ -142,7 +142,15 @@
 .compilation-view[data-arrangement='book'] .compilation-body { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 8px; }
 .compilation-book-view { container: compilation-book / inline-size; position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; margin-bottom: 0; }
 .compilation-book-view > .screen-lane-header { flex: none; }
-.compilation-book-bar { display: none; flex: none; padding: 0 8px 6px; }
+.compilation-book-bar { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 8px; padding: 0 8px 6px; }
+.compilation-book-bar .compilation-book-contents-button { display: none; margin-inline-end: auto; }
+.compilation-book-modes { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: var(--workspace-selection); }
+.compilation-book-modes [aria-pressed='true'] { background: var(--color-surface); color: var(--color-primary); box-shadow: 0 1px 3px color-mix(in srgb, var(--color-scrim) 7%, transparent); }
+.compilation-book-modes .ui-button { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 2px 8px; border-color: transparent; background: transparent; font-size: 13px; }
+.compilation-book-pager { display: flex; flex: none; align-items: center; justify-content: center; gap: 12px; padding: 8px; border-top: 1px solid var(--workspace-divider); }
+.compilation-book-pager .ui-button { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; }
+.compilation-book-page-count { min-width: 5ch; font-variant-numeric: tabular-nums; text-align: center; color: var(--color-muted); }
+@media (max-width: 767px), (pointer: coarse) { .compilation-book-pager .ui-button, .compilation-book-modes .ui-button, .compilation-book-bar .compilation-book-contents-button { min-height: 44px; } }
 .compilation-book-layout { display: grid; flex: 1 1 auto; grid-template-columns: minmax(160px, 240px) minmax(0, 1fr); gap: 16px; min-height: 0; }
 .compilation-book-contents { min-height: 0; overflow-y: auto; padding: 2px 4px 16px 8px; font-size: 13px; }
 .compilation-book-contents ol { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; list-style: none; }
@@ -184,7 +192,7 @@
 .compilation-book-drawer-close { align-self: flex-end; flex: none; }
 .compilation-book-drawer-panel > .compilation-book-contents { flex: 1 1 auto; }
 /* Under 720px (the compilation's own width, in zoom or in a Focus pane) the contents list gives its column to the book and opens as a drawer from the Contents button. */
-@container compilation-book (max-width: 719px) { .compilation-book-layout { grid-template-columns: minmax(0, 1fr); } .compilation-book-layout > .compilation-book-contents { display: none; } .compilation-book-bar { display: flex; } .compilation-book { padding-right: 0; } }
+@container compilation-book (max-width: 719px) { .compilation-book-layout { grid-template-columns: minmax(0, 1fr); } .compilation-book-layout > .compilation-book-contents { display: none; } .compilation-book-bar .compilation-book-contents-button { display: inline-flex; } .compilation-book { padding-right: 0; } }
 /* Narrow lane: under 560px of the compilation's own width, never the viewport's, cards list top to bottom at the lane's width, scrolling vertically; their height still follows the size. 560 is LANE_VERTICAL_BELOW in lib/use-lane-orientation.ts, which picks the matching behavior. */
 @container compilation (width < 560px) { .compilation-view:is([data-arrangement='thumbnail'], [data-arrangement='small'], [data-arrangement='medium']) .screen-lane-strip { flex-direction: column; overflow-x: hidden; overflow-y: auto; } .compilation-view:is([data-arrangement='thumbnail'], [data-arrangement='small'], [data-arrangement='medium']) .screen-card-slot { flex: none; width: 100%; } .compilation-view:is([data-arrangement='thumbnail'], [data-arrangement='small'], [data-arrangement='medium']) .screen-card-content { flex: none; height: var(--screen-content-height); } }
 /* A note card is a note slot: the padding sits on its reading view, so a click anywhere on the body reaches the slot; while it edits, the editor fills the content area and scrolls inside it and the card keeps its size. */

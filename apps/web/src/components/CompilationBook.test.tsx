@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import { emptyStudyWorkspace } from '@mygitnotes/core/study';
+import { BOOK_READING_STORAGE_KEY, resetBookReadingMode, writeBookReadingMode } from '../lib/book-reading.js';
 import { CompilationEditingProvider, useCompilationEditing } from '../lib/compilation-editing.js';
 import type { NotebookConfig } from '../lib/types.js';
 import { setNoteQueryScope } from '../lib/use-note-queries.js';
@@ -43,6 +44,8 @@ const row: CompilationRow = { id: 'row-1', path: 'notes/nb1/reading.compilation.
 const study: StudyController = { study: emptyStudyWorkspace(), save: async () => false, action: async () => false, reload: async () => {}, loading: false, saving: false, error: '', writable: false };
 
 beforeEach(() => {
+  localStorage.clear();
+  resetBookReadingMode();
   flushEditors.mockReset().mockResolvedValue(true);
   editorProps.mockReset().mockReturnValue({ readOnly: false });
   portalled.clear();
@@ -299,4 +302,242 @@ it('keeps a section editing, and every chapter as a note, when its note drops ou
   await waitFor(() => expect(chapters()[0]).not.toHaveAttribute('data-editing'));
   // With editing over, the live notes apply again.
   await waitFor(() => expect(screen.getAllByText('This item may have moved or been deleted.')).toHaveLength(2));
+});
+
+const pager = () => screen.getByRole('navigation', { name: 'Pages' });
+const next = () => within(pager()).getByRole('button', { name: 'Next' });
+const previous = () => within(pager()).getByRole('button', { name: 'Previous' });
+const count = () => within(pager()).getByRole('status').textContent;
+const pageTitle = () => chapters().map(chapter => within(chapter).getByRole('heading', { level: 2 }).textContent);
+const contentsButtons = () => within(screen.getByRole('navigation', { name: 'Contents' })).getAllByRole('button');
+const touch = (element: Element, type: 'touchStart' | 'touchEnd', x: number, y = 100) => fireEvent[type](element, type === 'touchStart' ? { touches: [{ clientX: x, clientY: y }] } : { changedTouches: [{ clientX: x, clientY: y }], touches: [] });
+const noteB = { ...noteA, id: 'notes/nb1/b.md', path: 'notes/nb1/b.md', title: 'Note B', content: '# Chapter Two\n\nThe body of note B.' };
+const pairRow: CompilationRow = { ...row, items: [{ id: 'item-1', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/a.md' }, { id: 'item-2', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/b.md' }] };
+const lane = (notes: unknown[], more: Partial<{ hasMore: boolean; loadingMore: boolean; loadMore: () => void; }> = {}) => ({ notes: notes as never, loading: false, error: '', hasMore: false, loadingMore: false, loadMore: () => {}, ...more });
+
+it('reads continuously until this device picks paging, and keeps the choice in the browser without writing the compilation', async () => {
+  const onView = vi.fn();
+  render(book({ onView }), { wrapper });
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Chapter One' })).toBeInTheDocument());
+  expect(chapters()).toHaveLength(3);
+  expect(screen.queryByRole('navigation', { name: 'Pages' })).not.toBeInTheDocument();
+  const modes = screen.getByRole('group', { name: 'Reading mode' });
+  expect(within(modes).getByRole('button', { name: 'Continuous' })).toHaveAttribute('aria-pressed', 'true');
+  const calls = vi.mocked(fetch).mock.calls.length;
+  // At the top of the book the first chapter is the one in view, which paged opens on.
+  chapters().forEach((chapter, index) => {
+    within(chapter).getByRole('heading', { level: 2 }).getBoundingClientRect = () => ({ top: index * 900 }) as DOMRect;
+  });
+  act(() => void document.querySelector('.compilation-book')!.dispatchEvent(new Event('scroll')));
+  await waitFor(() => expect(contentsButtons()[0]).toHaveAttribute('aria-current', 'location'));
+  fireEvent.click(within(modes).getByRole('button', { name: 'Paged' }));
+  expect(within(modes).getByRole('button', { name: 'Paged' })).toHaveAttribute('aria-pressed', 'true');
+  expect(localStorage.getItem(BOOK_READING_STORAGE_KEY)).toBe('paged');
+  expect(chapters()).toHaveLength(1);
+  expect(count()).toBe('1 / 3');
+  // Nothing was sent to the server and the compilation file was not touched.
+  expect(onView).not.toHaveBeenCalled();
+  expect(vi.mocked(fetch).mock.calls.slice(calls).filter(([, init]) => init?.method && init.method !== 'GET')).toEqual([]);
+  // A reload on this device opens paged.
+  cleanup();
+  resetBookReadingMode();
+  render(book(), { wrapper });
+  await screen.findByRole('navigation', { name: 'Pages' });
+  expect(chapters()).toHaveLength(1);
+});
+
+it('shows one chapter per page with Previous, "3 / 14" and Next, and a turn starts at the top of the new page on its heading', async () => {
+  writeBookReadingMode('paged');
+  render(book(), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  expect(count()).toBe('1 / 3');
+  expect(previous()).toBeDisabled();
+  const body = document.querySelector<HTMLElement>('.compilation-book')!;
+  body.scrollTop = 400;
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
+  expect(count()).toBe('2 / 3');
+  expect(body.scrollTop).toBe(0);
+  expect(within(chapters()[0]).getByRole('heading', { level: 2 })).toHaveFocus();
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['A talk']));
+  expect(next()).toBeDisabled();
+  fireEvent.click(previous());
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
+});
+
+it("highlights the page's chapter in the contents and goes to a page from the contents list and the drawer", async () => {
+  writeBookReadingMode('paged');
+  render(book(), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  const current = () => contentsButtons().filter(entry => entry.getAttribute('aria-current') === 'location').map(entry => entry.textContent);
+  expect(current()).toEqual(['Note A']);
+  fireEvent.click(contentsButtons()[2]);
+  await waitFor(() => expect(pageTitle()).toEqual(['A talk']));
+  expect(current()).toEqual(['A talk']);
+  fireEvent.click(screen.getByRole('button', { name: 'Show contents' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Contents' })).getByRole('button', { name: /gone\.md/ }));
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
+  expect(screen.queryByRole('dialog', { name: 'Contents' })).not.toBeInTheDocument();
+  expect(current()).toEqual(['gone.md']);
+});
+
+it('turns the page with ← and →, but not from an editor, an input, a dialog, or with a modifier', async () => {
+  writeBookReadingMode('paged');
+  laneOverride.current = lane([noteA, noteB]);
+  render(book({ row: pairRow, readOnly: false }), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  const outside = document.body.appendChild(document.createElement('input'));
+  fireEvent.keyDown(outside, { key: 'ArrowRight' });
+  fireEvent.keyDown(document.body, { key: 'ArrowRight', altKey: true });
+  fireEvent.keyDown(document.body, { key: 'ArrowRight', isComposing: true });
+  expect(pageTitle()).toEqual(['Note A']);
+  // The contents drawer is a dialog over the book.
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Note A' }));
+  const editor = await screen.findByLabelText('Note content');
+  fireEvent.keyDown(editor, { key: 'ArrowRight' });
+  expect(pageTitle()).toEqual(['Editing notes/nb1/a.md']);
+  fireEvent.click(within(chapters()[0]).getByRole('button', { name: /^Finish editing/ }));
+  await waitFor(() => expect(chapters()[0]).not.toHaveAttribute('data-editing'));
+  fireEvent.click(screen.getByRole('button', { name: 'Show contents' }));
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
+  expect(pageTitle()).toEqual(['Note A']);
+  fireEvent.click(screen.getByRole('button', { name: 'Close contents' }));
+  fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note B']));
+  fireEvent.keyDown(within(chapters()[0]).getByRole('heading', { level: 2 }), { key: 'ArrowLeft' });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  outside.remove();
+});
+
+it('turns the page with a horizontal swipe on the body, but not a vertical scroll, a text selection or a section being edited', async () => {
+  writeBookReadingMode('paged');
+  laneOverride.current = lane([noteA, noteB]);
+  render(book({ row: pairRow, readOnly: false }), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  const body = document.querySelector<HTMLElement>('.compilation-book')!;
+  touch(body, 'touchStart', 300, 100);
+  touch(body, 'touchEnd', 290, 400);
+  touch(body, 'touchStart', 300, 100);
+  touch(body, 'touchEnd', 280, 100);
+  expect(pageTitle()).toEqual(['Note A']);
+  const selection = vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false, toString: () => 'text' } as Selection);
+  touch(body, 'touchStart', 300, 100);
+  touch(body, 'touchEnd', 100, 110);
+  expect(pageTitle()).toEqual(['Note A']);
+  selection.mockRestore();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Note A' }));
+  await waitFor(() => expect(chapters()[0]).toHaveAttribute('data-editing'));
+  touch(await screen.findByLabelText('Note content'), 'touchStart', 300, 100);
+  touch(body, 'touchEnd', 100, 110);
+  expect(pageTitle()).toEqual(['Editing notes/nb1/a.md']);
+  fireEvent.click(within(chapters()[0]).getByRole('button', { name: /^Finish editing/ }));
+  await waitFor(() => expect(chapters()[0]).not.toHaveAttribute('data-editing'));
+  touch(body, 'touchStart', 300, 100);
+  touch(body, 'touchEnd', 100, 110);
+  await waitFor(() => expect(pageTitle()).toEqual(['Note B']));
+  touch(body, 'touchStart', 100, 100);
+  touch(body, 'touchEnd', 300, 90);
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+});
+
+it('saves a section that edits before leaving its page, and stays with its notice when the save fails (P5)', async () => {
+  writeBookReadingMode('paged');
+  laneOverride.current = lane([noteA, noteB]);
+  render(book({ row: pairRow, readOnly: false }), { wrapper });
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit Note A' }));
+  await waitFor(() => expect(chapters()[0]).toHaveAttribute('data-editing'));
+  flushEditors.mockResolvedValueOnce(false);
+  fireEvent.click(next());
+  await waitFor(() => expect(flushEditors).toHaveBeenCalledWith(['nb1:notes/nb1/a.md']));
+  await act(async () => {});
+  expect(pageTitle()).toEqual(['Editing notes/nb1/a.md']);
+  expect(chapters()[0]).toHaveAttribute('data-editing');
+  flushEditors.mockResolvedValue(true);
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['Note B']));
+  expect(flushEditors).toHaveBeenCalledTimes(2);
+  expect(screen.queryByLabelText('Note content')).not.toBeInTheDocument();
+});
+
+it('loads the next batch of a dynamic compilation at the last loaded page, and keeps Next available until nothing is left (P6)', async () => {
+  writeBookReadingMode('paged');
+  const loadMore = vi.fn();
+  laneOverride.current = lane([noteA], { hasMore: true, loadMore });
+  const { rerender } = render(book(), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  expect(loadMore).not.toHaveBeenCalled();
+  expect(count()).toBe('1 / 3+');
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['gone.md']));
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['A talk']));
+  // The last loaded page asks for the next batch, and Next stays available because more is coming.
+  await waitFor(() => expect(loadMore).toHaveBeenCalledTimes(1));
+  expect(next()).toBeEnabled();
+  // While the batch loads, Next waits.
+  laneOverride.current = lane([noteA], { hasMore: true, loadingMore: true, loadMore });
+  rerender(book());
+  expect(next()).toBeDisabled();
+  // The batch arrives and Next goes on into it.
+  const longer: CompilationRow = { ...row, items: [...(row as Extract<CompilationRow, { kind: 'custom'; }>).items, { id: 'item-4', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/b.md' }] };
+  laneOverride.current = lane([noteA, noteB], { hasMore: true, loadMore });
+  rerender(book({ row: longer }));
+  expect(count()).toBe('3 / 4+');
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['Note B']));
+  // Nothing is left: the last page ends the book.
+  laneOverride.current = lane([noteA, noteB], { hasMore: false, loadMore });
+  rerender(book({ row: longer }));
+  expect(count()).toBe('4 / 4');
+  expect(next()).toBeDisabled();
+});
+
+it('keeps the reader at the same chapter when the mode changes (P7)', async () => {
+  laneOverride.current = lane([noteA, noteB]);
+  render(book({ row: pairRow }), { wrapper });
+  await waitFor(() => expect(chapters()).toHaveLength(2));
+  const body = document.querySelector<HTMLElement>('.compilation-book')!;
+  body.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+  Object.defineProperty(body, 'clientHeight', { value: 800, configurable: true });
+  Object.defineProperty(body, 'scrollHeight', { value: 3000, configurable: true });
+  chapters().forEach((chapter, index) => {
+    within(chapter).getByRole('heading', { level: 2 }).getBoundingClientRect = () => ({ top: [-2000, 120][index] }) as DOMRect;
+  });
+  act(() => void body.dispatchEvent(new Event('scroll')));
+  await waitFor(() => expect(contentsButtons().filter(entry => entry.getAttribute('aria-current')).map(entry => entry.textContent)).toEqual(['Note B']));
+  // Continuous with Note B in view opens paged on Note B.
+  fireEvent.click(screen.getByRole('button', { name: 'Paged' }));
+  await waitFor(() => expect(pageTitle()).toEqual(['Note B']));
+  expect(count()).toBe('2 / 2');
+  // Back to continuous scrolls to Note B at once, not smoothly.
+  within(chapters()[0]).getByRole('heading', { level: 2 }).getBoundingClientRect = () => ({ top: 640 }) as DOMRect;
+  vi.mocked(body.scrollTo).mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Continuous' }));
+  await waitFor(() => expect(chapters()).toHaveLength(2));
+  await waitFor(() => expect(body.scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' })));
+  expect(localStorage.getItem(BOOK_READING_STORAGE_KEY)).toBe('continuous');
+});
+
+it('opens paged on the chapter that edits, so the editor is not left behind (P7)', async () => {
+  laneOverride.current = lane([noteA, noteB]);
+  render(book({ row: pairRow, readOnly: false }), { wrapper });
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit Note B' }));
+  await waitFor(() => expect(chapters()[1]).toHaveAttribute('data-editing'));
+  fireEvent.click(screen.getByRole('button', { name: 'Paged' }));
+  await waitFor(() => expect(chapters()).toHaveLength(1));
+  expect(chapters()[0]).toHaveAttribute('data-editing');
+  expect(within(chapters()[0]).getByLabelText('Note content')).toBeInTheDocument();
+  expect(count()).toBe('2 / 2');
+});
+
+it('shows a folder chapter as one page with its notes in order', async () => {
+  writeBookReadingMode('paged');
+  const mixed: CompilationRow = { ...row, items: [{ id: 'folder-1', kind: 'folder', notebookId: 'nb1', path: 'notes/nb1/sub' }, { id: 'item-3', kind: 'youtube', videoId: 'dQw4w9WgXcQ', start: 0, title: 'A talk' }] };
+  render(book({ row: mixed }), { wrapper });
+  await waitFor(() => expect(within(chapters()[0]).getByRole('heading', { level: 3, name: 'Note A' })).toBeInTheDocument());
+  expect(pageTitle()).toEqual(['sub']);
+  expect(count()).toBe('1 / 2');
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['A talk']));
 });
