@@ -90,6 +90,7 @@ Its members are picked by hand (notes, folders, attachments or YouTube videos) o
 Dynamic compilations sort by updated time, created time, title or status, or by your own order.
 They display as a card row (thumbnail, small, medium), a book with a contents list, or a graph.
 Click a card or a book section to edit its note in place; its title opens the note in zoom.
+A book reads as one continuous scroll or one chapter at a time (Paged, with Previous/Next, ← and →, and swipes on a touch screen); the choice is kept in this browser, not in the file.
 In a narrow pane or on a phone, the cards stack top to bottom.
 A compilation also keeps study settings for reading and reviewing its members; see the [study and flashcard guide](docs/agent/study.md).
 
