@@ -191,7 +191,9 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 /* Compact frame: the body with a status bar, inside a graph card. */
 .note-quick-action { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: var(--radius-control); color: var(--color-text); background: var(--color-surface); font-size: 12px; font-weight: 500; white-space: nowrap; }
 .note-quick-action > svg { width: 15px; height: 15px; }
-.note-footer:has(.note-quick-action) { padding-block: 8px; }
+.note-footer[data-actions] { padding-block: 8px; }
+.note-footer[data-actions] > div:last-child { min-height: 32px; }
+@media (pointer: coarse), (max-width: 767px) { .note-footer[data-actions] > div:last-child { min-height: 44px; } }
 .note-heading-icon { background: var(--color-primary-light); color: var(--color-primary); }
 .note-quick-action:hover:not(:disabled) { background: var(--color-primary-soft); }
 .note-quick-action:disabled { opacity: 0.4; cursor: not-allowed; }

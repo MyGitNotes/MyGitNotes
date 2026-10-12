@@ -31,6 +31,11 @@ it('shows neither the path nor the actions while the note is clean', () => {
   expect(screen.queryByText(note.path)).toBeNull();
 });
 
+it('keeps the footer at the actions height while the note shows no actions', () => {
+  const { container } = render(editor({}));
+  expect(container.querySelector('.note-footer')?.hasAttribute('data-actions')).toBe(true);
+});
+
 it('shows no actions for a read-only note', () => {
   render(editor({ isDirty: true, readOnly: true }));
   expect(screen.queryByRole('button', { name: /commit/i })).toBeNull();
