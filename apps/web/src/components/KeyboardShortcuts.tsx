@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Search, X } from 'lucide-react';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
+import { en } from '../lib/i18n/en.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useNoteCandidateResults } from '../lib/note-completion.js';
 import { type CommandSpec, type ResolvedCommand, useCommands, useRegisterCommands } from '../lib/commands/registry.js';
@@ -97,7 +98,7 @@ export function KeyboardShortcuts({ mode, onModeChange, suspended = false, selec
   // The surface's own commands: the dispatcher runs them for their keys, the palette and help list them.
   const suspendedReason = t('shortcuts.requiresClosedDialog');
   const whenNotSuspended = () => suspended ? { enabled: false as const, reason: suspendedReason } : { enabled: true as const };
-  const surfaceCommands: CommandSpec[] = [{ id: 'palette.notes', palette: false, availability: whenNotSuspended, run: () => openPalette() }, { id: 'palette.commands', palette: false, availability: whenNotSuspended, run: () => openPalette('>') }, { id: 'help.open', availability: whenNotSuspended, run: () => modeRef.current === 'help' ? dismiss() : requestMode('help') }];
+  const surfaceCommands: CommandSpec[] = [{ id: 'palette.notes', palette: false, keywords: [t('command.palette.notes.keywords'), en['command.palette.notes.keywords']], availability: whenNotSuspended, run: () => openPalette() }, { id: 'palette.commands', palette: false, availability: whenNotSuspended, run: () => openPalette('>') }, { id: 'help.open', availability: whenNotSuspended, run: () => modeRef.current === 'help' ? dismiss() : requestMode('help') }];
   useRegisterCommands(surfaceCommands);
   const allCommands = useCommands();
 

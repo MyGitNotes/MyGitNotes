@@ -349,6 +349,9 @@ it('help lists every registry command, grouped, and its filter matches names and
   fireEvent.change(filter, { target: { value: 'graph' } });
   expect(rows()).toEqual(expect.arrayContaining(['nav.graph', 'graph.toggleExpand']));
   expect(rows()).not.toContain('palette.notes');
+  // Quick open is where notes are searched, so its keywords find it under the word people look for.
+  fireEvent.change(filter, { target: { value: 'search' } });
+  expect(rows()).toContain('palette.notes');
 });
 
 it('Escape in help opened from the Mermaid editor closes only help, keeping the unsaved diagram', async () => {

@@ -11,6 +11,7 @@ import { CommandMenu } from './CommandMenu.js';
 import { BUILTIN_COMMANDS, matchCommands, parseComposerInput, type PiCommand, slashQuery } from '../../lib/pi-agent/commands.js';
 import { type PiContextUsage, type PiEditorText, type PiLocation, type PiSessionInfo, usePiAgent } from '../../lib/pi-agent/session.js';
 import { sameWorkspace, workspaceKey, workspaceName } from '../../lib/agent-workspaces.js';
+import { useAgentInputFocusRequest } from '../../lib/pi-agent/input-focus.js';
 import { type AgentFocus, focusLabel, selectionPosition } from '../../lib/pi-agent/transcript.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { FEATURE_IDS, useAgentModelSetup, useFeatureGate } from '../../lib/web-features.js';
@@ -170,6 +171,7 @@ function AgentConversation() {
   /** The draft the user closed the command menu on with Esc; the menu stays closed until the draft changes. */
   const [dismissed, setDismissed] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  useAgentInputFocusRequest(input);
   const menuId = useId();
   const [file, setFile] = useState<{ path: string; absolute?: string; error?: string; } | null>(null);
   const caret = target?.caret ?? noCaret;
@@ -215,8 +217,9 @@ function AgentConversation() {
   const ready = live && agent.connected;
   // No session and none ended on its own: the message box starts one when used, so this is a resting state, not a problem.
   const resting = !live && !starting && session?.status !== 'exited';
-  // While Pi starts the person may go on typing, and what they send waits for it.
-  const writable = ready || resting || starting;
+  // While Pi starts the person may go on typing, and what they send waits for it. That includes a live session still connecting:
+  // disabling the box there took the focus out of it the moment the person's own first focus woke Pi.
+  const writable = live || resting || starting;
   // Pi answered with no model at all: no key, no login and no model the edition provides.
   const noModel = ready && model.loaded === true && model.models.length === 0;
   const absolute = target && file?.path === target.path ? file.absolute : undefined;

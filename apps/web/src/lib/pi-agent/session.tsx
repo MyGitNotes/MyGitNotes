@@ -61,6 +61,10 @@ export interface AgentTarget {
   content?: () => string;
   /** Frontmatter lines above the body, so the line Pi is told matches the file. */
   lineNumberOffset?: number;
+  /** Opens the agent in this editor's document panel, for the key that moves between the agent and the note. */
+  openAgent?: () => void;
+  /** Puts the cursor back in this editor where its caret was. */
+  focusEditor?: () => void;
 }
 
 /** Runs one of the agent's note tools on this page and answers its result; a thrown error is the agent's to read. */

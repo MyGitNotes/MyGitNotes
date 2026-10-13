@@ -33,6 +33,8 @@ export interface MarkdownEditorHandle {
   getCurrentLine: () => number;
   getSelection: () => { from: number; to: number; } | null;
   ready: () => boolean;
+  /** Puts the cursor in the editor where its selection already is, without scrolling to it. */
+  focus: () => void;
 }
 interface Props {
   content: string;
@@ -404,6 +406,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
 
   useImperativeHandle(ref, () => ({
     ready: () => mode === 'live' && isMarkdown ? Boolean(live.current?.ready()) : Boolean(source.current),
+    focus() {
+      if (mode === 'live' && isMarkdown) live.current?.focus();
+      else source.current?.focus({ preventScroll: true });
+    },
     getSelection() {
       if (mode === 'live' && isMarkdown) {
         const range = live.current?.getSelection();

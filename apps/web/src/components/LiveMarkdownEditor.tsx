@@ -47,6 +47,7 @@ export interface LiveMarkdownHandle {
   getCurrentLine: () => number;
   getSelection: () => { from: number; to: number; } | null;
   ready: () => boolean;
+  focus: () => void;
   format: (format: MarkdownFormat) => void;
   outline: (command: OutlineCommand) => void;
 }
@@ -117,6 +118,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   /* eslint-enable react/refs */
   useImperativeHandle(ref, () => ({
     ready: () => Boolean(editor.current),
+    focus: () => editor.current?.focus(),
     getSelection: () => {
       const selection = editor.current?.state.selection.main;
       return selection ? { from: selection.from, to: selection.to } : null;

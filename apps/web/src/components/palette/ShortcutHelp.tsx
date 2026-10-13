@@ -32,7 +32,7 @@ export function ShortcutHelp({ commands, env = keyEnvironment }: ShortcutHelpPro
       const scopes = command.scopes?.map(scope => t(`shortcuts.scope.${scope}`)) ?? [];
       // Typed key text (`mod+/`, `ctrl+shift+p`) and the shown labels (`⌘/`, `G then N`) both find a row.
       const keyText = command.handler ? keymapEntry(command.id).bindings.map(binding => binding.keys) : [];
-      const haystack = [command.title, command.englishTitle, command.description ?? '', command.id, ...scopes, ...keyText, ...command.keys.map(keys => describeKeys(keys, env, then)), ...labels.flat()].join('\n').toLocaleLowerCase();
+      const haystack = [command.title, command.englishTitle, command.description ?? '', ...command.keywords, command.id, ...scopes, ...keyText, ...command.keys.map(keys => describeKeys(keys, env, then)), ...labels.flat()].join('\n').toLocaleLowerCase();
       return { command, labels, scopes, haystack, reason: unavailableReason(command, t('shortcuts.unavailableHere')) };
     }), [commands, env, t, then]);
   const needle = filter.trim().toLocaleLowerCase();

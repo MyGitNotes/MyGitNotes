@@ -21,6 +21,7 @@ vi.mock('./MarkdownEditor.js', () => ({
       getCurrentLine: () => 1,
       getSelection: () => null,
       ready: () => true,
+      focus() {},
     }), [content, onChange]);
     return createElement('textarea', { 'aria-label': 'Note content', value: content, readOnly, 'data-compact': compact ? 'true' : undefined, 'data-mode': mode, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) });
   }),

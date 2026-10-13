@@ -5,6 +5,7 @@ import { Button } from './components/Button.js';
 import { useOutlineActions } from './app/useOutlineActions.js';
 import { OutlineActionsProvider } from './lib/outline-actions.js';
 import { PiAgentProvider } from './lib/pi-agent/session.js';
+import { AgentFocusCommand } from './components/pi-agent/AgentFocusCommand.js';
 import { useWebAgentTools } from './app/useWebAgentTools.js';
 import { AddToOutlineDialog } from './components/AddToOutlineDialog.js';
 import { useFilterSidebar } from './app/useFilterSidebar.js';
@@ -775,6 +776,7 @@ export const AppContent: React.FC = () => {
   // A local workspace starts its Pi agent in the background, so the agent tab opens onto a warm session.
   return (
     <PiAgentProvider webTools={remote ? webAgentTools : undefined} enabled={agentEnabled} defaultRepository={sourceId} notebooks={config?.notebooks ?? NO_NOTEBOOKS} repositories={repositories}>
+      <AgentFocusCommand />
       <OutlineActionsProvider value={outlineActions.value}>{content}</OutlineActionsProvider>
     </PiAgentProvider>
   );
