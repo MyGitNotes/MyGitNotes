@@ -16,7 +16,7 @@ function cancelOnFocusElsewhere(event: FocusEvent) {
 export function requestAgentInputFocus() {
   requestedAt = Date.now();
   document.addEventListener('focusin', cancelOnFocusElsewhere, true);
-  for (const listener of [...listeners]) listener();
+  for (const listener of listeners) listener();
 }
 
 /** Focuses `input` while a request is pending; checked after every render, since the box mounts after its panel. */

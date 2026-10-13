@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createElement, type ReactNode, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { KeyboardRoot } from '../../lib/keyboard/KeyboardDispatcher.js';
@@ -11,22 +11,64 @@ import { AgentFocusCommand } from './AgentFocusCommand.js';
 beforeEach(() => localStorage.clear());
 afterEach(cleanup);
 
+/** Lets a test reveal what a component shows later: the agent tab opening, or a message box appearing once Pi is ready. */
+const reveal: { show: () => void; } = { show: () => {} };
+function useRevealed(): boolean {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    reveal.show = () => setShown(true);
+  }, []);
+  return shown;
+}
+
 /** The agent panel's message box, which takes a pending focus request when it mounts. */
 function AgentBox() {
   const input = useRef<HTMLTextAreaElement>(null);
   useAgentInputFocusRequest(input);
-  return createElement('section', { className: 'pi-agent-panel' }, createElement('textarea', { ref: input, 'aria-label': 'Message' }));
+  return (
+    <section className='pi-agent-panel'>
+      <textarea ref={input} aria-label='Message' />
+    </section>
+  );
+}
+
+/** An agent panel whose message box appears only once its session is ready. */
+function SlowAgentPanel() {
+  const input = useRef<HTMLTextAreaElement>(null);
+  const ready = useRevealed();
+  useAgentInputFocusRequest(input);
+  return <section className='pi-agent-panel'>{ready ? <textarea ref={input} aria-label='Message' /> : <p>Starting</p>}</section>;
 }
 
 /** The tools panel's agent tool, shown while the panel has it open. */
 function ToolsPanel() {
   const { isOpen, activeTool } = usePanelContext();
-  return isOpen && activeTool === 'agent' ? createElement(AgentBox) : null;
+  return isOpen && activeTool === 'agent' ? <AgentBox /> : null;
+}
+
+/** A note editor whose document panel shows the agent once it is opened. */
+function Editor() {
+  const open = useRevealed();
+  return (
+    <div>
+      <textarea aria-label='Note content' />
+      {open && <AgentBox />}
+    </div>
+  );
 }
 
 function mount({ available = true, target = null }: { available?: boolean; target?: AgentTarget | null; }, children?: ReactNode) {
   const agent = { available, target } as PiAgentValue;
-  return render(createElement(KeyboardRoot, null, createElement(PanelProvider, null, createElement(PiAgentContext.Provider, { value: agent }, createElement(AgentFocusCommand), children))));
+  return render(
+    <KeyboardRoot>
+      <PanelProvider>
+        <PiAgentContext.Provider value={agent}>
+          <AgentFocusCommand />
+          {children}
+        </PiAgentContext.Provider>
+      </PanelProvider>
+    </KeyboardRoot>,
+  );
 }
 
 const pressToggle = (target: Element) => {
@@ -38,27 +80,21 @@ const pressToggle = (target: Element) => {
 };
 
 it('opens the agent in the note editor it names and focuses the message box', () => {
-  let openAgent = () => {};
-  function Editor() {
-    const [open, setOpen] = useState(false);
-    openAgent = () => setOpen(true);
-    return createElement('div', null, createElement('textarea', { 'aria-label': 'Note content' }), open && createElement(AgentBox));
-  }
-  const opened = vi.fn(() => openAgent());
-  mount({ target: { notebookId: 'a', path: 'notes/a.md', openAgent: opened, focusEditor: vi.fn() } }, createElement(Editor));
+  const openAgent = vi.fn(() => reveal.show());
+  mount({ target: { notebookId: 'a', path: 'notes/a.md', openAgent, focusEditor: vi.fn() } }, <Editor />);
   const note = screen.getByLabelText('Note content');
   note.focus();
 
   const event = pressToggle(note);
   expect(event.defaultPrevented).toBe(true);
-  expect(opened).toHaveBeenCalledTimes(1);
+  expect(openAgent).toHaveBeenCalledTimes(1);
   expect(document.activeElement).toBe(screen.getByLabelText('Message'));
 });
 
 it('returns from the agent to the note editor it names', () => {
   const focusEditor = vi.fn();
   const openAgent = vi.fn();
-  mount({ target: { notebookId: 'a', path: 'notes/a.md', openAgent, focusEditor } }, createElement(AgentBox));
+  mount({ target: { notebookId: 'a', path: 'notes/a.md', openAgent, focusEditor } }, <AgentBox />);
   const message = screen.getByLabelText('Message');
   message.focus();
 
@@ -68,7 +104,13 @@ it('returns from the agent to the note editor it names', () => {
 });
 
 it('opens the agent in the tools panel when no note editor is open', () => {
-  mount({}, createElement('div', null, createElement('button', null, 'Elsewhere'), createElement(ToolsPanel)));
+  mount(
+    {},
+    <div>
+      <button type='button'>Elsewhere</button>
+      <ToolsPanel />
+    </div>,
+  );
   const button = screen.getByRole('button', { name: 'Elsewhere' });
   button.focus();
 
@@ -78,39 +120,42 @@ it('opens the agent in the tools panel when no note editor is open', () => {
 
 it('leaves the key to the page where the agent is not available', () => {
   const openAgent = vi.fn();
-  mount({ available: false, target: { notebookId: 'a', path: 'notes/a.md', openAgent } }, createElement('button', null, 'Elsewhere'));
+  mount({ available: false, target: { notebookId: 'a', path: 'notes/a.md', openAgent } }, <button type='button'>Elsewhere</button>);
   const event = pressToggle(screen.getByRole('button', { name: 'Elsewhere' }));
   expect(event.defaultPrevented).toBe(false);
   expect(openAgent).not.toHaveBeenCalled();
 });
 
-/** An agent panel whose message box appears only once its session is ready. */
-let showBox = () => {};
-function SlowAgentPanel() {
-  const input = useRef<HTMLTextAreaElement>(null);
-  const [ready, setReady] = useState(false);
-  showBox = () => setReady(true);
-  useAgentInputFocusRequest(input);
-  return createElement('section', { className: 'pi-agent-panel' }, ready ? createElement('textarea', { ref: input, 'aria-label': 'Message' }) : createElement('p', null, 'Starting'));
-}
-
 it('focuses the message box once it appears after its panel', () => {
-  mount({}, createElement('div', null, createElement('button', null, 'Elsewhere'), createElement(SlowAgentPanel)));
+  mount(
+    {},
+    <div>
+      <button type='button'>Elsewhere</button>
+      <SlowAgentPanel />
+    </div>,
+  );
   const button = screen.getByRole('button', { name: 'Elsewhere' });
   button.focus();
   pressToggle(button);
   expect(document.activeElement).toBe(button);
-  act(() => showBox());
+  act(() => reveal.show());
   expect(document.activeElement).toBe(screen.getByLabelText('Message'));
 });
 
 it('does not take focus from where the person went before the box appeared', () => {
-  mount({}, createElement('div', null, createElement('button', null, 'Elsewhere'), createElement('input', { 'aria-label': 'Search' }), createElement(SlowAgentPanel)));
+  mount(
+    {},
+    <div>
+      <button type='button'>Elsewhere</button>
+      <input aria-label='Search' />
+      <SlowAgentPanel />
+    </div>,
+  );
   const button = screen.getByRole('button', { name: 'Elsewhere' });
   button.focus();
   pressToggle(button);
   const search = screen.getByLabelText('Search');
   act(() => search.focus());
-  act(() => showBox());
+  act(() => reveal.show());
   expect(document.activeElement).toBe(search);
 });
