@@ -326,8 +326,9 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       // Debounced auto-save to disk
       let cancelled = false;
       const timer = setTimeout(async () => {
-        // Defer to an in-flight checkRemote/save/restore rather than racing it.
-        while (operation.current && !cancelled) await new Promise(resolve => setTimeout(resolve, 50));
+        // Defer to an in-flight checkRemote/save/restore, or to the previous autosave, rather than racing it:
+        // two overlapping autosaves leave the newer write on disk while the older one becomes the base, so a remote check reads it as an external change.
+        while ((operation.current || autosaving.current) && !cancelled) await new Promise(resolve => setTimeout(resolve, 50));
         // A newer effect run (e.g. a remote merge, or further typing) superseded this one
         // while it waited; its own debounce now owns saving the current draft.
         if (cancelled || !mounted.current) return;

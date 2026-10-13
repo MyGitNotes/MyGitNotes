@@ -42,9 +42,9 @@ export function useNoteSaving({ canWriteNotebook, remote, readDraft, readCommitt
     // The local workspace keeps one revision, so its cached query answers are refetched.
     invalidateNotes();
     setEditingNote(prev => prev && sameNote(prev, res.note) ? res.note : prev);
-    // Refresh git status to update dirty count
-    const statusRes = await fetchGitStatus();
-    setGitStatus(statusRes.status);
+    // The dirty count follows without holding the save: a status read may wait on a fetch of the remote, and the editor's next autosave waits for this one.
+    // The file is written by now, so a failed status read is not a failed save; the next read corrects the count.
+    void fetchGitStatus().then(statusRes => setGitStatus(statusRes.status), () => {});
     return res.note;
   };
 

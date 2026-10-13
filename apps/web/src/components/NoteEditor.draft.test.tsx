@@ -577,3 +577,51 @@ it('clears a draft that an autosave left behind when a flush finds nothing newer
   });
   expect(getLocalDraft('src:main', note.path)).toBeNull();
 });
+
+it('waits for an in-flight autosave before the next, so a remote check never sees the newer write as an external change', async () => {
+  let diskNote: NoteItem = note;
+  const pending: (() => void)[] = [];
+  const onSave = vi.fn(({ content, metadata }: { content: string; metadata?: Record<string, unknown>; }): Promise<NoteItem> => {
+    const written = { ...note, content, metadata: { ...metadata, updated: `t${onSave.mock.calls.length}` } };
+    diskNote = written;
+    return new Promise(resolve => pending.push(() => resolve(written)));
+  });
+  const onReadRemote = vi.fn(async () => diskNote);
+  render(editor({ onSave, onReadRemote }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  const type = (value: string) => fireEvent.change(screen.getByLabelText('Note content'), { target: { value } });
+
+  type('# Alpha\nOne.');
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(750);
+  });
+  type('# Alpha\nOne. Two.');
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(750);
+  });
+  // The second edit waits while the first save is still in flight.
+  expect(onSave).toHaveBeenCalledTimes(1);
+
+  type('# Alpha\nOne. Two. Three.');
+  await act(async () => {
+    pending.shift()!();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  // The workspace reports the write, and the editor reads the note while the user still has unsaved typing.
+  await act(async () => {
+    announceWorkspaceFilesChanged();
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(screen.queryByText(/Remote changes/i)).toBeNull();
+  await act(async () => {
+    while (pending.length) pending.shift()!();
+    await vi.advanceTimersByTimeAsync(2000);
+    while (pending.length) pending.shift()!();
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(screen.queryByText(/Remote changes/i)).toBeNull();
+  expect(diskNote.content).toBe('# Alpha\nOne. Two. Three.');
+  expect((screen.getByLabelText('Note content') as HTMLTextAreaElement).value).toBe('# Alpha\nOne. Two. Three.');
+});
