@@ -1,7 +1,7 @@
 import { type RefObject, useEffect } from 'react';
 
-/** The agent's message box appears only once its session is ready, which a hosted sandbox can take a while to reach. */
-const REQUEST_LIFETIME_MS = 30_000;
+/** The agent's message box appears only once its session's history has, which a hosted sandbox can take half a minute to reach. */
+const REQUEST_LIFETIME_MS = 60_000;
 let requestedAt = 0;
 const listeners = new Set<() => void>();
 

@@ -151,13 +151,18 @@ export interface PiAgentValue {
   workspaces: AgentWorkspace[];
   loadWorkspaces: () => Promise<void>;
   connected: boolean;
+  /**
+   * The live session's history has arrived, so the panel can show the conversation and take messages. It stays true
+   * while the socket reconnects to the same session, and turns false only for another session.
+   */
+  historyLoaded: boolean;
   transcript: TranscriptState;
   error: string;
   /** Pi is being started (a hosted sandbox takes seconds to resume, half a minute the first time). */
   starting: boolean;
   start: () => Promise<void>;
   /**
-   * The person is about to use the agent, as by focusing the message box: starts Pi when no session runs, none is
+   * The person is about to use the agent, as by pressing Ctrl+`: starts Pi when no session runs, none is
    * starting and none ended on its own, so nobody pays for a hosted sandbox they only looked at, and one stopped
    * for idling comes back on the next use.
    */
@@ -282,6 +287,7 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
     };
   }, []);
   const [connected, setConnected] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptState>(emptyTranscript);
   const [error, setError] = useState('');
   const [modelState, setModelState] = useState<PiModelState>(emptyModelState);
@@ -401,6 +407,8 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       if (request) {
         pending.current.delete(record.id as string);
         const data = (record.data ?? {}) as { messages?: unknown[]; isStreaming?: boolean; };
+        // A refused history still ends the wait, so the panel never hangs on loading; the conversation then starts empty.
+        if (request === 'messages') setHistoryLoaded(true);
         // Dialogs, status lines, widgets and the queue replayed on attach arrive before the history, so a rebuilt transcript keeps them.
         if (request === 'messages' && Array.isArray(data.messages)) setTranscript(current => ({ ...transcriptFromMessages(data.messages!), dialogs: current.dialogs, running: current.running, statuses: current.statuses, widgets: current.widgets, queued: current.queued }));
         if (request === 'state') setTranscript(current => ({ ...applyRecord(current, record), running: data.isStreaming === true }));
@@ -432,6 +440,7 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
   const attach = useCallback((info: PiSessionInfo | null) => {
     if (info?.id !== sessionId.current) {
       disconnect();
+      setHistoryLoaded(false);
       setTranscript(emptyTranscript);
       setModelState(emptyModelState);
       setCommands([]);
@@ -478,15 +487,18 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    sessionRequest('GET').then(({ piAvailable: installed }) => {
+    sessionRequest('GET').then(({ session: info, piAvailable: installed }) => {
+      if (cancelled) return;
       // Without Pi on this computer the agent tab stays hidden and nothing starts.
-      if (!cancelled) setPiAvailable(installed === true);
+      setPiAvailable(installed === true);
+      // Reading the session starts nothing, hosted or not, so a Pi already running is joined at once, history and all.
+      if (installed === true && info && info.status !== 'exited') attach(info);
     }).catch(() => !cancelled && setPiAvailable(false));
     return () => {
       cancelled = true;
       disconnect();
     };
-  }, [enabled, disconnect]);
+  }, [enabled, attach, disconnect]);
 
   // A gated-off agent is not started behind the panel's back: its reason is shown instead of a request the server would refuse.
   const ready = enabled && piAvailable && agentGate.allowed && Boolean(defaultRepository);
@@ -519,6 +531,7 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
     workspaces,
     loadWorkspaces,
     connected,
+    historyLoaded,
     transcript,
     error,
     starting,
@@ -633,7 +646,7 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       if (!res.ok) throw await responseError(res, 'The note could not be located');
       return ((await res.json()) as { file: string; }).file;
     },
-  }), [enabled, piAvailable, session, target, notebooks, repositories, defaultRepository, workspaces, loadWorkspaces, connected, transcript, error, starting, ready, wake, held, modelState, commands, contextUsage, editorText, takeEditorText, loadCommands, start, command, attach]);
+  }), [enabled, piAvailable, session, target, notebooks, repositories, defaultRepository, workspaces, loadWorkspaces, connected, historyLoaded, transcript, error, starting, ready, wake, held, modelState, commands, contextUsage, editorText, takeEditorText, loadCommands, start, command, attach]);
 
   return (
     <PiAgentTargetContext.Provider value={registerTarget}>

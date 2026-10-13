@@ -29,7 +29,7 @@ const repositories = [{ id: home, notebooks: ['nb', 'blog'], title: 'Knowledge B
 const workspaces = [{ repository: home, folder: '', hasInstructions: true, parents: [] }, { repository: home, folder: 'blog', hasInstructions: true, parents: [''] }];
 
 function agent(overrides: Partial<PiAgentValue> = {}): PiAgentValue {
-  return { available: true, session: { id: 's1', cwd: '/home/me/workspace', location: { repository: home, folder: '' }, trusted: true, status: 'ready', startedAt: '' }, target: null, notebooks, repositories, defaultRepository: home, workspaces, loadWorkspaces: vi.fn(async () => {}), connected: true, transcript: emptyTranscript, modelState: { models: [], levels: [] }, checkModels: vi.fn(), setModel: vi.fn(), setThinking: vi.fn(), error: '', starting: false, start: vi.fn(async () => {}), wake: vi.fn(), send: vi.fn(() => true), held: null, commands: [], loadCommands: vi.fn(), editorText: null, takeEditorText: vi.fn(), abort: vi.fn(async () => ''), answer: vi.fn(), newConversation: vi.fn(), end: vi.fn(async () => {}), switchWorkspace: vi.fn(async () => {}), locate: vi.fn(async (path: string) => `/home/me/workspace/${path}`), ...overrides };
+  return { available: true, session: { id: 's1', cwd: '/home/me/workspace', location: { repository: home, folder: '' }, trusted: true, status: 'ready', startedAt: '' }, target: null, notebooks, repositories, defaultRepository: home, workspaces, loadWorkspaces: vi.fn(async () => {}), connected: true, historyLoaded: true, transcript: emptyTranscript, modelState: { models: [], levels: [] }, checkModels: vi.fn(), setModel: vi.fn(), setThinking: vi.fn(), error: '', starting: false, start: vi.fn(async () => {}), wake: vi.fn(), send: vi.fn(() => true), held: null, commands: [], loadCommands: vi.fn(), editorText: null, takeEditorText: vi.fn(), abort: vi.fn(async () => ''), answer: vi.fn(), newConversation: vi.fn(), end: vi.fn(async () => {}), switchWorkspace: vi.fn(async () => {}), locate: vi.fn(async (path: string) => `/home/me/workspace/${path}`), ...overrides };
 }
 
 function noteTarget(caret = createCaretStore()): AgentTarget {
@@ -191,7 +191,7 @@ it('offers a manual start when no session runs, showing why the last one ended',
   const value = agent({ session: { id: 's1', cwd: '/w', location: { repository: home, folder: '' }, status: 'exited', startedAt: '', exit: { code: 1, signal: null, stderr: 'No API key' } }, connected: false });
   panel(value);
   expect(screen.getByText('No API key')).toBeTruthy();
-  expect((screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement).disabled).toBe(true);
+  expect(screen.queryByRole('textbox', { name: 'Message to Pi' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
   expect(value.start).toHaveBeenCalled();
 });
@@ -207,38 +207,56 @@ it('says calmly that a session ended because its repository was hidden, offering
   expect(value.start).toHaveBeenCalled();
 });
 
+const sessionControls = () => ['New conversation', 'End session'].filter(name => screen.queryByRole('button', { name }));
+
 it('shows a start under way as loading, not as a button, until the session answers', () => {
-  panel(agent({ session: null, connected: false, starting: true }));
+  panel(agent({ session: null, connected: false, historyLoaded: false, starting: true }));
   expect(screen.getByRole('status').textContent).toBe('Starting Pi…');
   expect(screen.getByText('Starting')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Start session' })).toBeNull();
+  expect(screen.queryByRole('textbox', { name: 'Message to Pi' })).toBeNull();
+  expect(sessionControls()).toEqual([]);
 });
 
-it('rests without a session, offering no button, and starts Pi when the message box is focused', () => {
-  const value = agent({ session: null, connected: false });
+it('rests without a session, offering only its workspace and a start, with no message box or session controls', () => {
+  const value = agent({ session: null, connected: false, historyLoaded: false });
   panel(value);
   expect(screen.getByText('Standby')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Start session' })).toBeNull();
+  expect(screen.getByText('Pi is not running. Start it to pick up the conversation.')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Change agent workspace' })).toBeTruthy();
+  expect(screen.queryByRole('textbox', { name: 'Message to Pi' })).toBeNull();
+  expect(sessionControls()).toEqual([]);
   expect(screen.queryByRole('alert')).toBeNull();
-  const box = screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement;
-  expect(box.disabled).toBe(false);
   expect(value.wake).not.toHaveBeenCalled();
-  fireEvent.focus(box);
-  expect(value.wake).toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Start session' }));
+  expect(value.start).toHaveBeenCalled();
 });
 
-it('sends while Pi rests or starts, showing what waits for it', () => {
-  const resting = agent({ session: null, connected: false });
-  panel(resting);
-  write('summarize this folder');
-  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-  expect(resting.send).toHaveBeenCalledWith('summarize this folder', undefined);
-  expect((screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement).value).toBe('');
+it('joins a running session behind a loading notice until its history arrives, then shows the conversation and its controls', () => {
+  const value = agent({ connected: true, historyLoaded: false, modelState: { model: 'anthropic/claude-opus', models: [{ value: 'anthropic/claude-opus', label: 'Claude Opus (anthropic)' }], levels: ['off', 'high'] } });
+  panel(value);
+  expect(screen.getByRole('status').textContent).toBe('Connecting to Pi…');
+  expect(screen.getByText('Starting')).toBeTruthy();
+  expect(screen.queryByRole('textbox', { name: 'Message to Pi' })).toBeNull();
+  expect(screen.queryByRole('combobox', { name: 'Model' })).toBeNull();
+  expect(sessionControls()).toEqual([]);
   cleanup();
-  panel(agent({ session: null, connected: false, starting: true, held: 'summarize this folder' }));
+  panel({ ...value, historyLoaded: true });
+  expect(screen.getByRole('textbox', { name: 'Message to Pi' })).toBeTruthy();
+  expect(screen.getByRole('combobox', { name: 'Model' })).toBeTruthy();
+  expect(sessionControls()).toEqual(['New conversation', 'End session']);
+});
+
+it('keeps the conversation while reconnecting to the same session, holding what is sent until Pi is back', () => {
+  const value = agent({ connected: false, held: 'summarize this folder' });
+  panel(value);
   const queue = screen.getByRole('list', { name: 'Queued messages' });
   expect([...queue.querySelectorAll('li')].map(item => item.textContent)).toEqual(['Waitingsummarize this folder']);
-  expect((screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement).disabled).toBe(false);
+  expect(screen.getByRole('textbox', { name: 'Message to Pi' }).getAttribute('placeholder')).toBe('Connecting to Pi…');
+  write('and list its links');
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  expect(value.send).toHaveBeenCalledWith('and list its links', undefined);
+  expect(sessionControls()).toEqual(['New conversation', 'End session']);
 });
 
 it('shows messages Pi has queued while it works, and puts them back in the message box when the run is stopped', async () => {

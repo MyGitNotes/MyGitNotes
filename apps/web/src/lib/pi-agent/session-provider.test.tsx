@@ -33,10 +33,13 @@ const live = (overrides: Partial<PiSessionInfo> = {}): PiSessionInfo => ({ id: '
 let requests: { method: string; body?: unknown; }[] = [];
 /** What the next started session carries beyond its defaults, such as a remote agent's `socket`. */
 let sessionOverrides: Partial<PiSessionInfo> = {};
+/** The session the server already runs when the page loads, which reading the session reports. */
+let running: PiSessionInfo | null = null;
 
 beforeEach(() => {
   requests = [];
   sessionOverrides = {};
+  running = null;
   FakeSocket.last = undefined;
   vi.stubGlobal('WebSocket', FakeSocket);
   vi.stubGlobal(
@@ -48,7 +51,7 @@ beforeEach(() => {
       // A remembered workspace that lost its core instructions is refused.
       if (body?.folder === 'gone') return new Response(JSON.stringify({ error: 'That folder is not an agent workspace yet.' }), { status: 404 });
       if (body?.folder === 'flaky') return new Response(JSON.stringify({ error: 'Pi could not start.' }), { status: 500 });
-      const session = method === 'DELETE' ? null : method === 'GET' ? null : live({ id: method === 'PUT' ? 's2' : 's1', ...sessionOverrides });
+      const session = method === 'DELETE' ? null : method === 'GET' ? running : live({ id: method === 'PUT' ? 's2' : 's1', ...sessionOverrides });
       return new Response(JSON.stringify({ session, piAvailable: true }), { status: 200 });
     }),
   );
@@ -103,6 +106,36 @@ it('starts nothing until woken, then once however often it is woken while starti
   await waitFor(() => expect(agent.current?.session?.id).toBe('s1'));
   act(() => agent.current!.wake());
   expect(requests.filter(request => request.method === 'POST')).toHaveLength(1);
+});
+
+it('joins a Pi already running when the page loads, starting nothing, and counts its history loaded once it arrives', async () => {
+  running = live();
+  const agent = mount([], undefined, false);
+  await waitFor(() => expect(agent.current?.session?.id).toBe('s1'));
+  expect(requests.map(request => request.method)).toEqual(['GET']);
+  expect(agent.current?.historyLoaded).toBe(false);
+  const socket = FakeSocket.last!;
+  act(() => {
+    socket.readyState = FakeSocket.OPEN;
+    socket.onopen?.();
+  });
+  expect(agent.current?.historyLoaded).toBe(false);
+  const load = socket.sent.find(record => record.type === 'get_messages')!;
+  act(() => socket.receive({ type: 'response', id: load.id, command: 'get_messages', success: true, data: { messages: [] } }));
+  expect(agent.current?.historyLoaded).toBe(true);
+  // Losing the socket to the same session keeps the conversation on screen while it reconnects.
+  act(() => socket.onclose?.());
+  expect(agent.current?.connected).toBe(false);
+  expect(agent.current?.historyLoaded).toBe(true);
+});
+
+it('joins nothing on load when the session there has ended, leaving it to a start', async () => {
+  running = live({ status: 'exited' });
+  const agent = mount([], undefined, false);
+  await waitFor(() => expect(agent.current?.available).toBe(true));
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(agent.current?.session).toBeNull();
+  expect(FakeSocket.last).toBeUndefined();
 });
 
 it('holds a message sent before Pi is ready, starting Pi, and sends it once the socket opens', async () => {

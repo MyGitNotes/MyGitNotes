@@ -177,7 +177,7 @@ function AgentConversation() {
   const caret = target?.caret ?? noCaret;
   const selection = useSyncExternalStore(caret.subscribe, caret.get);
   const position = target?.caret && target.content ? selectionPosition(target.content(), selection, target.lineNumberOffset) : undefined;
-  const { locate, loadCommands, editorText, takeEditorText, wake } = agent;
+  const { locate, loadCommands, editorText, takeEditorText } = agent;
 
   // An extension (such as robot_hand) placed text in the message box for the user to review and send.
   const [shownEditorText, setShownEditorText] = useState<PiEditorText | null>(null);
@@ -215,11 +215,13 @@ function AgentConversation() {
   // Until a start answers there is no session, but nothing for the person to do either.
   const starting = !live && agent.starting;
   const ready = live && agent.connected;
-  // No session and none ended on its own: the message box starts one when used, so this is a resting state, not a problem.
+  // The conversation and its controls appear once the session's history has; a reconnect to the same session keeps them.
+  const initialized = live && agent.historyLoaded;
+  // Starting Pi, or joining one that runs, shows only that it is under way: nothing yet to end, renew or write to.
+  const loading = starting || (live && !initialized);
+  // No session and none ended on its own: the start button wakes Pi, so this is a resting state, not a problem.
   const resting = !live && !starting && session?.status !== 'exited';
-  // While Pi starts the person may go on typing, and what they send waits for it. That includes a live session still connecting:
-  // disabling the box there took the focus out of it the moment the person's own first focus woke Pi.
-  const writable = live || resting || starting;
+  const ended = !live && !starting && !resting;
   // Pi answered with no model at all: no key, no login and no model the edition provides.
   const noModel = ready && model.loaded === true && model.models.length === 0;
   const absolute = target && file?.path === target.path ? file.absolute : undefined;
@@ -241,7 +243,7 @@ function AgentConversation() {
 
   const send = () => {
     const text = draft.trim();
-    if (!text || !writable) return;
+    if (!text) return;
     if (agent.send(text, focus)) setDraft('');
     // A built-in that is not ready to send, /name without a name, waits for its argument.
     else if (parseComposerInput(text).kind === 'builtin') setDraft(`${text} `);
@@ -255,22 +257,26 @@ function AgentConversation() {
   return (
     <section className='pi-agent-panel' aria-label={t('piAgent.title')}>
       <header className='pi-agent-header'>
-        <span className='pi-agent-status' data-status={live ? session!.status : starting ? 'starting' : 'none'}>{t(live ? `piAgent.status.${session!.status}` as const : starting ? 'piAgent.status.starting' : 'piAgent.status.none')}</span>
+        <span className='pi-agent-status' data-status={initialized ? session!.status : loading ? 'starting' : 'none'}>{t(initialized ? `piAgent.status.${session!.status}` as const : loading ? 'piAgent.status.starting' : 'piAgent.status.none')}</span>
         {/* The workspace name opens the workspace picker; its tooltip names the absolute folder Pi runs in. */}
         <button type='button' className='pi-agent-cwd' title={session?.cwd ? `${t('piAgent.switchWorkspace')}\n${session.cwd}` : t('piAgent.switchWorkspace')} aria-haspopup='dialog' aria-expanded={switching} onClick={() => setSwitching(open => !open)}>
           <span>{session ? name(session.location) : t('piAgent.switchWorkspace')}</span>
           <ChevronDown aria-hidden='true' />
         </button>
         {/* The conversation's name, which /name sets, else the title an extension gave it. */}
-        <span className='pi-agent-session-name' title={live ? agent.transcript.name ?? agent.transcript.title : undefined}>{live ? agent.transcript.name ?? agent.transcript.title : undefined}</span>
-        <Button size='icon' title={t('piAgent.newConversation')} aria-label={t('piAgent.newConversation')} disabled={!ready} onClick={agent.newConversation}>
-          <MessageSquarePlus aria-hidden='true' />
-        </Button>
-        <Button size='icon' title={t('piAgent.end')} aria-label={t('piAgent.end')} disabled={!live} onClick={() => void agent.end()}>
-          <Power aria-hidden='true' />
-        </Button>
+        <span className='pi-agent-session-name' title={initialized ? agent.transcript.name ?? agent.transcript.title : undefined}>{initialized ? agent.transcript.name ?? agent.transcript.title : undefined}</span>
+        {initialized && (
+          <>
+            <Button size='icon' title={t('piAgent.newConversation')} aria-label={t('piAgent.newConversation')} disabled={!ready} onClick={agent.newConversation}>
+              <MessageSquarePlus aria-hidden='true' />
+            </Button>
+            <Button size='icon' title={t('piAgent.end')} aria-label={t('piAgent.end')} onClick={() => void agent.end()}>
+              <Power aria-hidden='true' />
+            </Button>
+          </>
+        )}
       </header>
-      {ready && agent.modelState.models.length > 0 && (
+      {initialized && ready && agent.modelState.models.length > 0 && (
         <div className='pi-agent-model-row'>
           <Select className='pi-agent-model' aria-label={t('piAgent.model')} title={t('piAgent.model')} value={model.model ?? ''} onValueChange={agent.setModel} options={model.model && !model.models.some(option => option.value === model.model) ? [{ value: model.model, label: model.model }, ...model.models] : model.models} />
           {model.levels.length > 1 && <Select className='pi-agent-thinking' aria-label={t('piAgent.thinkingLevel')} title={t('piAgent.thinkingLevel')} value={model.thinking ?? ''} onValueChange={agent.setThinking} options={model.levels.map(level => ({ value: level, label: level }))} />}
@@ -278,11 +284,11 @@ function AgentConversation() {
       )}
       {switching && <SwitchWorkspace onDone={() => setSwitching(false)} />}
       {agent.error && <p role='alert' className='pi-agent-error'>{agent.error}</p>}
-      {starting && <LoadingStatus className='pi-agent-idle'>{t('piAgent.startingSession')}</LoadingStatus>}
-      {!live && !starting && !resting && (
+      {loading && <LoadingStatus className='pi-agent-idle'>{t(starting ? 'piAgent.startingSession' : 'piAgent.connecting')}</LoadingStatus>}
+      {(resting || ended) && (
         <div className='pi-agent-idle'>
           {/* Hiding a repository ends its session on purpose: a notice of what happened, not a failure to show output for. */}
-          {session?.endedBecause === 'repository-hidden' ? <p>{t('piAgent.endedHidden')}</p> : (
+          {resting ? <p>{t('piAgent.notStarted')}</p> : session?.endedBecause === 'repository-hidden' ? <p>{t('piAgent.endedHidden')}</p> : (
             <>
               <p>{t('piAgent.exited')}</p>
               {session?.exit?.stderr && <pre className='pi-agent-pre'>{session.exit.stderr}</pre>}
@@ -292,8 +298,8 @@ function AgentConversation() {
         </div>
       )}
       {/* Pi's questions scroll with the conversation, so a tall one never pushes the composer out of the panel. */}
-      <AgentTranscript transcript={agent.transcript} links={links}>{agent.transcript.dialogs.map(dialog => <AgentDialogCard key={dialog.id} dialog={dialog} onAnswer={answer => agent.answer(dialog, answer)} />)}</AgentTranscript>
-      {noModel ? <ModelSetup onCheck={agent.checkModels} /> : (
+      {initialized && <AgentTranscript transcript={agent.transcript} links={links}>{agent.transcript.dialogs.map(dialog => <AgentDialogCard key={dialog.id} dialog={dialog} onAnswer={answer => agent.answer(dialog, answer)} />)}</AgentTranscript>}
+      {!initialized ? null : noModel ? <ModelSetup onCheck={agent.checkModels} /> : (
         <form
           className='pi-agent-composer'
           onSubmit={event => {
@@ -331,13 +337,11 @@ function AgentConversation() {
               className='ui-control'
               rows={3}
               value={draft}
-              placeholder={t(ready || resting ? 'piAgent.placeholder' : 'piAgent.connecting')}
+              placeholder={t(ready ? 'piAgent.placeholder' : 'piAgent.connecting')}
               aria-label={t('piAgent.message')}
               aria-controls={menuOpen ? menuId : undefined}
               aria-activedescendant={menuOpen && matches.length ? `${menuId}-${active}` : undefined}
               aria-autocomplete='list'
-              disabled={!writable}
-              onFocus={wake}
               onChange={event => {
                 setDraft(event.target.value);
                 setHighlight(0);
@@ -386,7 +390,7 @@ function AgentConversation() {
                 {t('piAgent.abort')}
               </Button>
             )}
-            <Button type='submit' variant='primary' disabled={!writable || !draft.trim()}>{shell ? <SquareTerminal aria-hidden='true' /> : <Send aria-hidden='true' />}{t(shell ? 'piAgent.run' : agent.transcript.running ? 'piAgent.steer' : 'piAgent.send')}</Button>
+            <Button type='submit' variant='primary' disabled={!draft.trim()}>{shell ? <SquareTerminal aria-hidden='true' /> : <Send aria-hidden='true' />}{t(shell ? 'piAgent.run' : agent.transcript.running ? 'piAgent.steer' : 'piAgent.send')}</Button>
           </div>
         </form>
       )}

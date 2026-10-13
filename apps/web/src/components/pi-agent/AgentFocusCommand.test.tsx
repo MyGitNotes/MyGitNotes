@@ -57,9 +57,9 @@ function Editor() {
   );
 }
 
-function mount({ available = true, target = null }: { available?: boolean; target?: AgentTarget | null; }, children?: ReactNode) {
-  const agent = { available, target } as PiAgentValue;
-  return render(
+function mount({ available = true, target = null, session = null }: { available?: boolean; target?: AgentTarget | null; session?: PiAgentValue['session']; }, children?: ReactNode) {
+  const agent = { available, target, session, starting: false, start: vi.fn(async () => {}), wake: vi.fn() } as unknown as PiAgentValue;
+  render(
     <KeyboardRoot>
       <PanelProvider>
         <PiAgentContext.Provider value={agent}>
@@ -69,6 +69,7 @@ function mount({ available = true, target = null }: { available?: boolean; targe
       </PanelProvider>
     </KeyboardRoot>,
   );
+  return agent;
 }
 
 const pressToggle = (target: Element) => {
@@ -158,4 +159,16 @@ it('does not take focus from where the person went before the box appeared', () 
   act(() => search.focus());
   act(() => reveal.show());
   expect(document.activeElement).toBe(search);
+});
+
+it('starts Pi on the way to the agent when none runs, and starts an ended session again', () => {
+  const resting = mount({}, <button type='button'>Elsewhere</button>);
+  pressToggle(screen.getByRole('button', { name: 'Elsewhere' }));
+  expect(resting.wake).toHaveBeenCalledTimes(1);
+  expect(resting.start).not.toHaveBeenCalled();
+  cleanup();
+
+  const ended = mount({ session: { id: 's1', cwd: '/w', location: { repository: 'local:home', folder: '' }, status: 'exited', startedAt: '' } }, <button type='button'>Elsewhere</button>);
+  pressToggle(screen.getByRole('button', { name: 'Elsewhere' }));
+  expect(ended.start).toHaveBeenCalledTimes(1);
 });

@@ -1749,6 +1749,7 @@ export const en = {
   'piAgent.newConversation': 'New conversation',
   'piAgent.end': 'End session',
   'piAgent.exited': 'The Pi session has ended.',
+  'piAgent.notStarted': 'Pi is not running. Start it to pick up the conversation.',
   'piAgent.endedHidden': 'This session worked in a repository that is no longer shown in this workspace, so it was closed. Start a new session to keep working.',
   'piAgent.start': 'Start session',
   'piAgent.startingSession': 'Starting Pi…',
