@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express';
 import fs from 'node:fs';
 import { agentFileAllowed, classifyResource, historyFile, managedNotebook, resolveAgentFile, resolveSafePath, versionedPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig, workspaceDocument } from '@mygitnotes/core';
-import { changeFile, commitSelectedFiles, commitStagedFiles, fileDiff, generateCommitMessage, getDiff, getGitStatus, getRecentCommits, listChanges, stageAndCommit, SyncError, syncWorkspace } from '@mygitnotes/git';
+import { changeFile, commitSelectedFiles, commitStagedFiles, fileDiff, generateCommitMessage, getDiff, getGitStatus, getRecentCommits, listChanges, refreshUpstream, stageAndCommit, SyncError, syncWorkspace } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { newVersion } from './note-history.js';
 import { eachRepository, type LocalHandle, repositoryOrDefault } from './request-workspace.js';
@@ -81,6 +81,7 @@ export function createLocalGitRouter(): Router {
   router.get('/status', async (req: Request, res: Response) => {
     try {
       const { root: repoRoot } = await worktree(res, req.query.repository);
+      await refreshUpstream(repoRoot);
       const status = await getGitStatus(repoRoot);
       const commits = await getRecentCommits(repoRoot, 10);
       res.json({ status, commits });

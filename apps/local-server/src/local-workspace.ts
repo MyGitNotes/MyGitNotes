@@ -1,6 +1,6 @@
 import { Request, Response, Router } from 'express';
 import { repositoryManifestStatus, type RepositoryStatus, SourceError, type WorkspaceStatus } from '@mygitnotes/core';
-import { getCurrentBranch, getGitStatus } from '@mygitnotes/git';
+import { getCurrentBranch, getGitStatus, refreshUpstream } from '@mygitnotes/git';
 import { type LocalHandle, workspaceOf } from './request-workspace.js';
 import { openEventStream } from './event-stream.js';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
@@ -37,6 +37,7 @@ export function createLocalWorkspaceRouter(): Router {
         const unavailable = 'unavailable' in entry ? { unavailable: entry.unavailable } : {};
         if (!handle) return { ...base, branch: '', write: false, ...unavailable };
         const branch = await getCurrentBranch(handle.root);
+        await refreshUpstream(handle.root);
         return { ...base, branch, write: branch === 'main', gitStatus: await getGitStatus(handle.root), ...unavailable };
       }));
       const body: WorkspaceStatus = { keyedConfig, local: true, defaultRepository: workspace.default?.ref.id ?? null, repositories, coreUpdate: true, ...(workspace.default?.localPath ? { repoRoot: workspace.default.localPath } : {}) };

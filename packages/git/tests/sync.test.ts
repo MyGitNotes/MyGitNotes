@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { getUpstreamStatus, runGit } from '../src/git-service.js';
-import { SyncError, syncWorkspace } from '../src/sync.js';
+import { refreshUpstream, SyncError, syncWorkspace } from '../src/sync.js';
 
 let base: string, remote: string, local: string, other: string;
 const git = async (cwd: string, ...args: string[]) => (await runGit(args, cwd)).stdout;
@@ -219,5 +219,28 @@ describe('syncWorkspace', () => {
     expect(error).toMatchObject({ code: 'FAILED' });
     expect(error.message).toContain('push denied by policy');
     expect(await getUpstreamStatus(local)).toMatchObject({ ahead: 1 });
+  });
+});
+
+describe('refreshUpstream', () => {
+  it('counts commits pushed from elsewhere, fetching at most once per interval', async () => {
+    await commit(other, 'remote.md', 'remote\n');
+    await git(other, 'push');
+    expect(await getUpstreamStatus(local)).toMatchObject({ behind: 0 });
+    await refreshUpstream(local);
+    expect(await getUpstreamStatus(local)).toMatchObject({ ahead: 0, behind: 1 });
+
+    await commit(other, 'second.md', 'second\n');
+    await git(other, 'push');
+    await refreshUpstream(local);
+    expect(await getUpstreamStatus(local)).toMatchObject({ behind: 1 });
+    await refreshUpstream(local, { interval: 0 });
+    expect(await getUpstreamStatus(local)).toMatchObject({ behind: 2 });
+  });
+
+  it('keeps the last fetched counts when the remote is unreachable', async () => {
+    await git(local, 'remote', 'set-url', 'origin', path.join(base, 'missing.git'));
+    await refreshUpstream(local, { interval: 0 });
+    expect(await getUpstreamStatus(local)).toEqual({ upstream: 'origin/main', ahead: 0, behind: 0 });
   });
 });

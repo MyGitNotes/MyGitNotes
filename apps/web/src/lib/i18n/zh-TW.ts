@@ -1038,6 +1038,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'editor.words': '{count} 個字',
   'editor.characters': '{count} 個字元',
   'editor.savingLocally': '正在儲存至本機...',
+  'editor.pushing': '正在推送...',
+  'editor.committing': '正在提交...',
   'editor.autoSavingToDisk': '正在自動儲存至磁碟...',
   'editor.savingToGitHub': '正在儲存至 遠端儲存庫...',
   'editor.unsavedLocalChanges': '有未儲存的本機變更',

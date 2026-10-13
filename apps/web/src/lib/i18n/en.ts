@@ -1037,6 +1037,8 @@ export const en = {
   'editor.words': '{count} words',
   'editor.characters': '{count} characters',
   'editor.savingLocally': 'Saving locally...',
+  'editor.pushing': 'Pushing...',
+  'editor.committing': 'Committing...',
   'editor.autoSavingToDisk': 'Auto-saving to disk...',
   'editor.savingToGitHub': 'Saving to remote repository...',
   'editor.unsavedLocalChanges': 'Unsaved local changes',

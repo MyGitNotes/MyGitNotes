@@ -105,3 +105,26 @@ export async function syncWorkspace(root: string, strategy?: SyncStrategy, { pul
     return { upstream, pulled, pushed, ...(backup ? { backup } : {}) };
   });
 }
+
+const UPSTREAM_FETCH_INTERVAL = 60_000;
+const upstreamFetches = new Map<string, { at: number; done: Promise<void>; }>();
+
+/**
+ * Fetches the current branch's remote at most once per `interval`, so the ahead and behind counts follow commits pushed from elsewhere.
+ * Waits at most `wait` ms: a slower fetch keeps running and the next status read sees it. A failed fetch leaves the last fetched state.
+ */
+export async function refreshUpstream(root: string, { interval = UPSTREAM_FETCH_INTERVAL, wait = 3000 }: { interval?: number; wait?: number; } = {}): Promise<void> {
+  const key = fs.realpathSync(root);
+  const last = upstreamFetches.get(key);
+  if (!last || Date.now() - last.at >= interval) {
+    const done = (async () => {
+      const branch = await getCurrentBranch(root);
+      const remote = branch && (await runGit(['config', '--get', `branch.${branch}.remote`], root).catch(() => ({ stdout: '' }))).stdout.trim();
+      if (remote) await runGit(['fetch', remote], root, await networkOptions(root));
+    })().catch(() => {});
+    upstreamFetches.set(key, { at: Date.now(), done });
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([upstreamFetches.get(key)!.done, new Promise<void>(resolve => (timer = setTimeout(resolve, wait)))]);
+  clearTimeout(timer);
+}

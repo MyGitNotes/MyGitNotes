@@ -68,6 +68,19 @@ it('commits the note only on a confirming second click, saving pending edits fir
   expect(onSave).toHaveBeenCalledTimes(1);
 });
 
+it.each([[false, 'Committing...'], [true, 'Pushing...']])('names the commit in the status while it runs, draft mode %s', async (draftMode, status) => {
+  let finish = () => {};
+  const onCommitFile = vi.fn(() => new Promise<void>(resolve => (finish = resolve)));
+  render(editor({ isDirty: true, draftMode, autoSave: !draftMode, onCommitFile }));
+  fireEvent.click(screen.getByRole('button', { name: 'Commit' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Click again to commit' }));
+  await flush();
+  expect(screen.getByText(status)).toBeTruthy();
+  expect(screen.queryByText('Saving locally...')).toBeNull();
+  await act(async () => finish());
+  expect(screen.queryByText(status)).toBeNull();
+});
+
 it('disarms an action when its confirming click does not come in time', async () => {
   const onCommitFile = vi.fn(async () => {});
   render(editor({ isDirty: true, onCommitFile }));

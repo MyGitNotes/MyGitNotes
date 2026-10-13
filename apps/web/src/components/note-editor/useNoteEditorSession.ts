@@ -43,6 +43,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   const copyResetTimer = useRef<ReturnType<typeof setTimeout>>();
   const [metadata, setMetadata] = useState<Record<string, unknown>>(note.metadata || {});
   const [isSaving, setIsSaving] = useState(false);
+  // Set while `commitNote` runs, so the status names the commit rather than a save.
+  const [committing, setCommitting] = useState(false);
   const [saveError, setSaveError] = useState(conflictReason || '');
   // Translated at render time alongside saveError, so a raw error message doesn't get frozen
   // in whatever language was active when it was caught.
@@ -220,7 +222,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   // Note is considered dirty if it has uncommitted edits on disk OR unsaved session edits
   const isDirty = Boolean(propIsDirty || hasUnsavedChanges);
   const editorState: 'saving' | 'pending' | 'saved' = isSaving ? 'saving' : isDirty ? 'pending' : 'saved';
-  const editorStatus = isSaving ? t(draftMode ? 'editor.savingLocally' : autoSave ? 'editor.autoSavingToDisk' : 'editor.savingToGitHub') : isDirty ? t(draftMode ? hasUnsavedChanges ? 'editor.unsavedLocalChanges' : 'editor.savedLocallyPendingCommit' : autoSave ? 'editor.uncommittedChanges' : 'editor.unsavedChanges') : t(readOnly ? 'editor.readOnly' : draftMode ? 'editor.noPendingChanges' : autoSave ? 'editor.cleanSavedToDisk' : 'editor.savedToGitHub');
+  // A remote commit writes to the repository itself; a local one stays in the worktree until synced.
+  const editorStatus = isSaving ? t(committing ? draftMode ? 'editor.pushing' : 'editor.committing' : draftMode ? 'editor.savingLocally' : autoSave ? 'editor.autoSavingToDisk' : 'editor.savingToGitHub') : isDirty ? t(draftMode ? hasUnsavedChanges ? 'editor.unsavedLocalChanges' : 'editor.savedLocallyPendingCommit' : autoSave ? 'editor.uncommittedChanges' : 'editor.unsavedChanges') : t(readOnly ? 'editor.readOnly' : draftMode ? 'editor.noPendingChanges' : autoSave ? 'editor.cleanSavedToDisk' : 'editor.savedToGitHub');
   const title = String(metadata.title || note.title || '');
 
   const sessionCallback = useRef(onSession);
@@ -404,6 +407,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     if (!onCommitFile || locked || operation.current) return;
     operation.current = true;
     setIsSaving(true);
+    setCommitting(true);
     setSaveError('');
     try {
       const state = current.current;
@@ -426,7 +430,10 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       if (version) throw error;
     } finally {
       operation.current = false;
-      if (mounted.current) setIsSaving(false);
+      if (mounted.current) {
+        setIsSaving(false);
+        setCommitting(false);
+      }
     }
   };
   /** Discards this note's uncommitted changes, on disk or in the draft store, and the session's unsaved edits. */
