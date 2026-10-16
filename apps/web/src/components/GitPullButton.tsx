@@ -55,7 +55,7 @@ export function GitPullButton({ onPulled, repoRoot }: { onPulled: () => Promise<
       {notice && createPortal(
         // Sits above the sidebar footer so the toast never covers the pull button itself.
         <div className='fixed bottom-24 left-4 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200'>
-          <div role='status' className='bg-surface/95 backdrop-blur-md px-4 py-3 rounded-xl shadow-xl border border-line/80 flex items-center gap-3 text-xs max-w-sm text-fg'>
+          <div role='status' className='ui-glass px-4 py-3 rounded-xl shadow-xl border border-line/80 flex items-center gap-3 text-xs max-w-sm text-fg'>
             <span className='break-words min-w-0'>{notice}</span>
             <button type='button' aria-label={t('common.close')} onClick={() => setNotice('')} className='text-muted hover:text-fg p-1 rounded hover:bg-fg/10 transition shrink-0'>
               <X className='w-3.5 h-3.5' />
