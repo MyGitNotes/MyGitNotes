@@ -9,7 +9,7 @@ describe('applyModelResponse', () => {
     let state = applyModelResponse(empty, response('get_state', { model: { provider: 'anthropic', id: 'claude-opus', name: 'Claude Opus' }, thinkingLevel: 'high', isStreaming: false }));
     state = applyModelResponse(state, response('get_available_models', { models: [{ provider: 'anthropic', id: 'claude-opus', name: 'Claude Opus' }, { provider: 'openai-codex', id: 'gpt-6.1-sol' }] }));
     state = applyModelResponse(state, response('get_available_thinking_levels', { levels: ['low', 'high'] }));
-    expect(state).toEqual({ model: 'anthropic/claude-opus', thinking: 'high', loaded: true, models: [{ value: 'anthropic/claude-opus', label: 'Claude Opus (anthropic)' }, { value: 'openai-codex/gpt-6.1-sol', label: 'gpt-6.1-sol (openai-codex)' }], levels: ['low', 'high'] });
+    expect(state).toEqual({ model: 'anthropic/claude-opus', thinking: 'high', loaded: true, models: [{ value: 'anthropic/claude-opus', label: 'Claude Opus (anthropic)', name: 'Claude Opus' }, { value: 'openai-codex/gpt-6.1-sol', label: 'gpt-6.1-sol (openai-codex)', name: 'gpt-6.1-sol' }], levels: ['low', 'high'] });
   });
 
   it('follows a model switch, and ignores failures and unrelated records', () => {

@@ -72,6 +72,8 @@ export type WebToolHandler = (tool: string, args: Record<string, unknown>) => Pr
 export interface PiModelOption {
   value: string;
   label: string;
+  /** The model's own name without its provider, for the message box's narrow model button; the label when absent. */
+  name?: string;
 }
 
 /** The session's model and thinking level, and what Pi offers to switch them to. */
@@ -101,7 +103,7 @@ export function applyModelResponse(state: PiModelState, record: Record<string, u
     case 'get_state':
       return { ...state, model: data.model ? modelKey(data.model) : undefined, thinking: data.thinkingLevel };
     case 'get_available_models':
-      return { ...state, loaded: true, models: (data.models ?? []).map(model => ({ value: modelKey(model), label: `${model.name || model.id} (${model.provider})` })) };
+      return { ...state, loaded: true, models: (data.models ?? []).map(model => ({ value: modelKey(model), label: `${model.name || model.id} (${model.provider})`, name: model.name || model.id })) };
     case 'get_available_thinking_levels':
       return { ...state, levels: data.levels ?? [] };
     case 'set_model': {

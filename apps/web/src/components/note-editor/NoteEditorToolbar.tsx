@@ -1,5 +1,6 @@
 import { ArrowLeft, Check, FileText, FolderInput, LayoutGrid, ListOrdered, ListTree, PanelRight, Pencil, Save, Type } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { usePiAgentAvailable } from '../../lib/pi-agent/session.js';
 import type { NoteItem } from '../../lib/types.js';
 import { Button } from '../Button.js';
 import { type MarkdownEditorMode, MarkdownEditorModeSwitch } from '../MarkdownEditor.js';
@@ -85,6 +86,7 @@ function NoteZoomHeading({ note, session, onClose, onRename, phoneEditing }: Pic
 /** The zoom and pane editor's top bar: the zoom title, then save, mode, line number, export, Focus, formatting toolbar and panel actions. */
 export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onClose, onAddToFocus, onAddToOutline, onMove, onRename, phoneEditing }: NoteEditorToolbarProps) {
   const { t } = useTranslation();
+  const agentAvailable = usePiAgentAvailable();
   const zoom = frame === 'zoom';
   return (
     <div className='note-toolbar relative shrink-0 px-4 py-2 border-b border-line flex items-center justify-between gap-4 bg-sidebar/60'>
@@ -127,7 +129,7 @@ export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, 
           )}
           <NoteExportMenu className='ui-icon-button toolbar-icon-button' path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} />
         </div>
-        {(toggleFormatToolbar || zoom) && (
+        {(toggleFormatToolbar || zoom || agentAvailable) && (
           <div role='group' className='note-controls-group' aria-label={t('editor.controlsPanels')}>
             {toggleFormatToolbar && (
               <button type='button' aria-pressed={showFormatToolbar} aria-label={t('editor.formatToolbar')} title={t('editor.formatToolbar')} onClick={toggleFormatToolbar} className='ui-icon-button toolbar-icon-button editor-format-toolbar-action'>
@@ -135,21 +137,13 @@ export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, 
               </button>
             )}
             {zoom && (
-              <button
-                type='button'
-                aria-label={t('editor.documentPanel')}
-                title={t('editor.documentPanel')}
-                aria-pressed={Boolean(docPanel.notePanel)}
-                onClick={() => togglePanel(docPanel, isMarkdown)}
-                className='ui-icon-button toolbar-icon-button editor-panel-action'
-              >
+              <button type='button' aria-label={t('editor.documentPanel')} title={t('editor.documentPanel')} aria-pressed={Boolean(docPanel.notePanel)} onClick={() => togglePanel(docPanel, isMarkdown)} className='ui-icon-button toolbar-icon-button editor-panel-action'>
                 <PanelRight aria-hidden='true' />
               </button>
             )}
-            {/* One more panel toggle, the assistant's, goes here at the end of the group. */}
+            <AssistantDockToggle className='toolbar-icon-button editor-assistant-action' />
           </div>
         )}
-        <AssistantDockToggle className='toolbar-icon-button editor-assistant-action' />
       </div>
     </div>
   );

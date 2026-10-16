@@ -218,6 +218,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
 
   const session = agent.session;
   const model = agent.modelState;
+  const currentModel = model.models.find(option => option.value === model.model);
   const links = useMemo(() => chatLinks(session, agent.notebooks, agent.repositories), [session, agent.notebooks, agent.repositories]);
   const name = useWorkspaceName();
   const live = Boolean(session && session.status !== 'exited');
@@ -425,7 +426,8 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
               </div>
               {ready && model.models.length > 0 && (
                 <div className='pi-agent-model-row'>
-                  <Select className='pi-agent-model' aria-label={t('piAgent.model')} title={t('piAgent.model')} value={model.model ?? ''} onValueChange={agent.setModel} options={model.model && !model.models.some(option => option.value === model.model) ? [{ value: model.model, label: model.model }, ...model.models] : model.models} />
+                  {/* The button names the model alone, since a provider suffix pushes the part that tells models apart out of view; the menu and tooltip keep it. */}
+                  <Select className='pi-agent-model' aria-label={t('piAgent.model')} title={currentModel ? `${t('piAgent.model')}: ${currentModel.label}` : t('piAgent.model')} icon={currentModel?.name} value={model.model ?? ''} onValueChange={agent.setModel} options={model.model && !model.models.some(option => option.value === model.model) ? [{ value: model.model, label: model.model }, ...model.models] : model.models} />
                   {model.levels.length > 1 && <Select className='pi-agent-thinking' aria-label={t('piAgent.thinkingLevel')} title={t('piAgent.thinkingLevel')} value={model.thinking ?? ''} onValueChange={agent.setThinking} options={model.levels.map(level => ({ value: level, label: level }))} />}
                 </div>
               )}
