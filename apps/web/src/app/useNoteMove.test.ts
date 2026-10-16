@@ -41,7 +41,7 @@ function setup({ draft, focusTabs = [] as string[], remote = true }: { draft?: W
     queryClient: new QueryClient(),
     queryScope: {} as never,
     flushEditors: vi.fn(async () => true),
-    beforeFileChange: vi.fn(async () => {}),
+    beforeFileChange: vi.fn(async (_scope?: unknown) => {}),
     onFilesChanged: vi.fn(async () => {
       order.push('files changed');
     }),
@@ -57,7 +57,7 @@ function setup({ draft, focusTabs = [] as string[], remote = true }: { draft?: W
     act(() => hook.result.current.renameNote(target, applyTitle)?.());
     await act(() => hook.result.current.confirmRename(title));
   };
-  return { params, drafts, focus, move, rename, order };
+  return { params, drafts, focus, move, rename, order, hook };
 }
 
 beforeEach(() => {
@@ -97,6 +97,47 @@ describe('useNoteMove', () => {
     expect(params.beforeFileChange).toHaveBeenCalled();
     expect(files.mutateFile).toHaveBeenCalledWith({ kind: 'move', notebookId: 'nb', path: 'notes/idea.md', destination: 'notes/work/idea.md' }, 'r1');
     expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ revision: 'r2' }));
+  });
+
+  it('carries the remote draft of a committed note to where the file moved, base included', async () => {
+    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
+    files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/work/idea.md' }, deletedPaths: [] });
+    const { params, drafts, move } = setup({ draft: { note: { ...note, content: '# Idea\n\nEdited.' }, base: note } });
+    await move('work');
+    expect(params.beforeFileChange).toHaveBeenCalledWith({ notebookId: 'nb', paths: ['notes/idea.md', 'notes/work/idea.md'], carried: ['notes/idea.md'] });
+    expect([...drafts.keys()]).toEqual(['notes/work/idea.md']);
+    expect(drafts.get('notes/work/idea.md')).toMatchObject({ note: { path: 'notes/work/idea.md', content: '# Idea\n\nEdited.' }, base: { path: 'notes/work/idea.md', content: '# Idea' } });
+    expect(params.setActionError).toHaveBeenLastCalledWith('');
+  });
+
+  it('moves the draft the editor staged while the move ran, not the one read before it', async () => {
+    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
+    const { drafts, move } = setup({ draft: { note: { ...note, content: 'first' }, base: note } });
+    files.mutateFile.mockImplementation(async () => {
+      drafts.set('notes/idea.md', { note: { ...note, content: 'typed during the move' }, base: note });
+      return { revision: 'r2', selectedPath: '', pathMap: {}, deletedPaths: [] };
+    });
+    await move('work');
+    expect(drafts.get('notes/work/idea.md')?.note.content).toBe('typed during the move');
+  });
+
+  it('keeps the draft where it was when the move is refused', async () => {
+    const { params, drafts, move } = setup({ draft: { note: { ...note, content: 'Edited.' }, base: note } });
+    params.beforeFileChange.mockRejectedValueOnce(new Error('files.draftsBlock'));
+    await move('work');
+    expect(params.setActionError).toHaveBeenLastCalledWith('files.draftsBlock');
+    expect([...drafts.keys()]).toEqual(['notes/idea.md']);
+    expect(files.mutateFile).not.toHaveBeenCalled();
+  });
+
+  it('moves a note dropped on a folder without opening the dialog', async () => {
+    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
+    files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: {}, deletedPaths: [] });
+    const { params, hook } = setup({});
+    await act(() => hook.result.current.moveTo({ notebookId: 'nb', path: 'notes/work/idea.md', title: '' }, null));
+    expect(files.mutateFile).toHaveBeenCalledWith({ kind: 'move', notebookId: 'nb', path: 'notes/work/idea.md', destination: 'notes/idea.md' }, 'r1');
+    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ revision: 'r2' }));
+    expect(hook.result.current.request).toBeNull();
   });
 
   it('renames a never-committed draft: a new file name and the heading that titles it', async () => {

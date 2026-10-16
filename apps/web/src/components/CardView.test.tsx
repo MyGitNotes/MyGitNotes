@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { CardView } from './CardView.js';
-import { NOTE_DRAG_TYPE } from '../lib/note-drag.js';
+import { NOTE_DRAG_TYPE, NOTE_MOVE_DRAG_TYPE } from '../lib/note-drag.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 
 afterEach(cleanup);
@@ -60,4 +60,14 @@ it('renders cards in a single strip row when strip is true', () => {
   const { container } = render(createElement(CardView, { ...baseProps, notes: [noteOf('notes/a.md'), noteOf('notes/b.md')], strip: true }));
   expect(container.querySelector('.note-card-strip')).toBeInTheDocument();
   expect(container.querySelectorAll('.note-card-strip-item').length).toBe(2);
+});
+
+it('drags a movable card onto a folder without offering it to a Focus pane', () => {
+  render(createElement(CardView, { ...baseProps, onMoveNote: vi.fn(), notes: [noteOf('notes/a.md')] }));
+  const card = screen.getByText('notes/a.md').closest('[draggable]')!;
+  expect(card).toHaveAttribute('draggable', 'true');
+  const dataTransfer = makeDataTransfer();
+  fireEvent.dragStart(card, { dataTransfer });
+  expect(JSON.parse(dataTransfer.getData(NOTE_MOVE_DRAG_TYPE))).toEqual({ notebookId: 'life', path: 'notes/a.md' });
+  expect(dataTransfer.getData(NOTE_DRAG_TYPE)).toBe('');
 });

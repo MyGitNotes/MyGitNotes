@@ -24,12 +24,11 @@ export interface NavTreeRowProps {
   prefix?: ReactNode;
   suffix?: ReactNode;
   className?: string;
-  entryClassName?: string;
   disabled?: boolean;
   buttonProps?: React.ButtonHTMLAttributes<HTMLButtonElement>;
 }
 
-export function NavTreeRow({ hasChildren = false, isExpanded = false, onToggleExpand, expandAriaLabel, icon = <Folder size={15} />, title, selected = false, onSelect, actions, prefix, suffix, className = '', entryClassName = '', disabled = false, buttonProps }: NavTreeRowProps) {
+export function NavTreeRow({ hasChildren = false, isExpanded = false, onToggleExpand, expandAriaLabel, icon = <Folder size={15} />, title, selected = false, onSelect, actions, prefix, suffix, className = '', disabled = false, buttonProps }: NavTreeRowProps) {
   return (
     <div className={`nav-tree-row ${selected ? 'is-selected' : ''} ${className}`}>
       {prefix}
@@ -50,7 +49,7 @@ export function NavTreeRow({ hasChildren = false, isExpanded = false, onToggleEx
           </button>
         )
         : <span className='nav-tree-chevron-spacer' aria-hidden='true' />}
-      <button type='button' className={`nav-tree-entry ${entryClassName}`} aria-current={selected ? 'location' : undefined} aria-pressed={selected} disabled={disabled} onClick={onSelect} title={title} {...buttonProps}>
+      <button type='button' className='nav-tree-entry' aria-current={selected ? 'location' : undefined} aria-pressed={selected} disabled={disabled} onClick={onSelect} title={title} {...buttonProps}>
         {icon}
         <span className='nav-tree-title'>{title}</span>
         {suffix}

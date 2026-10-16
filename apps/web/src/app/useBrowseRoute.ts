@@ -11,7 +11,6 @@ interface Params {
   config: WorkspaceState['config'];
   location: ReturnType<typeof useLocation>;
   queryState: FilterQuery;
-  setFolderReorder: React.Dispatch<React.SetStateAction<boolean>>;
   setFileMetadataOpen: React.Dispatch<React.SetStateAction<boolean>>;
   loading: WorkspaceState['loading'];
   loadError: WorkspaceState['loadError'];
@@ -20,7 +19,7 @@ interface Params {
   selectedNotebookId: WorkspaceState['selectedNotebookId'];
 }
 
-export function useBrowseRoute({ editorRoute, config, location, queryState, setFolderReorder, setFileMetadataOpen, loading, loadError, filtersOpen, setFiltersOpen, selectedNotebookId }: Params) {
+export function useBrowseRoute({ editorRoute, config, location, queryState, setFileMetadataOpen, loading, loadError, filtersOpen, setFiltersOpen, selectedNotebookId }: Params) {
   const editorNotebookId = editorRoute.notebook || config?.workspace.default_notebook || config?.notebooks[0]?.id || 'example';
   const returnTo = noteReturnRoute(location.search, editorNotebookId, editorRoute.folder);
   const route = useMemo(() => {
@@ -29,11 +28,6 @@ export function useBrowseRoute({ editorRoute, config, location, queryState, setF
     return parseWorkspaceRoute(origin.pathname, origin.search);
   }, [editorRoute, returnTo, queryState]);
   const activeTab = route.tab;
-  useEffect(() => {
-    /* eslint-disable react/set-state-in-effect -- Route transitions arrive through browser history as well as handlers; this resets reorder state owned by the calling workspace hook after commit. */
-    setFolderReorder(false);
-    /* eslint-enable react/set-state-in-effect */
-  }, [activeTab, route.notebook, setFolderReorder]);
   useEffect(() => {
     /* eslint-disable react/set-state-in-effect -- The route hook coordinates metadata visibility owned by the workspace; preserve its post-commit ordering with route changes. */
     setFileMetadataOpen(false);

@@ -1,4 +1,5 @@
 import type { FileResult } from '../../lib/files-api.js';
+import type { FileChangeScope } from '../../lib/file-change-scope.js';
 import type { NewVersionRequest } from '../../lib/history-api.js';
 import type { AssetItem, NotebookMetadataField, NoteItem } from '../../lib/types.js';
 
@@ -29,7 +30,7 @@ export interface NoteEditorSharedProps {
   onDeleteAsset?: (asset: AssetItem) => Promise<void>;
   onMoveAsset?: (asset: AssetItem, directory: string) => Promise<AssetItem>;
   /** Guards unsaved workspace edits before a document-panel file action rewrites notes. */
-  beforeFileChange?: () => Promise<void>;
+  beforeFileChange?: (scope?: FileChangeScope) => Promise<void>;
   /** Reloads workspace views after a document-panel file action rewrote notes. */
   onFilesChanged?: (result: FileResult) => Promise<void>;
   branch: string;

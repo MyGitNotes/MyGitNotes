@@ -9,6 +9,7 @@ import type { FilterControls } from '../lib/filter-controls.js';
 import { SIDEBAR_SECTIONS_KEY } from '../lib/sidebar-sections.js';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { Sidebar } from './Sidebar.js';
+import { NOTE_MOVE_DRAG_TYPE } from '../lib/note-drag.js';
 
 const kind = { total: 0, statuses: {}, tags: {} };
 const facets: Record<string, NotebookFacets> = { life: { total: 7, hidden: 0, statuses: { todo: 3, done: 4 }, tags: { work: 2 }, directories: {}, outlines: kind, compilations: { total: 3, statuses: {}, tags: {} } }, work: { total: 1, hidden: 0, statuses: {}, tags: {}, directories: {}, outlines: kind, compilations: kind } };
@@ -28,11 +29,11 @@ function controls(value: Partial<NoteFilters> = {}, onChange: FilterControls['on
   return { value: { kind: 'note', notebookId: 'life', folders: [], descendants: true, tags: [], tagMode: 'any', q: '', status: null, showHidden: false, ...value }, neighbors: false, notebooks: [{ id: 'life', title: 'Life', root: 'notes/life', statuses: ['todo', 'done'] }, { id: 'work', title: 'Work', root: 'notes/work' }], folders: [], tags: ['work'], statuses: ['todo', 'done'], count: 7, onChange, allNotebooks: false, onAllNotebooksChange: () => {}, onClear: () => {} };
 }
 
-const sidebar = (filters: FilterControls, onSelectFolder = vi.fn()) => render(createElement(I18nProvider, null, createElement(Sidebar, { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, reorder: false, onToggleReorder: () => {}, onSelectFolder, workspaceTagNames: ['work'], changeCount: 0 })));
+const sidebar = (filters: FilterControls, onSelectFolder = vi.fn()) => render(createElement(I18nProvider, null, createElement(Sidebar, { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder, workspaceTagNames: ['work'], changeCount: 0 })));
 
 it('treats folder filters and empty notebooks as unknown while folders are loading', () => {
   const filters = controls({ folders: ['notes/life/projects'] });
-  const props = { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, reorder: false, onToggleReorder: () => {}, onSelectFolder: vi.fn(), workspaceTagNames: ['work'], changeCount: 0 };
+  const props = { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: vi.fn(), workspaceTagNames: ['work'], changeCount: 0 };
   const { rerender } = render(createElement(I18nProvider, null, createElement(Sidebar, { ...props, foldersLoading: true })));
   expect(screen.queryByRole('button', { name: /notes\/life\/projects/ })).toBeNull();
   expect(screen.getAllByText('Loading folders…').length).toBeGreaterThan(0);
@@ -74,7 +75,7 @@ it('lists outline documents beside compilations and scopes their status/tag coun
   const outlineFacets = { ...facets, life: { ...facets.life, outlines: { total: 2, statuses: { todo: 2 }, tags: { research: 2 } } } };
   render(
     <I18nProvider>
-      <Sidebar filters={controls({ kind: 'outline' }, onChange)} facets={outlineFacets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} reorder={false} onToggleReorder={() => {}} onSelectFolder={() => {}} workspaceTagNames={[]} changeCount={0} />
+      <Sidebar filters={controls({ kind: 'outline' }, onChange)} facets={outlineFacets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={[]} changeCount={0} />
     </I18nProvider>,
   );
   const entry = screen.getByRole('button', { name: /Outlines/ });
@@ -90,11 +91,12 @@ it.each(['Delete', 'Move', 'Open file browser'])('puts %s on the folder dropdown
   const onManageFiles = vi.fn();
   render(
     <I18nProvider>
-      <Sidebar filters={controls()} facets={facets} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }, { notebookId: 'life', path: 'one/nested', title: 'Nested', order: 0 }]} selectedNotebookId='life' selectedFolder='one/nested' onManageFiles={onManageFiles} foldersWritable reorder={false} onToggleReorder={() => {}} onSelectFolder={() => {}} workspaceTagNames={[]} changeCount={0} />
+      <Sidebar filters={controls()} facets={facets} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }, { notebookId: 'life', path: 'one/nested', title: 'Nested', order: 0 }]} selectedNotebookId='life' selectedFolder='one/nested' onManageFiles={onManageFiles} foldersWritable onSelectFolder={() => {}} workspaceTagNames={[]} changeCount={0} />
     </I18nProvider>,
   );
   expect(screen.queryByRole('button', { name: 'Manage folder: Life' })).not.toBeInTheDocument();
-  expect(document.querySelector('.folder-heading-actions button')).toBeInTheDocument();
+  // Folders drag without a reorder switch.
+  expect(document.querySelector('.folder-heading-actions')).not.toBeInTheDocument();
   const trigger = screen.getByRole('button', { name: 'Manage folder: Nested' });
   trigger.focus();
   await act(async () => {
@@ -112,7 +114,7 @@ it('dismisses the folder dropdown on Escape and restores trigger focus without o
   const onManageFiles = vi.fn();
   render(
     <I18nProvider>
-      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={onManageFiles} foldersWritable reorder={false} onToggleReorder={() => {}} onSelectFolder={() => {}} workspaceTagNames={[]} changeCount={0} />
+      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={onManageFiles} foldersWritable onSelectFolder={() => {}} workspaceTagNames={[]} changeCount={0} />
     </I18nProvider>,
   );
   const trigger = screen.getByRole('button', { name: 'Manage folder: One' });
@@ -130,4 +132,29 @@ it('marks Compilations as the selected entry, not the notebook, while the list s
   sidebar(controls({ kind: 'compilation' }));
   const rows = [...document.querySelectorAll('.nav-tree-row')];
   expect(rows.filter(row => row.classList.contains('is-selected')).map(row => row.textContent)).toEqual([expect.stringContaining('Compilations')]);
+});
+
+it('moves a note dropped on a folder or on its notebook, and ignores a note of another notebook', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ revision: 'r1' }) }));
+  const onDropNote = vi.fn();
+  render(
+    <I18nProvider>
+      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={() => {}} foldersWritable onSelectFolder={() => {}} onDropNote={onDropNote} workspaceTagNames={[]} changeCount={0} />
+    </I18nProvider>,
+  );
+  const folder = screen.getByRole('button', { name: 'One' });
+  await waitFor(() => expect(folder).not.toBeDisabled());
+  const drag = (notebookId: string) => {
+    const payload = JSON.stringify({ notebookId, path: 'notes/a.md' });
+    return { dataTransfer: { types: [NOTE_MOVE_DRAG_TYPE], getData: (type: string) => type === NOTE_MOVE_DRAG_TYPE ? payload : '', dropEffect: '' } };
+  };
+  fireEvent.dragOver(folder, drag('life'));
+  expect(folder.closest('.folder-note-over')).toBeInTheDocument();
+  fireEvent.drop(folder, drag('life'));
+  expect(onDropNote).toHaveBeenLastCalledWith({ notebookId: 'life', path: 'notes/a.md' }, 'one');
+  expect(folder.closest('.folder-note-over')).not.toBeInTheDocument();
+  fireEvent.drop(screen.getByRole('button', { name: /^Life/ }), drag('life'));
+  expect(onDropNote).toHaveBeenLastCalledWith({ notebookId: 'life', path: 'notes/a.md' }, null);
+  fireEvent.drop(folder, drag('work'));
+  expect(onDropNote).toHaveBeenCalledTimes(2);
 });

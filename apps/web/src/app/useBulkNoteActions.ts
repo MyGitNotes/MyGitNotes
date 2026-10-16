@@ -8,12 +8,13 @@ import type { I18nContextValue } from '../lib/i18n/index.js';
 import type { useTagOperations } from '../lib/use-tag-operations.js';
 import type { WorkspaceState } from './workspace-state.js';
 import { baseName } from '../lib/paths.js';
+import type { FileChangeScope } from '../lib/file-change-scope.js';
 
 interface Params {
   selectedNotes: NoteListItem[];
   clearSelection: () => void;
   onUpdateNoteStatus: (note: NoteListItem, newStatus: string) => Promise<boolean>;
-  beforeFileChange: () => Promise<void>;
+  beforeFileChange: (scope?: FileChangeScope) => Promise<void>;
   onFilesChanged: (result: FileResult) => Promise<void>;
   repositories: WorkspaceState['repositories'];
   remote: boolean;
@@ -85,9 +86,9 @@ export function useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNote
     let changed: FileResult | undefined;
     let operationError: Error | undefined;
     try {
-      await beforeFileChange();
       const root = notebook.root.replace(/\/$/, '');
       const targetDir = destinationFolder ? `${root}/${destinationFolder}` : root;
+      await beforeFileChange({ notebookId, paths: selectedNotes.flatMap(note => [note.path, `${targetDir}/${baseName(note.path)}`]) });
       let currentRevision = (await fetchFiles(notebookId)).revision;
       for (const note of selectedNotes) {
         const destination = `${targetDir}/${baseName(note.path)}`;

@@ -8,18 +8,19 @@ import React from 'react';
 import { readNote } from '../lib/api.js';
 import { useNoteEditorRegistry } from '../lib/note-editing.js';
 import { type FileResult } from '../lib/files-api.js';
+import type { FileChangeScope } from '../lib/file-change-scope.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
 import type { WorkspaceState } from './workspace-state.js';
 import type { useNoteRestoration } from './useNoteRestoration.js';
 
 interface Params {
   editorRegistry: ReturnType<typeof useNoteEditorRegistry>;
-  hasPendingDrafts: WorkspaceState['hasPendingDrafts'];
-  documents: WorkspaceState['documents'];
+  draftsUnder: WorkspaceState['draftsUnder'];
+  remote: boolean;
+  readDraft: WorkspaceState['readDraft'];
   t: I18nContextValue['t'];
   config: WorkspaceState['config'];
   setFileDialog: React.Dispatch<React.SetStateAction<FileDialogRequest | undefined>>;
-  setActionError: WorkspaceState['setActionError'];
   refreshWorkspace: WorkspaceState['refreshWorkspace'];
   refreshDocuments: () => Promise<void>;
   editorRoute: ReturnType<typeof parseWorkspaceRoute>;
@@ -35,26 +36,19 @@ interface Params {
   handleOpenFolderIndex: ReturnType<typeof useNoteRestoration>['handleOpenFolderIndex'];
 }
 
-export function useFileNavigation({ editorRegistry, hasPendingDrafts, documents, t, config, setFileDialog, setActionError, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, navigate, location, returnTo, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex }: Params) {
-  const beforeFileChange = async () => {
-    const flushed = await editorRegistry.flushEditors();
-    if (!flushed || hasPendingDrafts() || documents.some(document => document.dirty)) throw new Error(t('folder.draftsHint'));
+export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, navigate, location, returnTo, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex }: Params) {
+  /**
+   * Saves the open editors, then refuses a change that would strand drafts: those under the paths it touches. A change
+   * without a scope touches no note (an R2 asset move rewrites links, which the commit of any draft merges).
+   */
+  const beforeFileChange = async (scope?: FileChangeScope) => {
+    if (!await editorRegistry.flushEditors()) throw new Error(t('folder.draftsHint'));
+    const stranded = scope ? draftsUnder(scope.notebookId, scope.paths, scope.carried) : [];
+    if (stranded.length > 0) throw new Error(t('files.draftsBlock', { paths: stranded.join(', ') }));
   };
   const openFileManager = (notebookId: string, relativePath = '', action: FolderAction = 'browse') => {
     const notebook = config?.notebooks.find(nb => nb.id === notebookId);
     if (notebook) setFileDialog({ notebookId, path: notebook.root + (relativePath ? '/' + relativePath : ''), showDocuments: true, initialOperation: action === 'delete' ? 'remove-directory' : action === 'move' ? 'move' : undefined });
-  };
-  const handleMoveNote = async (note: NoteListItem) => {
-    try {
-      await beforeFileChange();
-      setFileDialog({ notebookId: note.notebookId, path: note.path, movePath: note.path });
-    } catch (error) {
-      setActionError((error as Error).message);
-      throw error;
-    }
-  };
-  const moveNoteAction = (note: NoteListItem) => {
-    void handleMoveNote(note).catch(() => {});
   };
   const onFilesChanged = async (result: FileResult) => {
     // A file action commits in a remote workspace; read the head past the server's cache.
@@ -73,7 +67,8 @@ export function useFileNavigation({ editorRegistry, hasPendingDrafts, documents,
             setEditingNote(null);
             navigate(returnTo, { replace: true });
           } else {
-            setEditingNote(await readNote(previous, nb.id));
+            // A remote note keeps its draft through a change to other files; the editor reopens on it, not on the commit.
+            setEditingNote((remote ? readDraft(nb.id, previous)?.note : undefined) ?? await readNote(previous, nb.id));
             setFileEditorRevision(value => value + 1);
           }
         } catch (error) {
@@ -97,5 +92,5 @@ export function useFileNavigation({ editorRegistry, hasPendingDrafts, documents,
     setFileDialog(undefined);
   };
 
-  return { beforeFileChange, openFileManager, moveNoteAction, onFilesChanged, openFileIndex };
+  return { beforeFileChange, openFileManager, onFilesChanged, openFileIndex };
 }

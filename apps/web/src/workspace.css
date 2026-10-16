@@ -74,10 +74,6 @@
 .screen-sidebar-controls .screen-sidebar-action { flex: 1; min-width: 0; }
 .folder-tree-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
 .folder-tree-heading h4 { margin-bottom: 0; }
-.folder-multiselect-banner { display: flex; flex-direction: column; gap: 3px; padding: 7px 9px; margin: 0 0 8px; background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface)); border: 1px solid color-mix(in srgb, var(--color-primary) 24%, transparent); border-radius: 8px; animation: folderBannerFadeIn 0.18s ease-out; }
-.folder-multiselect-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--color-primary); }
-.folder-multiselect-text { font-size: 11px; color: var(--color-muted); line-height: 1.35; margin: 0; }
-@keyframes folderBannerFadeIn { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
 .folder-tree-root { width: 100%; text-align: left; padding: 9px 10px; font-size: 13px; border-radius: 7px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
 /* Shared NavTree Layout */
 .nav-tree { display: flex; flex-direction: column; gap: 1px; min-width: 0; width: 100%; }
@@ -91,7 +87,6 @@
 .nav-tree-chevron:disabled { visibility: hidden; }
 .nav-tree-chevron-spacer { width: 20px; height: 28px; flex: none; }
 .nav-tree-entry { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 3px 6px; font-size: 13px; text-align: left; min-height: 28px; border-radius: var(--radius-control); background: transparent; border: 0; cursor: pointer; user-select: none; color: inherit; transition: transform 0.12s ease, background-color 0.12s ease; }
-.nav-tree-entry.is-pressing { transform: scale(0.97); background: color-mix(in srgb, var(--color-primary) 12%, transparent); border-radius: 5px; }
 .nav-tree-entry svg { color: var(--color-muted); flex-shrink: 0; }
 .nav-tree-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .nav-tree-children { display: flex; flex-direction: column; gap: 1px; margin-left: 10px; padding-left: 9px; border-left: 1px solid color-mix(in srgb, var(--workspace-divider) 80%, transparent); }
@@ -100,20 +95,22 @@
 .nav-tree-marker { flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary); margin-inline-start: auto; }
 .folder-tree-root.is-selected, .folder-tree-item.is-selected .folder-drop-body { background: var(--workspace-selection); font-weight: 600; }
 .folder-drop-body { display: flex; align-items: center; min-width: 0; border-radius: 7px; }
-.folder-drop-body.is-over { background: color-mix(in srgb, var(--color-primary) 14%, transparent); outline: 1px solid var(--color-primary); }
-.folder-drop-line { height: 5px; border-radius: 2px; }
-.folder-drop-line.is-over { background: var(--color-primary); }
+/* Where a dragged folder lands: inside a row, or above or below it among its siblings. */
+.folder-drop-body.drop-inside { background: color-mix(in srgb, var(--color-primary) 14%, transparent); outline: 1px solid var(--color-primary); }
+.folder-drop-body.drop-before { box-shadow: inset 0 2px 0 var(--color-primary); }
+.folder-drop-body.drop-after { box-shadow: inset 0 -2px 0 var(--color-primary); }
 .folder-tree-select { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 3px 4px; font-size: 13px; text-align: left; min-height: 28px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; transition: transform 0.12s ease, background-color 0.12s ease; }
 .folder-tree-select.is-pressing { transform: scale(0.97); background: color-mix(in srgb, var(--color-primary) 12%, transparent); border-radius: 5px; }
-.folder-check { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--color-muted); background: transparent; color: transparent; flex: none; transition: all 0.12s ease; }
-.folder-check.is-checked { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
 .folder-tree-select span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folder-tree-select svg { color: var(--color-muted); }
-.folder-grip, .folder-manage { display: grid; place-items: center; color: var(--color-muted); flex: none; width: 18px; height: 28px; border-radius: 5px; }
-.folder-grip { cursor: grab; touch-action: none; }
+.folder-manage { display: grid; place-items: center; color: var(--color-muted); flex: none; width: 18px; height: 28px; border-radius: 5px; }
 .folder-manage { width: 24px; }
 .folder-tree-item:hover .folder-drop-body { background: var(--workspace-selection); }
-.folder-grip:hover, .folder-manage:hover { color: var(--color-text); }
+.folder-manage:hover { color: var(--color-text); }
+/* A folder row drags as a whole: past a few pixels with a mouse, after a long press on touch, which must not open the
+   text callout. A note dragged from the list over a folder marks it the same way a dragged folder does. */
+.folder-tree-item.is-draggable { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.folder-note-over > .folder-drop-body, .folder-note-over > .nav-tree-row { background: color-mix(in srgb, var(--color-primary) 14%, transparent); outline: 1px solid var(--color-primary); }
 /* A folder's manage action appears with the row it belongs to; touch screens keep it visible. */
 @media (hover: hover) { .nav-tree-row .folder-manage { opacity: 0; } .nav-tree-row:hover .folder-manage, .nav-tree-row:focus-within .folder-manage { opacity: 1; } }
 .folder-dialog-actions { display: flex; gap: 8px; flex-direction: column; }

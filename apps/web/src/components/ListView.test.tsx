@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { ListView } from './ListView.js';
-import { NOTE_DRAG_TYPE } from '../lib/note-drag.js';
+import { NOTE_DRAG_TYPE, NOTE_MOVE_DRAG_TYPE } from '../lib/note-drag.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 
 afterEach(cleanup);
@@ -55,6 +55,38 @@ it('leaves a row non-draggable when canDrag returns false', () => {
   render(createElement(ListView, { ...baseProps, notes: [noteOf('notes/a.md')], focusMode: { onZoomNote: vi.fn(), canDrag: () => false } }));
   const row = screen.getByText('Title: notes/a.md').closest('tr')!;
   expect(row).toHaveAttribute('draggable', 'false');
+});
+
+it('drags a movable row onto a folder without offering it to a Focus pane', () => {
+  render(createElement(ListView, { ...baseProps, onMoveNote: vi.fn(), notes: [noteOf('notes/a.md')] }));
+  const row = screen.getByText('Title: notes/a.md').closest('tr')!;
+  expect(row).toHaveAttribute('draggable', 'true');
+  const dataTransfer = makeDataTransfer();
+  fireEvent.dragStart(row, { dataTransfer });
+  expect(JSON.parse(dataTransfer.getData(NOTE_MOVE_DRAG_TYPE))).toEqual({ notebookId: 'life', path: 'notes/a.md' });
+  expect(dataTransfer.getData(NOTE_DRAG_TYPE)).toBe('');
+  expect(dataTransfer.getData('text/plain')).toBe('');
+});
+
+it('carries both payloads while a Focus is shown, and none when the list is read-only', () => {
+  render(createElement(ListView, { ...baseProps, onMoveNote: vi.fn(), notes: [noteOf('notes/a.md')], focusMode: { onZoomNote: vi.fn(), canDrag: () => true } }));
+  const dataTransfer = makeDataTransfer();
+  fireEvent.dragStart(screen.getByText('Title: notes/a.md').closest('tr')!, { dataTransfer });
+  expect(dataTransfer.getData(NOTE_DRAG_TYPE)).toBe('notes/a.md');
+  expect(dataTransfer.getData(NOTE_MOVE_DRAG_TYPE)).not.toBe('');
+  cleanup();
+  render(createElement(ListView, { ...baseProps, readOnly: true, onMoveNote: vi.fn(), notes: [noteOf('notes/a.md')] }));
+  expect(screen.getByText('Title: notes/a.md').closest('tr')).toHaveAttribute('draggable', 'false');
+});
+
+it('leaves rows to the Move button on a touch screen, where a long press selects', () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query !== '(pointer: fine)' }));
+  try {
+    render(createElement(ListView, { ...baseProps, onMoveNote: vi.fn(), notes: [noteOf('notes/a.md')] }));
+    expect(screen.getByText('Title: notes/a.md').closest('tr')).toHaveAttribute('draggable', 'false');
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 it('marks the note list compact via data-compact', () => {

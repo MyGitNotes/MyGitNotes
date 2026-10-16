@@ -4,10 +4,13 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { useFileNavigation } from './useFileNavigation.js';
 import { parseWorkspaceRoute } from '../lib/routes.js';
 
+const api = vi.hoisted(() => ({ readNote: vi.fn() }));
+vi.mock('../lib/api.js', () => api);
+
 afterEach(cleanup);
 type Params = Parameters<typeof useFileNavigation>[0];
 function fixture(overrides: Partial<Params> = {}) {
-  const params: Params = { editorRegistry: { register: vi.fn(() => () => {}), flushEditors: vi.fn().mockResolvedValue(true) }, hasPendingDrafts: vi.fn(() => false), documents: [], t: key => key, config: { schema_version: 3, workspace: { title: 'Test', default_notebook: 'a' }, notebooks: [{ id: 'a', root: 'notes/a', title: 'A' }] }, setFileDialog: vi.fn(), setActionError: vi.fn(), refreshWorkspace: vi.fn().mockResolvedValue(undefined), refreshDocuments: vi.fn().mockResolvedValue(undefined), editorRoute: parseWorkspaceRoute('/notebooks/a', ''), editorNotebookId: 'a', setEditingNote: vi.fn(), navigate: vi.fn(), location: { pathname: '/notebooks/a', search: '', hash: '', key: 'test', state: null }, returnTo: '/notebooks/a', setFileEditorRevision: vi.fn(), selectedFolder: 'one/nested', folderRoot: 'notes/a', changeFilters: vi.fn(), handleOpenFolderIndex: vi.fn().mockResolvedValue(undefined), ...overrides };
+  const params: Params = { editorRegistry: { register: vi.fn(() => () => {}), flushEditors: vi.fn().mockResolvedValue(true) }, draftsUnder: vi.fn(() => []), remote: false, readDraft: vi.fn(() => undefined), t: key => key, config: { schema_version: 3, workspace: { title: 'Test', default_notebook: 'a' }, notebooks: [{ id: 'a', root: 'notes/a', title: 'A' }] }, setFileDialog: vi.fn(), refreshWorkspace: vi.fn().mockResolvedValue(undefined), refreshDocuments: vi.fn().mockResolvedValue(undefined), editorRoute: parseWorkspaceRoute('/notebooks/a', ''), editorNotebookId: 'a', setEditingNote: vi.fn(), navigate: vi.fn(), location: { pathname: '/notebooks/a', search: '', hash: '', key: 'test', state: null }, returnTo: '/notebooks/a', setFileEditorRevision: vi.fn(), selectedFolder: 'one/nested', folderRoot: 'notes/a', changeFilters: vi.fn(), handleOpenFolderIndex: vi.fn().mockResolvedValue(undefined), ...overrides };
   const { result } = renderHook(() => useFileNavigation(params));
   return { params, model: result.current };
 }
@@ -20,6 +23,23 @@ it('refuses file changes when an editor cannot flush, even before draft state ca
   const { params, model } = fixture();
   vi.mocked(params.editorRegistry.flushEditors).mockResolvedValue(false);
   await expect(model.beforeFileChange()).rejects.toThrow('folder.draftsHint');
+});
+it('refuses a change that strands drafts under its paths, naming them, and lets one without a scope through', async () => {
+  const draftsUnder = vi.fn((_notebookId: string, paths: readonly string[]) => paths.includes('notes/a/one') ? ['notes/a/one/x.md'] : []);
+  const { model } = fixture({ draftsUnder });
+  await expect(model.beforeFileChange({ notebookId: 'a', paths: ['notes/a/one'] })).rejects.toThrow('files.draftsBlock');
+  await expect(model.beforeFileChange({ notebookId: 'a', paths: ['notes/a/two'], carried: ['notes/a/two'] })).resolves.toBeUndefined();
+  expect(draftsUnder).toHaveBeenLastCalledWith('a', ['notes/a/two'], ['notes/a/two']);
+  await expect(model.beforeFileChange()).resolves.toBeUndefined();
+  expect(draftsUnder).toHaveBeenCalledTimes(2);
+});
+it('reopens the open remote note on its draft, not the commit, after a change to other files', async () => {
+  const draft = { id: 'x', path: 'notes/a/one/nested/note.md', notebookId: 'a', title: 'Note', tags: [], metadata: {}, content: 'draft' };
+  const readDraft = vi.fn((_: string, path: string) => path === draft.path ? { note: draft, base: { ...draft, content: 'committed' } } : undefined);
+  const { params, model } = fixture({ remote: true, readDraft, editorRoute: parseWorkspaceRoute('/notebooks/a/notes/one/nested/note.md', '') });
+  await model.onFilesChanged({ revision: 'r2', selectedPath: 'notes/a/assets/x.png', pathMap: {}, deletedPaths: [] });
+  expect(params.setEditingNote).toHaveBeenCalledWith(draft);
+  expect(api.readNote).not.toHaveBeenCalled();
 });
 it('clears deleted folder filters and exits a deleted open note after refreshing workspace state', async () => {
   const { params, model } = fixture({ editorRoute: parseWorkspaceRoute('/notebooks/a/notes/one/nested/note.md', '') });

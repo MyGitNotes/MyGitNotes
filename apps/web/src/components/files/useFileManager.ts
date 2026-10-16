@@ -9,6 +9,7 @@ import { useWorkspaceSidebarDrawer } from '../WorkspaceChrome.js';
 import type { ForwardedRef } from 'react';
 import type { FileManagerHandle, FileManagerProps } from './types.js';
 import { baseName, parentPath } from '../../lib/paths.js';
+import { fileCommandScope } from '../../lib/file-change-scope.js';
 type Operation = 'create' | 'mkdir' | 'rename' | 'move' | 'delete' | 'remove-directory' | 'metadata';
 
 export function useFileManager({ notebookId, writable, initialPath, initialOperation, showDocuments = false, movePath, mode = 'manage', layout = 'page', beforeChange, onChanged, onOpenIndex, onInsert, onBusyChange, onSelectionChange, metadataContainer, notebooks, onNotebookChange, onShowMetadata }: FileManagerProps, ref: ForwardedRef<FileManagerHandle>) {
@@ -177,7 +178,7 @@ export function useFileManager({ notebookId, writable, initialPath, initialOpera
   };
   const apply = async (command: FileCommand, expected = listing?.revision) => {
     if (!mutable || !expected) throw new Error(t('files.readOnly'));
-    await beforeChange?.();
+    await beforeChange?.(fileCommandScope(command));
     const result = await mutateFile(command, expected);
     // The write succeeded. Clear dirty state before refreshing derived views.
     if (command.kind === 'write') setDetail(previous => previous ? { ...previous, content: command.content, revision: result.revision } : previous);

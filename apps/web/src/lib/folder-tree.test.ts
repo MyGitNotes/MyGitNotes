@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { buildFolderTree, expandedPathsForFolder, getBreadcrumbs, getImmediateSubfolders, resolveAllNotebooksFolderSelect, resolveEnterTouchMultiSelect, resolveFolderClick } from './folder-tree.js';
+import { describe, expect, it } from 'vitest';
+import { buildFolderTree, expandedPathsForFolder, getBreadcrumbs, getImmediateSubfolders, resolveAllNotebooksFolderSelect } from './folder-tree.js';
 import { FolderItem } from './types.js';
 
 describe('folder-tree', () => {
@@ -39,60 +39,6 @@ describe('folder-tree', () => {
     expect(nestedBreadcrumbs).toEqual([{ name: 'All folders', path: null }, { name: 'Projects', path: 'projects' }, { name: 'Web App Dev', path: 'projects/web' }]);
   });
 
-  it('resolves a plain click to the single-select callback', () => {
-    const onSelect = vi.fn();
-    const onFilterFolder = vi.fn();
-    resolveFolderClick({ shiftKey: false }, onSelect, onFilterFolder)('projects');
-    expect(onSelect).toHaveBeenCalledWith('projects');
-    expect(onFilterFolder).not.toHaveBeenCalled();
-  });
-
-  it('resolves a shift+click to the multi-select toggle callback', () => {
-    const onSelect = vi.fn();
-    const onFilterFolder = vi.fn();
-    resolveFolderClick({ shiftKey: true }, onSelect, onFilterFolder)('projects');
-    expect(onFilterFolder).toHaveBeenCalledWith('projects');
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  it('resolves a plain tap to the multi-select toggle callback while touch multi-select is active', () => {
-    const onSelect = vi.fn();
-    const onFilterFolder = vi.fn();
-    resolveFolderClick({ shiftKey: false }, onSelect, onFilterFolder, true)('projects');
-    expect(onFilterFolder).toHaveBeenCalledWith('projects');
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  it('resolves a plain tap to the single-select callback when touch multi-select is not active', () => {
-    const onSelect = vi.fn();
-    const onFilterFolder = vi.fn();
-    resolveFolderClick({ shiftKey: false }, onSelect, onFilterFolder, false)('projects');
-    expect(onSelect).toHaveBeenCalledWith('projects');
-    expect(onFilterFolder).not.toHaveBeenCalled();
-  });
-
-  it('falls back to the single-select callback when no multi-select handler is given', () => {
-    const onSelect = vi.fn();
-    resolveFolderClick({ shiftKey: true }, onSelect)('projects');
-    expect(onSelect).toHaveBeenCalledWith('projects');
-  });
-
-  it('resolves a ctrl+click to the multi-select toggle callback', () => {
-    const onSelect = vi.fn();
-    const onFilterFolder = vi.fn();
-    resolveFolderClick({ shiftKey: false, ctrlKey: true }, onSelect, onFilterFolder)('projects');
-    expect(onFilterFolder).toHaveBeenCalledWith('projects');
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  it('resolves a cmd(meta)+click to the multi-select toggle callback', () => {
-    const onSelect = vi.fn();
-    const onFilterFolder = vi.fn();
-    resolveFolderClick({ shiftKey: false, metaKey: true }, onSelect, onFilterFolder)('projects');
-    expect(onFilterFolder).toHaveBeenCalledWith('projects');
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
   it('resolves a plain click to null when only one notebook is shown, deferring to the caller', () => {
     expect(resolveAllNotebooksFolderSelect('nb1', 'notes/nb1', 'projects')).toBeNull();
   });
@@ -103,30 +49,6 @@ describe('folder-tree', () => {
 
   it('clears the filter when switching to "All folders" in the "all notebooks" view', () => {
     expect(resolveAllNotebooksFolderSelect('all', 'notes/nb1', null)).toEqual([]);
-  });
-
-  it('keeps an already-selected folder selected when entering touch multi-select', () => {
-    // 3.1: Long-pressing an already-selected folder must not deselect it
-    expect(resolveEnterTouchMultiSelect(['notes/nb1/projects'], 'notes/nb1', 'projects')).toEqual(['notes/nb1/projects']);
-    expect(resolveEnterTouchMultiSelect([], 'notes/nb1', 'projects')).toEqual(['notes/nb1/projects']);
-    expect(resolveEnterTouchMultiSelect(['notes/nb1/personal'], 'notes/nb1', 'projects')).toEqual(['notes/nb1/personal', 'notes/nb1/projects']);
-  });
-
-  it('resolves a plain mouse click to single-select even when touch multi-select is active on hybrid devices', () => {
-    // 3.5: Hybrid mouse+touch devices should keep plain mouse clicks as folder switch
-    const onSelect = vi.fn();
-    const onFilterFolder = vi.fn();
-    resolveFolderClick({ shiftKey: false, pointerType: 'mouse' }, onSelect, onFilterFolder, true)('projects');
-    expect(onSelect).toHaveBeenCalledWith('projects');
-    expect(onFilterFolder).not.toHaveBeenCalled();
-  });
-
-  it('resolves a modified mouse click to multi-select toggle on hybrid devices', () => {
-    const onSelect = vi.fn();
-    const onFilterFolder = vi.fn();
-    resolveFolderClick({ shiftKey: true, pointerType: 'mouse' }, onSelect, onFilterFolder, true)('projects');
-    expect(onFilterFolder).toHaveBeenCalledWith('projects');
-    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it('builds a nested tree with accurate depth and synthesized parent nodes', () => {

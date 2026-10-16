@@ -8,7 +8,7 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useTranslation } from '../lib/i18n/index.js';
 import { noteUpdatedTime } from '../lib/note-sort.js';
 import { useDeleteConfirm } from '../lib/use-delete-confirm.js';
-import { NOTE_DRAG_TYPE, type NoteBrowseFocusMode } from '../lib/note-drag.js';
+import { type NoteBrowseFocusMode, pointerMovesNotes, startNoteDrag } from '../lib/note-drag.js';
 import { HighlightText } from './HighlightText.js';
 import { type BrowseKind, NotesEmptyState } from './NotesEmptyState.js';
 import { NoteSelectBox } from './NoteSelectBox.js';
@@ -69,26 +69,13 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
     const updated = noteUpdatedTime(note);
     const formattedDate = updated ? new Date(updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
     const canDrag = !!focusMode?.canDrag(note);
+    const canMove = !readOnly && Boolean(onMoveNote) && pointerMovesNotes();
     const excerpt = note.matchSnippet || getExcerpt(note.content || '');
     const selectionActive = !draft && Boolean(selectedKeys?.size);
     const selected = !draft && (selectedKeys?.has(noteRefKey(note)) ?? false);
 
     return (
-      <div
-        key={noteRefKey(note)}
-        {...touchSelection.itemProps(note, onOpenNote, !draft)}
-        title={draft || selectionActive ? undefined : t('notes.multiSelectHint')}
-        draggable={canDrag}
-        onDragStart={canDrag
-          ? (event) => {
-            event.dataTransfer.setData(NOTE_DRAG_TYPE, note.path);
-            event.dataTransfer.setData('text/plain', note.path);
-            event.dataTransfer.effectAllowed = 'copyMove';
-          }
-          : undefined}
-        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}
-        className={`note-card rounded-xl border hover:border-primary p-5 flex flex-col justify-between shadow-xs hover:shadow-md transition cursor-pointer group${strip ? ' note-card-strip-item' : ''}`}
-      >
+      <div key={noteRefKey(note)} {...touchSelection.itemProps(note, onOpenNote, !draft)} title={draft || selectionActive ? undefined : t('notes.multiSelectHint')} draggable={canDrag || canMove} onDragStart={canDrag || canMove ? event => startNoteDrag(event, note, { focus: canDrag, move: canMove }) : undefined} style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }} className={`note-card rounded-xl border hover:border-primary p-5 flex flex-col justify-between shadow-xs hover:shadow-md transition cursor-pointer group${strip ? ' note-card-strip-item' : ''}`}>
         <div>
           <div className='flex items-start justify-between gap-2 mb-2'>
             <h3 className='font-semibold text-fg text-base line-clamp-1 transition flex items-center gap-1.5 min-w-0'>

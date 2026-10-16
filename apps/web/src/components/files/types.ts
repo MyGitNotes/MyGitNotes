@@ -1,5 +1,6 @@
 import type { NotebookConfig } from '../../lib/types.js';
 import { type FileEntry, type FileResult } from '../../lib/files-api.js';
+import type { FileChangeScope } from '../../lib/file-change-scope.js';
 export interface FileDialogRequest {
   notebookId: string;
   path?: string;
@@ -21,7 +22,7 @@ export interface FileManagerProps {
   movePath?: string;
   mode?: 'manage' | 'pick-image';
   layout?: 'page' | 'panel' | 'dialog';
-  beforeChange?: () => Promise<void>;
+  beforeChange?: (scope?: FileChangeScope) => Promise<void>;
   onChanged?: (result: FileResult) => Promise<void>;
   onOpenIndex?: (path: string, notebookId: string) => Promise<void>;
   onInsert?: (reference: string) => void;

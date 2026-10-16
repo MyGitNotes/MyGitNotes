@@ -10,7 +10,7 @@ import { WORKSPACE_DOCUMENT_CLIENTS } from './workspace-document-clients.js';
 import { AssetItem, FolderItem, GitStatus, NoteItem, WorkspaceConfig } from './types.js';
 import { fetchAssets, fetchFolders, fetchGitStatus, fetchWorkspace, openWorkspaceEvents } from './api.js';
 import { followPage } from './page-events.js';
-import { clearCommittedNotes, readStoredWorkingNotes, readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from './working-notes.js';
+import { clearCommittedNotes, readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from './working-notes.js';
 import { isNotebookKey, resolveBareId } from './notebook-keys.js';
 import { sameValue } from './merge-note.js';
 import { invalidateNoteQueries, NOTE_QUERY_KEY } from './use-note-queries.js';
@@ -20,6 +20,7 @@ import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-prefer
 import { listLocalDrafts } from './storage.js';
 import { draftScope, draftStore, notebookRepositories, repositoryOf, type WorkspaceRepository } from './workspace-repositories.js';
 import { noteRefKey } from '@mygitnotes/core/note-query';
+import { strandedDrafts } from './file-change-scope.js';
 
 export interface UseWorkspaceSyncOptions {
   routeNotebook?: string;
@@ -114,11 +115,6 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     const entries = clearCommittedNotes(draftStore(repository), sent);
     setWorkingNotes(previous => ({ ...previous, [repository.id]: entries }));
   };
-  /** Whether any repository holds staged drafts or unsaved editor drafts. */
-  const hasPendingDrafts = () => {
-    if (legacyBookmarkRecoveries(repositories.map(repository => repository.id)).length > 0) throw new Error(t('legacyOutline.blocker'));
-    return available.some(repository => Object.keys(readStoredWorkingNotes(draftScope(repository))).length || listLocalDrafts(draftScope(repository)).length) || pendingDocumentDrafts(WORKSPACE_DOCUMENT_CLIENTS, available.filter(repository => repository.write)).length > 0;
-  };
 
   // Workspace documents live in each notebook repository; the open notebook's repository serves Screen and Focus.
   const documentRepository = repositoryFor(selectedNotebookId);
@@ -129,6 +125,19 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
   const focus = useFocusPage(documentOwner, refreshGitStatus, remote, Boolean(config && sourceId));
 
   const documents = [focus];
+  /**
+   * What a file change to `paths` (files or folders of `notebookId`) would strand: the notes under them that hold a
+   * staged or unsaved editor draft, except the `carried` ones the change moves along itself, and a pending Focus that
+   * names one of those paths, by its file. Drafts elsewhere stay valid: the commit that sends them merges the change.
+   */
+  const draftsUnder = (notebookId: string, paths: readonly string[], carried: readonly string[] = []): string[] => {
+    if (legacyBookmarkRecoveries(repositories.map(repository => repository.id)).length > 0) throw new Error(t('legacyOutline.blocker'));
+    const repository = repositoryFor(notebookId);
+    if (!repository || repository.unavailable || paths.length === 0) return [];
+    const drafts = [...Object.keys(readWorkingNotes(draftStore(repository))), ...listLocalDrafts(draftScope(repository)).map(draft => draft.path)];
+    const pages = [...pendingDocumentDrafts(WORKSPACE_DOCUMENT_CLIENTS, [repository]), ...documents.filter(document => document.dirty)].map(document => ({ file: document.file, page: document.page }));
+    return strandedDrafts({ notebookId, paths: [...paths], carried: [...carried] }, drafts, pages);
+  };
   // Remote drafts wait in Changes until committed, whichever notebook is open; local ones autosave to the working tree.
   const pendingDocuments = remote ? pendingDocumentDrafts(WORKSPACE_DOCUMENT_CLIENTS, repositories.filter(repository => repository.write)) : [];
   const writable = repositories.filter(repository => repository.write).map(repository => repository.id).join('\n');
@@ -263,5 +272,5 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     return note;
   };
 
-  return { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, setFolders, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, setLoading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, setConfig, serverGitStatus, gitStatus, setGitStatus, assets, setAssets, workingNotes, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, hasPendingDrafts, focus, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote };
+  return { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, setFolders, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, setLoading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, setConfig, serverGitStatus, gitStatus, setGitStatus, assets, setAssets, workingNotes, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote };
 }

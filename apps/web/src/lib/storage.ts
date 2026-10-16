@@ -33,13 +33,18 @@ export function clearLocalDraft(branch: string, notePath: string): void {
   }
 }
 
+/**
+ * The unsaved editor drafts of a scope. The copy an editor keeps of a draft that conflicted with the remote version
+ * lives in the nested `<scope>:conflict` scope; it is a recovery copy, not a pending edit, so it is not listed.
+ */
 export function listLocalDrafts(branch: string): LocalDraft[] {
   const drafts: LocalDraft[] = [];
   try {
     const prefix = `${DRAFT_PREFIX}:${branch}:`;
+    const conflicts = `${prefix}conflict:`;
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith(prefix)) {
+      if (key && key.startsWith(prefix) && !key.startsWith(conflicts)) {
         const item = localStorage.getItem(key);
         if (item) {
           drafts.push(JSON.parse(item));

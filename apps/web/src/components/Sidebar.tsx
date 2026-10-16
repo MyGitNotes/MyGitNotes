@@ -1,9 +1,11 @@
 import './sidebar-filters.css';
 import type { FilterControls } from '../lib/filter-controls.js';
 import type { FolderAction } from './FolderActions.js';
-import { FolderTree } from './FolderTree.js';
-import React, { useEffect, useState } from 'react';
-import { BookOpen, CheckCircle2, CheckSquare, ChevronsDownUp, ChevronsUpDown, Filter, GalleryHorizontalEnd, GitBranch, Library, ListTree, Search, Tag, X } from 'lucide-react';
+import { FolderTree, NoteDropTarget } from './FolderTree.js';
+import type { FolderCommand } from '@mygitnotes/core';
+import type { DraggedNote } from '../lib/note-drag.js';
+import React, { useState } from 'react';
+import { BookOpen, CheckCircle2, ChevronsDownUp, ChevronsUpDown, Filter, GalleryHorizontalEnd, GitBranch, Library, ListTree, Search, Tag, X } from 'lucide-react';
 import type { NotebookFacets } from '@mygitnotes/core/note-query';
 import { FolderItem } from '../lib/types.js';
 import { mergeNotebookFacets, queryNotebookIds } from '../lib/note-facets.js';
@@ -13,10 +15,9 @@ import { Select } from './Select.js';
 import { statusDotClass } from './NoteStatusSelect.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { filterAndSortTags, getSavedTagSort, saveTagSort, TagSort } from '../lib/tag-list.js';
-import { resolveAllNotebooksFolderSelect, resolveEnterTouchMultiSelect } from '../lib/folder-tree.js';
+import { resolveAllNotebooksFolderSelect } from '../lib/folder-tree.js';
 import { NavTree, NavTreeRow } from './NavTree.js';
 import { useSidebarSections } from '../lib/sidebar-sections.js';
-import { ReorderToggle } from './ReorderToggle.js';
 import { TagActions } from './TagActions.js';
 import { GitPullButton } from './GitPullButton.js';
 
@@ -28,13 +29,13 @@ interface SidebarProps {
   /** While the folder list is still arriving: folder filters are not yet known to be missing, nor notebooks empty. */
   foldersLoading?: boolean;
   foldersWritable?: boolean;
-  reorder: boolean;
-  onToggleReorder: () => void;
   filters: FilterControls;
-  beforeFolderChange?: () => void;
+  beforeFolderChange?: (command: FolderCommand) => Promise<void>;
   onFoldersChanged?: () => Promise<void>;
   selectedFolder?: string | null;
   onSelectFolder?: (folder: string | null) => void;
+  /** Moves a note dropped on a folder of the open notebook (null for the notebook itself). */
+  onDropNote?: (note: DraggedNote, folder: string | null) => void;
   selectedNotebookId: string;
   /** Per-notebook counts from `/api/notes/facets`, with staged drafts already applied. */
   facets?: Record<string, NotebookFacets>;
@@ -54,7 +55,7 @@ interface SidebarProps {
   onDeleteTag?: (tag: string) => Promise<void>;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, reorder, onToggleReorder, changeCount, onPulled, repoRoot = '', canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, changeCount, onPulled, repoRoot = '', canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag }) => {
   const { t, language } = useTranslation();
   const { value, statuses, onChange } = filters;
   const sections = useSidebarSections();
@@ -79,20 +80,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   };
   const onSelectStatus = (status: string | null) => onChange({ status });
   const onSelectTag = (tag: string | null) => onChange({ tags: tag === null ? [] : selectedTags.includes(tag) ? selectedTags.filter(item => item !== tag) : [...selectedTags, tag] });
-  const toggleFolder = (notebookId: string, folder: string | null) => {
-    if (folder === null) {
-      onChange({ folders: [] });
-      return;
-    }
-    const root = filters.notebooks.find(nb => nb.id === notebookId)?.root.replace(/\/$/, '');
-    if (!root) return;
-    const path = `${root}/${folder}`;
-    onChange({ folders: value.folders.includes(path) ? value.folders.filter(item => item !== path) : [...value.folders, path] });
-  };
   // A plain click's single-select target is meaningless against the global selectedNotebookId
   // while every notebook's tree is shown at once ("all notebooks" view); scope it explicitly.
   const selectSingleFolder = (notebookId: string, folder: string | null) => {
-    setTouchMultiSelect(false);
     const root = filters.notebooks.find(nb => nb.id === notebookId)?.root.replace(/\/$/, '');
     const scoped = resolveAllNotebooksFolderSelect(value.notebookId, root, folder);
     if (scoped) {
@@ -100,20 +90,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
       return;
     }
     onSelectFolder?.(folder);
-  };
-  // A touch long-press enters multi-select mode (see FolderTree/use-long-press); it exits
-  // automatically once every folder has been tapped back out of the selection.
-  const [touchMultiSelect, setTouchMultiSelect] = useState(false);
-  useEffect(() => {
-    if (touchMultiSelect && value.folders.length === 0) setTouchMultiSelect(false);
-  }, [touchMultiSelect, value.folders.length]);
-  const enterTouchMultiSelect = (notebookId: string, folder: string) => {
-    setTouchMultiSelect(true);
-    const root = filters.notebooks.find(nb => nb.id === notebookId)?.root;
-    const nextFolders = resolveEnterTouchMultiSelect(value.folders, root, folder);
-    if (nextFolders !== value.folders) {
-      onChange({ folders: nextFolders });
-    }
   };
   const [tagQuery, setTagQuery] = useState('');
   const [tagSort, setTagSort] = useState<TagSort>(getSavedTagSort);
@@ -218,15 +194,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
           </button>
         ))}
       </section>
-      {touchMultiSelect && (
-        <div role='status' className='folder-multiselect-banner'>
-          <div className='folder-multiselect-badge'>
-            <CheckSquare size={13} />
-            <span>{t('folder.touchMultiSelectMode')}</span>
-          </div>
-          <p className='folder-multiselect-text'>{t('folder.touchMultiSelectInstruction')}</p>
-        </div>
-      )}
       {onSelectFolder && (
         <details className='sidebar-filter-section sidebar-notebooks' open={sections.isOpen('notebooks')} onToggle={event => sections.setOpen('notebooks', event.currentTarget.open)}>
           <summary>{t('sidebar.notebooks')}</summary>
@@ -248,50 +215,50 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
 
               return (
                 <section className='sidebar-notebook-group' key={nb.id} data-selected={isSelected || selectedPaths.length > 0} data-scope={allNotebooks ? (isCurrentNotebook ? 'current' : 'included') : undefined}>
-                  <NavTreeRow
-                    hasChildren
-                    isExpanded={expanded}
-                    onToggleExpand={() => {
-                      setExpandedNotebooks(previous => {
-                        const next = new Set(previous);
-                        if (next.has(nb.id)) next.delete(nb.id);
-                        else next.add(nb.id);
-                        return next;
-                      });
-                    }}
-                    icon={<BookOpen size={16} />}
-                    title={nb.title}
-                    selected={isSelected}
-                    onSelect={event => {
-                      if (allNotebooks) {
-                        if (event.metaKey || event.ctrlKey || event.shiftKey) {
-                          onChange({
-                            kind: 'note',
-                            folders: value.folders.includes(root)
-                              ? value.folders.filter(path => path !== root)
-                              : [...value.folders, root],
-                          });
-                        } else {
-                          onChange({ kind: 'note', folders: [root] });
-                          if (!expanded) {
-                            setExpandedNotebooks(previous => new Set([...previous, nb.id]));
+                  <NoteDropTarget className='sidebar-notebook-drop' onDrop={foldersWritable && isCurrentNotebook && onDropNote ? note => note.notebookId === nb.id && onDropNote(note, null) : undefined}>
+                    <NavTreeRow
+                      hasChildren
+                      isExpanded={expanded}
+                      onToggleExpand={() => {
+                        setExpandedNotebooks(previous => {
+                          const next = new Set(previous);
+                          if (next.has(nb.id)) next.delete(nb.id);
+                          else next.add(nb.id);
+                          return next;
+                        });
+                      }}
+                      icon={<BookOpen size={16} />}
+                      title={nb.title}
+                      selected={isSelected}
+                      onSelect={event => {
+                        if (allNotebooks) {
+                          if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                            onChange({
+                              kind: 'note',
+                              folders: value.folders.includes(root)
+                                ? value.folders.filter(path => path !== root)
+                                : [...value.folders, root],
+                            });
+                          } else {
+                            onChange({ kind: 'note', folders: [root] });
+                            if (!expanded) {
+                              setExpandedNotebooks(previous => new Set([...previous, nb.id]));
+                            }
                           }
+                        } else {
+                          selectSingleFolder(nb.id, null);
                         }
-                      } else {
-                        selectSingleFolder(nb.id, null);
-                      }
-                    }}
-                    suffix={<span className='sidebar-notebook-count' title={count === null ? t('notes.countsLoading') : t('folder.noteCount', { count })}>{count ?? '—'}</span>}
-                    actions={foldersWritable && isCurrentNotebook ? <div className='folder-heading-actions'>{onToggleReorder && <ReorderToggle active={reorder} onToggle={onToggleReorder} />}</div> : undefined}
-                  />
-                  <div id={`notebook-folders-${nb.id}`} hidden={!expanded} className='sidebar-notebook-folders'>{hasFolders ? <FolderTree onManageFiles={(path, action) => onManageFiles(nb.id, path, action)} reorder={reorder} onToggleReorder={onToggleReorder} folders={folders} notebookId={nb.id} selected={isCurrentNotebook ? selectedFolder : null} onSelect={folder => selectSingleFolder(nb.id, folder)} allFoldersSelected={value.folders.length === 0} selectedPaths={selectedPaths} onFilterFolder={folder => toggleFolder(nb.id, folder)} touchMultiSelect={touchMultiSelect} onLongPressFolder={folder => enterTouchMultiSelect(nb.id, folder)} writable={foldersWritable && isCurrentNotebook} beforeChange={beforeFolderChange} onChanged={onFoldersChanged} expandCommand={folderExpandCommand} /> : foldersLoading ? <LoadingStatus className='sidebar-notebook-empty'>{t('folder.loading')}</LoadingStatus> : <p className='sidebar-notebook-empty'>{t('folder.subfolderCount', { count: 0 })}</p>}</div>
+                      }}
+                      suffix={<span className='sidebar-notebook-count' title={count === null ? t('notes.countsLoading') : t('folder.noteCount', { count })}>{count ?? '—'}</span>}
+                    />
+                  </NoteDropTarget>
+                  <div id={`notebook-folders-${nb.id}`} hidden={!expanded} className='sidebar-notebook-folders'>{hasFolders ? <FolderTree onManageFiles={(path, action) => onManageFiles(nb.id, path, action)} folders={folders} notebookId={nb.id} selected={isCurrentNotebook ? selectedFolder : null} onSelect={folder => selectSingleFolder(nb.id, folder)} allFoldersSelected={value.folders.length === 0} selectedPaths={selectedPaths} writable={foldersWritable && isCurrentNotebook} beforeChange={beforeFolderChange} onChanged={onFoldersChanged} onDropNote={onDropNote} expandCommand={folderExpandCommand} /> : foldersLoading ? <LoadingStatus className='sidebar-notebook-empty'>{t('folder.loading')}</LoadingStatus> : <p className='sidebar-notebook-empty'>{t('folder.subfolderCount', { count: 0 })}</p>}</div>
                   <NavTreeRow
                     icon={<ListTree size={16} />}
                     title={t('outline.list')}
                     selected={outlineList && (allNotebooks ? value.folders.includes(root) : isCurrentNotebook)}
                     className='sidebar-compilations-row'
                     onSelect={() => {
-                      setTouchMultiSelect(false);
                       onChange({ kind: 'outline', folders: allNotebooks ? [root] : [] });
                     }}
                     suffix={<span className='sidebar-notebook-count' title={outlineCount === null ? t('notes.countsLoading') : t('outline.count', { count: outlineCount })}>{outlineCount ?? '—'}</span>}
@@ -302,7 +269,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
                     selected={compilationSelected}
                     className='sidebar-compilations-row'
                     onSelect={() => {
-                      setTouchMultiSelect(false);
                       if (!allNotebooks && !isCurrentNotebook) onSelectFolder?.(null);
                       onChange({ kind: 'compilation', folders: allNotebooks ? [root] : [] });
                     }}

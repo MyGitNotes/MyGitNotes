@@ -1,92 +1,126 @@
 import { type FolderAction, FolderActions } from './FolderActions.js';
-import { ReorderToggle } from './ReorderToggle.js';
 import React, { useEffect, useMemo, useState } from 'react';
-import { DndContext, DragOverlay, PointerSensor, pointerWithin, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
-import { Check, Folder, FolderPlus, GripVertical } from 'lucide-react';
+import { DndContext, type DragMoveEvent, DragOverlay, MouseSensor, pointerWithin, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
+import { Folder, FolderPlus } from 'lucide-react';
 import type { FolderCommand } from '@mygitnotes/core';
 import type { FolderItem } from '../lib/types.js';
-import { folderDropCommand } from '../lib/folder-drag.js';
-import { buildFolderTree, expandedPathsForFolder, type FolderTreeNode, resolveFolderClick } from '../lib/folder-tree.js';
-import { useLongPress } from '../lib/use-long-press.js';
+import { dropPosition, folderDropCommand } from '../lib/folder-drag.js';
+import { buildFolderTree, expandedPathsForFolder, type FolderTreeNode } from '../lib/folder-tree.js';
+import { carriesNoteMove, type DraggedNote, droppedNote } from '../lib/note-drag.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { NavTree, NavTreeChildren, NavTreeRow } from './NavTree.js';
 
-function DropZone({ path, position, disabled, children }: { path: string; position: 'before' | 'after' | 'inside'; disabled: boolean; children?: React.ReactNode; }) {
-  const drop = useDroppable({ id: `${position}:${path}`, disabled, data: { path, position } });
+type DropHint = 'before' | 'after' | 'inside';
+interface DropTarget {
+  path: string;
+  position: DropHint;
+}
+
+/** A row a dragged folder can land on; where on the row it lands follows the pointer (see `dropPosition`). */
+function DropZone({ path, hint, disabled, children }: { path: string; hint?: DropHint; disabled: boolean; children?: React.ReactNode; }) {
+  const drop = useDroppable({ id: `folder:${path}`, disabled, data: { path } });
   /* eslint-disable react/refs -- dnd-kit returns callback refs and render state together; forwarding its callbacks is intentional. */
-  return <div ref={drop.setNodeRef} data-folder-drop={`${position}:${path}`} className={`${position === 'inside' ? 'folder-drop-body' : 'folder-drop-line'} ${drop.isOver ? 'is-over' : ''}`}>{children}</div>;
+  return <div ref={drop.setNodeRef} data-folder-drop={path} className={`folder-drop-body ${hint ? `drop-${hint}` : ''}`}>{children}</div>;
   /* eslint-enable react/refs */
 }
 
-function TreeItem({ folder, reorder, disabled, selected, onSelect, onManage, multiSelectable, touchMultiSelect, onLongPress, hasChildren, isExpanded, onToggleExpand }: { folder: FolderItem; reorder: boolean; disabled: boolean; selected: boolean; onSelect: (event: { shiftKey: boolean; ctrlKey?: boolean; metaKey?: boolean; }) => void; onManage: (action: FolderAction) => void; multiSelectable: boolean; touchMultiSelect?: boolean; onLongPress?: () => void; hasChildren: boolean; isExpanded: boolean; onToggleExpand: (event: React.MouseEvent) => void; }) {
+/** The pointer's height during a drag: where it went down, moved by the drag so far. */
+function pointerY(activator: Event, deltaY: number) {
+  const start = 'touches' in activator ? (activator as TouchEvent).touches[0]?.clientY ?? 0 : (activator as MouseEvent).clientY;
+  return start + deltaY;
+}
+
+/**
+ * Takes a note dragged from the note list (a native drag, apart from the folder drags of dnd-kit) and marks the row
+ * under it; without `onDrop` it only renders its children.
+ */
+export function NoteDropTarget({ onDrop, className = '', children }: { onDrop?: (note: DraggedNote) => void; className?: string; children: React.ReactNode; }) {
+  const [over, setOver] = useState(false);
+  if (!onDrop) return <div className={className || undefined}>{children}</div>;
+  return (
+    <div
+      className={`${className} ${over ? 'folder-note-over' : ''}`.trim() || undefined}
+      onDragOver={event => {
+        if (!carriesNoteMove(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        setOver(true);
+      }}
+      onDragLeave={event => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false);
+      }}
+      onDrop={event => {
+        setOver(false);
+        const note = droppedNote(event);
+        if (!note) return;
+        event.preventDefault();
+        onDrop(note);
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function TreeItem({ folder, hint, disabled, selected, onSelect, onManage, onDropNote, hasChildren, isExpanded, onToggleExpand }: { folder: FolderItem; hint?: DropHint; disabled: boolean; selected: boolean; onSelect: () => void; onManage: (action: FolderAction) => void; onDropNote?: (note: DraggedNote) => void; hasChildren: boolean; isExpanded: boolean; onToggleExpand: (event: React.MouseEvent) => void; }) {
   const { t } = useTranslation();
-  const drag = useDraggable({ id: folder.path, disabled: disabled || !reorder });
-  const longPress = useLongPress(() => onLongPress?.(), multiSelectable && Boolean(onLongPress));
-  const title = `${folder.description || folder.path}${touchMultiSelect ? ` (${t('folder.touchMultiSelectInstruction')})` : multiSelectable ? ` (${t('folder.multiSelectHint')})` : ''}`;
+  // The whole row drags: past a few pixels with a mouse, after a long press on touch, so a click still selects.
+  const drag = useDraggable({ id: folder.path, disabled });
 
   /* eslint-disable react/refs -- dnd-kit returns callback refs and render state together; forwarding its callbacks is intentional. */
   return (
-    <div ref={drag.setNodeRef} className={`folder-tree-item ${selected ? 'is-selected' : ''}`} style={{ opacity: drag.isDragging ? 0.35 : undefined }}>
-      <DropZone path={folder.path} position='before' disabled={disabled || !reorder} />
-      <DropZone path={folder.path} position='inside' disabled={disabled || !reorder}>
-        <NavTreeRow
-          hasChildren={hasChildren}
-          isExpanded={isExpanded}
-          onToggleExpand={onToggleExpand}
-          expandAriaLabel={isExpanded ? t('folder.collapse') : t('folder.expand')}
-          title={folder.title}
-          selected={selected}
-          onSelect={longPress.onClick(onSelect)}
-          entryClassName={longPress.isPressing ? 'is-pressing' : ''}
-          prefix={!disabled && reorder
-            ? (
-              <button type='button' className='folder-grip' ref={drag.setActivatorNodeRef} {...drag.listeners} {...drag.attributes} aria-label={`${t('folder.move')}: ${folder.title}`}>
-                <GripVertical size={12} />
-              </button>
-            )
-            : undefined}
-          suffix={touchMultiSelect ? <span className={`folder-check ${selected ? 'is-checked' : ''}`} aria-hidden='true'>{selected && <Check size={11} strokeWidth={3} />}</span> : undefined}
-          actions={<FolderActions title={folder.title} disabled={disabled} onAction={onManage} />}
-          buttonProps={{ title, onContextMenu: longPress.onContextMenu, onTouchStart: longPress.onTouchStart, onTouchMove: longPress.onTouchMove, onTouchEnd: longPress.onTouchEnd, onTouchCancel: longPress.onTouchCancel }}
-        />
-      </DropZone>
-      <DropZone path={folder.path} position='after' disabled={disabled || !reorder} />
+    <div ref={drag.setNodeRef} {...(disabled ? {} : drag.listeners)} className={`folder-tree-item ${selected ? 'is-selected' : ''} ${disabled ? '' : 'is-draggable'}`} style={{ opacity: drag.isDragging ? 0.35 : undefined }}>
+      <NoteDropTarget onDrop={disabled ? undefined : onDropNote}>
+        <DropZone path={folder.path} hint={hint} disabled={disabled}>
+          <NavTreeRow hasChildren={hasChildren} isExpanded={isExpanded} onToggleExpand={onToggleExpand} expandAriaLabel={isExpanded ? t('folder.collapse') : t('folder.expand')} title={folder.title} selected={selected} onSelect={onSelect} actions={<FolderActions title={folder.title} disabled={disabled} onAction={onManage} />} buttonProps={{ title: folder.description || folder.path }} />
+        </DropZone>
+      </NoteDropTarget>
     </div>
   );
   /* eslint-enable react/refs */
 }
 
-function TreeBranch({ node, expanded, onToggleExpand, reorder, disabled, isSelected, selectFolder, onManageFiles, multiSelectable, touchMultiSelect, onLongPressFolder }: { node: FolderTreeNode; expanded: Set<string>; onToggleExpand: (path: string, event: React.MouseEvent) => void; reorder: boolean; disabled: boolean; isSelected: (path: string | null) => boolean; selectFolder: (folder: string | null, event: { shiftKey: boolean; ctrlKey?: boolean; metaKey?: boolean; }) => void; onManageFiles: (path: string, action?: FolderAction) => void; multiSelectable: boolean; touchMultiSelect?: boolean; onLongPressFolder?: (folder: string) => void; }) {
+/** The notebook root: a folder drops into it, and so does a note. */
+function RootRow({ hint, selected, disabled, onSelect, onDropNote }: { hint?: DropHint; selected: boolean; disabled: boolean; onSelect: () => void; onDropNote?: (note: DraggedNote) => void; }) {
+  const { t } = useTranslation();
+  return (
+    <NoteDropTarget onDrop={disabled ? undefined : onDropNote}>
+      <DropZone path='' hint={hint} disabled={disabled}>
+        <NavTreeRow hasChildren={false} title={t('folder.allFolders')} selected={selected} onSelect={onSelect} />
+      </DropZone>
+    </NoteDropTarget>
+  );
+}
+
+function TreeBranch({ node, target, expanded, onToggleExpand, disabled, isSelected, selectFolder, onManageFiles, onDropNote }: { node: FolderTreeNode; target?: DropTarget; expanded: Set<string>; onToggleExpand: (path: string, event: React.MouseEvent) => void; disabled: boolean; isSelected: (path: string | null) => boolean; selectFolder: (folder: string | null) => void; onManageFiles: (path: string, action?: FolderAction) => void; onDropNote?: (note: DraggedNote, folder: string | null) => void; }) {
   const isExpanded = expanded.has(node.path);
   const hasChildren = node.children.length > 0;
   const folder = node.folder;
 
   return (
     <div className='nav-tree-node' key={node.path}>
-      <TreeItem folder={folder} reorder={reorder} disabled={disabled} selected={isSelected(folder.path)} onSelect={event => selectFolder(folder.path, event)} onManage={action => onManageFiles(folder.path, action)} multiSelectable={multiSelectable} touchMultiSelect={touchMultiSelect} onLongPress={onLongPressFolder && (() => onLongPressFolder(folder.path))} hasChildren={hasChildren} isExpanded={isExpanded} onToggleExpand={event => onToggleExpand(node.path, event)} />
-      {hasChildren && isExpanded && <NavTreeChildren>{node.children.map(child => <TreeBranch key={child.path} node={child} expanded={expanded} onToggleExpand={onToggleExpand} reorder={reorder} disabled={disabled} isSelected={isSelected} selectFolder={selectFolder} onManageFiles={onManageFiles} multiSelectable={multiSelectable} touchMultiSelect={touchMultiSelect} onLongPressFolder={onLongPressFolder} />)}</NavTreeChildren>}
+      <TreeItem folder={folder} hint={target?.path === folder.path ? target.position : undefined} disabled={disabled} selected={isSelected(folder.path)} onSelect={() => selectFolder(folder.path)} onManage={action => onManageFiles(folder.path, action)} onDropNote={onDropNote && (note => onDropNote(note, folder.path))} hasChildren={hasChildren} isExpanded={isExpanded} onToggleExpand={event => onToggleExpand(node.path, event)} />
+      {hasChildren && isExpanded && <NavTreeChildren>{node.children.map(child => <TreeBranch key={child.path} node={child} target={target} expanded={expanded} onToggleExpand={onToggleExpand} disabled={disabled} isSelected={isSelected} selectFolder={selectFolder} onManageFiles={onManageFiles} onDropNote={onDropNote} />)}</NavTreeChildren>}
     </div>
   );
 }
 
-export function FolderTree({ showHeading = false, showRoot = false, onManageFiles, reorder = false, onToggleReorder, selectedPaths, allFoldersSelected, onFilterFolder, touchMultiSelect = false, onLongPressFolder, folders, notebookId, selected, onSelect, writable, beforeChange, onChanged, expandCommand }: {
+export function FolderTree({ showHeading = false, showRoot = false, onManageFiles, selectedPaths, allFoldersSelected, folders, notebookId, selected, onSelect, writable, beforeChange, onChanged, onDropNote, expandCommand }: {
   showHeading?: boolean;
   showRoot?: boolean;
   onManageFiles: (path: string, action?: FolderAction) => void;
-  reorder?: boolean;
-  onToggleReorder?: () => void;
   selectedPaths?: string[];
   allFoldersSelected?: boolean;
-  onFilterFolder?: (folder: string | null) => void;
-  touchMultiSelect?: boolean;
-  onLongPressFolder?: (folder: string) => void;
   folders: FolderItem[];
   notebookId: string;
   selected: string | null;
   onSelect: (folder: string | null) => void;
   writable: boolean;
-  beforeChange?: () => void;
+  /** Refuses a folder change before it is sent, by throwing the reason. */
+  beforeChange?: (command: FolderCommand) => Promise<void>;
   onChanged?: () => Promise<void>;
+  /** Moves a note dropped on a folder (null for the root row) of this notebook. */
+  onDropNote?: (note: DraggedNote, folder: string | null) => void;
   /** Each new object expands or collapses every folder once. */
   expandCommand?: { expanded: boolean; };
 }) {
@@ -95,6 +129,7 @@ export function FolderTree({ showHeading = false, showRoot = false, onManageFile
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState<string>();
+  const [target, setTarget] = useState<DropTarget>();
 
   const tree = useMemo(() => buildFolderTree(folders, notebookId), [folders, notebookId]);
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -134,12 +169,23 @@ export function FolderTree({ showHeading = false, showRoot = false, onManageFile
     });
   };
 
-  const selectFolder = (folder: string | null, event: { shiftKey: boolean; ctrlKey?: boolean; metaKey?: boolean; }) => resolveFolderClick(event, onSelect, onFilterFolder, touchMultiSelect)(folder);
-
   const isSelected = (path: string | null) => selectedPaths ? (path === null ? allFoldersSelected ?? selectedPaths.length === 0 : selectedPaths.includes(path)) : selected === path;
 
+  // A note of another notebook has no place among these folders.
+  const dropNote = onDropNote && ((note: DraggedNote, folder: string | null) => {
+    if (note.notebookId === notebookId) onDropNote(note, folder);
+  });
+
+  /** Where a drag would land: the row under the pointer, and beside or inside it by the pointer's height; the root only takes folders in. */
+  const dropTarget = ({ active, over, activatorEvent, delta }: Pick<DragMoveEvent, 'active' | 'over' | 'activatorEvent' | 'delta'>): DropTarget | undefined => {
+    if (!over) return;
+    const path = String(over.data.current?.path ?? '');
+    if (path === String(active.id)) return;
+    return { path, position: path ? dropPosition(pointerY(activatorEvent, delta.y), over.rect.top, over.rect.height) : 'inside' };
+  };
+
   const list = useMemo(() => folders.filter(folder => folder.notebookId === notebookId), [folders, notebookId]);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(useSensor(MouseSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }));
 
   const refresh = async () => {
     const response = await fetch(`/api/folder-manager?notebookId=${encodeURIComponent(notebookId)}`);
@@ -164,8 +210,11 @@ export function FolderTree({ showHeading = false, showRoot = false, onManageFile
     setBusy(true);
     setError('');
     try {
-      beforeChange?.();
-      const response = await fetch('/api/folder-manager', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, revision }) });
+      await beforeChange?.(command);
+      // Any note saved or moved since the tree loaded changes the revision, so it is read again just before the
+      // change, as a note move reads the file revision; the server still checks the command against its folders.
+      const current = await refresh();
+      const response = await fetch('/api/folder-manager', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command, revision: current }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || t('folder.failed'));
       setRevision(data.revision);
@@ -204,7 +253,6 @@ export function FolderTree({ showHeading = false, showRoot = false, onManageFile
           <h4>{t('folder.folders')}</h4>
           {writable && (
             <div className='folder-heading-actions'>
-              {onToggleReorder && <ReorderToggle active={reorder} onToggle={onToggleReorder} disabled={busy} />}
               <button type='button' className='ui-icon-button' disabled={busy} aria-label={t('folder.create')} onClick={() => onManageFiles(selected || '')}>
                 <FolderPlus size={16} />
               </button>
@@ -217,28 +265,24 @@ export function FolderTree({ showHeading = false, showRoot = false, onManageFile
         sensors={sensors}
         collisionDetection={pointerWithin}
         onDragStart={({ active }) => setDragging(String(active.id))}
-        onDragCancel={() => setDragging(undefined)}
-        onDragEnd={({ active, over }) => {
+        onDragMove={event => {
+          const next = dropTarget(event);
+          if (next?.path !== target?.path || next?.position !== target?.position) setTarget(next);
+        }}
+        onDragCancel={() => {
           setDragging(undefined);
-          if (!over || disabled || !reorder) return;
-          const data = over.data.current;
-          const command = folderDropCommand(notebookId, String(active.id), data?.path || '', data?.position || 'inside', list);
+          setTarget(undefined);
+        }}
+        onDragEnd={event => {
+          setDragging(undefined);
+          setTarget(undefined);
+          const drop = dropTarget(event);
+          if (!drop || disabled) return;
+          const command = folderDropCommand(notebookId, String(event.active.id), drop.path, drop.position, list);
           if (command) void mutate(command);
         }}
       >
-        <NavTree aria-label={t('folder.folders')}>
-          {showRoot && (
-            <DropZone path='' position='inside' disabled={disabled || !reorder}>
-              <NavTreeRow
-                hasChildren={false}
-                title={t('folder.allFolders')}
-                selected={isSelected(null)}
-                onSelect={event => selectFolder(null, event)}
-              />
-            </DropZone>
-          )}
-          {tree.map(rootNode => <TreeBranch key={rootNode.path} node={rootNode} expanded={expanded} onToggleExpand={toggleExpand} reorder={reorder} disabled={disabled} isSelected={isSelected} selectFolder={selectFolder} onManageFiles={onManageFiles} multiSelectable={Boolean(onFilterFolder)} touchMultiSelect={touchMultiSelect} onLongPressFolder={onLongPressFolder} />)}
-        </NavTree>
+        <NavTree aria-label={t('folder.folders')}>{showRoot && <RootRow hint={target?.path === '' ? target.position : undefined} selected={isSelected(null)} disabled={disabled} onSelect={() => onSelect(null)} onDropNote={dropNote && (note => dropNote(note, null))} />} {tree.map(rootNode => <TreeBranch key={rootNode.path} node={rootNode} target={target} expanded={expanded} onToggleExpand={toggleExpand} disabled={disabled} isSelected={isSelected} selectFolder={onSelect} onManageFiles={onManageFiles} onDropNote={writable ? dropNote : undefined} />)}</NavTree>
         <DragOverlay>
           {dragging && (
             <div className='screen-drag-overlay'>

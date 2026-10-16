@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it } from 'vitest';
-import { adoptGraphDrafts, getLocalDraft, saveLocalDraft } from './storage.js';
+import { adoptGraphDrafts, getLocalDraft, listLocalDrafts, saveLocalDraft } from './storage.js';
 
 beforeEach(() => localStorage.clear());
 
@@ -16,6 +16,13 @@ it('moves graph drafts into the editor drafts of the same scope and drops the ol
   expect(localStorage.getItem('graph-draft:src:main:notes/a.md')).toBeNull();
   expect(localStorage.getItem('graph-draft:src:main:notes/moved.md')).toBeNull();
   expect(localStorage.getItem('graph-draft:src:dev:notes/a.md')).not.toBeNull();
+});
+
+it('lists the editor drafts of a scope without the conflict copies kept beside them', () => {
+  saveLocalDraft('src:main', 'notes/a.md', 'unsaved', {});
+  saveLocalDraft('src:main:conflict', 'notes/b.md', 'kept after a conflict', {});
+  expect(listLocalDrafts('src:main').map(draft => draft.path)).toEqual(['notes/a.md']);
+  expect(listLocalDrafts('src:main:conflict').map(draft => draft.path)).toEqual(['notes/b.md']);
 });
 
 it('keeps an editor draft that already exists', () => {

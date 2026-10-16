@@ -4,7 +4,6 @@ import { useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 
 export function useFilterSidebar() {
-  const [folderReorder, setFolderReorder] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const location = useLocation();
   const [queryState, setFilterQuery] = useQueryStates(filterParsers, { history: 'push', shallow: false });
@@ -22,5 +21,5 @@ export function useFilterSidebar() {
     return () => document.removeEventListener('keydown', close);
   }, [filtersOpen]);
 
-  return { folderReorder, setFolderReorder, filtersOpen, setFiltersOpen, location, queryState, setFilterQuery };
+  return { filtersOpen, setFiltersOpen, location, queryState, setFilterQuery };
 }
