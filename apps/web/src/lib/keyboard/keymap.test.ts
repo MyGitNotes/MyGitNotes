@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { en } from '../i18n/en.js';
 import { zhTW } from '../i18n/zh-TW.js';
 import { bannedChordReason, chordId, chordsOf, type ParsedKeys, parseKeys } from './keys.js';
-import { bindingApplies, KEYMAP, type KeyScope, parsedBinding } from './keymap.js';
+import { bindingApplies, bindingsFor, KEYMAP, keymapEntry, type KeyScope, parsedBinding } from './keymap.js';
 import type { Browser, KeyEnvironment, Platform } from './platform.js';
 
 /** The physical key presses a binding takes: Mod is Ctrl outside macOS, so Ctrl+M and Mod+M are one press there. */
@@ -11,6 +11,12 @@ const pressedId = (keys: ParsedKeys, platform: Platform) => chordsOf(keys).map(c
 const ENVIRONMENTS: KeyEnvironment[] = (['mac', 'other'] as Platform[]).flatMap(platform => (['chrome', 'edge', 'firefox', 'safari', 'other'] as Browser[]).map(browser => ({ platform, browser })));
 
 describe('KEYMAP', () => {
+  it('switches to the agent with Cmd+` on macOS, where Ctrl+` is left to the terminal, and Ctrl+` elsewhere', () => {
+    const [mac] = bindingsFor(keymapEntry('assistant.toggleFocus'), { platform: 'mac', browser: 'chrome' });
+    expect(chordsOf(mac)).toEqual([expect.objectContaining({ code: 'Backquote', mod: true, ctrl: false })]);
+    expect(pressedId(mac, 'other')).toBe(pressedId(parseKeys('Ctrl+`'), 'other'));
+  });
+
   it('has unique ids and parses every binding', () => {
     expect(new Set(KEYMAP.map(entry => entry.id)).size).toBe(KEYMAP.length);
     for (const entry of KEYMAP) {
