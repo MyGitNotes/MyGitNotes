@@ -9,6 +9,7 @@ import { ariaKeyShortcuts, formatKeys } from '../lib/keyboard/keys.js';
 import { bindingsFor, keymapEntry } from '../lib/keyboard/keymap.js';
 import { keyEnvironment } from '../lib/keyboard/platform.js';
 import { AssistantDockToggle } from './assistant/AssistantDockToggle.js';
+import { usePiAgentAvailable } from '../lib/pi-agent/session.js';
 
 interface HeaderProps {
   /** Notebooks whose repository cannot serve them; the switcher marks them. */
@@ -31,6 +32,7 @@ interface HeaderProps {
 
 export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, createNoteDisabled, onOpenCommands, navigationDisabled = false }: HeaderProps) {
   const { t } = useTranslation();
+  const dockOffered = usePiAgentAvailable();
   useEffect(() => {
     document.title = `${t(`nav.${activeTab}`)} · MyGitNotes`;
   }, [activeTab, t]);
@@ -83,9 +85,12 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
             )}
           </div>
           <div className='header-utilities'>
-            <button type='button' disabled={navigationDisabled} className='ui-icon-button header-agent' data-header-agent='' aria-label={t('nav.agent')} title={t('nav.agent')} aria-current={activeTab === 'agent' ? 'page' : undefined} onClick={() => setActiveTab('agent')}>
-              <Bot size={17} />
-            </button>
+            {/* Where the assistant dock is offered, the Agents page opens from the dock's header instead, so the header shows one agent button. */}
+            {!dockOffered && (
+              <button type='button' disabled={navigationDisabled} className='ui-icon-button header-agent' data-header-agent='' aria-label={t('nav.agent')} title={t('nav.agent')} aria-current={activeTab === 'agent' ? 'page' : undefined} onClick={() => setActiveTab('agent')}>
+                <Bot size={17} />
+              </button>
+            )}
             <AssistantDockToggle className='header-assistant' />
             <button type='button' disabled={navigationDisabled} className='ui-icon-button header-command' data-header-command='' aria-label={t('shortcuts.open')} aria-keyshortcuts={paletteKeys && ariaKeyShortcuts(paletteKeys, keyEnvironment)} title={paletteLabel} onClick={onOpenCommands}>
               <Keyboard size={17} />

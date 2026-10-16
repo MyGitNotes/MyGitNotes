@@ -109,6 +109,17 @@ it('returns from the agent to the note editor it names', () => {
   expect(assistantDock.get().open).toBe(true);
 });
 
+it('closes the dock from the agent when no note editor is open, so the key toggles on a list', () => {
+  assistantDock.open();
+  mount({}, <Dock />);
+  const message = screen.getByLabelText('Message');
+  message.focus();
+
+  pressToggle(message);
+  expect(assistantDock.get().open).toBe(false);
+  expect(screen.queryByLabelText('Message')).toBeNull();
+});
+
 it('opens the dock when no note editor is open', () => {
   mount(
     {},

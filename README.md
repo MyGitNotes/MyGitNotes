@@ -130,8 +130,9 @@ They remain a file-move blocker until explicitly discarded.
 ## Pi agent (local mode)
 
 With [Pi](https://github.com/earendil-works/pi) installed, local mode adds the assistant dock: a column on the right edge of the window, beside the right rail, a zoomed note, a zoomed compilation, a Focus and the Files page.
-The toggles in the header (beside the Agents page button) and at the end of the editor toolbar open and close it; they are hidden when `pi` (or the command in `MYGITNOTES_PI_COMMAND`) is not found.
-``Ctrl+` `` from outside the dock opens it, focuses the message box and starts Pi if none runs; from the message box it returns to the editor the agent names.
+The agent button in the header and the one at the end of the editor toolbar open and close it; they are hidden when `pi` (or the command in `MYGITNOTES_PI_COMMAND`) is not found, and the header then offers the Agents page button in their place.
+While the dock is offered, the Agents page opens from the dock's header.
+``Ctrl+` `` from outside the dock opens it, focuses the message box and starts Pi if none runs; from the message box it returns to the editor the agent names, or closes the dock when no note is open.
 
 - The dock is 380px wide by default. Drag its left edge, or focus the edge and press the arrow keys, to resize it between 320px and half the window; Expand switches to half the window, at most 760px.
   Whether it is open and how wide persist in the browser, and a zoomed note or compilation ends at the dock's left edge, so the two sit side by side.
@@ -148,7 +149,7 @@ The toggles in the header (beside the Agents page button) and at the end of the 
 - When Pi changes a file on disk, the open editor updates at once.
   Unsaved edits are merged first; if they cannot be merged, the editor blocks and keeps your draft.
 - Pi decides from `~/.pi/agent/trust.json` whether to load project settings.
-  Buttons in the message box's bottom row open its trust decision, MCP servers and extension status.
+  Buttons in the message box's top row, beside the context chip, open its trust decision, MCP servers and extension status.
 
 Pi runs as your local user and can run any command, so the agent accepts only local connections; through `pnpm dev:remote` it admits only the Tailscale login that owns this machine.
 See the [security model](docs/agent/security/index.md).

@@ -146,15 +146,16 @@ it('answers ask_user dialogs, which Pi sends as select and input requests', () =
   expect(value.answer).toHaveBeenCalledWith(transcript.dialogs[0], { cancelled: true });
 });
 
-it("shows Pi's own project-trust decision in a drawer between the message box and the send row, and remembers it open", () => {
+it("shows Pi's own project-trust decision in a drawer under the message box's top row, and remembers it open", () => {
   panel(agent());
-  // The toggle sits in the send row; the drawer opens above that row, below the message box.
+  // The toggle sits in the card's top row, beside the context chip; the drawer opens right under that row, above the message box.
   const toggle = screen.getByRole('button', { name: 'Trusted' });
-  expect(toggle.closest('.pi-agent-dialog-actions')).toBeTruthy();
+  expect(toggle.closest('.pi-agent-context')).toBeTruthy();
   fireEvent.click(toggle);
   const drawer = screen.getByRole('region', { name: 'Project trust' });
+  expect(drawer.previousElementSibling).toBe(toggle.closest('.pi-agent-context'));
   // The message box sits in its wrapper with the command menu that floats above it.
-  expect(drawer.previousElementSibling?.querySelector('textarea')).toBe(screen.getByRole('textbox', { name: 'Message to Pi' }));
+  expect(drawer.nextElementSibling?.querySelector('textarea')).toBe(screen.getByRole('textbox', { name: 'Message to Pi' }));
   expect(drawer.textContent).toContain('/trust');
   expect(localStorage.getItem('mygitnotes.piAgent.infoSection')).toBe('trust');
   cleanup();
@@ -370,6 +371,16 @@ it("shows an edition gate's reason in place of the panel, and the panel again on
   expect(screen.queryByText('The agent is part of Pro.')).toBeNull();
 });
 
+it('keeps a header with the Agents page and Close in a gated dock, so it can still be left and closed', () => {
+  const dock = { expanded: false, onToggleExpanded: vi.fn(), onClose: vi.fn(), onOpenAgents: vi.fn() };
+  render(createElement(WebFeaturesProvider, { features: [{ id: 'plans', gate: () => ({ allowed: false, reason: 'The agent is part of Pro.' }) }] }, createElement(PiAgentContext.Provider, { value: agent() }, createElement(AgentPanel, { dock }))));
+  expect(screen.getByRole('status').textContent).toBe('The agent is part of Pro.');
+  fireEvent.click(screen.getByRole('button', { name: 'Agent workspaces' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close agent' }));
+  expect(dock.onOpenAgents).toHaveBeenCalledTimes(1);
+  expect(dock.onClose).toHaveBeenCalledTimes(1);
+});
+
 it('gives a denied agent panel a plain reason when the gate names none', () => {
   render(createElement(WebFeaturesProvider, { features: [{ id: 'plans', gate: () => ({ allowed: false }) }] }, createElement(PiAgentContext.Provider, { value: agent() }, createElement(AgentPanel))));
   expect(screen.getByRole('status').textContent).toBe('This feature is not available to you.');
@@ -403,12 +414,17 @@ it("shows an edition's model setup instead of Pi's own, with the check-again but
   expect(screen.getByRole('button', { name: 'Check again' })).toBeTruthy();
 });
 
-it('puts the model and thinking selects in the message box, beside the info buttons and Send, not in a row of their own', () => {
-  panel(agent({ modelState: { model: 'anthropic/claude-opus', thinking: 'high', models: [{ value: 'anthropic/claude-opus', label: 'Claude Opus (anthropic)' }], levels: ['low', 'high'] } }));
+it('puts the model and thinking selects beside Send in the message box, and the info buttons in its top row', () => {
+  panel(agent({ modelState: { model: 'anthropic/claude-opus', thinking: 'high', models: [{ value: 'anthropic/claude-opus', label: 'Claude Opus (anthropic)', name: 'Claude Opus' }], levels: ['low', 'high'] } }));
   const bar = screen.getByRole('button', { name: 'Send' }).closest('.pi-agent-composer-bar')!;
-  expect(bar.contains(screen.getByRole('combobox', { name: 'Model' }))).toBe(true);
+  const model = screen.getByRole('combobox', { name: 'Model' });
+  expect(bar.contains(model)).toBe(true);
   expect(bar.contains(screen.getByRole('combobox', { name: 'Thinking level' }))).toBe(true);
-  expect(bar.contains(screen.getByRole('button', { name: 'Trusted' }))).toBe(true);
+  // The button names the model alone; its tooltip keeps the provider.
+  expect(model.textContent).toBe('Claude Opus');
+  expect(model.getAttribute('title')).toBe('Model: Claude Opus (anthropic)');
+  expect(bar.contains(screen.getByRole('button', { name: 'Trusted' }))).toBe(false);
+  expect(screen.getByRole('button', { name: 'Trusted' }).closest('.pi-agent-composer-card')).toBe(bar.closest('.pi-agent-composer-card'));
   expect(screen.getByRole('textbox', { name: 'Message to Pi' }).closest('.pi-agent-composer-card')).toBe(bar.closest('.pi-agent-composer-card'));
 });
 
@@ -445,6 +461,11 @@ it('adds Expand and Close to the header in the dock only, and shows the status a
   cleanup();
   panel(agent(), { ...dock, expanded: true });
   expect(screen.getByRole('button', { name: 'Shrink' })).toBeTruthy();
+  cleanup();
+  // A phone's dock already fills the screen, so it offers no Expand; it keeps the Agents page and Close.
+  panel(agent(), { expanded: false, onClose: vi.fn(), onOpenAgents: vi.fn() });
+  expect(screen.queryByRole('button', { name: 'Expand' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Agent workspaces' })).toBeTruthy();
   cleanup();
   panel(agent());
   expect(screen.queryByRole('button', { name: 'Expand' })).toBeNull();

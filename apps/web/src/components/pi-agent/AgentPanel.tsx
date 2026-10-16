@@ -1,5 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Check, ChevronDown, FileText, FolderGit2, Maximize2, MessageSquarePlus, Minimize2, Power, Send, Square, SquareTerminal, X } from 'lucide-react';
+import { Check, ChevronDown, FileText, FolderCog, FolderGit2, Maximize2, MessageSquarePlus, Minimize2, Power, Send, Square, SquareTerminal, X } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
@@ -152,18 +152,51 @@ function ModelSetup({ onCheck }: { onCheck: () => void; }) {
   );
 }
 
-/** What the assistant dock adds to the panel's header: widening the dock, and closing it. */
+/** What the assistant dock adds to the panel's header: widening the dock, the Agents page, and closing it. */
 export interface AgentDockControls {
   expanded: boolean;
-  onToggleExpanded: () => void;
+  /** Absent where the dock cannot widen, as on a phone, whose dock already fills the screen. */
+  onToggleExpanded?: () => void;
   onClose: () => void;
+  /** Opens the Agents page, whose header button the dock replaces while it is offered. */
+  onOpenAgents?: () => void;
+  /** The Agents page cannot be opened now, as the header's navigation cannot while a note is zoomed. */
+  agentsDisabled?: boolean;
+}
+
+/** The dock's own buttons at the end of its header, shown whatever state the conversation is in. */
+function DockActions({ dock }: { dock: AgentDockControls; }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {dock.onOpenAgents && (
+        <Button size='icon' title={t('nav.agent')} aria-label={t('nav.agent')} disabled={dock.agentsDisabled} onClick={dock.onOpenAgents}>
+          <FolderCog aria-hidden='true' />
+        </Button>
+      )}
+      <Button size='icon' title={t('piAgent.dock.close')} aria-label={t('piAgent.dock.close')} onClick={dock.onClose}>
+        <X aria-hidden='true' />
+      </Button>
+    </>
+  );
 }
 
 export function AgentPanel({ dock }: { dock?: AgentDockControls; }) {
   const { t } = useTranslation();
   const gate = useFeatureGate(FEATURE_IDS.agent);
   if (gate.allowed) return <AgentConversation dock={dock} />;
-  return <section className='pi-agent-panel pi-agent-gate' role='status' aria-label={t('piAgent.title')}>{gate.reason ?? t('feature.unavailable')}</section>;
+  const reason = gate.reason ?? t('feature.unavailable');
+  if (!dock) return <section className='pi-agent-panel pi-agent-gate' role='status' aria-label={t('piAgent.title')}>{reason}</section>;
+  // In the dock the gate keeps a header, so the dock can still be closed and the Agents page reached.
+  return (
+    <section className='pi-agent-panel' aria-label={t('piAgent.title')}>
+      <header className='pi-agent-header'>
+        <span className='pi-agent-session-name'>{t('piAgent.title')}</span>
+        <DockActions dock={dock} />
+      </header>
+      <div className='pi-agent-gate' role='status'>{reason}</div>
+    </section>
+  );
 }
 
 /** A conversation with the workspace's Pi process, naming the file in focus (see AgentTarget) with each message. */
@@ -295,14 +328,10 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
             <Button size='icon' title={t('piAgent.end')} aria-label={t('piAgent.end')} onClick={() => void agent.end()}>
               <Power aria-hidden='true' />
             </Button>
-            {dock && <Button size='icon' title={t(dock.expanded ? 'piAgent.dock.shrink' : 'piAgent.dock.expand')} aria-label={t(dock.expanded ? 'piAgent.dock.shrink' : 'piAgent.dock.expand')} onClick={dock.onToggleExpanded}>{dock.expanded ? <Minimize2 aria-hidden='true' /> : <Maximize2 aria-hidden='true' />}</Button>}
+            {dock?.onToggleExpanded && <Button size='icon' title={t(dock.expanded ? 'piAgent.dock.shrink' : 'piAgent.dock.expand')} aria-label={t(dock.expanded ? 'piAgent.dock.shrink' : 'piAgent.dock.expand')} onClick={dock.onToggleExpanded}>{dock.expanded ? <Minimize2 aria-hidden='true' /> : <Maximize2 aria-hidden='true' />}</Button>}
           </>
         )}
-        {dock && (
-          <Button size='icon' title={t('piAgent.dock.close')} aria-label={t('piAgent.dock.close')} onClick={dock.onClose}>
-            <X aria-hidden='true' />
-          </Button>
-        )}
+        {dock && <DockActions dock={dock} />}
       </header>
       {switching && <SwitchWorkspace onDone={() => setSwitching(false)} />}
       {agent.error && <p role='alert' className='pi-agent-error'>{agent.error}</p>}
@@ -330,8 +359,12 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
           }}
         >
           <div className='pi-agent-composer-card'>
-            {target && (
-              <div className='pi-agent-context'>
+            {
+              /* The card's top row says what goes with each message and how Pi stands: the context chip, then Pi's trust, MCP and
+                extension status with the context usage, so the bottom row keeps its room for the model and Send. */
+            }
+            <div className='pi-agent-context'>
+              {target && (
                 <DropdownMenu.Root>
                   <DropdownMenu.Trigger className='pi-agent-context-chip' aria-label={`${t('piAgent.context')}: ${chipText}`} title={absolute ?? (file?.path === target.path ? file.error : undefined)}>
                     <FileText aria-hidden='true' />
@@ -359,8 +392,13 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                     </DropdownMenu.Content>
                   </DropdownMenu.Portal>
                 </DropdownMenu.Root>
+              )}
+              <div className='pi-agent-indicators'>
+                <InfoToggles section={infoSection} onToggle={setInfoSection} />
+                {live && agent.contextUsage && <ContextUsage usage={agent.contextUsage} />}
               </div>
-            )}
+            </div>
+            <InfoDrawer section={infoSection} onClose={() => setInfoSection(null)} />
             {(agent.transcript.queued.length > 0 || agent.held) && (
               <ul className='pi-agent-queue' aria-label={t('piAgent.queue')}>
                 {agent.held && (
@@ -418,12 +456,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                 }}
               />
             </div>
-            <InfoDrawer section={infoSection} onClose={() => setInfoSection(null)} />
             <div className='pi-agent-dialog-actions pi-agent-composer-bar'>
-              <div className='pi-agent-indicators'>
-                <InfoToggles section={infoSection} onToggle={setInfoSection} />
-                {live && agent.contextUsage && <ContextUsage usage={agent.contextUsage} />}
-              </div>
               {ready && model.models.length > 0 && (
                 <div className='pi-agent-model-row'>
                   {/* The button names the model alone, since a provider suffix pushes the part that tells models apart out of view; the menu and tooltip keep it. */}

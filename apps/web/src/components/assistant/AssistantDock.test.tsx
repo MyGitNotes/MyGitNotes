@@ -43,11 +43,13 @@ const note = { id: 'a', path: 'notes/untitled.md', notebookId: 'a', title: 'Unti
 const session = { title: 'Untitled', locked: false, isSaving: false, hasUnsavedChanges: false, content: note.content, copyState: 'idle', copyNote: vi.fn(), close: vi.fn() };
 const toolbar = () => createElement(NoteEditorToolbar, { frame: 'zoom', note, session: session as never, docPanel: { notePanel: null, lastNotePanel: { current: 'find' } } as never, isMarkdown: false, autoSave: true, readOnly: false, editorMode: 'live', setEditorMode: vi.fn(), showLineNumbers: false, toggleLineNumbers: vi.fn(), showFormatToolbar: false, onClose: vi.fn() });
 
-it('toggles the dock from the header, beside the Agents page button, and says whether it is open', () => {
+it('toggles the dock from the header, the one agent button there, naming its key, and says whether it is open', () => {
   render(withAgent(createElement('div', null, header(), createElement(AssistantDock))));
   const toggle = screen.getByRole('button', { name: 'Agent' });
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
-  expect(toggle.previousElementSibling).toBe(screen.getByRole('button', { name: 'Agent workspaces' }));
+  expect(toggle.getAttribute('title')).toBe('Agent (Ctrl+`)');
+  expect(toggle.getAttribute('aria-keyshortcuts')).toBe('Control+`');
+  expect(screen.queryByRole('button', { name: 'Agent workspaces' })).toBeNull();
   expect(screen.queryByRole('separator', { name: 'Resize agent' })).toBeNull();
   fireEvent.click(toggle);
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
@@ -69,10 +71,32 @@ it('toggles the same dock from the end of the editor toolbar, with aria-expanded
   expect(screen.getByRole('region', { name: 'Pi agent' })).toBeTruthy();
 });
 
-it('offers no toggle and no dock where the agent is not offered', () => {
+it('opens the Agents page from the dock header, unless navigation is closed, in the gated dock too', () => {
+  const onOpenAgents = vi.fn();
+  assistantDock.open();
+  const view = render(withAgent(createElement(AssistantDock, { onOpenAgents })));
+  fireEvent.click(screen.getByRole('button', { name: 'Agent workspaces' }));
+  expect(onOpenAgents).toHaveBeenCalledTimes(1);
+  expect(assistantDock.get().open).toBe(true);
+  view.rerender(withAgent(createElement(AssistantDock, { onOpenAgents, agentsDisabled: true })));
+  expect(screen.getByRole('button', { name: 'Agent workspaces' })).toHaveProperty('disabled', true);
+});
+
+it('closes the phone sheet after opening the Agents page, which it would cover', () => {
+  phone = true;
+  const onOpenAgents = vi.fn();
+  assistantDock.open();
+  render(withAgent(createElement(AssistantDock, { onOpenAgents })));
+  fireEvent.click(screen.getByRole('button', { name: 'Agent workspaces' }));
+  expect(onOpenAgents).toHaveBeenCalledTimes(1);
+  expect(assistantDock.get().open).toBe(false);
+});
+
+it('offers no toggle and no dock where the agent is not offered, keeping the Agents page in the header', () => {
   assistantDock.open();
   render(withAgent(createElement('div', null, header(), toolbar(), createElement(AssistantDock)), agent({ available: false })));
   expect(screen.queryByRole('button', { name: 'Agent' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Agent workspaces' })).toBeTruthy();
   expect(screen.queryByRole('region', { name: 'Pi agent' })).toBeNull();
   expect(width()).toBe('0px');
 });

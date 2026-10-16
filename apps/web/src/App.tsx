@@ -782,7 +782,7 @@ export const AppContent: React.FC = () => {
         {/* The shell and the assistant dock share a row; the dock is part of the layout, not an overlay on it. */}
         <div className='app-frame'>
           {content}
-          <AssistantDock />
+          <AssistantDock onOpenAgents={() => setActiveTab('agent')} agentsDisabled={noteEditorOpen || isCommitOpen} />
         </div>
       </OutlineActionsProvider>
     </PiAgentProvider>

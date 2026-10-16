@@ -684,7 +684,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'command.assistant.menu': '選擇斜線指令',
   'command.assistant.dismiss': '關閉斜線指令選單',
   'command.assistant.toggleFocus': '在 Agent 與筆記之間切換',
-  'command.assistant.toggleFocus.describe': '移到 Agent 對話輸入框（需要時先打開 Agent），再按一次回到筆記編輯器原本的游標位置',
+  'command.assistant.toggleFocus.describe': '打開右側的 Agent 欄並移到對話輸入框；在輸入框再按一次，回到筆記編輯器原本的游標位置，沒有開啟筆記時則收起 Agent 欄',
   'command.focusTabs.move': '在分頁間移動',
   'command.focusTabs.close': '關閉分頁',
   'command.focusDivision.move': '選擇分割中的窗格',

@@ -683,7 +683,7 @@ export const en = {
   'command.assistant.menu': 'Choose a slash command',
   'command.assistant.dismiss': 'Dismiss the slash command menu',
   'command.assistant.toggleFocus': 'Switch between the agent and the note',
-  'command.assistant.toggleFocus.describe': 'Moves to the agent message box, opening the agent first, and back to the note editor where its caret was',
+  'command.assistant.toggleFocus.describe': 'Opens the assistant dock and moves to its message box; pressed there, returns to the note editor where its caret was, or closes the dock when no note is open',
   'command.focusTabs.move': 'Move between tabs',
   'command.focusTabs.close': 'Close the tab',
   'command.focusDivision.move': 'Choose a pane of the division',

@@ -76,7 +76,10 @@
 .pi-agent-composer .ui-button svg { width: 14px; height: 14px; }
 @keyframes pi-agent-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .pi-agent-tool .pi-agent-tool-state, .pi-agent-tool-group .pi-agent-tool-state, .pi-agent-working svg { animation: none; } .pi-agent-tool-group-chevron { transition: none; } }
-.pi-agent-context { display: flex; min-width: 0; }
+.pi-agent-context { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* Pi's status buttons close the top row, at its end whether or not a file chip leads it. */
+.pi-agent-context .pi-agent-indicators { margin-left: auto; }
+.pi-agent-context .ui-icon-button { width: 26px; height: 26px; padding: 5px; }
 /* The target the next message names; it opens a menu of Line, Path only and None. */
 .pi-agent-context-chip { display: inline-flex; align-items: center; gap: 4px; min-width: 0; min-height: 26px; max-width: 100%; padding: 2px 6px; border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-sidebar); color: var(--color-muted); font: 11px ui-monospace, monospace; cursor: pointer; }
 .pi-agent-context-chip:hover, .pi-agent-context-chip[data-state='open'] { color: var(--color-text); }
@@ -85,17 +88,19 @@
 .pi-agent-context-check { margin-left: auto; }
 .pi-agent-context-check svg { width: 14px; height: 14px; }
 .folder-picker-notebook { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-muted); }
-/* Pi's trust decision sits beside the info button at the start of the send row, in an icon button's box. */
+/* Pi's trust decision, MCP servers and extension status, each in an icon button's box, with the context usage. */
 .pi-agent-indicators { display: flex; flex: none; align-items: center; gap: 2px; }
-/* The bottom row: info buttons and context usage, the model and thinking selects, Stop and Send. */
+/* The bottom row: the model and thinking selects, then Stop and Send. */
 .pi-agent-composer-bar { flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 2px; }
-.pi-agent-composer-bar .ui-icon-button { width: 26px; height: 26px; padding: 5px; }
 .pi-agent-composer-bar > .ui-button { flex: none; }
-.pi-agent-model-row { display: flex; flex: 1 1 0; min-width: 0; justify-content: flex-end; gap: 0; }
-.pi-agent-model-row .pi-agent-model { flex: 1 1 0; min-width: 0; }
+.pi-agent-model-row { display: flex; flex: 1 1 0; min-width: 0; justify-content: flex-start; gap: 0; margin-left: -6px; }
+.pi-agent-model-row .pi-agent-model { flex: 0 1 auto; min-width: 0; }
 .pi-agent-model-row .pi-agent-thinking { flex: none; width: auto; max-width: none; }
 .pi-agent-model-row .select-trigger { height: 28px; min-height: 0; padding-inline: 6px; gap: 2px; border-color: transparent; background: transparent; color: var(--color-muted); font-size: 12px; }
 .pi-agent-model-row .select-trigger:hover { color: var(--color-text); }
+/* The selects are as wide as their names, the chevron right after the text, not pushed to the row's end. */
+.pi-agent-model-row .select-trigger { width: auto; justify-content: flex-start; }
+.pi-agent-model-row .select-value { flex: 0 1 auto; }
 /* Pi's replies in the notes' prose style, scaled down to the panel; doubled classes outrank .prose-custom. */
 .prose-custom.pi-agent-markdown { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 .prose-custom.pi-agent-markdown > :first-child { margin-top: 0; }
