@@ -5,7 +5,8 @@ import { isEditableTarget } from '../../lib/keyboard/context.js';
 import { matchesCommand } from '../../lib/keyboard/keymap.js';
 import type { MarkdownEditorHandle, MarkdownEditorMode } from '../MarkdownEditor.js';
 import type { NotePanelMode } from './types.js';
-import { usePiAgentAvailable } from '../../lib/pi-agent/session.js';
+import { insideAssistantDock } from '../../lib/assistant-dock.js';
+import { DOCUMENT_PANEL_OPEN_STORAGE_KEY, DOCUMENT_PANEL_STORAGE_KEY } from '../../lib/panel-state.js';
 
 export interface UseNoteDocumentPanelParams {
   frame: 'zoom' | 'pane' | 'compact' | 'inline';
@@ -23,8 +24,8 @@ export interface UseNoteDocumentPanelParams {
   readOnly: boolean;
 }
 
-const PANEL_KEY = 'mygitnotes.documentPanel';
-const PANEL_OPEN_KEY = 'mygitnotes.documentPanel.open';
+const PANEL_KEY = DOCUMENT_PANEL_STORAGE_KEY;
+const PANEL_OPEN_KEY = DOCUMENT_PANEL_OPEN_STORAGE_KEY;
 
 /** The section the user last opened, else the default for the file. */
 function savedPanel(isMarkdown: boolean): NotePanelMode {
@@ -32,7 +33,7 @@ function savedPanel(isMarkdown: boolean): NotePanelMode {
     const saved = localStorage.getItem(PANEL_KEY);
     // The info section now sits under the frontmatter.
     if (saved === 'info') return 'frontmatter';
-    if (['find', 'outline', 'frontmatter', 'view', 'history', 'agent'].includes(saved || '')) return saved as NotePanelMode;
+    if (['find', 'outline', 'frontmatter', 'view', 'history'].includes(saved || '')) return saved as NotePanelMode;
   } catch { /* Use the default panel when storage is unavailable. */ }
   return isMarkdown ? 'outline' : 'find';
 }
@@ -48,10 +49,7 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
       return null;
     }
   });
-  const requestedPanel = frame === 'pane' ? documentPanel?.mode ?? null : ownPanel;
-  // A remembered agent tab opens the default section on a computer without Pi, where the tab is hidden.
-  const agentAvailable = usePiAgentAvailable();
-  const notePanel = requestedPanel === 'agent' && !agentAvailable ? isMarkdown ? 'outline' : 'find' : requestedPanel;
+  const notePanel = frame === 'pane' ? documentPanel?.mode ?? null : ownPanel;
   const setNotePanel = (next: NotePanelMode | null) => {
     try {
       if (next) {
@@ -69,7 +67,6 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
   const showFrontmatter = notePanel === 'frontmatter';
   const isViewPanelOpen = notePanel === 'view';
   const isHistoryOpen = notePanel === 'history';
-  const isAgentOpen = notePanel === 'agent';
   const [findQuery, setFindQuery] = useState('');
   const [findIndex, setFindIndex] = useState(0);
   const [outlineIndex, setOutlineIndex] = useState(0);
@@ -185,6 +182,8 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
     if (!active) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (document.querySelector('dialog[open], [role="listbox"]')) return;
+      // The assistant dock beside the editor owns the keys typed in it, Escape included.
+      if (insideAssistantDock(event.target)) return;
       // Help and quick open own the keys typed in them, Escape included.
       if (event.target instanceof Element && event.target.closest('[data-key-scope="help"], [data-key-scope="palette"]')) return;
       if (shortcutAction.current(event)) {
@@ -221,7 +220,7 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
     requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-outline-index="${index}"]`)?.focus());
   }, [isOutlineOpen, outline, outlineIndex]);
 
-  return { editorRef, notePanel, setNotePanel, lastNotePanel, isFindOpen, isOutlineOpen, showFrontmatter, isViewPanelOpen, isHistoryOpen, isAgentOpen, findQuery, setFindQuery, findIndex, matches, stepFind, findInputRef, outline, outlineIndex, setOutlineIndex, chooseOutline, moveOutline, openFind, openOutline, isEditorLeaderOpen, setIsEditorLeaderOpen, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen };
+  return { editorRef, notePanel, setNotePanel, lastNotePanel, isFindOpen, isOutlineOpen, showFrontmatter, isViewPanelOpen, isHistoryOpen, findQuery, setFindQuery, findIndex, matches, stepFind, findInputRef, outline, outlineIndex, setOutlineIndex, chooseOutline, moveOutline, openFind, openOutline, isEditorLeaderOpen, setIsEditorLeaderOpen, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen };
 }
 
 /** The document panel state the editor parts that render it share. */

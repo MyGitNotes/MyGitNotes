@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { createElement, forwardRef, useLayoutEffect, useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { NoteEditingProvider } from '../lib/note-editing.js';
+import { assistantDock } from '../lib/assistant-dock.js';
 import { PanelProvider, usePanelContext } from '../lib/panel-context.js';
+import { PiAgentContext, type PiAgentValue } from '../lib/pi-agent/session.js';
 import { EditorModal } from './EditorModal.js';
 import type { NoteEditorProps } from './NoteEditor.js';
 
@@ -21,7 +23,11 @@ vi.mock('./NoteEditor.js', () => ({
   }),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+  assistantDock.reload();
+});
 
 const Rail = () => createElement('output', { 'aria-label': 'rail' }, usePanelContext().hasOpenNote ? 'hidden' : 'shown');
 
@@ -108,4 +114,41 @@ it('shows a note that is still loading as a dialog of its own over the hidden co
   render(modal({ note: null, loading: true, behind }));
   expect(screen.getAllByRole('dialog', { hidden: true })).toHaveLength(2);
   expect(screen.getByRole('dialog', { name: 'Loading note…' })).toHaveAttribute('aria-busy', 'true');
+});
+
+describe('beside the assistant dock', () => {
+  const zoomed = (available: boolean) => createElement(PiAgentContext.Provider, { value: { available } as PiAgentValue }, modal({ note: alpha }));
+  const frames = () => ['Note editor', 'Compilation'].map(name => screen.queryByRole('dialog', { name }));
+
+  it('is a modal dialog that ends at the dock edge while the dock is closed', () => {
+    render(zoomed(true));
+    const dialog = screen.getByRole('dialog', { name: 'Note editor' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog.parentElement).toHaveClass('note-overlay', 'dock-edge');
+  });
+
+  it('stops claiming the page is inert while the dock is open, so the dock stays reachable', () => {
+    assistantDock.open();
+    render(zoomed(true));
+    expect(screen.getByRole('dialog', { name: 'Note editor' })).not.toHaveAttribute('aria-modal');
+    act(() => assistantDock.close());
+    expect(screen.getByRole('dialog', { name: 'Note editor' })).toHaveAttribute('aria-modal', 'true');
+  });
+
+  it('keeps aria-modal where the dock is not offered, even if it was left open', () => {
+    assistantDock.open();
+    render(zoomed(false));
+    expect(screen.getByRole('dialog', { name: 'Note editor' })).toHaveAttribute('aria-modal', 'true');
+  });
+
+  it('does the same for the zoomed compilation and the loading overlay', () => {
+    assistantDock.open();
+    const view = render(createElement(PiAgentContext.Provider, { value: { available: true } as PiAgentValue }, modal({ note: reading })));
+    expect(frames()[1]).not.toHaveAttribute('aria-modal');
+    expect(frames()[1]!.parentElement).toHaveClass('dock-edge');
+    view.rerender(createElement(PiAgentContext.Provider, { value: { available: true } as PiAgentValue }, modal({ note: null, loading: true })));
+    const loading = screen.getByRole('dialog', { name: 'Loading note…' });
+    expect(loading).not.toHaveAttribute('aria-modal');
+    expect(loading).toHaveClass('dock-edge');
+  });
 });

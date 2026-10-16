@@ -95,3 +95,24 @@ it('leaves keys typed in help or quick open to them while a note is zoomed', () 
   expect(press(document.body, { key: 'Escape' }).defaultPrevented).toBe(true);
   expect(result.current.isEditorLeaderOpen).toBe(false);
 });
+
+it('closes its panel on Escape, but leaves an Escape typed in the assistant dock beside it to the dock', () => {
+  const props = { frame: 'zoom' as const, active: true, isMarkdown: true, content: '# Alpha', editorMode: 'raw' as const, editorRef: createRef<MarkdownEditorHandle>(), metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
+  const { result } = renderHook(() => useNoteDocumentPanel(props));
+  const dock = document.body.appendChild(document.createElement('div'));
+  dock.className = 'assistant-dock';
+  const message = dock.appendChild(document.createElement('textarea'));
+  act(() => result.current.setNotePanel('history'));
+  const escape = (target: Element) => {
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  };
+  expect(escape(message).defaultPrevented).toBe(false);
+  expect(result.current.notePanel).toBe('history');
+  expect(escape(document.body).defaultPrevented).toBe(true);
+  expect(result.current.notePanel).toBeNull();
+  dock.remove();
+});

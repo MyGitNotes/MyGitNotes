@@ -6,6 +6,7 @@ import { useOutlineActions } from './app/useOutlineActions.js';
 import { OutlineActionsProvider } from './lib/outline-actions.js';
 import { PiAgentProvider } from './lib/pi-agent/session.js';
 import { AgentFocusCommand } from './components/pi-agent/AgentFocusCommand.js';
+import { AssistantDock } from './components/assistant/AssistantDock.js';
 import { useWebAgentTools } from './app/useWebAgentTools.js';
 import { AddToOutlineDialog } from './components/AddToOutlineDialog.js';
 import { useFilterSidebar } from './app/useFilterSidebar.js';
@@ -411,7 +412,7 @@ export const AppContent: React.FC = () => {
       <WorkspaceLinks notebooks={config?.notebooks || []} folders={folders} onOpenNote={(note, anchor, source) => void openLink(note, anchor, source)}>
         <NoteLocationProvider locate={locateNote}>
           <NoteEditingProvider register={editorRegistry.register} editorProps={editorProps} flushEditors={editorRegistry.flushEditors} refreshNotes={refreshNotes} closeZoom={closeZoom} addToFocus={addToFocus} moveNote={noteMove.moveNote} renameNote={noteMove.renameNote}>
-            <div className='app-shell h-dvh w-full overflow-hidden flex flex-col font-sans transition-colors duration-200' data-workspace-tab={activeTab} data-screen-focus={Boolean(route.study)} style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
+            <div className='app-shell h-dvh min-w-0 flex-1 overflow-hidden flex flex-col font-sans transition-colors duration-200' data-workspace-tab={activeTab} data-screen-focus={Boolean(route.study)} style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
               {/* Core Branch User Guidance Banner (Theme-aware, harmonized with active palette) */}
               {!remote && defaultRepositoryBranch === 'core' && (
                 <div className='shrink-0 flex-none px-4 py-2 text-xs flex items-center justify-between font-medium border-b transition-colors' style={{ backgroundColor: 'var(--color-sidebar)', borderColor: 'var(--color-line)', color: 'var(--color-text)' }}>
@@ -777,7 +778,13 @@ export const AppContent: React.FC = () => {
   return (
     <PiAgentProvider webTools={remote ? webAgentTools : undefined} enabled={agentEnabled} defaultRepository={sourceId} notebooks={config?.notebooks ?? NO_NOTEBOOKS} repositories={repositories}>
       <AgentFocusCommand />
-      <OutlineActionsProvider value={outlineActions.value}>{content}</OutlineActionsProvider>
+      <OutlineActionsProvider value={outlineActions.value}>
+        {/* The shell and the assistant dock share a row; the dock is part of the layout, not an overlay on it. */}
+        <div className='app-frame'>
+          {content}
+          <AssistantDock />
+        </div>
+      </OutlineActionsProvider>
     </PiAgentProvider>
   );
 };

@@ -1,5 +1,5 @@
-import { AlertTriangle, CircleCheck, CircleX, Info, LoaderCircle, SquareTerminal, Wrench } from 'lucide-react';
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { AlertTriangle, ChevronRight, CircleCheck, CircleX, Info, LoaderCircle, SquareTerminal, Wrench } from 'lucide-react';
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { NoteHtml } from '../NoteHtml.js';
 import { type ChatLinkBase, renderChatMarkdown } from '../../lib/markdown.js';
 import { type AssistantBlock, focusLabel, type ShellEntry, type TranscriptState } from '../../lib/pi-agent/transcript.js';
@@ -17,10 +17,18 @@ function argsSummary(args: unknown): string {
   return json === '{}' ? '' : json;
 }
 
-function ToolCall({ block, transcript }: { block: Extract<AssistantBlock, { type: 'toolCall'; }>; transcript: TranscriptState; }) {
+type ToolBlock = Extract<AssistantBlock, { type: 'toolCall'; }>;
+type ToolState = 'pending' | 'running' | 'error' | 'done';
+
+function toolState(block: ToolBlock, transcript: TranscriptState): ToolState {
+  const outcome = transcript.tools[block.id];
+  return !outcome ? 'pending' : outcome.running ? 'running' : outcome.isError ? 'error' : 'done';
+}
+
+function ToolCall({ block, transcript }: { block: ToolBlock; transcript: TranscriptState; }) {
   const { t } = useTranslation();
   const outcome = transcript.tools[block.id];
-  const state = !outcome ? 'pending' : outcome.running ? 'running' : outcome.isError ? 'error' : 'done';
+  const state = toolState(block, transcript);
   const Icon = state === 'running' || state === 'pending' ? LoaderCircle : state === 'error' ? CircleX : CircleCheck;
   const output = outcome?.text ?? '';
   return (
@@ -33,6 +41,39 @@ function ToolCall({ block, transcript }: { block: Extract<AssistantBlock, { type
       </summary>
       {block.args !== undefined && <pre className='pi-agent-pre'>{JSON.stringify(block.args, null, 2)}</pre>}
       {output && <pre className='pi-agent-pre'>{clip(output)}</pre>}
+    </details>
+  );
+}
+
+/**
+ * Two or more tool calls in a row, as one summary row ("Ran 2 tools: bash, read") that opens onto the calls. The group
+ * is open while a call runs and stays open when one failed; the reader's own toggle wins over that until it changes.
+ */
+function ToolGroup({ blocks, transcript }: { blocks: ToolBlock[]; transcript: TranscriptState; }) {
+  const { t } = useTranslation();
+  const states = blocks.map(block => toolState(block, transcript));
+  const working = blocks.find((_, index) => states[index] === 'running' || states[index] === 'pending');
+  const failed = states.includes('error');
+  const state = working ? 'running' : failed ? 'error' : 'done';
+  const automatic = state !== 'done';
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const [wasAutomatic, setWasAutomatic] = useState(automatic);
+  // The reader's choice answers the state the group was in; a new state (a call starts, or fails) opens it afresh.
+  if (wasAutomatic !== automatic) {
+    setWasAutomatic(automatic);
+    setChosen(null);
+  }
+  const open = chosen ?? automatic;
+  const names = [...new Set(blocks.map(block => block.name))];
+  const Icon = state === 'running' ? LoaderCircle : state === 'error' ? CircleX : CircleCheck;
+  return (
+    <details className='pi-agent-tool-group' data-state={state} open={open} onToggle={event => event.currentTarget.open !== open && setChosen(event.currentTarget.open)}>
+      <summary>
+        <ChevronRight aria-hidden='true' className='pi-agent-tool-group-chevron' />
+        <span className='pi-agent-tool-group-text'>{working ? t('piAgent.toolGroup.running', { name: working.name, count: blocks.length }) : t('piAgent.toolGroup', { count: blocks.length, names: names.join(', ') })}</span>
+        <Icon aria-label={t(`piAgent.tool.${state === 'running' ? 'running' : state}`)} className='pi-agent-tool-state' />
+      </summary>
+      <div className='pi-agent-tool-group-body'>{blocks.map((block, index) => <ToolCall key={block.id || index} block={block} transcript={transcript} />)}</div>
     </details>
   );
 }
@@ -73,19 +114,27 @@ export interface ChatLinks {
 
 function Blocks({ blocks, transcript, links }: { blocks: AssistantBlock[]; transcript: TranscriptState; links?: ChatLinks; }) {
   const { t } = useTranslation();
+  const parts: (AssistantBlock | ToolBlock[])[] = [];
+  for (const block of blocks) {
+    const last = parts[parts.length - 1];
+    if (block.type !== 'toolCall') parts.push(block);
+    else if (Array.isArray(last)) last.push(block);
+    else parts.push([block]);
+  }
   return (
     <>
-      {blocks.map((block, index) => {
-        if (block.type === 'text') return block.text ? <MarkdownText key={index} text={block.text} links={links} /> : null;
-        if (block.type === 'thinking') {
+      {parts.map((part, index) => {
+        if (Array.isArray(part)) return part.length > 1 ? <ToolGroup key={part[0].id || index} blocks={part} transcript={transcript} /> : <ToolCall key={part[0].id || index} block={part[0]} transcript={transcript} />;
+        if (part.type === 'text') return part.text ? <MarkdownText key={index} text={part.text} links={links} /> : null;
+        if (part.type === 'thinking') {
           return (
             <details key={index} className='pi-agent-thinking'>
               <summary>{t('piAgent.thinking')}</summary>
-              <p className='pi-agent-text'>{block.text}</p>
+              <p className='pi-agent-text'>{part.text}</p>
             </details>
           );
         }
-        return <ToolCall key={block.id || index} block={block} transcript={transcript} />;
+        return null;
       })}
     </>
   );

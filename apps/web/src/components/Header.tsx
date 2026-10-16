@@ -8,6 +8,7 @@ import { Select } from './Select.js';
 import { ariaKeyShortcuts, formatKeys } from '../lib/keyboard/keys.js';
 import { bindingsFor, keymapEntry } from '../lib/keyboard/keymap.js';
 import { keyEnvironment } from '../lib/keyboard/platform.js';
+import { AssistantDockToggle } from './assistant/AssistantDockToggle.js';
 
 interface HeaderProps {
   /** Notebooks whose repository cannot serve them; the switcher marks them. */
@@ -85,6 +86,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
             <button type='button' disabled={navigationDisabled} className='ui-icon-button header-agent' data-header-agent='' aria-label={t('nav.agent')} title={t('nav.agent')} aria-current={activeTab === 'agent' ? 'page' : undefined} onClick={() => setActiveTab('agent')}>
               <Bot size={17} />
             </button>
+            <AssistantDockToggle className='header-assistant' />
             <button type='button' disabled={navigationDisabled} className='ui-icon-button header-command' data-header-command='' aria-label={t('shortcuts.open')} aria-keyshortcuts={paletteKeys && ariaKeyShortcuts(paletteKeys, keyEnvironment)} title={paletteLabel} onClick={onOpenCommands}>
               <Keyboard size={17} />
             </button>
