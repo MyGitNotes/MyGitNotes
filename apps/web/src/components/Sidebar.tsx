@@ -10,6 +10,7 @@ import { mergeNotebookFacets, queryNotebookIds } from '../lib/note-facets.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { WorkspaceSidebar } from './WorkspaceChrome.js';
 import { Select } from './Select.js';
+import { statusDotClass } from './NoteStatusSelect.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { filterAndSortTags, getSavedTagSort, saveTagSort, TagSort } from '../lib/tag-list.js';
 import { resolveAllNotebooksFolderSelect, resolveEnterTouchMultiSelect } from '../lib/folder-tree.js';
@@ -316,7 +317,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
       {/* Status Filters */}
       <details open={sections.isOpen('status')} onToggle={event => sections.setOpen('status', event.currentTarget.open)} className='sidebar-filter-section'>
         <summary>{t('sidebar.status')}</summary>
-        <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-2.5 px-2'>{selectedStatus && <button type='button' onClick={() => onSelectStatus(null)} className='text-xs hover:underline capitalize' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
+        <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{selectedStatus && <button type='button' onClick={() => onSelectStatus(null)} className='text-xs hover:underline capitalize' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
         <div className='space-y-1 text-sm'>
           <button type='button' onClick={() => onSelectStatus(null)} aria-pressed={selectedStatus === null} style={selectedStatus === null ? selectedItemStyle : undefined} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition ${selectedStatus === null ? 'font-semibold hover:opacity-90' : 'text-muted hover:bg-fg/5 hover:text-fg'}`}>
             <div className='flex items-center gap-2'>
@@ -332,7 +333,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
             return (
               <button type='button' key={status} data-status-filter={status} onClick={() => onSelectStatus(isSelected ? null : status)} aria-pressed={isSelected} style={isSelected ? selectedItemStyle : undefined} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition ${isSelected ? 'font-semibold hover:opacity-90' : 'text-muted hover:bg-fg/5 hover:text-fg'}`}>
                 <div className='flex items-center gap-2'>
-                  <span className={`w-2 h-2 rounded-full ${status === 'done' ? 'bg-success' : status === 'working' || status === 'doing' ? 'bg-info' : status === 'todo' ? 'bg-warning' : 'bg-muted'}`} />
+                  <span className={`status-dot ${statusDotClass(status)}`} aria-hidden='true' />
                   <span className='truncate'>{status}</span>
                 </div>
                 <span className='text-xs text-muted'>{count ?? '—'}</span>
@@ -345,7 +346,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
       {allTags.length > 0 && (
         <details open={sections.isOpen('tags')} onToggle={event => sections.setOpen('tags', event.currentTarget.open)} className='sidebar-filter-section' aria-label={t('sidebar.tags')}>
           <summary>{t('sidebar.tags')}</summary>
-          <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-2.5 px-2'>{selectedTags.length > 0 && <button type='button' onClick={() => onSelectTag(null)} className='text-xs hover:underline' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
+          <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{selectedTags.length > 0 && <button type='button' onClick={() => onSelectTag(null)} className='text-xs hover:underline' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
           <div className='space-y-2 px-1 mb-2.5'>
             <div className='relative'>
               <Search aria-hidden='true' className='absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted pointer-events-none' />

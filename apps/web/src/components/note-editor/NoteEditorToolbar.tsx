@@ -56,7 +56,7 @@ function togglePanel(docPanel: NoteDocumentPanelState, isMarkdown: boolean) {
   else docPanel.setNotePanel(last);
 }
 
-function NoteZoomHeading({ note, session, onRefresh, onClose, onRename, phoneEditing }: Pick<NoteEditorToolbarProps, 'note' | 'session' | 'onRefresh' | 'onClose' | 'onRename' | 'phoneEditing'>) {
+function NoteZoomHeading({ note, session, onClose, onRename, phoneEditing }: Pick<NoteEditorToolbarProps, 'note' | 'session' | 'onClose' | 'onRename' | 'phoneEditing'>) {
   const { t } = useTranslation();
   return (
     <div className='note-heading flex items-center gap-3 min-w-0'>
@@ -73,10 +73,9 @@ function NoteZoomHeading({ note, session, onRefresh, onClose, onRename, phoneEdi
           </div>
         )}
       <div className='truncate'>
-        {onRename ? <button type='button' className='title-rename font-serif font-semibold text-fg text-sm truncate max-w-full' disabled={session.locked} title={t('files.rename')} onClick={onRename}>{session.title || t('editor.untitled')}</button> : <div className='font-serif font-semibold text-fg text-sm truncate'>{session.title || t('editor.untitled')}</div>}
-        <div className='text-xs text-muted font-mono truncate'>{note.path}</div>
+        {onRename ? <button type='button' className='title-rename font-semibold text-fg text-sm truncate max-w-full' disabled={session.locked} title={t('files.rename')} onClick={onRename}>{session.title || t('editor.untitled')}</button> : <div className='font-semibold text-fg text-sm truncate'>{session.title || t('editor.untitled')}</div>}
+        <div className='text-xs text-muted truncate'>{note.path}</div>
       </div>
-      {onRefresh && <NoteRefreshAction className='shrink-0' onRefresh={onRefresh} disabled={session.isSaving} />}
       {phoneEditing && <PhoneEditToggle {...phoneEditing} />}
     </div>
   );
@@ -87,9 +86,10 @@ export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, 
   const { t } = useTranslation();
   const zoom = frame === 'zoom';
   return (
-    <div className='note-toolbar relative shrink-0 px-5 py-3.5 border-b border-line flex items-center justify-between gap-4 bg-sidebar/60'>
-      {zoom && <NoteZoomHeading note={note} session={session} onRefresh={onRefresh} onClose={onClose} onRename={onRename} phoneEditing={phoneEditing} />}
+    <div className='note-toolbar relative shrink-0 px-4 py-2 border-b border-line flex items-center justify-between gap-4 bg-sidebar/60'>
+      {zoom && <NoteZoomHeading note={note} session={session} onClose={onClose} onRename={onRename} phoneEditing={phoneEditing} />}
       <div className='note-controls flex items-center gap-2'>
+        {zoom && onRefresh && <NoteRefreshAction iconOnly onRefresh={onRefresh} disabled={session.isSaving} />}
         {!autoSave && !readOnly && (
           <Button variant='primary' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave} className='note-save editor-action'>
             <Save className='editor-mobile-icon w-5 h-5' />
@@ -97,35 +97,56 @@ export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, 
           </Button>
         )}
         {!zoom && phoneEditing && <PhoneEditToggle {...phoneEditing} />}
-        {isMarkdown && <MarkdownEditorModeSwitch mode={editorMode} onChange={setEditorMode} />}
-        <button type='button' aria-pressed={showLineNumbers} aria-label={t('editor.lineNumbers')} title={t('editor.lineNumbers')} onClick={toggleLineNumbers} className='ui-icon-button toolbar-icon-button editor-line-numbers-action'>
-          <ListOrdered aria-hidden='true' />
-        </button>
-        {onAddToOutline && (
-          <button type='button' className='ui-icon-button toolbar-icon-button' disabled={session.locked} aria-label={t('outline.add')} title={t('outline.add')} onClick={onAddToOutline}>
-            <ListTree aria-hidden='true' />
-          </button>
+        {/* Four groups, set apart by thin separators: mode, view, file and panels. */}
+        {isMarkdown && (
+          <div role='group' className='note-controls-group' aria-label={t('editor.controlsMode')}>
+            <MarkdownEditorModeSwitch mode={editorMode} onChange={setEditorMode} />
+          </div>
         )}
-        {onMove && (
-          <button type='button' className='ui-icon-button toolbar-icon-button editor-move-action' disabled={session.locked} aria-label={t('files.moveNote')} title={t('files.moveNote')} onClick={onMove}>
-            <FolderInput aria-hidden='true' />
+        <div role='group' className='note-controls-group' aria-label={t('editor.controlsView')}>
+          <button type='button' aria-pressed={showLineNumbers} aria-label={t('editor.lineNumbers')} title={t('editor.lineNumbers')} onClick={toggleLineNumbers} className='ui-icon-button toolbar-icon-button editor-line-numbers-action'>
+            <ListOrdered aria-hidden='true' />
           </button>
-        )}
-        <NoteExportMenu className='ui-icon-button toolbar-icon-button' path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} />
-        {onAddToFocus && (
-          <button type='button' aria-label={t('focus.addTo')} title={t('focus.addTo')} onClick={onAddToFocus} className='ui-icon-button toolbar-icon-button'>
-            <LayoutGrid aria-hidden='true' />
-          </button>
-        )}
-        {toggleFormatToolbar && (
-          <button type='button' aria-pressed={showFormatToolbar} aria-label={t('editor.formatToolbar')} title={t('editor.formatToolbar')} onClick={toggleFormatToolbar} className='ui-icon-button toolbar-icon-button editor-format-toolbar-action'>
-            <Type aria-hidden='true' />
-          </button>
-        )}
-        {zoom && (
-          <button type='button' aria-label={t('editor.documentPanel')} title={t('editor.documentPanel')} aria-pressed={Boolean(docPanel.notePanel)} onClick={() => togglePanel(docPanel, isMarkdown)} className='ui-icon-button toolbar-icon-button editor-panel-action'>
-            <PanelRight aria-hidden='true' />
-          </button>
+          {onAddToOutline && (
+            <button type='button' className='ui-icon-button toolbar-icon-button' disabled={session.locked} aria-label={t('outline.add')} title={t('outline.add')} onClick={onAddToOutline}>
+              <ListTree aria-hidden='true' />
+            </button>
+          )}
+          {onAddToFocus && (
+            <button type='button' aria-label={t('focus.addTo')} title={t('focus.addTo')} onClick={onAddToFocus} className='ui-icon-button toolbar-icon-button'>
+              <LayoutGrid aria-hidden='true' />
+            </button>
+          )}
+        </div>
+        <div role='group' className='note-controls-group' aria-label={t('editor.controlsFile')}>
+          {onMove && (
+            <button type='button' className='ui-icon-button toolbar-icon-button editor-move-action' disabled={session.locked} aria-label={t('files.moveNote')} title={t('files.moveNote')} onClick={onMove}>
+              <FolderInput aria-hidden='true' />
+            </button>
+          )}
+          <NoteExportMenu className='ui-icon-button toolbar-icon-button' path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} />
+        </div>
+        {(toggleFormatToolbar || zoom) && (
+          <div role='group' className='note-controls-group' aria-label={t('editor.controlsPanels')}>
+            {toggleFormatToolbar && (
+              <button type='button' aria-pressed={showFormatToolbar} aria-label={t('editor.formatToolbar')} title={t('editor.formatToolbar')} onClick={toggleFormatToolbar} className='ui-icon-button toolbar-icon-button editor-format-toolbar-action'>
+                <Type aria-hidden='true' />
+              </button>
+            )}
+            {zoom && (
+              <button
+                type='button'
+                aria-label={t('editor.documentPanel')}
+                title={t('editor.documentPanel')}
+                aria-pressed={Boolean(docPanel.notePanel)}
+                onClick={() => togglePanel(docPanel, isMarkdown)}
+                className='ui-icon-button toolbar-icon-button editor-panel-action'
+              >
+                <PanelRight aria-hidden='true' />
+              </button>
+            )}
+            {/* One more panel toggle, the assistant's, goes here at the end of the group. */}
+          </div>
         )}
       </div>
     </div>

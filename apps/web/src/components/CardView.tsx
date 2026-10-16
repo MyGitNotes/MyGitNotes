@@ -87,7 +87,7 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
           }
           : undefined}
         style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}
-        className={`rounded-xl border hover:border-primary p-5 flex flex-col justify-between shadow-xs hover:shadow-md transition cursor-pointer group${strip ? ' note-card-strip-item' : ''}`}
+        className={`note-card rounded-xl border hover:border-primary p-5 flex flex-col justify-between shadow-xs hover:shadow-md transition cursor-pointer group${strip ? ' note-card-strip-item' : ''}`}
       >
         <div>
           <div className='flex items-start justify-between gap-2 mb-2'>
@@ -100,15 +100,15 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
             </h3>
             <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} label={t('notes.statusFor', { title: note.title })} onChange={(status) => onUpdateNoteStatus(note, status)} />
           </div>
-          <p className='text-xs text-muted line-clamp-3 mb-4 leading-relaxed'>{excerpt ? <HighlightText text={excerpt} query={highlightQuery} /> : <span className='italic text-muted'>{t('notes.noContent')}</span>}</p>
+          <p className='text-xs text-muted line-clamp-3 mb-3 leading-relaxed'>{excerpt ? <HighlightText text={excerpt} query={highlightQuery} /> : <span className='italic text-muted'>{t('notes.noContent')}</span>}</p>
+          {note.tags.length > 0 && <NoteTags tags={note.tags} oneLine tagActions={tagActions} className='note-card-tags mb-3' />}
         </div>
         <div className='note-card-footer pt-3 border-t flex items-center justify-between gap-2 text-xs text-muted' style={{ borderColor: 'var(--color-line)' }}>
-          <NoteTags tags={note.tags.slice(0, 2)} chipClassName='px-1.5 py-0.5 text-[11px]' tagActions={tagActions} className='note-card-tags max-w-[65%] min-w-0'>{note.tags.length > 2 && <span className='text-[10px] text-muted self-center'>+{note.tags.length - 2}</span>}</NoteTags>
-          <div className='flex items-center gap-2'>
-            <span className='flex items-center gap-1 text-[11px]'>
-              <Clock className='w-3 h-3' />
-              {formattedDate}
-            </span>
+          <span className='flex items-center gap-1 text-[11px]'>
+            <Clock className='w-3 h-3' />
+            {formattedDate}
+          </span>
+          <div className='flex items-center gap-2 shrink-0'>
             <div className='flex items-center gap-1' onClick={(e) => e.stopPropagation()}>
               {focusMode && <NoteZoomButton onClick={() => focusMode.onZoomNote(note)} />}
               {!readOnly && onMoveNote && <NoteMoveButton onClick={() => onMoveNote(note)} />}

@@ -11,7 +11,7 @@ export function EditorFooter({ content, path, state, status, actions }: { conten
   const pending = state === 'saving' || state === 'pending';
   const statusLabel = <span role='status' className={`flex items-center gap-1.5 font-medium ${pending ? 'text-warning' : state === 'saved' ? 'text-success' : ''}`}>{pending ? <span className={`w-2 h-2 rounded-full bg-warning ${state === 'saving' ? 'animate-pulse' : ''}`} /> : state === 'saved' ? <Check className='w-3.5 h-3.5' /> : null}{status}</span>;
   return (
-    <div data-actions={actions === undefined ? undefined : ''} className='note-footer shrink-0 px-5 py-3 border-t border-line bg-sidebar/80 flex items-center justify-between gap-4 text-xs text-muted'>
+    <div data-actions={actions === undefined ? undefined : ''} className='note-footer shrink-0 px-4 py-1 min-h-7 border-t border-line bg-sidebar/80 flex items-center justify-between gap-4 text-xs text-muted'>
       <div className='flex items-center gap-3'>
         <span>{t('editor.words', { count: content.trim().split(/\s+/).filter(Boolean).length })}</span>
         <span className='text-muted'>·</span>

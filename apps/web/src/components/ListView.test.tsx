@@ -61,3 +61,55 @@ it('marks the note list compact via data-compact', () => {
   const { container } = render(createElement(ListView, { ...baseProps, notes: [noteOf('notes/a.md')], compact: true }));
   expect(container.querySelector('.note-list')).toHaveAttribute('data-compact', 'true');
 });
+
+const titled = (path: string, title: string, extra: Partial<NoteListItem> = {}): NoteListItem => ({ ...noteOf(path), title, ...extra });
+
+it('keeps one line per note: the path is the title tooltip, not a second line', () => {
+  render(createElement(ListView, { ...baseProps, notes: [titled('notes/deep/alpha.md', 'Alpha')] }));
+  expect(screen.queryByText('notes/deep/alpha.md')).not.toBeInTheDocument();
+  const title = screen.getByText('Alpha').closest('[title]')!;
+  expect(title).toHaveAttribute('title', 'notes/deep/alpha.md');
+});
+
+it('shows the path with the match marked while a search matches it, so a row found by its path says why', () => {
+  const notes = [titled('notes/deep/alpha.md', 'Alpha'), titled('notes/other.md', 'Other')];
+  const { container } = render(createElement(ListView, { ...baseProps, notes, highlightQuery: 'deep' }));
+  const path = container.querySelector('.note-row-path')!;
+  expect(path).toHaveTextContent('notes/deep/alpha.md');
+  expect(path.querySelector('mark')).toHaveTextContent('deep');
+  expect(container.querySelectorAll('.note-row-path')).toHaveLength(1);
+});
+
+it('highlights a title match without adding the path when the path does not match', () => {
+  const { container } = render(createElement(ListView, { ...baseProps, notes: [titled('notes/a.md', 'Alpha')], highlightQuery: 'alp' }));
+  expect(container.querySelector('mark')).toHaveTextContent('Alp');
+  expect(container.querySelector('.note-row-path')).toBeNull();
+});
+
+it('keeps each status a select named for its note, with a dot and the status name', () => {
+  render(createElement(ListView, { ...baseProps, notes: [titled('notes/a.md', 'Alpha', { status: 'inbox' })] }));
+  const status = screen.getByRole('combobox', { name: 'Status for Alpha' });
+  expect(status).toHaveTextContent('inbox');
+  expect(status.querySelector('.status-dot')).toBeInTheDocument();
+});
+
+it('lays the tags of a row on one line, and shows a dash for a note without tags', () => {
+  const { container } = render(createElement(ListView, { ...baseProps, notes: [titled('notes/a.md', 'Alpha', { tags: ['x', 'y'] }), titled('notes/b.md', 'Beta')] }));
+  expect(container.querySelectorAll('.note-tags-one-line')).toHaveLength(1);
+  expect(container.querySelector('.note-tags-one-line')).toHaveTextContent('x');
+  expect(screen.getByText('Beta').closest('tr')!.querySelector('.note-tags')).toBeNull();
+});
+
+it('marks the row actions so they appear on hover and keyboard focus, and stay while a delete awaits confirmation', () => {
+  const { container } = render(createElement(ListView, { ...baseProps, confirmDelete: true, notes: [titled('notes/a.md', 'Alpha')] }));
+  const actions = container.querySelector('.note-row-actions')!;
+  expect(actions).not.toHaveAttribute('data-confirming');
+  fireEvent.click(screen.getByTitle('Delete note'));
+  expect(container.querySelector('.note-row-actions')).toHaveAttribute('data-confirming');
+});
+
+it('labels the column headers in sentence case', () => {
+  render(createElement(ListView, { ...baseProps, notes: [noteOf('notes/a.md')], onSortChange: vi.fn() }));
+  for (const name of ['Title', 'Status', 'Tags', 'Modified']) expect(screen.getByText(name).closest('th')!).not.toHaveClass('uppercase');
+  expect(screen.getByText('Title').closest('thead')!).not.toHaveClass('uppercase');
+});
