@@ -13,7 +13,10 @@ beforeEach(() => {
   localStorage.clear();
   assistantDock.reload();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 /** Lets a test reveal what a component shows later: a message box appearing once Pi is ready. */
 const reveal: { show: () => void; } = { show: () => {} };
@@ -107,6 +110,19 @@ it('returns from the agent to the note editor it names', () => {
   pressToggle(message);
   expect(focusEditor).toHaveBeenCalledTimes(1);
   expect(assistantDock.get().open).toBe(true);
+});
+
+it('closes the dock on a phone as it returns to the note editor, since the dock covers the page there', () => {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+  const focusEditor = vi.fn();
+  assistantDock.open();
+  mount({ target: { notebookId: 'a', path: 'notes/a.md', focusEditor } }, <Dock />);
+  const message = screen.getByLabelText('Message');
+  message.focus();
+
+  pressToggle(message);
+  expect(focusEditor).toHaveBeenCalledTimes(1);
+  expect(assistantDock.get().open).toBe(false);
 });
 
 it('closes the dock from the agent when no note editor is open, so the key toggles on a list', () => {

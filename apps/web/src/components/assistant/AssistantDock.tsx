@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type PointerEvent, useLayoutEffect, useState } from 'react';
+import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { ASSISTANT_DOCK_KEY_STEP, assistantDock, assistantDockWidth, maxAssistantDockWidth, MIN_ASSISTANT_DOCK_WIDTH, useAssistantDock } from '../../lib/assistant-dock.js';
 import { usePhone } from '../../lib/use-phone.js';
@@ -34,6 +34,11 @@ export function AssistantDock({ onOpenAgents, agentsDisabled }: { onOpenAgents?:
     document.documentElement.style.setProperty('--assistant-dock-width', `${reserved}px`);
     return () => document.documentElement.style.setProperty('--assistant-dock-width', '0px');
   }, [reserved]);
+  const shown = useRef(visible);
+  useEffect(() => {
+    if (shown.current && !visible) assistantDock.restoreFocus();
+    shown.current = visible;
+  }, [visible]);
   if (!visible) return null;
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
     event.preventDefault();

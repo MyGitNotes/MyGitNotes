@@ -45,6 +45,17 @@ function update(next: Partial<AssistantDockState>) {
   for (const listener of listeners) listener();
 }
 
+/** Where focus was as the dock opened: closing the dock removes what had focus inside it, and focus goes back here. */
+let returnFocus: HTMLElement | null = null;
+
+function setOpen(open: boolean) {
+  if (open && !current().open && typeof document !== 'undefined') {
+    const active = document.activeElement;
+    returnFocus = active instanceof HTMLElement && active !== document.body && !insideAssistantDock(active) ? active : null;
+  }
+  update({ open });
+}
+
 /** The widest the dock may be dragged to: half the window. */
 export const maxAssistantDockWidth = (viewport: number) => Math.max(MIN_ASSISTANT_DOCK_WIDTH, Math.floor(viewport / 2));
 
@@ -62,9 +73,22 @@ export const assistantDock = {
       listeners.delete(listener);
     };
   },
-  open: () => update({ open: true }),
-  close: () => update({ open: false }),
-  toggle: () => update({ open: !current().open }),
+  open: () => setOpen(true),
+  close: () => setOpen(false),
+  toggle: () => setOpen(!current().open),
+  /**
+   * After the dock closed: when focus went with it (it fell to the page's body), puts focus back where it was as the dock
+   * opened, or, when that is gone, on the last dock toggle on the page, the one in the topmost layer.
+   */
+  restoreFocus() {
+    const target = returnFocus;
+    returnFocus = null;
+    if (document.activeElement !== null && document.activeElement !== document.body) return;
+    if (target?.isConnected) target.focus();
+    if (target && document.activeElement === target) return;
+    const toggles = document.querySelectorAll<HTMLElement>('.assistant-dock-toggle:not(:disabled)');
+    toggles[toggles.length - 1]?.focus();
+  },
   /** Dragging or pressing a key picks a width of its own, which ends the expanded state. */
   setWidth: (width: number, viewport: number) => update({ width: Math.max(MIN_ASSISTANT_DOCK_WIDTH, Math.min(maxAssistantDockWidth(viewport), Math.round(width))), expanded: false }),
   setExpanded: (expanded: boolean) => update({ expanded }),

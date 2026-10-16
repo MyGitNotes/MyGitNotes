@@ -41,9 +41,11 @@ function useFittedTagCount(tags: string[], enabled: boolean) {
       const more = element.querySelector<HTMLElement>(':scope > [data-tag-more]');
       const widths = chips.map(chip => chip.getBoundingClientRect().width);
       const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 4;
-      // The "+N" chip is measured with its current digits; the widest label is the one that counts every tag.
+      // The "+N" chip is measured with its current digits; the widest label is the one that counts every tag. Its digits are
+      // tabular, each at most 0.6em wide, so the missing ones are added at that width, never less than they take.
       const shown = Number(more?.dataset.count ?? tags.length);
-      const overflowWidth = (more?.getBoundingClientRect().width ?? 0) + 7 * (String(tags.length).length - String(shown).length);
+      const digit = 0.6 * ((more && Number.parseFloat(getComputedStyle(more).fontSize)) || 12);
+      const overflowWidth = (more?.getBoundingClientRect().width ?? 0) + digit * (String(tags.length).length - String(shown).length);
       const count = fitTagCount(widths, element.getBoundingClientRect().width, gap, overflowWidth);
       setFitted(previous => previous.key === key && previous.count === count ? previous : { key, count });
     };

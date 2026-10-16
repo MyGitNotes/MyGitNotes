@@ -47,16 +47,46 @@ it('toggles the dock from the header, the one agent button there, naming its key
   render(withAgent(createElement('div', null, header(), createElement(AssistantDock))));
   const toggle = screen.getByRole('button', { name: 'Agent' });
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  // It names the dock it controls only while the dock is there.
+  expect(toggle.hasAttribute('aria-controls')).toBe(false);
   expect(toggle.getAttribute('title')).toBe('Agent (Ctrl+`)');
   expect(toggle.getAttribute('aria-keyshortcuts')).toBe('Control+`');
   expect(screen.queryByRole('button', { name: 'Agent workspaces' })).toBeNull();
   expect(screen.queryByRole('separator', { name: 'Resize agent' })).toBeNull();
   fireEvent.click(toggle);
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBe(document.querySelector('.assistant-dock'));
   expect(separator()).toBeTruthy();
   fireEvent.click(toggle);
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle.hasAttribute('aria-controls')).toBe(false);
   expect(screen.queryByRole('separator', { name: 'Resize agent' })).toBeNull();
+});
+
+it('gives focus back to where it was as the dock opened when closing the dock takes focus with it, or else to the toggle', () => {
+  render(withAgent(createElement('div', null, header(), createElement('button', { type: 'button' }, 'Elsewhere'), createElement(AssistantDock))));
+  const elsewhere = screen.getByRole('button', { name: 'Elsewhere' });
+  elsewhere.focus();
+  act(() => assistantDock.open());
+  screen.getByRole('button', { name: 'Close agent' }).focus();
+  fireEvent.click(screen.getByRole('button', { name: 'Close agent' }));
+  expect(screen.queryByRole('button', { name: 'Close agent' })).toBeNull();
+  expect(document.activeElement).toBe(elsewhere);
+
+  // Opened with nothing focused, there is nowhere to return to, so focus goes to the toggle that opens the dock again.
+  elsewhere.blur();
+  act(() => assistantDock.open());
+  screen.getByRole('button', { name: 'Close agent' }).focus();
+  fireEvent.click(screen.getByRole('button', { name: 'Close agent' }));
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Agent' }));
+
+  // Closed from its toggle, focus is already on the toggle and stays there.
+  const toggle = screen.getByRole('button', { name: 'Agent' });
+  fireEvent.click(toggle);
+  elsewhere.focus();
+  toggle.focus();
+  fireEvent.click(toggle);
+  expect(document.activeElement).toBe(toggle);
 });
 
 it('toggles the same dock from the end of the editor toolbar, with aria-expanded', () => {

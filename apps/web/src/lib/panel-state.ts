@@ -20,7 +20,8 @@ const LEGACY_AGENT_TOOL = 'agent';
 
 /**
  * A rail or document panel that was open on the agent opens the dock instead and stays closed, so no one returns to an
- * empty panel. Runs once as the app starts, before anything shows the dock, since it opens it.
+ * empty panel. Runs as the app reads its saved panels, before anything shows the dock, since it opens it; once it has run,
+ * no saved panel names the agent, so running it again changes nothing.
  */
 function migrateLegacyAgentPanels(storage: Storage): void {
   let opensDock = false;

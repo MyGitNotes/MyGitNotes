@@ -15,7 +15,7 @@ export function AssistantDockToggle({ className = '', disabled }: { className?: 
   const [keys] = bindingsFor(keymapEntry('assistant.toggleFocus'), keyEnvironment);
   const label = t('piAgent.tab');
   return (
-    <button type='button' disabled={disabled} className={`ui-icon-button assistant-dock-toggle ${className}`} aria-label={label} title={keys ? `${label} (${formatKeys(keys, keyEnvironment).join(' ')})` : label} aria-keyshortcuts={keys && ariaKeyShortcuts(keys, keyEnvironment)} aria-expanded={open} aria-controls='assistant-dock' data-open={open || undefined} onClick={toggleDock}>
+    <button type='button' disabled={disabled} className={`ui-icon-button assistant-dock-toggle ${className}`} aria-label={label} title={keys ? `${label} (${formatKeys(keys, keyEnvironment).join(' ')})` : label} aria-keyshortcuts={keys && ariaKeyShortcuts(keys, keyEnvironment)} aria-expanded={open} aria-controls={open ? 'assistant-dock' : undefined} data-open={open || undefined} onClick={toggleDock}>
       <Bot aria-hidden='true' />
     </button>
   );
