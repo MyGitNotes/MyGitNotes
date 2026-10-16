@@ -9,7 +9,7 @@
 .sidebar-missing-filter { display: flex; gap: 0.4rem; align-items: center; padding: 0.35rem; font-size: 0.75rem; text-align: left; overflow-wrap: anywhere; }
 .sidebar-missing-filter svg { flex: none; margin-left: auto; }
 .folder-heading-actions { display: flex; align-items: center; gap: 0.25rem; flex: none; }
-.sidebar-filter-section > summary { cursor: pointer; font-size: 0.75rem; font-weight: 600; color: var(--color-muted); padding: 0.4rem 0.5rem; margin-bottom: 0.5rem; }
+.sidebar-filter-section > summary { cursor: pointer; font-size: 12px; line-height: 18px; font-weight: 500; color: var(--color-muted); padding: 4px 8px; margin-bottom: 4px; }
 .sidebar-tag-mode { display: flex; gap: 0.3rem; margin: 0.5rem 0; }
 .sidebar-tag-mode button { flex: 1; padding: 0.3rem 0.2rem; border: 1px solid var(--color-line); border-radius: 0.35rem; color: var(--color-muted); font-size: 0.7rem; }
 .sidebar-tag-mode button[aria-pressed='true'] { color: var(--color-text); background: var(--color-surface); border-color: var(--color-primary); }
@@ -73,6 +73,4 @@
 .note-tags .sidebar-tag-row .sidebar-tag-chip > span { padding-right: 1.4rem; }
 .note-tags .sidebar-tag-row:has(.sidebar-tag-action-form) { width: 100%; min-width: min(16rem, 100%); }
 .note-tags:has(.sidebar-tag-action-form) { width: 100%; }
-.note-card-footer:has(.sidebar-tag-action-form) { flex-wrap: wrap; }
-.note-card-footer .note-card-tags:has(.sidebar-tag-action-form) { max-width: none; }
 @media (hover: none), (pointer: coarse) { .note-tags .sidebar-tag-row .sidebar-tag-chip > span { padding-right: 0.5rem; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }

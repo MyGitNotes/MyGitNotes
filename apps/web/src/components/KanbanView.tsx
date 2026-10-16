@@ -1,6 +1,6 @@
 import { NoteMoveButton } from './NoteMoveButton.js';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Clock, GripVertical, Kanban as KanbanIcon, Plus, Tag, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Clock, GripVertical, Kanban as KanbanIcon, Plus, Trash2 } from 'lucide-react';
 import type { NoteListItem, NoteQuery } from '@mygitnotes/core/note-query';
 import { noteRefKey, sameNote } from '@mygitnotes/core/note-query';
 import { noteUpdatedTime, SortField, SortOrder } from '../lib/note-sort.js';
@@ -15,6 +15,8 @@ import { LoadingStatus } from './LoadingStatus.js';
 import { useNoteTouchSelection } from '../lib/use-note-touch-selection.js';
 import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteZoomButton } from './NoteZoomButton.js';
+import { NoteTags } from './NoteTags.js';
+import { statusDotClass } from './NoteStatusSelect.js';
 
 interface KanbanViewProps {
   /** The board's filter; each column adds its own status condition and pages on its own. */
@@ -130,16 +132,7 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
         </div>
         <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />
       </div>
-      {note.tags.length > 0 && (
-        <div className='flex flex-wrap gap-1 mb-2.5'>
-          {note.tags.map((tag) => (
-            <span key={tag} className='inline-flex items-center gap-1 px-1.5 py-0.5 bg-fg/5 text-muted rounded text-[10px]'>
-              <Tag className='w-2 h-2 text-muted' />
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
+      {note.tags.length > 0 && <NoteTags tags={note.tags} oneLine className='mb-2.5' />}
       {/* Card Actions & Timestamp */}
       <div className='flex items-center justify-between pt-2 border-t text-muted text-xs' style={{ borderColor: 'var(--color-line)' }} onClick={(e) => e.stopPropagation()}>
         <div className='flex items-center gap-1.5 text-muted'>
@@ -197,7 +190,7 @@ function KanbanColumn({ col, index, board, query, hiddenNote, sort, onSort }: { 
       {/* Column Header */}
       <div className='flex items-center justify-between mb-3 px-1'>
         <div className='flex items-center gap-2 min-w-0'>
-          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${col.id === 'inbox' ? '' : col.color}`} style={col.id === 'inbox' ? { backgroundColor: 'var(--color-primary)' } : undefined} />
+          <span className={`status-dot ${col.color}`} aria-hidden='true' />
           <h3 className='font-semibold text-fg text-sm truncate'>{col.title}</h3>
           <span className='text-xs px-2 py-0.5 rounded-full bg-fg/5 text-muted font-medium shrink-0'>{result.total}</span>
         </div>
@@ -287,7 +280,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leadi
   // Per-column sort override state
   const [columnSorts, setColumnSorts] = useState<Record<string, { field: SortField; order: SortOrder; }>>({});
 
-  const columns: Column[] = statuses.map((status) => ({ id: status, title: status, color: status === 'done' ? 'bg-success' : status === 'working' || status === 'doing' ? 'bg-info' : status === 'archived' ? 'bg-muted' : 'bg-accent-6' }));
+  const columns: Column[] = statuses.map((status) => ({ id: status, title: status, color: statusDotClass(status) }));
 
   // Board sort key: inside Kanban, 'status' defaults to 'updated'
   const effectiveBoardSortField = sortField === 'status' ? 'updated' : sortField;

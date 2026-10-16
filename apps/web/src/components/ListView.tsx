@@ -1,6 +1,6 @@
 import { NoteMoveButton } from './NoteMoveButton.js';
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, Clock, FileText, GalleryHorizontalEnd, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, FileText, GalleryHorizontalEnd, Trash2 } from 'lucide-react';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { NoteTagActions, NoteTags } from './NoteTags.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
@@ -9,6 +9,7 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { noteUpdatedTime, SortField, SortOrder } from '../lib/note-sort.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { highlightSegments } from '../lib/search-highlight.js';
 import { useDeleteConfirm } from '../lib/use-delete-confirm.js';
 import { NOTE_DRAG_TYPE, type NoteBrowseFocusMode } from '../lib/note-drag.js';
 import { HighlightText } from './HighlightText.js';
@@ -68,6 +69,8 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
   const touchSelection = useNoteTouchSelection(actions.toggleSelect);
   const updated = noteUpdatedTime(note);
   const formattedDate = updated ? dates.short.format(updated) : '—';
+  // The path is the title's tooltip; while a search matches it, it also shows after the title with the match marked, so a row found by its path says why.
+  const pathMatched = highlightSegments(note.path, highlightQuery).some(segment => segment.match);
   return (
     <tr
       {...touchSelection.itemProps(note, actions.open)}
@@ -82,18 +85,22 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
         : undefined}
       className='hover:bg-fg/5 transition cursor-pointer group'
     >
-      <td className='py-3 px-4'>
+      <td className='py-2 px-3'>
         <div className='flex items-center gap-2.5'>
           {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => actions.toggleSelect(note)} />}
           {isCompilationPath(note.path) ? <GalleryHorizontalEnd className='w-4 h-4 text-primary shrink-0' aria-hidden='true' /> : <FileText className='w-4 h-4 text-primary shrink-0' />}
-          <div>
-            <div className='font-medium text-fg transition flex items-center gap-1.5'>
-              <span>
+          <div className='min-w-0 flex-1'>
+            <div className='font-medium text-fg transition flex items-center gap-1.5' title={note.path}>
+              <span className='note-row-title'>
                 <HighlightText text={note.title} query={highlightQuery} />
               </span>
-              {note.path.endsWith('.mdx') && <span className='text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
+              {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
+              {pathMatched && (
+                <span className='note-row-path font-mono'>
+                  <HighlightText text={note.path} query={highlightQuery} />
+                </span>
+              )}
             </div>
-            <div className='text-xs text-muted font-mono'>{note.path}</div>
             {note.matchSnippet && (
               <div className='text-xs text-muted mt-0.5 line-clamp-2'>
                 <HighlightText text={note.matchSnippet} query={highlightQuery} />
@@ -103,19 +110,16 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
         </div>
       </td>
       {/* In-Table Selectable Status */}
-      <td className='py-3 px-4'>
+      <td className='py-2 px-3'>
         <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} label={t('notes.statusFor', { title: note.title })} onChange={(status) => actions.status(note, status)} />
       </td>
-      <td className='py-3 px-4'>{note.tags.length > 0 ? <NoteTags tags={note.tags} chipClassName='px-2 py-0.5 text-xs' tagActions={tagActions} /> : <span className='text-xs text-muted'>—</span>}</td>
-      <td className='py-3 px-4 text-xs text-muted whitespace-nowrap tabular-nums'>
-        <div className='flex items-center gap-1.5'>
-          <Clock className='w-3.5 h-3.5 text-muted shrink-0' />
-          <time dateTime={updated ? new Date(updated).toISOString() : undefined} title={updated ? dates.full.format(updated) : undefined}>{formattedDate}</time>
-        </div>
+      <td className='py-2 px-3'>{note.tags.length > 0 ? <NoteTags tags={note.tags} oneLine tagActions={tagActions} /> : <span className='text-xs text-muted'>—</span>}</td>
+      <td className='py-2 px-3 text-xs text-muted whitespace-nowrap tabular-nums'>
+        <time dateTime={updated ? new Date(updated).toISOString() : undefined} title={updated ? dates.full.format(updated) : undefined}>{formattedDate}</time>
       </td>
       {/* Actions Column */}
-      <td className='py-3 px-4 text-right'>
-        <div className='flex items-center justify-end opacity-40 hover:opacity-100 group-hover:opacity-100 transition' onClick={(e) => e.stopPropagation()}>
+      <td className='py-2 px-3 text-right'>
+        <div className='note-row-actions flex items-center justify-end' data-confirming={isPendingDelete || undefined} onClick={(e) => e.stopPropagation()}>
           {showZoom && <NoteZoomButton onClick={() => actions.zoom(note)} iconClassName='w-4 h-4' />}
           {!readOnly && <NoteMoveButton onClick={() => actions.move(note)} />}
           {!readOnly && canDelete && (
@@ -162,10 +166,10 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
     const isActive = sortField === field;
 
     return (
-      <th className={`py-3 px-4 select-none ${className}`}>
+      <th className={`py-1.5 px-3 select-none ${className}`}>
         {onSortChange
           ? (
-            <button type='button' onClick={() => onSortChange(field)} className='group inline-flex items-center gap-1 text-xs uppercase font-semibold text-muted hover:text-fg transition'>
+            <button type='button' onClick={() => onSortChange(field)} className='group inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-fg transition'>
               <span>{label}</span>
               {isActive ? (sortOrder === 'asc' ? <ArrowUp className='w-3.5 h-3.5 text-primary' /> : <ArrowDown className='w-3.5 h-3.5 text-primary' />) : <ArrowUpDown className='w-3.5 h-3.5 opacity-0 group-hover:opacity-60 transition text-muted' />}
             </button>
@@ -195,19 +199,19 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
         <div className='note-list rounded-xl border shadow-xs overflow-hidden transition-colors' data-compact={compact ? 'true' : undefined} style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
           <div className='overflow-x-auto'>
             <table className='w-full text-left text-sm'>
-              <thead className='bg-fg/5 border-b text-xs uppercase font-semibold text-muted' style={{ borderColor: 'var(--color-line)' }}>
+              <thead className='bg-fg/5 border-b text-xs font-medium text-muted' style={{ borderColor: 'var(--color-line)' }}>
                 <tr>
                   {renderSortHeader('title', t('notes.title'))}
-                  {renderSortHeader('status', t('notes.status'), 'w-36')}
-                  <th className='py-3 px-4'>{t('notes.tags')}</th>
-                  {renderSortHeader('updated', t('notes.modified'), 'w-36')}
-                  <th className='py-3 px-4 w-16 text-right'>{t('notes.actions')}</th>
+                  {renderSortHeader('status', t('notes.status'), 'note-col-status')}
+                  <th className='py-1.5 px-3 note-col-tags'>{t('notes.tags')}</th>
+                  {renderSortHeader('updated', t('notes.modified'), 'note-col-modified')}
+                  <th className='py-1.5 px-3 note-col-actions text-right'>{t('notes.actions')}</th>
                 </tr>
               </thead>
               {uncommitted.length > 0 && (
                 <tbody className='divide-y note-list-uncommitted' style={{ borderColor: 'var(--color-line)' }}>
                   <tr>
-                    <th colSpan={5} scope='colgroup' className='py-2 px-4 text-left text-xs uppercase font-semibold text-warning'>{t('notes.uncommitted')}</th>
+                    <th colSpan={5} scope='colgroup' className='py-1.5 px-3 text-left text-xs font-medium text-warning'>{t('notes.uncommitted')}</th>
                   </tr>
                   {uncommitted.map(note => <NoteRow key={noteRefKey(note)} note={note} statuses={statuses} readOnly={readOnly} canDelete={canDelete} isPendingDelete={pendingDeletePath === noteRefKey(note)} actions={actions} dates={dates} tagActions={tagActions} showZoom={!!focusMode} canDrag={!!focusMode?.canDrag(note)} highlightQuery={highlightQuery} selected={false} selectionActive={false} />)}
                 </tbody>
@@ -215,7 +219,7 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
               <tbody className='divide-y' style={{ borderColor: 'var(--color-line)' }}>
                 {leading && (
                   <tr className='note-list-leading hover:bg-fg/5 transition'>
-                    <td colSpan={5} className='py-3 px-4'>{leading}</td>
+                    <td colSpan={5} className='py-2 px-3'>{leading}</td>
                   </tr>
                 )}
                 {/* Notes row rendering */}

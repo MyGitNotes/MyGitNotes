@@ -7,9 +7,16 @@ import { DiffStats } from '../DiffStats.js';
 /** How long a first click keeps an action armed for its confirming second click. */
 const ARM_MS = 3000;
 
-/** Pulls the note's latest version at once; the zoomed editor shows it beside the title. */
-export function NoteRefreshAction({ onRefresh, disabled, className = '' }: { onRefresh: () => Promise<void>; disabled: boolean; className?: string; }) {
+/** Pulls the note's latest version at once; the footer shows it labelled, the zoomed editor's toolbar as an icon button. */
+export function NoteRefreshAction({ onRefresh, disabled, className = '', iconOnly = false }: { onRefresh: () => Promise<void>; disabled: boolean; className?: string; iconOnly?: boolean; }) {
   const { t } = useTranslation();
+  if (iconOnly) {
+    return (
+      <button type='button' className={`ui-icon-button toolbar-icon-button ${className}`} data-action='refresh' disabled={disabled} aria-label={t('editor.quickRefresh')} title={t('editor.quickRefreshHint')} onClick={() => !disabled && void onRefresh()}>
+        <RefreshCw aria-hidden='true' />
+      </button>
+    );
+  }
   return (
     <button type='button' className={`note-quick-action ${className}`} data-action='refresh' disabled={disabled} title={t('editor.quickRefreshHint')} onClick={() => !disabled && void onRefresh()}>
       <RefreshCw aria-hidden='true' />
