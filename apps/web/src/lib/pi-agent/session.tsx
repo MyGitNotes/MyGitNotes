@@ -162,7 +162,7 @@ export interface PiAgentValue {
   starting: boolean;
   start: () => Promise<void>;
   /**
-   * The person is about to use the agent, as by pressing Cmd+` (Ctrl+` outside macOS): starts Pi when no session runs, none is
+   * The person is about to use the agent, as by pressing Cmd+' (Ctrl+` outside macOS): starts Pi when no session runs, none is
    * starting and none ended on its own, so nobody pays for a hosted sandbox they only looked at, and one stopped
    * for idling comes back on the next use.
    */

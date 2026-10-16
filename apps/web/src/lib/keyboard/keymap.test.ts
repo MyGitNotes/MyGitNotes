@@ -11,10 +11,10 @@ const pressedId = (keys: ParsedKeys, platform: Platform) => chordsOf(keys).map(c
 const ENVIRONMENTS: KeyEnvironment[] = (['mac', 'other'] as Platform[]).flatMap(platform => (['chrome', 'edge', 'firefox', 'safari', 'other'] as Browser[]).map(browser => ({ platform, browser })));
 
 describe('KEYMAP', () => {
-  it('switches to the agent with Cmd+` on macOS, where Ctrl+` is left to the terminal, and Ctrl+` elsewhere', () => {
-    const [mac] = bindingsFor(keymapEntry('assistant.toggleFocus'), { platform: 'mac', browser: 'chrome' });
-    expect(chordsOf(mac)).toEqual([expect.objectContaining({ code: 'Backquote', mod: true, ctrl: false })]);
-    expect(pressedId(mac, 'other')).toBe(pressedId(parseKeys('Ctrl+`'), 'other'));
+  it("switches to the agent with Cmd+' on macOS, where Cmd+` switches windows and Ctrl+` is the terminal's, and Ctrl+` elsewhere", () => {
+    const entry = keymapEntry('assistant.toggleFocus');
+    expect(bindingsFor(entry, { platform: 'mac', browser: 'chrome' }).map(keys => chordsOf(keys))).toEqual([[expect.objectContaining({ code: 'Quote', mod: true, ctrl: false })]]);
+    expect(bindingsFor(entry, { platform: 'other', browser: 'chrome' }).map(keys => chordsOf(keys))).toEqual([[expect.objectContaining({ code: 'Backquote', ctrl: true })]]);
   });
 
   it('has unique ids and parses every binding', () => {

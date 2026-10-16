@@ -132,7 +132,7 @@ They remain a file-move blocker until explicitly discarded.
 With [Pi](https://github.com/earendil-works/pi) installed, local mode adds the assistant dock: a column on the right edge of the window, beside the right rail, a zoomed note, a zoomed compilation, a Focus and the Files page.
 The agent button in the header and the one at the end of the editor toolbar open and close it; they are hidden when `pi` (or the command in `MYGITNOTES_PI_COMMAND`) is not found, and the header then offers the Agents page button in their place.
 While the dock is offered, the Agents page opens from the dock's header.
-``Cmd+` `` on macOS (``Ctrl+` `` elsewhere) from outside the dock opens it, focuses the message box and starts Pi if none runs; from the message box it returns to the editor the agent names, or closes the dock when no note is open.
+`Cmd+'` on macOS (``Ctrl+` `` elsewhere) from outside the dock opens it, focuses the message box and starts Pi if none runs; from the message box it returns to the editor the agent names, or closes the dock when no note is open.
 
 - The dock is 380px wide by default. Drag its left edge, or focus the edge and press the arrow keys, to resize it between 320px and half the window; Expand switches to half the window, at most 760px.
   Whether it is open and how wide persist in the browser, and a zoomed note or compilation ends at the dock's left edge, so the two sit side by side.

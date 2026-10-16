@@ -118,8 +118,8 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('assistant.complete', 'panes', ['assistant-input'], 'widget', ['Tab']),
   entry('assistant.menu', 'panes', ['assistant-input'], 'widget', ['ArrowUp', 'ArrowDown']),
   entry('assistant.dismiss', 'panes', ['assistant-input'], 'widget', ['Escape']),
-  // Control on every platform: Cmd+` switches windows on macOS.
-  entry('assistant.toggleFocus', 'panes', ['global'], 'dispatcher', ['Mod+`'], { phase: 'capture', description: 'command.assistant.toggleFocus.describe' }),
+  // On macOS Cmd+` switches windows before the page sees it, and Ctrl+` belongs to the terminal, so the Mac takes Cmd+'.
+  entry('assistant.toggleFocus', 'panes', ['global'], 'dispatcher', [mac("Mod+'"), other('Ctrl+`')], { phase: 'capture', description: 'command.assistant.toggleFocus.describe' }),
   // Focus
   entry('focusTabs.move', 'focus', ['focus-tabs'], 'widget', ['ArrowLeft', 'ArrowRight', 'Home', 'End']),
   entry('focusTabs.close', 'focus', ['focus-tabs'], 'widget', ['Delete']),
