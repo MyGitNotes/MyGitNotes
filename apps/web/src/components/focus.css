@@ -12,9 +12,9 @@
 .focus-division[data-division='columns-3'] { grid-template: 'a b c' / 1fr 1fr 1fr; }
 .focus-division[data-division='grid-2x2'] { grid-template: 'a b' 'c d' / 1fr 1fr; }
 .focus-division-thumbnail { display: grid; width: min(100%, 320px); height: 180px; gap: 6px; }
-.focus-division-thumbnail > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg); color: var(--color-muted); font-size: 12px; }
+.focus-division-thumbnail > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-bg); color: var(--color-muted); font-size: 12px; }
 .focus-division-thumbnail > button:hover { background: var(--color-sidebar); color: var(--color-text); }
-.focus-division-thumbnail > button[aria-checked='true'] { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border)); background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface)); color: var(--color-text); font-weight: 600; }
+.focus-division-thumbnail > button[aria-checked='true'] { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line)); background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface)); color: var(--color-text); font-weight: 600; }
 .focus-division-thumbnail > button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .focus-division-thumbnail small { color: var(--color-muted); font-size: 10px; font-weight: 500; }
 
@@ -23,7 +23,7 @@
 .focus-division-trigger { color: var(--color-text); }
 .focus-mutation-error { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 4px; min-width: 0; max-width: 16rem; margin: 0; color: var(--color-danger); font-size: 12px; }
 .focus-mutation-error > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.focus-menu { z-index: 100; display: grid; min-width: 12rem; max-width: min(20rem, calc(100vw - 16px)); max-height: min(70dvh, 28rem); overflow-y: auto; padding: 0.25rem; border: 1px solid var(--color-border); border-radius: 0.5rem; background: var(--color-surface); color: var(--color-text); box-shadow: 0 4px 16px color-mix(in srgb, var(--color-scrim) 13%, transparent); }
+.focus-menu { z-index: 100; display: grid; min-width: 12rem; max-width: min(20rem, calc(100vw - 16px)); max-height: min(70dvh, 28rem); overflow-y: auto; padding: 0.25rem; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--surface-glass); backdrop-filter: var(--surface-blur); -webkit-backdrop-filter: var(--surface-blur); color: var(--color-text); box-shadow: var(--shadow-md); }
 .focus-menu [role^='menuitem'] { display: flex; align-items: center; gap: 0.5rem; min-width: 0; padding: 0.4rem 0.5rem; border-radius: 0.35rem; font-size: 0.8rem; color: var(--color-text); cursor: default; outline: none; }
 .focus-menu [role^='menuitem'] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .focus-menu [role^='menuitem'][data-highlighted] { background: var(--color-sidebar); }
@@ -51,11 +51,11 @@
 .focus-pane { position: relative; isolation: isolate; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--color-surface); }
 /* Drawn above the tab bar and the displayed tab, so every edge of the drop target shows. */
 .focus-pane[data-dropping]::after { content: ''; position: absolute; inset: 0; z-index: 2; border: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent); pointer-events: none; }
-.focus-pane-bar { display: flex; flex: none; align-items: stretch; min-width: 0; height: 38px; border-bottom: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-sidebar) 55%, var(--color-surface)); }
+.focus-pane-bar { display: flex; flex: none; align-items: stretch; min-width: 0; height: 38px; border-bottom: 1px solid var(--color-line); background: color-mix(in srgb, var(--color-sidebar) 55%, var(--color-surface)); }
 .focus-pane[data-active] .focus-pane-bar { background: var(--color-sidebar); }
 .focus-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .focus-tabs::-webkit-scrollbar { display: none; }
-.focus-tab { position: relative; display: flex; flex: 0 1 auto; align-items: center; min-width: 5.5rem; max-width: 14rem; border-right: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent); color: var(--color-muted); }
+.focus-tab { position: relative; display: flex; flex: 0 1 auto; align-items: center; min-width: 5.5rem; max-width: 14rem; border-right: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); color: var(--color-muted); }
 .focus-tab:hover { color: var(--color-text); background: color-mix(in srgb, var(--color-surface) 55%, transparent); }
 .focus-tab[data-shown] { background: var(--color-surface); color: var(--color-text); }
 .focus-pane:not([data-active]) .focus-tab[data-shown] { color: color-mix(in srgb, var(--color-text) 75%, var(--color-muted)); }
@@ -91,12 +91,12 @@
 /* Add to Focus. */
 .focus-add-dialog .focus-division-thumbnail { justify-self: center; }
 .focus-add-item { display: flex; justify-content: center; }
-.focus-add-item > span { display: inline-block; max-width: 100%; padding: 6px 12px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-sidebar); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.focus-add-item > span { display: inline-block; max-width: 100%; padding: 6px 12px; overflow: hidden; border: 1px solid var(--color-line); border-radius: 999px; background: var(--color-sidebar); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Batch add keeps filter controls compact inside the shared form/dialog primitives. */
 .focus-batch-dialog .filter-check { flex-direction: row; align-items: flex-start; gap: 0.5rem; padding: 0.3rem 0; color: var(--color-text); }
 .focus-batch-dialog .filter-check input { flex: none; margin-top: 0.15rem; }
-.focus-batch-dialog fieldset { min-width: 0; margin: 0; padding: 0.65rem 0.75rem 0.75rem; border: 1px solid var(--color-border); border-radius: 0.5rem; }
+.focus-batch-dialog fieldset { min-width: 0; margin: 0; padding: 0.65rem 0.75rem 0.75rem; border: 1px solid var(--color-line); border-radius: 0.5rem; }
 .focus-batch-dialog legend { padding: 0 0.25rem; color: var(--color-text); font-size: 0.75rem; font-weight: 600; }
 .focus-batch-dialog .filter-tag-mode { flex-direction: row; align-items: center; justify-content: space-between; gap: 0.75rem; color: var(--color-muted); }
 .focus-batch-dialog .filter-tag-mode > button { flex: 0 1 15rem; }
@@ -111,13 +111,13 @@
 .focus-list { display: grid; gap: 8px; margin-bottom: 20px; }
 .focus-list > h3 { padding: 0 8px; font-size: 14px; font-weight: 600; }
 .focus-list > ul { display: flex; flex-wrap: wrap; gap: 8px; }
-.focus-list button { display: inline-flex; align-items: center; gap: 8px; max-width: 18rem; min-height: 36px; padding: 6px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-text); font-size: 13px; }
+.focus-list button { display: inline-flex; align-items: center; gap: 8px; max-width: 18rem; min-height: 36px; padding: 6px 12px; border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-text); font-size: 13px; }
 .focus-list button:hover { background: var(--color-sidebar); }
 .focus-list button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .focus-list button > small { flex: none; color: var(--color-muted); font-size: 11px; }
 
 /* The Focus group in the Notes toolbar. */
-.note-focus-controls { display: flex; flex: none; align-items: center; gap: 4px; padding-right: 8px; border-right: 1px solid var(--color-border); }
+.note-focus-controls { display: flex; flex: none; align-items: center; gap: 4px; padding-right: 8px; border-right: 1px solid var(--color-line); }
 .note-focus-controls .ui-icon-button[aria-pressed='true'] { background: var(--workspace-selection); color: var(--color-text); }
 @media (max-width: 1100px) { .note-focus-controls .ui-icon-button, .note-focus-controls .focus-switcher > .ui-button { min-height: 44px; } .note-focus-controls .ui-icon-button { width: 44px; } }
 @media (max-width: 767px) { .focus-switcher { max-width: 9rem; } }

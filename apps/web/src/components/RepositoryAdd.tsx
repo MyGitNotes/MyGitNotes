@@ -116,7 +116,7 @@ export function RepositoryAddFlow({ members, onAdded, onStale, onShow }: Reposit
                   type='button'
                   aria-pressed={folder === name}
                   onClick={() => setFolder(name)}
-                  className={`w-full px-3 py-2 rounded-lg border text-left font-mono text-sm transition ${folder === name ? 'border-primary bg-primary-soft/40' : 'border-line hover:bg-fg/5'}`}
+                  className={`w-full px-3 py-2 rounded-lg border text-left font-mono text-sm transition ${folder === name ? 'border-primary bg-primary-soft/40' : 'border-line-strong hover:bg-fg/5'}`}
                 >
                   {name}
                 </button>

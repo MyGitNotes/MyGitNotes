@@ -192,10 +192,10 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
         </div>
       )}
       {(notes.length > 0 || uncommitted.length > 0 || leading) && (
-        <div className='note-list rounded-xl border shadow-xs overflow-hidden transition-colors' data-compact={compact ? 'true' : undefined} style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+        <div className='note-list rounded-xl border shadow-xs overflow-hidden transition-colors' data-compact={compact ? 'true' : undefined} style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
           <div className='overflow-x-auto'>
             <table className='w-full text-left text-sm'>
-              <thead className='bg-fg/5 border-b text-xs uppercase font-semibold text-muted' style={{ borderColor: 'var(--color-border)' }}>
+              <thead className='bg-fg/5 border-b text-xs uppercase font-semibold text-muted' style={{ borderColor: 'var(--color-line)' }}>
                 <tr>
                   {renderSortHeader('title', t('notes.title'))}
                   {renderSortHeader('status', t('notes.status'), 'w-36')}
@@ -205,14 +205,14 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
                 </tr>
               </thead>
               {uncommitted.length > 0 && (
-                <tbody className='divide-y note-list-uncommitted' style={{ borderColor: 'var(--color-border)' }}>
+                <tbody className='divide-y note-list-uncommitted' style={{ borderColor: 'var(--color-line)' }}>
                   <tr>
                     <th colSpan={5} scope='colgroup' className='py-2 px-4 text-left text-xs uppercase font-semibold text-warning'>{t('notes.uncommitted')}</th>
                   </tr>
                   {uncommitted.map(note => <NoteRow key={noteRefKey(note)} note={note} statuses={statuses} readOnly={readOnly} canDelete={canDelete} isPendingDelete={pendingDeletePath === noteRefKey(note)} actions={actions} dates={dates} tagActions={tagActions} showZoom={!!focusMode} canDrag={!!focusMode?.canDrag(note)} highlightQuery={highlightQuery} selected={false} selectionActive={false} />)}
                 </tbody>
               )}
-              <tbody className='divide-y' style={{ borderColor: 'var(--color-border)' }}>
+              <tbody className='divide-y' style={{ borderColor: 'var(--color-line)' }}>
                 {leading && (
                   <tr className='note-list-leading hover:bg-fg/5 transition'>
                     <td colSpan={5} className='py-3 px-4'>{leading}</td>

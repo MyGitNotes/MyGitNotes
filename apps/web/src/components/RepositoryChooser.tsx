@@ -174,7 +174,7 @@ export function RepositoryChooser({ actionLabel, busyLabel, onChoose, members = 
                   type='button'
                   aria-pressed={selected?.fullName === repository.fullName}
                   onClick={() => setSelected(repository)}
-                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg border text-left transition ${selected?.fullName === repository.fullName ? 'border-primary bg-primary-soft/40' : 'border-line hover:bg-fg/5'}`}
+                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg border text-left transition ${selected?.fullName === repository.fullName ? 'border-primary bg-primary-soft/40' : 'border-line-strong hover:bg-fg/5'}`}
                 >
                   <span className='font-mono text-sm truncate'>{repository.fullName}</span>
                   <span className='flex items-center gap-2 shrink-0 text-xs text-muted'>
@@ -195,7 +195,7 @@ export function RepositoryChooser({ actionLabel, busyLabel, onChoose, members = 
       )}
       {answer && answer.total > answer.repositories.length && <p className='text-xs text-muted mb-3'>{t('setup.moreRepositories', { count: answer.total - answer.repositories.length })}</p>}
       {answer?.newRepositoryUrl && !creating && (
-        <button type='button' onClick={startCreating} className='w-full flex items-center justify-center gap-2 mb-3 px-3 py-2 rounded-lg border border-dashed border-line text-sm text-muted hover:text-fg hover:bg-fg/5 transition'>
+        <button type='button' onClick={startCreating} className='w-full flex items-center justify-center gap-2 mb-3 px-3 py-2 rounded-lg border border-dashed border-line-strong text-sm text-muted hover:text-fg hover:bg-fg/5 transition'>
           <Plus size={16} aria-hidden='true' />
           {t('setup.createRepository')}
         </button>
@@ -234,7 +234,7 @@ export function RepositoryChooser({ actionLabel, busyLabel, onChoose, members = 
       {selected && (
         <label className='flex flex-col gap-1 mb-3 text-sm'>
           <span>{t('setup.branch')}</span>
-          <input value={branch} onChange={event => setBranch(event.target.value)} placeholder={selected.defaultBranch} className='px-3 py-2 rounded-lg border border-line bg-transparent font-mono text-sm' />
+          <input value={branch} onChange={event => setBranch(event.target.value)} placeholder={selected.defaultBranch} className='px-3 py-2 rounded-lg border border-line-strong bg-transparent font-mono text-sm' />
         </label>
       )}
       {notice}

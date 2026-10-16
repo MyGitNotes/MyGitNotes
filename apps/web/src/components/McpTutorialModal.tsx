@@ -78,7 +78,7 @@ export const McpTutorialModal: React.FC<McpTutorialModalProps> = ({ isOpen, onCl
                 <button
                   type='button'
                   onClick={() => copyToClipboard(activeUrl, 'active-url')}
-                  className='flex items-center gap-1 px-2.5 py-1 bg-surface text-fg rounded-md border border-line hover:bg-sidebar transition font-medium shrink-0'
+                  className='flex items-center gap-1 px-2.5 py-1 bg-surface text-fg rounded-md border border-line-strong hover:bg-sidebar transition font-medium shrink-0'
                 >
                   {copiedKey === 'active-url' ? <Check className='w-3.5 h-3.5 text-success' /> : <Copy className='w-3.5 h-3.5' />}
                   <span>{copiedKey === 'active-url' ? t('mcpGuide.copied') : t('mcpGuide.copyUrl')}</span>
@@ -152,7 +152,7 @@ export const McpTutorialModal: React.FC<McpTutorialModalProps> = ({ isOpen, onCl
                       key={idx}
                       type='button'
                       onClick={() => copyToClipboard(prompt, `prompt-${idx}`)}
-                      className='w-full flex items-center justify-between p-3 rounded-lg border border-line hover:border-primary bg-surface text-left text-xs text-fg hover:bg-sidebar transition group'
+                      className='w-full flex items-center justify-between p-3 rounded-lg border border-line-strong hover:border-primary bg-surface text-left text-xs text-fg hover:bg-sidebar transition group'
                     >
                       <span className='flex items-center gap-2'>
                         <Sparkles className='w-3.5 h-3.5 text-primary shrink-0' />

@@ -122,7 +122,7 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
   const selectionActive = Boolean(board.selectedKeys?.size);
   const selected = board.selectedKeys?.has(noteRefKey(note)) ?? false;
   return (
-    <div data-notepath={note.path} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} title={selectionActive ? undefined : t('notes.multiSelectHint')} className={`p-3 rounded-lg border transition-all cursor-grab active:cursor-grabbing group shadow-xs ${isBeingDragged ? 'opacity-40 scale-[0.98] border-primary shadow-inner' : 'hover:shadow-sm hover:border-muted'}`} style={{ backgroundColor: 'var(--color-surface)', borderColor: isBeingDragged ? 'var(--color-primary)' : 'var(--color-border)' }}>
+    <div data-notepath={note.path} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} title={selectionActive ? undefined : t('notes.multiSelectHint')} className={`p-3 rounded-lg border transition-all cursor-grab active:cursor-grabbing group shadow-xs ${isBeingDragged ? 'opacity-40 scale-[0.98] border-primary shadow-inner' : 'hover:shadow-sm hover:border-muted'}`} style={{ backgroundColor: 'var(--color-surface)', borderColor: isBeingDragged ? 'var(--color-primary)' : 'var(--color-line)' }}>
       <div className='flex items-start justify-between gap-1 mb-1.5'>
         <div className='flex items-start gap-1.5 min-w-0 flex-1'>
           {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
@@ -141,7 +141,7 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
         </div>
       )}
       {/* Card Actions & Timestamp */}
-      <div className='flex items-center justify-between pt-2 border-t text-muted text-xs' style={{ borderColor: 'var(--color-border)' }} onClick={(e) => e.stopPropagation()}>
+      <div className='flex items-center justify-between pt-2 border-t text-muted text-xs' style={{ borderColor: 'var(--color-line)' }} onClick={(e) => e.stopPropagation()}>
         <div className='flex items-center gap-1.5 text-muted'>
           <span className='flex items-center gap-1 text-[11px]'>
             <Clock className='w-3 h-3 text-muted' />
@@ -193,7 +193,7 @@ function KanbanColumn({ col, index, board, query, hiddenNote, sort, onSort }: { 
   const notes = [...result.uncommitted, ...result.notes];
 
   return (
-    <div data-status-column={col.id} onDragOver={drag.onDragOver} onDragLeave={drag.onDragLeave} onDrop={drag.onDrop} className={`w-80 rounded-xl p-3 flex flex-col max-h-full shrink-0 border transition-colors shadow-xs ${isColumnDragOver ? '' : 'border-line/80'}`} style={{ backgroundColor: isColumnDragOver ? 'var(--color-primary-light)' : 'var(--color-surface)', borderColor: isColumnDragOver ? 'var(--color-primary)' : 'var(--color-border)', boxShadow: isColumnDragOver ? '0 0 0 2px var(--color-primary), 0 8px 20px -4px var(--color-primary-light)' : undefined }}>
+    <div data-status-column={col.id} onDragOver={drag.onDragOver} onDragLeave={drag.onDragLeave} onDrop={drag.onDrop} className={`w-80 rounded-xl p-3 flex flex-col max-h-full shrink-0 border transition-colors shadow-xs ${isColumnDragOver ? '' : 'border-line/80'}`} style={{ backgroundColor: isColumnDragOver ? 'var(--color-primary-light)' : 'var(--color-surface)', borderColor: isColumnDragOver ? 'var(--color-primary)' : 'var(--color-line)', boxShadow: isColumnDragOver ? '0 0 0 2px var(--color-primary), 0 8px 20px -4px var(--color-primary-light)' : undefined }}>
       {/* Column Header */}
       <div className='flex items-center justify-between mb-3 px-1'>
         <div className='flex items-center gap-2 min-w-0'>
@@ -247,7 +247,7 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
   }, [report, result.total]);
   if (!result.loading && !result.total && !notes.length) return null;
   return (
-    <div onDragOver={drag.onDragOver} onDragLeave={drag.onDragLeave} onDrop={drag.onDrop} className='w-80 rounded-xl p-3 flex flex-col max-h-full shrink-0 border border-dashed shadow-xs' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+    <div onDragOver={drag.onDragOver} onDragLeave={drag.onDragLeave} onDrop={drag.onDrop} className='w-80 rounded-xl p-3 flex flex-col max-h-full shrink-0 border border-dashed shadow-xs' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
       <div className='flex items-center justify-between mb-3 px-1'>
         <div className='flex items-center gap-2'>
           <span className='w-2.5 h-2.5 rounded-full bg-muted' />
@@ -261,7 +261,7 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
           const selectionActive = Boolean(board.selectedKeys?.size);
           const selected = board.selectedKeys?.has(noteRefKey(note)) ?? false;
           return (
-            <div key={noteRefKey(note)} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} title={selectionActive ? undefined : t('notes.multiSelectHint')} className='p-3 rounded-lg border hover:shadow-xs transition cursor-grab active:cursor-grabbing' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+            <div key={noteRefKey(note)} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} title={selectionActive ? undefined : t('notes.multiSelectHint')} className='p-3 rounded-lg border hover:shadow-xs transition cursor-grab active:cursor-grabbing' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
               <div className='flex items-start gap-1.5 mb-1 min-w-0'>
                 {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
                 <div className='font-medium text-fg text-sm line-clamp-2 min-w-0'>{note.title}</div>

@@ -176,7 +176,7 @@ export function AgentAccessSettings({ local = false }: { local?: boolean; }) {
           <KeyRound className='w-4 h-4' style={{ color: 'var(--color-primary)' }} />
           {t('auth.mcpAccessControl')}
         </h3>
-        <button type='button' onClick={() => setIsTutorialOpen(true)} className='flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-line bg-surface hover:bg-sidebar text-fg transition active:scale-95 shadow-xs shrink-0 cursor-pointer' title={t('auth.connectorGuide')}>
+        <button type='button' onClick={() => setIsTutorialOpen(true)} className='flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-line-strong bg-surface hover:bg-sidebar text-fg transition active:scale-95 shadow-xs shrink-0 cursor-pointer' title={t('auth.connectorGuide')}>
           <HelpCircle className='w-3.5 h-3.5 text-primary' />
           <span>{t('auth.connectorGuide')}</span>
         </button>
@@ -193,7 +193,7 @@ export function AgentAccessSettings({ local = false }: { local?: boolean; }) {
         <div className='flex flex-wrap gap-3 items-end'>
           <label className='text-xs text-muted flex flex-col gap-1'>
             {t('auth.clientName')}
-            <input disabled={!canManage || busy} aria-label={t('auth.clientName')} maxLength={80} value={name} onChange={e => setName(e.target.value)} placeholder={t('auth.clientNamePlaceholder')} className='px-3 py-2 rounded-lg border border-line bg-transparent' />
+            <input disabled={!canManage || busy} aria-label={t('auth.clientName')} maxLength={80} value={name} onChange={e => setName(e.target.value)} placeholder={t('auth.clientNamePlaceholder')} className='px-3 py-2 rounded-lg border border-line-strong bg-transparent' />
           </label>
           <label className='text-xs text-muted flex flex-col gap-1'>
             {t('auth.access')}
@@ -208,12 +208,12 @@ export function AgentAccessSettings({ local = false }: { local?: boolean; }) {
           <div className='p-3 rounded-lg bg-fg/5 flex flex-col gap-2'>
             <label className='text-xs font-semibold' htmlFor='agent-token'>{t('auth.copyUrlPrompt')}</label>
             <div className='flex gap-2 items-center flex-wrap sm:flex-nowrap'>
-              <input id='agent-token' aria-label={t('auth.connectionUrlAria')} readOnly value={token} onClick={e => (e.target as HTMLInputElement).select()} onFocus={e => e.target.select()} className='flex-1 min-w-0 p-2 rounded border border-line bg-transparent font-mono text-xs cursor-pointer select-all focus:outline-none focus:ring-1 focus:ring-primary' />
+              <input id='agent-token' aria-label={t('auth.connectionUrlAria')} readOnly value={token} onClick={e => (e.target as HTMLInputElement).select()} onFocus={e => e.target.select()} className='flex-1 min-w-0 p-2 rounded border border-line-strong bg-transparent font-mono text-xs cursor-pointer select-all focus:outline-none focus:ring-1 focus:ring-primary' />
               <Button variant='primary' type='button' onClick={handleCopyToken} title={copied ? t('common.copied') : t('common.copy')}>
                 {copied ? <Check className='w-3.5 h-3.5' /> : <Copy className='w-3.5 h-3.5' />}
                 <span>{copied ? t('common.copied') : t('common.copy')}</span>
               </Button>
-              <button type='button' className='px-2.5 py-1.5 text-xs rounded-lg border border-line bg-surface hover:bg-sidebar text-fg flex items-center gap-1.5 transition active:scale-95 shadow-xs shrink-0 cursor-pointer' onClick={() => setIsTutorialOpen(true)}>
+              <button type='button' className='px-2.5 py-1.5 text-xs rounded-lg border border-line-strong bg-surface hover:bg-sidebar text-fg flex items-center gap-1.5 transition active:scale-95 shadow-xs shrink-0 cursor-pointer' onClick={() => setIsTutorialOpen(true)}>
                 <HelpCircle className='w-3.5 h-3.5 text-primary' />
                 <span>{t('auth.connectorGuide')}</span>
               </button>
@@ -279,7 +279,7 @@ export function ConnectionState({ loading, error, onRetry }: { loading: boolean;
   const { t } = useTranslation();
   return (
     <main className='min-h-screen p-8 flex items-center justify-center' style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
-      <div className='max-w-xl w-full p-8 rounded-2xl border' style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+      <div className='max-w-xl w-full p-8 rounded-2xl border' style={{ background: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
         <h1 className='text-2xl font-semibold mb-4'>MyGitNotes</h1>
         {loading ? <LoadingStatus className='mb-6'>{t('auth.openingWorkspace')}</LoadingStatus> : <p role='status' className='mb-6'>{error}</p>}
         {!loading && (

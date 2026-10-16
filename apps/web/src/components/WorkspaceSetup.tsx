@@ -42,7 +42,7 @@ function SetupCard({ children }: { children: ReactNode; }) {
         <div className='flex items-center gap-4'>
           <img src={`${import.meta.env.BASE_URL}brand/github-notes-192.png`} width='56' height='56' alt='' className='rounded-xl' />
           <div>
-            <h1 className='font-serif text-3xl font-semibold'>MyGitNotes</h1>
+            <h1 className='text-3xl font-semibold'>MyGitNotes</h1>
             <p className='text-sm text-muted'>{t('header.gitWorkspace')}</p>
           </div>
         </div>
@@ -77,7 +77,7 @@ function SignIn({ storage }: { storage?: SessionProbe['storage']; }) {
   const { t } = useTranslation();
   return (
     <SetupCard>
-      <h2 className='font-serif text-xl font-semibold mb-2'>{t('setup.signInTitle')}</h2>
+      <h2 className='text-xl font-semibold mb-2'>{t('setup.signInTitle')}</h2>
       <p className='text-sm text-muted mb-6'>{t('setup.signInDescription')}</p>
       <AuthControls connection />
       <div className='mt-6 p-3 rounded-lg bg-sidebar flex items-start gap-2 text-xs text-muted'>
@@ -104,7 +104,7 @@ export function RepositoryPicker({ login }: { login?: string; }) {
   };
   return (
     <SetupCard>
-      <h2 className='font-serif text-xl font-semibold mb-2'>{t('setup.chooseTitle')}</h2>
+      <h2 className='text-xl font-semibold mb-2'>{t('setup.chooseTitle')}</h2>
       <p className='mb-4 text-sm text-muted'>{t('setup.chooseDescription')}</p>
       <RepositoryChooser actionLabel={t('setup.open')} busyLabel={t('setup.opening')} onChoose={open} footer={<SignOutButton login={login} />} />
     </SetupCard>
@@ -145,7 +145,7 @@ function FirstRepository({ login }: { login?: string; }) {
   }, []);
   return (
     <SetupCard>
-      <h2 className='font-serif text-xl font-semibold mb-2'>{t('setup.addFirstTitle')}</h2>
+      <h2 className='text-xl font-semibold mb-2'>{t('setup.addFirstTitle')}</h2>
       <p className='mb-4 text-sm text-muted'>{t('setup.addFirstDescription')}</p>
       {members ? <RepositoryAddFlow members={members} onAdded={() => window.location.assign('/')} onStale={load} /> : error ? <p role='alert' className='mb-3 text-sm text-danger'>{error}</p> : <LoadingStatus className='mb-3'>{t('repositories.loading')}</LoadingStatus>}
       <div className='flex mt-3'>

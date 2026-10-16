@@ -141,8 +141,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
       label={t('sidebar.statusFilter')}
       className='notes-sidebar'
       footer={
-        <div className='pt-3 mt-3 border-t shrink-0 flex flex-col gap-2.5' style={{ borderColor: 'var(--color-border)' }}>
-          <div className='flex items-center justify-between px-3 py-2 rounded-xl border shadow-xs transition-colors' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+        <div className='pt-3 mt-3 border-t shrink-0 flex flex-col gap-2.5' style={{ borderColor: 'var(--color-line)' }}>
+          <div className='flex items-center justify-between px-3 py-2 rounded-xl border shadow-xs transition-colors' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
             <div className='flex items-center gap-2.5'>
               <div className='w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-fg/5' style={{ color: 'var(--color-muted)' }}>
                 <GitBranch className='w-4 h-4' />
@@ -349,7 +349,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
           <div className='space-y-2 px-1 mb-2.5'>
             <div className='relative'>
               <Search aria-hidden='true' className='absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted pointer-events-none' />
-              <input type='search' aria-label={t('sidebar.searchTags')} placeholder={t('sidebar.searchTags')} value={tagQuery} onChange={event => setTagQuery(event.target.value)} className='w-full min-w-0 h-9 pl-8 pr-8 rounded-lg border bg-transparent text-xs placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-muted [&::-webkit-search-cancel-button]:hidden' style={{ color: 'var(--color-text)', borderColor: 'var(--color-border)' }} />
+              <input type='search' aria-label={t('sidebar.searchTags')} placeholder={t('sidebar.searchTags')} value={tagQuery} onChange={event => setTagQuery(event.target.value)} className='w-full min-w-0 h-9 pl-8 pr-8 rounded-lg border bg-transparent text-xs placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-muted [&::-webkit-search-cancel-button]:hidden' style={{ color: 'var(--color-text)', borderColor: 'var(--color-line-strong)' }} />
               {tagQuery && (
                 <button type='button' aria-label={t('sidebar.clearTagSearch')} onClick={() => setTagQuery('')} className='absolute right-1 top-1 p-1.5 rounded-md text-muted hover:bg-fg/5'>
                   <X className='w-4 h-4' />
@@ -366,7 +366,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
               }}
               options={[{ value: 'name-asc', label: t('sidebar.tagNameAsc') }, { value: 'name-desc', label: t('sidebar.tagNameDesc') }, { value: 'count-desc', label: t('sidebar.tagCountDesc') }, { value: 'count-asc', label: t('sidebar.tagCountAsc') }]}
               className='w-full'
-              style={{ color: 'var(--color-muted)', borderColor: 'var(--color-border)' }}
+              style={{ color: 'var(--color-muted)', borderColor: 'var(--color-line)' }}
             />
             <p role='status' className='text-[11px] text-muted'>{t('sidebar.tagResults', { count: visibleTags.length, total: allTags.length })}</p>
             {selectedTags.filter(tag => !visibleTags.includes(tag)).map(tag => (
@@ -382,7 +382,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
             {visibleTags.map((tag) => {
               const isSelected = selectedTags.includes(tag);
               const tagChip = (
-                <button type='button' data-tag-filter={tag} onClick={() => onSelectTag(tag)} aria-pressed={isSelected} style={isSelected ? selectedItemStyle : undefined} className={`max-w-full inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition border ${isSelected ? 'font-semibold border-line hover:opacity-90' : 'text-muted bg-surface border-line hover:border-muted hover:bg-sidebar hover:text-fg'}`}>
+                <button type='button' data-tag-filter={tag} onClick={() => onSelectTag(tag)} aria-pressed={isSelected} style={isSelected ? selectedItemStyle : undefined} className={`max-w-full inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs transition border ${isSelected ? 'font-semibold border-line-strong hover:opacity-90' : 'text-muted bg-surface border-line-strong hover:border-muted hover:bg-sidebar hover:text-fg'}`}>
                   <Tag className='w-3 h-3 shrink-0' />
                   <span className='min-w-0 break-words text-left'>{tag}</span>
                   <span className={`text-[10px] ml-0.5 ${isSelected ? 'opacity-70' : 'text-muted'}`}>{tagCounts[tag]}</span>

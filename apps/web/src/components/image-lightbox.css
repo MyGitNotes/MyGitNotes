@@ -1,7 +1,7 @@
 .image-lightbox { position: fixed; inset: 0; width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; color: var(--color-text); background: var(--color-bg); overscroll-behavior: contain; }
 .image-lightbox[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .image-lightbox::backdrop { background: var(--color-bg); }
-.image-lightbox-header { display: flex; align-items: center; gap: 8px; min-height: 64px; padding: max(10px, env(safe-area-inset-top)) 20px 10px; border-bottom: 1px solid var(--color-border); }
+.image-lightbox-header { display: flex; align-items: center; gap: 8px; min-height: 64px; padding: max(10px, env(safe-area-inset-top)) 20px 10px; border-bottom: 1px solid var(--color-line); }
 .image-lightbox-title { display: flex; align-items: baseline; flex: 1; min-width: 0; gap: 16px; }
 .image-lightbox-title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
 .image-lightbox-title span { flex: none; font-size: 12px; color: var(--color-muted); font-variant-numeric: tabular-nums; }
@@ -14,8 +14,8 @@
 .image-lightbox-stage img { flex: none; max-width: none; max-height: none; object-fit: contain; cursor: grab; }
 .image-lightbox-stage[data-dragging='true'] img { cursor: grabbing; }
 .image-lightbox-stage > p { position: absolute; color: var(--color-muted); font-size: 14px; }
-.image-lightbox-footer { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--color-border); }
-.image-lightbox-controls { display: flex; align-items: center; gap: 4px; padding: 3px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); }
+.image-lightbox-footer { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--color-line); }
+.image-lightbox-controls { display: flex; align-items: center; gap: 4px; padding: 3px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); }
 .image-lightbox button.image-lightbox-scale { min-width: 68px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .image-lightbox-divider { height: 20px; width: 1px; margin: 0 4px; background: var(--color-border); }
 .image-lightbox-help { margin: 0; font-size: 11px; color: var(--color-muted); }

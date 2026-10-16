@@ -92,7 +92,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
                   <p className='text-xs text-muted mt-0.5'>{t('settings.languageDescription')}</p>
                 </div>
                 <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
-                  <button type='button' onClick={() => setLanguage('en')} aria-pressed={language === 'en'} className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${language === 'en' ? 'border-primary bg-primary-soft/40 shadow-xs' : 'border-line hover:border-muted bg-surface'}`}>
+                  <button type='button' onClick={() => setLanguage('en')} aria-pressed={language === 'en'} className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${language === 'en' ? 'border-primary bg-primary-soft/40 shadow-xs' : 'border-line-strong hover:border-muted bg-surface'}`}>
                     <div className='flex items-center gap-3'>
                       <span className='text-2xl' role='img' aria-label={t('settings.english')}>🇺🇸</span>
                       <div>
@@ -110,7 +110,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
                     type='button'
                     onClick={() => setLanguage('zh-TW')}
                     aria-pressed={language === 'zh-TW'}
-                    className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${language === 'zh-TW' ? 'border-primary bg-primary-soft/40 shadow-xs' : 'border-line hover:border-muted bg-surface'}`}
+                    className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${language === 'zh-TW' ? 'border-primary bg-primary-soft/40 shadow-xs' : 'border-line-strong hover:border-muted bg-surface'}`}
                   >
                     <div className='flex items-center gap-3'>
                       <span className='text-2xl' role='img' aria-label={t('settings.traditionalChinese')}>🇹🇼</span>

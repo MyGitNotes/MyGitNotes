@@ -86,7 +86,7 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
             event.dataTransfer.effectAllowed = 'copyMove';
           }
           : undefined}
-        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+        style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}
         className={`rounded-xl border hover:border-primary p-5 flex flex-col justify-between shadow-xs hover:shadow-md transition cursor-pointer group${strip ? ' note-card-strip-item' : ''}`}
       >
         <div>
@@ -102,7 +102,7 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
           </div>
           <p className='text-xs text-muted line-clamp-3 mb-4 leading-relaxed'>{excerpt ? <HighlightText text={excerpt} query={highlightQuery} /> : <span className='italic text-muted'>{t('notes.noContent')}</span>}</p>
         </div>
-        <div className='note-card-footer pt-3 border-t flex items-center justify-between gap-2 text-xs text-muted' style={{ borderColor: 'var(--color-border)' }}>
+        <div className='note-card-footer pt-3 border-t flex items-center justify-between gap-2 text-xs text-muted' style={{ borderColor: 'var(--color-line)' }}>
           <NoteTags tags={note.tags.slice(0, 2)} chipClassName='px-1.5 py-0.5 text-[11px]' tagActions={tagActions} className='note-card-tags max-w-[65%] min-w-0'>{note.tags.length > 2 && <span className='text-[10px] text-muted self-center'>+{note.tags.length - 2}</span>}</NoteTags>
           <div className='flex items-center gap-2'>
             <span className='flex items-center gap-1 text-[11px]'>

@@ -35,7 +35,7 @@ export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({ count, s
   };
 
   return (
-    <div role='toolbar' aria-label={t('bulk.toolbarLabel')} className='bulk-actions-toolbar mb-3 rounded-xl border shadow-xs flex flex-wrap items-center gap-2 px-3 py-2 text-xs' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+    <div role='toolbar' aria-label={t('bulk.toolbarLabel')} className='bulk-actions-toolbar mb-3 rounded-xl border shadow-xs flex flex-wrap items-center gap-2 px-3 py-2 text-xs' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
       <span className='font-semibold text-fg shrink-0'>{t('bulk.selectedCount', { count })}</span>
       {!readOnly && (
         <>

@@ -182,7 +182,7 @@ export function AssetLibrary({ assets, initialAssetPath, initialDirectory, onUpl
                       setConfirmDelete(false);
                     }}
                     className='asset-tile relative border rounded-xl overflow-hidden text-left transition hover:shadow-sm'
-                    style={{ backgroundColor: 'var(--color-surface)', borderColor: selectedPath === asset.path ? 'var(--color-primary)' : 'var(--color-border)', boxShadow: selectedPath === asset.path ? '0 0 0 1px var(--color-primary)' : undefined }}
+                    style={{ backgroundColor: 'var(--color-surface)', borderColor: selectedPath === asset.path ? 'var(--color-primary)' : 'var(--color-line)', boxShadow: selectedPath === asset.path ? '0 0 0 1px var(--color-primary)' : undefined }}
                   >
                     <div className='h-28 bg-fg/5 flex items-center justify-center'>{imageFile(asset.name) ? <img src={asset.rawUrl} alt={asset.name} className='w-full h-full object-cover' /> : <File className='w-9 h-9 theme-muted' />}</div>
                     <div className='p-2.5'>

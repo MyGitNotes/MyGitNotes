@@ -462,7 +462,7 @@ export const AgentSystemView = React.forwardRef<AgentSystemHandle, AgentSystemVi
         }}
       />
       <div className='flex gap-2'>
-        <button type='submit' disabled={isCreating || !newName.trim()} className='editor-action flex-1 rounded-md border border-line bg-surface px-2 py-1 text-xs font-semibold text-fg hover:bg-fg/5 disabled:opacity-40'>{isCreating ? t('agent.creatingSkill') : t(creating.kind === 'skill' ? 'agent.createSkill' : 'agent.createFile')}</button>
+        <button type='submit' disabled={isCreating || !newName.trim()} className='editor-action flex-1 rounded-md border border-line-strong bg-surface px-2 py-1 text-xs font-semibold text-fg hover:bg-fg/5 disabled:opacity-40'>{isCreating ? t('agent.creatingSkill') : t(creating.kind === 'skill' ? 'agent.createSkill' : 'agent.createFile')}</button>
         <button
           type='button'
           disabled={isCreating}
@@ -470,7 +470,7 @@ export const AgentSystemView = React.forwardRef<AgentSystemHandle, AgentSystemVi
             setCreating(null);
             setNewName('');
           }}
-          className='rounded-md border border-line px-2 py-1 text-xs text-muted hover:bg-fg/5 disabled:opacity-40'
+          className='rounded-md border border-line-strong px-2 py-1 text-xs text-muted hover:bg-fg/5 disabled:opacity-40'
         >
           {t('common.cancel')}
         </button>
@@ -479,7 +479,7 @@ export const AgentSystemView = React.forwardRef<AgentSystemHandle, AgentSystemVi
   );
 
   return (
-    <div className='agent-layout workspace-route has-sidebar-drawer' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+    <div className='agent-layout workspace-route has-sidebar-drawer' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
       <WorkspaceSidebarToggle label={t('agent.title')} open={sidebar.open} onClick={() => sidebar.setOpen(open => !open)} />
       <WorkspaceSidebarPortal>
         <WorkspaceSidebar label={t('agent.title')} className='agent-sidebar'>
@@ -557,11 +557,11 @@ export const AgentSystemView = React.forwardRef<AgentSystemHandle, AgentSystemVi
         </WorkspaceSidebar>
       </WorkspaceSidebarPortal>
       <div className='workspace-content agent-content'>
-        <label className='agent-document-picker mobile-only flex-col gap-1 p-3 border-b text-xs' style={{ borderColor: 'var(--color-border)' }}>
+        <label className='agent-document-picker mobile-only flex-col gap-1 p-3 border-b text-xs' style={{ borderColor: 'var(--color-line)' }}>
           {t('agent.document')}
           <Select aria-label={t('agent.document')} value={selectedPath} disabled={busy || !visibleFiles.length} onValueChange={value => void selectDocument(value)} options={visibleFiles.map(file => ({ value: file.path, label: fileLabel(file) }))} className='w-full' />
         </label>
-        <div className='agent-toolbar shrink-0 px-6 py-3 border-b flex items-center justify-between gap-4' style={{ backgroundColor: 'var(--color-sidebar)', borderColor: 'var(--color-border)' }}>
+        <div className='agent-toolbar shrink-0 px-6 py-3 border-b flex items-center justify-between gap-4' style={{ backgroundColor: 'var(--color-sidebar)', borderColor: 'var(--color-line)' }}>
           <div className='flex items-center gap-2.5 truncate'>
             <span className='font-mono text-xs font-semibold text-fg truncate'>{selectedPath || t('agent.document')}</span>
             <span className='text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider' style={{ backgroundColor: editable ? 'var(--color-primary)' : 'var(--color-muted)', color: editable ? 'var(--color-on-primary)' : 'var(--color-bg)' }}>{editable ? t('agent.editable') : t('agent.readOnly')}</span>
@@ -569,7 +569,7 @@ export const AgentSystemView = React.forwardRef<AgentSystemHandle, AgentSystemVi
           <div className='agent-controls flex items-center gap-3'>
             {/* Single-file restore applies to uncommitted local edits. */}
             {showRestore && (
-              <button disabled={!canRestore} aria-label={confirmRestore ? t('agent.confirmRestore') : t('agent.restore')} onClick={handleRestoreClick} className={`editor-action ${confirmRestore ? 'editor-confirming' : ''} flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed ${confirmRestore ? 'bg-danger hover:bg-danger/90 text-on-danger shadow-md animate-pulse' : 'bg-fg/5 border border-line text-fg hover:bg-fg/10'}`} title={confirmRestore ? t('editor.confirmRestoreTooltip') : t('editor.restoreTooltip')}>
+              <button disabled={!canRestore} aria-label={confirmRestore ? t('agent.confirmRestore') : t('agent.restore')} onClick={handleRestoreClick} className={`editor-action ${confirmRestore ? 'editor-confirming' : ''} flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed ${confirmRestore ? 'bg-danger hover:bg-danger/90 text-on-danger shadow-md animate-pulse' : 'bg-fg/5 border border-line-strong text-fg hover:bg-fg/10'}`} title={confirmRestore ? t('editor.confirmRestoreTooltip') : t('editor.restoreTooltip')}>
                 {confirmRestore
                   ? (
                     <>

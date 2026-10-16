@@ -33,7 +33,7 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ segments, currentFolde
   const parentFolder = currentFolder ? currentFolder.includes('/') ? currentFolder.slice(0, currentFolder.lastIndexOf('/')) : null : null;
 
   return (
-    <nav aria-label='Breadcrumbs' className='workspace-breadcrumbs flex items-center justify-between gap-3 px-3 py-2 md:px-4 md:py-2.5 rounded-xl border bg-fg/[0.02] mb-4 text-xs select-none transition-colors flex-wrap sm:flex-nowrap' style={{ borderColor: 'var(--color-border)' }}>
+    <nav aria-label='Breadcrumbs' className='workspace-breadcrumbs flex items-center justify-between gap-3 px-3 py-2 md:px-4 md:py-2.5 rounded-xl border bg-fg/[0.02] mb-4 text-xs select-none transition-colors flex-wrap sm:flex-nowrap' style={{ borderColor: 'var(--color-line)' }}>
       <div className='flex items-center gap-1.5 flex-wrap min-w-0'>
         {currentFolder !== null && (
           <button type='button' onClick={() => onSelectFolder(parentFolder)} title={t('folder.goUpTooltip')} aria-label={t('folder.goUpTooltip')} className='inline-flex items-center gap-1 px-2 py-1 -ml-1 rounded-lg text-muted hover:text-fg hover:bg-fg/5 transition active:scale-95 shrink-0'>
