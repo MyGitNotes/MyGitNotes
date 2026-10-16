@@ -8,7 +8,6 @@ import { NoteEditor } from './NoteEditor.js';
 import type { MarkdownEditorHandle } from './MarkdownEditor.js';
 
 vi.mock('./MarkdownEditor.js', () => ({
-  MarkdownEditorModeSwitch: () => null,
   MarkdownEditor: forwardRef<MarkdownEditorHandle, { content: string; mode: string; readOnly: boolean; continuous?: boolean; showLineNumbers?: boolean; onChange: (content: string) => void; }>(({ content, mode, readOnly, continuous, showLineNumbers, onChange }, ref) => {
     useImperativeHandle(ref, () => ({ insert() {}, revealRange() {}, goToLine() {}, getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus() {} }), []);
     return createElement('textarea', { 'aria-label': 'Note content', value: content, readOnly, 'data-continuous': continuous ? 'true' : undefined, 'data-line-numbers': String(showLineNumbers), 'data-mode': mode, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) });

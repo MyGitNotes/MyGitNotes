@@ -12,6 +12,8 @@ import { KeyboardRoot } from '../lib/keyboard/KeyboardDispatcher.js';
 import { KEYMAP } from '../lib/keyboard/keymap.js';
 import { openMermaidEditor } from '../lib/mermaid-editor.js';
 import { FileSourceEditor } from './FileSourceEditor.js';
+import { VIM_CHEATSHEET } from '../lib/keyboard/vim-cheatsheet.js';
+import { writeVimMode } from '../lib/vim-mode.js';
 
 const REVISION = 'a'.repeat(40);
 let client: QueryClient;
@@ -352,6 +354,29 @@ it('help lists every registry command, grouped, and its filter matches names and
   // Quick open is where notes are searched, so its keywords find it under the word people look for.
   fireEvent.change(filter, { target: { value: 'search' } });
   expect(rows()).toContain('palette.notes');
+});
+
+it("lists Vim's keys as their own group only while Vim mode is on, all of them found by filtering for vim", async () => {
+  render(createElement(Harness), { wrapper });
+  pressHelp(document.body);
+  let help = await waitFor(() => document.querySelector<HTMLElement>('.keyboard-shortcuts-panel[data-mode="help"]')!);
+  const vimRows = () => [...document.querySelectorAll('[data-shortcut-id^="vim."]')].map(row => row.getAttribute('data-shortcut-id'));
+  expect(vimRows()).toEqual([]);
+  act(() => writeVimMode(true));
+  help = document.querySelector<HTMLElement>('.keyboard-shortcuts-panel[data-mode="help"]')!;
+  expect(vimRows()).toHaveLength(VIM_CHEATSHEET.length);
+  expect(help.querySelector('[data-shortcut-group="vim"] h3')).toHaveTextContent('Vim');
+  const filter = help.querySelector<HTMLInputElement>('input[type="search"]')!;
+  fireEvent.change(filter, { target: { value: 'vim' } });
+  expect([...help.querySelectorAll('[data-shortcut-id]')].map(row => row.getAttribute('data-shortcut-id'))).toEqual(vimRows());
+  expect(vimRows()).toHaveLength(VIM_CHEATSHEET.length);
+  expect(help.querySelector('.shortcut-help-count')).toHaveTextContent(String(VIM_CHEATSHEET.length));
+  // Keys and names find single rows, alone or with vim.
+  fireEvent.change(filter, { target: { value: 'vim dd' } });
+  expect(vimRows()).toEqual(['vim.deleteLine']);
+  fireEvent.change(filter, { target: { value: ':wq' } });
+  expect(vimRows()).toEqual(['vim.writeQuit']);
+  act(() => writeVimMode(false));
 });
 
 it('Escape in help opened from the Mermaid editor closes only help, keeping the unsaved diagram', async () => {

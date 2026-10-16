@@ -14,7 +14,6 @@ import { setNotebookPreferences } from '../lib/notebook-preferences.js';
 const setDefaultShowLineNumbers = (value: boolean) => setNotebookPreferences(() => ({ ...DEFAULT_WORKSPACE_PREFERENCES, defaultShowLineNumbers: value }));
 
 vi.mock('./MarkdownEditor.js', () => ({
-  MarkdownEditorModeSwitch: ({ mode, onChange }: { mode: MarkdownEditorMode; onChange: (mode: MarkdownEditorMode) => void; }) => createElement('button', { type: 'button', onClick: () => onChange(mode === 'live' ? 'raw' : 'live') }, `Switch to ${mode === 'live' ? 'Source' : 'Live'}`),
   MarkdownEditor: forwardRef<MarkdownEditorHandle, { content: string; mode: MarkdownEditorMode; showLineNumbers?: boolean; onChange: (content: string) => void; }>(({ content, mode, showLineNumbers, onChange }, ref) => {
     useImperativeHandle(ref, () => ({ insert() {}, revealRange() {}, goToLine() {}, getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus() {} }), []);
     return createElement('textarea', { 'aria-label': 'Note content', value: content, 'data-mode': mode, 'data-line-numbers': showLineNumbers ? 'true' : 'false', onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) });
@@ -44,7 +43,7 @@ for (const frame of ['compact', 'pane', 'zoom'] as const) {
     expect(content).toHaveAttribute('data-line-numbers', 'true');
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
-    fireEvent.click(screen.getByRole('button', { name: /Source|Live/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Switch to (source|live preview)$/ }));
     expect(content).toHaveAttribute('data-line-numbers', 'true');
 
     fireEvent.click(toggle);

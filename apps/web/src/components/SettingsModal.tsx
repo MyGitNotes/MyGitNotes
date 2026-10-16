@@ -2,9 +2,13 @@ import { CoreUpdates } from './CoreUpdates.js';
 import { ProductVersion } from './ProductVersion.js';
 import { useWorkspaceSidebarDrawer, WorkspaceSidebar, WorkspaceSidebarPortal, WorkspaceSidebarToggle } from './WorkspaceChrome.js';
 import React from 'react';
-import { AlertCircle, Check, FolderGit2, Globe, History, Palette, RefreshCw, Save, Shield } from 'lucide-react';
+import { AlertCircle, Check, FolderGit2, Globe, History, Keyboard, Palette, RefreshCw, Save, Shield } from 'lucide-react';
 import { Select } from './Select.js';
 import { useVersionNumbering, type VersionNumbering, writeVersionNumbering } from '../lib/version-display.js';
+import { useVimMode, writeVimMode } from '../lib/vim-mode.js';
+import { formatKeys } from '../lib/keyboard/keys.js';
+import { bindingsFor, keymapEntry } from '../lib/keyboard/keymap.js';
+import { keyEnvironment } from '../lib/keyboard/platform.js';
 import { ThemeChoice } from '../lib/themes.js';
 import { ThemeSelector } from './ThemeSelector.js';
 import { ManifestSettings, type ManifestSettingsProps } from './ManifestSettings.js';
@@ -33,7 +37,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
   const sidebar = useWorkspaceSidebarDrawer();
   const featureSections = useSettingsSections();
   const versionNumbering = useVersionNumbering();
-  const communityNav = [['language', t('settings.language'), Globe], ['theme', t('settings.theme'), Palette], ['versions', t('settings.versionNumbers'), History], ['access', t('layout.access'), Shield], ...(coreUpdates ? [['updates', t('settings.coreUpdates'), RefreshCw] as const] : []), ...(repositories ? [['repositories', t('repositories.title'), FolderGit2] as const] : []), ['manifest', t('layout.manifest'), Save]] as const;
+  const vimMode = useVimMode();
+  const helpKeys = bindingsFor(keymapEntry('help.open'), keyEnvironment).map(keys => formatKeys(keys, keyEnvironment).join(' ')).join(' / ');
+  const communityNav = [['language', t('settings.language'), Globe], ['theme', t('settings.theme'), Palette], ['versions', t('settings.versionNumbers'), History], ['editor', t('settings.editor'), Keyboard], ['access', t('layout.access'), Shield], ...(coreUpdates ? [['updates', t('settings.coreUpdates'), RefreshCw] as const] : []), ...(repositories ? [['repositories', t('repositories.title'), FolderGit2] as const] : []), ['manifest', t('layout.manifest'), Save]] as const;
   // An edition section whose id matches a shown community section takes that section's place; the rest follow the community ones.
   const communityIds = new Set<string>(communityNav.map(([id]) => id));
   const replacements = new Map(featureSections.filter(section => communityIds.has(section.id)).map(section => [section.id, section]));
@@ -155,6 +161,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
                   <p className='text-xs text-muted mt-0.5'>{t('settings.versionNumbersDescription')}</p>
                 </div>
                 <Select aria-label={t('settings.versionNumbers')} value={versionNumbering} onValueChange={value => writeVersionNumbering(value as VersionNumbering)} options={[{ value: 'sequence', label: t('settings.versionBySequence') }, { value: 'date', label: t('settings.versionByDate') }]} />
+              </div>,
+            )}
+            {community(
+              'editor',
+              <div id='settings-editor' className='flex flex-col gap-3'>
+                <div>
+                  <h3 className='text-xs font-semibold text-fg uppercase tracking-wider flex items-center gap-1.5'>
+                    <Keyboard className='w-4 h-4 text-primary' />
+                    {t('settings.editor')}
+                  </h3>
+                  <p className='text-xs text-muted mt-0.5'>{t('settings.editorDescription')}</p>
+                </div>
+                <label className='flex items-start gap-2 text-xs'>
+                  <input type='checkbox' checked={vimMode} onChange={event => writeVimMode(event.target.checked)} />
+                  <span>
+                    <span className='font-semibold text-fg'>{t('settings.vimMode')}</span>
+                    <span className='block text-muted mt-0.5'>{t('settings.vimModeDescription', { keys: helpKeys })}</span>
+                  </span>
+                </label>
               </div>,
             )}
             <ProductVersion />

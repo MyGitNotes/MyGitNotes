@@ -5,8 +5,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PanelProvider } from '../lib/panel-context.js';
 import type { NoteItem } from '../lib/types.js';
 import { NoteEditor, type NoteEditorProps } from './NoteEditor.js';
+import { VIM_COMMAND_EVENT, type VimCommand } from '../lib/vim-mode.js';
 
-vi.mock('./MarkdownEditor.js', () => ({ MarkdownEditorModeSwitch: () => null, MarkdownEditor: forwardRef<unknown, { content: string; onChange: (content: string) => void; }>(({ content, onChange }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) })) }));
+vi.mock('./MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; onChange: (content: string) => void; }>(({ content, onChange }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) })) }));
 
 beforeEach(() => {
   localStorage.clear();
@@ -180,4 +181,22 @@ it('refreshes a note with local edits by merging its latest version into them', 
   await flush();
 
   expect((screen.getByLabelText('Note content') as HTMLTextAreaElement).value).toBe('ONE\ntwo\nTHREE\n');
+});
+
+it("commits on Vim's :w as Commit does, closes a zoomed note on :q, and does nothing to write in a clean note", async () => {
+  const raise = async (command: VimCommand) => {
+    screen.getByRole('textbox', { name: 'Note content' }).dispatchEvent(new CustomEvent(VIM_COMMAND_EVENT, { bubbles: true, detail: command }));
+    await flush();
+  };
+  const onCommitFile = vi.fn(async () => {});
+  const { unmount } = render(editor({ isDirty: true, onCommitFile }));
+  await raise('write');
+  expect(onCommitFile).toHaveBeenCalledWith('notes/a.md', undefined);
+  unmount();
+  const onClose = vi.fn();
+  const clean = vi.fn(async () => {});
+  render(editor({ frame: 'zoom', onClose, onCommitFile: clean }));
+  await raise('writeQuit');
+  expect(clean).not.toHaveBeenCalled();
+  expect(onClose).toHaveBeenCalledOnce();
 });

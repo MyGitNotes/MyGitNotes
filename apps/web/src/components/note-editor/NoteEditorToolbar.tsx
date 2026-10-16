@@ -3,7 +3,8 @@ import { useTranslation } from '../../lib/i18n/index.js';
 import { usePiAgentAvailable } from '../../lib/pi-agent/session.js';
 import type { NoteItem } from '../../lib/types.js';
 import { Button } from '../Button.js';
-import { type MarkdownEditorMode, MarkdownEditorModeSwitch } from '../MarkdownEditor.js';
+import type { MarkdownEditorMode } from '../MarkdownEditor.js';
+import { EditorModeToggle } from './EditorModeToggle.js';
 import { NoteExportMenu } from '../NoteExportMenu.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { NoteRefreshAction } from './NoteQuickActions.js';
@@ -83,7 +84,7 @@ function NoteZoomHeading({ note, session, onClose, onRename, phoneEditing }: Pic
   );
 }
 
-/** The zoom and pane editor's top bar: the zoom title, then save, mode, line number, export, Focus, formatting toolbar and panel actions. */
+/** The zoom and pane editor's top bar: the zoom title, then save, the view (mode and line numbers), adding to an outline or Focus, the file and the panels. */
 export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onClose, onAddToFocus, onAddToOutline, onMove, onRename, phoneEditing }: NoteEditorToolbarProps) {
   const { t } = useTranslation();
   const agentAvailable = usePiAgentAvailable();
@@ -100,27 +101,27 @@ export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, 
           </Button>
         )}
         {!zoom && phoneEditing && <PhoneEditToggle {...phoneEditing} />}
-        {/* Four groups, set apart by thin separators: mode, view, file and panels. */}
-        {isMarkdown && (
-          <div role='group' className='note-controls-group' aria-label={t('editor.controlsMode')}>
-            <MarkdownEditorModeSwitch mode={editorMode} onChange={setEditorMode} />
-          </div>
-        )}
+        {/* Four groups, set apart by thin separators: view, adding, file and panels. */}
         <div role='group' className='note-controls-group' aria-label={t('editor.controlsView')}>
+          {isMarkdown && <EditorModeToggle mode={editorMode} onChange={setEditorMode} className='ui-icon-button toolbar-icon-button editor-mode-toggle' showKey />}
           <button type='button' aria-pressed={showLineNumbers} aria-label={t('editor.lineNumbers')} title={t('editor.lineNumbers')} onClick={toggleLineNumbers} className='ui-icon-button toolbar-icon-button editor-line-numbers-action'>
             <ListOrdered aria-hidden='true' />
           </button>
-          {onAddToOutline && (
-            <button type='button' className='ui-icon-button toolbar-icon-button' disabled={session.locked} aria-label={t('outline.add')} title={t('outline.add')} onClick={onAddToOutline}>
-              <ListTree aria-hidden='true' />
-            </button>
-          )}
-          {onAddToFocus && (
-            <button type='button' aria-label={t('focus.addTo')} title={t('focus.addTo')} onClick={onAddToFocus} className='ui-icon-button toolbar-icon-button'>
-              <LayoutGrid aria-hidden='true' />
-            </button>
-          )}
         </div>
+        {(onAddToOutline || onAddToFocus) && (
+          <div role='group' className='note-controls-group' aria-label={t('editor.controlsAdd')}>
+            {onAddToOutline && (
+              <button type='button' className='ui-icon-button toolbar-icon-button' disabled={session.locked} aria-label={t('outline.add')} title={t('outline.add')} onClick={onAddToOutline}>
+                <ListTree aria-hidden='true' />
+              </button>
+            )}
+            {onAddToFocus && (
+              <button type='button' aria-label={t('focus.addTo')} title={t('focus.addTo')} onClick={onAddToFocus} className='ui-icon-button toolbar-icon-button'>
+                <LayoutGrid aria-hidden='true' />
+              </button>
+            )}
+          </div>
+        )}
         <div role='group' className='note-controls-group' aria-label={t('editor.controlsFile')}>
           {onMove && (
             <button type='button' className='ui-icon-button toolbar-icon-button editor-move-action' disabled={session.locked} aria-label={t('files.moveNote')} title={t('files.moveNote')} onClick={onMove}>

@@ -8,7 +8,6 @@ import { NoteEditor, type NoteEditorHandle, type NoteEditorProps } from './NoteE
 
 const inserted: string[] = [];
 vi.mock('./MarkdownEditor.js', () => ({
-  MarkdownEditorModeSwitch: () => null,
   MarkdownEditor: forwardRef<unknown, { content: string; readOnly: boolean; }>(({ content, readOnly }, ref) => {
     // The real editor drops an insert while it is read-only.
     useImperativeHandle(ref, () => ({ insert: (text: string) => !readOnly && inserted.push(text) }), [readOnly]);

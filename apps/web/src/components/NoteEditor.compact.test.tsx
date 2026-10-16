@@ -9,7 +9,6 @@ import type { NoteEditorSession } from './note-editor/types.js';
 import type { MarkdownEditorHandle } from './MarkdownEditor.js';
 
 vi.mock('./MarkdownEditor.js', () => ({
-  MarkdownEditorModeSwitch: () => null,
   MarkdownEditor: forwardRef<MarkdownEditorHandle, { content: string; mode: string; readOnly: boolean; compact?: boolean; onChange: (content: string) => void; }>(({ content, mode, readOnly, compact, onChange }, ref) => {
     useImperativeHandle(ref, () => ({
       insert: (text, at) => {
@@ -53,8 +52,10 @@ it('renders the body with a status bar only, reports its session and inserts thr
   act(() => ref.current!.insert('[Beta](b.md)', 8));
   expect(screen.getByLabelText('Note content')).toHaveValue('# Alpha\n[Beta](b.md)More.');
 
+  // Like the note toolbar's, the card's mode button shows the mode in use and names the other.
+  expect(screen.getByRole('button', { name: 'Switch to source' })).toHaveAttribute('data-mode-toggle', 'live');
   fireEvent.click(container.querySelector('[data-mode-toggle="live"]')!);
-  expect(container.querySelector('[data-mode-toggle="raw"]')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Switch to live preview' })).toHaveAttribute('data-mode-toggle', 'raw');
   expect(screen.getByLabelText('Note content')).toHaveAttribute('data-mode', 'raw');
 
   unmount();
@@ -68,15 +69,15 @@ it('refuses handle inserts while read-only', () => {
   expect(screen.getByLabelText('Note content')).toHaveValue('# Alpha\n');
 });
 
-it('opens the note commands leader on Ctrl+Shift+E only in zoom', () => {
-  for (const frame of ['pane', 'zoom'] as const) {
+it('opens the note commands leader on Ctrl+Shift+E in zoom and in a Focus pane, not in a graph card', () => {
+  for (const frame of ['pane', 'zoom', 'compact'] as const) {
     render(createElement(PanelProvider, null, createElement(NoteEditor, { note, frame, active: true, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' })));
     const event = new KeyboardEvent('keydown', { key: 'E', code: 'KeyE', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true });
     act(() => {
       document.dispatchEvent(event);
     });
-    expect(Boolean(screen.queryByRole('dialog', { name: 'Note commands' }))).toBe(frame === 'zoom');
-    expect(event.defaultPrevented).toBe(frame === 'zoom');
+    expect(Boolean(screen.queryByRole('dialog', { name: 'Note commands' }))).toBe(frame !== 'compact');
+    expect(event.defaultPrevented).toBe(frame !== 'compact');
     cleanup();
   }
 });

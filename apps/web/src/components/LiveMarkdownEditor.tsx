@@ -27,6 +27,8 @@ import { attachGutterLineCopy, blockWidgetLineNumbers } from './live-markdown/gu
 import { headingGutter } from './live-markdown/heading-gutter.js';
 import { tableBoundaries } from './live-markdown/table-boundaries.js';
 import { useNoteViewPreferences } from '../lib/editor-preferences.js';
+import { getVimMode, useVimMode } from '../lib/vim-mode.js';
+import { vimCompartment } from './live-markdown/vim.js';
 import { applyMarkdownFormat, formatKeymap } from './live-markdown/format-commands.js';
 import { markdownEditorKeymap } from './live-markdown/editor-keymap.js';
 import type { MarkdownFormat } from '../lib/markdown-format.js';
@@ -107,6 +109,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   /* eslint-enable react/refs */
   const permission = useRef(new Compartment());
   const lineNumberGutter = useRef(new Compartment());
+  const vimBindings = useRef(vimCompartment());
   const copyLinesCallback = useRef(onCopyLines);
   /* eslint-disable react/refs -- The persistent CodeMirror view reads current callbacks and options through refs. */
   copyLinesCallback.current = onCopyLines;
@@ -196,6 +199,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
       dispatchTransactions: anchorMermaidSwap,
       state: startState({
         extensions: [
+          vimBindings.current.of(getVimMode()),
           markdown({ base: markdownLanguage, extensions: [cjkEmphasis] }),
           history(),
           isOutlinePath(notePath) ? [outlineKeymap, outlineDrag({ move: t('outline.move'), before: t('outline.dropBefore'), after: t('outline.dropAfter'), child: t('outline.dropChild') })] : [],
@@ -286,6 +290,10 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   useEffect(() => {
     editor.current?.requestMeasure();
   }, [viewPreferences]);
+  const vimEnabled = useVimMode();
+  useEffect(() => {
+    editor.current?.dispatch({ effects: vimBindings.current.reconfigure(vimEnabled) });
+  }, [vimEnabled]);
   useEffect(() => {
     editor.current?.dispatch({ effects: lineNumberGutter.current.reconfigure(showLineNumbers ? [lineNumbers({ formatNumber: number => String(number + lineNumberOffset) }), blockWidgetLineNumbers(lineOffset), highlightActiveLineGutter()] : []) });
   }, [showLineNumbers, lineNumberOffset]);

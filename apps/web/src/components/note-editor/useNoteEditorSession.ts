@@ -365,8 +365,9 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     }
   }, [content, metadata, note, branch, draftScope, onSave, readOnly, autoSave, baseNote, blocked, draftMode]);
 
-  const handleExplicitSave = async () => {
-    if (locked || operation.current) return;
+  /** Saves the note by hand; resolves whether it saved, so `:wq` closes only a saved note. */
+  const handleExplicitSave = async (): Promise<boolean> => {
+    if (locked || operation.current) return false;
     operation.current = true;
     setIsSaving(true);
     setSaveError('');
@@ -374,13 +375,13 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       let draft = { content: current.current.content, metadata: current.current.metadata, revision: current.current.baseNote.revision };
       if (onReadRemote) {
         const latest = await onReadRemote(note.path);
-        if (!mounted.current) return;
+        if (!mounted.current) return false;
         const merged = applyRemote(latest);
-        if (!merged) return;
+        if (!merged) return false;
         draft = merged;
       }
       const saved = await onSave({ path: note.path, ...draft });
-      if (!mounted.current) return;
+      if (!mounted.current) return false;
       setBaseNote(saved);
       setContent(saved.content);
       setMetadata(saved.metadata);
@@ -389,6 +390,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       clearLocalDraft(draftScope || branch, note.path);
       setHasUnsavedChanges(false);
       setRemoteNotice('');
+      return true;
     } catch (error) {
       if (error instanceof ApiError && error.status === 409 && onReadRemote) {
         try {
@@ -398,14 +400,15 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
           handleRemoteFailure(readError);
         }
       } else handleRemoteFailure(error);
+      return false;
     } finally {
       operation.current = false;
       if (mounted.current) setIsSaving(false);
     }
   };
-  /** Saves any pending edit, then commits this note alone; with `version`, the commit also records it as a new version. Rethrows for a caller that waits on it. */
-  const commitNote = async (version?: NewVersionRequest) => {
-    if (!onCommitFile || locked || operation.current) return;
+  /** Saves any pending edit, then commits this note alone, resolving whether it did; with `version`, the commit also records it as a new version. Rethrows for a caller that waits on it. */
+  const commitNote = async (version?: NewVersionRequest): Promise<boolean> => {
+    if (!onCommitFile || locked || operation.current) return false;
     operation.current = true;
     setIsSaving(true);
     setCommitting(true);
@@ -415,7 +418,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       const saved = lastSaved.current;
       if (!saved || state.content !== saved.content || !sameIgnoringTimestamps(state.metadata, saved.metadata)) {
         const written = await onSave({ path: note.path, content: state.content, metadata: state.metadata, baseNote: state.baseNote });
-        if (!mounted.current) return;
+        if (!mounted.current) return false;
         // Adopting the written note supersedes a pending autosave of the same edit.
         lastSaved.current = { content: written.content, metadata: written.metadata };
         current.current = { ...current.current, content: written.content, metadata: written.metadata, baseNote: written };
@@ -426,9 +429,11 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
         setHasUnsavedChanges(false);
       }
       await onCommitFile(note.path, version);
+      return true;
     } catch (error) {
       if (mounted.current) setSaveError((error as Error).message);
       if (version) throw error;
+      return false;
     } finally {
       operation.current = false;
       if (mounted.current) {

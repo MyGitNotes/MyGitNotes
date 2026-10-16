@@ -13,6 +13,8 @@ import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
 import { yaml } from '@codemirror/lang-yaml';
 import { textChange } from '../lib/text-change.js';
+import { getVimMode, useVimMode } from '../lib/vim-mode.js';
+import { vimCompartment } from './live-markdown/vim.js';
 
 function language(path: string) {
   if (/\.(md|markdown|mdx)$/i.test(path)) return markdown({ extensions: [cjkEmphasis] });
@@ -26,6 +28,7 @@ function language(path: string) {
 export function FileSourceEditor({ path, content, readOnly, label, onChange }: { path: string; content: string; readOnly: boolean; label: string; onChange: (value: string) => void; }) {
   const host = useRef<HTMLDivElement>(null), view = useRef<EditorView>();
   const permissions = useRef(new Compartment());
+  const vimBindings = useRef(vimCompartment());
   const change = useRef(onChange);
   /* eslint-disable react/refs -- Keep the current callback in a ref for an imperative listener without recreating its subscription. */
   change.current = onChange;
@@ -38,6 +41,7 @@ export function FileSourceEditor({ path, content, readOnly, label, onChange }: {
       state: EditorState.create({
         doc: initial.current,
         extensions: [
+          vimBindings.current.of(getVimMode()),
           lineNumbers(),
           highlightActiveLine(),
           history(),
@@ -62,6 +66,10 @@ export function FileSourceEditor({ path, content, readOnly, label, onChange }: {
   useEffect(() => {
     view.current?.dispatch({ effects: permissions.current.reconfigure([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]) });
   }, [readOnly]);
+  const vimEnabled = useVimMode();
+  useEffect(() => {
+    view.current?.dispatch({ effects: vimBindings.current.reconfigure(vimEnabled) });
+  }, [vimEnabled]);
   useEffect(() => {
     const editor = view.current;
     const change = editor && textChange(editor.state.sliceDoc(), content);

@@ -46,18 +46,40 @@ it('puts Refresh first in the controls as a ghost icon button with a tooltip, no
   expect(onRefresh).toHaveBeenCalledOnce();
 });
 
-it('groups the controls as view, file and panels, with a mode group first for a Markdown note', () => {
-  const groups = (isMarkdown: boolean) => {
-    const { container } = render(toolbar(undefined, { isMarkdown, toggleFormatToolbar: vi.fn(), onMove: vi.fn(), onAddToFocus: vi.fn(), onAddToOutline: vi.fn() }));
+it('groups the controls as view, adding, file and panels, the mode button beside line numbers for a Markdown note', () => {
+  const groups = (isMarkdown: boolean, extra: Record<string, unknown> = {}) => {
+    const { container } = render(toolbar(undefined, { isMarkdown, toggleFormatToolbar: vi.fn(), onMove: vi.fn(), ...extra }));
     const names = [...container.querySelectorAll('.note-controls-group')].map(group => group.getAttribute('aria-label'));
     const members = [...container.querySelectorAll('.note-controls-group')].map(group => [...group.querySelectorAll('button')].map(button => button.getAttribute('aria-label')));
     cleanup();
     return { names, members };
   };
-  expect(groups(true).names).toEqual(['Mode', 'View', 'File', 'Panels']);
-  expect(groups(false).names).toEqual(['View', 'File', 'Panels']);
-  const { members } = groups(false);
-  expect(members[0]).toEqual(['Line Numbers', 'Add to outline', 'Add to Focus']);
-  expect(members[1][0]).toBe('Move note');
-  expect(members[2]).toEqual(['Formatting toolbar', 'Document tools']);
+  const adding = { onAddToFocus: vi.fn(), onAddToOutline: vi.fn() };
+  expect(groups(true, adding).names).toEqual(['View', 'Add to', 'File', 'Panels']);
+  const { members } = groups(true, adding);
+  expect(members[0]).toEqual(['Switch to source', 'Line Numbers']);
+  expect(members[1]).toEqual(['Add to outline', 'Add to Focus']);
+  expect(members[2][0]).toBe('Move note');
+  expect(members[3]).toEqual(['Formatting toolbar', 'Document tools']);
+  // A note that is not Markdown has no modes; a note with nothing to add to has no adding group.
+  expect(groups(false, adding).members[0]).toEqual(['Line Numbers']);
+  expect(groups(true).names).toEqual(['View', 'File', 'Panels']);
+});
+
+it('switches the mode with one icon button that shows the mode in use and names the other, with the leader key for the same switch', () => {
+  const setEditorMode = vi.fn();
+  const { rerender } = render(toolbar(undefined, { isMarkdown: true, setEditorMode }));
+  const toSource = screen.getByRole('button', { name: 'Switch to source' });
+  expect(toSource).toHaveAttribute('data-mode-toggle', 'live');
+  expect(toSource.textContent).toBe('');
+  expect(toSource).toHaveAttribute('title', expect.stringMatching(/^Switch to source \(.+ M\)$/));
+  expect(screen.queryByText('Live Preview')).toBeNull();
+  fireEvent.click(toSource);
+  expect(setEditorMode).toHaveBeenCalledWith('raw');
+  rerender(toolbar(undefined, { isMarkdown: true, setEditorMode, editorMode: 'raw' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Switch to live preview' }));
+  expect(setEditorMode).toHaveBeenLastCalledWith('live');
+  // A Focus pane answers the leader too.
+  rerender(toolbar(undefined, { isMarkdown: true, setEditorMode, frame: 'pane' }));
+  expect(screen.getByRole('button', { name: 'Switch to source' })).toHaveAttribute('title', expect.stringMatching(/^Switch to source \(.+ M\)$/));
 });

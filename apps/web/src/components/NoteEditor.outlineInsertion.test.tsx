@@ -62,7 +62,7 @@ beforeEach(() => {
 afterEach(cleanup);
 it('inserts into the actual dirty raw destination once and participates in its undo/redo', async () => {
   mount();
-  fireEvent.click(screen.getByRole('button', { name: 'Source' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Switch to source' }));
   const text = screen.getByRole('textbox', { name: 'Note content' }) as HTMLTextAreaElement;
   fireEvent.change(text, { target: { value: '- Dirty\n  annotation\n  - Child' } });
   fireEvent.click(screen.getByText('Queue link'));

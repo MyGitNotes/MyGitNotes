@@ -77,6 +77,8 @@ Run `pnpm update-core` from a clean `core` checkout; it fast-forwards `core` fro
 
 - Notes use ordinary Markdown with optional YAML frontmatter; Git preserves history and records explicit commits.
 - Browse notes in List, Card, or Kanban views; search full text, manage folders and files, and explore a knowledge graph.
+- The note toolbar starts with its view: one button switches live preview and source (its icon is the mode in use, in a graph card too; in zoom and in a Focus pane the leader `Mod+Shift+E` then `M` does the same, beside `F` for find and `/` for the outline), beside the line numbers toggle; adding to an outline or Focus, the file actions and the panels follow.
+- Settings → Editor turns on Vim keys for this browser in live preview and the file source editor, with Vim's status line below the text; a note's source mode stays a plain text box. `:w` does what the note's Commit does (Save in a note saved by hand), `:q` closes a zoomed note, and `:wq` or `:x` commits, then closes only if the commit succeeded. In normal mode Escape still closes the note's panel. The shortcut help (`Mod+/`) then lists the Vim keys as their own group, which filtering for `vim` shows whole.
 - [Compilations](#compilations) organize notebook content and replace the old Screen lanes; Markdown pages can also become flashcards.
 - Local mode offers a [Pi agent](#pi-agent-local-mode) in a dock on the right edge, and [`pnpm dev:remote`](#use-it-from-other-devices-pnpm-devremote) opens the workspace from your other devices.
 - Choose from **nine palette families**, each with light and dark variants. **Flexoki** is the default; choices are saved in the browser.

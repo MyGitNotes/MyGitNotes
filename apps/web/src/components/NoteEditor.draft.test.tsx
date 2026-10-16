@@ -9,7 +9,7 @@ import { announceWorkspaceFilesChanged } from '../lib/workspace-changes.js';
 import type { NoteItem } from '../lib/types.js';
 import { NoteEditor, type NoteEditorProps } from './NoteEditor.js';
 
-vi.mock('./MarkdownEditor.js', () => ({ MarkdownEditorModeSwitch: () => null, MarkdownEditor: forwardRef<unknown, { content: string; onChange: (content: string) => void; }>(({ content, onChange }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) })) }));
+vi.mock('./MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; onChange: (content: string) => void; }>(({ content, onChange }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) })) }));
 
 beforeEach(() => {
   localStorage.clear();

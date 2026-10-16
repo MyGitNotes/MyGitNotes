@@ -4,7 +4,7 @@ import { bindingsFor, keymapEntry } from '../../lib/keyboard/keymap.js';
 import { keyEnvironment } from '../../lib/keyboard/platform.js';
 import type { NoteDocumentPanelState } from './useNoteDocumentPanel.js';
 
-/** The keyboard leader menu: the next key opens find, or the outline of a Markdown note. */
+/** The keyboard leader menu: the next key opens find, or for a Markdown note its outline or the other editor mode. */
 export function NoteEditorLeader({ docPanel, isMarkdown }: { docPanel: NoteDocumentPanelState; isMarkdown: boolean; }) {
   const { t } = useTranslation();
   const leader = bindingsFor(keymapEntry('editor.leader'), keyEnvironment).map(keys => formatKeys(keys, keyEnvironment).join(' ')).join(' / ');
@@ -22,6 +22,12 @@ export function NoteEditorLeader({ docPanel, isMarkdown }: { docPanel: NoteDocum
         <button type='button' onClick={docPanel.openOutline}>
           <kbd>/</kbd>
           <span>{t('editor.outline')}</span>
+        </button>
+      )}
+      {isMarkdown && (
+        <button type='button' onClick={docPanel.toggleEditorMode}>
+          <kbd>M</kbd>
+          <span>{t('command.editor.leaderMode')}</span>
         </button>
       )}
     </div>

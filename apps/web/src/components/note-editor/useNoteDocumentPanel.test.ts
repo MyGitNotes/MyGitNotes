@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 it("reopens a zoomed note's panel as the user left it, open on its last section or closed", () => {
-  const props = { frame: 'zoom' as const, active: false, isMarkdown: true, content: '# Alpha', editorMode: 'raw' as const, editorRef: createRef<MarkdownEditorHandle>(), metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
+  const props = { frame: 'zoom' as const, active: false, isMarkdown: true, content: '# Alpha', editorMode: 'raw' as const, setEditorMode: vi.fn(), editorRef: createRef<MarkdownEditorHandle>(), metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
   const first = renderHook(() => useNoteDocumentPanel(props));
   expect(first.result.current.notePanel).toBeNull();
   act(() => first.result.current.setNotePanel('history'));
@@ -25,7 +25,7 @@ it("reopens a zoomed note's panel as the user left it, open on its last section 
 
 it('keeps panel drafts across content updates and resets navigation only when the document identity changes', () => {
   const editorRef = createRef<MarkdownEditorHandle>();
-  const initialProps = { frame: 'zoom' as const, active: false, isMarkdown: true, content: '# Alpha\n\nalpha alpha alpha', editorMode: 'raw' as const, editorRef, metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
+  const initialProps = { frame: 'zoom' as const, active: false, isMarkdown: true, content: '# Alpha\n\nalpha alpha alpha', editorMode: 'raw' as const, setEditorMode: vi.fn(), editorRef, metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
   const { result, rerender } = renderHook(props => useNoteDocumentPanel(props), { initialProps });
   act(() => {
     result.current.setNotePanel('find');
@@ -50,7 +50,7 @@ it('keeps panel drafts across content updates and resets navigation only when th
 it('clamps a search selection when matches shrink and keeps the clamped selection when they grow again', () => {
   const revealRange = vi.fn();
   const editorRef = { current: { insert: vi.fn(), revealRange, goToLine: vi.fn(), getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus() {} } };
-  const initialProps = { frame: 'zoom' as const, active: false, isMarkdown: true, content: 'one one one', editorMode: 'raw' as const, editorRef, metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
+  const initialProps = { frame: 'zoom' as const, active: false, isMarkdown: true, content: 'one one one', editorMode: 'raw' as const, setEditorMode: vi.fn(), editorRef, metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
   const { result, rerender } = renderHook(props => useNoteDocumentPanel(props), { initialProps });
   act(() => {
     result.current.setNotePanel('find');
@@ -69,7 +69,7 @@ it('clamps a search selection when matches shrink and keeps the clamped selectio
 });
 
 it('leaves keys typed in help or quick open to them while a note is zoomed', () => {
-  const props = { frame: 'zoom' as const, active: true, isMarkdown: true, content: '# Alpha', editorMode: 'raw' as const, editorRef: createRef<MarkdownEditorHandle>(), metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
+  const props = { frame: 'zoom' as const, active: true, isMarkdown: true, content: '# Alpha', editorMode: 'raw' as const, setEditorMode: vi.fn(), editorRef: createRef<MarkdownEditorHandle>(), metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
   const { result } = renderHook(() => useNoteDocumentPanel(props));
   act(() => result.current.setNotePanel('outline'));
   act(() => result.current.setIsEditorLeaderOpen(true));
@@ -97,7 +97,7 @@ it('leaves keys typed in help or quick open to them while a note is zoomed', () 
 });
 
 it('closes its panel on Escape, but leaves an Escape typed in the assistant dock beside it to the dock', () => {
-  const props = { frame: 'zoom' as const, active: true, isMarkdown: true, content: '# Alpha', editorMode: 'raw' as const, editorRef: createRef<MarkdownEditorHandle>(), metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
+  const props = { frame: 'zoom' as const, active: true, isMarkdown: true, content: '# Alpha', editorMode: 'raw' as const, setEditorMode: vi.fn(), editorRef: createRef<MarkdownEditorHandle>(), metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
   const { result } = renderHook(() => useNoteDocumentPanel(props));
   const dock = document.body.appendChild(document.createElement('div'));
   dock.className = 'assistant-dock';
@@ -115,4 +115,58 @@ it('closes its panel on Escape, but leaves an Escape typed in the assistant dock
   expect(escape(document.body).defaultPrevented).toBe(true);
   expect(result.current.notePanel).toBeNull();
   dock.remove();
+});
+
+it("switches a Markdown note between live preview and source from the leader's M, in a Focus pane too, and offers no M for other files", () => {
+  const setEditorMode = vi.fn();
+  const props = { frame: 'pane' as const, active: true, isMarkdown: true, content: '# Alpha', editorMode: 'live' as const, setEditorMode, editorRef: createRef<MarkdownEditorHandle>(), metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
+  const press = (key: string) => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    act(() => {
+      document.body.dispatchEvent(event);
+    });
+    return event;
+  };
+  const { result, unmount } = renderHook(() => useNoteDocumentPanel(props));
+  act(() => result.current.setIsEditorLeaderOpen(true));
+  expect(press('m').defaultPrevented).toBe(true);
+  expect(setEditorMode).toHaveBeenCalledWith('raw');
+  expect(result.current.isEditorLeaderOpen).toBe(false);
+  // Without the leader, M is an ordinary key.
+  expect(press('m').defaultPrevented).toBe(false);
+  unmount();
+  const text = renderHook(() => useNoteDocumentPanel({ ...props, isMarkdown: false, notePath: 'notes/a.txt' }));
+  act(() => text.result.current.setIsEditorLeaderOpen(true));
+  expect(press('m').defaultPrevented).toBe(false);
+  expect(setEditorMode).toHaveBeenCalledOnce();
+});
+
+it('leaves Escape to Vim outside normal mode and in its prompt, and closes the panel with it in normal mode', () => {
+  const props = { frame: 'zoom' as const, active: true, isMarkdown: true, content: '# Alpha', editorMode: 'live' as const, setEditorMode: vi.fn(), editorRef: createRef<MarkdownEditorHandle>(), metadata: {}, notePath: 'notes/a.md', branch: 'main', readOnly: false };
+  const { result } = renderHook(() => useNoteDocumentPanel(props));
+  const editor = document.body.appendChild(document.createElement('div'));
+  editor.className = 'cm-editor';
+  const content = editor.appendChild(document.createElement('div'));
+  const prompt = editor.appendChild(document.createElement('div'));
+  prompt.className = 'cm-panels';
+  const promptInput = prompt.appendChild(document.createElement('input'));
+  const escape = (target: Element) => {
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  };
+  act(() => result.current.setNotePanel('outline'));
+  for (const mode of ['insert', 'visual', 'replace']) {
+    editor.setAttribute('data-vim-mode', mode);
+    expect(escape(content).defaultPrevented).toBe(false);
+    expect(result.current.notePanel).toBe('outline');
+  }
+  editor.setAttribute('data-vim-mode', 'normal');
+  expect(escape(promptInput).defaultPrevented).toBe(false);
+  expect(result.current.notePanel).toBe('outline');
+  expect(escape(content).defaultPrevented).toBe(true);
+  expect(result.current.notePanel).toBeNull();
+  editor.remove();
 });

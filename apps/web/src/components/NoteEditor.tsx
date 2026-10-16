@@ -19,6 +19,7 @@ import { NoteInlineFrame } from './note-editor/NoteInlineFrame.js';
 import { NoteEditorToolbar } from './note-editor/NoteEditorToolbar.js';
 import { NoteEditorDocumentPanel } from './note-editor/NoteEditorDocumentPanel.js';
 import { NoteEditorLeader } from './note-editor/NoteEditorLeader.js';
+import { useVimCommands } from './note-editor/useVimCommands.js';
 import { FileManagerDialog } from './files/index.js';
 import { today, type VersionText } from '../lib/history-api.js';
 import { useNoteDiffStats } from './note-editor/useNoteDiffStats.js';
@@ -59,7 +60,7 @@ export interface NoteEditorProps extends NoteEditorSharedProps {
 /** The footer's actions: Refresh unless zoom shows it beside the title, and Commit and Restore for an editable dirty note. */
 function footerActions({ frame, readOnly, session, refresh, canCommit }: { frame: NoteEditorProps['frame']; readOnly: boolean; session: NoteEditorSessionState; refresh?: () => Promise<void>; canCommit: boolean; }) {
   const editable = !readOnly && session.isDirty;
-  return { onRefresh: frame === 'zoom' ? undefined : refresh, onCommit: editable && canCommit && !session.blocked ? () => session.commitNote() : undefined, onRestore: editable ? session.restoreNote : undefined };
+  return { onRefresh: frame === 'zoom' ? undefined : refresh, onCommit: editable && canCommit && !session.blocked ? async () => void await session.commitNote() : undefined, onRestore: editable ? session.restoreNote : undefined };
 }
 
 /** A note's editing session: content, frontmatter, drafts, autosave, conflicts, crash recovery and the document panel. */
@@ -108,7 +109,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   const { t } = useTranslation();
   const changes = useNoteDiffStats(frame === 'compact' || frame === 'inline' ? undefined : readDiff, session.isDirty, !session.isSaving && !session.hasUnsavedChanges);
   const refresh = onReadRemote && !session.blocked ? session.pullLatest : undefined;
-  const docPanel = useNoteDocumentPanel({ frame, active, isMarkdown, content: session.content, editorMode, documentPanel, editorRef, metadata: session.metadata, notePath: note.path, branch, draftScope, readOnly });
+  const docPanel = useNoteDocumentPanel({ frame, active, isMarkdown, content: session.content, editorMode, setEditorMode, documentPanel, editorRef, metadata: session.metadata, notePath: note.path, branch, draftScope, readOnly });
   // The active editor is the file the agent panel names to Pi, with the line its caret is on.
   const contentRef = useRef(session.content);
   useEffect(() => {
@@ -160,6 +161,11 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     insert(`\n${ref}\n`);
   };
 
+  // Vim's `:w` does what the footer's Commit does, or the toolbar's Save where the note saves by hand; with nothing to
+  // write it succeeds, so `:wq` still closes. `:q` closes a zoomed note the way its back button does.
+  const canCommitNow = Boolean(footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) }).onCommit);
+  const vimRoot = useVimCommands({ write: async () => canCommitNow ? session.commitNote() : !autoSave && !readOnly && session.hasUnsavedChanges ? session.handleExplicitSave() : true, quit: frame === 'zoom' && onClose ? session.close : undefined });
+
   if (frame === 'inline') {
     return (
       <div className='note-editor' data-frame={frame} data-source-notebook={note.notebookId}>
@@ -193,10 +199,10 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     );
   }
 
-  const history = { target: historyTarget, dirty: session.isDirty, current: currentFile, onRestore: readOnly || session.locked ? undefined : restoreFile, onCommitVersion: onCommitFile && !readOnly ? (text: VersionText) => session.commitNote({ path: note.path, today: today(), ...text }) : undefined };
+  const history = { target: historyTarget, dirty: session.isDirty, current: currentFile, onRestore: readOnly || session.locked ? undefined : restoreFile, onCommitVersion: onCommitFile && !readOnly ? async (text: VersionText) => void await session.commitNote({ path: note.path, today: today(), ...text }) : undefined };
   const panel = { ...docPanel, isMarkdown, history, notePath: note.path, content: session.content, lineNumberOffset: session.baseNote.lineNumberOffset || 0, metadata: session.metadata, setMetadata: session.setMetadata, statuses, metadataFields, availableTags, locked: session.locked, notebookId: note.notebookId, readOnly };
   return (
-    <div className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} style={noteViewStyle(viewPreferences)}>
+    <div ref={vimRoot} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
       <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={showLineNumbers} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked && !reading ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : undefined} onRefresh={refresh} onClose={onClose} onAddToFocus={onAddToFocus} onMove={readOnly ? undefined : onMove} onRename={readOnly || !onRename ? undefined : () => onRename(session.title)} onAddToOutline={addToOutline} />
       {awaitingRecovery && (

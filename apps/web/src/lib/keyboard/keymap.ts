@@ -69,6 +69,7 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('palette.close', 'palette', ['palette'], 'widget', ['Escape']),
   // Note editor: the leader and the note's tools
   entry('editor.leader', 'editor', ['note'], 'widget', ['Mod+Shift+E'], { description: 'command.editor.leader.describe' }),
+  entry('editor.leaderMode', 'editor', ['note'], 'widget', ['Mod+Shift+E M']),
   entry('note.closePanel', 'editor', ['note'], 'widget', ['Escape']),
   entry('format.bold', 'editor', MARKDOWN, 'codemirror', ['Mod+B']),
   entry('format.italic', 'editor', MARKDOWN, 'codemirror', ['Mod+I']),

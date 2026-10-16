@@ -7,6 +7,7 @@ import type { MarkdownEditorHandle, MarkdownEditorMode } from '../MarkdownEditor
 import type { NotePanelMode } from './types.js';
 import { insideAssistantDock } from '../../lib/assistant-dock.js';
 import { DOCUMENT_PANEL_OPEN_STORAGE_KEY, DOCUMENT_PANEL_STORAGE_KEY } from '../../lib/panel-state.js';
+import { vimOwnsEscape } from '../../lib/vim-mode.js';
 
 export interface UseNoteDocumentPanelParams {
   frame: 'zoom' | 'pane' | 'compact' | 'inline';
@@ -14,6 +15,7 @@ export interface UseNoteDocumentPanelParams {
   isMarkdown: boolean;
   content: string;
   editorMode: MarkdownEditorMode;
+  setEditorMode: (mode: MarkdownEditorMode) => void;
   documentPanel?: { target: HTMLElement | null; mode: NotePanelMode | null; onChange: (mode: NotePanelMode | null) => void; };
   /** Owned by the host `NoteEditor`, which renders the `MarkdownEditor` this ref points to. */
   editorRef: React.RefObject<MarkdownEditorHandle>;
@@ -39,7 +41,7 @@ function savedPanel(isMarkdown: boolean): NotePanelMode {
 }
 
 /** The document panel's visibility, find/outline navigation, its frontmatter form/tag state, and its keyboard leader menu. */
-export function useNoteDocumentPanel({ frame, active, isMarkdown, content, editorMode, documentPanel, editorRef, metadata, notePath, branch, draftScope, readOnly }: UseNoteDocumentPanelParams) {
+export function useNoteDocumentPanel({ frame, active, isMarkdown, content, editorMode, setEditorMode, documentPanel, editorRef, metadata, notePath, branch, draftScope, readOnly }: UseNoteDocumentPanelParams) {
   const lastNotePanel = useRef<NotePanelMode>(savedPanel(isMarkdown));
   // A zoomed note reopens its panel as the user left it; a Focus pane follows the rail, which remembers its own.
   const [ownPanel, updateNotePanel] = useState<NotePanelMode | null>(() => {
@@ -107,6 +109,10 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
       findInputRef.current?.select();
     });
   };
+  const toggleEditorMode = () => {
+    setIsEditorLeaderOpen(false);
+    setEditorMode(editorMode === 'live' ? 'raw' : 'live');
+  };
   const stepFind = (delta: number) => {
     if (matches.length === 0) return;
     setFindIndex(index => (index + delta + matches.length) % matches.length);
@@ -144,9 +150,9 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
   /* eslint-disable react/refs -- The editor keeps current draft and event callbacks in refs for async saves and imperative keyboard handlers. */
   shortcutAction.current = event => {
     const slashKey = event.code === 'Slash' || event.key === '/';
-    // The leader (Mod+Shift+E in the table) opens the note commands in zoom only.
+    // The leader (Mod+Shift+E in the table) opens the note commands in zoom and in a Focus pane, not in a graph card or an outline.
     if (matchesCommand(event, 'editor.leader')) {
-      if (frame !== 'zoom') return false;
+      if (frame !== 'zoom' && frame !== 'pane') return false;
       setIsEditorLeaderOpen(open => !open);
       return true;
     }
@@ -157,6 +163,10 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
       }
       if (slashKey) {
         openOutline();
+        return true;
+      }
+      if (isMarkdown && event.key.toLowerCase() === 'm') {
+        toggleEditorMode();
         return true;
       }
     }
@@ -191,7 +201,8 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
         event.stopPropagation();
         return;
       }
-      if (event.key === 'Escape' && !document.querySelector('dialog[open], [aria-label="Asset preview"]')) {
+      // Vim leaves insert or visual mode, or closes its prompt, with Escape before the note may close its panel with it.
+      if (event.key === 'Escape' && !vimOwnsEscape(event.target) && !document.querySelector('dialog[open], [aria-label="Asset preview"]')) {
         if (escapeAction.current()) {
           event.preventDefault();
           event.stopPropagation();
@@ -220,7 +231,7 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
     requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-outline-index="${index}"]`)?.focus());
   }, [isOutlineOpen, outline, outlineIndex]);
 
-  return { editorRef, notePanel, setNotePanel, lastNotePanel, isFindOpen, isOutlineOpen, showFrontmatter, isViewPanelOpen, isHistoryOpen, findQuery, setFindQuery, findIndex, matches, stepFind, findInputRef, outline, outlineIndex, setOutlineIndex, chooseOutline, moveOutline, openFind, openOutline, isEditorLeaderOpen, setIsEditorLeaderOpen, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen };
+  return { editorRef, notePanel, setNotePanel, lastNotePanel, isFindOpen, isOutlineOpen, showFrontmatter, isViewPanelOpen, isHistoryOpen, findQuery, setFindQuery, findIndex, matches, stepFind, findInputRef, outline, outlineIndex, setOutlineIndex, chooseOutline, moveOutline, openFind, openOutline, toggleEditorMode, isEditorLeaderOpen, setIsEditorLeaderOpen, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen };
 }
 
 /** The document panel state the editor parts that render it share. */

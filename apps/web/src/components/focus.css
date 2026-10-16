@@ -123,6 +123,8 @@
 @media (max-width: 767px) { .focus-switcher { max-width: 9rem; } }
 
 /* A pane frames the editor tighter than zoom: one-line chrome leaves the editor its height. */
+/* The note leader opens centred on its own pane, not on the Focus page around it. */
+.note-editor[data-frame='pane'] { position: relative; }
 .note-editor[data-frame='pane'] .note-toolbar { padding: 6px 10px; }
 /* A pane has no heading, so its controls span the toolbar. */
 .note-editor[data-frame='pane'] .note-controls { flex: 1; min-width: 0; }
