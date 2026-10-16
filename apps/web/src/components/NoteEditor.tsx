@@ -115,12 +115,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     contentRef.current = session.content;
   }, [session.content]);
   const lineNumberOffset = session.baseNote.lineNumberOffset || 0;
-  // Read through a ref so the published target stays the same object while the panel setter changes each render.
-  const agentMoves = useRef({ openAgent: () => {}, focusEditor: () => {} });
-  /* eslint-disable react/refs -- The key that moves between the agent and the note runs these later, outside rendering. */
-  agentMoves.current = { openAgent: () => docPanel.setNotePanel('agent'), focusEditor: () => editorRef.current?.focus() };
-  /* eslint-enable react/refs */
-  const agentTarget = useMemo(() => ({ notebookId: note.notebookId, path: note.path, caret, content: () => contentRef.current, lineNumberOffset, openAgent: () => agentMoves.current.openAgent(), focusEditor: () => agentMoves.current.focusEditor() }), [note.notebookId, note.path, caret, lineNumberOffset]);
+  const agentTarget = useMemo(() => ({ notebookId: note.notebookId, path: note.path, caret, content: () => contentRef.current, lineNumberOffset, focusEditor: () => editorRef.current?.focus() }), [note.notebookId, note.path, caret, lineNumberOffset, editorRef]);
   usePublishAgentTarget(agentTarget, active && (frame === 'zoom' || frame === 'pane'));
 
   // A phone opens every note for reading: a long press then only selects text instead of raising the keyboard,

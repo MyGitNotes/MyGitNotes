@@ -3,6 +3,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useS
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Copy, FolderInput, GripVertical, LayoutGrid, ListTree, MoreHorizontal, Pencil, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { insideAssistantDock } from '../lib/assistant-dock.js';
 import { type CompilationItem, type CompilationRow, moveCompilationItem } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { useNoteEditing } from '../lib/note-editing.js';
@@ -83,7 +84,8 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   useEffect(() => {
     if (frame !== 'zoom' || !onClose) return;
     const close = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || document.querySelectorAll('[role="dialog"]').length > 1) return;
+      // Escape typed in the assistant dock beside the view belongs to the dock.
+      if (event.key !== 'Escape' || event.defaultPrevented || insideAssistantDock(event.target) || document.querySelectorAll('[role="dialog"]').length > 1) return;
       void editing.flushEditors().then(saved => saved && onClose());
     };
     document.addEventListener('keydown', close);

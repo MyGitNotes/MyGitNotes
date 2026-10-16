@@ -4,6 +4,7 @@ import type { NoteItem } from '../../lib/types.js';
 import { Button } from '../Button.js';
 import { type MarkdownEditorMode, MarkdownEditorModeSwitch } from '../MarkdownEditor.js';
 import { NoteExportMenu } from '../NoteExportMenu.js';
+import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { NoteRefreshAction } from './NoteQuickActions.js';
 import type { NoteDocumentPanelState } from './useNoteDocumentPanel.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
@@ -148,6 +149,7 @@ export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, 
             {/* One more panel toggle, the assistant's, goes here at the end of the group. */}
           </div>
         )}
+        <AssistantDockToggle className='toolbar-icon-button editor-assistant-action' />
       </div>
     </div>
   );

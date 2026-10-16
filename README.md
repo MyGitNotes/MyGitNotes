@@ -78,7 +78,7 @@ Run `pnpm update-core` from a clean `core` checkout; it fast-forwards `core` fro
 - Notes use ordinary Markdown with optional YAML frontmatter; Git preserves history and records explicit commits.
 - Browse notes in List, Card, or Kanban views; search full text, manage folders and files, and explore a knowledge graph.
 - [Compilations](#compilations) organize notebook content and replace the old Screen lanes; Markdown pages can also become flashcards.
-- Local mode offers a [Pi agent](#pi-agent-local-mode) in the right panel, and [`pnpm dev:remote`](#use-it-from-other-devices-pnpm-devremote) opens the workspace from your other devices.
+- Local mode offers a [Pi agent](#pi-agent-local-mode) in a dock on the right edge, and [`pnpm dev:remote`](#use-it-from-other-devices-pnpm-devremote) opens the workspace from your other devices.
 - Choose from **nine palette families**, each with light and dark variants. **Flexoki** is the default; choices are saved in the browser.
 - Connect local agents through stdio or remote agents through Streamable HTTP MCP with named read-only or write grants.
 - The Files page manages notebook folders, notes, text files, and attachments: 3 MiB uploads, 5 MiB reads and changes, up to 200 changed files per operation.
@@ -129,20 +129,26 @@ They remain a file-move blocker until explicitly discarded.
 
 ## Pi agent (local mode)
 
-With [Pi](https://github.com/earendil-works/pi) installed, local mode adds an Agent tab to the right panel; the tab is hidden when `pi` (or the command in `MYGITNOTES_PI_COMMAND`) is not found.
+With [Pi](https://github.com/earendil-works/pi) installed, local mode adds the assistant dock: a column on the right edge of the window, beside the right rail, a zoomed note, a zoomed compilation, a Focus and the Files page.
+The toggles in the header (beside the Agents page button) and at the end of the editor toolbar open and close it; they are hidden when `pi` (or the command in `MYGITNOTES_PI_COMMAND`) is not found.
+``Ctrl+` `` from outside the dock opens it, focuses the message box and starts Pi if none runs; from the message box it returns to the editor the agent names.
 
-- `pi --mode rpc` starts in the background when the workspace loads; after a page reload or a `pnpm dev` restart, the panel resumes the same conversation.
+- The dock is 380px wide by default. Drag its left edge, or focus the edge and press the arrow keys, to resize it between 320px and half the window; Expand switches to half the window, at most 760px.
+  Whether it is open and how wide persist in the browser, and a zoomed note or compilation ends at the dock's left edge, so the two sit side by side.
+  Below 768px the dock is a full-screen sheet with a close button.
+- `pi --mode rpc` starts in the background when the workspace loads; after a page reload or a `pnpm dev` restart, the dock resumes the same conversation.
 - Pi runs in an agent workspace: a folder with its own core instructions (`AGENTS.md`) and skills (`.agents/skills/`), set up on the Agents page.
   It starts at the repository root; click the workspace name in the header to switch, which ends the current conversation.
 - MCP servers are configured in Pi itself (`pi mcp add`, or `/mcp` in the chat), never in the repository.
-- Each message can name the open file: **Line** adds the caret line or selection, **Path only** adds just the path, and **None** adds nothing.
+- Each message can name the open file. The context chip above the message box shows the target (`file:line`, the path, or *No file*) and opens a menu: **Line** adds the caret line or selection, **Path only** adds just the path, and **None** adds nothing.
   Paths are relative to the folder Pi runs in.
-- Switch the model and thinking level in the panel.
+- Switch the model and thinking level from the selects in the message box's bottom row.
   Replies render as Markdown, links to notes open in the app, and questions Pi's extensions ask appear as cards in the conversation.
+  Consecutive tool calls fold into one row (*Ran 2 tools: bash, read*) that opens onto the calls; it stays open while a tool runs or after one failed.
 - When Pi changes a file on disk, the open editor updates at once.
   Unsaved edits are merged first; if they cannot be merged, the editor blocks and keeps your draft.
 - Pi decides from `~/.pi/agent/trust.json` whether to load project settings.
-  Buttons in the send row open its trust decision, MCP servers and extension status.
+  Buttons in the message box's bottom row open its trust decision, MCP servers and extension status.
 
 Pi runs as your local user and can run any command, so the agent accepts only local connections; through `pnpm dev:remote` it admits only the Tailscale login that owns this machine.
 See the [security model](docs/agent/security/index.md).
@@ -151,7 +157,7 @@ See the [security model](docs/agent/security/index.md).
 
 `pnpm dev:remote` runs `pnpm dev` and shares it over HTTPS with Tailscale Serve, so a tablet or phone on the same tailnet can open it from another room.
 It shares the same local workspace; it does not select a GitHub/GitLab source.
-Other tailnet members can open the notes, while the Pi agent stays with the machine's owner; on a phone the agent takes the full screen.
+Other tailnet members can open the notes, while the Pi agent stays with the machine's owner; on a phone the dock takes the full screen.
 If it does not connect, see [Remote access with Tailscale](#remote-access-with-tailscale) below.
 
 ## Documentation

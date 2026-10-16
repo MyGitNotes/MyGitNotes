@@ -1,9 +1,9 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { getSavedPanelState, savePanelState } from './panel-state.js';
 
-/** The rail's own tools. The agent is one of them, so it works on the notebook list and beside any Focus pane. */
-export type WorkspaceToolId = 'calendar' | 'todo' | 'changes' | 'agent';
-export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = ['calendar', 'todo', 'changes', 'agent'];
+/** The rail's own tools. The agent has its own dock (see assistant-dock.ts), so it is not one of them. */
+export type WorkspaceToolId = 'calendar' | 'todo' | 'changes';
+export const WORKSPACE_TOOL_IDS: readonly WorkspaceToolId[] = ['calendar', 'todo', 'changes'];
 /** The active pane's document panel sections, offered in the rail while a Focus is displayed. */
 export type DocumentToolId = 'outline' | 'find' | 'frontmatter' | 'view' | 'history';
 export const DOCUMENT_TOOL_IDS: readonly DocumentToolId[] = ['outline', 'find', 'frontmatter', 'view', 'history'];

@@ -1,11 +1,9 @@
-import { Bot, Braces, ChevronDown, ChevronUp, History, ListTree, PanelRightClose, Search, SlidersHorizontal } from 'lucide-react';
+import { Braces, ChevronDown, ChevronUp, History, ListTree, PanelRightClose, Search, SlidersHorizontal } from 'lucide-react';
 import { NoteHistoryPanel, type NoteHistoryPanelProps } from '../NoteHistoryPanel.js';
 import { Button } from '../Button.js';
 import { NoteFrontmatterPanel } from './NoteFrontmatterPanel.js';
 import { NoteViewPanel } from './NoteViewPanel.js';
 import { NoteInfoPanel } from './NoteInfoPanel.js';
-import { AgentPanel } from '../pi-agent/AgentPanel.js';
-import { usePiAgentAvailable } from '../../lib/pi-agent/session.js';
 import type { OutlineHeading } from '../../lib/note-navigation.js';
 import type { NotebookMetadataField } from '../../lib/types.js';
 import type { NotePanelMode } from './types.js';
@@ -20,7 +18,6 @@ export interface NoteDocumentPanelProps {
   showFrontmatter: boolean;
   isViewPanelOpen: boolean;
   isHistoryOpen: boolean;
-  isAgentOpen: boolean;
   /** The note's history and versions; absent where the note has none to show. */
   history?: NoteHistoryPanelProps;
   /** The note's repository-relative path, for the info under the frontmatter. */
@@ -63,9 +60,8 @@ export interface NoteDocumentPanelProps {
 }
 
 /** The zoom/pane editor's document panel: its tab strip and the find, outline, frontmatter (with the note's info), view and history sections it switches between. */
-export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFindOpen, isOutlineOpen, showFrontmatter, isViewPanelOpen, isHistoryOpen, isAgentOpen, history, notePath, content, findQuery, setFindQuery, findIndex, matches, stepFind, findInputRef, outline, lineNumberOffset, outlineIndex, setOutlineIndex, chooseOutline, openOutline, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, metadata, setMetadata, statuses, metadataFields, availableTags, locked, notebookId, readOnly }: NoteDocumentPanelProps) {
+export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFindOpen, isOutlineOpen, showFrontmatter, isViewPanelOpen, isHistoryOpen, history, notePath, content, findQuery, setFindQuery, findIndex, matches, stepFind, findInputRef, outline, lineNumberOffset, outlineIndex, setOutlineIndex, chooseOutline, openOutline, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, metadata, setMetadata, statuses, metadataFields, availableTags, locked, notebookId, readOnly }: NoteDocumentPanelProps) {
   const { t } = useTranslation();
-  const agentAvailable = usePiAgentAvailable();
 
   const sections = (
     <>
@@ -146,7 +142,6 @@ export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFin
       )}
       {isViewPanelOpen && <NoteViewPanel />}
       {isHistoryOpen && history && <NoteHistoryPanel {...history} />}
-      {isAgentOpen && agentAvailable && <AgentPanel />}
     </>
   );
 
@@ -168,7 +163,7 @@ export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFin
             tabs[(target + tabs.length) % tabs.length].focus();
           }}
         >
-          <Button type='button' role='tab' aria-selected={isFindOpen} tabIndex={isFindOpen || !((isMarkdown && isOutlineOpen) || showFrontmatter || isViewPanelOpen || (history && isHistoryOpen) || isAgentOpen) ? 0 : -1} aria-label={t('editor.findInNote')} title={t('editor.findInNote')} onClick={() => setNotePanel(isFindOpen ? null : 'find')}>
+          <Button type='button' role='tab' aria-selected={isFindOpen} tabIndex={isFindOpen || !((isMarkdown && isOutlineOpen) || showFrontmatter || isViewPanelOpen || (history && isHistoryOpen)) ? 0 : -1} aria-label={t('editor.findInNote')} title={t('editor.findInNote')} onClick={() => setNotePanel(isFindOpen ? null : 'find')}>
             <Search aria-hidden='true' />
           </Button>
           {isMarkdown && (
@@ -185,11 +180,6 @@ export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFin
           {history && (
             <Button type='button' role='tab' aria-selected={isHistoryOpen} tabIndex={isHistoryOpen ? 0 : -1} aria-label={t('history.open')} title={t('history.open')} onClick={() => setNotePanel(isHistoryOpen ? null : 'history')}>
               <History aria-hidden='true' />
-            </Button>
-          )}
-          {agentAvailable && (
-            <Button type='button' role='tab' aria-selected={isAgentOpen} tabIndex={isAgentOpen ? 0 : -1} aria-label={t('piAgent.tab')} title={t('piAgent.tab')} onClick={() => setNotePanel(isAgentOpen ? null : 'agent')}>
-              <Bot aria-hidden='true' />
             </Button>
           )}
         </div>

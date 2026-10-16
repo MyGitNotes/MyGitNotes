@@ -3,15 +3,19 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { KeyboardRoot } from '../../lib/keyboard/KeyboardDispatcher.js';
-import { PanelProvider, usePanelContext } from '../../lib/panel-context.js';
+import { assistantDock, useAssistantDock } from '../../lib/assistant-dock.js';
+import { PanelProvider } from '../../lib/panel-context.js';
 import { useAgentInputFocusRequest } from '../../lib/pi-agent/input-focus.js';
 import { type AgentTarget, PiAgentContext, type PiAgentValue } from '../../lib/pi-agent/session.js';
 import { AgentFocusCommand } from './AgentFocusCommand.js';
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  assistantDock.reload();
+});
 afterEach(cleanup);
 
-/** Lets a test reveal what a component shows later: the agent tab opening, or a message box appearing once Pi is ready. */
+/** Lets a test reveal what a component shows later: a message box appearing once Pi is ready. */
 const reveal: { show: () => void; } = { show: () => {} };
 function useRevealed(): boolean {
   const [shown, setShown] = useState(false);
@@ -40,21 +44,15 @@ function SlowAgentPanel() {
   return <section className='pi-agent-panel'>{ready ? <textarea ref={input} aria-label='Message' /> : <p>Starting</p>}</section>;
 }
 
-/** The tools panel's agent tool, shown while the panel has it open. */
-function ToolsPanel() {
-  const { isOpen, activeTool } = usePanelContext();
-  return isOpen && activeTool === 'agent' ? <AgentBox /> : null;
+/** The assistant dock, which shows the agent's message box while it is open. */
+function Dock() {
+  const { open } = useAssistantDock();
+  return open ? <AgentBox /> : null;
 }
 
-/** A note editor whose document panel shows the agent once it is opened. */
+/** A note editor beside the dock. */
 function Editor() {
-  const open = useRevealed();
-  return (
-    <div>
-      <textarea aria-label='Note content' />
-      {open && <AgentBox />}
-    </div>
-  );
+  return <textarea aria-label='Note content' />;
 }
 
 function mount({ available = true, target = null, session = null }: { available?: boolean; target?: AgentTarget | null; session?: PiAgentValue['session']; }, children?: ReactNode) {
@@ -80,36 +78,43 @@ const pressToggle = (target: Element) => {
   return event;
 };
 
-it('opens the agent in the note editor it names and focuses the message box', () => {
-  const openAgent = vi.fn(() => reveal.show());
-  mount({ target: { notebookId: 'a', path: 'notes/a.md', openAgent, focusEditor: vi.fn() } }, <Editor />);
+it('opens the dock from a note editor and focuses the message box', () => {
+  mount(
+    { target: { notebookId: 'a', path: 'notes/a.md', focusEditor: vi.fn() } },
+    <>
+      <Editor />
+      <Dock />
+    </>,
+  );
   const note = screen.getByLabelText('Note content');
   note.focus();
+  expect(screen.queryByLabelText('Message')).toBeNull();
 
   const event = pressToggle(note);
   expect(event.defaultPrevented).toBe(true);
-  expect(openAgent).toHaveBeenCalledTimes(1);
+  expect(assistantDock.get().open).toBe(true);
   expect(document.activeElement).toBe(screen.getByLabelText('Message'));
+  expect(JSON.parse(localStorage.getItem('mygitnotes:assistant-dock')!).open).toBe(true);
 });
 
 it('returns from the agent to the note editor it names', () => {
   const focusEditor = vi.fn();
-  const openAgent = vi.fn();
-  mount({ target: { notebookId: 'a', path: 'notes/a.md', openAgent, focusEditor } }, <AgentBox />);
+  assistantDock.open();
+  mount({ target: { notebookId: 'a', path: 'notes/a.md', focusEditor } }, <Dock />);
   const message = screen.getByLabelText('Message');
   message.focus();
 
   pressToggle(message);
   expect(focusEditor).toHaveBeenCalledTimes(1);
-  expect(openAgent).not.toHaveBeenCalled();
+  expect(assistantDock.get().open).toBe(true);
 });
 
-it('opens the agent in the tools panel when no note editor is open', () => {
+it('opens the dock when no note editor is open', () => {
   mount(
     {},
     <div>
       <button type='button'>Elsewhere</button>
-      <ToolsPanel />
+      <Dock />
     </div>,
   );
   const button = screen.getByRole('button', { name: 'Elsewhere' });
@@ -119,12 +124,31 @@ it('opens the agent in the tools panel when no note editor is open', () => {
   expect(document.activeElement).toBe(screen.getByLabelText('Message'));
 });
 
+it('leaves the dock open when the key is pressed again from elsewhere', () => {
+  assistantDock.open();
+  mount(
+    {},
+    <>
+      <button type='button'>Elsewhere</button>
+      <Dock />
+    </>,
+  );
+  pressToggle(screen.getByRole('button', { name: 'Elsewhere' }));
+  expect(assistantDock.get().open).toBe(true);
+  expect(document.activeElement).toBe(screen.getByLabelText('Message'));
+});
+
 it('leaves the key to the page where the agent is not available', () => {
-  const openAgent = vi.fn();
-  mount({ available: false, target: { notebookId: 'a', path: 'notes/a.md', openAgent } }, <button type='button'>Elsewhere</button>);
+  mount(
+    { available: false, target: { notebookId: 'a', path: 'notes/a.md' } },
+    <>
+      <button type='button'>Elsewhere</button>
+      <Dock />
+    </>,
+  );
   const event = pressToggle(screen.getByRole('button', { name: 'Elsewhere' }));
   expect(event.defaultPrevented).toBe(false);
-  expect(openAgent).not.toHaveBeenCalled();
+  expect(assistantDock.get().open).toBe(false);
 });
 
 it('focuses the message box once it appears after its panel', () => {

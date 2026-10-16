@@ -2,7 +2,7 @@
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { AgentPanel } from './AgentPanel.js';
+import { type AgentDockControls, AgentPanel } from './AgentPanel.js';
 import { createCaretStore } from '../../lib/pi-agent/caret-store.js';
 import { type AgentTarget, PiAgentContext, type PiAgentValue } from '../../lib/pi-agent/session.js';
 import type { NotebookConfig } from '../../lib/types.js';
@@ -36,8 +36,20 @@ function noteTarget(caret = createCaretStore()): AgentTarget {
   return { notebookId: 'nb', path: 'notes/plan.md', caret, content: () => 'one\ntwo three', lineNumberOffset: 3 };
 }
 
-function panel(value: PiAgentValue) {
-  render(createElement(PiAgentContext.Provider, { value }, createElement(AgentPanel)));
+function panel(value: PiAgentValue, dock?: AgentDockControls) {
+  render(createElement(PiAgentContext.Provider, { value }, createElement(AgentPanel, { dock })));
+}
+
+/** The chip naming what each message carries; it opens the menu of Line, Path only and None. */
+const contextChip = () => screen.getByRole('button', { name: /^Context sent with each message/ });
+async function chooseContext(name: string) {
+  contextChip().focus();
+  await act(async () => {
+    fireEvent.keyDown(contextChip(), { key: 'Enter' });
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('menuitemradio', { name }));
+  });
 }
 
 const write = (text: string) => fireEvent.change(screen.getByRole('textbox', { name: 'Message to Pi' }), { target: { value: text } });
@@ -49,7 +61,7 @@ it('sends a message with the note path from the folder Pi runs in and the live c
   expect(screen.getByText('Knowledge Base')).toBeTruthy();
   await waitFor(() => expect(value.locate).toHaveBeenCalledWith('notes/plan.md', 'nb'));
   act(() => target.caret!.set(8));
-  await waitFor(() => expect(screen.getByText('plan.md:5:5').getAttribute('title')).toBe('/home/me/workspace/notes/plan.md'));
+  await waitFor(() => expect(screen.getByText('plan.md:5:5').closest('button')!.getAttribute('title')).toBe('/home/me/workspace/notes/plan.md'));
   write('Explain this');
   fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message to Pi' }), { key: 'Enter' });
   expect(value.send).toHaveBeenCalledWith('Explain this', { file: 'notes/plan.md', line: 5, column: 5 });
@@ -67,16 +79,27 @@ it('sends the selected lines when text is selected, in either direction', async 
   expect(value.send).toHaveBeenCalledWith('Rewrite this', { file: 'notes/plan.md', line: 4, column: 3, endLine: 5, endColumn: 10 });
 });
 
-it('sends the path only, or nothing, as the chosen context mode says, and remembers the choice', async () => {
+it('offers Line, Path only and None in the context chip menu, sends what the choice says, and remembers it', async () => {
   const value = agent({ target: noteTarget() });
   panel(value);
   await waitFor(() => expect(screen.getByText('plan.md:4:1')).toBeTruthy());
-  fireEvent.click(screen.getByRole('radio', { name: 'Path only' }));
+  // The chip is a menu button, not a three-button switch.
+  expect(contextChip().getAttribute('aria-haspopup')).toBe('menu');
+  expect(screen.queryByRole('radiogroup')).toBeNull();
+  contextChip().focus();
+  await act(async () => {
+    fireEvent.keyDown(contextChip(), { key: 'Enter' });
+  });
+  expect(screen.getAllByRole('menuitemradio').map(item => [item.textContent, item.getAttribute('aria-checked')])).toEqual([['Line', 'true'], ['Path only', 'false'], ['None', 'false']]);
+  await act(async () => {
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Path only' }));
+  });
   expect(screen.getByText('plan.md')).toBeTruthy();
   write('What is this?');
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
   expect(value.send).toHaveBeenLastCalledWith('What is this?', { file: 'notes/plan.md' });
-  fireEvent.click(screen.getByRole('radio', { name: 'None' }));
+  await chooseContext('None');
+  expect(screen.getByText('No file')).toBeTruthy();
   write('General question');
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
   expect(value.send).toHaveBeenLastCalledWith('General question', undefined);
@@ -87,7 +110,16 @@ it('names a compilation by path, since it has no caret, and offers no context on
   const value = agent({ target: { notebookId: 'nb', path: 'notes/reading.compilation.yml' } });
   panel(value);
   await waitFor(() => expect(screen.getByText('reading.compilation.yml')).toBeTruthy());
-  expect((screen.getByRole('radio', { name: 'Line' }) as HTMLButtonElement).disabled).toBe(true);
+  // Without a caret, Line is disabled and the path is what each message names.
+  contextChip().focus();
+  await act(async () => {
+    fireEvent.keyDown(contextChip(), { key: 'Enter' });
+  });
+  expect(screen.getByRole('menuitemradio', { name: 'Line' }).hasAttribute('data-disabled')).toBe(true);
+  expect(screen.getByRole('menuitemradio', { name: 'Path only' }).getAttribute('aria-checked')).toBe('true');
+  await act(async () => {
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+  });
   write('Summarize');
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
   expect(value.send).toHaveBeenCalledWith('Summarize', { file: 'notes/reading.compilation.yml' });
@@ -95,7 +127,7 @@ it('names a compilation by path, since it has no caret, and offers no context on
 
   const list = agent();
   panel(list);
-  expect(screen.queryByRole('radiogroup')).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Context sent with each message/ })).toBeNull();
   write('Hello');
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
   expect(list.send).toHaveBeenCalledWith('Hello', undefined);
@@ -212,7 +244,7 @@ const sessionControls = () => ['New conversation', 'End session'].filter(name =>
 it('shows a start under way as loading, not as a button, until the session answers', () => {
   panel(agent({ session: null, connected: false, historyLoaded: false, starting: true }));
   expect(screen.getByRole('status').textContent).toBe('Starting Pi…');
-  expect(screen.getByText('Starting')).toBeTruthy();
+  expect(screen.getByRole('img', { name: 'Starting' }).getAttribute('title')).toBe('Starting');
   expect(screen.queryByRole('button', { name: 'Start session' })).toBeNull();
   expect(screen.queryByRole('textbox', { name: 'Message to Pi' })).toBeNull();
   expect(sessionControls()).toEqual([]);
@@ -221,7 +253,7 @@ it('shows a start under way as loading, not as a button, until the session answe
 it('rests without a session, offering only its workspace and a start, with no message box or session controls', () => {
   const value = agent({ session: null, connected: false, historyLoaded: false });
   panel(value);
-  expect(screen.getByText('Standby')).toBeTruthy();
+  expect(screen.getByRole('img', { name: 'Standby' }).getAttribute('data-status')).toBe('none');
   expect(screen.getByText('Pi is not running. Start it to pick up the conversation.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Change agent workspace' })).toBeTruthy();
   expect(screen.queryByRole('textbox', { name: 'Message to Pi' })).toBeNull();
@@ -236,7 +268,7 @@ it('joins a running session behind a loading notice until its history arrives, t
   const value = agent({ connected: true, historyLoaded: false, modelState: { model: 'anthropic/claude-opus', models: [{ value: 'anthropic/claude-opus', label: 'Claude Opus (anthropic)' }], levels: ['off', 'high'] } });
   panel(value);
   expect(screen.getByRole('status').textContent).toBe('Connecting to Pi…');
-  expect(screen.getByText('Starting')).toBeTruthy();
+  expect(screen.getByRole('img', { name: 'Starting' })).toBeTruthy();
   expect(screen.queryByRole('textbox', { name: 'Message to Pi' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Model' })).toBeNull();
   expect(sessionControls()).toEqual([]);
@@ -369,4 +401,58 @@ it("shows an edition's model setup instead of Pi's own, with the check-again but
   expect(screen.getByText('Add a key in Settings')).toBeTruthy();
   expect(screen.queryByText('Pi has no model it can use yet.')).toBeNull();
   expect(screen.getByRole('button', { name: 'Check again' })).toBeTruthy();
+});
+
+it('puts the model and thinking selects in the message box, beside the info buttons and Send, not in a row of their own', () => {
+  panel(agent({ modelState: { model: 'anthropic/claude-opus', thinking: 'high', models: [{ value: 'anthropic/claude-opus', label: 'Claude Opus (anthropic)' }], levels: ['low', 'high'] } }));
+  const bar = screen.getByRole('button', { name: 'Send' }).closest('.pi-agent-composer-bar')!;
+  expect(bar.contains(screen.getByRole('combobox', { name: 'Model' }))).toBe(true);
+  expect(bar.contains(screen.getByRole('combobox', { name: 'Thinking level' }))).toBe(true);
+  expect(bar.contains(screen.getByRole('button', { name: 'Trusted' }))).toBe(true);
+  expect(screen.getByRole('textbox', { name: 'Message to Pi' }).closest('.pi-agent-composer-card')).toBe(bar.closest('.pi-agent-composer-card'));
+});
+
+it('starts the message box at two rows with a short placeholder', () => {
+  panel(agent());
+  const box = screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement;
+  expect(box.rows).toBe(2);
+  expect(box.placeholder).toBe('Ask Pi, / for commands');
+});
+
+it('grows the message box with its text, up to two fifths of the panel', () => {
+  panel(agent());
+  const box = screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement;
+  const panelElement = box.closest('.pi-agent-panel') as HTMLElement;
+  Object.defineProperty(panelElement, 'clientHeight', { configurable: true, value: 500 });
+  Object.defineProperty(box, 'scrollHeight', { configurable: true, value: 120 });
+  write('a\nb\nc\nd');
+  expect(box.style.height).toBe('120px');
+  Object.defineProperty(box, 'scrollHeight', { configurable: true, value: 900 });
+  write('a\nb\nc\nd\ne\nf');
+  expect(box.style.height).toBe('200px');
+});
+
+it('adds Expand and Close to the header in the dock only, and shows the status as a labelled dot', () => {
+  const dock = { expanded: false, onToggleExpanded: vi.fn(), onClose: vi.fn() };
+  panel(agent(), dock);
+  const header = screen.getByRole('img', { name: 'Ready' }).closest('header')!;
+  expect(header.querySelector('.pi-agent-status')!.getAttribute('data-status')).toBe('ready');
+  expect([...header.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual(['Knowledge Base', 'New conversation', 'End session', 'Expand', 'Close agent']);
+  fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
+  expect(dock.onToggleExpanded).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Close agent' }));
+  expect(dock.onClose).toHaveBeenCalledTimes(1);
+  cleanup();
+  panel(agent(), { ...dock, expanded: true });
+  expect(screen.getByRole('button', { name: 'Shrink' })).toBeTruthy();
+  cleanup();
+  panel(agent());
+  expect(screen.queryByRole('button', { name: 'Expand' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Close agent' })).toBeNull();
+});
+
+it('shows only the status, the workspace button and Close in the dock until a session has its history', () => {
+  panel(agent({ session: null, connected: false, historyLoaded: false }), { expanded: false, onToggleExpanded: vi.fn(), onClose: vi.fn() });
+  const header = screen.getByRole('img', { name: 'Standby' }).closest('header')!;
+  expect([...header.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual(['Change agent workspace', 'Close agent']);
 });

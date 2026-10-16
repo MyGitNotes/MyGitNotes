@@ -1,13 +1,16 @@
 .pi-agent-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; font-size: 12px; }
 .pi-agent-gate { padding: 12px; color: var(--color-muted); line-height: 1.5; }
-.pi-agent-header { display: flex; flex: none; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--color-line); }
-.pi-agent-status { flex: none; padding: 2px 8px; border-radius: 999px; background: var(--color-sidebar); color: var(--color-muted); font-size: 11px; font-weight: 600; }
-.pi-agent-status[data-status='ready'] { background: var(--color-primary-light); color: var(--color-primary); }
-.pi-agent-status[data-status='exited'] { background: var(--color-danger-soft); color: var(--color-danger); }
+.pi-agent-header { display: flex; flex: none; align-items: center; gap: 2px; min-height: 36px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--color-line); }
+/* A dot coloured by the session's status; its label is the tooltip and the accessible name. */
+.pi-agent-status { flex: none; width: 8px; height: 8px; margin-right: 6px; border-radius: 999px; background: var(--color-muted); opacity: 0.55; }
+.pi-agent-status[data-status='ready'] { background: var(--color-success); opacity: 1; }
+.pi-agent-status[data-status='starting'] { background: var(--color-warning); opacity: 1; }
+.pi-agent-status[data-status='exited'] { background: var(--color-danger); opacity: 1; }
 .pi-agent-cwd { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 2px; min-width: 0; padding: 2px 4px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--color-muted); font-size: 12px; cursor: pointer; }
 .pi-agent-cwd > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pi-agent-cwd svg { flex: none; width: 12px; height: 12px; }
 .pi-agent-cwd:hover, .pi-agent-cwd[aria-expanded='true'] { background: var(--color-sidebar); color: var(--color-text); }
+.pi-agent-header .ui-icon-button { width: 28px; height: 28px; padding: 5px; }
 .pi-agent-header .ui-icon-button svg { width: 15px; height: 15px; }
 /* The conversation's name trails the folder in the header's free space; empty, it still pushes the buttons to the end. */
 .pi-agent-session-name { flex: 0 1 auto; min-width: 0; margin-right: auto; overflow: hidden; color: var(--color-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -15,23 +18,35 @@
 .pi-agent-transcript-content { display: flex; flex-direction: column; gap: 10px; }
 .pi-agent-empty, .pi-agent-hint { color: var(--color-muted); line-height: 1.5; }
 .pi-agent-message { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.pi-agent-message[data-role='user'] { align-self: flex-end; max-width: 92%; padding: 8px 10px; border-radius: var(--radius-panel); background: var(--color-primary-light); }
+/* Your messages sit in a lightly tinted bubble at the end side; Pi's replies are unboxed prose. */
+.pi-agent-message[data-role='user'] { align-self: flex-end; max-width: 92%; padding: 7px 10px; border-radius: var(--radius-panel); background: color-mix(in srgb, var(--color-primary) 12%, transparent); }
 .pi-agent-text { margin: 0; color: var(--color-text); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pi-agent-focus-chip { align-self: flex-start; max-width: 100%; overflow: hidden; padding: 1px 6px; border-radius: var(--radius-control); background: var(--color-sidebar); color: var(--color-muted); font: 11px ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .pi-agent-thinking summary, .pi-agent-tool summary { cursor: pointer; color: var(--color-muted); }
-.pi-agent-thinking .pi-agent-text { margin-top: 4px; color: var(--color-muted); }
+.pi-agent-thinking summary { font-size: 11px; }
+.pi-agent-thinking .pi-agent-text { margin-top: 4px; color: var(--color-muted); font-size: 12px; }
 .pi-agent-tool { border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-surface); }
 .pi-agent-tool summary { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 5px 8px; list-style: none; }
 .pi-agent-tool summary::-webkit-details-marker { display: none; }
 .pi-agent-tool summary svg { flex: none; width: 13px; height: 13px; }
 .pi-agent-tool-name { flex: none; color: var(--color-text); font-weight: 600; }
 .pi-agent-tool-args { flex: 1; min-width: 0; overflow: hidden; font: 11px ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
-.pi-agent-tool[data-state='running'] .pi-agent-tool-state, .pi-agent-tool[data-state='pending'] .pi-agent-tool-state, .pi-agent-working svg { animation: pi-agent-spin 1s linear infinite; }
-.pi-agent-tool[data-state='done'] .pi-agent-tool-state { color: var(--color-success); }
-.pi-agent-tool[data-state='error'] .pi-agent-tool-state { color: var(--color-danger); }
+.pi-agent-tool[data-state='running'] .pi-agent-tool-state, .pi-agent-tool[data-state='pending'] .pi-agent-tool-state, .pi-agent-tool-group[data-state='running'] > summary .pi-agent-tool-state, .pi-agent-working svg { animation: pi-agent-spin 1s linear infinite; }
+.pi-agent-tool[data-state='done'] .pi-agent-tool-state, .pi-agent-tool-group[data-state='done'] > summary .pi-agent-tool-state { color: var(--color-success); }
+.pi-agent-tool[data-state='error'] .pi-agent-tool-state, .pi-agent-tool-group[data-state='error'] > summary .pi-agent-tool-state { color: var(--color-danger); }
+/* Consecutive tool calls fold into one summary row that opens onto the calls; an icon and colour carry the state, not a border. */
+.pi-agent-tool-group > summary { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 6px; border-radius: var(--radius-control); color: var(--color-muted); cursor: pointer; list-style: none; }
+.pi-agent-tool-group > summary::-webkit-details-marker { display: none; }
+.pi-agent-tool-group > summary:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+.pi-agent-tool-group > summary svg { flex: none; width: 13px; height: 13px; }
+.pi-agent-tool-group-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-agent-tool-group-chevron { transition: transform 150ms ease; }
+.pi-agent-tool-group[open] > summary .pi-agent-tool-group-chevron { transform: rotate(90deg); }
+.pi-agent-tool-group[data-state='error'] > summary { background: var(--color-danger-soft); color: var(--color-danger); }
+.pi-agent-tool-group-body { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-left: 14px; }
 .pi-agent-pre { max-height: 240px; margin: 0; padding: 6px 8px; overflow: auto; border-top: 1px solid var(--color-line); background: var(--color-code-bg); color: var(--color-text); font: 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pi-agent-idle .pi-agent-pre { border: 1px solid var(--color-line); border-radius: var(--radius-control); }
-.pi-agent-notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--color-muted); line-height: 1.5; }
+.pi-agent-notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--color-muted); font-size: 11px; line-height: 1.5; opacity: 0.85; }
 .pi-agent-notice svg { flex: none; width: 13px; height: 13px; margin-top: 2px; }
 .pi-agent-notice[data-level='warning'] svg { color: var(--color-warning); }
 .pi-agent-notice[data-level='error'], .pi-agent-error { color: var(--color-danger); }
@@ -40,7 +55,7 @@
 .pi-agent-working svg { width: 13px; height: 13px; }
 .pi-agent-idle { display: flex; flex: none; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; border-bottom: 1px solid var(--color-line); }
 .pi-agent-idle p { margin: 0; color: var(--color-muted); }
-.pi-agent-dialog, .pi-agent-switch { display: flex; flex: none; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-sidebar); }
+.pi-agent-dialog, .pi-agent-switch { display: flex; flex: none; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: color-mix(in srgb, var(--color-text) 3%, transparent); }
 .pi-agent-switch { margin: 8px 8px 0; }
 .pi-agent-dialog header { display: flex; align-items: center; gap: 6px; }
 .pi-agent-dialog header svg { flex: none; width: 15px; height: 15px; color: var(--color-primary); }
@@ -51,26 +66,36 @@
 .pi-agent-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .pi-agent-check { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-text); }
 .pi-agent-switch label.pi-agent-check { flex-direction: row; }
-.pi-agent-composer { display: flex; flex: none; flex-direction: column; gap: 6px; padding: 8px; border-top: 1px solid var(--color-line); }
-.pi-agent-composer textarea { resize: vertical; min-height: 56px; font-size: 13px; }
+/* The message box is a raised card: the context chip, the queue, the text, then one row of controls. */
+.pi-agent-composer { display: flex; flex: none; flex-direction: column; padding: 8px; }
+.pi-agent-composer-card { display: flex; min-width: 0; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-md); }
+.pi-agent-composer-card:focus-within { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line)); }
+/* The text grows with what is typed, from two rows to two fifths of the panel (the panel sets the height). */
+.pi-agent-composer textarea { display: block; width: 100%; min-height: 2.9em; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--color-text); font: inherit; font-size: 13px; line-height: 1.5; outline: none; resize: none; overflow-y: auto; box-shadow: none; }
+.pi-agent-composer textarea::placeholder { color: var(--color-muted); }
 .pi-agent-composer .ui-button svg { width: 14px; height: 14px; }
 @keyframes pi-agent-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .pi-agent-tool .pi-agent-tool-state, .pi-agent-working svg { animation: none; } }
-.pi-agent-context { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.pi-agent-modes { display: inline-flex; flex: none; overflow: hidden; border: 1px solid var(--color-line); border-radius: var(--radius-control); }
-.pi-agent-modes button { padding: 2px 8px; border: 0; background: transparent; color: var(--color-muted); font-size: 11px; cursor: pointer; }
-.pi-agent-modes button + button { border-left: 1px solid var(--color-line); }
-.pi-agent-modes button[aria-checked='true'] { background: var(--color-sidebar); color: var(--color-text); }
-.pi-agent-modes button:disabled { cursor: default; opacity: 0.45; }
-.pi-agent-context .pi-agent-focus-chip { align-self: center; min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .pi-agent-tool .pi-agent-tool-state, .pi-agent-tool-group .pi-agent-tool-state, .pi-agent-working svg { animation: none; } .pi-agent-tool-group-chevron { transition: none; } }
+.pi-agent-context { display: flex; min-width: 0; }
+/* The target the next message names; it opens a menu of Line, Path only and None. */
+.pi-agent-context-chip { display: inline-flex; align-items: center; gap: 4px; min-width: 0; min-height: 26px; max-width: 100%; padding: 2px 6px; border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-sidebar); color: var(--color-muted); font: 11px ui-monospace, monospace; cursor: pointer; }
+.pi-agent-context-chip:hover, .pi-agent-context-chip[data-state='open'] { color: var(--color-text); }
+.pi-agent-context-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-agent-context-chip svg { flex: none; width: 12px; height: 12px; }
+.pi-agent-context-check { margin-left: auto; }
+.pi-agent-context-check svg { width: 14px; height: 14px; }
 .folder-picker-notebook { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--color-muted); }
 /* Pi's trust decision sits beside the info button at the start of the send row, in an icon button's box. */
-.pi-agent-indicators { display: flex; align-items: center; gap: 2px; margin-right: auto; }
-.pi-agent-model-row { display: flex; flex: none; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--color-line); }
-.pi-agent-model-row .pi-agent-model { flex: 1 1 auto; min-width: 0; }
-.pi-agent-model-row .pi-agent-thinking { flex: none; width: 96px; }
-/* A phone's bottom sheet is too short to converse in, so the agent takes the screen above the tool row. */
-@media (max-width: 767px) { .right-panel:has(.pi-agent-panel) { top: calc(var(--visual-top, 0px) + max(8px, env(safe-area-inset-top))); height: calc(var(--visual-height, 100dvh) - 76px - env(safe-area-inset-bottom) - max(8px, env(safe-area-inset-top))); transform: none; } .right-panel:has(.pi-agent-panel) .right-panel-content { flex: 1 1 auto; max-height: none; } .note-document-panel:has(.pi-agent-panel) { top: max(8px, env(safe-area-inset-top)); max-height: none; } }
+.pi-agent-indicators { display: flex; flex: none; align-items: center; gap: 2px; }
+/* The bottom row: info buttons and context usage, the model and thinking selects, Stop and Send. */
+.pi-agent-composer-bar { flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 2px; }
+.pi-agent-composer-bar .ui-icon-button { width: 26px; height: 26px; padding: 5px; }
+.pi-agent-composer-bar > .ui-button { flex: none; }
+.pi-agent-model-row { display: flex; flex: 1 1 0; min-width: 0; justify-content: flex-end; gap: 0; }
+.pi-agent-model-row .pi-agent-model { flex: 1 1 0; min-width: 0; }
+.pi-agent-model-row .pi-agent-thinking { flex: none; width: auto; max-width: none; }
+.pi-agent-model-row .select-trigger { height: 28px; min-height: 0; padding-inline: 6px; gap: 2px; border-color: transparent; background: transparent; color: var(--color-muted); font-size: 12px; }
+.pi-agent-model-row .select-trigger:hover { color: var(--color-text); }
 /* Pi's replies in the notes' prose style, scaled down to the panel; doubled classes outrank .prose-custom. */
 .prose-custom.pi-agent-markdown { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
 .prose-custom.pi-agent-markdown > :first-child { margin-top: 0; }
@@ -78,6 +103,8 @@
 .prose-custom.pi-agent-markdown :is(p, ul, ol, pre, blockquote, .markdown-table-scroll) { margin-bottom: 0.6em; line-height: 1.55; }
 .prose-custom.pi-agent-markdown :is(h1, h2, h3, h4, h5, h6) { margin: 0.8em 0 0.4em; padding: 0; border: 0; font-size: 1.05em; font-weight: 600; }
 .prose-custom.pi-agent-markdown pre { max-width: 100%; overflow-x: auto; font-size: 12px; }
+/* Inline code in a reply keeps the text colour on the code background, not the primary colour the notes use. */
+.prose-custom.pi-agent-markdown code:not(pre code) { color: var(--color-text); }
 /* The agent workspaces the switch dialog offers, one row each, the current one marked. */
 .pi-agent-workspace-list { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow-y: auto; margin: 0; padding: 0; list-style: none; }
 .pi-agent-workspace-group { padding: 6px 2px 2px; font-size: 11px; color: var(--color-muted); }
