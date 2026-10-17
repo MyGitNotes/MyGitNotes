@@ -38,8 +38,8 @@ export function useBrowseRoute({ editorRoute, config, location, queryState, setF
   const folderRoot = config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root.replace(/\/$/, '');
   // The Notes page browses one folder; links and bookmarks from before single selection keep their first.
   const selectedFolder = selectedFolders.length > 0 && folderRoot && selectedFolders[0].startsWith(folderRoot + '/') ? selectedFolders[0].slice(folderRoot.length + 1) : route.folder;
-  // Notes and Graph query every notebook while the all-notebooks toggle is on; the current notebook stays selected.
-  const scopeNotebookId = route.allNotebooks ? 'all' : selectedNotebookId;
+  // The graph queries every notebook while its all-notebooks toggle is on; the Notes page always shows the current notebook.
+  const scopeNotebookId = route.allNotebooks && activeTab === 'graph' ? 'all' : selectedNotebookId;
   const selectedStatus = route.status;
   const showHidden = route.showHidden;
 

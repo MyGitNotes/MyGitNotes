@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFolderTree, expandedPathsForFolder, getBreadcrumbs, getImmediateSubfolders, resolveAllNotebooksFolderSelect } from './folder-tree.js';
+import { buildFolderTree, expandedPathsForFolder, getBreadcrumbs, getImmediateSubfolders } from './folder-tree.js';
 import { FolderItem } from './types.js';
 
 describe('folder-tree', () => {
@@ -37,18 +37,6 @@ describe('folder-tree', () => {
 
     const nestedBreadcrumbs = getBreadcrumbs('projects/web', folders, 'nb1');
     expect(nestedBreadcrumbs).toEqual([{ name: 'All folders', path: null }, { name: 'Projects', path: 'projects' }, { name: 'Web App Dev', path: 'projects/web' }]);
-  });
-
-  it('resolves a plain click to null when only one notebook is shown, deferring to the caller', () => {
-    expect(resolveAllNotebooksFolderSelect('nb1', 'notes/nb1', 'projects')).toBeNull();
-  });
-
-  it('scopes a plain click in the "all notebooks" view to that folder\'s own notebook path', () => {
-    expect(resolveAllNotebooksFolderSelect('all', 'notes/nb1', 'projects')).toEqual(['notes/nb1/projects']);
-  });
-
-  it('clears the filter when switching to "All folders" in the "all notebooks" view', () => {
-    expect(resolveAllNotebooksFolderSelect('all', 'notes/nb1', null)).toEqual([]);
   });
 
   it('builds a nested tree with accurate depth and synthesized parent nodes', () => {

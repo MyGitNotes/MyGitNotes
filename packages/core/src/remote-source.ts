@@ -299,7 +299,9 @@ export abstract class RemoteSource {
   /** Query read model over this reader's snapshot. Notebook indexes and derived results are cached by notebook content. */
   catalog(): RepositoryCatalog {
     const local = new Map<string, Promise<NoteListItem[]>>();
+    let folders: Promise<FolderItem[]> | undefined;
     return {
+      folders: async nb => (await (folders ??= this.folders())).filter(folder => folder.notebookId === nb.id),
       revision: async (fresh = false) => (await this.getSnapshot(fresh)).sha,
       index: nb => {
         let pending = local.get(nb.id);

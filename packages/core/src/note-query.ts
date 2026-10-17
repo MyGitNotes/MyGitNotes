@@ -73,9 +73,11 @@ export interface NoteQuery {
   sort: SortField;
   order: SortOrder;
   kind: NoteKindFilter;
+  /** `folder` orders the notes by their folder first, in the sidebar's folder order, so a list can show one group per folder. */
+  group: 'folder' | null;
 }
 
-export const DEFAULT_NOTE_QUERY: NoteQuery = { notebookId: 'all', folders: [], descendants: true, tags: [], tagMode: 'any', status: null, withoutStatus: false, showHidden: false, q: '', match: 'all', exclude: [], sort: 'updated', order: 'desc', kind: 'note' };
+export const DEFAULT_NOTE_QUERY: NoteQuery = { notebookId: 'all', folders: [], descendants: true, tags: [], tagMode: 'any', status: null, withoutStatus: false, showHidden: false, q: '', match: 'all', exclude: [], sort: 'updated', order: 'desc', kind: 'note', group: null };
 
 export interface NoteQueryPage {
   revisions: RevisionSet;
@@ -182,6 +184,7 @@ export function noteQuerySearch(query: Partial<NoteQuery>, extra: { revisions?: 
   if (value.kind !== DEFAULT_NOTE_QUERY.kind) params.set('kind', value.kind);
   if (value.sort !== DEFAULT_NOTE_QUERY.sort) params.set('sort', value.sort);
   if (value.order !== DEFAULT_NOTE_QUERY.order) params.set('order', value.order);
+  if (value.group) params.set('group', value.group);
   if (extra.revisions && Object.keys(extra.revisions).length) params.set('revisions', JSON.stringify(extra.revisions));
   if (extra.cursor) params.set('cursor', extra.cursor);
   if (extra.limit !== undefined) params.set('limit', String(extra.limit));

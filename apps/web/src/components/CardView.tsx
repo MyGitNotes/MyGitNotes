@@ -1,6 +1,6 @@
 import { NoteMoveButton } from './NoteMoveButton.js';
 import React from 'react';
-import { Clock, Trash2 } from 'lucide-react';
+import { Clock, Folder, Trash2 } from 'lucide-react';
 import { NoteTagActions, NoteTags } from './NoteTags.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
@@ -14,6 +14,7 @@ import { type BrowseKind, NotesEmptyState } from './NotesEmptyState.js';
 import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteZoomButton } from './NoteZoomButton.js';
 import { useNoteTouchSelection } from '../lib/use-note-touch-selection.js';
+import type { NoteGroupOf } from '../lib/note-groups.js';
 
 interface CardViewProps {
   notes: NoteListItem[];
@@ -42,9 +43,11 @@ interface CardViewProps {
   selectedKeys?: Set<string>;
   /** Modifier-click (or the checkbox, once shown) toggles a card's membership; a plain click still opens it. */
   onToggleSelect?: (note: NoteListItem) => void;
+  /** Present while the notes come grouped by folder: a heading starts each folder. */
+  groupOf?: NoteGroupOf;
 }
 
-export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onNewNote, newKind, onUpdateNoteStatus, tagActions, focusMode, highlightQuery = '', selectedKeys, onToggleSelect }) => {
+export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onNewNote, newKind, onUpdateNoteStatus, tagActions, focusMode, highlightQuery = '', selectedKeys, onToggleSelect, groupOf }) => {
   const { t } = useTranslation();
   const touchSelection = useNoteTouchSelection(onToggleSelect, !readOnly && Boolean(onMoveNote));
   const { pendingDeletePath, requestDelete } = useDeleteConfirm(confirmDelete, path => {
@@ -118,7 +121,20 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
           <div className={gridClassName}>{uncommitted.map(note => renderCard(note, true))}</div>
         </section>
       )}
-      <div className={gridClassName}>{/* Note Cards */}{notes.map(note => renderCard(note))}</div>
+      <div className={gridClassName}>
+        {notes.map((note, index) => {
+          const group = groupOf?.(note);
+          const header = group && (index === 0 || groupOf!(notes[index - 1]).key !== group.key)
+            ? (
+              <h3 className='note-group-heading'>
+                <Folder aria-hidden='true' />
+                <span>{group.label}</span>
+              </h3>
+            )
+            : null;
+          return header ? <React.Fragment key={noteRefKey(note)}>{header}{renderCard(note)}</React.Fragment> : renderCard(note);
+        })}
+      </div>
     </>
   );
 };

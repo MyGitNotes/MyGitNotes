@@ -71,9 +71,9 @@ export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, s
       </div>
       {/* View Switcher Mobile */}
       <Select aria-label={t('filters.noteView')} value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)} options={[{ value: 'flat', label: t('view.flat') }, { value: 'list', label: t('layout.list') }, { value: 'kanban', label: t('layout.kanban') }]} className='mobile-only note-view-select px-1' />
-      {viewMode === 'flat' && (
+      {viewMode !== 'kanban' && (
         <Select
-          className='mobile-only note-toolbar-sort'
+          className='note-toolbar-sort'
           aria-label={t('sort.select')}
           value={`${sortField}:${sortOrder}`}
           onValueChange={value => {

@@ -67,7 +67,9 @@ export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags,
 
   const baseQuery = useMemo<Partial<NoteQuery>>(() => ({ kind: route.kind, notebookId: scopeNotebookId, folders: scopeFolders, descendants, tags: selectedTags, tagMode: route.tagMode, status: selectedStatus, showHidden, q: debouncedSearch, sort: sortField, order: sortOrder }), [route.kind, scopeNotebookId, scopeFolders, descendants, selectedTags, route.tagMode, selectedStatus, showHidden, debouncedSearch, sortField, sortOrder]);
   // Browsing a folder lists that one directory; searching or filtering lists the whole result.
-  const listQuery = useMemo<Partial<NoteQuery>>(() => (filtered || kindList || viewMode === 'flat' || viewMode === 'kanban' ? baseQuery : { ...baseQuery, folders: currentDirectory ? [currentDirectory] : [], descendants: false }), [baseQuery, filtered, kindList, viewMode, currentDirectory]);
+  // A list spanning the subtree comes grouped by folder, in the sidebar's order, so its rows can say where each note sits.
+  const listQuery = useMemo<Partial<NoteQuery>>(() => (filtered || kindList || viewMode === 'flat' ? { ...baseQuery, group: 'folder' } : viewMode === 'kanban' ? baseQuery : { ...baseQuery, folders: currentDirectory ? [currentDirectory] : [], descendants: false }), [baseQuery, filtered, kindList, viewMode, currentDirectory]);
+  const groupedByFolder = viewMode !== 'kanban' && (filtered || kindList || viewMode === 'flat');
   // Only the notes page lists notes; the other tabs ask for what they draw themselves.
   const listResult = useNoteList(browsingNotes && viewMode !== 'kanban' ? listQuery : null, { hide: folderIndex?.path });
   // Kanban pages each column on its own, so the filter result count needs its own answer.
@@ -75,7 +77,7 @@ export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags,
   const filterCount = counted ? (viewMode === 'kanban' ? kanbanCount.total : listResult.total) : (facetsQuery.facets ? notebookFacets.total : null);
   const displayedNotes = listResult.notes;
 
-  const filterProps: FilterControls = { value: noteFilters, neighbors: route.neighbors, notebooks: config?.notebooks || [], folders, tags: Object.keys(notebookFacets.tags), statuses: notebookStatuses, count: filterCount, allNotebooks: route.allNotebooks, onAllNotebooksChange: changeAllNotebooks, onChange: changeFilters, onClear: clearFilters };
+  const filterProps: FilterControls = { value: noteFilters, neighbors: route.neighbors, notebooks: config?.notebooks || [], folders, tags: Object.keys(notebookFacets.tags), statuses: notebookStatuses, count: filterCount, allNotebooks: graph && route.allNotebooks, onAllNotebooksChange: changeAllNotebooks, onChange: changeFilters, onClear: clearFilters };
 
   // Hierarchical Subfolder Discovery for current folder
   const immediateSubfolders = useMemo(() => {
@@ -88,5 +90,5 @@ export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags,
     return getBreadcrumbs(selectedFolder, folders, selectedNotebookId, t('folder.allFolders'));
   }, [selectedFolder, folders, selectedNotebookId, t]);
 
-  return { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch };
+  return { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, groupedByFolder };
 }

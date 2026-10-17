@@ -11,6 +11,9 @@ const bodies: Record<string, string> = { 'notes/work/alpha.md': 'Alpha body with
 const item = (path: string, notebookId: string, extra: Partial<NoteListItem> = {}): NoteListItem => ({ id: path, path, notebookId, title: path.split('/').pop()!.replace('.md', ''), tags: [], metadata: {}, ...extra });
 const items: NoteListItem[] = [item('notes/work/alpha.md', 'work', { status: 'inbox', tags: ['a', 'b'], metadata: { updated: '2026-09-02', created: '2026-09-01' } }), item('notes/work/deep/beta.md', 'work', { status: 'done', tags: ['b'], metadata: { updated: '2026-09-03' } }), item('notes/work/archived.md', 'work', { status: 'archived', tags: ['a'], metadata: { hiden: true, updated: '2026-09-04' } }), item('notes/life/gamma.md', 'life', { tags: ['c'], metadata: { updated: '2026-09-01', created: '2026-09-01' } })];
 
+/** The sidebar's folder order per notebook (local ids). */
+const folderOrder: Record<string, string[]> = { work: ['deep'] };
+
 const WORK = 'github:owner/work@main', LIFE = 'github:owner/life@main';
 /** The notebooks' keys: the catalog answers by key and reads each repository by local id. */
 const W = 'w~work', L = 'l~life';
@@ -34,6 +37,7 @@ async function catalog(expected: RevisionSet = {}): Promise<NoteCatalog & { cont
         memoKinds.push(kind);
         return compute();
       },
+      folders: async notebook => (folderOrder[notebook.id] ?? []).map((path, order) => ({ notebookId: notebook.id, path, title: path, order })),
     },
   });
   return Object.assign(await workspaceCatalog(config, [repository(WORK, 'work', 'w'), repository(LIFE, 'life', 'l')], expected), { contentReads, memoKinds });
@@ -61,6 +65,13 @@ describe('note query parsing', () => {
     expect(noteQuerySearch(query({ kind: 'compilation' })).get('kind')).toBe('compilation');
     expect(noteQuerySearch(query()).has('kind')).toBe(false);
   });
+  it('reads the folder grouping, which is off by default', () => {
+    expect(parseNoteQuery({ notebookId: 'work' }).query.group).toBeNull();
+    expect(parseNoteQuery({ notebookId: 'work', group: 'folder' }).query.group).toBe('folder');
+    expect(() => parseNoteQuery({ notebookId: 'work', group: 'tag' })).toThrow(/Invalid query option/);
+    expect(noteQuerySearch(query({ group: 'folder' })).get('group')).toBe('folder');
+    expect(noteQuerySearch(query()).has('group')).toBe(false);
+  });
 });
 
 describe('note queries', () => {
@@ -73,6 +84,13 @@ describe('note queries', () => {
     expect(second.nextCursor).toBeNull();
     await expect(queryNotes(await catalog(), query({ notebookId: L }), { limit: 1, content: false, cursor: first.nextCursor! })).rejects.toThrow(/Cursor/);
     await expect(queryNotes(await catalog(), query({ notebookId: W }), { limit: 1, content: false, cursor: 'not-a-cursor' })).rejects.toThrow(/cursor/i);
+  });
+
+  it('groups by folder in the sidebar order, root first, keeping the sort within a folder', async () => {
+    const plain = await queryNotes(await catalog(), query({ notebookId: W, showHidden: true }), { limit: 10, content: false });
+    expect(plain.notes.map(note => note.path)).toEqual(['notes/work/archived.md', 'notes/work/deep/beta.md', 'notes/work/alpha.md']);
+    const grouped = await queryNotes(await catalog(), query({ notebookId: W, showHidden: true, group: 'folder' }), { limit: 10, content: false });
+    expect(grouped.notes.map(note => note.path)).toEqual(['notes/work/archived.md', 'notes/work/alpha.md', 'notes/work/deep/beta.md']);
   });
 
   it('includes hidden notes only when asked and filters folders, tags and status', async () => {
@@ -188,7 +206,7 @@ describe('a catalog over several repositories', () => {
 
   it('rejects a cursor after a repository moved on', async () => {
     const first = await queryNotes(await catalog(), query({ notebookId: 'all' }), { limit: 1, content: false });
-    const moved = await workspaceCatalog(config, [{ id: WORK, alias: 'w', notebooks: config.notebooks, catalog: { revision: async () => 'e'.repeat(40), index: async notebook => items.filter(note => note.notebookId === notebook.id), contents: async () => new Map(), memo: (_kind, _notebooks, compute) => compute() } }]);
+    const moved = await workspaceCatalog(config, [{ id: WORK, alias: 'w', notebooks: config.notebooks, catalog: { revision: async () => 'e'.repeat(40), index: async notebook => items.filter(note => note.notebookId === notebook.id), contents: async () => new Map(), memo: (_kind, _notebooks, compute) => compute(), folders: async () => [] } }]);
     await expect(queryNotes(moved, query({ notebookId: 'all' }), { limit: 1, content: false, cursor: first.nextCursor! })).rejects.toThrow(/Cursor/);
   });
 
@@ -208,7 +226,7 @@ describe('notes with the same path in two repositories', () => {
     const shared = [{ id: 'one', title: 'One', root: 'notes/shared' }, { id: 'two', title: 'Two', root: 'notes/shared' }] as NotebookConfig[];
     const workspace: WorkspaceConfig = { ...config, notebooks: shared };
     const note = (notebookId: string) => item('notes/shared/a.md', notebookId, { title: notebookId });
-    const repository = (id: string, notebook: NotebookConfig): CatalogRepository => ({ id, alias: notebook.id, notebooks: [notebook], catalog: { revision: async () => 'f'.repeat(40), index: async nb => [note(nb.id)], contents: async notes => new Map(notes.map(n => [n.path, n.notebookId])), memo: (_kind, _notebooks, compute) => compute() } });
+    const repository = (id: string, notebook: NotebookConfig): CatalogRepository => ({ id, alias: notebook.id, notebooks: [notebook], catalog: { revision: async () => 'f'.repeat(40), index: async nb => [note(nb.id)], contents: async notes => new Map(notes.map(n => [n.path, n.notebookId])), memo: (_kind, _notebooks, compute) => compute(), folders: async () => [] } });
     const catalog = await workspaceCatalog(workspace, [repository('github:o/one@main', shared[0]), repository('github:o/two@main', shared[1])]);
     const found = await lookupNotes(catalog, [{ notebookId: 'two~two', path: 'notes/shared/a.md' }, { notebookId: 'one~one', path: 'notes/shared/a.md' }], false);
     expect(found.notes.map(n => n.title)).toEqual(['two', 'one']);
@@ -221,7 +239,7 @@ describe('notes with the same path in two repositories', () => {
     const shared = [{ id: 'one', title: 'One', root: 'notes/shared' }, { id: 'two', title: 'Two', root: 'notes/shared' }] as NotebookConfig[];
     const notes: Record<string, NoteListItem[]> = { one: [item('notes/shared/a.md', 'one'), item('notes/shared/b.md', 'one')], two: [item('notes/shared/a.md', 'two'), item('notes/shared/only-two.md', 'two')] };
     const text: Record<string, string> = { 'one:notes/shared/a.md': '[b](b.md) [elsewhere](only-two.md)', 'two:notes/shared/a.md': '[b](b.md) [here](only-two.md)' };
-    const repository = (id: string, notebook: NotebookConfig): CatalogRepository => ({ id, alias: notebook.id, notebooks: [notebook], catalog: { revision: async () => 'f'.repeat(40), index: async nb => notes[nb.id], contents: async list => new Map(list.map(n => [n.path, text[`${n.notebookId}:${n.path}`] ?? ''])), memo: (_kind, _notebooks, compute) => compute() } });
+    const repository = (id: string, notebook: NotebookConfig): CatalogRepository => ({ id, alias: notebook.id, notebooks: [notebook], catalog: { revision: async () => 'f'.repeat(40), index: async nb => notes[nb.id], contents: async list => new Map(list.map(n => [n.path, text[`${n.notebookId}:${n.path}`] ?? ''])), memo: (_kind, _notebooks, compute) => compute(), folders: async () => [] } });
     const catalog = await workspaceCatalog({ ...config, notebooks: shared }, [repository('github:o/one@main', shared[0]), repository('github:o/two@main', shared[1])]);
     expect(catalog.repository('two~two')).toBe('github:o/two@main');
     const graph = await noteGraph(catalog);

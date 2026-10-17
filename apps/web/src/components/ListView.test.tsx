@@ -140,3 +140,9 @@ it('labels the column headers in sentence case', () => {
   for (const name of ['Title', 'Status', 'Tags', 'Modified']) expect(screen.getByText(name).closest('th')!).not.toHaveClass('uppercase');
   expect(screen.getByText('Title').closest('thead')!).not.toHaveClass('uppercase');
 });
+
+it('starts each folder with a header row when the notes come grouped', () => {
+  const groupOf = (note: NoteListItem) => ({ key: note.path.split('/')[1], label: `Folder ${note.path.split('/')[1]}` });
+  const { container } = render(createElement(ListView, { ...baseProps, notes: [noteOf('notes/a/1.md'), noteOf('notes/a/2.md'), noteOf('notes/b/3.md')], groupOf }));
+  expect([...container.querySelectorAll('.note-group-heading')].map(heading => heading.textContent)).toEqual(['Folder a', 'Folder b']);
+});

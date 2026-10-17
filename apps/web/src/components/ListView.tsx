@@ -1,6 +1,6 @@
 import { NoteMoveButton } from './NoteMoveButton.js';
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown, FileText, GalleryHorizontalEnd, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, FileText, Folder, GalleryHorizontalEnd, Trash2 } from 'lucide-react';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { NoteTagActions, NoteTags } from './NoteTags.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
@@ -17,6 +17,7 @@ import { type BrowseKind, NotesEmptyState } from './NotesEmptyState.js';
 import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteZoomButton } from './NoteZoomButton.js';
 import { useNoteTouchSelection } from '../lib/use-note-touch-selection.js';
+import type { NoteGroupOf } from '../lib/note-groups.js';
 
 export interface ListViewProps {
   notes: NoteListItem[];
@@ -51,6 +52,8 @@ export interface ListViewProps {
   selectedKeys?: Set<string>;
   /** Modifier-click (or the checkbox, once shown) toggles a row's membership; a plain click still opens it. */
   onToggleSelect?: (note: NoteListItem) => void;
+  /** Present while the notes come grouped by folder: a header row starts each folder. */
+  groupOf?: NoteGroupOf;
 }
 
 interface NoteRowActions {
@@ -126,7 +129,7 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
   );
 });
 
-export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, sortField = 'updated', sortOrder = 'desc', onSortChange, showMobileSort = false, tagActions, focusMode, leading, highlightQuery = '', selectedKeys, onToggleSelect }) => {
+export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, sortField = 'updated', sortOrder = 'desc', onSortChange, showMobileSort = false, tagActions, focusMode, leading, highlightQuery = '', selectedKeys, onToggleSelect, groupOf }) => {
   const { t, language } = useTranslation();
   // Rows retain stable actions while invoking the latest committed callbacks.
   const handlers = useRef({ onOpenNote, onDeleteNote, onUpdateNoteStatus, onMoveNote, focusMode, onToggleSelect });
@@ -212,7 +215,27 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
                   </tr>
                 )}
                 {/* Notes row rendering */}
-                {notes.map(note => <NoteRow key={noteRefKey(note)} note={note} statuses={statuses} readOnly={readOnly} canDelete={canDelete} isPendingDelete={pendingDeletePath === noteRefKey(note)} actions={actions} dates={dates} tagActions={tagActions} showZoom={!!focusMode} canDrag={!!focusMode?.canDrag(note)} canMove={movable} highlightQuery={highlightQuery} selected={selectedKeys?.has(noteRefKey(note)) ?? false} selectionActive={Boolean(selectedKeys?.size)} />)}
+                {notes.map((note, index) => {
+                  const group = groupOf?.(note);
+                  const header = group && (index === 0 || groupOf!(notes[index - 1]).key !== group.key)
+                    ? (
+                      <tr key={`group:${group.key}`} className='note-group-row'>
+                        <th colSpan={5} scope='colgroup' className='note-group-cell'>
+                          <div className='note-group-heading'>
+                            <Folder aria-hidden='true' />
+                            <span>{group.label}</span>
+                          </div>
+                        </th>
+                      </tr>
+                    )
+                    : null;
+                  return (
+                    <React.Fragment key={noteRefKey(note)}>
+                      {header}
+                      <NoteRow note={note} statuses={statuses} readOnly={readOnly} canDelete={canDelete} isPendingDelete={pendingDeletePath === noteRefKey(note)} actions={actions} dates={dates} tagActions={tagActions} showZoom={!!focusMode} canDrag={!!focusMode?.canDrag(note)} canMove={movable} highlightQuery={highlightQuery} selected={selectedKeys?.has(noteRefKey(note)) ?? false} selectionActive={Boolean(selectedKeys?.size)} />
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

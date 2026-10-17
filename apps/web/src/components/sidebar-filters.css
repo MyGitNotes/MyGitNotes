@@ -56,7 +56,6 @@
 .sidebar-notebook-chevron { transition: transform 150ms ease; }
 .sidebar-notebook-heading > button[aria-expanded='true'] .sidebar-notebook-chevron { transform: rotate(90deg); }
 /* While every notebook is shown, the other notebooks read lighter than the current one. */
-.sidebar-notebook-group[data-scope='included']:not([data-selected='true']) > .nav-tree-row .nav-tree-entry, .sidebar-notebook-group[data-scope='included']:not([data-selected='true']) > .sidebar-notebook-drop > .nav-tree-row .nav-tree-entry { color: var(--color-muted); }
 .sidebar-notebook-group[data-selected='true'] .sidebar-notebook-heading > button, .sidebar-notebook-group[data-selected='true'] > .nav-tree-row .nav-tree-entry, .sidebar-notebook-group[data-selected='true'] > .sidebar-notebook-drop > .nav-tree-row .nav-tree-entry { color: var(--color-primary); }
 .sidebar-notebook-group[data-selected='true'] .sidebar-notebook-heading .sidebar-notebook-count, .sidebar-notebook-group[data-selected='true'] > .nav-tree-row .sidebar-notebook-count, .sidebar-notebook-group[data-selected='true'] > .sidebar-notebook-drop > .nav-tree-row .sidebar-notebook-count { color: var(--color-primary); }
 .folder-heading-actions { display: flex; align-items: center; gap: 2px; margin-right: 4px; flex: none; }

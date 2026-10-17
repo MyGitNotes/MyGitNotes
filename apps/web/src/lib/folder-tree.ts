@@ -14,19 +14,6 @@ export interface BreadcrumbSegment {
 }
 
 /**
- * A plain click's single-select target has no meaning against the global
- * `selectedNotebookId` while the sidebar shows every notebook's tree at once —
- * it must resolve to that folder's own notebook-qualified path instead. Returns
- * null when only one notebook is shown, so the caller falls back to its normal
- * single-notebook selection path.
- */
-export function resolveAllNotebooksFolderSelect(selectedNotebookId: string, notebookRoot: string | undefined, folder: string | null): string[] | null {
-  if (selectedNotebookId !== 'all') return null;
-  if (!notebookRoot || !folder) return [];
-  return [`${notebookRoot}/${folder}`];
-}
-
-/**
  * Extracts immediate subfolders under `currentFolder` for a specific notebook.
  * Discovers subfolders from both explicit FolderItem records and the notebook's directory
  * counts (`NotebookFacets.directories`: repo-relative directory to direct note count).

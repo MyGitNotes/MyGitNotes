@@ -1,4 +1,4 @@
-import type { NotebookConfig, WorkspaceConfig } from './types.js';
+import type { FolderItem, NotebookConfig, WorkspaceConfig } from './types.js';
 import { SourceError } from './github-api.js';
 import { isNoteHidden } from './note-status.js';
 import { safeFilterPath } from './note-filters.js';
@@ -20,6 +20,8 @@ export interface RepositoryCatalog {
   contents(notes: NoteListItem[]): Promise<Map<string, string>>;
   /** Result derived from the content of the given notebooks, reused while that content is unchanged. */
   memo<T>(kind: string, notebooks: NotebookConfig[], compute: () => Promise<T>): Promise<T>;
+  /** Folders of one notebook in the sidebar's order (`sortFolders`), paths relative to the notebook root. */
+  folders(notebook: NotebookConfig): Promise<FolderItem[]>;
 }
 
 /** Read model behind the note query routes, over every repository of a workspace. */
@@ -36,6 +38,8 @@ export interface NoteCatalog {
   contents(notes: NoteListItem[]): Promise<Map<string, string>>;
   /** Result derived from the content of the given notebooks, reused while that content is unchanged. */
   memo<T>(kind: string, notebooks: NotebookConfig[], compute: () => Promise<T>): Promise<T>;
+  /** Folders of one notebook in the sidebar's order, paths relative to the notebook root. */
+  folders(notebook: NotebookConfig): Promise<FolderItem[]>;
 }
 
 export interface NoteQueryOptions {
@@ -157,6 +161,10 @@ export async function workspaceCatalog(config: WorkspaceConfig, repositories: Ca
       const [repository] = repositories;
       return repository.catalog.memo(`${kind}:${repository.alias}`, involved.map(notebook => notebook.local), compute);
     },
+    folders: async notebook => {
+      const { repository, local } = notebookOf(notebook.id);
+      return (await repository.catalog.folders(local)).map(toKey(repository));
+    },
   };
 }
 
@@ -187,13 +195,15 @@ export function parseNoteQuery(input: Record<string, unknown>): { query: NoteQue
   if (folders.some(folder => !safeFilterPath(folder)) || exclude.some(path => !safeFilterPath(path))) throw new SourceError('Invalid folder or path.');
   const tagMode = single(input.tagMode) ?? 'any', match = single(input.match) ?? 'all';
   const sort = (single(input.sort) ?? DEFAULT_NOTE_QUERY.sort) as SortField, order = (single(input.order) ?? DEFAULT_NOTE_QUERY.order) as SortOrder;
+  const group = single(input.group) ?? null;
+  if (group !== null && group !== 'folder') throw new SourceError('Invalid query option.');
   const q = single(input.q) ?? '', select = single(input.select), limitText = single(input.limit), kind = single(input.kind) ?? DEFAULT_NOTE_QUERY.kind;
   if (!['any', 'all'].includes(tagMode) || !['all', 'title'].includes(match) || !SORT_FIELDS.includes(sort) || !SORT_ORDERS.includes(order) || !NOTE_KIND_FILTERS.includes(kind as NoteKindFilter)) throw new SourceError('Invalid query option.');
   if (q.length > 500) throw new SourceError('Search text exceeds 500 characters.');
   if (select !== undefined && select !== 'paths') throw new SourceError('Invalid select option.');
   const limit = limitText === undefined ? 50 : Number(limitText);
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new SourceError('limit must be between 1 and 200.');
-  return { query: { notebookId, folders, descendants: single(input.descendants) !== '0', tags, tagMode: tagMode as NoteQuery['tagMode'], status: single(input.status) || null, withoutStatus: flag(input.noStatus), showHidden: flag(input.showHidden), q, match: match as NoteQuery['match'], exclude, sort, order, kind: kind as NoteKindFilter }, options: { limit, cursor: single(input.cursor), content: flag(input.content), select: select as 'paths' | undefined } };
+  return { query: { notebookId, folders, descendants: single(input.descendants) !== '0', tags, tagMode: tagMode as NoteQuery['tagMode'], status: single(input.status) || null, withoutStatus: flag(input.noStatus), showHidden: flag(input.showHidden), q, match: match as NoteQuery['match'], exclude, sort, order, kind: kind as NoteKindFilter, group }, options: { limit, cursor: single(input.cursor), content: flag(input.content), select: select as 'paths' | undefined } };
 }
 
 async function scopeNotebooks(catalog: NoteCatalog, notebookId: string) {
@@ -219,7 +229,34 @@ async function matching(catalog: NoteCatalog, query: NoteQuery) {
   } else if (query.q.trim()) {
     matches = matches.filter(note => noteMatchesQuery(note, query));
   }
-  return sortNotes(matches, query.sort, query.order, noteQueryStatuses(config.notebooks, query.notebookId, notes.map(note => note.status)));
+  const sorted = sortNotes(matches, query.sort, query.order, noteQueryStatuses(config.notebooks, query.notebookId, notes.map(note => note.status)));
+  return query.group === 'folder' ? await groupByFolder(catalog, config.notebooks, sorted) : sorted;
+}
+
+/**
+ * Orders sorted notes by folder, keeping the sort within each folder: notebooks in manifest order, then each notebook's
+ * root before its folders in the sidebar's depth-first order. A folder the sidebar does not list goes last, by path.
+ */
+async function groupByFolder(catalog: NoteCatalog, notebooks: NotebookConfig[], sorted: NoteListItem[]): Promise<NoteListItem[]> {
+  const involved = notebooks.filter(notebook => sorted.some(note => note.notebookId === notebook.id));
+  const ranks = new Map<string, number>();
+  for (const notebook of involved) {
+    const folders = await catalog.folders(notebook);
+    folders.forEach((folder, index) => ranks.set(`${notebook.id}\n${folder.path}`, index + 1));
+  }
+  const position = new Map(notebooks.map((notebook, index) => [notebook.id, index]));
+  const roots = new Map(notebooks.map(notebook => [notebook.id, notebook.root.replace(/\/$/, '')]));
+  const key = (note: NoteListItem) => {
+    const root = roots.get(note.notebookId) ?? '';
+    const directory = noteDirectory(note.path);
+    const relative = directory === root ? '' : directory.startsWith(root + '/') ? directory.slice(root.length + 1) : directory;
+    return { notebook: position.get(note.notebookId) ?? notebooks.length, rank: relative === '' ? 0 : ranks.get(`${note.notebookId}\n${relative}`) ?? Number.MAX_SAFE_INTEGER, relative };
+  };
+  const keys = new Map(sorted.map(note => [note, key(note)]));
+  return [...sorted].sort((a, b) => {
+    const ka = keys.get(a)!, kb = keys.get(b)!;
+    return ka.notebook - kb.notebook || ka.rank - kb.rank || (ka.rank === Number.MAX_SAFE_INTEGER ? ka.relative.localeCompare(kb.relative) : 0);
+  });
 }
 
 const cursorKey = (revisions: RevisionSet, query: NoteQuery) => hashJson([Object.entries(revisions).sort(([a], [b]) => a.localeCompare(b)), query]);

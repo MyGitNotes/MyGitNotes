@@ -67,6 +67,7 @@ import { PageToolbar, SidebarProvider, WorkspaceSidebarPortal, WorkspaceSplitLay
 import { useVisualViewport } from './lib/use-visual-viewport.js';
 import { Sidebar } from './components/Sidebar.js';
 import { NoteCollection } from './components/NoteCollection.js';
+import { noteFolderGrouping } from './lib/note-groups.js';
 import { KanbanView } from './components/KanbanView.js';
 import { EditorModal } from './components/EditorModal.js';
 import type { NoteEditorSharedProps } from './components/note-editor/types.js';
@@ -202,7 +203,7 @@ export const AppContent: React.FC = () => {
 
   const { routedNote, routedCommitted, routedLoading, routeError } = useRoutedNote({ config, editorRoute, editorNotebookId, editingNote, loading, sourceId, setEditingNote });
 
-  const { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch } = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
+  const { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, groupedByFolder } = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
 
   const { handleOpenNote } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
 
@@ -305,7 +306,8 @@ export const AppContent: React.FC = () => {
   };
   // The index names its folder, or the notebook at its root, so it reads as that folder's page rather than a note called "Index".
   const indexFolderName = selectedFolder ? breadcrumbs[breadcrumbs.length - 1].name : config?.notebooks.find(nb => nb.id === selectedNotebookId)?.title ?? '';
-  const browseRegion = (docked: boolean) => (
+  const noteGroupOf = useMemo(() => groupedByFolder ? noteFolderGrouping({ notebookRoot: folderRoot ?? '', selectedFolder, folders, notebookId: selectedNotebookId, selectedLabel: indexFolderName }) : undefined, [groupedByFolder, folderRoot, selectedFolder, folders, selectedNotebookId, indexFolderName]);
+  const browseRegion = () => (
     <>
       <LegacySchemaNotice schemaVersion={config?.schema_version} />
       {actionError && <p role='alert' className='mb-3 text-sm text-danger'>{actionError}</p>}
@@ -317,13 +319,13 @@ export const AppContent: React.FC = () => {
       {listResult.loading && <LoadingStatus className='mb-3 text-sm text-muted'>{t('notes.loading')}</LoadingStatus>}
       {!folderless && (
         <>
-          <Breadcrumbs segments={breadcrumbs} currentFolder={selectedFolder} onSelectFolder={setSelectedFolder} subfolderCount={immediateSubfolders.length} noteCount={listResult.total} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} compact={docked && !topDock} />
+          <Breadcrumbs segments={breadcrumbs} currentFolder={selectedFolder} onSelectFolder={setSelectedFolder} subfolderCount={immediateSubfolders.length} noteCount={listResult.total} />
           <FolderLinks folders={immediateSubfolders} onSelect={setSelectedFolder}>{folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}</FolderLinks>
         </>
       )}
       {(viewMode === 'list' || viewMode === 'flat') && (
         <>
-          <NoteCollection showMobileSort={false} focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={note => noteMove.moveNote(note)?.()} onUpdateNoteStatus={handleUpdateNoteStatus} newKind={newKind} onNewNote={createNewKind} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} tagActions={noteTagActions} leading={viewMode === 'flat' && folderIndex ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} /> : undefined} highlightQuery={debouncedSearch} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} />
+          <NoteCollection showMobileSort={false} focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={note => noteMove.moveNote(note)?.()} onUpdateNoteStatus={handleUpdateNoteStatus} newKind={newKind} onNewNote={createNewKind} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} tagActions={noteTagActions} leading={viewMode === 'flat' && folderIndex ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} /> : undefined} highlightQuery={debouncedSearch} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} groupOf={noteGroupOf} />
           <NoteListSentinel hasMore={listResult.hasMore} loading={listResult.loadingMore} error={listResult.error} onLoadMore={listResult.loadMore} />
         </>
       )}
@@ -541,11 +543,11 @@ export const AppContent: React.FC = () => {
                           </PageToolbar>
                           {noteFocus.layout
                             ? (
-                              <BrowseDock placement={topDock ? 'top' : 'left'} size={topDock ? noteFocus.view.dock.top : noteFocus.view.dock.left} onSizeChange={size => noteFocus.setDock(topDock ? { top: size } : { left: size })} collapsed={noteFocus.view.dock.collapsed} narrow={focusCapacity === 1} narrowView={focusNarrowView} browse={browseRegion(true)}>
+                              <BrowseDock placement={topDock ? 'top' : 'left'} size={topDock ? noteFocus.view.dock.top : noteFocus.view.dock.left} onSizeChange={size => noteFocus.setDock(topDock ? { top: size } : { left: size })} collapsed={noteFocus.view.dock.collapsed} narrow={focusCapacity === 1} narrowView={focusNarrowView} browse={browseRegion()}>
                                 <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />
                               </BrowseDock>
                             )
-                            : <div className='workspace-scroll'>{browseRegion(false)}</div>}
+                            : <div className='workspace-scroll'>{browseRegion()}</div>}
                         </main>
                       </>
                     )}
