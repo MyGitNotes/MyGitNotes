@@ -479,7 +479,6 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 .mobile-only { display: none; }
 .mobile-nav-label { display: none; }
 .editor-mode-select, .editor-mobile-icon { display: none; }
-.breadcrumb-sort-select { max-width: 180px; }
 .agent-main { display: flex; flex-direction: column; }
 .agent-layout { flex: 1; }
 

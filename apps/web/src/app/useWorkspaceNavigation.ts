@@ -114,6 +114,9 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
   const setViewMode = (mode: ViewMode) => {
     void setFilterQuery({ view: mode });
   };
+  const setGroupByFolder = (value: boolean) => {
+    void setFilterQuery({ groupByFolder: value });
+  };
   /* eslint-disable react-hooks/exhaustive-deps -- Canonicalization runs on config or URL arrival; changing the current notebook or navigation helper alone must not replay the redirect. */
   useEffect(() => {
     if (!config) return;
@@ -132,5 +135,5 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
   }, [loading, config, editorRoute.note, route.tab, route.view]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
-  return { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder, setViewMode };
+  return { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder, setViewMode, setGroupByFolder };
 }

@@ -410,6 +410,7 @@ export const en = {
   'folder.reload': 'Reload',
   'folder.draftsHint': 'An open note has edits that could not be saved. Resolve them before changing files.',
   'view.flat': 'Expand',
+  'view.groupByFolder': 'Group by folder',
   'screen.manualOrder': 'Manual order',
   'screen.reading': 'Reading',
   'screen.study': 'Study',

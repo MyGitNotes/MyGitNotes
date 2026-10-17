@@ -93,3 +93,15 @@ it('lets the "Search the note list" command open the field on phones and put the
   expect(screen.getByRole('button', { name: '搜尋筆記、標籤、內文...' })).toHaveAttribute('aria-expanded', 'true');
   await waitFor(() => expect(document.activeElement).toBe(field));
 });
+
+it('names the current order on the icon-only sort menu and offers Group by folder only when given', () => {
+  const changes: boolean[] = [];
+  const { rerender } = render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, sortField: 'title', sortOrder: 'asc' })));
+  expect(screen.getByRole('combobox', { name: '排序: 標題 (A 到 Z)' })).not.toHaveTextContent('標題');
+  expect(screen.queryByRole('button', { name: '依資料夾分組' })).toBeNull();
+  rerender(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, groupByFolder: { value: false, onChange: value => changes.push(value) } })));
+  const toggle = screen.getByRole('button', { name: '依資料夾分組' });
+  expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(toggle);
+  expect(changes).toEqual([true]);
+});

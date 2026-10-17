@@ -412,6 +412,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'folder.reload': '重新載入',
   'folder.draftsHint': '開啟中的筆記有修改沒能儲存，請先處理再調整檔案。',
   'view.flat': '攤開',
+  'view.groupByFolder': '依資料夾分組',
   'screen.manualOrder': '手動順序',
   'screen.reading': '閱讀',
   'screen.study': '學習',
