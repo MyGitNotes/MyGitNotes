@@ -6,7 +6,7 @@
    ========================================================================== */
 
 /* ===== 1. General Directive Containers ===== */
-.prose-custom .custom-directive, .prose-custom .comment-directive { margin: 0.6rem 0; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--color-text) 14%, var(--color-border)); padding: 0.65rem 0.95rem; box-sizing: border-box; width: 100%; box-shadow: 0 1px 2px color-mix(in srgb, var(--color-scrim) 3%, transparent); transition: border-color 150ms ease, box-shadow 150ms ease; background: color-mix(in srgb, var(--color-text) 2.5%, var(--color-surface)); }
+.prose-custom .custom-directive, .prose-custom .comment-directive { margin: 0.6rem 0; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--color-text) 14%, var(--color-border)); padding: 0.65rem 1.25rem; box-sizing: border-box; width: 100%; box-shadow: 0 1px 2px color-mix(in srgb, var(--color-scrim) 3%, transparent); transition: border-color 150ms ease, box-shadow 150ms ease; background: color-mix(in srgb, var(--color-text) 2.5%, var(--color-surface)); }
 
 .prose-custom .custom-directive > .directive-body, .prose-custom .comment-directive > .directive-body { padding-top: 0.4rem; font-size: 0.935rem; line-height: 1.6; }
 
@@ -17,7 +17,7 @@
 
 /* 內文段落與清單 Typography 校準。所有 directive renderer 都掛上同一個內容 class，
    新增 directive 類型時不需要擴充領域專用 selector。 */
-.prose-custom .directive-content p { margin-top: 0.25rem; margin-bottom: 0.3rem !important; line-height: 1.55; }
+.prose-custom .directive-content p { margin-top: 0; margin-bottom: 0.75rem !important; line-height: 1.6; }
 
 .prose-custom .directive-content ul, .prose-custom .directive-content ol { margin-top: 0.2rem; margin-bottom: 0.25rem !important; padding-left: 1.35rem; }
 
