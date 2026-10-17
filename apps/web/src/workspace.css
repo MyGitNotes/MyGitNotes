@@ -95,6 +95,9 @@
 .nav-tree-marker { flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary); margin-inline-start: auto; }
 .folder-tree-root.is-selected, .folder-tree-item.is-selected .folder-drop-body { background: var(--workspace-selection); font-weight: 600; }
 .folder-drop-body { display: flex; align-items: center; min-width: 0; border-radius: 7px; }
+/* A note lifted by a long press on touch, and the chip that follows the finger while it is dragged onto a folder. */
+.is-lifted { transform: scale(0.98); outline: 2px solid var(--color-primary); outline-offset: -2px; transition: transform 0.12s ease; }
+.note-touch-ghost { position: fixed; left: 0; top: 0; z-index: 1000; margin: -36px 0 0 12px; max-width: 240px; padding: 6px 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; border: 1px solid var(--color-primary); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-text); box-shadow: 0 6px 18px color-mix(in srgb, var(--color-scrim) 20%, transparent); pointer-events: none; }
 /* Where a dragged folder lands: inside a row, or above or below it among its siblings. */
 .folder-drop-body.drop-inside { background: color-mix(in srgb, var(--color-primary) 14%, transparent); outline: 1px solid var(--color-primary); }
 .folder-drop-body.drop-before { box-shadow: inset 0 2px 0 var(--color-primary); }

@@ -1,10 +1,11 @@
 import { type FolderAction, FolderActions } from './FolderActions.js';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DndContext, type DragMoveEvent, DragOverlay, MouseSensor, pointerWithin, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { Folder, FolderPlus } from 'lucide-react';
 import type { FolderCommand } from '@mygitnotes/core';
 import type { FolderItem } from '../lib/types.js';
 import { dropPosition, folderDropCommand } from '../lib/folder-drag.js';
+import { TOUCH_NOTE_DROP, TOUCH_NOTE_OVER } from '../lib/touch-note-drag.js';
 import { buildFolderTree, expandedPathsForFolder, type FolderTreeNode } from '../lib/folder-tree.js';
 import { carriesNoteMove, type DraggedNote, droppedNote } from '../lib/note-drag.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -36,9 +37,25 @@ function pointerY(activator: Event, deltaY: number) {
  */
 export function NoteDropTarget({ onDrop, className = '', children }: { onDrop?: (note: DraggedNote) => void; className?: string; children: React.ReactNode; }) {
   const [over, setOver] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  // A touch drag (lib/touch-note-drag) has no native drag events; it tells the target under the finger with its own.
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !onDrop) return;
+    const onOver = (event: Event) => setOver((event as CustomEvent<boolean>).detail);
+    const onTouchDrop = (event: Event) => onDrop((event as CustomEvent<DraggedNote>).detail);
+    element.addEventListener(TOUCH_NOTE_OVER, onOver);
+    element.addEventListener(TOUCH_NOTE_DROP, onTouchDrop);
+    return () => {
+      element.removeEventListener(TOUCH_NOTE_OVER, onOver);
+      element.removeEventListener(TOUCH_NOTE_DROP, onTouchDrop);
+    };
+  }, [onDrop]);
   if (!onDrop) return <div className={className || undefined}>{children}</div>;
   return (
     <div
+      ref={ref}
+      data-note-drop=''
       className={`${className} ${over ? 'folder-note-over' : ''}`.trim() || undefined}
       onDragOver={event => {
         if (!carriesNoteMove(event)) return;

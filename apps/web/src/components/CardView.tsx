@@ -48,7 +48,7 @@ interface CardViewProps {
 
 export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onNewNote, newKind, onUpdateNoteStatus, tagActions, focusMode, strip = false, highlightQuery = '', selectedKeys, onToggleSelect }) => {
   const { t } = useTranslation();
-  const touchSelection = useNoteTouchSelection(onToggleSelect);
+  const touchSelection = useNoteTouchSelection(onToggleSelect, !readOnly && Boolean(onMoveNote));
   const { pendingDeletePath, requestDelete } = useDeleteConfirm(confirmDelete, path => {
     const note = [...uncommitted, ...notes].find(n => noteRefKey(n) === path);
     if (note) onDeleteNote(note);

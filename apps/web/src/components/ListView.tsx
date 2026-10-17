@@ -64,15 +64,17 @@ interface NoteRowActions {
   toggleSelect: (note: NoteListItem) => void;
 }
 
-const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelete, isPendingDelete, actions, dates, tagActions, showZoom, canDrag, canMove, highlightQuery = '', selected, selectionActive }: { note: NoteListItem; tagActions?: NoteTagActions; statuses: string[]; readOnly: boolean; canDelete: boolean; isPendingDelete: boolean; actions: NoteRowActions; dates: { short: Intl.DateTimeFormat; full: Intl.DateTimeFormat; }; showZoom?: boolean; canDrag?: boolean; canMove?: boolean; highlightQuery?: string; selected: boolean; selectionActive: boolean; }) {
+const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelete, isPendingDelete, actions, dates, tagActions, showZoom, canDrag, canMove, draft = false, highlightQuery = '', selected, selectionActive }: { note: NoteListItem; draft?: boolean; tagActions?: NoteTagActions; statuses: string[]; readOnly: boolean; canDelete: boolean; isPendingDelete: boolean; actions: NoteRowActions; dates: { short: Intl.DateTimeFormat; full: Intl.DateTimeFormat; }; showZoom?: boolean; canDrag?: boolean; canMove?: boolean; highlightQuery?: string; selected: boolean; selectionActive: boolean; }) {
   const { t } = useTranslation();
-  const touchSelection = useNoteTouchSelection(actions.toggleSelect);
+  // A draft row lifts no more than a draft card does (CardView), so on touch it only opens.
+  const touchSelection = useNoteTouchSelection(actions.toggleSelect, canMove && !draft);
+  const dragsToMove = Boolean(canMove) && pointerMovesNotes();
   const updated = noteUpdatedTime(note);
   const formattedDate = updated ? dates.short.format(updated) : '—';
   // The path is the title's tooltip; while a search matches it, it also shows after the title with the match marked, so a row found by its path says why.
   const pathMatched = highlightSegments(note.path, highlightQuery).some(segment => segment.match);
   return (
-    <tr {...touchSelection.itemProps(note, actions.open)} title={selectionActive ? undefined : t('notes.multiSelectHint')} draggable={canDrag || canMove} onDragStart={canDrag || canMove ? event => startNoteDrag(event, note, { focus: Boolean(canDrag), move: Boolean(canMove) }) : undefined} className='hover:bg-fg/5 transition cursor-pointer group'>
+    <tr {...touchSelection.itemProps(note, actions.open)} title={selectionActive ? undefined : t('notes.multiSelectHint')} draggable={canDrag || dragsToMove} onDragStart={canDrag || dragsToMove ? event => startNoteDrag(event, note, { focus: Boolean(canDrag), move: dragsToMove }) : undefined} className='hover:bg-fg/5 transition cursor-pointer group'>
       <td className='py-2 px-3'>
         <div className='flex items-center gap-2.5'>
           {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => actions.toggleSelect(note)} />}
@@ -141,7 +143,7 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
     const note = notesRef.current.find(n => noteRefKey(n) === path);
     if (note) handlers.current.onDeleteNote(note);
   });
-  const movable = !readOnly && Boolean(onMoveNote) && pointerMovesNotes();
+  const movable = !readOnly && Boolean(onMoveNote);
   const actions = useMemo<NoteRowActions>(() => ({ open: note => handlers.current.onOpenNote(note), remove: note => requestDelete(noteRefKey(note)), move: note => handlers.current.onMoveNote?.(note), status: (note, status) => handlers.current.onUpdateNoteStatus(note, status), zoom: note => handlers.current.focusMode?.onZoomNote(note), toggleSelect: note => handlers.current.onToggleSelect?.(note) }), [requestDelete]);
   const dates = useMemo(() => ({ short: new Intl.DateTimeFormat(language, { month: '2-digit', day: '2-digit', hour12: false, hour: '2-digit', minute: '2-digit' }), full: new Intl.DateTimeFormat(language, { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' }) }), [language]);
 
@@ -202,7 +204,7 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
                   <tr>
                     <th colSpan={5} scope='colgroup' className='py-1.5 px-3 text-left text-xs font-medium text-warning'>{t('notes.uncommitted')}</th>
                   </tr>
-                  {uncommitted.map(note => <NoteRow key={noteRefKey(note)} note={note} statuses={statuses} readOnly={readOnly} canDelete={canDelete} isPendingDelete={pendingDeletePath === noteRefKey(note)} actions={actions} dates={dates} tagActions={tagActions} showZoom={!!focusMode} canDrag={!!focusMode?.canDrag(note)} canMove={movable} highlightQuery={highlightQuery} selected={false} selectionActive={false} />)}
+                  {uncommitted.map(note => <NoteRow key={noteRefKey(note)} note={note} statuses={statuses} readOnly={readOnly} canDelete={canDelete} isPendingDelete={pendingDeletePath === noteRefKey(note)} actions={actions} dates={dates} tagActions={tagActions} showZoom={!!focusMode} canDrag={!!focusMode?.canDrag(note)} canMove={movable} draft highlightQuery={highlightQuery} selected={false} selectionActive={false} />)}
                 </tbody>
               )}
               <tbody className='divide-y' style={{ borderColor: 'var(--color-line)' }}>

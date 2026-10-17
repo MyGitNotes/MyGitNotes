@@ -33,8 +33,8 @@ export function startNoteDrag(event: DragEvent, note: Pick<NoteListItem, 'notebo
 }
 
 /**
- * Whether rows drag to move with this pointer. On touch a native drag would start on the long press that selects
- * notes, so a touch screen moves a note with its Move button instead.
+ * Whether rows drag natively to move with this pointer. On touch a native drag would start on the long press that
+ * selects notes, so there a long press lifts the note and the finger drags it instead (`useNoteTouchSelection`).
  */
 export const pointerMovesNotes = () => typeof window === 'undefined' || typeof window.matchMedia !== 'function' || window.matchMedia('(pointer: fine)').matches;
 

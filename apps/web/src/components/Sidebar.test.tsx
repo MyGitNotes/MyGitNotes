@@ -10,6 +10,7 @@ import { SIDEBAR_SECTIONS_KEY } from '../lib/sidebar-sections.js';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { Sidebar } from './Sidebar.js';
 import { NOTE_MOVE_DRAG_TYPE } from '../lib/note-drag.js';
+import { startTouchNoteDrag } from '../lib/touch-note-drag.js';
 
 const kind = { total: 0, statuses: {}, tags: {} };
 const facets: Record<string, NotebookFacets> = { life: { total: 7, hidden: 0, statuses: { todo: 3, done: 4 }, tags: { work: 2 }, directories: {}, outlines: kind, compilations: { total: 3, statuses: {}, tags: {} } }, work: { total: 1, hidden: 0, statuses: {}, tags: {}, directories: {}, outlines: kind, compilations: kind } };
@@ -157,4 +158,30 @@ it('moves a note dropped on a folder or on its notebook, and ignores a note of a
   expect(onDropNote).toHaveBeenLastCalledWith({ notebookId: 'life', path: 'notes/a.md' }, null);
   fireEvent.drop(folder, drag('work'));
   expect(onDropNote).toHaveBeenCalledTimes(2);
+});
+
+it('takes a note dragged by touch onto a folder', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ revision: 'r1' }) }));
+  const onDropNote = vi.fn();
+  render(
+    <I18nProvider>
+      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={() => {}} foldersWritable onSelectFolder={() => {}} onDropNote={onDropNote} workspaceTagNames={[]} changeCount={0} />
+    </I18nProvider>,
+  );
+  const folder = screen.getByRole('button', { name: 'One' });
+  await waitFor(() => expect(folder).not.toBeDisabled());
+  const under = vi.fn<(x: number, y: number) => Element | null>(() => null);
+  document.elementFromPoint = under;
+  try {
+    const drag = startTouchNoteDrag({ notebookId: 'life', path: 'notes/a.md' }, 'A', 0, 0);
+    under.mockReturnValue(folder);
+    act(() => drag.move(5, 5));
+    expect(folder.closest('.folder-note-over')).toBeInTheDocument();
+    act(() => drag.drop());
+    expect(onDropNote).toHaveBeenCalledWith({ notebookId: 'life', path: 'notes/a.md' }, 'one');
+    expect(folder.closest('.folder-note-over')).not.toBeInTheDocument();
+    expect(document.querySelector('.note-touch-ghost')).toBeNull();
+  } finally {
+    Reflect.deleteProperty(document, 'elementFromPoint');
+  }
 });
