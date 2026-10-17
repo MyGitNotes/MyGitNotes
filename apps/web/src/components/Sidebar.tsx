@@ -230,20 +230,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
                       icon={<BookOpen size={16} />}
                       title={nb.title}
                       selected={isSelected}
-                      onSelect={event => {
+                      onSelect={() => {
+                        // One folder at a time: a modifier no longer adds the notebook to the selection.
                         if (allNotebooks) {
-                          if (event.metaKey || event.ctrlKey || event.shiftKey) {
-                            onChange({
-                              kind: 'note',
-                              folders: value.folders.includes(root)
-                                ? value.folders.filter(path => path !== root)
-                                : [...value.folders, root],
-                            });
-                          } else {
-                            onChange({ kind: 'note', folders: [root] });
-                            if (!expanded) {
-                              setExpandedNotebooks(previous => new Set([...previous, nb.id]));
-                            }
+                          onChange({ kind: 'note', folders: [root] });
+                          if (!expanded) {
+                            setExpandedNotebooks(previous => new Set([...previous, nb.id]));
                           }
                         } else {
                           selectSingleFolder(nb.id, null);

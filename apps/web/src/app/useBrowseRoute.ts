@@ -36,7 +36,8 @@ export function useBrowseRoute({ editorRoute, config, location, queryState, setF
   const sidebarGestureRef = useSidebarSwipe(activeTab === 'notes' && !loading && !loadError, filtersOpen, setFiltersOpen);
   const selectedFolders = useMemo(() => route.folders.length ? [...new Set(route.folders)] : legacyFolderPaths(config?.notebooks || [], selectedNotebookId, route.folder), [route.folders, route.folder, config, selectedNotebookId]);
   const folderRoot = config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root.replace(/\/$/, '');
-  const selectedFolder = selectedFolders.length === 1 && folderRoot && selectedFolders[0].startsWith(folderRoot + '/') ? selectedFolders[0].slice(folderRoot.length + 1) : route.folder;
+  // The Notes page browses one folder; links and bookmarks from before single selection keep their first.
+  const selectedFolder = selectedFolders.length > 0 && folderRoot && selectedFolders[0].startsWith(folderRoot + '/') ? selectedFolders[0].slice(folderRoot.length + 1) : route.folder;
   // Notes and Graph query every notebook while the all-notebooks toggle is on; the current notebook stays selected.
   const scopeNotebookId = route.allNotebooks ? 'all' : selectedNotebookId;
   const selectedStatus = route.status;

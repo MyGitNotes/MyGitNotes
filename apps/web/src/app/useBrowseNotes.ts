@@ -41,12 +41,18 @@ interface Params {
 }
 
 export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t }: Params) {
-  const noteFilters = useMemo<NoteFilters>(() => ({ kind: route.kind, notebookId: scopeNotebookId, folders: selectedFolders, tags: selectedTags, descendants: route.descendants, tagMode: route.tagMode, q: searchQuery, status: selectedStatus, showHidden }), [route.kind, scopeNotebookId, selectedFolders, selectedTags, route.descendants, route.tagMode, searchQuery, selectedStatus, showHidden]);
+  // The graph filters by several folders, with or without their subfolders; the Notes page selects one folder and always includes its subfolders (the folder view lists one level itself, below).
+  const graph = activeTab === 'graph';
+  const scopeFolders = useMemo(() => graph ? selectedFolders : selectedFolders.slice(0, 1), [graph, selectedFolders]);
+  const descendants = graph ? route.descendants : true;
+  const noteFilters = useMemo<NoteFilters>(() => ({ kind: route.kind, notebookId: scopeNotebookId, folders: scopeFolders, tags: selectedTags, descendants, tagMode: route.tagMode, q: searchQuery, status: selectedStatus, showHidden }), [route.kind, scopeNotebookId, scopeFolders, selectedTags, descendants, route.tagMode, searchQuery, selectedStatus, showHidden]);
   const kindList = route.kind === 'compilation' || route.kind === 'outline';
-  const hasCollectionFilter = selectedFolders.length > 0 || selectedTags.length > 0 || scopeNotebookId === 'all';
   // Typing in the search box must not fire one server query per keystroke.
   const debouncedSearch = useDebounced(searchQuery);
-  const filtered = Boolean(debouncedSearch.trim() || selectedStatus || hasCollectionFilter || kindList);
+  // A filtered result spans the subtree, so the folder view lists it whole instead of one level; a selected folder alone is not a filter there.
+  const filtered = Boolean(debouncedSearch.trim() || selectedStatus || selectedTags.length > 0 || scopeNotebookId === 'all' || kindList);
+  // The count line answers for the selected folder too.
+  const counted = filtered || scopeFolders.length > 0;
   const notebookRoot = config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root.replace(/\/$/, '') || '';
   const currentDirectory = [notebookRoot, selectedFolder].filter(Boolean).join('/');
 
@@ -59,14 +65,14 @@ export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags,
     return selected && (showHidden || !isNoteHidden({ ...selected.metadata, status: selected.status })) ? selected : undefined;
   }, [indexLookup.notes, indexCandidates, showHidden]);
 
-  const baseQuery = useMemo<Partial<NoteQuery>>(() => ({ kind: route.kind, notebookId: scopeNotebookId, folders: selectedFolders, descendants: route.descendants, tags: selectedTags, tagMode: route.tagMode, status: selectedStatus, showHidden, q: debouncedSearch, sort: sortField, order: sortOrder }), [route.kind, scopeNotebookId, selectedFolders, route.descendants, selectedTags, route.tagMode, selectedStatus, showHidden, debouncedSearch, sortField, sortOrder]);
+  const baseQuery = useMemo<Partial<NoteQuery>>(() => ({ kind: route.kind, notebookId: scopeNotebookId, folders: scopeFolders, descendants, tags: selectedTags, tagMode: route.tagMode, status: selectedStatus, showHidden, q: debouncedSearch, sort: sortField, order: sortOrder }), [route.kind, scopeNotebookId, scopeFolders, descendants, selectedTags, route.tagMode, selectedStatus, showHidden, debouncedSearch, sortField, sortOrder]);
   // Browsing a folder lists that one directory; searching or filtering lists the whole result.
   const listQuery = useMemo<Partial<NoteQuery>>(() => (filtered || kindList || viewMode === 'flat' || viewMode === 'kanban' ? baseQuery : { ...baseQuery, folders: currentDirectory ? [currentDirectory] : [], descendants: false }), [baseQuery, filtered, kindList, viewMode, currentDirectory]);
   // Only the notes page lists notes; the other tabs ask for what they draw themselves.
-  const listResult = useNoteList(browsingNotes && viewMode !== 'kanban' ? listQuery : null, { content: viewMode === 'card', hide: folderIndex?.path });
+  const listResult = useNoteList(browsingNotes && viewMode !== 'kanban' ? listQuery : null, { hide: folderIndex?.path });
   // Kanban pages each column on its own, so the filter result count needs its own answer.
-  const kanbanCount = useNoteList(browsingNotes && filtered && viewMode === 'kanban' ? baseQuery : null);
-  const filterCount = filtered ? (viewMode === 'kanban' ? kanbanCount.total : listResult.total) : (facetsQuery.facets ? notebookFacets.total : null);
+  const kanbanCount = useNoteList(browsingNotes && counted && viewMode === 'kanban' ? baseQuery : null);
+  const filterCount = counted ? (viewMode === 'kanban' ? kanbanCount.total : listResult.total) : (facetsQuery.facets ? notebookFacets.total : null);
   const displayedNotes = listResult.notes;
 
   const filterProps: FilterControls = { value: noteFilters, neighbors: route.neighbors, notebooks: config?.notebooks || [], folders, tags: Object.keys(notebookFacets.tags), statuses: notebookStatuses, count: filterCount, allNotebooks: route.allNotebooks, onAllNotebooksChange: changeAllNotebooks, onChange: changeFilters, onClear: clearFilters };

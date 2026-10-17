@@ -36,10 +36,6 @@
 .browse-dock[data-placement='top'] [data-kanban-columns] { align-items: stretch; }
 .browse-dock[data-placement='top'] [data-status-column] { height: 100%; }
 
-/* Card strip: single horizontally scrolling row instead of the grid, for a short top dock. */
-.note-card-strip { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 4px; }
-.note-card-strip-item { flex: 0 0 280px; width: 280px; }
-
 /* A top dock is short: trim the browse padding so the Kanban columns fit instead of clipping. */
 .browse-dock[data-placement='top'] .browse-dock-scroll { padding-top: 0; padding-bottom: 8px; }
 .browse-dock[data-placement='top'] [data-kanban-columns] { padding-bottom: 4px; }

@@ -89,11 +89,6 @@ it('leaves rows to the Move button on a touch screen, where a long press selects
   }
 });
 
-it('marks the note list compact via data-compact', () => {
-  const { container } = render(createElement(ListView, { ...baseProps, notes: [noteOf('notes/a.md')], compact: true }));
-  expect(container.querySelector('.note-list')).toHaveAttribute('data-compact', 'true');
-});
-
 const titled = (path: string, title: string, extra: Partial<NoteListItem> = {}): NoteListItem => ({ ...noteOf(path), title, ...extra });
 
 it('keeps one line per note: the path is the title tooltip, not a second line', () => {

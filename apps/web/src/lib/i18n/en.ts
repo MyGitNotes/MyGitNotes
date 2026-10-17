@@ -520,8 +520,7 @@ export const en = {
 
   'layout.access': 'Access & connections',
   'layout.manifest': 'Workspace manifest',
-  'layout.list': 'List',
-  'layout.card': 'Cards',
+  'layout.list': 'Folders',
   'layout.kanban': 'Board',
   'layout.graph': 'Graph',
 
@@ -562,8 +561,7 @@ export const en = {
   'graph.allTags': 'All tags',
 
   // Views & Header
-  'view.list': 'List View',
-  'view.card': 'Card View',
+  'view.list': 'Folder View',
   'view.kanban': 'Kanban View',
   'view.graph': 'Graph View',
   'header.newMenu': 'New menu',
@@ -832,6 +830,7 @@ export const en = {
   'folder.allFolders': 'All folders',
   'folder.folders': 'Folders',
   'folder.index': 'Index',
+  'folder.indexOf': 'Index of {folder}',
   'folder.up': 'Up',
   'folder.goUpTooltip': 'Go up one folder',
   'folder.expand': 'Expand folder',
@@ -915,7 +914,6 @@ export const en = {
   'notes.actions': 'Actions',
   'notes.delete': 'Delete note',
   'notes.confirmDelete': 'Click again to confirm deletion',
-  'notes.noContent': 'No content',
   'notes.noStatus': 'No status',
   'notes.loading': 'Loading notes…',
   'notes.loadingMore': 'Loading more notes…',

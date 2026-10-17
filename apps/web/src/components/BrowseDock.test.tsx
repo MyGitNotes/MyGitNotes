@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { BrowseDock, BrowseDockToggle, CARD_TWO_ROW_HEIGHT } from './BrowseDock.js';
+import { BrowseDock, BrowseDockToggle } from './BrowseDock.js';
 
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = class {
@@ -16,10 +16,6 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 afterEach(cleanup);
 
 const baseProps = { placement: 'left' as const, size: 280, onSizeChange: vi.fn(), collapsed: false };
-
-it('exports a positive card two-row height threshold', () => {
-  expect(CARD_TWO_ROW_HEIGHT).toBeGreaterThan(0);
-});
 
 it('renders only the browse content when narrow and narrowView is browse', () => {
   /* eslint-disable react/no-children-prop -- The component test passes children explicitly as part of the tested props contract. */
@@ -63,12 +59,4 @@ it('toggle collapses an expanded dock and reopens a collapsed one', () => {
   rerender(createElement(BrowseDockToggle, { placement: 'left', collapsed: true, onCollapsedChange }));
   fireEvent.click(screen.getByLabelText('Expand browse panel'));
   expect(onCollapsedChange).toHaveBeenLastCalledWith(false);
-});
-
-it('passes the measured panel height to a function browse prop', () => {
-  const browse = vi.fn((height: number) => createElement('div', null, `h:${height}`));
-  /* eslint-disable react/no-children-prop -- The component test passes children explicitly as part of the tested props contract. */
-  render(createElement(BrowseDock, { ...baseProps, narrow: false, collapsed: false, narrowView: 'browse', browse, children: createElement('div', null, 'focus-content') }));
-  /* eslint-enable react/no-children-prop */
-  expect(browse).toHaveBeenCalledWith(expect.any(Number));
 });

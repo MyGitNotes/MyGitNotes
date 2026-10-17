@@ -357,6 +357,8 @@
 .workspace-header .header-nav button:hover { background: var(--workspace-selection); color: var(--color-text); }
 .workspace-header .header-nav button[aria-current='page'] { color: var(--color-text); background: var(--workspace-selection); }
 .workspace-header .header-nav .mobile-nav-create { display: none; }
+/* A docked panel narrows the header without changing the viewport; when the labels no longer fit, the sections show their icons only. */
+@media (min-width: 1101px) { .workspace-header .header-nav { container: header-nav / inline-size; } @container header-nav (max-width: 370px) { .workspace-header .header-nav button > span { display: none; } .workspace-header .header-nav button { padding: 8px 10px; } } }
 .workspace-header .header-account { display: flex; align-items: center; justify-content: end; min-width: 0; }
 .workspace-sidebar { display: flex; flex-direction: column; flex: 0 0 var(--workspace-sidebar-width); width: var(--workspace-sidebar-width); min-width: 0; min-height: 0; height: 100%; padding: 0; border-right: 1px solid var(--workspace-divider); background: var(--workspace-rail); color: var(--color-text); }
 /* Workspace Splitter & Resizable Layout */
@@ -406,7 +408,7 @@
 .workspace-page-header { flex: none; display: flex; align-items: center; gap: 12px; padding: 6px var(--workspace-padding); border-bottom: 1px solid var(--workspace-divider); }
 .workspace-page-actions { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .notes-main .workspace-page-actions { flex: 1; justify-content: end; }
-.workspace-page-actions .header-note-actions { width: 100%; max-width: 510px; gap: 8px; }
+.workspace-page-actions .header-note-actions { width: 100%; gap: 8px; }
 .workspace-page-actions .header-search { max-width: 280px; }
 .workspace-page-actions .header-search input { border-color: var(--workspace-divider); background: var(--color-surface) !important; font-size: 12px; }
 .workspace-page-actions .desktop-views { background: transparent; gap: 0; padding: 0; }
@@ -430,7 +432,11 @@
 /* One line per note. The path is the title's tooltip; it only shows while a search matches it. */
 .note-list .note-row-path { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; }
 .note-row-title { min-width: 0; }
-@media (min-width: 768px) { .note-list:not([data-compact='true']) table { table-layout: fixed; } .note-list:not([data-compact='true']) th { height: 32px; padding-block: 0; } .note-list:not([data-compact='true']) tbody td { height: 40px; padding-block: 4px; overflow: hidden; } .note-list:not([data-compact='true']) td:first-child .font-medium { overflow: hidden; white-space: nowrap; } .note-list:not([data-compact='true']) .note-row-title { overflow: hidden; text-overflow: ellipsis; } .note-list .note-col-status { width: 7rem; } .note-list .note-col-tags { width: clamp(6rem, 24%, 22rem); } .note-list .note-col-modified { width: 7rem; } .note-list .note-col-actions { width: 5.5rem; } }
+@media (min-width: 768px) { .note-list table { table-layout: fixed; } .note-list th { height: 32px; padding-block: 0; } .note-list tbody td { height: 40px; padding-block: 4px; overflow: hidden; } .note-list td:first-child .font-medium { overflow: hidden; white-space: nowrap; } .note-list .note-row-title { overflow: hidden; text-overflow: ellipsis; } .note-list .note-col-status { width: 7rem; } .note-list .note-col-tags { width: clamp(6rem, 24%, 22rem); } .note-list .note-col-modified { width: 7rem; } .note-list .note-col-actions { width: 5.5rem; } }
+/* The cards that stand in for the list in a narrow region (NoteCollection): one compact card per line. */
+.note-card-grid { display: flex; flex-direction: column; gap: 8px; }
+.note-collection-leading { margin-bottom: 8px; }
+.note-collection-leading .folder-link.folder-index { width: 100%; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-surface); }
 /* Move and delete appear with the row they belong to, on hover and on keyboard focus within it; devices without hover keep them in view. */
 @media (hover: hover) { .note-row-actions { opacity: 0; transition: opacity 120ms ease; } tr:hover .note-row-actions, tr:focus-within .note-row-actions, .note-row-actions:focus-within, .note-row-actions[data-confirming] { opacity: 1; } }
 /* A tag as tinted text; on one line the chips that do not fit are held out of sight (and out of reach) behind a "+N" chip. */
@@ -524,9 +530,9 @@
   .workspace-page-actions .header-note-actions { gap: 6px; }
   .workspace-page-actions .header-search input { font-size: 16px; padding-left: 30px; }
   .workspace-page-actions .header-search svg { left: 9px; }
-  .workspace-page-actions .note-view-select { width: 76px; }
+  .workspace-page-actions .note-view-select { width: auto; }
   /* The sort select takes the rest of the first row, so it never shrinks to a sliver; the remaining controls wrap to a second row. */
-  .workspace-page-actions .header-note-actions > .note-toolbar-sort { flex: 1 1 calc(100% - 44px - 76px - 2 * 6px); }
+  .workspace-page-actions .header-note-actions > .note-toolbar-sort { flex: 1 1 10rem; }
   .workspace-sidebar-scroll { padding-left: 12px; padding-right: 8px; }
   .workspace-breadcrumbs { gap: 8px; }
   .note-list th:first-child, .note-list td:first-child { padding-left: 0; }

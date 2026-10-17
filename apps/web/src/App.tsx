@@ -66,8 +66,7 @@ import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
 import { PageToolbar, SidebarProvider, WorkspaceSidebarPortal, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
 import { useVisualViewport } from './lib/use-visual-viewport.js';
 import { Sidebar } from './components/Sidebar.js';
-import { ListView } from './components/ListView.js';
-import { CardView } from './components/CardView.js';
+import { NoteCollection } from './components/NoteCollection.js';
 import { KanbanView } from './components/KanbanView.js';
 import { EditorModal } from './components/EditorModal.js';
 import type { NoteEditorSharedProps } from './components/note-editor/types.js';
@@ -85,7 +84,7 @@ import { LegacyScreenRedirect } from './components/LegacyScreenRedirect.js';
 import { LegacySchemaNotice } from './components/LegacySchemaNotice.js';
 import { CompilationActionsProvider } from './lib/compilation-actions.js';
 import { useCompilationActionsValue } from './app/useCompilationActionsValue.js';
-import { BrowseDock, BrowseDockToggle, CARD_TWO_ROW_HEIGHT } from './components/BrowseDock.js';
+import { BrowseDock, BrowseDockToggle } from './components/BrowseDock.js';
 import { RightPanel } from './components/RightPanel.js';
 import { FileManager, FileManagerDialog, FileMetadata } from './components/files/index.js';
 import { AgentSystemView } from './components/AgentSystemView.js';
@@ -292,8 +291,8 @@ export const AppContent: React.FC = () => {
   const noteSearch = useRef<NoteSearchHandle>(null);
   useAppCommands({ t, activeTab, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch: () => noteSearch.current?.focus(), noteEditorOpen, pageCommands: focusCommands });
 
-  // With a Focus displayed, the browse region docks beside it (list, flat) or above it (card, kanban).
-  const topDock = viewMode === 'card' || viewMode === 'kanban';
+  // With a Focus displayed, the browse region docks beside it (flat, folder) or above it (kanban).
+  const topDock = viewMode === 'kanban';
   const browseFocusMode = noteFocus.layout ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => noteFocus.editable && note.notebookId === selectedNotebookId } : undefined;
   // Either dock collapses and reopens from the toolbar's left end.
   const dockToggle = noteFocus.layout && focusCapacity > 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} /> : undefined;
@@ -304,7 +303,9 @@ export const AppContent: React.FC = () => {
     else if (newKind === 'compilation') void createUntitledCompilation();
     else void createNote();
   };
-  const browseRegion = (docked: boolean, dockHeight: number) => (
+  // The index names its folder, or the notebook at its root, so it reads as that folder's page rather than a note called "Index".
+  const indexFolderName = selectedFolder ? breadcrumbs[breadcrumbs.length - 1].name : config?.notebooks.find(nb => nb.id === selectedNotebookId)?.title ?? '';
+  const browseRegion = (docked: boolean) => (
     <>
       <LegacySchemaNotice schemaVersion={config?.schema_version} />
       {actionError && <p role='alert' className='mb-3 text-sm text-danger'>{actionError}</p>}
@@ -317,18 +318,12 @@ export const AppContent: React.FC = () => {
       {!folderless && (
         <>
           <Breadcrumbs segments={breadcrumbs} currentFolder={selectedFolder} onSelectFolder={setSelectedFolder} subfolderCount={immediateSubfolders.length} noteCount={listResult.total} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} compact={docked && !topDock} />
-          <FolderLinks folders={immediateSubfolders} onSelect={setSelectedFolder}>{folderIndex && <FolderIndex note={folderIndex} onOpenNote={note => void openFromBrowse(note)} />}</FolderLinks>
+          <FolderLinks folders={immediateSubfolders} onSelect={setSelectedFolder}>{folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}</FolderLinks>
         </>
       )}
       {(viewMode === 'list' || viewMode === 'flat') && (
         <>
-          <ListView showMobileSort={false} compact={docked} focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={note => noteMove.moveNote(note)?.()} onUpdateNoteStatus={handleUpdateNoteStatus} newKind={newKind} onNewNote={createNewKind} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} tagActions={noteTagActions} leading={viewMode === 'flat' && folderIndex ? <FolderIndex note={folderIndex} onOpenNote={note => void openFromBrowse(note)} /> : undefined} highlightQuery={debouncedSearch} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} />
-          <NoteListSentinel hasMore={listResult.hasMore} loading={listResult.loadingMore} error={listResult.error} onLoadMore={listResult.loadMore} />
-        </>
-      )}
-      {viewMode === 'card' && (
-        <>
-          <CardView strip={docked && dockHeight < CARD_TWO_ROW_HEIGHT} focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={note => noteMove.moveNote(note)?.()} newKind={newKind} onNewNote={createNewKind} onUpdateNoteStatus={handleUpdateNoteStatus} tagActions={noteTagActions} highlightQuery={debouncedSearch} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} />
+          <NoteCollection showMobileSort={false} focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={note => noteMove.moveNote(note)?.()} onUpdateNoteStatus={handleUpdateNoteStatus} newKind={newKind} onNewNote={createNewKind} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} tagActions={noteTagActions} leading={viewMode === 'flat' && folderIndex ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} /> : undefined} highlightQuery={debouncedSearch} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} />
           <NoteListSentinel hasMore={listResult.hasMore} loading={listResult.loadingMore} error={listResult.error} onLoadMore={listResult.loadMore} />
         </>
       )}
@@ -342,7 +337,7 @@ export const AppContent: React.FC = () => {
           query={baseQuery}
           hiddenNote={folderIndex}
           leading={folderIndex
-            ? <FolderIndex note={folderIndex} onOpenNote={note => void openFromBrowse(note)} />
+            ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />
             : undefined}
           onOpenNote={note => void openFromBrowse(note)}
           onUpdateNoteStatus={handleUpdateNoteStatus}
@@ -542,15 +537,15 @@ export const AppContent: React.FC = () => {
                         <main className='workspace-main notes-main'>
                           <PageToolbar>
                             {dockToggle}
-                            <NoteToolbar searchRef={noteSearch} onImportLegacy={() => setLegacyImportOpen(true)} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} readOnly={!canWrite} viewMode={viewMode} setViewMode={setViewMode} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} showHidden={showHidden} descendants={route.descendants} onShowHiddenChange={value => changeFilters({ showHidden: value })} onDescendantsChange={value => changeFilters({ descendants: value })} onNewNote={() => void createNote()} onNewOutline={() => void createNote({ kind: 'outline' })} onNewCompilation={() => void createUntitledCompilation()} templates={config?.notebooks.find(nb => nb.id === selectedNotebookId)?.templates} onNewFromTemplate={templateId => void createNote({ templateId })} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} focusControls={<FocusControls focus={noteFocus} onShow={key => void showFocus(key)} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} />} />
+                            <NoteToolbar searchRef={noteSearch} onImportLegacy={() => setLegacyImportOpen(true)} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} readOnly={!canWrite} viewMode={viewMode} setViewMode={setViewMode} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} showHidden={showHidden} onShowHiddenChange={value => changeFilters({ showHidden: value })} onNewNote={() => void createNote()} onNewOutline={() => void createNote({ kind: 'outline' })} onNewCompilation={() => void createUntitledCompilation()} templates={config?.notebooks.find(nb => nb.id === selectedNotebookId)?.templates} onNewFromTemplate={templateId => void createNote({ templateId })} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} focusControls={<FocusControls focus={noteFocus} onShow={key => void showFocus(key)} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} />} />
                           </PageToolbar>
                           {noteFocus.layout
                             ? (
-                              <BrowseDock placement={topDock ? 'top' : 'left'} size={topDock ? noteFocus.view.dock.top : noteFocus.view.dock.left} onSizeChange={size => noteFocus.setDock(topDock ? { top: size } : { left: size })} collapsed={noteFocus.view.dock.collapsed} narrow={focusCapacity === 1} narrowView={focusNarrowView} browse={height => browseRegion(true, height)}>
+                              <BrowseDock placement={topDock ? 'top' : 'left'} size={topDock ? noteFocus.view.dock.top : noteFocus.view.dock.left} onSizeChange={size => noteFocus.setDock(topDock ? { top: size } : { left: size })} collapsed={noteFocus.view.dock.collapsed} narrow={focusCapacity === 1} narrowView={focusNarrowView} browse={browseRegion(true)}>
                                 <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />
                               </BrowseDock>
                             )
-                            : <div className='workspace-scroll'>{browseRegion(false, 0)}</div>}
+                            : <div className='workspace-scroll'>{browseRegion(false)}</div>}
                         </main>
                       </>
                     )}

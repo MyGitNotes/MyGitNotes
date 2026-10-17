@@ -56,12 +56,6 @@ it('leaves a card non-draggable when canDrag returns false', () => {
   expect(card).toHaveAttribute('draggable', 'false');
 });
 
-it('renders cards in a single strip row when strip is true', () => {
-  const { container } = render(createElement(CardView, { ...baseProps, notes: [noteOf('notes/a.md'), noteOf('notes/b.md')], strip: true }));
-  expect(container.querySelector('.note-card-strip')).toBeInTheDocument();
-  expect(container.querySelectorAll('.note-card-strip-item').length).toBe(2);
-});
-
 it('drags a movable card onto a folder without offering it to a Focus pane', () => {
   render(createElement(CardView, { ...baseProps, onMoveNote: vi.fn(), notes: [noteOf('notes/a.md')] }));
   const card = screen.getByText('notes/a.md').closest('[draggable]')!;

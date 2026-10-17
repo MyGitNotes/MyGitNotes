@@ -1,7 +1,7 @@
 import './note-toolbar.css';
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronDown, Eye, EyeOff, FileText, FolderTree, GalleryHorizontalEnd, Kanban, LayoutGrid, LayoutList, ListTree, Plus, Search, X } from 'lucide-react';
+import { ChevronDown, Eye, EyeOff, FileText, Folder, GalleryHorizontalEnd, Kanban, List, ListTree, Plus, Search, X } from 'lucide-react';
 import { WorkspaceSidebarToggle } from './WorkspaceChrome.js';
 import { Select } from './Select.js';
 import { SelectButtonGroup, SelectButtonPrimary, SelectButtonTrigger } from './SelectButton.js';
@@ -11,11 +11,9 @@ import { useTranslation } from '../lib/i18n/index.js';
 
 interface NoteToolbarProps {
   showHidden: boolean;
-  descendants: boolean;
   /** Hidden notes in scope, or null while the counts are still being answered. */
   hiddenNoteCount: number | null;
   onShowHiddenChange: (value: boolean) => void;
-  onDescendantsChange: (value: boolean) => void;
   sortField: SortField;
   sortOrder: SortOrder;
   onSortChange: (field: SortField, order: SortOrder) => void;
@@ -45,7 +43,7 @@ export interface NoteSearchHandle {
   focus: () => void;
 }
 
-export function NoteToolbar({ showHidden, descendants, hiddenNoteCount, onShowHiddenChange, onDescendantsChange, sortField, sortOrder, onSortChange, readOnly, viewMode, setViewMode, onNewNote, onNewCompilation, onNewOutline, templates = [], onNewFromTemplate, query, onQueryChange, filtersOpen, onToggleFilters, focusControls, onImportLegacy, searchRef }: NoteToolbarProps) {
+export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, sortField, sortOrder, onSortChange, readOnly, viewMode, setViewMode, onNewNote, onNewCompilation, onNewOutline, templates = [], onNewFromTemplate, query, onQueryChange, filtersOpen, onToggleFilters, focusControls, onImportLegacy, searchRef }: NoteToolbarProps) {
   const { t } = useTranslation();
   // Below 768px the field is hidden behind a button and expands over the toolbar.
   const [searchOpen, setSearchOpen] = useState(false);
@@ -72,7 +70,7 @@ export function NoteToolbar({ showHidden, descendants, hiddenNoteCount, onShowHi
         </button>
       </div>
       {/* View Switcher Mobile */}
-      <Select aria-label={t('filters.noteView')} value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)} options={[{ value: 'flat', label: t('view.flat') }, { value: 'list', label: t('layout.list') }, { value: 'card', label: t('layout.card') }, { value: 'kanban', label: t('layout.kanban') }]} className='mobile-only note-view-select px-1' />
+      <Select aria-label={t('filters.noteView')} value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)} options={[{ value: 'flat', label: t('view.flat') }, { value: 'list', label: t('layout.list') }, { value: 'kanban', label: t('layout.kanban') }]} className='mobile-only note-view-select px-1' />
       {viewMode === 'flat' && (
         <Select
           className='mobile-only note-toolbar-sort'
@@ -90,15 +88,11 @@ export function NoteToolbar({ showHidden, descendants, hiddenNoteCount, onShowHi
           {showHidden ? <Eye size={16} aria-hidden='true' /> : <EyeOff size={16} aria-hidden='true' />}
           <span id='hidden-notes-tooltip' role='tooltip' className='note-display-tooltip'>{t('filters.hidden')}{' ('}{hiddenNoteCount ?? '—'})</span>
         </button>
-        <button type='button' className='note-display-toggle' aria-label={t('filters.descendants')} aria-pressed={descendants} aria-describedby='descendants-tooltip' onClick={() => onDescendantsChange(!descendants)}>
-          <FolderTree size={16} aria-hidden='true' />
-          <span id='descendants-tooltip' role='tooltip' className='note-display-tooltip'>{t('filters.descendants')}</span>
-        </button>
       </div>
       {focusControls && <div className='note-focus-controls' role='group' aria-label={t('focus.title')}>{focusControls}</div>}
       {/* View Switcher Desktop */}
       <div className='desktop-views flex items-center bg-fg/5 p-1 rounded-lg gap-1 shrink-0'>
-        {([{ mode: 'flat', icon: ListTree }, { mode: 'list', icon: LayoutList }, { mode: 'card', icon: LayoutGrid }, { mode: 'kanban', icon: Kanban }] as const).map(({ mode, icon: Icon }) => (
+        {([{ mode: 'flat', icon: List }, { mode: 'list', icon: Folder }, { mode: 'kanban', icon: Kanban }] as const).map(({ mode, icon: Icon }) => (
           <button
             key={mode}
             type='button'

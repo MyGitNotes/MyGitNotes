@@ -18,7 +18,7 @@ import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteZoomButton } from './NoteZoomButton.js';
 import { useNoteTouchSelection } from '../lib/use-note-touch-selection.js';
 
-interface ListViewProps {
+export interface ListViewProps {
   notes: NoteListItem[];
   /** Staged drafts the server cannot return yet; listed above the committed rows. */
   uncommitted?: NoteListItem[];
@@ -43,8 +43,6 @@ interface ListViewProps {
   tagActions?: NoteTagActions;
   /** Present while a Focus is displayed: rows get a zoom button and can be dragged into a pane. */
   focusMode?: NoteBrowseFocusMode;
-  /** Narrow layout for a docked browse panel: single-row layout, no header, other columns hidden. */
-  compact?: boolean;
   /** An entry listed as the first row, such as the folder index in the flat view. */
   leading?: React.ReactNode;
   /** Active search text: highlights matches in the title and shows a matched-content snippet. */
@@ -128,7 +126,7 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
   );
 });
 
-export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, sortField = 'updated', sortOrder = 'desc', onSortChange, showMobileSort = false, tagActions, focusMode, compact = false, leading, highlightQuery = '', selectedKeys, onToggleSelect }) => {
+export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, sortField = 'updated', sortOrder = 'desc', onSortChange, showMobileSort = false, tagActions, focusMode, leading, highlightQuery = '', selectedKeys, onToggleSelect }) => {
   const { t, language } = useTranslation();
   // Rows retain stable actions while invoking the latest committed callbacks.
   const handlers = useRef({ onOpenNote, onDeleteNote, onUpdateNoteStatus, onMoveNote, focusMode, onToggleSelect });
@@ -187,7 +185,7 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
         </div>
       )}
       {(notes.length > 0 || uncommitted.length > 0 || leading) && (
-        <div className='note-list rounded-xl border shadow-xs overflow-hidden transition-colors' data-compact={compact ? 'true' : undefined} style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
+        <div className='note-list rounded-xl border shadow-xs overflow-hidden transition-colors' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
           <div className='overflow-x-auto'>
             <table className='w-full text-left text-sm'>
               <thead className='bg-fg/5 border-b text-xs font-medium text-muted' style={{ borderColor: 'var(--color-line)' }}>

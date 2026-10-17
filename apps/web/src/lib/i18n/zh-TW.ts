@@ -522,8 +522,7 @@ export const zhTW: Record<TranslationKey, string> = {
 
   'layout.access': '存取與連線',
   'layout.manifest': '工作區清單',
-  'layout.list': '清單',
-  'layout.card': '卡片',
+  'layout.list': '資料夾',
   'layout.kanban': '看板',
   'layout.graph': '關聯圖',
   // Navigation & Shell
@@ -563,8 +562,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'graph.allTags': '全部標籤',
 
   // Views & Header
-  'view.list': '清單檢視',
-  'view.card': '卡片檢視',
+  'view.list': '資料夾檢視',
   'view.kanban': '看板檢視',
   'view.graph': '關聯圖檢視',
   'header.newMenu': '新增選單',
@@ -833,6 +831,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'folder.allFolders': '所有資料夾',
   'folder.folders': '資料夾',
   'folder.index': '索引',
+  'folder.indexOf': '{folder} 的索引',
   'folder.up': '上一層',
   'folder.goUpTooltip': '回到上一層資料夾',
   'folder.expand': '展開資料夾',
@@ -916,7 +915,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'notes.actions': '操作',
   'notes.delete': '刪除筆記',
   'notes.confirmDelete': '再次點擊以確認刪除',
-  'notes.noContent': '無內容',
   'notes.noStatus': '無狀態',
   'notes.loading': '正在載入筆記…',
   'notes.loadingMore': '正在載入更多筆記…',

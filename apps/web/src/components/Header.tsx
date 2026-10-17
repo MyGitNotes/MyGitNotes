@@ -65,6 +65,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
                 disabled={navigationDisabled}
                 onClick={() => setActiveTab(id)}
                 aria-label={label}
+                title={label}
                 className={'desktopOnly' in item && item.desktopOnly ? 'desktop-only' : undefined}
                 aria-current={activeTab === id ? 'page' : undefined}
               >
