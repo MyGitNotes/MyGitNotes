@@ -432,7 +432,11 @@
 /* One line per note. The path is the title's tooltip; it only shows while a search matches it. */
 .note-list .note-row-path { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; }
 .note-row-title { min-width: 0; }
-@media (min-width: 768px) { .note-list table { table-layout: fixed; } .note-list th { height: 32px; padding-block: 0; } .note-list tbody td { height: 40px; padding-block: 4px; overflow: hidden; } .note-list td:first-child .font-medium { overflow: hidden; white-space: nowrap; } .note-list .note-row-title { overflow: hidden; text-overflow: ellipsis; } .note-list .note-col-status { width: 7rem; } .note-list .note-col-tags { width: clamp(6rem, 24%, 22rem); } .note-list .note-col-modified { width: 7rem; } .note-list .note-col-actions { width: 5.5rem; } }
+@media (min-width: 768px) { .note-list table { table-layout: fixed; } .note-list th { height: 32px; padding-block: 0; } .note-list tbody td { height: 40px; padding-block: 4px; overflow: hidden; } .note-list td:first-child .font-medium { overflow: hidden; white-space: nowrap; } .note-list .note-row-title { overflow: hidden; text-overflow: ellipsis; } .note-list .note-col-status { width: 7rem; } .note-list .note-col-tags { width: 14rem; } .note-list .note-col-modified { width: 7rem; } .note-list .note-col-actions { width: 5.5rem; } }
+/* Before the notes turn into cards, the table gives the title room by its own width: the modified time goes first, then the tags narrow. The columns keep their place (width 0) because a hidden cell would misalign a fixed table, and widths are fixed lengths because a fixed table treats a percentage or clamp() column as auto and splits the room with the title. */
+.note-collection { container: note-collection / inline-size; }
+@container note-collection (max-width: 959px) { .note-list .note-col-modified { width: 0; padding: 0; } .note-list .note-col-modified > * { display: none; } .note-list .note-col-tags { width: 10rem; } .note-list td:nth-child(4) { padding: 0; } .note-list td:nth-child(4) > * { display: none; } }
+@container note-collection (max-width: 839px) { .note-list .note-col-tags { width: 6.5rem; } }
 /* The cards that stand in for the list in a narrow region (NoteCollection): one compact card per line. */
 .note-card-grid { display: flex; flex-direction: column; gap: 8px; }
 .note-collection-leading { margin-bottom: 8px; }
