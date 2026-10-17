@@ -26,7 +26,7 @@ export function NoteStatusSelect({ status = '', statuses, readOnly, onChange, la
   const name = status || t('notes.noStatus');
 
   return (
-    <div className='relative inline-flex items-center shrink-0 min-w-0 max-w-48' onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+    <div className='relative inline-flex items-center shrink-0 min-w-0 max-w-[min(12rem,100%)]' onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
       <Select
         aria-label={label}
         disabled={readOnly}
