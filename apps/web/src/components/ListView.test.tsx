@@ -146,3 +146,14 @@ it('starts each folder with a header row when the notes come grouped', () => {
   const { container } = render(createElement(ListView, { ...baseProps, notes: [noteOf('notes/a/1.md'), noteOf('notes/a/2.md'), noteOf('notes/b/3.md')], groupOf }));
   expect([...container.querySelectorAll('.note-group-heading')].map(heading => heading.textContent)).toEqual(['Folder a', 'Folder b']);
 });
+
+it("hides a collapsed folder's notes under its heading and reports clicks on the heading", () => {
+  const groupOf = (note: NoteListItem) => ({ key: note.path.split('/')[1], label: `Folder ${note.path.split('/')[1]}` });
+  const toggled: string[] = [];
+  const { container } = render(createElement(ListView, { ...baseProps, notes: [noteOf('notes/a/1.md'), noteOf('notes/a/2.md'), noteOf('notes/b/3.md')], groupOf, collapsedGroups: new Set(['a']), onToggleGroup: key => toggled.push(key) }));
+  const headings = [...container.querySelectorAll<HTMLButtonElement>('.note-group-toggle')];
+  expect(headings.map(heading => heading.getAttribute('aria-expanded'))).toEqual(['false', 'true']);
+  expect(container.querySelectorAll('tbody tr:not(.note-group-row)')).toHaveLength(1);
+  fireEvent.click(headings[0]);
+  expect(toggled).toEqual(['a']);
+});

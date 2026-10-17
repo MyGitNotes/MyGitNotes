@@ -443,6 +443,11 @@
 /* A folder's heading in a list grouped by folder (Flat, or a filtered Folder view), in the table and between cards. */
 .note-group-heading { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--color-muted); text-align: left; }
 .note-group-heading > svg { width: 14px; height: 14px; flex: none; }
+.note-group-toggle { width: 100%; padding: 0; border: 0; background: none; cursor: pointer; }
+.note-group-toggle:hover { color: var(--color-text); }
+.note-group-toggle:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+.note-group-chevron { transition: transform 120ms ease; }
+.note-group-toggle[aria-expanded='true'] > .note-group-chevron { transform: rotate(90deg); }
 .note-group-heading > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-list .note-group-row > .note-group-cell { height: auto; padding: 14px 12px 6px; }
 .note-list .note-group-row:first-child > .note-group-cell { padding-top: 6px; }
