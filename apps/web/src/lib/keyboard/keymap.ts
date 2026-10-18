@@ -53,6 +53,7 @@ const CODE: readonly KeyScope[] = ['code-editor'];
 export const KEYMAP: readonly KeymapEntry[] = [
   // General
   entry('help.open', 'general', ['global'], 'dispatcher', [{ keys: 'Mod+/', when: { exceptScopes: ['code-editor'] } }], { phase: 'capture', description: 'command.help.open.describe' }),
+  entry('note.searchList', 'general', ['global'], 'dispatcher', ['Mod+Shift+F'], { phase: 'capture', description: 'command.note.searchList.describe' }),
   entry('help.close', 'general', ['help'], 'widget', ['Escape']),
   entry('drawer.close', 'panes', ['drawer'], 'widget', ['Escape']),
   entry('compilation.close', 'general', ['compilation'], 'widget', ['Escape']),
@@ -61,7 +62,7 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('book.nextPage', 'list', ['book'], 'widget', ['ArrowRight']),
   entry('files.open', 'list', ['file-list'], 'widget', ['Enter']),
   // Quick open
-  entry('palette.notes', 'palette', ['global'], 'dispatcher', ['Mod+Shift+F'], { phase: 'capture', description: 'command.palette.notes.describe' }),
+  entry('palette.notes', 'palette', ['global'], 'dispatcher', ['Mod+P'], { phase: 'capture', description: 'command.palette.notes.describe' }),
   entry('palette.commands', 'palette', ['global'], 'dispatcher', ['Mod+Shift+P'], { phase: 'capture', description: 'command.palette.commands.describe' }),
   entry('palette.commandMode', 'palette', ['palette'], 'widget', ['>', '/']),
   entry('palette.move', 'palette', ['palette'], 'widget', ['ArrowUp', 'ArrowDown']),

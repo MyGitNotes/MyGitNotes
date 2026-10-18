@@ -290,7 +290,20 @@ export const AppContent: React.FC = () => {
 
   const { focusCommands, shortcutMode, setShortcutMode } = useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, showFocus, zoomFocusNote });
   const noteSearch = useRef<NoteSearchHandle>(null);
-  useAppCommands({ t, activeTab, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch: () => noteSearch.current?.focus(), noteEditorOpen, pageCommands: focusCommands });
+  // Searching from another page opens Notes, then focuses the toolbar search once it has rendered.
+  const noteSearchPending = useRef(false);
+  const focusNoteSearch = () => {
+    if (noteSearch.current) return noteSearch.current.focus();
+    if (activeTab === 'notes') return;
+    noteSearchPending.current = true;
+    void setActiveTab('notes');
+  };
+  useEffect(() => {
+    if (!noteSearchPending.current || activeTab !== 'notes') return;
+    noteSearchPending.current = false;
+    noteSearch.current?.focus();
+  }, [activeTab]);
+  useAppCommands({ t, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch, noteEditorOpen, pageCommands: focusCommands });
 
   // With a Focus displayed, the browse region docks beside it (flat, folder) or above it (kanban).
   const topDock = viewMode === 'kanban';

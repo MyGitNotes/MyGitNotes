@@ -55,16 +55,16 @@ it('leaves a key alone when its command is not registered or not available', () 
 });
 
 it('runs a chord typed while an IME reports keyCode 229, matching it by its physical key', () => {
-  const notes = vi.fn();
-  mount([{ id: 'palette.notes', run: notes }]);
+  const search = vi.fn();
+  mount([{ id: 'note.searchList', run: search }]);
   const event = press(document.body, { key: 'Process', code: 'KeyF', keyCode: 229, ctrlKey: true, shiftKey: true } as KeyboardEventInit);
   expect(event.defaultPrevented).toBe(true);
-  expect(notes).toHaveBeenCalledOnce();
+  expect(search).toHaveBeenCalledOnce();
 });
 
 it('ignores keys that only look like its chords', () => {
   const notes = vi.fn();
-  mount([{ id: 'palette.notes', run: notes }, { id: 'help.open', run: notes }]);
+  mount([{ id: 'note.searchList', run: notes }, { id: 'help.open', run: notes }]);
   press(document.body, { key: 'f', code: 'KeyF', ctrlKey: true });
   press(document.body, { key: '/', code: 'Slash', altKey: true });
   press(document.body, { key: 'F', code: 'KeyF', ctrlKey: true, altKey: true, shiftKey: true });

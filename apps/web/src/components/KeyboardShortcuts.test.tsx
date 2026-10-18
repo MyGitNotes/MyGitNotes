@@ -42,7 +42,6 @@ const Surface = ({ noteEditorOpen }: { noteEditorOpen: boolean; }) => {
   const { t } = useTranslation();
   useAppCommands({
     t,
-    activeTab: 'notes',
     setActiveTab: tab => {
       navigatedTo.push(tab);
     },
@@ -67,7 +66,7 @@ const Surface = ({ noteEditorOpen }: { noteEditorOpen: boolean; }) => {
 const Harness = ({ noteEditorOpen = false }: { noteEditorOpen?: boolean; }) => createElement(KeyboardRoot, null, createElement(Surface, { noteEditorOpen }));
 
 const openPalette = async () => {
-  fireEvent.keyDown(document, { key: 'F', code: 'KeyF', ctrlKey: true, shiftKey: true });
+  fireEvent.keyDown(document, { key: 'p', code: 'KeyP', ctrlKey: true });
   return waitFor(() => document.querySelector<HTMLInputElement>('.keyboard-shortcuts-panel input')!);
 };
 
@@ -165,13 +164,13 @@ it('reopening before the previous close has been picked up by the listener still
   const input = await openPalette();
   fireEvent.change(input, { target: { value: '>notes' } });
 
-  // Dispatch the closing Enter and the reopening Ctrl+Shift+F inside one batch, so the keydown
-  // listener's closure has not yet been re-registered with mode=null when Ctrl+Shift+F fires -
+  // Dispatch the closing Enter and the reopening Ctrl+P inside one batch, so the keydown
+  // listener's closure has not yet been re-registered with mode=null when Ctrl+P fires -
   // this is what the real repro looks like when the two key presses land only a few
   // milliseconds apart in a real browser.
   act(() => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', code: 'KeyF', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', ctrlKey: true, bubbles: true, cancelable: true }));
   });
 
   const input2 = await waitFor(() => document.querySelector<HTMLInputElement>('.keyboard-shortcuts-panel input')!);
@@ -237,7 +236,7 @@ it('Alt+/ no longer opens the palette', () => {
   expect(event.defaultPrevented).toBe(false);
 });
 
-it('inside the note editor both Ctrl+Shift+P and Ctrl+Shift+F open the palette', async () => {
+it('inside the note editor both Ctrl+Shift+P and Ctrl+P open the palette', async () => {
   render(createElement(Harness, { noteEditorOpen: true }), { wrapper });
   const input = await openCommandPalette();
   expect(input.value).toBe('>');
@@ -247,10 +246,10 @@ it('inside the note editor both Ctrl+Shift+P and Ctrl+Shift+F open the palette',
   expect(notes.value).toBe('');
 });
 
-it('Ctrl+Shift+F while the palette is in command mode switches it to note search', async () => {
+it('Ctrl+P while the palette is in command mode switches it to note search', async () => {
   render(createElement(Harness), { wrapper });
   const input = await openCommandPalette();
-  fireEvent.keyDown(document, { key: 'F', code: 'KeyF', ctrlKey: true, shiftKey: true });
+  fireEvent.keyDown(document, { key: 'p', code: 'KeyP', ctrlKey: true });
   await waitFor(() => expect(input.value).toBe(''));
 });
 
@@ -291,10 +290,19 @@ it('"Go to Graph" is a command and navigates to the Graph page', async () => {
   await waitFor(() => expect(navigatedTo).toEqual(['graph']));
 });
 
-it('"Search the note list" runs the toolbar search focus instead of a stale selector', async () => {
+it('Ctrl+Shift+F runs the note text search instead of opening quick open', async () => {
+  render(createElement(Harness), { wrapper });
+  const event = new KeyboardEvent('keydown', { key: 'F', code: 'KeyF', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true });
+  document.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  await waitFor(() => expect(searchedList).toBe(1));
+  expect(document.querySelector('.keyboard-shortcuts-panel')).toBeNull();
+});
+
+it('"Search note text" runs the toolbar search focus instead of a stale selector', async () => {
   render(createElement(Harness), { wrapper });
   const input = await openCommandPalette();
-  fireEvent.change(input, { target: { value: '>search the note list' } });
+  fireEvent.change(input, { target: { value: '>search note text' } });
   await waitFor(() => expect(document.querySelector('[data-command-id="note.searchList"]')).not.toBeNull());
   fireEvent.keyDown(document, { key: 'Enter' });
   await waitFor(() => expect(searchedList).toBe(1));
@@ -340,8 +348,8 @@ it('help lists every registry command, grouped, and its filter matches names and
   pressHelp(document.body);
   const help = await waitFor(() => document.querySelector<HTMLElement>('.keyboard-shortcuts-panel[data-mode="help"]')!);
   const rows = () => [...help.querySelectorAll('[data-shortcut-id]')].map(row => row.getAttribute('data-shortcut-id'));
-  // Every KEYMAP entry plus the palette-only commands registered here (seven of them: five pages, new note, note list search).
-  expect(rows()).toHaveLength(KEYMAP.length + 7);
+  // Every KEYMAP entry plus the palette-only commands registered here (six of them: five pages and new note).
+  expect(rows()).toHaveLength(KEYMAP.length + 6);
   expect(new Set(rows()).size).toBe(rows().length);
   expect(rows()).toEqual(expect.arrayContaining(['palette.notes', 'palette.commands', 'help.open', 'editor.leader', 'format.bold', 'nav.graph', 'note.searchList']));
   expect([...help.querySelectorAll('section h3')].map(heading => heading.textContent)).toEqual(expect.arrayContaining(['General', 'Go to', 'Quick open', 'Editor', 'Find', 'Outline', 'Table', 'Image viewer']));
@@ -351,9 +359,9 @@ it('help lists every registry command, grouped, and its filter matches names and
   fireEvent.change(filter, { target: { value: 'graph' } });
   expect(rows()).toEqual(expect.arrayContaining(['nav.graph', 'graph.toggleExpand']));
   expect(rows()).not.toContain('palette.notes');
-  // Quick open is where notes are searched, so its keywords find it under the word people look for.
+  // Quick open and the note text search both answer the word people look for.
   fireEvent.change(filter, { target: { value: 'search' } });
-  expect(rows()).toContain('palette.notes');
+  expect(rows()).toEqual(expect.arrayContaining(['palette.notes', 'note.searchList']));
 });
 
 it("lists Vim's keys as their own group only while Vim mode is on, all of them found by filtering for vim", async () => {

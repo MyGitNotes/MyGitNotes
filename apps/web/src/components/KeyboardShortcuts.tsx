@@ -42,7 +42,7 @@ export function KeyboardShortcuts({ mode, onModeChange, suspended = false, selec
   selectedIdRef.current = selectedId;
   /* eslint-enable react/refs */
   const modeRef = useRef<ShortcutSurfaceMode | null>(null);
-  /** The query a keyboard opening asks for (`>` from Cmd/Ctrl+Shift+P); the header button and Cmd/Ctrl+Shift+F leave it empty. */
+  /** The query a keyboard opening asks for (`>` from Cmd/Ctrl+Shift+P); the header button and Cmd/Ctrl+P leave it empty. */
   const openingQuery = useRef('');
   /* eslint-disable react/refs -- The palette synchronizes its mode and selection before immediate keyboard events can run. */
   modeRef.current = mode;

@@ -84,7 +84,7 @@ it('keeps the field behind a button on phones: the button opens it over the tool
   expect(search).not.toHaveAttribute('data-open');
 });
 
-it('lets the "Search the note list" command open the field on phones and put the cursor in it', async () => {
+it('lets the "Search note text" command open the field on phones and put the cursor in it', async () => {
   const search = createRef<NoteSearchHandle>();
   render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, searchRef: search })));
   const field = screen.getByRole('searchbox', { name: '搜尋筆記、標籤、內文...' });

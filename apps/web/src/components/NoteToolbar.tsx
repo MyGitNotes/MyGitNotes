@@ -37,7 +37,7 @@ interface NoteToolbarProps {
   /** The Focus switcher and division picker. */
   focusControls?: ReactNode;
   onImportLegacy?: () => void;
-  /** Lets the "Search the note list" command reach the field, opening it first on narrow screens. */
+  /** Lets the "Search note text" command reach the field, opening it first on narrow screens. */
   searchRef?: Ref<NoteSearchHandle>;
 }
 

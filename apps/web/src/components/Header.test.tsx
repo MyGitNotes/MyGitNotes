@@ -23,7 +23,7 @@ describe('Header notebook selector', () => {
   it('names the quick open chord in the tooltip and in aria-keyshortcuts', () => {
     const html = renderToStaticMarkup(createElement(Header, { workspaceTitle: 'Notes', activeTab: 'notes', setActiveTab: () => {}, selectedNotebookId: 'work', notebooks: [], onSelectNotebook: () => {}, onCreateNote: () => {}, onOpenCommands: () => {} }));
     const button = html.match(/<button[^>]*data-header-command[^>]*>/)![0];
-    expect(button).toContain('aria-keyshortcuts="Control+Shift+F"');
-    expect(button).toContain('title="Quick open (Ctrl+Shift+F)"');
+    expect(button).toContain('aria-keyshortcuts="Control+P"');
+    expect(button).toContain('title="Quick open (Ctrl+P)"');
   });
 });
