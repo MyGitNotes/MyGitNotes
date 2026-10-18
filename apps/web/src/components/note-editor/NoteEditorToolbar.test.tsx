@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, onTestFinished, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { NoteEditorToolbar } from './NoteEditorToolbar.js';
+
+// The real toggle renders nothing without a Pi agent provider; this one stands in for an available agent.
+const agent = vi.hoisted(() => ({ available: false }));
+vi.mock('../assistant/AssistantDockToggle.js', () => ({ AssistantDockToggle: () => agent.available ? createElement('button', { type: 'button', 'aria-label': 'Agent' }) : null }));
 
 afterEach(cleanup);
 
@@ -82,4 +86,16 @@ it('switches the mode with one icon button that shows the mode in use and names 
   // A Focus pane answers the leader too.
   rerender(toolbar(undefined, { isMarkdown: true, setEditorMode, frame: 'pane' }));
   expect(screen.getByRole('button', { name: 'Switch to source' })).toHaveAttribute('title', expect.stringMatching(/^Switch to source \(.+ M\)$/));
+});
+
+it('offers the assistant toggle in zoom only, leaving a Focus pane to the header toggle', () => {
+  agent.available = true;
+  onTestFinished(() => {
+    agent.available = false;
+  });
+  render(toolbar());
+  expect(screen.getByRole('button', { name: 'Agent' })).toBeInTheDocument();
+  cleanup();
+  render(toolbar(undefined, { frame: 'pane' }));
+  expect(screen.queryByRole('button', { name: 'Agent' })).toBeNull();
 });
