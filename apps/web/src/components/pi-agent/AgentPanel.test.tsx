@@ -146,6 +146,18 @@ it('answers ask_user dialogs, which Pi sends as select and input requests', () =
   expect(value.answer).toHaveBeenCalledWith(transcript.dialogs[0], { cancelled: true });
 });
 
+it('shows a several-line dialog title as a heading over its remaining lines, which ask_user uses for option lists and previews', () => {
+  const title = '[Layout] Which layouts?\n\n1. Grid — tiles\n2. List — rows\n\nEnter the numbers of all that apply';
+  const transcript: TranscriptState = { ...emptyTranscript, dialogs: [{ id: 'd1', method: 'input', title }] };
+  const value = agent({ transcript });
+  panel(value);
+  expect(screen.getByRole('heading', { name: '[Layout] Which layouts?' })).toBeTruthy();
+  expect(screen.getByRole('group', { name: '[Layout] Which layouts?' }).querySelector('.pi-agent-dialog-detail')?.textContent).toBe('1. Grid — tiles\n2. List — rows\n\nEnter the numbers of all that apply');
+  fireEvent.change(screen.getByRole('textbox', { name: '[Layout] Which layouts?' }), { target: { value: '1,2' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+  expect(value.answer).toHaveBeenCalledWith(transcript.dialogs[0], { value: '1,2' });
+});
+
 it("shows Pi's own project-trust decision in a drawer under the message box's top row, and remembers it open", () => {
   panel(agent());
   // The toggle sits in the card's top row, beside the context chip; the drawer opens right under that row, above the message box.

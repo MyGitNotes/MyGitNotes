@@ -60,6 +60,7 @@
 .pi-agent-dialog header { display: flex; align-items: center; gap: 6px; }
 .pi-agent-dialog header svg { flex: none; width: 15px; height: 15px; color: var(--color-primary); }
 .pi-agent-dialog h3 { margin: 0; color: var(--color-text); font-size: 12px; font-weight: 600; }
+.pi-agent-dialog-detail { max-height: 240px; overflow-y: auto; color: var(--color-muted); font-size: 12px; }
 .pi-agent-dialog-options { display: flex; flex-direction: column; gap: 4px; }
 .pi-agent-dialog-options .ui-button { justify-content: flex-start; text-align: left; }
 .pi-agent-dialog-form, .pi-agent-switch label { display: flex; flex-direction: column; gap: 6px; }

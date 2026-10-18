@@ -10,12 +10,17 @@ export function AgentDialogCard({ dialog, onAnswer }: { dialog: AgentDialog; onA
   const { t } = useTranslation();
   const [text, setText] = useState(dialog.prefill ?? '');
   const cancel = () => onAnswer({ cancelled: true });
+  // RPC dialogs carry everything in the title: ask_user's sequential fallback puts the question, its option list and previews there on separate lines.
+  const [firstLine = '', ...restLines] = dialog.title.split('\n');
+  const heading = firstLine.trim() || t('piAgent.dialog');
+  const detail = restLines.join('\n').trim();
   return (
-    <section className='pi-agent-dialog' role='group' aria-label={dialog.title || t('piAgent.dialog')}>
+    <section className='pi-agent-dialog' role='group' aria-label={heading}>
       <header>
         <MessageCircleQuestion aria-hidden='true' />
-        <h3>{dialog.title || t('piAgent.dialog')}</h3>
+        <h3>{heading}</h3>
       </header>
+      {detail && <p className='pi-agent-text pi-agent-dialog-detail'>{detail}</p>}
       {dialog.message && <p className='pi-agent-text'>{dialog.message}</p>}
       {dialog.method === 'select' && <div className='pi-agent-dialog-options'>{(dialog.options ?? []).map(option => <Button key={option} onClick={() => onAnswer({ value: option })}>{option}</Button>)}</div>}
       {dialog.method === 'confirm' && (
@@ -32,7 +37,7 @@ export function AgentDialogCard({ dialog, onAnswer }: { dialog: AgentDialog; onA
             onAnswer({ value: text });
           }}
         >
-          {dialog.method === 'input' ? <input className='ui-control' value={text} placeholder={dialog.placeholder} aria-label={dialog.title || t('piAgent.dialog')} onChange={event => setText(event.target.value)} autoFocus /> : <textarea className='ui-control' rows={6} value={text} aria-label={dialog.title || t('piAgent.dialog')} onChange={event => setText(event.target.value)} autoFocus />}
+          {dialog.method === 'input' ? <input className='ui-control' value={text} placeholder={dialog.placeholder} aria-label={heading} onChange={event => setText(event.target.value)} autoFocus /> : <textarea className='ui-control' rows={6} value={text} aria-label={heading} onChange={event => setText(event.target.value)} autoFocus />}
           <div className='pi-agent-dialog-actions'>
             <Button type='submit' variant='primary'>{t('piAgent.submit')}</Button>
           </div>
