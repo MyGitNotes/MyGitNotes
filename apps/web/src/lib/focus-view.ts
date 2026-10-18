@@ -10,6 +10,8 @@ export interface FocusEntryView {
   shown: (string | null)[];
   /** Pane indices, most recently used first. */
   recent: number[];
+  /** Per pane: the keys of the tabs shown there, most recently shown first, so closing a tab returns to the one before it. */
+  history: string[][];
   /** Split sizes (percentages) keyed by a group id chosen by the layout component. */
   ratios: Record<string, number[]>;
   /** Per pane: its tab bar stays hidden until pointed at. */
@@ -70,14 +72,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readEntry(raw: unknown): FocusEntryView | null {
   if (!isRecord(raw)) return null;
-  const { activePane, shown, recent, ratios, hideToolbar } = raw;
+  const { activePane, shown, recent, ratios, hideToolbar, history } = raw;
   if (typeof activePane !== 'number') return null;
   if (!Array.isArray(shown) || !shown.every(value => value === null || typeof value === 'string')) return null;
   if (!Array.isArray(recent) || !recent.every(value => typeof value === 'number')) return null;
   if (!isRecord(ratios) || !Object.values(ratios).every(value => Array.isArray(value) && value.every(n => typeof n === 'number'))) return null;
   // Entries stored before the toolbar toggle have no hideToolbar; the retired tab bar `autoHide` flag is ignored.
   if (hideToolbar !== undefined && !(Array.isArray(hideToolbar) && hideToolbar.every(value => typeof value === 'boolean'))) return null;
-  return { activePane, shown: [...shown] as (string | null)[], recent: [...recent] as number[], ratios: ratios as Record<string, number[]>, hideToolbar: hideToolbar ? [...hideToolbar] as boolean[] : [] };
+  // Entries stored before the tab history start with none; one that does not validate is dropped on its own.
+  const validHistory = Array.isArray(history) && history.every(pane => Array.isArray(pane) && pane.every(key => typeof key === 'string'));
+  return { activePane, shown: [...shown] as (string | null)[], recent: [...recent] as number[], history: validHistory ? (history as string[][]).map(pane => [...pane]) : [], ratios: ratios as Record<string, number[]>, hideToolbar: hideToolbar ? [...hideToolbar] as boolean[] : [] };
 }
 
 export function emptyFocusView(): FocusViewState {
@@ -107,7 +111,7 @@ export function readFocusView(raw: unknown): FocusViewState {
   return { current, entries, last, dock: { left, top, collapsed } };
 }
 
-/** Normalizes a stored entry (if any) against `layout`: one shown slot and toolbar flag per pane, a valid activePane, and recent covering every pane. */
+/** Normalizes a stored entry (if any) against `layout`: one shown slot, tab history and toolbar flag per pane, a valid activePane, and recent covering every pane. */
 export function entryView(state: FocusViewState, key: string, layout: FocusLayout): FocusEntryView {
   const stored = state.entries[key];
   const paneCount = layout.panes.length;
@@ -131,8 +135,14 @@ export function entryView(state: FocusViewState, key: string, layout: FocusLayou
       recent.push(pane);
     }
   }
+  // A pane's history holds only its open tabs, each once, led by the shown one.
+  const history = layout.panes.map((pane, index) => {
+    const open = new Set(pane.tabs.map(focusTabKey));
+    const keys = [shown[index], ...(stored?.history[index] || [])].filter((key): key is string => key !== null && open.has(key));
+    return [...new Set(keys)];
+  });
   const hideToolbar = layout.panes.map((_, index) => stored?.hideToolbar[index] === true);
-  return { activePane, shown, recent, ratios: stored?.ratios || {}, hideToolbar };
+  return { activePane, shown, recent, history, ratios: stored?.ratios || {}, hideToolbar };
 }
 
 export function activatePane(entry: FocusEntryView, pane: number): FocusEntryView {
@@ -141,7 +151,8 @@ export function activatePane(entry: FocusEntryView, pane: number): FocusEntryVie
 
 export function showTab(entry: FocusEntryView, pane: number, key: string): FocusEntryView {
   const shown = entry.shown.map((value, index) => index === pane ? key : value);
-  return activatePane({ ...entry, shown }, pane);
+  const history = shown.map((_, index) => index === pane ? [key, ...(entry.history[index] || []).filter(value => value !== key)] : entry.history[index] || []);
+  return activatePane({ ...entry, shown, history }, pane);
 }
 
 /** The pane a row clicked in the browse region opens into. */
@@ -156,11 +167,16 @@ export function sideTarget(entry: FocusEntryView, sourcePane: number, paneCount:
   return found !== undefined ? found : (sourcePane + 1) % paneCount;
 }
 
-/** Given the layout before closing `key` in `pane`, the key that should be shown afterward: next tab right, else left, else none. */
-export function shownAfterClose(layout: FocusLayout, pane: number, key: string): string | null {
+/**
+ * Given the layout before closing `key` in `pane` and that pane's tab history, the key that should be shown afterward:
+ * the tab shown there before it, as a stack; else the next tab right, else left, else none.
+ */
+export function shownAfterClose(layout: FocusLayout, pane: number, key: string, history: readonly string[] = []): string | null {
   const index = findFocusTabInPane(layout, pane, key);
   if (index === -1) return null;
   const tabs = layout.panes[pane].tabs;
+  const previous = history.find(value => value !== key && tabs.some(tab => focusTabKey(tab) === value));
+  if (previous) return previous;
   const right = tabs[index + 1];
   if (right) return focusTabKey(right);
   const left = tabs[index - 1];

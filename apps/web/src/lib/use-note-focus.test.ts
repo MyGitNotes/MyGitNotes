@@ -132,3 +132,16 @@ describe('useNoteFocus openNote', () => {
     expect(result.current.layout?.panes[1]?.tabs).toHaveLength(1);
   });
 });
+
+describe('useNoteFocus close', () => {
+  it('returns the pane to the tab shown before the closed one, not to its neighbour', async () => {
+    const { result } = renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    for (const id of ['a', 'b', 'c']) await act(() => result.current.place(CURRENT_FOCUS, tab(id), 0));
+    await act(() => result.current.show(0, 'note:notes/a.compilation.yml'));
+    await act(() => result.current.close('note:notes/a.compilation.yml', 0));
+    await waitFor(() => expect(result.current.entry?.shown[0]).toBe('note:notes/c.compilation.yml'));
+    await act(() => result.current.close('note:notes/c.compilation.yml', 0));
+    await waitFor(() => expect(result.current.entry?.shown[0]).toBe('note:notes/b.compilation.yml'));
+  });
+});

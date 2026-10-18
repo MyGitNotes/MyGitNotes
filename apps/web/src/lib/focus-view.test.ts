@@ -7,7 +7,7 @@ const note = (path: string): FocusTab => ({ kind: 'note', path });
 const lane = (id: string): FocusTab => ({ kind: 'note', path: `notes/${id}.compilation.yml` });
 const pane = (...tabs: FocusTab[]) => ({ tabs });
 const layout = (division: FocusLayout['division'], ...panes: ReturnType<typeof pane>[]): FocusLayout => ({ division, panes });
-const entry = (overrides: Partial<FocusEntryView> = {}): FocusEntryView => ({ activePane: 0, shown: [], recent: [], ratios: {}, hideToolbar: [], ...overrides });
+const entry = (overrides: Partial<FocusEntryView> = {}): FocusEntryView => ({ activePane: 0, shown: [], recent: [], history: [], ratios: {}, hideToolbar: [], ...overrides });
 const state = (overrides: Partial<FocusViewState> = {}): FocusViewState => ({ ...emptyFocusView(), ...overrides });
 
 describe('emptyFocusView', () => {
@@ -66,7 +66,7 @@ describe('readFocusView', () => {
 describe('entryView', () => {
   const twoPane = layout('columns-2', pane(note('a.md'), note('b.md')), pane(lane('l1')));
   it('normalizes a fresh key against the layout', () => {
-    expect(entryView(state(), 'missing', twoPane)).toEqual({ activePane: 0, shown: ['note:a.md', 'note:notes/l1.compilation.yml'], recent: [0, 1], ratios: {}, hideToolbar: [false, false] });
+    expect(entryView(state(), 'missing', twoPane)).toEqual({ activePane: 0, shown: ['note:a.md', 'note:notes/l1.compilation.yml'], recent: [0, 1], history: [['note:a.md'], ['note:notes/l1.compilation.yml']], ratios: {}, hideToolbar: [false, false] });
   });
   it('falls back to the first tab when the stored shown key is stale', () => {
     const stored = entry({ shown: ['note:gone.md', 'note:notes/gone.compilation.yml'] });
@@ -96,6 +96,19 @@ describe('entryView', () => {
   });
 });
 
+describe('tab history', () => {
+  it("keeps each pane's shown tabs most recent first, and only tabs still open there", () => {
+    const shownTwice = showTab(showTab(showTab(entry({ shown: ['note:a.md'], history: [['note:a.md']] }), 0, 'note:b.md'), 0, 'note:c.md'), 0, 'note:a.md');
+    expect(shownTwice.history[0]).toEqual(['note:a.md', 'note:c.md', 'note:b.md']);
+    const closedB = layout('single', pane(note('a.md'), note('c.md')));
+    expect(entryView(state({ entries: { k: shownTwice } }), 'k', closedB).history).toEqual([['note:a.md', 'note:c.md']]);
+  });
+  it('reads an entry stored before the history with none', () => {
+    const { history: _, ...old } = entry({ shown: ['note:a.md'], recent: [0] });
+    expect(readFocusView({ entries: { k: old } }).entries.k.history).toEqual([]);
+  });
+});
+
 describe('activatePane and showTab', () => {
   it('activatePane sets activePane and moves the pane to the front of recent', () => {
     const result = activatePane(entry({ activePane: 0, recent: [0, 2, 1] }), 1);
@@ -103,7 +116,7 @@ describe('activatePane and showTab', () => {
   });
   it('showTab sets the shown key for the pane and activates it', () => {
     const result = showTab(entry({ shown: ['note:a.md', 'note:b.md'], recent: [0, 1] }), 1, 'note:c.md');
-    expect(result).toEqual(entry({ activePane: 1, shown: ['note:a.md', 'note:c.md'], recent: [1, 0] }));
+    expect(result).toEqual(entry({ activePane: 1, shown: ['note:a.md', 'note:c.md'], recent: [1, 0], history: [[], ['note:c.md']] }));
   });
 });
 
@@ -128,7 +141,11 @@ describe('sideTarget', () => {
 
 describe('shownAfterClose', () => {
   const three = layout('columns-3', pane(note('a.md'), note('b.md'), note('c.md')), pane(), pane());
-  it('prefers the next tab to the right', () => {
+  it('returns to the tab shown before the closed one, as a stack', () => {
+    expect(shownAfterClose(three, 0, 'note:b.md', ['note:b.md', 'note:a.md', 'note:c.md'])).toBe('note:a.md');
+    expect(shownAfterClose(three, 0, 'note:a.md', ['note:a.md', 'note:gone.md', 'note:c.md'])).toBe('note:c.md');
+  });
+  it('without history, prefers the next tab to the right', () => {
     expect(shownAfterClose(three, 0, 'note:a.md')).toBe('note:b.md');
     expect(shownAfterClose(three, 0, 'note:b.md')).toBe('note:c.md');
   });

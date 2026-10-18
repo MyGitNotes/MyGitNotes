@@ -157,7 +157,7 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     const leavesSource = fromPane !== toPane && before.shown[fromPane] === key;
     const toFlush = leavesSource ? [before.shown[fromPane], before.shown[toPane]] : [before.shown[toPane]];
     if (target === shown && !await flushEditors(noteKeys(notebookId, toFlush))) return false;
-    const sourceNext = leavesSource ? shownAfterClose(current, fromPane, key) : null;
+    const sourceNext = leavesSource ? shownAfterClose(current, fromPane, key, before.history[fromPane]) : null;
     if (!mutate(target, layout => moveFocusTab(layout, fromPane, toPane, key, index))) return false;
     setEntry(target, entry => {
       const withSource = leavesSource ? { ...entry, shown: entry.shown.map((value, i) => i === fromPane ? sourceNext : value) } : entry;
@@ -180,7 +180,7 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     if (findFocusTabInPane(layout, pane, tabKey) === -1) return;
     const visible = entry.shown[pane] === tabKey;
     if (visible && !await flushEditors(noteKeys(notebookId, [tabKey]))) return;
-    const next = shownAfterClose(layout, pane, tabKey);
+    const next = shownAfterClose(layout, pane, tabKey, entry.history[pane]);
     if (!mutate(shown, current => closeTab(current, pane, tabKey))) return;
     if (visible) setEntry(shown, current => ({ ...current, shown: current.shown.map((key, index) => index === pane ? next : key) }), layout);
   };
