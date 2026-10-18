@@ -28,6 +28,15 @@ Apps import workspace packages from their `dist`; after changing or merging `pac
 pnpm build
 ```
 
+### Linting New Files
+`pnpm lint` lints only `git ls-files`, so a new untracked file is skipped and lint passes locally while CI fails. Run `git add -N <new files>` (or commit them) before `pnpm lint`.
+
+### Committing in Parts
+`git mv` and `git rm` stage at once, so a later `git add <files> && git commit` sweeps them into an unrelated commit. Run `git diff --cached --stat` right before each commit.
+
+### Changing the Vercel `ignoreCommand`
+`ignoreCommand` runs `git diff`, so keep `.git` out of `.vercelignore`: Vercel applies that file before the command runs, and a listed `.git` once failed both projects' deployments. Any exit code other than 0 or 1 marks the deployment as an error instead of building, so test a change with a failing command as well. Parse `git ls-tree` output with `-z`; by default it quotes non-ASCII paths.
+
 ### Writing Browser QA Steps
 - Wait for the target's animations and transitions to finish before clicking it.
 - After opening another page in the same browser, call `bringToFront()` on a page before interacting with it.
