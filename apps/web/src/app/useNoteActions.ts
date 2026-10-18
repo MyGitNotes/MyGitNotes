@@ -36,8 +36,11 @@ export function useNoteActions({ activeTab, editorRegistry, setEditingNote, conf
       else query.delete('folder');
       // `returnTo` stays the browse view behind the editor, so a note reached from another note
       // stacks that note on the trail instead, and closing walks back the way the reader came.
-      const trail = editorRoute.note ? [...noteTrail(location.state), location.pathname + location.search + location.hash] : [];
-      navigate(noteRoute(notebook.id, note.path.slice(notebook.root.length + 1)) + '?' + query.toString() + (anchor ? '#' + encodeURIComponent(anchor) : ''), { state: trail.length ? { noteTrail: trail } : null });
+      // Reopening the zoomed note itself keeps the trail as it is, so closing never shows it again.
+      const path = noteRoute(notebook.id, note.path.slice(notebook.root.length + 1));
+      const reopened = Boolean(editorRoute.note) && location.pathname === path;
+      const trail = reopened ? noteTrail(location.state) : editorRoute.note ? [...noteTrail(location.state), location.pathname + location.search + location.hash] : [];
+      navigate(path + '?' + query.toString() + (anchor ? '#' + encodeURIComponent(anchor) : ''), { replace: reopened, state: trail.length ? { noteTrail: trail } : null });
     }
     const targetNotebook = note.notebookId || selectedNotebookId;
     if (targetNotebook) {
