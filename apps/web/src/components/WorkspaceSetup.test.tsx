@@ -80,6 +80,13 @@ it('uses a neutral sign-in line when several options are offered', async () => {
   expect(container.textContent).not.toContain('Sign in with GitHub, then choose');
 });
 
+it('uses the neutral sign-in line when the single option is not GitHub', async () => {
+  serve({ authenticated: false, repositoryChoice: true, workspace: null, signInOptions: [{ id: 'google' }] });
+  await render(createElement(WorkspaceGate, null, createElement('p', null, 'workspace')));
+  expect(container.textContent).toContain('Sign in, then choose where your notes live.');
+  expect(container.textContent).not.toContain('Sign in with GitHub, then choose');
+});
+
 it('says a lightweight sign-in stays in the browser', async () => {
   serve({ authenticated: false, storage: 'cookie', repositoryChoice: true, workspace: null });
   await render(createElement(WorkspaceGate, null, createElement('p', null, 'workspace')));

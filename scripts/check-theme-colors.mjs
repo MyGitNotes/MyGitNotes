@@ -25,9 +25,10 @@ for (const file of files) {
   if (file === palette || tests.test(file)) continue;
   const lines = fs.readFileSync(file, 'utf8').split('\n');
   lines.forEach((line, index) => {
-    if (exceptions.some(exception => exception.file === file && exception.pattern.test(line))) return;
+    // An exception exempts only the text it matches, so anything else on the line is still checked.
+    const checked = exceptions.filter(exception => exception.file === file).reduce((text, exception) => text.replace(new RegExp(exception.pattern.source, 'g'), ''), line);
     for (const [kind, pattern] of rules) {
-      for (const match of line.matchAll(pattern)) errors.push(`${file}:${index + 1}: ${kind} '${match[0].trim()}'`);
+      for (const match of checked.matchAll(pattern)) errors.push(`${file}:${index + 1}: ${kind} '${match[0].trim()}'`);
     }
   });
 }
