@@ -1485,6 +1485,8 @@ export const en = {
   'repositories.adding': 'Adding…',
   'repositories.addTitle': 'Add a repository',
   'repositories.addDescription': 'Repositories you can push to. Adding one shows its notebooks here; nothing is written to it.',
+  'repositories.noPlatformAccess': "This sign-in has no access to the platform's repositories, so there is none to pick here.",
+  'repositories.orFromPlatform': 'Or add a repository you can push to:',
   'repositories.limit': '{visible} of {max} visible repositories',
   'repositories.limitOnPlan': '{visible} of {max} visible repositories on {plan}',
   'repositories.limitReached': 'Hide a repository to add or show another.',

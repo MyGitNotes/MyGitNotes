@@ -13,7 +13,7 @@ import { useTheme } from '../app/useTheme.js';
 import { updateWorkspaceConfig } from '../lib/api.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 import YAML from 'yaml';
-import { ServerAgentProvider } from '../lib/web-features.js';
+import { PlatformAccessProvider, ServerAgentProvider } from '../lib/web-features.js';
 
 /**
  * What `/api/auth/session` says about the visitor; `repositoryChoice` deployments have each visitor bring a repository:
@@ -176,9 +176,23 @@ export function WorkspaceGate({ children }: { children: ReactNode; }) {
       <ConnectionState loading error='' onRetry={() => {}} />
     );
   }
-  if (!session.repositoryChoice || (session.authenticated && session.workspace)) return <ServerAgentProvider agent={session.agent === true}>{children}</ServerAgentProvider>;
+  // Only a signed-in person can lack a credential on the platform; a visitor who is not signed in is not "without access".
+  const platformAccess = !session.authenticated || session.platformAccess !== false;
+  if (!session.repositoryChoice || (session.authenticated && session.workspace)) {
+    return (
+      <PlatformAccessProvider platformAccess={platformAccess}>
+        <ServerAgentProvider agent={session.agent === true}>{children}</ServerAgentProvider>
+      </PlatformAccessProvider>
+    );
+  }
   if (!session.authenticated) return <SignIn storage={session.storage} />;
-  return session.accountMembers ? <FirstRepository login={session.login} /> : <RepositoryPicker login={session.login} />;
+  return session.accountMembers
+    ? (
+      <PlatformAccessProvider platformAccess={platformAccess}>
+        <FirstRepository login={session.login} />
+      </PlatformAccessProvider>
+    )
+    : <RepositoryPicker login={session.login} />;
 }
 
 /** Offers to commit the manifest derived for a repository that has none, so its layout is kept and editable in Settings; `config` names notebooks by local id, as the file keeps them. */

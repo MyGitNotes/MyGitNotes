@@ -7,7 +7,8 @@ import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-prefer
 import type { MembersAnswer, WorkspaceMemberStatus } from '../lib/members-api.js';
 import type { WorkspaceRepository } from '../lib/workspace-repositories.js';
 import { workingNotesKey } from '../lib/working-notes.js';
-import { type WebFeature, WebFeaturesProvider } from '../lib/web-features.js';
+import { PlatformAccessProvider, type RepositoryAddOptionProps, type WebFeature, WebFeaturesProvider } from '../lib/web-features.js';
+import { RepositoryAddFlow } from './RepositoryAdd.js';
 import { RepositoriesSettings, type RepositoriesSettingsProps } from './RepositoriesSettings.js';
 
 const api = vi.hoisted(() => ({ fetchMembers: vi.fn(), setMemberHidden: vi.fn(), setDefaultMember: vi.fn(), removeMember: vi.fn(), reorderMembers: vi.fn(), addMember: vi.fn(), addRepositoryMember: vi.fn(), fetchMemberFolders: vi.fn() }));
@@ -215,5 +216,77 @@ describe('a list an account keeps', () => {
     await waitFor(() => expect(api.setMemberHidden).toHaveBeenCalledWith(wiki.id, true, 'rev-1'));
     fireEvent.click(row('wiki').getByRole('button', { name: 'Remove' }));
     expect(within(await screen.findByRole('dialog')).getByText('Published pages of octo/wiki stay online (remove).')).toBeInTheDocument();
+  });
+
+  describe('an edition feature in the add flow', () => {
+    const Option = ({ revision, limitReached, onAdded, onStale }: RepositoryAddOptionProps) => createElement('div', { 'data-option': revision }, createElement('button', { type: 'button', disabled: limitReached, onClick: onAdded }, 'Create a hosted repository'), createElement('button', { type: 'button', onClick: onStale }, 'Pretend stale'));
+    const NoPlatform = () => createElement('p', null, 'Sign in with GitHub to add its repositories.');
+    const feature: WebFeature = { id: 'edition', repositoryAdd: { options: Option, noPlatformNotice: NoPlatform } };
+    const open = (overrides: Partial<MembersAnswer> = {}) => api.fetchMembers.mockResolvedValue(answer([notes, wiki], { adds: 'repository', environment: undefined, ...overrides }));
+    /** The settings page of a person the session probe says holds no credential on the platform. */
+    const showWithoutPlatform = (features: WebFeature[]) =>
+      render(
+        <PlatformAccessProvider platformAccess={false}>
+          <WebFeaturesProvider features={features}>
+            <RepositoriesSettings repositories={repositories} onMembershipChanged={vi.fn(async () => {})} onOpenChanges={vi.fn()} />
+          </WebFeaturesProvider>
+        </PlatformAccessProvider>,
+      );
+
+    it("shows the edition's option beside the picker, and reloads the list when the option adds a repository", async () => {
+      open();
+      listing(['octo/scraps']);
+      const onMembershipChanged = vi.fn(async () => {});
+      show({ repositories, onMembershipChanged }, [feature]);
+      await screen.findByText('NOTES');
+      fireEvent.click(screen.getByRole('button', { name: 'Add repository' }));
+      const dialog = within(await screen.findByRole('dialog'));
+      expect(document.querySelector('[data-option="rev-1"]')).not.toBeNull();
+      await dialog.findByText('octo/scraps');
+      expect(dialog.queryByText('Sign in with GitHub to add its repositories.')).toBeNull();
+      fireEvent.click(dialog.getByRole('button', { name: 'Create a hosted repository' }));
+      await waitFor(() => expect(onMembershipChanged).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    it('shows the option and the notice and no picker for a person with no credential on the platform', async () => {
+      open();
+      const fetch = vi.spyOn(globalThis, 'fetch');
+      showWithoutPlatform([feature]);
+      await screen.findByText('NOTES');
+      fireEvent.click(screen.getByRole('button', { name: 'Add repository' }));
+      const dialog = within(await screen.findByRole('dialog'));
+      expect(dialog.getByRole('button', { name: 'Create a hosted repository' })).toBeInTheDocument();
+      expect(dialog.getByText('Sign in with GitHub to add its repositories.')).toBeInTheDocument();
+      expect(dialog.queryByRole('textbox')).toBeNull();
+      expect(dialog.queryByRole('button', { name: 'Add repository' })).toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('says why there is no picker when the edition gives no notice', async () => {
+      open();
+      showWithoutPlatform([]);
+      await screen.findByText('NOTES');
+      fireEvent.click(screen.getByRole('button', { name: 'Add repository' }));
+      expect(await within(await screen.findByRole('dialog')).findByText(/no access to the platform's repositories/)).toBeInTheDocument();
+    });
+
+    it('tells an option the limit is reached', async () => {
+      const members = answer([notes, wiki], { adds: 'repository', environment: undefined, limit: { visible: 2, max: 2 } });
+      render(createElement(WebFeaturesProvider, { features: [feature] }, createElement(RepositoryAddFlow, { members, onAdded: vi.fn(), onStale: vi.fn(async () => {}) })));
+      expect(await screen.findByRole('button', { name: 'Create a hosted repository' })).toBeDisabled();
+    });
+  });
+
+  it("shows an edition member's label in place of its repository, with the badges editions give", async () => {
+    const hosted = account('journal', { id: 'edition:hosted@main', type: 'edition', repository: 'h/42', branch: 'main', label: 'My journal', editable: 'account' });
+    api.fetchMembers.mockResolvedValue(answer([notes, hosted], { adds: 'repository', environment: undefined }));
+    show({ repositories }, [{ id: 'edition', repositoryBadge: member => member.type === 'edition' ? 'Hosted' : undefined }, { id: 'other', repositoryBadge: () => undefined }]);
+    await screen.findByText('NOTES');
+    expect(row('journal').getByText('My journal')).toBeInTheDocument();
+    expect(row('journal').queryByText(/h\/42/)).toBeNull();
+    expect(row('journal').getByText('Hosted')).toBeInTheDocument();
+    expect(row('notes').getByText('octo/notes · main')).toBeInTheDocument();
+    expect(row('notes').queryByText('Hosted')).toBeNull();
   });
 });

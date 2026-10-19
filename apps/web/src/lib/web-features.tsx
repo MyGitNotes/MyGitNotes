@@ -1,7 +1,8 @@
-import { createContext, type ReactNode, useContext } from 'react';
+import { type ComponentType, createContext, type ReactNode, useContext } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { NoteRef } from '@mygitnotes/core/note-query';
 import type { NoteChangeFacts } from './commit-summary.js';
+import type { WorkspaceMemberStatus } from './members-api.js';
 import { listAvailableRepositories, type RepositoryListSource } from './available-repositories.js';
 
 export type { AvailableRepositories, AvailableRepository, RepositoryListSource } from './available-repositories.js';
@@ -78,6 +79,26 @@ export interface RepositoryNoticeProps {
 /** Renders extra text in the confirmation before a repository is hidden or removed, such as what becomes of its published pages. */
 export type RenderRepositoryNotice = (props: RepositoryNoticeProps) => ReactNode;
 
+/** What an add-repository option is given: the member list it adds to, and how to tell the flow it changed. */
+export interface RepositoryAddOptionProps {
+  /** The member list's revision to add against. */
+  revision: string;
+  /** The visible-repository limit leaves no room to show another repository. */
+  limitReached: boolean;
+  /** The option added a repository: the flow reloads the list and the workspace. */
+  onAdded: () => void;
+  /** The option's add was refused as stale: the flow reloads the list so the next try uses its revision. */
+  onStale: () => void;
+}
+
+/** What an edition adds to the add-repository flow (Settings → Repositories and the first-run screen). */
+export interface RepositoryAddFeature {
+  /** Choices shown beside "Add from the platform", such as creating a hosted repository. */
+  options?: ComponentType<RepositoryAddOptionProps>;
+  /** Shown in place of the platform picker when the signed-in person holds no credential on the workspace's platform. */
+  noPlatformNotice?: ComponentType;
+}
+
 /** The features an edition may gate; `WebFeature.gate` is asked about each by one of these ids. */
 export const FEATURE_IDS = { agent: 'agent', r2: 'r2', commitPolish: 'commit-polish' } as const;
 
@@ -117,6 +138,16 @@ export interface WebFeature {
    * feature setting it, hiding and removing ask first; without one they act at once, as the community edition does.
    */
   repositoryNotice?: RenderRepositoryNotice;
+  /**
+   * Adds choices to the add-repository flow, and a notice shown in place of the platform picker for a person with no
+   * credential on the workspace's platform (the session's `platformAccess` is false). Every feature's options show.
+   */
+  repositoryAdd?: RepositoryAddFeature;
+  /**
+   * Text on a member's row in Settings → Repositories, such as "Hosted"; return nothing for a member without a badge.
+   * Every feature's badges show.
+   */
+  repositoryBadge?: (member: WorkspaceMemberStatus) => string | undefined;
   /** Adds an "AI polish" button to the commit dialog, beside "Generate message"; the last feature that sets it wins. */
   commitMessagePolish?: CommitMessagePolish;
   /**
@@ -171,6 +202,15 @@ export function useRepositoryNotices(): RenderRepositoryNotice[] {
   return useContext(FeaturesContext).flatMap(feature => feature.repositoryNotice ? [feature.repositoryNotice] : []);
 }
 
+export function useRepositoryAdd(): RepositoryAddFeature[] {
+  return useContext(FeaturesContext).flatMap(feature => feature.repositoryAdd ? [feature.repositoryAdd] : []);
+}
+
+export function useRepositoryBadges(): (member: WorkspaceMemberStatus) => string[] {
+  const badges = useContext(FeaturesContext).flatMap(feature => feature.repositoryBadge ? [feature.repositoryBadge] : []);
+  return member => badges.flatMap(badge => badge(member) ?? []);
+}
+
 export function useNotePublish(): RenderNotePublish[] {
   return useContext(FeaturesContext).flatMap(feature => feature.publish ? [feature.publish] : []);
 }
@@ -187,6 +227,17 @@ const ServerAgentContext = createContext(false);
 /** Supplies what the session probe reported: the server offers an agent to this signed-in person. */
 export function ServerAgentProvider({ agent, children }: { agent: boolean; children: ReactNode; }) {
   return <ServerAgentContext.Provider value={agent}>{children}</ServerAgentContext.Provider>;
+}
+
+const PlatformAccessContext = createContext(true);
+/** Supplies what the session probe reported: whether the signed-in person holds a credential on the workspace's platform. */
+export function PlatformAccessProvider({ platformAccess, children }: { platformAccess: boolean; children: ReactNode; }) {
+  return <PlatformAccessContext.Provider value={platformAccess}>{children}</PlatformAccessContext.Provider>;
+}
+
+/** False for a person signed in without a credential on the platform (an account with only edition repositories); true everywhere else. */
+export function usePlatformAccess(): boolean {
+  return useContext(PlatformAccessContext);
 }
 
 /**

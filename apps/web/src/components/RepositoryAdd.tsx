@@ -4,6 +4,7 @@ import { Button } from './Button.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { RepositoryChooser } from './RepositoryChooser.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { usePlatformAccess, useRepositoryAdd } from '../lib/web-features.js';
 import { addRepositoryMember, fetchMemberFolders, type MemberFolders, type MembersAnswer, MembershipApiError, type MembersLimit } from '../lib/members-api.js';
 
 /** Whether a limit leaves no room to show another repository. */
@@ -45,9 +46,13 @@ export interface RepositoryAddFlowProps {
  * Adds a platform repository to a list the person keeps: pick it (and a branch) from the repositories they can push
  * to, then, when that branch keeps no manifest, pick the folder its one notebook uses from its top-level folders or
  * type a new one. Nothing is written to the repository. A reached limit blocks adding with the quiet limit line.
+ * An edition adds its own choices beside the picker (`WebFeature.repositoryAdd`); for a person with no credential on
+ * the platform (`platformAccess` false) it offers those only, with the edition's notice in place of the picker.
  */
 export function RepositoryAddFlow({ members, onAdded, onStale, onShow }: RepositoryAddFlowProps) {
   const { t } = useTranslation();
+  const platformAccess = usePlatformAccess();
+  const additions = useRepositoryAdd();
   const [folderStep, setFolderStep] = useState<{ repository: string; branch?: string; found?: MemberFolders; }>();
   const [folder, setFolder] = useState('');
   const [busy, setBusy] = useState(false);
@@ -102,6 +107,19 @@ export function RepositoryAddFlow({ members, onAdded, onStale, onShow }: Reposit
     )
     : null;
 
+  const reloadList = () => void onStale();
+  const options = additions.flatMap((feature, index) => feature.options ? [<feature.options key={index} revision={members.revision ?? ''} limitReached={full} onAdded={() => void onAdded()} onStale={reloadList} />] : []);
+  const notices = additions.flatMap((feature, index) => feature.noPlatformNotice ? [<feature.noPlatformNotice key={index} />] : []);
+
+  if (!platformAccess) {
+    return (
+      <div className='flex flex-col gap-3' data-no-platform-access>
+        <div className='flex flex-col gap-2 text-sm text-muted' data-no-platform-notice>{notices.length > 0 ? notices : <p>{t('repositories.noPlatformAccess')}</p>}</div>
+        {options.length > 0 && <div className='flex flex-col gap-3' data-repository-add-options>{options}</div>}
+        {notice}
+      </div>
+    );
+  }
   if (folderStep) {
     const { found } = folderStep;
     return (
@@ -150,5 +168,11 @@ export function RepositoryAddFlow({ members, onAdded, onStale, onShow }: Reposit
       </div>
     );
   }
-  return <RepositoryChooser actionLabel={t('repositories.add')} busyLabel={t('repositories.adding')} onChoose={(repository, branch) => add(repository.fullName, branch)} members={members.members} {...(onShow ? { onShow } : {})} {...(blockedReason ? { showBlocked: blockedReason } : {})} notice={notice} blocked={full} />;
+  return (
+    <div className='flex flex-col gap-4'>
+      {options.length > 0 && <div className='flex flex-col gap-3 pb-4 border-b border-line' data-repository-add-options>{options}</div>}
+      {options.length > 0 && <p className='text-xs text-muted -mb-2'>{t('repositories.orFromPlatform')}</p>}
+      <RepositoryChooser actionLabel={t('repositories.add')} busyLabel={t('repositories.adding')} onChoose={(repository, branch) => add(repository.fullName, branch)} members={members.members} {...(onShow ? { onShow } : {})} {...(blockedReason ? { showBlocked: blockedReason } : {})} notice={notice} blocked={full} />
+    </div>
+  );
 }

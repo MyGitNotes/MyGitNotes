@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DerivedManifestNotice, WorkspaceGate } from './WorkspaceSetup.js';
 import type { WorkspaceConfig } from '../lib/types.js';
+import { WebFeaturesProvider } from '../lib/web-features.js';
 
 vi.mock('./AuthControls.js', () => ({ AuthControls: () => createElement('a', { href: '/api/auth/github' }, 'Sign in with GitHub'), ConnectionState: () => createElement('p', null, 'Opening workspace') }));
 vi.mock('../lib/api.js', () => ({ updateWorkspaceConfig: vi.fn(async () => ({ success: true, configRevision: 'next' })) }));
@@ -144,5 +145,29 @@ it('opens the add flow for a signed-in person whose account keeps no repository 
   expect(JSON.parse(String(requests.find(request => request.url === '/api/workspace/members' && request.init?.method === 'POST')!.init!.body))).toEqual({ repository: 'team/handbook', revision: 'r0' });
   expect(assign).toHaveBeenCalledWith('/');
   expect(requests.some(request => request.url.startsWith('/api/workspace/choice'))).toBe(false);
+  vi.unstubAllGlobals();
+});
+
+it("offers a person with no platform credential only the edition's options and notice on the first-run screen", async () => {
+  const requested: string[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+    const url = String(input);
+    requested.push(url);
+    if (url === '/api/auth/session') return json({ authenticated: true, login: 'octo', platformAccess: false, repositoryChoice: true, accountMembers: true, workspace: null });
+    if (url === '/api/workspace/members') return json({ members: [], changeable: true, revision: 'r0', sharedAssetKeys: false, adds: 'repository' });
+    throw new Error(`Unexpected request ${url}`);
+  });
+  const assign = vi.fn();
+  vi.stubGlobal('location', { ...window.location, assign });
+  const features = [{ id: 'edition', repositoryAdd: { options: ({ revision, onAdded }: { revision: string; onAdded: () => void; }) => createElement('button', { type: 'button', 'data-revision': revision, onClick: onAdded }, 'Start a hosted repository'), noPlatformNotice: () => createElement('p', null, 'This account signs in without GitHub.') } }];
+  await render(createElement(WebFeaturesProvider, { features }, createElement(WorkspaceGate, null, createElement('p', null, 'workspace'))));
+  expect(container.textContent).toContain('Add your first repository');
+  expect(container.textContent).toContain('This account signs in without GitHub.');
+  expect(button('Start a hosted repository').dataset.revision).toBe('r0');
+  expect(container.querySelector('input')).toBeNull();
+  expect(container.textContent).not.toContain('Add repository');
+  expect(requested.some(url => url.startsWith('/api/repositories/available'))).toBe(false);
+  await act(async () => button('Start a hosted repository').click());
+  expect(assign).toHaveBeenCalledWith('/');
   vi.unstubAllGlobals();
 });

@@ -4,7 +4,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { addMember, fetchMembers, type MembersAnswer, MembershipApiError, removeMember, reorderMembers, setDefaultMember, setMemberHidden, type WorkspaceMemberStatus } from '../lib/members-api.js';
 import { discardRepositoryDrafts, type DraftRepository, type RepositoryDraft, repositoryDrafts } from '../lib/repository-drafts.js';
 import type { WorkspaceRepository } from '../lib/workspace-repositories.js';
-import { useRepositoryNotices } from '../lib/web-features.js';
+import { useRepositoryBadges, useRepositoryNotices } from '../lib/web-features.js';
 import { Button } from './Button.js';
 import { limitReached, MembersLimitLine, RepositoryAddFlow } from './RepositoryAdd.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
@@ -20,8 +20,8 @@ export interface RepositoriesSettingsProps {
 
 /** The local ids a repository's notebooks keep, from their keys. */
 const localIds = (repository: WorkspaceRepository | undefined) => (repository?.notebooks ?? []).map(key => key.slice(key.indexOf('~') + 1));
-/** Where a member lives: its platform repository and branch, or its worktree. */
-const location = (member: WorkspaceMemberStatus) => member.repository ? `${member.repository} · ${member.branch}` : member.path ?? member.id;
+/** Where a member lives: an edition's label in place of its repository, else its platform repository and branch, or its worktree. */
+const location = (member: WorkspaceMemberStatus) => member.label ?? (member.repository ? `${member.repository} · ${member.branch}` : member.path ?? member.id);
 
 /**
  * Settings → Repositories: every member of the workspace, hidden ones included, read from the configuration without
@@ -43,6 +43,7 @@ export function RepositoriesSettings({ repositories, onMembershipChanged, onOpen
   // A change the limit refused reads as part of the limit line, not as an error.
   const [limitRefusal, setLimitRefusal] = useState('');
   const notices = useRepositoryNotices();
+  const badgesOf = useRepositoryBadges();
 
   const load = useCallback(async () => {
     try {
@@ -155,6 +156,7 @@ export function RepositoriesSettings({ repositories, onMembershipChanged, onOpen
                     <span className='font-semibold text-sm text-fg'>{status?.title ?? member.alias}</span>
                     <code className='text-[11px] px-1.5 py-0.5 rounded bg-sidebar text-muted'>{member.alias}</code>
                     {member.default && <span className='text-[11px] px-2 py-0.5 rounded-full bg-primary-soft text-primary'>{t('repositories.default')}</span>}
+                    {badgesOf(member).map(badge => <span key={badge} className='text-[11px] px-2 py-0.5 rounded-full bg-sidebar text-muted' data-member-badge>{badge}</span>)}
                     {member.hidden && <span className='text-[11px] px-2 py-0.5 rounded-full bg-sidebar text-muted'>{t('repositories.hidden')}</span>}
                     {status?.unavailable && <span className='text-[11px] px-2 py-0.5 rounded-full bg-danger-soft text-danger'>{t('repositories.unavailable')}</span>}
                   </div>

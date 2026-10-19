@@ -4,8 +4,10 @@ import type { RepositoryId } from '@mygitnotes/core/repository';
 export interface WorkspaceMemberStatus {
   id: RepositoryId;
   alias: string;
-  type: 'github' | 'gitlab' | 'local';
+  type: 'github' | 'gitlab' | 'edition' | 'local';
   repository?: string;
+  /** What an edition calls this repository, shown in place of its `repository` id. */
+  label?: string;
   /** The branch that keys this member's drafts, as the workspace reports it; a hidden member's drafts are found by it. */
   branch?: string;
   path?: string;
