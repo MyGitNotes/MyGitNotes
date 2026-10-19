@@ -68,6 +68,7 @@ Shell 環境變數仍優先於 `.env`。
 - [以 GitLab 作為筆記來源](docs/deploy.zh-TW.md#gitlab-來源設定)
 - [以 GitHub Enterprise 作為筆記來源](docs/deploy.zh-TW.md#github-enterprise-來源設定)
 - [私有 R2 素材](docs/deploy.zh-TW.md#選用私有-r2-素材)
+- [透過自己電腦上的 Pi 使用 Agent 面板](docs/pi-bridge.zh-TW.md)（`npx mygitnotes-pi-bridge`）
 
 ## 更新
 

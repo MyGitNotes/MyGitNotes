@@ -1,0 +1,38 @@
+{
+  "name": "mygitnotes-pi-bridge",
+  "version": "0.1.0",
+  "description": "Run Pi on your own computer for a MyGitNotes page, and pair it with one code.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "mygitnotes-pi-bridge": "dist/mygitnotes-pi-bridge.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "mygitnotes",
+    "pi",
+    "agent",
+    "bridge"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wayne930242/MyGitNotes.git",
+    "directory": "apps/pi-bridge"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node build.mjs",
+    "publish:npm": "npm publish --access public"
+  }
+}

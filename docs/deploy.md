@@ -352,28 +352,31 @@ Each repository's change is one commit. When a commit fails, the command stops a
 
 A remote deployment has no agent panel by default. You can run the Pi bridge on a machine you control (your own server or computer, reachable over HTTPS, for example through a tunnel) and let the people you list use it from the deployment's panel. The bridge runs Pi with your provider keys; the deployment only forwards session calls and points the browser at the bridge.
 
-On the machine that runs Pi, install Pi, then start the bridge from this repository (`apps/local-server/src/pi-bridge-main.ts`, also published as `@mygitnotes/local-server/pi-bridge-main`) with:
+The step-by-step guide for a non-developer is [Use the agent panel with Pi on your own computer](pi-bridge.md). In short, on the machine that runs Pi, install Pi and run `npx mygitnotes-pi-bridge --tunnel`; it prints a pairing code to set on the deployment as `MYGITNOTES_EXTERNAL_PI_PAIRING` (below). A deployment's page must be allowed by the bridge, so add `--origin <your deployment's origin>` to the command.
+
+The bridge is the npm package `mygitnotes-pi-bridge`, built from `apps/pi-bridge` in this repository. To run it from a checkout instead, start `apps/local-server/src/pi-bridge-main.ts` (the entry editions bundle) with these variables; the command above reads the same variables and lets them override its options:
 
 | Variable | Meaning |
 | --- | --- |
-| `MYGITNOTES_BRIDGE_SECRET` | A long random secret shared with the deployment. The bridge accepts only short-lived tokens signed with it. |
+| `MYGITNOTES_BRIDGE_SECRET` | A long random secret (at least 32 characters) shared with the deployment. The bridge accepts only short-lived tokens signed with it. |
 | `MYGITNOTES_BRIDGE_PUBLIC_URL` | The HTTPS address browsers reach the bridge at, for example `https://pi.example.com`. |
 | `MYGITNOTES_BRIDGE_CWD` | An empty directory Pi starts in; it holds no notes, which Pi edits through the page. |
 | `MYGITNOTES_BRIDGE_ORIGINS` | A JSON array of page origins allowed to open the socket, for example `["https://notes.example.com"]`. |
-| `MYGITNOTES_BRIDGE_PORT` | The listening port (default 8080). |
+| `MYGITNOTES_BRIDGE_PORT` | The listening port (default 8080 for `pi-bridge-main`, 8787 for the command). |
 | `MYGITNOTES_BRIDGE_PI_ARGS` | Optional JSON array of extra Pi arguments (model, tools). |
 
-Keep `pi-trust-extension.mjs` and `pi-web-tools-extension.mjs` beside the bridge file. The bridge runs one session, so list one person (or people who share it).
+Keep `pi-trust-extension.mjs` and `pi-web-tools-extension.mjs` beside the bridge file when you run it from a checkout; the npm package ships them in its bundle. The bridge runs one session, so list one person (or people who share it).
 
-On the deployment, set:
+On the deployment, set the pairing code the command printed, or its two parts, with the owners:
 
 | Variable | Meaning |
 | --- | --- |
+| `MYGITNOTES_EXTERNAL_PI_PAIRING` | The pairing code (`mgnpi1.…`), which carries the bridge's address and the secret. Use it instead of the next two variables; giving it together with either of them is an error. |
 | `MYGITNOTES_EXTERNAL_PI_URL` | Where the deployment reaches the bridge, usually the same address as `MYGITNOTES_BRIDGE_PUBLIC_URL`. |
 | `MYGITNOTES_EXTERNAL_PI_SECRET` | The same value as `MYGITNOTES_BRIDGE_SECRET`. |
 | `MYGITNOTES_EXTERNAL_PI_OWNERS` | Comma-separated sign-in logins allowed to use the agent, or `id:<provider user id>` to survive a rename, for example `octocat,id:12345`. They name people at the deployment's current sign-in provider (the GitHub or GitLab site it signs in with); a session of another provider, or one the main site treats as signed out, never passes. |
 
-Without `MYGITNOTES_EXTERNAL_PI_URL` nothing changes. Signed-in people who are not listed see no agent. The browser never receives the secret, only a socket token that expires after ten minutes and belongs to one session; rotate the secret on both sides together. The socket token travels in the `Sec-WebSocket-Protocol` header, so proxies in front of the bridge should not log that header.
+Without `MYGITNOTES_EXTERNAL_PI_PAIRING` or `MYGITNOTES_EXTERNAL_PI_URL` nothing changes. Signed-in people who are not listed see no agent. The browser never receives the secret, only a socket token that expires after ten minutes and belongs to one session; rotate the secret on both sides together. The socket token travels in the `Sec-WebSocket-Protocol` header, so proxies in front of the bridge should not log that header.
 
 ## Optional: private R2 assets
 

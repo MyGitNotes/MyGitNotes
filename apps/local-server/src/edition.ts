@@ -13,6 +13,7 @@ export { type RemoteHandle } from './request-workspace.js';
 export { createPiAgent, type PiAgent, type PiAgentOptions } from './pi-agent.js';
 export { externalPiAgent, type ExternalPiAgentOptions, externalPiEnvironment } from './pi-external-agent.js';
 export { signBridgeToken, verifyBridgeToken } from './pi-bridge-token.js';
+export { decodePairingCode, encodePairingCode, type PiPairing } from './pi-pairing.js';
 export { PiSession, type PiSessionInfo, WebToolError } from './pi-session.js';
 export { type BrowserSessions, cookieSessions, requestCookies, sessionCookie, storedSessions } from './browser-sessions.js';
 export { availableRepositories, type AvailableRepository, choosesRepository, chosenRepositorySource, cookieWorkspaceChoices, type WorkspaceChoice, type WorkspaceChoices } from './workspace-choice.js';

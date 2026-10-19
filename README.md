@@ -68,6 +68,7 @@ The [deployment guide](docs/deploy.md) covers each path step by step:
 - [GitLab as the note source](docs/deploy.md#gitlab-source-overlay)
 - [GitHub Enterprise as the note source](docs/deploy.md#github-enterprise-source-overlay)
 - [Private R2 assets](docs/deploy.md#optional-private-r2-assets)
+- [The agent panel through Pi on your own computer](docs/pi-bridge.md) (`npx mygitnotes-pi-bridge`)
 
 ## Update
 

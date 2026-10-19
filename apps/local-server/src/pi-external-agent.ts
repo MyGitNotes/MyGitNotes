@@ -2,6 +2,7 @@ import express from 'express';
 import type { IdentityService } from './identity.js';
 import type { PiAgent } from './pi-agent.js';
 import { signBridgeToken } from './pi-bridge-token.js';
+import { decodePairingCode } from './pi-pairing.js';
 import type { PiSessionInfo } from './pi-session.js';
 
 export interface ExternalPiAgentOptions {
@@ -25,15 +26,18 @@ interface ExternalPiEnvironment {
   owners: string[];
 }
 
-/** The deployment's settings for an external bridge, or undefined when `MYGITNOTES_EXTERNAL_PI_URL` is unset; a partial setting throws. */
+/** The deployment's settings for an external bridge, or undefined when neither `MYGITNOTES_EXTERNAL_PI_PAIRING` nor `MYGITNOTES_EXTERNAL_PI_URL` is set; a partial setting throws. */
 export function externalPiEnvironment(env: NodeJS.ProcessEnv = process.env): ExternalPiEnvironment | undefined {
+  const pairing = env.MYGITNOTES_EXTERNAL_PI_PAIRING?.trim();
   const bridgeUrl = env.MYGITNOTES_EXTERNAL_PI_URL?.trim();
-  if (!bridgeUrl) return undefined;
+  if (!pairing && !bridgeUrl) return undefined;
   const secret = env.MYGITNOTES_EXTERNAL_PI_SECRET?.trim();
   const owners = (env.MYGITNOTES_EXTERNAL_PI_OWNERS ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
-  if (!secret) throw new Error('Set MYGITNOTES_EXTERNAL_PI_SECRET beside MYGITNOTES_EXTERNAL_PI_URL.');
+  if (pairing && (bridgeUrl || secret)) throw new Error('Set MYGITNOTES_EXTERNAL_PI_PAIRING or MYGITNOTES_EXTERNAL_PI_URL with MYGITNOTES_EXTERNAL_PI_SECRET, not both.');
+  if (!pairing && !secret) throw new Error('Set MYGITNOTES_EXTERNAL_PI_SECRET beside MYGITNOTES_EXTERNAL_PI_URL.');
   if (!owners.length) throw new Error('Set MYGITNOTES_EXTERNAL_PI_OWNERS to the logins (or id:<user id>) allowed to use the agent.');
-  return { bridgeUrl, secret, owners };
+  const paired = pairing ? decodePairingCode(pairing) : undefined;
+  return { bridgeUrl: paired?.url ?? bridgeUrl ?? '', secret: paired?.secret ?? secret ?? '', owners };
 }
 
 const DEFAULT_CALL_TOKEN_MS = 60_000;

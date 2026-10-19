@@ -348,6 +348,23 @@ pnpm convert-sources --workspace ../hub --yes   # 轉換另一個已對應 workt
 
 每個儲存庫的變更各是一個 commit。commit 失敗時指令會停下，並印出提交已寫入檔案的指令；提交後再執行一次 `pnpm convert-sources`，已經以相同內容存在於目標儲存庫的筆記本會略過。再次執行時若發現這類 manifest 仍未提交，指令會在提交其他儲存庫前停下，並再印一次那個提交指令。所有筆記本都會離開轉換中的 manifest 時，指令會停下，除非加上 `--remove-emptied`：它在該儲存庫的 commit 裡刪除那份 manifest，並把該儲存庫從 `mygitnotes.server.yaml` 的 `repositories` 移除；部署本身的來源不能這樣移除，要先換成其他儲存庫。沒有 `source` 的 manifest 用 `pnpm migrate-workspace` 升到 schema 4。低於 schema 3 的 manifest 可能還有只有 schema 3 Core 才會轉換的 Screen 檔：`convert-sources` 會拒絕它，請先在 `fd0fd42` 的 Core checkout 執行 `pnpm migrate-workspace`。
 
+## 選用：透過自己的 Pi bridge 使用 Agent 面板
+
+遠端部署預設沒有 Agent 面板。你可以在自己掌控的機器（你的伺服器或電腦，需要能用 HTTPS 連到，例如透過 tunnel）上執行 Pi bridge，讓你列出的人從部署的面板使用它。Bridge 用你的供應商金鑰執行 Pi，部署只負責轉送 session 呼叫，並讓瀏覽器連到 bridge。
+
+給非開發者的逐步指南是[讓 Agent 面板使用你自己電腦上的 Pi](pi-bridge.zh-TW.md)。簡單來說，在執行 Pi 的機器上安裝 Pi，執行 `npx mygitnotes-pi-bridge --tunnel`，它會印出配對碼，把它設成部署的 `MYGITNOTES_EXTERNAL_PI_PAIRING` 環境變數。部署的頁面必須被 bridge 允許，所以指令要加上 `--origin <你的部署的 origin>`。
+
+在部署上設定：
+
+| 變數 | 說明 |
+| --- | --- |
+| `MYGITNOTES_EXTERNAL_PI_PAIRING` | 配對碼（`mgnpi1.…`），內含 bridge 的網址與 secret。用它就不必設下面兩個變數；同時設定其中任何一個會報錯。 |
+| `MYGITNOTES_EXTERNAL_PI_URL` | 部署連到 bridge 的網址，通常與 `MYGITNOTES_BRIDGE_PUBLIC_URL` 相同。 |
+| `MYGITNOTES_EXTERNAL_PI_SECRET` | 與 `MYGITNOTES_BRIDGE_SECRET` 相同的值。 |
+| `MYGITNOTES_EXTERNAL_PI_OWNERS` | 以逗號分隔、可以使用 Agent 的登入帳號，或用 `id:<供應商使用者 id>` 避免改名失效，例如 `octocat,id:12345`。它們指的是部署目前登入供應商（GitHub 或 GitLab 站台）上的人；其他供應商的 session，或主站視為已登出的 session，一律不通過。 |
+
+兩者都沒設定時，什麼都不會改變。沒有列出的已登入使用者看不到 Agent。Bridge 的環境變數、安全性與疑難排解請看[指南](pi-bridge.zh-TW.md)。
+
 ## 選用：私有 R2 素材
 
 將大型檔案存放在 Cloudflare 私有 R2 bucket，並在筆記中以 `r2:<object-key>` 引用。於部署環境設定 `MYGITNOTES_R2_ACCOUNT_ID`、`MYGITNOTES_R2_ACCESS_KEY_ID`、`MYGITNOTES_R2_SECRET_ACCESS_KEY` 與 `MYGITNOTES_R2_BUCKET`。瀏覽器上傳還需要 bucket CORS 允許來自 `APP_URL` 的 PUT、GET 與 HEAD。唯讀 token 可預覽素材；檔案頁管理功能需要 Object Read & Write。參考 [Cloudflare R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/) 與 [R2 object access](https://developers.cloudflare.com/r2/api/s3/api/)。
