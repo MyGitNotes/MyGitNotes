@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Eye, EyeOff, FolderGit2, Plus, Star, Trash2 } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
 import { addMember, fetchMembers, type MembersAnswer, MembershipApiError, removeMember, reorderMembers, setDefaultMember, setMemberHidden, type WorkspaceMemberStatus } from '../lib/members-api.js';
@@ -30,7 +30,10 @@ const location = (member: WorkspaceMemberStatus) => member.label ?? (member.repo
  * chooses the default; hiding or removing waits until this browser holds no drafts for it, then asks first where an
  * edition adds a notice. A visible-repository limit shows as a quiet line and keeps adding and showing past it.
  */
-export function RepositoriesSettings({ repositories, onMembershipChanged, onOpenChanges }: RepositoriesSettingsProps) {
+export function RepositoriesSettings({ repositories, onMembershipChanged, onOpenChanges, repositoryChoice }: RepositoriesSettingsProps & {
+  /** The repository a visitor chose and the way back to the picker, shown under the heading. */
+  repositoryChoice?: ReactNode;
+}) {
   const { t } = useTranslation();
   const [answer, setAnswer] = useState<MembersAnswer>();
   const [error, setError] = useState('');
@@ -110,10 +113,12 @@ export function RepositoriesSettings({ repositories, onMembershipChanged, onOpen
     }
   };
 
+  const choice = repositoryChoice && <div className='settings-repository-choice'>{repositoryChoice}</div>;
   if (!answer) {
     return (
       <div id='settings-repositories' className='flex flex-col gap-3'>
         <Heading />
+        {choice}
         {error ? <p role='alert' className='text-xs text-danger'>{error}</p> : <p role='status' className='text-xs text-muted'>{t('repositories.loading')}</p>}
       </div>
     );
@@ -138,6 +143,7 @@ export function RepositoriesSettings({ repositories, onMembershipChanged, onOpen
   return (
     <div id='settings-repositories' className='flex flex-col gap-3'>
       <Heading />
+      {choice}
       {!changeable && <p className='text-xs text-muted'>{t(answer.repositoryChoice ? 'repositories.chosen' : 'repositories.readOnly')}</p>}
       <ul className='flex flex-col gap-2' aria-label={t('repositories.title')}>
         {members.map((member, index) => {

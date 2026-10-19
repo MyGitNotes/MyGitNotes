@@ -32,7 +32,8 @@ it("appends an edition's settings sections and leaves the page unchanged without
   const extended = settings([billing]);
   expect(extended).toContain('id="settings-plan"');
   expect(extended).toContain('Pro plan');
-  expect(extended.replace(/<div id="settings-plan".*?Pro plan<\/p><\/div>/, '')).toBe(plain);
+  // A section without a group sits under its own Settings heading, after every group.
+  expect(extended.replace(/<div role="group" aria-labelledby="group-heading-other" class="settings-group"><h2[^>]*>Settings<\/h2><div id="settings-plan".*?Pro plan<\/p><\/div><\/div>/, '')).toBe(plain);
 });
 
 async function settingsPage(features: WebFeature[]) {

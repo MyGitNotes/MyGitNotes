@@ -25,7 +25,7 @@ export interface FeatureSettingsSection {
   title: ReactNode;
   icon: LucideIcon;
   element: ReactNode;
-  /** The group the section belongs to, after the community sections of that group. Left out, the section follows every group. A section that replaces a community section (same `id`) stays in that section's group. */
+  /** The group the section belongs to, after the community sections of that group. Left out, the section follows every group under a neutral "Settings" heading. A section that replaces a community section (same `id`) stays in that section's group; replacing `repositories` also removes the chosen-repository switch, which the community section shows under its heading. */
   group?: SettingsGroup;
 }
 

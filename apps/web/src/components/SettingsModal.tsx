@@ -55,18 +55,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
   const helpKeys = bindingsFor(keymapEntry('help.open'), keyEnvironment).map(keys => formatKeys(keys, keyEnvironment).join(' ')).join(' / ');
   const entry = (id: string, group: SettingsGroup, title: React.ReactNode, icon: LucideIcon, element: React.ReactNode): SettingsEntry => ({ id, group, title, icon, element });
   const communityEntries: SettingsEntry[] = [
-    ...(repositories
-      ? [entry(
-        'repositories',
-        'repositories',
-        t('repositories.title'),
-        FolderGit2,
-        <>
-          {repositoryChoice && <div className='settings-repository-choice'>{repositoryChoice}</div>}
-          <RepositoriesSettings {...repositories} />
-        </>,
-      )]
-      : []),
+    ...(repositories ? [entry('repositories', 'repositories', t('repositories.title'), FolderGit2, <RepositoriesSettings {...repositories} repositoryChoice={repositoryChoice} />)] : []),
     entry('access', 'connections', t('layout.access'), Shield, <div id='settings-access'>{accountSettings}</div>),
     entry(
       'language',
@@ -172,19 +161,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
     entry('manifest', 'advanced', t('layout.manifest'), Save, <ManifestSettings {...manifest} onRefreshWorkspace={onRefreshWorkspace} />),
     ...(coreUpdates ? [entry('updates', 'advanced', t('settings.coreUpdates'), RefreshCw, <CoreUpdates local={local} />)] : []),
   ];
-  // An edition section whose id matches a shown community section takes that section's place and group; the rest follow the community sections of their group, and those without a group follow every group.
+  // An edition section whose id matches a shown community section takes that section's place and group; the rest follow the community sections of their group, and those without a group follow every group under a neutral Settings heading.
   const communityIds = new Set(communityEntries.map(section => section.id));
   const replacements = new Map(featureSections.filter(section => communityIds.has(section.id)).map(section => [section.id, section]));
   const added = featureSections.filter(section => !communityIds.has(section.id));
-  const groups = SETTINGS_GROUPS.map(group => {
+  const groups: Array<{ id: string; title: React.ReactNode; sections: SettingsEntry[]; }> = SETTINGS_GROUPS.map(group => {
     const community = communityEntries.filter(section => section.group === group).map(section => {
       const replacement = replacements.get(section.id);
       return replacement ? entry(section.id, group, replacement.title, replacement.icon, <FeatureSection section={replacement} />) : section;
     });
     const edition = added.filter(section => section.group === group).map(section => entry(section.id, group, section.title, section.icon, <FeatureSection section={section} />));
-    return { group, sections: [...community, ...edition] };
+    return { id: group, title: t(groupTitleKeys[group]), sections: [...community, ...edition] };
   }).filter(({ sections }) => sections.length > 0);
-  const ungrouped = added.filter(section => !SETTINGS_GROUPS.some(group => group === section.group));
+  const ungrouped = added.filter(section => !SETTINGS_GROUPS.some(group => group === section.group)).map(section => entry(section.id, 'advanced', section.title, section.icon, <FeatureSection section={section} />));
+  if (ungrouped.length > 0) groups.push({ id: 'other', title: t('nav.settings'), sections: ungrouped });
   const link = (id: string, label: React.ReactNode, Icon: LucideIcon) => (
     <a
       key={id}
@@ -204,13 +194,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
     <>
       <WorkspaceSidebarPortal>
         <WorkspaceSidebar label={t('settings.title')} className='settings-sidebar'>
-          {groups.map(({ group, sections }) => (
-            <React.Fragment key={group}>
-              <div className='sidebar-section-label'>{t(groupTitleKeys[group])}</div>
+          {groups.map(({ id, title, sections }) => (
+            <React.Fragment key={id}>
+              <div className='sidebar-section-label'>{title}</div>
               {sections.map(section => link(section.id, section.title, section.icon))}
             </React.Fragment>
           ))}
-          {ungrouped.map(section => link(section.id, section.title, section.icon))}
         </WorkspaceSidebar>
       </WorkspaceSidebarPortal>
       <WorkspaceSidebarToggle label={t('settings.title')} open={sidebar.open} onClick={() => sidebar.setOpen(open => !open)} />
@@ -223,11 +212,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
                 <span>{t('repositories.recovery')}</span>
               </p>
             )}
-            {groups.map(({ group, sections }) => (
-              <div key={group} role='group' aria-labelledby={`group-heading-${group}`} className='settings-group'>
-                <h2 id={`group-heading-${group}`} className='settings-group-heading'>{t(groupTitleKeys[group])}</h2>
+            {groups.map(({ id, title, sections }) => (
+              <div key={id} role='group' aria-labelledby={`group-heading-${id}`} className='settings-group'>
+                <h2 id={`group-heading-${id}`} className='settings-group-heading'>{title}</h2>
                 {sections.map(section => <React.Fragment key={section.id}>{section.element}</React.Fragment>)}
-                {group === 'advanced' && (
+                {id === 'advanced' && (
                   <div className='flex flex-col gap-3'>
                     <h3 className='text-xs font-semibold text-fg uppercase tracking-wider flex items-center gap-1.5'>
                       <Info className='w-4 h-4 text-primary' />
@@ -238,7 +227,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
                 )}
               </div>
             ))}
-            {ungrouped.map(section => <FeatureSection key={section.id} section={section} />)}
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createElement } from 'react';
+import { type ComponentProps, createElement } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
@@ -9,7 +9,7 @@ import type { WorkspaceRepository } from '../lib/workspace-repositories.js';
 import { workingNotesKey } from '../lib/working-notes.js';
 import { PlatformAccessProvider, type RepositoryAddOptionProps, type WebFeature, WebFeaturesProvider } from '../lib/web-features.js';
 import { RepositoryAddFlow } from './RepositoryAdd.js';
-import { RepositoriesSettings, type RepositoriesSettingsProps } from './RepositoriesSettings.js';
+import { RepositoriesSettings } from './RepositoriesSettings.js';
 
 const api = vi.hoisted(() => ({ fetchMembers: vi.fn(), setMemberHidden: vi.fn(), setDefaultMember: vi.fn(), removeMember: vi.fn(), reorderMembers: vi.fn(), addMember: vi.fn(), addRepositoryMember: vi.fn(), fetchMemberFolders: vi.fn() }));
 vi.mock('../lib/members-api.js', async importOriginal => ({ ...await importOriginal<typeof import('../lib/members-api.js')>(), ...api }));
@@ -19,7 +19,7 @@ const member = (alias: string, flags: Partial<WorkspaceMemberStatus> = {}): Work
 const repository = (alias: string, ids: string[] = [alias]): WorkspaceRepository => ({ id: `local:/work/${alias}`, alias, type: 'local', branch: 'main', revision: '', write: true, notebooks: ids.map(id => `${alias}~${id}`), title: alias.toUpperCase(), defaultNotebook: `${alias}~${ids[0]}`, preferences: DEFAULT_WORKSPACE_PREFERENCES, config: null, configRevision: '' });
 const answer = (members: WorkspaceMemberStatus[], overrides: Partial<MembersAnswer> = {}): MembersAnswer => ({ members, changeable: true, revision: 'rev-1', sharedAssetKeys: false, environment: 'MYGITNOTES_LOCAL_PATH', ...overrides });
 const kb = member('kb', { default: true, editable: 'environment' }), journal = member('journal'), archive = member('archive', { hidden: true });
-const show = (props: Partial<RepositoriesSettingsProps> = {}, features: WebFeature[] = []) => render(createElement(WebFeaturesProvider, { features }, createElement(RepositoriesSettings, { repositories: [repository('kb'), repository('journal')], onMembershipChanged: vi.fn(async () => {}), onOpenChanges: vi.fn(), ...props })));
+const show = (props: Partial<ComponentProps<typeof RepositoriesSettings>> = {}, features: WebFeature[] = []) => render(createElement(WebFeaturesProvider, { features }, createElement(RepositoriesSettings, { repositories: [repository('kb'), repository('journal')], onMembershipChanged: vi.fn(async () => {}), onOpenChanges: vi.fn(), ...props })));
 const row = (alias: string) => within(document.querySelector(`[data-member="${alias}"]`) as HTMLElement);
 
 beforeEach(() => {
@@ -38,6 +38,16 @@ afterEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
   vi.restoreAllMocks();
+});
+
+it('shows the repository choice after the heading while loading and once the list has loaded', async () => {
+  const { container } = show({ repositoryChoice: createElement('section', null, 'Chosen repository') });
+  const choice = () => container.querySelector('#settings-repositories > .settings-repository-choice');
+  expect(choice()).toHaveTextContent('Chosen repository');
+  expect(choice()?.previousElementSibling).toContainElement(screen.getByRole('heading', { name: 'Repositories' }));
+  await screen.findByText('KB');
+  expect(choice()).toHaveTextContent('Chosen repository');
+  expect(choice()?.previousElementSibling).toContainElement(screen.getByRole('heading', { name: 'Repositories' }));
 });
 
 it('lists hidden members with an unhide action, and keeps the default from being hidden or removed, saying why', async () => {
