@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer } from 'ws';
+import { verifyBridgeToken, signBridgeToken } from './pi-bridge-token.js';
 import { type PiLocation, PiSession, type PiSessionInfo, resumableSession } from './pi-session.js';
 
 /** The WebSocket subprotocol a client offers to present the bridge token, since a browser's WebSocket cannot set headers. */
@@ -14,7 +15,16 @@ export interface PiBridgeOptions {
   port: number;
   host?: string;
   /** What every client presents: a bearer token over HTTP, the subprotocol `mygitnotes-bridge.<token>` on the socket. */
-  token: string;
+  token?: string;
+  /**
+   * The secret shared with the host, for an externally run bridge: the host's `/session` calls present a short-lived token signed with
+   * it (see signBridgeToken), and each session answer carries a socket token that expires and names its session. Either
+   * `token` or `secret` is required; given both, either is accepted over HTTP.
+   */
+  secret?: string;
+  /** How long a socket token in a session answer stays valid, in milliseconds; defaults to 10 minutes. */
+  socketTokenMs?: number;
+  now?: () => Date;
   /** The origin a browser reaches this bridge at, named in the session's `socket`. */
   publicUrl: string;
   /** Page origins whose sockets are accepted; empty accepts any origin that presents the token. */
@@ -69,9 +79,18 @@ const reply = (res: http.ServerResponse, status: number, body: unknown) => {
  * that started it creates, restarts and ends the session over HTTP with the same token the page presents.
  */
 export function startPiBridge(options: PiBridgeOptions): Promise<PiBridge> {
-  const { token, cwd, command, piArgs, env, shell = false, allowedOrigins = [], activityIntervalMs = ACTIVITY_INTERVAL_MS } = options;
+  const { token, secret, cwd, command, piArgs, env, shell = false, allowedOrigins = [], activityIntervalMs = ACTIVITY_INTERVAL_MS } = options;
   const publicUrl = options.publicUrl.replace(/\/$/, '');
-  const socket = { url: `${publicUrl.replace(/^http/, 'ws')}/ws`, protocols: [`${BRIDGE_PROTOCOL_PREFIX}${token}`] };
+  if (!token && !secret) throw new Error('Give the bridge a token or a secret.');
+  const now = options.now ?? (() => new Date());
+  const socketUrl = `${publicUrl.replace(/^http/, 'ws')}/ws`;
+  const socketFor = (session: PiSession) => ({ url: socketUrl, protocols: [`${BRIDGE_PROTOCOL_PREFIX}${secret ? signBridgeToken(secret, 'socket', new Date(now().getTime() + (options.socketTokenMs ?? 600_000)), session.info.id) : token}`] });
+  const httpAllowed = (given: string | undefined) => (token !== undefined && sameToken(token, given)) || (secret !== undefined && verifyBridgeToken(secret, given, 'http', now()));
+  const socketAllowed = (offered: string, session?: PiSession) => {
+    if (!offered.startsWith(BRIDGE_PROTOCOL_PREFIX)) return false;
+    const given = offered.slice(BRIDGE_PROTOCOL_PREFIX.length);
+    return (token !== undefined && sameToken(token, given)) || (secret !== undefined && verifyBridgeToken(secret, given, 'socket', now(), session?.info.id));
+  };
   let current: PiSession | undefined;
   let lastActivity = 0;
   const active = () => {
@@ -79,7 +98,7 @@ export function startPiBridge(options: PiBridgeOptions): Promise<PiBridge> {
     lastActivity = Date.now();
     options.activity();
   };
-  const info = (session: PiSession | undefined): { session: PiSessionInfo | null; } => ({ session: session ? { ...session.info, socket } : null });
+  const info = (session: PiSession | undefined): { session: PiSessionInfo | null; } => ({ session: session ? { ...session.info, socket: socketFor(session) } : null });
   let webToolsUrl = '';
   const start = (location: PiLocation, resume?: unknown) => {
     current = new PiSession({ cwd, location, resume: resumableSession(resume, cwd), command, piArgs, env, shell, webTools: { url: webToolsUrl } });
@@ -107,7 +126,7 @@ export function startPiBridge(options: PiBridgeOptions): Promise<PiBridge> {
         }
       }
       if (path !== '/session') return reply(res, 404, { error: 'Not found.' });
-      if (!sameToken(token, bearer)) return reply(res, 401, { error: 'Present the bridge token.' });
+      if (!httpAllowed(bearer)) return reply(res, 401, { error: 'Present the bridge token.' });
       if (req.method === 'GET') return reply(res, 200, info(current?.alive ? current : undefined));
       if (req.method === 'DELETE') {
         await end();
@@ -124,16 +143,17 @@ export function startPiBridge(options: PiBridgeOptions): Promise<PiBridge> {
     })().catch(error => reply(res, (error as { status?: number; }).status ?? 400, { error: (error as Error).message }));
   });
 
-  const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES, handleProtocols: protocols => [...protocols].find(entry => sameToken(`${BRIDGE_PROTOCOL_PREFIX}${token}`, entry)) ?? false });
+  const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES, handleProtocols: protocols => [...protocols].find(entry => entry.startsWith(BRIDGE_PROTOCOL_PREFIX)) ?? false });
   server.on('upgrade', (req, duplex, head) => {
     const refuse = (status: string) => duplex.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
     const offered = String(req.headers['sec-websocket-protocol'] ?? '').split(',').map(entry => entry.trim());
     const origin = req.headers.origin;
     if (new URL(req.url ?? '/', 'http://bridge').pathname !== '/ws') return refuse('404 Not Found');
-    if (!offered.some(entry => sameToken(`${BRIDGE_PROTOCOL_PREFIX}${token}`, entry))) return refuse('401 Unauthorized');
+    const session = current?.alive ? current : undefined;
+    // A socket token names its session, so one is checked against the live session; with none, any validly signed token is told the session is missing.
+    if (!offered.some(entry => socketAllowed(entry, session))) return refuse('401 Unauthorized');
     if (allowedOrigins.length && (!origin || !allowedOrigins.includes(origin))) return refuse('403 Forbidden');
-    const session = current;
-    if (!session?.alive) return refuse('409 Conflict');
+    if (!session) return refuse('409 Conflict');
     sockets.handleUpgrade(req, duplex, head, ws => {
       const detach = session.attach({
         send: text => {

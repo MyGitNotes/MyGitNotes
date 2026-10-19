@@ -18,7 +18,8 @@ const list = (name: string): string[] => {
 const activityUrl = process.env.MYGITNOTES_BRIDGE_ACTIVITY_URL?.trim();
 const bridge = await startPiBridge({
   port: Number(process.env.MYGITNOTES_BRIDGE_PORT ?? 8080),
-  token: required('MYGITNOTES_BRIDGE_TOKEN'),
+  token: process.env.MYGITNOTES_BRIDGE_TOKEN?.trim() || undefined,
+  secret: process.env.MYGITNOTES_BRIDGE_SECRET?.trim() || undefined,
   publicUrl: required('MYGITNOTES_BRIDGE_PUBLIC_URL'),
   allowedOrigins: list('MYGITNOTES_BRIDGE_ORIGINS'),
   cwd: required('MYGITNOTES_BRIDGE_CWD'),

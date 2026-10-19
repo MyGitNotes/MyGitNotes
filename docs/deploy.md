@@ -348,6 +348,33 @@ Converting the deployment's own source also keeps every repository's alias, the 
 
 Each repository's change is one commit. When a commit fails, the command stops and prints the command that commits what it wrote; run `pnpm convert-sources` again afterwards, and notebooks already present, identically, in their repository are skipped. A run that finds such a manifest still uncommitted stops before committing anything else and prints that command again. When every notebook would leave the converting manifest, the command stops unless `--remove-emptied` is given, which deletes that manifest in its commit and removes the repository from `repositories` in `mygitnotes.server.yaml`; it refuses this for the deployment's own source, which another repository must replace first. A manifest without `source` moves to schema 4 with `pnpm migrate-workspace`. A manifest below schema 3 may still hold a Screen file that only a schema 3 Core converts: `convert-sources` refuses it and asks to run `pnpm migrate-workspace` from a Core checkout at `fd0fd42` first.
 
+## Optional: an agent panel through your own Pi bridge
+
+A remote deployment has no agent panel by default. You can run the Pi bridge on a machine you control (your own server or computer, reachable over HTTPS, for example through a tunnel) and let the people you list use it from the deployment's panel. The bridge runs Pi with your provider keys; the deployment only forwards session calls and points the browser at the bridge.
+
+On the machine that runs Pi, install Pi, then start the bridge from this repository (`apps/local-server/src/pi-bridge-main.ts`, also published as `@mygitnotes/local-server/pi-bridge-main`) with:
+
+| Variable | Meaning |
+| --- | --- |
+| `MYGITNOTES_BRIDGE_SECRET` | A long random secret shared with the deployment. The bridge accepts only short-lived tokens signed with it. |
+| `MYGITNOTES_BRIDGE_PUBLIC_URL` | The HTTPS address browsers reach the bridge at, for example `https://pi.example.com`. |
+| `MYGITNOTES_BRIDGE_CWD` | An empty directory Pi starts in; it holds no notes, which Pi edits through the page. |
+| `MYGITNOTES_BRIDGE_ORIGINS` | A JSON array of page origins allowed to open the socket, for example `["https://notes.example.com"]`. |
+| `MYGITNOTES_BRIDGE_PORT` | The listening port (default 8080). |
+| `MYGITNOTES_BRIDGE_PI_ARGS` | Optional JSON array of extra Pi arguments (model, tools). |
+
+Keep `pi-trust-extension.mjs` and `pi-web-tools-extension.mjs` beside the bridge file. The bridge runs one session, so list one person (or people who share it).
+
+On the deployment, set:
+
+| Variable | Meaning |
+| --- | --- |
+| `MYGITNOTES_EXTERNAL_PI_URL` | Where the deployment reaches the bridge, usually the same address as `MYGITNOTES_BRIDGE_PUBLIC_URL`. |
+| `MYGITNOTES_EXTERNAL_PI_SECRET` | The same value as `MYGITNOTES_BRIDGE_SECRET`. |
+| `MYGITNOTES_EXTERNAL_PI_OWNERS` | Comma-separated sign-in logins allowed to use the agent, or `id:<provider user id>` to survive a rename, for example `octocat,id:12345`. |
+
+Without `MYGITNOTES_EXTERNAL_PI_URL` nothing changes. Signed-in people who are not listed see no agent. The browser never receives the secret, only a socket token that expires after ten minutes and belongs to one session; rotate the secret on both sides together.
+
 ## Optional: private R2 assets
 
 Store large files in a private Cloudflare R2 bucket and reference them in notes as `r2:<object-key>`. Set `MYGITNOTES_R2_ACCOUNT_ID`, `MYGITNOTES_R2_ACCESS_KEY_ID`, `MYGITNOTES_R2_SECRET_ACCESS_KEY`, and `MYGITNOTES_R2_BUCKET` in the deployment environment. Browser uploads also require a bucket CORS rule allowing PUT, GET, and HEAD from `APP_URL`. A read-only R2 token supports previews; Files-page management needs Object Read & Write. The MCP asset tools follow the same setting: with R2 configured `add_asset` uploads to the bucket and answers with the `r2:<object-key>` reference instead of committing the binary, `list_assets` reports bucket objects beside repository files, and `delete_asset` accepts that reference. A bucket-bound upload is not held to the 3 MiB repository limit; over hosted `/mcp` its ceiling is the 64 MiB request body, and the Files page uploads straight to the bucket with no ceiling. See [Cloudflare R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/) and [R2 object access](https://developers.cloudflare.com/r2/api/s3/api/).

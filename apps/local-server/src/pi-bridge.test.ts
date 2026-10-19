@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { BRIDGE_PROTOCOL_PREFIX, type PiBridge, type PiBridgeOptions, startPiBridge } from './pi-bridge.js';
+import { signBridgeToken } from './pi-bridge-token.js';
 
 // A stand-in for `pi --mode rpc`: answers get_state, echoes a prompt with its argv and one environment variable,
 // answers bash, and on "tool" calls the bridge's note tools with the token it was started with.
@@ -152,4 +153,56 @@ it('reports activity at most once per interval while the page and Pi talk', asyn
   page.ws.send(JSON.stringify({ type: 'prompt', message: 'two' }));
   await page.until(record => record.type === 'message_end' && reply(record).message === 'two');
   expect(reports).toBe(1);
+});
+
+describe('signed tokens', () => {
+  const secret = 'shared-secret-0123456789';
+  let clock = new Date('2026-10-19T12:00:00Z');
+  const now = () => clock;
+  const http = (expiresAt = new Date(clock.getTime() + 60_000), withSecret = secret) => signBridgeToken(withSecret, 'http', expiresAt);
+  const signed = () => start({ token: undefined, secret, now });
+
+  it('accepts a valid HTTP token and refuses expired, forged and wrong-scope ones', async () => {
+    clock = new Date('2026-10-19T12:00:00Z');
+    await signed();
+    expect((await call('GET', '/session', undefined, http())).status).toBe(200);
+    expect((await call('GET', '/session', undefined, http(new Date(clock.getTime() - 1000)))).status).toBe(401);
+    expect((await call('GET', '/session', undefined, http(undefined, 'other-secret'))).status).toBe(401);
+    expect((await call('GET', '/session', undefined, signBridgeToken(secret, 'socket', new Date(clock.getTime() + 60_000)))).status).toBe(401);
+    expect((await call('GET', '/session', undefined, `${http().slice(0, -2)}xx`)).status).toBe(401);
+    expect((await call('GET', '/session', undefined, token)).status).toBe(401);
+  });
+
+  it('names a socket token for the session and accepts it on the socket only until it expires', async () => {
+    clock = new Date('2026-10-19T12:00:00Z');
+    await signed();
+    const { session } = await (await call('POST', '/session', { location }, http())).json();
+    const [protocol] = session.socket.protocols as string[];
+    expect(protocol.startsWith(BRIDGE_PROTOCOL_PREFIX)).toBe(true);
+    expect(protocol).not.toContain(secret);
+    const page = open(protocol);
+    await page.opened;
+    expect(page.ws.protocol).toBe(protocol);
+    // An HTTP token is not a socket token, a forged one fails, and the socket token expires.
+    await expect(open(`${BRIDGE_PROTOCOL_PREFIX}${http()}`).opened).rejects.toThrow('401');
+    await expect(open(`${protocol.slice(0, -2)}xx`).opened).rejects.toThrow('401');
+    clock = new Date(clock.getTime() + 11 * 60_000);
+    await expect(open(protocol).opened).rejects.toThrow('401');
+    // A token issued for an earlier session does not open the next one.
+    const restarted = (await (await call('PUT', '/session', { location }, http())).json()).session;
+    expect(restarted.id).not.toBe(session.id);
+    clock = new Date('2026-10-19T12:00:00Z');
+    await expect(open(protocol).opened).rejects.toThrow('401');
+    await expect(open(restarted.socket.protocols[0]).opened).resolves.toBeUndefined();
+  });
+
+  it('keeps the equal-token mode working when only a token is given', async () => {
+    await start();
+    expect((await call('GET', '/session')).status).toBe(200);
+    expect((await call('GET', '/session', undefined, http())).status).toBe(401);
+  });
+
+  it('needs a token or a secret', async () => {
+    await expect(start({ token: undefined })).rejects.toThrow('token or a secret');
+  });
 });

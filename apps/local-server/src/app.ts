@@ -25,6 +25,7 @@ import { createR2ManagerRouter } from './r2-manager.js';
 import { createFileManagerRouter } from './file-manager.js';
 import { createGistRouter, gistSite, gistToken, noteGist, syncGists } from './gists.js';
 import { isLoopbackHttpOrigin, type PiAgent } from './pi-agent.js';
+import { externalPiAgent, externalPiEnvironment } from './pi-external-agent.js';
 import { type PublishingService, publishNotes } from './publishing.js';
 import { createWorkspaceMembersRouter } from './workspace-members.js';
 
@@ -84,8 +85,11 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   const lightweight = !local && storageMode() === 'cookie';
   const recordStore = overrides.recordStore ?? (lightweight ? new NoRecordStore() : createRecordStore(base));
   const services: AppServices = { ...overrides, configSource, recordStore, workspaceChoices, sessions: overrides.sessions ?? (lightweight ? cookieSessions() : storedSessions(recordStore)), assetStorage: overrides.assetStorage ?? envAssetStorage(), remoteCache: 'remoteCache' in overrides ? overrides.remoteCache : local ? undefined : createRemoteCache(), webDist: overrides.webDist ?? path.join(base, 'apps/web/dist') };
-  const { remoteCache: cache, piAgent, sessions, assetStorage, publishing } = services;
+  const { remoteCache: cache, sessions, assetStorage, publishing } = services;
   const identity = services.identity ?? providerIdentity({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined });
+  // A remote deployment offers the agent panel only when an edition supplies an agent or the deployer names an external bridge.
+  const external = local || services.piAgent ? undefined : externalPiEnvironment();
+  const piAgent = services.piAgent ?? (external ? externalPiAgent({ ...external, identity }) : undefined);
   // Core updates of a remote deployment act on its product repository; without one they are not offered. Visitors who
   // choose their own repository never update the deployment's Core, as before product repositories.
   const product = local ? null : productRepository(base);
