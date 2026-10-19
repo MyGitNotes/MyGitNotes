@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer } from 'ws';
-import { verifyBridgeToken, signBridgeToken } from './pi-bridge-token.js';
+import { signBridgeToken, verifyBridgeToken } from './pi-bridge-token.js';
 import { type PiLocation, PiSession, type PiSessionInfo, resumableSession } from './pi-session.js';
 
 /** The WebSocket subprotocol a client offers to present the bridge token, since a browser's WebSocket cannot set headers. */

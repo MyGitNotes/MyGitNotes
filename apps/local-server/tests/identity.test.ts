@@ -45,17 +45,7 @@ describe('an identity with a person and no token', () => {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
     server = undefined;
   });
-  const identity: IdentityService = {
-    router: Router(),
-    signedIn: async req => req.headers['x-person'] ? { person: { realm: 'edition', userId: 'p1' }, login: 'pat', owner: 'edition:p1' } : null,
-    token: async () => undefined,
-    grantCredential: async () => undefined,
-    grantToken: async () => undefined,
-    noCredentialMessage: () => 'Link a GitHub account to open this repository.',
-    signInOptions: async () => [{ id: 'google', label: 'Google', url: '/api/auth/google' }],
-    configured: async () => true,
-    signOut: async () => {},
-  };
+  const identity: IdentityService = { router: Router(), signedIn: async req => req.headers['x-person'] ? { person: { realm: 'edition', userId: 'p1' }, login: 'pat', owner: 'edition:p1' } : null, token: async () => undefined, grantCredential: async () => undefined, grantToken: async () => undefined, noCredentialMessage: () => 'Link a GitHub account to open this repository.', signInOptions: async () => [{ id: 'google', label: 'Google', url: '/api/auth/google' }], configured: async () => true, signOut: async () => {} };
   const start = async () => {
     environment();
     const product = scratch();
@@ -91,7 +81,7 @@ describe('an identity with a person and no token', () => {
     expect((await call('POST', '/api/auth/agent-token', {}, false)).status).toBe(401);
   });
 
-  it('refuses an agent grant whose person holds no credential on the site, with the identity\'s message', async () => {
+  it("refuses an agent grant whose person holds no credential on the site, with the identity's message", async () => {
     const store = await start();
     const made = await call('POST', '/api/auth/agent-token', { name: 'client' });
     expect(made.status).toBe(200);

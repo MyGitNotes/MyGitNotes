@@ -9,7 +9,7 @@ import { AuthControls } from '../components/AuthControls.js';
 import { NoteInfoPanel } from '../components/note-editor/NoteInfoPanel.js';
 import { NoteLocationProvider } from './note-location.js';
 import { SettingsModal } from '../components/SettingsModal.js';
-import { useAccountControls, ServerAgentProvider, useAgentEnabled, useCommitMessagePolish, useFeatureGate, type WebFeature, WebFeaturesProvider } from './web-features.js';
+import { ServerAgentProvider, useAccountControls, useAgentEnabled, useCommitMessagePolish, useFeatureGate, type WebFeature, WebFeaturesProvider } from './web-features.js';
 
 vi.mock('../components/CoreUpdates.js', () => ({ CoreUpdates: () => null }));
 vi.mock('../components/ProductVersion.js', () => ({ ProductVersion: () => null }));
@@ -175,7 +175,14 @@ it('asks a remote deployment for an agent session when its server reports one fo
   function Probe() {
     return createElement('span', null, String(useAgentEnabled(true)));
   }
-  const html = (agent: boolean) => renderToStaticMarkup(createElement(WebFeaturesProvider, { features: [] }, createElement(ServerAgentProvider, { agent, children: createElement(Probe) })));
+  const html = (agent: boolean) =>
+    renderToStaticMarkup(createElement(
+      WebFeaturesProvider,
+      { features: [] },
+      <ServerAgentProvider agent={agent}>
+        <Probe />
+      </ServerAgentProvider>,
+    ));
   expect(html(true)).toBe('<span>true</span>');
   expect(html(false)).toBe('<span>false</span>');
 });

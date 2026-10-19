@@ -11,10 +11,11 @@ const secret = 'shared-secret-0123456789';
 const servers: { close: () => void; }[] = [];
 afterEach(() => servers.splice(0).forEach(server => server.close()));
 
-const listen = (app: express.Express) => new Promise<string>(resolve => {
-  const server = app.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`));
-  servers.push(server);
-});
+const listen = (app: express.Express) =>
+  new Promise<string>(resolve => {
+    const server = app.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`));
+    servers.push(server);
+  });
 
 /** Signed-in people by cookie value, standing in for BrowserSessions under the default (provider) identity. */
 const sessionsOf = (people: Record<string, Record<string, unknown>>): BrowserSessions => ({ kind: 'stored', read: async (req: { headers: { cookie?: string; }; }) => people[String(req.headers.cookie)] as never ?? null } as unknown as BrowserSessions);
@@ -31,14 +32,7 @@ async function setup(owners = ['octocat', 'id:42']) {
     res.json({ session: req.method === 'DELETE' ? null : { id: 's1', location: req.body?.location, socket: { url: 'wss://pi.example.com/ws', protocols: ['mygitnotes-bridge.signed'] } } });
   });
   const bridgeUrl = await listen(bridge);
-  const identity = identityOver({
-    owner: { kind: 'session', login: 'OctoCat', userId: 7 },
-    byId: { kind: 'session', login: 'renamed', userId: 42 },
-    other: { kind: 'session', login: 'mallory', userId: 9 },
-    wrongRealm: { kind: 'session', login: 'octocat', userId: 7, realm: 'gitlab:https://gitlab.com:x' },
-    expired: { kind: 'session', login: 'octocat', userId: 7, upstreamExpiresAt: Date.now() - 1000 },
-    renewable: { kind: 'session', login: 'octocat', userId: 7, upstreamExpiresAt: Date.now() - 1000, refreshToken: 'r' },
-  });
+  const identity = identityOver({ owner: { kind: 'session', login: 'OctoCat', userId: 7 }, byId: { kind: 'session', login: 'renamed', userId: 42 }, other: { kind: 'session', login: 'mallory', userId: 9 }, wrongRealm: { kind: 'session', login: 'octocat', userId: 7, realm: 'gitlab:https://gitlab.com:x' }, expired: { kind: 'session', login: 'octocat', userId: 7, upstreamExpiresAt: Date.now() - 1000 }, renewable: { kind: 'session', login: 'octocat', userId: 7, upstreamExpiresAt: Date.now() - 1000, refreshToken: 'r' } });
   const app = express();
   app.use(express.json());
   app.use('/api/pi', externalPiAgent({ bridgeUrl, secret, owners, identity }).router);
