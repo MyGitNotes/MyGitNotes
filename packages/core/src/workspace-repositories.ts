@@ -78,7 +78,7 @@ export interface WorkspaceRepositoriesOptions<H> {
    * Answers for a member the provider refused (`no-access`) exactly as for one the workspace does not have, so a request
    * that is not signed in cannot tell a private member's guessed alias or id from a wrong guess.
    */
-  refusedAsMissing?: boolean;
+  refusedAsMissing?: boolean | ((member: WorkspaceMember) => boolean);
 }
 
 /** One member as this request opened it: its handle and manifest, or why it cannot serve. */
@@ -100,7 +100,7 @@ export function createWorkspaceRepositories<H>(options: WorkspaceRepositoriesOpt
     if (!found) throw notMember();
     return found;
   };
-  const refused = (found: Opened<H>) => Boolean(options.refusedAsMissing && 'unavailable' in found && found.unavailable.reason === 'no-access');
+  const refused = (found: Opened<H>) => Boolean('unavailable' in found && found.unavailable.reason === 'no-access' && (typeof options.refusedAsMissing === 'function' ? options.refusedAsMissing(found.member) : options.refusedAsMissing));
   /** The member a request names by id, opened; one refused to this request is not found, as an unknown id is not. */
   const openById = async (id: RepositoryId) => {
     const found = await open(memberOf(id));

@@ -8,6 +8,7 @@ export { type IdentityService, providerIdentity, type SignedIn, type SignInOptio
 export { type AssetScope, type AssetStorage, envAssetStorage } from './asset-storage.js';
 export { type PublishedNote } from './gists.js';
 export { type PublishingRequest, type PublishingService, type PublishSync } from './publishing.js';
+export { type EditionSources } from './edition-sources.js';
 export { type RemoteHandle } from './request-workspace.js';
 export { createPiAgent, type PiAgent, type PiAgentOptions } from './pi-agent.js';
 export { externalPiAgent, type ExternalPiAgentOptions, externalPiEnvironment } from './pi-external-agent.js';

@@ -28,11 +28,12 @@ export function repositoryRef(source: SourceConfig): RepositoryRef {
 /** Whether the credential signed in for `home` also reaches `other`: the same platform and site. */
 export function sharesCredential(home: SourceConfig, other: SourceConfig): boolean {
   if (home.type === 'local' || other.type === 'local') return home.type === other.type;
+  if (home.type === 'edition' || other.type === 'edition') return false;
   return home.type === other.type && home.url === other.url;
 }
 
 /** Why a repository cannot serve this request; `invalid-manifest` covers a manifest that does not load, an unsupported schema and a notebook still using `source`. */
-export type UnavailableReason = 'unmapped' | 'no-access' | 'missing-branch' | 'unsupported-platform' | 'invalid-manifest';
+export type UnavailableReason = 'unmapped' | 'no-access' | 'missing-branch' | 'unsupported-platform' | 'invalid-manifest' | 'no-credential';
 
 /** The provider refused the repository (`no-access`) or its branch (`missing-branch`); keeps the provider's status and message. */
 export class RepositoryUnavailableError extends SourceError {

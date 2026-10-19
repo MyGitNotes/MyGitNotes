@@ -11,7 +11,9 @@ import { appInstalledOn, github, githubApp } from './workspace-choice.js';
 export interface MemberStatus {
   id: RepositoryId;
   alias: string;
-  type: 'github' | 'gitlab' | 'local';
+  type: 'github' | 'gitlab' | 'edition' | 'local';
+  /** An edition source's name for people; lists show it in place of `repository`. */
+  label?: string;
   /** The platform repository; absent for a worktree that names none. */
   repository?: string;
   /**
@@ -80,7 +82,7 @@ const worktreeBranch = (worktree: string) => getCurrentBranch(worktree).catch(()
 const status = async (member: WorkspaceMember): Promise<MemberStatus> => {
   const { source } = member.ref;
   const branch = member.localPath ? await worktreeBranch(member.localPath) : source.type === 'local' ? undefined : source.branch;
-  return { id: member.ref.id, alias: member.alias, type: source.type, ...(source.type === 'local' ? {} : { repository: source.repository }), ...(branch === undefined ? {} : { branch }), ...(member.localPath ? { path: member.localPath } : {}), default: member.default, hidden: member.hidden, ...(member.folder ? { folder: member.folder } : {}), editable: member.editable };
+  return { id: member.ref.id, alias: member.alias, type: source.type, ...(source.type === 'local' ? {} : { repository: source.repository }), ...(source.type === 'edition' && source.label ? { label: source.label } : {}), ...(branch === undefined ? {} : { branch }), ...(member.localPath ? { path: member.localPath } : {}), default: member.default, hidden: member.hidden, ...(member.folder ? { folder: member.folder } : {}), editable: member.editable };
 };
 
 function fail(res: Response, error: unknown) {

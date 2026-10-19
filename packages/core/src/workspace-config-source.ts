@@ -136,11 +136,13 @@ export class WorkspaceSetupError extends SourceError {
 /** The site a repository is on. */
 export function siteOf(source: SourceConfig): WorkspaceSite {
   if (source.type === 'local') return { type: 'local' };
+  if (source.type === 'edition') throw new Error('An edition source has no site of its own.');
   return { type: source.type, ...(source.url ? { url: source.url } : {}) };
 }
 
 /** Whether a repository is on the site: the same platform and the same site URL, the one a sign-in there reaches. */
 export function sameSite(site: WorkspaceSite, source: SourceConfig): boolean {
+  if (source.type === 'edition') return site.type !== 'local';
   if (site.type === 'local' || source.type === 'local') return site.type === source.type;
   return site.type === source.type && site.url === source.url;
 }
@@ -195,6 +197,7 @@ export function sameMember(a: Pick<WorkspaceMember, 'ref' | 'localPath'>, b: Pic
 /** Whether two identities name one platform repository, or in local mode one worktree, whatever their branches. */
 function sameRepository(a: RepositoryIdentity | SourceConfig, b: RepositoryIdentity | SourceConfig): boolean {
   if (a.type === 'local' || b.type === 'local') return a.type === b.type && sameDirectory((a as { path: string; }).path, (b as { path: string; }).path);
+  if (a.type === 'edition' || b.type === 'edition') return a.type === b.type && a.repository === b.repository && (a as { platform: string; }).platform === (b as { platform: string; }).platform;
   return a.type === b.type && a.repository === b.repository && a.url === b.url;
 }
 

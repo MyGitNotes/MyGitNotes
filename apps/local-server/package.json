@@ -12,6 +12,7 @@
     "./testing/asset-storage-contract": "./src/asset-storage-contract.ts",
     "./testing/identity-contract": "./src/identity-contract.ts",
     "./testing/membership-store-contract": "./src/membership-store-contract.ts",
+    "./testing/memory-edition-source": "./src/memory-edition-source.ts",
     "./testing/memory-account-source": "./src/memory-account-source.ts",
     "./testing/record-store-contract": "./src/record-store/contract.ts",
     "./testing/workspace-choices-contract": "./src/workspace-choices-contract.ts"

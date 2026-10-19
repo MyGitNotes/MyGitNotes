@@ -182,9 +182,13 @@ export abstract class RemoteSource {
     this.snapshot ??= this.loadSnapshot();
     return this.snapshot;
   }
+  /** Whether this reader holds the credential a write needs; an edition adapter overrides it for a signed-in person without a token. */
+  protected mayWrite(): boolean {
+    return Boolean(this.token);
+  }
   /** Whether this reader's credential may commit to the main workspace branch as of `snapshot`. */
   canWrite(snapshot: RemoteSnapshot) {
-    return Boolean(this.token && snapshot.info.permissions?.push && this.branch === 'main');
+    return Boolean(this.mayWrite() && snapshot.info.permissions?.push && this.branch === 'main');
   }
   /** Rejects a mutation without write access or against a revision other than `snapshot`. */
   private assertMutable(snapshot: RemoteSnapshot, expected: string) {

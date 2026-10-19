@@ -7,7 +7,11 @@ import { normalizeGitHubUrl } from './github-site.js';
 import { normalizeHttpsSiteUrl } from './site-url.js';
 
 /** A GitHub source names its site with `url` unless it is github.com, which a source leaves out. */
-export type RemoteSourceConfig = { type: 'github'; url?: string; repository: string; branch: string; } | { type: 'gitlab'; url: string; repository: string; branch: string; };
+export type GitHubSourceConfig = { type: 'github'; url?: string; repository: string; branch: string; };
+export type GitLabSourceConfig = { type: 'gitlab'; url: string; repository: string; branch: string; };
+/** A repository an edition keeps itself; only the server's composition can name one, never a server file. */
+export type EditionSourceConfig = { type: 'edition'; platform: string; repository: string; branch: string; label?: string; };
+export type RemoteSourceConfig = GitHubSourceConfig | GitLabSourceConfig | EditionSourceConfig;
 export type SourceConfig = { type: 'local'; path: string; } | RemoteSourceConfig;
 export const SERVER_CONFIG_FILENAME = 'github-notes.server.yaml';
 
@@ -85,7 +89,7 @@ export type RepositoryMapping = ServerRepositoryEntry & { source: RepositoryIden
 
 /** Whether a mapping names the platform repository `source` serves; the worktree's checked-out branch is its own. */
 export function mapsRepository(mapping: RepositoryMapping, source: RemoteSourceConfig): boolean {
-  if (mapping.source.type === 'local' || mapping.source.type !== source.type || mapping.source.repository !== source.repository) return false;
+  if (mapping.source.type === 'local' || mapping.source.type === 'edition' || source.type === 'edition' || mapping.source.type !== source.type || mapping.source.repository !== source.repository) return false;
   return mapping.source.url === source.url;
 }
 
@@ -222,5 +226,6 @@ export function productRepository(base: string, env: NodeJS.ProcessEnv = process
 export function sourceIdentity(source: SourceConfig): string {
   if (source.type === 'local') return `local:${source.path}`;
   if (source.type === 'github') return source.url ? `github:${source.url}/${source.repository}@${source.branch}` : `github:${source.repository}@${source.branch}`;
+  if (source.type === 'edition') return `edition:${source.platform}:${source.repository}@${source.branch}`;
   return `gitlab:${source.url}/${source.repository}@${source.branch}`;
 }

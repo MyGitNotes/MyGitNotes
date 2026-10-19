@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type express from 'express';
-import { type AvailableRepository, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspaceRepositories, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
+import { type AvailableRepository, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
+import type { EditionSources } from './edition-sources.js';
 import { CredentialRejected } from './auth.js';
 import { identityOf, type IdentityOrSessions, type SignedIn } from './identity.js';
 import { membershipGeneration } from './event-stream.js';
@@ -30,13 +31,21 @@ const localNotebook = ({ key: _key, ...notebook }: KeyedNotebook): NotebookConfi
 export interface OpenOptions {
   /** Re-read each remote repository's branch head instead of using a cached one (`?fresh=1`). */
   fresh?: boolean;
+  /** The person the request acts for, whether or not they hold a credential on the site. */
+  person?: WorkspacePerson;
+  /** Opens edition members; without it an edition member is unavailable. */
+  editionSources?: EditionSources;
+  /** The request as the configuration source saw it, handed to the edition. */
+  request?: WorkspaceRequest;
+  /** Why a provider member cannot open for a person with no credential on the site. */
+  noCredentialMessage?: (site: WorkspaceSite) => string;
 }
 
 /**
  * Opens the workspace of one request: each visible member of its settings, from its worktree in a local deployment
  * or through the provider with the request's credential in a remote one, each with its own manifest.
  */
-export function openWorkspace(settings: WorkspaceSettings, token: string | undefined, cache?: RemoteCache, { fresh = false }: OpenOptions = {}): RequestWorkspace {
+export function openWorkspace(settings: WorkspaceSettings, token: string | undefined, cache?: RemoteCache, { fresh = false, person, editionSources, request = { headers: {} }, noCredentialMessage }: OpenOptions = {}): RequestWorkspace {
   const members = visibleMembers(settings);
   if (settings.site.type === 'local') {
     return createWorkspaceRepositories<RepositoryHandle>({
@@ -59,10 +68,24 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
     members,
     manifest: (member, handle) => settings.manifest(member, () => new RemoteManifest((handle as RemoteHandle).reader)),
     // Signed out, a member the provider refused answers as a missing one, so a guessed private name is not confirmed.
-    refusedAsMissing: !token,
+    // An edition repository is the edition's to refuse, and says so to the person it refused.
+    refusedAsMissing: member => !token && member.ref.source.type !== 'edition',
     async openRepository(member, scope) {
       const { ref } = member;
+      if (ref.source.type === 'edition') {
+        if (!editionSources) return { reason: 'unsupported-platform', message: `${ref.id} is not on the workspace's platform and site.` };
+        try {
+          const reader = editionSources.open(ref.source, { person, request }, cache, scope);
+          await reader.getSnapshot(fresh);
+          return { kind: 'remote', id: ref.id, reader, authenticated: Boolean(person) };
+        } catch (error) {
+          if (error instanceof RepositoryUnavailableError) return { reason: error.reason, message: error.message };
+          throw error;
+        }
+      }
       if (ref.source.type === 'local' || !sameSite(site, ref.source)) return { reason: 'unsupported-platform', message: `${ref.id} is not on the workspace's platform and site.` };
+      // A signed-in person with no credential here reaches nothing on this site, and no provider request says otherwise.
+      if (person && !token) return { reason: 'no-credential', message: noCredentialMessage?.(site) ?? 'No credential for this repository.' };
       const reader = createRemoteSource(ref.source, token, fetch, cache, scope);
       try {
         await reader.getSnapshot(fresh);
@@ -79,7 +102,7 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
 }
 
 /** Resolves the request's workspace once and stores it in `res.locals.workspace`. */
-export function requestWorkspace(auth: IdentityOrSessions, configSource: WorkspaceConfigSource, cache?: RemoteCache): express.RequestHandler {
+export function requestWorkspace(auth: IdentityOrSessions, configSource: WorkspaceConfigSource, cache?: RemoteCache, editionSources?: EditionSources): express.RequestHandler {
   const identity = identityOf(auth, configSource);
   return async (req, res, next) => {
     // Recorded before the members are read, so an event stream opened from them knows when a change came meanwhile.
@@ -103,7 +126,7 @@ export function requestWorkspace(auth: IdentityOrSessions, configSource: Workspa
         return res.status(503).json({ error: 'Session service temporarily unavailable. Retry shortly.' });
       }
     }
-    res.locals.workspace = openWorkspace(settings, token, cache, { fresh: req.query.fresh === '1' });
+    res.locals.workspace = openWorkspace(settings, token, cache, { fresh: req.query.fresh === '1', ...(person ? { person: person.person } : {}), ...(editionSources ? { editionSources } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
     res.locals.token = token;
     res.locals.person = person;
     res.locals.site = settings.site;

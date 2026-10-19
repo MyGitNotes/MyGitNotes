@@ -12,6 +12,7 @@ import { createRemoteMCP } from './mcp.js';
 import { createRemoteCoreUpdateRouter } from './remote-core-update.js';
 import { createLocalApp } from './local-app.js';
 import { createAuth } from './auth.js';
+import type { EditionSources } from './edition-sources.js';
 import { type IdentityService, providerIdentity } from './identity.js';
 import { asLocal, asRemote, defaultRepository, eachRepository, namedRemote, namedRepository, notebookRepository, noteRepository, type RemoteHandle, repositoryOrDefault, requestCatalog, requestPerson, requestToken, requestWorkspace, storedDocumentDrafts, workspaceOf } from './request-workspace.js';
 import { createStudyRouter } from './study.js';
@@ -75,6 +76,8 @@ export interface AppServices {
   routes?: (app: express.Express, services: AppServices) => void;
   /** Who is signed in, and the credentials they hold; defaults to signing in with the workspace site's GitHub or GitLab (`providerIdentity`). */
   identity?: IdentityService;
+  /** Repositories the edition keeps itself, opened without a provider credential; left out, edition members are unavailable. */
+  editionSources?: EditionSources;
 }
 
 export function createApp(base: string, overrides: Partial<AppServices> = {}): express.Express {
@@ -124,14 +127,14 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   app.use('/api/auth', createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity, agentFor: piAgent?.availableTo }));
   app.use('/api', workspaceChoiceRouter({ identity, choices: workspaceChoices ?? undefined }));
   services.routes?.(app, services);
-  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache));
+  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources));
   app.get('/api/history/events', serverlessHistoryEvents);
   // Core updates act on the product repository, not on the workspace, so they open no repository of it.
   if (!local) app.use('/api/core', product ? createRemoteCoreUpdateRouter(identity, product) : (_req, res) => res.status(404).json({ error: 'This deployment names no product repository, so it offers no Core update.' }));
   if (piAgent?.tools) app.use('/api/pi', piAgent.tools);
   // The member list opens no repository, so it works while every repository is hidden or unreachable.
   app.use('/api/workspace/members', createWorkspaceMembersRouter(configSource, assetStorage, identity, { repositoryChoice: visitorChoice, onChange: async (settings, request) => piAgent?.membershipChanged?.(visibleMembers(settings).map(member => member.ref.id), request), ...(services.defer ? { defer: services.defer } : {}) }));
-  app.use(['/api', '/raw-assets', '/r2-assets'], requestWorkspace(identity, configSource, cache));
+  app.use(['/api', '/raw-assets', '/r2-assets'], requestWorkspace(identity, configSource, cache, services.editionSources));
   app.use(createFileManagerRouter());
   app.use(createR2ManagerRouter(assetStorage));
   app.use('/api/study', createStudyRouter());

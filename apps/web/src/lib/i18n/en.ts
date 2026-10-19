@@ -793,6 +793,7 @@ export const en = {
   'notebook.unavailableTitle': '{title} is unavailable.',
   'notebook.unavailable.unmapped': 'No local worktree is mapped for its repository in mygitnotes.server.yaml.',
   'notebook.unavailable.no-access': 'The signed-in account cannot read its repository.',
+  'notebook.unavailable.no-credential': 'You have no credential for the site of its repository.',
   'notebook.unavailable.missing-branch': 'Its repository has no such branch.',
   'notebook.unavailable.unsupported-platform': "Its repository is not on the workspace's platform and site.",
   'notebook.unavailable.invalid-manifest': 'The manifest of its repository cannot be loaded. Fix it in Settings → Manifest.',

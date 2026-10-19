@@ -9,6 +9,7 @@ import { type AssetStorage, resolveAssetScope } from './asset-storage.js';
 import { CredentialRejected, grantPerson } from './auth.js';
 import type { IdentityService } from './identity.js';
 import type { RecordStore, StoredRecord } from './record-store/index.js';
+import type { EditionSources } from './edition-sources.js';
 import { openWorkspace, type RemoteHandle, type RequestWorkspace } from './request-workspace.js';
 
 /** The JSON-RPC body of an ordinary call; a hosted asset upload carries its file inside the body and may be larger. */
@@ -55,7 +56,7 @@ function grantSettings(settings: WorkspaceSettings, grant: StoredRecord): Worksp
   return { ...settings, members: settings.members.filter(member => member.ref.id === grant.source && !member.hidden).map(member => ({ ...member, default: true })) };
 }
 
-export function createRemoteMCP(store: RecordStore, identity: IdentityService, configSource: WorkspaceConfigSource, assetStorage: AssetStorage, cache?: RemoteCache): Router {
+export function createRemoteMCP(store: RecordStore, identity: IdentityService, configSource: WorkspaceConfigSource, assetStorage: AssetStorage, cache?: RemoteCache, editionSources?: EditionSources): Router {
   const router = Router();
   router.post(['/', '/:token'], async (req, res) => {
     try {
@@ -90,7 +91,7 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
         return res.status(error instanceof SourceError ? error.status : 503).json({ error: error instanceof SourceError ? error.message : 'Agent authorization service unavailable. Retry later.' });
       }
       // A person without a credential on the site opens nothing there; the identity says why.
-      if (token === undefined) {
+      if (token === undefined && !(editionSources && person)) {
         await remember('credential-unavailable');
         res.setHeader('WWW-Authenticate', 'Bearer realm="MyGitNotes MCP"');
         return res.status(401).json({ error: identity.noCredentialMessage(settings.site) });
@@ -98,7 +99,7 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
       // Asset storage finds the caller on the request too: it is the grant's person, never a browser session sent beside the grant.
       delete req.headers.cookie;
       if (person) (req as express.Request & WorkspaceRequest).person = person;
-      const workspace = openWorkspace(grantSettings(settings, grant), token, cache);
+      const workspace = openWorkspace(grantSettings(settings, grant), token, cache, { ...(person ? { person } : {}), ...(editionSources ? { editionSources } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
       const assets = toolAssets(assetStorage, req, res);
       try {
         await readBody(req, res, workspace, assets);

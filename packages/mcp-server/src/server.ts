@@ -20,7 +20,7 @@ function openRemoteWorkspace(settings: WorkspaceSettings): WorkspaceRepositories
     members: visibleMembers(settings),
     manifest: (member, handle) => settings.manifest(member, () => new RemoteManifest(handle.reader)),
     async openRepository({ ref }, scope) {
-      if (ref.source.type === 'local' || !sameSite(site, ref.source)) return { reason: 'unsupported-platform', message: `${ref.id} is not on the workspace's platform and site.` };
+      if (ref.source.type === 'local' || ref.source.type === 'edition' || !sameSite(site, ref.source)) return { reason: 'unsupported-platform', message: `${ref.id} is not on the workspace's platform and site.` };
       const reader = createRemoteSource(ref.source, undefined, fetch, undefined, scope);
       try {
         await reader.getSnapshot();

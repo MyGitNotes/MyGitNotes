@@ -794,6 +794,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'notebook.unavailableTitle': '「{title}」無法使用。',
   'notebook.unavailable.unmapped': 'mygitnotes.server.yaml 沒有設定這個儲存庫對應的本機資料夾。',
   'notebook.unavailable.no-access': '目前登入的帳號無法讀取這個儲存庫。',
+  'notebook.unavailable.no-credential': '你沒有這個儲存庫所在站台的憑證。',
   'notebook.unavailable.missing-branch': '這個儲存庫沒有指定的分支。',
   'notebook.unavailable.unsupported-platform': '這個儲存庫和工作區不在同一個平台或站台。',
   'notebook.unavailable.invalid-manifest': '這個儲存庫的 manifest 無法載入，請到「設定 → Manifest」修正。',
