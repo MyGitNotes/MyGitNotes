@@ -215,7 +215,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   const panel = useRef<HTMLElement>(null);
   useAgentInputFocusRequest(input);
   const menuId = useId();
-  const [file, setFile] = useState<{ path: string; absolute?: string; error?: string; } | null>(null);
+  const [file, setFile] = useState<{ path: string; notebookId?: string; absolute?: string; error?: string; } | null>(null);
   const caret = target?.caret ?? noCaret;
   const selection = useSyncExternalStore(caret.subscribe, caret.get);
   const position = target?.caret && target.content ? selectionPosition(target.content(), selection, target.lineNumberOffset) : undefined;
@@ -239,7 +239,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
     if (targetPath === undefined || targetNotebook === undefined || noteTools) return;
     let current = true;
     // One request per note: a refusal is shown, not asked again, until another note is in focus.
-    locate(targetPath, targetNotebook).then(absolute => current && setFile({ path: targetPath, absolute }), (reason: Error) => current && setFile({ path: targetPath, error: reason.message }));
+    locate(targetPath, targetNotebook).then(absolute => current && setFile({ path: targetPath, notebookId: targetNotebook, absolute }), (reason: Error) => current && setFile({ path: targetPath, notebookId: targetNotebook, error: reason.message }));
     return () => {
       current = false;
     };
@@ -270,7 +270,8 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   const ended = !live && !starting && !resting;
   // Pi answered with no model at all: no key, no login and no model the edition provides.
   const noModel = ready && model.loaded === true && model.models.length === 0;
-  const absolute = target && file?.path === target.path ? file.absolute : undefined;
+  const fileIsTarget = Boolean(target && file?.path === target.path && file.notebookId === target.notebookId);
+  const absolute = fileIsTarget ? file?.absolute : undefined;
   const located = noteTools ? target?.path : absolute && fromCwd(absolute, session?.cwd);
   const noteFile = noteTools && target ? { file: located!, notebookId: target.notebookId } : { file: located! };
   // Without a caret (a compilation pane), a line request sends the path alone, and the switch says so.
@@ -370,7 +371,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
             <div className='pi-agent-context'>
               {target && (
                 <DropdownMenu.Root>
-                  <DropdownMenu.Trigger className='pi-agent-context-chip' aria-label={`${t('piAgent.context')}: ${chipText}`} title={absolute ?? (file?.path === target.path ? file.error : undefined)}>
+                  <DropdownMenu.Trigger className='pi-agent-context-chip' aria-label={`${t('piAgent.context')}: ${chipText}`} title={absolute ?? (fileIsTarget ? file?.error : undefined)}>
                     <FileText aria-hidden='true' />
                     <span>{chipText}</span>
                     <ChevronDown aria-hidden='true' />
