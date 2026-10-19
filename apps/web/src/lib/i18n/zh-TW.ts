@@ -1850,6 +1850,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'piAgent.command.nameArgument': '名稱',
   'piAgent.command.new': '開始新對話',
   'setup.signInDescription': '透過 GitHub 登入，再選擇存放筆記的 repository。',
+  'setup.signInDescriptionAny': '登入後選擇存放筆記的地方。',
   'setup.chooseDescription': '選擇要開啟的 repository。之後可以從帳號選單切換到其他 repository。',
   'setup.searchRepositories': '搜尋 repository',
   'setup.repositories': 'Repository 清單',

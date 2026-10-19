@@ -1849,6 +1849,7 @@ export const en = {
   'piAgent.command.nameArgument': 'name',
   'piAgent.command.new': 'Start a new conversation',
   'setup.signInDescription': 'Sign in with GitHub, then choose the repository that holds your notes.',
+  'setup.signInDescriptionAny': 'Sign in, then choose where your notes live.',
   'setup.chooseDescription': 'Choose the repository to open. You can switch to another one later from the account menu.',
   'setup.searchRepositories': 'Search repositories',
   'setup.repositories': 'Repositories',

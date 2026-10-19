@@ -23,6 +23,8 @@ export interface SessionProbe {
   authenticated?: boolean;
   login?: string;
   storage?: 'stored' | 'cookie';
+  /** The ways the server offers to sign in; more than one means the screen cannot name GitHub alone. */
+  signInOptions?: { id: string; }[];
   /** Whether the person holds a credential on the workspace's platform; false for an account with none. */
   platformAccess?: boolean;
   repositoryChoice?: boolean;
@@ -78,12 +80,12 @@ function SetupCard({ children }: { children: ReactNode; }) {
 }
 
 /** The first screen where visitors choose their repository: why to sign in, the GitHub button, and what the sign-in can reach. */
-function SignIn({ storage }: { storage?: SessionProbe['storage']; }) {
+function SignIn({ storage, multipleOptions }: { storage?: SessionProbe['storage']; multipleOptions: boolean; }) {
   const { t } = useTranslation();
   return (
     <SetupCard>
       <h2 className='text-xl font-semibold mb-2'>{t('setup.signInTitle')}</h2>
-      <p className='text-sm text-muted mb-6'>{t('setup.signInDescription')}</p>
+      <p className='text-sm text-muted mb-6'>{t(multipleOptions ? 'setup.signInDescriptionAny' : 'setup.signInDescription')}</p>
       <AuthControls connection />
       <div className='mt-6 p-3 rounded-lg bg-sidebar flex items-start gap-2 text-xs text-muted'>
         <ShieldCheck size={16} aria-hidden='true' className='shrink-0 text-primary' />
@@ -186,7 +188,7 @@ export function WorkspaceGate({ children }: { children: ReactNode; }) {
       </PlatformAccessProvider>
     );
   }
-  if (!session.authenticated) return <SignIn storage={session.storage} />;
+  if (!session.authenticated) return <SignIn storage={session.storage} multipleOptions={(session.signInOptions?.length ?? 0) > 1} />;
   return session.accountMembers
     ? (
       <PlatformAccessProvider platformAccess={platformAccess}>

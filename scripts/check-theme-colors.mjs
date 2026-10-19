@@ -6,7 +6,7 @@ import path from 'node:path';
 const roots = ['apps/web/src', 'apps/web/index.html', 'apps/web/tailwind.config.js'];
 const palette = 'apps/web/src/lib/palettes.ts';
 /** Unavoidable literals, each with its reason. */
-const exceptions = [{ file: 'apps/web/index.html', pattern: /<meta name="theme-color" content="#284d43"/, reason: 'Brand colour for the browser chrome, read before any stylesheet or theme loads.' }];
+const exceptions = [{ file: 'apps/web/src/components/GoogleMark.tsx', pattern: /fill='#(?:EA4335|4285F4|FBBC05|34A853)'/, reason: "Google's sign-in branding fixes the four colours of its G." }, { file: 'apps/web/index.html', pattern: /<meta name="theme-color" content="#284d43"/, reason: 'Brand colour for the browser chrome, read before any stylesheet or theme loads.' }];
 const tests = /\.test\.[jt]sx?$/;
 
 const hues = 'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black';

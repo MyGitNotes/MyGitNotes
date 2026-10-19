@@ -67,6 +67,19 @@ it('asks a signed-out visitor to sign in where visitors choose their repository'
   expect(container.textContent).toContain('your sign-in is stored encrypted on this server');
 });
 
+it('names GitHub in the sign-in line when it is the single option', async () => {
+  serve({ authenticated: false, repositoryChoice: true, workspace: null, signInOptions: [{ id: 'github' }] });
+  await render(createElement(WorkspaceGate, null, createElement('p', null, 'workspace')));
+  expect(container.textContent).toContain('Sign in with GitHub, then choose the repository');
+});
+
+it('uses a neutral sign-in line when several options are offered', async () => {
+  serve({ authenticated: false, repositoryChoice: true, workspace: null, signInOptions: [{ id: 'github' }, { id: 'google' }] });
+  await render(createElement(WorkspaceGate, null, createElement('p', null, 'workspace')));
+  expect(container.textContent).toContain('Sign in, then choose where your notes live.');
+  expect(container.textContent).not.toContain('Sign in with GitHub, then choose');
+});
+
 it('says a lightweight sign-in stays in the browser', async () => {
   serve({ authenticated: false, storage: 'cookie', repositoryChoice: true, workspace: null });
   await render(createElement(WorkspaceGate, null, createElement('p', null, 'workspace')));

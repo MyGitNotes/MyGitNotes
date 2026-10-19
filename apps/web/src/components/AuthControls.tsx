@@ -6,6 +6,7 @@ import { McpTutorialModal } from './McpTutorialModal.js';
 import { copyToClipboard } from '../lib/clipboard.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import type { TranslationKey } from '../lib/i18n/index.js';
+import { GoogleMark } from './GoogleMark.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { useAccountMenuItems, useSignInNotice } from '../lib/web-features.js';
 
@@ -102,7 +103,7 @@ function signInLink(option: SignInOption, connection: boolean, t: ReturnType<typ
   const label = option.id === 'gitlab' ? t('auth.signInWithGitlab') : option.id === 'github' ? t('auth.signInWithGithub') : t('auth.signInWithProvider', { provider: option.label });
   return (
     <a key={option.id} href={option.url} className={connection ? `${connectionActionClass} ui-button ui-button-primary` : 'header-login'}>
-      <Icon size={16} />
+      {option.id === 'google' ? <GoogleMark /> : <Icon size={16} />}
       <span>{label}</span>
     </a>
   );
