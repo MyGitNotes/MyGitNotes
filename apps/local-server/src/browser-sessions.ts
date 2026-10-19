@@ -14,6 +14,8 @@ const opaqueId = /^[A-Za-z0-9_-]{43}$/;
 export interface PendingSignIn {
   realm: string;
   verifier: string;
+  /** What an edition's sign-in needs back from the provider round trip, such as the intent of a link flow. */
+  data?: Record<string, unknown>;
 }
 
 /**
@@ -41,6 +43,8 @@ export function cookieOptions() {
   return { httpOnly: true, secure: process.env.APP_URL?.startsWith('https://') || Boolean(process.env.VERCEL), sameSite: 'lax' as const, path: '/' };
 }
 const sameState = (a: string, b: string) => opaqueId.test(a) && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+const pendingOf = (record: StoredRecord): PendingSignIn => ({ realm: record.realm, verifier: record.verifier, ...(record.data ? { data: record.data } : {}) });
 
 /** Sessions as records in the store, addressed by an opaque cookie id: the behavior every deployment had before the lightweight mode. */
 export function storedSessions(store: RecordStore): BrowserSessions {
@@ -73,7 +77,7 @@ export function storedSessions(store: RecordStore): BrowserSessions {
       const pending = await store.get(state);
       await store.delete(state);
       res.clearCookie(signInCookie, cookieOptions());
-      return pending?.kind === 'oauth' ? { realm: pending.realm, verifier: pending.verifier } : null;
+      return pending?.kind === 'oauth' ? pendingOf(pending) : null;
     },
   };
 }
@@ -111,7 +115,7 @@ export function cookieSessions(): BrowserSessions {
     async finishSignIn(req, res, state) {
       const pending = readSealed(requestCookies(req)[signInCookie]);
       res.clearCookie(signInCookie, cookieOptions());
-      return pending && typeof pending.state === 'string' && sameState(state, pending.state) ? { realm: pending.realm, verifier: pending.verifier } : null;
+      return pending && typeof pending.state === 'string' && sameState(state, pending.state) ? pendingOf(pending) : null;
     },
   };
 }

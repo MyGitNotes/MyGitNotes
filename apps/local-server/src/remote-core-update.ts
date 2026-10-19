@@ -1,6 +1,6 @@
 import { type CoreStatus, GitHubCoreUpdate, RemoteCoreError, type RemoteSourceConfig, SourceError } from '@mygitnotes/core';
 import { type Request, type Response, Router } from 'express';
-import { authToken, type SessionServices } from './auth.js';
+import type { IdentityService } from './identity.js';
 import { buildInfo } from './build-info.js';
 
 /**
@@ -11,9 +11,9 @@ const updatable = (source: RemoteSourceConfig): source is RemoteSourceConfig & {
 const unsupportedMessage = (source: RemoteSourceConfig) => source.type === 'gitlab' ? 'GitLab Core updates are not supported yet.' : 'Core updates are not supported on a GitHub Enterprise site.';
 
 /** Core updates of the deployment's product repository, on its `core` branch. */
-export function createRemoteCoreUpdateRouter(auth: SessionServices, product: RemoteSourceConfig): Router {
+export function createRemoteCoreUpdateRouter(identity: IdentityService, product: RemoteSourceConfig): Router {
   const router = Router();
-  const updater = async (req: Request, res: Response, source: RemoteSourceConfig & { type: 'github'; }) => new GitHubCoreUpdate(source.repository, buildInfo.sha, await authToken(req, res, auth, source));
+  const updater = async (req: Request, res: Response, source: RemoteSourceConfig & { type: 'github'; }) => new GitHubCoreUpdate(source.repository, buildInfo.sha, await identity.token(req, res, source));
   for (const method of ['get', 'post'] as const) {
     router[method](method === 'get' ? '/status' : '/update', async (req, res) => {
       try {

@@ -1,13 +1,13 @@
 import { Button } from './Button.js';
 import { Select } from './Select.js';
 import { useEffect, useState } from 'react';
-import { ArrowLeftRight, Check, ChevronDown, Copy, Github, Gitlab, HelpCircle, KeyRound, LogOut, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Check, ChevronDown, Copy, Github, Gitlab, HelpCircle, KeyRound, LogIn, LogOut, Plus, Trash2 } from 'lucide-react';
 import { McpTutorialModal } from './McpTutorialModal.js';
 import { copyToClipboard } from '../lib/clipboard.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import type { TranslationKey } from '../lib/i18n/index.js';
 import { LoadingStatus } from './LoadingStatus.js';
-import { useAccountMenuItems } from '../lib/web-features.js';
+import { useAccountMenuItems, useSignInNotice } from '../lib/web-features.js';
 
 class GrantRequestError extends Error {
   constructor(public key: TranslationKey) {
@@ -28,7 +28,13 @@ async function requestGrant(url: string, fallback: TranslationKey, init?: Reques
   }
 }
 
-type Session = { authenticated?: boolean; login?: string; configured?: boolean; provider?: 'github' | 'gitlab'; loginUrl?: string; storage?: 'stored' | 'cookie'; repositoryChoice?: boolean; accountMembers?: boolean; };
+/** One way to sign in, from `/api/auth/session`'s `signInOptions`. */
+export interface SignInOption {
+  id: string;
+  label: string;
+  url: string;
+}
+type Session = { authenticated?: boolean; login?: string; configured?: boolean; provider?: string; loginUrl?: string; signInOptions?: SignInOption[]; storage?: 'stored' | 'cookie'; repositoryChoice?: boolean; accountMembers?: boolean; };
 /** `source`: a grant made before grants reached every visible repository, which reaches that one repository only. */
 type Grant = { id: string; name: string; write: boolean; source?: string; site?: string; createdAt: number; expiresAt: null; };
 function useSession() {
@@ -38,14 +44,21 @@ function useSession() {
   }, []);
   return session;
 }
+/** The ways to sign in; a server that predates `signInOptions` names its one provider. */
+export function signInOptionsOf(session: Pick<Session, 'provider' | 'loginUrl' | 'signInOptions'>): SignInOption[] {
+  if (session.signInOptions) return session.signInOptions;
+  return session.provider ? [{ id: session.provider, label: session.provider === 'gitlab' ? 'GitLab' : 'GitHub', url: session.loginUrl ?? `/api/auth/${session.provider}` }] : [];
+}
 const connectionActionClass = 'inline-flex min-h-11 items-center justify-center px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap shrink-0';
 
 export function AuthControls({ local = false, connection = false }: { local?: boolean; connection?: boolean; }) {
   const { t } = useTranslation();
   const session = useSession();
   const menuItems = useAccountMenuItems();
+  const notice = useSignInNotice();
   const [menuOpen, setMenuOpen] = useState(false);
-  if (local || (!session.authenticated && !session.provider)) return null;
+  const options = signInOptionsOf(session);
+  if (local || (!session.authenticated && !options.length)) return null;
   const close = () => setMenuOpen(false);
   return session.authenticated
     ? (
@@ -82,12 +95,17 @@ export function AuthControls({ local = false, connection = false }: { local?: bo
         </div>
       </details>
     )
-    : (
-      <a href={session.provider === 'gitlab' ? '/api/auth/gitlab' : '/api/auth/github'} className={connection ? `${connectionActionClass} ui-button ui-button-primary` : 'header-login'}>
-        {session.provider === 'gitlab' ? <Gitlab size={16} /> : <Github size={16} />}
-        <span>{t(session.provider === 'gitlab' ? 'auth.signInWithGitlab' : 'auth.signInWithGithub')}</span>
-      </a>
-    );
+    : <>{options.length === 1 ? signInLink(options[0], connection, t) : <div className='flex flex-wrap items-center gap-2'>{options.map(option => signInLink(option, connection, t))}</div>}{connection && notice}</>;
+}
+function signInLink(option: SignInOption, connection: boolean, t: ReturnType<typeof useTranslation>['t']) {
+  const Icon = option.id === 'gitlab' ? Gitlab : option.id === 'github' ? Github : LogIn;
+  const label = option.id === 'gitlab' ? t('auth.signInWithGitlab') : option.id === 'github' ? t('auth.signInWithGithub') : t('auth.signInWithProvider', { provider: option.label });
+  return (
+    <a key={option.id} href={option.url} className={connection ? `${connectionActionClass} ui-button ui-button-primary` : 'header-login'}>
+      <Icon size={16} />
+      <span>{label}</span>
+    </a>
+  );
 }
 export function AgentAccessSettings({ local = false }: { local?: boolean; }) {
   const { t, language } = useTranslation();
@@ -183,9 +201,14 @@ export function AgentAccessSettings({ local = false }: { local?: boolean; }) {
       </div>
       <p className='text-xs text-muted'>{t('auth.grantsActiveNotice')}</p>
       <p className='text-xs text-muted'>{t('auth.chatgptConnectorNotice')}</p>
-      {local ? <p role='status' className='text-sm text-muted'>{t('auth.localAccessNotice')}</p> : session.provider && !session.authenticated && (
+      {local ? <p role='status' className='text-sm text-muted'>{t('auth.localAccessNotice')}</p> : signInOptionsOf(session).length > 0 && !session.authenticated && (
         <p className='text-sm'>
-          <a className='underline' href={session.provider === 'gitlab' ? '/api/auth/gitlab' : '/api/auth/github'}>{t(session.provider === 'gitlab' ? 'auth.signInWithGitlab' : 'auth.signInWithGithub')}</a>
+          {signInOptionsOf(session).map((option, index) => (
+            <span key={option.id}>
+              {index > 0 && ' · '}
+              <a className='underline' href={option.url}>{option.id === 'gitlab' ? t('auth.signInWithGitlab') : option.id === 'github' ? t('auth.signInWithGithub') : t('auth.signInWithProvider', { provider: option.label })}</a>
+            </span>
+          ))}
           {t('auth.signInToManage')}
         </p>
       )}

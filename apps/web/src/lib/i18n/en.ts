@@ -1319,6 +1319,7 @@ export const en = {
   'auth.signOut': 'Sign out',
   'auth.signInWithGithub': 'Sign in with GitHub',
   'auth.signInWithGitlab': 'Sign in with GitLab',
+  'auth.signInWithProvider': 'Sign in with {provider}',
   'auth.signInToManage': ' to manage agent access.',
   'auth.mcpAccessControl': 'MCP Access Control',
   'auth.connectorGuide': 'Connector Guide',

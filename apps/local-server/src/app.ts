@@ -12,7 +12,8 @@ import { createRemoteMCP } from './mcp.js';
 import { createRemoteCoreUpdateRouter } from './remote-core-update.js';
 import { createLocalApp } from './local-app.js';
 import { createAuth } from './auth.js';
-import { asLocal, asRemote, defaultRepository, eachRepository, namedRemote, namedRepository, notebookRepository, noteRepository, type RemoteHandle, repositoryOrDefault, requestCatalog, requestToken, requestWorkspace, storedDocumentDrafts, workspaceOf } from './request-workspace.js';
+import { type IdentityService, providerIdentity } from './identity.js';
+import { asLocal, asRemote, defaultRepository, eachRepository, namedRemote, namedRepository, notebookRepository, noteRepository, type RemoteHandle, repositoryOrDefault, requestCatalog, requestPerson, requestToken, requestWorkspace, storedDocumentDrafts, workspaceOf } from './request-workspace.js';
 import { createStudyRouter } from './study.js';
 import { createOutlineImportRouter } from './outline-import.js';
 import { createWorkspaceDocumentRouter } from './workspace-document.js';
@@ -71,6 +72,8 @@ export interface AppServices {
    * requester has no workspace yet; a route that needs one mounts `requestWorkspace` itself.
    */
   routes?: (app: express.Express, services: AppServices) => void;
+  /** Who is signed in, and the credentials they hold; defaults to signing in with the workspace site's GitHub or GitLab (`providerIdentity`). */
+  identity?: IdentityService;
 }
 
 export function createApp(base: string, overrides: Partial<AppServices> = {}): express.Express {
@@ -82,6 +85,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   const recordStore = overrides.recordStore ?? (lightweight ? new NoRecordStore() : createRecordStore(base));
   const services: AppServices = { ...overrides, configSource, recordStore, workspaceChoices, sessions: overrides.sessions ?? (lightweight ? cookieSessions() : storedSessions(recordStore)), assetStorage: overrides.assetStorage ?? envAssetStorage(), remoteCache: 'remoteCache' in overrides ? overrides.remoteCache : local ? undefined : createRemoteCache(), webDist: overrides.webDist ?? path.join(base, 'apps/web/dist') };
   const { remoteCache: cache, piAgent, sessions, assetStorage, publishing } = services;
+  const identity = services.identity ?? providerIdentity({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined });
   // Core updates of a remote deployment act on its product repository; without one they are not offered. Visitors who
   // choose their own repository never update the deployment's Core, as before product repositories.
   const product = local ? null : productRepository(base);
@@ -113,17 +117,17 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   app.use((req, res, next) => req.path === '/mcp' || req.path.startsWith('/mcp/') ? next() : smallBody(req, res, next));
   // A parse error message can quote part of the body, such as an API key, so it is answered with fixed text and never logged.
   app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => (error as { type?: string; } | null)?.type === 'entity.parse.failed' ? res.status(400).json({ error: 'Request body is not valid JSON.', code: 'bad-json' }) : next(error));
-  app.use('/api/auth', createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined }));
-  app.use('/api', workspaceChoiceRouter({ store: recordStore, sessions, choices: workspaceChoices ?? undefined }));
+  app.use('/api/auth', createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity }));
+  app.use('/api', workspaceChoiceRouter({ identity, choices: workspaceChoices ?? undefined }));
   services.routes?.(app, services);
-  app.use('/mcp', createRemoteMCP(recordStore, configSource, assetStorage, cache));
+  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache));
   app.get('/api/history/events', serverlessHistoryEvents);
   // Core updates act on the product repository, not on the workspace, so they open no repository of it.
-  if (!local) app.use('/api/core', product ? createRemoteCoreUpdateRouter({ store: recordStore, sessions }, product) : (_req, res) => res.status(404).json({ error: 'This deployment names no product repository, so it offers no Core update.' }));
+  if (!local) app.use('/api/core', product ? createRemoteCoreUpdateRouter(identity, product) : (_req, res) => res.status(404).json({ error: 'This deployment names no product repository, so it offers no Core update.' }));
   if (piAgent?.tools) app.use('/api/pi', piAgent.tools);
   // The member list opens no repository, so it works while every repository is hidden or unreachable.
-  app.use('/api/workspace/members', createWorkspaceMembersRouter(configSource, assetStorage, { store: recordStore, sessions }, { repositoryChoice: visitorChoice, onChange: async (settings, request) => piAgent?.membershipChanged?.(visibleMembers(settings).map(member => member.ref.id), request), ...(services.defer ? { defer: services.defer } : {}) }));
-  app.use(['/api', '/raw-assets', '/r2-assets'], requestWorkspace({ store: recordStore, sessions }, configSource, cache));
+  app.use('/api/workspace/members', createWorkspaceMembersRouter(configSource, assetStorage, identity, { repositoryChoice: visitorChoice, onChange: async (settings, request) => piAgent?.membershipChanged?.(visibleMembers(settings).map(member => member.ref.id), request), ...(services.defer ? { defer: services.defer } : {}) }));
+  app.use(['/api', '/raw-assets', '/r2-assets'], requestWorkspace(identity, configSource, cache));
   app.use(createFileManagerRouter());
   app.use(createR2ManagerRouter(assetStorage));
   app.use('/api/study', createStudyRouter());
@@ -148,7 +152,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
     app.use(createLocalApp(base));
   } else {
     /** Whether the request carries a signed-in session; each repository still checks its own access. */
-    const signedIn = (res: express.Response) => Boolean(requestToken(res));
+    const signedIn = (res: express.Response) => Boolean(requestPerson(res) || requestToken(res));
     /** The remote repository of a notebook key, with that notebook's local id and the alias that keys its answers. */
     const remoteNotebook = async (res: express.Response, notebookId: unknown) => {
       const { handle, alias, notebook } = await notebookRepository(res, notebookId);

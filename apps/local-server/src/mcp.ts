@@ -6,7 +6,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { type RemoteCache, type RemoteSource, siteIdentity, SourceError, type WorkspaceConfigSource, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError } from '@mygitnotes/core';
 import { callWorkspaceRemoteTool, isMutationTool, remoteTools, type ToolAssets } from '@mygitnotes/mcp-server';
 import { type AssetStorage, resolveAssetScope } from './asset-storage.js';
-import { CredentialRejected, credentialToken, grantPerson } from './auth.js';
+import { CredentialRejected, grantPerson } from './auth.js';
+import type { IdentityService } from './identity.js';
 import type { RecordStore, StoredRecord } from './record-store/index.js';
 import { openWorkspace, type RemoteHandle, type RequestWorkspace } from './request-workspace.js';
 
@@ -54,7 +55,7 @@ function grantSettings(settings: WorkspaceSettings, grant: StoredRecord): Worksp
   return { ...settings, members: settings.members.filter(member => member.ref.id === grant.source && !member.hidden).map(member => ({ ...member, default: true })) };
 }
 
-export function createRemoteMCP(store: RecordStore, configSource: WorkspaceConfigSource, assetStorage: AssetStorage, cache?: RemoteCache): Router {
+export function createRemoteMCP(store: RecordStore, identity: IdentityService, configSource: WorkspaceConfigSource, assetStorage: AssetStorage, cache?: RemoteCache): Router {
   const router = Router();
   router.post(['/', '/:token'], async (req, res) => {
     try {
@@ -80,9 +81,9 @@ export function createRemoteMCP(store: RecordStore, configSource: WorkspaceConfi
       });
       if (!settings || settings.site.type === 'local') return res.status(503).json({ error: 'Configure a GitHub or GitLab source for remote MCP.' });
       if (typeof grant.source !== 'string' && grant.site !== siteIdentity(settings.site)) return unauthorized('grant-site');
-      let token: string;
+      let token: string | undefined;
       try {
-        token = await credentialToken(store, grant.credential || grant.session, settings.site);
+        token = await identity.grantToken(grant, person, settings.site);
       } catch (error) {
         if (!(error instanceof SourceError)) console.warn(`[mcp] credential lookup failed: ${(error as Error).message}`);
         await remember(error instanceof CredentialRejected ? error.reason : 'credential-unavailable');

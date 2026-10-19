@@ -99,6 +99,8 @@ export interface WebFeature {
   settingsSections?: FeatureSettingsSection[];
   /** Replaces the header's sign-in and account controls; the last feature that sets it wins. */
   accountControls?: RenderAccountControls;
+  /** Shown under the sign-in buttons of the sign-in screen and the connection screen, such as what signing in with an account gives; the last feature that sets it wins. */
+  signInNotice?: ReactNode;
   /** Adds entries to the community account menu, such as recent repositories, without replacing it. */
   accountMenuItems?: RenderAccountMenuItems;
   /** Adds sections to the Agents page for the selected agent workspace; the community edition has none. */
@@ -143,6 +145,10 @@ export function WebFeaturesProvider({ features, children }: { features: readonly
 
 export function useAccountMenuItems(): RenderAccountMenuItems[] {
   return useContext(FeaturesContext).flatMap(feature => feature.accountMenuItems ? [feature.accountMenuItems] : []);
+}
+
+export function useSignInNotice(): ReactNode | undefined {
+  return useContext(FeaturesContext).reduce<ReactNode | undefined>((found, feature) => feature.signInNotice ?? found, undefined);
 }
 
 export function useSettingsSections(): FeatureSettingsSection[] {

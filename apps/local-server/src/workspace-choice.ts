@@ -1,6 +1,6 @@
 import { deploymentConfigSource, deriveAlias, GITHUB_COM, githubSite, parseSourceConfig, repositoryName, repositoryRef, SourceError, type WorkspaceConfigSource, type WorkspaceSite } from '@mygitnotes/core';
 import { type Request, type Response, Router } from 'express';
-import { authToken, type SessionServices } from './auth.js';
+import type { IdentityService } from './identity.js';
 import { choosesRepository, cookieWorkspaceChoices, deploymentGitHubUrl, type WorkspaceChoice, type WorkspaceChoices } from './repository-choice.js';
 
 export { choosesRepository, cookieWorkspaceChoices, readWorkspaceChoice, type WorkspaceChoice, type WorkspaceChoices } from './repository-choice.js';
@@ -108,11 +108,11 @@ const pageSize = 50;
  * Without `choices` (an edition that keeps each person's repositories in its membership store) the listing stays for
  * Settings' add flow and choosing answers 404.
  */
-export function workspaceChoiceRouter(services: SessionServices & { choices?: WorkspaceChoices; }): Router {
+export function workspaceChoiceRouter(services: { identity: IdentityService; choices?: WorkspaceChoices; }): Router {
   const router = Router();
   const token = async (req: Request, res: Response) => {
     const url = deploymentGitHubUrl();
-    const value = await authToken(req, res, services, { type: 'github', ...(url ? { url } : {}) });
+    const value = await services.identity.token(req, res, { type: 'github', ...(url ? { url } : {}) });
     if (!value) throw new SourceError('Sign in with GitHub first.', 401);
     return value;
   };

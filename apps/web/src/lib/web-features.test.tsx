@@ -187,3 +187,28 @@ it("renders an edition's rows in a writable note's info panel and none without f
   expect(panel([pages])).toContain('<dt>Public page</dt><dd>owner/home a open</dd>');
   expect(panel([pages], false)).not.toContain('Public page');
 });
+
+it('lists every sign-in option the session names, with the edition notice below them, and a single provider as before', async () => {
+  const session = (body: unknown) => vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } }));
+  const mount = async (features: WebFeature[]) => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean; }).IS_REACT_ACT_ENVIRONMENT = true;
+    root = createRoot(container);
+    await act(async () => root!.render(createElement(WebFeaturesProvider, { features }, createElement(AuthControls, { connection: true }))));
+    await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+    return container;
+  };
+  session({ authenticated: false, provider: 'github', signInOptions: [{ id: 'google', label: 'Google', url: '/api/auth/google' }, { id: 'github', label: 'GitHub', url: '/api/auth/github' }] });
+  let container = await mount([{ id: 'accounts', signInNotice: createElement('p', null, 'Google keeps repositories hosted here') }]);
+  expect([...container.querySelectorAll('a')].map(link => [link.getAttribute('href'), link.textContent])).toEqual([['/api/auth/google', 'Sign in with Google'], ['/api/auth/github', 'Sign in with GitHub']]);
+  expect(container.textContent).toContain('Google keeps repositories hosted here');
+  act(() => root!.unmount());
+  container.remove();
+  // A server that predates signInOptions names one provider.
+  vi.restoreAllMocks();
+  session({ authenticated: false, provider: 'gitlab' });
+  container = await mount([]);
+  expect([...container.querySelectorAll('a')].map(link => link.getAttribute('href'))).toEqual(['/api/auth/gitlab']);
+  vi.restoreAllMocks();
+});

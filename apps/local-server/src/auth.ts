@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { createHash } from 'node:crypto';
 import type { BrowserSessions } from './browser-sessions.js';
+import type { IdentityService } from './identity.js';
 import { choosesRepository, type WorkspaceChoices } from './repository-choice.js';
 import { digest, random, recordLifetime as lifetime, type RecordStore, sealedElsewhere, type StoredRecord } from './record-store/index.js';
 
@@ -19,9 +20,9 @@ export class CredentialRejected extends SourceError {
     super(message, 401);
   }
 }
-type Provider = { type: 'github' | 'gitlab'; site: string; realm: string; clientId?: string; clientSecret?: string; authorize: string; token: string; user: string; /** github.com keeps the unscoped owner, credential id and realm-less records it always had; every other site is scoped by its realm. */ unscoped: boolean; };
+export type Provider = { type: 'github' | 'gitlab'; site: string; realm: string; clientId?: string; clientSecret?: string; authorize: string; token: string; user: string; /** github.com keeps the unscoped owner, credential id and realm-less records it always had; every other site is scoped by its realm. */ unscoped: boolean; };
 /** The sign-in provider follows the workspace's platform and site. */
-function providerFor(source: WorkspaceSite): Provider {
+export function providerFor(source: WorkspaceSite): Provider {
   const type = source.type === 'gitlab' ? 'gitlab' : 'github';
   const url = source.type === 'local' ? undefined : source.url;
   const site = url ?? GITHUB_COM;
@@ -29,40 +30,69 @@ function providerFor(source: WorkspaceSite): Provider {
   const clientSecret = process.env[type === 'gitlab' ? 'GITLAB_CLIENT_SECRET' : 'GITHUB_CLIENT_SECRET'];
   return { type, site, clientId, clientSecret, realm: `${type}:${site}:${clientId || ''}`, authorize: `${site}${type === 'gitlab' ? '/oauth/authorize' : '/login/oauth/authorize'}`, token: `${site}${type === 'gitlab' ? '/oauth/token' : '/login/oauth/access_token'}`, user: type === 'gitlab' ? `${site}/api/v4/user` : `${githubSite(url).api}/user`, unscoped: type === 'github' && site === GITHUB_COM };
 }
-function matchesProvider(record: any, provider: Provider) {
+export function matchesProvider(record: any, provider: Provider) {
   return record?.realm === provider.realm || (!record?.realm && provider.unscoped);
 }
-function ownerOf(session: any, provider: Provider): string | number {
+export function ownerOf(session: any, provider: Provider): string | number {
   return provider.unscoped ? session.userId : `${digest(provider.realm)}:${session.userId}`;
 }
-function credentialId(userId: number, provider: Provider) {
+export function credentialId(userId: number, provider: Provider) {
   return createHash('sha256').update(provider.unscoped ? `github-credential:${provider.clientId}:${userId}` : `${provider.realm}:credential:${userId}`).digest('base64url');
 }
-async function saveCredential(store: RecordStore, session: StoredRecord, provider: Provider) {
+export async function saveCredential(store: RecordStore, session: StoredRecord, provider: Provider) {
   if (session.credential) return session.credential as string;
   const id = credentialId(session.userId, provider);
   await store.withCredentialLock(id, () => store.set(id, { kind: 'credential', realm: provider.realm, token: session.token, refreshToken: session.refreshToken, upstreamExpiresAt: session.upstreamExpiresAt }, null));
   return id;
 }
-async function getSession(req: Request, sessions: BrowserSessions, provider: Provider) {
+export async function getSession(req: Request, sessions: BrowserSessions, provider: Provider) {
   const session = await sessions.read(req);
   if (session?.kind !== 'session' || !matchesProvider(session, provider)) return null;
   // A token past its expiry with no way to refresh it signs nobody in.
   return !session.credential && !session.refreshToken && session.upstreamExpiresAt && session.upstreamExpiresAt <= Date.now() ? null : session;
 }
 /** How long a cookie session may live: until its refresh token, or its token when it has none, expires, within the session lifetime. */
-function cookieLifetime(session: StoredRecord) {
+export function cookieLifetime(session: StoredRecord) {
   const until = session.refreshExpiresAt ?? (session.refreshToken ? undefined : session.upstreamExpiresAt);
   return until ? Math.max(1, Math.min(lifetime, Math.floor((until - Date.now()) / 1000))) : lifetime;
 }
-const expiresAt = (seconds: number | undefined) => seconds ? Date.now() + seconds * 1000 : undefined;
-async function tokenRequest(provider: Provider, body: Record<string, unknown>) {
+export const expiresAt = (seconds: number | undefined) => seconds ? Date.now() + seconds * 1000 : undefined;
+export async function tokenRequest(provider: Provider, body: Record<string, unknown>) {
   const response = await fetch(provider.token, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15000), headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: provider.clientId, client_secret: provider.clientSecret, ...body }) });
   const data = await response.json() as { access_token?: string; refresh_token?: string; expires_in?: number; refresh_token_expires_in?: number; };
   if (!response.ok || typeof data.access_token !== 'string' || !data.access_token || provider.type === 'gitlab' && (typeof data.refresh_token !== 'string' || !data.refresh_token || !Number.isFinite(data.expires_in) || data.expires_in! <= 0)) {
     throw new SourceError('Authorization failed. Sign in again to reconnect.', 401);
   }
   return data;
+}
+/** The id of the credential record a person's grant on `site` points at, so an edition writes the records today's grants read. */
+export function credentialIdFor(site: WorkspaceSite, userId: number): string {
+  return credentialId(userId, providerFor(site));
+}
+/** The GitHub OAuth building blocks of `site` for an edition's own sign-in routes. */
+export function githubOAuth(site: WorkspaceSite) {
+  const provider = providerFor({ type: 'github', ...(site.type === 'github' && site.url ? { url: site.url } : {}) });
+  return {
+    /** Whether the OAuth app's client id and secret are configured. */
+    configured: Boolean(provider.clientId && provider.clientSecret),
+    realm: provider.realm,
+    authorizeUrl(redirectUri: string, state: string, verifier: string): string {
+      const params = new URLSearchParams({ client_id: provider.clientId ?? '', redirect_uri: redirectUri, state, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256' });
+      if (process.env.GITHUB_APP_TYPE !== 'github-app') params.set('scope', 'repo workflow gist');
+      return `${provider.authorize}?${params}`;
+    },
+    async exchange(code: string, verifier: string, redirectUri: string) {
+      const data = await tokenRequest(provider, { code, code_verifier: verifier, redirect_uri: redirectUri });
+      return { token: data.access_token!, refreshToken: data.refresh_token, upstreamExpiresAt: expiresAt(data.expires_in), refreshExpiresAt: expiresAt(data.refresh_token_expires_in) };
+    },
+    async user(token: string): Promise<{ id: number; login: string; }> {
+      const response = await fetch(provider.user, { redirect: 'error', signal: AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'MyGitNotes' } });
+      if (!response.ok) throw new Error('Account lookup failed.');
+      const user = await response.json() as { login?: string; id: number; };
+      if (!Number.isSafeInteger(user.id) || !user.login) throw new Error('Account lookup returned an invalid identity.');
+      return { id: user.id, login: user.login };
+    },
+  };
 }
 /** The provider token behind a stored credential, refreshed under the credential lock when it is about to expire. */
 export async function credentialToken(store: RecordStore, id: string, site: WorkspaceSite): Promise<string> {
@@ -116,6 +146,7 @@ export async function authToken(req: Request, res: Response, { store, sessions }
   }
   return session.token;
 }
+/** The stores and configuration the default identity and the auth routes are built on. */
 export interface AuthServices extends SessionServices {
   configSource: WorkspaceConfigSource;
   /**
@@ -124,10 +155,12 @@ export interface AuthServices extends SessionServices {
    */
   choices?: WorkspaceChoices;
 }
-/** Sign-in and persistent agent grants, mounted at /api/auth. */
-export function createAuth(services: AuthServices): Router {
+type IdentityRoutes = AuthServices & { identity: IdentityService; };
+/** Sign-in, the session probe, logout and persistent agent grants, mounted at /api/auth. */
+export function createAuth(services: IdentityRoutes): Router {
   const router = Router();
-  router.use(signInRouter(services));
+  router.use(services.identity.router);
+  router.use(sessionRouter(services));
   router.use(grantsRouter(services));
   return router;
 }
@@ -155,31 +188,9 @@ function firstMember(settings: WorkspaceSettings): { repository: string; branch:
 }
 /** Refresh a cookie session's token this close to its expiry when the app asks for the session, ahead of its parallel reads. */
 const sessionProbeRefreshMs = 10 * 60_000;
-/** Provider sign-in, the session probe and logout. */
-export function signInRouter(services: AuthServices): Router {
-  const { store, sessions, configSource, choices } = services;
+/** The default identity's routes: provider sign-in and its callback. */
+export function providerRouter({ store, sessions, configSource }: AuthServices): Router {
   const router = Router(), providerSite = providerSiteOf(configSource);
-  router.get('/session', async (req, res) => {
-    try {
-      const site = await providerSite(req), provider = providerFor(site);
-      let session = await getSession(req, sessions, provider);
-      if (session) {
-        try {
-          await authToken(req, res, services, site, sessionProbeRefreshMs);
-        } catch (error) {
-          if (!(error instanceof CredentialRejected)) throw error;
-          session = null;
-        }
-      }
-      const serverStoreReady = sessions.kind === 'cookie' || store.ready !== false;
-      // Where visitors bring their repository, the app shows the sign-in screen, then the picker until they chose one or,
-      // where each person keeps repositories in Settings (`accountMembers`), the add flow until they have one.
-      const choice = !choosesRepository() ? {} : choices ? { repositoryChoice: true, workspace: await choices.read(req) } : { repositoryChoice: true, accountMembers: true, workspace: session ? firstMember(await configSource.settings(req)) : null };
-      res.json({ authenticated: Boolean(session), login: session?.login, provider: provider.type, loginUrl: `/api/auth/${provider.type}`, storage: sessions.kind, ...choice, configured: Boolean(provider.clientId && provider.clientSecret && process.env.SESSION_SECRET && serverStoreReady) });
-    } catch {
-      res.status(503).json({ error: 'Session store or source configuration unavailable.' });
-    }
-  });
   router.get('/:provider(github|gitlab)', async (req, res) => {
     try {
       const provider = providerFor(await providerSite(req));
@@ -225,10 +236,37 @@ export function signInRouter(services: AuthServices): Router {
       res.status(400).json({ error: (error as Error).message });
     }
   });
+  return router;
+}
+/** The session probe and logout, written against the identity service. */
+function sessionRouter({ sessions, configSource, choices, identity }: IdentityRoutes): Router {
+  const router = Router(), providerSite = providerSiteOf(configSource);
+  router.get('/session', async (req, res) => {
+    try {
+      const site = await providerSite(req);
+      let signedIn = await identity.signedIn(req, res), platformAccess = false;
+      if (signedIn) {
+        try {
+          platformAccess = Boolean(await identity.token(req, res, site, sessionProbeRefreshMs));
+        } catch (error) {
+          if (!(error instanceof CredentialRejected)) throw error;
+          signedIn = null;
+        }
+      }
+      const signInOptions = await identity.signInOptions(req);
+      // Where visitors bring their repository, the app shows the sign-in screen, then the picker until they chose one or,
+      // where each person keeps repositories in Settings (`accountMembers`), the add flow until they have one.
+      const choice = !choosesRepository() ? {} : choices ? { repositoryChoice: true, workspace: await choices.read(req) } : { repositoryChoice: true, accountMembers: true, workspace: signedIn ? firstMember(await configSource.settings(req)) : null };
+      // `provider` and `loginUrl` stay for a web bundle cached across the deploy that predates `signInOptions`.
+      res.json({ authenticated: Boolean(signedIn), login: signedIn?.login, provider: signInOptions[0]?.id, loginUrl: signInOptions[0]?.url, signInOptions, platformAccess, storage: sessions.kind, ...choice, configured: await identity.configured(req) });
+    } catch {
+      res.status(503).json({ error: 'Session store or source configuration unavailable.' });
+    }
+  });
   router.post('/logout', async (req, res) => {
     try {
       await choices?.signedOut(req, res);
-      await sessions.clear(req, res);
+      await identity.signOut(req, res);
       res.json({ success: true });
     } catch {
       res.status(503).json({ error: 'Session store unavailable.' });
@@ -237,19 +275,18 @@ export function signInRouter(services: AuthServices): Router {
   return router;
 }
 /** Persistent agent (MCP) grants: create, list and revoke. A store that does not outlive the process offers none. */
-export function grantsRouter({ store, sessions, configSource }: AuthServices): Router {
+function grantsRouter({ store, configSource, identity }: IdentityRoutes): Router {
   const router = Router(), providerSite = providerSiteOf(configSource);
   router.use(['/agent-token', '/agent-tokens'], (_req, res, next) => store.durable ? next() : res.status(404).json({ error: 'This deployment does not keep agent grants.' }));
   router.post('/agent-token', async (req, res) => {
     try {
-      const site = await providerSite(req), provider = providerFor(site), session = await getSession(req, sessions, provider);
-      if (!session) return res.status(401).json({ error: 'Sign in before creating an agent grant.' });
+      const site = await providerSite(req), signedIn = await identity.signedIn(req, res);
+      if (!signedIn) return res.status(401).json({ error: 'Sign in before creating an agent grant.' });
       if (site.type === 'local' || !process.env.APP_URL) return res.status(400).json({ error: 'A remote source and APP_URL are required.' });
-      const token = random(), credential = await saveCredential(store, session, provider), ownerId = ownerOf(session, provider);
+      const token = random(), credential = await identity.grantCredential(req, res, signedIn, site), ownerId = signedIn.owner;
       const name = typeof req.body.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
       // The grant reaches the person's visible repositories on this site at each call, not the ones they have now.
-      const person: WorkspacePerson = { realm: provider.realm, userId: session.userId };
-      await store.set(token, { kind: 'agent', ownerId, credential, name: name || 'MCP client', createdAt: Date.now(), site: siteIdentity(site), person, audience: `${process.env.APP_URL}/mcp`, write: req.body.write === true }, null);
+      await store.set(token, { kind: 'agent', ownerId, ...(credential ? { credential } : {}), name: name || 'MCP client', createdAt: Date.now(), site: siteIdentity(site), person: signedIn.person, audience: `${process.env.APP_URL}/mcp`, write: req.body.write === true }, null);
       try {
         await store.indexGrant(token, ownerId);
       } catch (error) {
@@ -263,18 +300,18 @@ export function grantsRouter({ store, sessions, configSource }: AuthServices): R
   });
   router.get('/agent-tokens', async (req, res) => {
     try {
-      const provider = providerFor(await providerSite(req)), session = await getSession(req, sessions, provider);
-      if (!session) return res.status(401).json({ error: 'Sign in to manage agent access.' });
-      res.json({ grants: await store.listGrants(ownerOf(session, provider)) });
+      const signedIn = await identity.signedIn(req, res);
+      if (!signedIn) return res.status(401).json({ error: 'Sign in to manage agent access.' });
+      res.json({ grants: await store.listGrants(signedIn.owner) });
     } catch {
       res.status(503).json({ error: 'Agent grant storage unavailable.' });
     }
   });
   router.delete('/agent-tokens/:id', async (req, res) => {
     try {
-      const provider = providerFor(await providerSite(req)), session = await getSession(req, sessions, provider);
-      if (!session) return res.status(401).json({ error: 'Sign in to manage agent access.' });
-      if (!await store.revokeGrant(String(req.params.id), ownerOf(session, provider))) return res.status(404).json({ error: 'Agent grant not found.' });
+      const signedIn = await identity.signedIn(req, res);
+      if (!signedIn) return res.status(401).json({ error: 'Sign in to manage agent access.' });
+      if (!await store.revokeGrant(String(req.params.id), signedIn.owner)) return res.status(404).json({ error: 'Agent grant not found.' });
       res.json({ success: true });
     } catch {
       res.status(503).json({ error: 'Agent grant storage unavailable.' });

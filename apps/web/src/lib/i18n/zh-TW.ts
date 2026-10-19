@@ -1320,6 +1320,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'auth.signOut': '登出',
   'auth.signInWithGithub': '透過 GitHub 登入',
   'auth.signInWithGitlab': '透過 GitLab 登入',
+  'auth.signInWithProvider': '透過 {provider} 登入',
   'auth.signInToManage': '以管理 Agent 存取權限。',
   'auth.mcpAccessControl': 'MCP 存取控制',
   'auth.connectorGuide': '連接器指引',

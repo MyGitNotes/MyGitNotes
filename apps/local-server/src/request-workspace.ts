@@ -3,7 +3,8 @@ import path from 'node:path';
 import type express from 'express';
 import { type AvailableRepository, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspaceRepositories, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
-import { authToken, CredentialRejected, type SessionServices } from './auth.js';
+import { CredentialRejected } from './auth.js';
+import { identityOf, type IdentityOrSessions, type SignedIn } from './identity.js';
 import { membershipGeneration } from './event-stream.js';
 import { regularPath } from './workspace-files.js';
 
@@ -78,7 +79,8 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
 }
 
 /** Resolves the request's workspace once and stores it in `res.locals.workspace`. */
-export function requestWorkspace(auth: SessionServices, configSource: WorkspaceConfigSource, cache?: RemoteCache): express.RequestHandler {
+export function requestWorkspace(auth: IdentityOrSessions, configSource: WorkspaceConfigSource, cache?: RemoteCache): express.RequestHandler {
+  const identity = identityOf(auth, configSource);
   return async (req, res, next) => {
     // Recorded before the members are read, so an event stream opened from them knows when a change came meanwhile.
     res.locals.membershipGeneration = membershipGeneration();
@@ -89,10 +91,11 @@ export function requestWorkspace(auth: SessionServices, configSource: WorkspaceC
       if (error instanceof WorkspaceSetupError) return res.status(503).json({ error: error.message, setupRequired: true });
       return next(error);
     }
-    let token: string | undefined;
+    let token: string | undefined, person: SignedIn | null = null;
     if (settings.site.type !== 'local') {
       try {
-        token = await authToken(req, res, auth, settings.site);
+        token = await identity.token(req, res, settings.site);
+        person = await identity.signedIn(req, res);
       } catch (error) {
         if (error instanceof CredentialRejected) return res.status(401).json({ error: 'Session unavailable. Sign in again.' });
         // The session store or provider did not answer; the reader's session still stands.
@@ -102,6 +105,7 @@ export function requestWorkspace(auth: SessionServices, configSource: WorkspaceC
     }
     res.locals.workspace = openWorkspace(settings, token, cache, { fresh: req.query.fresh === '1' });
     res.locals.token = token;
+    res.locals.person = person;
     res.locals.site = settings.site;
     res.locals.members = settings.members;
     next();
@@ -118,6 +122,11 @@ export function requestMembers(res: express.Response): WorkspaceMember[] {
 /** The signed-in platform token of the request, for calls outside its repositories such as Gists. */
 export function requestToken(res: express.Response): string | undefined {
   return res.locals.token as string | undefined;
+}
+
+/** The person signed in on the request, as the identity service sees them; null when nobody is. */
+export function requestPerson(res: express.Response): SignedIn | null {
+  return (res.locals.person as SignedIn | null | undefined) ?? null;
 }
 
 /** The platform and site of the request's workspace. */

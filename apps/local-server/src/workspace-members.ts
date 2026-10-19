@@ -2,7 +2,8 @@ import { type Request, type Response, Router } from 'express';
 import { getCurrentBranch } from '@mygitnotes/git';
 import { githubSite, MembershipError, type MembershipLimit, type MembershipStore, normalizeNotebookFolder, openRemoteRepository, parseSourceConfig, type RemoteSnapshot, type RepositoryId, type RepositoryRef, repositoryRef, RepositoryUnavailableError, SourceError, type WorkspaceConfigSource, type WorkspaceMember, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
 import type { AssetStorage } from './asset-storage.js';
-import { authToken, CredentialRejected, type SessionServices } from './auth.js';
+import { CredentialRejected } from './auth.js';
+import type { IdentityService } from './identity.js';
 import { endEventStreams } from './event-stream.js';
 import { appInstalledOn, github, githubApp } from './workspace-choice.js';
 
@@ -159,12 +160,12 @@ async function inspectRepository(site: WorkspaceSite, token: string, repository:
  * change them, adding, removing, hiding, showing, reordering and choosing the default. Mounted ahead of the routes that
  * open repositories. A change ends the open event streams, so every page reconnects to the new membership.
  */
-export function createWorkspaceMembersRouter(configSource: WorkspaceConfigSource, assetStorage: AssetStorage, auth: SessionServices, { repositoryChoice = false, onChange, defer }: MembersRouterOptions = {}): Router {
+export function createWorkspaceMembersRouter(configSource: WorkspaceConfigSource, assetStorage: AssetStorage, identity: IdentityService, { repositoryChoice = false, onChange, defer }: MembersRouterOptions = {}): Router {
   const router = Router();
   /** The request's sign-in token on the workspace's site; undefined without a usable one. */
   const tokenOf = async (req: Request, res: Response, site: WorkspaceSite) => {
     try {
-      return await authToken(req, res, auth, site);
+      return await identity.token(req, res, site);
     } catch (error) {
       // The session store or provider did not answer; the reader's session still stands.
       if (!(error instanceof CredentialRejected)) throw new SourceError('Session service temporarily unavailable. Retry shortly.', 503);
@@ -180,7 +181,8 @@ export function createWorkspaceMembersRouter(configSource: WorkspaceConfigSource
   const signedIn = async (req: Request, res: Response, settings: WorkspaceSettings): Promise<Requester | null> => {
     if (settings.site.type === 'local') return { site: settings.site };
     const token = await tokenOf(req, res, settings.site);
-    if (token) return { site: settings.site, token };
+    // A person is signed in without holding a token on this site (an edition's own account); each action checks the token it needs.
+    if (token || await identity.signedIn(req, res)) return { site: settings.site, ...(token ? { token } : {}) };
     signInFirst(res);
     return null;
   };

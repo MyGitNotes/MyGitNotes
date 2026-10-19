@@ -22,6 +22,8 @@ export interface SessionProbe {
   authenticated?: boolean;
   login?: string;
   storage?: 'stored' | 'cookie';
+  /** Whether the person holds a credential on the workspace's platform; false for an account with none. */
+  platformAccess?: boolean;
   repositoryChoice?: boolean;
   accountMembers?: boolean;
   workspace?: { repository: string; branch: string; } | null;
