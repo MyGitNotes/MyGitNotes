@@ -1501,6 +1501,7 @@ export const en = {
   'repositories.confirmHideBody': 'Its notebooks no longer show here until you show it again. The repository itself is not changed.',
   'repositories.confirmRemoveBody': 'It leaves this list. The repository itself is not changed, and you can add it again.',
   'setup.addFirstTitle': 'Add your first repository',
+  'setup.addFirstDescriptionNoPlatform': 'Add a repository to get started.',
   'setup.addFirstDescription': 'Pick a repository you can push to. Its notebooks open here, and you can add more later in Settings → Repositories.',
   'files.r2HiddenUnchecked': 'Hidden repositories are not checked for references to this item: {repositories}. Their notes may still link it.',
   'files.r2HiddenConfirm': 'Go ahead without checking them',

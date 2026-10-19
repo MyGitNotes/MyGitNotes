@@ -219,7 +219,7 @@ describe('a list an account keeps', () => {
   });
 
   describe('an edition feature in the add flow', () => {
-    const Option = ({ revision, limitReached, onAdded, onStale }: RepositoryAddOptionProps) => createElement('div', { 'data-option': revision }, createElement('button', { type: 'button', disabled: limitReached, onClick: onAdded }, 'Create a hosted repository'), createElement('button', { type: 'button', onClick: onStale }, 'Pretend stale'));
+    const Option = ({ revision, limitReached, onAdded, onStale, onRefused }: RepositoryAddOptionProps) => createElement('div', { 'data-option': revision }, createElement('button', { type: 'button', disabled: limitReached, onClick: onAdded }, 'Create a hosted repository'), createElement('button', { type: 'button', onClick: () => void onStale() }, 'Pretend stale'), createElement('button', { type: 'button', onClick: () => onRefused('Hide one first.') }, 'Pretend refused'));
     const NoPlatform = () => createElement('p', null, 'Sign in with GitHub to add its repositories.');
     const feature: WebFeature = { id: 'edition', repositoryAdd: { options: Option, noPlatformNotice: NoPlatform } };
     const open = (overrides: Partial<MembersAnswer> = {}) => api.fetchMembers.mockResolvedValue(answer([notes, wiki], { adds: 'repository', environment: undefined, ...overrides }));
@@ -271,11 +271,50 @@ describe('a list an account keeps', () => {
       expect(await within(await screen.findByRole('dialog')).findByText(/no access to the platform's repositories/)).toBeInTheDocument();
     });
 
+    it('shows a refusal an option reports in the limit line, as the flow does for its own add', async () => {
+      const members = answer([notes, wiki], { adds: 'repository', environment: undefined, limit: { visible: 1, max: 2 } });
+      render(createElement(WebFeaturesProvider, { features: [feature] }, createElement(RepositoryAddFlow, { members, onAdded: vi.fn(), onStale: vi.fn(async () => {}) })));
+      await screen.findByRole('button', { name: 'Pretend refused' });
+      expect(document.querySelector('[data-members-limit]')).not.toHaveTextContent('Hide a repository to add or show another.');
+      fireEvent.click(screen.getByRole('button', { name: 'Pretend refused' }));
+      expect(document.querySelector('[data-members-limit]')).toHaveTextContent('Hide a repository to add or show another.');
+    });
+
+    it('hands an option a stale callback that resolves once the list has reloaded', async () => {
+      let reloaded = false;
+      let seen: Promise<void> | undefined;
+      const Probe = ({ onStale }: RepositoryAddOptionProps) =>
+        createElement('button', {
+          type: 'button',
+          onClick: () => {
+            seen = onStale();
+          },
+        }, 'Probe stale');
+      const members = answer([notes], { adds: 'repository', environment: undefined });
+      const onStale = vi.fn(async () => {
+        await Promise.resolve();
+        reloaded = true;
+      });
+      render(createElement(WebFeaturesProvider, { features: [{ id: 'probe', repositoryAdd: { options: Probe } }] }, createElement(RepositoryAddFlow, { members, onAdded: vi.fn(), onStale })));
+      fireEvent.click(await screen.findByRole('button', { name: 'Probe stale' }));
+      await seen;
+      expect(reloaded).toBe(true);
+    });
+
     it('tells an option the limit is reached', async () => {
       const members = answer([notes, wiki], { adds: 'repository', environment: undefined, limit: { visible: 2, max: 2 } });
       render(createElement(WebFeaturesProvider, { features: [feature] }, createElement(RepositoryAddFlow, { members, onAdded: vi.fn(), onStale: vi.fn(async () => {}) })));
       expect(await screen.findByRole('button', { name: 'Create a hosted repository' })).toBeDisabled();
     });
+  });
+
+  it('shows each badge once even when editions give the same text', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    api.fetchMembers.mockResolvedValue(answer([notes], { adds: 'repository', environment: undefined }));
+    show({ repositories }, [{ id: 'a', repositoryBadge: () => 'Hosted' }, { id: 'b', repositoryBadge: () => 'Hosted' }]);
+    await screen.findByText('NOTES');
+    expect(error).not.toHaveBeenCalledWith(expect.stringContaining('same key'), expect.anything(), expect.anything());
+    expect(row('notes').getAllByText('Hosted')).toHaveLength(2);
   });
 
   it("shows an edition member's label in place of its repository, with the badges editions give", async () => {

@@ -107,8 +107,7 @@ export function RepositoryAddFlow({ members, onAdded, onStale, onShow }: Reposit
     )
     : null;
 
-  const reloadList = () => void onStale();
-  const options = additions.flatMap((feature, index) => feature.options ? [<feature.options key={index} revision={members.revision ?? ''} limitReached={full} onAdded={() => void onAdded()} onStale={reloadList} />] : []);
+  const options = additions.flatMap((feature, index) => feature.options ? [<feature.options key={index} revision={members.revision ?? ''} limitReached={full} onAdded={() => void onAdded()} onStale={() => onStale()} onRefused={setRefusal} />] : []);
   const notices = additions.flatMap((feature, index) => feature.noPlatformNotice ? [<feature.noPlatformNotice key={index} />] : []);
 
   if (!platformAccess) {

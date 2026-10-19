@@ -13,7 +13,7 @@ import { useTheme } from '../app/useTheme.js';
 import { updateWorkspaceConfig } from '../lib/api.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 import YAML from 'yaml';
-import { PlatformAccessProvider, ServerAgentProvider } from '../lib/web-features.js';
+import { PlatformAccessProvider, ServerAgentProvider, usePlatformAccess } from '../lib/web-features.js';
 
 /**
  * What `/api/auth/session` says about the visitor; `repositoryChoice` deployments have each visitor bring a repository:
@@ -132,6 +132,7 @@ function SignOutButton({ login }: { login?: string; }) {
  */
 function FirstRepository({ login }: { login?: string; }) {
   const { t } = useTranslation();
+  const platformAccess = usePlatformAccess();
   const [members, setMembers] = useState<MembersAnswer>();
   const [error, setError] = useState('');
   const load = async () => {
@@ -151,7 +152,7 @@ function FirstRepository({ login }: { login?: string; }) {
   return (
     <SetupCard>
       <h2 className='text-xl font-semibold mb-2'>{t('setup.addFirstTitle')}</h2>
-      <p className='mb-4 text-sm text-muted'>{t('setup.addFirstDescription')}</p>
+      <p className='mb-4 text-sm text-muted'>{t(platformAccess ? 'setup.addFirstDescription' : 'setup.addFirstDescriptionNoPlatform')}</p>
       {members ? <RepositoryAddFlow members={members} onAdded={() => window.location.assign('/')} onStale={load} /> : error ? <p role='alert' className='mb-3 text-sm text-danger'>{error}</p> : <LoadingStatus className='mb-3'>{t('repositories.loading')}</LoadingStatus>}
       <div className='flex mt-3'>
         <SignOutButton login={login} />

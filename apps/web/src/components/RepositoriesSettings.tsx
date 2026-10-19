@@ -156,7 +156,7 @@ export function RepositoriesSettings({ repositories, onMembershipChanged, onOpen
                     <span className='font-semibold text-sm text-fg'>{status?.title ?? member.alias}</span>
                     <code className='text-[11px] px-1.5 py-0.5 rounded bg-sidebar text-muted'>{member.alias}</code>
                     {member.default && <span className='text-[11px] px-2 py-0.5 rounded-full bg-primary-soft text-primary'>{t('repositories.default')}</span>}
-                    {badgesOf(member).map(badge => <span key={badge} className='text-[11px] px-2 py-0.5 rounded-full bg-sidebar text-muted' data-member-badge>{badge}</span>)}
+                    {badgesOf(member).map((badge, position) => <span key={`${position}:${badge}`} className='text-[11px] px-2 py-0.5 rounded-full bg-sidebar text-muted' data-member-badge>{badge}</span>)}
                     {member.hidden && <span className='text-[11px] px-2 py-0.5 rounded-full bg-sidebar text-muted'>{t('repositories.hidden')}</span>}
                     {status?.unavailable && <span className='text-[11px] px-2 py-0.5 rounded-full bg-danger-soft text-danger'>{t('repositories.unavailable')}</span>}
                   </div>

@@ -87,8 +87,10 @@ export interface RepositoryAddOptionProps {
   limitReached: boolean;
   /** The option added a repository: the flow reloads the list and the workspace. */
   onAdded: () => void;
-  /** The option's add was refused as stale: the flow reloads the list so the next try uses its revision. */
-  onStale: () => void;
+  /** The option's add was refused as stale: await it, which reloads the list so the next try uses its revision; the option then shows `repositories.stale` itself, as the flow's own add does. */
+  onStale: () => Promise<void>;
+  /** The option's add was refused for the visible-repository limit: the flow shows the message in its limit line, as it does for its own add. */
+  onRefused: (message: string) => void;
 }
 
 /** What an edition adds to the add-repository flow (Settings → Repositories and the first-run screen). */

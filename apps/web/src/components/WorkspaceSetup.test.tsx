@@ -22,6 +22,7 @@ function serve(session: unknown) {
     requests.push({ url, init });
     if (url === '/api/auth/session') return json(session);
     if (url.startsWith('/api/repositories/available')) return json(available);
+    if (url.startsWith('/api/workspace/members')) return json({ members: [], changeable: true, revision: 'r', sharedAssetKeys: false, adds: 'repository' });
     if (url === '/api/workspace/choice') return JSON.parse(String(init?.body)).repository === 'team/handbook' ? json({ error: 'Branch nope does not exist in team/handbook.' }, 404) : json({ choice: { repository: 'visitor/notes', branch: 'main' } });
     throw new Error(`Unexpected request ${url}`);
   });
@@ -170,4 +171,17 @@ it("offers a person with no platform credential only the edition's options and n
   await act(async () => button('Start a hosted repository').click());
   expect(assign).toHaveBeenCalledWith('/');
   vi.unstubAllGlobals();
+});
+
+it('describes the first repository neutrally for a person without a platform account', async () => {
+  serve({ authenticated: true, login: 'visitor', repositoryChoice: true, workspace: null, accountMembers: true, platformAccess: false });
+  await render(createElement(WorkspaceGate, null, createElement('p', null, 'workspace')));
+  expect(container.textContent).toContain('Add a repository to get started.');
+  expect(container.textContent).not.toContain('Pick a repository you can push to');
+});
+
+it('keeps the push-access description for a person with a platform account', async () => {
+  serve({ authenticated: true, login: 'visitor', repositoryChoice: true, workspace: null, accountMembers: true });
+  await render(createElement(WorkspaceGate, null, createElement('p', null, 'workspace')));
+  expect(container.textContent).toContain('Pick a repository you can push to');
 });

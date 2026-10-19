@@ -1502,6 +1502,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'repositories.confirmHideBody': '重新顯示前，它的筆記本不會出現在這裡。儲存庫本身不會變更。',
   'repositories.confirmRemoveBody': '它會從這份清單移除。儲存庫本身不會變更，之後也可以再加入。',
   'setup.addFirstTitle': '加入第一個儲存庫',
+  'setup.addFirstDescriptionNoPlatform': '加入一個儲存庫就能開始使用。',
   'setup.addFirstDescription': '選擇一個你可以推送的儲存庫，它的筆記本會在這裡開啟；之後可以在「設定 → 儲存庫」加入更多。',
   'files.r2HiddenUnchecked': '未檢查隱藏的儲存庫是否引用此項目：{repositories}。它們的筆記可能仍連結到它。',
   'files.r2HiddenConfirm': '不檢查它們，直接繼續',
