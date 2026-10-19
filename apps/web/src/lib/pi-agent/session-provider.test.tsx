@@ -398,6 +398,30 @@ it("carries a remote note's editor context, with its notebook, to a Pi that read
   expect(socket.sent.at(-1)).toMatchObject({ type: 'prompt', message: '<editor-context>\nfile: notes/a.md\nnotebook: nb\ncursor: line 2, column 1\n</editor-context>\n\nTighten this' });
 });
 
+it('never asks the server to locate a file while Pi reads notes through the page, and keeps one locate across transcript changes', async () => {
+  const agent = mount([], vi.fn(async () => ({})));
+  await waitFor(() => expect(FakeSocket.last).toBeDefined());
+  const locate = agent.current!.locate;
+  const asked = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).startsWith('/api/pi/locate'));
+  await expect(locate('notes/a.md', 'nb')).rejects.toThrow('no file to locate');
+  expect(asked()).toHaveLength(0);
+  const socket = FakeSocket.last!;
+  act(() => {
+    socket.readyState = FakeSocket.OPEN;
+    socket.onopen?.();
+    socket.receive({ type: 'message_update', message: { role: 'assistant', content: [{ type: 'text', text: 'Hi' }] } });
+  });
+  expect(agent.current!.locate).toBe(locate);
+});
+
+it('asks the server for the file of a note when Pi runs on this computer', async () => {
+  const agent = mount();
+  await waitFor(() => expect(agent.current?.available).toBe(true));
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ file: '/home/me/notes/a.md' }), { status: 200 }));
+  await expect(agent.current!.locate('notes/a.md', 'nb')).resolves.toBe('/home/me/notes/a.md');
+  expect(vi.mocked(fetch).mock.calls.at(-1)![0]).toBe('/api/pi/locate?path=notes%2Fa.md&notebookId=nb');
+});
+
 it("answers the agent's note tools with the page's handler, its errors included, and without one says the page cannot", async () => {
   const handler = vi.fn(async (tool: string, args: Record<string, unknown>) => {
     if (tool === 'delete_note') throw new Error('The person is editing notes/a.md; ask them to finish first.');

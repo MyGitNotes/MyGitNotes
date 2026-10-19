@@ -233,15 +233,17 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
     takeEditorText(editorText);
   }, [editorText, takeEditorText]);
 
+  const targetPath = target?.path, targetNotebook = target?.notebookId;
   useEffect(() => {
     // Pi's note tools take the repository-relative path and notebook as they are, so there is no file to locate.
-    if (!target || noteTools) return;
+    if (targetPath === undefined || targetNotebook === undefined || noteTools) return;
     let current = true;
-    locate(target.path, target.notebookId).then(absolute => current && setFile({ path: target.path, absolute }), (reason: Error) => current && setFile({ path: target.path, error: reason.message }));
+    // One request per note: a refusal is shown, not asked again, until another note is in focus.
+    locate(targetPath, targetNotebook).then(absolute => current && setFile({ path: targetPath, absolute }), (reason: Error) => current && setFile({ path: targetPath, error: reason.message }));
     return () => {
       current = false;
     };
-  }, [locate, noteTools, target]);
+  }, [locate, noteTools, targetPath, targetNotebook]);
 
   const chooseMode = (next: ContextMode) => {
     setMode(next);

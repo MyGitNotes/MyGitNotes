@@ -85,6 +85,22 @@ it("names the note by its path and notebook, without locating a file, when Pi re
   expect(value.send).toHaveBeenCalledWith('Explain this', { file: 'notes/plan.md', notebookId: 'nb', line: 5, column: 5 });
 });
 
+it('asks once for the file of a note the server refuses to locate, however the agent value and target change meanwhile', async () => {
+  const locate = vi.fn(async () => {
+    throw new Error('Forbidden');
+  });
+  const view = render(createElement(PiAgentContext.Provider, { value: agent({ target: noteTarget(), locate }) }, createElement(AgentPanel)));
+  await waitFor(() => expect(locate).toHaveBeenCalledTimes(1));
+  for (const running of [true, false, true]) {
+    // Each streamed record gives the panel a new value and the editor a new target object for the same note.
+    view.rerender(createElement(PiAgentContext.Provider, { value: agent({ target: noteTarget(), locate, transcript: { ...emptyTranscript, running } }) }, createElement(AgentPanel)));
+    await act(async () => {});
+  }
+  expect(locate).toHaveBeenCalledTimes(1);
+  view.rerender(createElement(PiAgentContext.Provider, { value: agent({ target: { ...noteTarget(), path: 'notes/other.md' }, locate }) }, createElement(AgentPanel)));
+  await waitFor(() => expect(locate).toHaveBeenCalledTimes(2));
+});
+
 it('sends the selected lines when text is selected, in either direction', async () => {
   const target = noteTarget();
   const value = agent({ target });

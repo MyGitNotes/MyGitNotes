@@ -140,6 +140,8 @@ function contextUsageOf(data: unknown): PiContextUsage | undefined {
 export interface PiAgentValue {
   /** Only a local workspace served from this computer, with Pi installed on it, bridges to Pi. */
   available: boolean;
+  /** The server has not yet answered whether it offers an agent here; `available` is false until it does, though the answer may be yes. */
+  availabilityPending?: boolean;
   session: PiSessionInfo | null;
   /** What the panel can name to Pi right now; null on the notebook list or an empty pane. */
   target: AgentTarget | null;
@@ -196,6 +198,7 @@ export interface PiAgentValue {
   setThinking: (level: string) => void;
   /** Restarts Pi in another agent workspace; the current conversation ends with the old process. */
   switchWorkspace: (location: PiLocation) => Promise<void>;
+  /** The absolute file of a note on the machine Pi runs on; it rejects without asking the server while `noteTools` is set, as no file exists to name. */
   locate: (path: string, notebookId: string) => Promise<string>;
   /** Pi reaches the notes through the page's note tools, not as files, so the panel names a note by its repository-relative path and notebook instead of locating a file. */
   noteTools: boolean;
@@ -265,6 +268,16 @@ export function usePiAgentAvailable(): boolean {
 }
 
 /**
+ * Whether the dock is offered: `pending` until the server answers the session probe, so a surface that offers the Agents
+ * page where the dock is absent waits for the answer instead of showing it for the length of a slow round trip.
+ */
+export function usePiAgentOffer(): 'offered' | 'pending' | 'none' {
+  const agent = useContext(PiAgentContext);
+  if (agent?.available) return 'offered';
+  return agent?.availabilityPending ? 'pending' : 'none';
+}
+
+/**
  * Starts the workspace's Pi process when the person first reaches for the agent (see `wake`), and keeps it across
  * panel and page changes until the user ends it or, hosted, its sandbox stops for idling. It starts
  * in the agent workspace the user last switched to, else at the root of the default repository, and resumes the
@@ -279,6 +292,10 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
   const agentGate = useFeatureGate(FEATURE_IDS.agent);
   const [session, setSession] = useState<PiSessionInfo | null>(null);
   const [piAvailable, setPiAvailable] = useState(false);
+  /** Whether the session probe has answered, either way, since the agent was last enabled. */
+  const [probed, setProbed] = useState(false);
+  // Turned off, the agent is asked again, and waited for, once it is turned back on.
+  if (!enabled && probed) setProbed(false);
   const [target, setTarget] = useState<AgentTarget | null>(null);
   const targets = useRef<AgentTarget[]>([]);
   const registerTarget = useCallback((next: AgentTarget) => {
@@ -494,9 +511,14 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       if (cancelled) return;
       // Without Pi on this computer the agent tab stays hidden and nothing starts.
       setPiAvailable(installed === true);
+      setProbed(true);
       // Reading the session starts nothing, hosted or not, so a Pi already running is joined at once, history and all.
       if (installed === true && info && info.status !== 'exited') attach(info);
-    }).catch(() => !cancelled && setPiAvailable(false));
+    }).catch(() => {
+      if (cancelled) return;
+      setPiAvailable(false);
+      setProbed(true);
+    });
     return () => {
       cancelled = true;
       disconnect();
@@ -524,8 +546,17 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
   // Stable, since the panel asks again each time its menu opens rather than on every transcript change.
   const loadCommands = useCallback(() => command({ type: 'get_commands' }), [command]);
 
+  // Stable, so a caller that locates in an effect runs again for another note, not for each change of the transcript.
+  const locate = useCallback(async (path: string, notebookId: string) => {
+    if (noteTools) throw new Error('Pi reads notes through the page, so they have no file to locate.');
+    const res = await fetch(`/api/pi/locate?${new URLSearchParams({ path, notebookId })}`);
+    if (!res.ok) throw await responseError(res, 'The note could not be located');
+    return ((await res.json()) as { file: string; }).file;
+  }, [noteTools]);
+
   const value = useMemo<PiAgentValue>(() => ({
     available: enabled && piAvailable,
+    availabilityPending: enabled && !probed,
     session,
     target,
     notebooks,
@@ -645,12 +676,8 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       }
     },
     noteTools,
-    locate: async (path, notebookId) => {
-      const res = await fetch(`/api/pi/locate?${new URLSearchParams({ path, notebookId })}`);
-      if (!res.ok) throw await responseError(res, 'The note could not be located');
-      return ((await res.json()) as { file: string; }).file;
-    },
-  }), [enabled, piAvailable, noteTools, session, target, notebooks, repositories, defaultRepository, workspaces, loadWorkspaces, connected, historyLoaded, transcript, error, starting, ready, wake, held, modelState, commands, contextUsage, editorText, takeEditorText, loadCommands, start, command, attach]);
+    locate,
+  }), [enabled, piAvailable, probed, noteTools, locate, session, target, notebooks, repositories, defaultRepository, workspaces, loadWorkspaces, connected, historyLoaded, transcript, error, starting, ready, wake, held, modelState, commands, contextUsage, editorText, takeEditorText, loadCommands, start, command, attach]);
 
   return (
     <PiAgentTargetContext.Provider value={registerTarget}>

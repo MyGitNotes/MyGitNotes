@@ -9,7 +9,7 @@ import { ariaKeyShortcuts, formatKeys } from '../lib/keyboard/keys.js';
 import { bindingsFor, keymapEntry } from '../lib/keyboard/keymap.js';
 import { keyEnvironment } from '../lib/keyboard/platform.js';
 import { AssistantDockToggle } from './assistant/AssistantDockToggle.js';
-import { usePiAgentAvailable } from '../lib/pi-agent/session.js';
+import { usePiAgentOffer } from '../lib/pi-agent/session.js';
 
 interface HeaderProps {
   /** Notebooks whose repository cannot serve them; the switcher marks them. */
@@ -32,7 +32,7 @@ interface HeaderProps {
 
 export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, createNoteDisabled, onOpenCommands, navigationDisabled = false }: HeaderProps) {
   const { t } = useTranslation();
-  const dockOffered = usePiAgentAvailable();
+  const dockOffer = usePiAgentOffer();
   useEffect(() => {
     document.title = `${t(`nav.${activeTab}`)} · MyGitNotes`;
   }, [activeTab, t]);
@@ -86,8 +86,8 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
             )}
           </div>
           <div className='header-utilities'>
-            {/* Where the assistant dock is offered, the Agents page opens from the dock's header instead, so the header shows one agent button. */}
-            {!dockOffered && (
+            {/* Where the assistant dock is offered, the Agents page opens from the dock's header instead, so the header shows one agent button; while the server has not yet said, the dock's own button waits disabled in its place. */}
+            {dockOffer === 'none' && (
               <button type='button' disabled={navigationDisabled} className='ui-icon-button header-agent' data-header-agent='' aria-label={t('nav.agent')} title={t('nav.agent')} aria-current={activeTab === 'agent' ? 'page' : undefined} onClick={() => setActiveTab('agent')}>
                 <Bot size={17} />
               </button>
