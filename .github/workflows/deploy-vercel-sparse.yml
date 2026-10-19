@@ -85,3 +85,9 @@ jobs:
       - name: Deploy production
         if: steps.settings.outputs.enabled == 'true'
         run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      # A store restored through restore-keys still holds the packages of older
+      # lockfiles; drop them so the saved cache does not grow with every change.
+      - name: Prune pnpm store
+        if: steps.settings.outputs.enabled == 'true'
+        continue-on-error: true
+        run: pnpm store prune
