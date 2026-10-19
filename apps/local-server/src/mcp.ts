@@ -89,6 +89,12 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
         await remember(error instanceof CredentialRejected ? error.reason : 'credential-unavailable');
         return res.status(error instanceof SourceError ? error.status : 503).json({ error: error instanceof SourceError ? error.message : 'Agent authorization service unavailable. Retry later.' });
       }
+      // A person without a credential on the site opens nothing there; the identity says why.
+      if (token === undefined) {
+        await remember('credential-unavailable');
+        res.setHeader('WWW-Authenticate', 'Bearer realm="MyGitNotes MCP"');
+        return res.status(401).json({ error: identity.noCredentialMessage(settings.site) });
+      }
       // Asset storage finds the caller on the request too: it is the grant's person, never a browser session sent beside the grant.
       delete req.headers.cookie;
       if (person) (req as express.Request & WorkspaceRequest).person = person;

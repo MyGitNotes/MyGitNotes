@@ -24,6 +24,7 @@ export interface SignInOption {
 export interface IdentityService {
   /** Sign-in, callbacks and any edition auth routes; mounted at /api/auth ahead of /session, /logout and the grant routes. */
   readonly router: Router;
+  /** Who the request is signed in as. A read only: it must not refresh or write the session, so it can be asked of any request. */
   signedIn(req: Request, res: Response): Promise<SignedIn | null>;
   /**
    * The person's provider token on `site`, refreshed when near expiry; undefined when they have none usable there.

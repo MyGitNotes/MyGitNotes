@@ -90,4 +90,14 @@ describe('an identity with a person and no token', () => {
     expect((await call('DELETE', `/api/auth/agent-tokens/${made.body.id}`)).status).toBe(200);
     expect((await call('POST', '/api/auth/agent-token', {}, false)).status).toBe(401);
   });
+
+  it('refuses an agent grant whose person holds no credential on the site, with the identity\'s message', async () => {
+    const store = await start();
+    const made = await call('POST', '/api/auth/agent-token', { name: 'client' });
+    expect(made.status).toBe(200);
+    expect(await store.get(made.body.token)).toMatchObject({ kind: 'agent' });
+    const response = await fetch(`${base}/mcp/${made.body.token}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'Link a GitHub account to open this repository.' });
+  });
 });
