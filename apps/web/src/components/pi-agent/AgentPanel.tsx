@@ -219,7 +219,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   const caret = target?.caret ?? noCaret;
   const selection = useSyncExternalStore(caret.subscribe, caret.get);
   const position = target?.caret && target.content ? selectionPosition(target.content(), selection, target.lineNumberOffset) : undefined;
-  const { locate, loadCommands, editorText, takeEditorText } = agent;
+  const { locate, loadCommands, editorText, takeEditorText, noteTools } = agent;
 
   // An extension (such as robot_hand) placed text in the message box for the user to review and send.
   const [shownEditorText, setShownEditorText] = useState<PiEditorText | null>(null);
@@ -234,13 +234,14 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   }, [editorText, takeEditorText]);
 
   useEffect(() => {
-    if (!target) return;
+    // Pi's note tools take the repository-relative path and notebook as they are, so there is no file to locate.
+    if (!target || noteTools) return;
     let current = true;
     locate(target.path, target.notebookId).then(absolute => current && setFile({ path: target.path, absolute }), (reason: Error) => current && setFile({ path: target.path, error: reason.message }));
     return () => {
       current = false;
     };
-  }, [locate, target]);
+  }, [locate, noteTools, target]);
 
   const chooseMode = (next: ContextMode) => {
     setMode(next);
@@ -268,10 +269,11 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   // Pi answered with no model at all: no key, no login and no model the edition provides.
   const noModel = ready && model.loaded === true && model.models.length === 0;
   const absolute = target && file?.path === target.path ? file.absolute : undefined;
-  const located = absolute && fromCwd(absolute, session?.cwd);
+  const located = noteTools ? target?.path : absolute && fromCwd(absolute, session?.cwd);
+  const noteFile = noteTools && target ? { file: located!, notebookId: target.notebookId } : { file: located! };
   // Without a caret (a compilation pane), a line request sends the path alone, and the switch says so.
   const effectiveMode: ContextMode = mode === 'line' && !position ? 'path' : mode;
-  const focus: AgentFocus | undefined = !located || effectiveMode === 'none' ? undefined : effectiveMode === 'line' && position ? { file: located, ...position } : { file: located };
+  const focus: AgentFocus | undefined = !located || effectiveMode === 'none' ? undefined : effectiveMode === 'line' && position ? { ...noteFile, ...position } : noteFile;
   const builtins = useMemo<PiCommand[]>(() => BUILTIN_COMMANDS.map(name => ({ name, source: 'builtin', description: t(`piAgent.command.${name}` as const), ...(name === 'name' ? { usage: ` <${t('piAgent.command.nameArgument')}>` } : name === 'compact' ? { usage: ` [${t('piAgent.command.compactArgument')}]` } : {}) })), [t]);
   const query = ready && dismissed !== draft ? slashQuery(draft) : undefined;
   const menuOpen = query !== undefined;

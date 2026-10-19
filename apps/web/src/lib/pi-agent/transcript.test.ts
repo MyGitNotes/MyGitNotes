@@ -18,6 +18,14 @@ describe('focus prefix', () => {
     expect(withFocus('plain', undefined)).toBe('plain');
   });
 
+  it('names the notebook beside a repository-relative note, for an agent that reads notes through the page', () => {
+    const focus = { file: 'notes/plan.md', notebookId: 'nb', line: 3, column: 2 };
+    const message = withFocus('Tighten this', focus);
+    expect(message).toBe('<editor-context>\nfile: notes/plan.md\nnotebook: nb\ncursor: line 3, column 2\n</editor-context>\n\nTighten this');
+    expect(splitFocus(message)).toEqual({ text: 'Tighten this', focus });
+    expect(splitFocus(withFocus('Look', { file: 'notes/plan.md', notebookId: 'nb' }))).toEqual({ text: 'Look', focus: { file: 'notes/plan.md', notebookId: 'nb' } });
+  });
+
   it('names a selection by both ends, labelled by lines or by columns within one line', () => {
     const lines = { file: '/home/me/notes/a.md', line: 3, column: 2, endLine: 7, endColumn: 4 };
     const message = withFocus('Rewrite this', lines);

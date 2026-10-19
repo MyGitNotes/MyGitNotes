@@ -385,6 +385,19 @@ it('starts no session while an edition gates the agent off, and still offers the
   expect(FakeSocket.last).toBeUndefined();
 });
 
+it("carries a remote note's editor context, with its notebook, to a Pi that reads notes through the page's tools", async () => {
+  const agent = mount([], vi.fn(async () => ({})));
+  await waitFor(() => expect(FakeSocket.last).toBeDefined());
+  const socket = FakeSocket.last!;
+  act(() => {
+    socket.readyState = FakeSocket.OPEN;
+    socket.onopen?.();
+  });
+  expect(agent.current!.noteTools).toBe(true);
+  act(() => void agent.current!.send('Tighten this', { file: 'notes/a.md', notebookId: 'nb', line: 2, column: 1 }));
+  expect(socket.sent.at(-1)).toMatchObject({ type: 'prompt', message: '<editor-context>\nfile: notes/a.md\nnotebook: nb\ncursor: line 2, column 1\n</editor-context>\n\nTighten this' });
+});
+
 it("answers the agent's note tools with the page's handler, its errors included, and without one says the page cannot", async () => {
   const handler = vi.fn(async (tool: string, args: Record<string, unknown>) => {
     if (tool === 'delete_note') throw new Error('The person is editing notes/a.md; ask them to finish first.');

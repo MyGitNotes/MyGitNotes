@@ -29,7 +29,7 @@ const repositories = [{ id: home, notebooks: ['nb', 'blog'], title: 'Knowledge B
 const workspaces = [{ repository: home, folder: '', hasInstructions: true, parents: [] }, { repository: home, folder: 'blog', hasInstructions: true, parents: [''] }];
 
 function agent(overrides: Partial<PiAgentValue> = {}): PiAgentValue {
-  return { available: true, session: { id: 's1', cwd: '/home/me/workspace', location: { repository: home, folder: '' }, trusted: true, status: 'ready', startedAt: '' }, target: null, notebooks, repositories, defaultRepository: home, workspaces, loadWorkspaces: vi.fn(async () => {}), connected: true, historyLoaded: true, transcript: emptyTranscript, modelState: { models: [], levels: [] }, checkModels: vi.fn(), setModel: vi.fn(), setThinking: vi.fn(), error: '', starting: false, start: vi.fn(async () => {}), wake: vi.fn(), send: vi.fn(() => true), held: null, commands: [], loadCommands: vi.fn(), editorText: null, takeEditorText: vi.fn(), abort: vi.fn(async () => ''), answer: vi.fn(), newConversation: vi.fn(), end: vi.fn(async () => {}), switchWorkspace: vi.fn(async () => {}), locate: vi.fn(async (path: string) => `/home/me/workspace/${path}`), ...overrides };
+  return { available: true, session: { id: 's1', cwd: '/home/me/workspace', location: { repository: home, folder: '' }, trusted: true, status: 'ready', startedAt: '' }, target: null, notebooks, repositories, defaultRepository: home, workspaces, loadWorkspaces: vi.fn(async () => {}), connected: true, historyLoaded: true, transcript: emptyTranscript, modelState: { models: [], levels: [] }, checkModels: vi.fn(), setModel: vi.fn(), setThinking: vi.fn(), error: '', starting: false, start: vi.fn(async () => {}), wake: vi.fn(), send: vi.fn(() => true), held: null, commands: [], loadCommands: vi.fn(), editorText: null, takeEditorText: vi.fn(), abort: vi.fn(async () => ''), answer: vi.fn(), newConversation: vi.fn(), end: vi.fn(async () => {}), switchWorkspace: vi.fn(async () => {}), locate: vi.fn(async (path: string) => `/home/me/workspace/${path}`), noteTools: false, ...overrides };
 }
 
 function noteTarget(caret = createCaretStore()): AgentTarget {
@@ -65,6 +65,24 @@ it('sends a message with the note path from the folder Pi runs in and the live c
   write('Explain this');
   fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message to Pi' }), { key: 'Enter' });
   expect(value.send).toHaveBeenCalledWith('Explain this', { file: 'notes/plan.md', line: 5, column: 5 });
+});
+
+it("names the note by its path and notebook, without locating a file, when Pi reaches notes through the page's note tools", async () => {
+  const target = noteTarget();
+  const value = agent({
+    target,
+    noteTools: true,
+    locate: vi.fn(async () => {
+      throw new Error('Forbidden');
+    }),
+  });
+  panel(value);
+  act(() => target.caret!.set(8));
+  await waitFor(() => expect(screen.getByText('plan.md:5:5')).toBeTruthy());
+  write('Explain this');
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message to Pi' }), { key: 'Enter' });
+  expect(value.locate).not.toHaveBeenCalled();
+  expect(value.send).toHaveBeenCalledWith('Explain this', { file: 'notes/plan.md', notebookId: 'nb', line: 5, column: 5 });
 });
 
 it('sends the selected lines when text is selected, in either direction', async () => {

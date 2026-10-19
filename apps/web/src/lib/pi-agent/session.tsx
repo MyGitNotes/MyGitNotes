@@ -197,6 +197,8 @@ export interface PiAgentValue {
   /** Restarts Pi in another agent workspace; the current conversation ends with the old process. */
   switchWorkspace: (location: PiLocation) => Promise<void>;
   locate: (path: string, notebookId: string) => Promise<string>;
+  /** Pi reaches the notes through the page's note tools, not as files, so the panel names a note by its repository-relative path and notebook instead of locating a file. */
+  noteTools: boolean;
 }
 
 const LOCATION_KEY = 'mygitnotes.piAgent.location';
@@ -269,6 +271,7 @@ export function usePiAgentAvailable(): boolean {
  * conversation it last had while that is still valid there.
  */
 export function PiAgentProvider({ enabled, defaultRepository, notebooks, repositories, webTools, children }: { enabled: boolean; defaultRepository: string; notebooks: NotebookConfig[]; repositories: Pick<RepositoryStatus, 'id' | 'repository' | 'notebooks' | 'title'>[]; /** Answers the agent's note tools, for a remote workspace whose notes this page holds as working changes. */ webTools?: WebToolHandler; children: ReactNode; }) {
+  const noteTools = Boolean(webTools);
   const webToolsRef = useRef(webTools);
   useEffect(() => {
     webToolsRef.current = webTools;
@@ -641,12 +644,13 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
         throw reason;
       }
     },
+    noteTools,
     locate: async (path, notebookId) => {
       const res = await fetch(`/api/pi/locate?${new URLSearchParams({ path, notebookId })}`);
       if (!res.ok) throw await responseError(res, 'The note could not be located');
       return ((await res.json()) as { file: string; }).file;
     },
-  }), [enabled, piAvailable, session, target, notebooks, repositories, defaultRepository, workspaces, loadWorkspaces, connected, historyLoaded, transcript, error, starting, ready, wake, held, modelState, commands, contextUsage, editorText, takeEditorText, loadCommands, start, command, attach]);
+  }), [enabled, piAvailable, noteTools, session, target, notebooks, repositories, defaultRepository, workspaces, loadWorkspaces, connected, historyLoaded, transcript, error, starting, ready, wake, held, modelState, commands, contextUsage, editorText, takeEditorText, loadCommands, start, command, attach]);
 
   return (
     <PiAgentTargetContext.Provider value={registerTarget}>

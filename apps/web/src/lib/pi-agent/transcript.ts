@@ -2,6 +2,8 @@
 /** The file a message is about, and the caret in it when the user sends the line too. */
 export interface AgentFocus {
   file: string;
+  /** The notebook `file` belongs to, named when Pi reaches notes through the page's note tools rather than as files. */
+  notebookId?: string;
   line?: number;
   column?: number;
   /** Where a selection that starts at `line`/`column` ends; absent for a bare caret. */
@@ -74,14 +76,15 @@ export const emptyTranscript: TranscriptState = { entries: [], tools: {}, dialog
 
 const CONTEXT_OPEN = '<editor-context>';
 const CONTEXT_CLOSE = '</editor-context>';
-const CONTEXT_PATTERN = /^<editor-context>\nfile: (.+)\n(?:(?:cursor: line (\d+), column (\d+)|selection: line (\d+), column (\d+) to line (\d+), column (\d+))\n)?<\/editor-context>\n\n/;
+const CONTEXT_PATTERN = /^<editor-context>\nfile: (.+)\n(?:notebook: (.+)\n)?(?:(?:cursor: line (\d+), column (\d+)|selection: line (\d+), column (\d+) to line (\d+), column (\d+))\n)?<\/editor-context>\n\n/;
 
 /** Prefixes a message with the file in focus and, when given, the caret; Pi reads the file itself when it needs it. */
 export function withFocus(text: string, focus: AgentFocus | undefined): string {
   if (!focus) return text;
   const start = `line ${focus.line}, column ${focus.column ?? 1}`;
   const place = focus.line === undefined ? '' : focus.endLine === undefined ? `cursor: ${start}\n` : `selection: ${start} to line ${focus.endLine}, column ${focus.endColumn ?? 1}\n`;
-  return `${CONTEXT_OPEN}\nfile: ${focus.file}\n${place}${CONTEXT_CLOSE}\n\n${text}`;
+  const notebook = focus.notebookId === undefined ? '' : `notebook: ${focus.notebookId}\n`;
+  return `${CONTEXT_OPEN}\nfile: ${focus.file}\n${notebook}${place}${CONTEXT_CLOSE}\n\n${text}`;
 }
 
 /**
@@ -99,11 +102,12 @@ export function focusLabel(focus: AgentFocus): string {
 export function splitFocus(message: string): { text: string; focus?: AgentFocus; } {
   const match = CONTEXT_PATTERN.exec(message);
   if (!match) return { text: message };
-  const [, file, line, column, start, startColumn, end, endColumn] = match;
+  const [, file, notebookId, line, column, start, startColumn, end, endColumn] = match;
   const text = message.slice(match[0].length);
-  if (line !== undefined) return { text, focus: { file, line: Number(line), column: Number(column) } };
-  if (start !== undefined) return { text, focus: { file, line: Number(start), column: Number(startColumn), endLine: Number(end), endColumn: Number(endColumn) } };
-  return { text, focus: { file } };
+  const named = notebookId === undefined ? { file } : { file, notebookId };
+  if (line !== undefined) return { text, focus: { ...named, line: Number(line), column: Number(column) } };
+  if (start !== undefined) return { text, focus: { ...named, line: Number(start), column: Number(startColumn), endLine: Number(end), endColumn: Number(endColumn) } };
+  return { text, focus: named };
 }
 
 const SKILL_PATTERN = /^<skill name="([^"]+)" location="[^"]*">\n[\s\S]*?\n<\/skill>(?:\n\n|$)/;

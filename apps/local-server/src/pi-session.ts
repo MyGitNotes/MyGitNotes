@@ -76,7 +76,7 @@ export const WEB_CHAT_PROMPT = ["You are running inside MyGitNotes' web chat pan
 /** The extension that gives Pi the web agent's note tools, answered by the page through `callWebTool`. */
 export const WEB_TOOLS_EXTENSION = fileURLToPath(new URL('./pi-web-tools-extension.mjs', import.meta.url));
 /** Appended to the web chat prompt when the note tools edit the page's working changes. */
-export const WEB_TOOLS_PROMPT = "Edit the workspace's notes only with the mygitnotes_* tools. They change the person's working changes in their browser and never commit: the person reviews and commits them, and a deleted note waits in their trash until then.";
+export const WEB_TOOLS_PROMPT = "Edit the workspace's notes only with the mygitnotes_* tools. They change the person's working changes in their browser and never commit: the person reviews and commits them, and a deleted note waits in their trash until then. Your files are not the notes: an <editor-context> block names the open note as `file` (repository-relative, such as notes/plan.md) and `notebook`; pass them as the path and notebookId of the tools.";
 const SESSION_HEADER_LIMIT = 64 * 1024;
 
 /**
