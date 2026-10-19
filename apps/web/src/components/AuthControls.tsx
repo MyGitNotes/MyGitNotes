@@ -1,12 +1,13 @@
 import { Button } from './Button.js';
 import { Select } from './Select.js';
 import { useEffect, useState } from 'react';
-import { ArrowLeftRight, Check, ChevronDown, Copy, Github, Gitlab, HelpCircle, KeyRound, LogIn, LogOut, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Check, ChevronDown, Copy, HelpCircle, KeyRound, LogIn, LogOut, Plus, Trash2 } from 'lucide-react';
 import { McpTutorialModal } from './McpTutorialModal.js';
 import { copyToClipboard } from '../lib/clipboard.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import type { TranslationKey } from '../lib/i18n/index.js';
 import { GoogleMark } from './GoogleMark.js';
+import { GithubMark, GitlabMark } from './ProviderMarks.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { useAccountMenuItems, useSignInNotice } from '../lib/web-features.js';
 
@@ -96,14 +97,14 @@ export function AuthControls({ local = false, connection = false }: { local?: bo
         </div>
       </details>
     )
-    : <>{options.length === 1 ? signInLink(options[0], connection, t) : <div className='flex flex-wrap items-center gap-2'>{options.map(option => signInLink(option, connection, t))}</div>}{connection && notice}</>;
+    : <>{options.length === 1 ? signInLink(options[0], connection, t) : <div className={connection ? 'flex w-full flex-col gap-3' : 'flex flex-wrap items-center gap-2'}>{options.map(option => signInLink(option, connection, t))}</div>}{connection && notice}</>;
 }
 function signInLink(option: SignInOption, connection: boolean, t: ReturnType<typeof useTranslation>['t']) {
-  const Icon = option.id === 'gitlab' ? Gitlab : option.id === 'github' ? Github : LogIn;
+  const mark = option.id === 'google' ? <GoogleMark /> : option.id === 'gitlab' ? <GitlabMark /> : option.id === 'github' ? <GithubMark /> : <LogIn size={16} />;
   const label = option.id === 'gitlab' ? t('auth.signInWithGitlab') : option.id === 'github' ? t('auth.signInWithGithub') : t('auth.signInWithProvider', { provider: option.label });
   return (
-    <a key={option.id} href={option.url} className={connection ? `${connectionActionClass} ui-button ui-button-primary` : 'header-login'}>
-      {option.id === 'google' ? <GoogleMark /> : <Icon size={16} />}
+    <a key={option.id} href={option.url} className={connection ? `${connectionActionClass} ui-button w-full` : 'header-login'}>
+      {mark}
       <span>{label}</span>
     </a>
   );
