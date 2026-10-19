@@ -17,7 +17,9 @@ export interface QuickTunnelOptions {
   spawnImpl?: (command: string, args: string[]) => ChildProcess;
 }
 
-const ADDRESS = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
+// A quick tunnel's name is several words joined by hyphens. Requiring a hyphen keeps cloudflared's error lines, which
+// name its own https://api.trycloudflare.com, from being taken for the tunnel.
+const ADDRESS = /https:\/\/[a-z0-9]+(?:-[a-z0-9]+)+\.trycloudflare\.com(?![a-z0-9-])/;
 const OUTPUT_LIMIT = 4000;
 
 /**

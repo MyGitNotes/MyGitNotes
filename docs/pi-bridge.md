@@ -11,12 +11,14 @@ You do not need to clone this repository.
 Pi is the coding agent behind the agent panel.
 A hosted MyGitNotes page cannot run Pi for you, so a small program called the Pi bridge runs Pi on your computer and lets your page talk to it.
 Your model login and provider keys stay on your computer; the page only receives a short-lived token for each conversation.
+By default Pi can use only the MyGitNotes note tools and the MCP servers you set up in Pi, not the files and commands of your computer (see [Security](#security)).
 
 The bridge is the npm package `mygitnotes-pi-bridge`.
 The pairing code is the one string that tells MyGitNotes where your bridge is and holds the secret they share.
 
 ## What you need
 
+- **macOS or Linux.** The command stops with a message on Windows; it has not been tried there yet.
 - **Node 22 or newer.** Check with `node --version`.
 - **Pi, signed in to a model.** Install it with `npm install -g @earendil-works/pi-coding-agent`, run `pi` once, and sign in or add a provider key as it asks.
   The bridge tells you how to install Pi when it cannot find it.
@@ -55,7 +57,8 @@ Useful options:
 | `--host <address>` | The address to listen on. Default: `127.0.0.1`; use `0.0.0.0` only when your own HTTPS front end runs on another machine. |
 | `--model <pattern>` | The Pi model to use. |
 | `--rotate-secret` | Make a new secret. The old pairing code stops working. |
-| `-- <arguments>` | Everything after `--` goes to Pi unchanged, for example `-- --thinking high`. |
+| `--allow-local-tools` | Let Pi use all of its own tools, including reading and writing files and running commands on your computer. Read [Security](#security) before you use it. |
+| `-- <arguments>` | Everything after `--` goes to Pi, for example `-- --thinking high`. Pi's tool options (`--tools`, `--no-tools`, `--no-builtin-tools`) are refused unless you also pass `--allow-local-tools`. |
 
 The environment variables `MYGITNOTES_BRIDGE_SECRET`, `MYGITNOTES_BRIDGE_PUBLIC_URL`, `MYGITNOTES_BRIDGE_ORIGINS` (a JSON array), `MYGITNOTES_BRIDGE_PORT`, `MYGITNOTES_BRIDGE_HOST`, `MYGITNOTES_BRIDGE_CWD` and `MYGITNOTES_BRIDGE_PI_ARGS` (a JSON array) still work and win over the options.
 
@@ -89,21 +92,35 @@ The agent works only while the bridge runs and your computer is awake and online
 To keep it going without an open window, run the command under a tool that restarts it, such as `launchd`, `systemd` or `pm2`.
 Use a stable address for that, not a quick tunnel.
 
+The command prints the pairing code when it starts, so a tool that keeps its output writes the code, and the secret in it, into a log file.
+Keep those log files readable only by you, and run `--rotate-secret` if one is ever shared.
+
 ## Security
 
 - **The secret stays on your computer and on the deployment.**
   The page never sees it: it receives tokens that expire (one minute for a call to the bridge, ten minutes for a conversation) and belong to one session.
-  The pairing code contains the secret, so treat it like a password.
+  On a self-hosted deployment the secret is in the deployment's environment.
+  On MyGitNotes Pro it is stored, encrypted, on Pro's server, which uses it to sign those tokens.
+  The pairing code contains the secret, so treat it like a password, and expect it in the log of anything that keeps the command's output.
   If it leaks, run with `--rotate-secret` and paste the new code.
 - **Only listed pages and people get in.**
   The bridge accepts the page origins you name with `--origin`, and a deployment shows the agent only to the logins you list.
 - **The shell box is off.**
   The chat box's `!command` shell lines are refused.
-- **The agent itself is still Pi.**
-  Pi runs as you, on your computer, and its own tools can read files and run commands as you.
-  Its working folder is empty and the note tools change your notes only as working changes in your browser, which you review and commit.
-  Whoever holds the secret and can reach the bridge can talk to that Pi, so keep the code private.
-  To remove Pi's built-in file and command tools and keep only the note tools, start the bridge with `-- --no-builtin-tools`.
+- **By default Pi gets only the note tools and MCP.**
+  The bridge starts Pi with the five MyGitNotes note tools and the tools of the MCP servers configured in your Pi (its `mcp` tool and `mcp__<server>__<tool>` tools).
+  Pi's file and command tools (`read`, `write`, `edit`, `bash` and the others) are off, and other extensions' tools are not offered.
+  The note tools change your notes only as working changes in your browser, which you review and commit.
+  Pi's working folder is empty.
+  This choice is fixed by the bridge: it comes after anything you pass to Pi, which is why `-- --tools …` is refused.
+  **Your own MCP servers are reachable.**
+  Whatever MCP servers you set up in Pi (`pi mcp list` shows them) are available to the agent, with the access they have; a server that can read your files or call a service as you does so for the agent too.
+  Remove a server you do not want the agent to use, or start the bridge in an account where it is not configured.
+- **`--allow-local-tools` gives Pi your computer.**
+  It restores all of Pi's tools, and the bridge prints a warning when it starts.
+  Pi then runs as you and can read files, write files and run commands.
+  Three things can steer it: text in a note that tells the agent what to do (a note you opened from someone else, or a web page it was asked to read), anyone who holds the secret and can reach the bridge, and, on a self-hosted deployment, every login listed in `MYGITNOTES_EXTERNAL_PI_OWNERS`, because they all talk to the same Pi.
+  Use it only on a computer and in an account you are willing to expose, and keep the pairing code private.
 
 ## Troubleshooting
 
@@ -115,7 +132,9 @@ Use a stable address for that, not a quick tunnel.
 | `Port 8787 is already in use` | Start with another `--port`. |
 | The panel is missing | Your login must be in `MYGITNOTES_EXTERNAL_PI_OWNERS` (self-hosted), or your Pro account must have the agent. |
 | The panel says the bridge is unreachable | Check the bridge is running and its window is open, the tunnel is up, and your computer is awake. After a restart, paste the new pairing code. |
-| The panel connects, then closes at once | The page's origin is not allowed. Add it with `--origin https://your-page-origin`. |
+| The panel cannot connect, with the bridge running and the address right | The page's origin is not allowed, so the bridge refuses the connection at the start (a 403). Add it with `--origin https://your-page-origin`. |
+| `supports only macOS and Linux` | The bridge does not run on Windows yet. Use macOS or Linux. |
+| Pi's tool options are refused | The bridge fixes Pi's tools. Add `--allow-local-tools` only if you accept what it exposes (see [Security](#security)). |
 | The pairing code is refused | Copy it again in full. It must start with `mgnpi1.` and name an `https` address. |
 | The agent worked, then stopped working after a restart | The tunnel address or the secret changed. Paste the latest pairing code. |
 

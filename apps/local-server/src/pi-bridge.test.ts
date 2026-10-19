@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { BRIDGE_PROTOCOL_PREFIX, type PiBridge, type PiBridgeOptions, startPiBridge } from './pi-bridge.js';
 import { signBridgeToken } from './pi-bridge-token.js';
@@ -22,7 +22,7 @@ process.stdin.on('data', chunk => {
     if (command.type === 'prompt' && command.message === 'tool') {
       fetch(process.env.MYGITNOTES_WEB_TOOLS_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.MYGITNOTES_WEB_TOOLS_TOKEN }, body: JSON.stringify({ tool: 'read_note', arguments: { path: 'notes/a.md' } }) })
         .then(async res => out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ status: res.status, body: await res.json() }) }] } }));
-    } else if (command.type === 'prompt') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ args: process.argv.slice(2), model: process.env.FAKE_MODEL, message: command.message }) }] } });
+    } else if (command.type === 'prompt') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ args: process.argv.slice(2), model: process.env.FAKE_MODEL, bridgeVariables: Object.keys(process.env).filter(name => name.startsWith('MYGITNOTES_BRIDGE_')), message: command.message }) }] } });
   }
 });
 process.stdin.on('end', () => process.exit(0));
@@ -35,6 +35,7 @@ let temp: string | undefined;
 const sockets: WebSocket[] = [];
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const socket of sockets.splice(0)) socket.terminate();
   await bridge?.close();
   bridge = undefined;
@@ -96,6 +97,30 @@ it("starts Pi with the host's arguments and environment, and names the socket at
   const answer = reply(await page.until(record => record.type === 'message_end'));
   expect(answer.model).toBe('built-in');
   expect(answer.args.slice(-3)).toEqual(['--no-builtin-tools', '--model', 'mygitnotes/mygitnotes']);
+});
+
+it("puts the host's fixed arguments after the editable ones, so a later --tools cannot replace them", async () => {
+  await start({ piArgs: ['--tools', 'read,bash'], fixedArgs: ['--tools', 'mygitnotes_*'] });
+  await call('POST', '/session', { location });
+  const page = open();
+  await page.opened;
+  page.ws.send(JSON.stringify({ type: 'prompt', message: 'hi' }));
+  const { args } = reply(await page.until(record => record.type === 'message_end'));
+  expect(args.slice(-4)).toEqual(['--tools', 'read,bash', '--tools', 'mygitnotes_*']);
+});
+
+it('keeps every MYGITNOTES_BRIDGE_ variable out of the environment Pi starts with', async () => {
+  vi.stubEnv('MYGITNOTES_BRIDGE_SECRET', 's'.repeat(40));
+  vi.stubEnv('MYGITNOTES_BRIDGE_TOKEN', 'token');
+  vi.stubEnv('MYGITNOTES_BRIDGE_PORT', '9999');
+  await start();
+  await call('POST', '/session', { location });
+  const page = open();
+  await page.opened;
+  page.ws.send(JSON.stringify({ type: 'prompt', message: 'hi' }));
+  const answer = reply(await page.until(record => record.type === 'message_end'));
+  expect(answer.bridgeVariables).toEqual([]);
+  expect(answer.model).toBe('built-in');
 });
 
 it('refuses a socket without the token, from another origin, or before a session', async () => {

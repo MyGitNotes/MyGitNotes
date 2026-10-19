@@ -9,6 +9,9 @@ npx mygitnotes-pi-bridge --tunnel
 The command makes a secret on the first run, starts a Cloudflare quick tunnel and prints a pairing code.
 Paste the code into MyGitNotes Pro (Settings), or set it as `MYGITNOTES_EXTERNAL_PI_PAIRING` on a self-hosted deployment.
 
+It runs on macOS and Linux; on Windows it stops with a message.
+By default Pi can use only the MyGitNotes note tools and the MCP servers configured in Pi; `--allow-local-tools` gives it all of its tools on your computer, which the guide's security section explains.
+
 You need Node 22 or newer, Pi signed in to a model (`npm install -g @earendil-works/pi-coding-agent`), and [cloudflared][cloudflared] for `--tunnel`.
 Without a tunnel, give your own HTTPS address with `--public-url`.
 A quick tunnel address changes on every restart, so use a named Cloudflare tunnel or your own HTTPS for a stable one.

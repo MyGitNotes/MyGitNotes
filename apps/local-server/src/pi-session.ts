@@ -170,6 +170,9 @@ interface PendingWebTool {
   timer: NodeJS.Timeout;
 }
 
+/** `env` without the bridge's own settings (`MYGITNOTES_BRIDGE_SECRET` and the rest), which Pi and what it runs have no use for. */
+const withoutBridgeSettings = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => Object.fromEntries(Object.entries(env).filter(([name]) => !name.startsWith('MYGITNOTES_BRIDGE_')));
+
 /** One `pi --mode rpc` process. It outlives the sockets attached to it and ends only through `end()` or its own exit. */
 export class PiSession {
   readonly info: PiSessionInfo;
@@ -193,16 +196,18 @@ export class PiSession {
   /**
    * `webTools.url` is where Pi's note tools reach the bridge (see `callWebTool`); with it, Pi edits notes through
    * the page that holds the panel instead of its own file tools.
-   * `piArgs` are appended to Pi's arguments and `env` to its environment; `shell: false` refuses `bash` from clients.
+   * `piArgs` are appended to Pi's arguments and `env` to its environment; `fixedArgs` come after `piArgs`, so an option
+   * the host must keep (a later `--tools` replaces an earlier one) wins over anything the person put in `piArgs`.
+   * Pi never inherits the bridge's own `MYGITNOTES_BRIDGE_*` settings, which hold its secret. `shell: false` refuses `bash` from clients.
    */
-  constructor({ cwd, location, resume, command = piCommand(), onExit, webTools, piArgs = [], env: extraEnv = {}, shell = true }: { cwd: string; location: PiLocation; resume?: string; command?: string; onExit?: (session: PiSession) => void; webTools?: { url: string; }; piArgs?: string[]; env?: Record<string, string>; shell?: boolean; }) {
+  constructor({ cwd, location, resume, command = piCommand(), onExit, webTools, piArgs = [], fixedArgs = [], env: extraEnv = {}, shell = true }: { cwd: string; location: PiLocation; resume?: string; command?: string; onExit?: (session: PiSession) => void; webTools?: { url: string; }; piArgs?: string[]; fixedArgs?: string[]; env?: Record<string, string>; shell?: boolean; }) {
     this.shell = shell;
     this.info = { id: randomUUID(), cwd, location, status: 'starting', startedAt: new Date().toISOString() };
     this.webToolToken = webTools ? randomBytes(32).toString('base64url') : undefined;
     const prompt = webTools ? `${WEB_CHAT_PROMPT}\n${WEB_TOOLS_PROMPT}` : WEB_CHAT_PROMPT;
     // No --approve: project trust stays Pi's decision, as it is in the user's terminal.
-    const args = ['--mode', 'rpc', '--extension', TRUST_EXTENSION, ...webTools ? ['--extension', WEB_TOOLS_EXTENSION] : [], '--append-system-prompt', prompt, ...resume ? ['--session', resume] : [], ...piArgs];
-    const env = { ...process.env, ...extraEnv, ...webTools ? { MYGITNOTES_WEB_TOOLS_URL: webTools.url, MYGITNOTES_WEB_TOOLS_TOKEN: this.webToolToken } : {} };
+    const args = ['--mode', 'rpc', '--extension', TRUST_EXTENSION, ...webTools ? ['--extension', WEB_TOOLS_EXTENSION] : [], '--append-system-prompt', prompt, ...resume ? ['--session', resume] : [], ...piArgs, ...fixedArgs];
+    const env = { ...withoutBridgeSettings(process.env), ...extraEnv, ...webTools ? { MYGITNOTES_WEB_TOOLS_URL: webTools.url, MYGITNOTES_WEB_TOOLS_TOKEN: this.webToolToken } : {} };
     this.child = spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
     this.info.pid = this.child.pid;
     this.child.stdout.on('data', jsonlSplitter(line => this.receive(line)));

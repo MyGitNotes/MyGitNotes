@@ -33,6 +33,8 @@ export interface PiBridgeOptions {
   cwd: string;
   command?: string;
   piArgs?: string[];
+  /** Pi arguments placed after `piArgs`, so they win over them; for settings the host must not let `piArgs` replace. */
+  fixedArgs?: string[];
   env?: Record<string, string>;
   /** Whether a client may run shell commands; off unless asked, since the bridge serves a hosted sandbox. */
   shell?: boolean;
@@ -79,7 +81,7 @@ const reply = (res: http.ServerResponse, status: number, body: unknown) => {
  * that started it creates, restarts and ends the session over HTTP with the same token the page presents.
  */
 export function startPiBridge(options: PiBridgeOptions): Promise<PiBridge> {
-  const { token, secret, cwd, command, piArgs, env, shell = false, allowedOrigins = [], activityIntervalMs = ACTIVITY_INTERVAL_MS } = options;
+  const { token, secret, cwd, command, piArgs, fixedArgs, env, shell = false, allowedOrigins = [], activityIntervalMs = ACTIVITY_INTERVAL_MS } = options;
   const publicUrl = options.publicUrl.replace(/\/$/, '');
   if (!token && !secret) throw new Error('Give the bridge a token or a secret.');
   const now = options.now ?? (() => new Date());
@@ -101,7 +103,7 @@ export function startPiBridge(options: PiBridgeOptions): Promise<PiBridge> {
   const info = (session: PiSession | undefined): { session: PiSessionInfo | null; } => ({ session: session ? { ...session.info, socket: socketFor(session) } : null });
   let webToolsUrl = '';
   const start = (location: PiLocation, resume?: unknown) => {
-    current = new PiSession({ cwd, location, resume: resumableSession(resume, cwd), command, piArgs, env, shell, webTools: { url: webToolsUrl } });
+    current = new PiSession({ cwd, location, resume: resumableSession(resume, cwd), command, piArgs, fixedArgs, env, shell, webTools: { url: webToolsUrl } });
     return current;
   };
   const end = async () => {

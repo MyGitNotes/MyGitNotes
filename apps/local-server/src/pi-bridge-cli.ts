@@ -7,7 +7,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { type PiBridge, startPiBridge } from './pi-bridge.js';
 import { startQuickTunnel } from './pi-bridge-tunnel.js';
-import { encodePairingCode, MIN_PAIRING_SECRET_LENGTH } from './pi-pairing.js';
+import { encodePairingCode, MIN_PAIRING_SECRET_LENGTH, pairingAddressProblem } from './pi-pairing.js';
 import { commandAvailable, piCommand } from './pi-session.js';
 
 export const DEFAULT_ORIGIN = 'https://app.mygitnotes.com';
@@ -15,9 +15,20 @@ export const DEFAULT_PORT = 8787;
 export const PI_INSTALL_COMMAND = 'npm install -g @earendil-works/pi-coding-agent';
 const CLOUDFLARED_URL = 'https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/';
 const MIN_NODE_MAJOR = 22;
+/**
+ * The tools Pi starts with unless the person passes --allow-local-tools: the five note tools, the `mcp` gateway of
+ * pi-mcp-adapter and the `mcp__<server>__<tool>` tools of Pi's built-in MCP support (Pi keeps no MCP tool that no entry names).
+ */
+export const NOTE_TOOLS = 'mygitnotes_*,mcp,mcp__*';
+const TOOL_SELECTION_OPTIONS = /^(--tools|-t|--no-tools|-nt|--no-builtin-tools|-nbt)(=|$)/;
 
 /** A problem the person can fix; the command prints its message and exits with 1. */
 export class CliError extends Error {}
+
+/** The bridge runs on macOS and Linux; it has not been tried on Windows. */
+export function ensureSupportedPlatform(platform: NodeJS.Platform = process.platform) {
+  if (platform === 'win32') throw new CliError('mygitnotes-pi-bridge supports only macOS and Linux for now; it has not been tried on Windows.');
+}
 
 export const USAGE = `Usage: mygitnotes-pi-bridge [options] [-- <extra Pi arguments>]
 
@@ -31,10 +42,14 @@ Options:
   --host <address>      The address to listen on (default 127.0.0.1)
   --model <pattern>     The Pi model to use, passed to Pi as --model
   --rotate-secret       Make a new secret; the old pairing code stops working
+  --allow-local-tools   Let Pi use all of its own tools, including reading, writing and running files and commands on
+                        this computer. Without it Pi gets only the MyGitNotes note tools and MCP. Read the security
+                        section of the guide first.
   --version             Print the version
   --help                Print this help
 
 Arguments after -- go to Pi unchanged, for example: mygitnotes-pi-bridge --tunnel -- --thinking high
+Pi's own tool options (--tools, --no-tools and the like) are refused unless you pass --allow-local-tools.
 
 Settings in the environment win over options: MYGITNOTES_BRIDGE_SECRET, MYGITNOTES_BRIDGE_PUBLIC_URL,
 MYGITNOTES_BRIDGE_ORIGINS (a JSON array), MYGITNOTES_BRIDGE_PORT, MYGITNOTES_BRIDGE_HOST, MYGITNOTES_BRIDGE_CWD and
@@ -45,6 +60,7 @@ export interface CliArguments {
   version: boolean;
   tunnel: boolean;
   rotateSecret: boolean;
+  allowLocalTools: boolean;
   origins: string[];
   port?: string;
   host?: string;
@@ -59,16 +75,16 @@ export function parseCliArguments(argv: string[]): CliArguments {
   const own = split === -1 ? argv : argv.slice(0, split);
   let values: ReturnType<typeof parseArgs>['values'];
   try {
-    ({ values } = parseArgs({ args: own, allowPositionals: false, options: { tunnel: { type: 'boolean' }, 'public-url': { type: 'string' }, origin: { type: 'string', multiple: true }, port: { type: 'string' }, host: { type: 'string' }, model: { type: 'string' }, 'rotate-secret': { type: 'boolean' }, version: { type: 'boolean' }, help: { type: 'boolean' } } }));
+    ({ values } = parseArgs({ args: own, allowPositionals: false, options: { tunnel: { type: 'boolean' }, 'public-url': { type: 'string' }, origin: { type: 'string', multiple: true }, port: { type: 'string' }, host: { type: 'string' }, model: { type: 'string' }, 'rotate-secret': { type: 'boolean' }, 'allow-local-tools': { type: 'boolean' }, version: { type: 'boolean' }, help: { type: 'boolean' } } }));
   } catch (error) {
     throw new CliError(`${(error as Error).message}\nRun mygitnotes-pi-bridge --help for the options.`);
   }
-  return { help: values.help === true, version: values.version === true, tunnel: values.tunnel === true, rotateSecret: values['rotate-secret'] === true, origins: (values.origin as string[] | undefined) ?? [], port: values.port as string | undefined, host: values.host as string | undefined, publicUrl: values['public-url'] as string | undefined, model: values.model as string | undefined, piArgs: split === -1 ? [] : argv.slice(split + 1) };
+  return { help: values.help === true, version: values.version === true, tunnel: values.tunnel === true, rotateSecret: values['rotate-secret'] === true, allowLocalTools: values['allow-local-tools'] === true, origins: (values.origin as string[] | undefined) ?? [], port: values.port as string | undefined, host: values.host as string | undefined, publicUrl: values['public-url'] as string | undefined, model: values.model as string | undefined, piArgs: split === -1 ? [] : argv.slice(split + 1) };
 }
 
-/** Where the bridge keeps its secret and Pi's working directory: `$XDG_CONFIG_HOME/mygitnotes-pi-bridge`, else `~/.config/…` (`%APPDATA%` on Windows). */
+/** Where the bridge keeps its secret and Pi's working directory: `$XDG_CONFIG_HOME/mygitnotes-pi-bridge`, else `~/.config/mygitnotes-pi-bridge`. */
 export function configDirectory(env: NodeJS.ProcessEnv = process.env): string {
-  const base = env.XDG_CONFIG_HOME?.trim() || (process.platform === 'win32' && env.APPDATA?.trim()) || path.join(os.homedir(), '.config');
+  const base = env.XDG_CONFIG_HOME?.trim() || path.join(os.homedir(), '.config');
   return path.join(base, 'mygitnotes-pi-bridge');
 }
 
@@ -76,8 +92,14 @@ export type SecretSource = 'created' | 'rotated' | 'reused' | 'environment';
 
 const newSecret = () => randomBytes(32).toString('base64url');
 
-function writePrivately(file: string, content: string) {
+/** Makes the directory of `file`, or tightens it to 0700 when it was made earlier with looser permissions. */
+function ensurePrivateDirectory(file: string) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  fs.chmodSync(path.dirname(file), 0o700);
+}
+
+function writePrivately(file: string, content: string) {
+  ensurePrivateDirectory(file);
   const temporary = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(temporary, content, { mode: 0o600 });
   fs.chmodSync(temporary, 0o600);
@@ -95,6 +117,7 @@ export function loadSecret(file: string, rotate: boolean): { secret: string; sou
       throw new CliError(`${file} is not readable JSON. Fix it, or run with --rotate-secret to make a new one.`);
     }
     if (typeof secret !== 'string' || secret.length < MIN_PAIRING_SECRET_LENGTH) throw new CliError(`${file} holds no secret of at least ${MIN_PAIRING_SECRET_LENGTH} characters. Fix it, or run with --rotate-secret to make a new one.`);
+    ensurePrivateDirectory(file);
     fs.chmodSync(file, 0o600);
     return { secret, source: 'reused' };
   }
@@ -115,7 +138,10 @@ export interface BridgePlan {
   /** The https address named by `--public-url` or the environment, when there is one. */
   publicUrl?: string;
   tunnel: boolean;
+  /** What the person can edit: `--model`, what follows `--`, or `MYGITNOTES_BRIDGE_PI_ARGS`. */
   piArgs: string[];
+  /** What the bridge sets after `piArgs`, so that `piArgs` cannot replace it: the tool selection, unless local tools are allowed. */
+  fixedPiArgs: string[];
 }
 
 function jsonList(env: NodeJS.ProcessEnv, name: string): string[] | undefined {
@@ -139,6 +165,7 @@ function httpsAddress(name: string, value: string): string {
     throw new CliError(`${name} must be an https address such as https://pi.example.com.`);
   }
   if (parsed.protocol !== 'https:') throw new CliError(`${name} must be an https address such as https://pi.example.com; browsers refuse a plain http socket from an https page.`);
+  if (pairingAddressProblem(value)) throw new CliError(`${name} cannot go into a pairing code: write a plain https address without credentials, a query or a fragment, such as https://pi.example.com.`);
   return value.replace(/\/+$/, '');
 }
 
@@ -173,10 +200,11 @@ export function planBridge(args: CliArguments, env: NodeJS.ProcessEnv = process.
   }
   const port = env.MYGITNOTES_BRIDGE_PORT?.trim() ? portNumber('MYGITNOTES_BRIDGE_PORT', env.MYGITNOTES_BRIDGE_PORT) : args.port ? portNumber('--port', args.port) : DEFAULT_PORT;
   const piArgs = jsonList(env, 'MYGITNOTES_BRIDGE_PI_ARGS') ?? [...args.model ? ['--model', args.model] : [], ...args.piArgs];
+  if (!args.allowLocalTools && piArgs.some(arg => TOOL_SELECTION_OPTIONS.test(arg))) throw new CliError("Pi's tool options (--tools, --no-tools, --no-builtin-tools) are refused: the bridge gives Pi only the note tools and MCP. Add --allow-local-tools to choose Pi's tools yourself, and read the security section of the guide first.");
   const cwd = env.MYGITNOTES_BRIDGE_CWD?.trim() || path.join(directory, 'workspace');
   const { secret, source } = envSecret ? { secret: envSecret, source: 'environment' as const } : loadSecret(configFile, args.rotateSecret);
   fs.mkdirSync(cwd, { recursive: true });
-  return { secret, secretSource: source, configFile, cwd, origins, port, host: env.MYGITNOTES_BRIDGE_HOST?.trim() || args.host || '127.0.0.1', publicUrl, tunnel: args.tunnel, piArgs };
+  return { secret, secretSource: source, configFile, cwd, origins, port, host: env.MYGITNOTES_BRIDGE_HOST?.trim() || args.host || '127.0.0.1', publicUrl, tunnel: args.tunnel, piArgs, fixedPiArgs: args.allowLocalTools ? [] : ['--tools', NOTE_TOOLS] };
 }
 
 export interface CliIo {
@@ -189,6 +217,12 @@ export interface RunningCli {
   publicUrl: string | undefined;
   pairingCode: string | undefined;
   stop: () => Promise<void>;
+  /** Ends the tunnel's process at once and synchronously, for the moment the command itself is exiting. */
+  killTunnel: () => void;
+}
+
+export interface RunDependencies {
+  startTunnel?: typeof startQuickTunnel;
 }
 
 declare const PACKAGE_VERSION: string | undefined;
@@ -200,7 +234,8 @@ const SECRET_NOTES: Record<SecretSource, (file: string) => string> = { created: 
  * Starts the bridge and prints how to pair it. Resolves once it listens; `stop` ends Pi, the bridge and any tunnel.
  * Throws a CliError for anything the person must fix first.
  */
-export async function runBridge(args: CliArguments, env: NodeJS.ProcessEnv, io: CliIo): Promise<RunningCli> {
+export async function runBridge(args: CliArguments, env: NodeJS.ProcessEnv, io: CliIo, dependencies: RunDependencies = {}): Promise<RunningCli> {
+  ensureSupportedPlatform();
   const major = Number(process.versions.node.split('.')[0]);
   if (major < MIN_NODE_MAJOR) throw new CliError(`mygitnotes-pi-bridge needs Node ${MIN_NODE_MAJOR} or newer; this is Node ${process.versions.node}.`);
   const command = piCommand(env);
@@ -209,19 +244,25 @@ export async function runBridge(args: CliArguments, env: NodeJS.ProcessEnv, io: 
   const plan = planBridge(args, env);
   io.log(`MyGitNotes Pi bridge ${packageVersion()}`);
   io.log(SECRET_NOTES[plan.secretSource](plan.configFile));
+  if (args.allowLocalTools) io.log('WARNING: --allow-local-tools gives Pi its own local tools, so it can read, write and run files and commands on this computer as you. Anyone who holds the secret, a prompt-injected note, or a web page you open can steer it. Run this only on a computer and in an account you are willing to expose.');
 
   let tunnelStop: (() => void) | undefined;
   let publicUrl = plan.publicUrl;
   let closing = false;
+  let bridgeUp = false;
+  let tunnelEnded: string | undefined;
   let closeAll: () => Promise<void> = async () => {};
   if (plan.tunnel) {
     io.log('Starting a Cloudflare quick tunnel…');
     try {
-      const tunnel = await startQuickTunnel({
+      const tunnel = await (dependencies.startTunnel ?? startQuickTunnel)({
         port: plan.port,
         onExit: code => {
           if (closing) return;
-          io.log(`cloudflared stopped (exit ${code ?? 'by signal'}), so the pairing code no longer reaches this computer. Stopping.`);
+          const message = `cloudflared stopped (exit ${code ?? 'by signal'}), so the pairing code no longer reaches this computer.`;
+          // Before the bridge is up the caller is still starting: it reports this as an error instead of exiting under it.
+          if (!bridgeUp) return void (tunnelEnded = message);
+          io.log(`${message} Stopping.`);
           void closeAll().then(() => process.exit(1));
         },
       });
@@ -234,12 +275,17 @@ export async function runBridge(args: CliArguments, env: NodeJS.ProcessEnv, io: 
 
   let bridge: PiBridge;
   try {
-    bridge = await startPiBridge({ port: plan.port, host: plan.host, secret: plan.secret, publicUrl: publicUrl ?? `http://127.0.0.1:${plan.port}`, allowedOrigins: plan.origins, cwd: plan.cwd, piArgs: plan.piArgs, command });
+    bridge = await startPiBridge({ port: plan.port, host: plan.host, secret: plan.secret, publicUrl: publicUrl ?? `http://127.0.0.1:${plan.port}`, allowedOrigins: plan.origins, cwd: plan.cwd, piArgs: plan.piArgs, fixedArgs: plan.fixedPiArgs, command });
   } catch (error) {
     tunnelStop?.();
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') throw new CliError(`Port ${plan.port} is already in use. Pick another with --port.`);
     throw error;
   }
+  if (tunnelEnded) {
+    await bridge.close();
+    throw new CliError(`${tunnelEnded} Start the command again.`);
+  }
+  bridgeUp = true;
   const stop = async () => {
     closing = true;
     tunnelStop?.();
@@ -262,7 +308,7 @@ export async function runBridge(args: CliArguments, env: NodeJS.ProcessEnv, io: 
     io.log('');
     io.log('There is no public address yet, so there is no pairing code. Restart with --tunnel (a Cloudflare quick tunnel) or --public-url <https address> to get one.');
   }
-  return { bridge, publicUrl, pairingCode, stop };
+  return { bridge, publicUrl, pairingCode, stop, killTunnel: () => tunnelStop?.() };
 }
 
 /** The command's entry: runs the bridge until Ctrl+C or SIGTERM. Returns the exit code when it does not keep running. */
@@ -273,8 +319,9 @@ export async function main(argv: string[], env: NodeJS.ProcessEnv = process.env,
     if (args.version) return io.log(packageVersion()), 0;
     const running = await runBridge(args, env, io);
     const shutdown = () => void running.stop().then(() => process.exit(0));
-    process.once('SIGINT', shutdown);
-    process.once('SIGTERM', shutdown);
+    for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.once(signal, shutdown);
+    // Whatever ends the command, cloudflared (which does not end with its parent) must not stay behind.
+    process.once('exit', running.killTunnel);
     return undefined;
   } catch (error) {
     if (error instanceof CliError) {

@@ -10,8 +10,8 @@ const VERSION = 1;
 export const MIN_PAIRING_SECRET_LENGTH = 32;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 
-/** The reason a pairing's parts are not acceptable, or undefined when they are. */
-function problem(url: unknown, secret: unknown): string | undefined {
+/** The reason `url` cannot be the address in a pairing code, or undefined when it can. */
+export function pairingAddressProblem(url: unknown): string | undefined {
   if (typeof url !== 'string' || !url) return 'The pairing code names no address.';
   let parsed: URL;
   try {
@@ -21,6 +21,13 @@ function problem(url: unknown, secret: unknown): string | undefined {
   }
   if (parsed.protocol !== 'https:') return 'The pairing code must name an https address.';
   if (parsed.username || parsed.password || parsed.search || parsed.hash) return 'The pairing code names an address with credentials, a query or a fragment.';
+  return undefined;
+}
+
+/** The reason a pairing's parts are not acceptable, or undefined when they are. */
+function problem(url: unknown, secret: unknown): string | undefined {
+  const bad = pairingAddressProblem(url);
+  if (bad) return bad;
   if (typeof secret !== 'string' || secret.length < MIN_PAIRING_SECRET_LENGTH) return `The pairing code carries a secret shorter than ${MIN_PAIRING_SECRET_LENGTH} characters.`;
   return undefined;
 }
