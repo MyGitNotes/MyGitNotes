@@ -7,7 +7,7 @@ import { Router } from 'express';
 import type { EditionSourceConfig, SourceConfig, WorkspaceConfigSource } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { type IdentityService } from '../src/identity.js';
-import { type MemoryFiles, memoryEditionSources } from '../src/memory-edition-source.js';
+import { memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
 import { createRecordStore, type RecordStore } from '../src/record-store/index.js';
 import { workspaceSettings } from './workspace-settings.js';
 
@@ -16,17 +16,7 @@ const edition: EditionSourceConfig = { type: 'edition', platform: 'hosted', repo
 const github: SourceConfig = { type: 'github', repository: 'owner/repo', branch: 'main' };
 
 let root: string, server: Server, base: string, store: RecordStore, files: MemoryFiles, providerRequests: string[];
-const identity: IdentityService = {
-  router: Router(),
-  signedIn: async req => req.headers['x-person'] ? { person: { realm: 'edition', userId: 'p1' }, login: 'pat', owner: 'edition:p1' } : null,
-  token: async () => undefined,
-  grantCredential: async () => undefined,
-  grantToken: async () => undefined,
-  noCredentialMessage: () => 'Link a GitHub account to open this repository.',
-  signInOptions: async () => [],
-  configured: async () => true,
-  signOut: async () => {},
-};
+const identity: IdentityService = { router: Router(), signedIn: async req => req.headers['x-person'] ? { person: { realm: 'edition', userId: 'p1' }, login: 'pat', owner: 'edition:p1' } : null, token: async () => undefined, grantCredential: async () => undefined, grantToken: async () => undefined, noCredentialMessage: () => 'Link a GitHub account to open this repository.', signInOptions: async () => [], configured: async () => true, signOut: async () => {} };
 const configSource: WorkspaceConfigSource = { mode: 'remote', settings: async () => ({ ...workspaceSettings([github, edition]) }) };
 
 const start = async (services: Record<string, unknown>) => {
@@ -36,7 +26,17 @@ const start = async (services: Record<string, unknown>) => {
 };
 const call = async (method: string, url: string, body?: unknown, person = true) => {
   const response = await fetch(base + url, { method, headers: { 'Content-Type': 'application/json', ...(person ? { 'x-person': 'p1' } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
-  const text = await response.text(); return { status: response.status, body: (() => { try { return JSON.parse(text); } catch { return { text }; } })() };
+  const text = await response.text();
+  return {
+    status: response.status,
+    body: (() => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { text };
+      }
+    })(),
+  };
 };
 const tool = async (token: string, name: string, args: object) => {
   const response = await fetch(`${base}/mcp/${token}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }) });
@@ -51,7 +51,7 @@ beforeEach(() => {
   providerRequests = [];
   const nativeFetch = globalThis.fetch;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-    if (/^https:\/\/api\.github\.com\//.test(String(url))) {
+    if (String(url).startsWith('https://api.github.com/')) {
       providerRequests.push(String(url));
       return new Response('{}', { status: 500 });
     }
@@ -69,7 +69,8 @@ describe('edition sources', () => {
   it('opens an edition member without a provider token and leaves a GitHub member no-credential, with no provider request', async () => {
     await start({ editionSources: memoryEditionSources({ repositories: new Map([['p1/notes', files]]) }) });
     const workspace = await call('GET', '/api/workspace');
-    expect(workspace.body).toMatchObject({}); expect(workspace.status, JSON.stringify(workspace.body)).toBe(200);
+    expect(workspace.body).toMatchObject({});
+    expect(workspace.status, JSON.stringify(workspace.body)).toBe(200);
     const [provider, hosted] = workspace.body.repositories;
     expect(hosted).toMatchObject({ id: 'edition:hosted:p1/notes@main', write: true, defaultNotebook: expect.stringContaining('life') });
     expect(hosted.unavailable).toBeUndefined();
@@ -103,10 +104,13 @@ describe('edition sources', () => {
 
   it('marks the edition member unavailable when the edition refuses the person, and unsupported without editionSources', async () => {
     await start({ editionSources: memoryEditionSources({ repositories: new Map([['p1/notes', files]]), mayRead: () => false }) });
-    const w = await call('GET', '/api/workspace'); expect(w.body.repositories[1]).toMatchObject({ unavailable: { reason: 'no-access' } });
+    const w = await call('GET', '/api/workspace');
+    expect(w.body.repositories[1]).toMatchObject({ unavailable: { reason: 'no-access' } });
     await new Promise<void>(resolve => server.close(() => resolve()));
     await start({});
-    const w2 = await call('GET', '/api/workspace'); console.log(JSON.stringify(w2).slice(0,600)); expect(w2.body.repositories[1]).toMatchObject({ unavailable: { reason: 'unsupported-platform' } });
+    const w2 = await call('GET', '/api/workspace');
+    console.log(JSON.stringify(w2).slice(0, 600));
+    expect(w2.body.repositories[1]).toMatchObject({ unavailable: { reason: 'unsupported-platform' } });
   });
 
   it('lists and edits the edition member over /mcp for a grant without a credential', async () => {
@@ -133,4 +137,3 @@ describe('edition sources', () => {
     expect(await response.json()).toEqual({ error: 'Link a GitHub account to open this repository.' });
   });
 });
-

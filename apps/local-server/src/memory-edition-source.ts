@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type EditionSourceConfig, gitBlobId, type RemoteCache, type RemoteChange, type RemoteEntry, RemoteSource, RepositoryUnavailableError, type RepositoryId, type RepositoryScope, type RemoteSnapshot, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
+import { type EditionSourceConfig, gitBlobId, type RemoteCache, type RemoteChange, type RemoteEntry, type RemoteSnapshot, RemoteSource, type RepositoryId, type RepositoryScope, RepositoryUnavailableError, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
 import type { EditionSources } from './edition-sources.js';
 
 /** Files by repository-relative path; the repository's whole content. */
@@ -29,7 +29,12 @@ export class MemoryEditionSource extends RemoteSource {
       const parts = file.split('/').slice(0, -1);
       for (let i = 1; i <= parts.length; i++) folders.add(parts.slice(0, i).join('/'));
     }
-    for (const folder of folders) entries.push({ path: folder, type: 'tree', mode: '040000', sha: createHash('sha1').update(`tree\0${folder}`).digest('hex') });
+    // A folder's sha covers its children's names, kinds and shas, so it changes whenever anything beneath it does.
+    const children = (folder: string) => entries.filter(entry => entry.path.slice(0, entry.path.lastIndexOf('/') + 1) === (folder ? `${folder}/` : '') && entry.path !== folder);
+    for (const folder of [...folders].sort((a, b) => b.split('/').length - a.split('/').length)) {
+      const sha = createHash('sha1').update(`tree\0${children(folder).map(entry => `${entry.type}\0${entry.path}\0${entry.sha}`).sort().join('\0')}`).digest('hex');
+      entries.push({ path: folder, type: 'tree', mode: '040000', sha });
+    }
     const sha = this.head();
     return { sha, treeSha: sha, entries, info: { private: true, permissions: { push: this.writable }, default_branch: this.source.branch } };
   }

@@ -29,6 +29,10 @@ describe('edition sources', () => {
   });
 
   it('is not opened outside the server that composes it', () => {
-    expect(() => createRemoteSource(edition, undefined, fetch, undefined, async () => { throw new Error('unused'); })).toThrow(/Edition platform hosted/);
+    expect(() =>
+      createRemoteSource(edition, undefined, fetch, undefined, async () => {
+        throw new Error('unused');
+      })
+    ).toThrow(/Edition platform hosted/);
   });
 });

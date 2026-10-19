@@ -117,8 +117,11 @@ export abstract class RemoteSource {
     await this.loadCached(entries.filter(entry => wanted.has(entry.path) && entry.type === 'blob' && entry.mode !== '120000'));
   }
 
-  /** What shared-cache keys call this repository; a source on a named site adds the site, so one name on two sites never shares an entry. */
+  /** What shared-cache keys call this repository; a source on a named site adds the site, so one name on two sites never shares an entry, and an edition source is keyed `edition:<platform>:<repository>`. */
   protected cacheRepository(): string {
+    // An edition source is namespaced by its platform here, in the base, so no edition adapter can collide with a provider repository of the same name.
+    const id: string = this.id;
+    if (id.startsWith('edition:') && id.endsWith(`@${this.branch}`)) return id.slice(0, -(this.branch.length + 1)).toLowerCase();
     return this.repository.toLowerCase();
   }
   private blobKey(sha: string) {
