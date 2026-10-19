@@ -10,15 +10,56 @@ concurrency:
   group: release-main
   cancel-in-progress: false
 jobs:
-  release:
-    # Workspaces that track Core carry this file too; only the product repository verifies and publishes the demo.
+  # Workspaces that track Core carry this file too; only the product repository verifies and publishes the demo.
+  # Every job carries the repository guard, and a skipped verification job skips `release` through `needs`.
+  static:
     if: github.repository == 'wayne930242/MyGitNotes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/install-dependencies
+      - run: pnpm check:vercel-sparse-paths --core
+      - run: pnpm lint
+  build:
+    if: github.repository == 'wayne930242/MyGitNotes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/install-dependencies
+      - run: pnpm build
+  test:
+    if: github.repository == 'wayne930242/MyGitNotes'
+    name: test (${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/install-dependencies
+      # The three shards together run every test file once; vitest splits the sorted file list by --shard.
+      # `pnpm test --shard` fails (pnpm rejects the unknown option); `pnpm run` forwards it to vitest.
+      - run: pnpm run test --shard=${{ matrix.shard }}/3
+  release:
+    if: github.repository == 'wayne930242/MyGitNotes'
+    needs: [static, build, test]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       # Only the repository that publishes the demo holds the deploy key; workspaces tracking Core skip the sync.
       HAS_CORE_SYNC_KEY: ${{ secrets.CORE_SYNC_SSH_KEY != '' }}
     steps:
+      # A fresh checkout with no install: the sync requires a clean tree and needs only Node built-ins.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
@@ -26,16 +67,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
-      - name: Install dependencies
-        run: |
-          npm install --global pnpm@9.15.9
-          pnpm install --frozen-lockfile
-      - name: Verify Core
-        run: |
-          pnpm check:vercel-sparse-paths --core
-          pnpm build
-          pnpm lint
-          pnpm test
       - name: Skip demo synchronization
         if: env.HAS_CORE_SYNC_KEY != 'true'
         run: echo "::notice title=Demo sync skipped::CORE_SYNC_SSH_KEY is not set; this repository does not publish the demo workspace."

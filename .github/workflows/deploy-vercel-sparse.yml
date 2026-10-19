@@ -62,6 +62,18 @@ jobs:
       - name: Install tooling
         if: steps.settings.outputs.enabled == 'true'
         run: npm install --global pnpm@9.15.9 vercel@59
+      # `vercel build` runs `pnpm install --frozen-lockfile` with this store.
+      - name: Find pnpm store
+        id: store
+        if: steps.settings.outputs.enabled == 'true'
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - name: Cache pnpm store
+        if: steps.settings.outputs.enabled == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ steps.store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
       - name: Build
         if: steps.settings.outputs.enabled == 'true'
         # `vercel build` takes no env flag, so the build identity travels in the step environment.
