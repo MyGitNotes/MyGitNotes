@@ -511,15 +511,18 @@
    it out here so the Agent System document view keeps using --workspace-padding alone instead
    of stacking both insets. */
 .agent-content .cm-line { padding-left: 0 !important; padding-right: 0 !important; }
-.settings-panel { max-width: 980px; display: flex; flex-direction: column; gap: 32px; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
-.settings-panel > [id] { scroll-margin-top: 24px; }
+.settings-panel { max-width: 980px; display: flex; flex-direction: column; gap: 48px; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
+.settings-panel > [id], .settings-group > [id] { scroll-margin-top: 24px; }
+.settings-group { display: flex; flex-direction: column; gap: 32px; }
+.settings-group-heading { font-family: var(--font-body); font-size: 18px; line-height: 1.4; font-weight: 600; color: var(--color-text); letter-spacing: 0; padding-bottom: 8px; margin-bottom: -8px; border-bottom: 1px solid var(--workspace-divider); }
+.settings-sidebar .sidebar-section-label:not(:first-child) { margin-top: 12px; }
 .settings-panel h3 { font-family: var(--font-body); letter-spacing: 0; font-size: 14px; color: var(--color-text); font-weight: 500; }
 .settings-panel [aria-pressed] { box-shadow: none; background: var(--color-surface); border-color: var(--workspace-divider); border-radius: 8px; }
 .settings-panel [aria-pressed='true'] { background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface)); border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line-strong)); }
 .settings-panel [aria-pressed] .text-primary, .settings-panel h3 svg { color: var(--color-primary); }
 .settings-panel [aria-pressed] .bg-primary { background: var(--color-primary); color: var(--color-on-primary); }
 .settings-panel #settings-updates { background: transparent; padding: 24px 0 0; border: 0; border-top: 1px solid var(--workspace-divider); border-radius: 0; }
-.settings-panel #settings-access > section { border-radius: 0; border: 0; padding: 24px 0 0; border-top: 1px solid var(--workspace-divider); background: transparent; }
+.settings-panel .settings-repository-choice > section, .settings-panel #settings-access > section { border-radius: 0; border: 0; padding: 0; background: transparent; }
 .asset-tile { border-radius: 8px; }
 .asset-library > div:first-child { padding-bottom: 8px; }
 .asset-library .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 20px; }
@@ -553,7 +556,8 @@
   .workspace-breadcrumbs { gap: 8px; }
   .note-list th:first-child, .note-list td:first-child { padding-left: 0; }
   .note-list tr { padding-left: 0; padding-right: 0; }
-  .settings-panel { gap: 24px; }
+  .settings-panel { gap: 36px; }
+  .settings-group { gap: 24px; }
   .settings-panel #settings-theme > .grid { grid-template-columns: 1fr; }
   .workspace-header .header-brand { grid-column: 1; grid-row: 1; }
   .workspace-header .header-account { display: contents; }

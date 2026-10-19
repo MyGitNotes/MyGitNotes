@@ -13,13 +13,20 @@ export interface FeatureRoute {
   element: ReactNode;
 }
 
-/** A section an edition appends to the Settings page, with its sidebar link. */
+/** The groups Settings is divided into, in the order the page and its sidebar show them. */
+export const SETTINGS_GROUPS = ['account', 'repositories', 'connections', 'preferences', 'advanced'] as const;
+
+export type SettingsGroup = typeof SETTINGS_GROUPS[number];
+
+/** A section an edition adds to the Settings page, with its sidebar link. */
 export interface FeatureSettingsSection {
   /** Anchored as `settings-<id>`. */
   id: string;
   title: ReactNode;
   icon: LucideIcon;
   element: ReactNode;
+  /** The group the section belongs to, after the community sections of that group. Left out, the section follows every group. A section that replaces a community section (same `id`) stays in that section's group. */
+  group?: SettingsGroup;
 }
 
 /** Renders the header's sign-in and account controls; `local` is true for a local workspace. Return your own component, such as `<TenantMenu />`. */

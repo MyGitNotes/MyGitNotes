@@ -612,26 +612,7 @@ export const AppContent: React.FC = () => {
                     )}
                     {activeTab === 'settings' && (
                       <main className='workspace-route settings-main has-sidebar-drawer'>
-                        <SettingsModal
-                          manifest={{ repositories, defaultRepository: sourceId, initialRepository: repositoryFor(selectedNotebookId)?.id ?? sourceId, onManifestRevision: setManifestRevision }}
-                          repositories={{
-                            repositories,
-                            onMembershipChanged: membershipChanged,
-                            onOpenChanges: () => openCommitModal(),
-                          }}
-                          recovery={nothingToShow}
-                          local={!remote}
-                          coreUpdates={coreUpdate}
-                          accountSettings={
-                            <>
-                              {repositoryChoice && defaultRepository?.repository && <RepositorySwitch repository={defaultRepository.repository} branch={defaultRepositoryBranch} />}
-                              <AgentAccessSettings local={!remote} />
-                            </>
-                          }
-                          onRefreshWorkspace={refreshWorkspace}
-                          currentTheme={currentTheme}
-                          onSelectTheme={handleSelectTheme}
-                        />
+                        <SettingsModal manifest={{ repositories, defaultRepository: sourceId, initialRepository: repositoryFor(selectedNotebookId)?.id ?? sourceId, onManifestRevision: setManifestRevision }} repositories={{ repositories, onMembershipChanged: membershipChanged, onOpenChanges: () => openCommitModal() }} recovery={nothingToShow} local={!remote} coreUpdates={coreUpdate} accountSettings={<AgentAccessSettings local={!remote} />} repositoryChoice={repositoryChoice && defaultRepository?.repository ? <RepositorySwitch repository={defaultRepository.repository} branch={defaultRepositoryBranch} /> : undefined} onRefreshWorkspace={refreshWorkspace} currentTheme={currentTheme} onSelectTheme={handleSelectTheme} />
                       </main>
                     )}
                   </WorkspaceSplitLayout>

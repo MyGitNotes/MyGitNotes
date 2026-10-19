@@ -519,7 +519,7 @@ export const en = {
   'screen.saveError': 'Could not save configuration. Your draft is retained.',
   'screen.limit': 'A compilation holds at most 100 pinned items.',
 
-  'layout.access': 'Access & connections',
+  'layout.access': 'MCP access',
   'layout.manifest': 'Workspace manifest',
   'layout.list': 'Folders',
   'layout.kanban': 'Board',
@@ -1406,6 +1406,12 @@ export const en = {
 
   // Settings
   'settings.title': 'Workspace Settings',
+  'settings.groupAccount': 'Account',
+  'settings.groupRepositories': 'Repositories',
+  'settings.groupConnections': 'AI & connections',
+  'settings.groupPreferences': 'Preferences',
+  'settings.groupAdvanced': 'Advanced',
+  'settings.productVersion': 'Product version',
   'settings.description': 'Configure appearance theme palettes, language, workspace manifest, and manage Core updates.',
   'settings.theme': 'Theme & Color Palettes',
   'settings.themeDescription': 'Pick a palette family, then light, dark or follow the system.',

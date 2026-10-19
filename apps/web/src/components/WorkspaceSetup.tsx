@@ -226,7 +226,7 @@ export function DerivedManifestNotice({ repository, config, configRevision, canW
   );
 }
 
-/** Settings → Access: the repository this visitor chose, and a way back to the picker. */
+/** Settings → Repositories: the repository this visitor chose, and a way back to the picker. */
 export function RepositorySwitch({ repository, branch }: { repository: string; branch: string; }) {
   const { t } = useTranslation();
   const switchRepository = async () => {
@@ -234,7 +234,7 @@ export function RepositorySwitch({ repository, branch }: { repository: string; b
     if (response.ok) window.location.assign('/');
   };
   return (
-    <section className='border border-line rounded-xl p-4 mb-4 flex flex-wrap items-center gap-3'>
+    <section className='border border-line rounded-xl p-4 flex flex-wrap items-center gap-3'>
       <span className='flex-1 min-w-0 font-mono text-sm truncate'>
         {repository}
         <span className='text-muted'>@{branch}</span>

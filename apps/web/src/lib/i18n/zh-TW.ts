@@ -521,7 +521,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'screen.saveError': '配置儲存失敗，草稿已保留。',
   'screen.limit': '一個合輯最多 100 個釘選項目。',
 
-  'layout.access': '存取與連線',
+  'layout.access': 'MCP 存取',
   'layout.manifest': '工作區清單',
   'layout.list': '資料夾',
   'layout.kanban': '看板',
@@ -1407,6 +1407,12 @@ export const zhTW: Record<TranslationKey, string> = {
 
   // Settings
   'settings.title': '工作區設定',
+  'settings.groupAccount': '帳號',
+  'settings.groupRepositories': '儲存庫',
+  'settings.groupConnections': 'AI 與連線',
+  'settings.groupPreferences': '偏好設定',
+  'settings.groupAdvanced': '進階',
+  'settings.productVersion': '產品版本',
   'settings.description': '設定外觀主題配色、介面語言、工作區清單，並管理核心版本更新。',
   'settings.theme': '外觀與主題配色',
   'settings.themeDescription': '選擇配色家族，再選淺色、深色或跟隨系統。',
