@@ -9,7 +9,7 @@ import { AuthControls } from '../components/AuthControls.js';
 import { NoteInfoPanel } from '../components/note-editor/NoteInfoPanel.js';
 import { NoteLocationProvider } from './note-location.js';
 import { SettingsModal } from '../components/SettingsModal.js';
-import { useAccountControls, useAgentEnabled, useCommitMessagePolish, useFeatureGate, type WebFeature, WebFeaturesProvider } from './web-features.js';
+import { useAccountControls, ServerAgentProvider, useAgentEnabled, useCommitMessagePolish, useFeatureGate, type WebFeature, WebFeaturesProvider } from './web-features.js';
 
 vi.mock('../components/CoreUpdates.js', () => ({ CoreUpdates: () => null }));
 vi.mock('../components/ProductVersion.js', () => ({ ProductVersion: () => null }));
@@ -169,6 +169,15 @@ it('asks a remote deployment for an agent session only when an edition says its 
   expect(html([], true)).toBe('<span>false</span>');
   expect(html([{ id: 'quiet' }, { id: 'declined', agent: false }], true)).toBe('<span>false</span>');
   expect(html([{ id: 'quiet' }, { id: 'hosted-agent', agent: true }], true)).toBe('<span>true</span>');
+});
+
+it('asks a remote deployment for an agent session when its server reports one for this person', () => {
+  function Probe() {
+    return createElement('span', null, String(useAgentEnabled(true)));
+  }
+  const html = (agent: boolean) => renderToStaticMarkup(createElement(WebFeaturesProvider, { features: [] }, createElement(ServerAgentProvider, { agent, children: createElement(Probe) })));
+  expect(html(true)).toBe('<span>true</span>');
+  expect(html(false)).toBe('<span>false</span>');
 });
 
 it("renders an edition's rows in a writable note's info panel and none without features", () => {

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { Router } from 'express';
 import { type WorkspaceConfigSource, WorkspaceSetupError } from '@mygitnotes/core';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { createRecordStore, DirectoryRecordBackend, type RecordStore, SealedRecordStore } from '../src/record-store/index.js';
 import { storedSessions } from '../src/browser-sessions.js';
@@ -140,4 +140,46 @@ it('answers a malformed JSON body with a fixed 400 that neither quotes nor logs 
   expect((await send(JSON.stringify({ key: 'x'.repeat(9 * 1024 * 1024) }))).status).toBe(413);
   for (const spy of spies) expect(JSON.stringify(spy.mock.calls)).not.toContain(secret);
   spies.forEach(spy => spy.mockRestore());
+});
+
+describe('external Pi agent environment', () => {
+  const external = { MYGITNOTES_EXTERNAL_PI_URL: 'https://pi.example.com', MYGITNOTES_EXTERNAL_PI_SECRET: 's', MYGITNOTES_EXTERNAL_PI_OWNERS: 'octo' };
+  const remote: WorkspaceConfigSource = { mode: 'remote', settings: async () => workspaceSettings([{ type: 'github', repository: 'o/r', branch: 'main' }]) };
+  const stub = (env: Record<string, string>) => Object.entries(env).forEach(([key, value]) => vi.stubEnv(key, value));
+
+  it('mounts the external agent on a remote deployment that names a bridge', async () => {
+    stub(external);
+    const base = await listen(createApp(dir, { configSource: remote, remoteCache: undefined }));
+    expect((await fetch(`${base}/api/pi/session`)).status).toBe(404);
+  });
+
+  it('ignores the environment in local mode', async () => {
+    stub({ MYGITNOTES_EXTERNAL_PI_URL: 'https://pi.example.com' });
+    expect(() => createApp(dir, { configSource: { mode: 'local' } as unknown as WorkspaceConfigSource, remoteCache: undefined })).not.toThrow();
+  });
+
+  it('lets an edition-supplied agent win over the environment', async () => {
+    stub({ MYGITNOTES_EXTERNAL_PI_URL: 'https://pi.example.com' });
+    const router = Router();
+    router.get('/session', (_req, res) => res.json({ from: 'edition' }));
+    const base = await listen(createApp(dir, { configSource: remote, remoteCache: undefined, piAgent: { router } }));
+    expect(await fetch(`${base}/api/pi/session`).then(response => response.json())).toEqual({ from: 'edition' });
+  });
+
+  it('refuses to start with an incomplete environment', () => {
+    stub({ MYGITNOTES_EXTERNAL_PI_URL: 'https://pi.example.com' });
+    expect(() => createApp(dir, { configSource: remote, remoteCache: undefined })).toThrow('SECRET');
+  });
+
+  it('reports agent: true in the auth session only to a signed-in owner', async () => {
+    stub(external);
+    const store = new SealedRecordStore(new DirectoryRecordBackend(path.join(dir, 'owners')));
+    await store.set('o'.repeat(43), { kind: 'session', realm: 'github:https://github.com:', login: 'octo', userId: 1, token: 'fixture' });
+    await store.set('m'.repeat(43), { kind: 'session', realm: 'github:https://github.com:', login: 'mallory', userId: 2, token: 'fixture' });
+    const base = await listen(createApp(dir, { configSource: remote, recordStore: store, remoteCache: undefined }));
+    const probe = (name: string) => fetch(`${base}/api/auth/session`, { headers: { cookie: `gh_notes_session=${name.repeat(43)}` } }).then(response => response.json());
+    expect(await probe('o')).toMatchObject({ authenticated: true, agent: true });
+    expect((await probe('m')).agent).toBeUndefined();
+    expect((await fetch(`${base}/api/auth/session`).then(response => response.json())).agent).toBeUndefined();
+  });
 });

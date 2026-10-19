@@ -155,7 +155,11 @@ export interface AuthServices extends SessionServices {
    */
   choices?: WorkspaceChoices;
 }
-type IdentityRoutes = AuthServices & { identity: IdentityService; };
+type IdentityRoutes = AuthServices & {
+  identity: IdentityService;
+  /** Whether the agent panel is offered to the signed-in person of this request; reported as `agent` in the session probe. */
+  agentFor?: (req: Request, res: Response) => Promise<boolean>;
+};
 /** Sign-in, the session probe, logout and persistent agent grants, mounted at /api/auth. */
 export function createAuth(services: IdentityRoutes): Router {
   const router = Router();
@@ -239,7 +243,7 @@ export function providerRouter({ store, sessions, configSource }: AuthServices):
   return router;
 }
 /** The session probe and logout, written against the identity service. */
-function sessionRouter({ sessions, configSource, choices, identity }: IdentityRoutes): Router {
+function sessionRouter({ sessions, configSource, choices, identity, agentFor }: IdentityRoutes): Router {
   const router = Router(), providerSite = providerSiteOf(configSource);
   router.get('/session', async (req, res) => {
     try {
@@ -258,7 +262,7 @@ function sessionRouter({ sessions, configSource, choices, identity }: IdentityRo
       // where each person keeps repositories in Settings (`accountMembers`), the add flow until they have one.
       const choice = !choosesRepository() ? {} : choices ? { repositoryChoice: true, workspace: await choices.read(req) } : { repositoryChoice: true, accountMembers: true, workspace: signedIn ? firstMember(await configSource.settings(req)) : null };
       // `provider` and `loginUrl` stay for a web bundle cached across the deploy that predates `signInOptions`.
-      res.json({ authenticated: Boolean(signedIn), login: signedIn?.login, provider: signInOptions[0]?.id, loginUrl: signInOptions[0]?.url, signInOptions, platformAccess, storage: sessions.kind, ...choice, configured: await identity.configured(req) });
+      res.json({ authenticated: Boolean(signedIn), login: signedIn?.login, provider: signInOptions[0]?.id, loginUrl: signInOptions[0]?.url, signInOptions, platformAccess, storage: sessions.kind, ...choice, ...signedIn && agentFor && await agentFor(req, res) ? { agent: true } : {}, configured: await identity.configured(req) });
     } catch {
       res.status(503).json({ error: 'Session store or source configuration unavailable.' });
     }

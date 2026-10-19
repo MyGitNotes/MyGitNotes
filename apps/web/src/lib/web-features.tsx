@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
+import { createContext, type ReactNode, useContext } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import type { NoteRef } from '@mygitnotes/core/note-query';
 import type { NoteChangeFacts } from './commit-summary.js';
@@ -183,23 +183,20 @@ export function useAgentModelSetup(): ReactNode | undefined {
   return useContext(FeaturesContext).reduce<ReactNode | undefined>((found, feature) => feature.agentModelSetup ?? found, undefined);
 }
 
+const ServerAgentContext = createContext(false);
+/** Supplies what the session probe reported: the server offers an agent to this signed-in person. */
+export function ServerAgentProvider({ agent, children }: { agent: boolean; children: ReactNode; }) {
+  return <ServerAgentContext.Provider value={agent}>{children}</ServerAgentContext.Provider>;
+}
+
 /**
  * Whether the app asks the server for an agent session: always for a local workspace, and for a remote one when an
- * edition's server supplies an agent, or the deployment names an external bridge and this person may use it (the
- * session route answers 404 to everyone else).
+ * edition's server supplies an agent, or the session probe reported that the deployment's external bridge is open to this person.
  */
 export function useAgentEnabled(remote: boolean): boolean {
   const hosted = useContext(FeaturesContext).some(feature => feature.agent === true);
-  const [external, setExternal] = useState(false);
-  useEffect(() => {
-    if (!remote || hosted) return;
-    let current = true;
-    fetch('/api/pi/session').then(response => current && setExternal(response.ok), () => {});
-    return () => {
-      current = false;
-    };
-  }, [remote, hosted]);
-  return !remote || hosted || external;
+  const reported = useContext(ServerAgentContext);
+  return !remote || hosted || reported;
 }
 
 /** The first denial among the features, or an open gate; the community edition gates nothing. */

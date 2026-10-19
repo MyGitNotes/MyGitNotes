@@ -143,7 +143,7 @@ export function startPiBridge(options: PiBridgeOptions): Promise<PiBridge> {
     })().catch(error => reply(res, (error as { status?: number; }).status ?? 400, { error: (error as Error).message }));
   });
 
-  const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES, handleProtocols: protocols => [...protocols].find(entry => entry.startsWith(BRIDGE_PROTOCOL_PREFIX)) ?? false });
+  const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES, handleProtocols: protocols => [...protocols].find(entry => socketAllowed(entry, current?.alive ? current : undefined)) ?? false });
   server.on('upgrade', (req, duplex, head) => {
     const refuse = (status: string) => duplex.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
     const offered = String(req.headers['sec-websocket-protocol'] ?? '').split(',').map(entry => entry.trim());

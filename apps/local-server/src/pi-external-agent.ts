@@ -9,9 +9,9 @@ export interface ExternalPiAgentOptions {
   bridgeUrl: string;
   /** The secret the bridge was started with (`MYGITNOTES_BRIDGE_SECRET`). */
   secret: string;
-  /** The signed-in people who may use the agent: a provider login, or `id:<provider user id>`. */
+  /** The signed-in people who may use the agent: a login or `id:<user id>` at the deployment's sign-in provider, whose realm their session must match. */
   owners: string[];
-  /** Who is signed in; the allow-list is checked against its `login` and person id. */
+  /** Who is signed in; the allow-list is checked against its `login` and person id, so a session of another realm or past its expiry is no owner. */
   identity: Pick<IdentityService, 'signedIn'>;
   fetch?: typeof fetch;
   now?: () => Date;
@@ -50,16 +50,21 @@ export function externalPiAgent(options: ExternalPiAgentOptions): PiAgent {
   const owners = new Set(options.owners.map(entry => entry.toLowerCase()));
   const router = express.Router();
 
-  // Everyone else gets what a deployment without an agent answers, so the panel stays hidden.
-  router.use(async (req, res, next) => {
+  const isOwner = async (req: express.Request, res: express.Response) => {
     try {
       const signedIn = await identity.signedIn(req, res);
       const login = signedIn?.login.toLowerCase();
       const id = signedIn ? `id:${signedIn.person.userId}` : undefined;
-      if ((login && owners.has(login)) || (id && owners.has(id))) return next();
+      return Boolean((login && owners.has(login)) || (id && owners.has(id)));
     } catch {
       // An unreadable session is no sign-in.
+      return false;
     }
+  };
+
+  // Everyone else gets what a deployment without an agent answers, so the panel stays hidden.
+  router.use(async (req, res, next) => {
+    if (await isOwner(req, res)) return next();
     res.status(404).json({ error: 'This deployment offers no agent to you.' });
   });
 
@@ -77,5 +82,5 @@ export function externalPiAgent(options: ExternalPiAgentOptions): PiAgent {
   };
   for (const method of ['get', 'post', 'put', 'delete'] as const) router[method]('/session', forward);
 
-  return { router };
+  return { router, availableTo: isOwner };
 }

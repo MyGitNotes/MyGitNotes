@@ -121,7 +121,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   app.use((req, res, next) => req.path === '/mcp' || req.path.startsWith('/mcp/') ? next() : smallBody(req, res, next));
   // A parse error message can quote part of the body, such as an API key, so it is answered with fixed text and never logged.
   app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => (error as { type?: string; } | null)?.type === 'entity.parse.failed' ? res.status(400).json({ error: 'Request body is not valid JSON.', code: 'bad-json' }) : next(error));
-  app.use('/api/auth', createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity }));
+  app.use('/api/auth', createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity, agentFor: piAgent?.availableTo }));
   app.use('/api', workspaceChoiceRouter({ identity, choices: workspaceChoices ?? undefined }));
   services.routes?.(app, services);
   app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache));

@@ -13,6 +13,7 @@ import { useTheme } from '../app/useTheme.js';
 import { updateWorkspaceConfig } from '../lib/api.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 import YAML from 'yaml';
+import { ServerAgentProvider } from '../lib/web-features.js';
 
 /**
  * What `/api/auth/session` says about the visitor; `repositoryChoice` deployments have each visitor bring a repository:
@@ -26,6 +27,8 @@ export interface SessionProbe {
   platformAccess?: boolean;
   repositoryChoice?: boolean;
   accountMembers?: boolean;
+  /** The server offers the agent panel to this person. */
+  agent?: boolean;
   workspace?: { repository: string; branch: string; } | null;
 }
 
@@ -173,7 +176,7 @@ export function WorkspaceGate({ children }: { children: ReactNode; }) {
       <ConnectionState loading error='' onRetry={() => {}} />
     );
   }
-  if (!session.repositoryChoice || (session.authenticated && session.workspace)) return children;
+  if (!session.repositoryChoice || (session.authenticated && session.workspace)) return <ServerAgentProvider agent={session.agent === true}>{children}</ServerAgentProvider>;
   if (!session.authenticated) return <SignIn storage={session.storage} />;
   return session.accountMembers ? <FirstRepository login={session.login} /> : <RepositoryPicker login={session.login} />;
 }

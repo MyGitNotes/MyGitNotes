@@ -196,6 +196,16 @@ describe('signed tokens', () => {
     await expect(open(restarted.socket.protocols[0]).opened).resolves.toBeUndefined();
   });
 
+  it('echoes the subprotocol that verified when several are offered', async () => {
+    clock = new Date('2026-10-19T12:00:00Z');
+    await signed();
+    const { session } = await (await call('POST', '/session', { location }, http())).json();
+    const [protocol] = session.socket.protocols as string[];
+    const page = open([`${BRIDGE_PROTOCOL_PREFIX}${http()}`, protocol] as never);
+    await page.opened;
+    expect(page.ws.protocol).toBe(protocol);
+  });
+
   it('keeps the equal-token mode working when only a token is given', async () => {
     await start();
     expect((await call('GET', '/session')).status).toBe(200);

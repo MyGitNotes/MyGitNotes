@@ -1,7 +1,9 @@
 import express from 'express';
 import type { AddressInfo } from 'node:net';
+import type { WorkspaceConfigSource } from '@mygitnotes/core';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { IdentityService } from './identity.js';
+import type { BrowserSessions } from './browser-sessions.js';
+import { providerIdentity } from './identity.js';
 import { verifyBridgeToken } from './pi-bridge-token.js';
 import { externalPiAgent, externalPiEnvironment } from './pi-external-agent.js';
 
@@ -14,13 +16,10 @@ const listen = (app: express.Express) => new Promise<string>(resolve => {
   servers.push(server);
 });
 
-/** Signed-in people by cookie value, standing in for an IdentityService. */
-const identityOf = (people: Record<string, { login: string; userId: number; }>): Pick<IdentityService, 'signedIn'> => ({
-  signedIn: async req => {
-    const found = people[String(req.headers.cookie)];
-    return found ? { person: { realm: 'github', userId: found.userId }, login: found.login, owner: found.userId } : null;
-  },
-});
+/** Signed-in people by cookie value, standing in for BrowserSessions under the default (provider) identity. */
+const sessionsOf = (people: Record<string, Record<string, unknown>>): BrowserSessions => ({ kind: 'stored', read: async (req: { headers: { cookie?: string; }; }) => people[String(req.headers.cookie)] as never ?? null } as unknown as BrowserSessions);
+const identityOver = (people: Record<string, Record<string, unknown>>) => providerIdentity({ store: {} as never, sessions: sessionsOf(people), configSource });
+const configSource = { mode: 'remote', settings: async () => ({ site: { type: 'github' } }) } as unknown as WorkspaceConfigSource;
 
 async function setup(owners = ['octocat', 'id:42']) {
   const seen: { method?: string; auth?: string; body?: unknown; }[] = [];
@@ -32,10 +31,13 @@ async function setup(owners = ['octocat', 'id:42']) {
     res.json({ session: req.method === 'DELETE' ? null : { id: 's1', location: req.body?.location, socket: { url: 'wss://pi.example.com/ws', protocols: ['mygitnotes-bridge.signed'] } } });
   });
   const bridgeUrl = await listen(bridge);
-  const identity = identityOf({
-    owner: { login: 'OctoCat', userId: 7 },
-    byId: { login: 'renamed', userId: 42 },
-    other: { login: 'mallory', userId: 9 },
+  const identity = identityOver({
+    owner: { kind: 'session', login: 'OctoCat', userId: 7 },
+    byId: { kind: 'session', login: 'renamed', userId: 42 },
+    other: { kind: 'session', login: 'mallory', userId: 9 },
+    wrongRealm: { kind: 'session', login: 'octocat', userId: 7, realm: 'gitlab:https://gitlab.com:x' },
+    expired: { kind: 'session', login: 'octocat', userId: 7, upstreamExpiresAt: Date.now() - 1000 },
+    renewable: { kind: 'session', login: 'octocat', userId: 7, upstreamExpiresAt: Date.now() - 1000, refreshToken: 'r' },
   });
   const app = express();
   app.use(express.json());
@@ -51,6 +53,13 @@ describe('external Pi agent routes', () => {
       for (const method of ['GET', 'POST', 'PUT', 'DELETE']) expect((await request(url, method, cookie, { location: { repository: 'r', folder: '' } })).status).toBe(404);
     }
     expect(seen).toEqual([]);
+  });
+
+  it('refuses a session of another provider realm or one past its expiry, as the main site does', async () => {
+    const { url, seen } = await setup();
+    for (const cookie of ['wrongRealm', 'expired']) expect((await request(url, 'GET', cookie)).status).toBe(404);
+    expect((await request(url, 'GET', 'renewable')).status).toBe(200);
+    expect(seen).toHaveLength(1);
   });
 
   it('lets an owner by login or by user id read, start, restart and end the session through the bridge', async () => {
@@ -77,7 +86,7 @@ describe('external Pi agent routes', () => {
 
   it('reports a bridge that is down or failing as a bad gateway', async () => {
     const down = express();
-    down.use('/api/pi', externalPiAgent({ bridgeUrl: 'http://127.0.0.1:1', secret, owners: ['octocat'], identity: identityOf({ owner: { login: 'octocat', userId: 7 } }) }).router);
+    down.use('/api/pi', externalPiAgent({ bridgeUrl: 'http://127.0.0.1:1', secret, owners: ['octocat'], identity: identityOver({ owner: { kind: 'session', login: 'octocat', userId: 7 } }) }).router);
     const url = await listen(down);
     expect((await request(url, 'GET', 'owner')).status).toBe(502);
   });

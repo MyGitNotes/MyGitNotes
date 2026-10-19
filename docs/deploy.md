@@ -371,9 +371,9 @@ On the deployment, set:
 | --- | --- |
 | `MYGITNOTES_EXTERNAL_PI_URL` | Where the deployment reaches the bridge, usually the same address as `MYGITNOTES_BRIDGE_PUBLIC_URL`. |
 | `MYGITNOTES_EXTERNAL_PI_SECRET` | The same value as `MYGITNOTES_BRIDGE_SECRET`. |
-| `MYGITNOTES_EXTERNAL_PI_OWNERS` | Comma-separated sign-in logins allowed to use the agent, or `id:<provider user id>` to survive a rename, for example `octocat,id:12345`. |
+| `MYGITNOTES_EXTERNAL_PI_OWNERS` | Comma-separated sign-in logins allowed to use the agent, or `id:<provider user id>` to survive a rename, for example `octocat,id:12345`. They name people at the deployment's current sign-in provider (the GitHub or GitLab site it signs in with); a session of another provider, or one the main site treats as signed out, never passes. |
 
-Without `MYGITNOTES_EXTERNAL_PI_URL` nothing changes. Signed-in people who are not listed see no agent. The browser never receives the secret, only a socket token that expires after ten minutes and belongs to one session; rotate the secret on both sides together.
+Without `MYGITNOTES_EXTERNAL_PI_URL` nothing changes. Signed-in people who are not listed see no agent. The browser never receives the secret, only a socket token that expires after ten minutes and belongs to one session; rotate the secret on both sides together. The socket token travels in the `Sec-WebSocket-Protocol` header, so proxies in front of the bridge should not log that header.
 
 ## Optional: private R2 assets
 

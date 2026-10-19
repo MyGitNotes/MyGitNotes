@@ -155,6 +155,8 @@ export class PiSessionManager {
 
 export interface PiAgent {
   router: express.Router;
+  /** Whether the agent panel is offered to the signed-in person of a request; the session probe reports it as `agent`. Without it, the web app learns of the agent from the edition. */
+  availableTo?: (req: express.Request, res: express.Response) => Promise<boolean>;
   /**
    * Answers Pi's own calls (the web agent's note tools), which carry the session's token and no sign-in, so it is
    * mounted at `/api/pi` ahead of the workspace a signed-in request opens.
