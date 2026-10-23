@@ -4,7 +4,10 @@
  * matching the user's blog specifications and editorial design.
  */
 
-import type { TranslationKey } from './i18n/en.js';
+import { en, type TranslationKey } from './i18n/en.js';
+import { zhTW } from './i18n/zh-TW.js';
+import { InfographicError, renderInfographic, renderInfographicError } from './infographics/render.js';
+import { isInfographicKind } from './infographics/model.js';
 
 export type DirectiveTranslate = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
@@ -311,11 +314,47 @@ interface DirectiveStackItem {
   lines: string[];
 }
 
+/** The line where the infographic opened at `start` closes, tracking the containers nested in it; undefined when it never does. */
+function infographicEnd(lines: readonly string[], start: number, fenceLength: number): number | undefined {
+  const fences = [fenceLength];
+  for (let j = start + 1; j < lines.length; j++) {
+    const nested = parseDirectiveOpen(lines[j]);
+    if (nested) {
+      fences.push(nested.fenceLength);
+      continue;
+    }
+    if (matchDirectiveClose(lines[j], fences[fences.length - 1])) {
+      fences.pop();
+      if (!fences.length) return j;
+    }
+  }
+  return undefined;
+}
+
+/** The error heading in the language the page shows (the app sets `<html lang>`); a server renders English. */
+function infographicErrorHeading(): string {
+  const language = typeof document !== 'undefined' ? document.documentElement.lang : '';
+  return (language === 'zh-TW' ? zhTW : en)['infographic.render.error'];
+}
+
+/** The figure for an infographic block's lines, or the error box in its place. */
+function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string): string {
+  // A block inside a blockquote carries the quote's markers on every line.
+  const quoted = /^\s*>/.test(blockLines[0]);
+  const source = (quoted ? blockLines.map(line => line.replace(/^\s*(?:>\s?)+/, '')) : blockLines).join('\n');
+  try {
+    return `\n${renderInfographic(source, { renderInline })}\n`;
+  } catch (error) {
+    if (!(error instanceof InfographicError)) throw error;
+    return `\n${renderInfographicError(error, source, infographicErrorHeading())}\n`;
+  }
+}
+
 /**
  * Main parser that scans for container directives, leaf directives, inline directives,
  * and recursively converts them to HTML before main markdown processing.
  */
-export function transformDirectives(content: string, renderMarkdown: (md: string) => string): string {
+export function transformDirectives(content: string, renderMarkdown: (md: string) => string, renderInline: (md: string) => string = md => renderMarkdown(md).trim().replace(/^<p>([\s\S]*)<\/p>$/, '$1')): string {
   const lines = content.split('\n');
   const output: string[] = [];
   const stack: DirectiveStackItem[] = [];
@@ -324,6 +363,17 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
     const line = lines[i];
 
     const open = parseDirectiveOpen(line);
+    if (open && isInfographicKind(open.name)) {
+      const end = infographicEnd(lines, i, open.fenceLength);
+      if (end !== undefined) {
+        const figure = renderInfographicBlock(lines.slice(i, end + 1), renderInline);
+        // Blank lines keep the figure's HTML block apart from the Markdown around it.
+        if (stack.length > 0) stack[stack.length - 1].lines.push(figure);
+        else output.push(figure);
+        i = end;
+        continue;
+      }
+    }
     if (open) {
       stack.push({ ...open, lines: [] });
       continue;
@@ -336,7 +386,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         const item = stack.pop()!;
         const innerBody = item.lines.join('\n');
         // Recursively transform directives within this container
-        const transformedInner = transformDirectives(innerBody, renderMarkdown);
+        const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline);
         const renderedHtml = renderContainerDirective(item.name, item.label, item.attrs, transformedInner, renderMarkdown);
 
         if (stack.length > 0) {

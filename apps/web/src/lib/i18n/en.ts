@@ -138,6 +138,7 @@ export const en = {
   'coreUpdate.check': 'Check again',
 
   'mermaid.error': 'Diagram could not be rendered',
+  'infographic.render.error': 'This infographic could not be drawn',
   'mermaid.edit': 'Edit diagram',
   'mermaid.editorTitle': 'Edit Mermaid diagram',
   'mermaid.source': 'Diagram source',

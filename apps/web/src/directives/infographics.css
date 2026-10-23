@@ -1,0 +1,366 @@
+/* Infographic figures (the blog's directives key-numbers, bars, parts, line, timeline, status-board, map).
+   The markup is rendered by lib/infographics/render.ts and keeps the blog's `ig-*` classes; the look is the app's:
+   every colour is a theme token or a color-mix() of tokens, panels have a uniform light line and the panel radius,
+   emphasis is shown by tint, weight and badges, never by a one-sided coloured border. Interaction is CSS only
+   (:hover, :focus-visible, :has, radio inputs) and motion is limited to prefers-reduced-motion: no-preference.
+
+   The base maps in ./infographics/maps/ are derived from taiwan-atlas (MIT licence), which republishes 內政部 open
+   data; they are drawn as masks over theme-coloured blocks. */
+
+.ig-figure {
+  --ig-line: color-mix(in srgb, var(--color-text) 9%, transparent);
+  --ig-faint: color-mix(in srgb, var(--color-text) 14%, transparent);
+  --ig-neutral: color-mix(in srgb, var(--color-text) 42%, transparent);
+  --ig-tint: color-mix(in srgb, var(--color-text) 4%, transparent);
+  --ig-bar: var(--ig-neutral);
+  --ig-hl: var(--color-primary);
+  --ig-hl-tint: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+  --ig-done: var(--color-success);
+  --ig-partial: var(--color-warning);
+  --ig-none: var(--color-danger);
+  container-type: inline-size;
+  box-sizing: border-box;
+  margin: 1.5rem 0;
+  border: 1px solid var(--ig-line);
+  border-radius: var(--radius-panel, 10px);
+  background: var(--color-surface);
+  padding: 1rem 1.15rem;
+  font-family: var(--font-body, 'Noto Sans TC', 'Source Han Sans TW', sans-serif);
+  font-size: 0.925rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The note's prose rules (margins, bullets) do not apply inside a figure. */
+.prose-custom .ig-figure :where(p, ul, ol, dl, dd, li, table) { margin: 0; padding: 0; }
+.prose-custom .ig-figure :where(ul, ol) { list-style: none; overflow: visible; }
+.prose-custom .ig-figure li::before { content: none; }
+.prose-custom .ig-figure code:not(pre code) { font-size: 0.9em; }
+
+.ig-figure a { color: var(--color-primary); }
+
+.ig-title { font-size: 1.05rem; font-weight: 700; line-height: 1.4; }
+.ig-figure .ig-subtitle { margin-top: 0.2rem; font-size: 0.8125rem; color: var(--color-muted); }
+.ig-figure .ig-body { margin: 1rem 0 0; }
+.ig-figure .ig-caption { margin-top: 0.85rem; border-top: 1px solid var(--ig-line); padding-top: 0.55rem; font-size: 0.75rem; line-height: 1.5; color: var(--color-muted); }
+.ig-figure .ig-caption a { color: inherit; }
+.ig-figure .is-highlight { font-weight: 700; }
+
+/* ----- palettes: categories cycle the theme's accents ----- */
+
+.ig-figure :is(.ig-series-0, .ig-part-0) { --ig-s: var(--color-accent-1); }
+.ig-figure :is(.ig-series-1, .ig-part-1) { --ig-s: var(--color-accent-2); }
+.ig-figure :is(.ig-series-2, .ig-part-2) { --ig-s: var(--color-accent-3); }
+.ig-figure :is(.ig-series-3, .ig-part-3) { --ig-s: var(--color-accent-4); }
+.ig-figure :is(.ig-series-4, .ig-part-4) { --ig-s: var(--color-accent-5); }
+.ig-figure :is(.ig-series-5, .ig-part-5) { --ig-s: var(--color-accent-6); }
+
+/* diverging: two accents at the ends, neutral between */
+.ig-figure[data-palette='diverging'] :is(.ig-series-0, .ig-part-0) { --ig-s: var(--color-accent-1); }
+.ig-figure[data-palette='diverging'] :is(.ig-series-1, .ig-part-1) { --ig-s: color-mix(in srgb, var(--color-accent-1) 60%, var(--ig-neutral)); }
+.ig-figure[data-palette='diverging'] :is(.ig-series-2, .ig-part-2) { --ig-s: color-mix(in srgb, var(--color-accent-1) 25%, var(--ig-neutral)); }
+.ig-figure[data-palette='diverging'] :is(.ig-series-3, .ig-part-3) { --ig-s: color-mix(in srgb, var(--color-accent-6) 25%, var(--ig-neutral)); }
+.ig-figure[data-palette='diverging'] :is(.ig-series-4, .ig-part-4) { --ig-s: color-mix(in srgb, var(--color-accent-6) 60%, var(--ig-neutral)); }
+.ig-figure[data-palette='diverging'] :is(.ig-series-5, .ig-part-5) { --ig-s: var(--color-accent-6); }
+
+/* sequential: the theme's primary from light to strong */
+.ig-figure[data-palette='sequential'] :is(.ig-series-0, .ig-part-0) { --ig-s: color-mix(in srgb, var(--color-primary) 22%, var(--color-surface)); }
+.ig-figure[data-palette='sequential'] :is(.ig-series-1, .ig-part-1) { --ig-s: color-mix(in srgb, var(--color-primary) 38%, var(--color-surface)); }
+.ig-figure[data-palette='sequential'] :is(.ig-series-2, .ig-part-2) { --ig-s: color-mix(in srgb, var(--color-primary) 54%, var(--color-surface)); }
+.ig-figure[data-palette='sequential'] :is(.ig-series-3, .ig-part-3) { --ig-s: color-mix(in srgb, var(--color-primary) 70%, var(--color-surface)); }
+.ig-figure[data-palette='sequential'] :is(.ig-series-4, .ig-part-4) { --ig-s: color-mix(in srgb, var(--color-primary) 85%, var(--color-surface)); }
+.ig-figure[data-palette='sequential'] :is(.ig-series-5, .ig-part-5) { --ig-s: var(--color-primary); }
+
+.ig-figure :is([class*='ig-series-'], [class*='ig-part-']).is-highlight { --ig-s: var(--ig-hl); }
+
+/* Bars, events and routes take the neutral tone, or the palette's colours when one is set. */
+.ig-figure[data-palette='categorical'] .ig-bar-row:nth-child(6n + 1) { --ig-bar: var(--color-accent-1); }
+.ig-figure[data-palette='categorical'] .ig-bar-row:nth-child(6n + 2) { --ig-bar: var(--color-accent-2); }
+.ig-figure[data-palette='categorical'] .ig-bar-row:nth-child(6n + 3) { --ig-bar: var(--color-accent-3); }
+.ig-figure[data-palette='categorical'] .ig-bar-row:nth-child(6n + 4) { --ig-bar: var(--color-accent-4); }
+.ig-figure[data-palette='categorical'] .ig-bar-row:nth-child(6n + 5) { --ig-bar: var(--color-accent-5); }
+.ig-figure[data-palette='categorical'] .ig-bar-row:nth-child(6n) { --ig-bar: var(--color-accent-6); }
+.ig-figure[data-palette='diverging'] { --ig-bar: var(--color-accent-1); }
+.ig-figure[data-palette='diverging'] .ig-bar-row:nth-child(even) { --ig-bar: var(--color-accent-6); }
+.ig-figure[data-palette='sequential'] { --ig-bar: color-mix(in srgb, var(--color-primary) 55%, var(--color-surface)); }
+
+/* ----- key-numbers: - 值｜標籤｜說明 ----- */
+
+.ig-numbers { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.75rem; }
+dl.ig-numbers > .ig-number { border-radius: 8px; background: var(--ig-tint); padding: 0.7rem 0.85rem; }
+.ig-figure .ig-number:has(.is-highlight) { background: var(--ig-hl-tint); }
+.ig-figure .ig-number-label { font-size: 0.8125rem; color: var(--color-muted); }
+.ig-figure .ig-number-value { font-size: clamp(1.5rem, 6cqi, 2.1rem); font-weight: 700; line-height: 1.2; }
+.ig-figure .ig-number-value.is-highlight { color: var(--ig-hl); }
+dl.ig-numbers .ig-number-note { margin-top: 0.25rem; font-size: 0.75rem; color: var(--color-muted); }
+
+/* ----- bars: - 標籤｜數值或範圍｜說明 ----- */
+
+.ig-figure .ig-bars { display: grid; gap: 0.85rem; }
+.ig-figure .ig-bar-row { display: grid; grid-template-columns: minmax(6rem, 30%) 1fr; gap: 0.2rem 0.75rem; align-items: center; }
+.ig-bar-label { font-size: 0.875rem; }
+.ig-bar-track { position: relative; height: 1.5rem; margin-right: 6.5rem; }
+.ig-bar-fill, .ig-bar-range-base { position: absolute; top: 0.2rem; bottom: 0.2rem; border-radius: 3px; }
+.ig-bar-fill { background: var(--ig-bar); transform-origin: left center; }
+.ig-bar-fill.is-highlight { background: var(--ig-hl); }
+.ig-bar-range-base { left: 0; background: color-mix(in srgb, var(--ig-bar) 35%, transparent); }
+.ig-bar-value { position: absolute; top: 50%; padding-left: 0.4rem; transform: translateY(-50%); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.ig-bar-reference { position: absolute; top: -0.2rem; bottom: -0.2rem; width: 0; border-left: 1.5px dashed var(--color-text); }
+.ig-figure .ig-bar-note { grid-column: 2; font-size: 0.75rem; color: var(--color-muted); }
+.ig-figure .ig-bar-reference-legend { margin-top: 0.7rem; font-size: 0.75rem; color: var(--color-muted); }
+
+/* Scenario tabs: radio inputs choose which panel shows. */
+.ig-scenarios { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.ig-scenario-input { position: absolute; opacity: 0; pointer-events: none; }
+.ig-tab { cursor: pointer; border: 1px solid var(--ig-faint); border-radius: var(--radius-control, 6px); padding: 0.15rem 0.75rem; font-size: 0.8125rem; color: var(--color-muted); }
+.ig-tab:hover { color: var(--color-text); background: var(--ig-tint); }
+.ig-scenario-input:checked + .ig-tab { border-color: color-mix(in srgb, var(--color-primary) 45%, transparent); background: var(--ig-hl-tint); color: var(--color-text); font-weight: 600; }
+.ig-scenario-input:focus-visible + .ig-tab { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ig-panels { flex-basis: 100%; margin-top: 0.85rem; }
+.ig-panel { display: none; }
+.ig-figure .ig-panel-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.ig-figure .ig-scenario-note { margin-bottom: 0.7rem; font-size: 0.8125rem; color: var(--color-muted); }
+.ig-scenario-input:nth-of-type(1):checked ~ .ig-panels > .ig-panel:nth-child(1),
+.ig-scenario-input:nth-of-type(2):checked ~ .ig-panels > .ig-panel:nth-child(2),
+.ig-scenario-input:nth-of-type(3):checked ~ .ig-panels > .ig-panel:nth-child(3),
+.ig-scenario-input:nth-of-type(4):checked ~ .ig-panels > .ig-panel:nth-child(4),
+.ig-scenario-input:nth-of-type(5):checked ~ .ig-panels > .ig-panel:nth-child(5),
+.ig-scenario-input:nth-of-type(6):checked ~ .ig-panels > .ig-panel:nth-child(6) { display: block; }
+
+/* ----- parts: - 標籤｜數值｜說明 ----- */
+
+.ig-parts-bar { display: flex; gap: 2px; height: 2rem; overflow: hidden; border-radius: 6px; }
+.ig-part { flex-basis: 0; background: var(--ig-s); }
+.ig-parts .ig-legend { margin-top: 0.85rem; }
+
+/* ----- shared legend ----- */
+
+.ig-figure .ig-legend { display: grid; gap: 0.4rem; }
+.ig-legend-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.5rem; cursor: default; }
+.ig-swatch { flex: none; width: 0.75rem; height: 0.75rem; border-radius: 3px; background: var(--ig-s, var(--ig-neutral)); transform: translateY(0.1rem); }
+.ig-legend-value { font-weight: 600; }
+.ig-figure .ig-legend-note { flex-basis: 100%; font-size: 0.75rem; color: var(--color-muted); }
+
+/* ----- status-board: :::group{status} - 項目｜說明 ----- */
+
+.ig-status { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem; }
+.ig-status-group { --ig-status: var(--ig-partial); --ig-status-icon: '◐'; border: 1px solid color-mix(in srgb, var(--ig-status) 30%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--ig-status) 8%, var(--color-surface)); padding: 0.65rem 0.8rem 0.75rem; }
+.ig-status-group.is-done { --ig-status: var(--ig-done); --ig-status-icon: '✓'; }
+.ig-status-group.is-none { --ig-status: var(--ig-none); --ig-status-icon: '×'; }
+.ig-figure .ig-status-heading { display: flex; align-items: baseline; gap: 0.4rem; margin-bottom: 0.5rem; font-weight: 700; }
+.ig-status-heading::before { content: var(--ig-status-icon); flex: none; width: 1.25rem; height: 1.25rem; border-radius: 50%; background: color-mix(in srgb, var(--ig-status) 18%, transparent); text-align: center; font-size: 0.75rem; line-height: 1.25rem; color: var(--ig-status); }
+.ig-status-count { margin-left: auto; font-size: 0.75rem; font-weight: 400; color: var(--color-muted); }
+.ig-figure .ig-status-list { display: grid; gap: 0.4rem; }
+.ig-status-item { position: relative; display: grid; padding-left: 0.95rem; }
+.ig-status-item::before { content: ''; position: absolute; top: 0.6em; left: 0.2rem; width: 0.3rem; height: 0.3rem; border-radius: 50%; background: var(--ig-status); }
+.ig-status-item-detail { font-size: 0.75rem; font-weight: 400; color: var(--color-muted); }
+
+/* ----- timeline: :::lane{title highlight} - 年份或「起–迄」｜事件 ----- */
+
+.ig-timeline { display: grid; gap: 1rem; padding: 0 1.25rem; }
+.ig-axis { position: relative; height: 1.2rem; border-bottom: 1px solid var(--ig-faint); }
+.ig-axis-tick { position: absolute; bottom: 0.15rem; transform: translateX(-50%); font-size: 0.75rem; color: var(--color-muted); }
+.ig-figure .ig-lane-label { font-weight: 700; }
+.ig-lane.is-highlight .ig-lane-label { color: var(--ig-hl); }
+.ig-lane-track { position: relative; height: 1rem; margin: 0.3rem 0 0.4rem; background: linear-gradient(var(--ig-faint), var(--ig-faint)) center / 100% 1px no-repeat; }
+.ig-span, .ig-event { position: absolute; top: 50%; }
+.ig-span { --ig-mark-lift: scaleY(1.5); height: 0.55rem; margin-top: -0.275rem; border-radius: 3px; background: var(--ig-neutral); transform-origin: left center; }
+.ig-event { --ig-mark-lift: scale(1.35); width: 0.7rem; height: 0.7rem; margin: -0.35rem 0 0 -0.35rem; border: 2px solid var(--color-surface); border-radius: 50%; background: var(--ig-neutral); }
+.ig-lane.is-highlight :is(.ig-span, .ig-event), .ig-figure :is(.ig-span, .ig-event).is-highlight { background: var(--ig-hl); }
+.ig-figure .ig-lane-events { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; font-size: 0.8125rem; }
+.ig-lane-events li { cursor: default; border-radius: 4px; }
+.ig-lane-events li:is(:hover, :focus-visible) { outline: none; background: var(--ig-hl-tint); }
+.ig-when { margin-right: 0.3rem; font-weight: 700; }
+
+/* ----- line: :::series{title highlight dashed} - x｜y｜註記 ----- */
+
+.ig-line-chart { padding: 0.5rem 7rem 1.75rem 3rem; }
+.ig-plot { position: relative; aspect-ratio: 16 / 9; }
+.ig-line-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ig-grid { stroke: var(--ig-line); stroke-width: 1; }
+.ig-line-path { fill: none; stroke: var(--ig-s); stroke-width: 2.25; stroke-linejoin: round; stroke-linecap: round; }
+.ig-line-path.is-highlight { stroke-width: 3.5; }
+.ig-line-path.is-dashed { stroke-dasharray: 6 5; }
+.ig-y-tick, .ig-x-tick { position: absolute; font-size: 0.75rem; color: var(--color-muted); white-space: nowrap; }
+.ig-y-tick { right: calc(100% + 0.5rem); transform: translateY(-50%); }
+.ig-x-tick { top: calc(100% + 0.35rem); transform: translateX(-50%); }
+.ig-point { --ig-dot: 9px; position: absolute; z-index: 1; width: var(--ig-dot); height: var(--ig-dot); border: 2px solid var(--color-surface); border-radius: 50%; background: var(--ig-s); transform: translate(-50%, -50%); }
+.ig-point:is(:hover, :focus-visible) { --ig-dot: 14px; z-index: 2; outline: none; }
+.ig-point-label { position: absolute; left: 50%; bottom: calc(100% + 0.3rem); display: grid; justify-items: center; transform: translateX(-50%); white-space: nowrap; font-size: 0.75rem; line-height: 1.3; text-shadow: 0 0 3px var(--color-surface), 0 0 3px var(--color-surface), 0 0 3px var(--color-surface); }
+.ig-point.is-first .ig-point-label { left: 0; transform: none; justify-items: start; }
+.ig-point.is-last .ig-point-label { right: 0; left: auto; transform: none; justify-items: end; }
+.ig-point-value { font-weight: 700; }
+.ig-point-note { color: var(--color-muted); }
+.ig-point:not(.is-labeled):not(:hover, :focus-visible) > .ig-point-label { display: none; }
+.ig-series-label { position: absolute; left: calc(100% + 0.75rem); display: grid; width: max-content; max-width: 6.5rem; transform: translateY(-50%); font-size: 0.8125rem; font-weight: 700; line-height: 1.25; color: var(--ig-s); }
+.ig-series-last { font-weight: 400; color: var(--color-text); }
+.ig-figure .ig-line-legend { display: none; }
+.ig-line-legend .is-dashed .ig-swatch { height: 0; border-top: 3px dashed var(--ig-s); background: none; }
+.ig-figure .ig-data { margin-top: 0.5rem; font-size: 0.75rem; color: var(--color-muted); }
+.ig-data summary { cursor: pointer; }
+.ig-figure .ig-data table { width: 100%; margin: 0.5rem 0 0; border-collapse: collapse; font-size: 0.75rem; }
+.ig-figure .ig-data :is(th, td) { border: 0; border-bottom: 1px solid var(--ig-line); padding: 0.25rem 0.5rem 0.25rem 0; text-align: left; }
+.ig-figure .ig-data td:last-child, .ig-figure .ig-data th:last-child { text-align: right; }
+
+/* ----- map: - 地點｜緯度, 經度｜說明 ; - 起點 → 終點｜說明 ----- */
+
+.ig-map-frame { display: grid; grid-template-columns: minmax(0, 3fr) minmax(10rem, 2fr); gap: 1rem 1.5rem; align-items: start; }
+.ig-map-frame > .ig-map { position: relative; width: 100%; }
+.ig-map-layer { position: absolute; inset: 0; mask-repeat: no-repeat; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; -webkit-mask-size: 100% 100%; }
+.ig-map-land { background: color-mix(in srgb, var(--color-text) 13%, transparent); }
+.ig-map-focus { background: color-mix(in srgb, var(--color-primary) 24%, transparent); }
+.ig-map-borders { z-index: 1; background: color-mix(in srgb, var(--color-surface) 85%, transparent); }
+.ig-map-taiwan .ig-map-land { mask-image: url('./infographics/maps/taiwan-land.svg'); -webkit-mask-image: url('./infographics/maps/taiwan-land.svg'); }
+.ig-map-taiwan .ig-map-borders { mask-image: url('./infographics/maps/taiwan-borders.svg'); -webkit-mask-image: url('./infographics/maps/taiwan-borders.svg'); }
+.ig-map-taipei .ig-map-land { mask-image: url('./infographics/maps/taipei-land.svg'); -webkit-mask-image: url('./infographics/maps/taipei-land.svg'); }
+.ig-map-taipei .ig-map-focus { mask-image: url('./infographics/maps/taipei-focus.svg'); -webkit-mask-image: url('./infographics/maps/taipei-focus.svg'); }
+.ig-map-taipei .ig-map-borders { mask-image: url('./infographics/maps/taipei-borders.svg'); -webkit-mask-image: url('./infographics/maps/taipei-borders.svg'); }
+.ig-map-routes { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; overflow: visible; }
+.ig-route { fill: none; stroke: var(--color-accent-5); stroke-width: 3; stroke-linecap: round; }
+.ig-route.is-highlight { stroke: var(--ig-hl); stroke-width: 4; }
+.ig-map-point { --ig-dot: 11px; position: absolute; z-index: 3; width: var(--ig-dot); height: var(--ig-dot); border: 2px solid var(--color-surface); border-radius: 50%; background: var(--color-accent-5); transform: translate(-50%, -50%); }
+.ig-map-point.is-highlight { background: var(--ig-hl); }
+.ig-map-point-label { position: absolute; top: 50%; left: calc(100% + 0.3rem); transform: translateY(-50%); white-space: nowrap; font-size: 0.75rem; font-weight: 600; text-shadow: 0 0 3px var(--color-surface), 0 0 3px var(--color-surface), 0 0 3px var(--color-surface); }
+.ig-map-point.is-left .ig-map-point-label { right: calc(100% + 0.3rem); left: auto; }
+.ig-map-frame .ig-legend-item[data-k] { border-radius: 4px; }
+.ig-map-frame .ig-legend-item[data-k]:is(:hover, :focus-visible) { outline: none; background: var(--ig-hl-tint); }
+.ig-legend-item.is-route .ig-legend-label::before { content: '→ '; color: var(--color-accent-5); }
+.ig-legend-item.is-route.is-highlight .ig-legend-label::before { color: var(--ig-hl); }
+
+/* ----- the error box that stands in for a figure that cannot be drawn ----- */
+
+.ig-error { margin: 1.5rem 0; border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent); border-radius: var(--radius-panel, 10px); background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface)); padding: 0.75rem 1rem; font-size: 0.875rem; }
+.prose-custom .ig-error p { margin: 0; }
+.ig-error-title { font-weight: 700; color: var(--color-danger); }
+.ig-error-message { margin-top: 0.15rem; color: var(--color-text); }
+.prose-custom .ig-error pre.ig-error-source { margin: 0.6rem 0 0; border: 1px solid var(--ig-line, var(--color-border)); border-radius: 6px; padding: 0.5rem 0.65rem; font-size: 0.75rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-muted); }
+
+/* ----- linked hover (enumerated: CSS cannot match equal attributes) ----- */
+.ig-lane:has(.ig-lane-events [data-k='0']:is(:hover, :focus-visible)) .ig-lane-track [data-k='0'],
+.ig-lane:has(.ig-lane-events [data-k='1']:is(:hover, :focus-visible)) .ig-lane-track [data-k='1'],
+.ig-lane:has(.ig-lane-events [data-k='2']:is(:hover, :focus-visible)) .ig-lane-track [data-k='2'],
+.ig-lane:has(.ig-lane-events [data-k='3']:is(:hover, :focus-visible)) .ig-lane-track [data-k='3'],
+.ig-lane:has(.ig-lane-events [data-k='4']:is(:hover, :focus-visible)) .ig-lane-track [data-k='4'],
+.ig-lane:has(.ig-lane-events [data-k='5']:is(:hover, :focus-visible)) .ig-lane-track [data-k='5'],
+.ig-lane:has(.ig-lane-events [data-k='6']:is(:hover, :focus-visible)) .ig-lane-track [data-k='6'],
+.ig-lane:has(.ig-lane-events [data-k='7']:is(:hover, :focus-visible)) .ig-lane-track [data-k='7'],
+.ig-lane:has(.ig-lane-events [data-k='8']:is(:hover, :focus-visible)) .ig-lane-track [data-k='8'],
+.ig-lane:has(.ig-lane-events [data-k='9']:is(:hover, :focus-visible)) .ig-lane-track [data-k='9'],
+.ig-lane:has(.ig-lane-events [data-k='10']:is(:hover, :focus-visible)) .ig-lane-track [data-k='10'],
+.ig-lane:has(.ig-lane-events [data-k='11']:is(:hover, :focus-visible)) .ig-lane-track [data-k='11'],
+.ig-lane:has(.ig-lane-events [data-k='12']:is(:hover, :focus-visible)) .ig-lane-track [data-k='12'],
+.ig-lane:has(.ig-lane-events [data-k='13']:is(:hover, :focus-visible)) .ig-lane-track [data-k='13'],
+.ig-lane:has(.ig-lane-events [data-k='14']:is(:hover, :focus-visible)) .ig-lane-track [data-k='14'],
+.ig-lane:has(.ig-lane-events [data-k='15']:is(:hover, :focus-visible)) .ig-lane-track [data-k='15'] { transform: var(--ig-mark-lift); }
+
+.ig-map-frame:has(.ig-legend [data-k='0']:is(:hover, :focus-visible)) .ig-map-point[data-k='0'],
+.ig-map-frame:has(.ig-legend [data-k='1']:is(:hover, :focus-visible)) .ig-map-point[data-k='1'],
+.ig-map-frame:has(.ig-legend [data-k='2']:is(:hover, :focus-visible)) .ig-map-point[data-k='2'],
+.ig-map-frame:has(.ig-legend [data-k='3']:is(:hover, :focus-visible)) .ig-map-point[data-k='3'],
+.ig-map-frame:has(.ig-legend [data-k='4']:is(:hover, :focus-visible)) .ig-map-point[data-k='4'],
+.ig-map-frame:has(.ig-legend [data-k='5']:is(:hover, :focus-visible)) .ig-map-point[data-k='5'],
+.ig-map-frame:has(.ig-legend [data-k='6']:is(:hover, :focus-visible)) .ig-map-point[data-k='6'],
+.ig-map-frame:has(.ig-legend [data-k='7']:is(:hover, :focus-visible)) .ig-map-point[data-k='7'],
+.ig-map-frame:has(.ig-legend [data-k='8']:is(:hover, :focus-visible)) .ig-map-point[data-k='8'],
+.ig-map-frame:has(.ig-legend [data-k='9']:is(:hover, :focus-visible)) .ig-map-point[data-k='9'],
+.ig-map-frame:has(.ig-legend [data-k='10']:is(:hover, :focus-visible)) .ig-map-point[data-k='10'],
+.ig-map-frame:has(.ig-legend [data-k='11']:is(:hover, :focus-visible)) .ig-map-point[data-k='11'],
+.ig-map-frame:has(.ig-legend [data-k='12']:is(:hover, :focus-visible)) .ig-map-point[data-k='12'],
+.ig-map-frame:has(.ig-legend [data-k='13']:is(:hover, :focus-visible)) .ig-map-point[data-k='13'],
+.ig-map-frame:has(.ig-legend [data-k='14']:is(:hover, :focus-visible)) .ig-map-point[data-k='14'],
+.ig-map-frame:has(.ig-legend [data-k='15']:is(:hover, :focus-visible)) .ig-map-point[data-k='15'] { --ig-dot: 16px; }
+
+.ig-map-frame:has(.ig-legend [data-k='0']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='0']),
+.ig-map-frame:has(.ig-legend [data-k='1']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='1']),
+.ig-map-frame:has(.ig-legend [data-k='2']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='2']),
+.ig-map-frame:has(.ig-legend [data-k='3']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='3']),
+.ig-map-frame:has(.ig-legend [data-k='4']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='4']),
+.ig-map-frame:has(.ig-legend [data-k='5']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='5']),
+.ig-map-frame:has(.ig-legend [data-k='6']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='6']),
+.ig-map-frame:has(.ig-legend [data-k='7']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='7']),
+.ig-map-frame:has(.ig-legend [data-k='8']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='8']),
+.ig-map-frame:has(.ig-legend [data-k='9']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='9']),
+.ig-map-frame:has(.ig-legend [data-k='10']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='10']),
+.ig-map-frame:has(.ig-legend [data-k='11']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='11']),
+.ig-map-frame:has(.ig-legend [data-k='12']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='12']),
+.ig-map-frame:has(.ig-legend [data-k='13']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='13']),
+.ig-map-frame:has(.ig-legend [data-k='14']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='14']),
+.ig-map-frame:has(.ig-legend [data-k='15']:is(:hover, :focus-visible)) .ig-map-point:not([data-k='15']) { opacity: 0.3; }
+
+.ig-parts:has(.ig-legend-item:nth-child(1):hover) .ig-part:nth-child(1),
+.ig-parts:has(.ig-legend-item:nth-child(2):hover) .ig-part:nth-child(2),
+.ig-parts:has(.ig-legend-item:nth-child(3):hover) .ig-part:nth-child(3),
+.ig-parts:has(.ig-legend-item:nth-child(4):hover) .ig-part:nth-child(4),
+.ig-parts:has(.ig-legend-item:nth-child(5):hover) .ig-part:nth-child(5),
+.ig-parts:has(.ig-legend-item:nth-child(6):hover) .ig-part:nth-child(6),
+.ig-parts:has(.ig-legend-item:nth-child(7):hover) .ig-part:nth-child(7),
+.ig-parts:has(.ig-legend-item:nth-child(8):hover) .ig-part:nth-child(8),
+.ig-parts:has(.ig-legend-item:nth-child(9):hover) .ig-part:nth-child(9),
+.ig-parts:has(.ig-legend-item:nth-child(10):hover) .ig-part:nth-child(10),
+.ig-parts:has(.ig-legend-item:nth-child(11):hover) .ig-part:nth-child(11),
+.ig-parts:has(.ig-legend-item:nth-child(12):hover) .ig-part:nth-child(12) { transform: scaleY(1.2); }
+
+.ig-parts:has(.ig-legend-item:nth-child(1):hover) .ig-part:not(:nth-child(1)),
+.ig-parts:has(.ig-legend-item:nth-child(2):hover) .ig-part:not(:nth-child(2)),
+.ig-parts:has(.ig-legend-item:nth-child(3):hover) .ig-part:not(:nth-child(3)),
+.ig-parts:has(.ig-legend-item:nth-child(4):hover) .ig-part:not(:nth-child(4)),
+.ig-parts:has(.ig-legend-item:nth-child(5):hover) .ig-part:not(:nth-child(5)),
+.ig-parts:has(.ig-legend-item:nth-child(6):hover) .ig-part:not(:nth-child(6)),
+.ig-parts:has(.ig-legend-item:nth-child(7):hover) .ig-part:not(:nth-child(7)),
+.ig-parts:has(.ig-legend-item:nth-child(8):hover) .ig-part:not(:nth-child(8)),
+.ig-parts:has(.ig-legend-item:nth-child(9):hover) .ig-part:not(:nth-child(9)),
+.ig-parts:has(.ig-legend-item:nth-child(10):hover) .ig-part:not(:nth-child(10)),
+.ig-parts:has(.ig-legend-item:nth-child(11):hover) .ig-part:not(:nth-child(11)),
+.ig-parts:has(.ig-legend-item:nth-child(12):hover) .ig-part:not(:nth-child(12)) { opacity: 0.35; }
+
+.ig-plot:has([data-s='0']:is(:hover, :focus-visible)) :is(.ig-line-path, .ig-point, .ig-series-label):not([data-s='0']),
+.ig-plot:has([data-s='1']:is(:hover, :focus-visible)) :is(.ig-line-path, .ig-point, .ig-series-label):not([data-s='1']),
+.ig-plot:has([data-s='2']:is(:hover, :focus-visible)) :is(.ig-line-path, .ig-point, .ig-series-label):not([data-s='2']),
+.ig-plot:has([data-s='3']:is(:hover, :focus-visible)) :is(.ig-line-path, .ig-point, .ig-series-label):not([data-s='3']),
+.ig-plot:has([data-s='4']:is(:hover, :focus-visible)) :is(.ig-line-path, .ig-point, .ig-series-label):not([data-s='4']),
+.ig-plot:has([data-s='5']:is(:hover, :focus-visible)) :is(.ig-line-path, .ig-point, .ig-series-label):not([data-s='5']) { opacity: 0.2; }
+
+.ig-figure .ig-bars:has(.ig-bar-row:hover) .ig-bar-row:not(:hover),
+.ig-figure .ig-timeline:has(.ig-lane:hover) .ig-lane:not(:hover) { opacity: 0.4; }
+
+/* ----- narrow figures (the container, not the window, so panes and the dock count) ----- */
+
+@container (max-width: 34rem) {
+  .ig-figure .ig-bar-row { grid-template-columns: 1fr; }
+  .ig-figure .ig-bar-note { grid-column: 1; }
+  .ig-bar-track { margin-right: 5.5rem; }
+  .ig-line-chart { padding-right: 0.75rem; }
+  .ig-plot { aspect-ratio: 4 / 3; }
+  .ig-series-label { display: none; }
+  .ig-figure .ig-line-legend { display: grid; margin-top: 0.5rem; }
+  .ig-map-frame { grid-template-columns: 1fr; }
+}
+
+/* ----- motion ----- */
+
+@keyframes ig-fade { from { opacity: 0; } }
+@keyframes ig-rise { from { opacity: 0; transform: translateY(0.6rem); } }
+@keyframes ig-grow-x { from { transform: scaleX(0); } }
+@keyframes ig-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes ig-pop { from { opacity: 0; width: 0; height: 0; } }
+@keyframes ig-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .ig-figure :is(.ig-bar-row, .ig-lane, .ig-part, .ig-line-path, .ig-point, .ig-series-label, .ig-map-point) { transition: opacity 0.2s, transform 0.2s; }
+  .ig-point, .ig-map-point { transition: width 0.15s, height 0.15s, opacity 0.2s; }
+  .ig-span, .ig-event { transition: transform 0.2s; }
+  .ig-tab { transition: background 0.2s, color 0.2s; }
+  .ig-panel { animation: ig-fade 0.3s ease-out; }
+
+  @supports (animation-timeline: view()) {
+    .ig-figure :is(.ig-number, .ig-status-item, .ig-bar-fill, .ig-bar-value, .ig-parts-bar, .ig-span, .ig-event, .ig-line-svg, .ig-point, .ig-map-point) { animation-timeline: view(); animation-range: entry 15% cover 40%; animation-fill-mode: both; animation-timing-function: ease-out; }
+    .ig-number, .ig-status-item { animation-name: ig-rise; }
+    .ig-bar-fill, .ig-span { animation-name: ig-grow-x; }
+    .ig-bar-value, .ig-point { animation-name: ig-fade; }
+    .ig-point { animation-range: entry 30% cover 50%; }
+    .ig-parts-bar, .ig-line-svg { animation-name: ig-wipe; }
+    .ig-event, .ig-map-point { animation-name: ig-pop; }
+    .ig-route { stroke-dasharray: 1; animation: ig-draw linear both; animation-timeline: view(); animation-range: entry 30% cover 55%; }
+  }
+}

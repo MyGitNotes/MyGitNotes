@@ -115,7 +115,7 @@ function renderNoteIn({ marked, parser, purify, origin }: RenderContext, content
     preprocessed = stripMdxImports(preprocessed);
   }
 
-  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string);
+  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string);
 
   if (isMdx || /<(?:YouTubeEmbed|YouTube|ProtectedContent|Card|Tag|Badge|[A-Z][a-zA-Z0-9_-]*)\b/.test(preprocessed)) {
     preprocessed = transformMdxComponents(preprocessed);
@@ -124,6 +124,8 @@ function renderNoteIn({ marked, parser, purify, origin }: RenderContext, content
   const rawHtml = marked.parse(preprocessed, { gfm: true, breaks: true }) as string;
   const parsed = parser.parseFromString(purify.sanitize(rawHtml, DOMPURIFY_DIRECTIVE_CONFIG), 'text/html');
   for (const table of parsed.querySelectorAll('table')) {
+    // An infographic's data table is part of its figure.
+    if (table.closest('.ig-figure')) continue;
     const scroller = parsed.createElement('div');
     scroller.className = 'markdown-table-scroll';
     scroller.tabIndex = 0;

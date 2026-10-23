@@ -140,6 +140,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'coreUpdate.check': '重新檢查',
 
   'mermaid.error': '無法繪製圖表',
+  'infographic.render.error': '無法繪製這張資訊圖',
   'mermaid.edit': '編輯圖表',
   'mermaid.editorTitle': '編輯 Mermaid 圖表',
   'mermaid.source': '圖表原始碼',
