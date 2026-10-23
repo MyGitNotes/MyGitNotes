@@ -17,6 +17,7 @@ import { useNoteQueryScope } from '../lib/use-note-queries.js';
 import { noteLinkHref } from '@mygitnotes/core/workspace-links';
 import { TASK_TOKEN_ICON_SVG } from '../lib/task-icons.js';
 import { LiveMarkdownTable, tableUIState } from './LiveMarkdownTable.js';
+import { infographicEditorRequest, openInfographicEditor } from './infographic-editor/open-request.js';
 import { chipEditState } from './live-markdown/chip-editing.js';
 import { atCompletionSource } from './live-markdown/at-completion-source.js';
 import { cjkEmphasis } from './live-markdown/cjk-emphasis.js';
@@ -42,8 +43,11 @@ import { blockInsertion } from '../lib/directive-editing.js';
 export interface LiveMarkdownHandle {
   /** Inserts `text` at `at`, or in place of the selection. */
   insert: (text: string, at?: number) => void;
-  /** Puts `block` in place of the selection as a block of its own, with exactly one blank line on either side. */
-  insertBlock: (block: string) => void;
+  /**
+   * Puts `block` in place of the selection as a block of its own, with exactly one blank line on either side.
+   * With `openEditor`, the block is an infographic and its data editor opens.
+   */
+  insertBlock: (block: string, options?: { openEditor?: boolean; }) => void;
   revealRange: (from: number, to: number, focus?: boolean) => void;
   goToLine: (line: number, options?: { focus?: boolean; }) => void;
   getCurrentLine: () => number;
@@ -134,12 +138,14 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
       view.dispatch(from === undefined ? view.state.replaceSelection(inserted) : { changes: { from, insert: inserted }, selection: { anchor: from + inserted.length } }, { scrollIntoView: true, userEvent: 'input', annotations: isOutlinePath(notePath) ? isolateHistory.of('full') : undefined });
       view.focus();
     },
-    insertBlock(block) {
+    insertBlock(block, options) {
       const view = editor.current;
       if (!view || view.state.readOnly) return;
       const { from, to } = view.state.selection.main;
       const edit = blockInsertion(view.state.doc.toString(), from, to, block);
-      view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert }, selection: { anchor: edit.cursor }, scrollIntoView: true, userEvent: 'input', annotations: isOutlinePath(notePath) ? isolateHistory.of('full') : undefined });
+      // The block ends one character before the cursor, which waits at the start of the next line.
+      const start = edit.cursor - 1 - block.replace(/^\n+|\n+$/g, '').length;
+      view.dispatch({ changes: { from: edit.from, to: edit.to, insert: edit.insert }, selection: { anchor: edit.cursor }, effects: options?.openEditor ? openInfographicEditor.of(start) : undefined, scrollIntoView: true, userEvent: 'input', annotations: isOutlinePath(notePath) ? isolateHistory.of('full') : undefined });
       view.focus();
     },
     revealRange(from, to, focus = false) {
@@ -220,6 +226,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           codeMirrorTokenTheme,
           theme,
           tableUIState,
+          infographicEditorRequest,
           chipEditState,
           field,
           autocompletion({

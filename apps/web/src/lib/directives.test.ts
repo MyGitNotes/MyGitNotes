@@ -226,6 +226,15 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       expect(updated).toBe(`:::sidebar[提示]\n內文\n:::`);
     });
 
+    it('keeps the infographic kinds out of the generic block formats and out of type switching', () => {
+      const kinds = ['key-numbers', 'bars', 'parts', 'line', 'timeline', 'status-board', 'map'];
+      expect(DIRECTIVE_TEMPLATES.map(template => template.type).filter(type => kinds.includes(type))).toEqual([]);
+      const raw = `:::info\n內文\n:::`;
+      for (const kind of kinds) expect(updateDirectiveType(raw, kind)).toBe(raw);
+      const bars = `::::bars\n- a｜1\n::::`;
+      expect(updateDirectiveType(bars, 'info')).toBe(bars);
+    });
+
     it('updates directive variant in raw text for handout', () => {
       const raw = `:::handout{id="H-01" variant="report"}\n內文\n:::`;
       const updated = updateDirectiveVariant(raw, 'newspaper');

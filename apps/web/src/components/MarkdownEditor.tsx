@@ -3,13 +3,16 @@ import { bookmarkOriginalRange, normalizeBookmarkBody } from '@mygitnotes/core/b
 import React, { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Bold, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, type LucideIcon, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
+import { Bold, ChartColumn, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, type LucideIcon, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
 import type { LiveEditorCarry, LiveMarkdownHandle } from './LiveMarkdownEditor.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
 import { noteCompletionAt, useNoteCandidates } from '../lib/note-completion.js';
 import { noteLinkHref, noteMarkdownLink } from '@mygitnotes/core/workspace-links';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { blockInsertion, DIRECTIVE_TEMPLATES, localizedDirectiveSnippet } from '../lib/directive-editing.js';
+import { INFOGRAPHIC_MENU, infographicTemplate } from '../lib/infographics/templates.js';
+import type { InfographicKind } from '../lib/infographics/model.js';
+import { kindLabel, kindPurpose } from './infographic-editor/labels.js';
 import './note-completion.css';
 import { copyLinePrompt } from '../lib/line-prompt-copy.js';
 import { attachLineGutterGesture } from '../lib/line-gutter-gesture.js';
@@ -92,6 +95,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
   const [picker, setPicker] = useState(false), [query, setQuery] = useState('');
   // A chosen block keeps the editor's focus instead of returning it to the menu trigger.
   const directiveInserted = useRef(false);
+  const infographicInserted = useRef(false);
 
   const live = useRef<LiveMarkdownHandle>(null);
   const source = useRef<HTMLTextAreaElement>(null);
@@ -252,10 +256,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
     setPicker(false);
   };
 
-  const insertDirective = (type = 'info') => {
-    const block = localizedDirectiveSnippet(type, t);
+  /** Puts `block` in as a block of its own at the caret; in the live editor, `openEditor` also opens an infographic's data editor. */
+  const insertBlockSource = (block: string, openEditor = false) => {
     if (mode === 'live') {
-      live.current?.insertBlock(block);
+      live.current?.insertBlock(block, { openEditor });
       return;
     }
     const target = source.current;
@@ -266,6 +270,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       source.current?.setSelectionRange(edit.cursor, edit.cursor);
     });
   };
+  const insertDirective = (type = 'info') => insertBlockSource(localizedDirectiveSnippet(type, t));
+  const insertInfographic = (kind: InfographicKind) => insertBlockSource(infographicTemplate(kind, t), true);
 
   const insertTable = () => {
     const text = `\n\n| ${t('table.column')} 1 | ${t('table.column')} 2 |\n| --- | --- |\n|  |  |\n\n`;
@@ -394,6 +400,41 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
                     }}
                   >
                     {t(`directive.${tpl.type}` as TranslationKey)}
+                  </DropdownMenu.Item>
+                ))}
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('infographic.insert')} title={t('infographic.insert')}>
+              <ChartColumn aria-hidden='true' />
+              <span className='insert-plus-badge' aria-hidden='true'>
+                <Plus />
+              </span>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                className='markdown-insert-menu infographic-insert-menu'
+                align='end'
+                sideOffset={4}
+                collisionPadding={8}
+                aria-label={t('infographic.selectKind')}
+                onEscapeKeyDown={event => event.stopPropagation()}
+                onCloseAutoFocus={event => {
+                  if (infographicInserted.current) event.preventDefault();
+                  infographicInserted.current = false;
+                }}
+              >
+                {INFOGRAPHIC_MENU.map(kind => (
+                  <DropdownMenu.Item
+                    key={kind}
+                    onSelect={() => {
+                      infographicInserted.current = true;
+                      insertInfographic(kind);
+                    }}
+                  >
+                    <span className='infographic-insert-name'>{kindLabel(t, kind)}</span>
+                    <span className='infographic-insert-purpose'>{kindPurpose(t, kind)}</span>
                   </DropdownMenu.Item>
                 ))}
               </DropdownMenu.Content>

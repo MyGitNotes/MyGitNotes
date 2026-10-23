@@ -25,6 +25,7 @@ import '../directives/presentation.css';
 import '../directives/inline.css';
 import '../directives/mdx-components.css';
 import '../directives/live-editor-toolbar.css';
+import '../directives/infographic-editor.css';
 import '../directives/mobile-adaptations.css';
 
 import { type WebFeature, WebFeaturesProvider } from '../lib/web-features.js';
