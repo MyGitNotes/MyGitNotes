@@ -5,3 +5,5 @@ allowBuilds:
   dprint: false
   esbuild: true
 minimumReleaseAge: 0
+overrides:
+  qs: '>=6.16.0'

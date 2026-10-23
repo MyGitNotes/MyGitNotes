@@ -63,7 +63,7 @@ export function WebApp({ features = [] }: WebAppOptions) {
     <QueryClientProvider client={queryClient}>
       <WebFeaturesProvider features={features}>
         <NuqsAdapter>
-          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <BrowserRouter>
             <PanelProvider>
               <Routes>
                 <Route path='/' element={<App />} />

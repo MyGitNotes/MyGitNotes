@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { attachLineGutterGesture } from './line-gutter-gesture.js';
+import { afterEach, beforeEach, expect, it, type Mock, vi } from 'vitest';
+import { attachLineGutterGesture, type LineSpan } from './line-gutter-gesture.js';
 
 const LINE_HEIGHT = 20;
 let gutter: HTMLElement;
 let scroller: HTMLElement;
 let cleanup: () => void;
-let lineAtY: ReturnType<typeof vi.fn>;
-let onCopy: ReturnType<typeof vi.fn>;
-let onPreview: ReturnType<typeof vi.fn>;
+let lineAtY: Mock<(clientY: number) => number | LineSpan>;
+let onCopy: Mock<(firstLine: number, lastLine?: number) => void>;
+let onPreview: Mock<(range: [number, number] | null) => void>;
 
 function pointer(type: string, init: { y: number; target?: Element; pointerType?: string; }) {
   const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: 5, clientY: init.y, button: 0 });

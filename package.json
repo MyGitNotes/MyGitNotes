@@ -28,6 +28,11 @@
     "check:version": "node apps/check-version.mjs",
     "release": "semantic-release --extends ./.github/release.config.cjs"
   },
+  "pnpm": {
+    "overrides": {
+      "qs": ">=6.16.0"
+    }
+  },
   "devDependencies": {
     "@dprint/typescript": "^0.96.1",
     "@semantic-release/commit-analyzer": "^13.0.1",
@@ -37,13 +42,13 @@
     "@types/node": "^22.5.4",
     "dprint": "^0.57.4",
     "dprint-plugin-malva": "^0.16.0",
-    "esbuild": "^0.21.5",
+    "esbuild": "^0.28.2",
     "oxc-parser": "^0.150.0",
     "oxlint": "^1.83.0",
     "qrcode": "^1.5.4",
     "semantic-release": "^25.0.9",
     "tsx": "^4.19.1",
     "typescript": "7.0.2",
-    "vitest": "^2.1.1"
+    "vitest": "^5.0.5"
   }
 }
