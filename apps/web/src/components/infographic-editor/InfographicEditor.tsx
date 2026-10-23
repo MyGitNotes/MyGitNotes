@@ -127,7 +127,7 @@ export function InfographicEditor({ source, t, renderFigure, onSave, onClose, au
       <PreviewPane ref={preview} label={t('infographic.editor.preview')} initial={firstHtml} render={renderFigure} />
       <div className='ig-editor-foot'>
         <span className='ig-hint'>{t('infographic.editor.hint')}</span>
-        <div className='ig-actions'>
+        <div className='ig-actions live-directive-editor-actions'>
           <button type='button' className='live-directive-btn-cancel' onClick={onClose}>{t('infographic.editor.cancel')}</button>
           <button type='button' className='live-directive-btn-save' onClick={() => save(null)}>{t('infographic.editor.save')}</button>
         </div>

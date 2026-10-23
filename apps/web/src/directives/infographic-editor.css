@@ -13,11 +13,12 @@
 
 /* The data editor takes the figure's place; the frame is the same panel the generic block form uses. */
 .live-infographic-editor-host { width: 100%; }
-.ig-editor { display: flex; flex-direction: column; gap: 12px; width: 100%; box-sizing: border-box; padding: 14px 16px; border: 2px solid var(--color-primary); border-radius: var(--radius-panel); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-md); font-family: var(--font-body); font-size: 13px; line-height: 1.5; text-align: left; white-space: normal; }
+.ig-editor { display: flex; flex-direction: column; gap: 12px; width: 100%; box-sizing: border-box; padding: 14px 16px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-panel); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-md); font-family: var(--font-body); font-size: 13px; line-height: 1.5; text-align: left; white-space: normal; }
 .ig-editor *, .ig-editor *::before, .ig-editor *::after { box-sizing: border-box; }
 .ig-editor button { font-family: inherit; }
 .ig-editor-head { display: flex; align-items: center; gap: 8px; }
 .ig-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: var(--radius-control); background: var(--color-primary-soft); color: var(--color-primary); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+.ig-editor h4, .ig-editor h5 { font-family: var(--font-body); }
 .ig-section { margin: 0; font-size: 12px; font-weight: 600; color: var(--color-muted); }
 
 /* Attribute fields */
@@ -98,7 +99,7 @@
 .ig-actions button { border-radius: var(--radius-control); }
 
 /* The row menu is portalled to the page, outside the editor. */
-.ig-row-menu { position: fixed; z-index: 200; display: grid; min-width: 11rem; padding: 0.25rem; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--surface-glass); backdrop-filter: var(--surface-blur); -webkit-backdrop-filter: var(--surface-blur); color: var(--color-text); box-shadow: var(--shadow-md); }
+.ig-row-menu { position: fixed; z-index: 200; display: grid; min-width: 11rem; padding: 0.25rem; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--surface-glass); backdrop-filter: var(--surface-blur); color: var(--color-text); box-shadow: var(--shadow-md); }
 .ig-row-menu button { padding: 0.4rem 0.5rem; border: 0; border-radius: 0.35rem; background: transparent; color: inherit; font-family: inherit; font-size: 0.8rem; text-align: left; cursor: default; outline: none; }
 .ig-row-menu button:hover:not(:disabled), .ig-row-menu button:focus-visible { background: var(--color-sidebar); }
 .ig-row-menu button[data-danger] { color: var(--color-danger); }
