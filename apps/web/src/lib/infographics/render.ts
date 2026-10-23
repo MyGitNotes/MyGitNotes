@@ -268,7 +268,7 @@ function timeline(block: InfographicBlock, r: Renderer): string {
   const tickAttr = attrOf(block.attrs, 'ticks');
   const ticks = tickAttr ? numbers(tickAttr) : Array.from({ length: Math.floor(to / 10) - Math.ceil(from / 10) + 1 }, (_, index) => (Math.ceil(from / 10) + index) * 10);
 
-  const axis = tag('div', { class: 'ig-axis' }, ticks.map(year => tag('span', { class: 'ig-axis-tick', style: `left:${at(year)}` }, text(String(year)))));
+  const axis = tag('div', { class: 'ig-axis' }, ticks.map(year => tag('span', { class: ['ig-axis-tick', ...year <= from ? ['is-start'] : [], ...year >= to ? ['is-end'] : []], style: `left:${at(year)}` }, text(String(year)))));
 
   const laneNodes = parsed.map(({ lane, items }, laneIndex) => {
     const marks: string[] = [];
@@ -345,14 +345,66 @@ function line(block: InfographicBlock, r: Renderer): string {
     previous = top;
   }
 
+  // A noted point's label goes on the side of its point where no line runs through the label's box: above by default,
+  // below at a local minimum. Noted points that sit close in x take turns instead (topmost above, the rest below), so
+  // that labels never land on each other. The last point's value is already in the series end label, so it shows its
+  // note only.
+  const noted = series.flatMap((s, seriesIndex) => s.points.map((point, pointIndex) => ({ seriesIndex, pointIndex, point })).filter(entry => entry.point.item.fields[2]?.trim()));
+  const below = new Set<string>();
+  const key = (seriesIndex: number, pointIndex: number) => `${seriesIndex}:${pointIndex}`;
+  const yOnSeries = (points: typeof series[number]['points'], at: number): number | undefined => {
+    for (let index = 1; index < points.length; index++) {
+      const [from, to] = [x(points[index - 1].x), x(points[index].x)];
+      if (at >= from && at <= to) return to === from ? y(points[index].y) : y(points[index - 1].y) + (y(points[index].y) - y(points[index - 1].y)) * (at - from) / (to - from);
+    }
+    return undefined;
+  };
+  /** How many samples of any line fall in the label's box on one side of the point. */
+  const crossings = ({ pointIndex, point, seriesIndex }: typeof noted[number], side: 1 | -1, inline: boolean): number => {
+    const lines = series[seriesIndex].points.length;
+    const reach = inline ? 18 : 14;
+    const [left, right] = pointIndex === lines - 1 ? [-reach, 0] : pointIndex === 0 ? [0, reach] : [-reach / 2, reach / 2];
+    const height = pointIndex === lines - 1 ? 10 : inline ? 7 : 17;
+    const [top, bottom] = side < 0 ? [y(point.y) - height - 1, y(point.y) - 1] : [y(point.y) + 1, y(point.y) + height + 1];
+    let hits = top < 0 || bottom > 100 ? 4 : 0;
+    for (const other of series) {
+      for (let offset = left; offset <= right; offset += 2) {
+        const lineY = yOnSeries(other.points, x(point.x) + offset);
+        if (lineY !== undefined && lineY >= top && lineY <= bottom) hits++;
+      }
+    }
+    return hits;
+  };
+  const inline = new Set<string>();
+  for (const entry of noted) {
+    const id = key(entry.seriesIndex, entry.pointIndex);
+    const points = series[entry.seriesIndex].points;
+    const [before, after] = [points[entry.pointIndex - 1], points[entry.pointIndex + 1]];
+    const preferBelow = Boolean(before && after && entry.point.y < before.y && entry.point.y < after.y);
+    const options = ([false, true] as const).flatMap(oneLine => ([-1, 1] as const).map(side => ({ oneLine, side, cost: crossings(entry, side, oneLine) * 2 + (oneLine ? 1 : 0) + ((side > 0) === preferBelow ? 0 : 1) })));
+    const best = options.reduce((chosen, option) => option.cost < chosen.cost ? option : chosen);
+    if (best.side > 0) below.add(id);
+    if (best.oneLine && entry.pointIndex !== points.length - 1) inline.add(id);
+  }
+  const unplaced = new Set(noted);
+  for (const entry of noted) {
+    if (!unplaced.has(entry)) continue;
+    const cluster = noted.filter(other => unplaced.has(other) && Math.abs(x(other.point.x) - x(entry.point.x)) < 14);
+    cluster.forEach(other => unplaced.delete(other));
+    if (cluster.length < 2) continue;
+    cluster.sort((a, b) => y(a.point.y) - y(b.point.y));
+    cluster.forEach((other, order) => (order ? below.add(key(other.seriesIndex, other.pointIndex)) : below.delete(key(other.seriesIndex, other.pointIndex))));
+  }
+
   series.forEach((s, index) => {
     const seriesClasses = [`ig-series-${index % CATEGORIES}`, ...highlightClass(s.highlight)];
     s.points.forEach((point, pointIndex) => {
       const note = point.item.fields[2];
+      const isLast = pointIndex === s.points.length - 1;
       const label: string[] = [];
       if (note?.trim()) label.push(tag('span', { class: 'ig-point-note' }, r.inline(note)));
-      label.push(tag('span', { class: 'ig-point-value' }, text(valueText(point.y))));
-      overlay.push(tag('span', { class: ['ig-point', ...seriesClasses, ...note?.trim() ? ['is-labeled'] : [], ...pointIndex === 0 ? ['is-first'] : [], ...pointIndex === s.points.length - 1 ? ['is-last'] : []], style: `left:${percent(x(point.x))};top:${percent(y(point.y))}`, tabindex: 0, 'data-s': index }, tag('span', { class: 'ig-point-label' }, label)));
+      if (!(isLast && note?.trim())) label.push(tag('span', { class: 'ig-point-value' }, text(valueText(point.y))));
+      overlay.push(tag('span', { class: ['ig-point', ...seriesClasses, ...note?.trim() ? ['is-labeled'] : [], ...below.has(key(index, pointIndex)) ? ['is-below'] : [], ...inline.has(key(index, pointIndex)) ? ['is-inline'] : [], ...pointIndex === 0 ? ['is-first'] : [], ...isLast ? ['is-last'] : []], style: `left:${percent(x(point.x))};top:${percent(y(point.y))}`, tabindex: 0, 'data-s': index }, tag('span', { class: 'ig-point-label' }, label)));
     });
     const last = s.points[s.points.length - 1];
     if (last) overlay.push(tag('span', { class: ['ig-series-label', ...seriesClasses], style: `top:${percent(labelTops.get(index) ?? y(last.y))}`, 'data-s': index, tabindex: 0 }, [tag('span', {}, text(s.title)), tag('span', { class: 'ig-series-last' }, text(valueText(last.y)))]));

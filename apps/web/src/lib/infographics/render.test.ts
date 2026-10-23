@@ -106,6 +106,53 @@ describe('renderInfographic (the blog plugin cases)', () => {
     expect(html).toContain('ig-line-legend');
   });
 
+  it('line keeps point labels off each other and off the end labels', () => {
+    const html = render(`::::line{unit="萬"}
+:::series{title="甲"}
+- 2020｜10
+- 2022｜30｜高點
+- 2024｜20｜甲末
+:::
+:::series{title="乙"}
+- 2020｜12
+- 2022｜26｜乙高
+- 2024｜19｜乙末
+:::
+::::`);
+    const point = (note: string) => html.match(new RegExp(`<span class="(ig-point[^"]*)"[^>]*><span class="ig-point-label"><span class="ig-point-note">${note}</span>(.*?)</span></span>`));
+    // Close points take turns: the topmost above, the other below.
+    expect(point('高點')?.[1]).not.toContain('is-below');
+    expect(point('乙高')?.[1]).toContain('is-below');
+    // The last point shows its note only, because its value is the end label's.
+    expect(point('甲末')?.[2]).toBe('');
+    expect(point('乙末')?.[1]).toContain('is-below');
+  });
+
+  it('line puts a local minimum label out of the line, on one row when the room is short', () => {
+    const html = render(`::::line
+:::series{title="甲"}
+- 2015｜2950
+- 2019｜4860
+- 2021｜800｜疫情
+- 2025｜4780
+:::
+:::series{title="乙"}
+- 2015｜600
+- 2019｜700
+- 2021｜200
+- 2025｜560
+:::
+::::`);
+    expect(html).toMatch(/class="ig-point ig-series-0 is-labeled is-below is-inline"/);
+  });
+
+  it('timeline anchors the first and last axis labels inward', () => {
+    const html = render(`::::timeline{from="2000" to="2040"}\n:::lane{title="L"}\n- 2004｜甲\n:::\n::::`);
+    expect(html).toContain('<span class="ig-axis-tick is-start" style="left:0%">2000</span>');
+    expect(html).toContain('<span class="ig-axis-tick is-end" style="left:100%">2040</span>');
+    expect(html).toContain('<span class="ig-axis-tick" style="left:50%">2020</span>');
+  });
+
   it('status-board groups by status', () => {
     const html = render(`::::status-board
 :::group{status="done" title="有書面規劃"}
