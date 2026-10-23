@@ -1,7 +1,7 @@
 import { type ClipboardEvent, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, memo, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GripVertical, Plus, Star } from 'lucide-react';
 import { type CellIssue, isRouteRow } from '../../lib/infographics/model.js';
-import { cellMatrix, type CellPos, type Direction, gridColumns, inRange, isCellEditable, isHighlighted, parseTsv, rangeOf, rangeToTsv, rowIndexAt, rowSelection, rowsOf, single } from '../../lib/infographics/grid.js';
+import { cellMatrix, type CellPos, type Direction, gridColumns, inRange, isCellEditable, isHighlighted, parseTsv, rangeOf, rangeToTsv, rowIndexAt, rowSelection, rowsOf, single, stepCell } from '../../lib/infographics/grid.js';
 import { type CommitMove, type EditorAction, type EditorState, rowEdits } from '../../lib/infographics/editor-state.js';
 import { columnLabel, issueText, type Translate } from './labels.js';
 import { RowMenu } from './RowMenu.js';
@@ -23,6 +23,15 @@ interface Props {
 
 const MOVES: Record<string, Direction> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Home: 'home', End: 'end' };
 const COMMIT_MOVES = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' } as const;
+
+const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])';
+
+/** The control a Shift+Tab out of the grid reaches: the last tabbable one in the editor before the grid. */
+function controlBefore(grid: HTMLElement): HTMLElement | null {
+  const root = grid.closest('.ig-editor') ?? document.body;
+  const before = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(element => !grid.contains(element) && element.tabIndex >= 0 && !element.closest('[hidden]') && Boolean(grid.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_PRECEDING));
+  return before.at(-1) ?? null;
+}
 
 const cellOf = (target: EventTarget | null): CellPos | null => {
   const cell = target instanceof Element ? target.closest<HTMLElement>('[data-cell]') : null;
@@ -103,6 +112,16 @@ export const DataGrid = memo(function DataGrid({ state, dispatch, t, issues, inp
     };
   }, []);
 
+  /** Tab on the last cell, or Shift+Tab on the first, goes on to the next control instead of wrapping round the grid. */
+  const leavesGrid = (back: boolean) => stepCell(sel, back, dims) === null;
+  // Forwards the browser's own Tab reaches the Add row button; backwards the rows' own buttons come first, so go to the control above the grid.
+  const leaveBackwards = (event: ReactKeyboardEvent) => {
+    const above = scroller.current?.parentElement ? controlBefore(scroller.current.parentElement) : null;
+    if (!above) return;
+    event.preventDefault();
+    above.focus();
+  };
+
   const pendingValue = () => edit ? inputRef.current?.value ?? '' : null;
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -128,6 +147,12 @@ export const DataGrid = memo(function DataGrid({ state, dispatch, t, issues, inp
         handled();
         commit(event.shiftKey ? 'up' : 'enter');
       } else if (key === 'Tab') {
+        if (leavesGrid(event.shiftKey)) {
+          // The cell is committed where it is, and the key goes on to move focus out of the grid.
+          commit('stay');
+          if (event.shiftKey) leaveBackwards(event);
+          return;
+        }
         handled();
         commit(event.shiftKey ? 'previous' : 'next');
       } else if (key === 'Escape') {
@@ -153,6 +178,10 @@ export const DataGrid = memo(function DataGrid({ state, dispatch, t, issues, inp
       const direction = mod && key === 'ArrowUp' ? 'top' : mod && key === 'ArrowDown' ? 'bottom' : mod && key === 'ArrowLeft' ? 'home' : mod && key === 'ArrowRight' ? 'end' : MOVES[key];
       send({ type: 'move', direction, extend: event.shiftKey });
     } else if (key === 'Tab') {
+      if (leavesGrid(event.shiftKey)) {
+        if (event.shiftKey) leaveBackwards(event);
+        return;
+      }
       handled();
       send({ type: 'commit', move: event.shiftKey ? 'previous' : 'next', value: '' });
     } else if (key === 'Enter' || key === 'F2') {

@@ -9,7 +9,7 @@ const MAP = ':::map{base="taiwan"}\n- 松山｜25.069, 121.552\n- 金門｜24.43
 
 describe('grid cells', () => {
   it('lays rows out under the kind columns, padded', () => {
-    expect(cellMatrix(parse(KEY_NUMBERS), 0)).toEqual([['**213 公頃**', '機場面積', '民航局管 41%'], ['560 萬', '2025 年旅客', '']]);
+    expect(cellMatrix(parse(KEY_NUMBERS), 0)).toEqual([['213 公頃', '機場面積', '民航局管 41%'], ['560 萬', '2025 年旅客', '']]);
     expect(gridDims(parse(BARS), 1)).toEqual({ rows: 1, cols: 3 });
   });
 
@@ -70,6 +70,26 @@ describe('grid rows', () => {
     expect(moveRow(block, 0, 0, 9)).toBe(block);
     block = deleteRow(block, 0, 2);
     expect(rowsOf(block, 0)).toHaveLength(3);
+  });
+
+  it('shows a highlighted field without its ** and keeps the wrap when the cell is set', () => {
+    const block = parse(KEY_NUMBERS);
+    expect(cellMatrix(block, 0)[0][0]).toBe('213 公頃');
+    expect(rowsOf(setCell(block, 0, 0, 0, '214 公頃'), 0)[0].fields[0]).toBe('**214 公頃**');
+    // Emptying the cell drops the wrap; typing the markers oneself is taken as written.
+    expect(rowsOf(setCell(block, 0, 0, 0, ''), 0)[0].fields[0]).toBe('');
+    expect(rowsOf(setCell(block, 0, 0, 0, '**x**'), 0)[0].fields[0]).toBe('**x**');
+    expect(rowsOf(setCell(block, 0, 0, 0, 'a**b'), 0)[0].fields[0]).toBe('a**b');
+    // The same for `__`, and a pasted cell over a highlighted one.
+    const underscores = parse(':::key-numbers\n- __7__｜x\n:::\n');
+    expect(cellMatrix(underscores, 0)[0][0]).toBe('7');
+    expect(rowsOf(pasteMatrix(underscores, 0, { row: 0, col: 0 }, [['8', 'y']]).block, 0)[0].fields).toEqual(['__8__', 'y']);
+  });
+
+  it('shows other inline Markdown in a cell as typed, including several strong spans', () => {
+    const block = parse(':::key-numbers\n- **a** and *b*｜**a** **b**｜`**`\n:::\n');
+    expect(cellMatrix(block, 0)[0]).toEqual(['**a** and *b*', '**a** **b**', '`**`']);
+    expect(rowsOf(setCell(block, 0, 0, 1, 'c'), 0)[0].fields[1]).toBe('c');
   });
 
   it('toggles the highlight with the bold first field', () => {
@@ -152,8 +172,9 @@ describe('selection', () => {
   it('wraps Tab across rows and around the grid', () => {
     expect(stepCell(single({ row: 0, col: 2 }), false, dims)).toEqual({ row: 1, col: 0 });
     expect(stepCell(single({ row: 1, col: 0 }), true, dims)).toEqual({ row: 0, col: 2 });
-    expect(stepCell(single({ row: 2, col: 2 }), false, dims)).toEqual({ row: 0, col: 0 });
-    expect(stepCell(single({ row: 0, col: 0 }), true, dims)).toEqual({ row: 2, col: 2 });
+    // Past the last cell and before the first there is none: Tab leaves the grid there.
+    expect(stepCell(single({ row: 2, col: 2 }), false, dims)).toBeNull();
+    expect(stepCell(single({ row: 0, col: 0 }), true, dims)).toBeNull();
     expect(stepCell(single({ row: 0, col: 0 }), false, { rows: 0, cols: 3 })).toBeNull();
   });
 });
@@ -178,7 +199,10 @@ describe('tab-separated text', () => {
   it('round-trips a copied range', () => {
     const block = parse(KEY_NUMBERS);
     const tsv = rangeToTsv(block, 0, { top: 0, bottom: 1, left: 0, right: 2 });
-    expect(parseTsv(tsv)).toEqual(cellMatrix(block, 0));
+    const pasted = pasteMatrix(block, 0, { row: 0, col: 0 }, parseTsv(tsv)).block;
+    expect(rowsOf(pasted, 0)).toEqual(rowsOf(block, 0));
+    // Pasting the highlighted cell's wrapped text elsewhere stays wrapped text.
+    expect(rowsOf(pasteMatrix(block, 0, { row: 1, col: 0 }, parseTsv(tsv)).block, 1)[0].fields[0]).toBe('**213 公頃**');
   });
 
   it('pastes from the active cell, adds rows, and drops columns past the last', () => {

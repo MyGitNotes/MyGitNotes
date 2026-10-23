@@ -89,7 +89,7 @@ describe('an infographic block in the live editor', () => {
     fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
     const writes = dispatch.mock.calls.filter(([spec]) => typeof spec === 'object' && spec !== null && 'changes' in spec);
     expect(writes).toHaveLength(1);
-    const saved = `before\n\n:::key-numbers{title="At a glance"}\n- New label｜Airport area\n- 5.6 million｜x\n:::\n\nafter`;
+    const saved = `before\n\n:::key-numbers{title="At a glance"}\n- **New label**｜Airport area\n- 5.6 million｜x\n:::\n\nafter`;
     expect(editor.state.doc.toString()).toBe(saved);
     // The editor is gone and the figure is back; one undo restores the block.
     await waitFor(() => expect(screen.queryByRole('group', { name: /data editor/ })).toBeNull());
@@ -158,5 +158,142 @@ describe('an infographic block in the live editor', () => {
     const { container } = await mount(':::scenario{label="x"}\n- a｜1\n:::');
     await waitFor(() => expect(container.querySelector('.live-md-directive')).not.toBeNull());
     expect(container.querySelector('.live-md-infographic')).toBeNull();
+  });
+});
+
+// CodeMirror destroys a widget that leaves the viewport, and draws it again when it comes back. Revealing the block's
+// source destroys it the same way, and works without layout, so it stands in for scrolling away and back.
+describe('a data editor whose widget is destroyed and drawn again', () => {
+  const away = (editor: EditorView, at = DOC.indexOf('Airport')) => {
+    editor.focus();
+    editor.dispatch({ selection: { anchor: at } });
+  };
+  const back = (editor: EditorView) => editor.dispatch({ selection: { anchor: 0 } });
+  const writes = (dispatch: { mock: { calls: unknown[][]; }; }) => dispatch.mock.calls.filter(([spec]) => typeof spec === 'object' && spec !== null && 'changes' in spec);
+  const draftCell = (row: number, col: number) => dataEditor().querySelector<HTMLElement>(`[data-cell][data-row="${row}"][data-col="${col}"]`)!.textContent;
+
+  it('keeps the draft, the typed text and the selection, and still saves as one change', async () => {
+    const { widget, editor } = await mount(DOC);
+    openEditor();
+    const input = gridInput(widget()!);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Draft title' } });
+    fireEvent.keyDown(input, { key: 'N' });
+    fireEvent.change(input, { target: { value: 'New label' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // Left mid-edit: the text typed into the next cell is part of the draft too.
+    fireEvent.keyDown(input, { key: 'x' });
+    fireEvent.change(input, { target: { value: 'x' } });
+
+    const root = widget()!;
+    away(editor);
+    await waitFor(() => expect(widget()).toBeNull());
+    expect(editor.state.doc.toString()).toBe(DOC);
+    back(editor);
+    await waitFor(() => expect(widget()).not.toBeNull());
+    expect(widget()).not.toBe(root);
+
+    expect(dataEditor()).toBeInTheDocument();
+    expect(draftCell(0, 0)).toBe('New label');
+    expect(draftCell(1, 0)).toBe('x');
+    expect(screen.getByRole('textbox', { name: 'Title' })).toHaveValue('Draft title');
+    // The selection came back with it: the cell being typed in is the active one.
+    expect(dataEditor().querySelector('[data-cell][data-active]')).toBe(dataEditor().querySelector('[data-cell][data-row="1"][data-col="0"]'));
+
+    const dispatch = vi.spyOn(editor, 'dispatch');
+    fireEvent.keyDown(gridInput(widget()!), { key: 'Enter', metaKey: true });
+    expect(writes(dispatch)).toHaveLength(1);
+    expect(editor.state.doc.toString()).toBe('before\n\n:::key-numbers{title="Draft title"}\n- **New label**｜Airport area\n- x｜Passengers\n:::\n\nafter');
+    await waitFor(() => expect(screen.queryByRole('group', { name: /data editor/ })).toBeNull());
+    undo(editor);
+    expect(editor.state.doc.toString()).toBe(DOC);
+  });
+
+  it('keeps the active tab', async () => {
+    const bars = '::::bars\n:::scenario{label="2025"}\n- A｜1\n:::\n:::scenario{label="2045"}\n- B｜2\n:::\n::::';
+    const { widget, editor } = await mount(`before\n\n${bars}\n\nafter`);
+    openEditor();
+    fireEvent.click(screen.getByRole('tab', { name: '2045' }));
+    away(editor, editor.state.doc.toString().indexOf('A｜'));
+    await waitFor(() => expect(widget()).toBeNull());
+    back(editor);
+    await waitFor(() => expect(widget()).not.toBeNull());
+    expect(screen.getByRole('tab', { name: '2045' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: '2025' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('keeps the draft through an edit before the block, which only moves it', async () => {
+    const { widget, editor } = await mount(DOC);
+    openEditor();
+    const input = gridInput(widget()!);
+    fireEvent.keyDown(input, { key: 'N' });
+    fireEvent.change(input, { target: { value: 'Moved' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    away(editor);
+    await waitFor(() => expect(widget()).toBeNull());
+    editor.dispatch({ changes: { from: 0, insert: 'intro\n\n' }, selection: { anchor: 0 } });
+    await waitFor(() => expect(widget()).not.toBeNull());
+    expect(draftCell(0, 0)).toBe('Moved');
+
+    const dispatch = vi.spyOn(editor, 'dispatch');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(writes(dispatch)).toHaveLength(1);
+    expect(editor.state.doc.toString()).toBe('intro\n\nbefore\n\n:::key-numbers{title="At a glance"}\n- **Moved**｜Airport area\n- 5.6 million｜Passengers\n:::\n\nafter');
+  });
+
+  it("drops the draft when the block's text changes underneath, and draws the figure", async () => {
+    const { widget, editor } = await mount(DOC);
+    openEditor();
+    const input = gridInput(widget()!);
+    fireEvent.keyDown(input, { key: 'N' });
+    fireEvent.change(input, { target: { value: 'Lost' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    away(editor);
+    await waitFor(() => expect(widget()).toBeNull());
+    const at = DOC.indexOf('At a glance');
+    editor.dispatch({ changes: { from: at, to: at + 'At a glance'.length, insert: 'Edited in source' }, selection: { anchor: 0 } });
+    await waitFor(() => expect(widget()).not.toBeNull());
+    expect(screen.queryByRole('group', { name: /data editor/ })).toBeNull();
+    expect(widget()!.querySelector('.live-directive-preview-content')).not.toBeNull();
+    expect(editor.state.doc.toString()).toContain('Edited in source');
+    expect(editor.state.doc.toString()).not.toContain('Lost');
+  });
+
+  it('does not bring back an editor that was cancelled or saved', async () => {
+    const { widget, editor } = await mount(DOC);
+    openEditor();
+    const input = gridInput(widget()!);
+    fireEvent.keyDown(input, { key: 'N' });
+    fireEvent.change(input, { target: { value: 'Never' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('group', { name: /data editor/ })).toBeNull());
+
+    away(editor);
+    await waitFor(() => expect(widget()).toBeNull());
+    back(editor);
+    await waitFor(() => expect(widget()).not.toBeNull());
+    expect(screen.queryByRole('group', { name: /data editor/ })).toBeNull();
+
+    openEditor();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('group', { name: /data editor/ })).toBeNull());
+    away(editor, editor.state.doc.toString().indexOf('Airport'));
+    await waitFor(() => expect(widget()).toBeNull());
+    back(editor);
+    await waitFor(() => expect(widget()).not.toBeNull());
+    expect(screen.queryByRole('group', { name: /data editor/ })).toBeNull();
+  });
+
+  it('does not take focus when the editor comes back', async () => {
+    const { widget, editor } = await mount(DOC);
+    openEditor();
+    away(editor);
+    await waitFor(() => expect(widget()).toBeNull());
+    back(editor);
+    await waitFor(() => expect(widget()).not.toBeNull());
+    expect(dataEditor()).toBeInTheDocument();
+    expect(gridInput(widget()!)).not.toHaveFocus();
   });
 });

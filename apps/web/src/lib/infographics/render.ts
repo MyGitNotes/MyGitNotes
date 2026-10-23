@@ -302,6 +302,9 @@ function niceStep(range: number, count: number): number {
   return nice * power;
 }
 
+/** About how wide the plot draws once the figure is wide enough to show labels in it: what a label has to fit in. */
+const NOMINAL_PLOT_WIDTH = 400;
+
 function line(block: InfographicBlock, r: Renderer): string {
   const unit = attrOf(block.attrs, 'unit');
   if (!block.children.length) fail('line needs :::series children');
@@ -375,13 +378,17 @@ function line(block: InfographicBlock, r: Renderer): string {
     }
     return hits;
   };
+  /** The width in px of a noted point's label on one row (12px text, wide characters twice as wide as the rest) and its offset from the point. */
+  const rowWidth = (point: { y: number; item: Item; }) => [plain(point.item.fields[2]), valueText(point.y)].reduce((sum, part) => sum + [...part].reduce((width, char) => width + (/[\u2e80-\u9fff\uff00-\uffef]/.test(char) ? 12 : 7), 0), 0) + 6 + 6;
   const inline = new Set<string>();
   for (const entry of noted) {
     const id = key(entry.seriesIndex, entry.pointIndex);
     const points = series[entry.seriesIndex].points;
     const [before, after] = [points[entry.pointIndex - 1], points[entry.pointIndex + 1]];
     const preferBelow = Boolean(before && after && entry.point.y < before.y && entry.point.y < after.y);
-    const options = ([false, true] as const).flatMap(oneLine => ([-1, 1] as const).map(side => ({ oneLine, side, cost: crossings(entry, side, oneLine) * 2 + (oneLine ? 1 : 0) + ((side > 0) === preferBelow ? 0 : 1) })));
+    // A one-row label hangs to the left of its point, so it needs that much room before the figure's edge.
+    const rowFits = x(entry.point.x) / 100 * NOMINAL_PLOT_WIDTH >= rowWidth(entry.point);
+    const options = ([false, true] as const).filter(oneLine => !oneLine || rowFits || entry.pointIndex === points.length - 1).flatMap(oneLine => ([-1, 1] as const).map(side => ({ oneLine, side, cost: crossings(entry, side, oneLine) * 2 + (oneLine ? 1 : 0) + ((side > 0) === preferBelow ? 0 : 1) })));
     const best = options.reduce((chosen, option) => option.cost < chosen.cost ? option : chosen);
     if (best.side > 0) below.add(id);
     if (best.oneLine && entry.pointIndex !== points.length - 1) inline.add(id);

@@ -130,9 +130,11 @@ dl.ig-numbers .ig-number-note { margin-top: 0.25rem; font-size: 0.75rem; color: 
 
 /* ----- timeline: :::lane{title highlight} - 年份或「起–迄」｜事件 ----- */
 
-.ig-timeline { display: grid; gap: 1rem; padding: 0 1.25rem; }
+/* The figure itself carries `ig-timeline` too, so the rule names the body's container: it must not take the figure's own padding. */
+.ig-body > .ig-timeline { display: grid; gap: 1rem; padding: 0 1.25rem; }
 .ig-axis { position: relative; height: 1.2rem; border-bottom: 1px solid var(--ig-faint); }
-.ig-axis-tick { position: absolute; bottom: 0.15rem; transform: translateX(-50%); font-size: 0.75rem; color: var(--color-muted); }
+/* nowrap: the last tick sits at the container's right edge, where an enclosing `overflow-wrap: anywhere` (the live editor's) would stack its digits. */
+.ig-axis-tick { position: absolute; bottom: 0.15rem; transform: translateX(-50%); white-space: nowrap; font-size: 0.75rem; color: var(--color-muted); }
 .ig-axis-tick.is-start { transform: none; }
 .ig-axis-tick.is-end { transform: translateX(-100%); }
 .ig-figure .ig-lane-label { font-weight: 700; }

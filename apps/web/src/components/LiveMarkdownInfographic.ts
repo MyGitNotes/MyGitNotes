@@ -6,6 +6,7 @@ import { setAttr } from '../lib/infographics/grid.js';
 import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicKind, parseInfographic, serializeInfographic } from '../lib/infographics/model.js';
 import { renderNote } from '../lib/markdown.js';
 import { youtubeLabels } from '../lib/youtube-embed.js';
+import { draftsOf, type InfographicDraft } from './infographic-editor/drafts.js';
 import { InfographicEditor } from './infographic-editor/InfographicEditor.js';
 import { kindLabel, optionLabel, problemText, type Translate } from './infographic-editor/labels.js';
 import { infographicEditorRequest, openInfographicEditor } from './infographic-editor/open-request.js';
@@ -16,6 +17,8 @@ const PALETTE = { key: 'palette', type: 'select' } as const;
 /** Moves with the widget's DOM: CodeMirror hands a widget whose text is unchanged a new `from` without rebuilding it. */
 class InfographicController {
   private editor: Root | null = null;
+  /** The open editor's draft, kept by the view so that it survives this widget being destroyed and drawn again. */
+  private draft: InfographicDraft | null = null;
 
   constructor(private view: EditorView, private widget: LiveMarkdownInfographic, readonly dom: HTMLElement) {}
 
@@ -60,7 +63,16 @@ class InfographicController {
     if (root) queueMicrotask(() => root.unmount());
   }
 
+  /** The editor is finished (saved, cancelled or gone): nothing is kept for a widget drawn later. */
+  private discardDraft() {
+    if (this.draft) draftsOf(this.view)?.discard(this.draft);
+    this.draft = null;
+  }
+
   destroy() {
+    // A widget destroyed with its editor still open (scrolled out of view, source revealed) hands the draft to the view.
+    if (this.draft?.read) this.draft.state = this.draft.read();
+    if (this.draft) this.draft.read = null;
     this.unmountEditor();
   }
 
@@ -73,16 +85,33 @@ class InfographicController {
     host.className = 'live-infographic-editor-host';
     this.dom.replaceChildren(host);
     this.editor = createRoot(host);
+    const drafts = draftsOf(this.view);
+    const kept = drafts?.find(widget.from, widget.text);
+    this.draft = kept ?? null;
     this.editor.render(createElement(InfographicEditor, {
       source: widget.text,
       t: this.t,
       renderFigure: source => this.figureHtml(source),
+      // A rebuilt widget picks the draft up where it was left, without taking focus from wherever the writer went.
+      draft: kept?.state,
+      autoFocus: !kept,
+      onReady: read => {
+        const entry = this.draft ?? drafts?.open(this.widget.from, this.widget.text, read());
+        if (entry) {
+          entry.read = read;
+          this.draft = entry;
+        }
+      },
       onSave: next => {
+        this.discardDraft();
         this.replace(next);
         // A saved change rebuilds this widget; an unchanged block just returns to its figure.
         if (this.dom.isConnected && this.editor) this.closeEditor();
       },
-      onClose: () => this.closeEditor(),
+      onClose: () => {
+        this.discardDraft();
+        this.closeEditor();
+      },
     }));
   }
 
@@ -239,6 +268,8 @@ export class LiveMarkdownInfographic extends WidgetType {
     const controller = new InfographicController(view, this, root);
     controllers.set(root, controller);
     controller.renderPreview();
+    // A block whose editor was open when this widget was last destroyed (scrolled away, its source revealed) opens again with its draft.
+    if (!this.readOnly && draftsOf(view)?.find(this.from, this.text)) controller.openEditor();
     // A block just inserted asks to be opened; the request is withdrawn once taken so a rebuilt widget does not reopen.
     if (!this.readOnly && view.state.field(infographicEditorRequest, false) === this.from) {
       controller.openEditor();

@@ -1,8 +1,8 @@
 import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { committed, type EditorState, initialState, reduce } from '../../lib/infographics/editor-state.js';
 import { isBlankRow, rowsOf, setAttr, setChildAttr, withoutBlankRows } from '../../lib/infographics/grid.js';
-import { type AttrSpec, checkCells, COMMON_ATTRS, type InfographicBlock, KIND_SPECS, parseInfographic, serializeInfographic } from '../../lib/infographics/model.js';
-import { AttrField } from './AttrField.js';
+import { type AttrSpec, blockAttrGroups, checkCells, childAttrGroups, type InfographicBlock, KIND_SPECS, parseInfographic, serializeInfographic } from '../../lib/infographics/model.js';
+import { AttrGroup } from './AttrGroup.js';
 import { ChildTabs } from './ChildTabs.js';
 import { DataGrid } from './DataGrid.js';
 import { childName, childTabLabel, issueText, kindLabel, type Translate } from './labels.js';
@@ -19,9 +19,14 @@ export interface InfographicEditorProps {
   /** Called when the writer leaves without saving. */
   onClose: () => void;
   autoFocus?: boolean;
+  /** A draft to carry on from, made by an editor of this same source that was destroyed before it finished. */
+  draft?: EditorState;
+  /** Called once the editor is mounted with a function that reads the current draft, a cell being typed folded in. */
+  onReady?: (read: () => EditorState) => void;
 }
 
-function initial(source: string): EditorState {
+function initial(source: string, draft?: EditorState): EditorState {
+  if (draft) return draft;
   const block = parseInfographic(source);
   if (!block || block.problems.length) throw new Error('The infographic editor opens only blocks the grid can hold.');
   return initialState(block);
@@ -31,13 +36,17 @@ function initial(source: string): EditorState {
  * The data editor of one infographic block: attribute fields, child containers as tabs, a spreadsheet-like grid
  * and a preview. The draft lives here; nothing reaches the document until `onSave`.
  */
-export function InfographicEditor({ source, t, renderFigure, onSave, onClose, autoFocus = true }: InfographicEditorProps) {
-  const [state, dispatch] = useReducer(reduce, source, initial);
+export function InfographicEditor({ source, t, renderFigure, onSave, onClose, autoFocus = true, draft, onReady }: InfographicEditorProps) {
+  const [state, dispatch] = useReducer(reduce, source, source => initial(source, draft));
   const latest = useRef(state);
   useLayoutEffect(() => {
     latest.current = state;
   });
   const inputRef = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    onReady?.(() => committed(latest.current, latest.current.edit ? inputRef.current?.value ?? '' : null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the reader only touches refs, so it is handed over once.
+  }, []);
   const preview = useRef<PreviewHandle>(null);
   const [firstHtml] = useState(() => renderFigure(serializeInfographic(withoutBlankRows(state.block))));
   const { block, tab } = state;
@@ -89,7 +98,7 @@ export function InfographicEditor({ source, t, renderFigure, onSave, onClose, au
       </div>
       <fieldset className='ig-attrs'>
         <legend>{t('infographic.editor.attributes')}</legend>
-        {[...COMMON_ATTRS, ...spec.attrs].map(attr => <AttrField key={attr.key} spec={attr} value={block.attrs[attr.key]} t={t} onChange={setBlockAttr(attr)} />)}
+        <AttrGroup groups={blockAttrGroups(block.kind)} values={block.attrs} t={t} onChange={setBlockAttr} />
       </fieldset>
       <div className='ig-data'>
         <h4 className='ig-section'>{t('infographic.editor.data')}</h4>
@@ -97,7 +106,7 @@ export function InfographicEditor({ source, t, renderFigure, onSave, onClose, au
         {spec.child && block.children.length > 0 && (
           <fieldset className='ig-attrs ig-child-attrs'>
             <legend>{t('infographic.editor.childAttrs', { name: childTabLabel(t, block, tab) })}</legend>
-            {spec.child.attrs.map(attr => <AttrField key={`${tab}:${attr.key}`} spec={attr} value={block.children[tab]?.attrs[attr.key]} t={t} onChange={setChild(attr)} />)}
+            <AttrGroup key={tab} groups={childAttrGroups(block.kind)} values={block.children[tab]?.attrs} t={t} onChange={setChild} />
           </fieldset>
         )}
         {needsChild ? <p className='ig-empty'>{t('infographic.editor.noChild', { name: childName(t, block.kind) })}</p> : <DataGrid state={state} dispatch={dispatch} t={t} issues={tabIssues} inputRef={inputRef} onDraft={onDraft} onSave={save} onClose={onClose} autoFocus={autoFocus} />}

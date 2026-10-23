@@ -146,6 +146,26 @@ describe('renderInfographic (the blog plugin cases)', () => {
     expect(html).toMatch(/class="ig-point ig-series-0 is-labeled is-below is-inline"/);
   });
 
+  it('line keeps a long note on an early point on two rows, centred, rather than one row hanging out of the figure', () => {
+    const early = `::::line
+:::series{title="實際" highlight}
+- 2019｜4,869
+- 2022｜1,100｜邊境重新開放
+- 2025｜4,780
+:::
+:::series{title="預測" dashed}
+- 2025｜4,780
+- 2045｜8,380
+:::
+::::`;
+    const point = (html: string) => html.match(/<span class="(ig-point[^"]*)"[^>]*><span class="ig-point-label"><span class="ig-point-note">邊境重新開放/)?.[1];
+    expect(point(render(early))).toContain('is-labeled');
+    expect(point(render(early))).not.toContain('is-inline');
+    // The same note on a later point has the room, and keeps its one row when that avoids the line.
+    const late = early.replace('- 2022｜1,100｜邊境重新開放', '- 2022｜1,100').replace('- 2025｜4,780\n:::\n:::series', '- 2025｜4,780｜邊境重新開放\n:::\n:::series');
+    expect(point(render(late))).toContain('is-labeled');
+  });
+
   it('timeline anchors the first and last axis labels inward', () => {
     const html = render(`::::timeline{from="2000" to="2040"}\n:::lane{title="L"}\n- 2004｜甲\n:::\n::::`);
     expect(html).toContain('<span class="ig-axis-tick is-start" style="left:0%">2000</span>');

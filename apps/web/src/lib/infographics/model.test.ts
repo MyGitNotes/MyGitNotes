@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cellsToFields, checkCells, isStrongField, numbers, parseInfographic, plainField, rowCells, serializeInfographic, splitFields, toggleHighlight } from './model.js';
+import { blockAttrGroups, cellsToFields, checkCells, childAttrGroups, isStrongField, numbers, parseInfographic, plainField, rowCells, serializeInfographic, splitFields, toggleHighlight } from './model.js';
 
 // The blog's own examples (DIRECTIVES_USAGE.md and scripts/test-infographics.mjs at a17b573e).
 const BARS = `::::bars{title="桃機接得下松山的旅客嗎？" unit="萬人次" reference="4280" reference-label="桃機現有容量"}
@@ -132,5 +132,37 @@ describe('infographic cell checks', () => {
     const map = parseInfographic(':::map\n- 松山｜25.069, 121.552\n- 東京｜35.6, 139.7\n- 某處｜25\n- 松山 → 台南｜x\n- 松山 →｜x\n:::')!;
     expect(checkCells(map).map(issue => [issue.row, issue.code])).toEqual([[1, 'outside-map'], [2, 'not-a-position'], [3, 'unknown-point'], [4, 'route-needs-two-points']]);
     expect(checkCells(parseInfographic(MAP)!)).toEqual([]);
+  });
+});
+
+describe('attribute groups', () => {
+  const keys = (specs: { key: string; }[]) => specs.map(spec => spec.key);
+
+  it("shows the title and each kind's essential attributes, and tucks the rest away", () => {
+    expect(keys(blockAttrGroups('key-numbers').essential)).toEqual(['title']);
+    expect(keys(blockAttrGroups('key-numbers').more)).toEqual(['subtitle', 'note', 'source', 'palette']);
+    expect(keys(blockAttrGroups('bars').essential)).toEqual(['title', 'unit', 'reference', 'reference-label']);
+    expect(keys(blockAttrGroups('bars').more)).toEqual(['subtitle', 'note', 'source', 'palette', 'max']);
+    expect(keys(blockAttrGroups('line').essential)).toEqual(['title', 'unit']);
+    expect(keys(blockAttrGroups('line').more)).toEqual(['subtitle', 'note', 'source', 'palette', 'ticks', 'from', 'to', 'min', 'max']);
+    expect(keys(blockAttrGroups('timeline').essential)).toEqual(['title', 'from', 'to']);
+    expect(keys(blockAttrGroups('map').essential)).toEqual(['title', 'base']);
+    expect(keys(blockAttrGroups('parts').essential)).toEqual(['title', 'unit']);
+  });
+
+  it('keeps every attribute in exactly one group', () => {
+    for (const kind of ['key-numbers', 'bars', 'parts', 'line', 'timeline', 'status-board', 'map'] as const) {
+      const { essential, more } = blockAttrGroups(kind);
+      expect(new Set([...keys(essential), ...keys(more)]).size).toBe(essential.length + more.length);
+    }
+  });
+
+  it('splits a child container only when it has more than two attributes', () => {
+    expect(keys(childAttrGroups('bars').essential)).toEqual(['label', 'reference', 'reference-label']);
+    expect(keys(childAttrGroups('bars').more)).toEqual(['note']);
+    expect(childAttrGroups('line').more).toEqual([]);
+    expect(childAttrGroups('timeline').more).toEqual([]);
+    expect(childAttrGroups('status-board').more).toEqual([]);
+    expect(childAttrGroups('map')).toEqual({ essential: [], more: [] });
   });
 });

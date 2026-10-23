@@ -17,6 +17,7 @@ import { useNoteQueryScope } from '../lib/use-note-queries.js';
 import { noteLinkHref } from '@mygitnotes/core/workspace-links';
 import { TASK_TOKEN_ICON_SVG } from '../lib/task-icons.js';
 import { LiveMarkdownTable, tableUIState } from './LiveMarkdownTable.js';
+import { infographicDrafts } from './infographic-editor/drafts.js';
 import { infographicEditorRequest, openInfographicEditor } from './infographic-editor/open-request.js';
 import { chipEditState } from './live-markdown/chip-editing.js';
 import { atCompletionSource } from './live-markdown/at-completion-source.js';
@@ -227,6 +228,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           theme,
           tableUIState,
           infographicEditorRequest,
+          infographicDrafts,
           chipEditState,
           field,
           autocompletion({

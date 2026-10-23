@@ -109,7 +109,7 @@ describe('grid keyboard', () => {
     const editor = mount(KEY_NUMBERS);
     editor.type('lost');
     editor.press('Escape');
-    expect(editor.text(0, 0)).toBe('**213 ha**');
+    expect(editor.text(0, 0)).toBe('213 ha');
     expect(editor.input.dataset.editing).toBeUndefined();
     expect(editor.onClose).not.toHaveBeenCalled();
     editor.press('Escape');
@@ -131,7 +131,7 @@ describe('grid keyboard', () => {
     expect(editor.text(1, 0)).toBe('5.6 million');
   });
 
-  it('Tab and Shift+Tab move across the row and wrap to the next and previous rows, then around the grid', () => {
+  it('Tab and Shift+Tab move across the row and wrap to the next and previous rows', () => {
     const editor = mount(KEY_NUMBERS);
     editor.press('Tab');
     editor.press('Tab');
@@ -140,11 +140,56 @@ describe('grid keyboard', () => {
     expect(editor.active()).toEqual([1, 0]);
     editor.press('Tab', { shiftKey: true });
     expect(editor.active()).toEqual([0, 2]);
-    editor.press('Home');
-    editor.press('Tab', { shiftKey: true });
+  });
+
+  it('Tab on the last cell leaves the grid for the next control instead of wrapping', () => {
+    const editor = mount(KEY_NUMBERS);
+    editor.press('ArrowDown');
+    editor.press('End');
     expect(editor.active()).toEqual([1, 2]);
-    editor.press('Tab');
+    // Not prevented: the browser's own Tab goes on to the Add row button after the grid.
+    expect(editor.press('Tab')).toBe(true);
+    expect(editor.active()).toEqual([1, 2]);
+    const controls = [...editor.container.querySelectorAll<HTMLElement>('button, input')].filter(element => element.tabIndex >= 0);
+    expect(controls[controls.indexOf(editor.input) + 1]).toBe(editor.getByRole('button', { name: 'Add row' }));
+  });
+
+  it('Shift+Tab on the first cell moves focus to the control above the grid instead of wrapping', () => {
+    const editor = mount(KEY_NUMBERS);
+    expect(editor.press('Tab', { shiftKey: true })).toBe(false);
     expect(editor.active()).toEqual([0, 0]);
+    const focused = document.activeElement as HTMLElement;
+    expect(focused).not.toBe(editor.input);
+    expect(focused.closest('.ig-attrs')).not.toBeNull();
+    // The last control before the grid: no tab strip here, so the attribute section's last field.
+    expect(focused).toBe(editor.getByRole('combobox', { name: 'Palette' }));
+  });
+
+  it('leaves the grid from a cell being edited too, committing the cell first', () => {
+    const editor = mount(KEY_NUMBERS);
+    editor.press('ArrowDown');
+    editor.press('End');
+    editor.type('last');
+    expect(editor.press('Tab')).toBe(true);
+    expect(editor.text(1, 2)).toBe('last');
+    expect(editor.active()).toEqual([1, 2]);
+    editor.press('ArrowUp');
+    editor.press('Home');
+    editor.press('ArrowUp');
+    editor.type('first');
+    editor.press('Tab', { shiftKey: true });
+    expect(editor.text(0, 0)).toBe('first');
+    expect(editor.active()).toEqual([0, 0]);
+    expect(document.activeElement).toBe(editor.getByRole('combobox', { name: 'Palette' }));
+  });
+
+  it('Shift+Tab from the first cell lands on the controls between the tabs and the grid', () => {
+    const editor = mount(BARS);
+    editor.press('Tab', { shiftKey: true });
+    // The scenario's own More settings button is the last tabbable control above the grid.
+    const toggles = editor.getAllByRole('button', { name: 'More settings' });
+    expect(document.activeElement).toBe(toggles[toggles.length - 1]);
+    expect((document.activeElement as HTMLElement).closest('.ig-child-attrs')).not.toBeNull();
   });
 
   it('Tab while editing commits the cell and moves right', () => {
@@ -172,6 +217,34 @@ describe('grid keyboard', () => {
     fireEvent.change(editor.input, { target: { value: '資料' } });
     editor.press('Enter');
     expect(editor.text(0, 0)).toBe('資料');
+  });
+});
+
+describe('highlighted rows', () => {
+  it('show a strong-only field without its ** and edit the inner text, keeping the wrap on save', () => {
+    const editor = mount(KEY_NUMBERS);
+    expect(editor.text(0, 0)).toBe('213 ha');
+    expect(editor.getByRole('button', { name: 'Highlight row 1' })).toHaveAttribute('aria-pressed', 'true');
+    editor.press('F2');
+    expect(editor.input.value).toBe('213 ha');
+    fireEvent.change(editor.input, { target: { value: '214 ha' } });
+    editor.press('Enter');
+    expect(editor.text(0, 0)).toBe('214 ha');
+    editor.press('Enter', { metaKey: true });
+    expect(editor.onSave).toHaveBeenCalledWith(':::key-numbers{title="At a glance" source="MOT"}\n- **214 ha**｜Airport area｜41% civil\n- 5.6 million｜Passengers\n:::\n');
+  });
+
+  it('turns the highlight off with the star, which then shows and saves the plain text', () => {
+    const editor = mount(KEY_NUMBERS);
+    fireEvent.click(editor.getByRole('button', { name: 'Highlight row 1' }));
+    expect(editor.text(0, 0)).toBe('213 ha');
+    fireEvent.click(editor.getByRole('button', { name: 'Save' }));
+    expect(editor.onSave).toHaveBeenCalledWith(expect.stringContaining('\n- 213 ha｜Airport area'));
+  });
+
+  it('shows other inline Markdown as typed', () => {
+    const editor = mount(':::key-numbers\n- **a** and *b*｜`code`｜**x** **y**\n:::\n');
+    expect([editor.text(0, 0), editor.text(0, 1), editor.text(0, 2)]).toEqual(['**a** and *b*', '`code`', '**x** **y**']);
   });
 });
 
@@ -246,16 +319,16 @@ describe('rows', () => {
     const editor = mount(KEY_NUMBERS);
     openMenu(editor, 1);
     pick('Insert row below');
-    expect(firstColumn(editor)).toEqual(['**213 ha**', '', '5.6 million']);
+    expect(firstColumn(editor)).toEqual(['213 ha', '', '5.6 million']);
     openMenu(editor, 1);
     pick('Insert row above');
-    expect(firstColumn(editor)).toEqual(['', '**213 ha**', '', '5.6 million']);
+    expect(firstColumn(editor)).toEqual(['', '213 ha', '', '5.6 million']);
     openMenu(editor, 2);
     pick('Duplicate row');
-    expect(firstColumn(editor)).toEqual(['', '**213 ha**', '**213 ha**', '', '5.6 million']);
+    expect(firstColumn(editor)).toEqual(['', '213 ha', '213 ha', '', '5.6 million']);
     openMenu(editor, 1);
     pick('Delete row');
-    expect(firstColumn(editor)).toEqual(['**213 ha**', '**213 ha**', '', '5.6 million']);
+    expect(firstColumn(editor)).toEqual(['213 ha', '213 ha', '', '5.6 million']);
     expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(editor.input);
   });
@@ -265,7 +338,7 @@ describe('rows', () => {
     openMenu(editor, 1);
     expect(screen.getByRole('menuitem', { name: 'Move up' })).toBeDisabled();
     pick('Move down');
-    expect(firstColumn(editor)).toEqual(['5.6 million', '**213 ha**']);
+    expect(firstColumn(editor)).toEqual(['5.6 million', '213 ha']);
     openMenu(editor, 2);
     expect(screen.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
   });
@@ -289,7 +362,7 @@ describe('rows', () => {
     const star = editor.getByRole('button', { name: 'Highlight row 2' });
     expect(star).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(star);
-    expect(editor.text(1, 0)).toBe('**5.6 million**');
+    expect(editor.text(1, 0)).toBe('5.6 million');
     expect(editor.getByRole('button', { name: 'Highlight row 2' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(editor.getByRole('button', { name: 'Highlight row 1' }));
     expect(editor.text(0, 0)).toBe('213 ha');
@@ -311,7 +384,7 @@ describe('rows', () => {
     fireEvent.pointerMove(handle, { pointerId: 1, clientY: 40 });
     expect(editor.container.querySelector('[data-drop-target]')?.getAttribute('data-row-index')).toBe('1');
     fireEvent.pointerUp(handle, { pointerId: 1, clientY: 40 });
-    expect(firstColumn(editor)).toEqual(['5.6 million', '**213 ha**']);
+    expect(firstColumn(editor)).toEqual(['5.6 million', '213 ha']);
   });
 
   it('shows an empty grid with an add button when the last row goes', () => {
@@ -334,7 +407,7 @@ describe('child tabs', () => {
     expect(editor.getByRole('tab', { name: '2025' })).toHaveAttribute('aria-selected', 'true');
     expect(editor.text(0, 0)).toBe('Taoyuan');
     fireEvent.click(editor.getByRole('tab', { name: '2045' }));
-    expect(editor.text(0, 0)).toBe('**Taoyuan forecast**');
+    expect(editor.text(0, 0)).toBe('Taoyuan forecast');
     expect(editor.container.querySelectorAll('[data-grid-row]')).toHaveLength(2);
   });
 
@@ -406,11 +479,58 @@ describe('child tabs', () => {
 });
 
 describe('attributes', () => {
-  it('lists the common and per-kind attributes', () => {
+  it("shows the title and the kind's essential attributes, the rest under More settings", () => {
+    const labels = (root: HTMLElement) => within(root).getAllByRole<HTMLInputElement>('textbox').map(box => box.labels?.[0].textContent);
     const editor = mount(BARS);
     const attributes = editor.getByRole('group', { name: 'Attributes' });
-    expect(within(attributes).getAllByRole<HTMLInputElement>('textbox').map(box => box.labels?.[0].textContent)).toEqual(['Title', 'Subtitle', 'Note', 'Source', 'Unit', 'Reference line', 'Reference label', 'Maximum']);
+    expect(labels(attributes)).toEqual(['Title', 'Unit', 'Reference line', 'Reference label']);
+    expect(within(attributes).queryByRole('combobox', { name: 'Palette' })).toBeNull();
+    const more = within(attributes).getByRole('button', { name: 'More settings' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(more);
+    expect(more).toHaveAttribute('aria-expanded', 'true');
+    expect(labels(attributes)).toEqual(['Title', 'Unit', 'Reference line', 'Reference label', 'Subtitle', 'Note', 'Source', 'Maximum']);
     expect(within(attributes).getByRole('combobox', { name: 'Palette' })).toHaveValue('');
+    fireEvent.click(more);
+    expect(labels(attributes)).toEqual(['Title', 'Unit', 'Reference line', 'Reference label']);
+  });
+
+  it('starts More settings open only when one of its attributes has a value', () => {
+    const closed = mount(':::parts{unit="%"}\n- a｜1\n:::\n');
+    expect(closed.getByRole('button', { name: 'More settings' })).toHaveAttribute('aria-expanded', 'false');
+    closed.unmount();
+    const open = mount(':::parts{unit="%" total="100"}\n- a｜1\n:::\n');
+    expect(open.getByRole('button', { name: 'More settings' })).toHaveAttribute('aria-expanded', 'true');
+    expect(open.getByRole('textbox', { name: 'Total' })).toHaveValue('100');
+    open.unmount();
+    // A palette counts too.
+    expect(mount(':::key-numbers{palette="diverging"}\n- a｜b\n:::\n').getByRole('button', { name: 'More settings' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it("names each kind's essential attributes", () => {
+    const shown = (source: string) => {
+      const editor = mount(source);
+      const attributes = editor.getByRole('group', { name: 'Attributes' });
+      const names = [...within(attributes).queryAllByRole('textbox'), ...within(attributes).queryAllByRole('combobox')].map(field => (field as HTMLInputElement).labels?.[0].textContent);
+      editor.unmount();
+      return names;
+    };
+    expect(shown(':::key-numbers\n- a｜b\n:::\n')).toEqual(['Title']);
+    expect(shown(':::parts\n- a｜1\n:::\n')).toEqual(['Title', 'Unit']);
+    expect(shown('::::line\n:::series\n- 2019｜1\n:::\n::::\n')).toEqual(['Title', 'Unit']);
+    expect(shown('::::timeline\n:::lane\n- 2019｜x\n:::\n::::\n')).toEqual(['Title', 'From', 'To']);
+    expect(shown(MAP)).toEqual(['Title', 'Base map']);
+  });
+
+  it("puts a scenario's note under More settings, and opens it for a scenario that has one", () => {
+    const editor = mount('::::bars\n:::scenario{label="A" note="why"}\n- x｜1\n:::\n:::scenario{label="B"}\n- y｜2\n:::\n::::\n');
+    const group = () => editor.container.querySelector<HTMLElement>('.ig-child-attrs')!;
+    expect(within(group()).getByRole('textbox', { name: 'Note' })).toHaveValue('why');
+    fireEvent.click(editor.getByRole('tab', { name: 'B' }));
+    expect(within(group()).queryByRole('textbox', { name: 'Note' })).toBeNull();
+    expect(within(group()).getAllByRole<HTMLInputElement>('textbox').map(box => box.labels?.[0].textContent)).toEqual(['Label', 'Reference line', 'Reference label']);
+    fireEvent.click(within(group()).getByRole('button', { name: 'More settings' }));
+    expect(within(group()).getByRole('textbox', { name: 'Note' })).toHaveValue('');
   });
 
   it("writes edits in the attributes' own order, selects from the fixed values, and drops emptied ones", () => {
@@ -494,7 +614,7 @@ describe('save and cancel', () => {
     const editor = mount(KEY_NUMBERS);
     editor.type('q');
     fireEvent.click(editor.getByRole('button', { name: 'Save' }));
-    expect(editor.onSave).toHaveBeenLastCalledWith(expect.stringContaining('- q｜Airport area'));
+    expect(editor.onSave).toHaveBeenLastCalledWith(expect.stringContaining('- **q**｜Airport area'));
     fireEvent.keyDown(editor.getByRole('textbox', { name: 'Title' }), { key: 'Enter', ctrlKey: true });
     expect(editor.onSave).toHaveBeenCalledTimes(2);
   });
@@ -514,7 +634,7 @@ describe('save and cancel', () => {
     fireEvent.pointerDown(editor.getByRole('button', { name: 'Highlight row 2' }));
     fireEvent.click(editor.getByRole('button', { name: 'Highlight row 2' }));
     expect(editor.text(0, 0)).toBe('kept');
-    expect(editor.text(1, 0)).toBe('**5.6 million**');
+    expect(editor.text(1, 0)).toBe('5.6 million');
   });
 
   it('refuses a block the grid cannot hold', () => {
@@ -549,7 +669,7 @@ describe('undo', () => {
     editor.press('z', { ctrlKey: true });
     expect(editor.container.querySelectorAll('[data-grid-row]')).toHaveLength(2);
     editor.press('z', { ctrlKey: true });
-    expect(editor.text(0, 0)).toBe('**213 ha**');
+    expect(editor.text(0, 0)).toBe('213 ha');
     editor.press('Z', { ctrlKey: true, shiftKey: true });
     expect(editor.text(0, 0)).toBe('one');
     editor.press('y', { ctrlKey: true });
@@ -569,8 +689,8 @@ describe('preview', () => {
     expect(editor.renderFigure).toHaveBeenCalledTimes(1);
     act(() => vi.advanceTimersByTime(60));
     expect(editor.renderFigure).toHaveBeenCalledTimes(2);
-    expect(editor.renderFigure).toHaveBeenLastCalledWith(expect.stringContaining('- ab｜Airport area'));
-    expect(editor.container.querySelector('.ig-preview .fig')?.textContent).toContain('- ab｜Airport area');
+    expect(editor.renderFigure).toHaveBeenLastCalledWith(expect.stringContaining('- **ab**｜Airport area'));
+    expect(editor.container.querySelector('.ig-preview .fig')?.textContent).toContain('- **ab**｜Airport area');
     // Nothing was committed by drawing it.
     expect(editor.input.dataset.editing).toBe('true');
   });
@@ -593,6 +713,6 @@ describe('typing does not rebuild the grid', () => {
     expect([...editor.container.querySelectorAll('[data-cell]')]).toEqual(before);
     expect(document.activeElement).toBe(editor.input);
     expect(editor.input.value).toBe('abcd');
-    expect(editor.text(0, 0)).toBe('**213 ha**');
+    expect(editor.text(0, 0)).toBe('213 ha');
   });
 });

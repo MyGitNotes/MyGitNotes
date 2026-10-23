@@ -61,14 +61,39 @@ export function gridDims(block: InfographicBlock, tab: number): GridDims {
   return { rows: rowsOf(block, tab).length, cols: gridColumns(block).length };
 }
 
-/** The cells of every row of `tab`, padded to the grid's width. */
-export function cellMatrix(block: InfographicBlock, tab: number): string[][] {
+/** The cells of every row of `tab` as written, padded to the grid's width. */
+function rawCellMatrix(block: InfographicBlock, tab: number): string[][] {
   const cols = gridColumns(block).length;
   return rowsOf(block, tab).map(row => {
     const cells = rowCells(block.kind, row.fields);
     while (cells.length < cols) cells.push('');
     return cells;
   });
+}
+
+/**
+ * The single strong span (`**x**` or `__x__`) a field is wholly wrapped in, or null. A field of several spans, or
+ * with the marker inside, is not one: it is shown and edited as typed.
+ */
+function unwrapStrong(field: string): { marker: string; inner: string; } | null {
+  const text = field.trim();
+  const match = isStrongField(text) ? /^(\*\*|__)([\s\S]*)\1$/.exec(text) : null;
+  return match && !match[2].includes(match[1]) ? { marker: match[1], inner: match[2] } : null;
+}
+
+/** What a cell shows and edits: a highlighted field without its `**`, since the ★ already says it is highlighted. */
+const shown = (field: string): string => unwrapStrong(field)?.inner ?? field;
+
+/** What a cell holds after the writer sets it to `value`: a highlighted field keeps its wrap around the new text. */
+function writeCell(existing: string, value: string): string {
+  const next = cleanCell(value);
+  const wrap = unwrapStrong(existing);
+  return !wrap || !next || next.includes(wrap.marker) ? next : `${wrap.marker}${next}${wrap.marker}`;
+}
+
+/** The cells of every row of `tab` as the grid shows and edits them, padded to the grid's width. */
+export function cellMatrix(block: InfographicBlock, tab: number): string[][] {
+  return rawCellMatrix(block, tab).map(cells => cells.map(shown));
 }
 
 /** A cell holds one line of inline Markdown; a 「｜」 outside code would split it into two fields, so it becomes `|`. */
@@ -94,7 +119,7 @@ export function setCell(block: InfographicBlock, tab: number, row: number, col: 
   const rows = rowsOf(block, tab);
   if (!rows[row]) return block;
   const cells = padTo(rowCells(block.kind, rows[row].fields), gridColumns(block).length);
-  cells[col] = cleanCell(value);
+  cells[col] = writeCell(cells[col], value);
   return withRows(block, tab, rows.map((existing, index) => index === row ? { fields: cellsToFields(block.kind, cells) } : existing));
 }
 
@@ -272,13 +297,15 @@ export function moveSelection(selection: GridSelection, direction: Direction, di
   return extend ? { anchor: selection.anchor, focus: next } : single(next);
 }
 
-/** The cell after (or before) the active one in reading order; the ends wrap around the grid. */
+/**
+ * The cell after (or before) the active one in reading order: the end of a row continues on the next row. Past the
+ * last cell going forward, or the first going back, there is none, and Tab leaves the grid.
+ */
 export function stepCell(selection: GridSelection, back: boolean, dims: GridDims): CellPos | null {
   if (!dims.rows || !dims.cols) return null;
   const index = selection.anchor.row * dims.cols + selection.anchor.col + (back ? -1 : 1);
-  const total = dims.rows * dims.cols;
-  const wrapped = (index + total) % total;
-  return { row: Math.floor(wrapped / dims.cols), col: wrapped % dims.cols };
+  if (index < 0 || index >= dims.rows * dims.cols) return null;
+  return { row: Math.floor(index / dims.cols), col: index % dims.cols };
 }
 
 // ---------------------------------------------------------------------------
@@ -288,9 +315,9 @@ function quoteTsv(cell: string): string {
   return /["\t\r\n]/.test(cell) ? `"${cell.replaceAll('"', '""')}"` : cell;
 }
 
-/** The cells of `range` as a spreadsheet copies them: tabs between columns, newlines between rows, quotes where needed. */
+/** The cells of `range` as a spreadsheet copies them, highlight wraps included so a pasted row stays highlighted: tabs between columns, newlines between rows, quotes where needed. */
 export function rangeToTsv(block: InfographicBlock, tab: number, range: CellRange): string {
-  return cellMatrix(block, tab).slice(range.top, range.bottom + 1).map(cells => cells.slice(range.left, range.right + 1).map(quoteTsv).join('\t')).join('\n');
+  return rawCellMatrix(block, tab).slice(range.top, range.bottom + 1).map(cells => cells.slice(range.left, range.right + 1).map(quoteTsv).join('\t')).join('\n');
 }
 
 /** Parses tab-separated text as a spreadsheet writes it: a field opening with a quote runs to the closing quote, `""` is a quote. */
@@ -356,7 +383,7 @@ export function pasteMatrix(block: InfographicBlock, tab: number, at: CellPos, m
     line.forEach((value, j) => {
       const col = at.col + j;
       if (col >= cols) return;
-      cells[col] = cleanCell(value);
+      cells[col] = writeCell(cells[col], value);
       lastCol = Math.max(lastCol, col);
     });
     rows[row] = { fields: cellsToFields(block.kind, cells) };

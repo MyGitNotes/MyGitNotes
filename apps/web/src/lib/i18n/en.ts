@@ -375,6 +375,7 @@ export const en = {
   'infographic.editor.markdownHint': 'Edit this block as Markdown',
   'infographic.editor.panel': 'Infographic data editor: {kind}',
   'infographic.editor.attributes': 'Attributes',
+  'infographic.editor.moreSettings': 'More settings',
   'infographic.editor.data': 'Data',
   'infographic.editor.grid': 'Data grid',
   'infographic.editor.extraColumn': 'Extra field {number}',

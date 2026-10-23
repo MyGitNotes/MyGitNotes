@@ -30,6 +30,11 @@
 .ig-field select { color-scheme: light; }
 .dark .ig-field select { color-scheme: dark; }
 .ig-field input[type='text']:focus, .ig-field select:focus, .ig-tab-rename:focus { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
+.ig-more-toggle { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 4px; justify-self: start; height: 26px; padding: 0 6px 0 2px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--color-muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+.ig-more-toggle svg { width: 14px; height: 14px; transition: transform 120ms ease; }
+.ig-more-toggle[aria-expanded='true'] svg { transform: rotate(90deg); }
+.ig-more-toggle:hover { color: var(--color-text); background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.ig-more { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 8px 12px; min-width: 0; }
 .ig-field-flag { flex-direction: row; align-items: center; gap: 6px; align-self: end; min-height: 30px; font-size: 12px; cursor: pointer; }
 .ig-field-flag input { accent-color: var(--color-primary); }
 

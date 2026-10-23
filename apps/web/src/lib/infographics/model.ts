@@ -75,6 +75,31 @@ const text = (key: string): ColumnSpec => ({ key, type: 'text' });
 
 export const KIND_SPECS: Record<InfographicKind, KindSpec> = { 'key-numbers': { kind: 'key-numbers', attrs: [], columns: [text('value'), text('label'), text('note')] }, bars: { kind: 'bars', attrs: [{ key: 'unit', type: 'text' }, { key: 'reference', type: 'number' }, { key: 'reference-label', type: 'text' }, { key: 'max', type: 'number' }], child: { name: 'scenario', required: false, max: MAX_SCENARIOS, attrs: [{ key: 'label', type: 'text' }, { key: 'note', type: 'text' }, { key: 'reference', type: 'number' }, { key: 'reference-label', type: 'text' }] }, columns: [text('label'), { key: 'value', type: 'number-or-range' }, text('note')] }, parts: { kind: 'parts', attrs: [{ key: 'unit', type: 'text' }, { key: 'total', type: 'number' }], columns: [text('label'), { key: 'value', type: 'number' }, text('note')] }, line: { kind: 'line', attrs: [{ key: 'unit', type: 'text' }, { key: 'ticks', type: 'numbers' }, { key: 'from', type: 'number' }, { key: 'to', type: 'number' }, { key: 'min', type: 'number' }, { key: 'max', type: 'number' }], child: { name: 'series', required: true, attrs: [{ key: 'title', type: 'text' }, { key: 'highlight', type: 'flag' }, { key: 'dashed', type: 'flag' }] }, columns: [{ key: 'x', type: 'number' }, { key: 'y', type: 'number' }, text('note')] }, timeline: { kind: 'timeline', attrs: [{ key: 'from', type: 'number' }, { key: 'to', type: 'number' }, { key: 'ticks', type: 'numbers' }], child: { name: 'lane', required: true, attrs: [{ key: 'title', type: 'text' }, { key: 'highlight', type: 'flag' }] }, columns: [{ key: 'when', type: 'year-or-range' }, text('event')] }, 'status-board': { kind: 'status-board', attrs: [], child: { name: 'group', required: true, attrs: [{ key: 'status', type: 'select', options: STATUS_VALUES }, { key: 'title', type: 'text' }] }, columns: [text('item'), text('detail')] }, map: { kind: 'map', attrs: [{ key: 'base', type: 'select', options: Object.keys(MAP_BASES) }], columns: [{ key: 'name', type: 'point-or-route' }, { key: 'position', type: 'lat-lon' }, text('note')] } };
 
+/** The attributes each kind shows up front, besides the title; every other attribute sits under "More settings". */
+const ESSENTIAL_ATTRS: Record<InfographicKind, readonly string[]> = { 'key-numbers': [], bars: ['unit', 'reference', 'reference-label'], parts: ['unit'], line: ['unit'], timeline: ['from', 'to'], 'status-board': [], map: ['base'] };
+
+/** The child container attributes shown up front, for a kind whose container has more than two attributes. */
+const ESSENTIAL_CHILD_ATTRS: Partial<Record<InfographicKind, readonly string[]>> = { bars: ['label', 'reference', 'reference-label'], line: ['title', 'highlight', 'dashed'] };
+
+export interface AttrGroups {
+  essential: AttrSpec[];
+  more: AttrSpec[];
+}
+
+/** The attributes of a block (common ones first) split into those the editor shows always and those it tucks away. */
+export function blockAttrGroups(kind: InfographicKind): AttrGroups {
+  const keep = ['title', ...ESSENTIAL_ATTRS[kind]];
+  const all = [...COMMON_ATTRS, ...KIND_SPECS[kind].attrs];
+  return { essential: all.filter(attr => keep.includes(attr.key)), more: all.filter(attr => !keep.includes(attr.key)) };
+}
+
+/** The attributes of a child container; a container with two or fewer shows them all. */
+export function childAttrGroups(kind: InfographicKind): AttrGroups {
+  const attrs = KIND_SPECS[kind].child?.attrs ?? [];
+  const keep = attrs.length > 2 ? ESSENTIAL_CHILD_ATTRS[kind] ?? attrs.slice(0, 2).map(attr => attr.key) : attrs.map(attr => attr.key);
+  return { essential: attrs.filter(attr => keep.includes(attr.key)), more: attrs.filter(attr => !keep.includes(attr.key)) };
+}
+
 export function isInfographicKind(name: string): name is InfographicKind {
   return (INFOGRAPHIC_KINDS as readonly string[]).includes(name);
 }

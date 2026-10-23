@@ -377,6 +377,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'infographic.editor.markdownHint': '以 Markdown 編輯此區塊',
   'infographic.editor.panel': '資訊圖資料編輯器：{kind}',
   'infographic.editor.attributes': '屬性',
+  'infographic.editor.moreSettings': '更多設定',
   'infographic.editor.data': '資料',
   'infographic.editor.grid': '資料表格',
   'infographic.editor.extraColumn': '額外欄位 {number}',
