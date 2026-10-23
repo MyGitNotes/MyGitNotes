@@ -231,7 +231,7 @@ dl.ig-numbers .ig-number-note { margin-top: 0.25rem; font-size: 0.75rem; color: 
 
 /* ----- narrow figures (the container, not the window, so panes and the dock count) ----- */
 
-@container (max-width: 34rem) { .ig-figure .ig-bar-row { grid-template-columns: 1fr; } .ig-figure .ig-bar-note { grid-column: 1; } .ig-bar-track { margin-right: 5.5rem; } .ig-line-chart { padding-right: 0.75rem; } .ig-plot { aspect-ratio: 4 / 3; } .ig-series-label { display: none; } .ig-figure .ig-line-legend { display: grid; margin-top: 0.5rem; } .ig-map-frame { grid-template-columns: 1fr; } }
+@container (max-width: 34rem) { .ig-figure .ig-bar-row { grid-template-columns: 1fr; } .ig-figure .ig-bar-note { grid-column: 1; } .ig-bar-track { margin-right: 5.5rem; } .ig-line-chart { padding-right: 0.75rem; } .ig-plot { aspect-ratio: 4 / 3; } .ig-series-label, .ig-x-tick.is-minor { display: none; } .ig-point.is-labeled:not(:hover, :focus-visible) > .ig-point-label { display: none; } .ig-figure .ig-line-legend { display: grid; margin-top: 0.5rem; } .ig-map-frame { grid-template-columns: 1fr; } }
 
 /* ----- motion ----- */
 
@@ -249,5 +249,14 @@ dl.ig-numbers .ig-number-note { margin-top: 0.25rem; font-size: 0.75rem; color: 
   .ig-tab { transition: background 0.2s, color 0.2s; }
   .ig-panel { animation: ig-fade 0.3s ease-out; }
 
-  @supports (animation-timeline: view()) { .ig-figure :is(.ig-number, .ig-status-item, .ig-bar-fill, .ig-bar-value, .ig-parts-bar, .ig-span, .ig-event, .ig-line-svg, .ig-point, .ig-map-point) { animation-timeline: view(); animation-range: entry 15% cover 40%; animation-fill-mode: both; animation-timing-function: ease-out; } .ig-number, .ig-status-item { animation-name: ig-rise; } .ig-bar-fill, .ig-span { animation-name: ig-grow-x; } .ig-bar-value, .ig-point { animation-name: ig-fade; } .ig-point { animation-range: entry 30% cover 50%; } .ig-parts-bar, .ig-line-svg { animation-name: ig-wipe; } .ig-event, .ig-map-point { animation-name: ig-pop; } .ig-route { stroke-dasharray: 1; animation: ig-draw linear both; animation-timeline: view(); animation-range: entry 30% cover 55%; } }
+  /* Timed, once when the figure appears: a scroll-driven timeline never finishes for a figure at the end of a note,
+     which cannot scroll far enough, and left its marks half drawn. */
+  .ig-figure :is(.ig-number, .ig-status-item, .ig-bar-fill, .ig-bar-value, .ig-parts-bar, .ig-span, .ig-event, .ig-line-svg, .ig-point, .ig-map-point) { animation-duration: 0.6s; animation-delay: calc(var(--ig-i, 0) * 50ms); animation-fill-mode: both; animation-timing-function: ease-out; }
+  .ig-number, .ig-status-item { animation-name: ig-rise; }
+  .ig-bar-fill, .ig-span { animation-name: ig-grow-x; }
+  .ig-bar-value, .ig-point { animation-name: ig-fade; }
+  .ig-point { animation-delay: 0.35s; }
+  .ig-parts-bar, .ig-line-svg { animation-name: ig-wipe; animation-duration: 0.8s; }
+  .ig-event, .ig-map-point { animation-name: ig-pop; }
+  .ig-route { stroke-dasharray: 1; animation: ig-draw 0.9s ease-out 0.3s both; }
 }

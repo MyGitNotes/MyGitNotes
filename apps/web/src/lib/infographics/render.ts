@@ -334,7 +334,15 @@ function line(block: InfographicBlock, r: Renderer): string {
   const xTickAttr = attrOf(block.attrs, 'ticks');
   const distinctXs = [...new Set(xs)];
   const xTicks = xTickAttr ? numbers(xTickAttr) : distinctXs.length <= 8 ? distinctXs.sort((a, b) => a - b) : [xMin, xMax];
-  for (const tick of xTicks) overlay.push(tag('span', { class: 'ig-x-tick', style: `left:${percent(x(tick))}` }, text(String(tick))));
+  // A narrow figure hides the minor ticks: those within 15% of the last kept tick or of the last tick, which always shows.
+  let kept = -Infinity;
+  const lastAt = xTicks.length ? x(xTicks[xTicks.length - 1]) : Infinity;
+  xTicks.forEach((tick, index) => {
+    const at = x(tick);
+    const minor = index > 0 && index < xTicks.length - 1 && (at - kept < 15 || lastAt - at < 15);
+    if (!minor) kept = at;
+    overlay.push(tag('span', { class: ['ig-x-tick', ...minor ? ['is-minor'] : []], style: `left:${percent(at)}` }, text(String(tick))));
+  });
 
   const paths = series.map((s, index) => tag('path', { d: s.points.map((p, i) => `${i ? 'L' : 'M'}${x(p.x).toFixed(2)},${y(p.y).toFixed(2)}`).join(''), class: ['ig-line-path', `ig-series-${index % CATEGORIES}`, ...highlightClass(s.highlight), ...s.dashed ? ['is-dashed'] : []], 'vector-effect': 'non-scaling-stroke', 'data-s': index }));
 

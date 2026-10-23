@@ -166,6 +166,12 @@ describe('renderInfographic (the blog plugin cases)', () => {
     expect(point(render(late))).toContain('is-labeled');
   });
 
+  it('line marks crowded x ticks minor so a narrow figure can hide them, keeping the first and last', () => {
+    const html = render('::::line\n:::series{title="a"}\n- 2019｜1\n- 2022｜2\n- 2025｜3\n- 2035｜4\n- 2045｜5\n:::\n::::');
+    const ticks = [...html.matchAll(/<span class="ig-x-tick( is-minor)?"[^>]*>(\d+)<\/span>/g)].map(match => `${match[2]}${match[1] ? '-' : '+'}`);
+    expect(ticks).toEqual(['2019+', '2022-', '2025+', '2035+', '2045+']);
+  });
+
   it('timeline anchors the first and last axis labels inward', () => {
     const html = render(`::::timeline{from="2000" to="2040"}\n:::lane{title="L"}\n- 2004｜甲\n:::\n::::`);
     expect(html).toContain('<span class="ig-axis-tick is-start" style="left:0%">2000</span>');
