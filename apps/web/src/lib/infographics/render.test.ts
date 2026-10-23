@@ -218,6 +218,15 @@ describe('renderInfographic (the blog plugin cases)', () => {
     expect(() => render(`:::bars{palette="neon"}\n- a｜1\n:::`)).toThrow(/unknown palette/);
     expect(() => render(`:::map{base="mars"}\n- a｜1, 2\n:::`)).toThrow(/unknown map base/);
     expect(() => render(`:::map{base="mars"}\n- a｜1, 2\n:::`)).toThrow(InfographicError);
+    // Keys every object inherits are no base either.
+    for (const base of ['constructor', 'toString', '__proto__']) expect(() => render(`:::map{base="${base}"}\n- a｜25, 121\n:::`)).toThrow(InfographicError);
+  });
+
+  it('fails rather than hangs or runs out of memory on a range far wider than its ticks', () => {
+    // min=1e16: a step of 1 is below the float spacing there, so adding it never moved the tick.
+    expect(render(':::line{min="10000000000000000" max="10000000000000004"}\n:::series\n- 1｜10000000000000001\n- 2｜10000000000000003\n:::\n:::')).toContain('ig-y-tick');
+    expect(() => render('::::timeline{from="0" to="100000000"}\n:::lane\n- 5｜a\n:::\n::::')).toThrow(InfographicError);
+    expect(render('::::timeline{from="0" to="100000000" ticks="0,100000000"}\n:::lane\n- 5｜a\n:::\n::::')).toContain('ig-axis-tick');
   });
 });
 
@@ -319,6 +328,15 @@ describe('transformDirectives with infographics', () => {
     expect(box).not.toMatch(/\n\s*\n/);
   });
 
+  it('turns an unexpected failure into the error box too, so the rest of the note renders', () => {
+    const output = transformDirectives(`:::parts\n- a｜1\n:::\n\nafter`, body, () => {
+      throw new TypeError('inline renderer broke');
+    });
+    expect(output).toContain('<div class="ig-error" role="alert">');
+    expect(output).toContain('inline renderer broke');
+    expect(output).toContain('after');
+  });
+
   it('leaves an unclosed infographic as text, as for other containers', () => {
     const output = transformDirectives(`:::parts\n- a｜1`, body, inline);
     expect(output).not.toContain('ig-figure');
@@ -335,6 +353,14 @@ describe('sanitised output (renderNote under DOMPurify)', () => {
   const { window } = new JSDOM('');
   const renderer = createNoteRenderer({ parser: new window.DOMParser() as unknown as DOMParser, purify: createDOMPurify(window as unknown as Window & typeof globalThis), origin: 'https://app.example' });
   const dom = (markdown: string) => new JSDOM(`<body>${renderer.renderNote(markdown, 'n.md')}</body>`).window.document;
+
+  it('keeps a figure written inside a blockquote inside the quote, between the quoted text', () => {
+    const document = dom('> intro\n>\n> :::parts\n> - a｜1\n> :::\n>\n> outro');
+    const quotes = document.querySelectorAll('blockquote');
+    expect(quotes).toHaveLength(1);
+    expect(quotes[0].querySelector('figure.ig-figure')).not.toBeNull();
+    expect(quotes[0].textContent).toMatch(/intro[\s\S]*outro/);
+  });
 
   it('keeps scenario radios, labels and their pairing', () => {
     const document = dom(BARS);

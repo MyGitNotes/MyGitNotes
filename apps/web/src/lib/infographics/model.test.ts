@@ -123,6 +123,22 @@ describe('infographic blocks', () => {
     block.children.push({ name: 'series', attrs: { title: 'A "quoted"', highlight: '', dashed: 'x' }, rows: [{ fields: ['2020', '1', ''] }] });
     expect(serializeInfographic(block)).toBe(`::::line{unit="%"}\n:::series{title='A "quoted"' highlight dashed="x"}\n- 2020｜1\n:::\n::::\n`);
   });
+
+  it('writes a } in a value as ｝, which keeps the attribute list readable as a directive', () => {
+    const block = parseInfographic(':::parts\n- a｜1\n:::')!;
+    block.attrs.title = 'A}B';
+    const again = parseInfographic(serializeInfographic(block));
+    expect(again?.attrs.title).toBe('A｝B');
+    expect(again?.rows).toHaveLength(1);
+  });
+
+  it('sends bare attributes the kind does not use to Markdown, since saving would drop them', () => {
+    expect(parseInfographic(':::bars{.wide unit="%"}\n- a｜1\n:::')!.problems).toEqual([{ code: 'unknown-attribute', line: 0 }]);
+    expect(parseInfographic(':::bars{#id}\n- a｜1\n:::')!.problems.map(problem => problem.code)).toEqual(['unknown-attribute']);
+    expect(parseInfographic('::::line\n:::series{custom}\n- 1｜2\n:::\n::::')!.problems).toEqual([{ code: 'unknown-attribute', line: 1 }]);
+    // Flags, valued keys the model does not know, and empty known keys are kept or harmless.
+    expect(parseInfographic('::::line{extra="1" title=""}\n:::series{highlight dashed}\n- 1｜2\n:::\n::::')!.problems).toEqual([]);
+  });
 });
 
 describe('infographic cell checks', () => {

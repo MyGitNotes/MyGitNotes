@@ -419,6 +419,7 @@ export const en = {
   'infographic.problem.rows-beside-children': 'Line {line} puts list rows beside child containers, which the figure ignores.',
   'infographic.problem.trailing-fence': 'Line {line} has text on a closing fence.',
   'infographic.problem.unclosed': 'Line {line}: a container is not closed.',
+  'infographic.problem.unknown-attribute': 'Line {line} has a bare attribute this kind does not use; saving would drop it.',
   'infographic.issue.not-a-number': 'Row {row}, {column}: expected one number.',
   'infographic.issue.not-a-range': 'Row {row}, {column}: expected a number or a range like 6,000–7,000.',
   'infographic.issue.not-a-position': 'Row {row}, {column}: expected "latitude, longitude".',

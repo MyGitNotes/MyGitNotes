@@ -340,13 +340,16 @@ function infographicErrorHeading(): string {
 /** The figure for an infographic block's lines, or the error box in its place. */
 function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string): string {
   // A block inside a blockquote carries the quote's markers on every line.
-  const quoted = /^\s*>/.test(blockLines[0]);
-  const source = (quoted ? blockLines.map(line => line.replace(/^\s*(?:>\s?)+/, '')) : blockLines).join('\n');
+  const quote = /^\s*(?:>\s?)+/.exec(blockLines[0])?.[0] ?? '';
+  const source = (quote ? blockLines.map(line => line.replace(/^\s*(?:>\s?)+/, '')) : blockLines).join('\n');
+  // The figure is one line of HTML; inside a quote it and the blank lines around it keep the quote's markers.
+  const place = (html: string) => quote ? `${quote.trimEnd()}\n${quote}${html}\n${quote.trimEnd()}` : `\n${html}\n`;
   try {
-    return `\n${renderInfographic(source, { renderInline })}\n`;
+    return place(renderInfographic(source, { renderInline }));
   } catch (error) {
-    if (!(error instanceof InfographicError)) throw error;
-    return `\n${renderInfographicError(error, source, infographicErrorHeading())}\n`;
+    // Any failure, not only a reported one, stays inside the figure's place: the rest of the note still renders.
+    const reported = error instanceof InfographicError ? error : new InfographicError(error instanceof Error ? error.message : String(error));
+    return place(renderInfographicError(reported, source, infographicErrorHeading()));
   }
 }
 

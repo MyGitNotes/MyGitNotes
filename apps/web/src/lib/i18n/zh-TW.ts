@@ -421,6 +421,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'infographic.problem.rows-beside-children': '第 {line} 行把清單列放在子容器旁邊，圖不會讀這些列。',
   'infographic.problem.trailing-fence': '第 {line} 行的結尾圍欄後面還有文字。',
   'infographic.problem.unclosed': '第 {line} 行：有容器沒有關閉。',
+  'infographic.problem.unknown-attribute': '第 {line} 行有這種圖不用的無值屬性，存檔會把它丟掉。',
   'infographic.issue.not-a-number': '第 {row} 列「{column}」：需要一個數字。',
   'infographic.issue.not-a-range': '第 {row} 列「{column}」：需要一個數字，或像 6,000–7,000 的範圍。',
   'infographic.issue.not-a-position': '第 {row} 列「{column}」：需要「緯度, 經度」。',

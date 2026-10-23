@@ -6,7 +6,7 @@
  */
 
 import { escapeHtml } from '../directives.js';
-import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicKind, type InfographicRow, isStrongField, MAP_BASES, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
+import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicKind, type InfographicRow, isStrongField, mapBase, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
 
 /** A whole-figure error the blog fails its build on; the caller shows it in the figure's place. */
 export class InfographicError extends Error {
@@ -20,6 +20,9 @@ export interface InfographicContext {
   /** Inline Markdown of the note's own dialect to HTML (emphasis, links, code, math), without a wrapping paragraph. */
   renderInline: (markdown: string) => string;
 }
+
+/** More ticks than a figure can show come from a range far wider than its data; drawing them would hang the page. */
+const MAX_TICKS = 200;
 
 function fail(message: string): never {
   throw new InfographicError(message);
@@ -266,7 +269,9 @@ function timeline(block: InfographicBlock, r: Renderer): string {
   if (!(to > from)) fail('timeline needs to > from');
   const at = (year: number) => percent((year - from) / (to - from) * 100);
   const tickAttr = attrOf(block.attrs, 'ticks');
-  const ticks = tickAttr ? numbers(tickAttr) : Array.from({ length: Math.floor(to / 10) - Math.ceil(from / 10) + 1 }, (_, index) => (Math.ceil(from / 10) + index) * 10);
+  const decades = Math.floor(to / 10) - Math.ceil(from / 10) + 1;
+  if (!tickAttr && decades > MAX_TICKS) fail(`timeline spans ${decades} decades; set ticks or a shorter from–to`);
+  const ticks = tickAttr ? numbers(tickAttr) : Array.from({ length: Math.max(decades, 0) }, (_, index) => (Math.ceil(from / 10) + index) * 10);
 
   const axis = tag('div', { class: 'ig-axis' }, ticks.map(year => tag('span', { class: ['ig-axis-tick', ...year <= from ? ['is-start'] : [], ...year >= to ? ['is-end'] : []], style: `left:${at(year)}` }, text(String(year)))));
 
@@ -327,7 +332,11 @@ function line(block: InfographicBlock, r: Renderer): string {
 
   const grid: string[] = [];
   const overlay: string[] = [];
-  for (let tick = yMin; tick <= yMax + step / 1000; tick += step) {
+  // Ticks by index: adding the step to a value far larger than it (min=1e16) never moves it.
+  const yTickCount = Math.floor((yMax - yMin) / step + 1 / 1000) + 1;
+  if (!(yTickCount <= MAX_TICKS)) fail('line has too many y ticks for its range; set min and max closer to the data');
+  for (let index = 0; index < yTickCount; index++) {
+    const tick = yMin + index * step;
     grid.push(tag('line', { x1: 0, x2: 100, y1: y(tick), y2: y(tick), class: 'ig-grid', 'vector-effect': 'non-scaling-stroke' }));
     overlay.push(tag('span', { class: 'ig-y-tick', style: `top:${percent(y(tick))}` }, text(formatNumber(tick))));
   }
@@ -448,7 +457,7 @@ function line(block: InfographicBlock, r: Renderer): string {
 
 function map(block: InfographicBlock, r: Renderer): string {
   const baseName = attrOf(block.attrs, 'base') ?? 'taiwan';
-  const base = MAP_BASES[baseName];
+  const base = mapBase(baseName);
   if (!base) fail(`unknown map base "${baseName}"`);
 
   const latMid = (base.lat[0] + base.lat[1]) / 2 * Math.PI / 180;

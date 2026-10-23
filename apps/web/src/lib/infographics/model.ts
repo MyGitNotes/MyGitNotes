@@ -33,6 +33,11 @@ export interface MapBase {
 /** The base maps the blog ships; their layers are bundled with the app's infographic styles. */
 export const MAP_BASES: Record<string, MapBase> = { taiwan: { lon: [118.05, 122.15], lat: [21.85, 26.45], width: 800, height: 984 }, taipei: { lon: [121.42, 121.68], lat: [24.95, 25.22], width: 800, height: 917, focus: true } };
 
+/** The named base map; an own key only, so `constructor` or `toString` from a note is no base. */
+export function mapBase(name: string): MapBase | undefined {
+  return Object.hasOwn(MAP_BASES, name) ? MAP_BASES[name] : undefined;
+}
+
 /**
  * What a cell holds: free inline Markdown, one number, a number or a `low–high` range, a year or a `from–to` span,
  * `lat, lon`, or a map row's name, which is a point's name or a route `start → end`.
@@ -203,7 +208,7 @@ export interface InfographicChild {
 }
 
 /** Why a block's source cannot be edited as a grid without losing something; the line is 0-based in the block. */
-export type InfographicProblemCode = 'text-outside-list' | 'multiline-item' | 'nested-list' | 'unknown-container' | 'nested-container' | 'quoted' | 'rows-beside-children' | 'trailing-fence' | 'unclosed';
+export type InfographicProblemCode = 'text-outside-list' | 'multiline-item' | 'nested-list' | 'unknown-container' | 'nested-container' | 'quoted' | 'rows-beside-children' | 'trailing-fence' | 'unclosed' | 'unknown-attribute';
 
 export interface InfographicProblem {
   code: InfographicProblemCode;
@@ -268,6 +273,7 @@ export function parseInfographic(source: string): InfographicBlock | null {
   if (!open || !isInfographicKind(open.name)) return null;
   const problems: InfographicProblem[] = [];
   if (/^\s*>/.test(lines[0])) problems.push({ code: 'quoted', line: 0 });
+  if (hasUnknownBareAttr(open.attrs, [...COMMON_ATTRS, ...KIND_SPECS[open.name].attrs])) problems.push({ code: 'unknown-attribute', line: 0 });
 
   const body = lines.slice(1);
   const last = lines.length > 1 ? matchDirectiveClose(lines[lines.length - 1], open.fenceLength) : null;
@@ -308,6 +314,7 @@ export function parseInfographic(source: string): InfographicBlock | null {
     }
     if (close >= body.length) problems.push({ code: 'unclosed', line: i + 1 });
     if (childOpen.name !== childName || childOpen.label !== undefined) problems.push({ code: 'unknown-container', line: i + 1 });
+    else if (hasUnknownBareAttr(childOpen.attrs, KIND_SPECS[open.name].child?.attrs ?? [])) problems.push({ code: 'unknown-attribute', line: i + 1 });
     if (childOpen.name === childName) children.push({ name: childOpen.name, attrs: childOpen.attrs, rows: readRows(body.slice(i + 1, close), i + 2, problems) });
     i = close;
   }
@@ -320,7 +327,17 @@ export function parseInfographic(source: string): InfographicBlock | null {
   return { kind: open.name, fenceLength: open.fenceLength, label: open.label, attrs: open.attrs, rows, children, problems: problems.sort((a, b) => a.line - b.line) };
 }
 
-function quoteAttr(value: string): string {
+/**
+ * A bare key the kind does not take as a flag (`custom`, or `.wide` and `#id`, which the attribute parser reads as
+ * bare `wide` and `id`): serializing would drop it, so such a block is edited as Markdown only.
+ */
+function hasUnknownBareAttr(attrs: Record<string, string>, known: readonly AttrSpec[]): boolean {
+  return Object.entries(attrs).some(([key, value]) => value === '' && !known.some(attr => attr.key === key));
+}
+
+/** A `}` would end the attribute list early (`parseDirectiveOpen` reads up to the first one), so it becomes `｝`. */
+function quoteAttr(raw: string): string {
+  const value = raw.replaceAll('}', '｝');
   if (!value.includes('"')) return `"${value}"`;
   return value.includes("'") ? `"${value.replaceAll('"', '”')}"` : `'${value}'`;
 }
@@ -380,7 +397,7 @@ export interface CellIssue {
 export function checkCells(block: InfographicBlock): CellIssue[] {
   const spec = KIND_SPECS[block.kind];
   const issues: CellIssue[] = [];
-  const base = MAP_BASES[block.attrs.base ?? 'taiwan'];
+  const base = mapBase(block.attrs.base ?? 'taiwan');
   const groups: { child?: number; rows: InfographicRow[]; }[] = block.children.length ? block.children.map((child, index) => ({ child: index, rows: child.rows })) : [{ rows: block.rows }];
   const pointNames = new Set(block.kind === 'map' ? block.rows.filter(row => !isRouteRow(row.fields)).map(row => plainField(row.fields[0] ?? '')) : []);
 

@@ -5,7 +5,7 @@
    (:hover, :focus-visible, :has, radio inputs) and motion is limited to prefers-reduced-motion: no-preference.
 
    The base maps in ./infographics/maps/ are derived from taiwan-atlas (MIT licence), which republishes 內政部 open
-   data; they are drawn as masks over theme-coloured blocks. */
+   data; they are drawn as masks over theme-coloured blocks. Licence and attribution: THIRD_PARTY_NOTICES.md. */
 
 .ig-figure { --ig-line: color-mix(in srgb, var(--color-text) 9%, transparent); --ig-faint: color-mix(in srgb, var(--color-text) 14%, transparent); --ig-neutral: color-mix(in srgb, var(--color-text) 42%, transparent); --ig-tint: color-mix(in srgb, var(--color-text) 4%, transparent); --ig-bar: var(--ig-neutral); --ig-hl: var(--color-primary); --ig-hl-tint: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface)); --ig-done: var(--color-success); --ig-partial: var(--color-warning); --ig-none: var(--color-danger); container-type: inline-size; box-sizing: border-box; margin: 1.5rem 0; border: 1px solid var(--ig-line); border-radius: var(--radius-panel, 10px); background: var(--color-surface); padding: 1rem 1.15rem; font-family: var(--font-body, 'Noto Sans TC', 'Source Han Sans TW', sans-serif); font-size: 0.925rem; line-height: 1.5; color: var(--color-text); font-variant-numeric: tabular-nums; }
 
