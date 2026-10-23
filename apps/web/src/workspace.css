@@ -1,6 +1,6 @@
 /* Workspace geometry belongs here; documents retain their own typography. */
 .workspace-link-surface { display: contents; }
-.keyboard-shortcuts-panel { position: fixed; z-index: 80; top: 68px; left: 50%; width: min(520px, calc(100vw - 24px)); transform: translateX(-50%); border: 1px solid var(--color-line); border-radius: var(--radius-dialog); background: var(--surface-glass); backdrop-filter: var(--surface-blur); -webkit-backdrop-filter: var(--surface-blur); color: var(--color-text); box-shadow: var(--shadow-lg); outline: none; overflow: hidden; }
+.keyboard-shortcuts-panel { position: fixed; z-index: 80; top: 68px; left: 50%; width: min(520px, calc(100vw - 24px)); transform: translateX(-50%); border: 1px solid var(--color-line); border-radius: var(--radius-dialog); background: var(--surface-glass); backdrop-filter: var(--surface-blur); color: var(--color-text); box-shadow: var(--shadow-lg); outline: none; overflow: hidden; }
 .keyboard-shortcuts-heading, .keyboard-shortcuts-heading > div { display: flex; align-items: center; gap: 10px; }
 .keyboard-shortcuts-heading { justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--workspace-divider); }
 .keyboard-shortcuts-heading > div > svg { width: 18px; height: 18px; color: var(--color-primary); }
@@ -42,7 +42,7 @@
 .header-user-button::-webkit-details-marker { display: none; }
 .header-user-avatar { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%; color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface)); font-weight: 600; }
 .header-user-login { max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
-.header-user-popover { position: absolute; right: 0; top: calc(100% + 12px); min-width: 170px; padding: 8px; border-radius: var(--radius-panel); border: 1px solid var(--color-line); background: var(--surface-glass); backdrop-filter: var(--surface-blur); -webkit-backdrop-filter: var(--surface-blur); box-shadow: var(--shadow-md); }
+.header-user-popover { position: absolute; right: 0; top: calc(100% + 12px); min-width: 170px; padding: 8px; border-radius: var(--radius-panel); border: 1px solid var(--color-line); background: var(--surface-glass); backdrop-filter: var(--surface-blur); box-shadow: var(--shadow-md); }
 .header-user-popover > span { display: block; padding: 8px; font-size: 11px; color: var(--color-muted); }
 .header-user-popover button { display: flex; align-items: center; gap: 8px; padding: 8px; width: 100%; border-radius: 6px; font-size: 12px; }
 .header-user-items { display: flex; flex-direction: column; padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--workspace-divider); }
@@ -343,7 +343,7 @@
   --workspace-rail: color-mix(in srgb, var(--color-sidebar) 52%, var(--color-surface));
   --workspace-selection: color-mix(in srgb, var(--color-text) 7%, transparent);
 }
-.workspace-header { flex: none; z-index: 22; border-bottom: 1px solid var(--workspace-divider); background: var(--surface-glass); backdrop-filter: var(--surface-blur); -webkit-backdrop-filter: var(--surface-blur); }
+.workspace-header { flex: none; z-index: 22; border-bottom: 1px solid var(--workspace-divider); background: var(--surface-glass); backdrop-filter: var(--surface-blur); }
 .workspace-header .header-layout { display: grid; grid-template-columns: var(--workspace-sidebar-width) minmax(0, 1fr) auto; gap: 0; height: 48px; padding: 0 24px 0 0; }
 .workspace-header .header-brand { display: flex; gap: 8px; align-items: center; min-width: 0; padding: 0 20px; }
 .workspace-header .header-brand .min-w-0 { min-width: 0; flex: 0 1 auto; }

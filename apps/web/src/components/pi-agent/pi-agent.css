@@ -154,7 +154,7 @@
 
 /* The slash-command menu floats over the end of the conversation, just above the message box that drives it. */
 .pi-agent-input { position: relative; display: flex; flex-direction: column; }
-.pi-agent-commands { position: absolute; right: 0; bottom: calc(100% + 4px); left: 0; z-index: 20; max-height: 220px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--surface-glass); backdrop-filter: var(--surface-blur); -webkit-backdrop-filter: var(--surface-blur); box-shadow: var(--shadow-md); }
+.pi-agent-commands { position: absolute; right: 0; bottom: calc(100% + 4px); left: 0; z-index: 20; max-height: 220px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--surface-glass); backdrop-filter: var(--surface-blur); box-shadow: var(--shadow-md); }
 .pi-agent-commands li { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 6px; border-radius: var(--radius-control); cursor: pointer; }
 .pi-agent-commands li[aria-selected='true'], .pi-agent-commands li:hover { background: var(--color-sidebar); }
 .pi-agent-commands li.pi-agent-commands-empty { color: var(--color-muted); cursor: default; }

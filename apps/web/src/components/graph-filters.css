@@ -9,7 +9,7 @@
 .filter-chip span { overflow-wrap: anywhere; }
 .filter-chip svg { flex-shrink: 0; }
 .filter-clear { font-size: 0.75rem; text-decoration: underline; padding: 0.25rem; }
-.filter-details { position: absolute; top: 100%; left: 1rem; width: min(29rem, calc(100% - 2rem)); padding: 0.85rem; background: var(--surface-glass); backdrop-filter: var(--surface-blur); -webkit-backdrop-filter: var(--surface-blur); border: 1px solid var(--color-line); border-radius: var(--radius-panel); box-shadow: var(--shadow-md); max-height: min(65dvh, 36rem); overflow-y: auto; overscroll-behavior: contain; }
+.filter-details { position: absolute; top: 100%; left: 1rem; width: min(29rem, calc(100% - 2rem)); padding: 0.85rem; background: var(--surface-glass); backdrop-filter: var(--surface-blur); border: 1px solid var(--color-line); border-radius: var(--radius-panel); box-shadow: var(--shadow-md); max-height: min(65dvh, 36rem); overflow-y: auto; overscroll-behavior: contain; }
 .filter-details-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; font-size: 0.85rem; }
 .filter-fields { display: grid; gap: 0.7rem; margin: 0.6rem 0; }
 .filter-fields label, .filter-option-search { display: grid; gap: 0.3rem; font-size: 0.75rem; min-width: 0; }
@@ -21,6 +21,6 @@
 .filter-options { max-height: 9rem; overflow-y: auto; margin-top: 0.4rem; }
 .filter-tag-mode { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.7rem; }
 .filter-empty { color: var(--color-muted); font-size: 0.75rem; padding: 0.4rem; }
-.graph-filters.is-compact { padding: 0.5rem; width: min(27rem, 100%); background: var(--surface-glass); backdrop-filter: var(--surface-blur); -webkit-backdrop-filter: var(--surface-blur); border: 1px solid var(--color-line); border-radius: 0.75rem; box-shadow: 0 3px 12px color-mix(in srgb, var(--color-scrim) 7%, transparent); }
+.graph-filters.is-compact { padding: 0.5rem; width: min(27rem, 100%); background: var(--surface-glass); backdrop-filter: var(--surface-blur); border: 1px solid var(--color-line); border-radius: 0.75rem; box-shadow: 0 3px 12px color-mix(in srgb, var(--color-scrim) 7%, transparent); }
 .is-compact .filter-details { left: 0; width: 100%; top: calc(100% + 0.5rem); max-height: min(60dvh, 33rem); }
 @media (max-height: 500px) { .is-compact .filter-details { max-height: min(44vh, 260px); } }
