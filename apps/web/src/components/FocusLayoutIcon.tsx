@@ -1,6 +1,6 @@
 import './focus.css';
 import React from 'react';
-import { type FocusDivision, type FocusLayout, type FocusNode, focusPanes, legacyFocusTree } from '@mygitnotes/core/focus-page';
+import { type FocusLayout, type FocusNode, focusPanes } from '@mygitnotes/core/focus-page';
 import { useTranslation } from '../lib/i18n/index.js';
 
 /** A layout's splits as nested boxes; `leaf` draws one pane. */
@@ -9,17 +9,12 @@ const LayoutNode: React.FC<{ node: FocusNode; leaf: (pane: string) => React.Reac
   return <span className='focus-layout-split' data-orientation={node.orientation}>{node.children.map(child => <LayoutNode key={child.id} node={child} leaf={leaf} />)}</span>;
 };
 
-/** The layout's panes drawn as a small diagram, used in the Focus lists and the division picker. */
+/** The layout's panes drawn as a small diagram, used in the Focus lists and on the Layout menu. */
 export const LayoutIcon: React.FC<{ layout: FocusLayout; }> = ({ layout }) => (
   <span className='focus-layout-icon' aria-hidden='true'>
     <LayoutNode node={layout.root} leaf={pane => <span key={pane} className='focus-layout-pane' />} />
   </span>
 );
-
-/** A division as a layout; empty panes are enough for the drawing, and no division has more than four. */
-export const divisionLayout = (division: FocusDivision): FocusLayout => ({ root: legacyFocusTree(division, [[], [], [], []]) });
-
-export const DivisionIcon: React.FC<{ division: FocusDivision; }> = ({ division }) => <LayoutIcon layout={divisionLayout(division)} />;
 
 /** A larger layout drawing whose panes are choices; `current` marks the pane that already holds the item. */
 export const LayoutThumbnail: React.FC<{ layout: FocusLayout; selected: string; current?: string; label: string; onSelect: (pane: string) => void; }> = ({ layout, selected, current, label, onSelect }) => {

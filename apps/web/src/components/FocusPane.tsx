@@ -1,7 +1,7 @@
 import React, { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronDown, FileText, GalleryHorizontalEnd, ListPlus, Maximize2, PanelTopClose, X } from 'lucide-react';
-import { findFocusPane, findFocusTabInPane, type FocusEdge, focusPaneIndex, type FocusTab, focusTabKey } from '@mygitnotes/core/focus-page';
+import { ChevronDown, Columns2, FileText, GalleryHorizontalEnd, ListPlus, Maximize2, PanelTopClose, Rows2, X } from 'lucide-react';
+import { findFocusPane, findFocusTabInPane, type FocusEdge, focusPaneIndex, focusPanes, type FocusTab, focusTabKey } from '@mygitnotes/core/focus-page';
 import { COMPILATION_SUFFIX, isCompilationPath } from '@mygitnotes/core/compilation';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import type { DisplayedPane } from '../lib/focus-view.js';
@@ -12,6 +12,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import type { NoteEditorProps } from './NoteEditor.js';
 import { HostedNoteEditor } from './NoteEditorHost.js';
 import { BatchAddDialog } from './BatchAddDialog.js';
+import { Button } from './Button.js';
 import { paneDimmed, tabDimmed } from '../lib/focus-search.js';
 import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 
@@ -247,6 +248,12 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
         </div>
         <div className='focus-pane-actions'>
           {overflowing && <FocusMenu label={t('focus.allTabs')} icon={<ChevronDown aria-hidden='true' />} items={tabs.map(tab => ({ key: `${tab.pane}:${tab.key}`, label: tab.label, current: tab.pane === displayed.pane && tab.key === displayed.key, onSelect: () => void focus.show(tab.pane, tab.key) }))} />}
+          {edgeDrops && editable && displayed.key && (['right', 'bottom'] as const).map(side => {
+            const refusal = dropRefusal(layout, displayed.pane, side);
+            const label = t(side === 'right' ? 'focus.splitRight' : 'focus.splitDown');
+            const reason = refusal ? t(refusal === 'pane-limit' ? 'focus.paneLimit' : refusal === 'depth-limit' ? 'focus.depthLimit' : 'focus.limit') : undefined;
+            return <button key={side} type='button' className='ui-icon-button focus-pane-split' data-split={side} disabled={Boolean(refusal)} aria-label={label} title={reason ? `${label}. ${reason}` : label} onClick={() => void focus.splitShown(displayed.pane, side === 'right' ? 'horizontal' : 'vertical').catch(() => {})}>{side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />}</button>;
+          })}
           {editable && (
             <button type='button' className='ui-icon-button' aria-label={t('focus.batchAdd')} title={t('focus.batchAdd')} onClick={() => setBatchAddOpen(true)}>
               <ListPlus aria-hidden='true' />
@@ -272,7 +279,12 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
               </React.Fragment>
             )
             : <PaneNoteEditor key={shown.tab.path} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} />
-          : <p className='focus-pane-empty'>{editable ? t('focus.emptyPane') : t('focus.emptyPaneReadonly')}</p>}
+          : (
+            <div className='focus-pane-empty'>
+              <p>{editable ? t('focus.emptyPane') : t('focus.emptyPaneReadonly')}</p>
+              {editable && focusPanes(layout).length > 1 && displayed.panes.length === 1 && tabsOf(displayed.pane).length === 0 && <Button type='button' size='small' onClick={() => void focus.closeEmptyPane(displayed.pane).catch(() => {})}>{t('focus.closePane')}</Button>}
+            </div>
+          )}
         {edge && <div className='focus-drop-preview' aria-hidden='true' data-zone={edge.refusal ? undefined : edge.edge}>{edge.refusal && <span>{t(edge.refusal === 'pane-limit' ? 'focus.paneLimit' : edge.refusal === 'depth-limit' ? 'focus.depthLimit' : 'focus.limit')}</span>}</div>}
       </div>
       {batchAddOpen && focus.shown && <BatchAddDialog focus={focus} target={focus.shown} pane={displayed.pane} notebookId={focus.notebookId} notebookRoot={notebookRoot} folders={folders} onClose={() => setBatchAddOpen(false)} />}

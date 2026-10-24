@@ -203,8 +203,8 @@ try {
   // A Focus shows Beta in its left pane and the saved compilation, whose graph holds Beta as an expanded card, in its right one.
   fs.writeFileSync(path.join(root, '.github-notes-focus.yaml'), JSON.stringify({ version: 1, focuses: [{ id: 'shared', notebookId: 'a', name: 'Shared', division: 'columns-2', panes: [{ tabs: [{ kind: 'note', path: 'notes/a/b.md' }] }, { tabs: [{ kind: 'note', path: `notes/a/${saved.file}` }] }] }] }));
   await page.goto(base + '/notebooks/a?view=list&focus=shared', { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('[data-focus-pane="0"] .note-editor[data-frame="pane"]');
-  const laneCardB = '[data-focus-pane="1"] ' + cardB;
+  await page.waitForSelector('[data-focus-pane="p1"] .note-editor[data-frame="pane"]');
+  const laneCardB = '[data-focus-pane="p2"] ' + cardB;
   await page.waitForSelector(laneCardB + ' .note-preview');
   assert.equal(await betaEditors(), 1, 'One editor for a note shown in a pane and a card');
   // The card scales in while the lane camera settles on its fit; its controls are clickable once both stop moving.
@@ -221,7 +221,7 @@ try {
   );
   await click('Edit here', laneCardB);
   await page.waitForSelector(laneCardB + ' .note-editor[data-frame="compact"]');
-  await page.waitForSelector('[data-focus-pane="0"] .note-preview');
+  await page.waitForSelector('[data-focus-pane="p1"] .note-preview');
   assert.equal(await betaEditors(), 1, 'Claiming moves the one editor into the card');
   await setMode(laneCardB, 'live');
   await page.waitForSelector(laneCardB + ' .cm-content');
@@ -229,7 +229,7 @@ try {
   await chord('End', 'Control');
   await page.keyboard.type('\nShared draft.');
   assert.equal(await page.$eval(laneCardB + ' .note-compact-status', el => el.dataset.state), 'pending');
-  await page.click('[data-focus-pane="0"] .focus-pane-actions [aria-label="Open in zoom"]');
+  await page.click('[data-focus-pane="p1"] .focus-pane-actions [aria-label="Open in zoom"]');
   await page.waitForSelector('.note-editor[data-frame="zoom"]');
   assert.equal(await betaEditors(), 1, 'Zoom borrows the card editor instead of mounting another');
   assert(await page.$eval('.note-editor[data-frame="zoom"] .cm-content', el => el.textContent.includes('Shared draft.')), 'Zoom shows the card draft');

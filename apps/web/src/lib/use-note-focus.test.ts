@@ -233,3 +233,48 @@ describe('useNoteFocus split and collapse', () => {
     expect(result.current.entry?.shown.p1).toBe(keyOf('c'));
   });
 });
+
+describe('useNoteFocus Split right, Merge all panes and Close pane', () => {
+  const layout: FocusLayout = { root: { kind: 'split', id: 'columns-3', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [tab('a'), tab('b')] }, { kind: 'pane', id: 'p2', tabs: [] }, { kind: 'pane', id: 'p3', tabs: [tab('b'), tab('c')] }] } };
+  const render = () => {
+    localStorage.setItem(storageKey, JSON.stringify({ current: layout, entries: {}, last: null }));
+    return renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+  };
+
+  it('opens the note a pane shows again in a new pane beside it, and makes that pane active', async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => expect(await result.current.splitShown('p1', 'horizontal')).toBe(true));
+    expect(focusPanes(result.current.layout!).map(pane => pane.tabs.map(candidate => candidate.path))).toEqual([['notes/a.compilation.yml', 'notes/b.compilation.yml'], ['notes/a.compilation.yml'], [], ['notes/b.compilation.yml', 'notes/c.compilation.yml']]);
+    expect(result.current.entry?.activePane).toBe('p4');
+    await act(async () => expect(await result.current.splitShown('p4', 'vertical')).toBe(true));
+    expect(result.current.layout?.root).toMatchObject({ kind: 'split', orientation: 'horizontal' });
+  });
+
+  it('does nothing for a pane that shows nothing', async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => expect(await result.current.splitShown('p2', 'horizontal')).toBe(false));
+    expect(focusPanes(result.current.layout!)).toHaveLength(3);
+  });
+
+  it('removes an empty pane and refuses one that still holds tabs', async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => expect(await result.current.closeEmptyPane('p1')).toBe(false));
+    await act(async () => expect(await result.current.closeEmptyPane('p2')).toBe(true));
+    expect(focusPanes(result.current.layout!).map(pane => pane.id)).toEqual(['p1', 'p3']);
+  });
+
+  it("merges every pane into the first and keeps the active pane's tab on screen", async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => result.current.activate('p3'));
+    await act(async () => expect(await result.current.mergeAll()).toBe(true));
+    expect(result.current.layout?.root).toMatchObject({ kind: 'pane', id: 'p1' });
+    expect(tabsAt(result.current.layout, 0)).toEqual([tab('a'), tab('b'), tab('c')]);
+    expect(result.current.entry?.activePane).toBe('p1');
+    expect(result.current.entry?.shown.p1).toBe('note:notes/b.compilation.yml');
+    await act(async () => expect(await result.current.mergeAll()).toBe(false));
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDivision, closePane, closeTab, displayFocus, emptyFocusLayout, findFocusPane, findFocusTab, findFocusTabInPane, FOCUS_DIVISIONS, FOCUS_DOCUMENT, FOCUS_MAX_DEPTH, FOCUS_MAX_PANES, FOCUS_MAX_TABS, FocusError, type FocusLayout, FocusLayoutSchema, type FocusNode, FocusPageSchema, focusPaneIndex, focusPanes, FocusSchema, focusTabCount, focusTabKey, foreignFocusTab, legacyDivisionOf, legacyFocusTree, mergePanes, moveTab, moveTabToSplit, nameFocus, nextFocusId, notebookFocuses, ownFocusPage, placeTab, placeTabs, pruneFocus, readFocusLayout, readFocusPage, relocateFocusPaths, removeFocus, renameFocus, splitPane, updateFocus, writeFocusPage } from '../src/focus-page.js';
+import { closePane, closeTab, displayFocus, emptyFocusLayout, findFocusPane, findFocusTab, findFocusTabInPane, FOCUS_DIVISIONS, FOCUS_DOCUMENT, FOCUS_MAX_DEPTH, FOCUS_MAX_PANES, FOCUS_MAX_TABS, FocusError, type FocusLayout, FocusLayoutSchema, type FocusNode, FocusPageSchema, focusPaneIndex, focusPanes, FocusSchema, focusTabCount, focusTabKey, foreignFocusTab, legacyDivisionOf, legacyFocusTree, mergePanes, moveTab, moveTabToSplit, nameFocus, nextFocusId, notebookFocuses, ownFocusPage, placeTab, placeTabs, pruneFocus, readFocusLayout, readFocusPage, relocateFocusPaths, removeFocus, renameFocus, splitPane, updateFocus, writeFocusPage } from '../src/focus-page.js';
 import { NewerVersionError } from '../src/newer-version-error.js';
 import { parse as parseYaml } from 'yaml';
 import { readWorkspaceDocument, validateWorkspaceDocument, writeWorkspaceDocument } from '../src/workspace-documents.js';
@@ -196,36 +196,27 @@ describe('writing', () => {
   });
 });
 
-describe('applyDivision', () => {
-  it('folds removed panes onto the last remaining pane, in pane order', () => {
-    const layout = { root: filled('major-left') };
-    expect(tabsOf(applyDivision(layout, 'columns-2'))).toEqual([[note('major-left-1.md')], [note('major-left-2.md'), note('major-left-3.md')]]);
+describe('mergePanes (Merge all panes)', () => {
+  it('merges every pane into the first, in pane order, keeping its id', () => {
+    expect(mergePanes({ root: filled('grid-2x2') })).toEqual({ root: leaf('p1', note('grid-2x2-1.md'), note('grid-2x2-2.md'), note('grid-2x2-3.md'), note('grid-2x2-4.md')) });
   });
-  it('merges every pane into one when shrinking to single', () => {
-    const merged = applyDivision({ root: filled('grid-2x2') }, 'single');
-    expect(merged).toEqual({ root: leaf('p1', note('grid-2x2-1.md'), note('grid-2x2-2.md'), note('grid-2x2-3.md'), note('grid-2x2-4.md')) });
-  });
-  it('appends empty panes when growing, and builds the division tree', () => {
-    const grown = applyDivision(single(note('a.md')), 'columns-2');
-    expect(grown).toEqual({ root: split('columns-2', 'horizontal', leaf('p1', note('a.md')), leaf('p2')) });
-    expect(legacyDivisionOf(grown)).toBe('columns-2');
-  });
-  it('returns the same reference for the same division, and preserves Focus fields', () => {
+  it('keeps the Focus fields and the same reference for a single pane', () => {
     const layout = single();
-    expect(applyDivision(layout, 'single')).toBe(layout);
+    expect(mergePanes(layout)).toBe(layout);
     const named = { ...focus(), root: filled('columns-2') } as unknown as FocusLayout & { id: string; name: string; notebookId: string; };
-    expect(applyDivision(named, 'single')).toMatchObject({ id: 'f1', notebookId: 'nb1', name: 'Work' });
+    expect(mergePanes(named)).toMatchObject({ id: 'f1', notebookId: 'nb1', name: 'Work' });
   });
-  it('keeps a pane its id when the division keeps it', () => {
-    expect(focusPanes(applyDivision({ root: filled('grid-2x2') }, 'rows-2')).map(pane => pane.id)).toEqual(['p1', 'p2']);
-  });
-  it("dedupes a note the kept pane already holds when a removed pane folds onto it, keeping the kept pane's own copy", () => {
+  it("dedupes a note the first pane already holds, keeping the first pane's own copy", () => {
     const layout = { root: legacyFocusTree('columns-2', [[note('a.md'), note('x.md')], [note('x.md')]]) };
-    expect(applyDivision(layout, 'single')).toEqual(single(note('a.md'), note('x.md')));
+    expect(mergePanes(layout)).toEqual(single(note('a.md'), note('x.md')));
   });
-  it("dedupes a note shared between two removed panes when both fold onto the kept pane, keeping the earlier pane's copy", () => {
+  it("dedupes a note shared between later panes, keeping the earlier pane's copy", () => {
     const layout = { root: legacyFocusTree('major-left', [[note('a.md')], [note('y.md'), note('b.md')], [note('y.md'), note('c.md')]]) };
-    expect(applyDivision(layout, 'single')).toEqual(single(note('a.md'), note('y.md'), note('b.md'), note('c.md')));
+    expect(mergePanes(layout)).toEqual(single(note('a.md'), note('y.md'), note('b.md'), note('c.md')));
+  });
+  it('merges a tree that is no division', () => {
+    const layout = { root: split('r', 'horizontal', leaf('p1', note('a.md')), split('s1', 'vertical', leaf('p2', note('b.md')), leaf('p5', note('c.md')))) } as unknown as FocusLayout;
+    expect(mergePanes(layout)).toEqual(single(note('a.md'), note('b.md'), note('c.md')));
   });
 });
 

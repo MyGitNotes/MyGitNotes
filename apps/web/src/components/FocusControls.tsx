@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronDown, ListTree, PanelsTopLeft, X } from 'lucide-react';
-import { FOCUS_DIVISIONS, type FocusDivision, FocusError, type FocusLayout, legacyDivisionOf } from '@mygitnotes/core/focus-page';
+import { ChevronDown, Columns2, ListTree, PanelsTopLeft, Rows2, X } from 'lucide-react';
+import { FocusError } from '@mygitnotes/core/focus-page';
 import { CURRENT_FOCUS } from '../lib/focus-view.js';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import { focusErrorMessage } from '../lib/focus-error-message.js';
@@ -9,12 +9,13 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { Button } from './Button.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
-import { DivisionIcon, LayoutIcon } from './FocusDivision.js';
+import { LayoutIcon } from './FocusLayoutIcon.js';
+import { dropRefusal } from '../lib/focus-drop.js';
 import { SelectButtonGroup, SelectButtonPrimary, SelectButtonTrigger } from './SelectButton.js';
 
 type Dialog = { kind: 'name'; } | { kind: 'rename'; id: string; name: string; } | { kind: 'delete'; id: string; name: string; };
 
-/** The Notes toolbar's Focus switcher and division picker, with naming, renaming and deleting. */
+/** The Notes toolbar's Focus switcher and Layout menu, with naming, renaming and deleting. */
 export const FocusControls: React.FC<{
   focus: NoteFocus;
   /** Shows a Focus (`current` or an id), or returns to normal browsing with null. */
@@ -22,7 +23,9 @@ export const FocusControls: React.FC<{
   onReload: () => void;
   /** Phones show the browse region or the Focus, one at a time. */
   browseToggle?: { showing: boolean; onToggle: () => void; };
-}> = ({ focus, onShow, onReload, browseToggle }) => {
+  /** Whether the whole split tree is on screen (desktop), the only case a pane can be split. */
+  splittable: boolean;
+}> = ({ focus, onShow, onReload, browseToggle, splittable }) => {
   const { t } = useTranslation();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const named = focus.shown && focus.shown !== CURRENT_FOCUS ? focus.focuses.find(item => item.id === focus.shown) : undefined;
@@ -80,7 +83,7 @@ export const FocusControls: React.FC<{
           </button>
         </p>
       )}
-      {focus.layout && <DivisionPicker layout={focus.layout} disabled={!focus.editable} onChange={division => void focus.setDivision(division).catch(() => {})} />}
+      {focus.layout && focus.entry && <LayoutMenu focus={focus} splittable={splittable} />}
       {focus.layout && browseToggle && <button type='button' className='ui-icon-button' aria-pressed={browseToggle.showing} onClick={browseToggle.onToggle} aria-label={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')} title={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')}>{browseToggle.showing ? <PanelsTopLeft aria-hidden='true' /> : <ListTree aria-hidden='true' />}</button>}
       {dialog?.kind === 'name' && <FocusNameDialog title={t('focus.nameTitle')} initial='' taken={taken} onClose={() => setDialog(null)} onSubmit={name => onShow(focus.name(name))} />}
       {dialog?.kind === 'rename' && <FocusNameDialog title={t('focus.renameTitle')} initial={dialog.name} taken={taken.filter(name => name !== dialog.name)} onClose={() => setDialog(null)} onSubmit={name => focus.rename(dialog.id, name)} />}
@@ -107,23 +110,35 @@ export const FocusControls: React.FC<{
   );
 };
 
-const DivisionPicker: React.FC<{ layout: FocusLayout; disabled: boolean; onChange: (division: FocusDivision) => void; }> = ({ layout, disabled, onChange }) => {
+/** Splits the active pane or folds every pane into one. A split is offered where the whole tree is on screen, the active pane shows a note and no limit would refuse it. */
+const LayoutMenu: React.FC<{ focus: NoteFocus; splittable: boolean; }> = ({ focus, splittable }) => {
   const { t } = useTranslation();
+  const layout = focus.layout!, pane = focus.entry!.activePane;
+  const shows = Boolean(focus.entry!.shown[pane]);
+  const fail = () => {};
+  const splitItem = (edge: 'right' | 'bottom', orientation: 'horizontal' | 'vertical', label: string, icon: React.ReactNode) => {
+    const refusal = splittable && shows ? dropRefusal(layout, pane, edge) : undefined;
+    const reason = refusal ? t(refusal === 'pane-limit' ? 'focus.paneLimit' : refusal === 'depth-limit' ? 'focus.depthLimit' : 'focus.limit') : undefined;
+    return (
+      <DropdownMenu.Item disabled={!focus.editable || !splittable || !shows || Boolean(refusal)} title={reason} onSelect={() => void focus.splitShown(pane, orientation).catch(fail)}>
+        {icon}
+        <span>{label}</span>
+      </DropdownMenu.Item>
+    );
+  };
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger className='ui-icon-button focus-division-trigger' disabled={disabled} aria-label={t('focus.division')} title={t('focus.division')}>
+      <DropdownMenu.Trigger className='ui-icon-button focus-layout-trigger' disabled={!focus.editable} aria-label={t('focus.layout')} title={t('focus.layout')}>
         <LayoutIcon layout={layout} />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('focus.division')} onEscapeKeyDown={event => event.stopPropagation()}>
-          <DropdownMenu.RadioGroup value={legacyDivisionOf(layout) ?? ''} onValueChange={value => onChange(value as FocusDivision)}>
-            {FOCUS_DIVISIONS.map(value => (
-              <DropdownMenu.RadioItem key={value} value={value}>
-                <DivisionIcon division={value} />
-                <span>{t(`focus.division.${value}`)}</span>
-              </DropdownMenu.RadioItem>
-            ))}
-          </DropdownMenu.RadioGroup>
+        <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('focus.layout')} onEscapeKeyDown={event => event.stopPropagation()}>
+          {splitItem('right', 'horizontal', t('focus.splitRight'), <Columns2 aria-hidden='true' />)}
+          {splitItem('bottom', 'vertical', t('focus.splitDown'), <Rows2 aria-hidden='true' />)}
+          <DropdownMenu.Item disabled={layout.root.kind === 'pane'} onSelect={() => void focus.mergeAll().catch(fail)}>
+            <LayoutIcon layout={{ root: { kind: 'pane', id: 'merged', tabs: [] } }} />
+            <span>{t('focus.mergePanes')}</span>
+          </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

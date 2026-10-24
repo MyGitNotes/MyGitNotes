@@ -1,6 +1,6 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { applyDivision, closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusDivision, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
+import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, mergePanes, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
 import type { FocusPageController } from './use-focus-page.js';
 import { useNoteLookup } from './use-note-queries.js';
 import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
@@ -233,20 +233,34 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     ) return false;
     return outcome;
   };
-  /** Folding panes keeps the active pane's tab on screen: it lands on the last remaining pane, which becomes active. Throws FocusError if the shown Focus was removed since it was read. */
-  const setDivision = async (division: FocusDivision) => {
-    if (!shown || !layout || !entry) return;
-    const next = applyDivision(layout, division);
-    if (next === layout) return;
+  /** Split right / Split down: opens the note `pane` shows again in a new pane on that side (the same note may sit in several panes). False when the pane shows nothing. Throws FocusError. */
+  const splitShown = async (pane: string, orientation: 'horizontal' | 'vertical'): Promise<boolean> => {
+    if (!shown || !layout || !entry) return false;
+    const tab = findFocusPane(layout, pane)?.tabs.find(candidate => focusTabKey(candidate) === entry.shown[pane]);
+    return tab ? split(shown, pane, orientation === 'horizontal' ? 'right' : 'bottom', tab) : false;
+  };
+  /** Removes an empty pane (D4). False for a pane that still holds tabs. Throws FocusError if the shown Focus was removed since it was read. */
+  const closeEmptyPane = async (pane: string): Promise<boolean> => {
+    if (!shown || !layout || !entry || findFocusPane(layout, pane)?.tabs.length !== 0) return false;
+    if (focusPanes(layout).length > 1 && !await flushEditors(noteKeys(notebookId, Object.values(entry.shown)))) return false;
+    let after = layout;
+    if (!mutate(shown, current => after = closePane(current, pane))) return false;
+    setEntry(shown, current => retainPanes({ ...current, ratios: collapseRatios(current.ratios, layout, pane) }, after), layout);
+    return true;
+  };
+  /** Folds every pane into the first one, in pane order; the active pane's shown tab stays on screen and the merged pane becomes active. Throws FocusError if the shown Focus was removed since it was read. */
+  const mergeAll = async (): Promise<boolean> => {
+    if (!shown || !layout || !entry || layout.root.kind === 'pane') return false;
     // Every pane is laid out again, so every displayed editor remounts.
-    if (!await flushEditors(noteKeys(notebookId, Object.values(entry.shown)))) return;
-    if (!mutate(shown, current => applyDivision(current, division))) return;
-    const ids = focusPanes(next).map(pane => pane.id), last = ids[ids.length - 1];
-    const kept = ids.includes(entry.activePane) ? undefined : entry.shown[entry.activePane];
+    if (!await flushEditors(noteKeys(notebookId, Object.values(entry.shown)))) return false;
+    let after = layout;
+    if (!mutate(shown, current => after = mergePanes(current))) return false;
+    const first = after.root.kind === 'pane' ? after.root.id : '', kept = entry.shown[entry.activePane];
     setEntry(shown, current => {
-      const folded = { ...current, recent: current.recent.filter(pane => ids.includes(pane)) };
-      return kept ? showTab(folded, last, kept) : folded;
-    }, next);
+      const merged = retainPanes({ ...current, ratios: {} }, after);
+      return kept ? showTab(merged, first, kept) : activatePane(merged, first);
+    }, layout);
+    return true;
   };
   const setRatios = (split: string, sizes: Record<string, number>) => {
     if (shown) setEntry(shown, current => ({ ...current, ratios: { ...current.ratios, [split]: sizes } }));
@@ -280,6 +294,6 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     return true;
   };
 
-  return { notebookId, focuses, error: page.error, loading: page.loading, view, shown, layout, entry, notes, mutationError, dismissMutationError: () => setMutationError(null), editable: shown ? editable(shown) : false, canName, layoutOf, entryOf, editableFocus: editable, openNote, place, moveTab, split, show, activate, close, addBatch, setDivision, setRatios, setHideToolbar, setDock, forget, name, rename, remove };
+  return { notebookId, focuses, error: page.error, loading: page.loading, view, shown, layout, entry, notes, mutationError, dismissMutationError: () => setMutationError(null), editable: shown ? editable(shown) : false, canName, layoutOf, entryOf, editableFocus: editable, openNote, place, moveTab, split, show, activate, close, addBatch, splitShown, closeEmptyPane, mergeAll, setRatios, setHideToolbar, setDock, forget, name, rename, remove };
 }
 export type NoteFocus = ReturnType<typeof useNoteFocus>;

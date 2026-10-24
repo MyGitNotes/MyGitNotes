@@ -152,3 +152,55 @@ describe('drop zones', () => {
     expect(place).toHaveBeenCalled();
   });
 });
+
+describe('pane buttons', () => {
+  const splitShown = vi.fn(async () => true), closeEmptyPane = vi.fn(async () => true);
+  const withEmptyPane: FocusLayout = { root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }] }, { kind: 'pane', id: 'p2', tabs: [] }] } };
+  const editable = (overrides: Record<string, unknown> = {}) => ({ ...focus, editable: true, shown: 'current', splitShown, closeEmptyPane, ...overrides }) as unknown as NoteFocus;
+  function mount(options: { focus?: NoteFocus; edgeDrops?: boolean; pane?: string; key?: string | null; }) {
+    const pane = options.pane ?? 'p1';
+    const displayed = { panes: [pane], pane, key: options.key === undefined ? 'note:notes/a.md' : options.key };
+    return render(createElement(I18nProvider, null, createElement(FocusPane, { focus: options.focus ?? editable(), notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed, edgeDrops: options.edgeDrops ?? true })));
+  }
+  beforeEach(() => vi.clearAllMocks());
+
+  it('shows Split right and Split down beside the tab bar of a pane on desktop, and splits the shown note', () => {
+    mount({});
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.focus-pane-split')];
+    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['Split right', 'Split down']);
+    buttons[0].click();
+    buttons[1].click();
+    expect(splitShown).toHaveBeenNthCalledWith(1, 'p1', 'horizontal');
+    expect(splitShown).toHaveBeenNthCalledWith(2, 'p1', 'vertical');
+  });
+
+  it('shows no split buttons below desktop, in a read-only Focus, or in a pane that shows nothing', () => {
+    for (const options of [{ edgeDrops: false }, { focus: editable({ editable: false }) }, { key: null }]) {
+      const view = mount(options);
+      expect(document.querySelector('.focus-pane-split')).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it('disables the split buttons at the pane limit and says why', () => {
+    let wide: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }] } };
+    for (let count = 1; count < 8; count++) wide = splitPane(wide, 'p1', 'right', { kind: 'note', path: `notes/n${count}.md` }).layout;
+    mount({ focus: editable({ layout: wide }) });
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.focus-pane-split')];
+    expect(buttons.map(button => button.disabled)).toEqual([true, true]);
+    expect(buttons[0].title).toContain('at most 8 panes');
+  });
+
+  it('offers Close pane on an empty pane next to another, not on the only pane', () => {
+    const entry = { ...focus.entry, shown: { p1: 'note:notes/a.md', p2: null } };
+    mount({ focus: editable({ layout: withEmptyPane, entry }), pane: 'p2', key: null });
+    const close = document.querySelector<HTMLButtonElement>('.focus-pane-empty button')!;
+    expect(close).toHaveTextContent('Close pane');
+    close.click();
+    expect(closeEmptyPane).toHaveBeenCalledWith('p2');
+    cleanup();
+    const only: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [] } };
+    mount({ focus: editable({ layout: only, entry: { ...focus.entry, shown: { p1: null } } }), key: null });
+    expect(document.querySelector('.focus-pane-empty button')).toBeNull();
+  });
+});

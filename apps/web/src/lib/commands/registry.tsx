@@ -14,7 +14,7 @@ export interface CommandRunContext {
 }
 
 export interface CommandSpec {
-  /** A KEYMAP id, or a palette-only id such as `nav.graph` or `focus-division-grid-2x2`. */
+  /** A KEYMAP id, or a palette-only id such as `nav.graph` or `focus-split-right`. */
   id: string;
   /** A dynamic label (Focus open or close); required without a KEYMAP entry. */
   title?: string;

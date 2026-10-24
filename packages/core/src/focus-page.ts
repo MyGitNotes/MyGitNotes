@@ -214,15 +214,6 @@ export function legacyDivisionOf(layout: FocusLayout): FocusDivision | undefined
   return FOCUS_DIVISIONS.find(division => PANE_COUNTS[division] === panes.length && skeleton(legacyFocusTree(division, panes.map(pane => pane.tabs))) === shape);
 }
 
-/** Growing a division appends empty panes; shrinking folds every removed pane's tabs, in pane order, onto the end of the last remaining pane, then dedupes: a note the kept pane already held (or shared between two removed panes) survives once, in first-occurrence order. */
-export function applyDivision<T extends FocusLayout>(layout: T, division: FocusDivision): T {
-  if (legacyDivisionOf(layout) === division) return layout;
-  const panes = focusPanes(layout).map(pane => pane.tabs);
-  const count = PANE_COUNTS[division];
-  const tabs = count >= panes.length ? [...panes, ...Array.from({ length: count - panes.length }, (): FocusTab[] => [])] : panes.slice(0, count).map((kept, index) => index === count - 1 ? [...kept, ...panes.slice(count).flat()] : kept);
-  return normalizeFocus({ ...layout, root: legacyFocusTree(division, tabs) });
-}
-
 const LegacyPaneSchema = z.object({ tabs: z.array(FocusTabSchema) }).strict();
 const legacyFields = { division: z.enum(FOCUS_DIVISIONS), panes: z.array(LegacyPaneSchema) };
 function checkLegacyLayout(layout: { division: FocusDivision; panes: { tabs: FocusTab[]; }[]; }, context: z.RefinementCtx): void {

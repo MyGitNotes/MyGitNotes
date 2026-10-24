@@ -7,7 +7,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { Button } from './Button.js';
 import { Select } from './Select.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
-import { LayoutThumbnail } from './FocusDivision.js';
+import { LayoutThumbnail } from './FocusLayoutIcon.js';
 
 /**
  * Picks a Focus and one of its panes for a note or lane. Confirming leaves the caller where it is:

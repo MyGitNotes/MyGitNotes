@@ -205,16 +205,16 @@ try {
 
   // L1/L2: a split Focus pane is narrow on a wide screen, so the container decides, not the viewport.
   await openFocus('split2', 1000, 900);
-  const pane1 = '[data-focus-pane="1"]';
+  const pane1 = '[data-focus-pane="p2"]';
   m = await measure(pane1);
   assert.ok(m.viewWidth < 560, `The right Focus pane is ${m.viewWidth}px, not narrow`);
   assertVertical(m, `split pane ${Math.round(m.viewWidth)}px`);
-  const left = await measure('[data-focus-pane="0"]');
+  const left = await measure('[data-focus-pane="p1"]');
   assertVertical(left, `left split pane ${Math.round(left.viewWidth)}px`);
   await shot('focus-split-1000');
   await openFocus('split3', 1440, 900);
   for (const pane of [0, 1, 2]) {
-    const wide = await measure(`[data-focus-pane="${pane}"]`);
+    const wide = await measure(`[data-focus-pane="p${pane + 1}"]`);
     assert.ok(wide.viewWidth < 560, `Pane ${pane} is ${wide.viewWidth}px at 1440 wide`);
     assertVertical(wide, `third pane ${pane}`, { scrolls: pane !== 1 });
   }
@@ -237,7 +237,7 @@ try {
 
   // L5: a dynamic compilation loads its next page when the reader reaches the end of the vertical list.
   await openFocus('split2', 1000, 900);
-  const many = '[data-focus-pane="1"]';
+  const many = '[data-focus-pane="p2"]';
   assert.equal((await titles(many)).length, 50, 'The first page is not 50 cards');
   assert.equal(await page.$eval(`${many} .screen-lane-strip`, strip => strip.scrollTop), 0);
   await page.$eval(`${many} .screen-lane-strip`, strip => {
@@ -249,10 +249,10 @@ try {
 
   // A drag preview follows the pointer inside a narrow Focus pane: the compilation view must not become the containing block of its fixed position.
   await openFocus('split3', 1440, 900);
-  const paneHandle = '[data-focus-pane="1"] [aria-label="Move item: Note A"]';
-  await page.click('[data-focus-pane="1"] .reorder-toggle');
+  const paneHandle = '[data-focus-pane="p2"] [aria-label="Move item: Note A"]';
+  await page.click('[data-focus-pane="p2"] .reorder-toggle');
   await page.waitForSelector(paneHandle);
-  const slot = await boxOf('[data-focus-pane="1"] .screen-card-slot');
+  const slot = await boxOf('[data-focus-pane="p2"] .screen-card-slot');
   const grip = await boxOf(paneHandle);
   await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
   await page.mouse.down();
@@ -522,11 +522,11 @@ try {
   for (let width = 900; width <= 1300; width += 20) {
     await viewport(width, 900);
     await settle(150);
-    paneWidth = (await measure('[data-focus-pane="0"]')).viewWidth;
+    paneWidth = (await measure('[data-focus-pane="p1"]')).viewWidth;
     if (paneWidth >= 490 && paneWidth <= 520) break;
   }
   assert.ok(paneWidth >= 490 && paneWidth <= 520, `No viewport gave a pane of about 500px (${paneWidth})`);
-  const pane0 = '[data-focus-pane="0"]';
+  const pane0 = '[data-focus-pane="p1"]';
   assertVertical(await measure(pane0), `focus pane ${Math.round(paneWidth)}px`);
   const paneCard = await cardBox(pane0, 'a');
   const readingPane = await slotReading(page, `${pane0} ${cardSel('a')}`);
