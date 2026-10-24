@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Focus 分割樹：設計摘要與待決事項</title>
+<style>
+body { max-width: 46em; margin: 1em auto; padding: 0 1em; line-height: 1.6; font-family: system-ui, sans-serif; }
+h1 { font-size: 1.4em; } h2 { font-size: 1.15em; margin-top: 1.6em; border-bottom: 1px solid #ccc; }
+table { border-collapse: collapse; width: 100%; margin: .6em 0; }
+th, td { border: 1px solid #bbb; padding: .3em .5em; vertical-align: top; text-align: left; }
+th { white-space: nowrap; background: #f2f2f2; }
+pre { background: #f6f6f6; padding: .6em; overflow-x: auto; }
+.rec { font-weight: bold; }
+code { font-size: .92em; }
+</style>
+</head>
+<body>
+
+<h1>Focus 分割樹：設計摘要與待決事項</h1>
+
+<p><b>結論：</b>Focus 的版面改成像 Obsidian 的分割樹。
+把筆記或 tab 拖到窗格的上下左右邊緣就把該窗格切開；關掉窗格的最後一個 tab，窗格就收起來。
+不再先選「左右、2×2」這類劃分。
+設計分六個可以各自上線的 commit。
+第一個 commit 只換資料模型，畫面幾乎不變；它要先部署到 notes.wayneh.tw 和 Pro，第二個 commit 才能開始寫出新格式。
+下面有 12 個要你決定的問題，每個都附了建議。</p>
+
+<p>完整文件：<code>design.md</code>（做法、介面、測試、分期）、<code>decision.md</code>（決策表）。</p>
+
+<h2>一、資料長什麼樣</h2>
+
+<p>每個 Focus 只有一棵樹。
+節點有兩種：<b>窗格</b>（有 id、放 tab）和<b>分割</b>（有 id、方向、兩個以上的子節點）。
+窗格的編號依樹的順序（由左到右、由上到下）排，舊劃分轉過來的編號跟原本一樣。</p>
+
+<pre>
+左大右二（舊）             轉成的樹（新檔 version 2）
++------+------+            split major-left  橫向
+|      |  p2  |              +- pane p1
+|  p1  +------+              +- split major-left-1  直向
+|      |  p3  |                   +- pane p2
++------+------+                   +- pane p3
+</pre>
+
+<ul>
+<li>上限（建議）：每個 Focus 最多 8 個窗格、分割最多巢狀 4 層；tab 總數照舊最多 100。</li>
+<li>同方向的分割會自動攤平（左右分割裡再切左右，就變成三欄），跟 Obsidian 一樣。</li>
+<li>窗格和分割有固定的 id，所以裝置上記住的「作用窗格、顯示哪個 tab、分隔線位置」不會因為別處切開或收起而錯位。</li>
+</ul>
+
+<h2>二、舊檔與兩個部署的時間差</h2>
+
+<p>這是最需要注意的地方。
+舊版程式讀到 version 2 的 Focus 檔，不只 Focus 打不開，<b>那個儲存庫裡所有筆記與資料夾的搬移都會被拒絕</b>（422「Fix the file before moving content」）。
+notes.wayneh.tw 和 Pro 用同一份 core，但部署時間不同，所以有一段時間會有一邊是舊版。</p>
+
+<p>做法：新程式讀 version 1 時，一律轉成同一棵樹、同一組 id（不能用亂數，不然遠端提交會一直誤報衝突）。
+寫回時，只要每個 Focus 都還是舊劃分的形狀，就照舊寫 version 1；只有真的切出舊劃分表達不了的形狀，才寫 version 2。
+第一個 commit 的介面還切不出新形狀，所以它只會寫 version 1。</p>
+
+<pre>
+phase 1  新讀取器 + 仍寫 v1   --> 部署到 notes.wayneh.tw 與 Pro
+                                  （你確認 Pro 已更新）
+phase 2  拖到邊緣分割          --> 開始可能寫出 v2
+phase 6  永遠寫 v2             --> 你說兩邊都已過 phase 1 才做
+</pre>
+
+<p>暫存 Focus 存在各網域自己的瀏覽器裡，兩個部署不共用，所以不受影響。</p>
+
+<h2>三、分期</h2>
+
+<table>
+<tr><th>#</th><th>內容</th><th>使用者看得到的改變</th></tr>
+<tr><td>1</td><td>core 改成分割樹；讀 v1、仍寫 v1；網頁改用窗格 id</td><td>幾乎沒有；平板上 2×2 改成上下兩列（見 D8）</td></tr>
+<tr><td>2</td><td>拖到窗格邊緣分割、關最後一個 tab 收起窗格</td><td>可以自由分割</td></tr>
+<tr><td>3</td><td>「劃分」選單換成「向右分割、向下分割、合併所有窗格」；命令面板、加入 Focus 對話框的窗格圖</td><td>不再有劃分預設</td></tr>
+<tr><td>4</td><td>只有一個窗格時，「開在旁邊」改成向右分割</td><td>合輯卡片開在右邊（D9，你可以不要）</td></tr>
+<tr><td>5</td><td>文件與用語表</td><td>無</td></tr>
+<tr><td>6</td><td>拿掉 v1 寫入</td><td>無（要等你確認）</td></tr>
+</table>
+
+<p>MCP server 沒有 Focus 相關程式；local server 只透過共用的工作區文件路由讀寫，路由不用改；Pro 在 core 之外沒有用到 Focus，只需更新 submodule。</p>
+
+<h2>四、要你決定的事</h2>
+
+<table>
+<tr><th>#</th><th>問題</th><th>建議</th><th>另一個選擇</th></tr>
+<tr><td>D1</td><td>上限</td><td class="rec">最多 8 窗格、4 層分割；到上限時邊緣不能放、分割命令停用</td><td>不設上限（窗格可能小到不能用）</td></tr>
+<tr><td>D2</td><td>分隔線位置存哪裡</td><td class="rec">存在各裝置（跟現在一樣）</td><td>存進 Focus 檔：每台裝置看起來一樣，但每次拖分隔線都會產生一筆待提交的變更</td></tr>
+<tr><td>D3</td><td>拖放區域</td><td class="rec">窗格內容區外圍四分之一是邊緣（分割），其餘是中央（加成 tab）；tab 列只排序不分割；拖 tab 到邊緣是移動，按 Shift 是複製；顯示預覽陰影</td><td>邊緣區更窄（例如固定 60px）</td></tr>
+<tr><td>D4</td><td>空窗格</td><td class="rec">只在關掉或拖走最後一個 tab 時收起；其他空窗格（舊劃分留下的、筆記被刪的）顯示「關閉窗格」按鈕；最外層那一格永遠不收</td><td>載入時自動清掉空窗格</td></tr>
+<tr><td>D5</td><td>「劃分」選單變成什麼</td><td class="rec">「向右分割、向下分割、合併所有窗格」，拿掉七種預設</td><td>保留預設當作「重排成…」捷徑</td></tr>
+<tr><td>D6</td><td>向右／向下分割時，新窗格放什麼</td><td class="rec">再開一份目前顯示的筆記（Obsidian 的做法），新窗格成為作用窗格</td><td>新窗格是空的</td></tr>
+<tr><td>D7</td><td>命令面板</td><td class="rec">拿掉七個劃分命令，加「向右分割、向下分割、合併所有窗格、關閉空窗格」，都不綁預設按鍵；上一個／下一個窗格依樹的順序</td><td>另加方向鍵移到左右上下的窗格（本次不做）</td></tr>
+<tr><td>D8</td><td>窄螢幕</td><td class="rec">桌機顯示整棵樹；平板依最外層分割分成兩半；手機一格裝全部 tab；邊緣分割只在桌機</td><td>平板維持「第一格單獨、其餘合併」</td></tr>
+<tr><td>D9</td><td>只有一個窗格時「開在旁邊」</td><td class="rec">桌機上向右分割（合輯卡片不再蓋住合輯）；[[連結]] 仍開在同一格</td><td>維持現在：開成同一格的新 tab</td></tr>
+<tr><td>D10</td><td>加入 Focus 對話框</td><td class="rec">依樹畫窗格縮圖，每格一個選項，方向鍵依序切換；對話框裡不提供「新分割」</td><td>對話框也能選「放到新的右側窗格」</td></tr>
+<tr><td>D11</td><td>跨部署上線</td><td class="rec">如第二節：phase 1 兩邊都部署後才上 phase 2；v1 寫入等你確認後才拿掉</td><td>直接寫 v2，接受舊部署暫時不能搬移筆記</td></tr>
+<tr><td>D12</td><td>用語</td><td class="rec">停用「劃分」；動作叫「分割」（向右分割、向下分割、合併所有窗格、關閉窗格）；整體需要命名時叫「窗格配置」</td><td>沿用「劃分」指整體配置</td></tr>
+</table>
+
+<h2>五、已知風險</h2>
+
+<ul>
+<li>切開窗格時，被包進新分割的那格編輯器會重新掛載，捲動位置與復原紀錄會消失（現在換劃分也是這樣）；先存檔再切，不會掉內容。</li>
+<li>Phase 1 改動面大（所有用窗格編號的地方都換成 id），但行為不變，現有測試就是它的檢查點。</li>
+<li>同一個瀏覽器網域如果退回舊版，該裝置的暫存 Focus 會變空；具名 Focus 不受影響。</li>
+</ul>
+
+</body>
+</html>
