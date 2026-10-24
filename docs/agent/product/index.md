@@ -83,7 +83,10 @@ Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/
 
 ### Focus 配置所有權
 
-工作區根目錄 `.github-notes-focus.yaml` 保存使用者具名 Focus 的名稱、劃分與各窗格的 tab。
+工作區根目錄 `.github-notes-focus.yaml` 保存使用者具名 Focus 的名稱，以及窗格分割樹：節點是窗格（`id`、tab）或分割（`id`、方向、子節點），節點 `id` 在一個 Focus 內不重複；窗格最多 8 個、分割巢狀最多 4 層。
+分割的大小是各裝置的檢視狀態，不存在檔案裡。
+檔案格式為 version 2；version 1（劃分加窗格清單）讀入時依劃分決定性地轉成樹（窗格 `p1`…，分割 `id` 取自劃分名稱），同一個檔案讀兩次結果相同。
+寫入時，只要每個 Focus 都剛好是七種舊劃分之一，仍寫成 version 1，讓只認得 version 1 的部署繼續運作；任何一個 Focus 成為其他形狀，整個檔案就寫成 version 2。收回這個 version 1 寫入要等所有部署都跨過 phase 1，由使用者決定。
 Core 不得追蹤真實配置，工作區更新必須保留此檔案；測試配置只建立於隔離暫存工作區。
 每個 Focus 記錄 `notebookId`，tab 只參照該筆記本的筆記或合輯（路徑分頁）；暫存 Focus（程式內 `CURRENT_FOCUS`）與作用窗格等檢視狀態只存在瀏覽器。
 
@@ -92,9 +95,13 @@ Core 不得追蹤真實配置，工作區更新必須保留此檔案；測試配
 URL 的 `focus` 參數指定顯示的 Focus；沒有時，`useNoteFocus` 在 render 時改用該筆記本上次顯示的 Focus（`view.last`），不把它寫回 URL，避免先畫出瀏覽區再跳成 Focus。
 不要用 effect 補寫 URL 來決定畫面；react-router 與 nuqs 的更新都包在 `startTransition`，`useLayoutEffect` 也擋不住中間畫面。
 關閉 Focus 時清除 `view.last`，之後回到筆記頁顯示瀏覽區。
-窗格內點選的 `[[link]]` 開在同一窗格的 tab；河道卡片開在最近使用的另一窗格；瀏覽區點選開在作用窗格。
+窗格內點選的 `[[link]]` 開在同一窗格的 tab；河道卡片開在最近使用的另一窗格，只有一個窗格時，桌面改為向右分割出新窗格；瀏覽區點選開在作用窗格。
+拖放到窗格主體的邊緣四分之一分割該窗格，中央與 tab 列則加入或搬動 tab；平板與手機只顯示部分窗格，不分割，只在中央與 tab 列放下。
+關閉窗格的最後一個 tab、或把它搬走，窗格就移除；清掉已不存在的筆記（`pruneFocus`）不移除窗格，避免筆記還在載入時窗格消失。
+平板顯示根分割的第一個子節點與其餘各窗格，手機把所有窗格併成一個顯示窗格；這只是顯示，不改檔案。
 
 ### 工作區文件
 
 學習資料與 Focus 配置登錄在 `packages/core/src/workspace-documents.ts`，登錄決定可提交的範圍、大小上限、格式驗證，以及搬移筆記或資料夾時如何更新參照。
+登錄可附 `write`，把記憶體中的值轉成要存的版本（Focus 用它維持 version 1 寫入）；存檔一律經 `serializeWorkspaceDocument(document, value)`。
 新增工作區根目錄的使用者檔案時，加入登錄與上述所有權清單（`scripts/lib/workspace-conversion.mjs`）。
