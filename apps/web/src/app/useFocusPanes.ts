@@ -40,7 +40,7 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
   const focusScope = localId && resolveBareNotebook(localId) === selectedNotebookId ? remote ? sourceId : `local:${repoRoot}` : null;
   // A Notes page whose URL names no Focus shows the one it displayed last, decided while rendering so the list never paints first.
   const defaultFocus = notebookPreferences(selectedNotebookId).defaultFocusMode && !hasStoredFocusView(notebookRepository, focusScope, selectedNotebookId) ? CURRENT_FOCUS : null;
-  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && !editorRoute.note, defaultFocus, writable: canWrite, flushEditors: editorRegistry.flushEditors });
+  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && !editorRoute.note, defaultFocus, writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
   const focusDisplay = noteFocus.layout && noteFocus.entry ? displayedPanes(noteFocus.entry, noteFocus.layout, focusCapacity) : undefined;
   /** On phones the browse region and the Focus take turns filling the screen. */
   const [focusNarrowView, setFocusNarrowView] = useState<'focus' | 'browse'>('focus');

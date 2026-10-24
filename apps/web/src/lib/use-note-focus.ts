@@ -18,6 +18,8 @@ interface NoteFocusOptions {
   restoreLast?: boolean;
   defaultFocus?: string | null;
   writable: boolean;
+  /** Whether the whole split tree is on screen (desktop): a note opened beside the only pane then splits it to the right instead of landing behind it as a tab. */
+  splitBeside?: boolean;
   /** Saves the pending edits of the editors of `paths` before they unmount; false keeps the current view. */
   flushEditors: (paths?: readonly string[]) => Promise<boolean>;
 }
@@ -41,7 +43,7 @@ const notePaths = (keys: (string | null)[]) => keys.map(notePath).filter((path):
 const noteKeys = (notebookId: string, keys: (string | null)[]) => notePaths(keys).map(path => noteRefKey({ notebookId, path }));
 
 /** Named Focus (Git-synced through the Focus workspace document) and this browser's (current) Focus and view state for one notebook. */
-export function useNoteFocus({ page, notebookId, repository, scope, focusKey, restoreLast = false, defaultFocus = null, writable, flushEditors }: NoteFocusOptions) {
+export function useNoteFocus({ page, notebookId, repository, scope, focusKey, restoreLast = false, defaultFocus = null, writable, splitBeside = false, flushEditors }: NoteFocusOptions) {
   const key = adoptedFocusViewKey(repository, scope, notebookId);
   const [stored, setStored] = useState(() => ({ key, view: loadView(key) }));
   const view = stored.key === key ? stored.view : loadView(key);
@@ -124,6 +126,19 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   const openNote = async (path: string, source?: string, placement: OpenPlacement = 'beside'): Promise<OpenResult> => {
     if (!shown || !layout || !entry) return 'readonly';
     const tab: FocusTab = { kind: 'note', path }, tabKey = focusTabKey(tab);
+    const only = focusPanes(layout);
+    if (source !== undefined && placement === 'beside' && splitBeside && only.length === 1) {
+      // The only pane has no pane beside it, so the note opens in a new pane to its right (D9).
+      if (!editable(shown)) return 'readonly';
+      if (focusTabCount(layout) >= FOCUS_MAX_TABS) return 'full';
+      try {
+        return await split(shown, only[0].id, 'right', tab) ? 'opened' : 'blocked';
+      } catch {
+        // The layout changed since it was read, so it counts as full, as a refused placement does.
+        setMutationError(null);
+        return 'full';
+      }
+    }
     const pane = source === undefined ? browseTarget(entry) : placement === 'here' ? source : sideTarget(entry, source, focusPanes(layout).map(current => current.id)) ?? source;
     const found = findFocusTabInPane(layout, pane, tabKey) !== -1;
     if (!found && !editable(shown)) return 'readonly';

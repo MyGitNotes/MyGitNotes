@@ -278,3 +278,55 @@ describe('useNoteFocus Split right, Merge all panes and Close pane', () => {
     await act(async () => expect(await result.current.mergeAll()).toBe(false));
   });
 });
+
+describe('useNoteFocus openNote beside the only pane', () => {
+  const render = (splitBeside: boolean) => {
+    localStorage.setItem(storageKey, JSON.stringify({ current: { root: { kind: 'pane', id: 'p1', tabs: [tab('compilation-a')] } }, entries: {}, last: null }));
+    return renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, splitBeside, flushEditors: async () => true }), { wrapper }).result;
+  };
+
+  it('splits the pane to the right on desktop and shows the note in the new pane', async () => {
+    const result = render(true);
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    let opened: string | undefined;
+    await act(async () => {
+      opened = await result.current.openNote('notes/a.md', 'p1');
+    });
+    expect(opened).toBe('opened');
+    expect(result.current.layout?.root).toMatchObject({ kind: 'split', orientation: 'horizontal' });
+    expect(tabsAt(result.current.layout, 0)).toEqual([tab('compilation-a')]);
+    expect(tabsAt(result.current.layout, 1)).toEqual([{ kind: 'note', path: 'notes/a.md' }]);
+    expect(result.current.entry?.activePane).toBe('p2');
+    expect(result.current.entry?.shown.p2).toBe('note:notes/a.md');
+  });
+
+  it('keeps adding a tab to the pane where the whole tree is not on screen, and for placement here', async () => {
+    const narrow = render(false);
+    await waitFor(() => expect(narrow.current.layout).not.toBeNull());
+    await act(async () => {
+      await narrow.current.openNote('notes/a.md', 'p1');
+    });
+    expect(focusPanes(narrow.current.layout!)).toHaveLength(1);
+    expect(tabsAt(narrow.current.layout, 0)).toHaveLength(2);
+    localStorage.clear();
+    const wide = render(true);
+    await waitFor(() => expect(wide.current.layout).not.toBeNull());
+    await act(async () => {
+      await wide.current.openNote('notes/b.md', 'p1', 'here');
+    });
+    expect(focusPanes(wide.current.layout!)).toHaveLength(1);
+  });
+
+  it('opens beside the most recent other pane once there are two', async () => {
+    const result = render(true);
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => {
+      await result.current.openNote('notes/a.md', 'p1');
+    });
+    await act(async () => {
+      await result.current.openNote('notes/b.md', 'p2');
+    });
+    expect(focusPanes(result.current.layout!)).toHaveLength(2);
+    expect(tabsAt(result.current.layout, 0)).toContainEqual({ kind: 'note', path: 'notes/b.md' });
+  });
+});
