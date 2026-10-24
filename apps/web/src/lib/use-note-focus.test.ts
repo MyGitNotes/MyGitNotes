@@ -179,6 +179,20 @@ describe('useNoteFocus split and collapse', () => {
     expect(Object.keys(result.current.entry?.ratios ?? {})).not.toContain('columns-2');
   });
 
+  it("does not hand a pane its predecessor's id state when a move empties the source and the new pane reuses its id", async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    act(() => result.current.setHideToolbar('p2', true));
+    await act(() => result.current.split(CURRENT_FOCUS, 'p1', 'right', tab('c'), 'p2'));
+    const panes = focusPanes(result.current.layout!), entry = result.current.entry!;
+    expect(panes.map(pane => pane.tabs)).toEqual([[tab('a'), tab('b')], [tab('c')]]);
+    expect(Object.values(entry.hideToolbar).some(Boolean)).toBe(false);
+    expect(entry.history[panes[1].id]).toEqual([keyOf('c')]);
+    const [split] = Object.values(entry.ratios);
+    expect(Object.keys(entry.ratios)).not.toContain('columns-2');
+    expect(split).toEqual({ [panes[0].id]: 50, [panes[1].id]: 50 });
+  });
+
   it('copies instead of moving when asked, leaving the source pane alone', async () => {
     const { result } = render();
     await waitFor(() => expect(result.current.layout).not.toBeNull());

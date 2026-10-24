@@ -57,7 +57,7 @@ After phase 3, with the phase 2 and 3 code:
 - Tablet (900 px): the Focus showed two panes, no Split buttons, and a note dragged to a pane's right edge was added as a tab. Phone (390 px): one pane, no Split buttons, a tab dropped on the left edge stayed in its pane.
 - Keyboard only: the palette's Split right acted on the active pane and Next pane moved to the new one.
 
-Not run: the manual QA scripts `scripts/qa-note-focus.mjs`, `qa-compilation-cards.mjs` and `qa-graph-editing.mjs` (updated to string pane ids, `.focus-layout-thumbnail`, no `data-division` and the Layout menu; checked with `node --check` only). No UI path currently passes placement `beside` with a source pane, so D9 was verified by its unit tests and not in the browser.
+Not run: the manual QA scripts `scripts/qa-note-focus.mjs`, `qa-compilation-cards.mjs` and `qa-graph-editing.mjs` (updated to string pane ids, `.focus-layout-thumbnail`, no `data-division` and the Layout menu; checked with `node --check` only). Compilation cards in a Focus pane pass placement `beside` again (user decision of 2026-10-24, see D9); the second browser pass covers it.
 
 Cleanup: the monitor was stopped, the agent-browser session closed, the temp clone, helper files and the repository's `.mygitnotes-dev-ports.json` deleted, and ports 3187 and 5187 confirmed free.
 
@@ -65,7 +65,7 @@ Cleanup: the monitor was stopped, the agent-browser session closed, the temp clo
 
 - `splitRatios` and `collapseRatios` take the stored `ratios` and the layouts before and after, not the whole entry, so the hook can chain a collapse and a split for a move.
 - Closing a pane's last tab, moving it out and Merge all panes flush every shown editor first, because removing a pane can re-parent its neighbours.
-- The id of a removed pane is free again, so a move that empties its source can give the new pane the same id; the hook drops the stale view state of the removed pane before the new pane takes the id.
+- The id of a removed pane is free again, so a move that empties its source can give the new pane the same id; the hook decides "emptied" from the source pane in the layout before the move (not from whether the id still exists afterwards), drops the removed pane's view state, and computes ratios as collapse-then-split.
 - Where a limit refuses an edge drop, the edge band behaves as the centre (a drop adds a tab) and the preview names the limit, rather than refusing the drop.
-- The Layout menu's Split items and the palette's Split commands are also disabled when the display is not the whole tree (D8), and the Split buttons beside the tab bar do not render there.
+- The Layout menu's Split items are disabled, and the palette's Split commands unavailable, when the screen is below desktop (`focusCapacity` is not `all`) or the display is not the whole tree (D8), and the Split buttons beside the tab bar do not render there.
 - `README.md` and `README.zh-TW.md` had no Focus description, so each gained one feature bullet; `docs/agent/architecture/index.md` does not name the Focus format and was left alone.

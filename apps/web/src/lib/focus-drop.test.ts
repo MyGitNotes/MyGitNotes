@@ -35,6 +35,9 @@ describe('dropRefusal', () => {
     expect(dropRefusal({ root: { kind: 'pane', id: 'p1', tabs: [] } }, 'p1', 'right')).toBeUndefined();
     expect(dropRefusal(wide, 'p1', 'left')).toBe('pane-limit');
   });
+  it('ignores a stale source pane instead of throwing', () => {
+    expect(dropRefusal(wide, 'p1', 'bottom', { pane: 'gone', key: 'note:n1.md' })).toBeUndefined();
+  });
   it('lets a move that empties its source pane through at the limit, but not a copy', () => {
     expect(dropRefusal(wide, 'p1', 'bottom', { pane: 'p2', key: 'note:n1.md' })).toBeUndefined();
     expect(dropRefusal(wide, 'p1', 'bottom', { pane: 'p2', key: 'note:n1.md' }, true)).toBe('pane-limit');

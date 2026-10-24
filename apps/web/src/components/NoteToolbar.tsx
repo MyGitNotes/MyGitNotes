@@ -34,7 +34,7 @@ interface NoteToolbarProps {
   onQueryChange: (query: string) => void;
   filtersOpen: boolean;
   onToggleFilters: () => void;
-  /** The Focus switcher and division picker. */
+  /** The Focus switcher and Layout menu. */
   focusControls?: ReactNode;
   onImportLegacy?: () => void;
   /** Lets the "Search note text" command reach the field, opening it first on narrow screens. */

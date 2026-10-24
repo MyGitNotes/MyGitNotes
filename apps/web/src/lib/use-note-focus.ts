@@ -202,7 +202,7 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     ) return false;
     if (after === current) return true;
     setEntry(target, entry => {
-      const emptied = from !== undefined && !findFocusPane(after, from);
+      const emptied = from !== undefined && from !== pane && findFocusPane(current, from)?.tabs.length === 1;
       const mid = emptied ? closePane(current, from) : current;
       const sourceNext = from !== undefined && !emptied && entry.shown[from] === tabKey ? shownAfterClose(current, from, tabKey, entry.history[from]) : undefined;
       const withSource = from !== undefined && sourceNext !== undefined ? { ...entry, shown: { ...entry.shown, [from]: sourceNext } } : entry;

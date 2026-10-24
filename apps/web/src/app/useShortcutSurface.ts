@@ -15,12 +15,13 @@ interface Params {
   t: I18nContextValue['t'];
   activeTab: WorkspaceTab;
   showFocus: ReturnType<typeof useFocusPanes>['showFocus'];
+  focusCapacity: ReturnType<typeof useFocusPanes>['focusCapacity'];
   zoomFocusNote: ReturnType<typeof useFocusNoteNavigation>['zoomFocusNote'];
 }
 
 const available = (enabled: boolean, reason: string): Availability => enabled ? { enabled: true } : { enabled: false, reason };
 
-export function useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, showFocus, zoomFocusNote }: Params) {
+export function useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, showFocus, zoomFocusNote, focusCapacity }: Params) {
   const [shortcutMode, setShortcutMode] = useState<ShortcutSurfaceMode | null>(null);
 
   // Palette commands for the displayed Focus; they act on the active pane.
@@ -52,7 +53,7 @@ export function useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, show
       description: t(edge === 'right' ? 'shortcuts.describe.focusSplitRight' : 'shortcuts.describe.focusSplitDown'),
       availability: (): Availability => {
         if (!noteFocus.editable || !noteFocus.layout || !activePaneId || !noteFocus.entry?.shown[activePaneId]) return available(false, t('shortcuts.requiresEditableFocusTab'));
-        if (focusDisplay?.panes.length !== focusPanes(noteFocus.layout).length) return available(false, t('shortcuts.requiresFullFocus'));
+        if (focusCapacity !== 'all' || focusDisplay?.panes.length !== focusPanes(noteFocus.layout).length) return available(false, t('shortcuts.requiresFullFocus'));
         const refusal = dropRefusal(noteFocus.layout, activePaneId, edge);
         return available(!refusal, t(refusal === 'depth-limit' ? 'focus.depthLimit' : refusal === 'tab-limit' ? 'focus.limit' : 'focus.paneLimit'));
       },

@@ -288,7 +288,7 @@ export const AppContent: React.FC = () => {
     else navigate(returnTo, { replace: true });
   };
 
-  const { focusCommands, shortcutMode, setShortcutMode } = useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, showFocus, zoomFocusNote });
+  const { focusCommands, shortcutMode, setShortcutMode } = useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, showFocus, zoomFocusNote, focusCapacity });
   const noteSearch = useRef<NoteSearchHandle>(null);
   // Searching from another page opens Notes, then focuses the toolbar search once it has rendered.
   const noteSearchPending = useRef(false);

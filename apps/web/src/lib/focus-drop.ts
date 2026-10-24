@@ -21,6 +21,8 @@ export function dropRefusal(layout: FocusLayout, pane: string, edge: FocusEdge, 
     else splitPane(layout, pane, edge, PROBE);
     return undefined;
   } catch (caught) {
+    // A source pane that no longer exists is a stale drag, not a limit.
+    if (caught instanceof FocusError && caught.code === 'invalid-pane') return undefined;
     if (caught instanceof FocusError && (caught.code === 'pane-limit' || caught.code === 'depth-limit' || caught.code === 'tab-limit')) return caught.code;
     throw caught;
   }

@@ -20,6 +20,13 @@ import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 const TAB_DRAG_TYPE = 'application/x-mygitnotes-focus-tab';
 /** The tab being dragged inside this window: a drag's data cannot be read until it drops, but the drop zones depend on which tab it is. */
 let draggedTab: { pane: string; key: string; } | undefined;
+// The source tab can unmount before its own dragend fires, so the end of any drag in the window clears it too (after the pane handlers of that event have read it).
+const forgetDraggedTab = () => {
+  draggedTab = undefined;
+};
+if (typeof document !== 'undefined') {
+  for (const type of ['dragend', 'drop']) document.addEventListener(type, () => void setTimeout(forgetDraggedTab), true);
+}
 
 export interface FocusPaneContext {
   focus: NoteFocus;
@@ -118,7 +125,9 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   };
   const bodyDrop = (event: React.DragEvent) => {
     const zone = edgeAt(event);
-    if (!zone || !accepts(event) || refusalAt(zone, event.shiftKey)) {
+    const refused = !zone || !accepts(event) || refusalAt(zone, event.shiftKey);
+    forgetDraggedTab();
+    if (!zone || refused) {
       drop(event, { pane: displayed.pane });
       return;
     }
@@ -142,6 +151,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   };
   /** A tab-bar drag moves by default; Shift copies instead. A browse-row drag (no source pane) always copies. Same-pane drops always reorder. */
   const drop = (event: React.DragEvent, target: DropSlot) => {
+    forgetDraggedTab();
     setSlot(undefined);
     setEdge(undefined);
     if (!accepts(event)) return;
