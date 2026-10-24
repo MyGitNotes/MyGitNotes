@@ -154,6 +154,9 @@ While the dock is offered, the Agents page opens from the dock's header.
   Pasting text that comes with an image of it pastes the text. A shell run (`!command`) or built-in (`/new`) takes no images and leaves them waiting.
   Pi's RPC mode has no other attachment type (`@file` arguments are a terminal feature it rejects), so other files are not uploaded; Pi reads files in the workspace itself.
   The images reach a remote agent's bridge the same way, inside the 16 MB a WebSocket frame may carry.
+- What you type in the message box is saved in the browser as you type, one draft per agent workspace, and comes back after a reload, after the dock is closed and opened again, and after switching away from a workspace and back.
+  It is removed only when the message is sent (or you empty the box yourself), never when a send is refused or the dock closes; a full or blocked browser storage just means the draft is not kept.
+  Attached images are not saved, since a few of them would fill the browser's storage quota; they wait only while the dock stays open, and a reload asks you to attach them again.
 - Switch the model and thinking level from the selects in the message box's bottom row.
   Replies render as Markdown, links to notes open in the app, and questions Pi's extensions ask appear as cards in the conversation.
   Consecutive tool calls fold into one row (*Ran 2 tools: bash, read*) that opens onto the calls; it stays open while a tool runs or after one failed.

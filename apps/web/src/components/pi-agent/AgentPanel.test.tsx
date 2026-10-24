@@ -603,3 +603,60 @@ it('puts the images of a held message back in the tray when it returns to the me
   await waitFor(() => expect(attachedImages()).toHaveLength(1));
   expect((screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement).value).toBe('look');
 });
+
+const savedDraft = (folder = '') => localStorage.getItem(`mygitnotes.piAgent.draft.${home}\n${folder}`);
+const box = () => screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement;
+
+it('restores the typed draft after the panel closes and opens again, and keeps it when the panel only closes', async () => {
+  const value = agent();
+  panel(value);
+  write('half written');
+  await waitFor(() => expect(savedDraft()).toBe('half written'));
+  cleanup();
+  panel(value);
+  expect(box().value).toBe('half written');
+  // Closing again before another pause passes keeps what was typed since.
+  write('half written, more');
+  cleanup();
+  expect(savedDraft()).toBe('half written, more');
+});
+
+it('clears the stored draft once the message goes, and keeps it when the send is refused', async () => {
+  const send = vi.fn(() => false);
+  panel(agent({ send }));
+  write('hello Pi');
+  fireEvent.keyDown(box(), { key: 'Enter' });
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(box().value).toBe('hello Pi');
+  await waitFor(() => expect(savedDraft()).toBe('hello Pi'));
+  cleanup();
+  const accepting = agent({ send: vi.fn(() => true) });
+  panel(accepting);
+  expect(box().value).toBe('hello Pi');
+  fireEvent.keyDown(box(), { key: 'Enter' });
+  expect(box().value).toBe('');
+  expect(savedDraft()).toBeNull();
+  cleanup();
+  panel(accepting);
+  expect(box().value).toBe('');
+});
+
+it('keeps a draft per agent workspace, and the one left behind when the workspace switches', async () => {
+  const blogLocation = { repository: home, folder: 'blog' };
+  const view = render(createElement(PiAgentContext.Provider, { value: agent() }, createElement(AgentPanel)));
+  write('home draft');
+  view.rerender(createElement(PiAgentContext.Provider, { value: agent({ session: { id: 's2', cwd: '/home/me/workspace/blog', location: blogLocation, trusted: true, status: 'ready', startedAt: '' } }) }, createElement(AgentPanel)));
+  expect(box().value).toBe('');
+  expect(savedDraft()).toBe('home draft');
+  write('blog draft');
+  await waitFor(() => expect(savedDraft('blog')).toBe('blog draft'));
+  view.rerender(createElement(PiAgentContext.Provider, { value: agent() }, createElement(AgentPanel)));
+  expect(box().value).toBe('home draft');
+});
+
+it('keeps the draft over a switch of conversation in the same workspace', async () => {
+  const view = render(createElement(PiAgentContext.Provider, { value: agent() }, createElement(AgentPanel)));
+  write('still mine');
+  view.rerender(createElement(PiAgentContext.Provider, { value: agent({ session: { id: 's-new', cwd: '/home/me/workspace', location: { repository: home, folder: '' }, trusted: true, status: 'ready', startedAt: '' } }) }, createElement(AgentPanel)));
+  expect(box().value).toBe('still mine');
+});

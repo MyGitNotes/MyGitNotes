@@ -11,6 +11,7 @@ import { AgentTranscript, type ChatLinks } from './AgentTranscript.js';
 import { CommandMenu } from './CommandMenu.js';
 import { BUILTIN_COMMANDS, matchCommands, parseComposerInput, type PiCommand, slashQuery } from '../../lib/pi-agent/commands.js';
 import { type PiContextUsage, type PiEditorText, type PiLocation, type PiSessionInfo, usePiAgent } from '../../lib/pi-agent/session.js';
+import { draftKey, useAgentDraft } from '../../lib/pi-agent/draft.js';
 import { addImageFiles, ATTACHMENT_TYPES, type AttachmentProblem, type ImageAttachment, thumbnailUrl } from '../../lib/pi-agent/attachments.js';
 import { sameWorkspace, workspaceKey, workspaceName } from '../../lib/agent-workspaces.js';
 import { useAgentInputFocusRequest } from '../../lib/pi-agent/input-focus.js';
@@ -205,7 +206,8 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   const { t } = useTranslation();
   const agent = usePiAgent();
   const target = agent.target;
-  const [draft, setDraft] = useState('');
+  // Kept in localStorage per agent workspace, so a reload, a closed panel or another workspace never costs what was typed.
+  const [draft, setDraft] = useAgentDraft(draftKey(agent.session?.location));
   /** Images waiting to go with the next message, and why the last file offered was left out. */
   const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
   const [attachProblems, setAttachProblems] = useState<AttachmentProblem[]>([]);
