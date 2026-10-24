@@ -23,7 +23,7 @@ export const FocusArea: React.FC<FocusPaneContext & { capacity: 1 | 2 | 'all'; }
   const ratios = focus.entry.ratios;
 
   const render = (node: DisplayNode): React.ReactNode => {
-    if (node.kind === 'pane') return <FocusPane {...context} displayed={leaves.get(node.id)!} />;
+    if (node.kind === 'pane') return <FocusPane {...context} displayed={leaves.get(node.id)!} edgeDrops={capacity === 'all'} />;
     // Stored sizes apply only while they cover exactly the children; otherwise the children share equally.
     const stored = ratios[node.id];
     const covers = stored !== undefined && Object.keys(stored).length === node.children.length && node.children.every(child => typeof stored[child.id] === 'number');

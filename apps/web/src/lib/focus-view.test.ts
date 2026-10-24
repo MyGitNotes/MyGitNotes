@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type FocusDivision, type FocusLayout, type FocusNode, type FocusTab, legacyFocusTree } from '@mygitnotes/core/focus-page';
-import { activatePane, adoptedFocusViewKey, browseTarget, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasStoredFocusView, readFocusView, shownAfterClose, showTab, sideTarget } from './focus-view.js';
+import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasStoredFocusView, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
 const note = (path: string): FocusTab => ({ kind: 'note', path });
 const lane = (id: string): FocusTab => ({ kind: 'note', path: `notes/${id}.compilation.yml` });
@@ -281,5 +281,55 @@ describe('hasStoredFocusView', () => {
     localStorage.setItem('github-notes:focus-view:local:repo:life', JSON.stringify(emptyFocusView()));
     expect(hasStoredFocusView('local:/notes/other', null, 'other~life')).toBe(false);
     expect(localStorage.getItem(focusViewStorageKey('local:/notes/other', 'other~life'))).toBeNull();
+  });
+});
+
+describe('splitRatios and collapseRatios', () => {
+  const pane = (id: string): FocusNode => ({ kind: 'pane', id, tabs: [] });
+  const split = (id: string, orientation: 'horizontal' | 'vertical', ...children: FocusNode[]): FocusNode => ({ kind: 'split', id, orientation, children });
+  const sum = (sizes: Record<string, number>) => Object.values(sizes).reduce((total, size) => total + size, 0);
+  const columns: FocusLayout = { root: split('s1', 'horizontal', pane('p1'), pane('p2')) };
+
+  it('gives a new sibling half of its target, keeping the sum', () => {
+    const after: FocusLayout = { root: split('s1', 'horizontal', pane('p1'), pane('p3'), pane('p2')) };
+    const ratios = splitRatios({ s1: { p1: 30, p2: 70 } }, columns, after, 'p1', 'p3');
+    expect(ratios.s1).toEqual({ p1: 15, p3: 15, p2: 70 });
+    expect(sum(ratios.s1)).toBe(100);
+  });
+  it('starts a wrapped pane as a 50/50 split that keeps the pane share in its parent', () => {
+    const after: FocusLayout = { root: split('s1', 'horizontal', split('s2', 'vertical', pane('p1'), pane('p3')), pane('p2')) };
+    const ratios = splitRatios({ s1: { p1: 30, p2: 70 } }, columns, after, 'p1', 'p3');
+    expect(ratios.s2).toEqual({ p1: 50, p3: 50 });
+    expect(ratios.s1).toEqual({ s2: 30, p2: 70 });
+  });
+  it('falls back to equal shares when the stored sizes do not cover the split', () => {
+    const after: FocusLayout = { root: split('s1', 'horizontal', pane('p1'), pane('p3'), pane('p2')) };
+    expect(splitRatios({ s1: { p1: 100 } }, columns, after, 'p1', 'p3').s1).toEqual({ p1: 25, p3: 25, p2: 50 });
+  });
+  it('gives a removed child its share to the previous neighbour, else the next', () => {
+    const three: FocusLayout = { root: split('s1', 'horizontal', pane('p1'), pane('p2'), pane('p3')) };
+    expect(collapseRatios({ s1: { p1: 20, p2: 30, p3: 50 } }, three, 'p2').s1).toEqual({ p1: 50, p3: 50 });
+    expect(collapseRatios({ s1: { p1: 20, p2: 30, p3: 50 } }, three, 'p1').s1).toEqual({ p2: 50, p3: 50 });
+  });
+  it('drops a split left with one child and hands its share to the remaining child in the parent', () => {
+    const nested: FocusLayout = { root: split('s1', 'horizontal', pane('p1'), split('s2', 'vertical', pane('p2'), pane('p3'))) };
+    const ratios = collapseRatios({ s1: { p1: 40, s2: 60 }, s2: { p2: 50, p3: 50 } }, nested, 'p3');
+    expect(ratios).toEqual({ s1: { p1: 40, p2: 60 } });
+  });
+  it('flattens a child split along the parent axis, splitting the share by its own sizes', () => {
+    const deep: FocusLayout = { root: split('s1', 'horizontal', pane('p1'), split('s2', 'vertical', pane('p2'), split('s3', 'horizontal', pane('p3'), pane('p4')))) };
+    const ratios = collapseRatios({ s1: { p1: 40, s2: 60 }, s2: { p2: 50, s3: 50 }, s3: { p3: 25, p4: 75 } }, deep, 'p2');
+    expect(ratios.s1).toEqual({ p1: 40, p3: 15, p4: 45 });
+    expect(ratios.s3).toBeUndefined();
+    expect(sum(ratios.s1)).toBe(100);
+  });
+  it('keeps the sizes of a root split left with one child', () => {
+    const nested: FocusLayout = { root: split('s1', 'horizontal', pane('p1'), split('s2', 'vertical', pane('p2'), pane('p3'))) };
+    expect(collapseRatios({ s2: { p2: 20, p3: 80 } }, nested, 'p1')).toEqual({ s2: { p2: 20, p3: 80 } });
+  });
+  it('retainPanes drops the state of removed panes and splits and falls back to the most recent pane', () => {
+    const entry: FocusEntryView = { activePane: 'p3', shown: { p1: 'note:a.md', p3: 'note:b.md' }, recent: ['p3', 'p2', 'p1'], history: { p1: ['note:a.md'], p3: [] }, ratios: { s1: { p1: 50, p3: 50 }, s2: { p2: 50, p3: 50 } }, hideToolbar: { p1: true, p3: true } };
+    const retained = retainPanes(entry, { root: split('s1', 'horizontal', pane('p1'), pane('p2')) });
+    expect(retained).toEqual({ activePane: 'p2', shown: { p1: 'note:a.md' }, recent: ['p2', 'p1'], history: { p1: ['note:a.md'] }, ratios: { s1: { p1: 50, p3: 50 } }, hideToolbar: { p1: true } });
   });
 });

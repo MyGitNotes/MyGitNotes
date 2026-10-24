@@ -1,12 +1,13 @@
 import React, { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChevronDown, FileText, GalleryHorizontalEnd, ListPlus, Maximize2, PanelTopClose, X } from 'lucide-react';
-import { findFocusPane, findFocusTabInPane, focusPaneIndex, type FocusTab, focusTabKey } from '@mygitnotes/core/focus-page';
+import { findFocusPane, findFocusTabInPane, type FocusEdge, focusPaneIndex, type FocusTab, focusTabKey } from '@mygitnotes/core/focus-page';
 import { COMPILATION_SUFFIX, isCompilationPath } from '@mygitnotes/core/compilation';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import type { DisplayedPane } from '../lib/focus-view.js';
 import type { FolderItem } from '../lib/types.js';
 import { NOTE_DRAG_TYPE } from '../lib/note-drag.js';
+import { dropRefusal, dropZone } from '../lib/focus-drop.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import type { NoteEditorProps } from './NoteEditor.js';
 import { HostedNoteEditor } from './NoteEditorHost.js';
@@ -16,6 +17,8 @@ import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 
 /** Drag payload for a tab moved inside the displayed Focus: its FocusTab and the pane it was dragged from, as JSON. */
 const TAB_DRAG_TYPE = 'application/x-mygitnotes-focus-tab';
+/** The tab being dragged inside this window: a drag's data cannot be read until it drops, but the drop zones depend on which tab it is. */
+let draggedTab: { pane: string; key: string; } | undefined;
 
 export interface FocusPaneContext {
   focus: NoteFocus;
@@ -46,7 +49,7 @@ interface DropSlot {
 }
 
 /** One pane on screen: its tab list and the displayed tab. On narrow screens it stands for several stored panes. */
-export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; }> = ({ displayed, ...context }) => {
+export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; /** Whether the whole tree is on screen (desktop), the only case a drop on a pane's edge splits it. */ edgeDrops?: boolean; }> = ({ displayed, edgeDrops = false, ...context }) => {
   const { focus, notebookRoot, folders, renderCompilation, onZoomNote, documentPanel, searchMatches = null } = context;
   const { t } = useTranslation();
   const layout = focus.layout!, entry = focus.entry!;
@@ -77,6 +80,8 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   }, [displayed.key]);
 
   const [slot, setSlot] = useState<DropSlot>();
+  /** The edge a drag hovers (the new pane takes that half) and the limit that would refuse it, which the preview names instead. */
+  const [edge, setEdge] = useState<{ edge: FocusEdge; refusal?: string; }>();
   const [batchAddOpen, setBatchAddOpen] = useState(false);
   const accepts = (event: React.DragEvent) => editable && [TAB_DRAG_TYPE, NOTE_DRAG_TYPE, 'text/plain'].some(type => event.dataTransfer.types.includes(type));
   const hover = (event: React.DragEvent, next: DropSlot) => {
@@ -84,7 +89,43 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = event.shiftKey ? 'copy' : 'move';
+    setEdge(undefined);
     setSlot(current => current?.pane === next.pane && current.index === next.index ? current : next);
+  };
+  /** The edge zone the pointer is in, or undefined for the centre: edges split only where the tree is fully shown, never for a pane's own only tab. */
+  const edgeAt = (event: React.DragEvent): FocusEdge | undefined => {
+    if (!edgeDrops || (draggedTab?.pane === displayed.pane && tabsOf(displayed.pane).length === 1)) return undefined;
+    const zone = dropZone(event.currentTarget.getBoundingClientRect(), event.clientX, event.clientY);
+    return zone === 'center' ? undefined : zone;
+  };
+  const refusalAt = (zone: FocusEdge, shift: boolean) => dropRefusal(layout, displayed.pane, zone, draggedTab, shift);
+  const bodyOver = (event: React.DragEvent) => {
+    if (!accepts(event)) return;
+    const zone = edgeAt(event);
+    const refusal = zone && refusalAt(zone, event.shiftKey);
+    if (!zone || refusal) {
+      // At a limit the edge band behaves as the centre and the preview says why it does not split.
+      hover(event, { pane: displayed.pane });
+      if (zone) setEdge({ edge: zone, refusal });
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = event.shiftKey ? 'copy' : 'move';
+    setSlot(undefined);
+    setEdge(current => current?.edge === zone && !current.refusal ? current : { edge: zone });
+  };
+  const bodyDrop = (event: React.DragEvent) => {
+    const zone = edgeAt(event);
+    if (!zone || !accepts(event) || refusalAt(zone, event.shiftKey)) {
+      drop(event, { pane: displayed.pane });
+      return;
+    }
+    setEdge(undefined);
+    event.preventDefault();
+    event.stopPropagation();
+    const dropped = droppedTab(event.dataTransfer, notebookRoot);
+    if (dropped && focus.shown) void focus.split(focus.shown, displayed.pane, zone, dropped.tab, dropped.pane, event.shiftKey).catch(() => {});
   };
   /** Over a tab, the half under the pointer picks the gap before or after it. */
   const slotAt = (event: React.DragEvent, tab: PaneTab): DropSlot => {
@@ -101,6 +142,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   /** A tab-bar drag moves by default; Shift copies instead. A browse-row drag (no source pane) always copies. Same-pane drops always reorder. */
   const drop = (event: React.DragEvent, target: DropSlot) => {
     setSlot(undefined);
+    setEdge(undefined);
     if (!accepts(event)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -125,13 +167,17 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
       data-active={active || undefined}
       data-dimmed={paneDimmed(searchMatches, displayed.panes.flatMap(tabsOf)) || undefined}
       data-dropping={slot ? true : undefined}
+      data-drop-zone={edge && !edge.refusal ? edge.edge : undefined}
       data-hide-toolbar={hideToolbar || undefined}
       aria-label={t('focus.paneNumber', { number: numberOf(displayed.pane) })}
       onPointerDownCapture={() => focus.activate(displayed.pane)}
       onFocusCapture={() => focus.activate(displayed.pane)}
       onDragOver={event => hover(event, { pane: displayed.pane })}
       onDragLeave={event => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSlot(undefined);
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setSlot(undefined);
+          setEdge(undefined);
+        }
       }}
       onDrop={event => drop(event, { pane: displayed.pane })}
     >
@@ -163,6 +209,10 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
               onDragStart={event => {
                 event.dataTransfer.setData(TAB_DRAG_TYPE, JSON.stringify({ tab: tab.tab, pane: tab.pane }));
                 event.dataTransfer.effectAllowed = 'copyMove';
+                draggedTab = { pane: tab.pane, key: tab.key };
+              }}
+              onDragEnd={() => {
+                draggedTab = undefined;
               }}
               onDragOver={event => hover(event, slotAt(event, tab))}
               onDrop={event => drop(event, slotAt(event, tab))}
@@ -212,7 +262,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
           </button>
         </div>
       </div>
-      <div id={panelId} className='focus-pane-body' role='tabpanel' aria-label={shown?.label}>
+      <div id={panelId} className='focus-pane-body' role='tabpanel' aria-label={shown?.label} onDragOver={bodyOver} onDrop={bodyDrop}>
         {shown
           ? isCompilationPath(shown.tab.path)
             ? (
@@ -223,6 +273,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
             )
             : <PaneNoteEditor key={shown.tab.path} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} />
           : <p className='focus-pane-empty'>{editable ? t('focus.emptyPane') : t('focus.emptyPaneReadonly')}</p>}
+        {edge && <div className='focus-drop-preview' aria-hidden='true' data-zone={edge.refusal ? undefined : edge.edge}>{edge.refusal && <span>{t(edge.refusal === 'pane-limit' ? 'focus.paneLimit' : edge.refusal === 'depth-limit' ? 'focus.depthLimit' : 'focus.limit')}</span>}</div>}
       </div>
       {batchAddOpen && focus.shown && <BatchAddDialog focus={focus} target={focus.shown} pane={displayed.pane} notebookId={focus.notebookId} notebookRoot={notebookRoot} folders={folders} onClose={() => setBatchAddOpen(false)} />}
     </section>

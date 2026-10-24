@@ -1795,6 +1795,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'focus.draftError': '無法保存 Focus 的本機草稿。',
   'focus.saveError': 'Focus 配置儲存失敗，草稿已保留。',
   'focus.limit': '已達 Focus 上限：最多 40 個具名 Focus，每個 Focus 100 個 tab。',
+  'focus.paneLimit': '一個 Focus 最多 8 個窗格。',
+  'focus.depthLimit': '分割最多巢狀 4 層。',
   'focus.addTo': '加到 Focus',
   'focus.zoomNote': '以 zoom 開啟',
   'focus.collapseBrowse': '收合瀏覽區',

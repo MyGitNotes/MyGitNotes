@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDivision, closeTab, displayFocus, emptyFocusLayout, findFocusPane, findFocusTab, findFocusTabInPane, FOCUS_DIVISIONS, FOCUS_DOCUMENT, FOCUS_MAX_PANES, FOCUS_MAX_TABS, FocusError, type FocusLayout, FocusLayoutSchema, type FocusNode, FocusPageSchema, focusPaneIndex, focusPanes, FocusSchema, focusTabCount, focusTabKey, foreignFocusTab, legacyDivisionOf, legacyFocusTree, moveTab, nameFocus, notebookFocuses, ownFocusPage, placeTab, placeTabs, pruneFocus, readFocusLayout, readFocusPage, relocateFocusPaths, removeFocus, renameFocus, updateFocus, writeFocusPage } from '../src/focus-page.js';
+import { applyDivision, closePane, closeTab, displayFocus, emptyFocusLayout, findFocusPane, findFocusTab, findFocusTabInPane, FOCUS_DIVISIONS, FOCUS_DOCUMENT, FOCUS_MAX_DEPTH, FOCUS_MAX_PANES, FOCUS_MAX_TABS, FocusError, type FocusLayout, FocusLayoutSchema, type FocusNode, FocusPageSchema, focusPaneIndex, focusPanes, FocusSchema, focusTabCount, focusTabKey, foreignFocusTab, legacyDivisionOf, legacyFocusTree, mergePanes, moveTab, moveTabToSplit, nameFocus, nextFocusId, notebookFocuses, ownFocusPage, placeTab, placeTabs, pruneFocus, readFocusLayout, readFocusPage, relocateFocusPaths, removeFocus, renameFocus, splitPane, updateFocus, writeFocusPage } from '../src/focus-page.js';
 import { NewerVersionError } from '../src/newer-version-error.js';
 import { parse as parseYaml } from 'yaml';
 import { readWorkspaceDocument, validateWorkspaceDocument, writeWorkspaceDocument } from '../src/workspace-documents.js';
@@ -263,9 +263,19 @@ describe('placeTab', () => {
 
 describe('closeTab', () => {
   const layout = columns(leaf('p1', note('a.md'), note('b.md')), leaf('p2', note('a.md')));
-  it('removes the matching tab from the given pane only, and leaves the pane when it empties', () => {
+  it('removes the matching tab from the given pane only, and removes the pane when it empties', () => {
     expect(tabsOf(closeTab(layout, 'p1', focusTabKey(note('a.md'))))).toEqual([[note('b.md')], [note('a.md')]]);
-    expect(tabsOf(closeTab(layout, 'p2', focusTabKey(note('a.md'))))).toEqual([[note('a.md'), note('b.md')], []]);
+    const collapsed = closeTab(layout, 'p2', focusTabKey(note('a.md')));
+    expect(tabsOf(collapsed)).toEqual([[note('a.md'), note('b.md')]]);
+    expect(collapsed.root).toEqual(leaf('p1', note('a.md'), note('b.md')));
+  });
+  it('keeps the only pane when its last tab closes', () => {
+    expect(closeTab(single(note('a.md')) as FocusLayout, 'p1', focusTabKey(note('a.md')))).toEqual(single());
+  });
+  it('flattens a split left with one child into its parent', () => {
+    const nested = { root: split('r', 'horizontal', leaf('p1', note('a.md')), split('s1', 'vertical', leaf('p2', note('b.md')), leaf('p3', note('c.md')))) } as unknown as FocusLayout;
+    const closed = closeTab(closeTab(nested, 'p3', focusTabKey(note('c.md'))), 'p1', focusTabKey(note('a.md')));
+    expect(closed.root).toEqual(leaf('p2', note('b.md')));
   });
   it('returns the same reference for an unknown key or pane', () => {
     expect(closeTab(layout, 'p1', 'note:missing.md')).toBe(layout);
@@ -458,5 +468,83 @@ describe('reading a Focus file of a workspace not yet migrated', () => {
   });
   it('still rejects a tab of any other unknown kind', () => {
     expect(() => readFocusPage(page({ kind: 'drawing', id: 'x' }))).toThrow();
+  });
+});
+
+describe('splitPane and moveTabToSplit', () => {
+  const layout = columns(leaf('p1', note('a.md')), leaf('p2', note('b.md'), note('c.md')));
+  const shape = (node: FocusNode): unknown => node.kind === 'pane' ? node.id : [node.orientation, ...node.children.map(shape)];
+  it('inserts beside a pane inside a split on the same axis', () => {
+    expect(shape(splitPane(layout, 'p2', 'right', note('d.md')).layout.root)).toEqual(['horizontal', 'p1', 'p2', 'p3']);
+    expect(shape(splitPane(layout, 'p2', 'left', note('d.md')).layout.root)).toEqual(['horizontal', 'p1', 'p3', 'p2']);
+  });
+  it('wraps the pane in a split on the other axis', () => {
+    const result = splitPane(layout, 'p1', 'bottom', note('d.md'));
+    expect(result.pane).toBe('p3');
+    expect(shape(result.layout.root)).toEqual(['horizontal', ['vertical', 'p1', 'p3'], 'p2']);
+    expect(shape(splitPane(layout, 'p1', 'top', note('d.md')).layout.root)).toEqual(['horizontal', ['vertical', 'p3', 'p1'], 'p2']);
+    expect(shape(splitPane(single(note('a.md')) as FocusLayout, 'p1', 'right', note('d.md')).layout.root)).toEqual(['horizontal', 'p1', 'p2']);
+  });
+  it('gives the new pane and wrapper the smallest unused ids', () => {
+    expect(nextFocusId(layout, 'p')).toBe('p3');
+    expect(nextFocusId(layout, 's')).toBe('s1');
+    expect(nextFocusId(splitPane(layout, 'p1', 'bottom', note('d.md')).layout, 's')).toBe('s2');
+  });
+  it('refuses a ninth pane, a fifth level and a tab over the budget', () => {
+    let wide = single(note('a.md')) as FocusLayout;
+    for (let count = 1; count < FOCUS_MAX_PANES; count++) wide = splitPane(wide, 'p1', 'right', note(`n${count}.md`)).layout;
+    expect(focusPanes(wide)).toHaveLength(FOCUS_MAX_PANES);
+    expect(code(() => splitPane(wide, 'p1', 'right', note('x.md')))).toBe('pane-limit');
+    let deep = single(note('a.md')) as FocusLayout, target = 'p1';
+    for (let level = 0; level < FOCUS_MAX_DEPTH; level++) {
+      const result = splitPane(deep, target, level % 2 === 0 ? 'right' : 'bottom', note(`n${level}.md`));
+      deep = result.layout;
+      target = result.pane;
+    }
+    expect(code(() => splitPane(deep, target, 'right', note('x.md')))).toBe('depth-limit');
+    expect(code(() => splitPane(deep, target, 'bottom', note('x.md')))).toBeUndefined();
+    expect(code(() => splitPane(single(...notes(FOCUS_MAX_TABS)) as unknown as FocusLayout, 'p1', 'right', note('x.md')))).toBe('tab-limit');
+  });
+  it('moves a tab to a new pane and removes a source pane it empties', () => {
+    const result = moveTabToSplit(layout, 'p1', focusTabKey(note('a.md')), 'p2', 'bottom');
+    // The emptied pane's id is free again, so the new pane takes it.
+    expect(shape(result.layout.root)).toEqual(['vertical', 'p2', 'p1']);
+    expect(tabsOf(result.layout)).toEqual([[note('b.md'), note('c.md')], [note('a.md')]]);
+  });
+  it('keeps a source pane that still has tabs, and moves within one pane', () => {
+    const result = moveTabToSplit(layout, 'p2', focusTabKey(note('b.md')), 'p2', 'right');
+    expect(tabsOf(result.layout)).toEqual([[note('a.md')], [note('c.md')], [note('b.md')]]);
+  });
+  it('is a no-op for the only tab of the pane it is dropped on', () => {
+    const result = moveTabToSplit(layout, 'p1', focusTabKey(note('a.md')), 'p1', 'right');
+    expect(result).toEqual({ layout, pane: 'p1' });
+    expect(result.layout).toBe(layout);
+  });
+  it('frees the pane a move empties before checking the limit', () => {
+    let wide = single(note('a.md')) as FocusLayout;
+    for (let count = 1; count < FOCUS_MAX_PANES; count++) wide = splitPane(wide, 'p1', 'right', note(`n${count}.md`)).layout;
+    const moved = moveTabToSplit(wide, 'p2', focusTabKey(note('n1.md')), 'p1', 'bottom');
+    expect(focusPanes(moved.layout)).toHaveLength(FOCUS_MAX_PANES);
+  });
+  it('throws invalid-pane for an unknown pane or a tab not in the source', () => {
+    expect(code(() => splitPane(layout, 'p9', 'left', note('d.md')))).toBe('invalid-pane');
+    expect(code(() => moveTabToSplit(layout, 'p1', focusTabKey(note('b.md')), 'p2', 'left'))).toBe('invalid-pane');
+  });
+});
+
+describe('closePane and mergePanes', () => {
+  const layout = columns(leaf('p1', note('a.md'), note('b.md')), leaf('p2'), leaf('p3', note('b.md'), note('c.md')));
+  it('removes a pane with its tabs and empties the only pane instead', () => {
+    expect(tabsOf(closePane(layout, 'p2'))).toEqual([[note('a.md'), note('b.md')], [note('b.md'), note('c.md')]]);
+    expect(closePane(single(note('a.md')) as FocusLayout, 'p1')).toEqual(single());
+    expect(code(() => closePane(layout, 'p9'))).toBe('invalid-pane');
+  });
+  it('merges every tab in pane order without duplicates into the first pane', () => {
+    expect(mergePanes(layout).root).toEqual(leaf('p1', note('a.md'), note('b.md'), note('c.md')));
+    const single1 = single(note('a.md')) as FocusLayout;
+    expect(mergePanes(single1)).toBe(single1);
+  });
+  it('does not collapse a pane that only pruning emptied', () => {
+    expect(focusPanes(pruneFocus(layout, tab => tab.path !== 'c.md' && tab.path !== 'b.md' && tab.path !== 'a.md'))).toHaveLength(3);
   });
 });

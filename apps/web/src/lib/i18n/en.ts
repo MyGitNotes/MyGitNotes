@@ -1794,6 +1794,8 @@ export const en = {
   'focus.draftError': 'Unable to retain a device draft for Focus.',
   'focus.saveError': 'Could not save the Focus configuration. Your draft is retained.',
   'focus.limit': 'Focus limit: 40 named Focus and 100 tabs per Focus.',
+  'focus.paneLimit': 'A Focus holds at most 8 panes.',
+  'focus.depthLimit': 'Splits can nest at most 4 levels deep.',
   'focus.addTo': 'Add to Focus',
   'focus.zoomNote': 'Open in zoom',
   'focus.collapseBrowse': 'Collapse browse panel',

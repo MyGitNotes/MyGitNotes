@@ -10,6 +10,10 @@ export function focusErrorMessage(t: (key: TranslationKey, params?: Record<strin
     case 'tab-limit':
     case 'focus-limit':
       return t('focus.limit');
+    case 'pane-limit':
+      return t('focus.paneLimit');
+    case 'depth-limit':
+      return t('focus.depthLimit');
     default:
       return error.message;
   }

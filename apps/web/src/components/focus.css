@@ -76,6 +76,15 @@
 .focus-pane-body > .focus-lane { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
 .focus-pane-empty { display: flex; flex: 1; align-items: center; justify-content: center; padding: 24px; color: var(--color-muted); font-size: 13px; text-align: center; }
 
+/* Dropping on a pane's edge: the shaded half is where the new pane opens; at a limit the whole body shows why it will not. */
+.focus-drop-preview { position: absolute; z-index: 3; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; pointer-events: none; }
+.focus-drop-preview[data-zone] { background: color-mix(in srgb, var(--color-primary) 18%, transparent); border: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent); }
+.focus-drop-preview[data-zone='left'] { right: 50%; }
+.focus-drop-preview[data-zone='right'] { left: 50%; }
+.focus-drop-preview[data-zone='top'] { bottom: 50%; }
+.focus-drop-preview[data-zone='bottom'] { top: 50%; }
+.focus-drop-preview > span { max-width: 80%; padding: 6px 12px; border-radius: var(--radius-control); background: var(--surface-glass); color: var(--color-text); box-shadow: var(--shadow-md); font-size: 12px; text-align: center; }
+
 /* The active pane's document panel, rendered into the right rail. */
 .right-panel-document { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .right-panel-divider { flex: none; width: 24px; height: 1px; background: var(--color-border); }

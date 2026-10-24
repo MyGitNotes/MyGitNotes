@@ -148,3 +148,88 @@ describe('useNoteFocus close', () => {
     await waitFor(() => expect(result.current.entry?.shown.p1).toBe('note:notes/b.compilation.yml'));
   });
 });
+
+describe('useNoteFocus split and collapse', () => {
+  const twoPanes: FocusLayout = { root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [tab('a'), tab('b')] }, { kind: 'pane', id: 'p2', tabs: [tab('c')] }] } };
+  const render = (flushEditors: (paths?: readonly string[]) => Promise<boolean> = async () => true, layout: FocusLayout = twoPanes) => {
+    localStorage.setItem(storageKey, JSON.stringify({ current: layout, entries: {}, last: null }));
+    return renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors }), { wrapper });
+  };
+  const keyOf = (id: string) => `note:notes/${id}.compilation.yml`;
+
+  it('opens a dropped note in a new pane, shows it there and makes the pane active', async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(() => result.current.split(CURRENT_FOCUS, 'p2', 'bottom', tab('d')));
+    expect(focusPanes(result.current.layout!).map(pane => pane.id)).toEqual(['p1', 'p2', 'p3']);
+    expect(tabsAt(result.current.layout, 2)).toEqual([tab('d')]);
+    expect(result.current.entry?.activePane).toBe('p3');
+    expect(result.current.entry?.shown.p3).toBe(keyOf('d'));
+    expect(result.current.entry?.ratios.s1).toEqual({ p2: 50, p3: 50 });
+  });
+
+  it('moves a tab to a new pane and removes the source pane it empties, giving its space to the neighbour', async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(() => result.current.split(CURRENT_FOCUS, 'p1', 'top', tab('c'), 'p2'));
+    const panes = focusPanes(result.current.layout!);
+    expect(panes.map(pane => pane.tabs)).toEqual([[tab('c')], [tab('a'), tab('b')]]);
+    expect(result.current.layout?.root).toMatchObject({ kind: 'split', orientation: 'vertical' });
+    expect(result.current.entry?.activePane).toBe(panes[0].id);
+    expect(Object.keys(result.current.entry?.ratios ?? {})).not.toContain('columns-2');
+  });
+
+  it('copies instead of moving when asked, leaving the source pane alone', async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(() => result.current.split(CURRENT_FOCUS, 'p1', 'right', tab('c'), 'p2', true));
+    expect(focusPanes(result.current.layout!)).toHaveLength(3);
+    expect(tabsAt(result.current.layout, 2)).toEqual([tab('c')]);
+  });
+
+  it('saves every shown editor before it splits, and changes nothing when a save is refused', async () => {
+    const flushed: (readonly string[] | undefined)[] = [];
+    let accept = true;
+    const { result } = render(async paths => {
+      flushed.push(paths);
+      return accept;
+    });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    accept = false;
+    await act(async () => expect(await result.current.split(CURRENT_FOCUS, 'p1', 'right', tab('d'))).toBe(false));
+    expect(flushed.at(-1)).toHaveLength(2);
+    expect(focusPanes(result.current.layout!)).toHaveLength(2);
+    accept = true;
+    await act(() => result.current.split(CURRENT_FOCUS, 'p1', 'right', tab('d')));
+    expect(focusPanes(result.current.layout!)).toHaveLength(3);
+  });
+
+  it('refuses a split over the pane limit with a FocusError', async () => {
+    const wide: FocusLayout = { root: { kind: 'split', id: 'row', orientation: 'horizontal', children: Array.from({ length: 8 }, (_, index) => ({ kind: 'pane' as const, id: `p${index + 1}`, tabs: [tab(`n${index}`)] })) } };
+    const { result } = render(undefined, wide);
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => {
+      await expect(result.current.split(CURRENT_FOCUS, 'p1', 'right', tab('x'))).rejects.toMatchObject({ code: 'pane-limit' });
+    });
+    expect(result.current.mutationError).toMatchObject({ code: 'pane-limit' });
+  });
+
+  it('removes a pane when its last tab closes and activates the most recent remaining pane', async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    act(() => result.current.activate('p2'));
+    await act(() => result.current.close(keyOf('c'), 'p2'));
+    await waitFor(() => expect(focusPanes(result.current.layout!)).toHaveLength(1));
+    expect(result.current.layout?.root).toMatchObject({ kind: 'pane', id: 'p1' });
+    expect(result.current.entry?.activePane).toBe('p1');
+  });
+
+  it('removes the source pane when its last tab moves to another pane', async () => {
+    const { result } = render();
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(() => result.current.moveTab(CURRENT_FOCUS, keyOf('c'), 'p2', 'p1'));
+    expect(focusPanes(result.current.layout!).map(pane => pane.id)).toEqual(['p1']);
+    expect(tabsAt(result.current.layout, 0)).toEqual([tab('a'), tab('b'), tab('c')]);
+    expect(result.current.entry?.shown.p1).toBe(keyOf('c'));
+  });
+});

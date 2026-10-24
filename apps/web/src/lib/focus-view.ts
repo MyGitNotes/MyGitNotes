@@ -239,3 +239,70 @@ export function displayedPanes(entry: FocusEntryView, layout: FocusLayout, capac
   const display = displayFocus(layout, capacity);
   return { root: display.root, panes: display.groups.map(group => ({ panes: group, ...groupShown(entry, layout, group) })) };
 }
+
+type Ratios = FocusEntryView['ratios'];
+
+const parentSplit = (layout: FocusLayout, id: string): FocusSplitNode | undefined => splitNodes(layout.root).find(split => split.children.some(child => child.id === id));
+
+/** A split's sizes: the stored ones while they cover exactly its children, else equal shares. */
+function sizesOf(ratios: Ratios, split: FocusSplitNode): Record<string, number> {
+  const stored = ratios[split.id];
+  const covers = stored !== undefined && Object.keys(stored).length === split.children.length && split.children.every(child => typeof stored[child.id] === 'number');
+  return covers ? stored : Object.fromEntries(split.children.map(child => [child.id, 100 / split.children.length]));
+}
+
+/**
+ * The sizes after pane `created` was split off `target`. Beside a pane in a split along the same axis the new pane takes half of the target's share;
+ * a wrapped pane starts a split of 50/50 that keeps the share the pane had in its parent.
+ */
+export function splitRatios(ratios: Ratios, before: FocusLayout, after: FocusLayout, target: string, created: string): Ratios {
+  const parent = parentSplit(after, created);
+  if (!parent) return ratios;
+  const old = splitNodes(before.root).find(split => split.id === parent.id);
+  if (old?.children.some(child => child.id === target)) {
+    const sizes = sizesOf(ratios, old), half = sizes[target] / 2;
+    return { ...ratios, [parent.id]: { ...sizes, [target]: half, [created]: half } };
+  }
+  const next: Ratios = { ...ratios, [parent.id]: { [target]: 50, [created]: 50 } };
+  const grand = parentSplit(before, target);
+  if (grand) {
+    const sizes = sizesOf(ratios, grand);
+    next[grand.id] = Object.fromEntries(Object.entries(sizes).map(([child, size]) => [child === target ? parent.id : child, size]));
+  }
+  return next;
+}
+
+/**
+ * The sizes after `removed` left the layout: its share goes to the previous sibling, else the next. A split left with one child is replaced by it, which
+ * keeps the share the split had; a child split along the grandparent's axis is flattened into it, each of its children keeping its part of that share.
+ */
+export function collapseRatios(ratios: Ratios, before: FocusLayout, removed: string): Ratios {
+  const parent = parentSplit(before, removed);
+  if (!parent) return ratios;
+  const sizes = sizesOf(ratios, parent), index = parent.children.findIndex(child => child.id === removed);
+  const neighbour = parent.children[index - 1] ?? parent.children[index + 1];
+  const { [removed]: share, ...rest } = sizes;
+  const next: Ratios = { ...ratios };
+  delete next[parent.id];
+  if (parent.children.length > 2) return { ...next, [parent.id]: { ...rest, [neighbour.id]: rest[neighbour.id] + share } };
+  const grand = parentSplit(before, parent.id);
+  if (!grand) return next;
+  const grandSizes = sizesOf(ratios, grand), flattened = neighbour.kind === 'split' && neighbour.orientation === grand.orientation;
+  const inner = neighbour.kind === 'split' ? sizesOf(ratios, neighbour) : {};
+  if (flattened) delete next[neighbour.id];
+  next[grand.id] = Object.fromEntries(
+    Object.entries(grandSizes).flatMap(([child, size]): [string, number][] => {
+      if (child !== parent.id) return [[child, size]];
+      return flattened ? Object.entries(inner).map(([grandchild, part]): [string, number] => [grandchild, size * part / 100]) : [[neighbour.id, size]];
+    }),
+  );
+  return next;
+}
+
+/** `entry` kept to what `layout` still has: state of removed panes and sizes of removed splits are dropped, and the active pane falls back to the most recently used one left. */
+export function retainPanes(entry: FocusEntryView, layout: FocusLayout): FocusEntryView {
+  const panes = focusPanes(layout).map(pane => pane.id), splits = splitNodes(layout.root).map(split => split.id);
+  const keep = <T>(record: Record<string, T>, ids: string[]) => Object.fromEntries(Object.entries(record).filter(([id]) => ids.includes(id)));
+  const recent = entry.recent.filter(pane => panes.includes(pane));
+  return { activePane: panes.includes(entry.activePane) ? entry.activePane : recent[0] ?? panes[0], shown: keep(entry.shown, panes), recent, history: keep(entry.history, panes), ratios: keep(entry.ratios, splits), hideToolbar: keep(entry.hideToolbar, panes) };
+}

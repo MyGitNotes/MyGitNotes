@@ -145,7 +145,7 @@ function checkFocusPage(page: { focuses: { id: string; notebookId: string; name:
 export const FocusPageSchema = z.object({ version: z.literal(FOCUS_VERSION), focuses: z.array(FocusSchema).max(FOCUS_MAX_FOCUSES) }).strict().superRefine(checkFocusPage) as z.ZodType<FocusPage, z.ZodTypeDef, unknown>;
 
 export class FocusError extends Error {
-  constructor(public readonly code: 'tab-limit' | 'focus-limit' | 'duplicate-name' | 'unknown-focus' | 'invalid-pane', message: string) {
+  constructor(public readonly code: 'tab-limit' | 'focus-limit' | 'duplicate-name' | 'unknown-focus' | 'invalid-pane' | 'pane-limit' | 'depth-limit', message: string) {
     super(message);
   }
 }
@@ -346,20 +346,105 @@ export function placeTabs<T extends FocusLayout>(layout: T, tabs: FocusTab[], pa
   return { layout: withTabs(layout, pane, target), added, skipped };
 }
 
-/** Removes `key` from `fromPane`, then places it in `toPane` (a no-op move when they're the same pane and the tab is already there). Used for an explicit cross-pane move; `placeTab` alone never removes a tab from another pane. */
+/** The id for a new node of `layout`: `prefix` and the smallest number not used by any pane or split, such as `p3` or `s2`. */
+export function nextFocusId(layout: FocusLayout, prefix: 'p' | 's'): string {
+  const used = new Set<string>();
+  const visit = (node: FocusNode) => {
+    used.add(node.id);
+    if (node.kind === 'split') node.children.forEach(visit);
+  };
+  visit(layout.root);
+  let number = 1;
+  while (used.has(`${prefix}${number}`)) number++;
+  return `${prefix}${number}`;
+}
+
+/** `pane` and its tabs removed from the tree; a split left with one child is replaced by it. The only pane of a layout becomes empty instead. */
+function withoutPane<T extends FocusLayout>(layout: T, pane: string): T {
+  const remove = (node: FocusNode): FocusNode | undefined => {
+    if (node.kind === 'pane') return node.id === pane ? undefined : node;
+    const children = node.children.flatMap(child => remove(child) ?? []);
+    if (children.length === node.children.length && children.every((child, index) => child === node.children[index])) return node;
+    return children.length > 0 ? { ...node, children } : undefined;
+  };
+  const root = remove(layout.root);
+  return normalizeFocus(root ? { ...layout, root } : { ...layout, root: { kind: 'pane', id: pane, tabs: [] } });
+}
+
+/** Removes `key` from `fromPane`, then places it in `toPane` (a no-op move when they're the same pane and the tab is already there). A source pane left empty is removed. Used for an explicit cross-pane move; `placeTab` alone never removes a tab from another pane. */
 export function moveTab<T extends FocusLayout>(layout: T, fromPane: string, toPane: string, key: string, index?: number): T {
   const source = requirePane(layout, fromPane);
   const removeIndex = source.tabs.findIndex(tab => focusTabKey(tab) === key);
   if (removeIndex === -1) throw new FocusError('invalid-pane', 'Tab is not in the source pane');
+  const emptied = fromPane !== toPane && source.tabs.length === 1;
   const withoutSource = fromPane === toPane ? layout : withTabs(layout, fromPane, source.tabs.filter((_, i) => i !== removeIndex));
-  return placeTab(withoutSource, source.tabs[removeIndex], toPane, index);
+  const placed = placeTab(withoutSource, source.tabs[removeIndex], toPane, index);
+  return emptied ? withoutPane(placed, fromPane) : placed;
 }
 
+/** Removes `key` from `pane`. A pane left empty is removed too, unless it is the only pane. */
 export function closeTab<T extends FocusLayout>(layout: T, pane: string, key: string): T {
   const current = findFocusPane(layout, pane);
   const index = current?.tabs.findIndex(tab => focusTabKey(tab) === key) ?? -1;
   if (!current || index === -1) return layout;
-  return withTabs(layout, pane, current.tabs.filter((_, i) => i !== index));
+  const closed = withTabs(layout, pane, current.tabs.filter((_, i) => i !== index));
+  return current.tabs.length === 1 && layout.root.kind === 'split' ? withoutPane(closed, pane) : closed;
+}
+
+/** Removes `pane` with its tabs, for an empty pane (D4). The only pane of a layout is emptied instead. */
+export function closePane<T extends FocusLayout>(layout: T, pane: string): T {
+  requirePane(layout, pane);
+  return withoutPane(layout, pane);
+}
+
+export type FocusEdge = 'left' | 'right' | 'top' | 'bottom';
+export const edgeOrientation = (edge: FocusEdge): FocusOrientation => edge === 'left' || edge === 'right' ? 'horizontal' : 'vertical';
+
+/**
+ * Opens a new pane holding `tab` on the `edge` side of `pane`. Beside a pane whose parent splits along the edge's axis the new pane joins that split;
+ * otherwise the pane is wrapped in a split of its own. Throws `pane-limit`, `depth-limit` or `tab-limit` instead of building a layout over a limit.
+ */
+export function splitPane<T extends FocusLayout>(layout: T, pane: string, edge: FocusEdge, tab: FocusTab): { layout: T; pane: string; } {
+  requirePane(layout, pane);
+  if (focusPanes(layout).length >= FOCUS_MAX_PANES) throw new FocusError('pane-limit', 'Focus layout has too many panes');
+  if (focusTabCount(layout) >= FOCUS_MAX_TABS) throw new FocusError('tab-limit', 'Focus layout has too many tabs');
+  const created = nextFocusId(layout, 'p'), wrapper = nextFocusId(layout, 's');
+  const orientation = edgeOrientation(edge), first = edge === 'left' || edge === 'top';
+  const fresh: FocusPaneNode = { kind: 'pane', id: created, tabs: [tab] };
+  const insert = (node: FocusNode): FocusNode => {
+    if (node.kind === 'pane') {
+      return node.id === pane ? { kind: 'split', id: wrapper, orientation, children: first ? [fresh, node] : [node, fresh] } : node;
+    }
+    const index = node.children.findIndex(child => child.id === pane);
+    if (index !== -1 && node.orientation === orientation) {
+      const children = [...node.children];
+      children.splice(first ? index : index + 1, 0, fresh);
+      return { ...node, children };
+    }
+    return { ...node, children: node.children.map(insert) };
+  };
+  const next = normalizeFocus({ ...layout, root: insert(layout.root) });
+  if (layoutDepth(next.root) > FOCUS_MAX_DEPTH) throw new FocusError('depth-limit', 'Focus layout is nested too deeply');
+  return { layout: next, pane: created };
+}
+
+/** Moves the tab `key` of `from` into a new pane on the `edge` side of `target`. A source pane left empty is removed first, which can free the room the new pane needs. A no-op when `from` is `target` and holds only that tab. */
+export function moveTabToSplit<T extends FocusLayout>(layout: T, from: string, key: string, target: string, edge: FocusEdge): { layout: T; pane: string; } {
+  const source = requirePane(layout, from);
+  requirePane(layout, target);
+  const tab = source.tabs.find(candidate => focusTabKey(candidate) === key);
+  if (!tab) throw new FocusError('invalid-pane', 'Tab is not in the source pane');
+  if (from === target && source.tabs.length === 1) return { layout, pane: from };
+  const removed = withTabs(layout, from, source.tabs.filter(candidate => candidate !== tab));
+  return splitPane(source.tabs.length === 1 ? withoutPane(removed, from) : removed, target, edge, tab);
+}
+
+/** Folds every pane's tabs, in pane order and without duplicates, into one pane that keeps the first pane's id. */
+export function mergePanes<T extends FocusLayout>(layout: T): T {
+  if (layout.root.kind === 'pane') return layout;
+  const panes = focusPanes(layout), seen = new Set<string>();
+  const tabs = panes.flatMap(pane => pane.tabs).filter(tab => !seen.has(focusTabKey(tab)) && seen.add(focusTabKey(tab)));
+  return { ...layout, root: { kind: 'pane', id: panes[0].id, tabs } };
 }
 
 export function pruneFocus<T extends FocusLayout>(layout: T, exists: (tab: FocusTab) => boolean): T {

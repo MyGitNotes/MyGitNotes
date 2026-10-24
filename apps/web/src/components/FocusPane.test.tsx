@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, createEvent, fireEvent, render } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import type { FocusLayout } from '@mygitnotes/core/focus-page';
+import { type FocusLayout, splitPane } from '@mygitnotes/core/focus-page';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { FocusPane } from './FocusPane.js';
@@ -57,4 +57,98 @@ it('dims a pane as a whole when none of its tabs match, and clearing the search 
   view.rerender(createElement(I18nProvider, null, createElement(FocusPane, { focus, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p2'], pane: 'p2', key: 'note:notes/c.md' } })));
   expect(dimmedTabs()).toEqual([]);
   expect(document.querySelector('.focus-pane[data-dimmed]')).toBeNull();
+});
+
+describe('drop zones', () => {
+  const split = vi.fn(async () => true), place = vi.fn(async () => true), moveTab = vi.fn(async () => true);
+  const editable = (overrides: Record<string, unknown> = {}) => ({ ...focus, editable: true, shown: 'current', split, place, moveTab, ...overrides }) as unknown as NoteFocus;
+  const BODY = { left: 0, top: 0, width: 400, height: 200 };
+  const transfer = (data: Record<string, string>) => ({ types: Object.keys(data), getData: (type: string) => data[type] ?? '', dropEffect: 'none', effectAllowed: 'all', setData: (type: string, value: string) => void (data[type] = value) });
+  const row = () => transfer({ 'text/plain': 'notes/new.md' });
+  function mount(index: number, options: { focus?: NoteFocus; edgeDrops?: boolean; } = {}) {
+    const id = `p${index + 1}`;
+    const displayed = { panes: [id], pane: id, key: index === 0 ? 'note:notes/a.md' : 'note:notes/c.md' };
+    const view = render(createElement(I18nProvider, null, createElement(FocusPane, { focus: options.focus ?? editable(), notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed, edgeDrops: options.edgeDrops ?? true })));
+    const body = view.container.querySelector<HTMLElement>('.focus-pane-body')!;
+    body.getBoundingClientRect = () => ({ ...BODY, right: 400, bottom: 200, x: 0, y: 0, toJSON: () => ({}) });
+    return { view, body, section: view.container.querySelector<HTMLElement>('.focus-pane')! };
+  }
+  beforeEach(() => vi.clearAllMocks());
+  /** jsdom has no DragEvent, so the pointer position is put on the event by hand. */
+  const dragAt = (kind: 'dragOver' | 'drop', element: Element, dataTransfer: unknown, clientX: number, clientY: number, shiftKey = false) => {
+    const event = createEvent[kind](element, { dataTransfer, shiftKey });
+    Object.defineProperties(event, { clientX: { value: clientX }, clientY: { value: clientY }, shiftKey: { value: shiftKey } });
+    fireEvent(element, event);
+  };
+
+  it('splits on a browse row dropped on an edge and previews the half the new pane takes', () => {
+    const { body, section } = mount(1);
+    const data = row();
+    dragAt('dragOver', body, data, 390, 100);
+    expect(section).toHaveAttribute('data-drop-zone', 'right');
+    expect(document.querySelector('.focus-drop-preview')).toHaveAttribute('data-zone', 'right');
+    dragAt('drop', body, data, 390, 100);
+    expect(split).toHaveBeenCalledWith('current', 'p2', 'right', { kind: 'note', path: 'notes/new.md' }, undefined, false);
+    expect(place).not.toHaveBeenCalled();
+    expect(section).not.toHaveAttribute('data-drop-zone');
+  });
+
+  it('adds a tab when the drop lands on the centre', () => {
+    const { body, section } = mount(1);
+    const data = row();
+    dragAt('dragOver', body, data, 200, 100);
+    expect(section).not.toHaveAttribute('data-drop-zone');
+    dragAt('drop', body, data, 200, 100);
+    expect(place).toHaveBeenCalledWith('current', { kind: 'note', path: 'notes/new.md' }, 'p2', undefined);
+    expect(split).not.toHaveBeenCalled();
+  });
+
+  it('moves a dragged tab to the edge, and copies with Shift', () => {
+    const { body, view } = mount(1);
+    const data = transfer({});
+    fireEvent.dragStart(view.container.querySelector('.focus-tab')!, { dataTransfer: data });
+    // Tab 0 of pane p2 is the pane's only tab, so it shows no edge zones there; drag a tab of p1 instead.
+    fireEvent.dragEnd(view.container.querySelector('.focus-tab')!, { dataTransfer: data });
+    const fromOther = transfer({ 'application/x-mygitnotes-focus-tab': JSON.stringify({ tab: { kind: 'note', path: 'notes/a.md' }, pane: 'p1' }) });
+    dragAt('drop', body, fromOther, 5, 100);
+    expect(split).toHaveBeenCalledWith('current', 'p2', 'left', { kind: 'note', path: 'notes/a.md' }, 'p1', false);
+    dragAt('drop', body, fromOther, 5, 100, true);
+    expect(split).toHaveBeenLastCalledWith('current', 'p2', 'left', { kind: 'note', path: 'notes/a.md' }, 'p1', true);
+  });
+
+  it('has no edge zones for the only tab of the pane it is dragged over', () => {
+    const { body, view, section } = mount(1);
+    const data = transfer({ 'application/x-mygitnotes-focus-tab': JSON.stringify({ tab: { kind: 'note', path: 'notes/c.md' }, pane: 'p2' }) });
+    fireEvent.dragStart(view.container.querySelector('.focus-tab')!, { dataTransfer: data });
+    dragAt('dragOver', body, data, 390, 100);
+    expect(section).not.toHaveAttribute('data-drop-zone');
+    dragAt('drop', body, data, 390, 100);
+    expect(split).not.toHaveBeenCalled();
+    fireEvent.dragEnd(view.container.querySelector('.focus-tab')!, { dataTransfer: data });
+  });
+
+  it('has no edge zones on tablets and phones, or when the Focus is read-only', () => {
+    for (const options of [{ edgeDrops: false }, { focus: editable({ editable: false }) }]) {
+      const { body, section, view } = mount(1, options);
+      const data = row();
+      dragAt('dragOver', body, data, 390, 100);
+      expect(section).not.toHaveAttribute('data-drop-zone');
+      dragAt('drop', body, data, 390, 100);
+      expect(split).not.toHaveBeenCalled();
+      view.unmount();
+    }
+  });
+
+  it('falls back to the centre at the pane limit and says why in the preview', () => {
+    let wide: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }] } };
+    for (let count = 1; count < 8; count++) wide = splitPane(wide, 'p1', 'right', { kind: 'note', path: `notes/n${count}.md` }).layout;
+    const { body, section } = mount(0, { focus: editable({ layout: wide, entry: { ...focus.entry, shown: { p1: 'note:notes/a.md' } } }) });
+    const data = row();
+    dragAt('dragOver', body, data, 390, 100);
+    expect(section).not.toHaveAttribute('data-drop-zone');
+    expect(document.querySelector('.focus-drop-preview')).toHaveTextContent('at most 8 panes');
+    dragAt('drop', body, data, 390, 100);
+    expect(split).not.toHaveBeenCalled();
+    expect(place).toHaveBeenCalled();
+  });
 });
