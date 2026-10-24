@@ -14,9 +14,8 @@ interface NoteFocusOptions {
   scope: string | null;
   /** The `focus` URL parameter. */
   focusKey: string | null;
-  /** With no `focus` in the URL, show the Focus displayed last, else `defaultFocus`; the URL is left as it is. */
+  /** With no `focus` in the URL, show the Focus displayed last, else the default; the URL is left as it is. */
   restoreLast?: boolean;
-  defaultFocus?: string | null;
   writable: boolean;
   /** Whether the whole split tree is on screen (desktop): a note opened beside the only pane then splits it to the right instead of landing behind it as a tab. */
   splitBeside?: boolean;
@@ -43,7 +42,7 @@ const notePaths = (keys: (string | null)[]) => keys.map(notePath).filter((path):
 const noteKeys = (notebookId: string, keys: (string | null)[]) => notePaths(keys).map(path => noteRefKey({ notebookId, path }));
 
 /** Named Focus (Git-synced through the Focus workspace document) and this browser's (current) Focus and view state for one notebook. */
-export function useNoteFocus({ page, notebookId, repository, scope, focusKey, restoreLast = false, defaultFocus = null, writable, splitBeside = false, flushEditors }: NoteFocusOptions) {
+export function useNoteFocus({ page, notebookId, repository, scope, focusKey, restoreLast = false, writable, splitBeside = false, flushEditors }: NoteFocusOptions) {
   const key = adoptedFocusViewKey(repository, scope, notebookId);
   const [stored, setStored] = useState(() => ({ key, view: loadView(key) }));
   const view = stored.key === key ? stored.view : loadView(key);
@@ -72,9 +71,10 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   const focuses = useMemo(() => available ? notebookFocuses(page.page, notebookId) : [], [available, page.page, notebookId]);
   const known = (target: string) => target === CURRENT_FOCUS || focuses.some(focus => focus.id === target);
   const storedLayout = (target: string): FocusLayout | undefined => target === CURRENT_FOCUS ? viewRef.current.current : focuses.find(focus => focus.id === target);
-  /** The Focus asked for: the URL's, else the one displayed last. */
-  const requested = focusKey ?? (restoreLast ? view.last ?? defaultFocus : null);
-  const shown = requested && known(requested) ? requested : null;
+  /** The Focus asked for: the URL's, else the one displayed last, else the default. One that no longer exists gives way to the default. */
+  const requested = focusKey ?? (restoreLast ? view.last ?? CURRENT_FOCUS : null);
+  const fallback = available ? CURRENT_FOCUS : null;
+  const shown = requested && known(requested) ? requested : requested ? fallback : null;
   // The displayed Focus's notes are read (without bodies) for tab titles and to hide notes that no longer exist.
   const storedLayoutShown = shown ? storedLayout(shown) : undefined;
   const storedPaths = storedLayoutShown ? focusPanes(storedLayoutShown).flatMap(pane => pane.tabs.map(tab => tab.path)) : [];
@@ -284,7 +284,17 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     if (shown) setEntry(shown, current => ({ ...current, hideToolbar: { ...current.hideToolbar, [pane]: on } }));
   };
   const setDock = (dock: Partial<FocusViewState['dock']>) => update(current => ({ ...current, dock: { ...current.dock, ...dock } }));
-  const forget = () => update(current => ({ ...current, last: null }));
+  /** Empties every pane of the shown Focus, leaving one empty pane. Throws FocusError if the shown Focus was removed since it was read. */
+  const clear = async (): Promise<boolean> => {
+    if (!shown || !entry) return false;
+    if (!await flushEditors(noteKeys(notebookId, Object.values(entry.shown)))) return false;
+    if (!mutate(shown, () => emptyFocusLayout())) return false;
+    update(current => {
+      const { [shown]: _cleared, ...entries } = current.entries;
+      return { ...current, entries };
+    });
+    return true;
+  };
 
   const canName = namedWritable && page.page.focuses.length < FOCUS_MAX_FOCUSES;
   /** Names (current): it becomes a named Focus with the same view, and (current) starts empty. Throws FocusError. */
@@ -304,11 +314,11 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     page.change(removeFocus(page.page, id));
     update(current => {
       const { [id]: _removed, ...entries } = current.entries;
-      return { ...current, entries, last: current.last === id ? null : current.last };
+      return { ...current, entries, last: current.last === id ? CURRENT_FOCUS : current.last };
     });
     return true;
   };
 
-  return { notebookId, focuses, error: page.error, loading: page.loading, view, shown, layout, entry, notes, mutationError, dismissMutationError: () => setMutationError(null), editable: shown ? editable(shown) : false, canName, layoutOf, entryOf, editableFocus: editable, openNote, place, moveTab, split, show, activate, close, addBatch, splitShown, closeEmptyPane, mergeAll, setRatios, setHideToolbar, setDock, forget, name, rename, remove };
+  return { notebookId, focuses, error: page.error, loading: page.loading, view, shown, layout, entry, notes, mutationError, dismissMutationError: () => setMutationError(null), editable: shown ? editable(shown) : false, canName, layoutOf, entryOf, editableFocus: editable, openNote, place, moveTab, split, show, activate, close, addBatch, splitShown, closeEmptyPane, mergeAll, clear, setRatios, setHideToolbar, setDock, name, rename, remove };
 }
 export type NoteFocus = ReturnType<typeof useNoteFocus>;

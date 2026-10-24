@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type FocusDivision, type FocusLayout, type FocusNode, type FocusTab, legacyFocusTree } from '@mygitnotes/core/focus-page';
-import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasStoredFocusView, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
+import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
 const note = (path: string): FocusTab => ({ kind: 'note', path });
 const lane = (id: string): FocusTab => ({ kind: 'note', path: `notes/${id}.compilation.yml` });
@@ -240,36 +240,21 @@ describe('displayedPanes', () => {
   });
 });
 
-describe('hasStoredFocusView', () => {
+describe('adoptedFocusViewKey', () => {
   const repository = 'local:/notes/kb';
   beforeEach(() => localStorage.clear());
   afterEach(() => localStorage.clear());
 
-  it('is false when this device has never recorded Focus-view state for the notebook', () => {
-    expect(hasStoredFocusView(repository, 'local:repo', 'kb~life')).toBe(false);
-  });
-
-  it('is true once any Focus-view state exists for that notebook on this device', () => {
-    localStorage.setItem(focusViewStorageKey(repository, 'kb~life'), JSON.stringify(emptyFocusView()));
-    expect(hasStoredFocusView(repository, 'local:repo', 'kb~life')).toBe(true);
-  });
-
-  it('does not confuse one notebook with another', () => {
-    localStorage.setItem(focusViewStorageKey(repository, 'kb~life'), JSON.stringify(emptyFocusView()));
-    expect(hasStoredFocusView(repository, 'local:repo', 'kb~work')).toBe(false);
-    expect(hasStoredFocusView(repository, 'local:repo', 'other~life')).toBe(false);
-  });
-
   it('keeps apart two repositories whose names give them the same alias', () => {
     localStorage.setItem(focusViewStorageKey(repository, 'kb~life'), JSON.stringify(emptyFocusView()));
     expect(focusViewStorageKey(repository, 'kb~life')).toBe('github-notes:focus-view:local:/notes/kb:kb~life');
-    expect(hasStoredFocusView('local:/elsewhere/kb', null, 'kb~life')).toBe(false);
   });
 
   it('copies a view kept before notebook keys to the key once, and only from its own scope', () => {
     const before = { ...emptyFocusView(), last: CURRENT_FOCUS };
     localStorage.setItem('github-notes:focus-view:local:repo:life', JSON.stringify(before));
-    expect(hasStoredFocusView(repository, 'local:other', 'kb~life')).toBe(false);
+    expect(adoptedFocusViewKey(repository, 'local:other', 'kb~life')).toBe(focusViewStorageKey(repository, 'kb~life'));
+    expect(localStorage.getItem(focusViewStorageKey(repository, 'kb~life'))).toBeNull();
     expect(adoptedFocusViewKey(repository, 'local:repo', 'kb~life')).toBe(focusViewStorageKey(repository, 'kb~life'));
     expect(JSON.parse(localStorage.getItem(focusViewStorageKey(repository, 'kb~life'))!)).toEqual(before);
     localStorage.setItem(focusViewStorageKey(repository, 'kb~life'), JSON.stringify(emptyFocusView()));
@@ -279,7 +264,7 @@ describe('hasStoredFocusView', () => {
 
   it('leaves a view kept before notebook keys to the notebook its local id stands for', () => {
     localStorage.setItem('github-notes:focus-view:local:repo:life', JSON.stringify(emptyFocusView()));
-    expect(hasStoredFocusView('local:/notes/other', null, 'other~life')).toBe(false);
+    adoptedFocusViewKey('local:/notes/other', null, 'other~life');
     expect(localStorage.getItem(focusViewStorageKey('local:/notes/other', 'other~life'))).toBeNull();
   });
 });

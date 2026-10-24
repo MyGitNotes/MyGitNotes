@@ -88,13 +88,13 @@ Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/
 檔案格式為 version 2；version 1（劃分加窗格清單）讀入時依劃分決定性地轉成樹（窗格 `p1`…，分割 `id` 取自劃分名稱），同一個檔案讀兩次結果相同。
 寫入時，只要每個 Focus 都剛好是七種舊劃分之一，仍寫成 version 1，讓只認得 version 1 的部署繼續運作；任何一個 Focus 成為其他形狀，整個檔案就寫成 version 2。收回這個 version 1 寫入要等所有部署都跨過 phase 1，由使用者決定。
 Core 不得追蹤真實配置，工作區更新必須保留此檔案；測試配置只建立於隔離暫存工作區。
-每個 Focus 記錄 `notebookId`，tab 只參照該筆記本的筆記或合輯（路徑分頁）；暫存 Focus（程式內 `CURRENT_FOCUS`）與作用窗格等檢視狀態只存在瀏覽器。
+每個 Focus 記錄 `notebookId`，tab 只參照該筆記本的筆記或合輯（路徑分頁）；預設 Focus（程式內 `CURRENT_FOCUS`）與作用窗格等檢視狀態只存在瀏覽器。
 
 ### Focus 顯示與開啟規則
 
-URL 的 `focus` 參數指定顯示的 Focus；沒有時，`useNoteFocus` 在 render 時改用該筆記本上次顯示的 Focus（`view.last`），不把它寫回 URL，避免先畫出瀏覽區再跳成 Focus。
+URL 的 `focus` 參數指定顯示的 Focus；沒有時，`useNoteFocus` 在 render 時改用該筆記本上次顯示的 Focus（`view.last`），沒有就用預設 Focus，不把它寫回 URL，避免先畫出瀏覽區再跳成 Focus。URL 指定的 Focus 已不存在時同樣改顯示預設。
 不要用 effect 補寫 URL 來決定畫面；react-router 與 nuqs 的更新都包在 `startTransition`，`useLayoutEffect` 也擋不住中間畫面。
-關閉 Focus 時清除 `view.last`，之後回到筆記頁顯示瀏覽區。
+預設 Focus 不能關閉，只能清除（`clear`）：清成單一空窗格，立即清除；具名 Focus 可以關閉，關閉與刪除後都顯示預設，清除則先確認。偏好設定不再有 `defaultFocusMode`，舊清單留著該鍵仍可載入，儲存時不會寫回。
 窗格內點選的 `[[link]]` 開在同一窗格的 tab；河道卡片開在最近使用的另一窗格，只有一個窗格時，桌面改為向右分割出新窗格；瀏覽區點選開在作用窗格。
 拖放到窗格主體的邊緣四分之一分割該窗格，中央與 tab 列則加入或搬動 tab；平板與手機只顯示部分窗格，不分割，只在中央與 tab 列放下。
 關閉窗格的最後一個 tab、或把它搬走，窗格就移除；清掉已不存在的筆記（`pruneFocus`）不移除窗格，避免筆記還在載入時窗格消失。

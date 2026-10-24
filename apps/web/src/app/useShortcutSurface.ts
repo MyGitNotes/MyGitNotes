@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import type { ShortcutSurfaceMode } from '../components/KeyboardShortcuts.js';
-import { WorkspaceTab } from '../lib/routes.js';
 import type { Availability, CommandSpec } from '../lib/commands/registry.js';
 import { findFocusPane, focusPanes, focusTabKey } from '@mygitnotes/core/focus-page';
 import { CURRENT_FOCUS } from '../lib/focus-view.js';
@@ -10,18 +9,20 @@ import type { useFocusPanes } from './useFocusPanes.js';
 import type { useFocusNoteNavigation } from './useFocusNoteNavigation.js';
 
 interface Params {
+  /** Shows a Focus (`current` or an id). */
+  showFocus: ReturnType<typeof useFocusPanes>['showFocus'];
   noteFocus: ReturnType<typeof useFocusPanes>['noteFocus'];
   focusDisplay: ReturnType<typeof useFocusPanes>['focusDisplay'];
   t: I18nContextValue['t'];
-  activeTab: WorkspaceTab;
-  showFocus: ReturnType<typeof useFocusPanes>['showFocus'];
+  /** Empties the shown Focus, asking first when it is a named one. */
+  requestClear: () => void;
   focusCapacity: ReturnType<typeof useFocusPanes>['focusCapacity'];
   zoomFocusNote: ReturnType<typeof useFocusNoteNavigation>['zoomFocusNote'];
 }
 
 const available = (enabled: boolean, reason: string): Availability => enabled ? { enabled: true } : { enabled: false, reason };
 
-export function useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, showFocus, zoomFocusNote, focusCapacity }: Params) {
+export function useShortcutSurface({ noteFocus, focusDisplay, t, showFocus, requestClear, zoomFocusNote, focusCapacity }: Params) {
   const [shortcutMode, setShortcutMode] = useState<ShortcutSurfaceMode | null>(null);
 
   // Palette commands for the displayed Focus; they act on the active pane.
@@ -39,7 +40,6 @@ export function useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, show
     const target = tabs[(index + delta + tabs.length) % tabs.length];
     if (target) void noteFocus.show(target.pane, target.key);
   };
-  const lastFocus = noteFocus.view.last && (noteFocus.view.last === CURRENT_FOCUS || noteFocus.focuses.some(item => item.id === noteFocus.view.last)) ? noteFocus.view.last : CURRENT_FOCUS;
   const zoomablePath = activeFocusPane?.key?.startsWith('note:') ? activeFocusPane.key.slice('note:'.length) : null;
   const activePaneId = noteFocus.entry?.activePane;
   /** An empty pane of a Focus with other panes: the one Close pane can remove. */
@@ -62,7 +62,8 @@ export function useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, show
       },
     }));
   const focusCommands: CommandSpec[] = [
-    { id: 'focus-toggle', group: 'focus', title: t(noteFocus.shown ? 'focus.close' : 'focus.open'), description: t('shortcuts.describe.focusToggle'), availability: () => available(activeTab === 'notes', t('shortcuts.requiresNotes')), run: () => void showFocus(noteFocus.shown ? null : lastFocus) },
+    { id: 'focus-close', group: 'focus', title: t('focus.close'), description: t('shortcuts.describe.focusClose'), availability: () => available(Boolean(noteFocus.shown && noteFocus.shown !== CURRENT_FOCUS), t('shortcuts.requiresNamedFocus')), run: () => void showFocus(CURRENT_FOCUS) },
+    { id: 'focus-clear', group: 'focus', title: t('focus.clear'), description: t('shortcuts.describe.focusClear'), availability: () => available(Boolean(noteFocus.editable && noteFocus.layout), t('shortcuts.requiresEditableFocus')), run: requestClear },
     { id: 'focus-next-pane', group: 'focus', title: t('focus.nextPane'), description: t('shortcuts.describe.focusNextPane'), availability: () => available((focusDisplay?.panes.length ?? 0) >= 2, t('shortcuts.requiresTwoFocusPanes')), run: () => cycleFocusPane(1) },
     { id: 'focus-previous-pane', group: 'focus', title: t('focus.previousPane'), description: t('shortcuts.describe.focusPreviousPane'), availability: () => available((focusDisplay?.panes.length ?? 0) >= 2, t('shortcuts.requiresTwoFocusPanes')), run: () => cycleFocusPane(-1) },
     { id: 'focus-next-tab', group: 'focus', title: t('focus.nextTab'), description: t('shortcuts.describe.focusNextTab'), availability: () => available(Boolean(activeFocusPane), t('shortcuts.requiresFocusTab')), run: () => cycleFocusTab(1) },

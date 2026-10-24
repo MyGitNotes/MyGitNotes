@@ -64,15 +64,6 @@ export function adoptedFocusViewKey(repositoryId: string, scope: string | null, 
   return key;
 }
 
-/** Whether this device has ever recorded Focus-view state for this notebook: the signal for "has this device already made its own choice." */
-export function hasStoredFocusView(repositoryId: string, scope: string | null, notebookKey: string): boolean {
-  try {
-    return localStorage.getItem(adoptedFocusViewKey(repositoryId, scope, notebookKey)) !== null;
-  } catch {
-    return false;
-  }
-}
-
 const FOCUS_KEY_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {

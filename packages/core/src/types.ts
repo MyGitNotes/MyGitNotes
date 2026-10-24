@@ -31,7 +31,6 @@ export type YouTubeDisplayMode = 'thumbnail' | 'medium' | 'theater';
 export interface WorkspacePreferences {
   defaultYoutubeDisplayMode?: YouTubeDisplayMode;
   defaultShowLineNumbers?: boolean;
-  defaultFocusMode?: boolean;
 }
 
 export interface WorkspaceConfig {

@@ -1,11 +1,10 @@
-import { notebookPreferences } from '../lib/notebook-preferences.js';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
 import { useState } from 'react';
 import { useNoteEditorRegistry } from '../lib/note-editing.js';
 import { type FocusTab } from '@mygitnotes/core/focus-page';
 import { useNoteFocus } from '../lib/use-note-focus.js';
-import { CURRENT_FOCUS, displayedPanes, hasStoredFocusView } from '../lib/focus-view.js';
+import { CURRENT_FOCUS, displayedPanes } from '../lib/focus-view.js';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import { usePaneCapacity } from '../components/FocusArea.js';
 import { isDocumentTool, usePanelContext } from '../lib/panel-context.js';
@@ -39,8 +38,7 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
   const localId = parseNotebookKey(selectedNotebookId)?.localId;
   const focusScope = localId && resolveBareNotebook(localId) === selectedNotebookId ? remote ? sourceId : `local:${repoRoot}` : null;
   // A Notes page whose URL names no Focus shows the one it displayed last, decided while rendering so the list never paints first.
-  const defaultFocus = notebookPreferences(selectedNotebookId).defaultFocusMode && !hasStoredFocusView(notebookRepository, focusScope, selectedNotebookId) ? CURRENT_FOCUS : null;
-  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && !editorRoute.note, defaultFocus, writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
+  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && !editorRoute.note, writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
   const focusDisplay = noteFocus.layout && noteFocus.entry ? displayedPanes(noteFocus.entry, noteFocus.layout, focusCapacity) : undefined;
   /** On phones the browse region and the Focus take turns filling the screen. */
   const [focusNarrowView, setFocusNarrowView] = useState<'focus' | 'browse'>('focus');
@@ -59,15 +57,20 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
       else if (!panel.isOpen || panel.activeTool !== mode) panel.openTool(mode);
     },
   };
-  /** Shows a Focus (`current` or an id), or returns to normal browsing with null. */
-  const showFocus = async (key: string | null) => {
+  /** Shows a Focus (`current` or an id). */
+  const showFocus = async (key: string) => {
     if (!await editorRegistry.flushEditors()) return;
-    if (!key) noteFocus.forget();
     const query = new URLSearchParams(location.search);
-    if (key) query.set('focus', key);
-    else query.delete('focus');
+    query.set('focus', key);
     setFocusNarrowView('focus');
     navigate({ pathname: location.pathname, search: query.toString() });
   };
-  return { focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, focusDocumentPanel, setDocumentContainer, showFocus };
+  /** Whether the named Focus is waiting for the user to confirm clearing it. */
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  /** Clears the default Focus at once and asks before clearing a named one. */
+  const requestClear = () => {
+    if (noteFocus.shown === CURRENT_FOCUS) void noteFocus.clear().catch(() => {});
+    else if (noteFocus.shown) setConfirmingClear(true);
+  };
+  return { requestClear, confirmingClear, setConfirmingClear, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, focusDocumentPanel, setDocumentContainer, showFocus };
 }

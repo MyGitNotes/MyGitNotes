@@ -10,7 +10,7 @@ import { WorkspaceManifestEditor } from './WorkspaceManifestEditor.js';
 
 afterEach(cleanup);
 
-const config: WorkspaceConfig = { schema_version: 1, workspace: { title: 'My Workspace', default_notebook: 'life' }, notebooks: [{ id: 'life', title: 'Life', root: 'notes/life', default_view: 'list', metadata: [{ key: 'mood' }], pathAliases: { '@life': 'notes/life' } }, { id: 'work', title: 'Work', root: 'notes/work', default_view: 'list' }], files: { hide_dotfiles: true }, preferences: { defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: false } };
+const config: WorkspaceConfig = { schema_version: 1, workspace: { title: 'My Workspace', default_notebook: 'life' }, notebooks: [{ id: 'life', title: 'Life', root: 'notes/life', default_view: 'list', metadata: [{ key: 'mood' }], pathAliases: { '@life': 'notes/life' } }, { id: 'work', title: 'Work', root: 'notes/work', default_view: 'list' }], files: { hide_dotfiles: true }, preferences: { defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false } };
 
 function editor(overrides: { yamlContent?: string; readOnly?: boolean; onChange?: (yaml: string) => void; } = {}) {
   const onChange = overrides.onChange ?? (() => {});

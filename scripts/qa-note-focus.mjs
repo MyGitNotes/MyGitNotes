@@ -79,7 +79,7 @@ const menuItem = async (page, label) => {
   await item.asElement().click();
 };
 /** A Focus can no longer be given an empty pane from the UI, so the steps that start from empty panes seed this device's scratch Focus with a version 1 division (still readable) and reload. */
-const seedScratchDivision = async (page, division, paneCount) => {
+const seedDefaultDivision = async (page, division, paneCount) => {
   // The Focus view is stored per repository and notebook, and an earlier key may still be adopted from; seed every one.
   await page.evaluate((division, paneCount) => {
     for (const key of Object.keys(localStorage).filter(name => name.startsWith('github-notes:focus-view:'))) {
@@ -178,11 +178,11 @@ try {
 
   // 2. Show (current), dock the list left, seed major-left, open three notes, drag one to the top-right pane.
   await page.click('.focus-switcher .select-button-trigger');
-  await menuItem(page, 'Scratch');
+  await menuItem(page, 'Default');
   await page.waitForSelector('.focus-area');
   assert.equal(search(page).get('focus'), 'current');
   assert.equal(await page.$eval('.browse-dock', dock => dock.dataset.placement), 'left');
-  await seedScratchDivision(page, 'major-left', 3);
+  await seedDefaultDivision(page, 'major-left', 3);
   await page.waitForFunction(() => document.querySelectorAll('[data-focus-pane]').length === 3);
   for (const title of ['Alpha', 'Beta', 'Gamma']) await clickRow(page, title);
   await waitTabs(page, 0, ['Alpha', 'Beta', 'Gamma']);

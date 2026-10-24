@@ -9,7 +9,7 @@ const noteFocus = { shown: 'current', editable: true, layout, entry: { activePan
 const focusDisplay = { panes: [{ pane: 'p1', panes: ['p1'], key: 'note:notes/a.compilation.yml' }] };
 
 const splitRight = (focusCapacity: 'all' | 1 | 2) => {
-  const { result } = renderHook(() => useShortcutSurface({ noteFocus, focusDisplay, t: (key: string) => key, activeTab: 'notes', showFocus: async () => {}, zoomFocusNote: () => {}, focusCapacity } as never));
+  const { result } = renderHook(() => useShortcutSurface({ noteFocus, focusDisplay, t: (key: string) => key, showFocus: async () => {}, requestClear: () => {}, zoomFocusNote: () => {}, focusCapacity } as never));
   return result.current.focusCommands.find(command => command.id === 'focus-split-right')!.availability!();
 };
 
@@ -18,5 +18,17 @@ describe('Split commands in the palette', () => {
     expect(splitRight('all')).toEqual({ enabled: true });
     expect(splitRight(1)).toMatchObject({ enabled: false });
     expect(splitRight(2)).toMatchObject({ enabled: false });
+  });
+});
+
+describe('Close Focus in the palette', () => {
+  const closeFocus = (shown: string) => {
+    const { result } = renderHook(() => useShortcutSurface({ noteFocus: { ...noteFocus, shown }, focusDisplay, t: (key: string) => key, showFocus: async () => {}, requestClear: () => {}, zoomFocusNote: () => {}, focusCapacity: 'all' } as never));
+    return result.current.focusCommands.find(command => command.id === 'focus-close')!.availability!();
+  };
+
+  it('closes a named Focus but never the Default', () => {
+    expect(closeFocus('saved-id')).toEqual({ enabled: true });
+    expect(closeFocus('current')).toMatchObject({ enabled: false });
   });
 });

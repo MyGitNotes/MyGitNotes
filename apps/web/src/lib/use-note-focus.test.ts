@@ -344,3 +344,38 @@ describe('useNoteFocus openNote beside the only pane', () => {
     expect(tabsAt(result.current.layout, 0)).toContainEqual({ kind: 'note', path: 'notes/b.md' });
   });
 });
+
+describe('useNoteFocus default and clear', () => {
+  const opts = (focusKey: string | null, restoreLast = true) => ({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey, restoreLast, writable: true, flushEditors: async () => true });
+
+  it('shows the default Focus when the URL names none and nothing was shown before', async () => {
+    const { result } = renderHook(() => useNoteFocus(opts(null)), { wrapper });
+    await waitFor(() => expect(result.current.shown).toBe(CURRENT_FOCUS));
+  });
+
+  it('shows the default Focus when the URL names a Focus that does not exist', async () => {
+    const { result } = renderHook(() => useNoteFocus(opts('gone')), { wrapper });
+    await waitFor(() => expect(result.current.shown).toBe(CURRENT_FOCUS));
+  });
+
+  it('clears every pane down to one empty pane, flushing editors first', async () => {
+    const layout: FocusLayout = { root: { kind: 'split', id: 's1', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [tab('a')] }, { kind: 'pane', id: 'p2', tabs: [tab('b')] }] } };
+    localStorage.setItem(storageKey, JSON.stringify({ current: layout, entries: {}, last: null, dock: { left: 320, top: 280, collapsed: false } }));
+    const flushed: unknown[] = [];
+    const { result } = renderHook(() => useNoteFocus({ ...opts(CURRENT_FOCUS), flushEditors: async paths => (flushed.push(paths), true) }), { wrapper });
+    await waitFor(() => expect(focusPanes(result.current.layout!)).toHaveLength(2));
+    await act(async () => expect(await result.current.clear()).toBe(true));
+    expect(flushed).toHaveLength(1);
+    expect(focusPanes(result.current.layout!)).toHaveLength(1);
+    expect(tabsAt(result.current.layout, 0)).toEqual([]);
+  });
+
+  it('changes nothing when a save is refused', async () => {
+    const layout: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [tab('a')] } };
+    localStorage.setItem(storageKey, JSON.stringify({ current: layout, entries: {}, last: null, dock: { left: 320, top: 280, collapsed: false } }));
+    const { result } = renderHook(() => useNoteFocus({ ...opts(CURRENT_FOCUS), flushEditors: async () => false }), { wrapper });
+    await waitFor(() => expect(tabsAt(result.current.layout, 0)).toHaveLength(1));
+    await act(async () => expect(await result.current.clear()).toBe(false));
+    expect(tabsAt(result.current.layout, 0)).toHaveLength(1);
+  });
+});

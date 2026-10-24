@@ -15,28 +15,33 @@ import { SelectButtonGroup, SelectButtonPrimary, SelectButtonTrigger } from './S
 
 type Dialog = { kind: 'name'; } | { kind: 'rename'; id: string; name: string; } | { kind: 'delete'; id: string; name: string; };
 
-/** The Notes toolbar's Focus switcher and Layout menu, with naming, renaming and deleting. */
+/** The Notes toolbar's Focus switcher and Layout menu, with naming, renaming, closing a named Focus, clearing and deleting. */
 export const FocusControls: React.FC<{
   focus: NoteFocus;
-  /** Shows a Focus (`current` or an id), or returns to normal browsing with null. */
-  onShow: (key: string | null) => void;
+  /** Shows a Focus (`current` or an id). */
+  onShow: (key: string) => void;
+  /** Clears the shown Focus, asking first when it is a named one. */
+  onRequestClear: () => void;
+  /** Whether the named Focus is waiting for the user to confirm clearing it. */
+  confirmingClear: boolean;
+  onConfirmingClearChange: (open: boolean) => void;
   onReload: () => void;
   /** Phones show the browse region or the Focus, one at a time. */
   browseToggle?: { showing: boolean; onToggle: () => void; };
   /** Whether the whole split tree is on screen (desktop), the only case a pane can be split. */
   splittable: boolean;
-}> = ({ focus, onShow, onReload, browseToggle, splittable }) => {
+}> = ({ focus, onShow, onRequestClear, confirmingClear, onConfirmingClearChange, onReload, browseToggle, splittable }) => {
   const { t } = useTranslation();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const named = focus.shown && focus.shown !== CURRENT_FOCUS ? focus.focuses.find(item => item.id === focus.shown) : undefined;
-  const label = named ? named.name : focus.shown ? t('focus.current') : t('focus.title');
+  const label = named ? named.name : t('focus.current');
   const taken = focus.focuses.map(item => item.name);
 
   return (
     <>
-      {/* A split button: the main part opens the Scratch (or leaves the shown Focus), the chevron lists every Focus. */}
-      <SelectButtonGroup className='focus-switcher' active={Boolean(focus.shown)}>
-        <SelectButtonPrimary title={t(focus.shown ? 'focus.close' : 'focus.openCurrent')} onClick={() => onShow(focus.shown ? null : CURRENT_FOCUS)}>
+      {/* A split button: the main part shows the Default Focus (closing a named one), the chevron lists every Focus. */}
+      <SelectButtonGroup className='focus-switcher' active>
+        <SelectButtonPrimary title={t(named ? 'focus.close' : 'focus.current')} onClick={() => onShow(CURRENT_FOCUS)}>
           <PanelsTopLeft aria-hidden='true' />
           <span>{label}</span>
         </SelectButtonPrimary>
@@ -70,7 +75,8 @@ export const FocusControls: React.FC<{
                   <DropdownMenu.Item className='focus-menu-danger' onSelect={() => setDialog({ kind: 'delete', id: named.id, name: named.name })}>{t('focus.delete')}</DropdownMenu.Item>
                 </>
               )}
-              {focus.shown && <DropdownMenu.Item onSelect={() => onShow(null)}>{t('focus.close')}</DropdownMenu.Item>}
+              {named && <DropdownMenu.Item onSelect={() => onShow(CURRENT_FOCUS)}>{t('focus.close')}</DropdownMenu.Item>}
+              {focus.shown && focus.editable && <DropdownMenu.Item onSelect={onRequestClear}>{t('focus.clear')}</DropdownMenu.Item>}
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
@@ -87,6 +93,23 @@ export const FocusControls: React.FC<{
       {focus.layout && browseToggle && <button type='button' className='ui-icon-button' aria-pressed={browseToggle.showing} onClick={browseToggle.onToggle} aria-label={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')} title={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')}>{browseToggle.showing ? <PanelsTopLeft aria-hidden='true' /> : <ListTree aria-hidden='true' />}</button>}
       {dialog?.kind === 'name' && <FocusNameDialog title={t('focus.nameTitle')} initial='' taken={taken} onClose={() => setDialog(null)} onSubmit={name => onShow(focus.name(name))} />}
       {dialog?.kind === 'rename' && <FocusNameDialog title={t('focus.renameTitle')} initial={dialog.name} taken={taken.filter(name => name !== dialog.name)} onClose={() => setDialog(null)} onSubmit={name => focus.rename(dialog.id, name)} />}
+      {confirmingClear && (
+        <WorkspaceDialog title={t('focus.clearTitle')} onClose={() => onConfirmingClearChange(false)}>
+          <p>{t('focus.clearHint', { name: named?.name ?? t('focus.current') })}</p>
+          <div className='workspace-dialog-actions'>
+            <Button type='button' onClick={() => onConfirmingClearChange(false)}>{t('common.cancel')}</Button>
+            <Button
+              type='button'
+              variant='danger'
+              onClick={async () => {
+                if (await focus.clear().catch(() => false)) onConfirmingClearChange(false);
+              }}
+            >
+              {t('focus.clearConfirm')}
+            </Button>
+          </div>
+        </WorkspaceDialog>
+      )}
       {dialog?.kind === 'delete' && (
         <WorkspaceDialog title={t('focus.deleteTitle')} onClose={() => setDialog(null)}>
           <p>{t('focus.deleteHint', { name: dialog.name })}</p>
@@ -98,7 +121,7 @@ export const FocusControls: React.FC<{
               onClick={async () => {
                 if (!await focus.remove(dialog.id)) return;
                 setDialog(null);
-                if (focus.shown === dialog.id) onShow(null);
+                if (focus.shown === dialog.id) onShow(CURRENT_FOCUS);
               }}
             >
               {t('common.delete')}

@@ -5,7 +5,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { NOTE_QUERY_KEY } from './use-note-queries.js';
 
-const preferences = { defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: false };
+const preferences = { defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false };
 const repository = (alias: string) => ({ id: `local:/work/${alias}`, alias, branch: 'main', notebooks: [`${alias}~${alias}`], revision: '', write: true, title: alias, defaultNotebook: `${alias}~${alias}`, preferences, config: null, configRevision: 'c1' });
 /** The workspace a request gets: both repositories until `journal` is hidden in another tab. */
 const server = vi.hoisted(() => ({ hidden: false, requests: [] as boolean[], events: [] as (EventTarget & { closed: boolean; })[] }));

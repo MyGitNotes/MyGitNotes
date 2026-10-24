@@ -34,7 +34,7 @@ files:
     expect(config.notebooks[1].id).toBe('work');
     expect(config.notebooks[1].default_view).toBe('kanban');
     expect(config.files?.hide_dotfiles).toBe(true);
-    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: true });
+    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false });
   });
 
   it('keeps the obsolete files.hide_dotfiles only where a manifest sets it, so saving never adds it', () => {
@@ -180,20 +180,26 @@ notebooks:
 `;
 
   it('accepts configured preference values', () => {
-    const yaml = `${base}preferences:\n  defaultYoutubeDisplayMode: theater\n  defaultShowLineNumbers: true\n  defaultFocusMode: true\n`;
+    const yaml = `${base}preferences:\n  defaultYoutubeDisplayMode: theater\n  defaultShowLineNumbers: true\n`;
     const config = parseWorkspaceConfig(yaml);
-    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'theater', defaultShowLineNumbers: true, defaultFocusMode: true });
+    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'theater', defaultShowLineNumbers: true });
+  });
+
+  it('still loads a manifest that sets the retired defaultFocusMode, and drops it', () => {
+    const yaml = `${base}preferences:\n  defaultShowLineNumbers: true\n  defaultFocusMode: false\n`;
+    const config = parseWorkspaceConfig(yaml);
+    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: true });
   });
 
   it('defaults preferences when the block is absent', () => {
     const config = parseWorkspaceConfig(base);
-    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: true });
+    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false });
   });
 
   it('falls back to defaults for invalid preference values instead of throwing', () => {
-    const yaml = `${base}preferences:\n  defaultYoutubeDisplayMode: music\n  defaultShowLineNumbers: "yes"\n  defaultFocusMode: 1\n`;
+    const yaml = `${base}preferences:\n  defaultYoutubeDisplayMode: music\n  defaultShowLineNumbers: "yes"\n`;
     const config = parseWorkspaceConfig(yaml);
-    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: true });
+    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false });
   });
 
   it('does not require a schema_version bump', () => {
