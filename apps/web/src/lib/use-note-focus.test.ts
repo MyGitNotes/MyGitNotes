@@ -3,7 +3,7 @@ import { createElement, type ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { emptyFocusPage, FOCUS_MAX_TABS, FocusError, type FocusLayout, focusPanes, type FocusTab } from '@mygitnotes/core/focus-page';
+import { emptyFocusPage, FOCUS_MAX_TABS, FocusError, type FocusLayout, focusPanes, type FocusTab, nameFocus } from '@mygitnotes/core/focus-page';
 import { useNoteFocus } from './use-note-focus.js';
 import { CURRENT_FOCUS } from './focus-view.js';
 import { focusDocumentClient, type FocusPageController } from './use-focus-page.js';
@@ -377,5 +377,33 @@ describe('useNoteFocus default and clear', () => {
     await waitFor(() => expect(tabsAt(result.current.layout, 0)).toHaveLength(1));
     await act(async () => expect(await result.current.clear()).toBe(false));
     expect(tabsAt(result.current.layout, 0)).toHaveLength(1);
+  });
+});
+
+describe('useNoteFocus while the Focus document is unavailable', () => {
+  const named = nameFocus(emptyFocusPage(), { root: { kind: 'pane', id: 'p1', tabs: [] } }, NOTEBOOK, 'Reading');
+  const storeLast = (last: string) => localStorage.setItem(storageKey, JSON.stringify({ current: { root: { kind: 'pane', id: 'p1', tabs: [] } }, entries: {}, last }));
+  const lastStored = () => JSON.parse(localStorage.getItem(storageKey) ?? '{}').last;
+  const render = (page: FocusPageController, focusKey: string | null = null) => renderHook((props: { page: FocusPageController; }) => useNoteFocus({ page: props.page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey, restoreLast: true, writable: true, flushEditors: async () => true }), { wrapper, initialProps: { page } });
+  const ready = (): FocusPageController => ({ ...fakeController(), page: named.page });
+
+  for (const [name, state] of [['loading', { loading: true }], ['error', { error: 'offline' }]] as const) {
+    it(`shows the Default Focus, not the plain list, while loading is ${name === 'loading'} and keeps the last Focus`, async () => {
+      storeLast(named.focus.id);
+      const { result, rerender } = render({ ...fakeController(), ...state });
+      expect(result.current.shown).toBe(CURRENT_FOCUS);
+      expect(result.current.layout).not.toBeNull();
+      expect(lastStored()).toBe(named.focus.id);
+      rerender({ page: ready() });
+      await waitFor(() => expect(result.current.shown).toBe(named.focus.id));
+      expect(lastStored()).toBe(named.focus.id);
+    });
+  }
+
+  it('shows the Default Focus when the URL names a Focus and the document is unavailable, and the Focus once it loads', async () => {
+    const { result, rerender } = render({ ...fakeController(), loading: true }, named.focus.id);
+    expect(result.current.shown).toBe(CURRENT_FOCUS);
+    rerender({ page: ready() });
+    await waitFor(() => expect(result.current.shown).toBe(named.focus.id));
   });
 });

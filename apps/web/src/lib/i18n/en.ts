@@ -751,7 +751,6 @@ export const en = {
   'shortcuts.describe.focusCloseTab': 'Close the active Focus tab',
   'shortcuts.describe.focusZoomTab': 'Open the active Focus note in the full editor',
   'shortcuts.requiresWriteAccess': 'Requires write access',
-  'shortcuts.requiresNotes': 'Open Notes to use',
   'shortcuts.requiresAgent': 'The agent is not available in this workspace',
   'shortcuts.requiresTwoFocusPanes': 'Requires two Focus panes',
   'shortcuts.requiresFocusTab': 'Open a Focus tab first',

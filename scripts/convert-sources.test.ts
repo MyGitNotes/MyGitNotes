@@ -101,8 +101,8 @@ it('moves each notebook with source into its own repository, one commit per repo
   expect(converted.notebooks).toHaveLength(1);
   expect(read(home, '.mygitnotes.yaml')).toContain("# The owner's notebooks.");
   expect(YAML.parse(read(trpg, '.mygitnotes.yaml'))).toEqual({ schema_version: 4, workspace: { title: 'trpg', default_notebook: 'trpg' }, notebooks: [{ id: 'trpg', title: 'TRPG', root: 'notes/life', statuses: ['draft', 'done'] }], preferences: { defaultShowLineNumbers: true } });
-  // An existing manifest keeps its title, default notebook and preferences.
-  expect(YAML.parse(read(lore, '.mygitnotes.yaml'))).toEqual({ schema_version: 4, workspace: { title: 'Lore library', default_notebook: 'books' }, preferences: { defaultFocusMode: true }, notebooks: [{ id: 'books', title: 'Books', root: 'notes/books' }, { id: 'lore', title: 'Lore', root: 'notes/lore' }] });
+  // An existing manifest keeps its title and default notebook, and loses the retired defaultFocusMode.
+  expect(YAML.parse(read(lore, '.mygitnotes.yaml'))).toEqual({ schema_version: 4, workspace: { title: 'Lore library', default_notebook: 'books' }, notebooks: [{ id: 'books', title: 'Books', root: 'notes/books' }, { id: 'lore', title: 'Lore', root: 'notes/lore' }] });
   for (const root of [home, trpg, lore]) {
     expect(commits(root)).toHaveLength(2);
     expect(git(root, ['status', '--porcelain'])).toBe('');
