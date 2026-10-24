@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { DRAFT_SAVE_MS, draftKey, useAgentDraft } from './draft.js';
+import { clearAgentDrafts, DRAFT_SAVE_MS, draftKey, useAgentDraft } from './draft.js';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
@@ -100,4 +100,14 @@ it('works without storage: the text stays in the box and nothing throws', () => 
   expect(result.current[0]).toBe('still here');
   act(() => result.current[1](''));
   expect(() => unmount()).not.toThrow();
+});
+
+it('removes every agent draft on sign-out and leaves other keys', () => {
+  localStorage.setItem(home, 'a');
+  localStorage.setItem(blog, 'b');
+  localStorage.setItem('mygitnotes.other', 'keep');
+  clearAgentDrafts();
+  expect(localStorage.getItem(home)).toBeNull();
+  expect(localStorage.getItem(blog)).toBeNull();
+  expect(localStorage.getItem('mygitnotes.other')).toBe('keep');
 });

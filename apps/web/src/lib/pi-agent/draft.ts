@@ -9,6 +9,13 @@ export const DRAFT_SAVE_MS = 300;
 /** The localStorage key of the message box for the agent workspace Pi runs in, so two workspaces keep separate drafts. */
 export const draftKey = (location: PiLocation | undefined) => `${DRAFT_PREFIX}${location ? workspaceKey(location) : ''}`;
 
+/** Removes every stored message-box draft, which sign-out does so the next person on this browser never sees what was typed. */
+export function clearAgentDrafts() {
+  try {
+    for (const key of Object.keys(localStorage)) if (key.startsWith(DRAFT_PREFIX)) localStorage.removeItem(key);
+  } catch { /* Storage that is unavailable holds no draft to clear. */ }
+}
+
 function loadDraft(key: string): string {
   try {
     return localStorage.getItem(key) ?? '';
@@ -30,7 +37,7 @@ function storeDraft(key: string, text: string) {
  * the panel closing and opening again, and another key (another workspace) has its own. Only setting it to empty
  * clears it, which the panel does after a send went through.
  */
-export function useAgentDraft(key: string): [string, Dispatch<SetStateAction<string>>] {
+export function useAgentDraft(key: string): [string, Dispatch<SetStateAction<string>>, { retain: () => void; settle: () => void; }] {
   const [state, setState] = useState(() => ({ key, text: loadDraft(key) }));
   let current = state;
   // Another workspace shows its own draft; the one left behind stays stored under its key.
@@ -38,10 +45,25 @@ export function useAgentDraft(key: string): [string, Dispatch<SetStateAction<str
     current = { key, text: loadDraft(key) };
     setState(current);
   }
+  const keyRef = useRef(current.key), textRef = useRef(current.text);
+  useEffect(() => {
+    keyRef.current = current.key;
+    textRef.current = current.text;
+  });
   const setText = useCallback<Dispatch<SetStateAction<string>>>(next => setState(previous => ({ ...previous, text: typeof next === 'function' ? next(previous.text) : next })), []);
 
   /** The write the debounce has not made yet. */
   const unsaved = useRef<{ key: string; text: string; } | null>(null);
+  /** The key whose stored draft the next emptying leaves alone, while the message it holds waits to be written to the socket. */
+  const retained = useRef<string | null>(null);
+  const retain = useCallback(() => {
+    retained.current = keyRef.current;
+  }, []);
+  const settle = useCallback(() => {
+    const kept = retained.current;
+    retained.current = null;
+    if (kept && !textRef.current) storeDraft(kept, '');
+  }, []);
   const flush = useCallback(() => {
     const waiting = unsaved.current;
     unsaved.current = null;
@@ -52,9 +74,10 @@ export function useAgentDraft(key: string): [string, Dispatch<SetStateAction<str
     // Emptying the box is a send (or a deliberate clear), so the stored draft goes with it at once.
     if (!current.text) {
       unsaved.current = null;
-      storeDraft(current.key, '');
+      if (retained.current !== current.key) storeDraft(current.key, '');
       return;
     }
+    if (retained.current === current.key) retained.current = null;
     unsaved.current = { key: current.key, text: current.text };
     const timer = setTimeout(flush, DRAFT_SAVE_MS);
     return () => clearTimeout(timer);
@@ -69,5 +92,5 @@ export function useAgentDraft(key: string): [string, Dispatch<SetStateAction<str
     };
   }, [key, flush]);
 
-  return [current.text, setText];
+  return [current.text, setText, { retain, settle }];
 }

@@ -1983,6 +1983,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'piAgent.attachment.size': '{name} 超過 5 MB，未附加。',
   'piAgent.attachment.total': '{name} 未附加：一則訊息的圖片合計最多 10 MB。',
   'piAgent.attachment.count': '{name} 未附加：一則訊息最多附 5 張圖片。',
+  'piAgent.attachment.model': '目前的模型無法讀圖片。請移除圖片，或改選能讀圖片的模型。',
+  'piAgent.attachment.held': '這些訊息合起來太大，無法一次送出。請分開送。',
   'piAgent.attachment.read': '無法讀取 {name}，未附加。',
   'piAgent.send': '送出',
   'piAgent.steer': '插話',

@@ -1982,6 +1982,8 @@ export const en = {
   'piAgent.attachment.size': '{name} is over 5 MB, so it was not attached.',
   'piAgent.attachment.total': '{name} was not attached: the images of one message add up to at most 10 MB.',
   'piAgent.attachment.count': '{name} was not attached: a message takes at most 5 images.',
+  'piAgent.attachment.model': 'The current model cannot read images. Remove them or choose a model that can.',
+  'piAgent.attachment.held': 'These messages together are too large to send at once. Send them one by one.',
   'piAgent.attachment.read': '{name} could not be read, so it was not attached.',
   'piAgent.send': 'Send',
   'piAgent.steer': 'Steer',

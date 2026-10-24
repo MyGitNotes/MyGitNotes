@@ -524,12 +524,13 @@ it('shows only the status, the workspace button and Close in the dock until a se
   expect([...header.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual(['Change agent workspace', 'Close agent']);
 });
 
+const imageModel = { model: 'anthropic/claude-opus', models: [], levels: [], images: true };
 const picked = (name: string, type = 'image/png', content = 'abc') => new File([content], name, { type });
 const filePicker = () => document.querySelector<HTMLInputElement>('input[type="file"]')!;
 const attachedImages = () => [...document.querySelectorAll<HTMLImageElement>('.pi-agent-attachments img')];
 
 it('attaches images from the paperclip with a thumbnail and a remove button, sends them with the message and clears them after it goes', async () => {
-  const value = agent();
+  const value = agent({ modelState: imageModel });
   panel(value);
   expect(filePicker().accept).toBe('image/png,image/jpeg,image/gif,image/webp');
   expect(filePicker().multiple).toBe(true);
@@ -548,7 +549,7 @@ it('attaches images from the paperclip with a thumbnail and a remove button, sen
 
 it('sends an image alone, and keeps the images when the message is not taken as sent', async () => {
   const send = vi.fn(() => false);
-  panel(agent({ send }));
+  panel(agent({ send, modelState: imageModel }));
   fireEvent.change(filePicker(), { target: { files: [picked('one.png')] } });
   await waitFor(() => expect(attachedImages()).toHaveLength(1));
   fireEvent.click(screen.getByRole('button', { name: 'Send' }));
@@ -557,7 +558,7 @@ it('sends an image alone, and keeps the images when the message is not taken as 
 });
 
 it('adds a pasted image, but pastes text as text when the clipboard holds both', async () => {
-  const value = agent();
+  const value = agent({ modelState: imageModel });
   panel(value);
   const box = screen.getByRole('textbox', { name: 'Message to Pi' });
   fireEvent.paste(box, { clipboardData: { files: [picked('both.png')], getData: () => 'a copied cell' } });
@@ -569,7 +570,7 @@ it('adds a pasted image, but pastes text as text when the clipboard holds both',
 });
 
 it('adds images dropped on the message box and refuses other files with a visible message', async () => {
-  panel(agent());
+  panel(agent({ modelState: imageModel }));
   const card = document.querySelector('.pi-agent-composer-card')!;
   fireEvent.dragOver(card, { dataTransfer: { types: ['Files'] } });
   expect(card.getAttribute('data-dragging')).toBe('true');
@@ -580,14 +581,14 @@ it('adds images dropped on the message box and refuses other files with a visibl
 });
 
 it('does not take a drag of text as a file drop', () => {
-  panel(agent());
+  panel(agent({ modelState: imageModel }));
   const card = document.querySelector('.pi-agent-composer-card')!;
   expect(fireEvent.dragOver(card, { dataTransfer: { types: ['text/plain'] } })).toBe(true);
   expect(card.hasAttribute('data-dragging')).toBe(false);
 });
 
 it('keeps images out of a shell run or built-in and sends them with the next message', async () => {
-  const value = agent();
+  const value = agent({ modelState: imageModel });
   panel(value);
   fireEvent.change(filePicker(), { target: { files: [picked('one.png')] } });
   await waitFor(() => expect(attachedImages()).toHaveLength(1));
@@ -602,6 +603,47 @@ it('puts the images of a held message back in the tray when it returns to the me
   panel(agent({ editorText: { text: 'look', serial: 1, images: [image] } }));
   await waitFor(() => expect(attachedImages()).toHaveLength(1));
   expect((screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement).value).toBe('look');
+});
+
+it('offers no paperclip, paste or drop for a model that cannot read images, and shows them for one that can', async () => {
+  panel(agent({ modelState: { model: 'pro/haiku', models: [], levels: [], images: false } }));
+  expect(screen.queryByRole('button', { name: 'Attach images' })).toBeNull();
+  expect(filePicker()).toBeNull();
+  const card = document.querySelector('.pi-agent-composer-card')!;
+  expect(fireEvent.dragOver(card, { dataTransfer: { types: ['Files'] } })).toBe(true);
+  fireEvent.drop(card, { dataTransfer: { types: ['Files'], files: [picked('shot.png')] } });
+  expect(fireEvent.paste(box(), { clipboardData: { files: [picked('image.png')], getData: () => '' } })).toBe(true);
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(attachedImages()).toHaveLength(0);
+  cleanup();
+  panel(agent({ modelState: imageModel }));
+  expect(screen.getByRole('button', { name: 'Attach images' })).toBeTruthy();
+});
+
+it('keeps attached images when the model switches to one that cannot read them, but refuses to send them', async () => {
+  const send = vi.fn(() => true);
+  const view = render(createElement(PiAgentContext.Provider, { value: agent({ send, modelState: imageModel }) }, createElement(AgentPanel)));
+  fireEvent.change(filePicker(), { target: { files: [picked('one.png')] } });
+  await waitFor(() => expect(attachedImages()).toHaveLength(1));
+  view.rerender(createElement(PiAgentContext.Provider, { value: agent({ send, modelState: { models: [], levels: [], images: false } }) }, createElement(AgentPanel)));
+  expect(attachedImages()).toHaveLength(1);
+  write('look');
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  expect(send).not.toHaveBeenCalled();
+  expect(screen.getByRole('alert').textContent).toContain('cannot read images');
+  expect(box().value).toBe('look');
+});
+
+it('keeps the stored draft of a held message until it is written to the socket', async () => {
+  const send = vi.fn(() => true);
+  const view = render(createElement(PiAgentContext.Provider, { value: agent({ send, held: 'waiting' }) }, createElement(AgentPanel)));
+  write('queued message');
+  await waitFor(() => expect(savedDraft()).toBe('queued message'));
+  fireEvent.keyDown(box(), { key: 'Enter' });
+  expect(box().value).toBe('');
+  expect(savedDraft()).toBe('queued message');
+  view.rerender(createElement(PiAgentContext.Provider, { value: agent({ send, held: null }) }, createElement(AgentPanel)));
+  expect(savedDraft()).toBeNull();
 });
 
 const savedDraft = (folder = '') => localStorage.getItem(`mygitnotes.piAgent.draft.${home}\n${folder}`);

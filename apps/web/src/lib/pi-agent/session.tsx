@@ -5,7 +5,7 @@ import type { RepositoryStatus } from '@mygitnotes/core/repository';
 import { fetchAgentWorkspaces } from '../api.js';
 import type { AgentWorkspace } from '../agent-workspaces.js';
 import { FEATURE_IDS, useFeatureGate } from '../web-features.js';
-import type { PiImage } from './attachments.js';
+import { frameBytes, imagesWithinLimits, MAX_FRAME_BYTES, type PiImage } from './attachments.js';
 import type { CaretStore } from './caret-store.js';
 import { commandsFromResponse, commandWithFocus, parseComposerInput, type PiCommand } from './commands.js';
 import { type AgentDialog, type AgentFocus, applyRecord, emptyTranscript, queuedText, startShell, transcriptFromMessages, type TranscriptState, withFocus } from './transcript.js';
@@ -86,11 +86,14 @@ export interface PiModelState {
   loaded?: boolean;
   /** The thinking levels the current model supports. */
   levels: string[];
+  /** Whether the current model declares image input, which is what the message box offers images for. */
+  images?: boolean;
 }
 
 const emptyModelState: PiModelState = { models: [], levels: [] };
 
-type PiModel = { provider: string; id: string; name?: string; };
+type PiModel = { provider: string; id: string; name?: string; input?: unknown; };
+const readsImages = (model: PiModel | undefined) => Array.isArray(model?.input) && model.input.includes('image');
 const modelKey = (model: PiModel) => `${model.provider}/${model.id}`;
 
 /**
@@ -102,7 +105,7 @@ export function applyModelResponse(state: PiModelState, record: Record<string, u
   const data = (record.data ?? {}) as { model?: PiModel; thinkingLevel?: string; models?: PiModel[]; levels?: string[]; };
   switch (record.command) {
     case 'get_state':
-      return { ...state, model: data.model ? modelKey(data.model) : undefined, thinking: data.thinkingLevel };
+      return { ...state, model: data.model ? modelKey(data.model) : undefined, thinking: data.thinkingLevel, images: readsImages(data.model) };
     case 'get_available_models':
       return { ...state, loaded: true, models: (data.models ?? []).map(model => ({ value: modelKey(model), label: `${model.name || model.id} (${model.provider})`, name: model.name || model.id })) };
     case 'get_available_thinking_levels':
@@ -110,7 +113,7 @@ export function applyModelResponse(state: PiModelState, record: Record<string, u
     case 'set_model': {
       // Unlike get_state, set_model answers with the model object itself.
       const model = record.data as PiModel | undefined;
-      return model?.provider && model.id ? { ...state, model: modelKey(model) } : state;
+      return model?.provider && model.id ? { ...state, model: modelKey(model), images: readsImages(model) } : state;
     }
     default:
       return state;
@@ -216,6 +219,8 @@ const MODEL_COMMANDS = new Set(['get_state', 'get_available_models', 'get_availa
 const RECONNECT_MS = 1500;
 
 /** The `images` field of a `prompt` (and so of the `steer` it becomes while Pi works); absent when there are none, as Pi expects. */
+const HELD_TOO_LARGE = 'The held messages are too large to send in one go, so they were put back in the message box.';
+const HELD_TOO_LARGE_TO_ADD = 'This message and the held ones together are too large to send at once. Wait for Pi to connect, then send it on its own.';
 const promptImages = (images: readonly PiImage[]) => images.length ? { images } : {};
 
 /** The workspace the user last switched to; the server refuses it once it is no longer a workspace. */
@@ -373,9 +378,16 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       requestStats();
       const waiting = heldMessage.current;
       if (waiting) {
-        heldMessage.current = null;
-        setHeld(null);
-        ws.send(JSON.stringify({ id: crypto.randomUUID(), type: 'prompt', message: waiting.message, ...promptImages(waiting.images) }));
+        const frame = JSON.stringify({ id: crypto.randomUUID(), type: 'prompt', message: waiting.message, ...promptImages(waiting.images) });
+        // A frame the server would refuse is never sent: the message goes back to the message box with its images instead of being lost.
+        if (frameBytes(frame) > MAX_FRAME_BYTES) {
+          setError(HELD_TOO_LARGE);
+          releaseHeld();
+        } else {
+          ws.send(frame);
+          heldMessage.current = null;
+          setHeld(null);
+        }
       }
     };
     ws.onmessage = event => {
@@ -462,7 +474,7 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
         }).catch((reason: Error) => setError(reason.message));
       }, RECONNECT_MS);
     };
-  }, []);
+  }, [releaseHeld]);
 
   const attach = useCallback((info: PiSessionInfo | null) => {
     if (info?.id !== sessionId.current) {
@@ -589,8 +601,14 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       if (waiting && (input.kind === 'message' || input.kind === 'command')) {
         const message = input.kind === 'message' ? withFocus(input.text, focus) : commandWithFocus(input.text, focus);
         const before = heldMessage.current;
-        heldMessage.current = before ? { text: `${before.text}\n\n${text}`, message: `${before.message}\n\n${message}`, images: [...before.images, ...images] } : { text, message, images: [...images] };
-        setHeld(heldMessage.current.text);
+        const merged = before ? { text: `${before.text}\n\n${text}`, message: `${before.message}\n\n${message}`, images: [...before.images, ...images] } : { text, message, images: [...images] };
+        // Merging must not make a frame the server refuses; the held message stays as it was and the new one stays in the box.
+        if (!imagesWithinLimits(merged.images) || frameBytes(JSON.stringify({ id: crypto.randomUUID(), type: 'prompt', message: merged.message, ...promptImages(merged.images) })) > MAX_FRAME_BYTES) {
+          setError(HELD_TOO_LARGE_TO_ADD);
+          return false;
+        }
+        heldMessage.current = merged;
+        setHeld(merged.text);
         wake();
         return true;
       }
@@ -604,15 +622,13 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
           }
           const id = crypto.randomUUID();
           setTranscript(current => startShell(current, id, input.command, input.excludeFromContext));
-          command({ id, type: 'bash', command: input.command, ...(input.excludeFromContext ? { excludeFromContext: true } : {}) });
-          return true;
+          return command({ id, type: 'bash', command: input.command, ...(input.excludeFromContext ? { excludeFromContext: true } : {}) });
         }
         case 'builtin':
-          if (input.name === 'new') command({ type: 'new_session' });
-          else if (input.name === 'compact') command({ type: 'compact', ...(input.args ? { customInstructions: input.args } : {}) });
-          else if (input.args) command({ type: 'set_session_name', name: input.args });
-          else return false;
-          return true;
+          if (input.name === 'new') return command({ type: 'new_session' });
+          if (input.name === 'compact') return command({ type: 'compact', ...(input.args ? { customInstructions: input.args } : {}) });
+          if (input.args) return command({ type: 'set_session_name', name: input.args });
+          return false;
         case 'command':
           return command({ type: 'prompt', message: commandWithFocus(input.text, focus), ...promptImages(images), ...steer });
         case 'message':

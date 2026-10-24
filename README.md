@@ -148,14 +148,14 @@ While the dock is offered, the Agents page opens from the dock's header.
 - MCP servers are configured in Pi itself (`pi mcp add`, or `/mcp` in the chat), never in the repository.
 - Each message can name the open file. The context chip above the message box shows the target (`file:line`, the path, or *No file*) and opens a menu: **Line** adds the caret line or selection, **Path only** adds just the path, and **None** adds nothing.
   Paths are relative to the folder Pi runs in.
-- Attach images to a message with the paperclip beside the model select, by pasting one into the message box, or by dropping files on it.
+- Images are offered only while the session's model declares image input (a text-only model, such as MyGitNotes Pro's built-in one, shows no paperclip and takes no paste or drop). Attach them with the paperclip beside the model select, by pasting one into the message box, or by dropping files on it.
   Thumbnails with a remove button wait above the box and go with the next message, including one that steers a running reply; Send also works with an image and no text.
   Pi's RPC takes PNG, JPEG, GIF and WebP in a prompt's `images` field, so those are the types accepted, at most 5 images of 5 MB each and 10 MB together; another file is refused with a message naming it.
   Pasting text that comes with an image of it pastes the text. A shell run (`!command`) or built-in (`/new`) takes no images and leaves them waiting.
   Pi's RPC mode has no other attachment type (`@file` arguments are a terminal feature it rejects), so other files are not uploaded; Pi reads files in the workspace itself.
-  The images reach a remote agent's bridge the same way, inside the 16 MB a WebSocket frame may carry.
+  Images already attached stay if you switch to a model that cannot read them, but sending is refused with a message until you remove them. Messages held while Pi starts are checked against the 16 MB a WebSocket frame may carry before they are sent, and a set that is too large is refused rather than lost.
 - What you type in the message box is saved in the browser as you type, one draft per agent workspace, and comes back after a reload, after the dock is closed and opened again, and after switching away from a workspace and back.
-  It is removed only when the message is sent (or you empty the box yourself), never when a send is refused or the dock closes; a full or blocked browser storage just means the draft is not kept.
+  It is removed only when the message is sent (or you empty the box yourself), never when a send is refused or the dock closes; a full or blocked browser storage just means the draft is not kept. A message held while Pi starts keeps its stored draft until it is written to the socket. Signing out removes every saved draft.
   Attached images are not saved, since a few of them would fill the browser's storage quota; they wait only while the dock stays open, and a reload asks you to attach them again.
 - Switch the model and thinking level from the selects in the message box's bottom row.
   Replies render as Markdown, links to notes open in the app, and questions Pi's extensions ask appear as cards in the conversation.

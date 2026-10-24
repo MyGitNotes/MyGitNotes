@@ -25,12 +25,20 @@ export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
  */
 export const MAX_ATTACHMENTS_BYTES = 10 * 1024 * 1024;
 
-export type AttachmentProblem =
-  | { kind: 'type'; name: string; }
-  | { kind: 'size'; name: string; }
-  | { kind: 'total'; name: string; }
-  | { kind: 'count'; name: string; }
-  | { kind: 'read'; name: string; };
+/** The largest WebSocket frame the server accepts is 16 MiB; a prompt is refused before it is sent past this. */
+export const MAX_FRAME_BYTES = 15.5 * 1024 * 1024;
+
+/** The bytes a serialized frame takes on the wire. */
+export const frameBytes = (frame: string) => new TextEncoder().encode(frame).length;
+
+/** Whether images together stay inside the count and size limits a single message is held to, measured from their base64. */
+export function imagesWithinLimits(images: readonly PiImage[]): boolean {
+  if (images.length > MAX_ATTACHMENTS) return false;
+  const sizes = images.map(image => Math.floor(image.data.length * 3 / 4));
+  return sizes.every(size => size <= MAX_ATTACHMENT_BYTES) && sizes.reduce((sum, size) => sum + size, 0) <= MAX_ATTACHMENTS_BYTES;
+}
+
+export type AttachmentProblem = { kind: 'model'; name: string; } | { kind: 'type'; name: string; } | { kind: 'size'; name: string; } | { kind: 'total'; name: string; } | { kind: 'count'; name: string; } | { kind: 'read'; name: string; };
 
 function readBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

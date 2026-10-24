@@ -9,7 +9,7 @@ describe('applyModelResponse', () => {
     let state = applyModelResponse(empty, response('get_state', { model: { provider: 'anthropic', id: 'claude-opus', name: 'Claude Opus' }, thinkingLevel: 'high', isStreaming: false }));
     state = applyModelResponse(state, response('get_available_models', { models: [{ provider: 'anthropic', id: 'claude-opus', name: 'Claude Opus' }, { provider: 'openai-codex', id: 'gpt-6.1-sol' }] }));
     state = applyModelResponse(state, response('get_available_thinking_levels', { levels: ['low', 'high'] }));
-    expect(state).toEqual({ model: 'anthropic/claude-opus', thinking: 'high', loaded: true, models: [{ value: 'anthropic/claude-opus', label: 'Claude Opus (anthropic)', name: 'Claude Opus' }, { value: 'openai-codex/gpt-6.1-sol', label: 'gpt-6.1-sol (openai-codex)', name: 'gpt-6.1-sol' }], levels: ['low', 'high'] });
+    expect(state).toEqual({ model: 'anthropic/claude-opus', thinking: 'high', images: false, loaded: true, models: [{ value: 'anthropic/claude-opus', label: 'Claude Opus (anthropic)', name: 'Claude Opus' }, { value: 'openai-codex/gpt-6.1-sol', label: 'gpt-6.1-sol (openai-codex)', name: 'gpt-6.1-sol' }], levels: ['low', 'high'] });
   });
 
   it('follows a model switch, and ignores failures and unrelated records', () => {
@@ -23,5 +23,16 @@ describe('applyModelResponse', () => {
     expect(applyModelResponse(empty, response('get_available_models', { models: [] }))).toEqual({ ...empty, loaded: true });
     expect(applyModelResponse(empty, response('get_available_models', undefined, false)).loaded).toBeUndefined();
     expect(empty.loaded).toBeUndefined();
+  });
+});
+
+describe('image capability', () => {
+  const empty: PiModelState = { models: [], levels: [] };
+  const response = (command: string, data: unknown) => ({ type: 'response', command, success: true, data });
+  it('follows the current model declaring image input', () => {
+    const withImages = applyModelResponse(empty, response('get_state', { model: { provider: 'a', id: 'v', input: ['text', 'image'] } }));
+    expect(withImages.images).toBe(true);
+    expect(applyModelResponse(withImages, response('set_model', { provider: 'a', id: 't', input: ['text'] })).images).toBe(false);
+    expect(applyModelResponse(withImages, response('get_state', { model: { provider: 'pro', id: 'haiku' } })).images).toBe(false);
   });
 });

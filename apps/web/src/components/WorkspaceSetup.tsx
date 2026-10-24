@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react';
+import { clearAgentDrafts } from '../lib/pi-agent/draft.js';
 import { ArrowLeftRight, GitBranch, Languages, ListTree, LogOut, Network, ShieldCheck } from 'lucide-react';
 import { Button } from './Button.js';
 import { AuthControls, ConnectionState } from './AuthControls.js';
@@ -97,7 +98,10 @@ function SignIn({ storage, githubOnly }: { storage?: SessionProbe['storage']; gi
 
 async function signOut() {
   const response = await fetch('/api/auth/logout', { method: 'POST' });
-  if (response.ok) window.location.reload();
+  if (response.ok) {
+    clearAgentDrafts();
+    window.location.reload();
+  }
 }
 
 /** Lists the repositories the visitor may open and stores the one they pick. */

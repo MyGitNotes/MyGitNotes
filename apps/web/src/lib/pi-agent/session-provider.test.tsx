@@ -521,3 +521,40 @@ it('does not take a message as sent once the session has ended, so the message b
   expect(accepted).toBe(false);
   expect(agent.current?.error).toBe('Pi is not connected.');
 });
+
+it('refuses a message that would push the held ones past the frame limit, keeping what is held', async () => {
+  const agent = mount([], undefined, false);
+  await waitFor(() => expect(agent.current?.available).toBe(true));
+  let accepted = true;
+  act(() => void agent.current!.send('first', undefined, [png]));
+  act(() => {
+    accepted = agent.current!.send('x'.repeat(16 * 1024 * 1024), undefined, []);
+  });
+  expect(accepted).toBe(false);
+  expect(agent.current?.error).toContain('too large');
+  expect(agent.current?.held).toBe('first');
+  // Too many images in the held set are refused the same way.
+  act(() => {
+    accepted = agent.current!.send('more', undefined, [png, png, png, png, png]);
+  });
+  expect(accepted).toBe(false);
+  expect(agent.current?.held).toBe('first');
+  await waitFor(() => expect(FakeSocket.last).toBeDefined());
+  const socket = FakeSocket.last!;
+  act(() => {
+    socket.readyState = FakeSocket.OPEN;
+    socket.onopen?.();
+  });
+  expect(socket.sent.at(-1)).toMatchObject({ type: 'prompt', message: 'first', images: [png] });
+});
+
+it('does not take a built-in or a shell run as sent while Pi is not connected', async () => {
+  const { agent, socket } = await opened();
+  act(() => socket.receive({ type: 'bridge_status', session: live({ status: 'exited' }) }));
+  socket.readyState = 3;
+  let results: boolean[] = [];
+  act(() => {
+    results = [agent.current!.send('/compact'), agent.current!.send('/new'), agent.current!.send('/name draft'), agent.current!.send('!ls')];
+  });
+  expect(results).toEqual([false, false, false, false]);
+});
