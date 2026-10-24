@@ -313,7 +313,7 @@ export const en = {
   'argumentMap.template': '::::argument-map{title="Should I take an umbrella?" source="Made up"}\n- [C] I should take an umbrella today\n\n:::reason{to="C" id="R1"}\n- [W] The forecast says rain this afternoon\n- _Carrying an umbrella costs little_\n:::\n\n:::objection{to="W" id="O1"}\n- Forecasts are often wrong\n:::\n\n:::objection{to="O1"}\n- This one comes from the weather bureau, which was right three days running\n:::\n::::\n',
   'argumentMap.editor.badge': 'Argument map',
   'argumentMap.editor.toolbarLabel': 'Argument map toolbar',
-  'argumentMap.editor.markdown': 'Markdown',
+  'argumentMap.editor.markdown': 'Edit',
   'argumentMap.editor.markdownHint': 'Edit this argument map as Markdown',
   'infographic.column.key-numbers.value': 'Figure',
   'infographic.column.key-numbers.label': 'Label',

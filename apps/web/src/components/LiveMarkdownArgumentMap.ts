@@ -11,8 +11,8 @@ function openMarkdown(view: EditorView, from: number) {
 }
 
 /**
- * One argument-map block in the live editor: its figure, drawn as a note draws it, with a 「Markdown」 control that puts the
- * cursor in the source. Argument maps are edited as Markdown; there is no structured editor.
+ * One argument-map block in the live editor: its figure, drawn as a note draws it, with an 「編輯」 button that puts the
+ * cursor in the source. Clicks in the figure never open the source, so its tabs and collapsible arguments stay usable. Argument maps are edited as Markdown; there is no structured editor.
  */
 export class LiveMarkdownArgumentMap extends WidgetType {
   constructor(readonly text: string, readonly path: string, readonly from: number, readonly readOnly: boolean, readonly t: Translate, readonly notebookId?: string) {
@@ -43,11 +43,10 @@ export class LiveMarkdownArgumentMap extends WidgetType {
     // renderNote ends in DOMPurify, so the parsed nodes are the sanitised figure.
     const rendered = new DOMParser().parseFromString(renderNote(this.text, this.path, undefined, youtubeLabels(t), this.notebookId), 'text/html');
     figure.append(...rendered.body.childNodes);
-    figure.addEventListener('dblclick', event => {
-      if (this.readOnly || (event.target as HTMLElement).closest('button, select, input, label, a, summary')) return;
-      event.preventDefault();
-      openMarkdown(view, this.from);
-    });
+    // A press in the figure would move the browser selection into the widget, which CodeMirror reads as the cursor
+    // entering the block and answers by showing the source. Cancelling the press keeps the selection where it was;
+    // the click that follows still switches a tab or folds an argument.
+    figure.addEventListener('mousedown', event => event.preventDefault());
     children.push(figure);
     root.replaceChildren(...children);
     return root;

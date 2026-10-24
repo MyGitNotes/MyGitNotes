@@ -31,13 +31,13 @@ async function mount(initial: string, readOnly = false) {
 }
 
 describe('an argument map block in the live editor', () => {
-  it('shows the rendered figure with a toolbar holding a Markdown control', async () => {
+  it('shows the rendered figure with a toolbar holding an Edit button', async () => {
     const { widget } = await mount(DOC);
     const root = widget()!;
     expect(root.dataset.directiveType).toBe('argument-map');
     const toolbar = within(root).getByRole('toolbar', { name: 'Argument map toolbar' });
     expect(toolbar).toHaveTextContent('Argument map');
-    expect(within(toolbar).getByRole('button', { name: 'Edit this argument map as Markdown' })).toHaveTextContent('Markdown');
+    expect(within(toolbar).getByRole('button', { name: 'Edit this argument map as Markdown' })).toHaveTextContent('Edit');
     expect(root.querySelector('figure.am-figure .am-root')).toHaveTextContent('Take an umbrella');
     expect(root.querySelectorAll('details.am-details[open]')).toHaveLength(2);
     // Not the generic block widget, whose format select would list the generic blocks, and not an infographic.
@@ -59,7 +59,7 @@ describe('an argument map block in the live editor', () => {
     expect(widget()).toBe(root);
   });
 
-  it('puts the cursor in the block with the Markdown control, which shows the source', async () => {
+  it('puts the cursor in the block with the Edit button, which shows the source', async () => {
     const { widget, editor } = await mount(DOC);
     fireEvent.click(within(widget()!).getByRole('button', { name: 'Edit this argument map as Markdown' }));
     const { head } = editor.state.selection.main;
@@ -70,12 +70,18 @@ describe('an argument map block in the live editor', () => {
     expect(editor.state.doc.toString()).toBe(DOC);
   });
 
-  it('opens the source by double-clicking the figure, but not by clicking a tab', async () => {
-    const { widget } = await mount(DOC);
-    fireEvent.doubleClick(widget()!.querySelector('label.am-tab')!);
-    expect(widget()).not.toBeNull();
-    fireEvent.doubleClick(widget()!.querySelector('.live-directive-preview-content')!);
-    await waitFor(() => expect(widget()).toBeNull());
+  it('keeps the figure when its tabs, arguments or body are clicked or double-clicked; only the Edit button opens the source', async () => {
+    const { widget, editor } = await mount(DOC);
+    const root = widget()!;
+    for (const target of [root.querySelector('label.am-tab-standard')!, root.querySelector('summary')!, root.querySelector('.live-directive-preview-content')!]) {
+      fireEvent.click(target);
+      fireEvent.doubleClick(target);
+    }
+    // A press must not move the browser selection into the widget, which CodeMirror would read as entering the block.
+    expect(fireEvent.mouseDown(root.querySelector('label.am-tab-map')!)).toBe(false);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(widget()).toBe(root);
+    expect(editor.state.doc.toString()).toBe(DOC);
   });
 
   it('draws two blocks with the same text with ids of their own', async () => {

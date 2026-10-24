@@ -315,7 +315,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'argumentMap.template': '::::argument-map{title="要不要帶傘" source="自擬"}\n- [C] 今天應該帶傘\n\n:::reason{to="C" id="R1"}\n- [W] 預報說下午有雨\n- _帶傘的成本很低_\n:::\n\n:::objection{to="W" id="O1"}\n- 預報常常不準\n:::\n\n:::objection{to="O1"}\n- 這個預報來自氣象署，近三天都命中\n:::\n::::\n',
   'argumentMap.editor.badge': '論證圖',
   'argumentMap.editor.toolbarLabel': '論證圖操作列',
-  'argumentMap.editor.markdown': 'Markdown',
+  'argumentMap.editor.markdown': '編輯',
   'argumentMap.editor.markdownHint': '以 Markdown 編輯此論證圖',
   'infographic.column.key-numbers.value': '數字',
   'infographic.column.key-numbers.label': '標籤',
