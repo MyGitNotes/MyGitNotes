@@ -33,7 +33,7 @@ export function BrowseDockToggle({ placement, collapsed, onCollapsedChange }: { 
   const { t } = useTranslation();
   // The browse region sits left of or above the Focus; browse-dock.css turns the icon's arrow as it collapses.
   const Icon = placement === 'left' ? PanelLeftClose : PanelTopClose;
-  const label = t(collapsed ? 'focus.expandBrowse' : 'focus.collapseBrowse');
+  const label = t(collapsed ? 'focus.expandBrowseAndHeader' : 'focus.collapseBrowseAndHeader');
   return (
     <button type='button' className='ui-icon-button browse-dock-toggle' data-collapsed={collapsed || undefined} aria-label={label} title={label} onClick={() => onCollapsedChange(!collapsed)}>
       <Icon size={16} />

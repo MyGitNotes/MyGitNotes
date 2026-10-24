@@ -1804,8 +1804,6 @@ export const en = {
   'focus.depthLimit': 'Splits can nest at most 4 levels deep.',
   'focus.addTo': 'Add to Focus',
   'focus.zoomNote': 'Open in zoom',
-  'focus.collapseBrowse': 'Collapse browse panel',
-  'focus.expandBrowse': 'Expand browse panel',
   'focus.collapseBrowseAndHeader': 'Collapse browse panel and header',
   'focus.expandBrowseAndHeader': 'Expand browse panel and header',
   'focus.paneNumber': 'Pane {number}',

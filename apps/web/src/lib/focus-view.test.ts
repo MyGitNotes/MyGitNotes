@@ -14,7 +14,7 @@ const state = (overrides: Partial<FocusViewState> = {}): FocusViewState => ({ ..
 
 describe('emptyFocusView', () => {
   it('starts with a single empty pane and default dock sizes', () => {
-    expect(emptyFocusView()).toEqual({ current: { root: leaf('p1') }, entries: {}, last: null, dock: { left: 320, top: 280, collapsed: true } });
+    expect(emptyFocusView()).toEqual({ current: { root: leaf('p1') }, entries: {}, last: null, dock: { left: 320, top: 280, collapsed: false } });
   });
 });
 
@@ -55,7 +55,7 @@ describe('readFocusView', () => {
     expect(readFocusView({}).last).toBeNull();
   });
   it('falls back to each dock default individually', () => {
-    expect(readFocusView({ dock: { left: 'x', top: 200, collapsed: 'false' } }).dock).toEqual({ left: 320, top: 200, collapsed: true });
+    expect(readFocusView({ dock: { left: 'x', top: 200, collapsed: 'yes' } }).dock).toEqual({ left: 320, top: 200, collapsed: false });
     expect(readFocusView({ dock: { left: -10, top: 200, collapsed: true } }).dock).toEqual({ left: 320, top: 200, collapsed: true });
     expect(readFocusView({}).dock).toEqual(emptyFocusView().dock);
   });

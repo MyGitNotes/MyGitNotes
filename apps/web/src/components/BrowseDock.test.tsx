@@ -108,9 +108,9 @@ it('renders both regions, with no control over them, when docked and expanded', 
 it('toggle collapses an expanded dock and reopens a collapsed one', () => {
   const onCollapsedChange = vi.fn();
   const { rerender } = render(createElement(BrowseDockToggle, { placement: 'left', collapsed: false, onCollapsedChange }));
-  fireEvent.click(screen.getByLabelText('Collapse browse panel'));
+  fireEvent.click(screen.getByLabelText('Collapse browse panel and header'));
   expect(onCollapsedChange).toHaveBeenLastCalledWith(true);
   rerender(createElement(BrowseDockToggle, { placement: 'left', collapsed: true, onCollapsedChange }));
-  fireEvent.click(screen.getByLabelText('Expand browse panel'));
+  fireEvent.click(screen.getByLabelText('Expand browse panel and header'));
   expect(onCollapsedChange).toHaveBeenLastCalledWith(false);
 });

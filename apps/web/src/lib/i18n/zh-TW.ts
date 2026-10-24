@@ -1805,8 +1805,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'focus.depthLimit': '分割最多巢狀 4 層。',
   'focus.addTo': '加到 Focus',
   'focus.zoomNote': '以 zoom 開啟',
-  'focus.collapseBrowse': '收合瀏覽區',
-  'focus.expandBrowse': '展開瀏覽區',
   'focus.collapseBrowseAndHeader': '收合瀏覽區與導覽列',
   'focus.expandBrowseAndHeader': '展開瀏覽區與導覽列',
   'focus.paneNumber': '窗格 {number}',

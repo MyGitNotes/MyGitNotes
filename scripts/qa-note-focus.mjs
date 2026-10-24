@@ -550,9 +550,9 @@ try {
   // Tabs reorder within a pane; the browse panel collapses and expands.
   await dragTo(device, await tabHandle(device, 0, 'Zeta'), await tabHandle(device, 0, 'Alpha'));
   await waitTabs(device, 0, ['Zeta', 'Alpha', 'Gamma']);
-  await device.click('[aria-label="Collapse browse panel"]');
+  await device.click('[aria-label="Collapse browse panel and header"]');
   await device.waitForFunction(() => !document.querySelector('.browse-dock-scroll'));
-  await device.click('[aria-label="Expand browse panel"]');
+  await device.click('[aria-label="Expand browse panel and header"]');
   await device.waitForSelector('.browse-dock-scroll');
   console.log('PASS 8e tabs reorder within a pane and the browse panel collapses and expands');
 

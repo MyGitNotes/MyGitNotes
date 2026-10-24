@@ -99,7 +99,7 @@ function readEntry(raw: unknown): FocusEntryView | LegacyFocusEntryView | null {
 }
 
 export function emptyFocusView(): FocusViewState {
-  return { current: emptyFocusLayout(), entries: {}, last: null, dock: { left: 320, top: 280, collapsed: true } };
+  return { current: emptyFocusLayout(), entries: {}, last: null, dock: { left: 320, top: 280, collapsed: false } };
 }
 
 /** Tolerant reader for whatever JSON was stored: never throws, drops or defaults whatever doesn't validate. */
