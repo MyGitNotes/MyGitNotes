@@ -1,3 +1,4 @@
+import { NewerVersionError } from './newer-version-error.js';
 import { STUDY_FILE } from './study.js';
 import { BookmarkError } from './bookmark-error.js';
 import { managedNotebook } from './file-manager.js';
@@ -642,7 +643,8 @@ export abstract class RemoteSource {
     if (raw !== null && Buffer.byteLength(raw) > document.maxBytes) throw new SourceError(`${document.label} is too large.`, 413);
     try {
       return readWorkspaceDocument(document, raw);
-    } catch {
+    } catch (error) {
+      if (error instanceof NewerVersionError) throw new SourceError(error.message, 422);
       throw new SourceError(`Invalid ${document.label} YAML. Fix the file before saving.`, 422);
     }
   }

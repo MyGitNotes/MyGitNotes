@@ -42,7 +42,7 @@ export interface FocusLayout { root: FocusNode; }
 // Focus = { id, notebookId, name } & FocusLayout; FocusPage = { version: 2, focuses: Focus[] } in memory and on the wire
 ```
 
-Zod: `FocusNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [pane, split]))`, each `.strict()`, node `id` the existing `id` regex (`[a-zA-Z0-9_-]{1,64}`), `children` `.min(2)`.
+Zod: `FocusNodeSchema = z.lazy(() => z.discriminatedUnion('kind', [pane, split]))`, each `.strict()`, node `id` the existing `id` regex (`[a-zA-Z0-9_-]{1,64}`), `children` `.min(1)`: a one-child split passes the schema and `normalizeFocus` replaces it by its child.
 `FocusLayoutSchema = z.object({ root }).strict().transform(normalizeFocus).superRefine(checkFocusLayout)`, and `FocusSchema` the same with the Focus fields.
 
 `normalizeFocus` (pure, same reference when nothing changes):
@@ -117,6 +117,7 @@ The cleanup phase deletes `write` for Focus and with it `legacyDivisionOf`.
 - Worse, `relocateWorkspaceDocuments` throws 422 on every note or folder move in that repository, and a remote commit that carries a Focus draft cannot happen. This is what D11's phasing prevents.
 - From phase 1 on, a `version` higher than 2 gets its own message ("This Focus file was saved by a newer MyGitNotes; update this deployment"), on load and on a move, instead of the generic invalid-YAML one; it still fails, since silently skipping relocation would leave stale paths.
 - The scratch Focus is per origin in `localStorage`; notes.wayneh.tw and Pro never share it. Rolling one origin back to a pre-phase-1 build drops that device's scratch layout to empty (`readFocusView` falls back), named Focus entries are unaffected.
+- During a deploy, a tab still on the pre-phase-1 bundle in the same origin cannot read the scratch tree a new tab wrote: its next view write stores an empty scratch layout and drops the new-format view entries, so that device loses its scratch tabs (review R-F002, accepted). Document drafts in `localStorage` are stored in the version 2 shape too, so rolling an origin back before phase 1 leaves them unreadable; they can only be discarded. Named Focus files are unaffected in both cases. Reloading every open tab after a deploy avoids the first.
 
 ### Operations
 
