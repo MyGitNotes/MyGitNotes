@@ -191,6 +191,12 @@ export function planSourceConversion(root: string, options: SourceConversionOpti
     if (own.errors.length) throw new SourceConversionError(`The manifest of ${label} (${file}): ${own.errors[0].message}`);
     if (before !== null) requireSchema3(own, path.join(target.root, file));
     if (before === null && preferences) own.set('preferences', preferences.clone());
+    // The retired Default Focus mode setting is not carried into a converted manifest.
+    const ownPreferences = own.get('preferences', true);
+    if (YAML.isMap(ownPreferences) && ownPreferences.has('defaultFocusMode')) {
+      ownPreferences.delete('defaultFocusMode');
+      if (ownPreferences.items.length === 0) own.delete('preferences');
+    }
     const ownNotebooks = own.get('notebooks');
     if (!YAML.isSeq(ownNotebooks)) throw new SourceConversionError(`The manifest of ${label} (${file}): notebooks must be a list.`);
     if (ownNotebooks.items.some(item => YAML.isMap(item) && item.has('source'))) throw new SourceConversionError(`The manifest of ${label} still uses source. Run pnpm convert-sources in ${target.root} first.`);

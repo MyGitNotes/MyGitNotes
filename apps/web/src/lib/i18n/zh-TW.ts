@@ -752,7 +752,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'shortcuts.describe.focusCloseTab': '關閉目前的 Focus 分頁',
   'shortcuts.describe.focusZoomTab': '用完整編輯器開啟目前的 Focus 筆記',
   'shortcuts.requiresWriteAccess': '需要寫入權限',
-  'shortcuts.requiresNotes': '請先開啟筆記',
   'shortcuts.requiresAgent': '這個工作區無法使用 Agent',
   'shortcuts.requiresTwoFocusPanes': '需要兩個 Focus 窗格',
   'shortcuts.requiresFocusTab': '請先開啟 Focus 分頁',

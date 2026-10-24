@@ -73,8 +73,8 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   const storedLayout = (target: string): FocusLayout | undefined => target === CURRENT_FOCUS ? viewRef.current.current : focuses.find(focus => focus.id === target);
   /** The Focus asked for: the URL's, else the one displayed last, else the default. One that no longer exists gives way to the default. */
   const requested = focusKey ?? (restoreLast ? view.last ?? CURRENT_FOCUS : null);
-  const fallback = available ? CURRENT_FOCUS : null;
-  const shown = requested && known(requested) ? requested : requested ? fallback : null;
+  // While the Focus document is not available, a named Focus cannot be shown yet, so the Default stands in for it; `last` keeps the name.
+  const shown = requested && known(requested) ? requested : requested ? CURRENT_FOCUS : null;
   // The displayed Focus's notes are read (without bodies) for tab titles and to hide notes that no longer exist.
   const storedLayoutShown = shown ? storedLayout(shown) : undefined;
   const storedPaths = storedLayoutShown ? focusPanes(storedLayoutShown).flatMap(pane => pane.tabs.map(tab => tab.path)) : [];
@@ -98,8 +98,8 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
 
   // Remember the displayed Focus so returning to this notebook shows it again.
   useEffect(() => {
-    if (shown && viewRef.current.last !== shown) update(current => ({ ...current, last: shown }));
-  }, [shown, update]);
+    if (shown && (available || shown === requested) && viewRef.current.last !== shown) update(current => ({ ...current, last: shown }));
+  }, [shown, requested, available, update]);
 
   const setEntry = (target: string, change: (entry: FocusEntryView) => FocusEntryView, layout = layoutOf(target)) => {
     if (!layout) return;
