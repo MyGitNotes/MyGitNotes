@@ -1,7 +1,7 @@
 import React, { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChevronDown, FileText, GalleryHorizontalEnd, ListPlus, Maximize2, PanelTopClose, X } from 'lucide-react';
-import { findFocusTabInPane, type FocusTab, focusTabKey } from '@mygitnotes/core/focus-page';
+import { findFocusPane, findFocusTabInPane, focusPaneIndex, type FocusTab, focusTabKey } from '@mygitnotes/core/focus-page';
 import { COMPILATION_SUFFIX, isCompilationPath } from '@mygitnotes/core/compilation';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import type { DisplayedPane } from '../lib/focus-view.js';
@@ -24,7 +24,7 @@ export interface FocusPaneContext {
   /** The notebook's configured folders, for the batch-add picker. */
   folders: readonly FolderItem[];
   /** The view of the compilation at `path`, shown in place of a note editor. */
-  renderCompilation: (path: string, pane: number) => ReactNode;
+  renderCompilation: (path: string, pane: string) => ReactNode;
   onZoomNote: (path: string) => void;
   /** The rail container and section the active pane's editor renders its document panel into. */
   documentPanel?: NoteEditorProps['documentPanel'];
@@ -35,13 +35,13 @@ export interface FocusPaneContext {
 interface PaneTab {
   tab: FocusTab;
   key: string;
-  pane: number;
+  pane: string;
   index: number;
   label: string;
 }
 /** Where a drop lands: before `index` of stored `pane`, or at its end without one. */
 interface DropSlot {
-  pane: number;
+  pane: string;
   index?: number;
 }
 
@@ -52,7 +52,10 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   const layout = focus.layout!, entry = focus.entry!;
   const active = displayed.panes.includes(entry.activePane);
   const editable = focus.editable;
-  const tabs: PaneTab[] = displayed.panes.flatMap(pane => layout.panes[pane].tabs.map((tab, index) => ({ tab, key: focusTabKey(tab), pane, index, label: focus.notes.get(tab.path)?.title || tab.path.split('/').pop()!.replace(/\.md$|\.compilation\.yml$/, '') })));
+  const tabsOf = (pane: string) => findFocusPane(layout, pane)?.tabs ?? [];
+  /** "Pane N" in pane order, as the user counts them. */
+  const numberOf = (pane: string) => focusPaneIndex(layout, pane) + 1;
+  const tabs: PaneTab[] = displayed.panes.flatMap(pane => tabsOf(pane).map((tab, index) => ({ tab, key: focusTabKey(tab), pane, index, label: focus.notes.get(tab.path)?.title || tab.path.split('/').pop()!.replace(/\.md$|\.compilation\.yml$/, '') })));
   const repeatedLabels = new Set(tabs.filter((tab, index) => tabs.findIndex(candidate => candidate.label === tab.label) !== index).map(tab => tab.label));
   const shown = tabs.find(tab => tab.pane === displayed.pane && tab.key === displayed.key);
   const panelId = `focus-pane-${displayed.pane}`;
@@ -92,7 +95,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   const marker = (tab: PaneTab) => {
     if (!slot || tab.pane !== slot.pane) return undefined;
     if (tab.index === slot.index) return 'before';
-    const count = layout.panes[tab.pane].tabs.length;
+    const count = tabsOf(tab.pane).length;
     return tab.index === count - 1 && (slot.index === undefined || slot.index >= count) ? 'after' : undefined;
   };
   /** A tab-bar drag moves by default; Shift copies instead. A browse-row drag (no source pane) always copies. Same-pane drops always reorder. */
@@ -120,10 +123,10 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
       className='focus-pane'
       data-focus-pane={displayed.pane}
       data-active={active || undefined}
-      data-dimmed={paneDimmed(searchMatches, displayed.panes.flatMap(pane => layout.panes[pane].tabs)) || undefined}
+      data-dimmed={paneDimmed(searchMatches, displayed.panes.flatMap(tabsOf)) || undefined}
       data-dropping={slot ? true : undefined}
       data-hide-toolbar={hideToolbar || undefined}
-      aria-label={t('focus.paneNumber', { number: displayed.pane + 1 })}
+      aria-label={t('focus.paneNumber', { number: numberOf(displayed.pane) })}
       onPointerDownCapture={() => focus.activate(displayed.pane)}
       onFocusCapture={() => focus.activate(displayed.pane)}
       onDragOver={event => hover(event, { pane: displayed.pane })}
@@ -137,7 +140,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
           ref={list}
           className='focus-tabs'
           role='tablist'
-          aria-label={t('focus.paneTabs', { number: displayed.pane + 1 })}
+          aria-label={t('focus.paneTabs', { number: numberOf(displayed.pane) })}
           onKeyDown={event => {
             const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
             const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -169,8 +172,8 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
                 role='tab'
                 aria-selected={tab.pane === displayed.pane && tab.key === displayed.key}
                 aria-controls={panelId}
-                aria-label={repeatedLabels.has(tab.label) ? `${tab.label}, ${t('focus.paneNumber', { number: tab.pane + 1 })}` : undefined}
-                data-pane-cue={repeatedLabels.has(tab.label) ? t('focus.paneShort', { number: tab.pane + 1 }) : undefined}
+                aria-label={repeatedLabels.has(tab.label) ? `${tab.label}, ${t('focus.paneNumber', { number: numberOf(tab.pane) })}` : undefined}
+                data-pane-cue={repeatedLabels.has(tab.label) ? t('focus.paneShort', { number: numberOf(tab.pane) }) : undefined}
                 tabIndex={(tab.pane === displayed.pane && tab.key === displayed.key) || (!displayed.key && tab === tabs[0]) ? 0 : -1}
                 title={tab.label}
                 onClick={() => void focus.show(tab.pane, tab.key)}
@@ -229,15 +232,15 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
 /** A dropped tab: its FocusTab, and (for a tab-bar drag) the pane it came from — undefined for a browse-row drag, which always copies. */
 interface DroppedTab {
   tab: FocusTab;
-  pane?: number;
+  pane?: string;
 }
 
 function droppedTab(data: DataTransfer, notebookRoot: string): DroppedTab | undefined {
   const moved = data.getData(TAB_DRAG_TYPE);
   if (moved) {
     try {
-      const { tab, pane } = JSON.parse(moved) as { tab: FocusTab; pane: number; };
-      if (typeof pane === 'number' && tab.kind === 'note' && typeof tab.path === 'string') return { tab, pane };
+      const { tab, pane } = JSON.parse(moved) as { tab: FocusTab; pane: string; };
+      if (typeof pane === 'string' && tab.kind === 'note' && typeof tab.path === 'string') return { tab, pane };
     } catch { /* falls through to undefined */ }
     return undefined;
   }

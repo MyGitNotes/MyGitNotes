@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 import { compilationFile, type CompilationRow, compilationSlug, parseCompilation, serializeCompilation, uniqueCompilationPath } from './compilation.js';
-import { FOCUS_PAGE_FILE, FocusPageSchema } from './focus-page.js';
+import { FOCUS_DOCUMENT, FOCUS_PAGE_FILE, readFocusPage } from './focus-page.js';
 import { resolveNoteStatuses } from './note-status.js';
 import { readScreenPage, SCREEN_PAGE_FILE, type ScreenPage } from './screen-page.js';
 import type { NotebookConfig } from './types.js';
-import { serializeWorkspaceDocument } from './workspace-documents.js';
+import { writeWorkspaceDocument } from './workspace-documents.js';
 
 type MigrationNotebook = Pick<NotebookConfig, 'id' | 'root'> & Partial<Pick<NotebookConfig, 'statuses'>>;
 
@@ -137,11 +137,11 @@ export function planScreenMigration(root: string, notebooks: readonly MigrationN
     if (migrated.changedTabs || migrated.droppedTabs) {
       let focus;
       try {
-        focus = FocusPageSchema.parse(migrated.page);
+        focus = readFocusPage(migrated.page);
       } catch (error) {
         throw new ScreenMigrationError(`${FOCUS_PAGE_FILE} in ${root} cannot be migrated: ${(error as Error).message.split('\n')[0]}`);
       }
-      plan.focus = { content: serializeWorkspaceDocument(focus), changedTabs: migrated.changedTabs, droppedTabs: migrated.droppedTabs };
+      plan.focus = { content: writeWorkspaceDocument(FOCUS_DOCUMENT, focus), changedTabs: migrated.changedTabs, droppedTabs: migrated.droppedTabs };
       touched.push(FOCUS_PAGE_FILE);
     }
   }

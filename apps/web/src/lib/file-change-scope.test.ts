@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { fileCommandScope, folderCommandScope, strandedDrafts } from './file-change-scope.js';
 
-const focus = (paths: string[]) => ({ version: 1, focuses: [{ id: 'f', notebookId: 'nb', name: 'Focus', division: 'single', panes: [{ tabs: paths.map(path => ({ kind: 'note', path })) }] }] });
+const focus = (paths: string[]) => ({ version: 2, focuses: [{ id: 'f', notebookId: 'nb', name: 'Focus', root: { kind: 'pane', id: 'p1', tabs: paths.map(path => ({ kind: 'note', path })) } }] });
 
 it('scopes a file command to the paths it writes, moves or removes', () => {
   expect(fileCommandScope({ kind: 'move', notebookId: 'nb', path: 'notes/a.md', destination: 'notes/work/a.md' })).toEqual({ notebookId: 'nb', paths: ['notes/a.md', 'notes/work/a.md'] });
@@ -29,5 +29,5 @@ it('strands a pending Focus only when it names a changed path of the same notebo
   expect(strandedDrafts({ notebookId: 'nb', paths: ['notes/work'] }, [], documents)).toEqual(['.mygitnotes/focus.yml']);
   expect(strandedDrafts({ notebookId: 'nb', paths: ['notes/other'] }, [], documents)).toEqual([]);
   expect(strandedDrafts({ notebookId: 'other', paths: ['notes/work'] }, [], documents)).toEqual([]);
-  expect(documents[0].page.focuses[0].panes[0].tabs[0].path).toBe('notes/work/a.md');
+  expect(documents[0].page.focuses[0].root.tabs[0].path).toBe('notes/work/a.md');
 });

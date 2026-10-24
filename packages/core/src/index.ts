@@ -49,6 +49,7 @@ export { GitLabSource } from './gitlab-source.js';
 export { createRemoteSource, openRemoteRepository } from './remote-factory.js';
 export { MANIFEST_FILES, RemoteManifest } from './remote-manifest.js';
 export * from './notebook-key.js';
+export * from './newer-version-error.js';
 export * from './repository.js';
 export * from './workspace-config-source.js';
 export * from './workspace-repositories.js';

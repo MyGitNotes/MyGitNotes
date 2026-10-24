@@ -1,28 +1,37 @@
-import { displayPanes, emptyFocusLayout, findFocusTabInPane, type FocusDivision, type FocusLayout, FocusLayoutSchema, focusTabKey } from '@mygitnotes/core/focus-page';
+import { displayFocus, emptyFocusLayout, findFocusPane, type FocusDisplay, type FocusLayout, type FocusNode, focusPanes, type FocusSplitNode, focusTabKey, readFocusLayout } from '@mygitnotes/core/focus-page';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 
 export const CURRENT_FOCUS = 'current';
 
-/** View state for one Focus (the unnamed (current) one under key CURRENT_FOCUS, or a named one under its id). */
+/** View state for one Focus (the unnamed (current) one under key CURRENT_FOCUS, or a named one under its id), keyed by the ids of the layout's panes and splits. */
 export interface FocusEntryView {
+  activePane: string;
+  /** Per pane id: the key (focusTabKey) of the displayed tab, or null when the pane is empty. */
+  shown: Record<string, string | null>;
+  /** Pane ids, most recently used first. */
+  recent: string[];
+  /** Per pane id: the keys of the tabs shown there, most recently shown first, so closing a tab returns to the one before it. */
+  history: Record<string, string[]>;
+  /** Split sizes (percentages) per split id, then per child id (a pane's or split's own id). */
+  ratios: Record<string, Record<string, number>>;
+  /** Per pane id: hide the note editor and compilation toolbars to leave room for content. */
+  hideToolbar: Record<string, boolean>;
+}
+
+/** An entry as this device stored it before layouts were trees: everything indexed by pane position, sizes keyed by the old group names. Converted by `entryView`. */
+export interface LegacyFocusEntryView {
   activePane: number;
-  /** Per pane: the key (focusTabKey) of the displayed tab, or null when the pane is empty. */
   shown: (string | null)[];
-  /** Pane indices, most recently used first. */
   recent: number[];
-  /** Per pane: the keys of the tabs shown there, most recently shown first, so closing a tab returns to the one before it. */
   history: string[][];
-  /** Split sizes (percentages) keyed by a group id chosen by the layout component. */
   ratios: Record<string, number[]>;
-  /** Per pane: its tab bar stays hidden until pointed at. */
-  /** Per pane: hide the note editor and compilation toolbars to leave room for content. */
   hideToolbar: boolean[];
 }
 
 export interface FocusViewState {
   /** Layout of the unnamed (current) Focus; it lives only in this browser. */
   current: FocusLayout;
-  entries: Record<string, FocusEntryView>;
+  entries: Record<string, FocusEntryView | LegacyFocusEntryView>;
   /** Focus key last displayed in this notebook; null means normal browsing. */
   last: string | null;
   /** Browse region: left dock width (px), top dock height (px), collapsed flag. */
@@ -70,18 +79,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function readEntry(raw: unknown): FocusEntryView | null {
-  if (!isRecord(raw)) return null;
+const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string');
+const isRecordOf = (value: unknown, check: (item: unknown) => boolean): boolean => isRecord(value) && Object.values(value).every(check);
+
+function readLegacyEntry(raw: Record<string, unknown>): LegacyFocusEntryView | null {
   const { activePane, shown, recent, ratios, hideToolbar, history } = raw;
   if (typeof activePane !== 'number') return null;
   if (!Array.isArray(shown) || !shown.every(value => value === null || typeof value === 'string')) return null;
   if (!Array.isArray(recent) || !recent.every(value => typeof value === 'number')) return null;
-  if (!isRecord(ratios) || !Object.values(ratios).every(value => Array.isArray(value) && value.every(n => typeof n === 'number'))) return null;
+  if (!isRecordOf(ratios, value => Array.isArray(value) && value.every(n => typeof n === 'number'))) return null;
   // Entries stored before the toolbar toggle have no hideToolbar; the retired tab bar `autoHide` flag is ignored.
   if (hideToolbar !== undefined && !(Array.isArray(hideToolbar) && hideToolbar.every(value => typeof value === 'boolean'))) return null;
   // Entries stored before the tab history start with none; one that does not validate is dropped on its own.
-  const validHistory = Array.isArray(history) && history.every(pane => Array.isArray(pane) && pane.every(key => typeof key === 'string'));
+  const validHistory = Array.isArray(history) && history.every(isStringArray);
   return { activePane, shown: [...shown] as (string | null)[], recent: [...recent] as number[], history: validHistory ? (history as string[][]).map(pane => [...pane]) : [], ratios: ratios as Record<string, number[]>, hideToolbar: hideToolbar ? [...hideToolbar] as boolean[] : [] };
+}
+
+function readEntry(raw: unknown): FocusEntryView | LegacyFocusEntryView | null {
+  if (!isRecord(raw)) return null;
+  if (Array.isArray(raw.shown)) return readLegacyEntry(raw);
+  const { activePane, shown, recent, ratios, hideToolbar, history } = raw;
+  if (typeof activePane !== 'string') return null;
+  if (!isRecordOf(shown, value => value === null || typeof value === 'string')) return null;
+  if (!isStringArray(recent)) return null;
+  if (!isRecordOf(ratios, value => isRecordOf(value, size => typeof size === 'number'))) return null;
+  if (hideToolbar !== undefined && !isRecordOf(hideToolbar, value => typeof value === 'boolean')) return null;
+  return { activePane, shown: { ...shown as Record<string, string | null> }, recent: [...recent], history: isRecordOf(history, isStringArray) ? { ...history as Record<string, string[]> } : {}, ratios: structuredClone(ratios) as Record<string, Record<string, number>>, hideToolbar: { ...hideToolbar as Record<string, boolean> | undefined } };
 }
 
 export function emptyFocusView(): FocusViewState {
@@ -91,9 +114,11 @@ export function emptyFocusView(): FocusViewState {
 /** Tolerant reader for whatever JSON was stored: never throws, drops or defaults whatever doesn't validate. */
 export function readFocusView(raw: unknown): FocusViewState {
   if (!isRecord(raw)) return emptyFocusView();
-  const parsedCurrent = FocusLayoutSchema.safeParse(raw.current);
-  const current = parsedCurrent.success ? parsedCurrent.data : emptyFocusLayout();
-  const entries: Record<string, FocusEntryView> = {};
+  let current = emptyFocusLayout();
+  try {
+    current = readFocusLayout(raw.current);
+  } catch { /* A scratch Focus that does not validate starts empty. */ }
+  const entries: FocusViewState['entries'] = {};
   if (isRecord(raw.entries)) {
     for (const [key, value] of Object.entries(raw.entries)) {
       const entry = readEntry(value);
@@ -111,70 +136,75 @@ export function readFocusView(raw: unknown): FocusViewState {
   return { current, entries, last, dock: { left, top, collapsed } };
 }
 
-/** Normalizes a stored entry (if any) against `layout`: one shown slot, tab history and toolbar flag per pane, a valid activePane, and recent covering every pane. */
+function splitNodes(node: FocusNode): FocusSplitNode[] {
+  return node.kind === 'pane' ? [] : [node, ...node.children.flatMap(splitNodes)];
+}
+
+/**
+ * A legacy entry in terms of the layout's ids: array index `i` is the `i`-th pane in pane order, and a size group named like the old layout
+ * component's (`<division>`, `<group>.<index>`) is the split named `<division>`, `<group>-<index>`, which is what the migration of a division gives.
+ */
+function converted(stored: LegacyFocusEntryView, layout: FocusLayout): FocusEntryView {
+  const ids = focusPanes(layout).map(pane => pane.id);
+  const byPane = <T>(values: readonly T[]): Record<string, T> => Object.fromEntries(values.flatMap((value, index) => ids[index] === undefined ? [] : [[ids[index], value]]));
+  const splits = new Map(splitNodes(layout.root).map(node => [node.id, node]));
+  const ratios = Object.entries(stored.ratios).flatMap(([group, sizes]) => {
+    const split = splits.get(group.replaceAll('.', '-'));
+    return split && split.children.length === sizes.length ? [[split.id, Object.fromEntries(split.children.map((child, index) => [child.id, sizes[index]]))] as const] : [];
+  });
+  return { activePane: ids[stored.activePane] ?? '', shown: byPane(stored.shown), recent: stored.recent.flatMap(index => ids[index] === undefined ? [] : [ids[index]]), history: byPane(stored.history), ratios: Object.fromEntries(ratios), hideToolbar: byPane(stored.hideToolbar) };
+}
+
+/** Normalizes a stored entry (if any) against `layout`: one shown slot, tab history and toolbar flag per pane, a valid activePane, and recent covering every pane. A legacy entry is converted to pane ids first. */
 export function entryView(state: FocusViewState, key: string, layout: FocusLayout): FocusEntryView {
-  const stored = state.entries[key];
-  const paneCount = layout.panes.length;
-  const activePane = stored && Number.isInteger(stored.activePane) && stored.activePane >= 0 && stored.activePane < paneCount ? stored.activePane : 0;
-  const shown = layout.panes.map((pane, index) => {
-    const storedKey = stored?.shown[index];
-    if (storedKey && pane.tabs.some(tab => focusTabKey(tab) === storedKey)) return storedKey;
-    return pane.tabs[0] ? focusTabKey(pane.tabs[0]) : null;
-  });
-  const seen = new Set<number>();
-  const recent: number[] = [];
-  for (const pane of stored?.recent || []) {
-    if (Number.isInteger(pane) && pane >= 0 && pane < paneCount && !seen.has(pane)) {
-      seen.add(pane);
-      recent.push(pane);
-    }
-  }
-  for (let pane = 0; pane < paneCount; pane++) {
-    if (!seen.has(pane)) {
-      seen.add(pane);
-      recent.push(pane);
-    }
-  }
+  const raw = state.entries[key];
+  const stored = raw && Array.isArray(raw.shown) ? converted(raw as LegacyFocusEntryView, layout) : raw as FocusEntryView | undefined;
+  const panes = focusPanes(layout);
+  const ids = panes.map(pane => pane.id);
+  const activePane = stored && ids.includes(stored.activePane) ? stored.activePane : ids[0];
+  const shown = Object.fromEntries(panes.map(pane => {
+    const storedKey = stored?.shown[pane.id];
+    if (storedKey && pane.tabs.some(tab => focusTabKey(tab) === storedKey)) return [pane.id, storedKey];
+    return [pane.id, pane.tabs[0] ? focusTabKey(pane.tabs[0]) : null];
+  }));
+  const recent = [...new Set([...(stored?.recent || []).filter(pane => ids.includes(pane)), ...ids])];
   // A pane's history holds only its open tabs, each once, led by the shown one.
-  const history = layout.panes.map((pane, index) => {
+  const history = Object.fromEntries(panes.map(pane => {
     const open = new Set(pane.tabs.map(focusTabKey));
-    const keys = [shown[index], ...(stored?.history[index] || [])].filter((key): key is string => key !== null && open.has(key));
-    return [...new Set(keys)];
-  });
-  const hideToolbar = layout.panes.map((_, index) => stored?.hideToolbar[index] === true);
+    const keys = [shown[pane.id], ...(stored?.history[pane.id] || [])].filter((value): value is string => value !== null && open.has(value));
+    return [pane.id, [...new Set(keys)]];
+  }));
+  const hideToolbar = Object.fromEntries(ids.map(id => [id, stored?.hideToolbar[id] === true]));
   return { activePane, shown, recent, history, ratios: stored?.ratios || {}, hideToolbar };
 }
 
-export function activatePane(entry: FocusEntryView, pane: number): FocusEntryView {
+export function activatePane(entry: FocusEntryView, pane: string): FocusEntryView {
   return { ...entry, activePane: pane, recent: [pane, ...entry.recent.filter(p => p !== pane)] };
 }
 
-export function showTab(entry: FocusEntryView, pane: number, key: string): FocusEntryView {
-  const shown = entry.shown.map((value, index) => index === pane ? key : value);
-  const history = shown.map((_, index) => index === pane ? [key, ...(entry.history[index] || []).filter(value => value !== key)] : entry.history[index] || []);
-  return activatePane({ ...entry, shown, history }, pane);
+export function showTab(entry: FocusEntryView, pane: string, key: string): FocusEntryView {
+  return activatePane({ ...entry, shown: { ...entry.shown, [pane]: key }, history: { ...entry.history, [pane]: [key, ...(entry.history[pane] || []).filter(value => value !== key)] } }, pane);
 }
 
 /** The pane a row clicked in the browse region opens into. */
-export function browseTarget(entry: FocusEntryView): number {
+export function browseTarget(entry: FocusEntryView): string {
   return entry.activePane;
 }
 
-/** For lane cards and [[links]] opened from inside a pane: the most recently used pane other than the source. */
-export function sideTarget(entry: FocusEntryView, sourcePane: number, paneCount: number): number {
-  if (paneCount <= 1) return sourcePane;
-  const found = entry.recent.find(pane => pane !== sourcePane);
-  return found !== undefined ? found : (sourcePane + 1) % paneCount;
+/** For lane cards and [[links]] opened from inside a pane: the most recently used pane other than the source, in pane order `panes`; undefined when there is no other pane. */
+export function sideTarget(entry: FocusEntryView, source: string, panes: readonly string[]): string | undefined {
+  if (panes.length <= 1) return undefined;
+  return entry.recent.find(pane => pane !== source && panes.includes(pane)) ?? panes[(panes.indexOf(source) + 1) % panes.length];
 }
 
 /**
  * Given the layout before closing `key` in `pane` and that pane's tab history, the key that should be shown afterward:
  * the tab shown there before it, as a stack; else the next tab right, else left, else none.
  */
-export function shownAfterClose(layout: FocusLayout, pane: number, key: string, history: readonly string[] = []): string | null {
-  const index = findFocusTabInPane(layout, pane, key);
+export function shownAfterClose(layout: FocusLayout, pane: string, key: string, history: readonly string[] = []): string | null {
+  const tabs = findFocusPane(layout, pane)?.tabs ?? [];
+  const index = tabs.findIndex(tab => focusTabKey(tab) === key);
   if (index === -1) return null;
-  const tabs = layout.panes[pane].tabs;
   const previous = history.find(value => value !== key && tabs.some(tab => focusTabKey(tab) === value));
   if (previous) return previous;
   const right = tabs[index + 1];
@@ -184,10 +214,10 @@ export function shownAfterClose(layout: FocusLayout, pane: number, key: string, 
 }
 
 /** Narrow screens display several stored panes as one merged pane; picks which stored pane and key to show for it. */
-export function groupShown(entry: FocusEntryView, layout: FocusLayout, group: number[]): { pane: number; key: string | null; } {
-  const keyIn = (pane: number): string | null => {
+export function groupShown(entry: FocusEntryView, layout: FocusLayout, group: readonly string[]): { pane: string; key: string | null; } {
+  const keyIn = (pane: string): string | null => {
     const key = entry.shown[pane];
-    return key && layout.panes[pane]?.tabs.some(tab => focusTabKey(tab) === key) ? key : null;
+    return key && findFocusPane(layout, pane)?.tabs.some(tab => focusTabKey(tab) === key) ? key : null;
   };
   if (group.includes(entry.activePane)) return { pane: entry.activePane, key: keyIn(entry.activePane) };
   for (const pane of group) {
@@ -199,13 +229,13 @@ export function groupShown(entry: FocusEntryView, layout: FocusLayout, group: nu
 
 /** One pane on screen: the stored panes it stands for, and the stored pane and tab key it currently shows. */
 export interface DisplayedPane {
-  panes: number[];
-  pane: number;
+  panes: string[];
+  pane: string;
   key: string | null;
 }
 
-/** What the screen shows at `capacity` panes (1, 2 or 4): the display division and one entry per displayed pane. */
-export function displayedPanes(entry: FocusEntryView, layout: FocusLayout, capacity: 1 | 2 | 4): { division: FocusDivision; panes: DisplayedPane[]; } {
-  const display = displayPanes(layout.division, capacity);
-  return { division: display.division, panes: display.groups.map(group => ({ panes: group, ...groupShown(entry, layout, group) })) };
+/** What the screen shows at `capacity` panes (1, 2 or all): the display tree and one entry per displayed pane, in display order. */
+export function displayedPanes(entry: FocusEntryView, layout: FocusLayout, capacity: 1 | 2 | 'all'): { root: FocusDisplay['root']; panes: DisplayedPane[]; } {
+  const display = displayFocus(layout, capacity);
+  return { root: display.root, panes: display.groups.map(group => ({ panes: group, ...groupShown(entry, layout, group) })) };
 }

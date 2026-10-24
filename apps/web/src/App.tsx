@@ -309,7 +309,7 @@ export const AppContent: React.FC = () => {
   const topDock = viewMode === 'kanban';
   const browseFocusMode = noteFocus.layout ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => noteFocus.editable && note.notebookId === selectedNotebookId } : undefined;
   // Either dock collapses and reopens from the toolbar's left end.
-  const dockToggle = noteFocus.layout && focusCapacity > 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} /> : undefined;
+  const dockToggle = noteFocus.layout && focusCapacity !== 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} /> : undefined;
   // An outline or compilation list offers its own kind; every kind starts at the notebook root, moved from its editor.
   const newKind = route.kind === 'outline' || route.kind === 'compilation' ? route.kind : 'note';
   const createNewKind = () => {
@@ -405,7 +405,7 @@ export const AppContent: React.FC = () => {
     return true;
   };
   /** The compilation at `path` of the selected notebook, in a Focus pane (`pane`) or in zoom. */
-  const renderCompilation = (path: string, pane?: number) => (
+  const renderCompilation = (path: string, pane?: string) => (
     <CompilationView
       key={`${selectedNotebookId}:${path}`}
       notebookId={selectedNotebookId}

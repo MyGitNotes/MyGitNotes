@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import path from 'node:path';
-import { BookmarkError, parseNoteContent, readWorkspaceDocument, serializeWorkspaceDocument, SourceError, type WorkspaceConfig, type WorkspaceDocument } from '@mygitnotes/core';
+import { BookmarkError, NewerVersionError, parseNoteContent, readWorkspaceDocument, SourceError, type WorkspaceConfig, type WorkspaceDocument, writeWorkspaceDocument } from '@mygitnotes/core';
 import { getCurrentBranch } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { keyedDocument, repositoryOrDefault as documentRepository, storedDocument } from './request-workspace.js';
@@ -13,7 +13,8 @@ export function createWorkspaceDocumentRouter(document: WorkspaceDocument): Rout
   function decode(raw: string | null) {
     try {
       return readWorkspaceDocument(document, raw);
-    } catch {
+    } catch (error) {
+      if (error instanceof NewerVersionError) throw new SourceError(error.message, 422);
       throw new SourceError(`Invalid ${label} YAML. Fix the file before saving.`, 422);
     }
   }
@@ -53,7 +54,7 @@ export function createWorkspaceDocumentRouter(document: WorkspaceDocument): Rout
       const { id, alias, handle, config } = await documentRepository(res, req.body.repository);
       // The request names notebooks by key; the file stores local ids.
       const stored = storedDocument(document, alias, value.data);
-      const yaml = serializeWorkspaceDocument(stored);
+      const yaml = writeWorkspaceDocument(document, stored);
       if (Buffer.byteLength(yaml) > maxBytes) throw new SourceError(`${label} configuration is too large.`, 413);
       const foreign = () => new SourceError(`${label} content must belong to its notebook.`, 400);
       if (handle.kind === 'local') {

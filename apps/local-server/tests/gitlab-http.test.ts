@@ -96,14 +96,14 @@ describe('GitLab HTTP and MCP integration', () => {
     const saved = await fetch(`${base}/api/notes/commit`, post({ repository: workspace.defaultRepository, notes: [{ ...note, content: '# Updated' }], revision: fixture.head, message: 'docs: edit note' }));
     expect(saved.status).toBe(200);
     expect(fixture.writes).toBe(1);
-    expect(await fetch(`${base}/api/focus-page`, { headers: { Cookie: cookie } }).then(r => r.json())).toMatchObject({ writable: true, page: { version: 1 } });
+    expect(await fetch(`${base}/api/focus-page`, { headers: { Cookie: cookie } }).then(r => r.json())).toMatchObject({ writable: true, page: { version: 2 } });
     expect(await fetch(`${base}/api/study`, { headers: { Cookie: cookie } }).then(r => r.json())).toMatchObject({ writable: true });
     expect((await fetch(`${base}/api/agent-resources`, { headers: { Cookie: cookie } }).then(r => r.json())).files.find((file: any) => file.kind === 'instructions').path).toBe('AGENTS.md');
   });
   it("commits a Focus draft named by key with the local id, and refuses a bare id or another repository's key", async () => {
     await login();
     const workspace = await fetch(`${base}/api/workspace`, { headers: { Cookie: cookie } }).then(r => r.json());
-    const focus = (notebookId: string) => ({ path: '.github-notes-focus.yaml', base: { version: 1, focuses: [] }, page: { version: 1, focuses: [{ id: 'weekly', notebookId, name: 'Weekly', division: 'single', panes: [{ tabs: [{ kind: 'note', path: 'notes/ex/a.md' }] }] }] } });
+    const focus = (notebookId: string) => ({ path: '.github-notes-focus.yaml', base: { version: 2, focuses: [] }, page: { version: 2, focuses: [{ id: 'weekly', notebookId, name: 'Weekly', root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/ex/a.md' }] } }] } });
     const commit = (notebookId: string) => fetch(`${base}/api/notes/commit`, post({ repository: workspace.defaultRepository, notes: [], documents: [focus(notebookId)], revision: fixture.head, message: 'docs: focus' }));
     for (const refused of ['ex', 'other~ex']) {
       const response = await commit(refused);

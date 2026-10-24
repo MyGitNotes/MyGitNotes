@@ -3,7 +3,7 @@ import { createElement, type ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { emptyFocusPage, FOCUS_MAX_TABS, FocusError, type FocusLayout, type FocusTab } from '@mygitnotes/core/focus-page';
+import { emptyFocusPage, FOCUS_MAX_TABS, FocusError, type FocusLayout, focusPanes, type FocusTab } from '@mygitnotes/core/focus-page';
 import { useNoteFocus } from './use-note-focus.js';
 import { CURRENT_FOCUS } from './focus-view.js';
 import { focusDocumentClient, type FocusPageController } from './use-focus-page.js';
@@ -15,6 +15,8 @@ const storageKey = `github-notes:focus-view:${REPOSITORY}:${NOTEBOOK}`;
 function fakeController(): FocusPageController {
   return { client: focusDocumentClient as WorkspaceDocumentClient<unknown>, repository: 'local:/workspace', file: '.github-notes-focus.yaml', page: emptyFocusPage(), change: () => {}, save: async () => {}, reload: async () => {}, refresh: async () => {}, loading: false, saving: false, dirty: false, error: '', writable: true, setError: () => {}, diff: '' };
 }
+/** The tabs of the `index`-th pane in pane order. */
+const tabsAt = (layout: FocusLayout | null | undefined, index: number) => layout ? focusPanes(layout)[index]?.tabs : undefined;
 const tab = (id: string): FocusTab => ({ kind: 'note', path: `notes/${id}.compilation.yml` });
 
 let client: QueryClient;
@@ -28,37 +30,37 @@ afterEach(() => localStorage.clear());
 
 describe('useNoteFocus place', () => {
   it('rejects with the FocusError instead of only resolving false when the Focus is already full', async () => {
-    const layout: FocusLayout = { division: 'single', panes: [{ tabs: Array.from({ length: FOCUS_MAX_TABS }, (_, index) => tab(`compilation-${index}`)) }] };
+    const layout: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: Array.from({ length: FOCUS_MAX_TABS }, (_, index) => tab(`compilation-${index}`)) } };
     localStorage.setItem(storageKey, JSON.stringify({ current: layout, entries: {}, last: null, dock: { left: 320, bottom: 280, collapsed: false } }));
 
     const { result } = renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
-    await waitFor(() => expect(result.current.layout?.panes[0]?.tabs.length).toBe(FOCUS_MAX_TABS));
+    await waitFor(() => expect(tabsAt(result.current.layout, 0)?.length).toBe(FOCUS_MAX_TABS));
 
-    const attempt = result.current.place(CURRENT_FOCUS, tab('compilation-new'), 0);
+    const attempt = result.current.place(CURRENT_FOCUS, tab('compilation-new'), 'p1');
     await expect(attempt).rejects.toBeInstanceOf(FocusError);
     await expect(attempt.catch(caught => caught)).resolves.toMatchObject({ code: 'tab-limit' });
     // The rejection is the caller's only signal; the layout is unchanged.
-    expect(result.current.layout?.panes[0]?.tabs.length).toBe(FOCUS_MAX_TABS);
+    expect(tabsAt(result.current.layout, 0)?.length).toBe(FOCUS_MAX_TABS);
   });
 
   it('still resolves true when the Focus has room', async () => {
     const { result } = renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
     await waitFor(() => expect(result.current.layout).not.toBeNull());
 
-    await expect(result.current.place(CURRENT_FOCUS, tab('compilation-a'), 0)).resolves.toBe(true);
-    await waitFor(() => expect(result.current.layout?.panes[0]?.tabs).toHaveLength(1));
+    await expect(result.current.place(CURRENT_FOCUS, tab('compilation-a'), 'p1')).resolves.toBe(true);
+    await waitFor(() => expect(tabsAt(result.current.layout, 0)).toHaveLength(1));
   });
 });
 
 describe('useNoteFocus mutationError', () => {
-  const fullLayout = (count: number): FocusLayout => ({ division: 'single', panes: [{ tabs: Array.from({ length: count }, (_, index) => tab(`compilation-${index}`)) }] });
+  const fullLayout = (count: number): FocusLayout => ({ root: { kind: 'pane', id: 'p1', tabs: Array.from({ length: count }, (_, index) => tab(`compilation-${index}`)) } });
 
   it('records a failed change, and clears it on dismiss and when another Focus is shown', async () => {
     localStorage.setItem(storageKey, JSON.stringify({ current: fullLayout(FOCUS_MAX_TABS), entries: {}, last: null }));
     const { result, rerender } = renderHook(({ focusKey }: { focusKey: string | null; }) => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey, writable: true, flushEditors: async () => true }), { wrapper, initialProps: { focusKey: CURRENT_FOCUS as string | null } });
     await waitFor(() => expect(result.current.layout).not.toBeNull());
 
-    const fail = () => result.current.place(CURRENT_FOCUS, tab(`compilation-${FOCUS_MAX_TABS}`), 0).catch(() => {});
+    const fail = () => result.current.place(CURRENT_FOCUS, tab(`compilation-${FOCUS_MAX_TABS}`), 'p1').catch(() => {});
     await act(fail);
     expect(result.current.mutationError).toMatchObject({ code: 'tab-limit' });
     act(() => result.current.dismissMutationError());
@@ -85,7 +87,7 @@ describe('useNoteFocus mutationError', () => {
         flushEditors: async () => {
           if (!raced) {
             raced = true;
-            await result.current.place(CURRENT_FOCUS, tab(`compilation-${FOCUS_MAX_TABS - 1}`), 0);
+            await result.current.place(CURRENT_FOCUS, tab(`compilation-${FOCUS_MAX_TABS - 1}`), 'p1');
           }
           return true;
         },
@@ -102,7 +104,8 @@ describe('useNoteFocus mutationError', () => {
 });
 
 describe('useNoteFocus openNote', () => {
-  const twoColumns: FocusLayout = { division: 'columns-2', panes: [{ tabs: [tab('compilation-a')] }, { tabs: [tab('compilation-b')] }] };
+  // Stored as this device kept it before layouts were trees.
+  const twoColumns = { division: 'columns-2', panes: [{ tabs: [tab('compilation-a')] }, { tabs: [tab('compilation-b')] }] };
   const render = () => {
     localStorage.setItem(storageKey, JSON.stringify({ current: twoColumns, entries: {}, last: null }));
     const { result } = renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
@@ -111,25 +114,25 @@ describe('useNoteFocus openNote', () => {
 
   it('opens a note from inside a pane as a tab of that pane when placed here', async () => {
     const result = render();
-    await waitFor(() => expect(result.current.layout?.panes).toHaveLength(2));
+    await waitFor(() => expect(result.current.layout && focusPanes(result.current.layout)).toHaveLength(2));
 
     await act(async () => {
-      await result.current.openNote('notes/a.md', 1, 'here');
+      await result.current.openNote('notes/a.md', 'p2', 'here');
     });
-    expect(result.current.layout?.panes[1]?.tabs).toContainEqual({ kind: 'note', path: 'notes/a.md' });
-    expect(result.current.layout?.panes[0]?.tabs).toHaveLength(1);
-    expect(result.current.entry?.shown[1]).toBe('note:notes/a.md');
+    expect(tabsAt(result.current.layout, 1)).toContainEqual({ kind: 'note', path: 'notes/a.md' });
+    expect(tabsAt(result.current.layout, 0)).toHaveLength(1);
+    expect(result.current.entry?.shown.p2).toBe('note:notes/a.md');
   });
 
   it('still opens beside the source pane by default', async () => {
     const result = render();
-    await waitFor(() => expect(result.current.layout?.panes).toHaveLength(2));
+    await waitFor(() => expect(result.current.layout && focusPanes(result.current.layout)).toHaveLength(2));
 
     await act(async () => {
-      await result.current.openNote('notes/a.md', 1);
+      await result.current.openNote('notes/a.md', 'p2');
     });
-    expect(result.current.layout?.panes[0]?.tabs).toContainEqual({ kind: 'note', path: 'notes/a.md' });
-    expect(result.current.layout?.panes[1]?.tabs).toHaveLength(1);
+    expect(tabsAt(result.current.layout, 0)).toContainEqual({ kind: 'note', path: 'notes/a.md' });
+    expect(tabsAt(result.current.layout, 1)).toHaveLength(1);
   });
 });
 
@@ -137,11 +140,11 @@ describe('useNoteFocus close', () => {
   it('returns the pane to the tab shown before the closed one, not to its neighbour', async () => {
     const { result } = renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
     await waitFor(() => expect(result.current.layout).not.toBeNull());
-    for (const id of ['a', 'b', 'c']) await act(() => result.current.place(CURRENT_FOCUS, tab(id), 0));
-    await act(() => result.current.show(0, 'note:notes/a.compilation.yml'));
-    await act(() => result.current.close('note:notes/a.compilation.yml', 0));
-    await waitFor(() => expect(result.current.entry?.shown[0]).toBe('note:notes/c.compilation.yml'));
-    await act(() => result.current.close('note:notes/c.compilation.yml', 0));
-    await waitFor(() => expect(result.current.entry?.shown[0]).toBe('note:notes/b.compilation.yml'));
+    for (const id of ['a', 'b', 'c']) await act(() => result.current.place(CURRENT_FOCUS, tab(id), 'p1'));
+    await act(() => result.current.show('p1', 'note:notes/a.compilation.yml'));
+    await act(() => result.current.close('note:notes/a.compilation.yml', 'p1'));
+    await waitFor(() => expect(result.current.entry?.shown.p1).toBe('note:notes/c.compilation.yml'));
+    await act(() => result.current.close('note:notes/c.compilation.yml', 'p1'));
+    await waitFor(() => expect(result.current.entry?.shown.p1).toBe('note:notes/b.compilation.yml'));
   });
 });

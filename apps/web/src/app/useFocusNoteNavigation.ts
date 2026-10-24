@@ -15,7 +15,7 @@ interface Params {
 
 export function useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus }: Params) {
   /** In a displayed Focus a note of this notebook opens in a pane: the active one, or `source` or beside it per `placement`; false leaves it to zoom. */
-  const openInFocus = async (note: NoteListItem, source?: number, placement?: OpenPlacement) => {
+  const openInFocus = async (note: NoteListItem, source?: string, placement?: OpenPlacement) => {
     if (!noteFocus.shown || note.notebookId !== selectedNotebookId) return false;
     const result = await noteFocus.openNote(note.path, source, placement);
     if (result === 'opened') setFocusNarrowView('focus');
@@ -27,7 +27,7 @@ export function useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocus
   const openLink = async (note: NoteListItem, anchor?: string, source?: HTMLElement) => {
     const pane = source?.closest<HTMLElement>('[data-focus-pane]')?.dataset.focusPane;
     // A link opens as a tab of the pane it was clicked in.
-    if (pane === undefined || !await openInFocus(note, Number(pane), 'here')) await handleOpenNote(note, anchor);
+    if (pane === undefined || !await openInFocus(note, pane, 'here')) await handleOpenNote(note, anchor);
   };
   const zoomFocusNote = (path: string) => {
     const note = noteFocus.notes.get(path);

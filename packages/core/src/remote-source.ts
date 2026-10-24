@@ -16,7 +16,7 @@ import { SourceError } from './github-api.js';
 import { agentFileAllowed, agentWorkspaceFile } from './agent-workspace.js';
 import { agentSkillLocation, renameAgentSkillEntryContent, renamedAgentSkillPath, rewriteAgentSkillReferences } from './agent-skill-metadata.js';
 import { skillFile } from './agent-system.js';
-import { type CommitScope, readWorkspaceDocument, serializeWorkspaceDocument, validateWorkspaceDocument, type WorkspaceDocument, workspaceDocument } from './workspace-documents.js';
+import { type CommitScope, readWorkspaceDocument, validateWorkspaceDocument, type WorkspaceDocument, workspaceDocument, writeWorkspaceDocument } from './workspace-documents.js';
 import { gitBlobId, hashJson, REMOTE_CACHE_BATCH_BYTES, REMOTE_CACHE_MAX_VALUE, REMOTE_CACHE_TTL, type RemoteCache } from './remote-cache.js';
 import type { RepositoryCatalog } from './note-catalog.js';
 import type { NoteListItem } from './note-query.js';
@@ -536,7 +536,7 @@ export abstract class RemoteSource {
       const current = await this.readDocumentSnapshot(document, snapshot);
       if (JSON.stringify(current) !== JSON.stringify(base.data)) throw new SourceError(`${document.label} configuration changed. Reload and review your draft.`, 409);
       await this.validateDocumentChange(document, current, page.data, (await this.config()).notebooks, snapshot);
-      changes.push({ path: document.file, content: serializeWorkspaceDocument(page.data) });
+      changes.push({ path: document.file, content: writeWorkspaceDocument(document, page.data) });
     }
     if (version) {
       const change = changes.find(entry => entry.path === version.path);

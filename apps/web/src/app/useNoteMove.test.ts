@@ -19,7 +19,7 @@ const config = { notebooks: [{ id: 'nb', root: 'notes' }] } as never;
 function setup({ draft, focusTabs = [] as string[], remote = true }: { draft?: WorkingNote; focusTabs?: string[]; remote?: boolean; }) {
   const order: string[] = [];
   const drafts = new Map<string, WorkingNote>(draft ? [[draft.note.path, draft]] : []);
-  const focus = { page: { version: 1, focuses: [{ id: 'f', notebookId: 'nb', name: 'Focus', division: 'single', panes: [{ tabs: focusTabs.map(path => ({ kind: 'note', path })) }] }] }, change: vi.fn() };
+  const focus = { page: { version: 2, focuses: [{ id: 'f', notebookId: 'nb', name: 'Focus', root: { kind: 'pane', id: 'p1', tabs: focusTabs.map(path => ({ kind: 'note', path })) } }] }, change: vi.fn() };
   const params = {
     config,
     remote,
@@ -73,7 +73,7 @@ describe('useNoteMove', () => {
     expect([...drafts.keys()]).toEqual(['notes/work/idea.md']);
     expect(drafts.get('notes/work/idea.md')).toMatchObject({ base: null, note: { path: 'notes/work/idea.md', content: '# Idea' } });
     expect(focus.change).toHaveBeenCalledOnce();
-    expect(focus.change.mock.calls[0][0].focuses[0].panes[0].tabs.map((tab: { path: string; }) => tab.path)).toEqual(['notes/work/idea.md', 'notes/other.md']);
+    expect(focus.change.mock.calls[0][0].focuses[0].root.tabs.map((tab: { path: string; }) => tab.path)).toEqual(['notes/work/idea.md', 'notes/other.md']);
     expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ pathMap: { 'notes/idea.md': 'notes/work/idea.md' } }));
     expect(files.mutateFile).not.toHaveBeenCalled();
     expect(params.beforeFileChange).not.toHaveBeenCalled();

@@ -10,7 +10,7 @@ vi.mock('./i18n/index.js', () => {
 });
 const empty = emptyFocusPage();
 /** A page as stored, naming its notebook by local id, and as the browser and server name it, by key. */
-const page: FocusPage = { version: 1, focuses: [{ id: 'a', notebookId: 'n', name: 'A', division: 'single', panes: [{ tabs: [] }] }] };
+const page: FocusPage = { version: 2, focuses: [{ id: 'a', notebookId: 'n', name: 'A', root: { kind: 'pane', id: 'p1', tabs: [] } }] };
 const keyed: FocusPage = { ...page, focuses: page.focuses.map(focus => ({ ...focus, notebookId: 'kb~n' })) };
 const repo = { id: 'repo', alias: 'kb' };
 const record = (page: unknown, revision: string) => new Response(JSON.stringify({ page, revision, writable: true, path: '.github-notes-focus.yaml' }));

@@ -1,6 +1,6 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { changeDivision, closeTab, emptyFocusLayout, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusDivision, FocusError, type FocusLayout, focusPaneCount, type FocusTab, focusTabCount, focusTabKey, moveTab as moveFocusTab, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, removeFocus, renameFocus, updateFocus } from '@mygitnotes/core/focus-page';
+import { applyDivision, closeTab, emptyFocusLayout, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusDivision, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, moveTab as moveFocusTab, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, removeFocus, renameFocus, updateFocus } from '@mygitnotes/core/focus-page';
 import type { FocusPageController } from './use-focus-page.js';
 import { useNoteLookup } from './use-note-queries.js';
 import { activatePane, adoptedFocusViewKey, browseTarget, CURRENT_FOCUS, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, readFocusView, shownAfterClose, showTab, sideTarget } from './focus-view.js';
@@ -74,7 +74,8 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   const requested = focusKey ?? (restoreLast ? view.last ?? defaultFocus : null);
   const shown = requested && known(requested) ? requested : null;
   // The displayed Focus's notes are read (without bodies) for tab titles and to hide notes that no longer exist.
-  const storedPaths = shown ? (storedLayout(shown)?.panes ?? []).flatMap(pane => pane.tabs.map(tab => tab.path)) : [];
+  const storedLayoutShown = shown ? storedLayout(shown) : undefined;
+  const storedPaths = storedLayoutShown ? focusPanes(storedLayoutShown).flatMap(pane => pane.tabs.map(tab => tab.path)) : [];
   // A Focus belongs to one notebook, so its tabs name notes by path.
   const lookup = useNoteLookup(storedPaths.map(path => ({ notebookId, path })), false);
   const notes = useMemo(() => new Map(lookup.notes.map(note => [note.path, note])), [lookup.notes]);
@@ -120,10 +121,10 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   };
 
   /** Opens a note from the browse region (into the active pane) or from inside pane `source`: into `source` itself for `here`, else the most recently used other pane; a copy already open in another pane is untouched there. */
-  const openNote = async (path: string, source?: number, placement: OpenPlacement = 'beside'): Promise<OpenResult> => {
+  const openNote = async (path: string, source?: string, placement: OpenPlacement = 'beside'): Promise<OpenResult> => {
     if (!shown || !layout || !entry) return 'readonly';
     const tab: FocusTab = { kind: 'note', path }, tabKey = focusTabKey(tab);
-    const pane = source === undefined ? browseTarget(entry) : placement === 'here' ? source : sideTarget(entry, source, layout.panes.length);
+    const pane = source === undefined ? browseTarget(entry) : placement === 'here' ? source : sideTarget(entry, source, focusPanes(layout).map(current => current.id)) ?? source;
     const found = findFocusTabInPane(layout, pane, tabKey) !== -1;
     if (!found && !editable(shown)) return 'readonly';
     if (!found && focusTabCount(layout) >= FOCUS_MAX_TABS) return 'full';
@@ -141,7 +142,7 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     return 'opened';
   };
   /** Places `tab` in `pane` of any Focus (a drop, the Add to Focus picker, or batch add) and shows it there; a copy of `tab` already open in another pane is untouched there. Throws FocusError. */
-  const place = async (target: string, tab: FocusTab, pane: number, index?: number): Promise<boolean> => {
+  const place = async (target: string, tab: FocusTab, pane: string, index?: number): Promise<boolean> => {
     const current = layoutOf(target), before = entryOf(target, current);
     if (!current || !before || !editable(target)) return false;
     const tabKey = focusTabKey(tab);
@@ -151,7 +152,7 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     return true;
   };
   /** Moves the tab `key` from `fromPane` to `toPane` (or reorders it within the same pane), for a tab-bar drag without the copy modifier. Throws FocusError. */
-  const moveTab = async (target: string, key: string, fromPane: number, toPane: number, index?: number): Promise<boolean> => {
+  const moveTab = async (target: string, key: string, fromPane: string, toPane: string, index?: number): Promise<boolean> => {
     const current = layoutOf(target), before = entryOf(target, current);
     if (!current || !before || !editable(target)) return false;
     const leavesSource = fromPane !== toPane && before.shown[fromPane] === key;
@@ -160,32 +161,32 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     const sourceNext = leavesSource ? shownAfterClose(current, fromPane, key, before.history[fromPane]) : null;
     if (!mutate(target, layout => moveFocusTab(layout, fromPane, toPane, key, index))) return false;
     setEntry(target, entry => {
-      const withSource = leavesSource ? { ...entry, shown: entry.shown.map((value, i) => i === fromPane ? sourceNext : value) } : entry;
+      const withSource = leavesSource ? { ...entry, shown: { ...entry.shown, [fromPane]: sourceNext } } : entry;
       return showTab(withSource, toPane, key);
     }, current);
     return true;
   };
-  const show = async (pane: number, tabKey: string) => {
+  const show = async (pane: string, tabKey: string) => {
     if (!shown || !entry) return;
     const previous = entry.shown[pane];
     if (previous !== tabKey && !await flushEditors(noteKeys(notebookId, [previous]))) return;
     setEntry(shown, current => showTab(current, pane, tabKey));
   };
-  const activate = (pane: number) => {
+  const activate = (pane: string) => {
     if (shown && entry && entry.activePane !== pane) setEntry(shown, current => activatePane(current, pane));
   };
   /** Closes `tabKey` in `pane` only; a copy in another pane is untouched. Throws FocusError if the shown Focus was removed since it was read. */
-  const close = async (tabKey: string, pane: number) => {
+  const close = async (tabKey: string, pane: string) => {
     if (!shown || !layout || !entry) return;
     if (findFocusTabInPane(layout, pane, tabKey) === -1) return;
     const visible = entry.shown[pane] === tabKey;
     if (visible && !await flushEditors(noteKeys(notebookId, [tabKey]))) return;
     const next = shownAfterClose(layout, pane, tabKey, entry.history[pane]);
     if (!mutate(shown, current => closeTab(current, pane, tabKey))) return;
-    if (visible) setEntry(shown, current => ({ ...current, shown: current.shown.map((key, index) => index === pane ? next : key) }), layout);
+    if (visible) setEntry(shown, current => ({ ...current, shown: { ...current.shown, [pane]: next } }), layout);
   };
   /** Adds every tab in `tabs` to `pane` of `target`, skipping any already there; reports how many were added vs. skipped. False when the target cannot be written to. Throws FocusError. */
-  const addBatch = (target: string, tabs: FocusTab[], pane: number): { added: number; skipped: number; } | false => {
+  const addBatch = (target: string, tabs: FocusTab[], pane: string): { added: number; skipped: number; } | false => {
     if (!editable(target)) return false;
     let outcome = { added: 0, skipped: 0 };
     if (
@@ -199,22 +200,24 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   };
   /** Folding panes keeps the active pane's tab on screen: it lands on the last remaining pane, which becomes active. Throws FocusError if the shown Focus was removed since it was read. */
   const setDivision = async (division: FocusDivision) => {
-    if (!shown || !layout || !entry || division === layout.division) return;
-    const count = focusPaneCount(division);
+    if (!shown || !layout || !entry) return;
+    const next = applyDivision(layout, division);
+    if (next === layout) return;
     // Every pane is laid out again, so every displayed editor remounts.
-    if (!await flushEditors(noteKeys(notebookId, entry.shown))) return;
-    if (!mutate(shown, current => changeDivision(current, division))) return;
-    const kept = entry.activePane >= count ? entry.shown[entry.activePane] : undefined;
+    if (!await flushEditors(noteKeys(notebookId, Object.values(entry.shown)))) return;
+    if (!mutate(shown, current => applyDivision(current, division))) return;
+    const ids = focusPanes(next).map(pane => pane.id), last = ids[ids.length - 1];
+    const kept = ids.includes(entry.activePane) ? undefined : entry.shown[entry.activePane];
     setEntry(shown, current => {
-      const next = { ...current, shown: current.shown.slice(0, count), recent: current.recent.filter(pane => pane < count) };
-      return kept ? showTab(next, count - 1, kept) : next;
-    }, changeDivision(layout, division));
+      const folded = { ...current, recent: current.recent.filter(pane => ids.includes(pane)) };
+      return kept ? showTab(folded, last, kept) : folded;
+    }, next);
   };
-  const setRatios = (group: string, sizes: number[]) => {
-    if (shown) setEntry(shown, current => ({ ...current, ratios: { ...current.ratios, [group]: sizes } }));
+  const setRatios = (split: string, sizes: Record<string, number>) => {
+    if (shown) setEntry(shown, current => ({ ...current, ratios: { ...current.ratios, [split]: sizes } }));
   };
-  const setHideToolbar = (pane: number, on: boolean) => {
-    if (shown) setEntry(shown, current => ({ ...current, hideToolbar: current.hideToolbar.map((value, index) => index === pane ? on : value) }));
+  const setHideToolbar = (pane: string, on: boolean) => {
+    if (shown) setEntry(shown, current => ({ ...current, hideToolbar: { ...current.hideToolbar, [pane]: on } }));
   };
   const setDock = (dock: Partial<FocusViewState['dock']>) => update(current => ({ ...current, dock: { ...current.dock, ...dock } }));
   const forget = () => update(current => ({ ...current, last: null }));
@@ -233,7 +236,7 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   /** Throws FocusError for a duplicate name. */
   const rename = (id: string, label: string) => page.change(renameFocus(page.page, id, label));
   const remove = async (id: string) => {
-    if (id === shown && entry && !await flushEditors(noteKeys(notebookId, entry.shown))) return false;
+    if (id === shown && entry && !await flushEditors(noteKeys(notebookId, Object.values(entry.shown)))) return false;
     page.change(removeFocus(page.page, id));
     update(current => {
       const { [id]: _removed, ...entries } = current.entries;

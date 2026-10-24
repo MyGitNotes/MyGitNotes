@@ -11,8 +11,13 @@ import { deriveAlias, notebookKey } from '@mygitnotes/core';
 let root: string, server: Server, base: string, url: string;
 /** The key of a home-repository notebook; a local worktree's alias is its directory's name. */
 const nb = (id: string) => notebookKey(deriveAlias(root, new Set()), id);
-/** As stored, naming its notebook by local id; `page` is the same Focus as the API names it, by key. */
-const storedPage = { version: 1, focuses: [{ id: 'weekly', notebookId: 'a', name: '週報', division: 'major-left', panes: [{ tabs: [{ kind: 'note', path: 'notes/a/guide.md' }] }, { tabs: [{ kind: 'note', path: 'notes/a/reading.compilation.yml' }] }, { tabs: [] }] }] };
+const pane = (id: string, ...paths: string[]) => ({ kind: 'pane', id, tabs: paths.map(path => ({ kind: 'note', path })) });
+/** The Focus a division gives: stored as a version 1 file, and answered as the tree. */
+const majorLeft = () => ({ kind: 'split', id: 'major-left', orientation: 'horizontal', children: [pane('p1', 'notes/a/guide.md'), { kind: 'split', id: 'major-left-1', orientation: 'vertical', children: [pane('p2', 'notes/a/reading.compilation.yml'), pane('p3')] }] });
+/** A shape no division gives, which only a version 2 file can hold. */
+const stackedLeft = () => ({ kind: 'split', id: 'stack', orientation: 'vertical', children: [pane('top', 'notes/a/guide.md'), { kind: 'split', id: 'stack-1', orientation: 'horizontal', children: [pane('bottom-left'), pane('bottom-middle'), pane('bottom-right')] }] });
+/** As the API names it: the notebook by key, the layout as a tree. The file keeps the local id. */
+const storedPage = { version: 2, focuses: [{ id: 'weekly', notebookId: 'a', name: '週報', root: majorLeft() }] };
 let page: typeof storedPage;
 beforeEach(async () => {
   root = await mkdtemp(path.join(os.tmpdir(), 'focus-yaml-'));
@@ -33,7 +38,7 @@ afterEach(async () => {
 const put = (value: unknown, revision = 'missing') => fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: value, revision }) });
 
 it('persists named Focus YAML, rejects stale or invalid writes and joins Git review', async () => {
-  expect(await fetch(url).then(r => r.json())).toMatchObject({ page: { version: 1, focuses: [] }, writable: true, revision: 'missing', path: FOCUS_PAGE_FILE });
+  expect(await fetch(url).then(r => r.json())).toMatchObject({ page: { version: 2, focuses: [] }, writable: true, revision: 'missing', path: FOCUS_PAGE_FILE });
   const saved = await put(page);
   expect(saved.status).toBe(200);
   const record = await saved.json();
@@ -41,11 +46,15 @@ it('persists named Focus YAML, rejects stale or invalid writes and joins Git rev
   expect(await readFile(path.join(root, FOCUS_PAGE_FILE), 'utf8')).toContain('name: 週報');
   // The file keeps the local id; only the API names the notebook by key.
   expect(await readFile(path.join(root, FOCUS_PAGE_FILE), 'utf8')).toContain('notebookId: a\n');
-  expect((await put({ version: 1, focuses: [] })).status).toBe(409);
+  // Every Focus is a division, so the file is still one a deployment that only knows version 1 reads.
+  expect(await readFile(path.join(root, FOCUS_PAGE_FILE), 'utf8')).toMatch(/^version: 1\n/);
+  expect(await readFile(path.join(root, FOCUS_PAGE_FILE), 'utf8')).toContain('division: major-left\n');
+  expect((await put({ version: 2, focuses: [] })).status).toBe(409);
   const duplicate = { ...page, focuses: [page.focuses[0], { ...page.focuses[0], id: 'copy' }] };
   expect((await put(duplicate, record.revision)).status).toBe(400);
-  const mismatched = { ...page, focuses: [{ ...page.focuses[0], division: 'single' }] };
-  expect((await put(mismatched, record.revision)).status).toBe(400);
+  const repeatedId = { ...page, focuses: [{ ...page.focuses[0], root: { ...majorLeft(), children: [pane('p1'), pane('p1')] } }] };
+  expect((await put(repeatedId, record.revision)).status).toBe(400);
+  expect((await put({ ...page, version: 1 }, record.revision)).status).toBe(400);
   const competing = await Promise.all(['first', 'second'].map(name => put({ ...page, focuses: [{ ...page.focuses[0], name }] }, record.revision)));
   expect(competing.map(response => response.status).sort()).toEqual([200, 409]);
   const diff = await fetch(`${base}/git/diff?path=${FOCUS_PAGE_FILE}`);
@@ -53,6 +62,21 @@ it('persists named Focus YAML, rejects stale or invalid writes and joins Git rev
   expect((await diff.json()).diff).toContain(`+++ ${FOCUS_PAGE_FILE}`);
   const changes = await fetch(`${base}/git/changes`).then(r => r.json());
   expect(changes.changes).toContainEqual(expect.objectContaining({ path: FOCUS_PAGE_FILE, available: true }));
+});
+it('answers a stored version 1 file as the tree of its division, and writes a shape no division gives as version 2', async () => {
+  await writeFile(path.join(root, FOCUS_PAGE_FILE), 'version: 1\nfocuses:\n  - id: weekly\n    notebookId: a\n    name: 週報\n    division: major-left\n    panes:\n      - tabs:\n          - kind: note\n            path: notes/a/guide.md\n      - tabs:\n          - kind: note\n            path: notes/a/reading.compilation.yml\n      - tabs: []\n');
+  const loaded = await fetch(url).then(r => r.json());
+  expect(loaded.page).toEqual(page);
+  const split = { ...page, focuses: [{ ...page.focuses[0], root: stackedLeft() }] };
+  expect((await put(split, loaded.revision)).status).toBe(200);
+  expect(await readFile(path.join(root, FOCUS_PAGE_FILE), 'utf8')).toMatch(/^version: 2\n/);
+  expect((await fetch(url).then(r => r.json())).page).toEqual(split);
+});
+it('names a Focus file saved by a newer app instead of reporting it as invalid', async () => {
+  await writeFile(path.join(root, FOCUS_PAGE_FILE), 'version: 3\nfocuses: []\n');
+  const response = await fetch(url);
+  expect(response.status).toBe(422);
+  expect((await response.json()).error).toMatch(/saved by a newer MyGitNotes.*update this deployment/);
 });
 it('protects Core, rejects symlink targets and reports invalid YAML without replacing it', async () => {
   execFileSync('git', ['symbolic-ref', 'HEAD', 'refs/heads/core'], { cwd: root });
@@ -76,10 +100,12 @@ it('rewrites Focus tabs when the file manager moves a note', async () => {
   const moved = await fetch(`${base}/files`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision, command: { kind: 'move', notebookId: nb('a'), path: 'notes/a/guide.md', destination: 'notes/a/one/guide.md' } }) });
   expect(moved.status).toBe(200);
   const stored = await fetch(url).then(r => r.json());
-  expect(stored.page.focuses[0].panes[0].tabs).toEqual([{ kind: 'note', path: 'notes/a/one/guide.md' }]);
+  expect(stored.page.focuses[0].root.children[0].tabs).toEqual([{ kind: 'note', path: 'notes/a/one/guide.md' }]);
+  // The file is still version 1, and the move rewrote the path in it.
+  expect(await readFile(path.join(root, FOCUS_PAGE_FILE), 'utf8')).toContain('path: notes/a/one/guide.md');
 });
 it('rejects tabs outside the Focus notebook and hides them in a stored file', async () => {
-  const outside = (tab: unknown) => ({ version: 1, focuses: [{ id: 'f', notebookId: nb('a'), name: 'F', division: 'single', panes: [{ tabs: [tab] }] }] });
+  const outside = (tab: unknown) => ({ version: 2, focuses: [{ id: 'f', notebookId: nb('a'), name: 'F', root: { kind: 'pane', id: 'p1', tabs: [tab] } }] });
   expect((await put(outside({ kind: 'note', path: 'notes/b/outside.md' }))).status).toBe(400);
   expect((await put(outside({ kind: 'note', path: 'notes/b/theirs.compilation.yml' }))).status).toBe(400);
   expect((await put(outside({ kind: 'lane', id: 'row' }))).status).toBe(400);
@@ -87,6 +113,6 @@ it('rejects tabs outside the Focus notebook and hides them in a stored file', as
   expect((await put(outside({ kind: 'note', path: 'notes/a/inside.md' }))).status).toBe(200);
   await writeFile(path.join(root, FOCUS_PAGE_FILE), 'version: 1\nfocuses:\n  - id: f\n    notebookId: a\n    name: F\n    division: single\n    panes:\n      - tabs:\n          - kind: note\n            path: notes/a/inside.md\n          - kind: note\n            path: notes/b/outside.md\n');
   const stored = await fetch(url).then(r => r.json());
-  expect(stored.page.focuses[0].panes[0].tabs).toEqual([{ kind: 'note', path: 'notes/a/inside.md' }]);
+  expect(stored.page.focuses[0].root.tabs).toEqual([{ kind: 'note', path: 'notes/a/inside.md' }]);
   expect((await put(stored.page, stored.revision)).status).toBe(200);
 });

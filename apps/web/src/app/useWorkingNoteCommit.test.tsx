@@ -95,8 +95,8 @@ it('commits equal paths of two repositories to their own repositories', async ()
 
 it('commits a document draft with the group of the repository that holds it', async () => {
   stubServer();
-  const page = { version: 1, focuses: [{ id: 'reading', notebookId: 'trpg', name: 'Reading', division: 'single', panes: [{ tabs: [] }] }] };
-  localStorage.setItem(documentDraftKey(focusDocumentClient, other.id), JSON.stringify({ page, base: { version: 1, focuses: [] }, revision: other.revision }));
+  const page = { version: 2, focuses: [{ id: 'reading', notebookId: 'trpg', name: 'Reading', root: { kind: 'pane', id: 'p1', tabs: [] } }] };
+  localStorage.setItem(documentDraftKey(focusDocumentClient, other.id), JSON.stringify({ page, base: { version: 2, focuses: [] }, revision: other.revision }));
   const { commitWorkingNotes } = commitHook();
   await commitWorkingNotes([change('.github-notes-focus.yaml', other)], 'docs: focus');
   expect(commits.map(commit => [commit.repository, commit.documents.map((document: any) => document.path)])).toEqual([[other.id, ['.github-notes-focus.yaml']]]);

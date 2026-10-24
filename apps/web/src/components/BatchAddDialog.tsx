@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
-import { focusTabKey } from '@mygitnotes/core/focus-page';
+import { emptyFocusLayout, findFocusPane, focusTabKey } from '@mygitnotes/core/focus-page';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import { useNoteFacets, useNotePaths } from '../lib/use-note-queries.js';
 import { focusErrorMessage } from '../lib/focus-error-message.js';
@@ -16,7 +16,7 @@ import './graph-filters.css';
  * Adds every note matching a folder and/or tag filter to one pane, deduplicated against what it already holds.
  * Folder and tags combine with Or by default (either condition matches) or And (both must).
  */
-export const BatchAddDialog: React.FC<{ focus: NoteFocus; target: string; pane: number; notebookId: string; notebookRoot: string; folders: readonly FolderItem[]; onClose: () => void; }> = ({ focus, target, pane, notebookId, notebookRoot, folders, onClose }) => {
+export const BatchAddDialog: React.FC<{ focus: NoteFocus; target: string; pane: string; notebookId: string; notebookRoot: string; folders: readonly FolderItem[]; onClose: () => void; }> = ({ focus, target, pane, notebookId, notebookRoot, folders, onClose }) => {
   const { t } = useTranslation();
   const [folder, setFolder] = useState('');
   const [descendants, setDescendants] = useState(true);
@@ -47,7 +47,7 @@ export const BatchAddDialog: React.FC<{ focus: NoteFocus; target: string; pane: 
     event.preventDefault();
     if (result || (!hasFolder && !hasTags) || loading) return;
     const tabs = batchAddTabs(candidatePaths);
-    const heldKeys = new Set((focus.layoutOf(target)?.panes[pane]?.tabs ?? []).map(focusTabKey));
+    const heldKeys = new Set((findFocusPane(focus.layoutOf(target) ?? emptyFocusLayout(), pane)?.tabs ?? []).map(focusTabKey));
     const existing = batchAddExisting(tabs, heldKeys);
     let outcome: { added: number; skipped: number; } | false;
     try {

@@ -195,8 +195,8 @@ describe('workspace documents in notebook repositories', () => {
     const { home, trpg } = await serve();
     const trpgId = 'github:owner/trpg@main';
     const empty = (await get(`/api/focus-page?repository=${encodeURIComponent(trpgId)}`)).body;
-    expect(empty).toMatchObject({ repository: trpgId, page: { version: 1, focuses: [] }, writable: true });
-    const page = { version: 1, focuses: [{ id: 'campaign', notebookId: 'trpg~trpg', name: 'Campaign', division: 'single', panes: [{ tabs: [] }] }] };
+    expect(empty).toMatchObject({ repository: trpgId, page: { version: 2, focuses: [] }, writable: true });
+    const page = { version: 2, focuses: [{ id: 'campaign', notebookId: 'trpg~trpg', name: 'Campaign', root: { kind: 'pane', id: 'p1', tabs: [] } }] };
     const saved = await fetch(`${base}/api/focus-page`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page, revision: empty.revision, repository: trpgId }) });
     expect(saved.status).toBe(200);
     expect(fs.readFileSync(path.join(trpg, '.github-notes-focus.yaml'), 'utf8')).toContain('Campaign');

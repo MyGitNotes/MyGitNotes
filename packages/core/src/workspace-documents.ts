@@ -1,6 +1,7 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { ZodType, ZodTypeDef } from 'zod';
 import { SourceError } from './github-api.js';
+import { NewerVersionError } from './newer-version-error.js';
 import { STUDY_DOCUMENT } from './study.js';
 import { FOCUS_DOCUMENT } from './focus-page.js';
 import { BOOKMARKS_DOCUMENT } from './bookmarks.js';
@@ -22,6 +23,8 @@ export interface WorkspaceDocument<T = unknown> {
   fileSchema: ZodType<unknown, ZodTypeDef, unknown>;
   empty(): T;
   read(value: unknown): T;
+  /** The inverse of `read`: the value to store, when it is not `value` itself. A document that reads several stored versions may keep writing an older one. */
+  write?(value: T): unknown;
   /** Rewrites one notebook's note paths in place and reports whether anything changed. */
   relocate?(value: T, notebook: { id: string; root: string; }, move: (path: string) => string): boolean;
   /** Validate changed collections without dropping retained missing or unknown-owner references. */
@@ -37,6 +40,8 @@ export interface WorkspaceDocument<T = unknown> {
 export const WORKSPACE_DOCUMENTS: readonly WorkspaceDocument[] = [STUDY_DOCUMENT, FOCUS_DOCUMENT, BOOKMARKS_DOCUMENT];
 export const workspaceDocument = (file: string) => WORKSPACE_DOCUMENTS.find(document => document.file === file);
 export const serializeWorkspaceDocument = (value: unknown) => stringifyYaml(value, { lineWidth: 0 });
+/** The YAML stored for `value` of `document`, in the stored version the document writes. */
+export const writeWorkspaceDocument = <T>(document: WorkspaceDocument<T>, value: T) => serializeWorkspaceDocument(document.write ? document.write(value) : value);
 const parse = (content: string) => parseYaml(content, { maxAliasCount: 20 });
 
 export function readWorkspaceDocument<T>(document: WorkspaceDocument<T>, content: string | null): T {
@@ -62,9 +67,10 @@ export function relocateWorkspaceDocuments(files: { get(file: string): string | 
     let value;
     try {
       value = document.read(parse(raw));
-    } catch {
+    } catch (error) {
+      if (error instanceof NewerVersionError) throw new SourceError(error.message, 422);
       throw new SourceError(`Invalid ${document.label} YAML. Fix the file before moving content.`, 422);
     }
-    if (document.relocate(value, notebook, move)) files.set(document.file, serializeWorkspaceDocument(value));
+    if (document.relocate(value, notebook, move)) files.set(document.file, writeWorkspaceDocument(document, value));
   }
 }

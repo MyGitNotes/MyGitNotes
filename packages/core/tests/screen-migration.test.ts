@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
 import { parseCompilation } from '../src/compilation.js';
-import { FocusPageSchema } from '../src/focus-page.js';
+import { focusPanes, readFocusPage } from '../src/focus-page.js';
 import { legacyScreenToCompilations, migrateFocusLaneTabs } from '../src/screen-migration.js';
 import { readScreenPage } from '../src/screen-page.js';
 import { migrateWorkspace, PartialMigrationError, WorkspaceCompatibilityError } from '../src/workspace-migration.js';
@@ -56,7 +56,7 @@ describe('migrateFocusLaneTabs', () => {
   it('turns lane tabs into path tabs and drops a tab whose lane is gone', () => {
     const { page, changedTabs, droppedTabs } = migrateFocusLaneTabs(focusWithLanes, new Map([['reading', 'notes/a/reading-list.compilation.yml'], ['tagged', 'notes/a/tagged.compilation.yml']]));
     expect([changedTabs, droppedTabs]).toEqual([2, 1]);
-    expect(FocusPageSchema.parse(page).focuses[0].panes.map(pane => pane.tabs)).toEqual([[{ kind: 'note', path: 'notes/a/one.md' }, { kind: 'note', path: 'notes/a/reading-list.compilation.yml' }], [{ kind: 'note', path: 'notes/a/tagged.compilation.yml' }]]);
+    expect(focusPanes(readFocusPage(page).focuses[0]).map(pane => pane.tabs)).toEqual([[{ kind: 'note', path: 'notes/a/one.md' }, { kind: 'note', path: 'notes/a/reading-list.compilation.yml' }], [{ kind: 'note', path: 'notes/a/tagged.compilation.yml' }]]);
   });
 });
 
@@ -76,8 +76,8 @@ describe('migrateWorkspace with a Screen file', () => {
     expect(repository.touched).toContain('.github-notes-screen.yaml');
     expect(repository.touched).toContain('.mygitnotes.yaml');
     for (const file of repository.touched.filter(file => file.endsWith('.compilation.yml'))) expect(parseCompilation(read(root, file), file.startsWith('notes/a/') ? 'notes/a' : 'notes/b').id).toBeTruthy();
-    const focus = FocusPageSchema.parse(YAML.parse(read(root, '.github-notes-focus.yaml')));
-    expect(focus.focuses[0].panes.flatMap(pane => pane.tabs).every(tab => tab.kind === 'note')).toBe(true);
+    const focus = readFocusPage(YAML.parse(read(root, '.github-notes-focus.yaml')));
+    expect(focusPanes(focus.focuses[0]).flatMap(pane => pane.tabs).every(tab => tab.kind === 'note')).toBe(true);
     expect(migrateWorkspace(root)).toMatchObject({ migrated: false, repositories: [] });
   });
   it('writes nothing when a lane cannot convert', () => {
@@ -139,8 +139,8 @@ describe('migrateWorkspace edge paths', () => {
     write(root, '.mygitnotes.yaml', manifest(2));
     write(root, '.github-notes-focus.yaml', YAML.stringify(focusWithLanes));
     const result = migrateWorkspace(root);
-    const focus = FocusPageSchema.parse(YAML.parse(read(root, '.github-notes-focus.yaml')));
-    expect(focus.focuses[0].panes.flatMap(pane => pane.tabs).every(tab => tab.kind === 'note')).toBe(true);
+    const focus = readFocusPage(YAML.parse(read(root, '.github-notes-focus.yaml')));
+    expect(focusPanes(focus.focuses[0]).flatMap(pane => pane.tabs).every(tab => tab.kind === 'note')).toBe(true);
     expect(result.repositories[0]).toMatchObject({ compilations: 0, droppedFocusTabs: 3 });
     expect(result.repositories[0].touched).toEqual(['.github-notes-focus.yaml', '.mygitnotes.yaml']);
   });

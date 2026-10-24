@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChevronDown, ListTree, PanelsTopLeft, X } from 'lucide-react';
-import { FOCUS_DIVISIONS, type FocusDivision, FocusError } from '@mygitnotes/core/focus-page';
+import { FOCUS_DIVISIONS, type FocusDivision, FocusError, type FocusLayout, legacyDivisionOf } from '@mygitnotes/core/focus-page';
 import { CURRENT_FOCUS } from '../lib/focus-view.js';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import { focusErrorMessage } from '../lib/focus-error-message.js';
@@ -9,7 +9,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { Button } from './Button.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
-import { DivisionIcon } from './FocusDivision.js';
+import { DivisionIcon, LayoutIcon } from './FocusDivision.js';
 import { SelectButtonGroup, SelectButtonPrimary, SelectButtonTrigger } from './SelectButton.js';
 
 type Dialog = { kind: 'name'; } | { kind: 'rename'; id: string; name: string; } | { kind: 'delete'; id: string; name: string; };
@@ -47,7 +47,7 @@ export const FocusControls: React.FC<{
                 <DropdownMenu.RadioItem value={CURRENT_FOCUS}>{t('focus.current')}</DropdownMenu.RadioItem>
                 {focus.focuses.map(item => (
                   <DropdownMenu.RadioItem key={item.id} value={item.id}>
-                    <DivisionIcon division={item.division} />
+                    <LayoutIcon layout={item} />
                     <span>{item.name}</span>
                   </DropdownMenu.RadioItem>
                 ))}
@@ -80,7 +80,7 @@ export const FocusControls: React.FC<{
           </button>
         </p>
       )}
-      {focus.layout && <DivisionPicker division={focus.layout.division} disabled={!focus.editable} onChange={division => void focus.setDivision(division).catch(() => {})} />}
+      {focus.layout && <DivisionPicker layout={focus.layout} disabled={!focus.editable} onChange={division => void focus.setDivision(division).catch(() => {})} />}
       {focus.layout && browseToggle && <button type='button' className='ui-icon-button' aria-pressed={browseToggle.showing} onClick={browseToggle.onToggle} aria-label={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')} title={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')}>{browseToggle.showing ? <PanelsTopLeft aria-hidden='true' /> : <ListTree aria-hidden='true' />}</button>}
       {dialog?.kind === 'name' && <FocusNameDialog title={t('focus.nameTitle')} initial='' taken={taken} onClose={() => setDialog(null)} onSubmit={name => onShow(focus.name(name))} />}
       {dialog?.kind === 'rename' && <FocusNameDialog title={t('focus.renameTitle')} initial={dialog.name} taken={taken.filter(name => name !== dialog.name)} onClose={() => setDialog(null)} onSubmit={name => focus.rename(dialog.id, name)} />}
@@ -107,16 +107,16 @@ export const FocusControls: React.FC<{
   );
 };
 
-const DivisionPicker: React.FC<{ division: FocusDivision; disabled: boolean; onChange: (division: FocusDivision) => void; }> = ({ division, disabled, onChange }) => {
+const DivisionPicker: React.FC<{ layout: FocusLayout; disabled: boolean; onChange: (division: FocusDivision) => void; }> = ({ layout, disabled, onChange }) => {
   const { t } = useTranslation();
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger className='ui-icon-button focus-division-trigger' disabled={disabled} aria-label={t('focus.division')} title={t('focus.division')}>
-        <DivisionIcon division={division} />
+        <LayoutIcon layout={layout} />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('focus.division')} onEscapeKeyDown={event => event.stopPropagation()}>
-          <DropdownMenu.RadioGroup value={division} onValueChange={value => onChange(value as FocusDivision)}>
+          <DropdownMenu.RadioGroup value={legacyDivisionOf(layout) ?? ''} onValueChange={value => onChange(value as FocusDivision)}>
             {FOCUS_DIVISIONS.map(value => (
               <DropdownMenu.RadioItem key={value} value={value}>
                 <DivisionIcon division={value} />

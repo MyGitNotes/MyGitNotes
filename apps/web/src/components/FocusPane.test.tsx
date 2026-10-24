@@ -28,11 +28,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const layout: FocusLayout = { division: 'columns-2', panes: [{ tabs: [{ kind: 'note', path: 'notes/a.md' }, { kind: 'note', path: 'notes/b.compilation.yml' }] }, { tabs: [{ kind: 'note', path: 'notes/c.md' }] }] };
-const focus = { notebookId: 'life', layout, entry: { activePane: 0, shown: ['note:notes/a.md', 'note:notes/c.md'], recent: [0, 1], history: [['note:notes/a.md'], ['note:notes/c.md']], ratios: {}, hideToolbar: [false, false] }, notes: new Map([['notes/a.md', { title: 'Alpha' }], ['notes/b.compilation.yml', { title: 'Beta list' }], ['notes/c.md', { title: 'Gamma' }]]), editable: false, shown: null } as unknown as NoteFocus;
+const layout: FocusLayout = { root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }, { kind: 'note', path: 'notes/b.compilation.yml' }] }, { kind: 'pane', id: 'p2', tabs: [{ kind: 'note', path: 'notes/c.md' }] }] } };
+const focus = { notebookId: 'life', layout, entry: { activePane: 'p1', shown: { p1: 'note:notes/a.md', p2: 'note:notes/c.md' }, recent: ['p1', 'p2'], history: { p1: ['note:notes/a.md'], p2: ['note:notes/c.md'] }, ratios: {}, hideToolbar: { p1: false, p2: false } }, notes: new Map([['notes/a.md', { title: 'Alpha' }], ['notes/b.compilation.yml', { title: 'Beta list' }], ['notes/c.md', { title: 'Gamma' }]]), editable: false, shown: null } as unknown as NoteFocus;
 
 function pane(index: number, searchMatches: ReadonlySet<string> | null) {
-  const displayed = { panes: [index], pane: index, key: index === 0 ? 'note:notes/a.md' : 'note:notes/c.md' };
+  const id = `p${index + 1}`;
+  const displayed = { panes: [id], pane: id, key: index === 0 ? 'note:notes/a.md' : 'note:notes/c.md' };
   return render(createElement(I18nProvider, null, createElement(FocusPane, { focus, notebookRoot: 'notes', folders: [], renderCompilation: path => createElement('div', null, path), onZoomNote: () => {}, searchMatches, displayed })));
 }
 const dimmedTabs = () => [...document.querySelectorAll('.focus-tab[data-dimmed]')].map(tab => tab.textContent);
@@ -53,7 +54,7 @@ it('dims a pane as a whole when none of its tabs match, and clearing the search 
   const view = pane(1, new Set(['notes/a.md']));
   expect(dimmedTabs()).toEqual(['Gamma']);
   expect(document.querySelector('.focus-pane[data-dimmed]')).not.toBeNull();
-  view.rerender(createElement(I18nProvider, null, createElement(FocusPane, { focus, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: [1], pane: 1, key: 'note:notes/c.md' } })));
+  view.rerender(createElement(I18nProvider, null, createElement(FocusPane, { focus, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p2'], pane: 'p2', key: 'note:notes/c.md' } })));
   expect(dimmedTabs()).toEqual([]);
   expect(document.querySelector('.focus-pane[data-dimmed]')).toBeNull();
 });

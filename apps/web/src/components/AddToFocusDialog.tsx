@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { findFocusTab, findFocusTabInPane, FOCUS_MAX_TABS, type FocusTab, focusTabCount, focusTabKey } from '@mygitnotes/core/focus-page';
+import { findFocusTab, findFocusTabInPane, FOCUS_MAX_TABS, focusPaneIndex, type FocusTab, focusTabCount, focusTabKey } from '@mygitnotes/core/focus-page';
 import { CURRENT_FOCUS } from '../lib/focus-view.js';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import { focusErrorMessage } from '../lib/focus-error-message.js';
@@ -7,7 +7,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { Button } from './Button.js';
 import { Select } from './Select.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
-import { DivisionThumbnail } from './FocusDivision.js';
+import { LayoutThumbnail } from './FocusDivision.js';
 
 /**
  * Picks a Focus and one of its panes for a note or lane. Confirming leaves the caller where it is:
@@ -25,7 +25,7 @@ export const AddToFocusDialog: React.FC<{ focus: NoteFocus; tab: FocusTab; label
   const [target, setTarget] = useState(() => focus.shown && targets.includes(focus.shown) ? focus.shown : targets[0]);
   const layout = target ? focus.layoutOf(target) : undefined;
   const current = layout ? findFocusTab(layout, key)?.pane : undefined;
-  const [pane, setPane] = useState(() => (target && focus.entryOf(target)?.activePane) || 0);
+  const [pane, setPane] = useState(() => (target && focus.entryOf(target)?.activePane) || '');
   const found = layout ? findFocusTabInPane(layout, pane, key) !== -1 : false;
   const [placed, setPlaced] = useState(false);
   const [error, setError] = useState('');
@@ -33,7 +33,7 @@ export const AddToFocusDialog: React.FC<{ focus: NoteFocus; tab: FocusTab; label
   const thumbnail = useRef<HTMLDivElement>(null);
 
   const land = () => {
-    const from = flight.current, to = thumbnail.current?.querySelectorAll('[role="radio"]')[pane];
+    const from = flight.current, to = thumbnail.current?.querySelectorAll('[role="radio"]')[layout ? focusPaneIndex(layout, pane) : -1];
     if (!from || !to || matchMedia('(prefers-reduced-motion: reduce)').matches) {
       window.setTimeout(onClose, 1200);
       return;
@@ -77,7 +77,7 @@ export const AddToFocusDialog: React.FC<{ focus: NoteFocus; tab: FocusTab; label
               disabled={placed}
               onValueChange={value => {
                 setTarget(value);
-                setPane(focus.entryOf(value)?.activePane ?? 0);
+                setPane(focus.entryOf(value)?.activePane ?? '');
               }}
               options={targets.map(value => ({ value, label: nameOf(value) }))}
             />
@@ -85,10 +85,10 @@ export const AddToFocusDialog: React.FC<{ focus: NoteFocus; tab: FocusTab; label
         )}
         {layout && (
           <div ref={thumbnail}>
-            <DivisionThumbnail division={layout.division} selected={pane} current={current} label={t('focus.choosePane', { name: nameOf(target) })} onSelect={setPane} />
+            <LayoutThumbnail layout={layout} selected={pane} current={current} label={t('focus.choosePane', { name: nameOf(target) })} onSelect={setPane} />
           </div>
         )}
-        {placed && <p role='status'>{t('focus.added', { name: nameOf(target), number: pane + 1 })}</p>}
+        {placed && <p role='status'>{t('focus.added', { name: nameOf(target), number: layout ? focusPaneIndex(layout, pane) + 1 : 0 })}</p>}
         {error && <p role='alert'>{error}</p>}
         <div className='workspace-dialog-actions'>
           <Button type='button' onClick={onClose}>{t(placed ? 'common.close' : 'common.cancel')}</Button>

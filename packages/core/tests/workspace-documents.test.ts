@@ -24,7 +24,8 @@ describe('workspace documents', () => {
   it('validates size, YAML and every accepted stored version', () => {
     const focus = workspaceDocument(FOCUS_PAGE_FILE)!;
     expect(() => validateWorkspaceDocument(focus, 'version: 1\nfocuses: []\n')).not.toThrow();
-    expect(() => validateWorkspaceDocument(focus, 'version: 2\nfocuses: []\n')).toThrow('Invalid Focus YAML.');
+    expect(() => validateWorkspaceDocument(focus, 'version: 2\nfocuses: []\n')).not.toThrow();
+    expect(() => validateWorkspaceDocument(focus, 'version: 3\nfocuses: []\n')).toThrow('Invalid Focus YAML.');
     expect(() => validateWorkspaceDocument(focus, 'x'.repeat(focus.maxBytes + 1))).toThrow('Focus YAML is required.');
     expect(() => validateWorkspaceDocument(focus, undefined)).toThrow('Focus YAML is required.');
   });
@@ -44,6 +45,20 @@ describe('workspace documents', () => {
     const unchanged = documents(), original = new Map(unchanged);
     relocateWorkspaceDocuments(unchanged, notebooks[1], file => file);
     expect(unchanged).toEqual(original);
+  });
+  it('rewrites paths inside a version 2 Focus tree and keeps it version 2', () => {
+    const tab = { kind: 'note', path: 'notes/a/one/note.md' };
+    const tree = { kind: 'split', id: 's', orientation: 'horizontal', children: [{ kind: 'pane', id: 'left', tabs: [tab] }, { kind: 'split', id: 't', orientation: 'vertical', children: [{ kind: 'pane', id: 'top', tabs: [tab] }, { kind: 'pane', id: 'bottom', tabs: [] }] }] };
+    const files = new Map([[FOCUS_PAGE_FILE, YAML.stringify({ version: 2, focuses: [{ id: 'f', notebookId: 'a', name: 'F', root: tree }] })]]);
+    relocateWorkspaceDocuments(files, notebooks[0], move);
+    const stored = YAML.parse(files.get(FOCUS_PAGE_FILE)!);
+    expect(stored.version).toBe(2);
+    expect(stored.focuses[0].root.children[0].tabs[0].path).toBe('notes/a/two/note.md');
+    expect(stored.focuses[0].root.children[1].children[0].tabs[0].path).toBe('notes/a/two/note.md');
+  });
+  it('refuses to move content in a repository whose Focus file a newer app wrote, saying so', () => {
+    const files = new Map([[FOCUS_PAGE_FILE, YAML.stringify({ version: 3, focuses: [] })]]);
+    expect(() => relocateWorkspaceDocuments(files, notebooks[0], move)).toThrow(/saved by a newer MyGitNotes.*update this deployment/);
   });
   it('updates study and Focus references when a folder moves', () => {
     const files = documents();

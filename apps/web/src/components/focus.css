@@ -1,22 +1,16 @@
-/* Divisions: a small grid of panes, shared by the division picker, Focus lists and the Add to Focus thumbnail. */
-.focus-division { display: inline-grid; flex: none; width: 18px; height: 14px; gap: 1.5px; grid-template: 'a' / 1fr; }
-.focus-division > * { min-width: 0; min-height: 0; border: 1.25px solid currentColor; border-radius: 2px; }
-.focus-division > :nth-child(1) { grid-area: a; }
-.focus-division > :nth-child(2) { grid-area: b; }
-.focus-division > :nth-child(3) { grid-area: c; }
-.focus-division > :nth-child(4) { grid-area: d; }
-.focus-division[data-division='columns-2'] { grid-template: 'a b' / 1fr 1fr; }
-.focus-division[data-division='rows-2'] { grid-template: 'a' 'b' / 1fr; }
-.focus-division[data-division='major-left'] { grid-template: 'a b' 'a c' / 1fr 1fr; }
-.focus-division[data-division='major-top'] { grid-template: 'a a' 'b c' / 1fr 1fr; }
-.focus-division[data-division='columns-3'] { grid-template: 'a b c' / 1fr 1fr 1fr; }
-.focus-division[data-division='grid-2x2'] { grid-template: 'a b' 'c d' / 1fr 1fr; }
-.focus-division-thumbnail { display: grid; width: min(100%, 320px); height: 180px; gap: 6px; }
-.focus-division-thumbnail > button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-bg); color: var(--color-muted); font-size: 12px; }
-.focus-division-thumbnail > button:hover { background: var(--color-sidebar); color: var(--color-text); }
-.focus-division-thumbnail > button[aria-checked='true'] { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line)); background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface)); color: var(--color-text); font-weight: 600; }
-.focus-division-thumbnail > button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-.focus-division-thumbnail small { color: var(--color-muted); font-size: 10px; font-weight: 500; }
+/* Layouts: a Focus's split tree drawn as nested boxes, shared by the division picker, Focus lists and the Add to Focus thumbnail. */
+.focus-layout-split { display: flex; flex: 1; min-width: 0; min-height: 0; gap: 1.5px; }
+.focus-layout-split[data-orientation='vertical'] { flex-direction: column; }
+.focus-layout-pane { flex: 1; min-width: 0; min-height: 0; }
+.focus-layout-icon { display: inline-flex; flex: none; width: 18px; height: 14px; }
+.focus-layout-icon .focus-layout-pane { border: 1.25px solid currentColor; border-radius: 2px; }
+.focus-layout-thumbnail { display: flex; width: min(100%, 320px); height: 180px; }
+.focus-layout-thumbnail .focus-layout-split { gap: 6px; }
+.focus-layout-thumbnail button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-bg); color: var(--color-muted); font-size: 12px; }
+.focus-layout-thumbnail button:hover { background: var(--color-sidebar); color: var(--color-text); }
+.focus-layout-thumbnail button[aria-checked='true'] { border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line)); background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface)); color: var(--color-text); font-weight: 600; }
+.focus-layout-thumbnail button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.focus-layout-thumbnail small { color: var(--color-muted); font-size: 10px; font-weight: 500; }
 
 /* Toolbar controls and menus. */
 .focus-switcher { max-width: 14rem; }
@@ -89,7 +83,7 @@
 @media (max-width: 767px) { .right-panel-divider { width: 1px; height: 24px; } .note-document-panel[data-frame='rail'] { position: static; max-height: none; border: 0; border-radius: 0; box-shadow: none; } }
 
 /* Add to Focus. */
-.focus-add-dialog .focus-division-thumbnail { justify-self: center; }
+.focus-add-dialog .focus-layout-thumbnail { justify-self: center; }
 .focus-add-item { display: flex; justify-content: center; }
 .focus-add-item > span { display: inline-block; max-width: 100%; padding: 6px 12px; overflow: hidden; border: 1px solid var(--color-line); border-radius: 999px; background: var(--color-sidebar); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 

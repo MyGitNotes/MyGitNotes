@@ -12,10 +12,13 @@ const fixture = githubFixture;
 describe('shell-shaped note operations', () => {
   it('commits a Focus draft and selected notes together, while rejecting a stale Focus base', async () => {
     const f = fixture();
-    const base = { version: 1, focuses: [] };
-    const page = { version: 1, focuses: [{ id: 'weekly', notebookId: 'ex', name: 'Weekly', division: 'columns-2', panes: [{ tabs: [{ kind: 'note', path: 'notes/ex/a.md' }] }, { tabs: [{ kind: 'note', path: 'notes/ex/reading.compilation.yml' }] }] }] };
+    const base = { version: 2, focuses: [] };
+    const page = { version: 2, focuses: [{ id: 'weekly', notebookId: 'ex', name: 'Weekly', root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/ex/a.md' }] }, { kind: 'pane', id: 'p2', tabs: [{ kind: 'note', path: 'notes/ex/reading.compilation.yml' }] }] } }] };
     await f.reader().commitNotes([{ path: 'notes/ex/a.md', content: '# Updated', metadata: {} }], f.head(), 'Update reading workspace', [{ path: FOCUS_PAGE_FILE, page, base }]);
     expect(f.text(FOCUS_PAGE_FILE)).toContain('name: Weekly');
+    // Every Focus is still a division, so the file stays readable by a deployment that only knows version 1.
+    expect(f.text(FOCUS_PAGE_FILE)).toMatch(/^version: 1$/m);
+    expect(f.text(FOCUS_PAGE_FILE)).toContain('division: columns-2');
     expect(f.text('notes/ex/a.md')).toContain('# Updated');
     expect(f.calls.filter(call => call.endpoint === '/git/commits')).toHaveLength(1);
     await expect(f.reader().commitNotes([], f.head(), 'Stale focus', [{ path: FOCUS_PAGE_FILE, page: base, base }])).rejects.toMatchObject({ status: 409 });
@@ -26,8 +29,8 @@ describe('shell-shaped note operations', () => {
   });
   it('rejects a lane tab and a path outside the registry', async () => {
     const f = fixture();
-    const lane = { version: 1, focuses: [{ id: 'weekly', notebookId: 'ex', name: 'Weekly', division: 'single', panes: [{ tabs: [{ kind: 'lane', id: 'reading' }] }] }] };
-    await expect(f.reader().commitNotes([], f.head(), 'Lane tab', [{ path: FOCUS_PAGE_FILE, page: lane, base: { version: 1, focuses: [] } }])).rejects.toThrow('Invalid Focus configuration.');
+    const lane = { version: 2, focuses: [{ id: 'weekly', notebookId: 'ex', name: 'Weekly', root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'lane', id: 'reading' }] } }] };
+    await expect(f.reader().commitNotes([], f.head(), 'Lane tab', [{ path: FOCUS_PAGE_FILE, page: lane, base: { version: 2, focuses: [] } }])).rejects.toThrow('Invalid Focus configuration.');
     await expect(f.reader().commitNotes([], f.head(), 'Old screen', [{ path: '.github-notes-screen.yaml', page: { version: 2, rows: [] }, base: { version: 2, rows: [] } }])).rejects.toMatchObject({ status: 403 });
     await expect(f.reader().commitNotes([], f.head(), 'Escape', [{ path: '.github-notes.yaml', page: {}, base: {} }])).rejects.toMatchObject({ status: 403 });
   });

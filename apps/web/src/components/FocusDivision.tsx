@@ -1,38 +1,62 @@
 import './focus.css';
 import React from 'react';
-import { type FocusDivision, focusPaneCount } from '@mygitnotes/core/focus-page';
+import { type FocusDivision, type FocusLayout, type FocusNode, focusPanes, legacyFocusTree } from '@mygitnotes/core/focus-page';
 import { useTranslation } from '../lib/i18n/index.js';
 
-const panes = (division: FocusDivision) => Array.from({ length: focusPaneCount(division) }, (_, index) => index);
+/** A layout's splits as nested boxes; `leaf` draws one pane. */
+const LayoutNode: React.FC<{ node: FocusNode; leaf: (pane: string) => React.ReactNode; }> = ({ node, leaf }) => {
+  if (node.kind === 'pane') return <>{leaf(node.id)}</>;
+  return <span className='focus-layout-split' data-orientation={node.orientation}>{node.children.map(child => <LayoutNode key={child.id} node={child} leaf={leaf} />)}</span>;
+};
 
-/** The division's panes drawn as a small grid, used in the division picker and Focus lists. */
-export const DivisionIcon: React.FC<{ division: FocusDivision; }> = ({ division }) => <span className='focus-division' data-division={division} aria-hidden='true'>{panes(division).map(pane => <span key={pane} />)}</span>;
+/** The layout's panes drawn as a small diagram, used in the Focus lists and the division picker. */
+export const LayoutIcon: React.FC<{ layout: FocusLayout; }> = ({ layout }) => (
+  <span className='focus-layout-icon' aria-hidden='true'>
+    <LayoutNode node={layout.root} leaf={pane => <span key={pane} className='focus-layout-pane' />} />
+  </span>
+);
 
-/** A larger division drawing whose panes are choices; `current` marks the pane that already holds the item. */
-export const DivisionThumbnail: React.FC<{ division: FocusDivision; selected: number; current?: number; label: string; onSelect: (pane: number) => void; }> = ({ division, selected, current, label, onSelect }) => {
+/** A division as a layout; empty panes are enough for the drawing, and no division has more than four. */
+export const divisionLayout = (division: FocusDivision): FocusLayout => ({ root: legacyFocusTree(division, [[], [], [], []]) });
+
+export const DivisionIcon: React.FC<{ division: FocusDivision; }> = ({ division }) => <LayoutIcon layout={divisionLayout(division)} />;
+
+/** A larger layout drawing whose panes are choices; `current` marks the pane that already holds the item. */
+export const LayoutThumbnail: React.FC<{ layout: FocusLayout; selected: string; current?: string; label: string; onSelect: (pane: string) => void; }> = ({ layout, selected, current, label, onSelect }) => {
   const { t } = useTranslation();
+  const panes = focusPanes(layout).map(pane => pane.id);
   return (
     <div
-      className='focus-division focus-division-thumbnail'
-      data-division={division}
+      className='focus-layout-thumbnail'
       role='radiogroup'
       aria-label={label}
       onKeyDown={event => {
-        const count = focusPaneCount(division);
         const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
         if (!step) return;
         event.preventDefault();
-        const next = (selected + step + count) % count;
-        onSelect(next);
+        const next = (panes.indexOf(selected) + step + panes.length) % panes.length;
+        onSelect(panes[next]);
         event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[next]?.focus();
       }}
     >
-      {panes(division).map(pane => (
-        <button key={pane} type='button' role='radio' aria-checked={pane === selected} tabIndex={pane === selected ? 0 : -1} data-current={pane === current || undefined} onClick={() => onSelect(pane)}>
-          <span>{t('focus.paneNumber', { number: pane + 1 })}</span>
-          {pane === current && <small>{t('focus.currentPane')}</small>}
-        </button>
-      ))}
+      <LayoutNode
+        node={layout.root}
+        leaf={pane => (
+          <button
+            key={pane}
+            type='button'
+            role='radio'
+            className='focus-layout-pane'
+            aria-checked={pane === selected}
+            tabIndex={pane === selected ? 0 : -1}
+            data-current={pane === current || undefined}
+            onClick={() => onSelect(pane)}
+          >
+            <span>{t('focus.paneNumber', { number: panes.indexOf(pane) + 1 })}</span>
+            {pane === current && <small>{t('focus.currentPane')}</small>}
+          </button>
+        )}
+      />
     </div>
   );
 };

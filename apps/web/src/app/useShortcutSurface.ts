@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ShortcutSurfaceMode } from '../components/KeyboardShortcuts.js';
 import { WorkspaceTab } from '../lib/routes.js';
 import type { Availability, CommandSpec } from '../lib/commands/registry.js';
-import { FOCUS_DIVISIONS, focusTabKey } from '@mygitnotes/core/focus-page';
+import { findFocusPane, FOCUS_DIVISIONS, focusTabKey, legacyDivisionOf } from '@mygitnotes/core/focus-page';
 import { CURRENT_FOCUS } from '../lib/focus-view.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
 import type { useFocusPanes } from './useFocusPanes.js';
@@ -32,7 +32,7 @@ export function useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, show
   };
   const cycleFocusTab = (delta: number) => {
     if (!noteFocus.layout || !activeFocusPane) return;
-    const tabs = activeFocusPane.panes.flatMap(pane => noteFocus.layout!.panes[pane].tabs.map(tab => ({ pane, key: focusTabKey(tab) })));
+    const tabs = activeFocusPane.panes.flatMap(pane => (findFocusPane(noteFocus.layout!, pane)?.tabs ?? []).map(tab => ({ pane, key: focusTabKey(tab) })));
     const index = tabs.findIndex(tab => tab.key === activeFocusPane.key);
     const target = tabs[(index + delta + tabs.length) % tabs.length];
     if (target) void noteFocus.show(target.pane, target.key);
@@ -57,7 +57,7 @@ export function useShortcutSurface({ noteFocus, focusDisplay, t, activeTab, show
     run: () => {
       if (zoomablePath) zoomFocusNote(zoomablePath);
     },
-  }, ...FOCUS_DIVISIONS.map((division): CommandSpec => ({ id: `focus-division-${division}`, group: 'focus', title: t('focus.divisionCommand', { name: t(`focus.division.${division}`) }), description: t('shortcuts.describe.focusDivision'), availability: () => available(Boolean(noteFocus.editable && noteFocus.layout && noteFocus.layout.division !== division), t('shortcuts.requiresEditableFocus')), run: () => void noteFocus.setDivision(division).catch(() => {}) }))];
+  }, ...FOCUS_DIVISIONS.map((division): CommandSpec => ({ id: `focus-division-${division}`, group: 'focus', title: t('focus.divisionCommand', { name: t(`focus.division.${division}`) }), description: t('shortcuts.describe.focusDivision'), availability: () => available(Boolean(noteFocus.editable && noteFocus.layout && legacyDivisionOf(noteFocus.layout) !== division), t('shortcuts.requiresEditableFocus')), run: () => void noteFocus.setDivision(division).catch(() => {}) }))];
 
   return { focusCommands, shortcutMode, setShortcutMode };
 }

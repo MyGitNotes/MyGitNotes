@@ -1,52 +1,47 @@
 import './focus.css';
 import React from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
-import type { FocusDivision } from '@mygitnotes/core/focus-page';
-import { type DisplayedPane, displayedPanes } from '../lib/focus-view.js';
+import type { DisplayNode } from '@mygitnotes/core/focus-page';
+import { displayedPanes } from '../lib/focus-view.js';
 import { useIsDesktop } from './WorkspaceChrome.js';
 import { usePhone } from '../lib/use-phone.js';
 import { FocusPane, type FocusPaneContext } from './FocusPane.js';
 
-/** A division as nested splits: a leaf is a displayed pane's position, a split lays its children out along one axis. */
-type Split = number | { orientation: 'horizontal' | 'vertical'; children: Split[]; };
-const row = (...children: Split[]): Split => ({ orientation: 'horizontal', children });
-const column = (...children: Split[]): Split => ({ orientation: 'vertical', children });
-const SPLITS: Record<FocusDivision, Split> = { single: 0, 'columns-2': row(0, 1), 'rows-2': column(0, 1), 'major-left': row(0, column(1, 2)), 'major-top': column(0, row(1, 2)), 'columns-3': row(0, 1, 2), 'grid-2x2': column(row(0, 1), row(2, 3)) };
-
-/** How many panes fit: four on desktop, two on tablets, one on phones. */
-export function usePaneCapacity(): 1 | 2 | 4 {
+/** How many panes fit: all of them on desktop, two on tablets, one on phones. */
+export function usePaneCapacity(): 1 | 2 | 'all' {
   const desktop = useIsDesktop();
   const phone = usePhone();
-  return desktop ? 4 : phone ? 1 : 2;
+  return desktop ? 'all' : phone ? 1 : 2;
 }
 
-/** The displayed Focus: its panes laid out by division, with draggable splits whose ratios are kept per Focus. */
-export const FocusArea: React.FC<FocusPaneContext & { capacity: 1 | 2 | 4; }> = ({ capacity, ...context }) => {
+/** The displayed Focus: its split tree, with draggable splits whose sizes are kept per Focus on this device. */
+export const FocusArea: React.FC<FocusPaneContext & { capacity: 1 | 2 | 'all'; }> = ({ capacity, ...context }) => {
   const { focus } = context;
   if (!focus.layout || !focus.entry) return null;
   const display = displayedPanes(focus.entry, focus.layout, capacity);
+  const leaves = new Map(display.panes.map(pane => [pane.panes[0], pane]));
   const ratios = focus.entry.ratios;
 
-  const render = (split: Split, id: string): React.ReactNode => {
-    if (typeof split === 'number') return <FocusPane {...context} displayed={display.panes[split] as DisplayedPane} />;
-    const panelId = (index: number) => `${id}.${index}`;
-    const stored = ratios[id];
-    const defaultLayout = stored?.length === split.children.length ? Object.fromEntries(split.children.map((_, index) => [panelId(index), stored[index]])) : undefined;
+  const render = (node: DisplayNode): React.ReactNode => {
+    if (node.kind === 'pane') return <FocusPane {...context} displayed={leaves.get(node.id)!} />;
+    // Stored sizes apply only while they cover exactly the children; otherwise the children share equally.
+    const stored = ratios[node.id];
+    const covers = stored !== undefined && Object.keys(stored).length === node.children.length && node.children.every(child => typeof stored[child.id] === 'number');
     return (
       <Group
-        key={id}
-        id={id}
-        orientation={split.orientation}
+        key={node.id}
+        id={node.id}
+        orientation={node.orientation}
         className='focus-split'
-        defaultLayout={defaultLayout}
+        defaultLayout={covers ? stored : undefined}
         onLayoutChanged={(layout, meta) => {
-          if (meta.isUserInteraction) focus.setRatios(id, split.children.map((_, index) => layout[panelId(index)]));
+          if (meta.isUserInteraction) focus.setRatios(node.id, Object.fromEntries(node.children.map(child => [child.id, layout[child.id]])));
         }}
       >
-        {split.children.flatMap((child, index) => [...(index > 0 ? [<Separator key={`separator-${index}`} className='focus-splitter' data-axis={split.orientation} />] : []), <Panel key={panelId(index)} id={panelId(index)} minSize='10%' className='focus-split-panel'>{render(child, panelId(index))}</Panel>])}
+        {node.children.flatMap((child, index) => [...(index > 0 ? [<Separator key={`separator-${index}`} className='focus-splitter' data-axis={node.orientation} />] : []), <Panel key={child.id} id={child.id} minSize='10%' className='focus-split-panel'>{render(child)}</Panel>])}
       </Group>
     );
   };
 
-  return <div className='focus-area' data-division={display.division}>{render(SPLITS[display.division], display.division)}</div>;
+  return <div className='focus-area' data-panes={display.panes.length}>{render(display.root)}</div>;
 };
