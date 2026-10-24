@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { renderHook } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FocusLayout } from '@mygitnotes/core/focus-page';
 import { useShortcutSurface } from './useShortcutSurface.js';
 
@@ -30,5 +30,26 @@ describe('Close Focus in the palette', () => {
   it('closes a named Focus but never the Default', () => {
     expect(closeFocus('saved-id')).toEqual({ enabled: true });
     expect(closeFocus('current')).toMatchObject({ enabled: false });
+  });
+});
+
+describe('Collapse browse panel and header in the palette', () => {
+  const toggleCommand = (browseDock?: { collapsed: boolean; toggle: () => void; }) => {
+    const { result } = renderHook(() => useShortcutSurface({ noteFocus, focusDisplay, t: (key: string) => key, showFocus: async () => {}, requestClear: () => {}, zoomFocusNote: () => {}, focusCapacity: 'all', browseDock } as never));
+    return result.current.focusCommands.find(command => command.id === 'focus-toggle-browse')!;
+  };
+
+  it('is available only where the Notes toolbar shows the browse toggle', () => {
+    expect(toggleCommand().availability!()).toMatchObject({ enabled: false });
+    expect(toggleCommand({ collapsed: false, toggle: () => {} }).availability!()).toEqual({ enabled: true });
+  });
+
+  it('is titled for what it does next and runs the toggle', () => {
+    const toggle = vi.fn();
+    expect(toggleCommand({ collapsed: false, toggle }).title).toBe('focus.collapseBrowseAndHeader');
+    const collapsed = toggleCommand({ collapsed: true, toggle });
+    expect(collapsed.title).toBe('focus.expandBrowseAndHeader');
+    void collapsed.run({} as never);
+    expect(toggle).toHaveBeenCalledTimes(1);
   });
 });

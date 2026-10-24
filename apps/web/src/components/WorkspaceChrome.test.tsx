@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useEffect } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
@@ -244,6 +245,38 @@ describe('WorkspaceSplitLayout and WorkspaceSidebarPortal', () => {
     expect(screen.getByTestId('sidebar-content')).toBeInTheDocument();
     expect(container.querySelector('#custom-sidebar-panel')).toBeInTheDocument();
     expect(container.querySelector('.workspace-splitter')).toBeInTheDocument();
+  });
+
+  it('keeps the sidebar mounted but inert while sidebarCollapsed, so it keeps its state', () => {
+    const mounted = vi.fn();
+    const Sidebar = () => {
+      useEffect(() => {
+        mounted();
+      }, []);
+      return <div data-testid='sidebar-content'>Navigation Tree</div>;
+    };
+    const layout = (collapsed: boolean) => (
+      <SidebarProvider>
+        <WorkspaceSplitLayout hasSidebar sidebarCollapsed={collapsed} sidebarDomId='custom-sidebar-panel'>
+          <WorkspaceSidebarPortal>
+            <Sidebar />
+          </WorkspaceSidebarPortal>
+          <div data-testid='main-content'>Main Notes Content</div>
+        </WorkspaceSplitLayout>
+      </SidebarProvider>
+    );
+    const { container, rerender } = render(layout(false));
+    const sidebar = screen.getByTestId('sidebar-content');
+    expect(container.querySelector('[inert]')).toBeNull();
+    rerender(layout(true));
+    expect(screen.getByTestId('sidebar-content')).toBe(sidebar);
+    expect(sidebar.closest('[inert]')).not.toBeNull();
+    expect(screen.getByTestId('main-content').closest('[inert]')).toBeNull();
+    expect(container.querySelector('.workspace-split-group')).toHaveAttribute('data-sidebar-collapsed', 'true');
+    rerender(layout(false));
+    expect(screen.getByTestId('sidebar-content')).toBe(sidebar);
+    expect(container.querySelector('[inert]')).toBeNull();
+    expect(mounted).toHaveBeenCalledTimes(1);
   });
 
   it('does not render a right panel splitter when rightPanel is omitted', () => {

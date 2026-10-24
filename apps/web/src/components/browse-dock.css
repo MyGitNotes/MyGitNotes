@@ -15,6 +15,17 @@
 .browse-dock-toggle[data-collapsed] svg > path:last-child { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) { .browse-dock-toggle svg > path:last-child { transition: none; } }
 
+/* Collapsing folds the browse panel to nothing by easing its flex-grow (the library sets it inline) instead of unmounting it, so the Focus keeps its editors.\n   The transition exists only while the dock animates: the library measures its panels' pixel sizes, and a transition running at any other time (mount, window resize) would hand it wrong ones. */
+.browse-dock[data-animating] .browse-dock-group > [data-panel]:first-child { transition: flex-grow 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+.browse-dock[data-collapsed] .browse-dock-group > [data-panel]:first-child { flex-grow: 0 !important; }
+/* A drag follows the pointer; only the toggle animates. */
+.browse-dock-group:has([data-separator='active']) > [data-panel] { transition: none; }
+.browse-dock[data-collapsed]:not([data-animating]) .browse-dock-splitter { visibility: hidden; }
+/* While the panel moves its content keeps the width (height for the top dock) it has open, so the list is clipped rather than reflowed on every frame. */
+.browse-dock[data-animating][data-placement='left'] .browse-dock-panel-content { flex: none; width: var(--browse-dock-size); }
+.browse-dock[data-animating][data-placement='top'] .browse-dock-panel-content { flex: none; height: var(--browse-dock-size); }
+@media (prefers-reduced-motion: reduce) { .browse-dock[data-animating] .browse-dock-group > [data-panel]:first-child { transition: none; } }
+
 .browse-dock-scroll { flex: 1; min-height: 0; }
 
 .browse-dock-focus { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; }

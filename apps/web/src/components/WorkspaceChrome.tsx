@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PanelLeft } from 'lucide-react';
+import { useFoldAnimation } from '../lib/use-fold-animation.js';
 import { Group, type LayoutChangedMeta, Panel, type PanelImperativeHandle, type PanelSize, Separator, usePanelRef } from 'react-resizable-panels';
 
 export const SIDEBAR_WIDTH_STORAGE_KEY = 'mygitnotes:sidebar-width';
@@ -170,6 +171,8 @@ export interface WorkspaceSplitLayoutProps {
   sidebar?: React.ReactNode;
   children: React.ReactNode;
   hasSidebar?: boolean;
+  /** Folds the sidebar away without unmounting it: its panel eases to nothing and is inert, and the drawer below the desktop breakpoint stays closed. */
+  sidebarCollapsed?: boolean;
   drawerOpen?: boolean;
   onCloseDrawer?: () => void;
   closeLabel?: string;
@@ -185,10 +188,11 @@ export interface WorkspaceSplitLayoutProps {
   rightPanelWidth?: number;
 }
 
-export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, drawerOpen: propDrawerOpen, onCloseDrawer: propOnCloseDrawer, closeLabel = 'Close sidebar', className = '', sidebarId = 'workspace-sidebar-panel', sidebarDomId, mainId = 'workspace-main-panel', mainClassName = '', rightPanel, rightPanelId = 'workspace-right-panel', rightPanelWidth }: WorkspaceSplitLayoutProps) {
+export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, sidebarCollapsed = false, drawerOpen: propDrawerOpen, onCloseDrawer: propOnCloseDrawer, closeLabel = 'Close sidebar', className = '', sidebarId = 'workspace-sidebar-panel', sidebarDomId, mainId = 'workspace-main-panel', mainClassName = '', rightPanel, rightPanelId = 'workspace-right-panel', rightPanelWidth }: WorkspaceSplitLayoutProps) {
   const isDesktop = useIsDesktop();
   const context = useContext(SidebarContext);
-  const drawerOpen = propDrawerOpen !== undefined ? propDrawerOpen : (context?.open ?? false);
+  const drawerOpen = !sidebarCollapsed && (propDrawerOpen !== undefined ? propDrawerOpen : (context?.open ?? false));
+  const folding = useFoldAnimation(sidebarCollapsed);
   const onCloseDrawer = propOnCloseDrawer || (() => context?.setOpen(false));
 
   const [initialWidth] = useState(getSavedSidebarWidth);
@@ -244,13 +248,13 @@ export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, dra
 
   return (
     <div className={`workspace-split-layout flex-1 min-w-0 min-h-0 h-full flex overflow-hidden ${className}`}>
-      <Group orientation='horizontal' className='workspace-split-group flex-1 min-w-0 min-h-0 h-full flex' onLayoutChanged={(_layout, meta) => persistWidthOnUserInteraction(meta, sidebarPanelRef, 0, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, saveSidebarWidth)}>
+      <Group orientation='horizontal' className='workspace-split-group flex-1 min-w-0 min-h-0 h-full flex' data-sidebar-collapsed={(hasSidebar && sidebarCollapsed) || undefined} data-sidebar-folding={folding || undefined} onLayoutChanged={(_layout, meta) => persistWidthOnUserInteraction(meta, sidebarPanelRef, 0, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, saveSidebarWidth)}>
         {hasSidebar && (
           <>
-            <Panel id={sidebarId} defaultSize={`${initialWidth}px`} minSize={`${MIN_SIDEBAR_WIDTH}px`} maxSize={`${MAX_SIDEBAR_WIDTH}px`} groupResizeBehavior='preserve-pixel-size' onResize={handleResize} panelRef={sidebarPanelRef} className='workspace-split-sidebar-panel h-full'>
+            <Panel id={sidebarId} defaultSize={`${initialWidth}px`} minSize={`${MIN_SIDEBAR_WIDTH}px`} maxSize={`${MAX_SIDEBAR_WIDTH}px`} groupResizeBehavior='preserve-pixel-size' onResize={handleResize} panelRef={sidebarPanelRef} className='workspace-split-sidebar-panel h-full' {...(sidebarCollapsed ? { inert: '' } : {})}>
               <div className='workspace-split-sidebar-content h-full'>{slotNode}</div>
             </Panel>
-            <Separator className='workspace-splitter' />
+            <Separator className='workspace-splitter workspace-sidebar-splitter' disabled={sidebarCollapsed} />
           </>
         )}
         <Panel id={mainId} groupResizeBehavior='preserve-relative-size' className='flex-1 min-w-0 min-h-0 h-full'>
