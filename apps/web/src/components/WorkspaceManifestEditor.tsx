@@ -71,7 +71,7 @@ export const WorkspaceManifestEditor: React.FC<WorkspaceManifestEditorProps> = (
               <span className='font-semibold text-fg'>{t('settings.manifestShowLineNumbers')}</span>
             </label>
             <label className='flex items-center gap-2 text-xs'>
-              <input type='checkbox' disabled={readOnly} checked={parsed.preferences?.defaultFocusMode ?? false} onChange={e => updateConfig(config => ({ ...config, preferences: { ...config.preferences, defaultFocusMode: e.target.checked } }))} />
+              <input type='checkbox' disabled={readOnly} checked={parsed.preferences?.defaultFocusMode ?? true} onChange={e => updateConfig(config => ({ ...config, preferences: { ...config.preferences, defaultFocusMode: e.target.checked } }))} />
               <span className='font-semibold text-fg'>{t('settings.manifestFocusMode')}</span>
             </label>
           </div>

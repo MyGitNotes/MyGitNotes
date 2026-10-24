@@ -34,7 +34,7 @@ files:
     expect(config.notebooks[1].id).toBe('work');
     expect(config.notebooks[1].default_view).toBe('kanban');
     expect(config.files?.hide_dotfiles).toBe(true);
-    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: false });
+    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: true });
   });
 
   it('keeps the obsolete files.hide_dotfiles only where a manifest sets it, so saving never adds it', () => {
@@ -187,13 +187,13 @@ notebooks:
 
   it('defaults preferences when the block is absent', () => {
     const config = parseWorkspaceConfig(base);
-    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: false });
+    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: true });
   });
 
   it('falls back to defaults for invalid preference values instead of throwing', () => {
     const yaml = `${base}preferences:\n  defaultYoutubeDisplayMode: music\n  defaultShowLineNumbers: "yes"\n  defaultFocusMode: 1\n`;
     const config = parseWorkspaceConfig(yaml);
-    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: false });
+    expect(config.preferences).toEqual({ defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: true });
   });
 
   it('does not require a schema_version bump', () => {

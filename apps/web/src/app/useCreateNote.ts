@@ -15,6 +15,8 @@ interface UseCreateNoteParams {
   selectedNotebookId: string;
   setSelectedNotebookId: (id: string) => void;
   folders: FolderItem[];
+  /** The folder the Notes page is browsing, relative to the notebook root; a note created without a folder of its own goes there. */
+  browsedFolder: string | null;
   /** While the folder list is still arriving, a folder cannot be checked yet. */
   foldersLoading: boolean;
   remote: boolean;
@@ -35,7 +37,7 @@ interface UseCreateNoteParams {
 
 export interface NewNoteOptions {
   status?: string;
-  /** A compilation lane's source folder, so the note joins that lane; otherwise the note starts at the notebook root. */
+  /** A compilation lane's source folder, so the note joins that lane; otherwise the note starts in the browsed folder, else at the notebook root. */
   folder?: string;
   tag?: string;
   tags?: string[];
@@ -56,7 +58,7 @@ export function untitledCandidates(directory: string, suffix: string, count = CA
 }
 
 /** Creates a note, outline or templated note at once, with default values, and opens it. */
-export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookId, folders, foldersLoading, remote, canWrite, readDraft, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, newNoteStatuses, sourceId, t, onCreated, onError }: UseCreateNoteParams) {
+export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookId, folders, browsedFolder, foldersLoading, remote, canWrite, readDraft, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, newNoteStatuses, sourceId, t, onCreated, onError }: UseCreateNoteParams) {
   const [creating, setCreating] = useState(false);
   const generation = useRef(0);
   const submitting = useRef(false);
@@ -93,7 +95,7 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       const kind = opts.kind ?? 'note';
       const notebook = config?.notebooks.find(n => n.id === selectedNotebookId);
       if (!notebook) throw new Error(t('outline.changed'));
-      const folder = (opts.folder ?? '').trim().replace(/^\/+|\/+$/g, '');
+      const folder = (opts.folder ?? (opts.notebookId ? '' : browsedFolder ?? '')).trim().replace(/^\/+|\/+$/g, '');
       if (folder && foldersLoading) throw new Error(t('createNote.foldersLoading'));
       if (folder && !folders.some(item => item.notebookId === notebook.id && item.path === folder)) throw new Error(t('createNote.invalidFolder'));
       const directory = [notebook.root.replace(/\/$/, ''), folder].filter(Boolean).join('/');

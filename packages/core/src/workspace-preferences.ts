@@ -4,7 +4,7 @@ import type { WorkspacePreferences, YouTubeDisplayMode } from './types.js';
 export type ResolvedPreferences = Required<WorkspacePreferences>;
 
 /** The preferences of a repository whose manifest sets none, and of a workspace with no repository to take them from. */
-export const DEFAULT_WORKSPACE_PREFERENCES: ResolvedPreferences = { defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: false };
+export const DEFAULT_WORKSPACE_PREFERENCES: ResolvedPreferences = { defaultYoutubeDisplayMode: 'thumbnail', defaultShowLineNumbers: false, defaultFocusMode: true };
 
 const YOUTUBE_DISPLAY_MODES: YouTubeDisplayMode[] = ['thumbnail', 'medium', 'theater'];
 

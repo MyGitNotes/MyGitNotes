@@ -10,7 +10,7 @@ type Params = Parameters<typeof useCreateNote>[0];
 function params(overrides: Partial<Params> = {}): Params {
   const queryClient = new QueryClient();
   vi.spyOn(queryClient, 'fetchQuery').mockResolvedValue({ notes: [] });
-  return { config: { notebooks: [{ id: 'a', root: 'notes/shared', title: 'A', templates: [{ id: 'template', title: 'Template', file: 'template.md' }] }, { id: 'b', root: 'notes/b', title: 'B' }] }, selectedNotebookId: 'a', setSelectedNotebookId: vi.fn(), folders: [{ notebookId: 'a', path: 'sub', title: 'Sub', order: 0 }], remote: false, canWrite: true, readDraft: () => undefined, queryClient, queryScope: { sourceId: 'local:a', revisions: {}, repositories: { a: 'local:a' }, drafts: {} }, stageWorkingNote: vi.fn(note => note), revisionFor: () => 'head', invalidateNotes: vi.fn(), setGitStatus: vi.fn(), newNoteStatuses: ['inbox'], sourceId: 'local:a', t: (key: string) => key === 'createNote.untitled' ? 'Untitled' : key, onCreated: vi.fn(), onError: vi.fn(), ...overrides } as Params;
+  return { config: { notebooks: [{ id: 'a', root: 'notes/shared', title: 'A', templates: [{ id: 'template', title: 'Template', file: 'template.md' }] }, { id: 'b', root: 'notes/b', title: 'B' }] }, selectedNotebookId: 'a', setSelectedNotebookId: vi.fn(), folders: [{ notebookId: 'a', path: 'sub', title: 'Sub', order: 0 }], browsedFolder: null, remote: false, canWrite: true, readDraft: () => undefined, queryClient, queryScope: { sourceId: 'local:a', revisions: {}, repositories: { a: 'local:a' }, drafts: {} }, stageWorkingNote: vi.fn(note => note), revisionFor: () => 'head', invalidateNotes: vi.fn(), setGitStatus: vi.fn(), newNoteStatuses: ['inbox'], sourceId: 'local:a', t: (key: string) => key === 'createNote.untitled' ? 'Untitled' : key, onCreated: vi.fn(), onError: vi.fn(), ...overrides } as Params;
 }
 const lookupReturns = (input: Params, paths: string[]) => vi.mocked(input.queryClient.fetchQuery).mockResolvedValue({ notes: paths.map(path => ({ path })) });
 beforeEach(() => {
@@ -54,6 +54,15 @@ it('creates a note from a template, and in the folder a compilation lane draws f
   await act(() => hook.result.current.createNote({ templateId: 'template', folder: 'sub', tag: 'reading' }));
   expect(api.renderNoteTemplate).toHaveBeenCalledWith({ notebookId: 'a', templateId: 'template', title: 'Untitled' });
   expect(api.saveNote.mock.calls[0][0]).toMatchObject({ path: 'notes/shared/sub/untitled.md', content: '# Untitled\n\nFrom template.\n', metadata: { kind: 'reading', tags: ['reading'] } });
+});
+
+it('creates a note in the folder the Notes page is browsing, unless the caller names one', async () => {
+  const input = params({ browsedFolder: 'sub' });
+  const hook = renderHook(useCreateNote, { initialProps: input });
+  await act(() => hook.result.current.createNote());
+  expect(api.saveNote.mock.calls[0][0]).toMatchObject({ path: 'notes/shared/sub/untitled.md' });
+  await act(() => hook.result.current.createNote({ folder: '' }));
+  expect(api.saveNote.mock.calls[1][0]).toMatchObject({ path: 'notes/shared/untitled.md' });
 });
 
 it('stages a linked remote outline with native metadata and no save API', async () => {
