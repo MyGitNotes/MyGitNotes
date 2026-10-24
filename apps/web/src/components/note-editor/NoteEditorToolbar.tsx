@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, FileText, FolderInput, LayoutGrid, ListOrdered, ListTree, PanelRight, Pencil, Save, Type } from 'lucide-react';
+import { ArrowLeft, Check, FileText, FolderInput, ListOrdered, ListTree, PanelRight, Pencil, Save, Type } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import type { NoteItem } from '../../lib/types.js';
 import { Button } from '../Button.js';
@@ -28,7 +28,6 @@ interface NoteEditorToolbarProps {
   /** Present when the note can pull its latest version; zoom shows it beside the title. */
   onRefresh?: () => Promise<void>;
   onClose?: () => void;
-  onAddToFocus?: () => void;
   onAddToOutline?: () => void;
   /** Moves the note to another folder of its notebook; a new note starts at the root and is filed from here. */
   onMove?: () => void;
@@ -83,8 +82,8 @@ function NoteZoomHeading({ note, session, onClose, onRename, phoneEditing }: Pic
   );
 }
 
-/** The zoom and pane editor's top bar: the zoom title, then save, the view (mode and line numbers), adding to an outline or Focus, the file and the panels. */
-export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onClose, onAddToFocus, onAddToOutline, onMove, onRename, phoneEditing }: NoteEditorToolbarProps) {
+/** The zoom and pane editor's top bar: the zoom title, then save, the view (mode and line numbers), adding to an outline, the file and the panels. */
+export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onClose, onAddToOutline, onMove, onRename, phoneEditing }: NoteEditorToolbarProps) {
   const { t } = useTranslation();
   const zoom = frame === 'zoom';
   return (
@@ -106,18 +105,11 @@ export function NoteEditorToolbar({ frame, note, session, docPanel, isMarkdown, 
             <ListOrdered aria-hidden='true' />
           </button>
         </div>
-        {(onAddToOutline || onAddToFocus) && (
+        {onAddToOutline && (
           <div role='group' className='note-controls-group' aria-label={t('editor.controlsAdd')}>
-            {onAddToOutline && (
-              <button type='button' className='ui-icon-button toolbar-icon-button' disabled={session.locked} aria-label={t('outline.add')} title={t('outline.add')} onClick={onAddToOutline}>
-                <ListTree aria-hidden='true' />
-              </button>
-            )}
-            {onAddToFocus && (
-              <button type='button' aria-label={t('focus.addTo')} title={t('focus.addTo')} onClick={onAddToFocus} className='ui-icon-button toolbar-icon-button'>
-                <LayoutGrid aria-hidden='true' />
-              </button>
-            )}
+            <button type='button' className='ui-icon-button toolbar-icon-button' disabled={session.locked} aria-label={t('outline.add')} title={t('outline.add')} onClick={onAddToOutline}>
+              <ListTree aria-hidden='true' />
+            </button>
           </div>
         )}
         <div role='group' className='note-controls-group' aria-label={t('editor.controlsFile')}>

@@ -58,11 +58,11 @@ it('groups the controls as view, adding, file and panels, the mode button beside
     cleanup();
     return { names, members };
   };
-  const adding = { onAddToFocus: vi.fn(), onAddToOutline: vi.fn() };
+  const adding = { onAddToOutline: vi.fn() };
   expect(groups(true, adding).names).toEqual(['View', 'Add to', 'File', 'Panels']);
   const { members } = groups(true, adding);
   expect(members[0]).toEqual(['Switch to source', 'Line Numbers']);
-  expect(members[1]).toEqual(['Add to outline', 'Add to Focus']);
+  expect(members[1]).toEqual(['Add to outline']);
   expect(members[2][0]).toBe('Move note');
   expect(members[3]).toEqual(['Formatting toolbar', 'Document tools']);
   // A note that is not Markdown has no modes; a note with nothing to add to has no adding group.
