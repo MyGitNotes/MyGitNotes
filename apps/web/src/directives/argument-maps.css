@@ -1,0 +1,122 @@
+/* Argument maps (the blog's argument-map directive with its reason and objection containers).
+   The markup is rendered by lib/argument-maps/render.ts and keeps the blog's `am-*` classes; the look is the app's:
+   every colour is a theme token or a color-mix() of tokens, panels and cards have uniform lines, and the panel radius
+   is the app's. The relation is always written (支持, 反駁, 削弱); colour and dashes only reinforce it: support takes
+   --color-success, rebut and undercut take --color-danger, and an undercut is drawn dashed. The connector lines are a
+   neutral mix of the text colour and are never a coloured one-sided border. Two views of one source sit behind
+   CSS-only radio tabs; each argument is a <details open>. Motion is limited to prefers-reduced-motion: no-preference. */
+
+.am-figure { --am-line: color-mix(in srgb, var(--color-text) 9%, transparent); --am-rail: color-mix(in srgb, var(--color-text) 28%, transparent); --am-support: var(--color-success); --am-attack: var(--color-danger); container-type: inline-size; box-sizing: border-box; margin: 1.5rem 0; border: 1px solid var(--am-line); border-radius: var(--radius-panel, 10px); background: var(--color-surface); padding: 1rem 1.15rem; font-family: var(--font-body, 'Noto Sans TC', 'Source Han Sans TW', sans-serif); font-size: 0.925rem; line-height: 1.5; color: var(--color-text); }
+
+/* The note's prose rules (margins, bullets, markers) do not apply inside a figure. */
+.prose-custom .am-figure :where(p, ul, ol, li, details, summary) { margin: 0; padding: 0; }
+.prose-custom .am-figure :where(ul, ol) { list-style: none; overflow: visible; }
+.prose-custom .am-figure li::before { content: none; }
+.prose-custom .am-figure code:not(pre code) { font-size: 0.9em; }
+
+.am-figure a { color: var(--color-primary); }
+
+.am-figure .am-title { font-size: 1.05rem; font-weight: 700; line-height: 1.4; }
+.am-figure .am-subtitle { margin-top: 0.2rem; font-size: 0.8125rem; color: var(--color-muted); }
+.am-figure .am-notes { margin-top: 0.85rem; border-top: 1px solid var(--am-line); padding-top: 0.55rem; font-size: 0.75rem; line-height: 1.5; color: var(--color-muted); }
+.am-figure .am-notes a { color: inherit; }
+
+/* ----- view tabs: radio inputs choose which panel shows ----- */
+
+.am-figure .am-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.9rem 0; }
+.am-figure .am-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.am-figure .am-tab { cursor: pointer; border: 1px solid var(--am-line); border-radius: 999px; padding: 0.2rem 0.85rem; font-size: 0.8125rem; line-height: 1.4; }
+.am-figure .am-tab:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.am-figure .am-input-map:checked ~ .am-tabs .am-tab-map, .am-figure .am-input-standard:checked ~ .am-tabs .am-tab-standard { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-on-primary); }
+.am-figure .am-input-map:focus-visible ~ .am-tabs .am-tab-map, .am-figure .am-input-standard:focus-visible ~ .am-tabs .am-tab-standard { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.am-figure .am-input-map:checked ~ .am-panel-standard, .am-figure .am-input-standard:checked ~ .am-panel-map { display: none; }
+
+@media (prefers-reduced-motion: no-preference) { .am-figure .am-tab { transition: background 0.2s, color 0.2s, border-color 0.2s; } .am-figure .am-panel { animation: am-fade 0.3s ease-out; } .am-figure .am-details[open] > :not(summary) { animation: am-fade 0.25s ease-out; } }
+
+@keyframes am-fade { from { opacity: 0; } }
+
+/* ----- statements ----- */
+
+.am-figure .am-st { display: flex; flex-wrap: wrap; gap: 0.1rem 0.45rem; align-items: baseline; border: 1px solid var(--am-line); border-radius: 8px; background: var(--color-bg); padding: 0.45rem 0.6rem; }
+.am-figure .am-root { border-color: color-mix(in srgb, var(--color-primary) 40%, transparent); background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface)); font-weight: 600; }
+.am-figure .am-key { font-weight: 700; }
+.am-figure .am-implicit { border-style: dashed; background: transparent; color: var(--color-muted); }
+.am-figure .am-text { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+/* Ids stay in the body face: a monospace face draws the letter O of an id like O1 as a zero. */
+.am-figure :is(.am-id, .am-argid, .am-target, .am-sf-n) { font-variant-numeric: tabular-nums; }
+.am-figure .am-id { border-radius: 4px; background: color-mix(in srgb, var(--color-text) 8%, transparent); padding: 0 0.3rem; font-size: 0.72rem; font-weight: 600; }
+.am-figure .am-tag { border: 1px dashed var(--am-rail); border-radius: 4px; padding: 0 0.3rem; font-size: 0.72rem; font-weight: 400; color: var(--color-muted); }
+.am-figure .am-src { font-size: 0.8rem; font-weight: 400; color: var(--color-muted); }
+.am-figure .am-src a { color: inherit; }
+
+/* ----- map view: indented, collapsible tree ----- */
+
+.am-figure .am-details > summary { list-style: none; }
+.am-figure .am-details > summary::-webkit-details-marker { display: none; }
+.am-figure .am-rel { display: flex; flex-wrap: wrap; gap: 0.15rem 0.4rem; align-items: center; margin-bottom: 0.3rem; font-size: 0.8rem; cursor: pointer; }
+.am-figure .am-rel::before { content: '▾'; width: 1rem; font-size: 0.95rem; line-height: 1; text-align: center; color: var(--color-muted); }
+.am-figure .am-details:not([open]) > .am-rel::before { content: '▸'; }
+.am-figure .am-rel:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+
+.am-figure .am-badge { border: 1px solid transparent; border-radius: 999px; padding: 0 0.55rem; font-weight: 700; }
+.am-figure .am-support > .am-details > .am-rel .am-badge { border-color: color-mix(in srgb, var(--am-support) 55%, transparent); background: color-mix(in srgb, var(--am-support) 16%, var(--color-surface)); color: var(--am-support); }
+.am-figure .am-rebut > .am-details > .am-rel .am-badge { border-color: color-mix(in srgb, var(--am-attack) 55%, transparent); background: color-mix(in srgb, var(--am-attack) 16%, var(--color-surface)); color: var(--am-attack); }
+.am-figure .am-undercut > .am-details > .am-rel .am-badge { border-color: color-mix(in srgb, var(--am-attack) 70%, transparent); border-style: dashed; background: transparent; color: var(--am-attack); }
+.am-figure .am-target { color: var(--color-muted); }
+.am-figure .am-label { font-weight: 700; }
+.am-figure .am-argid { font-size: 0.72rem; color: var(--color-muted); }
+.am-figure .am-status { border: 1px solid currentColor; border-radius: 4px; padding: 0 0.3rem; font-size: 0.72rem; font-weight: 600; }
+.am-figure .am-status-accepted { color: var(--am-support); }
+.am-figure .am-status-rejected { color: var(--am-attack); }
+.am-figure .am-status-open { color: var(--color-muted); }
+
+/* The count of hidden statements only shows once the argument is collapsed. */
+.am-figure .am-count { display: none; font-size: 0.72rem; color: var(--color-muted); }
+.am-figure .am-details:not([open]) > .am-rel .am-count { display: inline; }
+
+.am-figure .am-box { display: grid; gap: 0.35rem; border: 1px solid var(--am-line); border-radius: 10px; padding: 0.4rem; }
+.am-figure .am-support > .am-details > .am-box { border-color: color-mix(in srgb, var(--am-support) 30%, transparent); background: color-mix(in srgb, var(--am-support) 7%, var(--color-surface)); }
+.am-figure :is(.am-rebut, .am-undercut) > .am-details > .am-box { border-color: color-mix(in srgb, var(--am-attack) 30%, transparent); background: color-mix(in srgb, var(--am-attack) 6%, var(--color-surface)); }
+.am-figure .am-undercut > .am-details > .am-box { border-style: dashed; border-color: color-mix(in srgb, var(--am-attack) 50%, transparent); }
+
+.am-figure .am-outline .am-kids { margin-top: 0; padding-left: 1.4rem; }
+.am-figure .am-outline .am-arg { position: relative; padding: 0.55rem 0 0 0.2rem; }
+
+/* Connector: a vertical rail with an elbow into each argument's relation line; an undercut's is dashed. */
+.am-figure .am-outline .am-arg::before, .am-figure .am-outline .am-arg::after { content: ''; position: absolute; left: -1rem; }
+.am-figure .am-outline .am-arg::before { top: 0; bottom: 0; width: 2px; background: var(--am-rail); }
+.am-figure .am-outline .am-arg:last-child::before { bottom: auto; height: 1.4rem; }
+.am-figure .am-outline .am-arg::after { top: 1.4rem; width: 0.9rem; height: 2px; background: var(--am-rail); }
+.am-figure .am-outline .am-undercut::before { background: repeating-linear-gradient(to bottom, var(--am-rail) 0 5px, transparent 5px 9px); }
+.am-figure .am-outline .am-undercut::after { background: repeating-linear-gradient(to right, var(--am-rail) 0 5px, transparent 5px 9px); }
+
+/* ----- standard form ----- */
+
+.am-figure .am-standard { display: grid; gap: 0.8rem; }
+.am-figure .am-sf-block { border: 1px solid var(--am-line); border-radius: 8px; background: var(--color-bg); padding: 0.6rem 0.9rem; }
+.am-figure .am-sf-head { margin-bottom: 0.3rem; font-size: 0.85rem; font-weight: 700; }
+.am-figure .am-sf-head :is(.am-label, .am-status) { margin-left: 0.5rem; }
+.am-figure .am-support.am-sf-block .am-sf-head { color: var(--am-support); }
+.am-figure :is(.am-rebut, .am-undercut).am-sf-block .am-sf-head { color: var(--am-attack); }
+.am-figure .am-undercut.am-sf-block { border-style: dashed; }
+.am-figure :is(.am-sf-row, .am-sf-conclusion) { display: flex; flex-wrap: wrap; gap: 0.1rem 0.5rem; align-items: baseline; }
+.am-figure .am-sf-n { min-width: 2.2rem; font-size: 0.85rem; color: var(--color-muted); }
+.am-figure .am-sf-rule { width: 60%; margin: 0.45rem 0; border-top: 1.5px solid var(--color-text); }
+.am-figure .am-sf-conclusion { font-weight: 600; }
+.am-figure .am-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* A narrow figure (a phone, a side pane) trades indent for width. */
+@container (max-width: 34rem) { .am-figure .am-outline .am-kids { padding-left: 0.9rem; } .am-figure .am-outline .am-arg::before, .am-figure .am-outline .am-arg::after { left: -0.7rem; } .am-figure .am-outline .am-arg::after { width: 0.6rem; } .am-figure .am-text { flex-basis: 8rem; } .am-figure .am-sf-rule { width: 100%; } }
+
+/* ----- an argument map that cannot be drawn ----- */
+
+.am-error { margin: 1.5rem 0; border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent); border-radius: var(--radius-panel, 10px); background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface)); padding: 0.75rem 1rem; font-size: 0.875rem; }
+.prose-custom .am-error p { margin: 0; }
+.am-error-title { font-weight: 700; color: var(--color-danger); }
+.am-error-message { margin-top: 0.15rem; color: var(--color-text); }
+.prose-custom .am-error pre.am-error-source { margin: 0.6rem 0 0; border: 1px solid var(--color-border); border-radius: 6px; padding: 0.5rem 0.65rem; font-size: 0.75rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-muted); }
+
+/* ----- in the live editor ----- */
+
+.live-md-argument-map .live-directive-preview-content { white-space: normal; }
+.live-md-argument-map .live-directive-preview-content > .am-figure { margin: 0; }

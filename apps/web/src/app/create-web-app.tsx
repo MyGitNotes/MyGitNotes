@@ -21,6 +21,7 @@ import '../directives/document-cards.css';
 import '../directives/parallel-quotes.css';
 import '../directives/embedded-cards.css';
 import '../directives/infographics.css';
+import '../directives/argument-maps.css';
 import '../directives/presentation.css';
 import '../directives/inline.css';
 import '../directives/mdx-components.css';

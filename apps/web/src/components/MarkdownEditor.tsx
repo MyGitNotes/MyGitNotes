@@ -3,7 +3,7 @@ import { bookmarkOriginalRange, normalizeBookmarkBody } from '@mygitnotes/core/b
 import React, { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Bold, ChartColumn, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, type LucideIcon, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
+import { Bold, ChartColumn, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, ListTree, type LucideIcon, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
 import type { LiveEditorCarry, LiveMarkdownHandle } from './LiveMarkdownEditor.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
 import { noteCompletionAt, useNoteCandidates } from '../lib/note-completion.js';
@@ -272,6 +272,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
   };
   const insertDirective = (type = 'info') => insertBlockSource(localizedDirectiveSnippet(type, t));
   const insertInfographic = (kind: InfographicKind) => insertBlockSource(infographicTemplate(kind, t), true);
+  const insertArgumentMap = () => insertBlockSource(t('argumentMap.template'));
 
   const insertTable = () => {
     const text = `\n\n| ${t('table.column')} 1 | ${t('table.column')} 2 |\n| --- | --- |\n|  |  |\n\n`;
@@ -440,6 +441,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
+          <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('argumentMap.insert')} title={t('argumentMap.insert')} onClick={insertArgumentMap}>
+            <ListTree aria-hidden='true' />
+            <span className='insert-plus-badge' aria-hidden='true'>
+              <Plus />
+            </span>
+          </button>
         </div>
       </div>
     )

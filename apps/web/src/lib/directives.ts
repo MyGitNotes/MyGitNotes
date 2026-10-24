@@ -8,6 +8,8 @@ import { en, type TranslationKey } from './i18n/en.js';
 import { zhTW } from './i18n/zh-TW.js';
 import { InfographicError, renderInfographic, renderInfographicError } from './infographics/render.js';
 import { isInfographicKind } from './infographics/model.js';
+import { isArgumentMapName } from './argument-maps/parse.js';
+import { ArgumentMapError, renderArgumentMap, renderArgumentMapError } from './argument-maps/render.js';
 
 export type DirectiveTranslate = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
@@ -314,7 +316,7 @@ interface DirectiveStackItem {
   lines: string[];
 }
 
-/** The line where the infographic opened at `start` closes, tracking the containers nested in it; undefined when it never does. */
+/** The line where the figure block (an infographic or an argument map) opened at `start` closes, tracking the containers nested in it; undefined when it never does. */
 function infographicEnd(lines: readonly string[], start: number, fenceLength: number): number | undefined {
   const fences = [fenceLength];
   for (let j = start + 1; j < lines.length; j++) {
@@ -331,26 +333,37 @@ function infographicEnd(lines: readonly string[], start: number, fenceLength: nu
   return undefined;
 }
 
-/** The error heading in the language the page shows (the app sets `<html lang>`); a server renders English. */
-function infographicErrorHeading(): string {
+/** The page's UI language (the app sets `<html lang>`); a server renders English. */
+function pageStrings() {
   const language = typeof document !== 'undefined' ? document.documentElement.lang : '';
-  return (language === 'zh-TW' ? zhTW : en)['infographic.render.error'];
+  return language === 'zh-TW' ? zhTW : en;
 }
 
-/** The figure for an infographic block's lines, or the error box in its place. */
-function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string): string {
+/**
+ * The figure for a figure directive block's lines, or the error box in its place. `draw` throws what the figure's syntax
+ * rejects; any failure, not only a reported one, stays inside the figure's place so the rest of the note still renders.
+ */
+function renderFigureBlock(blockLines: readonly string[], draw: (source: string) => string, errorBox: (error: Error, source: string) => string): string {
   // A block inside a blockquote carries the quote's markers on every line.
   const quote = /^\s*(?:>\s?)+/.exec(blockLines[0])?.[0] ?? '';
   const source = (quote ? blockLines.map(line => line.replace(/^\s*(?:>\s?)+/, '')) : blockLines).join('\n');
   // The figure is one line of HTML; inside a quote it and the blank lines around it keep the quote's markers.
   const place = (html: string) => quote ? `${quote.trimEnd()}\n${quote}${html}\n${quote.trimEnd()}` : `\n${html}\n`;
   try {
-    return place(renderInfographic(source, { renderInline }));
+    return place(draw(source));
   } catch (error) {
-    // Any failure, not only a reported one, stays inside the figure's place: the rest of the note still renders.
-    const reported = error instanceof InfographicError ? error : new InfographicError(error instanceof Error ? error.message : String(error));
-    return place(renderInfographicError(reported, source, infographicErrorHeading()));
+    return place(errorBox(error instanceof Error ? error : new Error(String(error)), source));
   }
+}
+
+/** The figure for an infographic block's lines, or the error box in its place. */
+function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string): string {
+  return renderFigureBlock(blockLines, source => renderInfographic(source, { renderInline }), (error, source) => renderInfographicError(error instanceof InfographicError ? error : new InfographicError(error.message), source, pageStrings()['infographic.render.error']));
+}
+
+/** The figure for an argument-map block's lines, or the error box in its place. */
+function renderArgumentMapBlock(blockLines: readonly string[], renderInline: (md: string) => string): string {
+  return renderFigureBlock(blockLines, source => renderArgumentMap(source, { renderInline }), (error, source) => renderArgumentMapError(error instanceof ArgumentMapError ? error : new ArgumentMapError(error.message), source, pageStrings()['argumentMap.render.error']));
 }
 
 /**
@@ -366,10 +379,11 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
     const line = lines[i];
 
     const open = parseDirectiveOpen(line);
-    if (open && isInfographicKind(open.name)) {
+    if (open && (isInfographicKind(open.name) || isArgumentMapName(open.name))) {
       const end = infographicEnd(lines, i, open.fenceLength);
       if (end !== undefined) {
-        const figure = renderInfographicBlock(lines.slice(i, end + 1), renderInline);
+        const block = lines.slice(i, end + 1);
+        const figure = isArgumentMapName(open.name) ? renderArgumentMapBlock(block, renderInline) : renderInfographicBlock(block, renderInline);
         // Blank lines keep the figure's HTML block apart from the Markdown around it.
         if (stack.length > 0) stack[stack.length - 1].lines.push(figure);
         else output.push(figure);
