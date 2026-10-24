@@ -523,3 +523,83 @@ it('shows only the status, the workspace button and Close in the dock until a se
   const header = screen.getByRole('img', { name: 'Standby' }).closest('header')!;
   expect([...header.querySelectorAll('button')].map(button => button.getAttribute('aria-label') ?? button.textContent)).toEqual(['Change agent workspace', 'Close agent']);
 });
+
+const picked = (name: string, type = 'image/png', content = 'abc') => new File([content], name, { type });
+const filePicker = () => document.querySelector<HTMLInputElement>('input[type="file"]')!;
+const attachedImages = () => [...document.querySelectorAll<HTMLImageElement>('.pi-agent-attachments img')];
+
+it('attaches images from the paperclip with a thumbnail and a remove button, sends them with the message and clears them after it goes', async () => {
+  const value = agent();
+  panel(value);
+  expect(filePicker().accept).toBe('image/png,image/jpeg,image/gif,image/webp');
+  expect(filePicker().multiple).toBe(true);
+  fireEvent.change(filePicker(), { target: { files: [picked('one.png'), picked('two.jpg', 'image/jpeg', 'xyz')] } });
+  await waitFor(() => expect(attachedImages()).toHaveLength(2));
+  expect(attachedImages()[0].src).toBe('data:image/png;base64,YWJj');
+  expect(attachedImages().map(image => image.alt)).toEqual(['one.png', 'two.jpg']);
+  // Removing one leaves the other.
+  fireEvent.click(screen.getByRole('button', { name: 'Remove one.png' }));
+  expect(attachedImages().map(image => image.alt)).toEqual(['two.jpg']);
+  write('What is in this?');
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  expect(value.send).toHaveBeenCalledWith('What is in this?', undefined, [{ type: 'image', data: 'eHl6', mimeType: 'image/jpeg' }]);
+  expect(attachedImages()).toHaveLength(0);
+});
+
+it('sends an image alone, and keeps the images when the message is not taken as sent', async () => {
+  const send = vi.fn(() => false);
+  panel(agent({ send }));
+  fireEvent.change(filePicker(), { target: { files: [picked('one.png')] } });
+  await waitFor(() => expect(attachedImages()).toHaveLength(1));
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  expect(send).toHaveBeenCalledWith('', undefined, [{ type: 'image', data: 'YWJj', mimeType: 'image/png' }]);
+  expect(attachedImages()).toHaveLength(1);
+});
+
+it('adds a pasted image, but pastes text as text when the clipboard holds both', async () => {
+  const value = agent();
+  panel(value);
+  const box = screen.getByRole('textbox', { name: 'Message to Pi' });
+  fireEvent.paste(box, { clipboardData: { files: [picked('both.png')], getData: () => 'a copied cell' } });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(attachedImages()).toHaveLength(0);
+  const notPrevented = fireEvent.paste(box, { clipboardData: { files: [picked('image.png')], getData: () => '' } });
+  expect(notPrevented).toBe(false);
+  await waitFor(() => expect(attachedImages()).toHaveLength(1));
+});
+
+it('adds images dropped on the message box and refuses other files with a visible message', async () => {
+  panel(agent());
+  const card = document.querySelector('.pi-agent-composer-card')!;
+  fireEvent.dragOver(card, { dataTransfer: { types: ['Files'] } });
+  expect(card.getAttribute('data-dragging')).toBe('true');
+  fireEvent.drop(card, { dataTransfer: { types: ['Files'], files: [picked('shot.webp', 'image/webp'), picked('notes.pdf', 'application/pdf')] } });
+  await waitFor(() => expect(attachedImages()).toHaveLength(1));
+  expect(card.hasAttribute('data-dragging')).toBe(false);
+  expect(screen.getByRole('alert').textContent).toBe('notes.pdf is not a PNG, JPEG, GIF or WebP image, so it was not attached.');
+});
+
+it('does not take a drag of text as a file drop', () => {
+  panel(agent());
+  const card = document.querySelector('.pi-agent-composer-card')!;
+  expect(fireEvent.dragOver(card, { dataTransfer: { types: ['text/plain'] } })).toBe(true);
+  expect(card.hasAttribute('data-dragging')).toBe(false);
+});
+
+it('keeps images out of a shell run or built-in and sends them with the next message', async () => {
+  const value = agent();
+  panel(value);
+  fireEvent.change(filePicker(), { target: { files: [picked('one.png')] } });
+  await waitFor(() => expect(attachedImages()).toHaveLength(1));
+  write('!ls');
+  fireEvent.click(screen.getByRole('button', { name: 'Run' }));
+  expect(value.send).toHaveBeenCalledWith('!ls', undefined);
+  expect(attachedImages()).toHaveLength(1);
+});
+
+it('puts the images of a held message back in the tray when it returns to the message box', async () => {
+  const image = { type: 'image', data: 'YWJj', mimeType: 'image/png' } as const;
+  panel(agent({ editorText: { text: 'look', serial: 1, images: [image] } }));
+  await waitFor(() => expect(attachedImages()).toHaveLength(1));
+  expect((screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement).value).toBe('look');
+});

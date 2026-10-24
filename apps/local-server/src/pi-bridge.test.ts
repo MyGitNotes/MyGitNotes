@@ -22,7 +22,7 @@ process.stdin.on('data', chunk => {
     if (command.type === 'prompt' && command.message === 'tool') {
       fetch(process.env.MYGITNOTES_WEB_TOOLS_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.MYGITNOTES_WEB_TOOLS_TOKEN }, body: JSON.stringify({ tool: 'read_note', arguments: { path: 'notes/a.md' } }) })
         .then(async res => out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ status: res.status, body: await res.json() }) }] } }));
-    } else if (command.type === 'prompt') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ args: process.argv.slice(2), model: process.env.FAKE_MODEL, bridgeVariables: Object.keys(process.env).filter(name => name.startsWith('MYGITNOTES_BRIDGE_')), message: command.message }) }] } });
+    } else if (command.type === 'prompt') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ args: process.argv.slice(2), model: process.env.FAKE_MODEL, bridgeVariables: Object.keys(process.env).filter(name => name.startsWith('MYGITNOTES_BRIDGE_')), message: command.message, images: command.images }) }] } });
   }
 });
 process.stdin.on('end', () => process.exit(0));
@@ -97,6 +97,18 @@ it("starts Pi with the host's arguments and environment, and names the socket at
   const answer = reply(await page.until(record => record.type === 'message_end'));
   expect(answer.model).toBe('built-in');
   expect(answer.args.slice(-3)).toEqual(['--no-builtin-tools', '--model', 'mygitnotes/mygitnotes']);
+});
+
+it('passes the images of a prompt through the bridge to Pi, a multi-megabyte one as well', async () => {
+  await start();
+  await call('POST', '/session', { location });
+  const page = open();
+  await page.opened;
+  const small = { type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' };
+  // As base64 about 5 MiB: far past a default WebSocket frame, inside the 16 MiB the bridge takes.
+  const large = { type: 'image', data: Buffer.alloc(4 * 1024 * 1024, 9).toString('base64'), mimeType: 'image/webp' };
+  page.ws.send(JSON.stringify({ type: 'prompt', message: 'describe', images: [small, large] }));
+  expect(reply(await page.until(record => record.type === 'message_end'))).toMatchObject({ message: 'describe', images: [small, large] });
 });
 
 it("puts the host's fixed arguments after the editable ones, so a later --tools cannot replace them", async () => {

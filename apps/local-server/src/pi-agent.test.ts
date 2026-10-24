@@ -36,7 +36,7 @@ process.stdin.on('data', chunk => {
     }
     if (command.type === 'prompt' && command.streamingBehavior === 'steer') {
       queued.push(command.message);
-      out({ type: 'queue_update', steering: queued, followUp: [] });
+      out({ type: 'queue_update', steering: queued, followUp: [], images: command.images });
       continue;
     }
     if (command.type === 'clear_queue') {
@@ -53,7 +53,7 @@ process.stdin.on('data', chunk => {
       fetch(process.env.MYGITNOTES_WEB_TOOLS_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + (command.message === 'tool forged' ? 'x' : process.env.MYGITNOTES_WEB_TOOLS_TOKEN) }, body: JSON.stringify({ tool: 'read_note', arguments: { path: 'notes/a.md' } }) })
         .then(async res => out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ message: command.message, status: res.status, body: await res.json() }) }] } }));
     } else if (command.type === 'prompt' && command.message === 'ask') out({ type: 'extension_ui_request', id: 'dialog-1', method: 'select', title: 'Pick', options: ['A', 'B'] });
-    else if (command.type === 'prompt') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2), message: command.message }) }] } });
+    else if (command.type === 'prompt') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2), message: command.message, images: command.images }) }] } });
     if (command.type === 'extension_ui_response') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'answered ' + command.value }] } });
   }
 });
@@ -167,6 +167,22 @@ describe('pi agent bridge', () => {
     await second.opened;
     const status = await second.next(record => record.type === 'bridge_status');
     expect(status.session as { id: string; status: string; }).toMatchObject({ id: created.session.id, status: 'ready' });
+  });
+
+  it('forwards the images of a prompt to Pi untouched, a large one as well, and the images of a steer', async () => {
+    const { base, port } = await start();
+    await post(base, 'POST');
+    const client = connect(port, base);
+    await client.opened;
+    await client.next(record => record.type === 'bridge_status' && (record.session as { status: string; }).status === 'ready');
+    const small = { type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' };
+    // About 8 MiB of base64, as an image the web panel allows, well past a default WebSocket frame of 64 KiB.
+    const large = { type: 'image', data: Buffer.alloc(6 * 1024 * 1024, 7).toString('base64'), mimeType: 'image/jpeg' };
+    client.send({ type: 'prompt', message: 'what is this', images: [small, large] });
+    const reply = JSON.parse(assistantText(await client.next(record => record.type === 'message_end'))) as { message: string; images: unknown[]; };
+    expect(reply).toMatchObject({ message: 'what is this', images: [small, large] });
+    client.send({ type: 'prompt', message: 'look at this instead', streamingBehavior: 'steer', images: [small] });
+    expect(await client.next(record => record.type === 'queue_update')).toMatchObject({ steering: ['look at this instead'], images: [small] });
   });
 
   it('replays an unanswered dialog to a client that attaches later and resolves it for everyone', async () => {

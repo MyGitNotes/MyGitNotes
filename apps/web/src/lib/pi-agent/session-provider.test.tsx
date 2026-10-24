@@ -458,3 +458,66 @@ it('checks the models again by ending the session and starting a fresh one, sinc
   await waitFor(() => expect(requests.map(request => request.method)).toEqual(['DELETE', 'POST']));
   expect(requests[1].body).toEqual({ repository: home, folder: '' });
 });
+
+const png = { type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' } as const;
+const jpeg = { type: 'image', data: '/9j/4AAQ', mimeType: 'image/jpeg' } as const;
+
+it("sends a message's images in the prompt's images field, with the focus and a steer while Pi works, and none when there are none", async () => {
+  const { agent, socket } = await opened();
+  const sent = () => socket.sent.at(-1) as Record<string, unknown>;
+  act(() => void agent.current!.send('what is this', undefined, [png, jpeg]));
+  expect(sent()).toEqual({ id: expect.any(String), type: 'prompt', message: 'what is this', images: [png, jpeg] });
+  act(() => void agent.current!.send('/skill:review look', { file: 'notes/a.md' }, [png]));
+  expect(sent()).toMatchObject({ type: 'prompt', message: '/skill:review <editor-context>\nfile: notes/a.md\n</editor-context>\n\nlook', images: [png] });
+  act(() => void agent.current!.send('no picture'));
+  expect(sent()).not.toHaveProperty('images');
+  // A message sent while Pi works steers the run; its images go along.
+  act(() => socket.receive({ type: 'agent_start' }));
+  act(() => void agent.current!.send('look at this instead', undefined, [jpeg]));
+  expect(sent()).toMatchObject({ type: 'prompt', message: 'look at this instead', streamingBehavior: 'steer', images: [jpeg] });
+});
+
+it('sends no images with a shell run or a built-in, which have nowhere to put them', async () => {
+  const { agent, socket } = await opened();
+  act(() => void agent.current!.send('!ls', undefined, [png]));
+  expect(socket.sent.at(-1)).not.toHaveProperty('images');
+  act(() => void agent.current!.send('/compact', undefined, [png]));
+  expect(socket.sent.at(-1)).not.toHaveProperty('images');
+});
+
+it('keeps the images of a held message and sends them with it once the socket opens', async () => {
+  const agent = mount([], undefined, false);
+  await waitFor(() => expect(agent.current?.available).toBe(true));
+  act(() => {
+    agent.current!.send('first', undefined, [png]);
+    agent.current!.send('second', undefined, [jpeg]);
+  });
+  await waitFor(() => expect(FakeSocket.last).toBeDefined());
+  const socket = FakeSocket.last!;
+  act(() => {
+    socket.readyState = FakeSocket.OPEN;
+    socket.onopen?.();
+  });
+  expect(socket.sent.at(-1)).toMatchObject({ type: 'prompt', message: 'first\n\nsecond', images: [png, jpeg] });
+});
+
+it('returns the images of a held message to the message box with its text when Pi fails to start', async () => {
+  localStorage.setItem('mygitnotes.piAgent.location', JSON.stringify({ repository: home, folder: 'flaky' }));
+  const agent = mount([], undefined, false);
+  await waitFor(() => expect(agent.current?.available).toBe(true));
+  act(() => void agent.current!.send('look', undefined, [png]));
+  await waitFor(() => expect(agent.current?.editorText?.text).toBe('look'));
+  expect(agent.current?.editorText?.images).toEqual([png]);
+});
+
+it('does not take a message as sent once the session has ended, so the message box keeps it', async () => {
+  const { agent, socket } = await opened();
+  act(() => socket.receive({ type: 'bridge_status', session: live({ status: 'exited' }) }));
+  socket.readyState = 3;
+  let accepted = true;
+  act(() => {
+    accepted = agent.current!.send('anyone there', undefined, [png]);
+  });
+  expect(accepted).toBe(false);
+  expect(agent.current?.error).toBe('Pi is not connected.');
+});

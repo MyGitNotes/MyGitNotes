@@ -5,6 +5,7 @@ import type { RepositoryStatus } from '@mygitnotes/core/repository';
 import { fetchAgentWorkspaces } from '../api.js';
 import type { AgentWorkspace } from '../agent-workspaces.js';
 import { FEATURE_IDS, useFeatureGate } from '../web-features.js';
+import type { PiImage } from './attachments.js';
 import type { CaretStore } from './caret-store.js';
 import { commandsFromResponse, commandWithFocus, parseComposerInput, type PiCommand } from './commands.js';
 import { type AgentDialog, type AgentFocus, applyRecord, emptyTranscript, queuedText, startShell, transcriptFromMessages, type TranscriptState, withFocus } from './transcript.js';
@@ -129,6 +130,8 @@ export interface PiContextUsage {
 export interface PiEditorText {
   text: string;
   serial: number;
+  /** The images that went with a held message, which return to the message box with its text. */
+  images?: PiImage[];
 }
 
 function contextUsageOf(data: unknown): PiContextUsage | undefined {
@@ -171,9 +174,10 @@ export interface PiAgentValue {
   wake: () => void;
   /**
    * Sends what the message box holds, read as Pi's terminal editor reads it (see parseComposerInput); returns false
-   * when it is not complete enough to send, such as /name without a name.
+   * when it is not complete enough to send, such as /name without a name, or Pi is not connected. `images` go with a
+   * message or a command Pi expands; a shell run or built-in takes none.
    */
-  send: (text: string, focus?: AgentFocus) => boolean;
+  send: (text: string, focus?: AgentFocus, images?: readonly PiImage[]) => boolean;
   /** A message sent before Pi was ready, which goes once Pi connects; if Pi fails to start it returns to the message box. */
   held: string | null;
   /** The slash commands Pi offers, as of the last `loadCommands`; the built-ins are the panel's to add. */
@@ -210,6 +214,9 @@ const SESSION_FILE_KEY = 'mygitnotes.piAgent.sessionFile';
 /** Responses that only feed the model state; get_state also carries whether Pi is mid-run. */
 const MODEL_COMMANDS = new Set(['get_state', 'get_available_models', 'get_available_thinking_levels', 'set_model', 'set_thinking_level']);
 const RECONNECT_MS = 1500;
+
+/** The `images` field of a `prompt` (and so of the `steer` it becomes while Pi works); absent when there are none, as Pi expects. */
+const promptImages = (images: readonly PiImage[]) => images.length ? { images } : {};
 
 /** The workspace the user last switched to; the server refuses it once it is no longer a workspace. */
 function savedLocation(): PiLocation | undefined {
@@ -322,15 +329,15 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
     }
   }, []);
   const [editorText, setEditorText] = useState<PiEditorText | null>(null);
-  /** What `held` names, with the prompt it becomes, kept in a ref for the socket that sends it. */
-  const heldMessage = useRef<{ text: string; message: string; } | null>(null);
+  /** What `held` names, with the prompt it becomes and the images that go with it, kept in a ref for the socket that sends it. */
+  const heldMessage = useRef<{ text: string; message: string; images: PiImage[]; } | null>(null);
   const [held, setHeld] = useState<string | null>(null);
   const releaseHeld = useCallback(() => {
     const waiting = heldMessage.current;
     if (!waiting) return;
     heldMessage.current = null;
     setHeld(null);
-    setEditorText(current => ({ text: waiting.text, serial: (current?.serial ?? 0) + 1 }));
+    setEditorText(current => ({ text: waiting.text, serial: (current?.serial ?? 0) + 1, ...waiting.images.length ? { images: waiting.images } : {} }));
   }, []);
   const socket = useRef<WebSocket | null>(null);
   /** The socket the live session named, kept here because `connect` also runs from timers that have only the ref. */
@@ -368,7 +375,7 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       if (waiting) {
         heldMessage.current = null;
         setHeld(null);
-        ws.send(JSON.stringify({ id: crypto.randomUUID(), type: 'prompt', message: waiting.message }));
+        ws.send(JSON.stringify({ id: crypto.randomUUID(), type: 'prompt', message: waiting.message, ...promptImages(waiting.images) }));
       }
     };
     ws.onmessage = event => {
@@ -539,9 +546,13 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
 
   const takeEditorText = useCallback((text: PiEditorText) => setEditorText(current => current === text ? null : current), []);
 
-  const command = useCallback((record: Record<string, unknown>) => {
-    if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ id: crypto.randomUUID(), ...record }));
-    else setError('Pi is not connected.');
+  const command = useCallback((record: Record<string, unknown>): boolean => {
+    if (socket.current?.readyState === WebSocket.OPEN) {
+      socket.current.send(JSON.stringify({ id: crypto.randomUUID(), ...record }));
+      return true;
+    }
+    setError('Pi is not connected.');
+    return false;
   }, []);
   // Stable, since the panel asks again each time its menu opens rather than on every transcript change.
   const loadCommands = useCallback(() => command({ type: 'get_commands' }), [command]);
@@ -571,14 +582,14 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
     starting,
     start,
     wake,
-    send: (text, focus) => {
+    send: (text, focus, images = []) => {
       const input = parseComposerInput(text);
       // Before Pi connects a message or command waits, starting Pi if none runs; the built-ins and shell runs need Pi itself.
       const waiting = socket.current?.readyState !== WebSocket.OPEN && (startingNow.current || (session ? session.status !== 'exited' : ready));
       if (waiting && (input.kind === 'message' || input.kind === 'command')) {
         const message = input.kind === 'message' ? withFocus(input.text, focus) : commandWithFocus(input.text, focus);
         const before = heldMessage.current;
-        heldMessage.current = before ? { text: `${before.text}\n\n${text}`, message: `${before.message}\n\n${message}` } : { text, message };
+        heldMessage.current = before ? { text: `${before.text}\n\n${text}`, message: `${before.message}\n\n${message}`, images: [...before.images, ...images] } : { text, message, images: [...images] };
         setHeld(heldMessage.current.text);
         wake();
         return true;
@@ -603,11 +614,9 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
           else return false;
           return true;
         case 'command':
-          command({ type: 'prompt', message: commandWithFocus(input.text, focus), ...steer });
-          return true;
+          return command({ type: 'prompt', message: commandWithFocus(input.text, focus), ...promptImages(images), ...steer });
         case 'message':
-          command({ type: 'prompt', message: withFocus(input.text, focus), ...steer });
-          return true;
+          return command({ type: 'prompt', message: withFocus(input.text, focus), ...promptImages(images), ...steer });
       }
     },
     held,

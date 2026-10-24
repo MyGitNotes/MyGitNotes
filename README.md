@@ -148,6 +148,12 @@ While the dock is offered, the Agents page opens from the dock's header.
 - MCP servers are configured in Pi itself (`pi mcp add`, or `/mcp` in the chat), never in the repository.
 - Each message can name the open file. The context chip above the message box shows the target (`file:line`, the path, or *No file*) and opens a menu: **Line** adds the caret line or selection, **Path only** adds just the path, and **None** adds nothing.
   Paths are relative to the folder Pi runs in.
+- Attach images to a message with the paperclip beside the model select, by pasting one into the message box, or by dropping files on it.
+  Thumbnails with a remove button wait above the box and go with the next message, including one that steers a running reply; Send also works with an image and no text.
+  Pi's RPC takes PNG, JPEG, GIF and WebP in a prompt's `images` field, so those are the types accepted, at most 5 images of 5 MB each and 10 MB together; another file is refused with a message naming it.
+  Pasting text that comes with an image of it pastes the text. A shell run (`!command`) or built-in (`/new`) takes no images and leaves them waiting.
+  Pi's RPC mode has no other attachment type (`@file` arguments are a terminal feature it rejects), so other files are not uploaded; Pi reads files in the workspace itself.
+  The images reach a remote agent's bridge the same way, inside the 16 MB a WebSocket frame may carry.
 - Switch the model and thinking level from the selects in the message box's bottom row.
   Replies render as Markdown, links to notes open in the app, and questions Pi's extensions ask appear as cards in the conversation.
   Consecutive tool calls fold into one row (*Ran 2 tools: bash, read*) that opens onto the calls; it stays open while a tool runs or after one failed.
