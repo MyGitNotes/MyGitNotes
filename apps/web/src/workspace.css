@@ -343,6 +343,12 @@
   --workspace-rail: color-mix(in srgb, var(--color-sidebar) 52%, var(--color-surface));
   --workspace-selection: color-mix(in srgb, var(--color-text) 7%, transparent);
 }
+/* The Notes page folds the header away with the browse region: the row's height eases to 0 (the header keeps its own height inside) and, once it has, the row is dropped so the header's 1px border does not stay behind. Clipped only while it moves, so an open header keeps its menus. */
+.workspace-header-fold { flex: none; z-index: 22; display: grid; grid-template-rows: 1fr; transition: grid-template-rows 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+.workspace-header-fold > * { min-height: 0; }
+.workspace-header-fold[data-folded] { grid-template-rows: 0fr; }
+.workspace-header-fold[data-folded] > *, .workspace-header-fold[data-animating] > * { overflow: hidden; }
+.workspace-header-fold[data-folded]:not([data-animating]) { display: none; }
 .workspace-header { flex: none; z-index: 22; border-bottom: 1px solid var(--workspace-divider); background: var(--surface-glass); backdrop-filter: var(--surface-blur); }
 .workspace-header .header-layout { display: grid; grid-template-columns: var(--workspace-sidebar-width) minmax(0, 1fr) auto; gap: 0; height: 48px; padding: 0 24px 0 0; }
 .workspace-header .header-brand { display: flex; gap: 8px; align-items: center; min-width: 0; padding: 0 20px; }
@@ -367,6 +373,13 @@
 .workspace-splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: var(--workspace-divider); transition: background 0.15s ease, width 0.15s ease, left 0.15s ease, box-shadow 0.15s ease; }
 .workspace-splitter:hover::after, .workspace-splitter:focus-visible::after, .workspace-splitter[data-separator='hover']::after, .workspace-splitter[data-separator='active']::after { background: var(--color-primary); width: 2px; left: 3px; box-shadow: 0 0 6px color-mix(in srgb, var(--color-primary) 40%, transparent); }
 .workspace-split-layout { display: flex; flex: 1 1 0%; min-width: 0; min-height: 0; height: 100%; }
+/* Collapsing the sidebar (the Notes page does with its browse region) eases its flex-grow to 0; the panel stays mounted, so the sidebar keeps its state. */
+.workspace-split-group[data-sidebar-folding] > [data-panel]:first-child { transition: flex-grow 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+.workspace-split-group[data-sidebar-collapsed] > [data-panel]:first-child { flex-grow: 0 !important; }
+.workspace-split-group:has(> [data-separator='active']) > [data-panel] { transition: none; }
+.workspace-split-group[data-sidebar-collapsed]:not([data-sidebar-folding]) > .workspace-sidebar-splitter { visibility: hidden; }
+.workspace-split-group[data-sidebar-folding] .workspace-split-sidebar-content { flex: none; width: var(--workspace-sidebar-width); }
+@media (prefers-reduced-motion: reduce) { .workspace-header-fold, .workspace-split-group[data-sidebar-folding] > [data-panel]:first-child { transition: none; } }
 .workspace-split-sidebar-panel { overflow: hidden; height: 100%; }
 .workspace-split-right-panel { overflow: hidden; height: 100%; }
 .workspace-split-sidebar-content { height: 100%; display: flex; flex-direction: column; }

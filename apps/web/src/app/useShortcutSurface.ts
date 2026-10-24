@@ -18,11 +18,13 @@ interface Params {
   requestClear: () => void;
   focusCapacity: ReturnType<typeof useFocusPanes>['focusCapacity'];
   zoomFocusNote: ReturnType<typeof useFocusNoteNavigation>['zoomFocusNote'];
+  /** The Notes toolbar's browse region toggle, when it is shown; collapsing the browse region folds the header away with it. */
+  browseDock?: { collapsed: boolean; toggle: () => void; };
 }
 
 const available = (enabled: boolean, reason: string): Availability => enabled ? { enabled: true } : { enabled: false, reason };
 
-export function useShortcutSurface({ noteFocus, focusDisplay, t, showFocus, requestClear, zoomFocusNote, focusCapacity }: Params) {
+export function useShortcutSurface({ noteFocus, focusDisplay, t, showFocus, requestClear, zoomFocusNote, focusCapacity, browseDock }: Params) {
   const [shortcutMode, setShortcutMode] = useState<ShortcutSurfaceMode | null>(null);
 
   // Palette commands for the displayed Focus; they act on the active pane.
@@ -62,6 +64,8 @@ export function useShortcutSurface({ noteFocus, focusDisplay, t, showFocus, requ
       },
     }));
   const focusCommands: CommandSpec[] = [
+    // Without a default key: the toolbar's toggle is the usual way, and the palette reaches it while the header is folded away.
+    { id: 'focus-toggle-browse', group: 'focus', title: t(browseDock?.collapsed ? 'focus.expandBrowseAndHeader' : 'focus.collapseBrowseAndHeader'), description: t('shortcuts.describe.focusToggleBrowse'), availability: () => available(Boolean(browseDock), t('shortcuts.requiresBrowseDock')), run: () => browseDock?.toggle() },
     { id: 'focus-close', group: 'focus', title: t('focus.close'), description: t('shortcuts.describe.focusClose'), availability: () => available(Boolean(noteFocus.shown && noteFocus.shown !== CURRENT_FOCUS), t('shortcuts.requiresNamedFocus')), run: () => void showFocus(CURRENT_FOCUS) },
     { id: 'focus-clear', group: 'focus', title: t('focus.clear'), description: t('shortcuts.describe.focusClear'), availability: () => available(Boolean(noteFocus.editable && noteFocus.layout), t('shortcuts.requiresEditableFocus')), run: requestClear },
     { id: 'focus-next-pane', group: 'focus', title: t('focus.nextPane'), description: t('shortcuts.describe.focusNextPane'), availability: () => available((focusDisplay?.panes.length ?? 0) >= 2, t('shortcuts.requiresTwoFocusPanes')), run: () => cycleFocusPane(1) },

@@ -38,6 +38,7 @@ import { WorkspaceLinks } from './components/WorkspaceLinks.js';
 import { type NoteLocation, NoteLocationProvider, readOnlyReason } from './lib/note-location.js';
 import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
+import { useFoldAnimation } from './lib/use-fold-animation.js';
 import { notebookRoute, noteRoute, noteTrail, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
 import { draftScope, pageRepository } from './lib/workspace-repositories.js';
 import { sameValue } from './lib/merge-note.js';
@@ -288,7 +289,13 @@ export const AppContent: React.FC = () => {
     else navigate(returnTo, { replace: true });
   };
 
-  const { focusCommands, shortcutMode, setShortcutMode } = useShortcutSurface({ noteFocus, focusDisplay, t, showFocus, requestClear, zoomFocusNote, focusCapacity });
+  // The browse region's toggle, where the Notes toolbar shows one: collapsing it folds the sidebar and the header away with it so the Focus gets the room.
+  // Only where that toggle can bring them back, so no page and no screen size is left without navigation.
+  const browseDock = activeTab === 'notes' && !route.study && noteFocus.layout && focusCapacity !== 1 ? { collapsed: noteFocus.view.dock.collapsed, toggle: () => noteFocus.setDock({ collapsed: !noteFocus.view.dock.collapsed }) } : undefined;
+  // A zoomed note covers the page and has no Focus under it; the sidebar and header keep their fold meanwhile, so closing the zoom does not replay the animation.
+  const browseCollapsed = Boolean(browseDock?.collapsed) || (activeTab === 'notes' && !route.study && focusCapacity !== 1 && noteEditorOpen && noteFocus.view.dock.collapsed);
+  const headerFolding = useFoldAnimation(browseCollapsed);
+  const { focusCommands, shortcutMode, setShortcutMode } = useShortcutSurface({ noteFocus, focusDisplay, t, showFocus, requestClear, zoomFocusNote, focusCapacity, browseDock });
   const noteSearch = useRef<NoteSearchHandle>(null);
   // Searching from another page opens Notes, then focuses the toolbar search once it has rendered.
   const noteSearchPending = useRef(false);
@@ -452,7 +459,9 @@ export const AppContent: React.FC = () => {
               )}
               {defaultRepository?.manifest === 'derived' && defaultRepository.config && <DerivedManifestNotice repository={defaultRepository.id} config={defaultRepository.config} configRevision={defaultRepository.configRevision} canWrite={manifestWritable} onCreated={() => refreshWorkspace(true)} />}
               {/* Top Header */}
-              <Header unavailableNotebooks={repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks)} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={renderAccountControls ? renderAccountControls({ local: !remote }) : <AuthControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={() => void createNote()} createNoteDisabled={!canWrite} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} />
+              <div className='workspace-header-fold' data-folded={browseCollapsed || undefined} data-animating={headerFolding || undefined} {...(browseCollapsed ? { inert: '' } : {})}>
+                <Header unavailableNotebooks={repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks)} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={renderAccountControls ? renderAccountControls({ local: !remote }) : <AuthControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={() => void createNote()} createNoteDisabled={!canWrite} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} />
+              </div>
               <KeyboardShortcuts mode={shortcutMode} onModeChange={setShortcutMode} suspended={isCommitOpen} selectedNotebookId={selectedNotebookId} onOpenNote={note => void handleOpenNote(note)} />
               {routeError && (
                 <div role='alert' className='px-6 py-3 text-sm text-danger'>
@@ -463,8 +472,8 @@ export const AppContent: React.FC = () => {
               <SidebarProvider open={filtersOpen} onOpenChange={setFiltersOpen}>
                 <div ref={sidebarGestureRef} className='workspace-body relative flex-1 min-h-0 min-w-0 flex overflow-hidden'>
                   <WorkspaceSplitLayout
-                    // Collapsing the Notes browse dock hides the notebook sidebar with it; expanding the dock brings both back.
-                    hasSidebar={activeTab !== 'graph' && !route.study && !(activeTab === 'notes' && dockToggle && noteFocus.view.dock.collapsed)}
+                    hasSidebar={activeTab !== 'graph' && !route.study}
+                    sidebarCollapsed={browseCollapsed}
                     sidebarDomId={activeTab === 'notes' ? 'notebook-panel' : activeTab === 'agent' ? 'agent-sidebar-panel' : activeTab === 'assets' ? 'assets-sidebar-panel' : activeTab === 'settings' ? 'settings-sidebar-panel' : undefined}
                     closeLabel={t('sidebar.closeFilters')}
                     rightPanelWidth={rightPanelWidth}
