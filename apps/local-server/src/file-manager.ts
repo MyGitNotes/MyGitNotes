@@ -119,6 +119,12 @@ async function remoteFiles(reader: RemoteSource, command: FileCommand): Promise<
     else if (entry.type === 'tree') snapshot.directories.push(entry.path);
     else readable.push(entry.path);
   }
+  // A move reads every note for the links it rewrites, so the reads are batched first instead of one round trip each;
+  // the tree's sizes refuse an oversized snapshot before anything is downloaded.
+  const needed = readable.filter(file => needsContent(file, command));
+  const sizes = new Map(state.entries.map(entry => [entry.path, entry.size || 0]));
+  if (needed.reduce((sum, file) => sum + (sizes.get(file) ?? 0), 0) > 32 * 1024 * 1024) throw new SourceError('File operations support 32 MiB per workspace snapshot.', 413);
+  await reader.prefetchFiles(needed);
   let total = 0;
   for (const file of readable) {
     if (!needsContent(file, command)) {

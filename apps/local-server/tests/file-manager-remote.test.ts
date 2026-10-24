@@ -24,6 +24,7 @@ it.each(['github', 'gitlab'])('%s file HTTP adapter uses an atomic revision-chec
     return { sha: revision, treeSha: revision, info: { private: true, permissions: { push: canPush }, default_branch: 'main' }, entries: [...[...dirs].map(path => ({ path, type: 'tree', mode: '040000', sha: path })), ...[...files].map(([path, bytes]) => ({ path, type: 'blob', mode: '100644', sha: assetHash(bytes), size: bytes.length }))] };
   });
   vi.spyOn(prototype, 'readBlob').mockImplementation(async (...args: unknown[]) => [...files.values()].find(bytes => assetHash(bytes) === args[0])!);
+  const prefetch = vi.spyOn(prototype, 'prefetchFiles');
   vi.spyOn(prototype, 'publishChanges').mockImplementation(async (...args: unknown[]) => {
     const changes = args[0] as RemoteChange[];
     published.push(changes);
@@ -50,6 +51,8 @@ it.each(['github', 'gitlab'])('%s file HTTP adapter uses an atomic revision-chec
     expect(prototype.readBlob).toHaveBeenCalledTimes(1); // Only the manifest; browsing does not download file contents.
     const moved = await post({ notebookId: nb('a'), kind: 'move', path: 'notes/a/folder', destination: 'notes/a/renamed' });
     expect(moved.status).toBe(200);
+    // The notes whose links the move may rewrite are fetched in one batch, not one read each.
+    expect(prefetch).toHaveBeenCalledWith(expect.arrayContaining(['notes/a/note.md', 'notes/a/ref.md', 'notes/a/folder/plan.outline.md']));
     expect(published).toHaveLength(1);
     expect(files.get('notes/a/renamed/image.png')).toEqual(binary);
     expect(files.get('notes/a/note.md')!.toString()).toContain('renamed/image.png');
