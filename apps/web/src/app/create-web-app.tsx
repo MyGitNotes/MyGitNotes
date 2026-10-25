@@ -24,6 +24,8 @@ import '../directives/parallel-quotes.css';
 import '../directives/embedded-cards.css';
 import '../directives/infographics.css';
 import '../directives/argument-maps.css';
+import '../directives/annotations.css';
+import { installAnnotationLinking } from '../lib/annotations/linking.js';
 import '../directives/presentation.css';
 import '../directives/inline.css';
 import '../directives/mdx-components.css';
@@ -67,6 +69,7 @@ export interface WebAppOptions {
 
 /** The whole web app: data, routing and panels, with any edition features registered. */
 export function WebApp({ features = [] }: WebAppOptions) {
+  React.useEffect(() => installAnnotationLinking(), []);
   // Note answers are addressed by workspace revision, so they never go stale on their own; a
   // failed query surfaces its error instead of retrying behind the user's back.
   // The demo lives under /demo: the router's basename keeps in-app navigation, reloads and shared links there.

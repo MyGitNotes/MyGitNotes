@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { type FileSnapshot, planFileChange, retitleNoteFile } from './file-manager.js';
 import { planFolderChange, relocateLinks, relocateMovedLinks } from './folder-plan.js';
 import { CASE_COLLISION_ERROR } from './case-collision.js';
@@ -93,4 +93,24 @@ it.each(['note.md', 'my note.md', 'café.md', '中文筆記.md'])('the link pref
   }
   // The moved note itself is always parsed: its own relative links change with its folder.
   expect(relocateMovedLinks('[s](sibling.md)\n', source, destination, relocate, source)).toBe(relocateLinks('[s](sibling.md)\n', source, destination, relocate));
+});
+
+describe('an image annotation block', () => {
+  const block = (image: string) => `# Review\n\n:::annotate[Home v3]\n![home](${image})\n\n- {#1 pin x=10% y=20%} Logo is small, see [guide](guide.md).\n:::\n`;
+
+  it('follows its image when the image moves, and nothing else in the block changes', () => {
+    const note = 'notes/a/review.md', image = 'notes/a/shots/home.png';
+    const relocate = (file: string) => file === image ? 'notes/a/final/home.png' : file;
+    expect(relocateLinks(block('shots/home.png'), note, note, relocate)).toBe(block('final/home.png'));
+  });
+
+  it('follows its note when the note moves', () => {
+    const relocate = (file: string) => file === 'notes/a/review.md' ? 'notes/a/deep/review.md' : file;
+    expect(relocateLinks(block('shots/home.png'), 'notes/a/review.md', 'notes/a/deep/review.md', relocate)).toContain('![home](../shots/home.png)');
+  });
+
+  it('keeps an image pinned by hash as it is', () => {
+    const ref = '/raw-assets/by-hash/3f2a9c0d6b1e4f5a8c7d2e9b0a1f3c4d5e6f7a8b';
+    expect(relocateLinks(block(ref), 'notes/a/review.md', 'notes/a/deep/review.md', file => file)).toContain(`![home](${ref})`);
+  });
 });

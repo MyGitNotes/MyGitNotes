@@ -20,6 +20,20 @@ const PRINT_STYLE = `
   .note-mermaid-error pre { margin: 0.4em 0 0; background: none; padding: 0; }
   .markdown-table-scroll { overflow: visible; }
   .katex-display { break-inside: avoid; }
+  .ann-figure { margin: 1em 0; }
+  .ann-caption { display: flex; flex-wrap: wrap; gap: 0 0.75em; align-items: baseline; margin-bottom: 0.4em; font-size: 9.5pt; }
+  .ann-title { font-weight: 700; }
+  .ann-stage { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+  .ann-stage img { display: block; max-width: 100%; height: auto; }
+  .ann-overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .ann-marker text { font: 700 11px sans-serif; fill: HighlightText; }
+  .ann-pin path, .ann-badge circle { fill: Highlight; stroke: Canvas; stroke-width: 2px; }
+  .ann-region rect { fill: none; stroke: Highlight; stroke-width: 2px; }
+  .ann-list { margin: 0.5em 0 0; padding: 0; list-style: none; }
+  .ann-item { margin: 0 0 0.4em; break-inside: avoid; }
+  .ann-ref { font-weight: 700; text-decoration: none; }
+  .ann-kind, .ann-state, .ann-by { margin-right: 0.5em; font-size: 9pt; opacity: 0.75; }
+  .ann-comment { margin-left: 1.5em; }
   @page { margin: 18mm; }
 `;
 
@@ -38,6 +52,8 @@ export async function renderPrintableNote(content: string, notePath: string, err
   const printable = new DOMParser().parseFromString(renderNote(content, notePath, undefined, undefined, notebookId), 'text/html');
   // The print frame has no viewport, so lazy images never approach an intersection threshold.
   for (const image of printable.images) image.removeAttribute('loading');
+  // Paper cannot click a group open: it shows every annotation.
+  for (const group of printable.querySelectorAll('details.ann-resolved')) group.setAttribute('open', '');
   await renderMermaidBlocks(printable.body, { ...currentAppearance(), mode: 'light' }, { errorLabel });
   return printable.body.innerHTML;
 }

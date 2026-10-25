@@ -1,0 +1,74 @@
+/* Image annotations (the :::annotate directive).
+   The markup is rendered by lib/annotations/render.ts; its class names are a contract with the Pro public-page stylesheet.
+   Colours are theme tokens only. Open markers use --color-primary with a --color-bg outline so they stay visible over any
+   image; resolved markers use --color-muted. A uniform line frames the panel; no one-sided coloured border. Kind and state
+   are always written as text in the list, colour only reinforces them. Motion is limited to prefers-reduced-motion: no-preference. */
+
+.ann-figure { --ann-line: color-mix(in srgb, var(--color-text) 9%, transparent); container-type: inline-size; box-sizing: border-box; margin: 1.5rem 0; border: 1px solid var(--ann-line); border-radius: var(--radius-panel, 10px); background: var(--color-surface); padding: 0.85rem 1rem 1rem; font-family: var(--font-body, 'Noto Sans TC', 'Source Han Sans TW', sans-serif); font-size: 0.925rem; line-height: 1.5; color: var(--color-text); }
+
+/* The note's prose rules (margins, bullets, image frame and zoom cursor) do not apply inside a figure. */
+.prose-custom .ann-figure :where(p, ul, ol, li, details, summary) { margin: 0; padding: 0; }
+.prose-custom .ann-figure :where(ul, ol) { list-style: none; }
+.prose-custom .ann-figure li::before { content: none; }
+.prose-custom .ann-figure .ann-stage img { max-height: none; margin: 0; border: 0; border-radius: 0; cursor: default; }
+.prose-custom .ann-figure .ann-stage img:hover { opacity: 1; }
+.ann-figure a { color: var(--color-primary); }
+.prose-custom .ann-figure :is(a.ann-marker, a.ann-ref) { text-decoration: none; }
+
+.ann-caption { display: flex; flex-wrap: wrap; gap: 0.15rem 0.75rem; align-items: baseline; margin-bottom: 0.7rem; font-size: 0.8125rem; color: var(--color-muted); }
+.ann-title { font-size: 1.05rem; font-weight: 700; line-height: 1.4; color: var(--color-text); }
+.ann-counts { font-variant-numeric: tabular-nums; }
+.ann-open { margin-left: auto; }
+
+.ann-body { display: grid; gap: 1rem; align-items: start; }
+@container (min-width: 720px) { .ann-body { grid-template-columns: minmax(0, 1fr) 18rem; } .ann-side { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; } }
+
+/* The stage shrink-wraps the image, so the overlay box is the image box. Nothing inside it may letterbox or crop the image. */
+.ann-stage { position: relative; display: inline-block; justify-self: start; width: fit-content; max-width: 100%; line-height: 0; }
+.ann-stage img { display: block; max-width: 100%; height: auto; }
+.ann-overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.ann-marker { pointer-events: auto; cursor: pointer; }
+.ann-marker text { font: 700 11px var(--font-body, sans-serif); fill: var(--color-on-primary); pointer-events: none; }
+.ann-pin path { fill: var(--color-primary); stroke: var(--color-bg); stroke-width: 2px; }
+.ann-region rect { fill: color-mix(in srgb, var(--color-primary) 12%, transparent); stroke: var(--color-primary); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.ann-badge circle { fill: var(--color-primary); stroke: var(--color-bg); stroke-width: 2px; }
+.ann-marker.is-resolved path, .ann-marker.is-resolved circle { fill: var(--color-muted); }
+.ann-marker.is-resolved rect { fill: color-mix(in srgb, var(--color-muted) 12%, transparent); stroke: var(--color-muted); }
+.ann-marker.is-resolved text { fill: var(--color-bg); }
+.ann-marker:focus-visible { outline: none; }
+.ann-marker:is(:focus-visible, .is-linked, .is-selected, :target) :is(path, circle) { stroke: var(--color-text); stroke-width: 3px; }
+.ann-marker:is(:focus-visible, .is-linked, .is-selected, :target).ann-region rect { stroke: var(--color-text); stroke-width: 3px; }
+
+/* Resolved annotations are hidden until their group is opened; the same HTML filters without script. */
+.ann-figure:has(.ann-resolved:not([open])) .ann-marker.is-resolved { display: none; }
+
+.ann-side { min-width: 0; }
+.ann-list { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.ann-item { position: relative; display: flex; flex-wrap: wrap; gap: 0.15rem 0.5rem; align-items: center; border: 1px solid var(--ann-line); border-radius: 8px; background: var(--color-bg); padding: 0.5rem 0.6rem; scroll-margin: 4rem; }
+.ann-item:is(.is-linked, .is-selected, :target) { border-color: var(--color-text); }
+.ann-ref { position: relative; display: inline-grid; place-items: center; min-width: 1.6rem; height: 1.6rem; border-radius: 999px; background: var(--color-primary); padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700; font-variant-numeric: tabular-nums; text-decoration: none; color: var(--color-on-primary); }
+.ann-figure a.ann-ref { color: var(--color-on-primary); }
+.ann-ref::after { content: ''; position: absolute; inset: -0.6rem; }
+.ann-item.is-resolved .ann-ref { background: var(--color-muted); color: var(--color-bg); }
+.ann-item.is-resolved a.ann-ref { color: var(--color-bg); }
+.ann-kind, .ann-state, .ann-by { font-size: 0.75rem; color: var(--color-muted); }
+.ann-state { font-weight: 600; }
+.ann-problem { flex-basis: 100%; border: 1px dashed var(--color-danger); border-radius: 4px; padding: 0 0.35rem; font-size: 0.75rem; color: var(--color-danger); }
+.ann-comment { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; }
+.ann-comment > :first-child { margin-top: 0; }
+.ann-comment > :last-child { margin-bottom: 0; }
+.ann-comment img { max-width: 100%; height: auto; }
+.ann-empty { color: var(--color-muted); font-style: italic; }
+.ann-resolved { margin-top: 0.6rem; }
+.ann-resolved > summary { cursor: pointer; font-size: 0.8125rem; color: var(--color-muted); padding: 0.3rem 0; }
+.ann-resolved > summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+.ann-resolved > .ann-list { margin-top: 0.4rem; }
+
+.ann-error { box-sizing: border-box; margin: 1.5rem 0; border: 1px solid var(--color-danger); border-radius: var(--radius-panel, 10px); padding: 0.75rem 1rem; font-size: 0.875rem; }
+.ann-error-title { font-weight: 700; margin: 0; }
+.ann-error-message { margin: 0.25rem 0 0; }
+.ann-error-source { margin: 0.6rem 0 0; max-height: 12rem; overflow: auto; font-size: 0.75rem; white-space: pre-wrap; }
+
+@media (prefers-reduced-motion: no-preference) { .ann-item, .ann-marker path, .ann-marker rect, .ann-marker circle { transition: border-color 0.15s, stroke 0.15s, stroke-width 0.15s; } .ann-item.is-flash { animation: ann-flash 0.9s ease-out; } }
+
+@keyframes ann-flash { from { background: color-mix(in srgb, var(--color-primary) 22%, var(--color-bg)); } }

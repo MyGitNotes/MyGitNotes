@@ -5,7 +5,7 @@ import { parseYouTubeUrl } from '@mygitnotes/core/compilation';
 import { isOutlinePath } from '@mygitnotes/core/outline';
 import { parseR2Reference, r2AssetUrl, r2PreviewType } from '@mygitnotes/core/r2-references';
 import { headingSlug, resolveWorkspaceHref } from './workspace-links.js';
-import { escapeHtml, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
+import { escapeHtml, type NoteLanguage, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
 import { isMermaidInfo } from './mermaid.js';
 import { createMarkedMath, type MathOutput } from './math.js';
 import { DEFAULT_YOUTUBE_LABELS, type YouTubeDisplayMode, type YouTubeLabels } from './youtube-embed.js';
@@ -82,6 +82,8 @@ export interface NoteRendererOptions {
   origin?: string;
   /** `mathml` draws formulas without inline style, for a page that may carry none; the default is the app's HTML output. */
   mathOutput?: MathOutput;
+  /** The language of the labels a note's directives write (annotation and handout labels); the browser's `renderNote` follows the page, a server defaults to English. */
+  language?: NoteLanguage;
 }
 
 interface RenderContext {
@@ -89,17 +91,18 @@ interface RenderContext {
   parser: DOMParser;
   purify: Pick<typeof DOMPurify, 'sanitize'>;
   origin: string | undefined;
+  language?: NoteLanguage;
 }
 
 /**
  * The notes' Markdown pipeline (marked, the MyGitNotes directives, KaTeX) bound to a window, so a server can render the
  * same HTML the app does under a jsdom window. The app uses {@link renderNote}.
  */
-export function createNoteRenderer({ parser, purify, origin, mathOutput = 'html' }: NoteRendererOptions) {
+export function createNoteRenderer({ parser, purify, origin, mathOutput = 'html', language = 'en' }: NoteRendererOptions) {
   const marked = mathOutput === 'html' ? md : newMarked(createMarkedMath(mathOutput));
   return {
     /** `notebookId` names the note's notebook, so an asset URL reaches the right repository when notebook roots repeat across repositories. */
-    renderNote: (content: string, notePath: string, tableLabel?: string, youtubeLabels?: YouTubeLabels, notebookId?: string): string => renderNoteIn({ marked, parser, purify, origin }, content, notePath, tableLabel, youtubeLabels, notebookId),
+    renderNote: (content: string, notePath: string, tableLabel?: string, youtubeLabels?: YouTubeLabels, notebookId?: string): string => renderNoteIn({ marked, parser, purify, origin, language }, content, notePath, tableLabel, youtubeLabels, notebookId),
   };
 }
 
@@ -108,20 +111,22 @@ export function renderNote(content: string, notePath: string, tableLabel?: strin
   return renderNoteIn({ marked: md, parser: new DOMParser(), purify: DOMPurify, origin: typeof window !== 'undefined' ? window.location.origin : undefined }, content, notePath, tableLabel, youtubeLabels, notebookId);
 }
 
-function renderNoteIn({ marked, parser, purify, origin }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string): string {
+function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string): string {
   const isMdx = /\.mdx$/i.test(notePath);
   let preprocessed = content;
   if (isMdx) {
     preprocessed = stripMdxImports(preprocessed);
   }
 
-  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string);
+  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language);
 
   if (isMdx || /<(?:YouTubeEmbed|YouTube|ProtectedContent|Card|Tag|Badge|[A-Z][a-zA-Z0-9_-]*)\b/.test(preprocessed)) {
     preprocessed = transformMdxComponents(preprocessed);
   }
 
   const rawHtml = marked.parse(preprocessed, { gfm: true, breaks: true }) as string;
+  // Only a note with an annotation figure pays for the figure checks below.
+  const annotated = rawHtml.includes('ann-figure');
   const parsed = parser.parseFromString(purify.sanitize(rawHtml, DOMPURIFY_DIRECTIVE_CONFIG), 'text/html');
   for (const table of parsed.querySelectorAll('table')) {
     // An infographic's data table is part of its figure.
@@ -137,6 +142,12 @@ function renderNoteIn({ marked, parser, purify, origin }: RenderContext, content
   for (const image of parsed.querySelectorAll('img')) {
     const src = image.getAttribute('src') || '';
     const r2Key = parseR2Reference(src);
+    // The image of an annotation figure keeps its place under the overlay and is no link: a click on it annotates.
+    if (annotated && image.closest('.ann-stage')) {
+      if (r2Key !== null) image.setAttribute('src', r2AssetUrl(r2Key, notePath));
+      else resolveStageImage(image, src, notePath, notebookId);
+      continue;
+    }
     if (r2Key !== null) {
       image.replaceWith(r2Preview(parsed, r2Key, notePath, image.getAttribute('alt') || ''));
       continue;
@@ -215,6 +226,8 @@ function renderNoteIn({ marked, parser, purify, origin }: RenderContext, content
     embed.append(poster);
   }
   for (const link of parsed.querySelectorAll('a')) {
+    // A marker or number inside an annotation figure only jumps within the figure; the page-level listener handles the click.
+    if (annotated && link.closest('.ann-figure') && !link.classList.contains('ann-open') && (link.getAttribute('href') || '').startsWith('#')) continue;
     const href = link.getAttribute('href') || '';
     if (href.startsWith('/r2-assets/')) continue;
     const r2Key = parseR2Reference(href);
@@ -235,6 +248,13 @@ function renderNoteIn({ marked, parser, purify, origin }: RenderContext, content
     if (target.kind === 'external') link.setAttribute('target', '_blank');
   }
   return purify.sanitize(parsed.body.innerHTML, DOMPURIFY_DIRECTIVE_CONFIG);
+}
+
+/** The src of an annotation figure's image, resolved like any note image but without the link behaviour. */
+function resolveStageImage(image: Element, src: string, notePath: string, notebookId: string | undefined): void {
+  const target = resolveWorkspaceHref(src, notePath);
+  if (target?.kind === 'path') image.setAttribute('src', `/raw-assets/${target.path.split('/').map(encodeURIComponent).join('/')}${notebookId ? `?notebook=${encodeURIComponent(notebookId)}` : ''}`);
+  else if (!target && !/^data:image\//i.test(src)) image.remove();
 }
 
 function r2Preview(doc: Document, key: string, notePath: string, label: string): HTMLElement {

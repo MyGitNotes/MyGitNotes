@@ -10,6 +10,11 @@ import { InfographicError, renderInfographic, renderInfographicError } from './i
 import { isInfographicKind } from './infographics/model.js';
 import { isArgumentMapName } from './argument-maps/parse.js';
 import { ArgumentMapError, renderArgumentMap, renderArgumentMapError } from './argument-maps/render.js';
+import { isAnnotateName } from './annotations/parse.js';
+import { AnnotateError, renderAnnotate, renderAnnotateError } from './annotations/render.js';
+
+/** The language a server renders a note in; the browser takes it from the page. */
+export type NoteLanguage = 'en' | 'zh-TW';
 
 export type DirectiveTranslate = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
@@ -169,7 +174,7 @@ export function transformInlineDirectives(line: string): string {
 /**
  * Renders a single container directive into semantic HTML.
  */
-export function renderContainerDirective(name: string, label: string | undefined, attrs: Record<string, string>, bodyMarkdown: string, renderMarkdown: (md: string) => string): string {
+export function renderContainerDirective(name: string, label: string | undefined, attrs: Record<string, string>, bodyMarkdown: string, renderMarkdown: (md: string) => string, strings: Record<TranslationKey, string> = pageStrings()): string {
   const normName = name.toLowerCase();
 
   if (normName === 'info') {
@@ -267,7 +272,7 @@ export function renderContainerDirective(name: string, label: string | undefined
     const variantLabel = HANDOUT_VARIANTS[variant] || '文件';
     const bodyHtml = renderMarkdown(bodyMarkdown);
 
-    const keeperNote = keeper ? `<aside class="handout-keeper-note"><p class="handout-keeper-kicker">${escapeHtml(pageStrings()['directive.handout.keeperLabel'])}</p><p class="handout-keeper-text">${escapeHtml(keeper)}</p></aside>` : '';
+    const keeperNote = keeper ? `<aside class="handout-keeper-note"><p class="handout-keeper-kicker">${escapeHtml(strings['directive.handout.keeperLabel'])}</p><p class="handout-keeper-text">${escapeHtml(keeper)}</p></aside>` : '';
 
     return `<section class="handout-block handout-variant-${escapeHtml(variant)}" id="${escapeHtml(id)}" data-type="handout" data-variant="${escapeHtml(variant)}" aria-label="文件 ${escapeHtml(id)}：${escapeHtml(title)}">${keeperNote}<div class="handout-reference"><span class="handout-code">${escapeHtml(id)}</span><span class="handout-variant-label">${escapeHtml(variantLabel)}</span></div><article class="handout-document"><header class="handout-document-header"><h4 class="handout-title">${escapeHtml(title)}</h4></header><div class="handout-body directive-content">${bodyHtml}</div></article></section>`;
   }
@@ -334,8 +339,14 @@ function infographicEnd(lines: readonly string[], start: number, fenceLength: nu
 }
 
 /** The page's UI language (the app sets `<html lang>`); a server renders English. */
-function pageStrings() {
+function pageStrings(): Record<TranslationKey, string> {
   const language = typeof document !== 'undefined' ? document.documentElement.lang : '';
+  return language === 'zh-TW' ? zhTW : en;
+}
+
+/** The strings of a language a caller names; without one, the page's. */
+function stringsFor(language: NoteLanguage | undefined): Record<TranslationKey, string> {
+  if (language === undefined) return pageStrings();
   return language === 'zh-TW' ? zhTW : en;
 }
 
@@ -357,20 +368,26 @@ function renderFigureBlock(blockLines: readonly string[], draw: (source: string)
 }
 
 /** The figure for an infographic block's lines, or the error box in its place. */
-function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string): string {
-  return renderFigureBlock(blockLines, source => renderInfographic(source, { renderInline }), (error, source) => renderInfographicError(error instanceof InfographicError ? error : new InfographicError(error.message), source, pageStrings()['infographic.render.error']));
+function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string, strings: Record<TranslationKey, string>): string {
+  return renderFigureBlock(blockLines, source => renderInfographic(source, { renderInline }), (error, source) => renderInfographicError(error instanceof InfographicError ? error : new InfographicError(error.message), source, strings['infographic.render.error']));
+}
+
+/** The figure for an annotate block's lines, or the error box in its place. */
+function renderAnnotateBlock(blockLines: readonly string[], renderMarkdown: (md: string) => string, strings: Record<TranslationKey, string>): string {
+  return renderFigureBlock(blockLines, source => renderAnnotate(source, { renderMarkdown, strings }), (error, source) => renderAnnotateError(error instanceof AnnotateError ? error : new AnnotateError(error.message), source, strings['imageAnnotation.render.error']));
 }
 
 /** The figure for an argument-map block's lines, or the error box in its place. */
-function renderArgumentMapBlock(blockLines: readonly string[], renderInline: (md: string) => string): string {
-  return renderFigureBlock(blockLines, source => renderArgumentMap(source, { renderInline }), (error, source) => renderArgumentMapError(error instanceof ArgumentMapError ? error : new ArgumentMapError(error.message), source, pageStrings()['argumentMap.render.error']));
+function renderArgumentMapBlock(blockLines: readonly string[], renderInline: (md: string) => string, strings: Record<TranslationKey, string>): string {
+  return renderFigureBlock(blockLines, source => renderArgumentMap(source, { renderInline }), (error, source) => renderArgumentMapError(error instanceof ArgumentMapError ? error : new ArgumentMapError(error.message), source, strings['argumentMap.render.error']));
 }
 
 /**
  * Main parser that scans for container directives, leaf directives, inline directives,
  * and recursively converts them to HTML before main markdown processing.
  */
-export function transformDirectives(content: string, renderMarkdown: (md: string) => string, renderInline: (md: string) => string = md => renderMarkdown(md).trim().replace(/^<p>([\s\S]*)<\/p>$/, '$1')): string {
+export function transformDirectives(content: string, renderMarkdown: (md: string) => string, renderInline: (md: string) => string = md => renderMarkdown(md).trim().replace(/^<p>([\s\S]*)<\/p>$/, '$1'), language?: NoteLanguage): string {
+  const strings = stringsFor(language);
   const lines = content.split('\n');
   const output: string[] = [];
   const stack: DirectiveStackItem[] = [];
@@ -379,11 +396,11 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
     const line = lines[i];
 
     const open = parseDirectiveOpen(line);
-    if (open && (isInfographicKind(open.name) || isArgumentMapName(open.name))) {
+    if (open && (isInfographicKind(open.name) || isArgumentMapName(open.name) || isAnnotateName(open.name))) {
       const end = infographicEnd(lines, i, open.fenceLength);
       if (end !== undefined) {
         const block = lines.slice(i, end + 1);
-        const figure = isArgumentMapName(open.name) ? renderArgumentMapBlock(block, renderInline) : renderInfographicBlock(block, renderInline);
+        const figure = isAnnotateName(open.name) ? renderAnnotateBlock(block, renderMarkdown, strings) : isArgumentMapName(open.name) ? renderArgumentMapBlock(block, renderInline, strings) : renderInfographicBlock(block, renderInline, strings);
         // Blank lines keep the figure's HTML block apart from the Markdown around it.
         if (stack.length > 0) stack[stack.length - 1].lines.push(figure);
         else output.push(figure);
@@ -403,8 +420,8 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         const item = stack.pop()!;
         const innerBody = item.lines.join('\n');
         // Recursively transform directives within this container
-        const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline);
-        const renderedHtml = renderContainerDirective(item.name, item.label, item.attrs, transformedInner, renderMarkdown);
+        const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline, language);
+        const renderedHtml = renderContainerDirective(item.name, item.label, item.attrs, transformedInner, renderMarkdown, strings);
 
         if (stack.length > 0) {
           stack[stack.length - 1].lines.push(renderedHtml);
