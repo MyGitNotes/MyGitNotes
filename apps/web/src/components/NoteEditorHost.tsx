@@ -11,6 +11,13 @@ import { NoteEditor, type NoteEditorHandle, type NoteEditorProps } from './NoteE
 import { youtubeLabels } from '../lib/youtube-embed.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { NoteHtml } from './NoteHtml.js';
+import { sameValue } from '../lib/merge-note.js';
+
+/** Whether two reads of a note hold the same text and metadata, apart from the timestamps every save stamps. */
+function sameNoteBody(a: NoteItem, b: NoteItem): boolean {
+  const strip = ({ created: _created, updated: _updated, ...rest }: Record<string, unknown>) => rest;
+  return a.content === b.content && sameValue(strip(a.metadata || {}), strip(b.metadata || {}));
+}
 
 export interface HostedNoteEditorProps {
   notebookId: string;
@@ -64,8 +71,17 @@ export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, 
   const showsEditor = owner && (!zoom || lending);
   // Like zoom, the editor keeps the note it opened and follows only its own saves.
   const [pinned, setPinned] = useState<NoteItem | null>(null);
+  // Unsaved typing in the editor, which a note that changed elsewhere must not replace.
+  const [typing, setTyping] = useState(false);
+  const [seen, setSeen] = useState(loaded);
   if (!showsEditor && pinned) setPinned(null);
   else if (showsEditor && !pinned && loaded) setPinned(loaded);
+  // A note that changes under an editor with nothing unsaved (a rename that retitled it) is what the editor shows next. Only
+  // a change of the loaded note counts, so a read that lags behind the editor's own save never takes the editor back.
+  if (loaded !== seen && !(loaded && seen && sameNoteBody(loaded, seen))) {
+    setSeen(loaded);
+    if (showsEditor && pinned && loaded && !typing && !sameNoteBody(loaded, pinned)) setPinned(loaded);
+  }
   const note = (showsEditor && pinned) || loaded;
 
   const zoomSlot = lending ? zoom!.slot : null;
@@ -108,7 +124,10 @@ export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, 
           onClose={lending ? editing.closeZoom : undefined}
           onMove={editing.moveNote?.(note)}
           onRename={editing.renameNote?.(note) && (title => editing.renameNote?.({ ...note, title })?.())}
-          onSession={onSession}
+          onSession={session => {
+            setTyping(Boolean(session?.dirty));
+            onSession?.(session);
+          }}
           onCaret={onCaret}
         />,
         host,

@@ -6,7 +6,7 @@ import type { NoteItem } from '../lib/types.js';
 import type { WorkingNote } from '../lib/working-notes.js';
 import { useNoteMove } from './useNoteMove.js';
 
-const files = vi.hoisted(() => ({ fetchFiles: vi.fn(), mutateFile: vi.fn() }));
+const files = vi.hoisted(() => ({ mutateFile: vi.fn() }));
 vi.mock('../lib/files-api.js', () => files);
 const lookup = vi.hoisted(() => ({ notes: [] as NoteItem[] }));
 const api = vi.hoisted(() => ({ readNote: vi.fn() }));
@@ -42,7 +42,9 @@ function setup({ draft, focusTabs = [] as string[], remote = true }: { draft?: W
     queryScope: {} as never,
     flushEditors: vi.fn(async () => true),
     beforeFileChange: vi.fn(async (_scope?: unknown) => {}),
-    onFilesChanged: vi.fn(async () => {
+    forgetDrafts: vi.fn(),
+    relocateCurrentFocus: vi.fn(),
+    onFilesChanged: vi.fn(async (_result: unknown, _options?: unknown) => {
       order.push('files changed');
     }),
     setActionError: vi.fn(),
@@ -74,7 +76,7 @@ describe('useNoteMove', () => {
     expect(drafts.get('notes/work/idea.md')).toMatchObject({ base: null, note: { path: 'notes/work/idea.md', content: '# Idea' } });
     expect(focus.change).toHaveBeenCalledOnce();
     expect(focus.change.mock.calls[0][0].focuses[0].root.tabs.map((tab: { path: string; }) => tab.path)).toEqual(['notes/work/idea.md', 'notes/other.md']);
-    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ pathMap: { 'notes/idea.md': 'notes/work/idea.md' } }));
+    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ pathMap: { 'notes/idea.md': 'notes/work/idea.md' } }), { background: true });
     expect(files.mutateFile).not.toHaveBeenCalled();
     expect(params.beforeFileChange).not.toHaveBeenCalled();
   });
@@ -89,18 +91,16 @@ describe('useNoteMove', () => {
   });
 
   it('moves a committed note as a file after saving the open editors', async () => {
-    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
     files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/work/idea.md' }, deletedPaths: [] });
     const { params, move } = setup({});
     await move('work');
     expect(params.flushEditors).toHaveBeenCalled();
     expect(params.beforeFileChange).toHaveBeenCalled();
-    expect(files.mutateFile).toHaveBeenCalledWith({ kind: 'move', notebookId: 'nb', path: 'notes/idea.md', destination: 'notes/work/idea.md' }, 'r1');
-    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ revision: 'r2' }));
+    expect(files.mutateFile).toHaveBeenCalledWith({ kind: 'move', notebookId: 'nb', path: 'notes/idea.md', destination: 'notes/work/idea.md' });
+    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ revision: 'r2' }), { background: true });
   });
 
   it('carries the remote draft of a committed note to where the file moved, base included', async () => {
-    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
     files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/work/idea.md' }, deletedPaths: [] });
     const { params, drafts, move } = setup({ draft: { note: { ...note, content: '# Idea\n\nEdited.' }, base: note } });
     await move('work');
@@ -111,7 +111,6 @@ describe('useNoteMove', () => {
   });
 
   it('moves the draft the editor staged while the move ran, not the one read before it', async () => {
-    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
     const { drafts, move } = setup({ draft: { note: { ...note, content: 'first' }, base: note } });
     files.mutateFile.mockImplementation(async () => {
       drafts.set('notes/idea.md', { note: { ...note, content: 'typed during the move' }, base: note });
@@ -131,12 +130,11 @@ describe('useNoteMove', () => {
   });
 
   it('moves a note dropped on a folder without opening the dialog', async () => {
-    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
     files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: {}, deletedPaths: [] });
     const { params, hook } = setup({});
     await act(() => hook.result.current.moveTo({ notebookId: 'nb', path: 'notes/work/idea.md', title: '' }, null));
-    expect(files.mutateFile).toHaveBeenCalledWith({ kind: 'move', notebookId: 'nb', path: 'notes/work/idea.md', destination: 'notes/idea.md' }, 'r1');
-    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ revision: 'r2' }));
+    expect(files.mutateFile).toHaveBeenCalledWith({ kind: 'move', notebookId: 'nb', path: 'notes/work/idea.md', destination: 'notes/idea.md' });
+    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ revision: 'r2' }), { background: true });
     expect(hook.result.current.request).toBeNull();
   });
 
@@ -145,30 +143,75 @@ describe('useNoteMove', () => {
     await rename('讀書 計畫', { ...note, path: 'notes/untitled.md' });
     expect([...drafts.keys()]).toEqual(['notes/讀書-計畫.md']);
     expect(drafts.get('notes/讀書-計畫.md')?.note).toMatchObject({ content: '# 讀書 計畫\n\nBody.\n', title: '讀書 計畫' });
-    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ pathMap: { 'notes/untitled.md': 'notes/讀書-計畫.md' } }));
+    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ pathMap: { 'notes/untitled.md': 'notes/讀書-計畫.md' } }), { background: true });
     expect(params.saveNote).not.toHaveBeenCalled();
   });
 
-  it('renames a local file, then saves the new title where it now lies before the editor reopens it', async () => {
-    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
+  it.each([true, false])('renames a file with the new title in the move itself and saves nothing after it (remote: %s)', async remote => {
     files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/plans.md' }, deletedPaths: [] });
-    api.readNote.mockResolvedValue({ ...note, path: 'notes/plans.md', metadata: { status: 'inbox' } });
-    const { params, rename, order } = setup({ remote: false });
+    const { params, rename } = setup({ remote });
     await rename('Plans');
-    expect(files.mutateFile).toHaveBeenCalledWith({ kind: 'move', notebookId: 'nb', path: 'notes/idea.md', destination: 'notes/plans.md' }, 'r1');
-    expect(params.saveNote).toHaveBeenCalledWith({ path: 'notes/plans.md', notebookId: 'nb', content: '# Plans', metadata: { status: 'inbox' } });
-    expect(order).toEqual(['save notes/plans.md', 'files changed']);
+    expect(files.mutateFile).toHaveBeenCalledOnce();
+    expect(files.mutateFile).toHaveBeenCalledWith({ kind: 'move', notebookId: 'nb', path: 'notes/idea.md', destination: 'notes/plans.md', title: 'Plans' });
+    expect(params.saveNote).not.toHaveBeenCalled();
+    expect(api.readNote).not.toHaveBeenCalled();
+    expect(params.onFilesChanged).toHaveBeenCalledWith(expect.objectContaining({ pathMap: { 'notes/idea.md': 'notes/plans.md' } }), { background: true });
+  });
+
+  it('asks the server only: no revision read and no destination lookup before a move', async () => {
+    files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: {}, deletedPaths: [] });
+    const lookupSpy = vi.spyOn(QueryClient.prototype, 'fetchQuery');
+    const { rename } = setup({});
+    await rename('Plans');
+    expect(lookupSpy).not.toHaveBeenCalled();
+    lookupSpy.mockRestore();
+  });
+
+  it('shows the dialog message when the server refuses a taken destination, and leaves no trace of the move', async () => {
+    files.mutateFile.mockRejectedValue(new Error('Destination already exists.'));
+    const { params, rename } = setup({ remote: false });
+    await rename('Plans');
+    expect(params.setActionError).toHaveBeenLastCalledWith('files.moveTaken');
+    expect(params.onFilesChanged).not.toHaveBeenCalled();
+    expect(params.forgetDrafts).not.toHaveBeenCalled();
+  });
+
+  it('moves the staged draft of a renamed committed note with its new title, so the editor opens on it', async () => {
+    files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/plans.md' }, deletedPaths: [] });
+    const { drafts, rename } = setup({ draft: { note: { ...note, content: '# Idea\n\nEdited.', metadata: { title: 'Idea' } }, base: { ...note, metadata: { title: 'Idea' } } } });
+    await rename('Plans');
+    expect([...drafts.keys()]).toEqual(['notes/plans.md']);
+    expect(drafts.get('notes/plans.md')).toMatchObject({ note: { path: 'notes/plans.md', title: 'Plans', content: '# Plans\n\nEdited.', metadata: { title: 'Plans' } }, base: { path: 'notes/plans.md' } });
+  });
+
+  it('forgets the unsaved copies at the old path and lets the current Focus follow the note', async () => {
+    files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/plans.md' }, deletedPaths: [] });
+    const { params, rename } = setup({});
+    await rename('Plans');
+    expect(params.forgetDrafts).toHaveBeenCalledWith('nb', 'notes/idea.md');
+    expect(params.relocateCurrentFocus).toHaveBeenCalledWith('nb', expect.any(Function));
+    const move = params.relocateCurrentFocus.mock.calls[0][1] as (path: string) => string;
+    expect([move('notes/idea.md'), move('notes/other.md')]).toEqual(['notes/plans.md', 'notes/other.md']);
+  });
+
+  it('saves a title that keeps the file name where the note lies, before the workspace is read again', async () => {
+    api.readNote.mockResolvedValue({ ...note, metadata: { status: 'inbox' } });
+    const { params, rename, order } = setup({ remote: false });
+    await rename('Idea!');
+    expect(files.mutateFile).not.toHaveBeenCalled();
+    expect(params.saveNote).toHaveBeenCalledWith({ path: 'notes/idea.md', notebookId: 'nb', content: '# Idea!', metadata: { status: 'inbox' } });
+    expect(order).toEqual(['save notes/idea.md', 'files changed']);
   });
 
   it('lets a compilation apply its own new name, and only moves its file', async () => {
-    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
     files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: {}, deletedPaths: [] });
     const applyTitle = vi.fn();
     const compilation = { ...note, path: 'notes/untitled.compilation.yml', title: 'Untitled compilation' };
     const { params, rename } = setup({ remote: false });
     await rename('Reading list', compilation, applyTitle);
     expect(applyTitle).toHaveBeenCalledWith('Reading list');
-    expect(files.mutateFile).toHaveBeenCalledWith(expect.objectContaining({ destination: 'notes/reading-list.compilation.yml' }), 'r1');
+    expect(files.mutateFile).toHaveBeenCalledWith(expect.objectContaining({ destination: 'notes/reading-list.compilation.yml' }));
+    expect(files.mutateFile.mock.calls[0][0]).not.toHaveProperty('title');
     expect(params.saveNote).not.toHaveBeenCalled();
   });
 

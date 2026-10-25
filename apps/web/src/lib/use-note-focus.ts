@@ -1,6 +1,6 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, mergePanes, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
+import { closePane, closeTab, emptyFocusLayout, relocateFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, mergePanes, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
 import type { FocusPageController } from './use-focus-page.js';
 import { useNoteLookup } from './use-note-queries.js';
 import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
@@ -296,6 +296,13 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     return true;
   };
 
+  /** Points the tabs of this browser's (current) Focus at the path `move` gives them, as a file move does for the named Focus it rewrites in the workspace. */
+  const relocatePaths = (movedNotebookId: string, move: (path: string) => string) => {
+    if (movedNotebookId !== notebookId) return;
+    const layout = structuredClone(viewRef.current.current);
+    if (relocateFocusLayout(layout, move)) update(current => ({ ...current, current: layout }));
+  };
+
   const canName = namedWritable && page.page.focuses.length < FOCUS_MAX_FOCUSES;
   /** Names (current): it becomes a named Focus with the same view, and (current) starts empty. Throws FocusError. */
   const name = (label: string): string => {
@@ -319,6 +326,6 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     return true;
   };
 
-  return { notebookId, focuses, error: page.error, loading: page.loading, view, shown, layout, entry, notes, mutationError, dismissMutationError: () => setMutationError(null), editable: shown ? editable(shown) : false, canName, layoutOf, entryOf, editableFocus: editable, openNote, place, moveTab, split, show, activate, close, addBatch, splitShown, closeEmptyPane, mergeAll, clear, setRatios, setHideToolbar, setDock, name, rename, remove };
+  return { notebookId, focuses, error: page.error, loading: page.loading, view, shown, layout, entry, notes, mutationError, dismissMutationError: () => setMutationError(null), editable: shown ? editable(shown) : false, canName, layoutOf, entryOf, editableFocus: editable, openNote, place, moveTab, split, show, activate, close, addBatch, splitShown, closeEmptyPane, mergeAll, clear, setRatios, setHideToolbar, setDock, relocatePaths, name, rename, remove };
 }
 export type NoteFocus = ReturnType<typeof useNoteFocus>;

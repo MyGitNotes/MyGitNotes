@@ -487,21 +487,25 @@ function displayPanes(node: DisplayNode): string[][] {
   return node.kind === 'pane' ? [node.panes] : node.children.flatMap(displayPanes);
 }
 
-/** Mutates `page` in place, matching Screen relocation (see file-manager.ts). Returns whether any note path changed. */
-export function relocateFocusPaths(page: FocusPage, notebookId: string, move: (path: string) => string): boolean {
+/** Mutates `layout` in place, pointing each note tab at the path `move` gives it. Returns whether any note path changed. */
+export function relocateFocusLayout(layout: FocusLayout, move: (path: string) => string): boolean {
   let changed = false;
-  for (const focus of page.focuses) {
-    if (focus.notebookId !== notebookId) continue;
-    for (const pane of focusPanes(focus)) {
-      for (const tab of pane.tabs) {
-        const next = move(tab.path);
-        if (next !== tab.path) {
-          tab.path = next;
-          changed = true;
-        }
+  for (const pane of focusPanes(layout)) {
+    for (const tab of pane.tabs) {
+      const next = move(tab.path);
+      if (next !== tab.path) {
+        tab.path = next;
+        changed = true;
       }
     }
   }
+  return changed;
+}
+
+/** Mutates `page` in place, matching Screen relocation (see file-manager.ts). Returns whether any note path changed. */
+export function relocateFocusPaths(page: FocusPage, notebookId: string, move: (path: string) => string): boolean {
+  let changed = false;
+  for (const focus of page.focuses) if (focus.notebookId === notebookId && relocateFocusLayout(focus, move)) changed = true;
   return changed;
 }
 

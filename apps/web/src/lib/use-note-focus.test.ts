@@ -407,3 +407,18 @@ describe('useNoteFocus while the Focus document is unavailable', () => {
     await waitFor(() => expect(result.current.shown).toBe(named.focus.id));
   });
 });
+
+describe('useNoteFocus relocatePaths', () => {
+  it('points the tabs of the (current) Focus at the path a renamed note now has', async () => {
+    const layout: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/old.md' }, { kind: 'note', path: 'notes/other.md' }] } };
+    localStorage.setItem(storageKey, JSON.stringify({ current: layout, entries: {}, last: null, dock: { left: 320, bottom: 280, collapsed: false } }));
+    const { result } = renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+    await waitFor(() => expect(tabsAt(result.current.layout, 0)?.length).toBe(2));
+
+    act(() => result.current.relocatePaths('another~notebook', path => path === 'notes/old.md' ? 'notes/new.md' : path));
+    expect(tabsAt(result.current.view.current, 0)?.map(entry => entry.path)).toEqual(['notes/old.md', 'notes/other.md']);
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/old.md' ? 'notes/new.md' : path));
+    expect(tabsAt(result.current.view.current, 0)?.map(entry => entry.path)).toEqual(['notes/new.md', 'notes/other.md']);
+    expect(JSON.parse(localStorage.getItem(storageKey)!).current.root.tabs.map((entry: { path: string; }) => entry.path)).toEqual(['notes/new.md', 'notes/other.md']);
+  });
+});
