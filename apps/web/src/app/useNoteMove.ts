@@ -27,8 +27,10 @@ interface Params {
   flushEditors: () => Promise<boolean>;
   beforeFileChange: (scope?: FileChangeScope) => Promise<void>;
   onFilesChanged: (result: FileResult, options?: { background?: boolean; }) => Promise<void>;
-  /** Drops what this browser keeps of the unsaved and conflicted edits of a note path, once the note no longer lies there. */
-  forgetDrafts?: (notebookId: string, path: string) => void;
+  /** Records the revision a hosted move committed, so the note is looked up at its new path against the commit that holds it. */
+  setNotebookRevision?: (notebookId: string, revision: string) => void;
+  /** Drops the unsaved copy this browser keeps of a note path and carries its conflicted copy to `destination`, once the note lies there. */
+  forgetDrafts?: (notebookId: string, path: string, destination: string) => void;
   /** Points the tabs of this browser's (current) Focus at the path a moved note now has. */
   relocateCurrentFocus?: (notebookId: string, move: (path: string) => string) => void;
   setActionError: WorkspaceState['setActionError'];
@@ -44,7 +46,7 @@ export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rena
 const isCompilation = (path: string) => noteSuffix(path) === '.compilation.yml';
 
 /** The Move and Rename actions of an open note, outline or compilation, and the dialogs that choose the folder or name. */
-export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote, focus, queryClient, queryScope, flushEditors, beforeFileChange, onFilesChanged, forgetDrafts, relocateCurrentFocus, setActionError, t }: Params) {
+export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote, focus, queryClient, queryScope, flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus, setActionError, t }: Params) {
   const [request, setRequest] = useState<NoteMoveRequest | null>(null);
   const [busy, setBusy] = useState(false);
   const moveNote = (note: MovedNote) => canWriteNotebook(note.notebookId) ? () => setRequest({ mode: 'move', note }) : undefined;
@@ -67,7 +69,7 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
     if (plan.kind === 'draft') {
       stageWorkingNote(withTitle({ ...plan.draft.note, path: destination }), null);
       updateDraft(note.notebookId, note.path, null);
-      forgetDrafts?.(note.notebookId, note.path);
+      forgetDrafts?.(note.notebookId, note.path, destination);
       // A Focus tab of the draft follows it, as a file move relocates the tabs of a committed note.
       const page = structuredClone(focus.page);
       if (relocateFocusPaths(page, note.notebookId, path => path === note.path ? destination : path)) focus.change(page);
@@ -99,6 +101,8 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
       throw moveError(error, destination);
     }
     endMove(true);
+    // The commit is the revision the workspace reads from now on; the background refresh may not have landed when the editor looks the note up at its new path.
+    if (remote && result.revision) setNotebookRevision?.(note.notebookId, result.revision);
     // The open editor may have staged more while the move ran, so the draft is read again before it moves.
     const latest = carried && (readDraft(note.notebookId, note.path) ?? carried);
     if (latest) {
@@ -106,7 +110,7 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
       updateDraft(note.notebookId, destination, { ...latest, note: withTitle({ ...latest.note, path: destination }), base: latest.base && { ...latest.base, path: destination } });
     }
     // Nothing is left to recover at the old path, and a Focus of this browser follows the note like the named ones the server rewrote.
-    forgetDrafts?.(note.notebookId, note.path);
+    forgetDrafts?.(note.notebookId, note.path, destination);
     relocateCurrentFocus?.(note.notebookId, path => result.pathMap[path] ?? path);
     await onFilesChanged(result, { background: true });
   };

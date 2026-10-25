@@ -42,6 +42,9 @@ function setup({ draft, focusTabs = [] as string[], remote = true }: { draft?: W
     queryScope: {} as never,
     flushEditors: vi.fn(async () => true),
     beforeFileChange: vi.fn(async (_scope?: unknown) => {}),
+    setNotebookRevision: vi.fn((notebookId: string, revision: string) => {
+      order.push(`revision ${notebookId} ${revision}`);
+    }),
     forgetDrafts: vi.fn(),
     relocateCurrentFocus: vi.fn(),
     onFilesChanged: vi.fn(async (_result: unknown, _options?: unknown) => {
@@ -188,10 +191,29 @@ describe('useNoteMove', () => {
     files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/plans.md' }, deletedPaths: [] });
     const { params, rename } = setup({});
     await rename('Plans');
-    expect(params.forgetDrafts).toHaveBeenCalledWith('nb', 'notes/idea.md');
+    expect(params.forgetDrafts).toHaveBeenCalledWith('nb', 'notes/idea.md', 'notes/plans.md');
     expect(params.relocateCurrentFocus).toHaveBeenCalledWith('nb', expect.any(Function));
     const move = params.relocateCurrentFocus.mock.calls[0][1] as (path: string) => string;
     expect([move('notes/idea.md'), move('notes/other.md')]).toEqual(['notes/plans.md', 'notes/other.md']);
+  });
+
+  it('takes the revision the move committed before the workspace is read again, in a hosted workspace', async () => {
+    files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/plans.md' }, deletedPaths: [] });
+    const { params, rename, order } = setup({ remote: true });
+    await rename('Plans');
+    expect(params.setNotebookRevision).toHaveBeenCalledExactlyOnceWith('nb', 'r2');
+    expect(order).toEqual(['revision nb r2', 'files changed']);
+  });
+
+  it('does not take a revision for a local move, nor for a move that failed', async () => {
+    files.mutateFile.mockResolvedValueOnce({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/plans.md' }, deletedPaths: [] });
+    const local = setup({ remote: false });
+    await local.rename('Plans');
+    files.mutateFile.mockRejectedValueOnce(new Error('offline'));
+    const failed = setup({ remote: true });
+    await failed.rename('Plans');
+    expect(local.params.setNotebookRevision).not.toHaveBeenCalled();
+    expect(failed.params.setNotebookRevision).not.toHaveBeenCalled();
   });
 
   it('saves a title that keeps the file name where the note lies, before the workspace is read again', async () => {
