@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { serviceWorkerUrl, watchRegistration } from './register.js';
-import { getUpdateReady, resetUpdateStore } from './update-store.js';
+import { getUpdateReady, resetUpdateStore, type WorkerContainer } from './update-store.js';
 
 type Listener = () => void;
+const container = (controller: unknown): WorkerContainer => ({ controller, addEventListener: () => undefined });
 const target = () => {
   const listeners = new Map<string, Listener[]>();
   return { addEventListener: (type: string, listener: Listener) => listeners.set(type, [...listeners.get(type) ?? [], listener]), emit: (type: string) => listeners.get(type)?.forEach(listener => listener()) };
@@ -20,7 +21,7 @@ describe('watchRegistration', () => {
   it('announces a version that finishes installing while a worker controls the page', () => {
     resetUpdateStore();
     const registration = Object.assign(target(), { waiting: null, installing: null as null | (ReturnType<typeof target> & { state: string; postMessage: Listener; }) });
-    watchRegistration(registration as unknown as ServiceWorkerRegistration, { controller: {} as ServiceWorker });
+    watchRegistration(registration as unknown as ServiceWorkerRegistration, container({}));
     const installing = Object.assign(target(), { state: 'installing', postMessage: vi.fn() });
     registration.installing = installing;
     registration.emit('updatefound');
@@ -35,7 +36,7 @@ describe('watchRegistration', () => {
   it('announces a version already waiting when the page opens', () => {
     resetUpdateStore();
     const registration = Object.assign(target(), { waiting: { postMessage: vi.fn() }, installing: null });
-    watchRegistration(registration as unknown as ServiceWorkerRegistration, { controller: {} as ServiceWorker });
+    watchRegistration(registration as unknown as ServiceWorkerRegistration, container({}));
     expect(getUpdateReady()).toBe(true);
     resetUpdateStore();
   });
@@ -43,7 +44,7 @@ describe('watchRegistration', () => {
   it('stays quiet for the first install', () => {
     resetUpdateStore();
     const registration = Object.assign(target(), { waiting: null, installing: null as null | (ReturnType<typeof target> & { state: string; }) });
-    watchRegistration(registration as unknown as ServiceWorkerRegistration, { controller: null });
+    watchRegistration(registration as unknown as ServiceWorkerRegistration, container(null));
     const installing = Object.assign(target(), { state: 'installed' });
     registration.installing = installing;
     registration.emit('updatefound');

@@ -39,18 +39,16 @@ const workspaceChunk = import('../App.js');
 workspaceChunk.catch(() => {/* The lazy boundary below reports a failed load when it renders. */});
 const AppContent = React.lazy(() => workspaceChunk.then(module => ({ default: module.AppContent })));
 
-/** The sign-in gate, then the workspace once its chunk arrives. */
+/** The sign-in gate, then the workspace once its chunk arrives; `WebApp` provides the language. */
 function App() {
   return (
-    <I18nProvider>
-      <WorkspaceGate>
-        <React.Suspense fallback={<ConnectionState loading error='' onRetry={() => {}} />}>
-          <KeyboardRoot>
-            <AppContent />
-          </KeyboardRoot>
-        </React.Suspense>
-      </WorkspaceGate>
-    </I18nProvider>
+    <WorkspaceGate>
+      <React.Suspense fallback={<ConnectionState loading error='' onRetry={() => {}} />}>
+        <KeyboardRoot>
+          <AppContent />
+        </KeyboardRoot>
+      </React.Suspense>
+    </WorkspaceGate>
   );
 }
 
@@ -69,27 +67,27 @@ export function WebApp({ features = [] }: WebAppOptions) {
       <WebFeaturesProvider features={features}>
         <I18nProvider>
           <UpdateNotice />
+          <NuqsAdapter>
+            <BrowserRouter>
+              <PanelProvider>
+                <Routes>
+                  <Route path='/' element={<App />} />
+                  <Route path='/notes' element={<App />} />
+                  <Route path='/index.html' element={<App />} />
+                  <Route path='/notebooks' element={<App />} />
+                  <Route path='/notebooks/:notebook' element={<App />} />
+                  <Route path='/notebooks/:notebook/folders/*' element={<App />} />
+                  <Route path='/notebooks/:notebook/notes/*' element={<App />} />
+                  <Route path='/assets' element={<App />} />
+                  <Route path='/agent' element={<App />} />
+                  <Route path='/settings' element={<App />} />
+                  {features.flatMap(feature => feature.routes ?? []).map(route => <Route key={route.path} path={route.path} element={route.element} />)}
+                  <Route path='*' element={<App />} />
+                </Routes>
+              </PanelProvider>
+            </BrowserRouter>
+          </NuqsAdapter>
         </I18nProvider>
-        <NuqsAdapter>
-          <BrowserRouter>
-            <PanelProvider>
-              <Routes>
-                <Route path='/' element={<App />} />
-                <Route path='/notes' element={<App />} />
-                <Route path='/index.html' element={<App />} />
-                <Route path='/notebooks' element={<App />} />
-                <Route path='/notebooks/:notebook' element={<App />} />
-                <Route path='/notebooks/:notebook/folders/*' element={<App />} />
-                <Route path='/notebooks/:notebook/notes/*' element={<App />} />
-                <Route path='/assets' element={<App />} />
-                <Route path='/agent' element={<App />} />
-                <Route path='/settings' element={<App />} />
-                {features.flatMap(feature => feature.routes ?? []).map(route => <Route key={route.path} path={route.path} element={route.element} />)}
-                <Route path='*' element={<App />} />
-              </Routes>
-            </PanelProvider>
-          </BrowserRouter>
-        </NuqsAdapter>
       </WebFeaturesProvider>
     </QueryClientProvider>
   );

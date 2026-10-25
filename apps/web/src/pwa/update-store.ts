@@ -4,9 +4,21 @@
  */
 export interface UpdateWorker {
   postMessage(message: unknown): void;
+  /** A worker's lifecycle state; "activated" means it already took over. */
+  readonly state?: string;
+}
+
+/** The part of `navigator.serviceWorker` the store reads: which worker controls the page, and when that changes. */
+export interface WorkerContainer {
+  readonly controller: unknown;
+  addEventListener(type: 'controllerchange', listener: () => void): void;
 }
 
 let waiting: UpdateWorker | null = null;
+/** The waiting worker took over the page's tab (this one or another); reloading now loads the new version at once. */
+let swapped = false;
+let pendingReload: (() => void) | null = null;
+const watched = new WeakSet<object>();
 const listeners = new Set<() => void>();
 
 export const subscribeUpdate = (listener: () => void) => {
@@ -17,25 +29,53 @@ export const subscribeUpdate = (listener: () => void) => {
 /** Whether a newer version is installed and waiting for the person's go-ahead. */
 export const getUpdateReady = () => waiting !== null;
 
-/** Records a waiting worker; the page shows its notice. A worker installed with no controlling worker is a first install, not an update. */
-export function announceUpdate(worker: UpdateWorker, controlled: boolean): void {
-  if (!controlled || waiting === worker) return;
-  waiting = worker;
+const notify = () => {
   for (const listener of listeners) listener();
+};
+
+/**
+ * Every tab that announced an update hears the swap, whichever tab asked for it: the worker takes all open pages
+ * (`clients.claim()`), so a tab that did not click Reload still sees the controller change, and its own Reload then works at once.
+ */
+function watchController(container: WorkerContainer): void {
+  if (watched.has(container)) return;
+  watched.add(container);
+  container.addEventListener('controllerchange', () => {
+    swapped = true;
+    const reload = pendingReload;
+    pendingReload = null;
+    reload?.();
+  });
+}
+
+/** Records a waiting worker; the page shows its notice. A worker installed with no controlling worker is a first install, not an update. */
+export function announceUpdate(worker: UpdateWorker, container: WorkerContainer): void {
+  if (container.controller === null || waiting === worker) return;
+  waiting = worker;
+  swapped = false;
+  // Only now: a controllerchange on the first install must not count as a swap.
+  watchController(container);
+  notify();
 }
 
 /** Forgets the waiting worker, as when the person chose "later". */
 export function dismissUpdate(): void {
   if (!waiting) return;
   waiting = null;
-  for (const listener of listeners) listener();
+  notify();
 }
 
-/** Tells the waiting worker to take over and reloads once it has; false when nothing waits. */
-export function applyUpdate(container: { addEventListener(type: 'controllerchange', listener: () => void, options: { once: true; }): void; }, reload: () => void): boolean {
+/**
+ * Takes the waiting version: reloads at once when it already controls the page (another tab applied it), otherwise tells it to
+ * take over and reloads once it has. False when nothing waits.
+ */
+export function applyUpdate(container: WorkerContainer, reload: () => void): boolean {
   if (!waiting) return false;
-  // Only now: a controllerchange on the first install must not reload the page.
-  container.addEventListener('controllerchange', reload, { once: true });
+  if (swapped || waiting.state === 'activated' || container.controller === waiting) {
+    reload();
+    return true;
+  }
+  pendingReload = reload;
   waiting.postMessage({ type: 'SKIP_WAITING' });
   return true;
 }
@@ -43,5 +83,7 @@ export function applyUpdate(container: { addEventListener(type: 'controllerchang
 /** Test seam: forgets all state. */
 export function resetUpdateStore(): void {
   waiting = null;
+  swapped = false;
+  pendingReload = null;
   listeners.clear();
 }

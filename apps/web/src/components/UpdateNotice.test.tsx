@@ -31,24 +31,43 @@ it('shows nothing until a newer version waits', async () => {
   expect(container.textContent).toBe('');
 });
 
+/** The page's `navigator.serviceWorker`: a controlling worker, and the listener the store registers for `controllerchange`. */
+const stubServiceWorker = () => {
+  const serviceWorker = { controller: {}, listener: () => {}, addEventListener: (_type: string, listener: () => void) => void (serviceWorker.listener = listener) };
+  vi.stubGlobal('navigator', { serviceWorker });
+  return serviceWorker;
+};
+
 it('offers the new version, and swaps only after Reload is pressed', async () => {
   const worker = { postMessage: vi.fn() };
-  let swapped = () => {};
-  vi.stubGlobal('navigator', { serviceWorker: { addEventListener: (_type: string, listener: () => void) => void (swapped = listener) } });
+  const serviceWorker = stubServiceWorker();
   await mount();
-  await act(async () => announceUpdate(worker, true));
+  await act(async () => announceUpdate(worker, serviceWorker));
   expect(container.querySelector('[role=status]')?.textContent).toContain('A new version is available');
   expect(worker.postMessage).not.toHaveBeenCalled();
 
   await act(async () => button('Reload').click());
   expect(worker.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
-  expect(swapped).toBeTypeOf('function');
+  expect(serviceWorker.listener).toBeTypeOf('function');
+});
+
+it('reloads at once on Reload when another tab already swapped the version', async () => {
+  const worker = { postMessage: vi.fn() };
+  const serviceWorker = stubServiceWorker();
+  const reload = vi.fn();
+  vi.stubGlobal('location', { reload });
+  await mount();
+  await act(async () => announceUpdate(worker, serviceWorker));
+  serviceWorker.listener();
+  await act(async () => button('Reload').click());
+  expect(reload).toHaveBeenCalledTimes(1);
+  expect(worker.postMessage).not.toHaveBeenCalled();
 });
 
 it('hides the notice for now when the person chooses Later, and leaves the waiting worker alone', async () => {
   const worker = { postMessage: vi.fn() };
   await mount();
-  await act(async () => announceUpdate(worker, true));
+  await act(async () => announceUpdate(worker, stubServiceWorker()));
   await act(async () => button('Later').click());
   expect(container.textContent).toBe('');
   expect(worker.postMessage).not.toHaveBeenCalled();
