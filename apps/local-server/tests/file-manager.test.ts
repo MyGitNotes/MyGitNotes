@@ -234,3 +234,16 @@ it('includes hidden files in the normal Git review and commit flow', async () =>
   expect(committed.status).toBe(200);
   expect(git('show', 'HEAD:notes/a/.hidden.json').toString()).toContain('"a":2');
 });
+
+it('renames a local note with its new title in the same write and without a client revision', async () => {
+  write('notes/a/one/linker.md', '[Note](note.md)\n');
+  const response = await fetch(base + '/api/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: { notebookId: nb('a'), kind: 'move', path: 'notes/a/one/note.md', destination: 'notes/a/one/fresh-name.md', title: 'Fresh name' } }) });
+  expect(response.status).toBe(200);
+  expect(fs.existsSync(path.join(root, 'notes/a/one/note.md'))).toBe(false);
+  expect(fs.readFileSync(path.join(root, 'notes/a/one/fresh-name.md'), 'utf8')).toMatch(/^---\nupdated: "[^"]+"\n---\n\n# Fresh name\n$/);
+  expect(fs.readFileSync(path.join(root, 'notes/a/one/linker.md'), 'utf8')).toBe('[Note](fresh-name.md)\n');
+  const taken = await fetch(base + '/api/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: { notebookId: nb('a'), kind: 'move', path: 'notes/a/one/linker.md', destination: 'notes/a/one/fresh-name.md', title: 'Fresh name' } }) });
+  expect(taken.status).toBe(400);
+  expect((await taken.json()).error).toBe('Destination already exists.');
+  expect(fs.readFileSync(path.join(root, 'notes/a/one/linker.md'), 'utf8')).toBe('[Note](fresh-name.md)\n');
+});
