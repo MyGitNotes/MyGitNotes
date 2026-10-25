@@ -4,6 +4,7 @@ import type { NoteRef } from '@mygitnotes/core/note-query';
 import type { NoteChangeFacts } from './commit-summary.js';
 import type { WorkspaceMemberStatus } from './members-api.js';
 import { listAvailableRepositories, type RepositoryListSource } from './available-repositories.js';
+import { useDemo } from './demo.js';
 
 export type { AvailableRepositories, AvailableRepository, RepositoryListSource } from './available-repositories.js';
 
@@ -175,6 +176,8 @@ export interface WebFeature {
    * of being hidden or failing at the server. It is presentation only: the server still enforces every limit.
    */
   gate?: (featureId: string) => FeatureGate;
+  /** Replaces the demo banner's call to action ("Sign in to keep your own notes"); the last feature that sets it wins. */
+  demoCallToAction?: ComponentType;
 }
 
 const FeaturesContext = createContext<readonly WebFeature[]>([]);
@@ -254,9 +257,11 @@ export function usePlatformAccess(): boolean {
  * edition's server supplies an agent, or the session probe reported that the deployment's external bridge is open to this person.
  */
 export function useAgentEnabled(remote: boolean): boolean {
+  const demo = useDemo();
   const hosted = useContext(FeaturesContext).some(feature => feature.agent === true);
   const reported = useContext(ServerAgentContext);
-  return !remote || hosted || reported;
+  // A demo visitor has no assistant, whatever the edition supplies.
+  return !demo && (!remote || hosted || reported);
 }
 
 /** The first denial among the features, or an open gate; the community edition gates nothing. */
@@ -266,4 +271,9 @@ export function useFeatureGate(featureId: string): FeatureGate {
     if (gate && !gate.allowed) return gate;
   }
   return { allowed: true };
+}
+
+/** The edition's call to action for the demo banner, or undefined for the community one. */
+export function useDemoCallToAction(): ComponentType | undefined {
+  return useContext(FeaturesContext).reduce<ComponentType | undefined>((found, feature) => feature.demoCallToAction ?? found, undefined);
 }

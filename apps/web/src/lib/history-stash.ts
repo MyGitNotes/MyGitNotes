@@ -1,5 +1,6 @@
 import type { HistoryTarget } from './history-api.js';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
+import { demoScopeOfNotebook, noteDemoWrite, noteDemoWriteIn } from './demo-storage.js';
 
 /** A file's text a person had before restoring an older text over it, kept on this device until they discard it. */
 export interface StashedText {
@@ -45,8 +46,12 @@ export function readStash(target: HistoryTarget): StashedText[] {
 }
 
 function writeStash(target: HistoryTarget, entries: StashedText[]): StashedText[] {
-  if (entries.length) localStorage.setItem(keyOf(target), JSON.stringify(entries));
-  else localStorage.removeItem(keyOf(target));
+  if (entries.length) {
+    const demo = target.notebookId ? demoScopeOfNotebook(target.notebookId) : undefined;
+    if (demo) noteDemoWrite(demo.scope);
+    else if (target.repository) noteDemoWriteIn(target.repository);
+    localStorage.setItem(keyOf(target), JSON.stringify(entries));
+  } else localStorage.removeItem(keyOf(target));
   return entries;
 }
 

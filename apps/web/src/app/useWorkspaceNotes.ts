@@ -2,6 +2,9 @@ import { useLayoutEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateNoteQueries, noteLookupOptions, resetStaleNoteQueries, setNoteQueryScope, useNoteQueryScope, useStaleNoteQueries } from '../lib/use-note-queries.js';
 import { notebookRepositories, revisionSet } from '../lib/workspace-repositories.js';
+import { composeCommitted } from '../lib/draft-overlay.js';
+import { NO_COMMITTED, useCommittedLayer } from '../lib/use-committed-layer.js';
+import { noteRefKey } from '@mygitnotes/core/note-query';
 import type { NoteItem } from '../lib/types.js';
 import type { NoteRef } from '@mygitnotes/core/note-query';
 import type { I18nContextValue } from '../lib/i18n/index.js';
@@ -23,9 +26,12 @@ export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, 
   const revisions = useMemo(() => revisionSet(repositories), [repositories]);
   const notebooks = useMemo(() => notebookRepositories(repositories), [repositories]);
   const members = repositories.map(repository => repository.id).join('\n');
+  // A demo workspace's local commits are overlaid under the working changes; any other workspace has none.
+  const committed = useCommittedLayer(repositories);
+  const drafts = useMemo(() => composeCommitted(committed, activeWorkingNotes), [committed, activeWorkingNotes]);
   useLayoutEffect(() => {
-    setNoteQueryScope({ sourceId, revisions, repositories: notebooks, members, drafts: activeWorkingNotes });
-  }, [sourceId, revisions, notebooks, members, activeWorkingNotes]);
+    setNoteQueryScope({ sourceId, revisions, repositories: notebooks, members, drafts, ...(committed === NO_COMMITTED ? {} : { committed }) });
+  }, [sourceId, revisions, notebooks, members, drafts, committed]);
   const queryScope = useNoteQueryScope();
   const invalidateNotes = () => {
     void invalidateNoteQueries(queryClient);
@@ -50,6 +56,8 @@ export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, 
   /** The committed note, ignoring any staged draft, for use as a merge base. */
   /** The committed note at `ref`, or null when the repository has none there. */
   const findCommittedNote = async (ref: NoteRef): Promise<NoteItem | null> => {
+    const local = committed[noteRefKey(ref)];
+    if (local) return local.deleted ? null : local.note;
     const result = await queryClient.fetchQuery(noteLookupOptions(queryScope, [ref], true));
     const note = result.notes[0];
     return note && typeof note.content === 'string' ? note as NoteItem : null;

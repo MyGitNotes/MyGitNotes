@@ -6,6 +6,12 @@ import type { DraftStore } from './working-notes.js';
 export type WorkspaceRepository = RepositoryStatus & { gitStatus?: GitStatus; };
 export type WorkspaceAnswer = Omit<WorkspaceStatus, 'repositories'> & { repositories: WorkspaceRepository[]; };
 
+/**
+ * Whether an edit ends as a working change or a local commit: the requester may commit to the repository, or it is a
+ * demo repository, whose edits and commits stay in this browser. Server-only actions stay on `write`.
+ */
+export const editable = (repository: Pick<RepositoryStatus, 'write' | 'demo'> | undefined): boolean => Boolean(repository && (repository.write || repository.demo === true));
+
 /** Where one repository's drafts are stored; for the repository a workspace had before it had several, this is the workspace's earlier draft scope, so drafts carry over. */
 export const draftScope = (repository: Pick<RepositoryStatus, 'id' | 'branch'>) => `${repository.id}:${repository.branch}`;
 

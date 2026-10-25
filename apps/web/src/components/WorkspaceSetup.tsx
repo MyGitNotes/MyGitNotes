@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { clearAgentDrafts } from '../lib/pi-agent/draft.js';
 import { clearOpenedScopes } from '../lib/kept-drafts.js';
 import { ArrowLeftRight, GitBranch, Languages, ListTree, LogOut, Network, ShieldCheck } from 'lucide-react';
@@ -16,6 +16,8 @@ import { updateWorkspaceConfig } from '../lib/api.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 import YAML from 'yaml';
 import { PlatformAccessProvider, ServerAgentProvider, usePlatformAccess } from '../lib/web-features.js';
+import { DEMO_BASE, demoLanguageOf, notebookScenario, useDemo, writeDemoCookie } from '../lib/demo.js';
+import { fetchWorkspace } from '../lib/api.js';
 
 /**
  * What `/api/auth/session` says about the visitor; `repositoryChoice` deployments have each visitor bring a repository:
@@ -33,6 +35,8 @@ export interface SessionProbe {
   accountMembers?: boolean;
   /** The server offers the agent panel to this person. */
   agent?: boolean;
+  /** The deployment offers a demo to visitors who are not signed in. */
+  demo?: boolean;
   workspace?: { repository: string; branch: string; } | null;
 }
 
@@ -175,6 +179,72 @@ function FirstRepository({ login }: { login?: string; }) {
  * workspace's parallel reads, which could otherwise each spend the same single-use refresh token.
  */
 export function WorkspaceGate({ children }: { children: ReactNode; }) {
+  return useDemo() ? <DemoGate>{children}</DemoGate> : <AccountGate>{children}</AccountGate>;
+}
+
+/** A page of the demo that is not the demo: why it cannot open, and where to go. */
+function DemoNotice({ message, action }: { message: string; action: ReactNode; }) {
+  return (
+    <SetupCard>
+      <p role='status' className='text-base mb-6'>{message}</p>
+      <div className='flex flex-wrap gap-2'>{action}</div>
+    </SetupCard>
+  );
+}
+
+type DemoState = 'probing' | 'unavailable' | 'signed-in' | 'cookies' | 'ready';
+
+/**
+ * The demo's gate: the visitor's language goes to the server as a cookie first, then the probe says whether the demo is
+ * offered and whether this browser is signed in, and the workspace says whether the demo repository came back. Only then
+ * does the workspace open, with no sign-in screen.
+ */
+function DemoGate({ children }: { children: ReactNode; }) {
+  const { t, language } = useTranslation();
+  const demo = useDemo();
+  const [state, setState] = useState<DemoState>('probing');
+  const [attempt, setAttempt] = useState(0);
+  const cookieLanguage = demoLanguageOf(language);
+  const written = useRef<string>();
+  // Cookie first, so the very first workspace request is already in the visitor's language.
+  useEffect(() => {
+    const before = written.current;
+    written.current = cookieLanguage;
+    if (before === cookieLanguage) return;
+    writeDemoCookie(cookieLanguage);
+    if (before === undefined) return;
+    // Another language in the demo is another set of notebooks: open the same scenario again so the page reads them.
+    const key = /\/notebooks\/([^/]+)/.exec(location.pathname)?.[1];
+    const scenario = key ? notebookScenario(decodeURIComponent(key)) : demo?.scenario;
+    location.assign(`${DEMO_BASE}${scenario ? `/${encodeURIComponent(scenario)}` : ''}`);
+  }, [cookieLanguage, demo?.scenario]);
+  useEffect(() => {
+    let cancelled = false;
+    const settle = (next: DemoState) => !cancelled && setState(next);
+    void (async () => {
+      setState('probing');
+      const probe: SessionProbe = await fetch('/api/auth/session').then(response => response.ok ? response.json() : {}).catch(() => ({}));
+      if (!probe.demo) return settle('unavailable');
+      if (probe.authenticated) return settle('signed-in');
+      const workspace = await fetchWorkspace().catch(() => null);
+      settle(workspace?.repositories.some(repository => repository.demo) ? 'ready' : 'cookies');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+  if (state === 'probing') return <ConnectionState loading error='' onRetry={() => {}} />;
+  if (state === 'unavailable') return <DemoNotice message={t('demo.unavailable')} action={<a className='ui-button' href='/'>{t('demo.signIn')}</a>} />;
+  if (state === 'signed-in') return <DemoNotice message={t('demo.signedIn')} action={<a className='ui-button' href='/'>{t('demo.openMine')}</a>} />;
+  if (state === 'cookies') return <DemoNotice message={t('demo.cookies')} action={<Button onClick={() => setAttempt(count => count + 1)}>{t('demo.retry')}</Button>} />;
+  return (
+    <PlatformAccessProvider platformAccess>
+      <ServerAgentProvider agent={false}>{children}</ServerAgentProvider>
+    </PlatformAccessProvider>
+  );
+}
+
+function AccountGate({ children }: { children: ReactNode; }) {
   const [session, setSession] = useState<SessionProbe | null>(null);
   useEffect(() => {
     fetch('/api/auth/session').then(response => response.ok ? response.json() : {}).catch(() => ({})).then(setSession);

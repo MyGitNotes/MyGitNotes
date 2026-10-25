@@ -3,6 +3,7 @@ import type { AgentFile, AgentWorkspace } from './agent-workspaces.js';
 import { AssetItem, FolderItem, GitCommit, GitStatus, NoteItem } from './types.js';
 import type { RepositoryId } from '@mygitnotes/core/repository';
 import type { WorkspaceAnswer } from './workspace-repositories.js';
+import { localCommittedEntry } from './local-commits.js';
 
 const API_BASE = '/api';
 /** The outcome of pushing one committed note to the Gist its `gist` frontmatter names. */
@@ -78,6 +79,12 @@ export async function renderNoteTemplate(params: { notebookId: string; templateI
 }
 
 export async function readNote(path: string, notebookId?: string): Promise<NoteItem> {
+  // In demo mode a note committed in this browser is what the note now is.
+  const local = localCommittedEntry(path, notebookId);
+  if (local) {
+    if (local.deleted) throw new ApiError('Failed to read note', 404);
+    return local.note;
+  }
   const url = `${API_BASE}/notes/read?path=${encodeURIComponent(path)}${notebookId ? `&notebookId=${encodeURIComponent(notebookId)}` : ''}`;
   const res = await fetch(url);
   if (!res.ok) throw await responseError(res, 'Failed to read note');

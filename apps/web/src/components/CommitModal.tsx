@@ -11,6 +11,7 @@ import { changeKey, groupChanges } from '../lib/file-changes.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { commitMessage, type NoteChangeFacts, polishedCommit, summarizeCommit } from '../lib/commit-summary.js';
 import { FEATURE_IDS, useCommitMessagePolish, useFeatureGate } from '../lib/web-features.js';
+import { useDemo } from '../lib/demo.js';
 
 interface Props {
   isOpen: boolean;
@@ -56,6 +57,8 @@ function Changes({ request, writable, gitStatus, remoteChanges, getPreview, desc
   const [notice, setNotice] = useState('');
   const [confirm, setConfirm] = useState<FileChange>();
   const [typed, setTyped] = useState<string>();
+  const demo = useDemo();
+  // The polish rewrites a message with a hosted model; a demo visitor has none.
   const polish = useCommitMessagePolish();
   const polishGate = useFeatureGate(FEATURE_IDS.commitPolish);
   const [polishing, setPolishing] = useState(false);
@@ -362,10 +365,10 @@ function Changes({ request, writable, gitStatus, remoteChanges, getPreview, desc
       <footer>
         <input className='ui-control' aria-label={t('commit.message')} placeholder={t('commit.placeholder')} title={details} value={message} disabled={busy} onChange={event => setMessage(event.target.value)} />
         <Button disabled={busy || !staged.length} onClick={() => void generate()}>{t(remote ? 'commit.generateMessage' : 'commit.semanticMessage')}</Button>
-        {polish && remote && (polishGate.allowed ? <Button disabled={busy || !described || !message.trim()} onClick={() => void polishMessage()}>{t(polishing ? 'commit.polishing' : 'commit.polishMessage')}</Button> : <span className='changes-polish-gate' role='status'>{polishGate.reason ?? t('feature.unavailable')}</span>)}
+        {polish && remote && !demo && (polishGate.allowed ? <Button disabled={busy || !described || !message.trim()} onClick={() => void polishMessage()}>{t(polishing ? 'commit.polishing' : 'commit.polishMessage')}</Button> : <span className='changes-polish-gate' role='status'>{polishGate.reason ?? t('feature.unavailable')}</span>)}
         <Button variant='primary' disabled={busy || !writable || !staged.length || !message.trim() || staged.some(file => !file.available)} onClick={() => void commit()}>
           <GitCommit />
-          {t(busy ? 'commit.committing' : selectionMode ? 'changes.commitSelected' : remote ? 'commit.commitToGithub' : 'commit.commitAndSave', { count: staged.length })}
+          {t(busy ? 'commit.committing' : demo ? 'demo.commitLocal' : selectionMode ? 'changes.commitSelected' : remote ? 'commit.commitToGithub' : 'commit.commitAndSave', { count: staged.length })}
         </Button>
       </footer>
     </WorkspaceDialog>

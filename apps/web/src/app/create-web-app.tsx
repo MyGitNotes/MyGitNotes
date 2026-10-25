@@ -32,6 +32,8 @@ import '../directives/infographic-editor.css';
 import '../directives/mobile-adaptations.css';
 
 import { type WebFeature, WebFeaturesProvider } from '../lib/web-features.js';
+import { DEMO_BASE, DemoProvider, parseDemoPath } from '../lib/demo.js';
+import { expireDemoData } from '../lib/demo-storage.js';
 
 // The workspace (editor, math, study, drag and drop) is its own chunk, fetched as soon as the entry runs: the sign-in
 // gate paints without waiting for it, and a signed-in visitor downloads it while the session probe is in flight.
@@ -52,6 +54,11 @@ function App() {
   );
 }
 
+// A visitor's demo data older than 24 hours is removed at every boot, on any route, before anything renders.
+try {
+  expireDemoData();
+} catch { /* Storage may be unavailable; nothing was kept then. */ }
+
 export interface WebAppOptions {
   /** What another edition adds; the community edition passes none. */
   features?: readonly WebFeature[];
@@ -61,6 +68,8 @@ export interface WebAppOptions {
 export function WebApp({ features = [] }: WebAppOptions) {
   // Note answers are addressed by workspace revision, so they never go stale on their own; a
   // failed query surfaces its error instead of retrying behind the user's back.
+  // The demo lives under /demo: the router's basename keeps in-app navigation, reloads and shared links there.
+  const [demo] = React.useState(() => parseDemoPath(location.pathname));
   const [queryClient] = React.useState(() => new QueryClient({ queryCache: new QueryCache({ onError: (error, query) => handleNoteQueryError(error, query) }), defaultOptions: { queries: { staleTime: Infinity, retry: false, refetchOnWindowFocus: false } } }));
   return (
     <QueryClientProvider client={queryClient}>
@@ -68,22 +77,25 @@ export function WebApp({ features = [] }: WebAppOptions) {
         <I18nProvider>
           <UpdateNotice />
           <NuqsAdapter>
-            <BrowserRouter>
+            <BrowserRouter {...demo ? { basename: DEMO_BASE } : {}}>
               <PanelProvider>
-                <Routes>
-                  <Route path='/' element={<App />} />
-                  <Route path='/notes' element={<App />} />
-                  <Route path='/index.html' element={<App />} />
-                  <Route path='/notebooks' element={<App />} />
-                  <Route path='/notebooks/:notebook' element={<App />} />
-                  <Route path='/notebooks/:notebook/folders/*' element={<App />} />
-                  <Route path='/notebooks/:notebook/notes/*' element={<App />} />
-                  <Route path='/assets' element={<App />} />
-                  <Route path='/agent' element={<App />} />
-                  <Route path='/settings' element={<App />} />
-                  {features.flatMap(feature => feature.routes ?? []).map(route => <Route key={route.path} path={route.path} element={route.element} />)}
-                  <Route path='*' element={<App />} />
-                </Routes>
+                <DemoProvider value={demo}>
+                  <Routes>
+                    <Route path='/' element={<App />} />
+                    <Route path='/notes' element={<App />} />
+                    <Route path='/index.html' element={<App />} />
+                    <Route path='/notebooks' element={<App />} />
+                    <Route path='/notebooks/:notebook' element={<App />} />
+                    <Route path='/notebooks/:notebook/folders/*' element={<App />} />
+                    <Route path='/notebooks/:notebook/notes/*' element={<App />} />
+                    <Route path='/assets' element={<App />} />
+                    <Route path='/agent' element={<App />} />
+                    <Route path='/settings' element={<App />} />
+                    {demo && <Route path='/:scenario' element={<App />} />}
+                    {features.flatMap(feature => feature.routes ?? []).map(route => <Route key={route.path} path={route.path} element={route.element} />)}
+                    <Route path='*' element={<App />} />
+                  </Routes>
+                </DemoProvider>
               </PanelProvider>
             </BrowserRouter>
           </NuqsAdapter>

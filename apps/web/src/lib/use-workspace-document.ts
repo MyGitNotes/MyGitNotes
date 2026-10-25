@@ -4,6 +4,8 @@ import type { WorkspaceDocument } from '@mygitnotes/core';
 import { type TranslationKey, useTranslation } from './i18n/index.js';
 import { createUnifiedDiff } from './unified-diff.js';
 import { notebookIdCodec } from './notebook-keys.js';
+import { demoScopeOfRepository, noteDemoWriteIn } from './demo-storage.js';
+import { committedDocuments, readLocalCommits } from './local-commits.js';
 
 /** How the browser reaches one workspace document and names its failures. */
 export interface WorkspaceDocumentClient<T> {
@@ -33,6 +35,8 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 export interface DocumentRepository {
   id: string;
   alias: string;
+  /** A demo repository: its documents are edited and committed in this browser. */
+  demo?: boolean;
 }
 
 /** Where one repository's draft of a document is stored; for the repository a workspace had before documents moved per repository, this is the key its drafts already used. */
@@ -55,6 +59,7 @@ export function readDocumentDraft<T>(client: WorkspaceDocumentClient<T>, reposit
 function writeDocumentDraft<T>(client: WorkspaceDocumentClient<T>, repository: DocumentRepository, draft: WorkspaceDocumentDraft<T>) {
   const { toLocal } = notebookIdCodec(repository.alias);
   const stored = (page: T) => client.document.mapNotebookIds(page, toLocal);
+  noteDemoWriteIn(repository.id);
   localStorage.setItem(documentDraftKey(client, repository.id), JSON.stringify({ ...draft, page: stored(draft.page), base: stored(draft.base) }));
 }
 
@@ -106,7 +111,7 @@ export function settleDocumentDraft(client: WorkspaceDocumentClient<unknown>, re
  */
 export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owner: DocumentRepository | undefined, onSaved: () => void, remote = false, enabled = true) {
   const { t } = useTranslation();
-  const repository = owner?.id, alias = owner?.alias ?? '';
+  const repository = owner?.id, alias = owner?.alias ?? '', demo = owner?.demo === true;
   const { document, endpoint, messages } = client;
   const [page, setPage] = useState<T>(document.empty);
   const [snapshot, setSnapshot] = useState<Snapshot<T>>();
@@ -141,6 +146,13 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
       if (!response.ok) throw new Error(t(messages.load));
       const record: Snapshot<T> = await response.json();
       record.page = document.schema.parse(record.page);
+      if (demo) {
+        // Demo: the server's page is read-only, but this browser may change it and commit the change locally.
+        const scope = demoScopeOfRepository(repository);
+        const committed = scope ? committedDocuments(readLocalCommits(scope.scope))[record.path || document.file] : undefined;
+        if (committed !== undefined) record.page = document.schema.parse(committed);
+        record.writable = true;
+      }
       if (currentKey.current !== key || request !== loadRequest.current) return;
       if (discard) localStorage.removeItem(key);
       base.current = record.page;
@@ -162,7 +174,7 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
     } finally {
       if (currentKey.current === key && request === loadRequest.current) setLoading(false);
     }
-  }, [key, enabled, repository, remote, readDraft, t, target, messages, document]);
+  }, [key, enabled, repository, remote, readDraft, t, target, messages, document, demo]);
   useEffect(() => {
     /* eslint-disable react/set-state-in-effect -- Loading synchronizes a persisted workspace document and its recovery draft; the request lifecycle owns loading, error and conflict state. */
     void load();

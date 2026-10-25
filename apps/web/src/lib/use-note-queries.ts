@@ -9,6 +9,7 @@ import { ApiError } from './api.js';
 import { fetchNoteAgenda, fetchNoteFacets, fetchNoteGraph, fetchNotePaths, fetchNoteQuery, lookupNotes } from './notes-api.js';
 import { draftGraphNotes, overlayDraftAgenda, overlayDraftFacets, overlayDraftLookup, overlayDraftPaths, overlayDraftRows, overlayGraphDrafts, withoutDeletedDrafts } from './draft-overlay.js';
 import { sameValue } from './merge-note.js';
+import type { CommittedLayer } from './local-commits.js';
 import type { WorkingNotes } from './working-notes.js';
 
 /**
@@ -28,6 +29,8 @@ export interface NoteQueryScope {
    */
   members?: string;
   drafts: WorkingNotes;
+  /** A demo workspace's local commits: the committed notes the editor merges against, in place of the server's. */
+  committed?: CommittedLayer;
 }
 
 const EMPTY_DRAFTS: WorkingNotes = {};
@@ -37,7 +40,7 @@ const readScope = () => currentScope;
 
 /** Publishes the workspace identity every note query runs against; components read it through `useNoteQueryScope`. */
 export function setNoteQueryScope(next: NoteQueryScope): void {
-  if (currentScope.sourceId === next.sourceId && (currentScope.members ?? '') === (next.members ?? '') && sameValue(currentScope.revisions, next.revisions) && sameValue(currentScope.repositories, next.repositories) && currentScope.drafts === next.drafts) return;
+  if (currentScope.sourceId === next.sourceId && (currentScope.members ?? '') === (next.members ?? '') && sameValue(currentScope.revisions, next.revisions) && sameValue(currentScope.repositories, next.repositories) && currentScope.drafts === next.drafts && currentScope.committed === next.committed) return;
   currentScope = next;
   /* eslint-disable unicorn/no-useless-spread -- Snapshot the collection because callbacks may mutate subscriptions or editors during iteration. */
   for (const listener of [...listeners]) listener();
@@ -203,14 +206,27 @@ export function useNoteFacets(showHidden: boolean): { facets: Record<string, Not
   return { facets, loading: result.isPending, error: errorText(result.error) };
 }
 
+/** A demo workspace's committed notes: those committed in this browser replace the server's, and a deleted one is gone. */
+function withLocalCommitted(served: NoteListItem[], refs: NoteRef[], committed: CommittedLayer | undefined): NoteListItem[] {
+  if (!committed) return served;
+  const byKey = new Map(served.map(note => [noteRefKey(note), note]));
+  return refs.flatMap(ref => {
+    const key = noteRefKey(ref), local = committed[key];
+    if (!local) return byKey.has(key) ? [byKey.get(key)!] : [];
+    return local.deleted ? [] : [local.note as NoteListItem];
+  });
+}
+
 /** `notes` carries staged drafts; `committed` is what the server answered, for use as a merge base. */
 export function useNoteLookup(refs: NoteRef[], content: boolean): { notes: NoteListItem[]; committed: NoteListItem[]; loading: boolean; error: string; } {
   const scope = useNoteQueryScope();
   const stable = useStable(refs);
   const options = noteLookupOptions(scope, stable, content);
   const result = useQuery(options);
-  const committed = useMemo(() => result.data?.notes ?? [], [result.data]);
-  const notes = useMemo(() => overlayDraftLookup(stable, committed, scope.drafts), [stable, committed, scope.drafts]);
+  const served = useMemo(() => result.data?.notes ?? [], [result.data]);
+  // In a demo the committed note is the one committed in this browser, where there is one.
+  const committed = useMemo(() => withLocalCommitted(served, stable, scope.committed), [served, scope.committed, stable]);
+  const notes = useMemo(() => overlayDraftLookup(stable, served, scope.drafts), [stable, served, scope.drafts]);
   return { notes, committed, loading: stable.length > 0 && result.isPending, error: errorText(result.error) };
 }
 

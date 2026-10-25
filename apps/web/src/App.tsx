@@ -40,7 +40,9 @@ import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
 import { useFoldAnimation } from './lib/use-fold-animation.js';
 import { notebookRoute, noteRoute, noteTrail, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
-import { draftScope, pageRepository } from './lib/workspace-repositories.js';
+import { draftScope, editable, pageRepository } from './lib/workspace-repositories.js';
+import { DemoBanner } from './components/DemoBanner.js';
+import { useDemoScenario } from './app/useDemoScenario.js';
 import { clearLocalDraft, moveLocalDraft } from './lib/storage.js';
 import { sameValue } from './lib/merge-note.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -134,13 +136,16 @@ export const AppContent: React.FC = () => {
   const navigate = useNavigate();
   const editorRoute = useMemo(() => parseWorkspaceRoute(location.pathname, location.search), [location.pathname, location.search]);
 
-  const { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, gitStatus, setGitStatus, assets, setAssets, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus: focusPage, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote } = useWorkspaceSync({ routeNotebook: editorRoute.notebook || undefined, onStageNote: note => setEditingNote(current => current && sameNote(current, note) && !sameValue(current, note) ? note : current) });
+  const { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, gitStatus, setGitStatus, assets, setAssets, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus: focusPage, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote } = useWorkspaceSync({ routeNotebook: editorRoute.notebook || undefined, onStageNote: note => setEditingNote(current => current && sameNote(current, note) && !sameValue(current, note) ? note : current) });
   const agentEnabled = useAgentEnabled(remote);
   const refreshDocuments = async () => {
     await Promise.all(documents.map(document => document.refresh()));
   };
   // The selected notebook's repository decides what the browse, create and file views may write.
   const canWrite = canWriteNotebook(selectedNotebookId);
+  // Moves, renames, folders and assets are changes the server makes; a demo repository allows none of them.
+  const canWriteFiles = canChangeFiles(selectedNotebookId);
+  useDemoScenario({ config, loading, pathname: location.pathname, navigate });
   /** Where a note lives, for the note Info tab: the repository and branch of its notebook, and why it is read-only. */
   const locateNote = (note: NoteRef): NoteLocation | undefined => {
     const repository = repositoryFor(note.notebookId);
@@ -148,7 +153,7 @@ export const AppContent: React.FC = () => {
     if (!notebook) return undefined;
     const name = repository?.repository ?? (repository?.id.startsWith('local:') ? repository.id.slice('local:'.length) : repository?.id ?? '');
     const readOnly = readOnlyReason(repository);
-    return { notebook: notebook.title, repository: name, branch: repository?.branch ?? '', path: note.path, readOnly, gists: repository?.type === 'github' && !readOnly };
+    return { notebook: notebook.title, repository: name, branch: repository?.branch ?? '', path: note.path, readOnly, gists: repository?.type === 'github' && !readOnly && !repository.demo };
   };
   /** Pending changes across repositories; a path names a file only within its repository, so each repository counts its own. */
   // A remote deletion is a working change held in the trash, which the Changes panel lists and counts apart.
@@ -249,9 +254,9 @@ export const AppContent: React.FC = () => {
     clearLocalDraft(scope, path);
     moveLocalDraft(`${scope}:conflict`, path, destination);
   };
-  const noteMove = useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote: handleSaveNote, focus: focusPage, queryClient, queryScope, flushEditors: editorRegistry.flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus: noteFocus.relocatePaths, setActionError, t });
+  const noteMove = useNoteMove({ config, remote, canWriteNotebook: canChangeFiles, readDraft, updateDraft, stageWorkingNote, saveNote: handleSaveNote, focus: focusPage, queryClient, queryScope, flushEditors: editorRegistry.flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus: noteFocus.relocatePaths, setActionError, t });
   const movingNotebook = noteMove.request?.mode === 'move' ? config?.notebooks.find(nb => nb.id === noteMove.request?.note.notebookId) : undefined;
-  const { bulkBusy, runBulkStatus, runBulkTag, runBulkMove } = useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNoteStatus: handleUpdateNoteStatus, beforeFileChange, onFilesChanged, repositories, remote, canWrite, t, invalidateNotes, setRepositoryRevision, setActionError, tagOperations, config });
+  const { bulkBusy, runBulkStatus, runBulkTag, runBulkMove } = useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNoteStatus: handleUpdateNoteStatus, beforeFileChange, onFilesChanged, repositories, remote, canWrite: canWriteFiles, t, invalidateNotes, setRepositoryRevision, setActionError, tagOperations, config });
 
   const noteEditorOpen = (Boolean(routedNote) || routedLoading) && !routeError;
 
@@ -259,6 +264,8 @@ export const AppContent: React.FC = () => {
   const editorProps = (note: NoteItem, committed?: NoteItem): NoteEditorSharedProps => {
     // The note's repository decides whether it may be written and where its drafts are kept.
     const repository = repositoryFor(note.notebookId);
+    // A demo note is edited and committed in this browser; its assets and files are changes only the server makes.
+    const editableNote = editable(repository);
     const writable = Boolean(repository?.write);
     const draft = activeWorkingNotes[noteRefKey(note)];
     const repositoryStatus = repository?.id === sourceId ? gitStatus : repository?.gitStatus ?? null;
@@ -267,7 +274,7 @@ export const AppContent: React.FC = () => {
       metadataFields: config?.notebooks.find(nb => nb.id === note.notebookId)?.metadata,
       onSave: params => handleSaveNote({ ...params, notebookId: note.notebookId }),
       onRestoreFile: path => handleRestoreNoteFile(path, note.notebookId),
-      onCommitFile: writable ? (path, version) => commitNoteFile(path, note.notebookId, version) : undefined,
+      onCommitFile: editableNote ? (path, version) => commitNoteFile(path, note.notebookId, version) : undefined,
       // The same diff the Changes panel shows: a remote note's draft against its base, a local note's worktree against HEAD.
       readDiff: remote ? draft && (async () => workingDiff({ [note.path]: draft })) : () => fetchFileDiff({ path: note.path, repository: repository?.id }, 'current'),
       // A path names a file only within its repository: a remote note is dirty when it holds a draft, a local one when its worktree reports it.
@@ -279,7 +286,7 @@ export const AppContent: React.FC = () => {
       onMoveAsset: !writable ? undefined : handleMoveAsset,
       beforeFileChange: !writable ? undefined : beforeFileChange,
       onFilesChanged: !writable ? undefined : onFilesChanged,
-      readOnly: !writable,
+      readOnly: !editableNote,
       autoSave: true,
       draftMode: remote,
       remoteBase: draft?.base || (committed && typeof committed.content === 'string' ? committed : undefined),
@@ -376,7 +383,7 @@ export const AppContent: React.FC = () => {
       {dockedFocus && <FilterChips filters={filterProps} sections={railed ? [{ id: 'notebooks', label: t('sidebar.notebooks') }, { id: 'status', label: t('sidebar.status') }, ...(filterProps.tags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags') }] : [])] : []} onAdd={section => railed && section ? setRailSection(section) : setFiltersOpen(true)} />}
       <LegacySchemaNotice schemaVersion={config?.schema_version} />
       {actionError && <p role='alert' className='mb-3 text-sm text-danger'>{actionError}</p>}
-      {selectedNotes.length > 0 && <BulkActionsToolbar count={selectedNotes.length} statuses={notebookStatuses} availableTags={availableTags} busy={bulkBusy} readOnly={!canWrite} canMove={Boolean(bulkMoveNotebookId)} onSetStatus={status => void runBulkStatus(status)} onAddTag={tag => void runBulkTag('add', tag)} onRemoveTag={tag => void runBulkTag('remove', tag)} onMove={() => setBulkMoveOpen(true)} onClear={clearSelection} />}
+      {selectedNotes.length > 0 && <BulkActionsToolbar count={selectedNotes.length} statuses={notebookStatuses} availableTags={availableTags} busy={bulkBusy} readOnly={!canWriteFiles} canMove={Boolean(bulkMoveNotebookId)} onSetStatus={status => void runBulkStatus(status)} onAddTag={tag => void runBulkTag('add', tag)} onRemoveTag={tag => void runBulkTag('remove', tag)} onMove={() => setBulkMoveOpen(true)} onClear={clearSelection} />}
       {staleNotice && <p role='alert' className='mb-3 text-sm text-warning'>{staleNotice}</p>}
       {listResult.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.loadFailed', { message: listResult.error })}</p>}
       {facetsQuery.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.countsFailed', { message: facetsQuery.error })}</p>}
@@ -390,7 +397,7 @@ export const AppContent: React.FC = () => {
       )}
       {(viewMode === 'list' || viewMode === 'flat') && (
         <>
-          <NoteCollection showMobileSort={false} focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={note => noteMove.moveNote(note)?.()} onUpdateNoteStatus={handleUpdateNoteStatus} newKind={newKind} onNewNote={createNewKind} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} tagActions={noteTagActions} leading={viewMode === 'flat' && folderIndex ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} /> : undefined} highlightQuery={debouncedSearch} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} groupOf={noteGroupOf} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
+          <NoteCollection showMobileSort={false} focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={canWriteFiles ? note => noteMove.moveNote(note)?.() : undefined} onUpdateNoteStatus={handleUpdateNoteStatus} newKind={newKind} onNewNote={createNewKind} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} tagActions={noteTagActions} leading={viewMode === 'flat' && folderIndex ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} /> : undefined} highlightQuery={debouncedSearch} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} groupOf={noteGroupOf} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
           <NoteListSentinel hasMore={listResult.hasMore} loading={listResult.loadingMore} error={listResult.error} onLoadMore={listResult.loadMore} />
         </>
       )}
@@ -409,7 +416,9 @@ export const AppContent: React.FC = () => {
           onOpenNote={note => void openFromBrowse(note)}
           onUpdateNoteStatus={handleUpdateNoteStatus}
           onDeleteNote={handleDeleteNote}
-          onMoveNote={note => noteMove.moveNote(note)?.()}
+          onMoveNote={canWriteFiles
+            ? note => noteMove.moveNote(note)?.()
+            : undefined}
           onNewNoteWithStatus={(status) => {
             void createNote(status);
           }}
@@ -475,7 +484,7 @@ export const AppContent: React.FC = () => {
       folders={folders}
       foldersLoading={foldersLoading}
       onManageFiles={openFileManager}
-      foldersWritable={canWrite}
+      foldersWritable={canWriteFiles}
       filters={filterProps}
       facets={facetsQuery.facets}
       facetsLoading={facetsQuery.loading}
@@ -489,7 +498,7 @@ export const AppContent: React.FC = () => {
       selectedFolder={selectedFolder}
       onSelectFolder={setSelectedFolder}
       onDropNote={(note, folder) => void noteMove.moveTo({ ...note, title: '' }, folder)}
-      canManageTags={canWrite}
+      canManageTags={canWriteFiles}
       onPreviewTagUsage={previewTagUsage}
       onRenameTag={handleRenameTag}
       onMergeTag={handleMergeTag}
@@ -526,6 +535,7 @@ export const AppContent: React.FC = () => {
                   <Button onClick={() => setLegacyImportOpen(true)}>{t('legacyOutline.recovery')}</Button>
                 </div>
               )}
+              <DemoBanner />
               {defaultRepository?.manifest === 'derived' && defaultRepository.config && <DerivedManifestNotice repository={defaultRepository.id} config={defaultRepository.config} configRevision={defaultRepository.configRevision} canWrite={manifestWritable} onCreated={() => refreshWorkspace(true)} />}
               {/* Top Header */}
               <div className='workspace-header-fold' data-folded={browseCollapsed || undefined} data-animating={headerFolding || undefined} {...(browseCollapsed ? { inert: '' } : {})}>
@@ -559,7 +569,7 @@ export const AppContent: React.FC = () => {
                           ? (
                             <FileMetadata
                               entry={selectedFileEntry}
-                              onEdit={canWrite && !resourceNavigationBusy
+                              onEdit={canWriteFiles && !resourceNavigationBusy
                                 ? () => void fileManagerRef.current?.editMetadata()
                                 : undefined}
                             />
@@ -648,7 +658,7 @@ export const AppContent: React.FC = () => {
                     )}
                     {!notebookUnavailable && activeTab === 'assets' && (
                       <main className='workspace-route assets-main has-sidebar-drawer'>
-                        <FileManager key={`${sourceId}:${selectedNotebookId}`} ref={fileManagerRef} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} onNotebookChange={id => void setSelectedNotebookId(id)} writable={canWrite} onSelectionChange={setSelectedFileEntry} metadataContainer={fileMetadataContainer} onShowMetadata={() => setFileMetadataOpen(true)} initialPath={new URLSearchParams(location.search).get('asset') || (new URLSearchParams(location.search).has('directory') ? `${folderRoot}/${config?.notebooks.find(nb => nb.id === selectedNotebookId)?.assets || 'assets'}${new URLSearchParams(location.search).get('directory') ? '/' + new URLSearchParams(location.search).get('directory') : ''}` : undefined)} onBusyChange={setResourceNavigationBusy} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} />
+                        <FileManager key={`${sourceId}:${selectedNotebookId}`} ref={fileManagerRef} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} onNotebookChange={id => void setSelectedNotebookId(id)} writable={canWriteFiles} onSelectionChange={setSelectedFileEntry} metadataContainer={fileMetadataContainer} onShowMetadata={() => setFileMetadataOpen(true)} initialPath={new URLSearchParams(location.search).get('asset') || (new URLSearchParams(location.search).has('directory') ? `${folderRoot}/${config?.notebooks.find(nb => nb.id === selectedNotebookId)?.assets || 'assets'}${new URLSearchParams(location.search).get('directory') ? '/' + new URLSearchParams(location.search).get('directory') : ''}` : undefined)} onBusyChange={setResourceNavigationBusy} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} />
                       </main>
                     )}
                     {!notebookUnavailable && activeTab === 'notes' && route.study && (
@@ -728,7 +738,7 @@ export const AppContent: React.FC = () => {
                   ))}
                 </section>
               )}
-              {fileDialog && <FileManagerDialog notebookId={fileDialog.notebookId} notebooks={config?.notebooks || []} writable={canWrite} initialPath={fileDialog.path} movePath={fileDialog.movePath} initialOperation={fileDialog.initialOperation} showDocuments={fileDialog.showDocuments} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} onClose={() => setFileDialog(undefined)} />}
+              {fileDialog && <FileManagerDialog notebookId={fileDialog.notebookId} notebooks={config?.notebooks || []} writable={canWriteFiles} initialPath={fileDialog.path} movePath={fileDialog.movePath} initialOperation={fileDialog.initialOperation} showDocuments={fileDialog.showDocuments} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} onClose={() => setFileDialog(undefined)} />}
               {noteMove.request?.mode === 'move' && movingNotebook && <FolderPickerDialog notebooks={[movingNotebook]} folders={folders} title={t('files.moveNoteTitle', { title: noteMove.request.note.title || noteMove.request.note.path.split('/').pop() || '' })} initial={{ notebookId: movingNotebook.id, folder: noteFolder(noteMove.request.note.path, movingNotebook.root) }} confirmLabel={t('bulk.moveConfirm')} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={({ folder }) => void noteMove.confirmMove(folder)} />}
               {noteMove.request?.mode === 'rename' && <RenameNoteDialog path={noteMove.request.note.path} title={noteMove.request.note.title} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={title => void noteMove.confirmRename(title)} />}
               {bulkMoveOpen && bulkMoveNotebook && (
@@ -766,7 +776,7 @@ export const AppContent: React.FC = () => {
               )}
               {/* Commit Modal */}
               <CommitModal
-                writable={repositories.some(repository => repository.write)}
+                writable={repositories.some(editable)}
                 remoteChanges={panelRemoteChanges}
                 getPreview={panelGetPreview}
                 describeChanges={panelDescribeChanges}

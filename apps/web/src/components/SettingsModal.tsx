@@ -14,6 +14,7 @@ import { ThemeSelector } from './ThemeSelector.js';
 import { ManifestSettings, type ManifestSettingsProps } from './ManifestSettings.js';
 import { RepositoriesSettings, type RepositoriesSettingsProps } from './RepositoriesSettings.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
+import { useDemo } from '../lib/demo.js';
 import { type FeatureSettingsSection, SETTINGS_GROUPS, type SettingsGroup, useSettingsSections } from '../lib/web-features.js';
 
 interface SettingsModalProps {
@@ -49,7 +50,10 @@ const groupTitleKeys = { account: 'settings.groupAccount', repositories: 'settin
 export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, repositories, recovery = false, local = true, accountSettings, repositoryChoice, coreUpdates = true, onRefreshWorkspace, currentTheme, onSelectTheme }) => {
   const { t, language, setLanguage } = useTranslation();
   const sidebar = useWorkspaceSidebarDrawer();
-  const featureSections = useSettingsSections();
+  const demo = useDemo();
+  const editionSections = useSettingsSections();
+  // A demo visitor has nothing to configure but how the app looks and edits.
+  const featureSections = demo ? [] : editionSections;
   const versionNumbering = useVersionNumbering();
   const vimMode = useVimMode();
   const helpKeys = bindingsFor(keymapEntry('help.open'), keyEnvironment).map(keys => formatKeys(keys, keyEnvironment).join(' ')).join(' / ');
@@ -175,6 +179,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ manifest, reposito
   }).filter(({ sections }) => sections.length > 0);
   const ungrouped = added.filter(section => !SETTINGS_GROUPS.some(group => group === section.group)).map(section => entry(section.id, 'advanced', section.title, section.icon, <FeatureSection section={section} />));
   if (ungrouped.length > 0) groups.push({ id: 'other', title: t('nav.settings'), sections: ungrouped });
+  if (demo) groups.splice(0, groups.length, ...groups.filter(group => group.id === 'preferences'));
   const link = (id: string, label: React.ReactNode, Icon: LucideIcon) => (
     <a
       key={id}

@@ -112,3 +112,24 @@ it('compares with the current text, and keeps it on this device before restoring
   expect(screen.queryByRole('heading', { name: 'Text before restoring (kept on this device)' })).toBeNull();
   expect(Object.keys(localStorage).filter(key => key.startsWith('github-notes:history-stash:'))).toEqual([]);
 });
+
+it('in a demo offers to commit a version and marks commits made in this browser, but not marking or editing versions on the repository’s commits', async () => {
+  api.fetchHistory.mockResolvedValue({ path: 'notes/a/plan.md', repository: 'demo', more: false, writable: false, localCommits: true, entries: [{ commit: commit(3), parents: [commit(1)], date: '2026-10-25T02:00:00Z', author: 'You (demo)', subject: 'Add a clause', body: '', path: 'notes/a/plan.md', agent: false, local: true }, { commit: commit(1), parents: [], date: '2026-10-07T01:00:00Z', author: 'Tester', subject: 'Start the plan', body: '', path: 'notes/a/plan.md', agent: false }], versions: [] });
+  const onCommitVersion = vi.fn().mockResolvedValue(undefined);
+  render(panel({ target, dirty: true, onCommitVersion }));
+  const local = await screen.findByRole('button', { name: /Add a clause/ });
+  expect(local).toHaveTextContent('In this browser');
+  expect(screen.getByRole('button', { name: /Start the plan/ })).not.toHaveTextContent('In this browser');
+  expect(screen.queryByRole('button', { name: 'Give this change a version number' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Commit as a new version' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Commit as a new version' });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(onCommitVersion).toHaveBeenCalledWith({ name: '', note: '', include: [] }));
+});
+
+it('outside a demo keeps Commit as a new version off a read-only repository', async () => {
+  api.fetchHistory.mockResolvedValue({ path: 'notes/a/plan.md', repository: 'local', more: false, writable: false, entries: [], versions: [] });
+  render(panel({ target, dirty: true, onCommitVersion: vi.fn() }));
+  await screen.findByText('This note has changes that are not in its history yet.');
+  expect(screen.queryByRole('button', { name: 'Commit as a new version' })).toBeNull();
+});

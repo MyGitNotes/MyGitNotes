@@ -1,11 +1,15 @@
 import { readWorkingNotes, type WorkingNote, type WorkingNotes } from '../lib/working-notes.js';
+import { serializeNoteFile } from '@mygitnotes/core/note-file';
+import { addVersion } from '@mygitnotes/core/note-versions';
+import { noteRefKey } from '@mygitnotes/core/note-query';
 import { mergeNote, sameValue } from '../lib/merge-note.js';
 import { ApiError, commitRemoteNotes, fetchWorkspace, type GistSync, type PublishSync, readNotes } from '../lib/api.js';
-import { draftStore, type WorkspaceRepository } from '../lib/workspace-repositories.js';
+import { draftScope, draftStore, type WorkspaceRepository } from '../lib/workspace-repositories.js';
+import { appendLocalCommit, committedLayer, localCurrentRaw, localVersions, type NoteChangeInput, readLocalCommits } from '../lib/local-commits.js';
 import { readDocumentDraft, settleDocumentDraft, type WorkspaceDocumentClient } from '../lib/use-workspace-document.js';
 import { documentClientOf } from '../lib/workspace-document-clients.js';
 import type { FileChange, NoteItem } from '../lib/types.js';
-import type { NewVersionRequest } from '../lib/history-api.js';
+import { announceHistoryChange, fetchHistoryContent, fetchServerVersions, type NewVersionRequest } from '../lib/history-api.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
 import type { WorkspaceState } from './workspace-state.js';
 
@@ -19,6 +23,11 @@ interface Params {
   /** Reports what a successful commit could not finish, such as a Gist it did not update. */
   setActionError: WorkspaceState['setActionError'];
 }
+
+/** A note without its text, as a local commit keeps the server's note it replaces. */
+const withoutContent = ({ content: _content, ...rest }: NoteItem) => rest;
+/** The text of a note at the repository head, as the server stores it; undefined when it cannot be read. */
+const headText = (revision: string, path: string, notebookId: string) => fetchHistoryContent({ path, notebookId }, { commit: revision }).then(read => 'content' in read ? read.content : undefined, () => undefined);
 
 /** A document draft read from one repository's storage for its commit. */
 interface PreparedDocument {
@@ -36,8 +45,50 @@ interface CommitGroup {
 
 /** Commits selected drafts one repository at a time, one commit each, stopping at the first repository that fails. */
 export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError }: Params) {
+  /**
+   * Demo mode: records the selected drafts as one commit in this browser. Nothing is sent to the server; the commit joins
+   * the repository's history in the version panel and is cleared with the rest of the visitor's demo data after 24 hours.
+   */
+  const commitLocally = async ({ repository, entries, documents: sentDocuments }: CommitGroup, message: string, version?: NewVersionRequest): Promise<{ gists: GistSync[]; published: PublishSync[]; }> => {
+    const store = draftStore(repository), scope = draftScope(repository);
+    const sent: WorkingNotes = {};
+    const changes: Record<string, NoteChangeInput> = {};
+    const layer = committedLayer(readLocalCommits(scope));
+    for (const entry of entries) {
+      if (entry.blocked) throw new Error(`${entry.note.path}: ${entry.blocked}`);
+      if (!sameValue(readWorkingNotes(store)[entry.note.path], entry)) throw new Error('Local draft changed during review. Retry Commit.');
+      const { path, notebookId } = entry.note;
+      sent[path] = entry;
+      // The server's note this change replaces: the one an earlier local commit already replaced, else the draft's own base.
+      const known = layer[noteRefKey(entry.note)];
+      const server = known ? known.server : entry.base;
+      const serverNote = server ? withoutContent(server) : null;
+      if (entry.deleted) {
+        changes[path] = { notebookId, server: serverNote, deleted: true };
+        continue;
+      }
+      const stored = localCurrentRaw(scope, path);
+      const existing = stored ?? (entry.base ? await headText(repository.revision, path, notebookId) : undefined);
+      changes[path] = { notebookId, server: serverNote, raw: serializeNoteFile(path, entry.note.metadata, entry.note.content, !entry.base, new Date(), existing) };
+    }
+    const pages = Object.fromEntries(sentDocuments.map(document => [document.path, document.page]));
+    if (!Object.keys(changes).length && !sentDocuments.length) return { gists: [], published: [] };
+    const onVersion = version && changes[version.path];
+    const serverVersions = onVersion ? await fetchServerVersions({ path: version.path, notebookId: onVersion.notebookId }).catch(() => []) : [];
+    await appendLocalCommit(scope, repository.revision, { message, author: t('demo.author'), notes: changes, documents: pages, ...(version && onVersion ? { version: { path: version.path, numberVersion: ({ id, date, blob }) => addVersion({ versions: [...serverVersions, ...localVersions(scope, version.path)] }, { blob, commit: id, authored: date }, { name: version.name, note: version.note }, version.today) } } : {}) });
+    for (const document of sentDocuments) {
+      if (!settleDocumentDraft(document.client, repository, document, repository.revision)) setActionError(t('changes.reviewRequired'));
+      documents.find(live => live.client === document.client && live.repository === repository.id)?.refresh();
+    }
+    clearCommittedDrafts(repository, sent);
+    announceHistoryChange({ repositories: [repository.id], paths: [...Object.keys(changes), ...Object.keys(pages)] });
+    return { gists: [], published: [] };
+  };
+
   /** One repository's drafts, merged onto its latest revision and committed as one commit; answers the Gists it failed to update. */
-  const commitGroup = async ({ repository, entries, documents: sentDocuments }: CommitGroup, message: string, version?: NewVersionRequest): Promise<{ gists: GistSync[]; published: PublishSync[]; }> => {
+  const commitGroup = async (group: CommitGroup, message: string, version?: NewVersionRequest): Promise<{ gists: GistSync[]; published: PublishSync[]; }> => {
+    if (group.repository.demo) return commitLocally(group, message, version);
+    const { repository, entries, documents: sentDocuments } = group;
     if (!repository.write) throw new Error('Sign in with write access to this workspace before committing.');
     const store = draftStore(repository);
     const expected = repository.revision;

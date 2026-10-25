@@ -6,6 +6,7 @@ import { extractNoteLinks } from '@mygitnotes/core/note-graph';
 import type { NoteGraphData } from '@mygitnotes/core/note-graph';
 import type { RepositoryId } from '@mygitnotes/core/repository';
 import { getWorkspaceNotebooks } from '@mygitnotes/core/workspace-links';
+import type { CommittedLayer } from './local-commits.js';
 import type { WorkingNotes } from './working-notes.js';
 
 /**
@@ -162,4 +163,23 @@ export function withoutDeletedDrafts(graph: NoteGraphData, drafts: WorkingNotes)
   const deleted = new Set(Object.values(drafts).filter(entry => entry.deleted).map(entry => noteRefKey(entry.note)));
   if (!deleted.size) return graph;
   return { nodes: graph.nodes.filter(node => !deleted.has(node.id)), links: graph.links.filter(link => !deleted.has(link.source) && !deleted.has(link.target)) };
+}
+
+/**
+ * The overlay a demo workspace applies: its local commits and, over them, the working changes. A committed note is
+ * overlaid like a draft whose base is the server's note, because the answers the server gives still hold that note and
+ * the counts subtract it; a working change over a committed note keeps its own text and takes the same server base.
+ * Without a committed layer the working changes are returned as they are.
+ */
+export function composeCommitted(committed: CommittedLayer, working: WorkingNotes): WorkingNotes {
+  const keys = Object.keys(committed);
+  if (!keys.length) return working;
+  const composed: WorkingNotes = { ...working };
+  for (const key of keys) {
+    const entry = committed[key];
+    const over = working[key];
+    if (over) composed[key] = { ...over, base: entry.server };
+    else composed[key] = { note: entry.note, base: entry.server, ...(entry.deleted ? { deleted: true as const } : {}) };
+  }
+  return composed;
 }

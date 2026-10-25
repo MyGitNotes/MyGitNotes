@@ -19,7 +19,9 @@ import { setNotebookPreferences } from './notebook-preferences.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
 import { listLocalDrafts } from './storage.js';
 import { recordOpenedScopes } from './kept-drafts.js';
-import { draftScope, draftStore, notebookRepositories, repositoryOf, type WorkspaceRepository } from './workspace-repositories.js';
+import { draftScope, draftStore, editable, notebookRepositories, repositoryOf, type WorkspaceRepository } from './workspace-repositories.js';
+import { registerDemoRepositories } from './demo-storage.js';
+import { useDemo } from './demo.js';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { strandedDrafts } from './file-change-scope.js';
 
@@ -41,6 +43,12 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
   const { routeNotebook, onStageNote } = options;
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const inDemo = useDemo() !== null;
+  // The translator stays out of the workspace refresh's dependencies: the refresh runs on mount and must not restart with the language.
+  const translate = useRef(t);
+  useEffect(() => {
+    translate.current = t;
+  }, [t]);
 
   const [folders, setFolders] = useState<FolderItem[]>([]);
   // True until the first folder list arrives; until then an empty `folders` means unknown, not none.
@@ -83,7 +91,10 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
   // none, the built-in ones. Children read them while they render — a `useState` initializer runs before any
   // effect — so setting them in an effect would hand the first mount the previous preferences.
   setNotebookPreferences(notebookId => (notebookId ? repositoryFor(notebookId)?.preferences : undefined) ?? defaultRepository?.preferences ?? DEFAULT_WORKSPACE_PREFERENCES);
-  const canWriteNotebook = (notebookId: string) => Boolean(repositoryFor(notebookId)?.write);
+  /** Whether an edit to the notebook ends as a working change or a local commit: it may be committed to, or it is a demo's. */
+  const canWriteNotebook = (notebookId: string) => editable(repositoryFor(notebookId));
+  /** Whether the server will change the notebook's files (moves, renames, assets): a demo repository never. */
+  const canChangeFiles = (notebookId: string) => Boolean(repositoryFor(notebookId)?.write);
   const revisionFor = (notebookId: string) => repositoryFor(notebookId)?.revision ?? '';
   const setRepositoryRevision = (id: RepositoryId, revision: string) => setRepositories(previous => previous.map(repository => repository.id === id ? { ...repository, revision } : repository));
   /** Keeps the revision a manifest save answered, since a refetch may still answer from the snapshot before it. */
@@ -119,7 +130,7 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
 
   // Workspace documents live in each notebook repository; the open notebook's repository serves Screen and Focus.
   const documentRepository = repositoryFor(selectedNotebookId);
-  const documentOwner = documentRepository && !documentRepository.unavailable ? { id: documentRepository.id, alias: documentRepository.alias } : undefined;
+  const documentOwner = documentRepository && !documentRepository.unavailable ? { id: documentRepository.id, alias: documentRepository.alias, ...(documentRepository.demo ? { demo: true } : {}) } : undefined;
   const refreshGitStatus = () => {
     void fetchGitStatus().then((result) => setGitStatus(result.status));
   };
@@ -140,8 +151,8 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     return strandedDrafts({ notebookId, paths: [...paths], carried: [...carried] }, drafts, pages);
   };
   // Remote drafts wait in Changes until committed, whichever notebook is open; local ones autosave to the working tree.
-  const pendingDocuments = remote ? pendingDocumentDrafts(WORKSPACE_DOCUMENT_CLIENTS, repositories.filter(repository => repository.write)) : [];
-  const writable = repositories.filter(repository => repository.write).map(repository => repository.id).join('\n');
+  const pendingDocuments = remote ? pendingDocumentDrafts(WORKSPACE_DOCUMENT_CLIENTS, repositories.filter(editable)) : [];
+  const writable = repositories.filter(editable).map(repository => repository.id).join('\n');
   /** Drafts of the repositories this requester may commit to, by `noteRefKey`: two repositories can hold the same path. */
   const activeWorkingNotes = useMemo<WorkingNotes>(() => (remote ? Object.fromEntries(writable.split('\n').filter(Boolean).flatMap(id => Object.values(workingNotes[id] ?? {})).map(entry => [noteRefKey(entry.note), entry])) : {}), [remote, writable, workingNotes]);
 
@@ -157,11 +168,13 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
   /* eslint-enable react/use-memo */
 
   const scopes = available.map(repository => `${repository.id}\t${draftScope(repository)}\t${repository.alias}`).join('\n');
+  // A demo's drafts are cleared on their own clock, so the offline screen does not list them.
+  const keptScopes = available.filter(repository => !repository.demo).map(repository => draftScope(repository)).join('\n');
   // The offline screen lists only the drafts of what this session opened. Nothing loaded yet leaves the earlier record alone.
   useEffect(() => {
-    const opened = scopes.split('\n').filter(Boolean).map(line => line.split('\t')[1]);
+    const opened = keptScopes.split('\n').filter(Boolean);
     if (opened.length > 0) recordOpenedScopes(localStorage, opened);
-  }, [scopes]);
+  }, [keptScopes]);
   useEffect(() => {
     const refresh = (event: StorageEvent) => {
       for (const line of scopes.split('\n').filter(Boolean)) {
@@ -188,6 +201,8 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     try {
       const ws = await fetchWorkspace(fresh === true);
       if (request !== refreshRequest.current) return;
+      // A tab that was signed in and lost its session is answered with the demo: say so instead of showing its notebooks as the person's own.
+      if (!inDemo && ws.repositories.some(repository => repository.demo)) throw new Error(translate.current('demo.sessionEnded'));
       const folderRequest = fetchFolders();
       const workspace = JSON.stringify([ws.defaultRepository, ws.repositories.map((repository) => [repository.id, repository.branch]), ws.keyedConfig?.notebooks.map((nb) => [nb.id, nb.root])]);
       // A local workspace has no revisions, so its cached answers are refetched by hand.
@@ -201,6 +216,8 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
       setRepositoryChoice(ws.repositoryChoice === true);
       setCoreUpdate(ws.coreUpdate === true);
       setConfig((previous) => (sameValue(previous, ws.keyedConfig) ? previous : ws.keyedConfig));
+      // Demo repositories register first: a scope made on another head of the demo is cleared before its drafts are read.
+      registerDemoRepositories(ws.local ? [] : ws.repositories);
       setWorkingNotes(ws.local ? {} : Object.fromEntries(ws.repositories.filter((repository) => !repository.unavailable).map((repository) => [repository.id, readWorkingNotes(draftStore(repository))])));
       setGitStatus(ws.repositories.find((repository) => repository.id === ws.defaultRepository)?.gitStatus ?? null);
       setLoading(false);
@@ -220,7 +237,7 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     } finally {
       if (request === refreshRequest.current) setLoading(false);
     }
-  }, [queryClient]);
+  }, [queryClient, inDemo]);
 
   useEffect(() => {
     void refreshWorkspace();
@@ -278,5 +295,5 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     return note;
   };
 
-  return { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, setFolders, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, setLoading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, setConfig, serverGitStatus, gitStatus, setGitStatus, assets, setAssets, workingNotes, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote };
+  return { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, setFolders, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, setLoading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, setConfig, serverGitStatus, gitStatus, setGitStatus, assets, setAssets, workingNotes, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote };
 }

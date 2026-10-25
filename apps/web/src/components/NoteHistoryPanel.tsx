@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, GitCompare, Pencil, RefreshCw, RotateCcw, Tag, Trash2 } from 'lucide-react';
 import { type HistoryEntry, nextVersionNumbers, type NoteVersion, placeVersions, versionFilePath } from '@mygitnotes/core/note-versions';
-import { changeVersion, fetchCommitFiles, fetchHistory, fetchHistoryContent, type HistoryContent, type HistoryTarget, onHistoryChanged, today, type VersionText } from '../lib/history-api.js';
+import { changeVersion, fetchCommitFiles, fetchHistory, fetchHistoryContent, type HistoryContent, type HistoryRow, type HistoryTarget, onHistoryChanged, today, type VersionText } from '../lib/history-api.js';
 import { discardStash, readStash, type StashedText, stashText } from '../lib/history-stash.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { createUnifiedDiff } from '../lib/unified-diff.js';
@@ -60,11 +60,13 @@ const noticeDiff = (content: HistoryContent) => 'notice' in content ? content.no
 function useNoteHistory(target: HistoryTarget, current?: NoteHistoryPanelProps['current']) {
   const { language, t } = useTranslation();
   const numbering = useVersionNumbering();
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [entries, setEntries] = useState<HistoryRow[]>([]);
   const [versions, setVersions] = useState<NoteVersion[]>([]);
   const [more, setMore] = useState(false);
   const [page, setPage] = useState(1);
   const [writable, setWritable] = useState(false);
+  /** Demo mode: commits recorded in this browser join the history, so a version can be recorded though the repository is read-only. */
+  const [localCommits, setLocalCommits] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // Contents of a commit or blob never change, so each is read once while the history is shown.
@@ -82,6 +84,7 @@ function useNoteHistory(target: HistoryTarget, current?: NoteHistoryPanelProps['
       setMore(result.more);
       setPage(next);
       setWritable(result.writable);
+      setLocalCommits(result.localCommits === true);
     } catch (failure) {
       setError((failure as Error).message);
     } finally {
@@ -136,7 +139,7 @@ function useNoteHistory(target: HistoryTarget, current?: NoteHistoryPanelProps['
     return version ? label(version).text : dates.format(new Date(point.date));
   }, [dates, label, placed, t]);
 
-  return { entries, versions, setVersions, more, page, writable, loading, error, setError, load, placed, placedVersions, points, versionPoint, label, pointTitle, dates, stash, setStash, latestText };
+  return { entries, versions, setVersions, more, page, writable, localCommits, loading, error, setError, load, placed, placedVersions, points, versionPoint, label, pointTitle, dates, stash, setStash, latestText };
 }
 
 type NoteHistory = ReturnType<typeof useNoteHistory>;
@@ -145,7 +148,7 @@ type NoteHistory = ReturnType<typeof useNoteHistory>;
 export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, current, onRestore }: NoteHistoryPanelProps) {
   const { t } = useTranslation();
   const history = useNoteHistory(target, dirty ? current : undefined);
-  const { entries, versions, setVersions, more, page, writable, loading, error, setError, load, placed, placedVersions, versionPoint, label, dates, stash, setStash, latestText } = history;
+  const { entries, versions, setVersions, more, page, writable, localCommits, loading, error, setError, load, placed, placedVersions, versionPoint, label, dates, stash, setStash, latestText } = history;
   const [opened, setOpened] = useState<string>();
   const [dialog, setDialog] = useState<VersionDialogMode>();
   const [deleting, setDeleting] = useState<NoteVersion>();
@@ -212,8 +215,8 @@ export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, curre
   return (
     <section className='note-history-panel note-panel-scroll' aria-label={t('history.open')}>
       <div className='note-history-actions'>
-        {writable && dirty && onCommitVersion && (
-          <Button size='small' variant='primary' disabled={!canWrite} onClick={() => setDialog({ mode: 'new' })}>
+        {(writable || localCommits) && dirty && onCommitVersion && (
+          <Button size='small' variant='primary' disabled={busy} onClick={() => setDialog({ mode: 'new' })}>
             <Tag aria-hidden='true' />
             {t('history.commitVersion')}
           </Button>
@@ -324,6 +327,7 @@ export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, curre
               <span className='history-subject' title={entry.subject}>{plainSubject(entry.subject)}</span>
               <small className='history-meta'>
                 {index === 0 && <span className='history-badge'>{t('history.latest')}</span>}
+                {entry.local && <span className='history-badge' title={t('demo.commitLocalHint')}>{t('demo.localBadge')}</span>}
                 {entry.agent && (
                   <span className='history-badge' title={t('history.agentTitle')}>
                     <Bot aria-hidden='true' />
