@@ -150,4 +150,10 @@ describe('draft agenda', () => {
   it('keeps the server answer when nothing is staged', () => {
     expect(overlayDraftAgenda(agenda, {}, { notebookId: 'life', showHidden: false })).toBe(agenda);
   });
+
+  it('overlays drafts on a cached agenda that predates milestones', () => {
+    const old = { revisions: {}, tasks: [], dated: [] } as unknown as Parameters<typeof overlayDraftAgenda>[0];
+    const result = overlayDraftAgenda(old, drafts({ note: note('notes/life/a.md', { metadata: { milestone: '2026-11-06' } }), base: null }), { notebookId: 'life', showHidden: false });
+    expect(result.milestones.map(item => item.path)).toEqual(['notes/life/a.md']);
+  });
 });

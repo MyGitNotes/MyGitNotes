@@ -2,14 +2,15 @@ import type { NoteRef } from '@mygitnotes/core/note-query';
 import { Button } from './Button.js';
 import { TodoGanttChart } from './TodoGanttChart.js';
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, User } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { NotebookConfig, NoteItem } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { Select } from './Select.js';
 import { formatDateYMD } from '../lib/date-utils.js';
 import { DONE_EMOJI, DUE_EMOJI, getTokenValue, setTaskChecked, START_EMOJI, stripTaskTokens, TIMESTAMP_EMOJI } from '../lib/task-tokens.js';
-import { PRIORITY_ICON, TASK_TOKEN_ICON } from '../lib/task-icons.js';
+import { TaskMetaChips } from './TaskMetaChips.js';
+import { TASK_TOKEN_ICON } from '../lib/task-icons.js';
 import { filterNotesByFolder, filterTasksByFolder } from '../lib/folder-filter.js';
 import { ALL_PEOPLE, ANY_PRIORITY, filterTasksByPerson, filterTasksByPriority, listAssignees, NORMAL_PRIORITY, personFilterValue, PRIORITY_LABEL_KEY, resolvePersonFilter, sortTodoTasks, type TodoSort, UNASSIGNED } from '../lib/todo-filter.js';
 import { TASK_PRIORITIES } from '../lib/task-tokens.js';
@@ -131,23 +132,9 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
           <input type='checkbox' checked={task.checked} disabled={pendingIds.has(task.id)} onChange={() => void toggleTask(task)} />
           <span className='todo-task-text'>{stripTaskTokens(task.lineText)}</span>
         </label>
-        {(chips.length > 0 || task.assignees.length > 0 || task.priority) && (
+        {(chips.length > 0 || (task.assignees ?? []).length > 0 || task.priority) && (
           <ul className='todo-task-dates'>
-            {task.assignees.map(name => (
-              <li key={`@${name}`} className='todo-task-date-chip todo-task-assignee-chip' title={t('panel.todoAssignedTo')}>
-                <User aria-hidden='true' />
-                {name}
-              </li>
-            ))}
-            {task.priority && (() => {
-              const PriorityIcon = PRIORITY_ICON[task.priority];
-              return (
-                <li key='priority' className='todo-task-date-chip todo-task-priority-chip' data-priority={task.priority}>
-                  <PriorityIcon aria-hidden='true' />
-                  {t(PRIORITY_LABEL_KEY[task.priority])}
-                </li>
-              );
-            })()}
+            <TaskMetaChips task={task} />
             {chips.map(chip => {
               const Icon = TASK_TOKEN_ICON[chip.emoji];
               return (

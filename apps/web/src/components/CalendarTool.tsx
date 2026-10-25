@@ -6,6 +6,7 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { NotebookConfig } from '../lib/types.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
 import { Select } from './Select.js';
+import { TaskMetaChips } from './TaskMetaChips.js';
 import { buildMonthGrid } from '../lib/calendar-grid.js';
 import { formatDateYMD, getLocaleWeekStartDay } from '../lib/date-utils.js';
 import { stripTaskTokens } from '../lib/task-tokens.js';
@@ -224,6 +225,11 @@ export function CalendarTool({ notebooks, selectedNotebookId, currentFolder, onO
                       <span>
                         {stripTaskTokens(task.lineText)}
                         <small>{task.noteTitle}{' · '}{task.due}</small>
+                        {((task.assignees ?? []).length > 0 || task.priority) && (
+                          <ul className='todo-task-dates'>
+                            <TaskMetaChips task={task} />
+                          </ul>
+                        )}
                       </span>
                     </Button>
                   </li>

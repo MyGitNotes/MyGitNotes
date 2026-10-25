@@ -14,6 +14,12 @@ describe('listAssignees', () => {
     expect(listAssignees(tasks)).toEqual(['alice', 'bob', '小林']);
   });
 
+  it('copes with a cached task that predates assignees', () => {
+    const old = { ...tasksOf('- [ ] plain')[0] } as Partial<ReturnType<typeof tasksOf>[number]>;
+    delete old.assignees;
+    expect(listAssignees([old as ReturnType<typeof tasksOf>[number]])).toEqual([]);
+  });
+
   it('is empty when no task is assigned', () => {
     expect(listAssignees(tasksOf('- [ ] plain'))).toEqual([]);
   });

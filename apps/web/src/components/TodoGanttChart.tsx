@@ -25,7 +25,7 @@ interface TodoGanttChartProps {
 function barTitle(row: GanttRow, priorityLabel?: string): string {
   const text = stripTaskTokens(row.task.lineText);
   const when = row.kind === 'range' ? `${row.task.start} → ${row.task.due}` : row.kind === 'dueOnly' ? row.task.due : row.task.start;
-  return [text, when, priorityLabel, ...row.task.assignees.map(name => `@${name}`)].filter(Boolean).join(' · ');
+  return [text, when, priorityLabel, ...(row.task.assignees ?? []).map(name => `@${name}`)].filter(Boolean).join(' · ');
 }
 
 /** `'day'`/`'week'` ticks show `MM-DD`; `'month'` ticks show a locale month/year (e.g. "Sep 2026" / "2026年9月"). */
@@ -101,6 +101,7 @@ export function TodoGanttChart({ tasks, milestones, today, onOpenTask, onOpenMil
               <div className='todo-gantt-track' style={{ width: trackWidth }}>
                 <span className='todo-gantt-today-line' style={{ left: range.todayOffset * dayWidth }} aria-hidden='true' />
                 <span className={`todo-gantt-bar todo-gantt-bar-${row.kind}`} style={{ left: row.offset * dayWidth, width: row.span * dayWidth }} data-priority={priority} title={barTitle(row, priorityLabel)} />
+                {(row.task.assignees ?? []).length > 0 && <span className='todo-gantt-owners' style={{ left: (row.offset + row.span) * dayWidth }}>{row.task.assignees.map(name => `@${name}`).join(' ')}</span>}
               </div>
             </div>
           );

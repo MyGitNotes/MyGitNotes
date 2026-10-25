@@ -9,7 +9,7 @@ export const personFilterValue = (name: string) => `person:${name}`;
 
 /** Every assignee on the tasks (completed ones too), once, sorted by name. */
 export function listAssignees(tasks: TodoTask[]): string[] {
-  return [...new Set(tasks.flatMap(task => task.assignees))].sort((a, b) => a.localeCompare(b));
+  return [...new Set(tasks.flatMap(task => task.assignees ?? []))].sort((a, b) => a.localeCompare(b));
 }
 
 /** The chosen People value, or all people when that person no longer appears in the scope. */
@@ -20,8 +20,8 @@ export function resolvePersonFilter(value: string, assignees: string[]): string 
 
 export function filterTasksByPerson(tasks: TodoTask[], value: string): TodoTask[] {
   if (value === ALL_PEOPLE) return tasks;
-  if (value === UNASSIGNED) return tasks.filter(task => task.assignees.length === 0);
-  return tasks.filter(task => task.assignees.some(name => personFilterValue(name) === value));
+  if (value === UNASSIGNED) return tasks.filter(task => (task.assignees ?? []).length === 0);
+  return tasks.filter(task => (task.assignees ?? []).some(name => personFilterValue(name) === value));
 }
 
 /** The Priority filter's values: any task, a task with no priority emoji, or one level. */
