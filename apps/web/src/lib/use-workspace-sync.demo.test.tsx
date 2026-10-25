@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
@@ -27,7 +27,11 @@ function serve(repositories: WorkspaceRepository[]) {
 const wrapper = (demo: boolean) => ({ children }: { children: ReactNode; }) => createElement(MemoryRouter, null, createElement(QueryClientProvider, { client: new QueryClient() }, createElement(DemoProvider, { value: demo ? { scenario: 'contract' } : null }, children)));
 
 beforeEach(() => localStorage.clear());
-afterEach(() => vi.unstubAllGlobals());
+// Unmount before the stubs go: a hook left mounted keeps loading folders and pages, and React then renders after jsdom is torn down.
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 it('lets a demo repository be edited and committed locally while the server still owns file changes', async () => {
   const demo = repository({ demo: true });
