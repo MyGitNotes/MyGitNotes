@@ -14,7 +14,7 @@ const state = (overrides: Partial<FocusViewState> = {}): FocusViewState => ({ ..
 
 describe('emptyFocusView', () => {
   it('starts with a single empty pane and default dock sizes', () => {
-    expect(emptyFocusView()).toEqual({ current: { root: leaf('p1') }, entries: {}, last: null, dock: { left: 240, top: 280, collapsed: false } });
+    expect(emptyFocusView()).toEqual({ current: { root: leaf('p1') }, entries: {}, last: null, dock: { left: 240, top: 340, collapsed: false } });
   });
 });
 
@@ -66,6 +66,16 @@ describe('readFocusView', () => {
     expect(readFocusView({ dock: { left: 321 } }).dock.left).toBe(321);
     expect(readFocusView({ dock: { left: 240 } }).dock.left).toBe(240);
     expect(readFocusView({ dock: { left: 400 } }).dock.left).toBe(400);
+  });
+
+  /** At 280 the Kanban board above a Focus left its columns 101 px for cards, so a card with tags was cut off at its action row; 340 leaves about 160. */
+  it('reads a stored dock height of exactly 280, the old default, as the new default and keeps any other height', () => {
+    expect(readFocusView({ dock: { left: 240, top: 280, collapsed: false } }).dock).toEqual({ left: 240, top: 340, collapsed: false });
+    expect(readFocusView({ dock: { bottom: 280 } }).dock.top).toBe(340);
+    expect(readFocusView({ dock: { top: 279 } }).dock.top).toBe(279);
+    expect(readFocusView({ dock: { top: 281 } }).dock.top).toBe(281);
+    expect(readFocusView({ dock: { top: 340 } }).dock.top).toBe(340);
+    expect(readFocusView({ dock: { top: 200 } }).dock.top).toBe(200);
   });
 
   it('keeps a dock height stored under the legacy bottom key, preferring top', () => {

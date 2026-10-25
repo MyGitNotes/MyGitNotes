@@ -100,9 +100,11 @@ function readEntry(raw: unknown): FocusEntryView | LegacyFocusEntryView | null {
 }
 
 const OLD_DEFAULT_DOCK_LEFT = 320;
+/** The top dock was 280 px until a Kanban board above a Focus showed only 101 px of cards, cutting a card with tags off at its action row. */
+const OLD_DEFAULT_DOCK_TOP = 280;
 
 export function emptyFocusView(): FocusViewState {
-  return { current: emptyFocusLayout(), entries: {}, last: null, dock: { left: 240, top: 280, collapsed: false } };
+  return { current: emptyFocusLayout(), entries: {}, last: null, dock: { left: 240, top: 340, collapsed: false } };
 }
 
 /** Tolerant reader for whatever JSON was stored: never throws, drops or defaults whatever doesn't validate. */
@@ -126,7 +128,8 @@ export function readFocusView(raw: unknown): FocusViewState {
   const left = typeof dockRaw.left === 'number' && Number.isFinite(dockRaw.left) && dockRaw.left >= 0 && dockRaw.left !== OLD_DEFAULT_DOCK_LEFT ? dockRaw.left : defaults.left;
   // Views stored before the card dock moved to the top keep their height under `bottom`.
   const topRaw = dockRaw.top ?? dockRaw.bottom;
-  const top = typeof topRaw === 'number' && Number.isFinite(topRaw) && topRaw >= 0 ? topRaw : defaults.top;
+  // Like the old width, a height still at the old default never chose it and takes the new one.
+  const top = typeof topRaw === 'number' && Number.isFinite(topRaw) && topRaw >= 0 && topRaw !== OLD_DEFAULT_DOCK_TOP ? topRaw : defaults.top;
   const collapsed = typeof dockRaw.collapsed === 'boolean' ? dockRaw.collapsed : defaults.collapsed;
   return { current, entries, last, dock: { left, top, collapsed } };
 }
