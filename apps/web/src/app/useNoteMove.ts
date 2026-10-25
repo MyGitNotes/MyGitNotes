@@ -89,7 +89,7 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
         const current = withTitle(readDraft(note.notebookId, note.path)?.note ?? await readNote(note.path, note.notebookId));
         await saveNote({ path: note.path, notebookId: note.notebookId, content: current.content, metadata: current.metadata });
       }
-      await onFilesChanged({ revision: '', selectedPath: destination, pathMap: {}, deletedPaths: [] }, { background: true });
+      await onFilesChanged({ revision: '', selectedPath: note.path, pathMap: {}, deletedPaths: [] }, { background: true });
       return;
     }
     // A remote draft of the committed note moves with it: its base takes the new path too, so the commit that sends

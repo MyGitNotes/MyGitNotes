@@ -59,10 +59,21 @@ it('refuses a name another entry has in different letter case, which macOS and W
   expect(move('notes/a/draft.md', 'notes/a/plan-b.md').files.has('notes/a/plan-b.md')).toBe(true);
 });
 
+it('treats the composed and decomposed forms of one name as the same file, as APFS does', () => {
+  const files = { 'notes/a/cafe\u0301.md': '# Café\n', 'notes/a/x.md': '# X\n' };
+  const move = (path: string, destination: string) => planFileChange(snapshot(files), { kind: 'move', notebookId: 'a', path, destination });
+  expect(() => move('notes/a/x.md', 'notes/a/caf\u00e9.md')).toThrow(CASE_COLLISION_ERROR);
+  expect(() => move('notes/a/cafe\u0301.md', 'notes/a/caf\u00e9.md')).toThrow(CASE_COLLISION_ERROR);
+});
+
 it('refuses a folder move or new folder whose name another entry has in different letter case', () => {
   const folders = { notebooks: [{ id: 'a', title: 'A', root: 'notes/a' }], directories: ['notes', 'notes/a', 'notes/a/Ideas', 'notes/a/box', 'notes/a/box/ideas'], protectedPaths: [], files: new Map([['notes/a/box/ideas/x.md', '# X\n']]) };
   expect(() => planFolderChange(folders, { kind: 'create', notebookId: 'a', parent: '', name: 'ideas' })).toThrow(CASE_COLLISION_ERROR);
   expect(() => planFolderChange(folders, { kind: 'move', notebookId: 'a', path: 'box/ideas', parent: '' })).toThrow(CASE_COLLISION_ERROR);
+  // Deleting a folder moves its notes up: one whose name a note there has in different letter case would land on it.
+  const up = { notebooks: [{ id: 'a', title: 'A', root: 'notes/a' }], directories: ['notes', 'notes/a', 'notes/a/box'], protectedPaths: [], files: new Map([['notes/a/plans.md', '# keep me\n'], ['notes/a/box/Plans.md', '# box\n']]) };
+  expect(() => planFolderChange(up, { kind: 'delete', notebookId: 'a', path: 'box', destination: '' })).toThrow(CASE_COLLISION_ERROR);
+  expect(planFolderChange(folders, { kind: 'move', notebookId: 'a', path: 'box', parent: 'Ideas' }).files.has('notes/a/Ideas/box/ideas/x.md')).toBe(true);
 });
 
 const spellings = (name: string) => [`[a](${name})`, `[a](./${name}#h)`, `[a](../x/${name}?q=1)`, `[a](<${name}>)`, `![i](${encodeURIComponent(name)})`, `[a](${encodeURIComponent(name).toLowerCase()})`, `[a](%${name.charCodeAt(0).toString(16)}${name.slice(1)})`, `[ref]: ${name}`, `[a](/notes/a/x/${name})`, `[a](/raw-assets/notes/a/x/${encodeURIComponent(name)})`, `[a](/api/files/raw?notebookId=a&path=notes%2Fa%2Fx%2F${encodeURIComponent(name)})`, `[a](/api/files/raw?notebookId=a&path=notes/a/x/${name.replace(/ /g, '+')})`, '`[code](' + name + ')`', 'plain mention of ' + name];

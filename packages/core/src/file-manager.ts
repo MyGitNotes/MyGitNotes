@@ -11,7 +11,7 @@ import { relocateWorkspaceDocuments, workspaceDocument } from './workspace-docum
 import { isCompilationPath, relocateCompilation } from './compilation.js';
 import { decodeAsset } from './assets.js';
 import { LEGACY_WORKSPACE_CONFIG_FILENAME, WORKSPACE_CONFIG_FILENAME } from './config.js';
-import { CASE_COLLISION_ERROR, differsOnlyInCase, foldedIndex } from './case-collision.js';
+import { CASE_COLLISION_ERROR, differsOnlyInCase, foldedIndex, foldName } from './case-collision.js';
 
 /* eslint-disable no-control-regex -- Control-character ranges validate paths and distinguish binary data from editable text. */
 const filePath = z.string().min(1).max(2048).refine(value => !/[\\\x00-\x1f\x7f]/.test(value) && value.split('/').every(p => p && p !== '.' && p !== '..'), 'Use a relative workspace path.');
@@ -98,7 +98,7 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
   let folded: Map<string, string[]> | undefined;
   const assertCase = (file: string, skip?: (entry: string) => boolean) => {
     folded ??= foldedIndex([...snapshot.files.keys(), ...snapshot.directories, ...snapshot.protectedPaths]);
-    if (differsOnlyInCase(folded.get(file.toLowerCase()) ?? [], file, skip)) throw new Error(CASE_COLLISION_ERROR);
+    if (differsOnlyInCase(folded.get(foldName(file)) ?? [], file, skip)) throw new Error(CASE_COLLISION_ERROR);
   };
   const assertParent = (file: string) => {
     if (!directories.has(path.posix.dirname(file))) throw new Error('Destination directory does not exist.');

@@ -1,5 +1,6 @@
 import { baseName } from './paths.js';
 import type { WorkingNote } from './working-notes.js';
+import { foldName } from '@mygitnotes/core/case-collision';
 
 /** How a note reaches another folder of its notebook. */
 export type NoteMovePlan =
@@ -24,7 +25,8 @@ export function planNoteMove(path: string, root: string, folder: string | null, 
 
 /** Plans putting the note at `path` at `destination`, given its remote draft if any. */
 export function planRelocation(path: string, destination: string, draft: WorkingNote | undefined): NoteMovePlan {
-  if (destination === path) return { kind: 'none' };
+  // A new name that only folds to the same one (letter case, Unicode form) is this file on macOS and Windows: the note keeps its name.
+  if (destination === path || foldName(destination) === foldName(path)) return { kind: 'none' };
   return draft && !draft.base ? { kind: 'draft', destination, draft } : { kind: 'file', destination };
 }
 

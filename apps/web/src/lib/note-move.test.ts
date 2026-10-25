@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { noteFolder, noteStem, noteSuffix, planNoteMove, renamedPath, retitle } from './note-move.js';
+import { noteFolder, noteStem, noteSuffix, planNoteMove, planRelocation, renamedPath, retitle } from './note-move.js';
 import type { WorkingNote } from './working-notes.js';
 
 const note = (path: string) => ({ id: 'a', path, notebookId: 'nb', title: 'A', content: '', metadata: {}, tags: [] });
@@ -46,4 +46,10 @@ describe('renaming', () => {
     expect(retitle('Just text.\n', {}, 'Ideas', false)).toEqual({ content: 'Just text.\n', metadata: { title: 'Ideas' } });
     expect(retitle('- # not a heading\n', {}, 'Plan', true)).toEqual({ content: '- # not a heading\n', metadata: { title: 'Plan' } });
   });
+});
+
+it('keeps the file name when a new title only changes its letter case or Unicode form, so an imported Ideas.md is retitled in place', () => {
+  expect(planRelocation('notes/a/Ideas.md', renamedPath('notes/a/Ideas.md', 'Ideas!'), undefined)).toEqual({ kind: 'none' });
+  expect(planRelocation('notes/a/cafe\u0301.md', 'notes/a/caf\u00e9.md', undefined)).toEqual({ kind: 'none' });
+  expect(planRelocation('notes/a/Ideas.md', 'notes/a/plans.md', undefined)).toEqual({ kind: 'file', destination: 'notes/a/plans.md' });
 });

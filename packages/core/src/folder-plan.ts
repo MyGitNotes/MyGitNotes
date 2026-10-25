@@ -6,7 +6,7 @@ import { isNotebookContent, parseFolderConfig, sortFolders } from './folders.js'
 import { relocateWorkspaceDocuments } from './workspace-documents.js';
 import { isCompilationPath, relocateCompilation } from './compilation.js';
 import type { FolderItem, NotebookConfig } from './types.js';
-import { CASE_COLLISION_ERROR, differsOnlyInCase } from './case-collision.js';
+import { CASE_COLLISION_ERROR, differsOnlyInCase, foldedIndex, foldName } from './case-collision.js';
 
 const relative = z.string().max(512).refine(value => !value || !/[\\\0]/.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..'));
 export const FolderCommandSchema = z.discriminatedUnion('kind', [z.object({ kind: z.literal('create'), notebookId: z.string(), parent: relative, name: relative.refine(value => Boolean(value) && !value.includes('/')), title: z.string().trim().min(1).max(120).optional() }).strict(), z.object({ kind: z.literal('move'), notebookId: z.string(), path: relative.refine(Boolean), parent: relative, before: relative.optional() }).strict(), z.object({ kind: z.literal('delete'), notebookId: z.string(), path: relative.refine(Boolean), destination: relative }).strict()]);
@@ -156,8 +156,13 @@ export function planFolderChange(snapshot: FolderSnapshot, input: unknown) {
   if (source && inside(full(parent), source)) throw new Error('A folder cannot contain itself.');
   if (source && source !== destination && snapshot.protectedPaths.some(file => inside(file, source))) throw new Error('Folder contains protected files. Move these separately first.');
   if (command.kind === 'create' && (snapshot.directories.includes(destination) || snapshot.files.has(destination) || snapshot.protectedPaths.some(file => inside(file, destination)))) throw new Error('Destination already exists.');
-  // A folder whose new name another entry already has in different letter case would merge into it on macOS or Windows.
-  if (command.kind !== 'delete' && source !== destination && differsOnlyInCase([...snapshot.directories, ...snapshot.files.keys(), ...snapshot.protectedPaths], destination, entry => !!source && inside(entry, source) && entry !== source)) throw new Error(CASE_COLLISION_ERROR);
+  // A name another entry already has in different letter case is that entry on macOS or Windows: the plan would write over it
+  // and then delete it. The entries inside the source move away with it, so they never block it.
+  const folded = foldedIndex([...snapshot.directories, ...snapshot.files.keys(), ...snapshot.protectedPaths]);
+  const assertCase = (next: string) => {
+    if (differsOnlyInCase(folded.get(foldName(next)) ?? [], next, entry => !!source && inside(entry, source) && entry !== source)) throw new Error(CASE_COLLISION_ERROR);
+  };
+  if (command.kind === 'create') assertCase(destination);
   const relocate = (file: string) => source && inside(file, source) ? destination + file.slice(source.length) : file;
   const files = new Map<string, string>();
   const directories = new Set<string>();
@@ -166,12 +171,14 @@ export function planFolderChange(snapshot: FolderSnapshot, input: unknown) {
     if (command.kind === 'delete' && dir === source) continue;
     const next = relocate(dir);
     if (dir !== next && (snapshot.directories.includes(next) && !inside(next, source) || snapshot.files.has(next) || snapshot.protectedPaths.includes(next))) throw new Error('Destination already exists.');
+    if (dir !== next) assertCase(next);
     directories.add(next);
   }
   for (const [file, raw] of snapshot.files) {
     if (file === removedMetadata) continue;
     const next = relocate(file);
     if (file !== next && (snapshot.files.has(next) && !inside(next, source) || snapshot.directories.includes(next) || snapshot.protectedPaths.includes(next))) throw new Error('Destination already exists.');
+    if (file !== next) assertCase(next);
     files.set(next, /\.(md|markdown)$/i.test(file) ? relocateMovedLinks(raw, file, next, relocate, source) : isCompilationPath(file) ? relocateCompilation(raw, relocate) ?? raw : raw);
   }
   if (command.kind === 'create') {
