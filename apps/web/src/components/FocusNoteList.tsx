@@ -75,7 +75,6 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
         data-hovered={hovered || undefined}
         tabIndex={0}
         aria-current={open ? 'true' : undefined}
-        title={draft || selectionActive ? undefined : t('notes.multiSelectHint')}
         draggable={canDrag || canMove}
         onDragStart={canDrag || canMove
           ? event => startNoteDrag(event, note, { focus: canDrag, move: canMove })
