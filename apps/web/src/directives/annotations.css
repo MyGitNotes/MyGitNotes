@@ -57,6 +57,10 @@
 .ann-comment { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; }
 .ann-comment > :first-child { margin-top: 0; }
 .ann-comment > :last-child { margin-bottom: 0; }
+.prose-custom .ann-figure .ann-comment :where(ul, ol) { margin: 0.25rem 0; padding-left: 1.4rem; }
+.prose-custom .ann-figure .ann-comment ul { list-style: disc; }
+.prose-custom .ann-figure .ann-comment ol { list-style: decimal; }
+.prose-custom .ann-figure .ann-comment li::marker { color: var(--color-muted); }
 .ann-comment img { max-width: 100%; height: auto; }
 .ann-empty { color: var(--color-muted); font-style: italic; }
 .ann-resolved { margin-top: 0.6rem; }

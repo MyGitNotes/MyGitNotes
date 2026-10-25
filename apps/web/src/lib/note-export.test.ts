@@ -35,4 +35,9 @@ describe('printDocument', () => {
     expect(html).toMatch(/\.ann-stage \{[^}]*position: relative/);
     expect(html).toMatch(/\.ann-overlay \{[^}]*position: absolute/);
   });
+
+  it('draws resolved markers differently from open ones on paper', () => {
+    const html = printDocument('T', '<p>x</p>');
+    expect(html).toMatch(/\.ann-marker\.is-resolved[^{]*\{[^}]*GrayText/);
+  });
 });

@@ -281,4 +281,9 @@ describe('the figure inside a note: comments and links', () => {
     expect(document.querySelector('.ann-overlay')).toBeNull();
   });
 
+  it('keeps list styling inside a comment (lists)', () => {
+    const css = readFileSync(new URL('../../directives/annotations.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/\.ann-comment ul \{[^}]*list-style: disc/);
+    expect(css).toMatch(/\.ann-comment ol \{[^}]*list-style: decimal/);
+  });
 });

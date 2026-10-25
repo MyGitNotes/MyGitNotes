@@ -29,6 +29,9 @@ const PRINT_STYLE = `
   .ann-marker text { font: 700 11px sans-serif; fill: HighlightText; }
   .ann-pin path, .ann-badge circle { fill: Highlight; stroke: Canvas; stroke-width: 2px; }
   .ann-region rect { fill: none; stroke: Highlight; stroke-width: 2px; }
+  .ann-marker.is-resolved path, .ann-marker.is-resolved circle { fill: GrayText; }
+  .ann-marker.is-resolved rect { stroke: GrayText; stroke-dasharray: 4 3; }
+  .ann-item.is-resolved { opacity: 0.7; }
   .ann-list { margin: 0.5em 0 0; padding: 0; list-style: none; }
   .ann-item { margin: 0 0 0.4em; break-inside: avoid; }
   .ann-ref { font-weight: 700; text-decoration: none; }
