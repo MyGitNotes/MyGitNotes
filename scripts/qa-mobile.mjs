@@ -120,7 +120,7 @@ try {
     if (width >= 768 && width <= 1100) {
       // The whole editor control group stays in one compact row while preserving touch-sized targets.
       assert((await bounds('.note-controls')).height <= 48, 'Note toolbar controls wrap at the tablet breakpoint');
-      assert((await bounds('.note-heading')).width >= 160, 'Note title is not legible at the tablet breakpoint');
+      assert((await bounds('.note-row')).width >= 160, 'Note title is not legible at the tablet breakpoint');
       await click('Line Numbers');
       await page.waitForSelector('[data-live-markdown] .cm-lineNumbers');
       await fits('button[aria-label="Close note"]');
@@ -311,7 +311,8 @@ try {
   await page.waitForSelector('textarea[aria-label="Note content"]');
   assert(await page.$eval('textarea[aria-label="Note content"]', e => e.value.includes('Mobile live edit')), 'Mode switch lost mobile edit');
   assert(await page.$eval('textarea[aria-label="Note content"]', e => getComputedStyle(e).caretColor === getComputedStyle(document.querySelector('.note-toolbar-search input')).caretColor), 'Dark source caret differs from input foreground');
-  const noteFile = await page.$eval('.note-heading', e => e.querySelector('.font-mono').textContent);
+  // The note row's title carries the note's path in its tooltip, after the rename hint.
+  const noteFile = await page.$eval('.note-row .note-title', e => e.getAttribute('title').split(' · ').pop());
   assert(noteFile === 'notes/example/untitled.md', `A new note is not created untitled at the notebook root: ${noteFile}`);
   await waitDisk(noteFile, 'Mobile live edit');
   await tap('.note-panel-tabs [role="tab"][aria-label="Frontmatter"]');

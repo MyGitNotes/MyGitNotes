@@ -25,6 +25,8 @@ export interface HostedNoteEditorProps {
   frame: 'pane' | 'compact' | 'inline';
   active: boolean;
   documentPanel?: NoteEditorProps['documentPanel'];
+  /** Where a pane's tab bar takes the editor's actions. */
+  actionsSlot?: HTMLElement | null;
   editorRef?: React.Ref<NoteEditorHandle>;
   onSession?: NoteEditorProps['onSession'];
   onCaret?: NoteEditorProps['onCaret'];
@@ -38,7 +40,7 @@ export interface HostedNoteEditorProps {
  * remounting; while zoom shows the note the other hosts say so, and otherwise they show a preview with a
  * control that moves editing there.
  */
-export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, path, frame, active, documentPanel, editorRef, onSession, onCaret, claim = false }) => {
+export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, path, frame, active, documentPanel, actionsSlot, editorRef, onSession, onCaret, claim = false }) => {
   const { t } = useTranslation();
   const editing = useNoteEditing();
   const { hosts } = editing;
@@ -123,7 +125,8 @@ export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, 
           documentPanel={lending ? undefined : documentPanel}
           onClose={lending ? editing.closeZoom : undefined}
           onMove={editing.moveNote?.(note)}
-          onRename={editing.renameNote?.(note) && (title => editing.renameNote?.({ ...note, title })?.())}
+          onRename={editing.renameNoteTo && (title => editing.renameNoteTo!(note, title))}
+          actionsSlot={lending ? undefined : actionsSlot}
           onSession={session => {
             setTyping(Boolean(session?.dirty));
             onSession?.(session);

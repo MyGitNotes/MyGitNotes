@@ -27,8 +27,8 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
   vi.stubGlobal('navigator', { ...globalThis.navigator, clipboard: { writeText: vi.fn(writeText) } });
 }
 
-async function copyFromExportMenu() {
-  const trigger = screen.getByRole('button', { name: 'Export' });
+async function copyFromExportMenu(menu = 'Export') {
+  const trigger = screen.getByRole('button', { name: menu });
   trigger.focus();
   await act(async () => {
     fireEvent.keyDown(trigger, { key: 'Enter' });
@@ -62,7 +62,8 @@ it('copies the note body from the toolbar button outside compact mode', async ()
   stubClipboard(writeText);
   render(editor({ frame: 'pane' }));
 
-  await copyFromExportMenu();
+  // A pane's export items sit in the "⋯" menu, with adding to an outline and moving.
+  await copyFromExportMenu('More actions');
   expect(writeText).toHaveBeenCalledWith('# Alpha\n\nBody text.');
   expect(screen.getByRole('button', { name: 'Note copied' })).toBeInTheDocument();
 });

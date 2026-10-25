@@ -1,0 +1,57 @@
+/* The note row: title, status, tags and the frontmatter button, under the Focus pane's tab bar or beside zoom's back button. */
+.note-row { position: relative; display: flex; flex: 1 1 auto; align-items: center; gap: 8px; min-width: 0; }
+.note-row .note-title { flex: 0 1 auto; min-width: 3rem; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-title-edit { position: relative; flex: 1 1 8rem; min-width: 6rem; max-width: 22rem; }
+.note-title-input { width: 100%; height: 28px; padding: 0 8px; font-size: 14px; font-weight: 600; }
+.note-title-hint { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; max-width: min(28rem, 90vw); padding: 4px 8px; overflow: hidden; border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-surface); box-shadow: var(--shadow-md); color: var(--color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.note-title-hint[data-invalid] { color: var(--color-danger); }
+.note-row-frontmatter { flex: none; margin-left: auto; }
+.note-row .select-trigger.status-cell:not(:disabled):hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.note-row .status-cell:not(:disabled):hover .select-chevron { opacity: 1; }
+
+.note-tags { display: flex; flex: 1 1 0; align-items: center; gap: 4px; min-width: 0; }
+.note-tag-list { display: flex; flex: 0 1 auto; gap: 4px; min-width: 0; margin: 0; padding: 0; overflow: hidden; list-style: none; }
+.note-tag { display: inline-flex; flex: none; align-items: center; gap: 2px; height: 22px; padding: 0 4px 0 8px; border: 1px solid var(--color-line); border-radius: 999px; background: color-mix(in srgb, var(--color-text) 5%, transparent); color: var(--color-text); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.note-tag[data-clipped] { visibility: hidden; }
+.note-tag:not(:has(button)) { padding-right: 8px; }
+.note-tag-remove { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: var(--color-muted); }
+.note-tag-remove:hover { background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--color-danger); }
+.note-tag-remove > svg { width: 10px; height: 10px; }
+.note-tag-more { display: inline-grid; flex: none; place-items: center; min-width: 26px; height: 22px; padding: 0 6px; border-radius: 999px; color: var(--color-muted); font-size: 11px; font-weight: 600; }
+.note-tag-more:hover, .note-tag-more[aria-expanded='true'] { background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text); }
+.note-tag-more > svg { width: 12px; height: 12px; }
+.note-tags[data-expanded] .note-tag-list { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; flex-wrap: wrap; width: max-content; max-width: min(28rem, 100%); padding: 8px; overflow: visible; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-md); }
+.note-tag-add { position: relative; flex: 0 1 7rem; min-width: 2rem; }
+.note-tag-input { width: 100%; height: 24px; padding: 0 6px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--color-text); font-size: 12px; outline: none; }
+.note-tag-input::placeholder { color: var(--color-muted); }
+.note-tag-input:hover, .note-tag-input:focus-visible { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.note-tag-input:focus-visible { box-shadow: 0 0 0 2px var(--color-primary); }
+.note-tag-suggestions { position: absolute; z-index: 30; top: calc(100% + 4px); right: 0; display: grid; min-width: 10rem; max-height: 10rem; padding: 4px; overflow-y: auto; border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-surface); box-shadow: var(--shadow-md); }
+.note-tag-suggestions button { padding: 4px 8px; border-radius: var(--radius-control); font-size: 12px; text-align: left; }
+.note-tag-suggestions button:hover { background: var(--color-sidebar); }
+
+/* A zoom's toolbar is one row: back button, note row, then the actions; on a phone the actions take the line below. */
+.note-toolbar[data-actions='row'] { gap: 8px; }
+.note-toolbar[data-actions='row'] > .note-controls { padding-left: 12px; border-left: 1px solid var(--color-line); }
+@media (max-width: 767px) { .note-toolbar[data-actions='row'] { flex-direction: row; flex-wrap: wrap; align-items: flex-start; } .note-toolbar[data-actions='row'] > .note-controls { flex: 1 0 100%; padding-left: 0; border-left: 0; } .note-toolbar[data-actions='row'] > .note-row { flex: 1 1 0; } }
+
+/* A Focus pane keeps the actions in its tab bar, ahead of the pane's own buttons; the note row is the toolbar left under it. */
+.focus-pane-note-actions { display: flex; flex: none; align-items: center; }
+.focus-pane-note-actions:empty { display: none; }
+.focus-pane-note-actions:not(:empty) { margin-right: 2px; padding-right: 4px; border-right: 1px solid var(--color-line); }
+.focus-pane-actions .note-controls { gap: 2px; }
+.focus-pane-actions .note-controls .toolbar-icon-button { width: 30px; min-width: 30px; height: 30px; min-height: 30px; }
+.focus-pane-actions .note-controls .toolbar-icon-button > svg { width: 15px; height: 15px; }
+.note-editor[data-frame='pane'] .note-toolbar[data-actions='bar'] { min-height: 40px; padding-block: 4px; }
+/* Without room in the bar (a phone) the actions sit above the note row. */
+.note-toolbar[data-actions='inline'] > .note-controls { order: -1; }
+.note-editor[data-frame='pane'] .note-toolbar[data-actions='inline'] { flex-direction: column; align-items: stretch; gap: 4px; }
+
+/* Where the editor sits in a narrow Focus pane the document card gives way to the pane itself: no frame or margin, only the text's inset, which the toolbar, note row and footer share. A phone has its own rules in index.css and workspace.css. */
+.focus-pane { container: focus-pane / inline-size; }
+.note-editor[data-frame='pane'] { --note-inset: 16px; }
+.note-editor[data-frame='pane'] .note-toolbar, .note-editor[data-frame='pane'] .note-footer { padding-inline: var(--note-inset); }
+@media (min-width: 768px) { @container focus-pane (max-width: 719px) { .note-editor[data-frame='pane'] .cm-scroller { padding: 0 !important; background-color: var(--color-surface) !important; } .note-editor[data-frame='pane'] .cm-card-background { background: transparent !important; box-shadow: none !important; border-radius: 0 !important; } .note-editor[data-frame='pane'] .cm-content { max-width: none !important; padding-top: 20px !important; } .note-editor[data-frame='pane'] .cm-line { padding-inline: var(--note-inset) !important; } .note-editor[data-frame='pane'] .live-md-quote { padding-left: calc(var(--note-inset) - 2px + (var(--quote-depth, 1) - 1) * 16px) !important; } } }
+
+/* On a phone the tags take a line of their own, all chips shown, with 44px touch targets. */
+@media (max-width: 767px) { .note-row .select-trigger.status-cell { min-height: 44px; } .note-row-frontmatter, .note-row > .note-edit-toggle { order: 2; } .note-tags { order: 3; flex: 1 1 100%; flex-wrap: wrap; } .note-tag-list { flex-wrap: wrap; overflow: visible; } .note-tag[data-clipped] { visibility: visible; } .note-tag-more { display: none; } .note-tag { height: 32px; } .note-tag-remove { width: 44px; height: 44px; margin: -6px -8px -6px -14px; } .note-tag-remove > svg { width: 12px; height: 12px; } .note-tag-add { flex: 1 1 6rem; min-width: 6rem; } .note-tag-input { height: 44px; font-size: 16px; } .note-tag-suggestions button { min-height: 44px; } }

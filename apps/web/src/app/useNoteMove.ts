@@ -150,13 +150,17 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
       if (destination) await relocate(note, destination);
     });
 
-  const confirmRename = (name: string) =>
-    run(async current => {
-      const title = name.trim();
-      if (!noteStem(title)) throw new Error(t('files.renameInvalid'));
-      if (current.mode === 'rename') current.applyTitle?.(title);
-      await relocate(current.note, renamedPath(current.note.path, title), title);
-    });
+  const rename = async (note: MovedNote, name: string, applyTitle?: (title: string) => void) => {
+    const title = name.trim();
+    if (!noteStem(title)) throw new Error(t('files.renameInvalid'));
+    applyTitle?.(title);
+    await relocate(note, renamedPath(note.path, title), title);
+  };
 
-  return { request, busy, moveNote, renameNote, moveTo, confirmMove, confirmRename, cancel: () => setRequest(null) };
+  const confirmRename = (name: string) => run(current => rename(current.note, name, current.mode === 'rename' ? current.applyTitle : undefined));
+
+  /** Renames `note` to `name` at once, as the title typed in the editor asks, without the dialog. */
+  const renameNoteTo = (note: MovedNote, name: string) => canWriteNotebook(note.notebookId) ? perform(() => rename(note, name)) : Promise.resolve();
+
+  return { request, busy, moveNote, renameNote, renameNoteTo, moveTo, confirmMove, confirmRename, cancel: () => setRequest(null) };
 }
