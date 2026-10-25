@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { TodoTask } from './todo-list.js';
-import { computeGanttRange, computeGanttRows, computeGanttTicks, formatDayIndex, ganttDayWidth, getSavedGanttScale, saveGanttScale } from './todo-gantt.js';
+import { computeGanttEntries, computeGanttRange, computeGanttRows, computeGanttTicks, formatDayIndex, ganttDayWidth, getSavedGanttScale, saveGanttScale } from './todo-gantt.js';
 
 function task(overrides: Partial<TodoTask>): TodoTask {
   return { id: 'a.md#0', notePath: 'a.md', notebookId: 'nb', noteTitle: 'a', lineIndex: 0, lineText: '- [ ] Task', checked: false, assignees: [], ...overrides };
@@ -165,5 +166,36 @@ describe('gantt scale persistence', () => {
     vi.stubGlobal('window', { localStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) } });
     storage.set('github-notes:todo-gantt-scale', 'quarter');
     expect(getSavedGanttScale()).toBe('day');
+  });
+});
+
+describe('milestones on the Gantt', () => {
+  const today = '2026-09-15';
+  const milestone = (path: string, date: unknown): NoteListItem => ({ id: path, path, notebookId: 'nb', title: path, tags: [], metadata: { milestone: date } });
+
+  it('widens the range to cover milestone dates like task dates', () => {
+    const range = computeGanttRange([], today, 'day', [milestone('m.md', '2026-10-20')]);
+    expect(range.startDay + range.days - 1).toBeGreaterThanOrEqual(range.startDay + range.todayOffset + 35);
+    expect(formatDayIndex(range.startDay + range.days - 2)).toBe('2026-10-20');
+  });
+
+  it('ignores a milestone without a valid date when ranging', () => {
+    expect(computeGanttRange([], today, 'day', [milestone('m.md', 'soon')])).toEqual(computeGanttRange([], today, 'day'));
+  });
+
+  it('places a milestone on its date among the tasks, ordered by where each sits, milestone first on a tie', () => {
+    const tasks = [task({ id: 't1', due: '2026-09-20' }), task({ id: 't2', due: '2026-09-25' })];
+    const milestones = [milestone('late.md', '2026-09-25'), milestone('early.md', '2026-09-18'), milestone('bad.md', 'nope')];
+    const range = computeGanttRange(tasks, today, 'day', milestones);
+    const entries = computeGanttEntries(tasks, milestones, range);
+    expect(entries.map(entry => (entry.type === 'milestone' ? entry.note.path : entry.row.task.id))).toEqual(['early.md', 't1', 'late.md', 't2']);
+    const early = entries[0];
+    expect(early.type === 'milestone' && formatDayIndex(range.startDay + early.offset)).toBe('2026-09-18');
+  });
+
+  it('draws a milestone even when no task has a date', () => {
+    const milestones = [milestone('m.md', '2026-09-20')];
+    const range = computeGanttRange([], today, 'day', milestones);
+    expect(computeGanttEntries([], milestones, range)).toHaveLength(1);
   });
 });

@@ -10,7 +10,7 @@ import { Select } from './Select.js';
 import { formatDateYMD } from '../lib/date-utils.js';
 import { DONE_EMOJI, DUE_EMOJI, getTokenValue, setTaskChecked, START_EMOJI, stripTaskTokens, TIMESTAMP_EMOJI } from '../lib/task-tokens.js';
 import { TASK_TOKEN_ICON } from '../lib/task-icons.js';
-import { filterTasksByFolder } from '../lib/folder-filter.js';
+import { filterNotesByFolder, filterTasksByFolder } from '../lib/folder-filter.js';
 import { ALL_PEOPLE, filterTasksByPerson, listAssignees, personFilterValue, resolvePersonFilter, UNASSIGNED } from '../lib/todo-filter.js';
 import { groupTodoTasks, type TodoTask } from '../lib/todo-list.js';
 import { effectivePanelScope, getSavedPanelScope, type PanelScope, savePanelScope } from '../lib/panel-scope.js';
@@ -65,6 +65,10 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
   const scopedTasks = useMemo(() => {
     const raw = agenda.agenda?.tasks ?? [];
     return effectiveScope === 'folder' && currentFolder ? filterTasksByFolder(raw, currentFolder) : raw;
+  }, [agenda.agenda, effectiveScope, currentFolder]);
+  const milestones = useMemo(() => {
+    const raw = agenda.agenda?.milestones ?? [];
+    return effectiveScope === 'folder' && currentFolder ? filterNotesByFolder(raw, currentFolder) : raw;
   }, [agenda.agenda, effectiveScope, currentFolder]);
   const assignees = useMemo(() => listAssignees(scopedTasks), [scopedTasks]);
   const person = resolvePersonFilter(personChoice, assignees);
@@ -182,7 +186,7 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
           <Select aria-label={t('panel.todoPeople')} value={person} onValueChange={setPersonChoice} options={[{ value: ALL_PEOPLE, label: t('panel.todoAllPeople') }, ...assignees.map(name => ({ value: personFilterValue(name), label: name })), { value: UNASSIGNED, label: t('panel.todoUnassigned') }]} />
         </div>
       )}
-      {scopedTasks.length > 0 && (
+      {(scopedTasks.length > 0 || milestones.length > 0) && (
         <div className='todo-group-mode-toggle' role='group'>
           <Button type='button' aria-pressed={groupMode === 'date'} onClick={() => setGroupMode('date')}>{t('panel.todoGroupByDate')}</Button>
           <Button type='button' aria-pressed={groupMode === 'note'} onClick={() => setGroupMode('note')}>{t('panel.todoGroupByNote')}</Button>
@@ -215,7 +219,7 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
       ))}
       {groupMode === 'gantt' && (
         <>
-          <TodoGanttChart tasks={tasks} today={formatDateYMD(new Date())} onOpenTask={task => onOpenNote(taskNote(task))} />
+          <TodoGanttChart tasks={tasks} milestones={milestones} today={formatDateYMD(new Date())} onOpenTask={task => onOpenNote(taskNote(task))} onOpenMilestone={onOpenNote} />
           {undatedOpenTasks.length > 0 && (
             <section className='todo-group'>
               <h4>

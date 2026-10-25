@@ -1,3 +1,4 @@
+import { getNoteMilestone } from '@mygitnotes/core/note-agenda';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { formatDateYMD } from './date-utils.js';
 import type { TodoTask } from './todo-list.js';
@@ -6,6 +7,7 @@ export interface DayCounts {
   created: number;
   updated: number;
   due: number;
+  milestone: number;
 }
 
 /** The local calendar day (`YYYY-MM-DD`) an ISO timestamp falls on, or undefined if unparsable. */
@@ -16,12 +18,12 @@ export function dayKeyFromISO(value: unknown): string | undefined {
   return formatDateYMD(date);
 }
 
-/** Per-day counts of notes created, notes updated, and todos due, for the calendar month grid. */
-export function buildDayCounts(notes: NoteListItem[], tasks: TodoTask[]): Map<string, DayCounts> {
+/** Per-day counts of notes created, notes updated, todos due and milestones, for the calendar month grid. */
+export function buildDayCounts(notes: NoteListItem[], tasks: TodoTask[], milestones: NoteListItem[] = []): Map<string, DayCounts> {
   const index = new Map<string, DayCounts>();
   const bump = (key: string | undefined, field: keyof DayCounts) => {
     if (!key) return;
-    const entry = index.get(key) || { created: 0, updated: 0, due: 0 };
+    const entry = index.get(key) || { created: 0, updated: 0, due: 0, milestone: 0 };
     entry[field]++;
     index.set(key, entry);
   };
@@ -31,6 +33,9 @@ export function buildDayCounts(notes: NoteListItem[], tasks: TodoTask[]): Map<st
   }
   for (const task of tasks) {
     bump(task.due, 'due');
+  }
+  for (const note of milestones) {
+    bump(getNoteMilestone(note.metadata), 'milestone');
   }
   return index;
 }
@@ -55,4 +60,13 @@ export function notesForMonth(notes: NoteListItem[], year: number, month: number
 export function tasksForMonth(tasks: TodoTask[], year: number, month: number): TodoTask[] {
   const prefix = monthPrefix(year, month);
   return tasks.filter(task => task.due?.startsWith(prefix));
+}
+
+export function milestonesForDay(milestones: NoteListItem[], day: string): NoteListItem[] {
+  return milestones.filter(note => getNoteMilestone(note.metadata) === day);
+}
+
+export function milestonesForMonth(milestones: NoteListItem[], year: number, month: number): NoteListItem[] {
+  const prefix = monthPrefix(year, month);
+  return milestones.filter(note => getNoteMilestone(note.metadata)?.startsWith(prefix));
 }

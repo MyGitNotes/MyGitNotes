@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type AgendaSourceNote, extractTodoTasks } from '../src/note-agenda.js';
+import { type AgendaSourceNote, extractTodoTasks, getNoteMilestone } from '../src/note-agenda.js';
 
 function note(path: string, content: string): AgendaSourceNote {
   return { path, notebookId: 'nb', title: path, content };
@@ -27,5 +27,24 @@ describe('extractTodoTasks — assignees', () => {
   it('carries the assignees of each task line, empty when there are none', () => {
     const tasks = extractTodoTasks([note('a.md', '- [ ] @alice Draft 📅 2026-10-30\n- [ ] Plain\n- [x] Review @小林 @bob ✅ 2026-10-20\n')]);
     expect(tasks.map(task => task.assignees)).toEqual([['alice'], [], ['小林', 'bob']]);
+  });
+});
+
+describe('getNoteMilestone', () => {
+  it('reads a real YYYY-MM-DD date from the milestone key', () => {
+    expect(getNoteMilestone({ milestone: '2026-11-01' })).toBe('2026-11-01');
+    expect(getNoteMilestone({ milestone: '2028-02-29' })).toBe('2028-02-29');
+  });
+
+  it('is not a milestone without a valid date string', () => {
+    expect(getNoteMilestone({})).toBeUndefined();
+    expect(getNoteMilestone({ due: '2026-11-01' })).toBeUndefined();
+    expect(getNoteMilestone({ milestone: '2026-02-30' })).toBeUndefined();
+    expect(getNoteMilestone({ milestone: '2026-13-01' })).toBeUndefined();
+    expect(getNoteMilestone({ milestone: '11/01/2026' })).toBeUndefined();
+    expect(getNoteMilestone({ milestone: '2026-11-01T09:00:00Z' })).toBeUndefined();
+    expect(getNoteMilestone({ milestone: 20261101 })).toBeUndefined();
+    expect(getNoteMilestone({ milestone: true })).toBeUndefined();
+    expect(getNoteMilestone({ milestone: null })).toBeUndefined();
   });
 });

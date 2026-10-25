@@ -27,6 +27,8 @@ A note whose frontmatter has `milestone` set to a real calendar date in `YYYY-MM
 
 Core: `getNoteMilestone(metadata)`; `NoteAgenda.milestones: NoteListItem[]` (visible notes with a milestone, each carrying its repository's revision like `dated`). Hidden and compilation notes are left out like they are for tasks.
 
+The agenda part kept in a remote cache is now stored under the kind `agenda:v2:<hidden>`: an entry written before tasks carried `assignees` and the agenda carried `milestones` is not read back without them.
+
 ## Where it shows
 
 ### Todo tool

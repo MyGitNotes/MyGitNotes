@@ -3,7 +3,7 @@ import { SourceError } from './github-api.js';
 import { isNoteHidden } from './note-status.js';
 import { safeFilterPath } from './note-filters.js';
 import { type SortField, sortNotes, type SortOrder } from './note-sort.js';
-import { extractTodoTasks } from './note-agenda.js';
+import { extractTodoTasks, getNoteMilestone } from './note-agenda.js';
 import { buildNoteGraph } from './note-graph.js';
 import { hashJson } from './remote-cache.js';
 import { type NotebookKey, notebookKey } from './notebook-key.js';
@@ -341,16 +341,17 @@ export async function lookupNotes(catalog: NoteCatalog, notes: unknown, content:
 export async function noteAgenda(catalog: NoteCatalog, notebookId: string, showHidden: boolean): Promise<NoteAgenda> {
   const { notebooks } = await scope(catalog, notebookId);
   const parts = await Promise.all(notebooks.map(async notebook => {
-    const part = await catalog.memo(`agenda:${showHidden ? 1 : 0}`, [notebook], async () => {
+    // The `v2` kind keeps a remote cache entry written before tasks carried assignees and the agenda carried milestones from being read back.
+    const part = await catalog.memo(`agenda:v2:${showHidden ? 1 : 0}`, [notebook], async () => {
       const visible = (await catalog.index(notebook)).filter(note => !isCompilationEntry(note) && (showHidden || !isNoteHidden({ ...note.metadata, status: note.status })));
       const contents = await catalog.contents(visible);
-      return { tasks: extractTodoTasks(visible.map(note => ({ ...note, content: contents.get(noteRefKey(note)) ?? '' }))), dated: visible.filter(note => note.metadata.created !== undefined || note.metadata.updated !== undefined) };
+      return { tasks: extractTodoTasks(visible.map(note => ({ ...note, content: contents.get(noteRefKey(note)) ?? '' }))), dated: visible.filter(note => note.metadata.created !== undefined || note.metadata.updated !== undefined), milestones: visible.filter(note => getNoteMilestone(note.metadata) !== undefined) };
     });
     // A remembered part keeps the revision it was computed at; each note carries its repository's current one.
     const revision = Object.values(await catalog.revisions([notebook]))[0];
-    return { ...part, dated: part.dated.map(note => ({ ...note, revision })) };
+    return { ...part, dated: part.dated.map(note => ({ ...note, revision })), milestones: part.milestones.map(note => ({ ...note, revision })) };
   }));
-  return { revisions: await catalog.revisions(notebooks), tasks: parts.flatMap(part => part.tasks), dated: parts.flatMap(part => part.dated) };
+  return { revisions: await catalog.revisions(notebooks), tasks: parts.flatMap(part => part.tasks), dated: parts.flatMap(part => part.dated), milestones: parts.flatMap(part => part.milestones) };
 }
 
 export async function noteGraph(catalog: NoteCatalog): Promise<NoteGraph> {

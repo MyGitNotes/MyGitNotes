@@ -1783,6 +1783,8 @@ export const en = {
   'panel.todoGanttScaleDay': 'Day',
   'panel.todoGanttScaleWeek': 'Week',
   'panel.todoGanttScaleMonth': 'Month',
+  'panel.todoGanttMilestone': 'Milestone',
+  'panel.calendarMilestones': 'Milestones',
   'panel.todoPeople': 'People',
   'panel.todoAllPeople': 'All people',
   'panel.todoUnassigned': 'Unassigned',

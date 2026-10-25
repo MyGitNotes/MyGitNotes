@@ -1,3 +1,5 @@
+import { getNoteMilestone } from '@mygitnotes/core/note-agenda';
+import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { TodoTask } from './todo-list.js';
 import { pad2 } from './date-utils.js';
 
@@ -88,17 +90,18 @@ export interface GanttRange {
 }
 
 /**
- * The visible day range: covers every open task's start/due dates and
- * today, with one day of padding on each side.
+ * The visible day range: covers every open task's start/due dates, every
+ * milestone date and today, with one day of padding on each side.
  *
  * At `'day'` scale the span is at least 7 days. At `'week'`/`'month'` scale
  * the range additionally snaps to whole week/month boundaries (so header
  * columns align to full weeks/months) and spans at least 4 weeks / 3 months.
  */
-export function computeGanttRange(tasks: TodoTask[], today: string, scale: GanttScale = 'day'): GanttRange {
+export function computeGanttRange(tasks: TodoTask[], today: string, scale: GanttScale = 'day', milestones: NoteListItem[] = []): GanttRange {
   const todayDay = dayIndex(today);
   const taskDays = tasks.filter(task => !task.checked).flatMap(task => [task.start, task.due]).filter((value): value is string => Boolean(value)).map(dayIndex);
-  const all = [...taskDays, todayDay];
+  const milestoneDays = milestones.map(note => getNoteMilestone(note.metadata)).filter((value): value is string => value !== undefined).map(dayIndex);
+  const all = [...taskDays, ...milestoneDays, todayDay];
   const min = Math.min(...all);
   const max = Math.max(...all);
   const paddedStart = min - 1;
@@ -160,6 +163,38 @@ export function computeGanttRows(tasks: TodoTask[], range: GanttRange): GanttRow
     }
   }
   return rows.sort((a, b) => a.offset - b.offset);
+}
+
+export interface GanttTaskEntry {
+  type: 'task';
+  offset: number;
+  row: GanttRow;
+}
+
+export interface GanttMilestoneEntry {
+  type: 'milestone';
+  /** Column offset (from `range.startDay`) of the milestone's day. */
+  offset: number;
+  note: NoteListItem;
+  /** The milestone day, `YYYY-MM-DD`. */
+  date: string;
+}
+
+export type GanttEntry = GanttTaskEntry | GanttMilestoneEntry;
+
+/**
+ * The chart's rows: the task rows plus one row per milestone note, ordered
+ * by where each sits on the timeline, a milestone first when it shares a day
+ * with a task. A note whose `milestone` is not a real date has no row.
+ */
+export function computeGanttEntries(tasks: TodoTask[], milestones: NoteListItem[], range: GanttRange): GanttEntry[] {
+  const entries: GanttEntry[] = [];
+  for (const note of milestones) {
+    const date = getNoteMilestone(note.metadata);
+    if (date) entries.push({ type: 'milestone', offset: dayIndex(date) - range.startDay, note, date });
+  }
+  for (const row of computeGanttRows(tasks, range)) entries.push({ type: 'task', offset: row.offset, row });
+  return entries.sort((a, b) => a.offset - b.offset);
 }
 
 export interface GanttTick {

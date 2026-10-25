@@ -1784,6 +1784,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'panel.todoGanttScaleDay': '日',
   'panel.todoGanttScaleWeek': '週',
   'panel.todoGanttScaleMonth': '月',
+  'panel.todoGanttMilestone': '里程碑',
+  'panel.calendarMilestones': '里程碑',
   'panel.todoPeople': '負責人',
   'panel.todoAllPeople': '所有人',
   'panel.todoUnassigned': '未指派',

@@ -117,6 +117,8 @@ export interface NoteAgenda {
   revisions: RevisionSet;
   tasks: TodoTask[];
   dated: NoteListItem[];
+  /** Visible notes whose `milestone` frontmatter holds a real date. */
+  milestones: NoteListItem[];
 }
 export interface NoteLookup {
   revisions: RevisionSet;

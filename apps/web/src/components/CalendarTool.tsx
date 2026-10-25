@@ -1,6 +1,7 @@
 import { Button } from './Button.js';
 import { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, FileText, ListTodo } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Diamond, FileText, ListTodo } from 'lucide-react';
+import { getNoteMilestone } from '@mygitnotes/core/note-agenda';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { NotebookConfig } from '../lib/types.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
@@ -9,7 +10,7 @@ import { buildMonthGrid } from '../lib/calendar-grid.js';
 import { formatDateYMD, getLocaleWeekStartDay } from '../lib/date-utils.js';
 import { stripTaskTokens } from '../lib/task-tokens.js';
 import type { TodoTask } from '../lib/todo-list.js';
-import { buildDayCounts, notesForDay, notesForMonth, tasksForDay, tasksForMonth } from '../lib/note-day-index.js';
+import { buildDayCounts, milestonesForDay, milestonesForMonth, notesForDay, notesForMonth, tasksForDay, tasksForMonth } from '../lib/note-day-index.js';
 import { filterNotesByFolder, filterTasksByFolder } from '../lib/folder-filter.js';
 import { effectivePanelScope, getSavedPanelScope, type PanelScope, savePanelScope } from '../lib/panel-scope.js';
 import { useNoteAgenda } from '../lib/use-note-queries.js';
@@ -54,7 +55,11 @@ export function CalendarTool({ notebooks, selectedNotebookId, currentFolder, onO
     const raw = agenda.agenda?.tasks ?? [];
     return folderScoped && currentFolder ? filterTasksByFolder(raw, currentFolder) : raw;
   }, [agenda.agenda, folderScoped, currentFolder]);
-  const dayCounts = useMemo(() => buildDayCounts(scopedNotes, tasks), [scopedNotes, tasks]);
+  const milestones = useMemo(() => {
+    const raw = agenda.agenda?.milestones ?? [];
+    return folderScoped && currentFolder ? filterNotesByFolder(raw, currentFolder) : raw;
+  }, [agenda.agenda, folderScoped, currentFolder]);
+  const dayCounts = useMemo(() => buildDayCounts(scopedNotes, tasks, milestones), [scopedNotes, tasks, milestones]);
   const weekStartDay = useMemo(() => getLocaleWeekStartDay(locale), [locale]);
   const grid = useMemo(() => buildMonthGrid(cursor.getFullYear(), cursor.getMonth(), weekStartDay), [cursor, weekStartDay]);
   const todayYMD = formatDateYMD(new Date());
@@ -71,9 +76,9 @@ export function CalendarTool({ notebooks, selectedNotebookId, currentFolder, onO
   }, [cursor]);
   const monthOptions = MONTH_LABEL_KEYS.map((key, index) => ({ value: String(index), label: t(key) }));
 
-  const day = selectedDay ? { notes: notesForDay(scopedNotes, selectedDay, dayField), tasks: tasksForDay(tasks, selectedDay) } : { notes: notesForMonth(scopedNotes, cursor.getFullYear(), cursor.getMonth(), dayField), tasks: tasksForMonth(tasks, cursor.getFullYear(), cursor.getMonth()) };
+  const day = selectedDay ? { notes: notesForDay(scopedNotes, selectedDay, dayField), tasks: tasksForDay(tasks, selectedDay), milestones: milestonesForDay(milestones, selectedDay) } : { notes: notesForMonth(scopedNotes, cursor.getFullYear(), cursor.getMonth(), dayField), tasks: tasksForMonth(tasks, cursor.getFullYear(), cursor.getMonth()), milestones: milestonesForMonth(milestones, cursor.getFullYear(), cursor.getMonth()) };
   const monthNoteCount = notesForMonth(scopedNotes, cursor.getFullYear(), cursor.getMonth(), dayField).length;
-  const dayIsEmpty = day.notes.length === 0 && day.tasks.length === 0;
+  const dayIsEmpty = day.notes.length === 0 && day.tasks.length === 0 && day.milestones.length === 0;
 
   return (
     <div className='panel-tool calendar-tool'>
@@ -151,7 +156,7 @@ export function CalendarTool({ notebooks, selectedNotebookId, currentFolder, onO
               onClick={() => setSelectedDay(current => (current === key ? null : key))}
             >
               <span className='calendar-day-number'>{gridDay.getDate()}</span>
-              {counts && (counts.created + counts.updated > 0 || counts.due > 0) && <span className='calendar-day-counts'>{counts.created + counts.updated > 0 && <span className='calendar-dot calendar-dot-notes' aria-hidden='true' />}{counts.due > 0 && <span className='calendar-dot calendar-dot-due' aria-hidden='true' />}</span>}
+              {counts && (counts.created + counts.updated > 0 || counts.due > 0 || counts.milestone > 0) && <span className='calendar-day-counts'>{counts.created + counts.updated > 0 && <span className='calendar-dot calendar-dot-notes' aria-hidden='true' />}{counts.due > 0 && <span className='calendar-dot calendar-dot-due' aria-hidden='true' />}{counts.milestone > 0 && <span className='calendar-dot calendar-dot-milestone' aria-hidden='true' />}</span>}
             </Button>
           );
         })}
@@ -166,6 +171,26 @@ export function CalendarTool({ notebooks, selectedNotebookId, currentFolder, onO
         </div>
         {dayIsEmpty ? <p className='calendar-day-empty'>{t('panel.calendarNoItems')}</p> : (
           <>
+            {day.milestones.length > 0 && <h4>{t('panel.calendarMilestones')}</h4>}
+            {day.milestones.length > 0 && (
+              <ul className='calendar-day-milestones'>
+                {day.milestones.map(note => (
+                  <li key={`${note.notebookId}:${note.path}`}>
+                    <Button
+                      type='button'
+                      className='panel-note-row'
+                      onClick={() => onOpenNote(note)}
+                    >
+                      <Diamond aria-hidden='true' className='calendar-milestone-icon' />
+                      <span>
+                        {note.title}
+                        <small>{note.path}{' · '}{getNoteMilestone(note.metadata)}</small>
+                      </span>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
             {day.notes.length > 0 && <h4>{t('panel.calendarNotes')}</h4>}
             {day.notes.length > 0 && (
               <ul className='calendar-day-notes'>
@@ -193,8 +218,7 @@ export function CalendarTool({ notebooks, selectedNotebookId, currentFolder, onO
                   <li key={task.id} data-checked={task.checked}>
                     <Button
                       className='panel-note-row'
-                      onClick={() =>
-                        onOpenNote(scopedNotes.find(note => note.path === task.notePath) || taskNote(task))}
+                      onClick={() => onOpenNote(scopedNotes.find(note => note.path === task.notePath) || taskNote(task))}
                     >
                       <ListTodo aria-hidden='true' />
                       <span>

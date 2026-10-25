@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_NOTE_QUERY, type NotebookFacets, type NoteListItem, type NoteQuery, noteRefKey } from '@mygitnotes/core/note-query';
-import { overlayDraftFacets, overlayDraftLookup, overlayDraftPaths, overlayDraftRows, overlayGraphDrafts, withoutDeletedDrafts } from './draft-overlay.js';
+import { overlayDraftAgenda, overlayDraftFacets, overlayDraftLookup, overlayDraftPaths, overlayDraftRows, overlayGraphDrafts, withoutDeletedDrafts } from './draft-overlay.js';
 import type { WorkingNotes } from './working-notes.js';
 import type { NoteItem } from './types.js';
 
@@ -133,5 +133,21 @@ describe('deleted drafts', () => {
     const id = noteRefKey(gone), other = noteRefKey(note('notes/kept.md'));
     const graph = { nodes: [{ id, path: gone.path, title: 'g', notebookId: 'life', tags: [], inDegree: 0, outDegree: 1, val: 3 }, { id: other, path: 'notes/kept.md', title: 'k', notebookId: 'life', tags: [], inDegree: 1, outDegree: 0, val: 3 }], links: [{ source: id, target: other }] };
     expect(withoutDeletedDrafts(graph, deleted)).toEqual({ nodes: [graph.nodes[1]], links: [] });
+  });
+});
+
+describe('draft agenda', () => {
+  const agenda = { revisions: {}, tasks: [], dated: [], milestones: [row('notes/life/launch.md', { metadata: { milestone: '2026-11-01' } }), row('notes/life/other.md', { metadata: { milestone: '2026-12-01' } })] };
+
+  it('replaces a drafted milestone with its draft, drops one the draft no longer has, and adds a new one', () => {
+    const moved = note('notes/life/launch.md', { metadata: { milestone: '2026-11-08' } });
+    const cleared = note('notes/life/other.md', { metadata: {} });
+    const created = note('notes/life/new.md', { metadata: { milestone: '2026-11-15' } });
+    const result = overlayDraftAgenda(agenda, drafts({ note: moved, base: note('notes/life/launch.md') }, { note: cleared, base: note('notes/life/other.md') }, { note: created, base: null }), { notebookId: 'life', showHidden: false });
+    expect(result.milestones.map(item => [item.path, item.metadata.milestone])).toEqual([['notes/life/launch.md', '2026-11-08'], ['notes/life/new.md', '2026-11-15']]);
+  });
+
+  it('keeps the server answer when nothing is staged', () => {
+    expect(overlayDraftAgenda(agenda, {}, { notebookId: 'life', showHidden: false })).toBe(agenda);
   });
 });

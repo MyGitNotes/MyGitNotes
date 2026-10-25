@@ -32,3 +32,19 @@ export function extractTodoTasks(notes: AgendaSourceNote[]): TodoTask[] {
   }
   return tasks;
 }
+
+const MILESTONE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * The day (`YYYY-MM-DD`) a note marks as a milestone through its `milestone` frontmatter key, or undefined when the key
+ * is absent or is not a real calendar date. `due` is left alone: it already belongs to a task's `📅` date.
+ */
+export function getNoteMilestone(metadata: Record<string, unknown>): string | undefined {
+  const value = metadata.milestone;
+  if (typeof value !== 'string') return undefined;
+  const match = MILESTONE_RE.exec(value);
+  if (!match) return undefined;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? value : undefined;
+}

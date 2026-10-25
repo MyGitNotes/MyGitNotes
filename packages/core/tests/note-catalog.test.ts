@@ -9,7 +9,7 @@ const config: WorkspaceConfig = { schema_version: 1, workspace: { title: 'Test',
 
 const bodies: Record<string, string> = { 'notes/work/alpha.md': 'Alpha body with keyword\n\n- [ ] ship it 📅 2026-09-20\n', 'notes/work/deep/beta.md': 'Beta body\n\n[alpha](../alpha.md)\n', 'notes/work/archived.md': 'Old body\n', 'notes/life/gamma.md': 'Gamma body keyword\n' };
 const item = (path: string, notebookId: string, extra: Partial<NoteListItem> = {}): NoteListItem => ({ id: path, path, notebookId, title: path.split('/').pop()!.replace('.md', ''), tags: [], metadata: {}, ...extra });
-const items: NoteListItem[] = [item('notes/work/alpha.md', 'work', { status: 'inbox', tags: ['a', 'b'], metadata: { updated: '2026-09-02', created: '2026-09-01' } }), item('notes/work/deep/beta.md', 'work', { status: 'done', tags: ['b'], metadata: { updated: '2026-09-03' } }), item('notes/work/archived.md', 'work', { status: 'archived', tags: ['a'], metadata: { hiden: true, updated: '2026-09-04' } }), item('notes/life/gamma.md', 'life', { tags: ['c'], metadata: { updated: '2026-09-01', created: '2026-09-01' } })];
+const items: NoteListItem[] = [item('notes/work/alpha.md', 'work', { status: 'inbox', tags: ['a', 'b'], metadata: { updated: '2026-09-02', created: '2026-09-01' } }), item('notes/work/deep/beta.md', 'work', { status: 'done', tags: ['b'], metadata: { updated: '2026-09-03', milestone: '2026-10-15' } }), item('notes/work/archived.md', 'work', { status: 'archived', tags: ['a'], metadata: { hiden: true, updated: '2026-09-04', milestone: '2026-10-20' } }), item('notes/life/gamma.md', 'life', { tags: ['c'], metadata: { updated: '2026-09-01', created: '2026-09-01', milestone: '2026-02-30' } })];
 
 /** The sidebar's folder order per notebook (local ids). */
 const folderOrder: Record<string, string[]> = { work: ['deep'] };
@@ -168,6 +168,14 @@ describe('facets, lookup, agenda and graph', () => {
     expect(agenda.dated.every(note => note.content === undefined)).toBe(true);
   });
 
+  it('lists the visible notes with a valid milestone date, leaving hidden notes and bad dates out', async () => {
+    const agenda = await noteAgenda(await catalog(), 'all', false);
+    expect(agenda.milestones.map(note => note.path)).toEqual(['notes/work/deep/beta.md']);
+    expect(agenda.milestones[0].revision).toBe(revisions[WORK]);
+    expect(agenda.milestones[0].content).toBeUndefined();
+    expect((await noteAgenda(await catalog(), W, true)).milestones.map(note => note.path)).toEqual(['notes/work/deep/beta.md', 'notes/work/archived.md']);
+  });
+
   it('builds the workspace graph from note links', async () => {
     const graph = await noteGraph(await catalog());
     expect(graph.revisions).toEqual(revisions);
@@ -198,7 +206,7 @@ describe('a catalog over several repositories', () => {
   it('remembers results of one repository and recomputes results spanning several', async () => {
     const one = await catalog();
     await noteAgenda(one, W, false);
-    expect(one.memoKinds).toEqual(['agenda:0:w']);
+    expect(one.memoKinds).toEqual(['agenda:v2:0:w']);
     const both = await catalog();
     await noteGraph(both);
     expect(both.memoKinds).toEqual([]);

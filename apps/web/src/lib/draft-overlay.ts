@@ -1,7 +1,7 @@
 import { isNoteHidden } from '@mygitnotes/core/note-status';
 import { entryKind, noteDirectory, noteMatchesQuery, type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import type { NoteAgenda, NotebookFacets, NoteListItem, NoteQuery } from '@mygitnotes/core/note-query';
-import { extractTodoTasks } from '@mygitnotes/core/note-agenda';
+import { extractTodoTasks, getNoteMilestone } from '@mygitnotes/core/note-agenda';
 import { extractNoteLinks } from '@mygitnotes/core/note-graph';
 import type { NoteGraphData } from '@mygitnotes/core/note-graph';
 import type { RepositoryId } from '@mygitnotes/core/repository';
@@ -112,7 +112,8 @@ export function overlayDraftAgenda(agenda: NoteAgenda, drafts: WorkingNotes, opt
   const drafted = new Set(Object.keys(drafts));
   const tasks = [...agenda.tasks.filter(task => !drafted.has(noteRefKey({ notebookId: task.notebookId, path: task.notePath }))), ...extractTodoTasks(entries.map(entry => entry.note))];
   const dated = [...agenda.dated.filter(note => !drafted.has(noteRefKey(note))), ...entries.filter(entry => entry.note.metadata.created !== undefined || entry.note.metadata.updated !== undefined).map(entry => entry.note)];
-  return { revisions: agenda.revisions, tasks, dated };
+  const milestones = [...agenda.milestones.filter(note => !drafted.has(noteRefKey(note))), ...entries.filter(entry => getNoteMilestone(entry.note.metadata) !== undefined).map(entry => entry.note)];
+  return { revisions: agenda.revisions, tasks, dated, milestones };
 }
 
 export interface GraphDraftNote {
