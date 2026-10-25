@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { clearAgentDrafts } from '../lib/pi-agent/draft.js';
+import { clearOpenedScopes } from '../lib/kept-drafts.js';
 import { ArrowLeftRight, GitBranch, Languages, ListTree, LogOut, Network, ShieldCheck } from 'lucide-react';
 import { Button } from './Button.js';
 import { AuthControls, ConnectionState } from './AuthControls.js';
@@ -100,6 +101,7 @@ async function signOut() {
   const response = await fetch('/api/auth/logout', { method: 'POST' });
   if (response.ok) {
     clearAgentDrafts();
+    clearOpenedScopes();
     window.location.reload();
   }
 }

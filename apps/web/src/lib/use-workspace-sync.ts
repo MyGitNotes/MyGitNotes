@@ -18,6 +18,7 @@ import { setWorkspaceNotebooks } from './workspace-links.js';
 import { setNotebookPreferences } from './notebook-preferences.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
 import { listLocalDrafts } from './storage.js';
+import { recordOpenedScopes } from './kept-drafts.js';
 import { draftScope, draftStore, notebookRepositories, repositoryOf, type WorkspaceRepository } from './workspace-repositories.js';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { strandedDrafts } from './file-change-scope.js';
@@ -156,6 +157,11 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
   /* eslint-enable react/use-memo */
 
   const scopes = available.map(repository => `${repository.id}\t${draftScope(repository)}\t${repository.alias}`).join('\n');
+  // The offline screen lists only the drafts of what this session opened. Nothing loaded yet leaves the earlier record alone.
+  useEffect(() => {
+    const opened = scopes.split('\n').filter(Boolean).map(line => line.split('\t')[1]);
+    if (opened.length > 0) recordOpenedScopes(localStorage, opened);
+  }, [scopes]);
   useEffect(() => {
     const refresh = (event: StorageEvent) => {
       for (const line of scopes.split('\n').filter(Boolean)) {

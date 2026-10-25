@@ -11,6 +11,7 @@ import { choosesRepository, chosenRepositorySource, cookieWorkspaceChoices, work
 import { createRemoteMCP } from './mcp.js';
 import { createRemoteCoreUpdateRouter } from './remote-core-update.js';
 import { createLocalApp } from './local-app.js';
+import { namesBuiltFile, webStatic } from './web-static.js';
 import { createAuth } from './auth.js';
 import type { EditionSources } from './edition-sources.js';
 import { type IdentityService, providerIdentity } from './identity.js';
@@ -487,9 +488,9 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
     app.use('/api', (req, res) => res.status(403).json({ error: 'This operation is available only in a local workspace.' }));
   }
   const web = services.webDist;
-  app.use(express.static(web, { redirect: false }));
+  app.use(webStatic(web));
   app.get('*', (req, res) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/raw-assets') || req.path.startsWith('/r2-assets')) return res.status(404).end();
+    if (req.path.startsWith('/api') || req.path.startsWith('/raw-assets') || req.path.startsWith('/r2-assets') || namesBuiltFile(req.path)) return res.status(404).end();
     res.sendFile(path.join(web, 'index.html'));
   });
   return app;

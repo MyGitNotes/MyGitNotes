@@ -1513,6 +1513,13 @@ export const zhTW: Record<TranslationKey, string> = {
   'auth.noGrants': '目前尚無持久化的 Agent 授權紀錄。',
   'auth.openingWorkspace': '正在開啟您的工作區…',
   'auth.retry': '重試',
+  'pwa.updateAvailable': '新版本可用',
+  'pwa.reload': '重新載入',
+  'pwa.later': '稍後',
+  'pwa.offlineTitle': '目前離線',
+  'pwa.offlineMessage': '連不上伺服器。恢復連線後即可開啟筆記；這個瀏覽器保留的草稿不會遺失。',
+  'pwa.offlineDrafts': '這個瀏覽器保留的草稿',
+  'pwa.offlineDraftCount': '這個瀏覽器保留的草稿：{count} 份。連上網路後再登入即可查看。',
 
   // MCP Tutorial Modal
   'mcpGuide.title': 'MCP 連接器設定指引',

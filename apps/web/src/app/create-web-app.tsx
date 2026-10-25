@@ -9,6 +9,8 @@ import { KeyboardRoot } from '../lib/keyboard/KeyboardDispatcher.js';
 import { WorkspaceGate } from '../components/WorkspaceSetup.js';
 import { ConnectionState } from '../components/AuthControls.js';
 import { PanelProvider } from '../lib/panel-context.js';
+import { UpdateNotice } from '../components/UpdateNotice.js';
+import { registerServiceWorker } from '../pwa/register.js';
 import '../index.css';
 import '../workspace.css';
 import '../ui-buttons.css';
@@ -37,18 +39,16 @@ const workspaceChunk = import('../App.js');
 workspaceChunk.catch(() => {/* The lazy boundary below reports a failed load when it renders. */});
 const AppContent = React.lazy(() => workspaceChunk.then(module => ({ default: module.AppContent })));
 
-/** The sign-in gate, then the workspace once its chunk arrives. */
+/** The sign-in gate, then the workspace once its chunk arrives; `WebApp` provides the language. */
 function App() {
   return (
-    <I18nProvider>
-      <WorkspaceGate>
-        <React.Suspense fallback={<ConnectionState loading error='' onRetry={() => {}} />}>
-          <KeyboardRoot>
-            <AppContent />
-          </KeyboardRoot>
-        </React.Suspense>
-      </WorkspaceGate>
-    </I18nProvider>
+    <WorkspaceGate>
+      <React.Suspense fallback={<ConnectionState loading error='' onRetry={() => {}} />}>
+        <KeyboardRoot>
+          <AppContent />
+        </KeyboardRoot>
+      </React.Suspense>
+    </WorkspaceGate>
   );
 }
 
@@ -65,26 +65,29 @@ export function WebApp({ features = [] }: WebAppOptions) {
   return (
     <QueryClientProvider client={queryClient}>
       <WebFeaturesProvider features={features}>
-        <NuqsAdapter>
-          <BrowserRouter>
-            <PanelProvider>
-              <Routes>
-                <Route path='/' element={<App />} />
-                <Route path='/notes' element={<App />} />
-                <Route path='/index.html' element={<App />} />
-                <Route path='/notebooks' element={<App />} />
-                <Route path='/notebooks/:notebook' element={<App />} />
-                <Route path='/notebooks/:notebook/folders/*' element={<App />} />
-                <Route path='/notebooks/:notebook/notes/*' element={<App />} />
-                <Route path='/assets' element={<App />} />
-                <Route path='/agent' element={<App />} />
-                <Route path='/settings' element={<App />} />
-                {features.flatMap(feature => feature.routes ?? []).map(route => <Route key={route.path} path={route.path} element={route.element} />)}
-                <Route path='*' element={<App />} />
-              </Routes>
-            </PanelProvider>
-          </BrowserRouter>
-        </NuqsAdapter>
+        <I18nProvider>
+          <UpdateNotice />
+          <NuqsAdapter>
+            <BrowserRouter>
+              <PanelProvider>
+                <Routes>
+                  <Route path='/' element={<App />} />
+                  <Route path='/notes' element={<App />} />
+                  <Route path='/index.html' element={<App />} />
+                  <Route path='/notebooks' element={<App />} />
+                  <Route path='/notebooks/:notebook' element={<App />} />
+                  <Route path='/notebooks/:notebook/folders/*' element={<App />} />
+                  <Route path='/notebooks/:notebook/notes/*' element={<App />} />
+                  <Route path='/assets' element={<App />} />
+                  <Route path='/agent' element={<App />} />
+                  <Route path='/settings' element={<App />} />
+                  {features.flatMap(feature => feature.routes ?? []).map(route => <Route key={route.path} path={route.path} element={route.element} />)}
+                  <Route path='*' element={<App />} />
+                </Routes>
+              </PanelProvider>
+            </BrowserRouter>
+          </NuqsAdapter>
+        </I18nProvider>
       </WebFeaturesProvider>
     </QueryClientProvider>
   );
@@ -92,6 +95,7 @@ export function WebApp({ features = [] }: WebAppOptions) {
 
 /** Renders the web app into `root`; an edition's entry calls it with its features. */
 export function createWebApp(root: HTMLElement, options: WebAppOptions = {}) {
+  registerServiceWorker();
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
       <WebApp {...options} />

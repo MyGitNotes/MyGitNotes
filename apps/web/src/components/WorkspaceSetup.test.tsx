@@ -205,3 +205,24 @@ it('keeps the push-access description for a person with a platform account', asy
   await render(createElement(WorkspaceGate, null, createElement('p', null, 'workspace')));
   expect(container.textContent).toContain('Pick a repository you can push to');
 });
+
+it('forgets which repositories the session opened when a visitor signs out of the repository choice', async () => {
+  localStorage.setItem('gh_notes_opened_scopes', JSON.stringify(['visitor/notes:main']));
+  const reload = vi.fn();
+  vi.stubGlobal('location', { reload, assign: vi.fn() });
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(input);
+    requests.push({ url, init });
+    if (url === '/api/auth/session') return json({ authenticated: true, login: 'visitor', repositoryChoice: true, workspace: null });
+    if (url.startsWith('/api/repositories/available')) return json(available);
+    if (url === '/api/auth/logout') return json({});
+    throw new Error(`Unexpected request ${url}`);
+  });
+  await render(createElement(WebFeaturesProvider, { features: [] }, createElement(WorkspaceGate, null, createElement('p', null, 'app'))));
+  await act(async () => button('Sign out')?.click());
+  await settle();
+  expect(requests.some(request => request.url === '/api/auth/logout')).toBe(true);
+  expect(localStorage.getItem('gh_notes_opened_scopes')).toBeNull();
+  expect(reload).toHaveBeenCalled();
+  vi.unstubAllGlobals();
+});

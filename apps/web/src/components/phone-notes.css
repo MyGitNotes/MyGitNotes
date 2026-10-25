@@ -58,7 +58,7 @@
   .notes-main .focus-row-check { margin: 0; }
 
   /* The sidebar drawer's first row on a phone: the assistant, the command palette and the account, which the page has no header for. */
-  .phone-drawer-utilities { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-height: 52px; padding: max(4px, env(safe-area-inset-top)) 8px 4px; border-bottom: 1px solid var(--color-line); background: var(--workspace-rail); }
+  .phone-drawer-utilities { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-height: 52px; padding: max(4px, var(--safe-top)) 8px 4px; border-bottom: 1px solid var(--color-line); background: var(--workspace-rail); }
 
   .app-shell[data-workspace-tab='notes'] .workspace-responsive-sidebar :is(.select-trigger, .ui-control, .ui-button, .ui-icon-button, button, summary) { min-height: 44px; }
 

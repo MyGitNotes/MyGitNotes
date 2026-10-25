@@ -40,3 +40,22 @@ it('serves the product checkout web build, not a stale build left in the content
   expect(response.status).toBe(200);
   expect(await response.text()).toBe('PRODUCT_BUILD');
 });
+
+it('serves the service worker file uncached so a deployment reaches installed apps, while built assets keep the default caching', async () => {
+  fs.mkdirSync(path.join(productRoot, 'apps/web/dist/assets'), { recursive: true });
+  fs.writeFileSync(path.join(productRoot, 'apps/web/dist/sw.js'), '// worker');
+  fs.writeFileSync(path.join(productRoot, 'apps/web/dist/assets/app-abc123.js'), '// app');
+  const worker = await fetch(`${base}/sw.js`);
+  expect(worker.status).toBe(200);
+  expect(worker.headers.get('cache-control')).toBe('no-cache');
+  expect((await fetch(`${base}/assets/app-abc123.js`)).headers.get('cache-control')).not.toBe('no-cache');
+});
+
+it('answers a missing worker file or built file with 404, never the app page, while app routes still open it', async () => {
+  for (const missing of ['/sw.js', '/assets/index-gone.js']) {
+    const response = await fetch(`${base}${missing}`);
+    expect(response.status, missing).toBe(404);
+    expect(await response.text(), missing).not.toBe('PRODUCT_BUILD');
+  }
+  for (const route of ['/assets', '/notebooks/work/notes/a.md']) expect(await fetch(`${base}${route}`).then(response => response.text()), route).toBe('PRODUCT_BUILD');
+});
