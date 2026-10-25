@@ -1,5 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Plus, X } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { cleanTag, noteTags, suggestTags, withoutTag, withTag } from './tag-edit.js';
 
@@ -11,6 +11,8 @@ interface NoteRowTagsProps {
   locked: boolean;
 }
 
+const COMPACT_BELOW = 200;
+
 /** The note's tags as chips in the note row: each removable, a field that adds one with autocomplete, and a +N that lists them all when the row is too narrow for every chip. */
 export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: NoteRowTagsProps) {
   const { t } = useTranslation();
@@ -18,6 +20,11 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
   const [input, setInput] = useState('');
   const [suggesting, setSuggesting] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+  // Too little room for the field beside the chips: it folds into a + button that opens it as a popover.
+  const [compact, setCompact] = useState(false);
+  const [adding, setAdding] = useState(false);
   const suggestions = useMemo(() => suggestTags(availableTags, tags, input), [availableTags, tags, input]);
   const list = useRef<HTMLUListElement>(null);
   const [fit, setFit] = useState(tags.length);
@@ -38,16 +45,37 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
     observer.observe(element);
     return () => observer.disconnect();
   }, [tags, expanded]);
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    // A width of 0 is an unlaid-out row (hidden, or a test DOM), not a narrow one.
+    const measure = () => {
+      const { width } = element.getBoundingClientRect();
+      setCompact(width > 0 && width < COMPACT_BELOW);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [locked, tags.length === 0]);
+  useEffect(() => {
+    if (adding) field.current?.focus();
+  }, [adding]);
+  const folded = compact && !adding;
   const hidden = expanded ? 0 : Math.max(0, tags.length - fit);
   const add = (raw: string) => {
     if (cleanTag(raw)) setMetadata(withTag(metadata, raw));
     setInput('');
     setSuggesting(false);
+    setAdding(false);
   };
   if (!tags.length && locked) return null;
   return (
     <div
+      ref={root}
       className='note-tags'
+      data-compact={compact || undefined}
       role='group'
       aria-label={t('editor.tags')}
       data-escape-local=''
@@ -56,13 +84,15 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
           setExpanded(false);
           setSuggesting(false);
+          setAdding(false);
         }
       }}
       onKeyDown={event => {
-        if (event.key === 'Escape' && (expanded || suggesting)) {
+        if (event.key === 'Escape' && (expanded || suggesting || adding)) {
           event.stopPropagation();
           setExpanded(false);
           setSuggesting(false);
+          setAdding(false);
         }
       }}
     >
@@ -85,9 +115,15 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
         ))}
       </ul>
       {tags.length > 0 && (hidden > 0 || expanded) && <button type='button' className='note-tag-more' aria-expanded={expanded} aria-label={t('editor.moreTags', { count: tags.length - fit })} onClick={() => setExpanded(open => !open)}>{expanded ? <X aria-hidden='true' /> : `+${hidden}`}</button>}
-      {!locked && (
-        <div className='note-tag-add'>
+      {!locked && folded && (
+        <button type='button' className='note-tag-add-button' aria-label={t('editor.addTagShort')} title={t('editor.addTagShort')} onClick={() => { setExpanded(false); setAdding(true); }}>
+          <Plus aria-hidden='true' />
+        </button>
+      )}
+      {!locked && !folded && (
+        <div className='note-tag-add' data-popover={compact || undefined}>
           <input
+            ref={field}
             type='text'
             className='note-tag-input'
             aria-label={t('editor.addTagShort')}

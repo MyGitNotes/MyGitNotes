@@ -6,10 +6,17 @@
 .note-title-hint { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; max-width: min(28rem, 90vw); padding: 4px 8px; overflow: hidden; border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-surface); box-shadow: var(--shadow-md); color: var(--color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .note-title-hint[data-invalid] { color: var(--color-danger); }
 .note-row-frontmatter { flex: none; margin-left: auto; }
+/* In a pane too narrow for one line the title and the frontmatter button keep the first; the status and tags take the second. */
+.note-row[data-narrow] { flex-wrap: wrap; row-gap: 2px; }
+.note-row[data-narrow] .note-title, .note-row[data-narrow] .note-title-edit { flex: 1 1 calc(100% - 40px); min-width: 4rem; max-width: none; }
+.note-row[data-narrow] .note-row-frontmatter { margin-left: 0; }
+.note-row[data-narrow] .note-status-select { order: 3; flex: 0 1 auto; max-width: 55%; }
+.note-row[data-narrow] .note-tags { order: 3; }
 .note-row .select-trigger.status-cell:not(:disabled):hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
 .note-row .status-cell:not(:disabled):hover .select-chevron { opacity: 1; }
 
-.note-tags { display: flex; flex: 1 1 0; align-items: center; gap: 4px; min-width: 0; }
+.note-tags { display: flex; flex: 1 1 0; align-items: center; gap: 4px; min-width: 3.5rem; }
+.note-tags[data-compact] .note-tag-list { flex: 1 1 0; }
 .note-tag-list { display: flex; flex: 0 1 auto; gap: 4px; min-width: 0; margin: 0; padding: 0; overflow: hidden; list-style: none; }
 .note-tag { display: inline-flex; flex: none; align-items: center; gap: 2px; height: 22px; padding: 0 4px 0 8px; border: 1px solid var(--color-line); border-radius: 999px; background: color-mix(in srgb, var(--color-text) 5%, transparent); color: var(--color-text); font-size: 11px; font-weight: 500; white-space: nowrap; }
 .note-tag[data-clipped] { visibility: hidden; }
@@ -21,7 +28,12 @@
 .note-tag-more:hover, .note-tag-more[aria-expanded='true'] { background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text); }
 .note-tag-more > svg { width: 12px; height: 12px; }
 .note-tags[data-expanded] .note-tag-list { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; flex-wrap: wrap; width: max-content; max-width: min(28rem, 100%); padding: 8px; overflow: visible; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-md); }
-.note-tag-add { position: relative; flex: 0 1 7rem; min-width: 2rem; }
+.note-tag-add { position: relative; flex: 0 1 7rem; min-width: 5rem; }
+.note-tag-add-button { display: inline-grid; flex: none; place-items: center; width: 24px; height: 22px; margin-left: auto; border-radius: 999px; color: var(--color-muted); }
+.note-tag-add-button:hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); color: var(--color-text); }
+.note-tag-add-button > svg { width: 14px; height: 14px; }
+.note-tag-add[data-popover] { position: absolute; z-index: 30; top: calc(100% + 4px); right: 0; flex: none; width: min(12rem, 100%); padding: 4px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-md); }
+.note-tag-add[data-popover] .note-tag-suggestions { top: calc(100% + 8px); }
 .note-tag-input { width: 100%; height: 24px; padding: 0 6px; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--color-text); font-size: 12px; outline: none; }
 .note-tag-input::placeholder { color: var(--color-muted); }
 .note-tag-input:hover, .note-tag-input:focus-visible { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
