@@ -190,7 +190,7 @@ describe('directives and MDX Layer 2 preprocessor', () => {
 
     it('renders :::handout document with variant', () => {
       const input = `:::handout{id="H-02" title="古老日記" variant="journal" keeper="在閣樓發現"}\n第一頁寫著秘密...\n:::`;
-      const output = transformDirectives(input, dummyRender);
+      const output = transformDirectives(input, dummyRender, undefined, 'zh-TW');
       expect(output).toContain('class="handout-block handout-variant-journal"');
       expect(output).toContain('H-02');
       expect(output).toContain('古老日記');
@@ -213,6 +213,73 @@ describe('directives and MDX Layer 2 preprocessor', () => {
         expect(transformDirectives(handout, dummyRender)).toContain('<p class="handout-keeper-kicker">Editor note</p>');
         vi.unstubAllGlobals();
         expect(transformDirectives(handout, dummyRender)).toContain('<p class="handout-keeper-kicker">Editor note</p>');
+      });
+    });
+
+    /** The words a directive adds around the note's own text follow the page's language, as the editor note label does. */
+    describe("the labels directives write around a note's text", () => {
+      const CJK = /[\u3000-\u9fff\uff00-\uffef]/;
+      const handout = ':::handout{id="H-02" variant="journal"}\nBody\n:::';
+      const coc = ':::coc-stat{role="Scholar" str=60 dex=70 san=50 hp=12 db="+1D4" build=1 move=8}\nNotes\n:::';
+      const quote = ':::parallel-quote{author="Plato" source="Republic"}\n:::original\nThe text\n:::\n:::translation\nIts translation\n:::\n:::';
+      const protectedContent = '<ProtectedContent>Secret</ProtectedContent>';
+      const render = (note: string, language?: 'en' | 'zh-TW') => transformMdxComponents(transformDirectives(note, dummyRender, undefined, language), language);
+
+      it("read in English, with no Chinese left, when the note's language is English", () => {
+        for (const note of [handout, coc, quote, protectedContent]) expect(render(note, 'en'), note).not.toMatch(CJK);
+      });
+
+      it('read in English where no language is named and no page is', () => {
+        for (const note of [handout, coc, quote, protectedContent]) expect(render(note), note).not.toMatch(CJK);
+      });
+
+      it('follow the page language where none is named', () => {
+        vi.stubGlobal('document', { documentElement: { lang: 'zh-TW' } });
+        try {
+          expect(render(quote)).toContain('展開原文');
+          expect(render(handout)).toContain('日誌');
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      });
+
+      it('name the handout, its variant, the default title and the stat block in English', () => {
+        const out = render(handout, 'en');
+        expect(out).toContain('<span class="handout-variant-label">Journal</span>');
+        expect(out).toContain('aria-label="Document H-02: Document title"');
+        const stats = render(coc, 'en');
+        expect(stats).toContain('<span class="coc-stat-label-name">Strength</span>');
+        expect(stats).toContain('<span class="coc-stat-label-name">Damage bonus</span>');
+        expect(stats).toContain('<h3 class="coc-stat-name">Character</h3>');
+        expect(stats).toContain('aria-label="Character: CoC stats"');
+        expect(stats).toContain('aria-label="Characteristics and status"');
+        expect(render(protectedContent, 'en')).toContain('Protected content');
+      });
+
+      it("name them in Traditional Chinese as before when the note's language is zh-TW", () => {
+        expect(render(handout, 'zh-TW')).toContain('<span class="handout-variant-label">日誌</span>');
+        expect(render(handout, 'zh-TW')).toContain('aria-label="文件 H-02：文件標題"');
+        const stats = render(coc, 'zh-TW');
+        expect(stats).toContain('<span class="coc-stat-label-name">力量</span>');
+        expect(stats).toContain('<span class="coc-stat-label-name">傷害加值</span>');
+        expect(stats).toContain('<h3 class="coc-stat-name">人物資料</h3>');
+        expect(stats).toContain('aria-label="人物資料的 CoC 數值"');
+        expect(stats).toContain('COC 7E｜人物數值');
+        expect(render(protectedContent, 'zh-TW')).toContain('受保護內容');
+      });
+
+      it("hand the parallel quote's toggle and block labels to the stylesheet as attributes, in the language", () => {
+        const english = render(quote, 'en');
+        expect(english).toContain('data-collapse-label="Hide original −"');
+        expect(english).toContain('data-expand-label="Show original +"');
+        expect(english).toContain('aria-label="Toggle original"');
+        expect(english).toContain('data-label="ORIGINAL"');
+        expect(english).toContain('data-label="TRANSLATION"');
+        const chinese = render(quote, 'zh-TW');
+        expect(chinese).toContain('data-collapse-label="收合原文 −"');
+        expect(chinese).toContain('data-expand-label="展開原文 +"');
+        expect(chinese).toContain('data-label="ORIGINAL / 原文"');
+        expect(chinese).toContain('data-label="TRANSLATION / 譯文"');
       });
     });
 

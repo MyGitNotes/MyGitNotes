@@ -78,7 +78,7 @@ export const HANDOUT_VARIANTS: Record<string, string> = { report: '文件', news
 
 const HANDOUT_VARIANT_KEYS: Record<string, TranslationKey> = { report: 'directive.editor.variant.report', newspaper: 'directive.editor.variant.newspaper', letter: 'directive.editor.variant.letter', journal: 'directive.editor.variant.journal', note: 'directive.editor.variant.note', scripture: 'directive.editor.variant.scripture' };
 
-/** HANDOUT_VARIANTS labels for the document-style editor control, in the given locale. Note content rendering keeps HANDOUT_VARIANTS as-is. */
+/** HANDOUT_VARIANTS labels for the document-style editor control, in the given locale; without one, the Chinese labels. The rendered handout takes its label from the note's language instead. */
 export function localizedHandoutVariants(t?: DirectiveTranslate): Record<string, string> {
   if (!t) return HANDOUT_VARIANTS;
   const result: Record<string, string> = {};
@@ -86,9 +86,17 @@ export function localizedHandoutVariants(t?: DirectiveTranslate): Record<string,
   return result;
 }
 
-const COC_CHARACTERISTICS = [{ key: 'str', code: 'STR', label: '力量' }, { key: 'con', code: 'CON', label: '體質' }, { key: 'siz', code: 'SIZ', label: '體型' }, { key: 'dex', code: 'DEX', label: '敏捷' }, { key: 'int', code: 'INT', label: '智力' }, { key: 'app', code: 'APP', label: '外貌' }, { key: 'pow', code: 'POW', label: '意志' }, { key: 'edu', code: 'EDU', label: '教育' }, { key: 'san', code: 'SAN', label: '理智' }, { key: 'hp', code: 'HP', label: '耐久' }];
+const COC_CHARACTERISTICS = ['str', 'con', 'siz', 'dex', 'int', 'app', 'pow', 'edu', 'san', 'hp'] as const;
 
-const COC_DERIVED = [{ key: 'db', code: 'DB', label: '傷害加值' }, { key: 'build', code: 'BUILD', label: '體格' }, { key: 'move', code: 'MOV', label: '移動率' }];
+const COC_DERIVED = ['db', 'build', 'move'] as const;
+
+/** The abbreviation a stat block prints beside a stat's name: its key, upper-cased, except the move rate's. */
+const cocCode = (key: string): string => key === 'move' ? 'MOV' : key.toUpperCase();
+
+/** A string of the table with its `{name}` placeholders filled in. */
+function fill(template: string, params: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => params[name] ?? '');
+}
 
 /**
  * Strips ESM import lines from MDX content (e.g. `import X from "@/components/..."`).
@@ -100,7 +108,8 @@ export function stripMdxImports(content: string): string {
 /**
  * Transforms JSX / MDX custom components into rendered HTML representations.
  */
-export function transformMdxComponents(content: string): string {
+export function transformMdxComponents(content: string, language?: NoteLanguage): string {
+  const strings = stringsFor(language);
   // 1. YouTubeEmbed components
   let result = content.replace(/<(?:YouTubeEmbed|YouTube)\s+([^>]*?)(?:\/>|>\s*<\/(?:YouTubeEmbed|YouTube)>)/g, (_, attrString: string) => {
     const attrs = parseDirectiveAttributes(attrString);
@@ -120,7 +129,7 @@ export function transformMdxComponents(content: string): string {
   // 2. ProtectedContent
   result = result.replace(/<ProtectedContent\b([^>]*)>([\s\S]*?)<\/ProtectedContent>/g, (_, attrString: string, body: string) => {
     const attrs = parseDirectiveAttributes(attrString);
-    const title = attrs.title || '受保護內容';
+    const title = attrs.title || strings['directive.protected.title'];
     return `<div class="mdx-protected-content" data-type="protected-content"><div class="mdx-protected-header">🔒 ${escapeHtml(title)}</div><div class="mdx-protected-body">${body.trim()}</div></div>`;
   });
 
@@ -245,36 +254,33 @@ export function renderContainerDirective(name: string, label: string | undefined
   }
 
   if (normName === 'coc-stat') {
-    const nameVal = attrs.name || label || '人物資料';
+    const nameVal = attrs.name || label || strings['directive.cocStat.defaultName'];
     const roleVal = attrs.role || '';
     const bodyHtml = renderMarkdown(bodyMarkdown);
 
-    const charCells = COC_CHARACTERISTICS.flatMap(({ key, code, label: charLabel }) => {
+    const cell = (key: (typeof COC_CHARACTERISTICS | typeof COC_DERIVED)[number]) => {
       const val = attrs[key]?.trim();
-      if (!val) return [];
-      return `<div class="coc-stat-cell" data-stat="${key}"><span class="coc-stat-label"><span class="coc-stat-label-name">${charLabel}</span><abbr class="coc-stat-code" title="${charLabel}">${code}</abbr></span><strong class="coc-stat-value">${escapeHtml(val)}</strong></div>`;
-    }).join('');
+      if (!val) return '';
+      const statLabel = escapeHtml(strings[`directive.cocStat.stat.${key}`]);
+      return `<div class="coc-stat-cell" data-stat="${key}"><span class="coc-stat-label"><span class="coc-stat-label-name">${statLabel}</span><abbr class="coc-stat-code" title="${statLabel}">${cocCode(key)}</abbr></span><strong class="coc-stat-value">${escapeHtml(val)}</strong></div>`;
+    };
+    const charCells = COC_CHARACTERISTICS.map(cell).join('');
+    const derivedCells = COC_DERIVED.map(cell).join('');
 
-    const derivedCells = COC_DERIVED.flatMap(({ key, code, label: derLabel }) => {
-      const val = attrs[key]?.trim();
-      if (!val) return [];
-      return `<div class="coc-stat-cell" data-stat="${key}"><span class="coc-stat-label"><span class="coc-stat-label-name">${derLabel}</span><abbr class="coc-stat-code" title="${derLabel}">${code}</abbr></span><strong class="coc-stat-value">${escapeHtml(val)}</strong></div>`;
-    }).join('');
-
-    return `<section class="coc-stat-block" data-type="coc-stat" aria-label="${escapeHtml(nameVal)}的 CoC 數值"><header class="coc-stat-header"><p class="coc-stat-kicker">COC 7E｜人物數值</p><h3 class="coc-stat-name">${escapeHtml(nameVal)}</h3>${roleVal ? `<p class="coc-stat-role">${escapeHtml(roleVal)}</p>` : ''}</header>${charCells ? `<div class="coc-stat-characteristics" role="group" aria-label="屬性與狀態">${charCells}</div>` : ''}${derivedCells ? `<div class="coc-stat-derived" role="group" aria-label="衍生數值">${derivedCells}</div>` : ''}${bodyHtml ? `<div class="coc-stat-body directive-content">${bodyHtml}</div>` : ''}</section>`;
+    return `<section class="coc-stat-block" data-type="coc-stat" aria-label="${escapeHtml(fill(strings['directive.cocStat.ariaLabel'], { name: nameVal }))}"><header class="coc-stat-header"><p class="coc-stat-kicker">${escapeHtml(strings['directive.cocStat.kicker'])}</p><h3 class="coc-stat-name">${escapeHtml(nameVal)}</h3>${roleVal ? `<p class="coc-stat-role">${escapeHtml(roleVal)}</p>` : ''}</header>${charCells ? `<div class="coc-stat-characteristics" role="group" aria-label="${escapeHtml(strings['directive.cocStat.characteristics'])}">${charCells}</div>` : ''}${derivedCells ? `<div class="coc-stat-derived" role="group" aria-label="${escapeHtml(strings['directive.cocStat.derived'])}">${derivedCells}</div>` : ''}${bodyHtml ? `<div class="coc-stat-body directive-content">${bodyHtml}</div>` : ''}</section>`;
   }
 
   if (normName === 'handout') {
     const id = attrs.id || 'DOC-01';
-    const title = attrs.title || label || '文件標題';
+    const title = attrs.title || label || strings['directive.handout.title'];
     const variant = attrs.variant || 'report';
     const keeper = attrs.keeper || '';
-    const variantLabel = HANDOUT_VARIANTS[variant] || '文件';
+    const variantLabel = strings[Object.hasOwn(HANDOUT_VARIANT_KEYS, variant) ? HANDOUT_VARIANT_KEYS[variant] : HANDOUT_VARIANT_KEYS.report];
     const bodyHtml = renderMarkdown(bodyMarkdown);
 
     const keeperNote = keeper ? `<aside class="handout-keeper-note"><p class="handout-keeper-kicker">${escapeHtml(strings['directive.handout.keeperLabel'])}</p><p class="handout-keeper-text">${escapeHtml(keeper)}</p></aside>` : '';
 
-    return `<section class="handout-block handout-variant-${escapeHtml(variant)}" id="${escapeHtml(id)}" data-type="handout" data-variant="${escapeHtml(variant)}" aria-label="文件 ${escapeHtml(id)}：${escapeHtml(title)}">${keeperNote}<div class="handout-reference"><span class="handout-code">${escapeHtml(id)}</span><span class="handout-variant-label">${escapeHtml(variantLabel)}</span></div><article class="handout-document"><header class="handout-document-header"><h4 class="handout-title">${escapeHtml(title)}</h4></header><div class="handout-body directive-content">${bodyHtml}</div></article></section>`;
+    return `<section class="handout-block handout-variant-${escapeHtml(variant)}" id="${escapeHtml(id)}" data-type="handout" data-variant="${escapeHtml(variant)}" aria-label="${escapeHtml(fill(strings['directive.handout.ariaLabel'], { id, title }))}">${keeperNote}<div class="handout-reference"><span class="handout-code">${escapeHtml(id)}</span><span class="handout-variant-label">${escapeHtml(variantLabel)}</span></div><article class="handout-document"><header class="handout-document-header"><h4 class="handout-title">${escapeHtml(title)}</h4></header><div class="handout-body directive-content">${bodyHtml}</div></article></section>`;
   }
 
   if (normName === 'parallel-quote') {
@@ -290,12 +296,12 @@ export function renderContainerDirective(name: string, label: string | undefined
 
   if (normName === 'original') {
     const bodyHtml = renderMarkdown(bodyMarkdown);
-    return `<details class="parallel-quote-disclosure" open><summary class="parallel-quote-toggle" aria-label="切換原文"></summary><div class="parallel-quote-text parallel-quote-original">${bodyHtml}</div></details>`;
+    return `<details class="parallel-quote-disclosure" open><summary class="parallel-quote-toggle" aria-label="${escapeHtml(strings['directive.parallelQuote.toggle'])}" data-collapse-label="${escapeHtml(strings['directive.parallelQuote.collapse'])}" data-expand-label="${escapeHtml(strings['directive.parallelQuote.expand'])}"></summary><div class="parallel-quote-text parallel-quote-original" data-label="${escapeHtml(strings['directive.parallelQuote.originalLabel'])}">${bodyHtml}</div></details>`;
   }
 
   if (normName === 'translation') {
     const bodyHtml = renderMarkdown(bodyMarkdown);
-    return `<div class="parallel-quote-text parallel-quote-translation">${bodyHtml}</div>`;
+    return `<div class="parallel-quote-text parallel-quote-translation" data-label="${escapeHtml(strings['directive.parallelQuote.translationLabel'])}">${bodyHtml}</div>`;
   }
 
   if (['github-repo', 'x-post', 'reddit-post', 'embed-card'].includes(normName)) {

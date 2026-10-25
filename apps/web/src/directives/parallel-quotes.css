@@ -7,19 +7,19 @@
 
 .prose-custom .parallel-quote-toggle::-webkit-details-marker { display: none; }
 
-.prose-custom .parallel-quote-disclosure[open] > .parallel-quote-toggle::after { content: '收合原文 −'; }
+.prose-custom .parallel-quote-disclosure[open] > .parallel-quote-toggle::after { content: attr(data-collapse-label); }
 
-.prose-custom .parallel-quote-disclosure:not([open]) > .parallel-quote-toggle::after { content: '展開原文 +'; }
+.prose-custom .parallel-quote-disclosure:not([open]) > .parallel-quote-toggle::after { content: attr(data-expand-label); }
 
 .prose-custom .parallel-quote-disclosure:not([open]) > .parallel-quote-original { display: none; }
 
 .prose-custom .parallel-quote-text::before { display: block; margin-bottom: 0.5rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.65rem; font-weight: 600; letter-spacing: 0.16em; color: var(--color-muted); }
 
-.prose-custom .parallel-quote-original::before { content: 'ORIGINAL / 原文'; }
+.prose-custom .parallel-quote-original::before { content: attr(data-label); }
 
 .prose-custom .parallel-quote-translation { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
 
-.prose-custom .parallel-quote-translation::before { content: 'TRANSLATION / 譯文'; }
+.prose-custom .parallel-quote-translation::before { content: attr(data-label); }
 
 .prose-custom .parallel-quote-attribution { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border); display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.8rem; color: var(--color-muted); }
 
