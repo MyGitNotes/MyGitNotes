@@ -58,7 +58,8 @@ it("turns the slot into the note's editor in place, focused at the start, with D
   const editor = within(frame('a')).getByLabelText('Note content');
   expect(editor).toHaveAttribute('data-frame', 'inline');
   expect(editor).toHaveAttribute('data-claim', 'true');
-  expect(within(frame('a')).getByRole('group', { name: 'Alpha, retitled' })).toHaveAttribute('data-layout', 'fill');
+  // The heading takes the editor's title once the editor reports it, as the E10 test below waits for too.
+  expect(await within(frame('a')).findByRole('group', { name: 'Alpha, retitled' })).toHaveAttribute('data-layout', 'fill');
   await waitFor(() => expect(editor).toHaveFocus());
   expect((editor as HTMLTextAreaElement).selectionStart).toBe(0);
   expect(within(frame('a')).queryByText('Alpha reads here')).toBeNull();
