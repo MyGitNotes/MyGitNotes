@@ -1,6 +1,8 @@
 /** A note edit this browser keeps in localStorage, found without knowing which repository it belongs to. */
 export interface KeptDraft {
-  /** Scope (repository id and branch) and path, which tell two notes at one path apart. */
+  /** The repository and branch the draft belongs to (`draftScope`). */
+  scope: string;
+  /** Scope and path, which tell two notes at one path apart. */
   key: string;
   path: string;
   title: string;
@@ -37,7 +39,7 @@ export function listKeptDrafts(storage: Storage): KeptDraft[] {
       for (const [path, entry] of Object.entries(stored)) {
         if (!isRecord(entry) || entry.deleted === true) continue;
         const note = isRecord(entry.note) ? entry.note : {};
-        drafts.set(`${scope}\0${path}`, { key: `${scope}\0${path}`, path, title: text(note.title) || baseName(path) });
+        drafts.set(`${scope}\0${path}`, { scope, key: `${scope}\0${path}`, path, title: text(note.title) || baseName(path) });
       }
     } else if (key.startsWith(EDITOR_PREFIX)) {
       const draft = read(storage, key);
@@ -46,8 +48,47 @@ export function listKeptDrafts(storage: Storage): KeptDraft[] {
       if (!key.endsWith(`:${draft.path}`) || scope.endsWith(':conflict')) continue;
       const id = `${scope}\0${draft.path}`;
       const metadata = isRecord(draft.metadata) ? draft.metadata : {};
-      if (!drafts.has(id)) drafts.set(id, { key: id, path: draft.path, title: text(metadata.title) || baseName(draft.path) });
+      if (!drafts.has(id)) drafts.set(id, { scope, key: id, path: draft.path, title: text(metadata.title) || baseName(draft.path) });
     }
   }
   return [...drafts.values()].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/** Where the scopes the signed-in session last opened are recorded, so the offline screen shows only that session's drafts. */
+export const OPENED_SCOPES_KEY = 'gh_notes_opened_scopes';
+
+/** Records the draft scopes of the repositories the session opened, replacing the earlier record. */
+export function recordOpenedScopes(storage: Pick<Storage, 'setItem' | 'getItem'>, scopes: readonly string[]): void {
+  const value = JSON.stringify([...new Set(scopes)].sort((a, b) => a.localeCompare(b)));
+  try {
+    if (storage.getItem(OPENED_SCOPES_KEY) !== value) storage.setItem(OPENED_SCOPES_KEY, value);
+  } catch { /* Without the record the offline screen shows a count only. */ }
+}
+
+/** Forgets the record, as sign-out does: the next person on this browser sees no title of the drafts left behind. */
+export function clearOpenedScopes(storage: Pick<Storage, 'removeItem'> = localStorage): void {
+  try {
+    storage.removeItem(OPENED_SCOPES_KEY);
+  } catch { /* Storage that is unavailable holds no record to clear. */ }
+}
+
+function openedScopes(storage: Storage): string[] | null {
+  const stored = read(storage, OPENED_SCOPES_KEY);
+  return Array.isArray(stored) && stored.every(scope => typeof scope === 'string') && stored.length > 0 ? stored : null;
+}
+
+/** What the offline screen may show: the drafts of the repositories this session opened, and how many drafts the browser keeps in all. */
+export interface OfflineDrafts {
+  listed: KeptDraft[];
+  total: number;
+}
+
+/**
+ * The drafts of the scopes the session last opened, listed by title. Drafts of any other account or repository in this browser,
+ * or all of them when no session is recorded (signed out), are only counted: their titles are not shown to whoever holds the screen.
+ */
+export function offlineDrafts(storage: Storage): OfflineDrafts {
+  const all = listKeptDrafts(storage);
+  const scopes = openedScopes(storage);
+  return { listed: scopes ? all.filter(draft => scopes.includes(draft.scope)) : [], total: all.length };
 }

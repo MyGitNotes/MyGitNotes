@@ -1519,6 +1519,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'pwa.offlineTitle': '目前離線',
   'pwa.offlineMessage': '連不上伺服器。恢復連線後即可開啟筆記；這個瀏覽器保留的草稿不會遺失。',
   'pwa.offlineDrafts': '這個瀏覽器保留的草稿',
+  'pwa.offlineDraftCount': '這個瀏覽器保留的草稿：{count} 份。連上網路後再登入即可查看。',
 
   // MCP Tutorial Modal
   'mcpGuide.title': 'MCP 連接器設定指引',

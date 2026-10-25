@@ -26,8 +26,9 @@ afterEach(() => {
 
 const mount = (error: string, onRetry = vi.fn()) => act(async () => root.render(createElement(I18nProvider, null, createElement(ConnectionState, { loading: false, error, onRetry }))));
 
-it('says the app is offline, lists kept drafts, and retries by itself when the connection returns', async () => {
+it('says the app is offline, lists the drafts of what this session opened, and retries by itself when the connection returns', async () => {
   localStorage.setItem('gh_notes_working:repo-1:main', JSON.stringify({ 'notes/a.md': { note: { title: 'Meeting notes' }, base: null } }));
+  localStorage.setItem('gh_notes_opened_scopes', JSON.stringify(['repo-1:main']));
   const onRetry = vi.fn();
   await mount('Failed to fetch', onRetry);
   expect(container.textContent).toContain('You are offline');
@@ -37,6 +38,16 @@ it('says the app is offline, lists kept drafts, and retries by itself when the c
 
   await act(async () => void window.dispatchEvent(new Event('online')));
   expect(onRetry).toHaveBeenCalledTimes(1);
+});
+
+it('shows only a count of kept drafts, not their titles, when no session is on record', async () => {
+  localStorage.setItem('gh_notes_working:repo-1:main', JSON.stringify({ 'notes/a.md': { note: { title: 'Meeting notes' }, base: null } }));
+  localStorage.setItem('gh_notes_draft:repo-9:main:notes/b.md', JSON.stringify({ path: 'notes/b.md', content: 'x', metadata: { title: 'Someone else' }, savedAt: 1 }));
+  await mount('Failed to fetch');
+  expect(container.textContent).toContain('You are offline');
+  expect(container.textContent).toContain('Drafts kept in this browser: 2');
+  expect(container.textContent).not.toContain('Meeting notes');
+  expect(container.textContent).not.toContain('Someone else');
 });
 
 it('says offline whenever the browser reports no connection, whatever the failure was', async () => {

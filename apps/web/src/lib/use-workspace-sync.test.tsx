@@ -37,6 +37,15 @@ it('shows the workspace as soon as it is known, filling in folders when they arr
   expect(result.current.foldersLoading).toBe(false);
 });
 
+it('records the repositories it opened, so the offline screen lists only their drafts', async () => {
+  localStorage.removeItem('gh_notes_opened_scopes');
+  const wrapper = ({ children }: { children: ReactNode; }) => createElement(QueryClientProvider, { client: new QueryClient() }, children);
+  const { result } = renderHook(() => useWorkspaceSync({}), { wrapper });
+  expect(localStorage.getItem('gh_notes_opened_scopes')).toBeNull();
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  await waitFor(() => expect(JSON.parse(localStorage.getItem('gh_notes_opened_scopes') ?? '[]')).toEqual(['github:me/code@main:main', 'local:/notes:main']));
+});
+
 it('selects the notebook an old bare-id route stands for while the redirect replaces the URL', async () => {
   const wrapper = ({ children }: { children: ReactNode; }) => createElement(QueryClientProvider, { client: new QueryClient() }, children);
   const { result } = renderHook(() => useWorkspaceSync({ routeNotebook: 'a' }), { wrapper });

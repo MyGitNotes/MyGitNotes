@@ -3,6 +3,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AuthControls } from './AuthControls.js';
+import { I18nProvider } from '../lib/i18n/index.js';
 
 let root: Root;
 let container: HTMLElement;
@@ -38,4 +39,20 @@ it('stacks outlined sign-in buttons with the official provider marks', async () 
     expect(link.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
   }
   expect(google.parentElement!.className).toContain('flex-col');
+});
+
+it('forgets which repositories the session opened when the person signs out', async () => {
+  localStorage.setItem('gh_notes_opened_scopes', JSON.stringify(['repo-1:main']));
+  localStorage.setItem('github-notes:language', 'en');
+  const reload = vi.fn();
+  vi.stubGlobal('location', { reload });
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async input => new Response(JSON.stringify(String(input) === '/api/auth/session' ? { authenticated: true, login: 'visitor' } : {})));
+  await act(async () => root.render(createElement(I18nProvider, null, createElement(AuthControls))));
+  await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+  const signOut = [...container.querySelectorAll('button')].find(candidate => candidate.textContent?.includes('Sign out'))!;
+  await act(async () => signOut.click());
+  await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+  expect(localStorage.getItem('gh_notes_opened_scopes')).toBeNull();
+  expect(reload).toHaveBeenCalled();
+  vi.unstubAllGlobals();
 });
