@@ -24,10 +24,17 @@ export function NoteTitleEdit({ title, path, locked, onRename }: NoteTitleEditPr
   if (!onRename) return <div className='note-title font-semibold text-fg text-sm truncate' title={path}>{label}</div>;
   if (draft === null) {
     return (
-      <button type='button' className='note-title title-rename font-semibold text-fg text-sm' disabled={locked || pending !== null} title={`${t('files.rename')} · ${path}`} aria-label={t('editor.editTitle', { title: label })} onClick={() => {
-        cancelled.current = false;
-        setDraft(shown);
-      }}>
+      <button
+        type='button'
+        className='note-title title-rename font-semibold text-fg text-sm'
+        disabled={locked || pending !== null}
+        title={`${t('files.rename')} · ${path}`}
+        aria-label={t('editor.editTitle', { title: label })}
+        onClick={() => {
+          cancelled.current = false;
+          setDraft(shown);
+        }}
+      >
         {label}
       </button>
     );

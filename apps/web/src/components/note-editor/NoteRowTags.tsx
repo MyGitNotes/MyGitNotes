@@ -26,8 +26,9 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
     const element = list.current;
     if (!element || expanded) return;
     const measure = () => {
-      const items = [...element.children] as HTMLElement[];
-      const count = items.findIndex(item => item.offsetLeft + item.offsetWidth > element.clientWidth + 1);
+      const items = [...element.children];
+      const right = element.getBoundingClientRect().right;
+      const count = items.findIndex(item => item.getBoundingClientRect().right > right + 1);
       setFit(count === -1 ? items.length : count);
     };
     measure();
@@ -70,18 +71,20 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
           <li key={tag} className='note-tag' data-clipped={!expanded && index >= fit ? true : undefined}>
             <span>{tag}</span>
             {!locked && (
-              <button type='button' className='note-tag-remove' aria-label={t('editor.removeTag', { tag })} title={t('editor.removeTag', { tag })} onClick={() => setMetadata(withoutTag(metadata, tag))}>
+              <button
+                type='button'
+                className='note-tag-remove'
+                aria-label={t('editor.removeTag', { tag })}
+                title={t('editor.removeTag', { tag })}
+                onClick={() => setMetadata(withoutTag(metadata, tag))}
+              >
                 <X aria-hidden='true' />
               </button>
             )}
           </li>
         ))}
       </ul>
-      {tags.length > 0 && (hidden > 0 || expanded) && (
-        <button type='button' className='note-tag-more' aria-expanded={expanded} aria-label={t('editor.moreTags', { count: tags.length - fit })} onClick={() => setExpanded(open => !open)}>
-          {expanded ? <X aria-hidden='true' /> : `+${hidden}`}
-        </button>
-      )}
+      {tags.length > 0 && (hidden > 0 || expanded) && <button type='button' className='note-tag-more' aria-expanded={expanded} aria-label={t('editor.moreTags', { count: tags.length - fit })} onClick={() => setExpanded(open => !open)}>{expanded ? <X aria-hidden='true' /> : `+${hidden}`}</button>}
       {!locked && (
         <div className='note-tag-add'>
           <input
@@ -104,13 +107,7 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
               }
             }}
           />
-          {suggesting && suggestions.length > 0 && (
-            <div className='note-tag-suggestions' role='listbox' aria-label={t('editor.suggestions')}>
-              {suggestions.slice(0, 8).map(tag => (
-                <button key={tag} type='button' role='option' aria-selected={false} onMouseDown={event => event.preventDefault()} onClick={() => add(tag)}>{tag}</button>
-              ))}
-            </div>
-          )}
+          {suggesting && suggestions.length > 0 && <div className='note-tag-suggestions' role='listbox' aria-label={t('editor.suggestions')}>{suggestions.slice(0, 8).map(tag => <button key={tag} type='button' role='option' aria-selected={false} onMouseDown={event => event.preventDefault()} onClick={() => add(tag)}>{tag}</button>)}</div>}
         </div>
       )}
     </div>

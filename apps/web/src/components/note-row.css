@@ -6,6 +6,8 @@
 .note-title-hint { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; max-width: min(28rem, 90vw); padding: 4px 8px; overflow: hidden; border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-surface); box-shadow: var(--shadow-md); color: var(--color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .note-title-hint[data-invalid] { color: var(--color-danger); }
 .note-row-frontmatter { flex: none; margin-left: auto; }
+.note-row .select-trigger.status-cell:not(:disabled):hover { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.note-row .status-cell:not(:disabled):hover .select-chevron { opacity: 1; }
 
 .note-tags { display: flex; flex: 1 1 0; align-items: center; gap: 4px; min-width: 0; }
 .note-tag-list { display: flex; flex: 0 1 auto; gap: 4px; min-width: 0; margin: 0; padding: 0; overflow: hidden; list-style: none; }
@@ -30,11 +32,8 @@
 
 /* A zoom's toolbar is one row: back button, note row, then the actions; on a phone the actions take the line below. */
 .note-toolbar[data-actions='row'] { gap: 8px; }
-@media (max-width: 767px) {
-  .note-toolbar[data-actions='row'] { flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .note-toolbar[data-actions='row'] > .note-controls { flex: 1 0 100%; }
-  .note-toolbar[data-actions='row'] > .note-row { flex: 1 1 0; }
-}
+.note-toolbar[data-actions='row'] > .note-controls { padding-left: 12px; border-left: 1px solid var(--color-line); }
+@media (max-width: 767px) { .note-toolbar[data-actions='row'] { flex-direction: row; flex-wrap: wrap; align-items: flex-start; } .note-toolbar[data-actions='row'] > .note-controls { flex: 1 0 100%; padding-left: 0; border-left: 0; } .note-toolbar[data-actions='row'] > .note-row { flex: 1 1 0; } }
 
 /* A Focus pane keeps the actions in its tab bar, ahead of the pane's own buttons; the note row is the toolbar left under it. */
 .focus-pane-note-actions { display: flex; flex: none; align-items: center; }
@@ -52,12 +51,7 @@
 .focus-pane { container: focus-pane / inline-size; }
 .note-editor[data-frame='pane'] { --note-inset: 16px; }
 .note-editor[data-frame='pane'] .note-toolbar, .note-editor[data-frame='pane'] .note-footer { padding-inline: var(--note-inset); }
-@media (min-width: 768px) {
-  @container focus-pane (max-width: 719px) {
-    .note-editor[data-frame='pane'] .cm-scroller { padding: 0 !important; background-color: var(--color-surface) !important; }
-    .note-editor[data-frame='pane'] .cm-card-background { background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
-    .note-editor[data-frame='pane'] .cm-content { max-width: none !important; padding-top: 20px !important; }
-    .note-editor[data-frame='pane'] .cm-line { padding-inline: var(--note-inset) !important; }
-    .note-editor[data-frame='pane'] .live-md-quote { padding-left: calc(var(--note-inset) - 2px + (var(--quote-depth, 1) - 1) * 16px) !important; }
-  }
-}
+@media (min-width: 768px) { @container focus-pane (max-width: 719px) { .note-editor[data-frame='pane'] .cm-scroller { padding: 0 !important; background-color: var(--color-surface) !important; } .note-editor[data-frame='pane'] .cm-card-background { background: transparent !important; box-shadow: none !important; border-radius: 0 !important; } .note-editor[data-frame='pane'] .cm-content { max-width: none !important; padding-top: 20px !important; } .note-editor[data-frame='pane'] .cm-line { padding-inline: var(--note-inset) !important; } .note-editor[data-frame='pane'] .live-md-quote { padding-left: calc(var(--note-inset) - 2px + (var(--quote-depth, 1) - 1) * 16px) !important; } } }
+
+/* On a phone the tags take a line of their own, all chips shown, with 44px touch targets. */
+@media (max-width: 767px) { .note-row .select-trigger.status-cell { min-height: 44px; } .note-row-frontmatter, .note-row > .note-edit-toggle { order: 2; } .note-tags { order: 3; flex: 1 1 100%; flex-wrap: wrap; } .note-tag-list { flex-wrap: wrap; overflow: visible; } .note-tag[data-clipped] { visibility: visible; } .note-tag-more { display: none; } .note-tag { height: 32px; } .note-tag-remove { width: 44px; height: 44px; margin: -6px -8px -6px -14px; } .note-tag-remove > svg { width: 12px; height: 12px; } .note-tag-add { flex: 1 1 6rem; min-width: 6rem; } .note-tag-input { height: 44px; font-size: 16px; } .note-tag-suggestions button { min-height: 44px; } }

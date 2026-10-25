@@ -1,4 +1,5 @@
 import { Braces } from 'lucide-react';
+import type { ReactNode } from 'react';
 import '../note-row.css';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -16,10 +17,12 @@ interface NoteRowProps {
   availableTags: string[];
   readOnly: boolean;
   onRename?: (title: string) => Promise<void> | void;
+  /** Shown after the frontmatter button; zoom puts a phone's Edit button here. */
+  trailing?: ReactNode;
 }
 
 /** The note's common metadata in one row: its title (renamed in place), status and tags, and the button that opens the full frontmatter. */
-export function NoteRow({ path, session, docPanel, statuses, availableTags, readOnly, onRename }: NoteRowProps) {
+export function NoteRow({ path, session, docPanel, statuses, availableTags, readOnly, onRename, trailing }: NoteRowProps) {
   const { t } = useTranslation();
   return (
     <div className='note-row' role='group' aria-label={t('editor.noteRow')}>
@@ -29,6 +32,7 @@ export function NoteRow({ path, session, docPanel, statuses, availableTags, read
       <button type='button' className='note-row-frontmatter ui-icon-button toolbar-icon-button' aria-pressed={docPanel.showFrontmatter} aria-label={t('editor.frontmatter')} title={t('editor.frontmatter')} onClick={() => docPanel.setNotePanel(docPanel.showFrontmatter ? null : 'frontmatter')}>
         <Braces aria-hidden='true' />
       </button>
+      {trailing}
     </div>
   );
 }
