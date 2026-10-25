@@ -79,6 +79,8 @@ export class AnnotateController {
   private editing: { key: string; draft: string; } | undefined;
   private showResolved = false;
   private drag: Drag | undefined;
+  /** True while the figure's DOM is replaced: the browser blurs a focused form that is removed, which is no decision of the writer's. */
+  private redrawing = false;
   private figure!: HTMLElement;
   private toolbarHost!: HTMLElement;
 
@@ -234,7 +236,9 @@ export class AnnotateController {
     const height = this.figure.offsetHeight;
     if (height) this.figure.style.minHeight = `${height}px`;
     // renderNote ends in DOMPurify, so these nodes are the sanitised figure.
+    this.redrawing = true;
     this.figure.innerHTML = html;
+    this.redrawing = false;
     const fresh = this.figure.querySelector('.ann-stage img');
     if (image && fresh && image.getAttribute('src') === fresh.getAttribute('src')) fresh.replaceWith(image);
     requestAnimationFrame(() => {
@@ -468,6 +472,7 @@ export class AnnotateController {
       }
     });
     field.addEventListener('blur', event => {
+      if (this.redrawing) return;
       if (event.relatedTarget instanceof Node && form.contains(event.relatedTarget)) return;
       finish(handlers.blur);
     });
