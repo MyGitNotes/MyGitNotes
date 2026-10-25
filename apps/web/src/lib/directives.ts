@@ -267,7 +267,7 @@ export function renderContainerDirective(name: string, label: string | undefined
     const variantLabel = HANDOUT_VARIANTS[variant] || '文件';
     const bodyHtml = renderMarkdown(bodyMarkdown);
 
-    const keeperNote = keeper ? `<aside class="handout-keeper-note"><p class="handout-keeper-kicker">編輯備註</p><p class="handout-keeper-text">${escapeHtml(keeper)}</p></aside>` : '';
+    const keeperNote = keeper ? `<aside class="handout-keeper-note"><p class="handout-keeper-kicker">${escapeHtml(pageStrings()['directive.handout.keeperLabel'])}</p><p class="handout-keeper-text">${escapeHtml(keeper)}</p></aside>` : '';
 
     return `<section class="handout-block handout-variant-${escapeHtml(variant)}" id="${escapeHtml(id)}" data-type="handout" data-variant="${escapeHtml(variant)}" aria-label="文件 ${escapeHtml(id)}：${escapeHtml(title)}">${keeperNote}<div class="handout-reference"><span class="handout-code">${escapeHtml(id)}</span><span class="handout-variant-label">${escapeHtml(variantLabel)}</span></div><article class="handout-document"><header class="handout-document-header"><h4 class="handout-title">${escapeHtml(title)}</h4></header><div class="handout-body directive-content">${bodyHtml}</div></article></section>`;
   }

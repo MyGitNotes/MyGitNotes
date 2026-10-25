@@ -1925,6 +1925,7 @@ export const en = {
   'directive.comment.body': 'Enter your supplementary note here',
   'directive.handout.title': 'Document title',
   'directive.handout.keeper': 'Editor note',
+  'directive.handout.keeperLabel': 'Editor note',
   'directive.handout.body': 'Enter your document content here.',
   'directive.cocStat.name': 'Character name',
   'directive.cocStat.body': 'Enter character notes here.',

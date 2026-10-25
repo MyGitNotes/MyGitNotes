@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { blockInsertion, DIRECTIVE_TEMPLATES, findDirectiveBlocks, localizedDirectiveLabel, localizedDirectiveSnippet, parseDirectiveModel, updateDirectiveType, updateDirectiveVariant } from './directive-editing.js';
 import { localizedHandoutVariants, parseDirectiveAttributes, parseDirectiveTitle, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
 import { en, type TranslationKey } from './i18n/en.js';
@@ -195,8 +195,25 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       expect(output).toContain('H-02');
       expect(output).toContain('古老日記');
       expect(output).toContain('日誌');
-      expect(output).toContain('編輯備註');
       expect(output).not.toContain('守密人');
+    });
+
+    describe('the handout editor note label', () => {
+      const handout = `:::handout{id="H-02" title="Diary" keeper="Found in the attic"}\nBody\n:::`;
+      const pageLanguage = (lang: string) => vi.stubGlobal('document', { documentElement: { lang } });
+      afterEach(() => vi.unstubAllGlobals());
+
+      it('reads 編輯備註 on a zh-TW page', () => {
+        pageLanguage('zh-TW');
+        expect(transformDirectives(handout, dummyRender)).toContain('<p class="handout-keeper-kicker">編輯備註</p>');
+      });
+
+      it('reads Editor note on an English page and where no page is, so English pages show no Chinese there', () => {
+        pageLanguage('en');
+        expect(transformDirectives(handout, dummyRender)).toContain('<p class="handout-keeper-kicker">Editor note</p>');
+        vi.unstubAllGlobals();
+        expect(transformDirectives(handout, dummyRender)).toContain('<p class="handout-keeper-kicker">Editor note</p>');
+      });
     });
 
     it('handles nested container directives like ::::grid wrapping :::cell', () => {

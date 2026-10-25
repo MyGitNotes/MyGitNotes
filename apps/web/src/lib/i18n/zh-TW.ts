@@ -1926,6 +1926,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'directive.comment.body': '在此輸入補充註記',
   'directive.handout.title': '文件標題',
   'directive.handout.keeper': '編輯備註',
+  'directive.handout.keeperLabel': '編輯備註',
   'directive.handout.body': '在此輸入文件內容。',
   'directive.cocStat.name': '人物名稱',
   'directive.cocStat.body': '在此輸入人物備註。',
