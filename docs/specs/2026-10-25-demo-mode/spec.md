@@ -14,7 +14,7 @@ A deployment can let visitors who are not signed in try the app on public conten
 
 ## Web app
 
-- `/demo` and `/demo/<scenario>` open the demo: the router's basename is `/demo`, so navigation, reloads and shared links stay there. `/:scenario` is resolved after the workspace loads to the notebook whose local id is the scenario or starts with `<scenario>-`; an unknown scenario opens the default notebook and the banner says so.
+- `/demo` and `/demo/<scenario>` open the demo: the router's basename is `/demo`, so navigation, reloads and shared links stay there. The app's own pages (`APP_ROUTE_PATHS` in `lib/routes.ts`: Notes, Files, Graph, Settings, Agents and the former Screen addresses) keep their addresses under `/demo`; a first segment in `APP_ROOT_SEGMENTS` (also `index`) is never a scenario. `/:scenario` is resolved after the workspace loads to the notebook whose local id is the scenario or starts with `<scenario>-`; an unknown scenario opens the default notebook and the banner says so.
 - `WorkspaceGate` writes the cookie before the session probe, then shows "The demo is not available" (no `demo` in the probe), "You are signed in" (a session exists), "The demo needs cookies" (no demo repository came back, with a retry), or the workspace with no sign-in screen. Outside the demo, a workspace answer that lists a `demo` repository is a session that ended in this tab and is reported as such.
 - Changing the language in the demo rewrites the cookie and opens the same scenario again.
 - A `DemoBanner` above the workspace says that edits and commits stay in this browser and are cleared 24 hours after the first change (with the time left once there is one), offers Reset demo and a call to action (`WebFeature.demoCallToAction`, default "Sign in to keep your own notes").
@@ -26,7 +26,7 @@ A deployment can let visitors who are not signed in try the app on public conten
 | Local in the demo | Not available in the demo |
 | --- | --- |
 | Note content, title of a never-committed draft, status, tags, metadata; new notes; delete to trash; Kanban and list status changes | File moves, renames and new folders; asset upload, move and delete; the R2 panel |
-| Focus layouts and other workspace documents, as document drafts | Bulk tag rename, merge and delete; bulk moves; folder manager; outline import |
+| Focus layouts and other workspace documents, as document drafts | Bulk tag rename, merge and delete; bulk moves; folder manager; outline import; Import legacy bookmarks |
 | Working changes listed in Changes and committed; commit with a version name; restore from history | Manifest editing; Settings beyond Preferences (theme, language, editor); the agent panel; AI polish; publish rows; Gists |
 
 Actions the demo does not offer are hidden, not shown disabled (the app's pattern for a repository that cannot change files). The Info tab does not call a demo repository read-only (`readOnlyReason`). A demo page whose workspace answer holds no demo repository (the browser signed in elsewhere) shows the signed-in notice instead of the person's own repositories, and `commitGroup` refuses any non-demo repository there, so "Commit in this browser" and a remote commit never meet.
