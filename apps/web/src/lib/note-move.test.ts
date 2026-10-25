@@ -52,4 +52,6 @@ it('keeps the file name when a new title only changes its letter case or Unicode
   expect(planRelocation('notes/a/Ideas.md', renamedPath('notes/a/Ideas.md', 'Ideas!'), undefined)).toEqual({ kind: 'none' });
   expect(planRelocation('notes/a/cafe\u0301.md', 'notes/a/caf\u00e9.md', undefined)).toEqual({ kind: 'none' });
   expect(planRelocation('notes/a/Ideas.md', 'notes/a/plans.md', undefined)).toEqual({ kind: 'file', destination: 'notes/a/plans.md' });
+  // A move into a folder whose name differs only in case is the server's to refuse, with its message.
+  expect(planRelocation('notes/a/Box/x.md', 'notes/a/box/x.md', undefined)).toEqual({ kind: 'file', destination: 'notes/a/box/x.md' });
 });

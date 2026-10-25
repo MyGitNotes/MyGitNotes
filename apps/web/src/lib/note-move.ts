@@ -25,8 +25,10 @@ export function planNoteMove(path: string, root: string, folder: string | null, 
 
 /** Plans putting the note at `path` at `destination`, given its remote draft if any. */
 export function planRelocation(path: string, destination: string, draft: WorkingNote | undefined): NoteMovePlan {
-  // A new name that only folds to the same one (letter case, Unicode form) is this file on macOS and Windows: the note keeps its name.
-  if (destination === path || foldName(destination) === foldName(path)) return { kind: 'none' };
+  // A new file name that only folds to the same one (letter case, Unicode form) is this file on macOS and Windows: the note keeps
+  // its name. Only the name folds: a move into a folder that differs in case goes on, and the server explains its refusal.
+  const folder = (file: string) => file.slice(0, file.lastIndexOf('/'));
+  if (destination === path || folder(destination) === folder(path) && foldName(destination) === foldName(path)) return { kind: 'none' };
   return draft && !draft.base ? { kind: 'draft', destination, draft } : { kind: 'file', destination };
 }
 

@@ -226,6 +226,17 @@ describe('useNoteMove', () => {
     expect(order).toEqual(['save notes/idea.md', 'files changed']);
   });
 
+  it('retitles a note whose file name has capitals where it lies, when the new name differs only in case, and keeps it selected', async () => {
+    const upper = { ...note, path: 'notes/Ideas.md', title: 'Ideas', content: '# Ideas' };
+    api.readNote.mockResolvedValue(upper);
+    const { params, rename, order } = setup({ remote: false });
+    await rename('Ideas!', upper);
+    expect(files.mutateFile).not.toHaveBeenCalled();
+    expect(params.saveNote).toHaveBeenCalledWith(expect.objectContaining({ path: 'notes/Ideas.md', content: '# Ideas!' }));
+    expect(params.onFilesChanged).toHaveBeenLastCalledWith(expect.objectContaining({ selectedPath: 'notes/Ideas.md', pathMap: {} }), { background: true });
+    expect(order).toEqual(['save notes/Ideas.md', 'files changed']);
+  });
+
   it('lets a compilation apply its own new name, and only moves its file', async () => {
     files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: {}, deletedPaths: [] });
     const applyTitle = vi.fn();
