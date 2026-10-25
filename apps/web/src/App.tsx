@@ -328,6 +328,11 @@ export const AppContent: React.FC = () => {
   // Searching from another page opens Notes, then focuses the toolbar search once it has rendered.
   const noteSearchPending = useRef(false);
   const focusNoteSearch = () => {
+    // A collapsed browse region's toolbar has no search: reopen it, then focus the field once it is back.
+    if (browseDock?.collapsed) {
+      noteSearchPending.current = true;
+      return browseDock.toggle();
+    }
     if (noteSearch.current) return noteSearch.current.focus();
     if (activeTab === 'notes' && !phoneNoteScreen) return;
     noteSearchPending.current = true;
@@ -342,7 +347,7 @@ export const AppContent: React.FC = () => {
     }
     noteSearchPending.current = false;
     noteSearch.current.focus();
-  }, [activeTab, phoneNoteScreen, setFocusNarrowView]);
+  }, [activeTab, phoneNoteScreen, browseCollapsed, setFocusNarrowView]);
   useAppCommands({ t, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch, noteEditorOpen, pageCommands: focusCommands });
 
   // With a Focus displayed, the browse region docks beside it (flat, folder) or above it (kanban).
@@ -630,7 +635,7 @@ export const AppContent: React.FC = () => {
                             : (
                               <PageToolbar>
                                 {dockToggle}
-                                <NoteToolbar searchRef={noteSearch} onImportLegacy={() => setLegacyImportOpen(true)} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined} readOnly={!canWrite} viewMode={viewMode} setViewMode={setViewMode} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} showHidden={showHidden} onShowHiddenChange={value => changeFilters({ showHidden: value })} onNewNote={() => void createNote()} onNewOutline={() => void createNote({ kind: 'outline' })} onNewCompilation={() => void createUntitledCompilation()} templates={config?.notebooks.find(nb => nb.id === selectedNotebookId)?.templates} onNewFromTemplate={templateId => void createNote({ templateId })} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} focusControls={<FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} />} />
+                                <NoteToolbar searchRef={browseCollapsed ? undefined : noteSearch} browseCollapsed={browseCollapsed} utilities={browseCollapsed ? <HeaderUtilities activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={noteEditorOpen || isCommitOpen} onOpenCommands={() => setShortcutMode('palette')} /> : undefined} onImportLegacy={() => setLegacyImportOpen(true)} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined} readOnly={!canWrite} viewMode={viewMode} setViewMode={setViewMode} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} showHidden={showHidden} onShowHiddenChange={value => changeFilters({ showHidden: value })} onNewNote={() => void createNote()} onNewOutline={() => void createNote({ kind: 'outline' })} onNewCompilation={() => void createUntitledCompilation()} templates={config?.notebooks.find(nb => nb.id === selectedNotebookId)?.templates} onNewFromTemplate={templateId => void createNote({ templateId })} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} focusControls={<FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} />} />
                               </PageToolbar>
                             )}
                           {noteFocus.layout

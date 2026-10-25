@@ -105,3 +105,14 @@ it('names the current order on the icon-only sort menu and offers Group by folde
   fireEvent.click(toggle);
   expect(changes).toEqual([true]);
 });
+
+it('keeps only the Focus controls, New and the header buttons once the browse region is collapsed', () => {
+  render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, browseCollapsed: true, groupByFolder: { value: false, onChange: () => {} }, focusControls: createElement('button', { type: 'button' }, 'Focus'), utilities: createElement('button', { type: 'button' }, 'Commands') })));
+  expect(screen.queryByRole('search')).toBeNull();
+  expect(screen.queryByRole('combobox')).toBeNull();
+  for (const name of ['筆記本與篩選', '顯示隱藏筆記', '依資料夾分組']) expect(screen.queryByRole('button', { name })).toBeNull();
+  expect(screen.queryByRole('button', { pressed: true })).toBeNull();
+  expect(screen.getByRole('button', { name: '新增筆記' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Focus' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Commands' })).toBeInTheDocument();
+});
