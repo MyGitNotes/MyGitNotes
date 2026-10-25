@@ -13,7 +13,7 @@ import { ArgumentMapError, renderArgumentMap } from './render.js';
 // Error messages lose the blog's "Argument map: " prefix, which the app's error box says in its heading.
 const marked = new Marked();
 const inline = (field: string) => marked.parseInline(field, { gfm: true }) as string;
-const render = (source: string) => renderArgumentMap(source.endsWith('\n') ? source : `${source}\n`, { renderInline: inline });
+const render = (source: string) => renderArgumentMap(source.endsWith('\n') ? source : `${source}\n`, { renderInline: inline, language: 'zh-TW' });
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.md`, import.meta.url), 'utf8');
 const count = (html: string, pattern: RegExp) => (html.match(pattern) ?? []).length;
 
@@ -286,7 +286,7 @@ describe('transformDirectives', () => {
 
 describe('sanitised output (renderNote under DOMPurify)', () => {
   const { window } = new JSDOM('');
-  const renderer = createNoteRenderer({ parser: new window.DOMParser() as unknown as DOMParser, purify: createDOMPurify(window as unknown as Window & typeof globalThis), origin: 'https://app.example' });
+  const renderer = createNoteRenderer({ parser: new window.DOMParser() as unknown as DOMParser, purify: createDOMPurify(window as unknown as Window & typeof globalThis), origin: 'https://app.example', language: 'zh-TW' });
   const dom = (markdown: string) => new JSDOM(`<body>${renderer.renderNote(markdown, 'n.md')}</body>`).window.document;
 
   it('keeps the figure and its id', () => {
@@ -355,5 +355,47 @@ describe('sanitised output (renderNote under DOMPurify)', () => {
     expect(names.size).toBe(2);
     const ids = [...document.querySelectorAll('[id]')].map(element => element.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('renderArgumentMap in English', () => {
+  const english = (source: string) => renderArgumentMap(`${source}\n`, { renderInline: inline, language: 'en' });
+  const FULL = `::::argument-map{title="T" note="N" source="X"}
+- [C] Conclusion｜1
+
+:::reason{to="C" id="R1" status="accepted"}
+- [P] Premise｜2
+- (implicit) Hidden｜3
+:::
+
+:::objection{to="P" id="O1" status="rejected"}
+- Rebuttal｜4
+:::
+
+:::objection{to="R1" id="U1" status="open"}
+- Undercutter｜5
+:::
+::::`;
+
+  it('words the relations, statuses, counts and tabs in English', () => {
+    const html = english(FULL);
+    expect(html).toContain('<span class="am-badge">Supports</span>');
+    expect(html).toContain('<span class="am-badge">Rebuts</span>');
+    expect(html).toContain('<span class="am-badge">Undercuts</span><span class="am-target">inference R1</span>');
+    expect(html).toContain('✓ Accepted');
+    expect(html).toContain('✗ Rejected');
+    expect(html).toContain('? Undecided');
+    expect(html).toContain('statements collapsed');
+    expect(html).toContain('Argument map</label>');
+    expect(html).toContain('Standard form</label>');
+    expect(html).toContain('Main conclusion');
+    expect(html).toContain('Therefore');
+    expect(html).toContain('Rebuts (');
+    expect(html).toContain('Undercuts the inference R1:');
+    expect(html).toContain('<p>Note: N</p><p>Source: X</p>');
+  });
+
+  it('leaves no Chinese wording of its own', () => {
+    expect(english(FULL)).not.toMatch(/[\u4e00-\u9fff]/);
   });
 });

@@ -5,7 +5,8 @@
  * used; the app styles the figures from its theme tokens (`directives/infographics.css`).
  */
 
-import { escapeHtml } from '../directives.js';
+import { escapeHtml, fill, type NoteLanguage, stringsFor } from '../directives.js';
+import type { TranslationKey } from '../i18n/en.js';
 import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicKind, type InfographicRow, isStrongField, mapBase, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
 
 /** A whole-figure error the blog fails its build on; the caller shows it in the figure's place. */
@@ -19,6 +20,8 @@ export class InfographicError extends Error {
 export interface InfographicContext {
   /** Inline Markdown of the note's own dialect to HTML (emphasis, links, code, math), without a wrapping paragraph. */
   renderInline: (markdown: string) => string;
+  /** The note's language, for the figure's own words; without one, the page's. */
+  language?: NoteLanguage;
 }
 
 /** More ticks than a figure can show come from a range far wider than its data; drawing them would hang the page. */
@@ -91,6 +94,8 @@ function firstNumber(field: string | undefined): number | undefined {
 }
 
 interface Renderer {
+  /** The figure's own words, in the note's language. */
+  strings: Record<TranslationKey, string>;
   inline: (field: string | undefined) => string;
   /** A field that is only a number or range gets the directive's unit. */
   withUnit: (field: string | undefined, unit?: string) => string;
@@ -99,6 +104,7 @@ interface Renderer {
 function renderer(context: InfographicContext): Renderer {
   const inline = (field: string | undefined): string => field?.trim() ? context.renderInline(field) : '';
   return {
+    strings: stringsFor(context.language),
     inline,
     withUnit: (field, unit) => {
       const raw = plain(field).trim();
@@ -111,7 +117,7 @@ function renderer(context: InfographicContext): Renderer {
 // ---------------------------------------------------------------------------
 // Figure frame
 
-function frame(kind: InfographicKind, attrs: Record<string, string>, body: string, palette: string | undefined): string {
+function frame(kind: InfographicKind, attrs: Record<string, string>, body: string, palette: string | undefined, r: Renderer): string {
   const title = attrOf(attrs, 'title');
   const subtitle = attrOf(attrs, 'subtitle');
   const note = attrOf(attrs, 'note');
@@ -122,8 +128,8 @@ function frame(kind: InfographicKind, attrs: Record<string, string>, body: strin
   children.push(tag('div', { class: 'ig-body' }, body));
   if (note || source) {
     const caption: string[] = [];
-    if (note) caption.push(tag('p', {}, text(`說明：${note}`)));
-    if (source) caption.push(tag('p', {}, text(`資料來源：${source}`)));
+    if (note) caption.push(tag('p', {}, text(`${r.strings['infographic.render.caption.note']}${note}`)));
+    if (source) caption.push(tag('p', {}, text(`${r.strings['infographic.render.caption.source']}${source}`)));
     children.push(tag('figcaption', { class: 'ig-caption' }, caption));
   }
   return tag('figure', { class: ['ig-figure', `ig-${kind}`], 'data-palette': palette }, children);
@@ -171,19 +177,19 @@ function barPanel(rows: BarRow[], scale: number, unit: string | undefined, refer
     return tag('li', { class: 'ig-bar-row' }, row);
   });
   const panel = [tag('ul', { class: 'ig-bars' }, children)];
-  if (reference) panel.push(tag('p', { class: 'ig-bar-reference-legend' }, text(`虛線：${reference.label}（${formatNumber(reference.value)}${unit ? ` ${unit}` : ''}）`)));
+  if (reference) panel.push(tag('p', { class: 'ig-bar-reference-legend' }, text(fill(r.strings['infographic.render.barReference.legend'], { label: reference.label, value: `${formatNumber(reference.value)}${unit ? ` ${unit}` : ''}` }))));
   return panel.join('');
 }
 
-function referenceOf(attrs: Record<string, string>, fallback?: Record<string, string>): Reference | undefined {
+function referenceOf(r: Renderer, attrs: Record<string, string>, fallback?: Record<string, string>): Reference | undefined {
   const value = numberAttr(attrs, 'reference') ?? (fallback && numberAttr(fallback, 'reference'));
   if (value === undefined) return undefined;
-  return { value, label: attrOf(attrs, 'reference-label') ?? (fallback && attrOf(fallback, 'reference-label')) ?? '基準' };
+  return { value, label: attrOf(attrs, 'reference-label') ?? (fallback && attrOf(fallback, 'reference-label')) ?? r.strings['infographic.render.barReference.default'] };
 }
 
 function bars(block: InfographicBlock, id: string, r: Renderer): string {
   const unit = attrOf(block.attrs, 'unit');
-  const groups = block.children.length ? block.children.map(scenario => ({ label: attrOf(scenario.attrs, 'label') ?? attrOf(scenario.attrs, 'title') ?? '', note: attrOf(scenario.attrs, 'note'), rows: barRows(scenario.rows), reference: referenceOf(scenario.attrs, block.attrs) })) : [{ label: '', note: undefined, rows: barRows(block.rows), reference: referenceOf(block.attrs) }];
+  const groups = block.children.length ? block.children.map(scenario => ({ label: attrOf(scenario.attrs, 'label') ?? attrOf(scenario.attrs, 'title') ?? '', note: attrOf(scenario.attrs, 'note'), rows: barRows(scenario.rows), reference: referenceOf(r, scenario.attrs, block.attrs) })) : [{ label: '', note: undefined, rows: barRows(block.rows), reference: referenceOf(r, block.attrs) }];
 
   if (groups.length > MAX_SCENARIOS) fail(`bars takes at most ${MAX_SCENARIOS} scenarios`);
   const largest = Math.max(1, ...groups.flatMap(group => [...group.rows.flatMap(row => row.values), group.reference?.value ?? 0]));
@@ -220,7 +226,7 @@ function parts(block: InfographicBlock, r: Renderer): string {
   const segments = rows.map(({ item, value }, index) => tag('span', { class: ['ig-part', `ig-part-${index % CATEGORIES}`, ...highlightClass(item.highlight)], style: `--ig-i:${index};flex-grow:${value}` }));
   const legend = rows.map(({ item, value }, index) => {
     const [label, display, note] = item.fields;
-    const share = total ? `（${formatNumber(value / total * 100)}%）` : '';
+    const share = total ? fill(r.strings['infographic.render.parts.share'], { percent: formatNumber(value / total * 100) }) : '';
     const children = [tag('span', { class: ['ig-swatch', `ig-part-${index % CATEGORIES}`, ...highlightClass(item.highlight)] }), tag('span', { class: 'ig-legend-label' }, r.inline(label)), tag('span', { class: 'ig-legend-value' }, `${r.withUnit(display, unit)}${text(share)}`)];
     if (note?.trim()) children.push(tag('span', { class: 'ig-legend-note' }, r.inline(note)));
     return tag('li', { class: 'ig-legend-item' }, children);
@@ -241,7 +247,7 @@ function statusBoard(block: InfographicBlock, r: Renderer): string {
       if (!(STATUS_VALUES as readonly string[]).includes(status)) fail(`unknown status-board status "${status}"`);
       const items = itemsOf(group.rows);
       return tag('section', { class: ['ig-status-group', `is-${status}`] }, [
-        tag('p', { class: 'ig-status-heading' }, [text(attrOf(group.attrs, 'title') ?? ''), tag('span', { class: 'ig-status-count' }, text(`${items.length} 項`))]),
+        tag('p', { class: 'ig-status-heading' }, [text(attrOf(group.attrs, 'title') ?? ''), tag('span', { class: 'ig-status-count' }, text(fill(r.strings['infographic.render.status.count'], { count: String(items.length) })))]),
         tag(
           'ul',
           { class: 'ig-status-list' },
@@ -437,7 +443,7 @@ function line(block: InfographicBlock, r: Renderer): string {
   const svg = tag('svg', { class: 'ig-line-svg', viewBox: '0 0 100 100', 'aria-hidden': 'true', preserveAspectRatio: 'none' }, [...grid, ...paths]);
   const plot = tag('div', { class: 'ig-plot' }, [svg, ...overlay]);
 
-  const table = tag('details', { class: 'ig-data' }, [tag('summary', {}, text('數據')), tag('table', {}, [tag('thead', {}, tag('tr', {}, [tag('th', {}, text('系列')), tag('th', {}, text('時間')), tag('th', {}, text(unit ? `數值（${unit}）` : '數值'))])), tag('tbody', {}, series.flatMap(s => s.points.map(point => tag('tr', {}, [tag('td', {}, text(s.title)), tag('td', {}, r.inline(point.item.fields[0])), tag('td', {}, text(formatNumber(point.y)))]))))])]);
+  const table = tag('details', { class: 'ig-data' }, [tag('summary', {}, text(r.strings['infographic.render.line.data'])), tag('table', {}, [tag('thead', {}, tag('tr', {}, [tag('th', {}, text(r.strings['infographic.render.line.series'])), tag('th', {}, text(r.strings['infographic.render.line.time'])), tag('th', {}, text(unit ? fill(r.strings['infographic.render.line.valueUnit'], { unit }) : r.strings['infographic.render.line.value']))])), tag('tbody', {}, series.flatMap(s => s.points.map(point => tag('tr', {}, [tag('td', {}, text(s.title)), tag('td', {}, r.inline(point.item.fields[0])), tag('td', {}, text(formatNumber(point.y)))]))))])]);
 
   // Narrow screens drop the in-plot labels, which collide, for this legend.
   const legend = tag(
@@ -532,7 +538,7 @@ export function renderInfographic(source: string, context: InfographicContext): 
   const body = block.kind === 'key-numbers' ? keyNumbers(block, r) : block.kind === 'bars' ? bars(block, id, r) : block.kind === 'parts' ? parts(block, r) : block.kind === 'line' ? line(block, r) : block.kind === 'timeline' ? timeline(block, r) : block.kind === 'status-board' ? statusBoard(block, r) : map(block, r);
   // Only the data palettes draw differently; the blog's section palettes give the theme default.
   const dataPalette = palette && (['categorical', 'diverging', 'sequential'] as readonly string[]).includes(palette) ? palette : undefined;
-  return frame(block.kind, block.attrs, body, dataPalette);
+  return frame(block.kind, block.attrs, body, dataPalette, r);
 }
 
 /**

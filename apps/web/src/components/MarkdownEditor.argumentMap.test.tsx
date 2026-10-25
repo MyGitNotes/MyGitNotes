@@ -43,10 +43,10 @@ describe('the Insert argument map button', () => {
   });
 
   it('has a template in each language that renders without an error', () => {
-    for (const strings of [en, zhTW]) {
-      const html = renderArgumentMap(strings['argumentMap.template'], { renderInline: markdown => markdown });
+    for (const [strings, language, undercut] of [[en, 'en', 'Undercuts'], [zhTW, 'zh-TW', '削弱']] as const) {
+      const html = renderArgumentMap(strings['argumentMap.template'], { renderInline: markdown => markdown, language });
       expect(html).toContain('am-figure');
-      expect(html).toContain('<span class="am-badge">削弱</span>');
+      expect(html).toContain(`<span class="am-badge">${undercut}</span>`);
     }
   });
 });

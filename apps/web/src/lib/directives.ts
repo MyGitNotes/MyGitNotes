@@ -94,7 +94,7 @@ const COC_DERIVED = ['db', 'build', 'move'] as const;
 const cocCode = (key: string): string => key === 'move' ? 'MOV' : key.toUpperCase();
 
 /** A string of the table with its `{name}` placeholders filled in. */
-function fill(template: string, params: Record<string, string>): string {
+export function fill(template: string, params: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, name: string) => params[name] ?? '');
 }
 
@@ -351,7 +351,7 @@ function pageStrings(): Record<TranslationKey, string> {
 }
 
 /** The strings of a language a caller names; without one, the page's. */
-function stringsFor(language: NoteLanguage | undefined): Record<TranslationKey, string> {
+export function stringsFor(language: NoteLanguage | undefined): Record<TranslationKey, string> {
   if (language === undefined) return pageStrings();
   return language === 'zh-TW' ? zhTW : en;
 }
@@ -374,8 +374,8 @@ function renderFigureBlock(blockLines: readonly string[], draw: (source: string)
 }
 
 /** The figure for an infographic block's lines, or the error box in its place. */
-function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string, strings: Record<TranslationKey, string>): string {
-  return renderFigureBlock(blockLines, source => renderInfographic(source, { renderInline }), (error, source) => renderInfographicError(error instanceof InfographicError ? error : new InfographicError(error.message), source, strings['infographic.render.error']));
+function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string, strings: Record<TranslationKey, string>, language: NoteLanguage | undefined): string {
+  return renderFigureBlock(blockLines, source => renderInfographic(source, { renderInline, language }), (error, source) => renderInfographicError(error instanceof InfographicError ? error : new InfographicError(error.message), source, strings['infographic.render.error']));
 }
 
 /** The figure for an annotate block's lines, or the error box in its place. */
@@ -384,8 +384,8 @@ function renderAnnotateBlock(blockLines: readonly string[], renderMarkdown: (md:
 }
 
 /** The figure for an argument-map block's lines, or the error box in its place. */
-function renderArgumentMapBlock(blockLines: readonly string[], renderInline: (md: string) => string, strings: Record<TranslationKey, string>): string {
-  return renderFigureBlock(blockLines, source => renderArgumentMap(source, { renderInline }), (error, source) => renderArgumentMapError(error instanceof ArgumentMapError ? error : new ArgumentMapError(error.message), source, strings['argumentMap.render.error']));
+function renderArgumentMapBlock(blockLines: readonly string[], renderInline: (md: string) => string, strings: Record<TranslationKey, string>, language: NoteLanguage | undefined): string {
+  return renderFigureBlock(blockLines, source => renderArgumentMap(source, { renderInline, language }), (error, source) => renderArgumentMapError(error instanceof ArgumentMapError ? error : new ArgumentMapError(error.message), source, strings['argumentMap.render.error']));
 }
 
 /**
@@ -406,7 +406,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
       const end = infographicEnd(lines, i, open.fenceLength);
       if (end !== undefined) {
         const block = lines.slice(i, end + 1);
-        const figure = isAnnotateName(open.name) ? renderAnnotateBlock(block, md => balance(renderMarkdown(md)), strings) : isArgumentMapName(open.name) ? renderArgumentMapBlock(block, renderInline, strings) : renderInfographicBlock(block, renderInline, strings);
+        const figure = isAnnotateName(open.name) ? renderAnnotateBlock(block, md => balance(renderMarkdown(md)), strings) : isArgumentMapName(open.name) ? renderArgumentMapBlock(block, renderInline, strings, language) : renderInfographicBlock(block, renderInline, strings, language);
         // Blank lines keep the figure's HTML block apart from the Markdown around it.
         if (stack.length > 0) stack[stack.length - 1].lines.push(figure);
         else output.push(figure);

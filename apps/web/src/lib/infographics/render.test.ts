@@ -10,7 +10,7 @@ import { InfographicError, renderInfographic } from './render.js';
 // The cases of the blog's scripts/test-infographics.mjs (wayne930242/knowledge-base at a17b573e), adapted: the same
 // documents and the same assertions on the figure HTML, here from renderInfographic instead of the remark plugin.
 const marked = new Marked();
-const render = (source: string) => renderInfographic(source.endsWith('\n') ? source : `${source}\n`, { renderInline: field => marked.parseInline(field, { gfm: true }) as string });
+const render = (source: string) => renderInfographic(source.endsWith('\n') ? source : `${source}\n`, { renderInline: field => marked.parseInline(field, { gfm: true }) as string, language: 'zh-TW' });
 const count = (html: string, pattern: RegExp) => (html.match(pattern) ?? []).length;
 
 const BARS = `::::bars{unit="萬人次" reference="4280" reference-label="現有容量"}
@@ -351,7 +351,7 @@ describe('transformDirectives with infographics', () => {
 
 describe('sanitised output (renderNote under DOMPurify)', () => {
   const { window } = new JSDOM('');
-  const renderer = createNoteRenderer({ parser: new window.DOMParser() as unknown as DOMParser, purify: createDOMPurify(window as unknown as Window & typeof globalThis), origin: 'https://app.example' });
+  const renderer = createNoteRenderer({ parser: new window.DOMParser() as unknown as DOMParser, purify: createDOMPurify(window as unknown as Window & typeof globalThis), origin: 'https://app.example', language: 'zh-TW' });
   const dom = (markdown: string) => new JSDOM(`<body>${renderer.renderNote(markdown, 'n.md')}</body>`).window.document;
 
   it('keeps a figure written inside a blockquote inside the quote, between the quoted text', () => {
@@ -428,5 +428,28 @@ describe('sanitised output (renderNote under DOMPurify)', () => {
     const document = dom(`${BARS}\n\n${BARS}`);
     const names = new Set([...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')].map(radio => radio.name));
     expect(names.size).toBe(2);
+  });
+});
+
+describe('renderInfographic in English', () => {
+  const english = (source: string) => renderInfographic(`${source}\n`, { renderInline: field => marked.parseInline(field, { gfm: true }) as string, language: 'en' });
+
+  it('words the caption, the bar reference, the part share and the status count in English', () => {
+    expect(english(`:::parts{note="n" source="s"}\n- A｜1\n- B｜3\n:::`)).toContain('<figcaption class="ig-caption"><p>Note: n</p><p>Source: s</p></figcaption>');
+    expect(english(`:::parts\n- A｜1\n- B｜3\n:::`)).toContain(' (25%)');
+    const bars = english(`::::bars{unit="k" reference="4"}\n- A｜2\n::::`);
+    expect(bars).toContain('Dashed line: Baseline (4 k)');
+    expect(english(`::::status-board\n:::group{status="done" title="G"}\n- x｜y\n:::\n::::`)).toContain('1 item(s)');
+  });
+
+  it("words the line figure's data table in English", () => {
+    const html = english(`::::line{unit="u"}\n:::series{title="a"}\n- 2019｜1\n- 2022｜2\n:::\n::::`);
+    expect(html).toContain('<summary>Data</summary>');
+    expect(html).toContain('<th>Series</th><th>Time</th><th>Value (u)</th>');
+  });
+
+  it('leaves no Chinese wording of its own', () => {
+    const html = english(`::::bars{unit="k" reference="4"}\n- A｜2\n::::`);
+    expect(html).not.toMatch(/[\u4e00-\u9fff]/);
   });
 });
