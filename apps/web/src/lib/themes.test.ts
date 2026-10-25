@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { PALETTE_FAMILIES, type PaletteMode } from './palettes.js';
-import { applyTheme, getThemeChoice, resolveThemeChoice, setThemeChoice, statusTokens, subscribeThemeChoice, themeTokens } from './themes.js';
+import { applyTheme, getThemeChoice, resolveThemeChoice, setThemeChoice, statusTokens, subscribeThemeChoice, syncThemeColor, themeTokens } from './themes.js';
 
 const luminance = (hex: string) => {
   const [r, g, b] = hex.slice(1, 7).match(/.{2}/g)!.map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
@@ -11,6 +11,35 @@ const contrast = (a: string, b: string) => {
   const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (high + .05) / (low + .05);
 };
+
+describe('browser theme colour', () => {
+  const metas = () => [...document.head.querySelectorAll('meta[name="theme-color"]')];
+  const shipped = () => {
+    document.head.innerHTML = '<meta name="theme-color" content="#111111" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#222222" media="(prefers-color-scheme: dark)">';
+  };
+
+  it('replaces the two first-paint tags by one that follows the active theme, whatever the system prefers', () => {
+    shipped();
+    applyTheme({ familyId: 'gruvbox', mode: 'dark' });
+    const [meta, ...extra] = metas();
+    expect(extra).toEqual([]);
+    expect(meta.getAttribute('media')).toBeNull();
+    expect(meta.getAttribute('content')).toBe(themeTokens(PALETTE_FAMILIES.find(family => family.id === 'gruvbox')!.variants.dark)['--color-bg']);
+  });
+
+  it('follows a later change of theme', () => {
+    shipped();
+    applyTheme({ familyId: 'gruvbox', mode: 'dark' });
+    applyTheme({ familyId: 'gruvbox', mode: 'light' });
+    expect(metas().map(meta => meta.getAttribute('content'))).toEqual([themeTokens(PALETTE_FAMILIES.find(family => family.id === 'gruvbox')!.variants.light)['--color-bg']]);
+  });
+
+  it('adds the tag when the page has none', () => {
+    document.head.innerHTML = '';
+    syncThemeColor('#abcdef');
+    expect(metas().map(meta => meta.getAttribute('content'))).toEqual(['#abcdef']);
+  });
+});
 
 describe('theme choice', () => {
   it('caches the resolved colours for the first paint of the next visit', () => {

@@ -84,6 +84,19 @@ export function statusTokens(mode: PaletteMode): Record<string, string> {
   return Object.fromEntries(Object.entries(STATUS_PALETTE[mode]).map(([name, value]) => [`--color-status-${name}`, value]));
 }
 
+/**
+ * Paints the browser's own chrome (the title bar of an installed app, the status bar of a phone) in the theme's background.
+ * index.html ships one tag per colour scheme for the first paint; the person's choice can differ from the system's, so the first
+ * tag takes the colour for every scheme and the rest go.
+ */
+export function syncThemeColor(color: string, doc: Document = document): void {
+  const [first, ...rest] = doc.head.querySelectorAll('meta[name="theme-color"]');
+  const meta = first ?? doc.head.appendChild(Object.assign(doc.createElement('meta'), { name: 'theme-color' }));
+  meta.removeAttribute('media');
+  meta.setAttribute('content', color);
+  for (const extra of rest) extra.remove();
+}
+
 export function applyTheme(choice: ThemeChoice): void {
   try {
     localStorage.setItem(THEME_FAMILY_KEY, choice.familyId);
@@ -98,6 +111,7 @@ export function applyTheme(choice: ThemeChoice): void {
   root.style.colorScheme = mode;
   const tokens = { ...themeTokens(getFamily(choice.familyId).variants[mode]), ...statusTokens(mode) };
   for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value);
+  syncThemeColor(tokens['--color-bg']);
   try {
     localStorage.setItem(THEME_TOKENS_KEY, JSON.stringify({ mode, tokens }));
   } catch { /* The first paint falls back to the default colours. */ }

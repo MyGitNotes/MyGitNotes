@@ -10,7 +10,12 @@
     <title>MyGitNotes — Git-native Markdown workspace</title>
     <meta name="description" content="A Git-native Markdown workspace for your notes, assets and agent instructions. Organize notebooks and keep a clear version history." />
     <meta name="application-name" content="MyGitNotes" />
-    <meta name="theme-color" content="#284d43" />
+    <meta name="theme-color" content="#fffcf0" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#100f0f" media="(prefers-color-scheme: dark)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MyGitNotes" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="MyGitNotes" />
     <meta property="og:title" content="MyGitNotes — Git-native Markdown workspace" />
@@ -35,6 +40,13 @@
           root.classList.toggle('dark', cached.mode === 'dark');
           root.style.colorScheme = cached.mode;
           for (var name in cached.tokens) root.style.setProperty(name, cached.tokens[name]);
+          // The browser's chrome wears the visitor's theme too, whatever colour scheme the system prefers.
+          var tags = document.head.querySelectorAll('meta[name="theme-color"]');
+          if (tags.length && cached.tokens['--color-bg']) {
+            tags[0].removeAttribute('media');
+            tags[0].setAttribute('content', cached.tokens['--color-bg']);
+            for (var i = 1; i < tags.length; i++) tags[i].remove();
+          }
         }
       } catch (error) { /* The splash falls back to the default palette. */ }
     </script>
