@@ -244,3 +244,29 @@ describe('sanitised output (renderNote under DOMPurify)', () => {
     expect(english).toContain('2 open · 1 resolved');
   });
 });
+
+describe('the figure inside a note: comments and links', () => {
+  const window = new JSDOM('<!doctype html><body></body>').window;
+  const purify = createDOMPurify(window as unknown as Window & typeof globalThis);
+  const parser = new window.DOMParser() as unknown as DOMParser;
+  const renderer = createNoteRenderer({ parser, purify, origin: 'https://app.example' });
+  const note = (...rows: string[]) => renderer.renderNote([':::annotate', IMG, '', ...rows, ':::', '', 'tail'].join('\n'), 'n.md');
+
+  it('keeps stray closing tags in one comment from moving the next item out of the list (R-F003)', () => {
+    const document = dom(note('- {#1 pin x=1% y=1%} remove the </li> tag here', '- {#2 pin x=2% y=2%} second', '- {#3 pin x=3% y=3%} </div></li></ol></div></div></figure><div>OUT'));
+    const items = document.querySelectorAll('ol.ann-list > li.ann-item');
+    expect(items).toHaveLength(3);
+    expect(document.querySelectorAll('figure.ann-figure')).toHaveLength(1);
+    expect(document.querySelector('figure.ann-figure')!.nextElementSibling?.textContent).toBe('tail');
+    expect(document.querySelectorAll('[data-workspace-link^="#ann-"]')).toHaveLength(0);
+  });
+
+  it('closes tags a comment leaves open (R-F003)', () => {
+    const document = dom(note('- {#1 pin x=1% y=1%} <div>open', '- {#2 pin x=2% y=2%} second'));
+    expect(document.querySelectorAll('ol.ann-list > li.ann-item')).toHaveLength(2);
+    expect(document.querySelector('figure.ann-figure')!.nextElementSibling?.textContent).toBe('tail');
+  });
+
+
+
+});

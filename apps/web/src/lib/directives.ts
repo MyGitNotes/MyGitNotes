@@ -386,7 +386,7 @@ function renderArgumentMapBlock(blockLines: readonly string[], renderInline: (md
  * Main parser that scans for container directives, leaf directives, inline directives,
  * and recursively converts them to HTML before main markdown processing.
  */
-export function transformDirectives(content: string, renderMarkdown: (md: string) => string, renderInline: (md: string) => string = md => renderMarkdown(md).trim().replace(/^<p>([\s\S]*)<\/p>$/, '$1'), language?: NoteLanguage): string {
+export function transformDirectives(content: string, renderMarkdown: (md: string) => string, renderInline: (md: string) => string = md => renderMarkdown(md).trim().replace(/^<p>([\s\S]*)<\/p>$/, '$1'), language?: NoteLanguage, balance: (html: string) => string = html => html): string {
   const strings = stringsFor(language);
   const lines = content.split('\n');
   const output: string[] = [];
@@ -400,7 +400,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
       const end = infographicEnd(lines, i, open.fenceLength);
       if (end !== undefined) {
         const block = lines.slice(i, end + 1);
-        const figure = isAnnotateName(open.name) ? renderAnnotateBlock(block, renderMarkdown, strings) : isArgumentMapName(open.name) ? renderArgumentMapBlock(block, renderInline, strings) : renderInfographicBlock(block, renderInline, strings);
+        const figure = isAnnotateName(open.name) ? renderAnnotateBlock(block, md => balance(renderMarkdown(md)), strings) : isArgumentMapName(open.name) ? renderArgumentMapBlock(block, renderInline, strings) : renderInfographicBlock(block, renderInline, strings);
         // Blank lines keep the figure's HTML block apart from the Markdown around it.
         if (stack.length > 0) stack[stack.length - 1].lines.push(figure);
         else output.push(figure);
@@ -420,7 +420,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         const item = stack.pop()!;
         const innerBody = item.lines.join('\n');
         // Recursively transform directives within this container
-        const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline, language);
+        const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline, language, balance);
         const renderedHtml = renderContainerDirective(item.name, item.label, item.attrs, transformedInner, renderMarkdown, strings);
 
         if (stack.length > 0) {

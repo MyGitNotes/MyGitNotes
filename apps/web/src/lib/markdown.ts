@@ -118,7 +118,7 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     preprocessed = stripMdxImports(preprocessed);
   }
 
-  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language);
+  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML);
 
   if (isMdx || /<(?:YouTubeEmbed|YouTube|ProtectedContent|Card|Tag|Badge|[A-Z][a-zA-Z0-9_-]*)\b/.test(preprocessed)) {
     preprocessed = transformMdxComponents(preprocessed);
