@@ -1,5 +1,6 @@
 import { EditorView, WidgetType } from '@codemirror/view';
 import { AnnotateController } from './annotate-editor/controller.js';
+import { annotateRequest, openAnnotateMode } from './annotate-editor/open-request.js';
 import type { Translate } from './infographic-editor/labels.js';
 
 const controllers = new WeakMap<HTMLElement, AnnotateController>();
@@ -58,7 +59,13 @@ export class LiveMarkdownAnnotate extends WidgetType {
     root.dataset.directiveType = 'annotate';
     root.dataset.annotatePath = this.path;
     root.dataset.annotateReadOnly = String(this.readOnly);
-    controllers.set(root, new AnnotateController(view, this, root, (host, height) => drawnHeights.set(`${host.path}:${host.from}`, height)));
+    const controller = new AnnotateController(view, this, root, (host, height) => drawnHeights.set(`${host.path}:${host.from}`, height));
+    controllers.set(root, controller);
+    // A block just made from an image asks to start in annotate mode; the request is withdrawn once taken so a rebuilt widget does not repeat it.
+    if (!this.readOnly && !this.quoted && view.state.field(annotateRequest, false) === this.from) {
+      controller.startAnnotating();
+      queueMicrotask(() => view.dispatch({ effects: openAnnotateMode.of(null) }));
+    }
     return root;
   }
 }

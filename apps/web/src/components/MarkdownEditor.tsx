@@ -3,13 +3,14 @@ import { bookmarkOriginalRange, normalizeBookmarkBody } from '@mygitnotes/core/b
 import React, { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Bold, ChartColumn, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, ListTree, type LucideIcon, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
+import { Bold, ChartColumn, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, ListTree, type LucideIcon, MessageSquarePlus, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
 import type { LiveEditorCarry, LiveMarkdownHandle } from './LiveMarkdownEditor.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
 import { noteCompletionAt, useNoteCandidates } from '../lib/note-completion.js';
 import { noteLinkHref, noteMarkdownLink } from '@mygitnotes/core/workspace-links';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { blockInsertion, DIRECTIVE_TEMPLATES, localizedDirectiveSnippet } from '../lib/directive-editing.js';
+import { wrapImage } from '../lib/annotations/edit.js';
 import { INFOGRAPHIC_MENU, infographicTemplate } from '../lib/infographics/templates.js';
 import type { InfographicKind } from '../lib/infographics/model.js';
 import { kindLabel, kindPurpose } from './infographic-editor/labels.js';
@@ -31,6 +32,8 @@ export type MarkdownEditorMode = 'live' | 'raw';
 export interface MarkdownEditorHandle {
   /** Inserts `text` at `at`, or in place of the selection. */
   insert: (text: string, at?: number) => void;
+  /** Puts an image (its `![alt](ref)` line) in as an annotate block of its own; in the live editor the block starts in annotate mode. */
+  insertAnnotated: (imageLine: string) => void;
   revealRange: (from: number, to: number, focus?: boolean) => void;
   goToLine: (line: number, options?: { focus?: boolean; smooth?: boolean; }) => void;
   getCurrentLine: () => number;
@@ -57,8 +60,8 @@ interface Props {
   toolbarSlot?: HTMLElement | null;
   showLineNumbers?: boolean;
   lineNumberOffset?: number;
-  /** Opens the notebook's image picker; the toolbar's Insert group offers it only when present. */
-  onInsertImage?: () => void;
+  /** Opens the notebook's image picker; the toolbar's Insert group offers it only when present. `annotated` asks for the picked image to become an annotate block. */
+  onInsertImage?: (options?: { annotated?: boolean; }) => void;
   /** Keeps the live editor's caret and undo history across this editor being rebuilt in another frame of the same note. */
   carry?: MutableRefObject<LiveEditorCarry | null>;
 }
@@ -359,8 +362,16 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
             </span>
           </button>
           {onInsertImage && (
-            <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('editor.notebookAssets')} title={t('editor.notebookAssets')} onMouseDown={event => event.preventDefault()} onClick={onInsertImage}>
+            <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('editor.notebookAssets')} title={t('editor.notebookAssets')} onMouseDown={event => event.preventDefault()} onClick={() => onInsertImage()}>
               <ImageIcon aria-hidden='true' />
+              <span className='insert-plus-badge' aria-hidden='true'>
+                <Plus />
+              </span>
+            </button>
+          )}
+          {onInsertImage && (
+            <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('imageAnnotation.insert')} title={t('imageAnnotation.insert')} onMouseDown={event => event.preventDefault()} onClick={() => onInsertImage({ annotated: true })}>
+              <MessageSquarePlus aria-hidden='true' />
               <span className='insert-plus-badge' aria-hidden='true'>
                 <Plus />
               </span>
@@ -478,6 +489,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
         source.current?.focus();
         source.current?.setSelectionRange(start + text.length, start + text.length);
       });
+    },
+    insertAnnotated(imageLine) {
+      if (readOnly) return;
+      if (mode === 'live' && isMarkdown) live.current?.insertBlock(wrapImage(imageLine), { annotate: true });
+      else insertBlockSource(wrapImage(imageLine));
     },
     revealRange(from, to, focus = false) {
       if (mode === 'live' && isMarkdown) {

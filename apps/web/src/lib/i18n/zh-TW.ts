@@ -336,6 +336,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'imageAnnotation.render.problem.unknown-token': '未知的字詞「{detail}」',
   'imageAnnotation.render.problem.duplicate-key': '{detail} 寫了兩次',
   'imageAnnotation.render.problem.page-on-image': 'page= 是 PDF 頁面用的，圖片不用',
+  'imageAnnotation.insert': '標註圖片',
   'imageAnnotation.editor.badge': '圖片標註 · {open} 則未解決',
   'imageAnnotation.editor.toolbarLabel': '圖片標註工具列',
   'imageAnnotation.editor.annotate': '標註',

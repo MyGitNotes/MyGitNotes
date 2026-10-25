@@ -114,3 +114,10 @@
 
 /* On a phone the toolbar is one row that scrolls sideways, not four rows above the image. */
 @media (max-width: 767px) { .live-annotate-toolbar { flex-wrap: nowrap; overflow-x: auto; } .live-annotate-toolbar > * { flex: 0 0 auto; } }
+
+/* The Annotate button on an image line of the live editor, shown while the image is hovered or has focus. */
+.live-md-image-rendered { position: relative; }
+.live-md-annotate-image-btn { position: absolute; top: 0.4rem; right: 0.4rem; min-height: 2.25rem; border: 1px solid var(--ann-line, var(--color-border)); border-radius: 6px; background: var(--color-surface); padding: 0 0.7rem; font: 0.8125rem/1 var(--font-body, sans-serif); color: var(--color-text); cursor: pointer; opacity: 0; line-height: normal; }
+.live-md-image-rendered:hover .live-md-annotate-image-btn, .live-md-annotate-image-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .live-md-annotate-image-btn { opacity: 1; } }
+.live-md-annotate-image-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }

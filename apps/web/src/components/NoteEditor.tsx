@@ -160,9 +160,15 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
 
   // The formatting toolbar's Insert image opens the notebook's assets; a chosen image goes in at the caret.
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  /** Whether the image being picked becomes an annotate block. */
+  const [pickAnnotated, setPickAnnotated] = useState(false);
   const insertImage = (ref: string) => {
     setImagePickerOpen(false);
-    insert(`\n${ref}\n`);
+    if (!pickAnnotated) return insert(`\n${ref}\n`);
+    if (session.locked) return;
+    if (!reading) return editorRef.current?.insertAnnotated(ref);
+    pendingInserts.current.push(() => editorRef.current?.insertAnnotated(ref));
+    setEditing(true);
   };
 
   // Vim's `:w` does what the footer's Commit does, or the toolbar's Save where the note saves by hand; with nothing to
@@ -226,7 +232,25 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
       )}
       {formatToolbarShown && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       <div className='note-editor-body'>
-        <MarkdownEditor ref={editorRef} content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked || reading} onChange={session.setContent} onCaret={trackCaret} toolbarSlot={showFormatToolbar ? toolbarSlot : null} ariaLabel='Note content' showLineNumbers={lineNumbersShown} lineNumberOffset={session.baseNote.lineNumberOffset} onInsertImage={session.locked ? undefined : () => setImagePickerOpen(true)} carry={carry} />
+        <MarkdownEditor
+          ref={editorRef}
+          content={session.content}
+          path={note.path}
+          notebookId={note.notebookId}
+          mode={editorMode}
+          readOnly={session.locked || reading}
+          onChange={session.setContent}
+          onCaret={trackCaret}
+          toolbarSlot={showFormatToolbar ? toolbarSlot : null}
+          ariaLabel='Note content'
+          showLineNumbers={lineNumbersShown}
+          lineNumberOffset={session.baseNote.lineNumberOffset}
+          onInsertImage={session.locked ? undefined : options => {
+            setPickAnnotated(Boolean(options?.annotated));
+            setImagePickerOpen(true);
+          }}
+          carry={carry}
+        />
         <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />
       </div>
       {!phone && <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={quickActions} />}

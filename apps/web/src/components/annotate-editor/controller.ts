@@ -514,6 +514,11 @@ export class AnnotateController {
   // ---------------------------------------------------------------------------
   // Mode, selection and forms
 
+  /** Starts in annotate mode: the entry points that make a block from an image use it. */
+  startAnnotating(): void {
+    this.setAnnotating(true);
+  }
+
   private setAnnotating(on: boolean): void {
     this.annotating = on;
     this.dom.classList.toggle('is-annotating', on);

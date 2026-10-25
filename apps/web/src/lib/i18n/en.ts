@@ -334,6 +334,7 @@ export const en = {
   'imageAnnotation.render.problem.unknown-token': 'Unknown word "{detail}"',
   'imageAnnotation.render.problem.duplicate-key': '{detail} is written twice',
   'imageAnnotation.render.problem.page-on-image': 'page= belongs to PDF pages, not images',
+  'imageAnnotation.insert': 'Annotated image',
   'imageAnnotation.editor.badge': 'Image annotations · {open} open',
   'imageAnnotation.editor.toolbarLabel': 'Image annotation toolbar',
   'imageAnnotation.editor.annotate': 'Annotate',

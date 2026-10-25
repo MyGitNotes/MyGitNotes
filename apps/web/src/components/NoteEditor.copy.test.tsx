@@ -9,7 +9,7 @@ import type { MarkdownEditorHandle } from './MarkdownEditor.js';
 
 vi.mock('./MarkdownEditor.js', () => ({
   MarkdownEditor: forwardRef<MarkdownEditorHandle, { content: string; onChange: (content: string) => void; }>(({ content, onChange }, ref) => {
-    useImperativeHandle(ref, () => ({ insert() {}, revealRange() {}, goToLine() {}, getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus() {} }), []);
+    useImperativeHandle(ref, () => ({ insert() {}, insertAnnotated() {}, revealRange() {}, goToLine() {}, getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus() {} }), []);
     return createElement('textarea', { 'aria-label': 'Note content', value: content, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) });
   }),
 }));

@@ -10,6 +10,8 @@ import { createMermaidBlock, hydrateMermaid } from '../../lib/mermaid.js';
 import { drawMath } from '../../lib/math.js';
 import { type MermaidEditorLabels, openMermaidEditor } from '../../lib/mermaid-editor.js';
 import { chipEditChanged } from './chip-editing.js';
+import { wrapImage } from '../../lib/annotations/edit.js';
+import { openAnnotateMode } from '../annotate-editor/open-request.js';
 import { countMermaidTwins, findMermaidFences, relocateMermaidFence } from './mermaid-fence.js';
 
 function externalLinkIcon(href: string, label: string, sourcePath: string): HTMLAnchorElement {
@@ -36,12 +38,19 @@ export class ExternalLink extends WidgetType {
     return externalLinkIcon(this.href, this.label, this.path);
   }
 }
+/** An image alone on its line can become an annotate block: the line's range, and the button's label. */
+export interface AnnotateOffer {
+  from: number;
+  to: number;
+  label: string;
+}
+
 export class RenderedMarkdown extends WidgetType {
-  constructor(readonly text: string, readonly path: string, readonly from: number, readonly block: boolean, readonly linkLabel: string, readonly tableLabel: string, readonly notebookId?: string) {
+  constructor(readonly text: string, readonly path: string, readonly from: number, readonly block: boolean, readonly linkLabel: string, readonly tableLabel: string, readonly notebookId?: string, readonly annotate?: AnnotateOffer) {
     super();
   }
   eq(other: RenderedMarkdown) {
-    return this.text === other.text && this.path === other.path && this.from === other.from && this.linkLabel === other.linkLabel && this.tableLabel === other.tableLabel && this.notebookId === other.notebookId;
+    return this.text === other.text && this.path === other.path && this.from === other.from && this.linkLabel === other.linkLabel && this.tableLabel === other.tableLabel && this.notebookId === other.notebookId && this.annotate?.from === other.annotate?.from && this.annotate?.to === other.annotate?.to && this.annotate?.label === other.annotate?.label;
   }
   toDOM(view: EditorView) {
     const isImageOnly = /^\s*!\[.*?\]\(.*?\)\s*$/.test(this.text);
@@ -55,7 +64,7 @@ export class RenderedMarkdown extends WidgetType {
     dom.innerHTML = renderNote(this.text, this.path, this.tableLabel, undefined, this.notebookId);
     dom.setAttribute('aria-label', 'Rendered Markdown; click to edit');
     dom.addEventListener('mousedown', event => {
-      if ((event.target as HTMLElement).closest('a, [data-workspace-link]')) return;
+      if ((event.target as HTMLElement).closest('a, [data-workspace-link], button')) return;
       if ((event.target as HTMLElement).matches('.markdown-table-scroll')) return;
       if ((event.target as HTMLElement).tagName.toLowerCase() === 'img') return;
       event.preventDefault();
@@ -63,7 +72,26 @@ export class RenderedMarkdown extends WidgetType {
       view.focus();
     });
     for (const image of dom.querySelectorAll('img')) image.addEventListener('load', () => view.requestMeasure());
+    if (this.annotate && isImageOnly) dom.append(this.annotateButton(view, this.annotate));
     return dom;
+  }
+  /** The Annotate button of an image line: wraps the line as an annotate block and starts its widget in annotate mode. */
+  private annotateButton(view: EditorView, offer: AnnotateOffer) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'live-md-annotate-image-btn';
+    button.textContent = offer.label;
+    button.setAttribute('aria-label', offer.label);
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const line = view.state.doc.lineAt(offer.from);
+      // The document may have changed since the widget drew; the offer only holds while the line is still this image.
+      if (line.from !== offer.from || line.to !== offer.to) return;
+      view.dispatch({ changes: { from: line.from, to: line.to, insert: wrapImage(line.text) }, effects: openAnnotateMode.of(line.from), userEvent: 'input', annotations: isolateHistory.of('full') });
+    });
+    return button;
   }
   get estimatedHeight() {
     return this.block ? 100 : 160;

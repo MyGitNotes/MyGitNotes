@@ -15,6 +15,7 @@ vi.mock('./MarkdownEditor.js', () => ({
         const position = at ?? content.length;
         onChange(content.slice(0, position) + text + content.slice(position));
       },
+      insertAnnotated() {},
       revealRange() {},
       goToLine() {},
       getCurrentLine: () => 1,

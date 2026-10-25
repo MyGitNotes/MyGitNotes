@@ -17,7 +17,7 @@ import { isArgumentMapName } from '../../lib/argument-maps/parse.js';
 import { isInfographicKind } from '../../lib/infographics/model.js';
 import { LiveMarkdownTable, tableUIState } from '../LiveMarkdownTable.js';
 import { findMath } from '../../lib/math.js';
-import { BulletMarker, DateAdder, ExternalLink, MathFormula, MdxImportWidget, MermaidDiagram, PageBreak, PageFooter, RenderedMarkdown, TaskCheckbox, TokenChip, TokenEditor, YouTubeWidget } from './widgets.js';
+import { type AnnotateOffer, BulletMarker, DateAdder, ExternalLink, MathFormula, MdxImportWidget, MermaidDiagram, PageBreak, PageFooter, RenderedMarkdown, TaskCheckbox, TokenChip, TokenEditor, YouTubeWidget } from './widgets.js';
 import { chipEditState } from './chip-editing.js';
 import { mermaidFenceAt } from './mermaid-fence.js';
 
@@ -138,13 +138,16 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
         return false;
       }
       if (!editing && (name === 'Image' || name === 'Table' || name === 'HorizontalRule')) {
+        let offer: AnnotateOffer | undefined;
         if (name === 'Image') {
           const line = state.doc.lineAt(from);
           if (line.text.trim() === state.sliceDoc(from, to).trim()) {
             marks.push(Decoration.line({ class: 'live-md-image-line' }).range(line.from));
+            // An image alone on its line of a writable note can become an annotated image.
+            if (!state.readOnly && line.text === line.text.trimStart() && line.text.trim() === line.text) offer = { from: line.from, to: line.to, label: t('imageAnnotation.editor.annotate') };
           }
         }
-        marks.push(Decoration.replace({ widget: new RenderedMarkdown(state.sliceDoc(from, to), notePath, from, name !== 'Image', linkLabel, tableLabel, notebookId), block: name !== 'Image' }).range(from, to));
+        marks.push(Decoration.replace({ widget: new RenderedMarkdown(state.sliceDoc(from, to), notePath, from, name !== 'Image', linkLabel, tableLabel, notebookId, offer), block: name !== 'Image' }).range(from, to));
         return false;
       }
       if (!editing && name === 'TaskMarker') {

@@ -15,7 +15,7 @@ const setDefaultShowLineNumbers = (value: boolean) => setNotebookPreferences(() 
 
 vi.mock('./MarkdownEditor.js', () => ({
   MarkdownEditor: forwardRef<MarkdownEditorHandle, { content: string; mode: MarkdownEditorMode; showLineNumbers?: boolean; onChange: (content: string) => void; }>(({ content, mode, showLineNumbers, onChange }, ref) => {
-    useImperativeHandle(ref, () => ({ insert() {}, revealRange() {}, goToLine() {}, getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus() {} }), []);
+    useImperativeHandle(ref, () => ({ insert() {}, insertAnnotated() {}, revealRange() {}, goToLine() {}, getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus() {} }), []);
     return createElement('textarea', { 'aria-label': 'Note content', value: content, 'data-mode': mode, 'data-line-numbers': showLineNumbers ? 'true' : 'false', onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) });
   }),
 }));
