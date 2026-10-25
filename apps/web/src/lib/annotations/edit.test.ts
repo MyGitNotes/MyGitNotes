@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { addRow, deleteRow, fixNumbering, formatPercent, nextId, removeAnnotations, setComment, setGeometry, setResolved, wrapImage } from './edit.js';
+import { findDirectiveBlocks } from '../directive-editing.js';
 import { parseAnnotate } from './parse.js';
 
 const review = readFileSync(new URL('./fixtures/review.md', import.meta.url), 'utf8').replace(/\n$/, '');
@@ -192,5 +193,25 @@ describe('wrapImage and removeAnnotations', () => {
 
   it('gives back the media line only', () => {
     expect(removeAnnotations(review)).toBe('![首頁 v3](/raw-assets/by-hash/3f2a9c0d6b1e4f5a8c7d2e9b0a1f3c4d5e6f7a8b)');
+  });
+});
+
+describe('a comment that looks like a fence (R-F002)', () => {
+  const base = block('- {#1 pin x=10% y=10%} one');
+  const comments = ['ends in :::', 'a\n:::\nb', 'a\n:::note\nb', 'a\n::::\nb', 'x\n  ::: \ny', 'x :::'];
+  const settled = (source: string) => {
+    const blocks = findDirectiveBlocks(`before\n\n${source}\n\nafter\n`);
+    expect(blocks.map(found => found.type)).toEqual(['annotate']);
+    expect(blocks[0].rawText).toBe(source);
+    expect(parseAnnotate(source).rows).toHaveLength(2);
+  };
+  it.each(comments)('adds %j without closing or nesting the block', comment => {
+    settled(addRow(base, { kind: 'pin', x: 5, y: 5, comment }));
+  });
+  it.each(comments)('sets %j without closing or nesting the block', comment => {
+    settled(setComment(addRow(base, { kind: 'pin', x: 5, y: 5, comment: 'plain' }), 1, comment));
+  });
+  it('leaves an ordinary comment byte for byte', () => {
+    expect(addRow(base, { kind: 'pin', x: 5, y: 5, comment: 'time 10:30 : fine' })).toContain('} time 10:30 : fine');
   });
 });

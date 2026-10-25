@@ -6,6 +6,7 @@
  */
 
 import { ANNOTATE_DIRECTIVE, type AnnotationKind, type AnnotationRow, type HeadToken, parseAnnotate } from './parse.js';
+import { parseDirectiveOpen } from '../directives.js';
 
 export interface Geometry {
   x: number;
@@ -60,10 +61,20 @@ function rowAt(source: string, index: number): AnnotationRow {
 
 const word = (value: string): string => /^[A-Za-z0-9_.@-]+$/.test(value) ? value : `"${value.replaceAll('"', '')}"`;
 
+/**
+ * A comment line the block scanner would take for a fence: an opening `:::name`, or anything ending in a run of three or
+ * more colons. The colon that makes it a fence is backslash-escaped, which Markdown renders as the colon again.
+ */
+function escapeFence(line: string): string {
+  const candidate = `  ${line}`;
+  if (parseDirectiveOpen(candidate)) return line.replace(':', '\\:');
+  return line.replace(/(?<!:)(:{3,})(\s*)$/, (_, colons: string, space: string) => `${colons.slice(0, -1)}\\:${space}`);
+}
+
 function commentText(comment: string): string {
   const [first, ...rest] = comment.trim().split('\n');
   if (!first && !rest.length) return '';
-  return ` ${first}${rest.map(line => line.trim() ? `\n  ${line}` : '\n').join('')}`;
+  return ` ${escapeFence(first)}${rest.map(line => line.trim() ? `\n  ${escapeFence(line)}` : '\n').join('')}`;
 }
 
 /** The highest id in the block, problem rows included, plus one. */
