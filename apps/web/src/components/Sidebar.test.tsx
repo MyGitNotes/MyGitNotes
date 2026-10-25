@@ -50,6 +50,13 @@ it('has three collapsible sections, Notebooks, Status and Tags, and no search fi
   expect(screen.queryByRole('searchbox', { name: /search notes/i })).not.toBeInTheDocument();
 });
 
+it("offers only the filters that narrow the list (Status and Tags) for a phone's filter sheet, without the notebook tree", () => {
+  render(createElement(I18nProvider, null, createElement(Sidebar, { filters: controls(), facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: vi.fn(), workspaceTagNames: ['work'], filtersOnly: true })));
+  const summaries = [...document.querySelectorAll('details.sidebar-filter-section > summary')].map(summary => summary.textContent);
+  expect(summaries).toEqual(['Status', 'Tags']);
+  expect(screen.queryByRole('button', { name: 'Expand all folders' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Clear all' })).toBeInTheDocument();
+});
 it('paints each status filter dot from the notebook statuses, muting one the notebook does not list', () => {
   const filters = { ...controls(), statuses: ['todo', 'review', 'later', 'stray'] };
   render(

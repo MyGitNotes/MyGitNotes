@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { getSavedPanelState, savePanelState } from './panel-state.js';
+import { isPhoneViewport } from './use-phone.js';
 
 /** The rail's own tools. The agent has its own dock (see assistant-dock.ts), so it is not one of them. */
 export type WorkspaceToolId = 'calendar' | 'todo' | 'changes';
@@ -37,13 +38,16 @@ export function usePanelContext(): PanelContextValue {
 
 export function PanelProvider({ children }: { children: ReactNode; }) {
   const saved = useMemo(() => getSavedPanelState([...WORKSPACE_TOOL_IDS, ...DOCUMENT_TOOL_IDS]), []);
-  const [isOpen, setIsOpen] = useState(saved.open);
+  // On a phone a tool is a full-height sheet, which opens only when the person asks and leaves a larger screen's remembered panel alone.
+  const [isOpen, setIsOpen] = useState(saved.open && !isPhoneViewport());
   const [activeTool, setActiveTool] = useState<PanelToolId>(saved.tool);
   const [openNotes, setOpenNotes] = useState(0);
   const hasOpenNote = openNotes > 0;
   const setHasOpenNote = useCallback((open: boolean) => setOpenNotes(count => Math.max(0, count + (open ? 1 : -1))), []);
 
-  useEffect(() => savePanelState({ open: isOpen, tool: activeTool }), [isOpen, activeTool]);
+  useEffect(() => {
+    if (!isPhoneViewport()) savePanelState({ open: isOpen, tool: activeTool });
+  }, [isOpen, activeTool]);
 
   const openTool = (id: PanelToolId) => {
     if (isOpen && activeTool === id) {

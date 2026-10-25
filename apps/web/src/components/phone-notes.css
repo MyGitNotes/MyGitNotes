@@ -1,0 +1,100 @@
+/* A phone's Notes page: two screens, the note list and one note, never both. Each has one 44px bar at its top and the bottom navigation below it. */
+@media (max-width: 767px) {
+  /* The header keeps only the bottom navigation, which is fixed to the screen's bottom edge on its own. */
+  .workspace-header[data-nav-only] { display: contents; }
+  /* The tool rail no longer sits above the navigation on this page, so the body has no room to leave for it. */
+  .app-shell[data-workspace-tab='notes'] .workspace-body { padding-bottom: 0; }
+
+  /* The list screen's bar: the drawer button, the notebook switcher and the search. */
+  .phone-list-bar { position: relative; flex: none; display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 4px; border-bottom: 1px solid var(--color-line); background: var(--color-surface); }
+  .phone-list-bar > .ui-icon-button { flex: none; width: 44px; height: 44px; }
+  .phone-list-bar .phone-list-notebook { flex: 1 1 0; min-width: 0; height: 44px; border-color: transparent; background: transparent; font-size: 15px; font-weight: 600; }
+  .phone-list-bar .note-search-field { height: 44px; }
+  .phone-list-bar .note-toolbar-search[data-open] { height: 44px; }
+
+  /* The note screen's bar. Over the text it slides away as the text scrolls down; above a notice it stays in the page. */
+  .phone-note-bar { position: relative; flex: none; display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 4px; border-bottom: 1px solid var(--color-line); background: var(--color-surface); }
+  .phone-note-bar[data-overlay] { position: absolute; z-index: 6; top: 0; left: 0; right: 0; transition: transform 160ms ease-out, visibility 0s 160ms; }
+  .phone-note-bar[data-overlay][data-hidden] { transform: translateY(-100%); visibility: hidden; }
+  .phone-note-bar > .ui-icon-button, .phone-note-bar .note-status-select .select-trigger { flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
+  .phone-note-bar .note-status-select { flex: none; }
+  .phone-note-bar .note-status-select .select-trigger { padding: 0; justify-content: center; }
+  .phone-note-bar .note-status-select .status-dot { width: 10px; height: 10px; }
+  .phone-note-bar .note-status-select .select-chevron { display: none; }
+  .phone-note-bar .phone-note-edit[aria-pressed='true'] { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 14%, transparent); }
+  .phone-note-title { flex: 1 1 0; min-width: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .note-editor[data-phone-bar] { position: relative; }
+  /* The text starts below the bar and scrolls beneath it. */
+  .note-editor[data-phone-bar='overlay'] .cm-scroller { padding-top: 56px !important; }
+  .note-editor[data-phone-bar='overlay'] .note-editor-body textarea { padding-top: 56px; }
+  .note-editor[data-phone-bar] .note-source-heading { display: none; }
+  .note-editor-body { overflow-wrap: anywhere; }
+
+  /* A phone's note is plain text on the page: no card frame, no gutter, and nothing wider than the screen (a long link or code line wraps, a table or a code block scrolls on its own). */
+  .cm-card-background-layer, .cm-lineNumbers { display: none !important; }
+  .cm-scroller { overflow-x: hidden !important; }
+  .cm-content { max-width: 100% !important; min-width: 0 !important; }
+  .cm-line { overflow-wrap: anywhere; }
+
+  /* A pane on a phone is the note alone: its tab bar and the pane chrome around the editor go. */
+  .focus-pane[data-phone] .focus-pane-bar { display: none; }
+
+  /* The list screen: its filter chips as one scrolling row under the bar, and rows that are 44px targets. */
+  .notes-main > .filter-chips { flex: none; flex-wrap: nowrap; gap: 2px; min-height: 44px; margin: 0; padding: 0 8px; overflow-x: auto; border-bottom: 1px solid var(--color-line); scrollbar-width: none; }
+  .notes-main > .filter-chips::-webkit-scrollbar { display: none; }
+  .notes-main > .filter-chips > * { flex: none; }
+  .notes-main .filter-chip { position: relative; height: 44px; padding: 0 12px; border: 0; background: none; font-size: 13px; isolation: isolate; }
+  .notes-main .filter-chip::before { content: ''; position: absolute; z-index: -1; inset: 6px 0; border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent); border-radius: 9999px; background: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+  .notes-main .filter-chip-context::before { border-color: var(--color-line-strong); background: transparent; }
+  .notes-main .filter-chip-add::before { border-style: dashed; border-color: var(--color-line-strong); background: transparent; }
+  .notes-main .filter-chip-label { max-width: 40vw; }
+  .notes-main .filter-chip-remove { flex: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; margin: 0 -12px 0 -4px; }
+  .notes-main .filter-chip-remove svg { width: 13px; height: 13px; }
+  .notes-main .filter-chip-clear { min-width: 44px; min-height: 44px; padding: 0 8px; }
+  .notes-main .focus-row { align-items: flex-start; gap: 0; padding: 0 12px 0 0; border-radius: 0; border-bottom: 1px solid var(--color-line); }
+  .notes-main .focus-row .status-cell-dot.select-trigger { width: 44px; min-width: 44px; height: 44px; min-height: 44px; margin: 0; }
+  .notes-main .focus-row .status-cell-dot .status-dot { width: 10px; height: 10px; }
+  .notes-main .focus-row-title { min-height: calc(var(--title-lines, 2) * 1.375em + 21px); padding-block: 13px 8px; font-size: 15px; }
+  .notes-main .focus-row-check { margin: 0; }
+
+  /* The sidebar drawer's first row on a phone: the assistant, the command palette and the account, which the page has no header for. */
+  .phone-drawer-utilities { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-height: 52px; padding: max(4px, env(safe-area-inset-top)) 8px 4px; border-bottom: 1px solid var(--color-line); background: var(--workspace-rail); }
+
+  .app-shell[data-workspace-tab='notes'] .workspace-responsive-sidebar :is(.select-trigger, .ui-control, .ui-button, .ui-icon-button, button, summary) { min-height: 44px; }
+
+  /* The sheets: the note's "⋯" and the list's filters. */
+  .phone-sheet-meta { margin: 0 0 4px; color: var(--color-muted); font-size: 12px; }
+  .phone-sheet-section { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--color-line); min-width: 0; }
+  .phone-sheet-meta + .phone-sheet-section { border-top: 0; padding-top: 4px; }
+  .phone-sheet-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-size: 14px; }
+  .phone-sheet-field > span { flex: none; color: var(--color-muted); }
+  .phone-sheet-field > :is(.select-trigger, .note-status-select) { flex: 1 1 0; min-width: 0; max-width: 60%; }
+  .phone-sheet-field .note-status-select { max-width: 60%; }
+  .phone-sheet-field .select-trigger { width: 100%; min-height: 44px; border: 1px solid var(--color-line-strong); background: var(--color-surface); }
+  .phone-sheet-tools { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .phone-sheet-tool { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 64px; padding: 6px 2px; border-radius: 10px; background: color-mix(in srgb, var(--color-text) 6%, transparent); font-size: 11px; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+  .phone-sheet-tool svg { width: 20px; height: 20px; flex: none; }
+  .phone-sheet-badge { position: absolute; top: 4px; right: 8px; display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9999px; background: var(--color-warning); color: var(--color-bg); font-size: 10px; font-weight: 700; line-height: 1; }
+  .phone-sheet-list { gap: 2px; }
+  .phone-sheet-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 8px; border-radius: 8px; font-size: 14px; text-align: left; }
+  .phone-sheet-item svg { width: 18px; height: 18px; flex: none; }
+  .phone-sheet-item[aria-pressed='true'] { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent); }
+  .phone-sheet-quick:empty { display: none; }
+  .phone-sheet-quick .note-quick-actions { flex-wrap: wrap; gap: 4px; }
+  .phone-sheet-quick .note-quick-action { min-height: 44px; }
+  .phone-sheet-rename { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+  .phone-sheet-rename input { flex: 1 1 0; min-width: 0; }
+  .phone-note-sheet .note-tags { flex: none; width: 100%; }
+  .phone-filter-sections .workspace-sidebar { width: 100%; height: auto; border: 0; background: transparent; }
+  .phone-filter-sections .workspace-sidebar-scroll { height: auto; padding: 0; overflow: visible; }
+
+  /* A tool as a full-height sheet: its own panel fills the sheet and scrolls itself. */
+  .phone-sheet .right-panel-content.phone-tool-content { position: static; display: flex; flex: 1 1 auto; flex-direction: column; width: auto; max-height: none; min-height: 0; border: 0; border-radius: 0; box-shadow: none; overflow-y: auto; }
+  .phone-sheet .right-panel-document { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+  .phone-sheet .note-document-panel, .phone-sheet .note-document-panel[data-frame='rail'] { position: static; display: flex; flex: 1 1 auto; flex-direction: column; width: auto; max-height: none; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+  .phone-sheet .note-document-panel > :not(.note-panel-tabs) { overflow-y: auto; min-height: 0; }
+  .phone-sheet .note-outline nav button { min-height: 44px; font-size: 14px; }
+  /* Whatever a tool draws inside a sheet is a touch target too. */
+  .phone-sheet :is(.select-trigger, .ui-control, .ui-button, .ui-icon-button, button, summary, a.panel-credit) { min-height: 44px; }
+  .phone-sheet a.panel-credit { display: flex; align-items: center; justify-content: center; }
+}

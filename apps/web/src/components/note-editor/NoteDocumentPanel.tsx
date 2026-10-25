@@ -8,6 +8,7 @@ import type { OutlineHeading } from '../../lib/note-navigation.js';
 import type { NotebookMetadataField } from '../../lib/types.js';
 import type { NotePanelMode } from './types.js';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { usePhone } from '../../lib/use-phone.js';
 
 export interface NoteDocumentPanelProps {
   includeTabs: boolean;
@@ -64,6 +65,8 @@ export interface NoteDocumentPanelProps {
 /** The zoom/pane editor's document panel: its tab strip and the find, outline, frontmatter (with the note's info), view and history sections it switches between. */
 export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFindOpen, isOutlineOpen, showFrontmatter, isViewPanelOpen, isHistoryOpen, history, notePath, content, findQuery, setFindQuery, findIndex, matches, stepFind, findInputRef, outline, lineNumberOffset, outlineIndex, setOutlineIndex, chooseOutline, openOutline, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, metadata, setMetadata, statuses, metadataFields, availableTags, locked, notebookId, readOnly, onRename }: NoteDocumentPanelProps) {
   const { t } = useTranslation();
+  // On a phone the section is a sheet over the note, so choosing a heading closes it to show the heading.
+  const phone = usePhone();
 
   const sections = (
     <>
@@ -126,7 +129,10 @@ export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFin
                     style={{ paddingInlineStart: `${12 + (heading.depth - 1) * 14}px` }}
                     title={heading.label}
                     onFocus={() => setOutlineIndex(index)}
-                    onClick={() => chooseOutline(index)}
+                    onClick={() => {
+                      chooseOutline(index);
+                      if (phone) setNotePanel(null);
+                    }}
                   >
                     <span>{heading.label}</span>
                     <small>{heading.line + lineNumberOffset}</small>

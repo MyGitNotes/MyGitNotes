@@ -7,6 +7,7 @@ import { type FocusLayout, splitPane } from '@mygitnotes/core/focus-page';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { FocusPane } from './FocusPane.js';
+import { PhoneNotesProvider } from '../lib/phone-notes.js';
 
 // The pane body hosts a note editor; this test is about the tab bar and the pane frame.
 const hosted = vi.hoisted(() => ({ slots: [] as unknown[] }));
@@ -278,5 +279,29 @@ describe('a narrow pane', () => {
     await openMenu();
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Open in zoom' }));
     expect(onZoomNote).toHaveBeenCalledWith('notes/a.md');
+  });
+});
+
+describe('on a phone', () => {
+  const asPhone = () => {
+    window.matchMedia = ((query: string) => ({ matches: query.includes('max-width: 767px'), media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false })) as typeof window.matchMedia;
+  };
+  afterEach(() => Reflect.deleteProperty(window, 'matchMedia'));
+
+  it('marks the pane so its tab bar can give way, and leaves a note its own title bar', () => {
+    asPhone();
+    pane(0, null);
+    expect(document.querySelector('.focus-pane')).toHaveAttribute('data-phone');
+    // A note brings the bar itself; the pane adds no second one above it.
+    expect(screen.queryByRole('button', { name: 'Back to the note list' })).toBeNull();
+  });
+
+  it('gives a compilation the way back to the list, which a note has in its own bar', () => {
+    asPhone();
+    const back = vi.fn();
+    const displayed = { panes: ['p1'], pane: 'p1', key: 'note:notes/b.compilation.yml' };
+    render(createElement(PhoneNotesProvider, { value: { back, changesCount: 0 } }, createElement(I18nProvider, null, createElement(FocusPane, { focus, notebookRoot: 'notes', folders: [], renderCompilation: path => createElement('div', null, path), onZoomNote: () => {}, searchMatches: null, displayed }))));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the note list' }));
+    expect(back).toHaveBeenCalledTimes(1);
   });
 });

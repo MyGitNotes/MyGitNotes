@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react';
 // Without media queries (a test DOM, a server render) there is no phone viewport to detect.
 const phoneQuery = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 767px)') : null;
 
+/** Whether the viewport is a phone right now, for state that is set up once: 767px wide or less. */
+export const isPhoneViewport = (): boolean => phoneQuery()?.matches ?? false;
+
 /** Whether the viewport is a phone: 767px wide or less. */
 export function usePhone(): boolean {
   const [phone, setPhone] = useState(() => phoneQuery()?.matches ?? false);
