@@ -5,7 +5,7 @@ import { carriesNoteMove } from '../lib/note-drag.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import './sidebar-rail.css';
 
-export type RailSectionId = 'notebooks' | 'status' | 'tags' | 'changes';
+export type RailSectionId = 'notebooks' | 'status' | 'tags';
 
 export interface RailSection {
   id: RailSectionId;

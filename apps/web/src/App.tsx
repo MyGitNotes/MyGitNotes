@@ -539,6 +539,7 @@ export const AppContent: React.FC = () => {
                           await refreshDocuments();
                         }}
                         repositoryHeading={repositoryHeading}
+                        repoRoot={repoRoot}
                         syncTargets={remote ? undefined : repositories.filter(repository => !repository.unavailable).map(repository => ({ id: repository.id, label: repository.repository ?? repository.id.replace(/^local:/, ''), gitStatus: repository.id === sourceId ? gitStatus : repository.gitStatus ?? null }))}
                         onWidthChange={setRightPanelWidth}
                       />
@@ -578,12 +579,6 @@ export const AppContent: React.FC = () => {
                             selectedFolder={selectedFolder}
                             onSelectFolder={setSelectedFolder}
                             onDropNote={(note, folder) => void noteMove.moveTo({ ...note, title: '' }, folder)}
-                            changeCount={changeCount}
-                            onPulled={remote ? undefined : async () => {
-                              await refreshWorkspace();
-                              await refreshDocuments();
-                            }}
-                            repoRoot={repoRoot}
                             canManageTags={canWrite}
                             onPreviewTagUsage={previewTagUsage}
                             onRenameTag={handleRenameTag}

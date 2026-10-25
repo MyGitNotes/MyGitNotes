@@ -404,8 +404,8 @@
 .workspace-sidebar-footer > div { margin-top: 0; padding-top: 6px; gap: 3px; border-color: var(--workspace-divider) !important; }
 .workspace-sidebar-footer > div > div:first-child { background: transparent !important; border: 0; box-shadow: none; padding: 4px 0; }
 .workspace-sidebar-footer .animate-pulse { animation: none; }
-.sidebar-credit { display: block; text-align: center; font-size: 9px; line-height: 14px; color: var(--color-muted); text-decoration: none; }
-.sidebar-credit:hover span { text-decoration: underline; }
+.panel-credit { display: block; margin-top: auto; padding-top: 12px; text-align: center; font-size: 9px; line-height: 14px; color: var(--color-muted); text-decoration: none; }
+.panel-credit:hover span { text-decoration: underline; }
 .workspace-header .header-account { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .workspace-header .header-notebook { display: flex; flex-wrap: nowrap; align-items: center; gap: 7px; width: 210px; min-width: 0; }
 .header-notebook > svg { width: 16px; height: 16px; flex: none; color: var(--color-muted); }

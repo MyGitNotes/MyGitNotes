@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { ArrowDownToLine, X } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowDownToLine } from 'lucide-react';
 import { GitSyncError, syncGitWorkspace } from '../lib/api.js';
 import { copyToClipboard } from '../lib/clipboard.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -8,24 +7,16 @@ import { type PullFailure, pullFailurePrompt } from '../lib/pull-failure-prompt.
 import { Button } from './Button.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 
-const SUCCESS_TOAST_MS = 3000;
-
 /**
  * Pulls the default worktree's main from its upstream without pushing, stashing uncommitted changes around it.
- * Success shows a short toast; a failure opens a dialog with a prompt the user can hand to a local coding agent.
+ * The result shows under the button; a failure opens a dialog with a prompt the user can hand to a local coding agent.
  */
-export function GitPullButton({ onPulled, repoRoot }: { onPulled: () => Promise<void> | void; repoRoot: string; }) {
+export function GitPullSection({ onPulled, repoRoot, upstream }: { onPulled: () => Promise<void> | void; repoRoot: string; upstream?: string | null; }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [failure, setFailure] = useState<PullFailure>();
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(''), SUCCESS_TOAST_MS);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
 
   const pull = async () => {
     setBusy(true);
@@ -46,24 +37,15 @@ export function GitPullButton({ onPulled, repoRoot }: { onPulled: () => Promise<
   };
 
   const prompt = failure ? pullFailurePrompt(failure, repoRoot) : '';
-  const label = t(busy ? 'sidebar.pulling' : 'sidebar.pull');
   return (
-    <>
-      <button type='button' className='ui-icon-button git-pull-button' title={label} aria-label={label} aria-busy={busy} disabled={busy} onClick={() => void pull()}>
-        <ArrowDownToLine size={15} className={busy ? 'animate-pulse' : ''} />
-      </button>
-      {notice && createPortal(
-        // Sits above the sidebar footer so the toast never covers the pull button itself.
-        <div className='fixed bottom-24 left-4 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200'>
-          <div role='status' className='ui-glass px-4 py-3 rounded-xl shadow-xl border border-line/80 flex items-center gap-3 text-xs max-w-sm text-fg'>
-            <span className='break-words min-w-0'>{notice}</span>
-            <button type='button' aria-label={t('common.close')} onClick={() => setNotice('')} className='text-muted hover:text-fg p-1 rounded hover:bg-fg/10 transition shrink-0'>
-              <X className='w-3.5 h-3.5' />
-            </button>
-          </div>
-        </div>,
-        document.body,
-      )}
+    <section className='todo-group git-sync' aria-label={t('panel.pull')}>
+      <h4>{t('panel.pull')}</h4>
+      <p className='changes-help'>{t('panel.pullHint')}</p>
+      <Button className='git-sync-button' aria-busy={busy} disabled={busy || !upstream} onClick={() => void pull()}>
+        <ArrowDownToLine aria-hidden='true' size={14} className={busy ? 'animate-pulse' : ''} />
+        <span>{t(busy ? 'sidebar.pulling' : 'sidebar.pull')}</span>
+      </Button>
+      {notice && <p role='status' className='changes-help'>{notice}</p>}
       {failure && (
         <WorkspaceDialog title={t('sidebar.pullFailedTitle')} onClose={() => setFailure(undefined)} className='git-pull-dialog'>
           <p role='alert' className='changes-error'>{failure.message}</p>
@@ -76,6 +58,6 @@ export function GitPullButton({ onPulled, repoRoot }: { onPulled: () => Promise<
           </div>
         </WorkspaceDialog>
       )}
-    </>
+    </section>
   );
 }

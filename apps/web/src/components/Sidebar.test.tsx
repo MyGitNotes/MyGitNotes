@@ -31,11 +31,11 @@ function controls(value: Partial<NoteFilters> = {}, onChange: FilterControls['on
   return { value: { kind: 'note', notebookId: 'life', folders: [], descendants: true, tags: [], tagMode: 'any', q: '', status: null, showHidden: false, ...value }, neighbors: false, notebooks: [{ id: 'life', title: 'Life', root: 'notes/life', statuses: ['todo', 'done'] }, { id: 'work', title: 'Work', root: 'notes/work' }], folders: [], tags: ['work'], statuses: ['todo', 'done'], count: 7, onChange, allNotebooks: false, onAllNotebooksChange: () => {}, onClear: () => {} };
 }
 
-const sidebar = (filters: FilterControls, onSelectFolder = vi.fn()) => render(createElement(I18nProvider, null, createElement(Sidebar, { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder, workspaceTagNames: ['work'], changeCount: 0 })));
+const sidebar = (filters: FilterControls, onSelectFolder = vi.fn()) => render(createElement(I18nProvider, null, createElement(Sidebar, { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder, workspaceTagNames: ['work'] })));
 
 it('treats folder filters and empty notebooks as unknown while folders are loading', () => {
   const filters = controls({ folders: ['notes/life/projects'] });
-  const props = { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: vi.fn(), workspaceTagNames: ['work'], changeCount: 0 };
+  const props = { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: vi.fn(), workspaceTagNames: ['work'] };
   const { rerender } = render(createElement(I18nProvider, null, createElement(Sidebar, { ...props, foldersLoading: true })));
   expect(screen.queryByRole('button', { name: /notes\/life\/projects/ })).toBeNull();
   expect(screen.getAllByText('Loading folders…').length).toBeGreaterThan(0);
@@ -55,7 +55,7 @@ it('paints each status filter dot from the notebook statuses, muting one the not
   render(
     <StatusColorProvider statuses={['todo', { name: 'review', color: 'teal' }, 'later']}>
       <I18nProvider>
-        <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} changeCount={0} />
+        <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} />
       </I18nProvider>
     </StatusColorProvider>,
   );
@@ -90,7 +90,7 @@ it('lists outline documents beside compilations and scopes their status/tag coun
   const outlineFacets = { ...facets, life: { ...facets.life, outlines: { total: 2, statuses: { todo: 2 }, tags: { research: 2 } } } };
   render(
     <I18nProvider>
-      <Sidebar filters={controls({ kind: 'outline' }, onChange)} facets={outlineFacets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={[]} changeCount={0} />
+      <Sidebar filters={controls({ kind: 'outline' }, onChange)} facets={outlineFacets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={[]} />
     </I18nProvider>,
   );
   const entry = screen.getByRole('button', { name: /Outlines/ });
@@ -106,7 +106,7 @@ it.each(['Delete', 'Move', 'Open file browser'])('puts %s on the folder dropdown
   const onManageFiles = vi.fn();
   render(
     <I18nProvider>
-      <Sidebar filters={controls()} facets={facets} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }, { notebookId: 'life', path: 'one/nested', title: 'Nested', order: 0 }]} selectedNotebookId='life' selectedFolder='one/nested' onManageFiles={onManageFiles} foldersWritable onSelectFolder={() => {}} workspaceTagNames={[]} changeCount={0} />
+      <Sidebar filters={controls()} facets={facets} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }, { notebookId: 'life', path: 'one/nested', title: 'Nested', order: 0 }]} selectedNotebookId='life' selectedFolder='one/nested' onManageFiles={onManageFiles} foldersWritable onSelectFolder={() => {}} workspaceTagNames={[]} />
     </I18nProvider>,
   );
   expect(screen.queryByRole('button', { name: 'Manage folder: Life' })).not.toBeInTheDocument();
@@ -129,7 +129,7 @@ it('dismisses the folder dropdown on Escape and restores trigger focus without o
   const onManageFiles = vi.fn();
   render(
     <I18nProvider>
-      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={onManageFiles} foldersWritable onSelectFolder={() => {}} workspaceTagNames={[]} changeCount={0} />
+      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={onManageFiles} foldersWritable onSelectFolder={() => {}} workspaceTagNames={[]} />
     </I18nProvider>,
   );
   const trigger = screen.getByRole('button', { name: 'Manage folder: One' });
@@ -154,7 +154,7 @@ it('moves a note dropped on a folder or on its notebook, and ignores a note of a
   const onDropNote = vi.fn();
   render(
     <I18nProvider>
-      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={() => {}} foldersWritable onSelectFolder={() => {}} onDropNote={onDropNote} workspaceTagNames={[]} changeCount={0} />
+      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={() => {}} foldersWritable onSelectFolder={() => {}} onDropNote={onDropNote} workspaceTagNames={[]} />
     </I18nProvider>,
   );
   const folder = screen.getByRole('button', { name: 'One' });
@@ -179,7 +179,7 @@ it('takes a note dragged by touch onto a folder', async () => {
   const onDropNote = vi.fn();
   render(
     <I18nProvider>
-      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={() => {}} foldersWritable onSelectFolder={() => {}} onDropNote={onDropNote} workspaceTagNames={[]} changeCount={0} />
+      <Sidebar filters={controls()} folders={[{ notebookId: 'life', path: 'one', title: 'One', order: 0 }]} selectedNotebookId='life' onManageFiles={() => {}} foldersWritable onSelectFolder={() => {}} onDropNote={onDropNote} workspaceTagNames={[]} />
     </I18nProvider>,
   );
   const folder = screen.getByRole('button', { name: 'One' });

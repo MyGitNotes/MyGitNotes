@@ -5,7 +5,7 @@ import { FolderTree, NoteDropTarget } from './FolderTree.js';
 import type { FolderCommand } from '@mygitnotes/core';
 import type { DraggedNote } from '../lib/note-drag.js';
 import React, { useState } from 'react';
-import { BookOpen, CheckCircle2, ChevronsDownUp, ChevronsUpDown, CircleDot, Filter, GalleryHorizontalEnd, GitBranch, ListTree, Search, Tag, X } from 'lucide-react';
+import { BookOpen, ChevronsDownUp, ChevronsUpDown, CircleDot, Filter, GalleryHorizontalEnd, ListTree, Search, Tag, X } from 'lucide-react';
 import type { NotebookFacets } from '@mygitnotes/core/note-query';
 import { FolderItem } from '../lib/types.js';
 import { mergeNotebookFacets, queryNotebookIds } from '../lib/note-facets.js';
@@ -18,7 +18,6 @@ import { filterAndSortTags, getSavedTagSort, saveTagSort, TagSort } from '../lib
 import { NavTree, NavTreeRow } from './NavTree.js';
 import { useSidebarSections } from '../lib/sidebar-sections.js';
 import { TagActions } from './TagActions.js';
-import { GitPullButton } from './GitPullButton.js';
 import { type RailSection, type RailSectionId, SidebarRail } from './SidebarRail.js';
 
 const selectedItemStyle: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, var(--color-text) 8%, transparent)', color: 'var(--color-text)' };
@@ -42,12 +41,6 @@ interface SidebarProps {
   facetsLoading?: boolean;
   facetsError?: string;
   workspaceTagNames: string[];
-  /** Pending changes across the workspace's repositories. */
-  changeCount: number;
-  /** Local sources only: shows the pull button and refreshes the workspace after a pull. */
-  onPulled?: () => Promise<void>;
-  /** The default worktree's absolute path, named in the pull failure prompt. */
-  repoRoot?: string;
   canManageTags?: boolean;
   onPreviewTagUsage?: (tag: string) => Promise<number>;
   onRenameTag?: (from: string, to: string) => Promise<void>;
@@ -60,7 +53,7 @@ interface SidebarProps {
   onRailSectionChange?: (section: RailSectionId | null) => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, changeCount, onPulled, repoRoot = '', canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, rail = false, railSection, onRailSectionChange }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, rail = false, railSection, onRailSectionChange }) => {
   const { t, language } = useTranslation();
   const { value, statuses, onChange } = filters;
   const dotClass = useStatusDotClass();
@@ -120,7 +113,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   const allTags = Object.keys(tagCounts);
   const visibleTags = filterAndSortTags(tagCounts, tagQuery, tagSort, language);
 
-  const dirtyCount = changeCount;
   const filterSummary = (
     <div className='sidebar-filter-summary'>
       {filters.count === null ? <LoadingStatus as='span'>{t('notes.countsLoading')}</LoadingStatus> : <span role='status' data-filter-results={filters.count}>{t('filters.results', { count: filters.count })}</span>}
@@ -315,46 +307,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
       </div>
     </>
   );
-  const changesCard = (
-    <div className='flex items-center justify-between px-3 py-2 rounded-xl border shadow-xs transition-colors' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
-      <div className='flex items-center gap-2.5'>
-        <div className='w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-fg/5' style={{ color: 'var(--color-muted)' }}>
-          <GitBranch className='w-4 h-4' />
-        </div>
-        <span className='text-xs font-semibold text-fg leading-tight'>{t('panel.changes')}</span>
-      </div>
-      <div className='flex items-center gap-1.5'>
-        {dirtyCount > 0
-          ? (
-            <span className='inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-warning-soft text-warning'>
-              <span className='w-1.5 h-1.5 rounded-full bg-warning animate-pulse' />
-              {t('sidebar.dirty', { count: dirtyCount })}
-            </span>
-          )
-          : (
-            <span className='inline-flex items-center gap-1 text-[10px] text-success font-medium'>
-              <CheckCircle2 className='w-3.5 h-3.5' />
-              {t('sidebar.clean')}
-            </span>
-          )}
-        {onPulled && <GitPullButton onPulled={onPulled} repoRoot={repoRoot} />}
-      </div>
-    </div>
-  );
-  const creditLink = (
-    <a className='sidebar-credit' href='https://github.com/wayne930242/MyGitNotes' target='_blank' rel='noopener noreferrer' title='MyGitNotes by wayne930242'>
-      {'powered by '}
-      <span>MyGitNotes</span>
-    </a>
-  );
-
   if (rail) {
-    const railSections: RailSection[] = [...(onSelectFolder ? [{ id: 'notebooks' as const, label: t('sidebar.notebooks'), icon: <BookOpen />, active: value.folders.length > 0 || Boolean(value.kind && value.kind !== 'note'), summary: filterSummary, body: <>{expandControls}{notebooksBody}</> }] : []), { id: 'status', label: t('sidebar.status'), icon: <CircleDot />, active: selectedStatus !== null, summary: filterSummary, body: statusBody }, ...(allTags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags'), icon: <Tag />, active: selectedTags.length, summary: filterSummary, body: tagsBody }] : []), { id: 'changes', label: t('panel.changes'), icon: <GitBranch />, active: dirtyCount, body: <>{changesCard}{creditLink}</> }];
+    const railSections: RailSection[] = [...(onSelectFolder ? [{ id: 'notebooks' as const, label: t('sidebar.notebooks'), icon: <BookOpen />, active: value.folders.length > 0 || Boolean(value.kind && value.kind !== 'note'), summary: filterSummary, body: <>{expandControls}{notebooksBody}</> }] : []), { id: 'status', label: t('sidebar.status'), icon: <CircleDot />, active: selectedStatus !== null, summary: filterSummary, body: statusBody }, ...(allTags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags'), icon: <Tag />, active: selectedTags.length, summary: filterSummary, body: tagsBody }] : [])];
     return <SidebarRail label={t('focusList.rail')} sections={railSections} open={railOpen} onOpenChange={setRailOpen} />;
   }
 
   return (
-    <WorkspaceSidebar label={t('sidebar.statusFilter')} className='notes-sidebar' footer={<div className='pt-3 mt-3 border-t shrink-0 flex flex-col gap-2.5' style={{ borderColor: 'var(--color-line)' }}>{changesCard}{creditLink}</div>}>
+    <WorkspaceSidebar label={t('sidebar.statusFilter')} className='notes-sidebar'>
       <section className='sidebar-search' aria-label={t('filters.title')}>
         <div className='sidebar-search-row'>{expandControls}</div>
         {filterSummary}

@@ -7,6 +7,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { Button } from './Button.js';
 import { DiffPreview } from './DiffPreview.js';
 import { EditorNotice } from './EditorNotice.js';
+import { GitPullSection } from './GitPullSection.js';
 import { GitSyncSection } from './GitSyncSection.js';
 
 interface ChangesToolProps {
@@ -20,6 +21,8 @@ interface ChangesToolProps {
   onSynced?: () => void;
   /** Worktrees to sync; with more than one, each gets its own section. */
   syncTargets?: SyncTarget[];
+  /** The default worktree's absolute path, named in the pull failure prompt. */
+  repoRoot?: string;
   /** Names a repository and branch; given when the workspace has several repositories, it groups changes under them. */
   repositoryHeading?: (repository: string | undefined) => string;
 }
@@ -29,7 +32,7 @@ export interface SyncTarget {
   gitStatus: GitStatus | null;
 }
 
-export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenCommitModal, remoteChanges, getPreview, writable, onSynced, syncTargets, repositoryHeading }: ChangesToolProps) {
+export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenCommitModal, remoteChanges, getPreview, writable, onSynced, syncTargets, repoRoot = '', repositoryHeading }: ChangesToolProps) {
   const { t } = useTranslation();
   const [localFiles, setFiles] = useState<FileChange[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -97,12 +100,7 @@ export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenComm
       {!!files.length && (
         <>
           <label className='panel-select-all'>
-            <input
-              type='checkbox'
-              checked={!!manageable.length && chosen.length === manageable.length}
-              disabled={!writable || !manageable.length}
-              onChange={event => setSelected(event.target.checked ? manageable.map(changeKey) : [])}
-            />
+            <input type='checkbox' checked={!!manageable.length && chosen.length === manageable.length} disabled={!writable || !manageable.length} onChange={event => setSelected(event.target.checked ? manageable.map(changeKey) : [])} />
             {t('changes.selectAll')}
           </label>
           {groupChanges(files, repositoryHeading).map(group => (
@@ -142,22 +140,10 @@ export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenComm
                       >
                         <FileDiff aria-hidden='true' />
                       </Button>
-                      <Button
-                        size='icon'
-                        title={t('common.restore')}
-                        aria-label={t('changes.restoreFile', { path: file.path })}
-                        disabled={!canRestore(file)}
-                        onClick={() => request('restore', [changeKey(file)])}
-                      >
+                      <Button size='icon' title={t('common.restore')} aria-label={t('changes.restoreFile', { path: file.path })} disabled={!canRestore(file)} onClick={() => request('restore', [changeKey(file)])}>
                         <RotateCcw aria-hidden='true' />
                       </Button>
-                      <Button
-                        size='icon'
-                        title={t('changes.commitFile', { path: file.path })}
-                        aria-label={t('changes.commitFile', { path: file.path })}
-                        disabled={!writable || !file.available}
-                        onClick={() => request('commit', [changeKey(file)])}
-                      >
+                      <Button size='icon' title={t('changes.commitFile', { path: file.path })} aria-label={t('changes.commitFile', { path: file.path })} disabled={!writable || !file.available} onClick={() => request('commit', [changeKey(file)])}>
                         <GitCommit aria-hidden='true' />
                       </Button>
                     </div>
@@ -201,6 +187,11 @@ export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenComm
         </section>
       )}
       {onSynced && (syncTargets && syncTargets.length > 1 ? syncTargets.map(target => <GitSyncSection key={target.id} repository={target.id} label={target.label} gitStatus={target.gitStatus} onSynced={onSynced} />) : <GitSyncSection gitStatus={gitStatus} onSynced={onSynced} />)}
+      {onSynced && <GitPullSection onPulled={onSynced} repoRoot={repoRoot} upstream={gitStatus?.upstream} />}
+      <a className='panel-credit' href='https://github.com/wayne930242/MyGitNotes' target='_blank' rel='noopener noreferrer' title='MyGitNotes by wayne930242'>
+        {'powered by '}
+        <span>MyGitNotes</span>
+      </a>
     </div>
   );
 }

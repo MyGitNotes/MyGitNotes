@@ -28,19 +28,19 @@ const controls = (value: Partial<NoteFilters> = {}, onChange: FilterControls['on
 function rail(filters = controls(), extra: Record<string, unknown> = {}) {
   const onSelectFolder = vi.fn();
   const onDropNote = vi.fn();
-  render(createElement(I18nProvider, null, createElement(Sidebar, { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder, onDropNote, workspaceTagNames: ['work'], changeCount: 2, rail: true, ...extra })));
+  render(createElement(I18nProvider, null, createElement(Sidebar, { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder, onDropNote, workspaceTagNames: ['work'], rail: true, ...extra })));
   return { onSelectFolder, onDropNote };
 }
 
 const button = (section: string) => screen.getByRole('button', { name: `Filter by ${section}` });
 
-it('folds to one icon per section: Notebooks, Status, Tags and Changes, with no section expanded', () => {
+it('folds to one icon per section: Notebooks, Status and Tags, with no section expanded', () => {
   rail();
-  expect(['Notebooks', 'Status', 'Tags', 'Changes'].map(name => button(name))).toHaveLength(4);
+  expect(['Notebooks', 'Status', 'Tags'].map(name => button(name))).toHaveLength(3);
   expect(document.querySelector('details')).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
-  // Dirty changes show as a count on the Changes icon.
-  expect(within(button('Changes')).getByText('2')).toBeInTheDocument();
+  // Changes live in the right panel's rail, so the left one has no Changes icon.
+  expect(screen.queryByRole('button', { name: 'Filter by Changes' })).toBeNull();
 });
 
 it('opens a section as a flyout beside the rail and closes it on Escape, on an outside press, and on its close button', () => {
@@ -121,12 +121,6 @@ it('shows no section-level "clear" line in the Status and Tags flyouts, whose su
   expect(within(screen.getByRole('dialog', { name: 'Status' })).queryByRole('button', { name: 'clear' })).toBeNull();
 });
 
-it('holds the Changes section too, with its pending count', () => {
-  rail();
-  fireEvent.click(button('Changes'));
-  expect(within(screen.getByRole('dialog', { name: 'Changes' })).getByText('2 dirty')).toBeInTheDocument();
-});
-
 it('opens the notebooks when a note is dragged onto their icon, so it can be dropped on a folder', () => {
   rail();
   act(() => {
@@ -136,7 +130,7 @@ it('opens the notebooks when a note is dragged onto their icon, so it can be dro
 });
 
 it('is the usual expanded sidebar when it is not a rail', () => {
-  render(createElement(I18nProvider, null, createElement(Sidebar, { filters: controls(), facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: () => {}, workspaceTagNames: ['work'], changeCount: 0 })));
+  render(createElement(I18nProvider, null, createElement(Sidebar, { filters: controls(), facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: () => {}, workspaceTagNames: ['work'] })));
   expect([...document.querySelectorAll('details.sidebar-filter-section > summary')].map(summary => summary.textContent)).toEqual(['Notebooks', 'Status', 'Tags']);
   expect(screen.queryByRole('button', { name: /^Filter by/ })).toBeNull();
 });
