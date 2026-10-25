@@ -324,7 +324,7 @@ function Changes({ request, writable, gitStatus, remoteChanges, getPreview, desc
         </Button>
       </header>
       {selectionMode && <p className='changes-help'>{t('changes.selectedHint')}</p>}
-      {remote && <p className='changes-help'>{t('changes.remoteHint')}</p>}
+      {remote && <p className='changes-help'>{t(demo ? 'demo.commitLocalHint' : 'changes.remoteHint')}</p>}
       <div className='changes-body'>
         <div className='changes-list'>{loading ? <LoadingStatus>{t('agent.loadingDocument')}</LoadingStatus> : changes.length ? <>{group('working')}{!selectionMode && group('staged')}</> : <p>{t('commit.cleanWorkingTree')}</p>}</div>
         <DiffPreview file={selected} diff={diff} loading={diffLoading} error={diffError} />
