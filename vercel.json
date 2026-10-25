@@ -40,7 +40,7 @@
       "destination": "/api"
     },
     {
-      "source": "/((?!assets/).*)",
+      "source": "/((?!assets/|sw\\.js$).*)",
       "destination": "/index.html"
     }
   ],

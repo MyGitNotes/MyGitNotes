@@ -96,6 +96,16 @@ it('serves the web build from the injected directory', async () => {
   expect(await fetch(`${base}/settings`).then(response => response.text())).toContain('<title>Pro</title>');
 });
 
+it('answers a missing worker file or built file with 404, not the app page, and still opens app routes', async () => {
+  const web = path.join(dir, 'pro-web-missing');
+  fs.mkdirSync(web);
+  fs.writeFileSync(path.join(web, 'index.html'), '<title>Pro</title>');
+  const base = await listen(createApp(dir, { configSource: noWorkspaceYet, remoteCache: undefined, webDist: web }));
+  expect((await fetch(`${base}/sw.js`)).status).toBe(404);
+  expect((await fetch(`${base}/assets/index-gone.js`)).status).toBe(404);
+  expect(await fetch(`${base}/assets`).then(response => response.text())).toContain('<title>Pro</title>');
+});
+
 it("keeps visitors' repository choices in the injected service", async () => {
   vi.stubEnv('MYGITNOTES_SOURCE', 'github');
   vi.stubEnv('MYGITNOTES_REPOSITORY', '');

@@ -12,7 +12,7 @@ import { createLocalAssetsRouter } from './local-assets.js';
 import { createLocalGitRouter } from './local-git.js';
 import { createLocalCoreUpdateRouter } from './local-core-update.js';
 import { createLocalRawAssetsRouter } from './local-raw-assets.js';
-import { webStatic } from './web-static.js';
+import { namesBuiltFile, webStatic } from './web-static.js';
 import { asLocal, localRepository, noteRepository, repositoryOrDefault } from './request-workspace.js';
 
 function validateWorkspacePath(repoRoot: string, reqPath: string, candidate: unknown, config: WorkspaceConfig): void {
@@ -103,7 +103,7 @@ export function createLocalApp(appRoot: string): express.Express {
   if (fs.existsSync(webDist)) {
     app.use(webStatic(webDist));
     app.get('*', (req: Request, res: Response, next) => {
-      if (req.path.startsWith('/api') || req.path.startsWith('/raw-assets') || req.path.startsWith('/r2-assets')) {
+      if (req.path.startsWith('/api') || req.path.startsWith('/raw-assets') || req.path.startsWith('/r2-assets') || namesBuiltFile(req.path)) {
         return next();
       }
       res.sendFile(path.join(webDist, 'index.html'));

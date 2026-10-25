@@ -50,3 +50,12 @@ it('serves the service worker file uncached so a deployment reaches installed ap
   expect(worker.headers.get('cache-control')).toBe('no-cache');
   expect((await fetch(`${base}/assets/app-abc123.js`)).headers.get('cache-control')).not.toBe('no-cache');
 });
+
+it('answers a missing worker file or built file with 404, never the app page, while app routes still open it', async () => {
+  for (const missing of ['/sw.js', '/assets/index-gone.js']) {
+    const response = await fetch(`${base}${missing}`);
+    expect(response.status, missing).toBe(404);
+    expect(await response.text(), missing).not.toBe('PRODUCT_BUILD');
+  }
+  for (const route of ['/assets', '/notebooks/work/notes/a.md']) expect(await fetch(`${base}${route}`).then(response => response.text()), route).toBe('PRODUCT_BUILD');
+});
