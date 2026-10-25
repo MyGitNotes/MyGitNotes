@@ -89,6 +89,32 @@ describe('assignees in stripTaskTokens', () => {
   });
 });
 
+describe('owners after CJK punctuation and inside code', () => {
+  it('starts an owner after CJK punctuation and a fullwidth space', () => {
+    expect(getTaskAssignees('- [ ] @小林、@小美 一起看')).toEqual(['小林', '小美']);
+    expect(getTaskAssignees('- [ ] 請，@小林；@小美：@阿明（@小華「@小李『@小張【@小王\u3000@小陳')).toEqual(['小林', '小美', '阿明', '小華', '小李', '小張', '小王', '小陳']);
+    expect(stripTaskTokens('- [ ] @小林、@小美 一起看')).toBe('、 一起看');
+  });
+
+  it('still refuses an @ after letters, digits, a slash, an @ or a dot', () => {
+    expect(getTaskAssignees('- [ ] a@b 1@b /@b @@b .@b')).toEqual([]);
+  });
+
+  it('ignores owners inside code spans, in the list and in the stripped text', () => {
+    const line = '- [ ] run `npm i @alice` now @bob';
+    expect(getTaskAssignees(line)).toEqual(['bob']);
+    expect(stripTaskTokens(line)).toBe('run `npm i @alice` now');
+    expect(getTaskAssignees('- [ ] fix `foo @deprecated` tag')).toEqual([]);
+    expect(stripTaskTokens('- [ ] fix `foo @deprecated` tag')).toBe('fix `foo @deprecated` tag');
+  });
+
+  it('strips owners before dates, so getTaskAssignees and stripTaskTokens agree', () => {
+    expect(getTaskAssignees('- [ ] 📅 2026-10-30@bob')).toEqual([]);
+    expect(stripTaskTokens('- [ ] 📅 2026-10-30@bob')).toBe('@bob');
+    expect(stripTaskTokens('- [ ] ship @alice 📅 2026-10-30 @bob')).toBe('ship');
+  });
+});
+
 describe('toggling a task keeps its assignee tokens', () => {
   it('checks and unchecks without touching @names', () => {
     const line = '- [ ] @小林 write the spec @alice 📅 2026-10-30';

@@ -13,6 +13,18 @@ const NAME_CHAR = '[\\p{L}\\p{M}\\p{N}_]';
 // lookahead refuses a name that is only the front of a longer path, package or address (`@types/node`, `@a.b/c`).
 const ASSIGNEE_SOURCE = `@(${NAME_CHAR}+(?:[.-]${NAME_CHAR}+)*)(?!${NAME_CHAR}|[/@]|[.-](?:${NAME_CHAR}|[/@]))`;
 
+// An owner's `@` also starts after CJK punctuation, so `@小林、@小美` names both. \s already covers the fullwidth space.
+const ASSIGNEE_BOUNDARY = '(?<![^\\s、，；：（「『【])';
+
+/** Blanks every code span with a placeholder of the same length, so an `@name` inside one never matches. */
+function blankCodeSpans(text: string): string {
+  return text.replace(/(`+).*?\1/g, span => '\uFFFF'.repeat(span.length));
+}
+
+function findAssigneeMatches(text: string): RegExpMatchArray[] {
+  return [...blankCodeSpans(text).matchAll(new RegExp(`${ASSIGNEE_BOUNDARY}${ASSIGNEE_SOURCE}`, 'gu'))];
+}
+
 export type TaskPriority = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
 
 /** The levels, highest first. A line with no priority emoji is normal, which ranks between medium and low. */
@@ -73,7 +85,7 @@ export function isTaskLine(line: string): boolean {
 export function getTaskAssignees(line: string): string[] {
   if (!isTaskLine(line)) return [];
   const text = line.replace(TASK_MARKER_RE, '');
-  const names = [...text.matchAll(new RegExp(`(?<![^\\s])${ASSIGNEE_SOURCE}`, 'gu'))].map(match => match[1]);
+  const names = findAssigneeMatches(text).map(match => match[1]);
   return [...new Set(names)];
 }
 
@@ -87,8 +99,12 @@ export function getTaskPriority(line: string): TaskPriority | undefined {
 /** Removes the checkbox marker and every recognized token (dates, assignees, priority), leaving just the task's text. */
 export function stripTaskTokens(line: string): string {
   let text = line.replace(TASK_MARKER_RE, '');
+  for (const match of findAssigneeMatches(text).reverse()) {
+    const start = text.slice(0, match.index).replace(/\s+$/, '').length;
+    text = text.slice(0, start) + text.slice(match.index! + match[0].length);
+  }
   for (const [emoji, withTime] of TASK_DATE_TOKENS) text = setTokenValue(text, emoji, null, withTime);
-  text = text.replace(new RegExp(`(^|\\s+)${ASSIGNEE_SOURCE}`, 'gu'), '').replace(new RegExp(`\\s*${PRIORITY_SOURCE}`, 'gu'), '');
+  text = text.replace(new RegExp(`\\s*${PRIORITY_SOURCE}`, 'gu'), '');
   return text.trim();
 }
 
