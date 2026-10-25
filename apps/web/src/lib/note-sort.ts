@@ -1,6 +1,6 @@
 import type { SortField, SortOrder } from '@mygitnotes/core/note-sort';
 
-export { noteUpdatedTime, type SortField, sortNotes, type SortOrder } from '@mygitnotes/core/note-sort';
+export { noteCreatedTime, noteUpdatedTime, type SortField, sortNotes, type SortOrder } from '@mygitnotes/core/note-sort';
 
 export interface SortConfig {
   field: SortField;

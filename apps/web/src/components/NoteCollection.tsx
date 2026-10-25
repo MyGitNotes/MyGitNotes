@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { CardView } from './CardView.js';
+import { FocusNoteList } from './FocusNoteList.js';
 import { ListView, type ListViewProps } from './ListView.js';
 
 /**
@@ -15,7 +16,10 @@ export function noteCollectionLayout(width: number): NoteCollectionLayout {
   return width > 0 && width < NOTE_CARDS_BELOW ? 'card' : 'list';
 }
 
-/** The flat and folder views' notes: a table where there is room for its columns, cards where there is not. */
+/**
+ * The flat and folder views' notes: a table where there is room for its columns, cards where there is not, and two-line rows
+ * (`FocusNoteList`) in the narrow dock beside a Focus.
+ */
 export function NoteCollection(props: ListViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const [layout, setLayout] = useState<NoteCollectionLayout>('list');
@@ -33,7 +37,7 @@ export function NoteCollection(props: ListViewProps) {
   }, []);
   return (
     <div ref={host} className='note-collection' data-layout={layout}>
-      {layout === 'list' ? <ListView {...props} /> : (
+      {props.focusMode?.compactRows ? <FocusNoteList {...props} /> : layout === 'list' ? <ListView {...props} /> : (
         <>
           {props.leading && <div className='note-collection-leading'>{props.leading}</div>}
           <CardView {...props} />

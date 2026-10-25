@@ -22,6 +22,11 @@ export function noteUpdatedTime(note: Pick<SortableNote, 'metadata' | 'mtime'>):
   return getTimestamp(note.metadata?.updated, note.mtime || 0);
 }
 
+/** The time a note was created: its `created` (else `date`) field, else its file mtime; 0 when none is known. */
+export function noteCreatedTime(note: Pick<SortableNote, 'metadata' | 'mtime'>): number {
+  return getTimestamp(note.metadata?.created ?? note.metadata?.date, note.mtime || 0);
+}
+
 const compareTitles = (a: SortableNote, b: SortableNote) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
 
 /**
@@ -42,8 +47,8 @@ export function sortNotes<T extends SortableNote>(notes: T[], field: SortField, 
         return rankA !== rankB ? factor * (rankA - rankB) : compareTitles(a, b);
       }
       case 'created': {
-        const timeA = getTimestamp(a.metadata?.created ?? a.metadata?.date, a.mtime || 0);
-        const timeB = getTimestamp(b.metadata?.created ?? b.metadata?.date, b.mtime || 0);
+        const timeA = noteCreatedTime(a);
+        const timeB = noteCreatedTime(b);
         return timeA !== timeB ? factor * (timeA - timeB) : compareTitles(a, b);
       }
       case 'updated':
