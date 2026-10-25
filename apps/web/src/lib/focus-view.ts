@@ -98,6 +98,8 @@ function readEntry(raw: unknown): FocusEntryView | LegacyFocusEntryView | null {
   return { activePane, shown: { ...shown as Record<string, string | null> }, recent: [...recent], history: isRecordOf(history, isStringArray) ? { ...history as Record<string, string[]> } : {}, ratios: structuredClone(ratios) as Record<string, Record<string, number>>, hideToolbar: { ...hideToolbar as Record<string, boolean> | undefined } };
 }
 
+const OLD_DEFAULT_DOCK_LEFT = 320;
+
 export function emptyFocusView(): FocusViewState {
   return { current: emptyFocusLayout(), entries: {}, last: null, dock: { left: 240, top: 280, collapsed: false } };
 }
@@ -119,7 +121,8 @@ export function readFocusView(raw: unknown): FocusViewState {
   const last = typeof raw.last === 'string' && FOCUS_KEY_RE.test(raw.last) ? raw.last : null;
   const defaults = emptyFocusView().dock;
   const dockRaw = isRecord(raw.dock) ? raw.dock : {};
-  const left = typeof dockRaw.left === 'number' && Number.isFinite(dockRaw.left) && dockRaw.left >= 0 ? dockRaw.left : defaults.left;
+  // 320 was the default width before the note list shrank to two lines; a dock still at it never chose that width, so it takes the new default.
+  const left = typeof dockRaw.left === 'number' && Number.isFinite(dockRaw.left) && dockRaw.left >= 0 && dockRaw.left !== OLD_DEFAULT_DOCK_LEFT ? dockRaw.left : defaults.left;
   // Views stored before the card dock moved to the top keep their height under `bottom`.
   const topRaw = dockRaw.top ?? dockRaw.bottom;
   const top = typeof topRaw === 'number' && Number.isFinite(topRaw) && topRaw >= 0 ? topRaw : defaults.top;

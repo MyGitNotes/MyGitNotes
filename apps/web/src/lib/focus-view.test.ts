@@ -60,6 +60,14 @@ describe('readFocusView', () => {
     expect(readFocusView({}).dock).toEqual(emptyFocusView().dock);
   });
 
+  it('reads a stored dock width of exactly 320, the old default, as the new default and keeps any other width', () => {
+    expect(readFocusView({ dock: { left: 320, top: 200, collapsed: true } }).dock).toEqual({ left: 240, top: 200, collapsed: true });
+    expect(readFocusView({ dock: { left: 319 } }).dock.left).toBe(319);
+    expect(readFocusView({ dock: { left: 321 } }).dock.left).toBe(321);
+    expect(readFocusView({ dock: { left: 240 } }).dock.left).toBe(240);
+    expect(readFocusView({ dock: { left: 400 } }).dock.left).toBe(400);
+  });
+
   it('keeps a dock height stored under the legacy bottom key, preferring top', () => {
     expect(readFocusView({ dock: { left: 320, bottom: 400, collapsed: false } }).dock.top).toBe(400);
     expect(readFocusView({ dock: { top: 200, bottom: 400 } }).dock.top).toBe(200);
