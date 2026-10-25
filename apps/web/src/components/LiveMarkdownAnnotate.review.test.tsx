@@ -66,3 +66,13 @@ describe('annotating: the next click while the session request is still out', ()
     expect(widgets()[0].querySelector('.ann-pending-item')).not.toBeNull();
   });
 });
+
+describe('the Annotate button', () => {
+  it('is not offered on the image line of an annotate block shown as source (R-F005)', async () => {
+    const { editor, container } = await mount(`${block('a')}\n\nafter`);
+    editor.focus();
+    editor.dispatch({ selection: { anchor: 40 } });
+    await waitFor(() => expect(container.querySelector('.live-md-annotate')).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Annotate' })).toBeNull();
+  });
+});

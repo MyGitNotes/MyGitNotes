@@ -143,8 +143,8 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
           const line = state.doc.lineAt(from);
           if (line.text.trim() === state.sliceDoc(from, to).trim()) {
             marks.push(Decoration.line({ class: 'live-md-image-line' }).range(line.from));
-            // An image alone on its line of a writable note can become an annotated image.
-            if (!state.readOnly && line.text === line.text.trimStart() && line.text.trim() === line.text) offer = { from: line.from, to: line.to, label: t('imageAnnotation.editor.annotate') };
+            // An image alone on its line of a writable note, outside every container block, can become an annotated image.
+            if (!state.readOnly && !directiveBlocks.some(block => line.from >= block.from && line.to <= block.to) && line.text === line.text.trimStart() && line.text.trim() === line.text) offer = { from: line.from, to: line.to, label: t('imageAnnotation.editor.annotate') };
           }
         }
         marks.push(Decoration.replace({ widget: new RenderedMarkdown(state.sliceDoc(from, to), notePath, from, name !== 'Image', linkLabel, tableLabel, notebookId, offer), block: name !== 'Image' }).range(from, to));
