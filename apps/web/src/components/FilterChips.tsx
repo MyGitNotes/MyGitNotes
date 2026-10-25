@@ -23,9 +23,7 @@ export function FilterChips({ filters, sections, onAdd }: { filters: FilterContr
           {t('focusList.addFilter')}
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
-          <DropdownMenu.Content className='sidebar-tag-menu' align='start' sideOffset={4} collisionPadding={8} onCloseAutoFocus={event => event.preventDefault()}>
-            {sections.map(section => <DropdownMenu.Item key={section.id} onSelect={() => onAdd(section.id)}>{section.label}</DropdownMenu.Item>)}
-          </DropdownMenu.Content>
+          <DropdownMenu.Content className='sidebar-tag-menu' align='start' sideOffset={4} collisionPadding={8} onCloseAutoFocus={event => event.preventDefault()}>{sections.map(section => <DropdownMenu.Item key={section.id} onSelect={() => onAdd(section.id)}>{section.label}</DropdownMenu.Item>)}</DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
     )

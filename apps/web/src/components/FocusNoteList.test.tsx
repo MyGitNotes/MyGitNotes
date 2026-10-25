@@ -36,17 +36,7 @@ afterEach(() => {
 const note = (name: string, extra: Partial<NoteListItem> = {}): NoteListItem => ({ id: name, path: `notes/life/projects/${name}.md`, notebookId: 'life', title: `Title of ${name}`, status: 'todo', tags: ['alpha', 'beta', 'gamma', 'delta'], metadata: { created: '2026-10-01T09:00:00Z', updated: '2026-10-20T10:30:00Z' }, ...extra });
 
 function setup(overrides: Record<string, unknown> = {}) {
-  const props = {
-    notes: [note('a'), note('b', { status: 'done', tags: [] })],
-    statuses: ['todo', 'working', 'done'],
-    onOpenNote: vi.fn(),
-    onDeleteNote: vi.fn(),
-    onMoveNote: vi.fn(),
-    onUpdateNoteStatus: vi.fn(),
-    onNewNote: vi.fn(),
-    focusMode: { onZoomNote: vi.fn(), canDrag: () => true, compactRows: true, readNote: vi.fn(async () => ({ content: '# Title of a\n\nThe opening line says **what** the note is about, with a [link](x.md).\n\n```js\nignored()\n```\n' })) },
-    ...overrides,
-  };
+  const props = { notes: [note('a'), note('b', { status: 'done', tags: [] })], statuses: ['todo', 'working', 'done'], onOpenNote: vi.fn(), onDeleteNote: vi.fn(), onMoveNote: vi.fn(), onUpdateNoteStatus: vi.fn(), onNewNote: vi.fn(), focusMode: { onZoomNote: vi.fn(), canDrag: () => true, compactRows: true, readNote: vi.fn(async () => ({ content: '# Title of a\n\nThe opening line says **what** the note is about, with a [link](x.md).\n\n```js\nignored()\n```\n' })) }, ...overrides };
   render(createElement(I18nProvider, null, createElement(FocusNoteList, props as never)));
   return props as typeof props & Record<string, never>;
 }

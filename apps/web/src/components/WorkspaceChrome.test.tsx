@@ -229,6 +229,30 @@ describe('WorkspaceSplitLayout and WorkspaceSidebarPortal', () => {
     expect(container.querySelector('.workspace-split-sidebar-panel')).toBeNull();
   });
 
+  it('puts the assistant between the page and the right panel, in the DOM and so in the tab order', () => {
+    const order = (container: HTMLElement) => [...container.querySelectorAll('[data-testid="page"], [data-testid="assistant"], [data-testid="right-panel"]')].map(node => node.getAttribute('data-testid'));
+    const layout = (
+      <SidebarProvider>
+        <WorkspaceSplitLayout hasSidebar={false} assistant={<aside data-testid='assistant'>Assistant</aside>} rightPanel={<aside data-testid='right-panel'>Right panel</aside>}>
+          <div data-testid='page'>Page</div>
+        </WorkspaceSplitLayout>
+      </SidebarProvider>
+    );
+    const { container } = render(layout);
+    expect(order(container)).toEqual(['page', 'assistant', 'right-panel']);
+    // The assistant shares a row with the page, so the page keeps its own column; the right panel is outside the row.
+    const row = screen.getByTestId('assistant').parentElement!;
+    expect(row).toHaveClass('workspace-main-row');
+    expect(screen.getByTestId('page').parentElement).toHaveClass('workspace-main-column');
+    expect(row.contains(screen.getByTestId('right-panel'))).toBe(false);
+    cleanup();
+    // Below the desktop breakpoint the right panel is an overlay beside the row, and the assistant keeps the same place.
+    window.matchMedia = ((query: string) => ({ matches: false, media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false })) as typeof window.matchMedia;
+    const narrow = render(layout);
+    expect(order(narrow.container)).toEqual(['page', 'assistant', 'right-panel']);
+    expect(screen.getByTestId('assistant').parentElement).toHaveClass('workspace-main-row');
+  });
+
   it('renders split layout with splitter and portaled sidebar when hasSidebar is true', () => {
     const { container } = render(
       <SidebarProvider>

@@ -16,7 +16,7 @@ it('adds a typed tag without the commas the separator key leaves, and keeps the 
   expect(withTag({}, 'first')).toEqual({ tags: ['first'] });
 });
 
-it('removes a tag, and suggests the notebook\'s tags the note lacks that contain what is typed', () => {
+it("removes a tag, and suggests the notebook's tags the note lacks that contain what is typed", () => {
   expect(withoutTag({ tags: ['a', 'b'] }, 'a')).toEqual({ tags: ['b'] });
   expect(suggestTags(['alpha', 'beta', 'Gamma'], ['alpha'], '')).toEqual(['beta', 'Gamma']);
   expect(suggestTags(['alpha', 'beta', 'Gamma'], [], ' GAM ')).toEqual(['Gamma']);

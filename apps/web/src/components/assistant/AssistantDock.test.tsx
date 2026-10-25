@@ -172,13 +172,15 @@ it('resizes with the arrow keys by 16px within 320px and half the window', () =>
   expect(width()).toBe('720px');
 });
 
-it('resizes by dragging its left edge', () => {
+it('resizes by dragging its left edge, with its right edge staying where its neighbour is', () => {
   render(withAgent(createElement(AssistantDock)));
   act(() => assistantDock.open());
   const handle = separator();
+  // The right panel sits to its right: the dock ends 49px short of the window's edge, so the pointer's distance from there is its width.
+  vi.spyOn(document.querySelector('.assistant-dock')!, 'getBoundingClientRect').mockReturnValue({ right: 1391 } as DOMRect);
   fireEvent.pointerDown(handle, { pointerId: 1, clientX: 1060 });
   fireEvent.pointerMove(handle, { pointerId: 1, clientX: 940 });
-  expect(width()).toBe('500px');
+  expect(width()).toBe('451px');
   // Dragged past either bound, it stops at the bound.
   fireEvent.pointerMove(handle, { pointerId: 1, clientX: 100 });
   expect(width()).toBe('720px');

@@ -190,9 +190,21 @@ export interface WorkspaceSplitLayoutProps {
   rightPanelId?: string;
   /** Current desired width in pixels (rail-only, rail+content, or 0 to hide); reported by the right panel content itself. */
   rightPanelWidth?: number;
+  /** The assistant dock: it shares a row with the page, on its right and left of the right panel, so the page reflows beside it and the panel's rail stays at the window's edge. */
+  assistant?: React.ReactNode;
 }
 
-export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, sidebarCollapsed = false, sidebarRail = false, drawerOpen: propDrawerOpen, onCloseDrawer: propOnCloseDrawer, closeLabel = 'Close sidebar', className = '', sidebarId = 'workspace-sidebar-panel', sidebarDomId, mainId = 'workspace-main-panel', mainClassName = '', rightPanel, rightPanelId = 'workspace-right-panel', rightPanelWidth }: WorkspaceSplitLayoutProps) {
+/** The page, then the assistant dock beside it. The page keeps the column it always had; the row is what the right panel pads or sits beside. */
+function PageRow({ children, assistant, className }: { children: React.ReactNode; assistant: React.ReactNode; className: string; }) {
+  return (
+    <div className={`workspace-split-main-panel workspace-main-row ${className}`}>
+      <div className='workspace-main-column'>{children}</div>
+      {assistant}
+    </div>
+  );
+}
+
+export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, sidebarCollapsed = false, sidebarRail = false, drawerOpen: propDrawerOpen, onCloseDrawer: propOnCloseDrawer, closeLabel = 'Close sidebar', className = '', sidebarId = 'workspace-sidebar-panel', sidebarDomId, mainId = 'workspace-main-panel', mainClassName = '', rightPanel, rightPanelId = 'workspace-right-panel', rightPanelWidth, assistant }: WorkspaceSplitLayoutProps) {
   const isDesktop = useIsDesktop();
   const context = useContext(SidebarContext);
   const drawerOpen = !sidebarCollapsed && (propDrawerOpen !== undefined ? propDrawerOpen : (context?.open ?? false));
@@ -250,7 +262,7 @@ export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, sid
     return (
       <div className={`workspace-split-layout flex-1 min-w-0 min-h-0 h-full flex overflow-hidden ${className}`}>
         {hasSidebar && <WorkspaceSidebarDrawer open={drawerOpen} onClose={onCloseDrawer} closeLabel={closeLabel}>{slotNode}</WorkspaceSidebarDrawer>}
-        <div className={`workspace-split-main-panel flex-1 min-w-0 min-h-0 h-full ${mainClassName}`}>{children}</div>
+        <PageRow assistant={assistant} className={`flex-1 min-w-0 min-h-0 h-full ${mainClassName}`}>{children}</PageRow>
         {rightPanel}
       </div>
     );
@@ -271,11 +283,14 @@ export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, sid
           {rightPanelNode
             ? (
               <Group orientation='horizontal' className='workspace-split-inner-group flex-1 min-w-0 min-h-0 h-full flex' onLayoutChanged={(_layout, meta) => persistWidthOnUserInteraction(meta, rightPanelRef, RIGHT_PANEL_RAIL_WIDTH, MIN_RIGHT_PANEL_WIDTH, MAX_RIGHT_PANEL_WIDTH, saveRightPanelWidth)}>
-                <Panel groupResizeBehavior='preserve-relative-size' className={`workspace-split-main-panel flex-1 min-w-0 min-h-0 h-full ${mainClassName}`}>{children}</Panel>
+                <Panel groupResizeBehavior='preserve-relative-size' className={`workspace-split-main-panel workspace-main-row flex-1 min-w-0 min-h-0 h-full ${mainClassName}`}>
+                  <div className='workspace-main-column'>{children}</div>
+                  {assistant}
+                </Panel>
                 {rightPanelNode}
               </Group>
             )
-            : <div className={`workspace-split-main-panel flex-1 min-w-0 min-h-0 h-full ${mainClassName}`}>{children}</div>}
+            : <PageRow assistant={assistant} className={`flex-1 min-w-0 min-h-0 h-full ${mainClassName}`}>{children}</PageRow>}
         </Panel>
       </Group>
     </div>
