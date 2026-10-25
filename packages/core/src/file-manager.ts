@@ -11,6 +11,7 @@ import { relocateWorkspaceDocuments, workspaceDocument } from './workspace-docum
 import { isCompilationPath, relocateCompilation } from './compilation.js';
 import { decodeAsset } from './assets.js';
 import { LEGACY_WORKSPACE_CONFIG_FILENAME, WORKSPACE_CONFIG_FILENAME } from './config.js';
+import { CASE_COLLISION_ERROR, differsOnlyInCase, foldedIndex } from './case-collision.js';
 
 /* eslint-disable no-control-regex -- Control-character ranges validate paths and distinguish binary data from editable text. */
 const filePath = z.string().min(1).max(2048).refine(value => !/[\\\x00-\x1f\x7f]/.test(value) && value.split('/').every(p => p && p !== '.' && p !== '..'), 'Use a relative workspace path.');
@@ -93,6 +94,12 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
   assertPath(command.path, command.kind === 'metadata');
   const files = new Map(snapshot.files), directories = new Set(snapshot.directories);
   const exists = (file: string) => files.has(file) || directories.has(file) || snapshot.protectedPaths.includes(file);
+  // Every check runs before the plan changes anything, so one index of the snapshot's names, folded to lower case, serves them all.
+  let folded: Map<string, string[]> | undefined;
+  const assertCase = (file: string, skip?: (entry: string) => boolean) => {
+    folded ??= foldedIndex([...snapshot.files.keys(), ...snapshot.directories, ...snapshot.protectedPaths]);
+    if (differsOnlyInCase(folded.get(file.toLowerCase()) ?? [], file, skip)) throw new Error(CASE_COLLISION_ERROR);
+  };
   const assertParent = (file: string) => {
     if (!directories.has(path.posix.dirname(file))) throw new Error('Destination directory does not exist.');
   };
@@ -100,6 +107,7 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
   const pathMap: Record<string, string> = {};
   if (['create', 'upload', 'mkdir'].includes(command.kind)) {
     if (exists(command.path)) throw new Error('Destination already exists.');
+    assertCase(command.path);
     assertParent(command.path);
     if (command.kind === 'mkdir') {
       directories.add(command.path);
@@ -145,6 +153,8 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
       assertParent(destination);
       if (exists(destination)) throw new Error('Destination already exists.');
     }
+    // The source itself counts: a rename that changes only letter case writes the new name over the old entry, then deletes it.
+    const inSource = (entry: string) => withinPath(entry, command.path) && entry !== command.path;
     const title = command.kind === 'move' ? command.title : undefined;
     const relocate = (file: string) => withinPath(file, command.path) ? destination + file.slice(command.path.length) : file;
     const removedMetadata = command.kind === 'remove-directory' ? command.path + '/_dir.yml' : '';
@@ -153,6 +163,7 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
       const next = relocate(source);
       assertPath(next);
       if (exists(next)) throw new Error('Destination already exists.');
+      assertCase(next, inSource);
       pathMap[source] = next;
     }
     files.clear();

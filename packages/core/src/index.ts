@@ -28,6 +28,7 @@ export { GITHUB_COM, type GitHubSite, githubSite, normalizeGitHubUrl } from './g
 export * from './folders.js';
 export * from './folder-plan.js';
 export * from './file-manager.js';
+export * from './case-collision.js';
 export * from './github-source.js';
 export * from './note-shell.js';
 export * from './note-search.js';

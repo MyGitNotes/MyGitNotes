@@ -6,6 +6,7 @@ import { isNotebookContent, parseFolderConfig, sortFolders } from './folders.js'
 import { relocateWorkspaceDocuments } from './workspace-documents.js';
 import { isCompilationPath, relocateCompilation } from './compilation.js';
 import type { FolderItem, NotebookConfig } from './types.js';
+import { CASE_COLLISION_ERROR, differsOnlyInCase } from './case-collision.js';
 
 const relative = z.string().max(512).refine(value => !value || !/[\\\0]/.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..'));
 export const FolderCommandSchema = z.discriminatedUnion('kind', [z.object({ kind: z.literal('create'), notebookId: z.string(), parent: relative, name: relative.refine(value => Boolean(value) && !value.includes('/')), title: z.string().trim().min(1).max(120).optional() }).strict(), z.object({ kind: z.literal('move'), notebookId: z.string(), path: relative.refine(Boolean), parent: relative, before: relative.optional() }).strict(), z.object({ kind: z.literal('delete'), notebookId: z.string(), path: relative.refine(Boolean), destination: relative }).strict()]);
@@ -155,6 +156,8 @@ export function planFolderChange(snapshot: FolderSnapshot, input: unknown) {
   if (source && inside(full(parent), source)) throw new Error('A folder cannot contain itself.');
   if (source && source !== destination && snapshot.protectedPaths.some(file => inside(file, source))) throw new Error('Folder contains protected files. Move these separately first.');
   if (command.kind === 'create' && (snapshot.directories.includes(destination) || snapshot.files.has(destination) || snapshot.protectedPaths.some(file => inside(file, destination)))) throw new Error('Destination already exists.');
+  // A folder whose new name another entry already has in different letter case would merge into it on macOS or Windows.
+  if (command.kind !== 'delete' && source !== destination && differsOnlyInCase([...snapshot.directories, ...snapshot.files.keys(), ...snapshot.protectedPaths], destination, entry => !!source && inside(entry, source) && entry !== source)) throw new Error(CASE_COLLISION_ERROR);
   const relocate = (file: string) => source && inside(file, source) ? destination + file.slice(source.length) : file;
   const files = new Map<string, string>();
   const directories = new Set<string>();

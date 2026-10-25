@@ -23,6 +23,10 @@
       "types": "./dist/repository.d.ts",
       "import": "./dist/repository.js"
     },
+    "./case-collision": {
+      "types": "./dist/case-collision.d.ts",
+      "import": "./dist/case-collision.js"
+    },
     "./note-title": {
       "types": "./dist/note-title.d.ts",
       "import": "./dist/note-title.js"

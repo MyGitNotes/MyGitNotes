@@ -22,6 +22,7 @@ import { gitBlobId, hashJson, REMOTE_CACHE_BATCH_BYTES, REMOTE_CACHE_MAX_VALUE, 
 import type { RepositoryCatalog } from './note-catalog.js';
 import type { NoteListItem } from './note-query.js';
 import { addVersion, agentEditMessage, type HistoryEntry, isAgentEdit, readVersionFile, serializeVersionFile, versionedPath, versionFilePath, type VersionLabel } from './note-versions.js';
+import { CASE_COLLISION_ERROR, differsOnlyInCase } from './case-collision.js';
 
 export { SourceError } from './github-api.js';
 const CACHEABLE_FILE = /\.(md|markdown|mdx|txt|ya?ml)$/i;
@@ -464,6 +465,8 @@ export abstract class RemoteSource {
     if (operation !== 'upload' && !existing) throw new SourceError('Asset not found.', 404);
     const destination = operation === 'delete' ? file : assetPath(nb, args.directory ?? '', args.filename || path.posix.basename(file));
     if (operation !== 'delete' && snapshot.entries.some(e => e.path === destination)) throw new SourceError('Destination already exists.', 409);
+    // A name another entry has in different letter case is the same file once the repository is checked out on macOS or Windows.
+    if (operation !== 'delete' && differsOnlyInCase(snapshot.entries.map(e => e.path), destination, entry => entry === file)) throw new SourceError(CASE_COLLISION_ERROR, 409);
     const changes = operation === 'upload' ? [{ path: destination, base64: decodeAsset(args.base64Content).toString('base64') }] : operation === 'move' ? [{ path: destination, sha: existing!.sha }, { path: file, sha: null }] : [{ path: file, sha: null }];
     const receipt = await this.commitChanges(changes, String(args.revision || ''), operation, 'assets');
     return { ...receipt, path: destination };
@@ -477,6 +480,7 @@ export abstract class RemoteSource {
     const nb = config.notebooks.find(n => file.startsWith(`${n.root}/`));
     if (!nb || !isNotebookContent(file.slice(nb.root.length + 1), nb) || !isNoteFile(file) || file.includes('\\') || file.split('/').some(p => p === '..' || p === '.' || !p)) throw new SourceError('Path is not a configured note.', 403);
     if (createOnly && snapshot.entries.some(e => e.path === file)) throw new SourceError('A note already exists at this path.', 409);
+    if (createOnly && differsOnlyInCase(snapshot.entries.map(e => e.path), file)) throw new SourceError(CASE_COLLISION_ERROR, 409);
     const existing = snapshot.entries.find(e => e.path === file);
     if (existing && (existing.type !== 'blob' || existing.mode === '120000')) throw new SourceError('Path is not a regular note file.', 403);
     if (file.includes('\0') || (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)))) throw new SourceError('Invalid note path or metadata.');

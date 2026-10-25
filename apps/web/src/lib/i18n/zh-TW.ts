@@ -197,6 +197,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'files.deleteTreeConfirm': '我確認刪除此目錄及下方列出的所有內容。',
   'files.moveNote': '移動筆記',
   'files.moveTaken': '{path} 已經有筆記，請先把其中一篇改名。',
+  'files.moveCaseTaken': '已經有名稱只差在大小寫的檔案或資料夾，{path} 在 macOS 和 Windows 上會蓋掉它，請換一個名稱。',
   'files.draftsBlock': '這次調整會影響以下尚未提交的草稿，請先提交或捨棄：{paths}',
   'files.moveNoteTitle': '把「{title}」移到資料夾',
   'files.renameTitle': '重新命名「{title}」',

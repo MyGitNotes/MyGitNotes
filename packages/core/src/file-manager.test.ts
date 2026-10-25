@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { type FileSnapshot, planFileChange, retitleNoteFile } from './file-manager.js';
-import { relocateLinks, relocateMovedLinks } from './folder-plan.js';
+import { planFolderChange, relocateLinks, relocateMovedLinks } from './folder-plan.js';
+import { CASE_COLLISION_ERROR } from './case-collision.js';
 
 const snapshot = (files: Record<string, string>): FileSnapshot => {
   const paths = Object.keys(files);
@@ -41,6 +42,27 @@ it('leaves a compilation, a folder and a plain file untouched by the title', () 
 
 it('still refuses a taken destination when the move carries a title', () => {
   expect(() => planFileChange(snapshot({ 'notes/a/one.md': '# One\n', 'notes/a/two.md': '# Two\n' }), { kind: 'move', notebookId: 'a', path: 'notes/a/one.md', destination: 'notes/a/two.md', title: 'Two' })).toThrow('Destination already exists.');
+});
+
+it('refuses a name another entry has in different letter case, which macOS and Windows treat as the same file', () => {
+  const files = { 'notes/a/Plans.md': '# Plans\n', 'notes/a/draft.md': '# Draft\n', 'notes/a/Archive/old.md': '# Old\n', 'notes/a/dir/n.md': '# N\n' };
+  const move = (path: string, destination: string) => planFileChange(snapshot(files), { kind: 'move', notebookId: 'a', path, destination, title: 'Plans' });
+  expect(() => move('notes/a/draft.md', 'notes/a/plans.md')).toThrow(CASE_COLLISION_ERROR);
+  // Only the case of its own name: written over itself, then deleted.
+  expect(() => move('notes/a/Plans.md', 'notes/a/plans.md')).toThrow(CASE_COLLISION_ERROR);
+  expect(() => move('notes/a/dir', 'notes/a/archive')).toThrow(CASE_COLLISION_ERROR);
+  expect(() => move('notes/a/dir/n.md', 'notes/a/ARCHIVE/n.md')).toThrow();
+  expect(() => planFileChange(snapshot(files), { kind: 'create', notebookId: 'a', path: 'notes/a/PLANS.md' })).toThrow(CASE_COLLISION_ERROR);
+  expect(() => planFileChange(snapshot(files), { kind: 'mkdir', notebookId: 'a', path: 'notes/a/archive' })).toThrow(CASE_COLLISION_ERROR);
+  // A folder's own children move away with it, so they never block it.
+  expect(move('notes/a/Archive', 'notes/a/kept').files.has('notes/a/kept/old.md')).toBe(true);
+  expect(move('notes/a/draft.md', 'notes/a/plan-b.md').files.has('notes/a/plan-b.md')).toBe(true);
+});
+
+it('refuses a folder move or new folder whose name another entry has in different letter case', () => {
+  const folders = { notebooks: [{ id: 'a', title: 'A', root: 'notes/a' }], directories: ['notes', 'notes/a', 'notes/a/Ideas', 'notes/a/box', 'notes/a/box/ideas'], protectedPaths: [], files: new Map([['notes/a/box/ideas/x.md', '# X\n']]) };
+  expect(() => planFolderChange(folders, { kind: 'create', notebookId: 'a', parent: '', name: 'ideas' })).toThrow(CASE_COLLISION_ERROR);
+  expect(() => planFolderChange(folders, { kind: 'move', notebookId: 'a', path: 'box/ideas', parent: '' })).toThrow(CASE_COLLISION_ERROR);
 });
 
 const spellings = (name: string) => [`[a](${name})`, `[a](./${name}#h)`, `[a](../x/${name}?q=1)`, `[a](<${name}>)`, `![i](${encodeURIComponent(name)})`, `[a](${encodeURIComponent(name).toLowerCase()})`, `[a](%${name.charCodeAt(0).toString(16)}${name.slice(1)})`, `[ref]: ${name}`, `[a](/notes/a/x/${name})`, `[a](/raw-assets/notes/a/x/${encodeURIComponent(name)})`, `[a](/api/files/raw?notebookId=a&path=notes%2Fa%2Fx%2F${encodeURIComponent(name)})`, `[a](/api/files/raw?notebookId=a&path=notes/a/x/${name.replace(/ /g, '+')})`, '`[code](' + name + ')`', 'plain mention of ' + name];

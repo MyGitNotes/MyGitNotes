@@ -195,6 +195,7 @@ export const en = {
   'files.deleteTreeConfirm': 'I confirm deletion of this folder and everything listed below.',
   'files.moveNote': 'Move note',
   'files.moveTaken': 'A note already exists at {path}. Rename one of them first.',
+  'files.moveCaseTaken': 'Another file or folder has the name {path} in different letter case, so it would be overwritten on macOS and Windows. Choose a different name.',
   'files.draftsBlock': 'Commit or discard the drafts this change would strand first: {paths}',
   'files.moveNoteTitle': 'Move “{title}” to a folder',
   'files.renameTitle': 'Rename “{title}”',

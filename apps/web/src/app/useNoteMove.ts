@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { relocateFocusPaths } from '@mygitnotes/core/focus-page';
+import { CASE_COLLISION_ERROR } from '@mygitnotes/core/case-collision';
 import type { QueryClient } from '@tanstack/react-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { readNote } from '../lib/api.js';
@@ -53,7 +54,12 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
   const renameNote = (note: MovedNote, applyTitle?: (title: string) => void) => canWriteNotebook(note.notebookId) ? () => setRequest({ mode: 'rename', note, applyTitle }) : undefined;
 
   /** The error a refused move shows: a taken destination reads as the dialog's own message. */
-  const moveError = (error: unknown, destination: string) => error instanceof Error && error.message === 'Destination already exists.' ? new Error(t('files.moveTaken', { path: destination })) : error;
+  const moveError = (error: unknown, destination: string) => {
+    if (!(error instanceof Error)) return error;
+    if (error.message === 'Destination already exists.') return new Error(t('files.moveTaken', { path: destination }));
+    if (error.message === CASE_COLLISION_ERROR) return new Error(t('files.moveCaseTaken', { path: destination }));
+    return error;
+  };
 
   /** Puts `note` at `destination`, retitled `title` when given (a compilation has already applied it). */
   const relocate = async (note: MovedNote, destination: string, title?: string) => {
