@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type FocusDivision, type FocusLayout, type FocusNode, type FocusTab, legacyFocusTree } from '@mygitnotes/core/focus-page';
-import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
+import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasRestoredFocus, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
 const note = (path: string): FocusTab => ({ kind: 'note', path });
 const lane = (id: string): FocusTab => ({ kind: 'note', path: `notes/${id}.compilation.yml` });
@@ -334,5 +334,16 @@ describe('splitRatios and collapseRatios', () => {
     const entry: FocusEntryView = { activePane: 'p3', shown: { p1: 'note:a.md', p3: 'note:b.md' }, recent: ['p3', 'p2', 'p1'], history: { p1: ['note:a.md'], p3: [] }, ratios: { s1: { p1: 50, p3: 50 }, s2: { p2: 50, p3: 50 } }, hideToolbar: { p1: true, p3: true } };
     const retained = retainPanes(entry, { root: split('s1', 'horizontal', pane('p1'), pane('p2')) });
     expect(retained).toEqual({ activePane: 'p2', shown: { p1: 'note:a.md' }, recent: ['p2', 'p1'], history: { p1: ['note:a.md'] }, ratios: { s1: { p1: 50, p3: 50 } }, hideToolbar: { p1: true } });
+  });
+});
+
+describe('hasRestoredFocus', () => {
+  it('is false for a view that holds nothing the visitor chose', () => {
+    expect(hasRestoredFocus(emptyFocusView())).toBe(false);
+    expect(hasRestoredFocus(state({ last: CURRENT_FOCUS }))).toBe(false);
+  });
+  it('is true when the current Focus holds a tab or a named Focus was shown last', () => {
+    expect(hasRestoredFocus(state({ current: layout('single', [note('notes/a.md')]) }))).toBe(true);
+    expect(hasRestoredFocus(state({ last: 'reading' }))).toBe(true);
   });
 });

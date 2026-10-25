@@ -1,28 +1,48 @@
 // @vitest-environment jsdom
 import { createElement, type ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { DemoProvider } from '../lib/demo.js';
 import { APP_ROOT_SEGMENTS, parseWorkspaceRoute } from '../lib/routes.js';
 import { demoScenarioNotice, setDemoScenarioNotice } from '../lib/demo-storage.js';
 import { useDemoScenario } from './useDemoScenario.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 
-const config = { schema_version: 4, workspace: { title: 'Demo', default_notebook: 'demo~contract-zh-tw' }, notebooks: [{ id: 'demo~contract-zh-tw', title: '契約' }, { id: 'demo~trpg-zh-tw', title: '跑團' }] } as unknown as WorkspaceConfig;
+const config = { schema_version: 4, workspace: { title: 'Demo', default_notebook: 'demo~contract-zh-tw' }, notebooks: [{ id: 'demo~contract-zh-tw', title: '契約', root: '' }, { id: 'demo~trpg-zh-tw', title: '跑團', root: 'trpg-zh-tw/' }] } as unknown as WorkspaceConfig;
 const inDemo = (demo: boolean) => ({ children }: { children: ReactNode; }) => createElement(DemoProvider, { value: demo ? { scenario: 'x' } : null }, children);
-const run = (pathname: string, options: { demo?: boolean; loading?: boolean; config?: WorkspaceConfig | null; } = {}) => {
+const run = (pathname: string, options: { demo?: boolean; loading?: boolean; config?: WorkspaceConfig | null; guides?: string[]; restored?: boolean; } = {}) => {
   const navigate = vi.fn();
-  renderHook(() => useDemoScenario({ config: options.config === undefined ? config : options.config, loading: options.loading ?? false, pathname, navigate }), { wrapper: inDemo(options.demo ?? true) });
+  const hasGuide = vi.fn(async (_notebookId: string, path: string) => (options.guides ?? []).includes(path));
+  const hasRestoredView = vi.fn(() => options.restored ?? false);
+  renderHook(() => useDemoScenario({ config: options.config === undefined ? config : options.config, loading: options.loading ?? false, pathname, navigate, hasGuide, hasRestoredView }), { wrapper: inDemo(options.demo ?? true) });
   return navigate;
 };
 afterEach(() => setDemoScenarioNotice(null));
 
-it('replaces /<scenario> with the route of its notebook', () => {
-  expect(run('/trpg')).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw', { replace: true });
+it('replaces /<scenario> with the route of its notebook when it has no guide note', async () => {
+  const navigate = run('/trpg');
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw', { replace: true }));
 });
 
-it('opens the default notebook and says so for an unknown scenario', () => {
-  expect(run('/nope')).toHaveBeenCalledWith('/notebooks/demo~contract-zh-tw', { replace: true });
+it('opens the notebook’s index.md, named relative to its root, when it has one', async () => {
+  const navigate = run('/trpg', { guides: ['trpg-zh-tw/index.md'] });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw/notes/index.md', { replace: true }));
+  expect(navigate).toHaveBeenCalledTimes(1);
+});
+
+it('finds the guide of a notebook whose root is the repository root', async () => {
+  const navigate = run('/contract', { guides: ['index.md'] });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~contract-zh-tw/notes/index.md', { replace: true }));
+});
+
+it('keeps the notebook page for a visitor whose Focus view is restored', async () => {
+  const navigate = run('/trpg', { guides: ['trpg-zh-tw/index.md'], restored: true });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw', { replace: true }));
+});
+
+it('opens the default notebook and says so for an unknown scenario, without its guide', async () => {
+  const navigate = run('/nope', { guides: ['index.md'] });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~contract-zh-tw', { replace: true }));
   expect(demoScenarioNotice()).toEqual({ slug: 'nope', title: '契約' });
 });
 

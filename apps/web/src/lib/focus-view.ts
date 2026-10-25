@@ -99,6 +99,21 @@ function readEntry(raw: unknown): FocusEntryView | LegacyFocusEntryView | null {
   return { activePane, shown: { ...shown as Record<string, string | null> }, recent: [...recent], history: isRecordOf(history, isStringArray) ? { ...history as Record<string, string[]> } : {}, ratios: structuredClone(ratios) as Record<string, Record<string, number>>, hideToolbar: { ...hideToolbar as Record<string, boolean> | undefined } };
 }
 
+/** Whether a stored view holds something the visitor arranged or chose: a tab in the current Focus, or a named Focus shown last. */
+export function hasRestoredFocus(view: FocusViewState): boolean {
+  return focusPanes(view.current).some(pane => pane.tabs.length > 0) || (view.last !== null && view.last !== CURRENT_FOCUS);
+}
+
+/** Whether this device keeps a restorable Focus view for the notebook `notebookKey` served by `repositoryId`; an unreadable view is none. */
+export function hasStoredFocusView(repositoryId: string, notebookKey: string): boolean {
+  try {
+    const raw = localStorage.getItem(focusViewStorageKey(repositoryId, notebookKey));
+    return raw !== null && hasRestoredFocus(readFocusView(JSON.parse(raw)));
+  } catch {
+    return false;
+  }
+}
+
 const OLD_DEFAULT_DOCK_LEFT = 320;
 /** The top dock was 280 px until a Kanban board above a Focus showed only 101 px of cards, cutting a card with tags off at its action row. */
 const OLD_DEFAULT_DOCK_TOP = 280;

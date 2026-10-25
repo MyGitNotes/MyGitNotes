@@ -39,6 +39,8 @@ import { type NoteLocation, NoteLocationProvider, readOnlyReason } from './lib/n
 import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
 import { useFoldAnimation } from './lib/use-fold-animation.js';
+import { hasStoredFocusView } from './lib/focus-view.js';
+import { noteLookupOptions } from './lib/use-note-queries.js';
 import { notebookRoute, noteRoute, noteTrail, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
 import { draftScope, editable, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
 import { DemoBanner } from './components/DemoBanner.js';
@@ -145,7 +147,7 @@ export const AppContent: React.FC = () => {
   const canWrite = canWriteNotebook(selectedNotebookId);
   // Moves, renames, folders and assets are changes the server makes; a demo repository allows none of them.
   const canWriteFiles = canChangeFiles(selectedNotebookId);
-  useDemoScenario({ config, loading, pathname: location.pathname, navigate });
+  useDemoScenario({ config, loading, pathname: location.pathname, navigate, hasGuide: async (notebookId, path) => (await queryClient.fetchQuery(noteLookupOptions(queryScope, [{ notebookId, path }], false))).notes.length > 0, hasRestoredView: notebookKey => hasStoredFocusView(repositoryFor(notebookKey)?.id ?? '', notebookKey) });
   /** Where a note lives, for the note Info tab: the repository and branch of its notebook, and why it is read-only. */
   const locateNote = (note: NoteRef): NoteLocation | undefined => {
     const repository = repositoryFor(note.notebookId);
