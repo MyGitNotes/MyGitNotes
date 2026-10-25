@@ -2159,7 +2159,6 @@ export const en = {
   'demo.cookies': 'The demo needs cookies for this site. Allow them, then try again.',
   'demo.retry': 'Try again',
   'demo.unknownScenario': 'There is no “{slug}” demo; here is {title}.',
-  'demo.notAvailable': 'Not available in the demo',
   'demo.commitLocal': 'Commit in this browser',
   'demo.commitLocalHint': 'This commit stays in your browser and joins the version history. Nothing is sent to the server.',
   'demo.localBadge': 'In this browser',

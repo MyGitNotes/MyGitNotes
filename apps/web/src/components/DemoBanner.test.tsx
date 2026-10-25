@@ -10,7 +10,7 @@ import { WebFeaturesProvider } from '../lib/web-features.js';
 
 let root: Root;
 let container: HTMLElement;
-const REPO = 'edition:demo:scenarios@main', SCOPE = `${REPO}:main`;
+const REPO = 'edition:demo:scenarios@main', SCOPE = `demo:${REPO}:main`;
 const mount = (demo: boolean, features: Parameters<typeof WebFeaturesProvider>[0]['features'] = []) => act(async () => root.render(createElement(WebFeaturesProvider, { features }, createElement(I18nProvider, null, createElement(DemoProvider, { value: demo ? { scenario: 'trpg' } : null }, createElement(DemoBanner))))));
 
 beforeEach(() => {

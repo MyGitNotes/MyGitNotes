@@ -4,7 +4,7 @@ import { sameValue } from './merge-note.js';
 import { createUnifiedDiff } from './unified-diff.js';
 import { isBareNotebookId } from '@mygitnotes/core/notebook-key';
 import { isNotebookKey, notebookIdCodec } from './notebook-keys.js';
-import { noteDemoWrite } from './demo-storage.js';
+import { demoExpired, noteDemoWrite } from './demo-storage.js';
 
 export interface WorkingNote {
   note: NoteItem;
@@ -60,12 +60,12 @@ export function readWorkingNotes(store: DraftStore): WorkingNotes {
 
 /** Persist before announcing success; quota errors leave the in-memory draft visible. */
 export function updateWorkingNote(store: DraftStore, path: string, entry: WorkingNote | null): WorkingNotes {
-  const entries = readStoredWorkingNotes(store.scope);
   if (entry?.base && !entry.blocked && !entry.deleted && sameValue(entry.note.content, entry.base.content) && sameValue(entry.note.metadata, entry.base.metadata)) entry = null;
-  if (entry) {
-    noteDemoWrite(store.scope);
-    entries[path] = storedWorkingNote(entry, store.alias);
-  } else delete entries[path];
+  // A demo scope past its 24 hours is cleared and nothing is written over it, or its changes would come back without a clock.
+  if (entry ? !noteDemoWrite(store.scope) : demoExpired(store.scope)) return keyedEntries(readStoredWorkingNotes(store.scope), store.alias);
+  const entries = readStoredWorkingNotes(store.scope);
+  if (entry) entries[path] = storedWorkingNote(entry, store.alias);
+  else delete entries[path];
   localStorage.setItem(workingNotesKey(store.scope), JSON.stringify(entries));
   return keyedEntries(entries, store.alias);
 }

@@ -2160,7 +2160,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'demo.cookies': '示範需要這個網站的 Cookie。請允許後再試一次。',
   'demo.retry': '再試一次',
   'demo.unknownScenario': '沒有「{slug}」這個示範，先帶你看 {title}。',
-  'demo.notAvailable': '示範模式不提供',
   'demo.commitLocal': '在這個瀏覽器提交',
   'demo.commitLocalHint': '這個提交只會留在你的瀏覽器，並記入版本歷史；不會送到伺服器。',
   'demo.localBadge': '本機提交',

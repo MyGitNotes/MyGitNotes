@@ -274,6 +274,7 @@ export function useFeatureGate(featureId: string): FeatureGate {
 }
 
 /** The edition's call to action for the demo banner, or undefined for the community one. */
-export function useDemoCallToAction(): ComponentType | undefined {
-  return useContext(FeaturesContext).reduce<ComponentType | undefined>((found, feature) => feature.demoCallToAction ?? found, undefined);
+export function useDemoCallToAction(): { Component: ComponentType; } | undefined {
+  const Component = useContext(FeaturesContext).reduce<ComponentType | undefined>((found, feature) => feature.demoCallToAction ?? found, undefined);
+  return Component && { Component };
 }

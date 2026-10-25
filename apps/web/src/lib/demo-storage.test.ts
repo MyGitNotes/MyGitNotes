@@ -6,11 +6,13 @@ import { stashText } from './history-stash.js';
 import { updateWorkingNote } from './working-notes.js';
 import { saveLocalDraft } from './storage.js';
 import { focusViewStorageKey } from './focus-view.js';
-import { localCommitsKey } from './local-commits.js';
+import { appendLocalCommit, localCommitsKey, readLocalCommits } from './local-commits.js';
+import { draftScope } from './workspace-repositories.js';
 import type { NoteItem } from './types.js';
 
-const REPO = 'edition:demo:scenarios@main', SCOPE = `${REPO}:main`, ALIAS = 'demo', NOTEBOOK = 'demo~trpg-en';
+const REPO = 'edition:demo:scenarios@main', ALIAS = 'demo', NOTEBOOK = 'demo~trpg-en';
 const repository = (revision = 'head1') => ({ id: REPO, branch: 'main', alias: ALIAS, demo: true as const, revision, notebooks: [NOTEBOOK] });
+const SCOPE = draftScope(repository());
 const note: NoteItem = { id: 'a', path: 'notes/a.md', notebookId: 'trpg-en', title: 'A', content: '# A\n', metadata: {}, tags: [] };
 const OTHER = { working: 'gh_notes_working:github:o/r:main', plain: 'unrelated', stash: `github-notes:history-stash:${JSON.stringify(['kb~life', 'github:o/r', 'a.md'])}`, document: 'github-notes:focus:github:o/r' };
 const client = { draftKey: 'focus-draft' };
@@ -131,7 +133,101 @@ describe('Reset demo', () => {
 
   it('clearDemoScope takes the record it is given', () => {
     writeEverywhere();
-    clearDemoScope({ firstWrite: 0, base: 'head1', repository: REPO, alias: ALIAS }, SCOPE);
+    clearDemoScope({ firstWrite: 0, base: 'head1', repository: `demo:${REPO}` }, SCOPE);
     expect(keysOf()).toEqual([]);
   });
+});
+
+const commitInput = (message: string) => ({ message, author: 'x', notes: { 'notes/a.md': { notebookId: 'trpg-en', server: null, raw: '# a\n' } }, documents: {} });
+
+describe('a write after the 24 hours', () => {
+  const afterExpiry = () => {
+    vi.spyOn(demoHooks, 'reload').mockImplementation(() => {});
+    updateWorkingNote({ scope: SCOPE, alias: ALIAS }, 'notes/old.md', { note: { ...note, path: 'notes/old.md' }, base: null });
+    saveLocalDraft(SCOPE, 'notes/old.md', 'old', {});
+    vi.setSystemTime(1000 + DEMO_TTL_MS + 1);
+  };
+
+  it('writes no working change and does not bring the expired ones back or restart the clock', () => {
+    afterExpiry();
+    const entries = updateWorkingNote({ scope: SCOPE, alias: ALIAS }, 'notes/new.md', { note: { ...note, path: 'notes/new.md' }, base: null });
+    expect(entries).toEqual({});
+    expect(localStorage.getItem(`gh_notes_working:${SCOPE}`)).toBeNull();
+    expect(readDemoRecord(SCOPE)).toBeUndefined();
+  });
+
+  it('writes no editor draft', () => {
+    afterExpiry();
+    saveLocalDraft(SCOPE, 'notes/new.md', 'new', {});
+    expect(keysOf()).toEqual([]);
+  });
+
+  it('commits nothing and says why, leaving no log and no clock', async () => {
+    afterExpiry();
+    await appendLocalCommit(SCOPE, 'head1', commitInput('old')).catch(() => undefined);
+    expect(readLocalCommits(SCOPE)).toBeNull();
+    expect(keysOf()).toEqual([]);
+  });
+
+  it('keeps no history text', () => {
+    afterExpiry();
+    stashText({ notebookId: NOTEBOOK, path: 'notes/a.md' }, 'new');
+    expect(keysOf()).toEqual([]);
+  });
+
+  it('does not bring back the commits of an expired log', async () => {
+    vi.spyOn(demoHooks, 'reload').mockImplementation(() => {});
+    await appendLocalCommit(SCOPE, 'head1', commitInput('old'));
+    vi.setSystemTime(1000 + DEMO_TTL_MS + 1);
+    await expect(appendLocalCommit(SCOPE, 'head1', commitInput('new'))).rejects.toThrow();
+    expect(readLocalCommits(SCOPE)).toBeNull();
+    expect(readDemoRecord(SCOPE)).toBeUndefined();
+  });
+});
+
+describe('what belongs to a signed-in person', () => {
+  const own = (id: string) => ({ id, branch: 'main', alias: ALIAS, revision: 'r', notebooks: [NOTEBOOK] });
+  const ownNote = { ...note, path: 'notes/own.md' };
+
+  /** The person's writes in a workspace of their own repository; the keys and values they left. */
+  const ownWrites = (id: string) => {
+    const repo = own(id);
+    registerDemoRepositories([repo]);
+    updateWorkingNote({ scope: draftScope(repo), alias: ALIAS }, ownNote.path, { note: ownNote, base: null });
+    saveLocalDraft(draftScope(repo), 'notes/own.md', 'own text', {});
+    stashText({ notebookId: NOTEBOOK, path: 'notes/own.md' }, 'own stash');
+    localStorage.setItem(focusViewStorageKey(id, NOTEBOOK), '{"own":true}');
+    localStorage.setItem(documentDraftKey(client, id), '{"own":true}');
+    return Object.fromEntries(keysOf().map(key => [key, localStorage.getItem(key)]));
+  };
+  const demoWrites = () => {
+    registerDemoRepositories([repository()]);
+    updateWorkingNote({ scope: SCOPE, alias: ALIAS }, note.path, { note, base: null });
+    saveLocalDraft(SCOPE, 'notes/b.md', 'text', {});
+    stashText({ notebookId: NOTEBOOK, path: 'notes/a.md' }, 'demo stash');
+    localStorage.setItem(focusViewStorageKey(REPO, NOTEBOOK), '{"demo":true}');
+    localStorage.setItem(documentDraftKey(client, REPO), '{"demo":true}');
+  };
+  const survives = (kept: Record<string, string | null>) => {
+    for (const [key, value] of Object.entries(kept)) expect(localStorage.getItem(key), key).toBe(value);
+  };
+
+  for (const [name, id] of [["their repository has the demo's notebook alias", 'github:alice/demo'], ["their repository has the demo's own id", REPO]] as const) {
+    it(`survive the 24-hour sweep when ${name}`, () => {
+      const kept = ownWrites(id);
+      demoWrites();
+      registerDemoRepositories([own(id)]);
+      expect(expireDemoData(1000 + DEMO_TTL_MS)).toEqual([SCOPE]);
+      survives(kept);
+      expect(keysOf().filter(key => !(key in kept))).toEqual([]);
+    });
+
+    it(`survive Reset demo when ${name}`, () => {
+      const kept = ownWrites(id);
+      demoWrites();
+      resetDemo();
+      survives(kept);
+      expect(keysOf().filter(key => !(key in kept))).toEqual([]);
+    });
+  }
 });

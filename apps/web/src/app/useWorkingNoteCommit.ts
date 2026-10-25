@@ -10,6 +10,7 @@ import { readDocumentDraft, settleDocumentDraft, type WorkspaceDocumentClient } 
 import { documentClientOf } from '../lib/workspace-document-clients.js';
 import type { FileChange, NoteItem } from '../lib/types.js';
 import { announceHistoryChange, fetchHistoryContent, fetchServerVersions, type NewVersionRequest } from '../lib/history-api.js';
+import { useDemo } from '../lib/demo.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
 import type { WorkspaceState } from './workspace-state.js';
 
@@ -45,6 +46,7 @@ interface CommitGroup {
 
 /** Commits selected drafts one repository at a time, one commit each, stopping at the first repository that fails. */
 export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError }: Params) {
+  const inDemo = useDemo() !== null;
   /**
    * Demo mode: records the selected drafts as one commit in this browser. Nothing is sent to the server; the commit joins
    * the repository's history in the version panel and is cleared with the rest of the visitor's demo data after 24 hours.
@@ -88,6 +90,8 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
   /** One repository's drafts, merged onto its latest revision and committed as one commit; answers the Gists it failed to update. */
   const commitGroup = async (group: CommitGroup, message: string, version?: NewVersionRequest): Promise<{ gists: GistSync[]; published: PublishSync[]; }> => {
     if (group.repository.demo) return commitLocally(group, message, version);
+    // The demo page says a commit stays in this browser: a repository of the signed-in person's own never gets one sent from it.
+    if (inDemo) throw new Error(t('demo.signedIn'));
     const { repository, entries, documents: sentDocuments } = group;
     if (!repository.write) throw new Error('Sign in with write access to this workspace before committing.');
     const store = draftStore(repository);

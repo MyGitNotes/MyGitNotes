@@ -1,5 +1,6 @@
 import { displayFocus, emptyFocusLayout, findFocusPane, type FocusDisplay, type FocusLayout, type FocusNode, focusPanes, type FocusSplitNode, focusTabKey, readFocusLayout } from '@mygitnotes/core/focus-page';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
+import { storageOwner } from './demo-storage.js';
 
 export const CURRENT_FOCUS = 'current';
 
@@ -44,7 +45,7 @@ export interface FocusViewState {
  * worktrees in folders of the same name) keep views of their own.
  */
 export function focusViewStorageKey(repositoryId: string, notebookKey: string): string {
-  return `github-notes:focus-view:${repositoryId}:${notebookKey}`;
+  return `github-notes:focus-view:${storageOwner(repositoryId)}:${notebookKey}`;
 }
 
 /**

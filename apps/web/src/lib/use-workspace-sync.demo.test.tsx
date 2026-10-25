@@ -66,3 +66,11 @@ it('refuses to show the demo as a signed-in person’s notebooks when the sessio
   await waitFor(() => expect(result.current.loadError).toMatch(/session ended|登入已結束/));
   expect(result.current.config).toBeNull();
 });
+
+it('refuses to show a signed-in person’s own repositories on the demo page when a refresh answers without the demo', async () => {
+  serve([repository({ write: true, id: 'github:me/notes@main', alias: 'notes', notebooks: ['notes~life'] })]);
+  const { result } = renderHook(() => useWorkspaceSync({}), { wrapper: wrapper(true) });
+  await waitFor(() => expect(result.current.loadError).toMatch(/signed in|已登入/));
+  expect(result.current.config).toBeNull();
+  expect(result.current.canWriteNotebook('notes~life')).toBe(false);
+});

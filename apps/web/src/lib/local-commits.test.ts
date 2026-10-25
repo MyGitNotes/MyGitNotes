@@ -5,7 +5,7 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { registerDemoRepositories } from './demo-storage.js';
 import { appendLocalCommit, blobId, committedDocuments, committedLayer, LocalCommitLimitError, localCommitsKey, localCommittedEntry, localCurrentRaw, localHistoryEntries, localTextAt, localTextOfBlob, localVersions, MAX_LOCAL_COMMIT_BYTES, MAX_LOCAL_COMMITS, type NoteChangeInput, readLocalCommits } from './local-commits.js';
 
-const REPO = 'edition:demo:scenarios@main', SCOPE = `${REPO}:main`, NOTEBOOK = 'demo~trpg-en', HEAD = 'a'.repeat(40);
+const REPO = 'edition:demo:scenarios@main', SCOPE = `demo:${REPO}:main`, NOTEBOOK = 'demo~trpg-en', HEAD = 'a'.repeat(40);
 const raw = (content: string) => serializeNoteFile('notes/a.md', { title: 'A' }, content, false, new Date('2026-10-25T00:00:00Z'), '---\ntitle: A\n---\nold\n');
 const change = (content: string): NoteChangeInput => ({ notebookId: NOTEBOOK, server: null, raw: raw(content) });
 const input = (message: string, notes: Record<string, NoteChangeInput> = {}, documents: Record<string, unknown> = {}) => ({ message, author: 'You (demo)', notes, documents, now: new Date('2026-10-25T01:00:00Z') });
@@ -51,6 +51,14 @@ describe('appending local commits', () => {
     expect(readLocalCommits(SCOPE)!.commits).toHaveLength(MAX_LOCAL_COMMITS);
     const stored = localStorage.getItem(localCommitsKey(SCOPE));
     await expect(appendLocalCommit(SCOPE, HEAD, input('x'))).rejects.toThrow(LocalCommitLimitError);
+    expect(localStorage.getItem(localCommitsKey(SCOPE))).toBe(stored);
+  });
+
+  it('counts the 1 MB in bytes, so text of fewer characters can pass it', async () => {
+    const stored = localStorage.getItem(localCommitsKey(SCOPE));
+    const text = '中'.repeat(Math.ceil(MAX_LOCAL_COMMIT_BYTES / 3) + 1000);
+    expect(text.length).toBeLessThan(MAX_LOCAL_COMMIT_BYTES);
+    await expect(appendLocalCommit(SCOPE, HEAD, input('Wide', { 'notes/b.md': change(text) }))).rejects.toThrow(/1 MB/);
     expect(localStorage.getItem(localCommitsKey(SCOPE))).toBe(stored);
   });
 

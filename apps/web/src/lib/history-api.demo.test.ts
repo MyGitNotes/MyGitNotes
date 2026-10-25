@@ -5,7 +5,7 @@ import { registerDemoRepositories } from './demo-storage.js';
 import { announceHistoryChange, fetchCommitFiles, fetchHistory, fetchHistoryContent, onHistoryChanged } from './history-api.js';
 import { appendLocalCommit, blobId } from './local-commits.js';
 
-const REPO = 'edition:demo:scenarios@main', SCOPE = `${REPO}:main`, NOTEBOOK = 'demo~trpg-en', HEAD = 'a'.repeat(40);
+const REPO = 'edition:demo:scenarios@main', SCOPE = `demo:${REPO}:main`, NOTEBOOK = 'demo~trpg-en', HEAD = 'a'.repeat(40);
 const target = { path: 'notes/a.md', notebookId: NOTEBOOK };
 const serverEntry = (commit: string, subject: string) => ({ commit, parents: [], date: '2026-01-01T00:00:00.000Z', author: 'a', subject, body: '', path: 'notes/a.md', blob: 's'.repeat(40), agent: false });
 const serverVersion = { blob: 's'.repeat(40), commit: 'r'.repeat(40), authored: '2026-01-01T00:00:00.000Z', sequence: 1, date: '2026.01.01', name: 'v1', created: '2026-01-02T00:00:00.000Z' };

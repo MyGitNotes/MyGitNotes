@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { demoLanguageOf, notebookScenario, parseDemoPath, scenarioNotebook } from './demo.js';
+import { addressScenario, demoLanguageOf, notebookScenario, parseDemoPath, scenarioNotebook } from './demo.js';
 
 describe('parseDemoPath', () => {
   it('reads the scenario slug of /demo/<scenario> and below it', () => {
@@ -40,5 +40,16 @@ describe('demo language and scenario names', () => {
     expect(notebookScenario('demo~trpg-zh-tw')).toBe('trpg');
     expect(notebookScenario('demo~contract-en')).toBe('contract');
     expect(notebookScenario('demo~plain')).toBe('plain');
+  });
+});
+
+describe('addressScenario', () => {
+  it('reads the scenario of the notebook in the address, else the fallback', () => {
+    expect(addressScenario('/demo/notebooks/demo~trpg-en/notes/a.md', 'x')).toBe('trpg');
+    expect(addressScenario('/demo/trpg', 'trpg')).toBe('trpg');
+    expect(addressScenario('/demo')).toBeUndefined();
+  });
+  it('does not throw on a notebook that cannot be decoded', () => {
+    expect(addressScenario('/demo/notebooks/%E0%A4%A/notes/a.md', 'trpg')).toBe('trpg');
   });
 });

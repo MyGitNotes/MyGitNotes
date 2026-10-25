@@ -16,7 +16,7 @@ import { updateWorkspaceConfig } from '../lib/api.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 import YAML from 'yaml';
 import { PlatformAccessProvider, ServerAgentProvider, usePlatformAccess } from '../lib/web-features.js';
-import { DEMO_BASE, demoLanguageOf, notebookScenario, useDemo, writeDemoCookie } from '../lib/demo.js';
+import { addressScenario, DEMO_BASE, demoLanguageOf, useDemo, writeDemoCookie } from '../lib/demo.js';
 import { fetchWorkspace } from '../lib/api.js';
 
 /**
@@ -214,8 +214,7 @@ function DemoGate({ children }: { children: ReactNode; }) {
     writeDemoCookie(cookieLanguage);
     if (before === undefined) return;
     // Another language in the demo is another set of notebooks: open the same scenario again so the page reads them.
-    const key = /\/notebooks\/([^/]+)/.exec(location.pathname)?.[1];
-    const scenario = key ? notebookScenario(decodeURIComponent(key)) : demo?.scenario;
+    const scenario = addressScenario(location.pathname, demo?.scenario);
     location.assign(`${DEMO_BASE}${scenario ? `/${encodeURIComponent(scenario)}` : ''}`);
   }, [cookieLanguage, demo?.scenario]);
   useEffect(() => {

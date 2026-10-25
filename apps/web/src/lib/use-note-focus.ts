@@ -2,6 +2,7 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, mergePanes, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, relocateFocusLayout, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
 import type { FocusPageController } from './use-focus-page.js';
+import { noteDemoWriteIn } from './demo-storage.js';
 import { useNoteLookup } from './use-note-queries.js';
 import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
@@ -62,10 +63,11 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     const next = change(viewRef.current);
     viewRef.current = next;
     try {
-      localStorage.setItem(key, JSON.stringify(next));
+      // A demo repository's view is kept in this browser like its other changes, so it starts the 24-hour clock and is cleared with them.
+      if (noteDemoWriteIn(repository)) localStorage.setItem(key, JSON.stringify(next));
     } catch { /* The view still applies to this tab. */ }
     setStored({ key, view: next });
-  }, [key]);
+  }, [key, repository]);
 
   const available = !page.loading && !page.error;
   const focuses = useMemo(() => available ? notebookFocuses(page.page, notebookId) : [], [available, page.page, notebookId]);

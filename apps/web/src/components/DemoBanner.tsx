@@ -18,7 +18,7 @@ export function remainingText(ms: number, t: ReturnType<typeof useTranslation>['
 export function DemoBanner() {
   const { t } = useTranslation();
   const demo = useDemo();
-  const CallToAction = useDemoCallToAction();
+  const callToAction = useDemoCallToAction();
   useSyncExternalStore(subscribeDemo, demoVersion);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -39,7 +39,7 @@ export function DemoBanner() {
       <div role='status' data-testid='demo-banner' className='shrink-0 px-4 py-2 text-sm bg-surface border-b border-line flex flex-wrap items-center gap-2'>
         <span className='flex-1 min-w-0'>{remaining === undefined ? t('demo.banner') : t('demo.bannerClock', { time: remainingText(remaining, t) })}</span>
         <Button size='small' onClick={reset}>{t('demo.reset')}</Button>
-        {CallToAction ? <CallToAction /> : <a className='ui-button' href='/'>{t('demo.callToAction')}</a>}
+        {callToAction ? <callToAction.Component /> : <a className='ui-button' href='/'>{t('demo.callToAction')}</a>}
       </div>
       {demoWasUpdated() && (
         <div role='status' className='shrink-0 px-4 py-2 text-sm bg-surface border-b border-line flex flex-wrap items-center gap-2'>

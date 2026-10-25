@@ -12,6 +12,8 @@ import { committedLayer, readLocalCommits } from '../lib/local-commits.js';
 import { fetchHistory } from '../lib/history-api.js';
 import { documentDraftKey } from '../lib/use-workspace-document.js';
 import { focusDocumentClient } from '../lib/use-focus-page.js';
+import { DemoProvider } from '../lib/demo.js';
+import { createElement, type ReactNode } from 'react';
 
 const HEAD = 'a'.repeat(40);
 const demo: WorkspaceRepository = { id: 'edition:demo:scenarios@main', alias: 'demo', type: 'edition', branch: 'main', revision: HEAD, write: false, demo: true, notebooks: ['demo~contract-en'], title: 'Demo', defaultNotebook: null, preferences: DEFAULT_WORKSPACE_PREFERENCES, config: null, configRevision: '' };
@@ -38,14 +40,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function hook() {
+function hook(inDemo = false) {
   const stageWorkingNote = (draft: NoteItem, draftBase: NoteItem | null) => {
     updateWorkingNote(draftStore(demo), draft.path, { note: draft, base: draftBase });
     return draft;
   };
   const clearCommittedDrafts = vi.fn();
   const setRepositoryRevision = vi.fn();
-  const { result } = renderHook(() => useWorkingNoteCommit({ documents: [], sourceId: demo.id, t: ((key: string) => key) as never, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError: vi.fn() }));
+  const { result } = renderHook(() => useWorkingNoteCommit({ documents: [], sourceId: demo.id, t: ((key: string) => key) as never, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError: vi.fn() }), { wrapper: ({ children }: { children: ReactNode; }) => createElement(DemoProvider, { value: inDemo ? { scenario: 'contract' } : null }, children) });
   return { ...result.current, clearCommittedDrafts, setRepositoryRevision };
 }
 
@@ -104,4 +106,19 @@ it('refuses a blocked draft and a changed draft, writing nothing', async () => {
   await expect(commitWorkingNotes([change('notes/c.md')], 'x')).rejects.toThrow(/conflict/);
   expect(readLocalCommits(draftScope(demo))).toBeNull();
   expect(Object.keys(readWorkingNotes(draftStore(demo)))).toEqual(['notes/c.md']);
+});
+
+it('never sends a remote commit from the demo page, whichever repository the answer held', async () => {
+  const own: WorkspaceRepository = { ...demo, id: 'github:me/notes@main', alias: 'notes', demo: undefined, write: true, notebooks: ['notes~life'] };
+  const ownNote = { ...note('# own\n'), notebookId: 'notes~life', path: 'notes/own.md' };
+  updateWorkingNote(draftStore(own), ownNote.path, { note: ownNote, base: null });
+  const { commitWorkingNotes } = hook(true);
+  const answer = { keyedConfig: null, local: false, defaultRepository: demo.id, repositories: [{ ...own, id: demo.id }, own], coreUpdate: false };
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    requests.push({ url: String(url), method: init?.method ?? 'GET' });
+    return new Response(JSON.stringify(answer));
+  });
+  await expect(commitWorkingNotes([{ ...change(ownNote.path), repository: own.id }], 'x')).rejects.toThrow('demo.signedIn');
+  expect(requests.filter(request => request.method !== 'GET')).toEqual([]);
+  expect(Object.keys(readWorkingNotes(draftStore(own)))).toEqual([ownNote.path]);
 });

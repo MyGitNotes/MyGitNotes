@@ -39,6 +39,20 @@ export function notebookScenario(notebookKey: string): string {
   return id.replace(/-(en|zh-tw)$/i, '').toLowerCase();
 }
 
+/**
+ * The scenario the page shows: the one of the notebook in the address (`/notebooks/<key>`), else `fallback`. An address
+ * whose notebook cannot be decoded (a stray `%`) names none.
+ */
+export function addressScenario(pathname: string, fallback?: string): string | undefined {
+  const key = /\/notebooks\/([^/]+)/.exec(pathname)?.[1];
+  if (!key) return fallback;
+  try {
+    return notebookScenario(decodeURIComponent(key));
+  } catch {
+    return fallback;
+  }
+}
+
 /** The demo the page shows, or null outside it. */
 export interface DemoContextValue {
   /** The slug in the address when the page was opened. */

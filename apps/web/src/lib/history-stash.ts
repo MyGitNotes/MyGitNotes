@@ -1,6 +1,6 @@
 import type { HistoryTarget } from './history-api.js';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
-import { demoScopeOfNotebook, noteDemoWrite, noteDemoWriteIn } from './demo-storage.js';
+import { demoScopeOfNotebook, demoScopeOfRepository, noteDemoWrite } from './demo-storage.js';
 
 /** A file's text a person had before restoring an older text over it, kept on this device until they discard it. */
 export interface StashedText {
@@ -11,7 +11,13 @@ export interface StashedText {
 }
 
 const PREFIX = 'github-notes:history-stash:';
-const storageKey = (notebookId: string, target: HistoryTarget) => PREFIX + JSON.stringify([notebookId, target.repository ?? '', target.path]);
+/**
+ * The demo scope a target belongs to: the one serving its notebook, else its repository. A text kept for a demo is
+ * stored under the demo's namespaced repository, so the sweep finds it by that and never by a notebook alias, which
+ * another repository of the same name shares.
+ */
+const demoOf = (target: HistoryTarget) => (target.notebookId ? demoScopeOfNotebook(target.notebookId) : undefined) ?? (target.repository ? demoScopeOfRepository(target.repository) : undefined);
+const storageKey = (notebookId: string, target: HistoryTarget) => PREFIX + JSON.stringify([notebookId, demoOf(target)?.owner ?? target.repository ?? '', target.path]);
 
 /**
  * Where a file's kept texts are stored. Texts kept before notebook keys, under the notebook's local id, move to its
@@ -47,9 +53,9 @@ export function readStash(target: HistoryTarget): StashedText[] {
 
 function writeStash(target: HistoryTarget, entries: StashedText[]): StashedText[] {
   if (entries.length) {
-    const demo = target.notebookId ? demoScopeOfNotebook(target.notebookId) : undefined;
-    if (demo) noteDemoWrite(demo.scope);
-    else if (target.repository) noteDemoWriteIn(target.repository);
+    const demo = demoOf(target);
+    // A demo scope past its 24 hours is cleared and keeps nothing more.
+    if (demo && !noteDemoWrite(demo.scope)) return readStash(target);
     localStorage.setItem(keyOf(target), JSON.stringify(entries));
   } else localStorage.removeItem(keyOf(target));
   return entries;

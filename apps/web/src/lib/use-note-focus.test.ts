@@ -8,6 +8,8 @@ import { useNoteFocus } from './use-note-focus.js';
 import { CURRENT_FOCUS } from './focus-view.js';
 import { focusDocumentClient, type FocusPageController } from './use-focus-page.js';
 import type { WorkspaceDocumentClient } from './use-workspace-document.js';
+import { DEMO_TTL_MS, expireDemoData, readDemoRecord, registerDemoRepositories } from './demo-storage.js';
+import { draftScope } from './workspace-repositories.js';
 
 const SCOPE = 'use-note-focus-test', REPOSITORY = 'github:owner/kb@main', NOTEBOOK = 'kb~life';
 const storageKey = `github-notes:focus-view:${REPOSITORY}:${NOTEBOOK}`;
@@ -420,5 +422,24 @@ describe('useNoteFocus relocatePaths', () => {
     act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/old.md' ? 'notes/new.md' : path));
     expect(tabsAt(result.current.view.current, 0)?.map(entry => entry.path)).toEqual(['notes/new.md', 'notes/other.md']);
     expect(JSON.parse(localStorage.getItem(storageKey)!).current.root.tabs.map((entry: { path: string; }) => entry.path)).toEqual(['notes/new.md', 'notes/other.md']);
+  });
+});
+
+describe('useNoteFocus in a demo repository', () => {
+  const demo = { id: 'edition:demo:scenarios@main', branch: 'main', alias: 'demo', demo: true as const, revision: 'h', notebooks: ['demo~trpg-en'] };
+
+  it('starts the 24-hour clock with the first view change, so the view is cleared with the rest', async () => {
+    registerDemoRepositories([demo]);
+    const { result } = renderHook(() => useNoteFocus({ page: fakeController(), notebookId: 'demo~trpg-en', repository: demo.id, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => {
+      await result.current.place(CURRENT_FOCUS, tab('a'), 'p1');
+    });
+    const record = readDemoRecord(draftScope(demo));
+    expect(record).toBeDefined();
+    const keys = Object.keys(localStorage).filter(key => key.startsWith('github-notes:focus-view:'));
+    expect(keys).toHaveLength(1);
+    expect(expireDemoData(record!.firstWrite + DEMO_TTL_MS)).toEqual([draftScope(demo)]);
+    expect(Object.keys(localStorage).filter(key => key.startsWith('github-notes:focus-view:'))).toEqual([]);
   });
 });

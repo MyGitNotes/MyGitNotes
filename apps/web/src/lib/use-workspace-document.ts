@@ -4,7 +4,7 @@ import type { WorkspaceDocument } from '@mygitnotes/core';
 import { type TranslationKey, useTranslation } from './i18n/index.js';
 import { createUnifiedDiff } from './unified-diff.js';
 import { notebookIdCodec } from './notebook-keys.js';
-import { demoScopeOfRepository, noteDemoWriteIn } from './demo-storage.js';
+import { demoScopeOfRepository, noteDemoWriteIn, storageOwner } from './demo-storage.js';
 import { committedDocuments, readLocalCommits } from './local-commits.js';
 
 /** How the browser reaches one workspace document and names its failures. */
@@ -40,7 +40,7 @@ export interface DocumentRepository {
 }
 
 /** Where one repository's draft of a document is stored; for the repository a workspace had before documents moved per repository, this is the key its drafts already used. */
-export const documentDraftKey = (client: Pick<WorkspaceDocumentClient<unknown>, 'draftKey'>, repository: string) => `github-notes:${client.draftKey}:${repository}`;
+export const documentDraftKey = (client: Pick<WorkspaceDocumentClient<unknown>, 'draftKey'>, repository: string) => `github-notes:${client.draftKey}:${storageOwner(repository)}`;
 
 /**
  * A stored draft, its notebooks named by key; drafts saved before a format change migrate the same way as the stored
@@ -59,7 +59,7 @@ export function readDocumentDraft<T>(client: WorkspaceDocumentClient<T>, reposit
 function writeDocumentDraft<T>(client: WorkspaceDocumentClient<T>, repository: DocumentRepository, draft: WorkspaceDocumentDraft<T>) {
   const { toLocal } = notebookIdCodec(repository.alias);
   const stored = (page: T) => client.document.mapNotebookIds(page, toLocal);
-  noteDemoWriteIn(repository.id);
+  if (!noteDemoWriteIn(repository.id)) return;
   localStorage.setItem(documentDraftKey(client, repository.id), JSON.stringify({ ...draft, page: stored(draft.page), base: stored(draft.base) }));
 }
 

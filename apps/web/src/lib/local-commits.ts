@@ -1,8 +1,9 @@
 import type { HistoryEntry, NoteVersion } from '@mygitnotes/core/note-versions';
 import { parseNoteFile } from '@mygitnotes/core/note-file';
 import { noteRefKey } from '@mygitnotes/core/note-query';
-import { demoScope, demoScopeOfNotebook, demoScopeOfRepository, demoScopes, noteDemoWrite } from './demo-storage.js';
+import { demoExpired, demoScope, demoScopeOfNotebook, demoScopeOfRepository, demoScopes, noteDemoWrite } from './demo-storage.js';
 import type { NoteItem } from './types.js';
+import { draftScope } from './workspace-repositories.js';
 
 /** The most commits one demo scope keeps in this browser, and the most localStorage bytes its log may take. */
 export const MAX_LOCAL_COMMITS = 200;
@@ -44,6 +45,13 @@ export interface LocalCommitLog {
 export class LocalCommitLimitError extends Error {
   constructor() {
     super(`This demo keeps at most ${MAX_LOCAL_COMMITS} commits (1 MB) in your browser. Reset the demo to keep going.`);
+  }
+}
+
+/** The scope's 24 hours had passed: its data was cleared and nothing was written. */
+export class DemoExpiredError extends Error {
+  constructor() {
+    super("This demo's data was cleared after 24 hours. Nothing was committed; the page reloads.");
   }
 }
 
@@ -101,6 +109,7 @@ export interface LocalCommitInput {
  * that would pass 200 commits or 1 MB; `base` is the server head the log starts from.
  */
 export async function appendLocalCommit(scope: string, base: string, input: LocalCommitInput): Promise<LocalCommit> {
+  if (demoExpired(scope)) throw new DemoExpiredError();
   const log = readLocalCommits(scope) ?? { version: 1 as const, base, commits: [] };
   if (log.commits.length >= MAX_LOCAL_COMMITS) throw new LocalCommitLimitError();
   const notes: Record<string, LocalNoteChange> = {};
@@ -110,8 +119,8 @@ export async function appendLocalCommit(scope: string, base: string, input: Loca
   const versionBlob = input.version && notes[input.version.path] && 'blob' in notes[input.version.path] ? (notes[input.version.path] as { blob: string; }).blob : undefined;
   const commit: LocalCommit = { id, parent, date, author: input.author, message: input.message, notes, documents: input.documents, ...(input.version && versionBlob ? { version: { path: input.version.path, version: input.version.numberVersion({ id, date, blob: versionBlob }) } } : {}) };
   const text = JSON.stringify({ ...log, commits: [...log.commits, commit] });
-  if (text.length > MAX_LOCAL_COMMIT_BYTES) throw new LocalCommitLimitError();
-  noteDemoWrite(scope);
+  if (new TextEncoder().encode(text).length > MAX_LOCAL_COMMIT_BYTES) throw new LocalCommitLimitError();
+  if (!noteDemoWrite(scope)) throw new DemoExpiredError();
   localStorage.setItem(localCommitsKey(scope), text);
   announce();
   return commit;
@@ -155,7 +164,7 @@ export function committedDocuments(log: LocalCommitLog | null): Record<string, u
 
 /** The committed layer of the demo repositories among `repositories`. */
 export function demoCommittedLayer(repositories: readonly { id: string; branch: string; demo?: true; }[]): CommittedLayer {
-  return Object.assign({}, ...repositories.filter(repository => repository.demo).map(repository => committedLayer(readLocalCommits(`${repository.id}:${repository.branch}`))));
+  return Object.assign({}, ...repositories.filter(repository => repository.demo).map(repository => committedLayer(readLocalCommits(draftScope(repository)))));
 }
 
 /** The committed entry of a note path in the demo scope serving `notebookId` (or, without one, in any demo scope). */

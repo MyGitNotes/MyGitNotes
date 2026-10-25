@@ -1,5 +1,5 @@
-import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import type { RepositoryStatus } from '@mygitnotes/core/repository';
+import { draftScope, storageId } from './workspace-repositories.js';
 
 /** How long a visitor's demo data stays in this browser after their first change. */
 export const DEMO_TTL_MS = 24 * 60 * 60 * 1000;
@@ -17,15 +17,17 @@ const STASH_PREFIX = 'github-notes:history-stash:';
 export interface DemoRecord {
   firstWrite: number;
   base: string;
-  /** The repository id and alias, so the sweep finds the keys that carry them. */
+  /** The repository's storage id (`storageId`), so the sweep finds the keys that carry it and no other repository's. */
   repository: string;
-  alias: string;
 }
 
 /** A demo repository of the loaded workspace, as the storage layer needs to know it. */
 export interface DemoScope {
   scope: string;
+  /** The repository id the server knows. */
   repository: string;
+  /** The name its browser data is kept under: `storageId` of the repository. */
+  owner: string;
   alias: string;
   revision: string;
   notebooks: string[];
@@ -62,8 +64,6 @@ export const dismissDemoUpdated = () => {
   notify();
 };
 
-const scopeOf = (repository: Pick<RepositoryStatus, 'id' | 'branch'>) => `${repository.id}:${repository.branch}`;
-
 const storageKeys = (): string[] => {
   const keys: string[] = [];
   for (let index = 0; index < localStorage.length; index++) {
@@ -77,7 +77,7 @@ const storageKeys = (): string[] => {
 export function readDemoRecord(scope: string): DemoRecord | undefined {
   try {
     const value = JSON.parse(localStorage.getItem(RECORD_PREFIX + scope) ?? 'null') as Partial<DemoRecord> | null;
-    return value && typeof value.firstWrite === 'number' && typeof value.base === 'string' && typeof value.repository === 'string' && typeof value.alias === 'string' ? value as DemoRecord : undefined;
+    return value && typeof value.firstWrite === 'number' && typeof value.base === 'string' && typeof value.repository === 'string' ? value as DemoRecord : undefined;
   } catch {
     return undefined;
   }
@@ -85,15 +85,15 @@ export function readDemoRecord(scope: string): DemoRecord | undefined {
 
 /** Removes every key a demo scope's changes were kept under, and its record. Other scopes and ordinary keys stay. */
 export function clearDemoScope(record: DemoRecord, scope: string): void {
-  const { repository, alias } = record;
+  const { repository } = record;
   const owned = (key: string): boolean => {
     if (key === RECORD_PREFIX + scope || key === WORKING_PREFIX + scope || key === COMMITS_PREFIX + scope) return true;
     if (key.startsWith(`${EDITOR_DRAFT_PREFIX}${scope}:`) || key.startsWith(`${CONFLICT_DISMISS_PREFIX}${scope}:`)) return true;
     if (key.startsWith(FOCUS_VIEW_PREFIX)) return key.startsWith(`${FOCUS_VIEW_PREFIX}${repository}:`);
     if (key.startsWith(STASH_PREFIX)) {
       try {
-        const [notebook, owner] = JSON.parse(key.slice(STASH_PREFIX.length)) as [string, string, string];
-        return owner === repository || notebook.startsWith(`${alias}~`) && parseNotebookKey(notebook)?.alias === alias;
+        const [, owner] = JSON.parse(key.slice(STASH_PREFIX.length)) as [string, string, string];
+        return owner === repository;
       } catch {
         return false;
       }
@@ -140,8 +140,8 @@ export function registerDemoRepositories(repositories: readonly Pick<RepositoryS
   scopes.clear();
   for (const repository of repositories) {
     if (!repository.demo) continue;
-    const scope = scopeOf(repository);
-    scopes.set(scope, { scope, repository: repository.id, alias: repository.alias, revision: repository.revision, notebooks: repository.notebooks });
+    const scope = draftScope(repository);
+    scopes.set(scope, { scope, repository: repository.id, owner: storageId(repository), alias: repository.alias, revision: repository.revision, notebooks: repository.notebooks });
     const record = readDemoRecord(scope);
     if (record && record.base !== repository.revision) {
       clearDemoScope(record, scope);
@@ -154,6 +154,8 @@ export function registerDemoRepositories(repositories: readonly Pick<RepositoryS
 /** The registered demo scope of a draft scope, repository id or notebook key; undefined for anything else. */
 export const demoScope = (scope: string): DemoScope | undefined => scopes.get(scope);
 export const demoScopeOfRepository = (repository: string): DemoScope | undefined => [...scopes.values()].find(candidate => candidate.repository === repository);
+/** The name a repository's browser data is kept under: namespaced when it is a registered demo repository. For keys built from the repository id alone. */
+export const storageOwner = (repository: string): string => demoScopeOfRepository(repository)?.owner ?? repository;
 export const demoScopeOfNotebook = (notebookId: string): DemoScope | undefined => [...scopes.values()].find(candidate => candidate.notebooks.includes(notebookId));
 /** Whether any demo repository is registered. */
 export const hasDemoScopes = () => scopes.size > 0;
@@ -162,31 +164,41 @@ export const hasDemoScopes = () => scopes.size > 0;
 export const demoHooks = { reload: () => location.reload() };
 
 /**
- * Notes that a demo scope is about to keep a change: starts its 24-hour clock at the first one. Does nothing for a scope
- * that is not a registered demo scope. A scope found expired is cleared and the page reloads, since what it shows is gone.
+ * Whether a demo scope's data has passed its 24 hours. If so it is cleared and the page reloads, since what the page
+ * shows is gone; the writer that asked must write nothing, or the cleared data would come back without a clock.
+ * Every writer asks before it reads what it is about to write over.
  */
-export function noteDemoWrite(scope: string, now = Date.now()): void {
+export function demoExpired(scope: string, now = Date.now()): boolean {
+  if (!scopes.has(scope) || !expireDemoData(now).includes(scope)) return false;
+  demoHooks.reload();
+  return true;
+}
+
+/**
+ * Notes that a demo scope is about to keep a change: starts its 24-hour clock at the first one. Answers whether the writer
+ * may write; it may not once the scope is found expired (`demoExpired`). A scope that is not a registered demo scope is
+ * left alone and may be written.
+ */
+export function noteDemoWrite(scope: string, now = Date.now()): boolean {
   const demo = scopes.get(scope);
-  if (!demo) return;
-  if (expireDemoData(now).includes(scope)) {
-    demoHooks.reload();
-    return;
-  }
-  if (readDemoRecord(scope)) return;
-  const record: DemoRecord = { firstWrite: now, base: demo.revision, repository: demo.repository, alias: demo.alias };
+  if (!demo) return true;
+  if (demoExpired(scope, now)) return false;
+  if (readDemoRecord(scope)) return true;
+  const record: DemoRecord = { firstWrite: now, base: demo.revision, repository: demo.owner };
   localStorage.setItem(RECORD_PREFIX + scope, JSON.stringify(record));
   notify();
+  return true;
 }
 /** `noteDemoWrite` for a writer that knows only the repository id. */
-export function noteDemoWriteIn(repository: string, now = Date.now()): void {
+export function noteDemoWriteIn(repository: string, now = Date.now()): boolean {
   const demo = demoScopeOfRepository(repository);
-  if (demo) noteDemoWrite(demo.scope, now);
+  return demo ? noteDemoWrite(demo.scope, now) : true;
 }
 
 /** "Reset demo": clears every registered demo scope at once. */
 export function resetDemo(): void {
   for (const demo of scopes.values()) {
-    const record = readDemoRecord(demo.scope) ?? { firstWrite: 0, base: demo.revision, repository: demo.repository, alias: demo.alias };
+    const record = readDemoRecord(demo.scope) ?? { firstWrite: 0, base: demo.revision, repository: demo.owner };
     clearDemoScope(record, demo.scope);
   }
 }

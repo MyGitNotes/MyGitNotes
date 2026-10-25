@@ -9,7 +9,7 @@ function makeDraftKey(branch: string, notePath: string): string {
 
 export function saveLocalDraft(branch: string, notePath: string, content: string, metadata: Record<string, unknown>): void {
   try {
-    noteDemoWrite(branch);
+    if (!noteDemoWrite(branch)) return;
     const draft: LocalDraft = { path: notePath, content, metadata, savedAt: Date.now() };
     localStorage.setItem(makeDraftKey(branch, notePath), JSON.stringify(draft));
   } catch (err) {

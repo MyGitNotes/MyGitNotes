@@ -25,9 +25,9 @@ export function NoteLocationProvider({ locate, children }: { locate: (note: Note
 export const useNoteLocation = (note: NoteRef) => useContext(NoteLocationContext)(note);
 
 /** The reason a repository refuses edits: unavailable, the product `core` branch, another branch, or no push access. */
-export function readOnlyReason(repository: { unavailable?: unknown; branch: string; write: boolean; } | undefined): ReadOnlyReason | undefined {
+export function readOnlyReason(repository: { unavailable?: unknown; branch: string; write: boolean; demo?: boolean; } | undefined): ReadOnlyReason | undefined {
   if (!repository || repository.unavailable) return 'unavailable';
-  if (repository.write) return undefined;
+  if (repository.write || repository.demo === true) return undefined;
   if (repository.branch === 'core') return 'core';
   if (repository.branch && repository.branch !== 'main') return 'branch';
   return 'no-push';

@@ -203,6 +203,8 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
       if (request !== refreshRequest.current) return;
       // A tab that was signed in and lost its session is answered with the demo: say so instead of showing its notebooks as the person's own.
       if (!inDemo && ws.repositories.some(repository => repository.demo)) throw new Error(translate.current('demo.sessionEnded'));
+      // The reverse: a demo tab whose browser signed in elsewhere is answered with the person's own repositories; they never open under the demo's copy.
+      if (inDemo && !ws.repositories.some(repository => repository.demo)) throw new Error(translate.current('demo.signedIn'));
       const folderRequest = fetchFolders();
       const workspace = JSON.stringify([ws.defaultRepository, ws.repositories.map((repository) => [repository.id, repository.branch]), ws.keyedConfig?.notebooks.map((nb) => [nb.id, nb.root])]);
       // A local workspace has no revisions, so its cached answers are refetched by hand.

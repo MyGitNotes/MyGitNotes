@@ -22,5 +22,7 @@ describe('read-only reasons', () => {
     expect(readOnlyReason({ branch: 'draft', write: false })).toBe('branch');
     expect(readOnlyReason({ branch: 'main', write: false })).toBe('no-push');
     expect(readOnlyReason({ branch: 'main', write: true })).toBeUndefined();
+    // A demo repository is editable in the visitor's browser, so the Info tab never calls it read-only.
+    expect(readOnlyReason({ branch: 'main', write: false, demo: true })).toBeUndefined();
   });
 });
