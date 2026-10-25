@@ -1,18 +1,17 @@
 /*
- * Safe areas. A phone with a notch or home indicator, and an installed app drawn under the status bar (viewport-fit=cover,
- * black-translucent), leave the page's edges under system UI. These variables are the insets; layouts pad by them instead of
- * repeating env(). They are 0 on a screen without cut-outs.
+ * Safe areas. A phone with a notch or home indicator, and an installed app, leave the page's edges under system UI. These variables
+ * are the insets; layouts pad by them instead of repeating env(). They are 0 on a screen without cut-outs. The top inset is 0 in an
+ * installed iOS app too: its status bar style is "default" (index.html), so the system draws the bar in the theme colour above the page
+ * and the page never sits under it.
  */
 :root { --safe-top: env(safe-area-inset-top, 0px); --safe-right: env(safe-area-inset-right, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px); --safe-left: env(safe-area-inset-left, 0px); }
 /* The whole window clears the side cut-outs of a phone held sideways. */
 .app-shell { padding-left: var(--safe-left); padding-right: var(--safe-right); }
-/* Above 1100px the header is one row with no top padding of its own; below it, `.header-layout` already pads by the top inset. */
-@media (min-width: 1101px) { .workspace-header { padding-top: var(--safe-top); } }
 .connection-state { padding: max(2rem, var(--safe-top)) max(2rem, var(--safe-right)) max(2rem, var(--safe-bottom)) max(2rem, var(--safe-left)); }
 
-/* Bottom centre, above the phone's bottom navigation: that bar's height goes in --pwa-notice-lift. */
-:root { --pwa-notice-lift: 0px; }
-@media (max-width: 767px) { :root { --pwa-notice-lift: 72px; } }
-.pwa-notice { position: fixed; z-index: 90; bottom: calc(var(--safe-bottom) + var(--pwa-notice-lift) + 16px); left: var(--safe-left); right: var(--safe-right); width: fit-content; max-width: calc(100% - var(--safe-left) - var(--safe-right) - 24px); margin: 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-panel); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-lg); font-size: 14px; }
+/* Bottom centre. --pwa-notice-lift is how far up from the screen's bottom edge the notice's own margin starts: the home indicator's inset, and on a phone the bottom navigation (64px bar plus that inset) as well. */
+:root { --pwa-notice-lift: var(--safe-bottom); }
+@media (max-width: 767px) { :root { --pwa-notice-lift: calc(64px + var(--safe-bottom)); } }
+.pwa-notice { position: fixed; z-index: 90; bottom: calc(var(--pwa-notice-lift) + 16px); left: var(--safe-left); right: var(--safe-right); width: fit-content; max-width: calc(100% - var(--safe-left) - var(--safe-right) - 24px); margin: 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 16px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-panel); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-lg); font-size: 14px; }
 .pwa-notice > span { min-width: 0; }
 .pwa-notice > button { flex-shrink: 0; min-height: 36px; }
