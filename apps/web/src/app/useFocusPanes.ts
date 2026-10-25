@@ -48,6 +48,8 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
   const [documentContainer, setDocumentContainer] = useState<HTMLDivElement | null>(null);
   const activeKey = noteFocus.entry ? focusDisplay?.panes.find(pane => pane.panes.includes(noteFocus.entry!.activePane))?.key : undefined;
   // A compilation pane has no editor, so it has no document panel either.
+  /** The path of the note the active pane shows, if it shows one. */
+  const activeNotePath = activeKey?.startsWith('note:') ? activeKey.slice('note:'.length) : undefined;
   const activePaneNote = Boolean(activeKey?.startsWith('note:') && !isCompilationPath(activeKey.slice('note:'.length)));
   const focusDocumentPanel = {
     target: documentContainer,
@@ -72,5 +74,5 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
     if (noteFocus.shown === CURRENT_FOCUS) void noteFocus.clear().catch(() => {});
     else if (noteFocus.shown) setConfirmingClear(true);
   };
-  return { requestClear, confirmingClear, setConfirmingClear, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, focusDocumentPanel, setDocumentContainer, showFocus };
+  return { requestClear, confirmingClear, setConfirmingClear, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus };
 }

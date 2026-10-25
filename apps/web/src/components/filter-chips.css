@@ -1,0 +1,15 @@
+/* The filters in force, above the list beside a Focus. */
+.filter-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0 0 8px; padding: 0 2px 8px; border-bottom: 1px solid var(--color-line); min-width: 0; }
+.filter-chip { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; min-width: 0; height: 24px; padding: 0 4px 0 9px; border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent); border-radius: 9999px; background: color-mix(in srgb, var(--color-primary) 10%, transparent); color: var(--color-text); font-size: 12px; line-height: 1; white-space: nowrap; }
+.filter-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.filter-chip-context { padding-right: 9px; border-color: var(--color-line-strong); background: transparent; color: var(--color-muted); cursor: pointer; }
+.filter-chip-context:hover { color: var(--color-text); background: var(--workspace-selection); }
+.filter-chip-add { padding: 0 9px 0 6px; border-style: dashed; border-color: var(--color-line-strong); background: transparent; color: var(--color-muted); cursor: pointer; }
+.filter-chip-add:hover, .filter-chip-add[data-state='open'] { color: var(--color-text); background: var(--workspace-selection); }
+.filter-chip-add svg { width: 12px; height: 12px; }
+.filter-chip-remove { display: inline-grid; place-items: center; width: 18px; height: 18px; min-width: 0; min-height: 0; padding: 0; border-radius: 9999px; color: var(--color-muted); }
+.filter-chip-remove:hover { background: color-mix(in srgb, var(--color-text) 14%, transparent); color: var(--color-text); }
+.filter-chip-remove svg { width: 11px; height: 11px; }
+.filter-chip:focus-visible, .filter-chip-remove:focus-visible, .filter-chip-clear:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.filter-chip-clear { padding: 0 4px; min-width: 0; min-height: 0; color: var(--color-muted); font-size: 11px; text-decoration: underline; }
+@media (pointer: coarse), (max-width: 767px) { .filter-chip, .filter-chip-remove, .filter-chip-clear { min-height: 0; min-width: 0; } }

@@ -64,9 +64,11 @@ import { Header } from './components/Header.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
 import { type NoteSearchHandle, NoteToolbar } from './components/NoteToolbar.js';
 import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
-import { PageToolbar, SidebarProvider, WorkspaceSidebarPortal, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
+import { PageToolbar, SidebarProvider, useIsDesktop, WorkspaceSidebarPortal, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
 import { useVisualViewport } from './lib/use-visual-viewport.js';
 import { Sidebar } from './components/Sidebar.js';
+import { FilterChips } from './components/FilterChips.js';
+import type { RailSectionId } from './components/SidebarRail.js';
 import { NoteCollection } from './components/NoteCollection.js';
 import { noteFolderGrouping } from './lib/note-groups.js';
 import { KanbanView } from './components/KanbanView.js';
@@ -183,7 +185,7 @@ export const AppContent: React.FC = () => {
 
   const { facetsQuery, notebookFacets, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, noteTagActions, searchQuery, viewMode, folderless } = useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route, canManageTags, previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag });
 
-  const { focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, focusDocumentPanel, setDocumentContainer, showFocus, requestClear, confirmingClear, setConfirmingClear } = useFocusPanes({ selectedNotebookId, notebookRepository: repositoryFor(selectedNotebookId)?.id ?? '', focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite: canWriteNotebook(selectedNotebookId), editorRegistry, location, navigate, editorRoute, resolveBareNotebook });
+  const { focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus, requestClear, confirmingClear, setConfirmingClear } = useFocusPanes({ selectedNotebookId, notebookRepository: repositoryFor(selectedNotebookId)?.id ?? '', focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite: canWriteNotebook(selectedNotebookId), editorRegistry, location, navigate, editorRoute, resolveBareNotebook });
 
   const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder, setViewMode, setGroupByFolder } = useWorkspaceNavigation({ location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook });
 
@@ -315,9 +317,19 @@ export const AppContent: React.FC = () => {
 
   // With a Focus displayed, the browse region docks beside it (flat, folder) or above it (kanban).
   const topDock = viewMode === 'kanban';
-  const browseFocusMode = noteFocus.layout ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => noteFocus.editable && note.notebookId === selectedNotebookId } : undefined;
+  const browseFocusMode = noteFocus.layout ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => noteFocus.editable && note.notebookId === selectedNotebookId, compactRows: focusCapacity !== 1, openPath: activeNotePath, readNote: readNoteForChange } : undefined;
   // Either dock collapses and reopens from the toolbar's left end.
   const dockToggle = noteFocus.layout && focusCapacity !== 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} /> : undefined;
+  // Beside a Focus the filter sidebar folds to an icon rail (the drawer below the desktop breakpoint stays a drawer), and the filters in force show as chips above the list.
+  const desktop = useIsDesktop();
+  const dockedFocus = activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && focusCapacity !== 1;
+  const railed = dockedFocus && desktop;
+  const [railSection, setRailSection] = useState<RailSectionId | null>(null);
+  const [wasRailed, setWasRailed] = useState(railed);
+  if (wasRailed !== railed) {
+    setWasRailed(railed);
+    if (!railed) setRailSection(null);
+  }
   // An outline or compilation list offers its own kind; every kind starts at the notebook root, moved from its editor.
   const newKind = route.kind === 'outline' || route.kind === 'compilation' ? route.kind : 'note';
   const createNewKind = () => {
@@ -338,6 +350,7 @@ export const AppContent: React.FC = () => {
   const noteGroupOf = useMemo(() => groupedByFolder ? noteFolderGrouping({ notebookRoot: folderRoot ?? '', selectedFolder, folders, notebookId: selectedNotebookId, selectedLabel: indexFolderName }) : undefined, [groupedByFolder, folderRoot, selectedFolder, folders, selectedNotebookId, indexFolderName]);
   const browseRegion = () => (
     <>
+      {dockedFocus && <FilterChips filters={filterProps} sections={railed ? [{ id: 'notebooks', label: t('sidebar.notebooks') }, { id: 'status', label: t('sidebar.status') }, ...(filterProps.tags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags') }] : [])] : []} onAdd={section => railed && section ? setRailSection(section) : setFiltersOpen(true)} />}
       <LegacySchemaNotice schemaVersion={config?.schema_version} />
       {actionError && <p role='alert' className='mb-3 text-sm text-danger'>{actionError}</p>}
       {selectedNotes.length > 0 && <BulkActionsToolbar count={selectedNotes.length} statuses={notebookStatuses} availableTags={availableTags} busy={bulkBusy} readOnly={!canWrite} canMove={Boolean(bulkMoveNotebookId)} onSetStatus={status => void runBulkStatus(status)} onAddTag={tag => void runBulkTag('add', tag)} onRemoveTag={tag => void runBulkTag('remove', tag)} onMove={() => setBulkMoveOpen(true)} onClear={clearSelection} />}
@@ -475,6 +488,7 @@ export const AppContent: React.FC = () => {
                   <WorkspaceSplitLayout
                     hasSidebar={activeTab !== 'graph' && !route.study}
                     sidebarCollapsed={browseCollapsed}
+                    sidebarRail={railed}
                     sidebarDomId={activeTab === 'notes' ? 'notebook-panel' : activeTab === 'agent' ? 'agent-sidebar-panel' : activeTab === 'assets' ? 'assets-sidebar-panel' : activeTab === 'settings' ? 'settings-sidebar-panel' : undefined}
                     closeLabel={t('sidebar.closeFilters')}
                     rightPanelWidth={rightPanelWidth}
@@ -566,6 +580,9 @@ export const AppContent: React.FC = () => {
                             onRenameTag={handleRenameTag}
                             onMergeTag={handleMergeTag}
                             onDeleteTag={handleDeleteTag}
+                            rail={railed}
+                            railSection={railSection}
+                            onRailSectionChange={setRailSection}
                           />
                         </WorkspaceSidebarPortal>
                         {/* Main Content Area */}

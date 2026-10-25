@@ -1,0 +1,18 @@
+/* The filter sidebar folded to an icon rail beside a Focus, and the flyout each icon opens. */
+.workspace-sidebar.sidebar-rail { align-items: center; padding: 8px 0; overflow: hidden; }
+.sidebar-rail-buttons { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.sidebar-rail-button { position: relative; width: 34px; height: 34px; min-width: 0; padding: 0; border-color: transparent; background: transparent; color: var(--color-muted); }
+.sidebar-rail-button:hover, .sidebar-rail-button[aria-expanded='true'] { background: var(--workspace-selection); color: var(--color-text); }
+.sidebar-rail-button[data-active] { color: var(--color-primary); }
+.sidebar-rail-button svg { width: 18px; height: 18px; }
+.sidebar-rail-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.sidebar-rail-mark { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 9999px; background: var(--color-primary); }
+.sidebar-rail-count { position: absolute; top: 1px; right: 1px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 9999px; background: var(--color-primary); color: var(--color-on-primary); font-size: 9px; font-weight: 600; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.sidebar-flyout { position: fixed; z-index: 55; display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 10px 10px 12px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-md); outline: none; overflow-y: auto; animation: sidebar-flyout-in 120ms ease-out; }
+.sidebar-flyout-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sidebar-flyout-header > h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.sidebar-flyout-header .ui-icon-button { width: 26px; height: 26px; min-height: 0; padding: 0; }
+.sidebar-flyout-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+@keyframes sidebar-flyout-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sidebar-flyout { animation: none; } }

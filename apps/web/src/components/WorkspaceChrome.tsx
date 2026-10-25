@@ -8,6 +8,8 @@ export const SIDEBAR_WIDTH_STORAGE_KEY = 'mygitnotes:sidebar-width';
 export const DEFAULT_SIDEBAR_WIDTH = 256;
 export const MIN_SIDEBAR_WIDTH = 180;
 export const MAX_SIDEBAR_WIDTH = 500;
+/** Width of the sidebar folded to its icon rail (SidebarRail). */
+const RAIL_SIDEBAR_WIDTH = 44;
 
 export const RIGHT_PANEL_WIDTH_STORAGE_KEY = 'mygitnotes:right-panel-width';
 export const DEFAULT_RIGHT_PANEL_WIDTH = 320;
@@ -173,6 +175,8 @@ export interface WorkspaceSplitLayoutProps {
   hasSidebar?: boolean;
   /** Folds the sidebar away without unmounting it: its panel eases to nothing and is inert, and the drawer below the desktop breakpoint stays closed. */
   sidebarCollapsed?: boolean;
+  /** Narrows the sidebar panel to its icon rail (desktop only); the splitter is fixed while it is, and the saved width returns when it ends. */
+  sidebarRail?: boolean;
   drawerOpen?: boolean;
   onCloseDrawer?: () => void;
   closeLabel?: string;
@@ -188,7 +192,7 @@ export interface WorkspaceSplitLayoutProps {
   rightPanelWidth?: number;
 }
 
-export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, sidebarCollapsed = false, drawerOpen: propDrawerOpen, onCloseDrawer: propOnCloseDrawer, closeLabel = 'Close sidebar', className = '', sidebarId = 'workspace-sidebar-panel', sidebarDomId, mainId = 'workspace-main-panel', mainClassName = '', rightPanel, rightPanelId = 'workspace-right-panel', rightPanelWidth }: WorkspaceSplitLayoutProps) {
+export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, sidebarCollapsed = false, sidebarRail = false, drawerOpen: propDrawerOpen, onCloseDrawer: propOnCloseDrawer, closeLabel = 'Close sidebar', className = '', sidebarId = 'workspace-sidebar-panel', sidebarDomId, mainId = 'workspace-main-panel', mainClassName = '', rightPanel, rightPanelId = 'workspace-right-panel', rightPanelWidth }: WorkspaceSplitLayoutProps) {
   const isDesktop = useIsDesktop();
   const context = useContext(SidebarContext);
   const drawerOpen = !sidebarCollapsed && (propDrawerOpen !== undefined ? propDrawerOpen : (context?.open ?? false));
@@ -202,6 +206,12 @@ export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, sid
   useEffect(() => {
     document.documentElement.style.setProperty('--workspace-sidebar-width', `${initialWidth}px`);
   }, [initialWidth]);
+
+  const railed = sidebarRail && isDesktop;
+  useLayoutEffect(() => {
+    if (!hasSidebar) return;
+    return scheduleRightPanelResize(railed ? RAIL_SIDEBAR_WIDTH : getSavedSidebarWidth(), width => sidebarPanelRef.current?.resize(width));
+  }, [railed, hasSidebar, sidebarPanelRef]);
 
   useLayoutEffect(() => {
     if (rightPanelWidth === undefined) return;
@@ -251,10 +261,10 @@ export function WorkspaceSplitLayout({ sidebar, children, hasSidebar = true, sid
       <Group orientation='horizontal' className='workspace-split-group flex-1 min-w-0 min-h-0 h-full flex' data-sidebar-collapsed={(hasSidebar && sidebarCollapsed) || undefined} data-sidebar-folding={folding || undefined} onLayoutChanged={(_layout, meta) => persistWidthOnUserInteraction(meta, sidebarPanelRef, 0, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, saveSidebarWidth)}>
         {hasSidebar && (
           <>
-            <Panel id={sidebarId} defaultSize={`${initialWidth}px`} minSize={`${MIN_SIDEBAR_WIDTH}px`} maxSize={`${MAX_SIDEBAR_WIDTH}px`} groupResizeBehavior='preserve-pixel-size' onResize={handleResize} panelRef={sidebarPanelRef} className='workspace-split-sidebar-panel h-full' {...(sidebarCollapsed ? { inert: '' } : {})}>
+            <Panel id={sidebarId} defaultSize={`${railed ? RAIL_SIDEBAR_WIDTH : initialWidth}px`} minSize={`${railed ? RAIL_SIDEBAR_WIDTH : MIN_SIDEBAR_WIDTH}px`} maxSize={`${railed ? RAIL_SIDEBAR_WIDTH : MAX_SIDEBAR_WIDTH}px`} groupResizeBehavior='preserve-pixel-size' onResize={handleResize} panelRef={sidebarPanelRef} className='workspace-split-sidebar-panel h-full' {...(sidebarCollapsed ? { inert: '' } : {})}>
               <div className='workspace-split-sidebar-content h-full'>{slotNode}</div>
             </Panel>
-            <Separator className='workspace-splitter workspace-sidebar-splitter' disabled={sidebarCollapsed} />
+            <Separator className='workspace-splitter workspace-sidebar-splitter' disabled={sidebarCollapsed || railed} />
           </>
         )}
         <Panel id={mainId} groupResizeBehavior='preserve-relative-size' className='flex-1 min-w-0 min-h-0 h-full'>
