@@ -235,7 +235,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   );
   const statusBody = (
     <>
-      <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{selectedStatus && <button type='button' onClick={() => onSelectStatus(null)} className='text-xs hover:underline capitalize' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
+      <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{!rail && selectedStatus && <button type='button' onClick={() => onSelectStatus(null)} className='text-xs hover:underline capitalize' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
       <div className='space-y-1 text-sm'>
         <button type='button' onClick={() => onSelectStatus(null)} aria-pressed={selectedStatus === null} style={selectedStatus === null ? selectedItemStyle : undefined} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition ${selectedStatus === null ? 'font-semibold hover:opacity-90' : 'text-muted hover:bg-fg/5 hover:text-fg'}`}>
           <div className='flex items-center gap-2'>
@@ -263,7 +263,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   );
   const tagsBody = (
     <>
-      <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{selectedTags.length > 0 && <button type='button' onClick={() => onSelectTag(null)} className='text-xs hover:underline' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
+      <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{!rail && selectedTags.length > 0 && <button type='button' onClick={() => onSelectTag(null)} className='text-xs hover:underline' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
       <div className='space-y-2 px-1 mb-2.5'>
         <div className='relative'>
           <Search aria-hidden='true' className='absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted pointer-events-none' />

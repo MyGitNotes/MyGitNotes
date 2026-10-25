@@ -111,6 +111,16 @@ it('can be opened by its owner, as the list\'s "+ Filter" chip does', () => {
   expect(onRailSectionChange).toHaveBeenCalledWith(null);
 });
 
+it('shows no section-level "clear" line in the Status and Tags flyouts, whose summary already has Clear all', () => {
+  rail(controls({ status: 'todo', tags: ['work'] }));
+  fireEvent.click(button('Tags'));
+  const tags = screen.getByRole('dialog', { name: 'Tags' });
+  expect(within(tags).getByRole('button', { name: 'Clear all' })).toBeInTheDocument();
+  expect(within(tags).queryByRole('button', { name: 'clear' })).toBeNull();
+  fireEvent.click(button('Status'));
+  expect(within(screen.getByRole('dialog', { name: 'Status' })).queryByRole('button', { name: 'clear' })).toBeNull();
+});
+
 it('holds the Changes section too, with its pending count', () => {
   rail();
   fireEvent.click(button('Changes'));
