@@ -101,3 +101,22 @@ describe('useNoteEditorSession after the committed note moved under a clean sess
     expect(hook.result.current.baseNote.content).toBe(server.content);
   });
 });
+
+describe('useNoteEditorSession and a late committed note equal to unsaved text', () => {
+  it('still saves an undo that a late read of an older save happens to match', async () => {
+    const start = note('Idea', '# Idea\n\nC0.\n');
+    const first = { ...start, content: '# Idea\n\nC1.\n' };
+    const onSave = vi.fn(async (params: { path: string; content: string; metadata?: Record<string, unknown>; }) => ({ ...start, content: params.content, metadata: params.metadata ?? start.metadata }));
+    const base = { readOnly: false, autoSave: true, draftMode: false, propIsDirty: false, branch: 'main', draftScope: '', onSave: onSave as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote: undefined, onRestoreFile: vi.fn(), onCommitFile: undefined, conflictReason: undefined, onMarkConflict: undefined } satisfies Omit<UseNoteEditorSessionParams, 'note' | 'remoteBase'>;
+    const hook = renderHook(({ remoteBase }: { remoteBase: NoteItem; }) => useNoteEditorSession({ ...base, note: start, remoteBase }), { initialProps: { remoteBase: start } });
+    act(() => hook.result.current.setContent(first.content));
+    await vi.waitFor(() => expect(hook.result.current.hasUnsavedChanges).toBe(false));
+    act(() => hook.result.current.setContent('# Idea\n\nC2.\n'));
+    await vi.waitFor(() => expect(hook.result.current.hasUnsavedChanges).toBe(false));
+    // Undo back to C1, then the read that followed the first save arrives late, holding C1.
+    act(() => hook.result.current.setContent(first.content));
+    hook.rerender({ remoteBase: { ...first } });
+    await vi.waitFor(() => expect(onSave.mock.calls.at(-1)?.[0].content).toBe(first.content));
+    expect(hook.result.current.hasUnsavedChanges).toBe(false);
+  });
+});

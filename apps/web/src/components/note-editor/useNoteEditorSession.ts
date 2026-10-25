@@ -322,6 +322,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   useEffect(() => {
     const state = current.current;
     if (readOnly || !remoteBase || state.blocked || state.baseNote.revision === remoteBase.revision && state.baseNote.content === remoteBase.content) return;
+    // Text not yet saved (an undo back to an older save) stays unsaved even when a late read of that older save matches it.
+    if (hasUnsaved() || operation.current || autosaving.current || closing.current) return;
     // The commit stamped its own timestamps on the note, so only the rest of the metadata has to match.
     if (state.content !== remoteBase.content || !sameIgnoringTimestamps(state.metadata, remoteBase.metadata || {})) return;
     const metadata = remoteBase.metadata || {};
