@@ -11,6 +11,17 @@
       "includeFiles": "docs/agent/**"
     }
   },
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/mcp/:routePath*",
