@@ -43,7 +43,9 @@
 /* Top dock + Kanban: columns sit side by side and each scrolls its own cards;
    the dock must not also add an outer vertical scrollbar around the whole board. */
 .browse-dock[data-placement='top'] .browse-dock-scroll:has([data-kanban-columns]) { display: flex; flex-direction: column; overflow-y: hidden; }
-.browse-dock[data-placement='top'] .browse-dock-scroll:has([data-kanban-columns]) > * { flex: 1; min-height: 0; }
+/* Only the board stretches: the filter chips above it keep their own height, or they take half the short dock and leave the columns no room for cards. */
+.browse-dock[data-placement='top'] .browse-dock-scroll:has([data-kanban-columns]) > :not(.filter-chips) { flex: 1; min-height: 0; }
+.browse-dock[data-placement='top'] .browse-dock-scroll:has([data-kanban-columns]) > .filter-chips { flex: none; }
 .browse-dock[data-placement='top'] [data-kanban-columns] { align-items: stretch; }
 .browse-dock[data-placement='top'] [data-status-column] { height: 100%; }
 
