@@ -16,7 +16,7 @@ import { isAnnotateName } from '../../lib/annotations/parse.js';
 import { isArgumentMapName } from '../../lib/argument-maps/parse.js';
 import { isInfographicKind } from '../../lib/infographics/model.js';
 import { LiveMarkdownTable, tableUIState } from '../LiveMarkdownTable.js';
-import { findMath } from '../../lib/math.js';
+import { findMath, mathTailLength } from '../../lib/math.js';
 import { type AnnotateOffer, BulletMarker, DateAdder, ExternalLink, MathFormula, MdxImportWidget, MermaidDiagram, PageBreak, PageFooter, RenderedMarkdown, TaskCheckbox, TokenChip, TokenEditor, YouTubeWidget } from './widgets.js';
 import { chipEditState } from './chip-editing.js';
 import { mermaidFenceAt } from './mermaid-fence.js';
@@ -219,10 +219,13 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
     const first = state.doc.lineAt(span.from), last = state.doc.lineAt(span.to);
     // A display formula alone on its lines is drawn as a block in their place; any other formula stays in the text flow.
     const block = span.display && !first.text.slice(0, span.from - first.from).trim() && !last.text.slice(span.to - last.from).trim();
-    const from = block ? first.from : span.from, to = block ? last.to : span.to;
+    // The punctuation right after an inline formula is drawn with it, so the two never break apart.
+    const tailLength = block || span.display ? 0 : mathTailLength(docText, span.to);
+    const from = block ? first.from : span.from, to = block ? last.to : span.to + tailLength;
     mathRanges.push({ from, to });
-    marks.push(Decoration.replace({ widget: new MathFormula(span.tex, span.display, block), block }).range(from, to));
+    marks.push(Decoration.replace({ widget: new MathFormula(span.tex, span.display, block, docText.slice(span.to, to)), block }).range(from, to));
   }
+
   // The prefix hiding and list bullet decorations of a drawn fence's opening line sit inside its widget's range, and so
   // do the emphasis or escape marks the Markdown parser finds inside a formula's TeX.
   for (let i = marks.length - 1; i >= 0; i--) {

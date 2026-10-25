@@ -43,6 +43,18 @@ export function mathAt(text: string, start: number): MathSpan | null {
   return null;
 }
 
+/** Punctuation that may follow a formula and, like a colon, is not to start a line of its own. */
+const MATH_TAIL = /^[:：;；,，.。!！?？、)）\]］」』】》〉”’]+/;
+
+/**
+ * How many characters after the formula ending at `to` are punctuation that belongs with it. KaTeX draws an inline
+ * formula as inline blocks and a browser may break a line between the last of them and the text after it, so a colon
+ * could start a line alone; the formula and this tail are kept in one unbreakable run.
+ */
+export function mathTailLength(text: string, to: number): number {
+  return MATH_TAIL.exec(text.slice(to, to + 16))?.[0].length ?? 0;
+}
+
 /** Every formula in `text`, in order; a dollar that opens no formula stays text. */
 export function findMath(text: string): MathSpan[] {
   const spans: MathSpan[] = [];
@@ -84,6 +96,8 @@ export function drawMath(element: HTMLElement, tex: string, display: boolean): v
 interface MathToken extends Tokens.Generic {
   tex: string;
   display: boolean;
+  /** The punctuation straight after an inline formula, drawn in one unbreakable run with it. */
+  tail?: string;
 }
 
 function firstDollar(src: string): number | undefined {
@@ -115,9 +129,15 @@ export const createMarkedMath = (output: MathOutput): MarkedExtension => ({
     start: firstDollar,
     tokenizer(src): MathToken | undefined {
       const span = mathAt(src, 0);
-      return span ? { type: 'mathInline', raw: src.slice(0, span.to), tex: span.tex, display: span.display } : undefined;
+      if (!span) return undefined;
+      const tail = span.display ? '' : src.slice(span.to, span.to + mathTailLength(src, span.to));
+      return { type: 'mathInline', raw: src.slice(0, span.to + tail.length), tex: span.tex, display: span.display, tail };
     },
-    renderer: token => renderMath((token as MathToken).tex, (token as MathToken).display, output),
+    renderer: token => {
+      const { tex, display, tail } = token as MathToken;
+      const math = renderMath(tex, display, output);
+      return tail ? `<span class="note-math-run">${math}${escapeHtml(tail)}</span>` : math;
+    },
   }],
 });
 

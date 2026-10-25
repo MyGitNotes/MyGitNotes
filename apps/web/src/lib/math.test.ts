@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { renderNote } from './markdown.js';
-import { findMath } from './math.js';
+import { findMath, mathTailLength } from './math.js';
 
 function mount(source: string) {
   return new DOMParser().parseFromString(renderNote(source, 'notes/n.md'), 'text/html').body;
@@ -29,6 +29,49 @@ describe('findMath', () => {
 
   it('keeps an escaped dollar inside a formula', () => {
     expect(findMath('$a \\$ b$')).toEqual([{ from: 0, to: 8, tex: 'a \\$ b', display: false }]);
+  });
+});
+
+describe('mathTailLength', () => {
+  it('counts the punctuation that closes a sentence or a phrase right after a formula, in either width', () => {
+    expect(mathTailLength('$x$: next', 3)).toBe(1);
+    expect(mathTailLength('$x$：下一句', 3)).toBe(1);
+    expect(mathTailLength('($x$). Next', 4)).toBe(2);
+    expect(mathTailLength('$x$。」他說', 3)).toBe(2);
+    expect(mathTailLength('$x$, $y$;', 3)).toBe(1);
+  });
+
+  it('counts nothing where a space, a letter, a newline or the end follows', () => {
+    expect(mathTailLength('$x$ : next', 3)).toBe(0);
+    expect(mathTailLength('$x$ab', 3)).toBe(0);
+    expect(mathTailLength('$x$\n: next', 3)).toBe(0);
+    expect(mathTailLength('$x$', 3)).toBe(0);
+  });
+});
+
+/**
+ * KaTeX breaks an inline formula into inline blocks, and a browser may break a line between the last of them and the
+ * text after it, so a colon right after a formula could land alone at the start of the next line.
+ */
+describe('punctuation right after a formula in rendered notes', () => {
+  it('stays in one unbreakable run with the formula', () => {
+    const root = mount('The energy is $E = mc^2$: it follows.');
+    const run = root.querySelector('.note-math-run');
+    expect(run?.querySelector('.note-math')).not.toBeNull();
+    expect(run?.textContent?.endsWith(':')).toBe(true);
+    expect(root.querySelector('p')?.textContent).toContain(': it follows.');
+  });
+
+  it('keeps a run of closing punctuation, full-width included, and escapes nothing it should not', () => {
+    const root = mount('這個公式 $E=mc^2$：是質能等價（見 $x$）。');
+    const runs = [...root.querySelectorAll('.note-math-run')].map(run => run.textContent!.slice(-2).replace(/[^：）。]/g, ''));
+    expect(runs).toEqual(['：', '）。']);
+  });
+
+  it('leaves a formula with no punctuation after it, and a display formula, unwrapped', () => {
+    expect(mount('Then $x$ and more.').querySelector('.note-math-run')).toBeNull();
+    expect(mount('See $$y$$: here').querySelector('.note-math-run')).toBeNull();
+    expect(mount('$$\ny\n$$\n\nDone.').querySelector('.note-math-run')).toBeNull();
   });
 });
 

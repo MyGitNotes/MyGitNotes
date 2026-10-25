@@ -2,3 +2,5 @@
 .note-math .katex-display { overflow-x: auto; overflow-y: hidden; }
 .live-md-math { cursor: text; }
 .live-md-math-block { display: flow-root; }
+/* A formula and the punctuation straight after it never break apart: a colon would otherwise start a line alone. */
+.note-math-run, .live-md-math-run { white-space: nowrap; }

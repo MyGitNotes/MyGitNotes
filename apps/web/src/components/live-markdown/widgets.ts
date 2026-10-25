@@ -97,24 +97,33 @@ export class RenderedMarkdown extends WidgetType {
     return this.block ? 100 : 160;
   }
 }
-/** A `$…$` or `$$…$$` formula drawn by KaTeX; the source returns when the cursor enters its lines. */
+/**
+ * A `$…$` or `$$…$$` formula drawn by KaTeX; the source returns when the cursor enters its lines. `tail` is the
+ * punctuation right after an inline formula: it is drawn with the formula in one unbreakable run, because a browser may
+ * break a line between a formula's last inline block and the text after it, and a colon would start a line alone.
+ */
 export class MathFormula extends WidgetType {
-  constructor(readonly tex: string, readonly display: boolean, readonly block: boolean) {
+  constructor(readonly tex: string, readonly display: boolean, readonly block: boolean, readonly tail = '') {
     super();
   }
   eq(other: MathFormula) {
-    return this.tex === other.tex && this.display === other.display && this.block === other.block;
+    return this.tex === other.tex && this.display === other.display && this.block === other.block && this.tail === other.tail;
   }
   toDOM(view: EditorView) {
     const dom = document.createElement(this.block ? 'div' : 'span');
     dom.className = this.block ? 'live-md-math live-md-math-block' : 'live-md-math';
     drawMath(dom, this.tex, this.display);
-    dom.addEventListener('mousedown', event => {
+    const outer = this.tail ? document.createElement('span') : dom;
+    if (this.tail) {
+      outer.className = 'live-md-math-run';
+      outer.append(dom, this.tail);
+    }
+    outer.addEventListener('mousedown', event => {
       event.preventDefault();
-      view.dispatch({ selection: { anchor: view.posAtDOM(dom) } });
+      view.dispatch({ selection: { anchor: view.posAtDOM(outer) } });
       view.focus();
     });
-    return dom;
+    return outer;
   }
 }
 export class PageBreak extends WidgetType {

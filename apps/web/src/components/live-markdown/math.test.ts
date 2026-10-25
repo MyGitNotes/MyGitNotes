@@ -53,6 +53,23 @@ describe('math in the live editor', () => {
     expect(formulas(editor(note, 3)).map(formula => formula.display)).toEqual([true]);
   });
 
+  it('draws punctuation right after a formula in one unbreakable run with it, so a colon never starts a line', () => {
+    const view = editor('Energy $E=mc^2$: follows, and $x$ (see $y$). Plain $z$ here.\n\nend');
+    expect(formulas(view).map(formula => formula.source)).toEqual(['$E=mc^2$:', '$x$', '$y$).', '$z$']);
+    const runs = [...view.dom.querySelectorAll('.live-md-math-run')];
+    expect(runs.map(run => run.textContent!.slice(-2).replace(/[^:).]/g, ''))).toEqual([':', ').']);
+    for (const run of runs) expect(run.querySelector('.live-md-math .katex')).not.toBeNull();
+    expect([...editor('這個公式 $E=mc^2$：是質能等價。\n\nend').dom.querySelectorAll('.live-md-math-run')].map(run => run.textContent!.at(-1))).toEqual(['：']);
+  });
+
+  it('draws no run around a display formula or a formula with the cursor in it', () => {
+    expect(formulas(editor('See $$y$$: here\n\nend')).map(formula => formula.source)).toEqual(['$$y$$']);
+    expect(editor('See $$y$$: here\n\nend').dom.querySelector('.live-md-math-run')).toBeNull();
+    const editing = editor('Energy $E=mc^2$: follows\n\nend', 3);
+    expect(editing.dom.querySelector('.live-md-math-run')).toBeNull();
+    expect(editing.dom.querySelector('.live-md-math')).toBeNull();
+  });
+
   it('leaves formulas in a table to the rendered table', () => {
     expect(formulas(editor('| a |\n| - |\n| $x$ |\n\nend'))).toEqual([]);
   });
