@@ -32,14 +32,20 @@ export const STATUS_COLOR_NAMES: readonly StatusColorName[] = ['green', 'blue', 
 /** What a status dot wears: a palette colour, the theme's primary for an inbox, or muted gray for an unlisted or archived status. */
 export type StatusColor = StatusColorName | 'primary' | 'muted';
 
-/** Palette order for statuses without a colour of their own; the first custom ones avoid the green, blue and amber of the known names. */
-const STATUS_CYCLE: readonly StatusColorName[] = ['purple', 'teal', 'pink', 'red', 'gray', 'green', 'blue', 'amber'];
+/**
+ * Palette order for custom statuses without a colour of their own; the first ones avoid the green, blue and amber of the
+ * known names. Gray is for explicit use only, so a cycled status never looks like a stray muted one. Pink and red are kept
+ * two places apart, so they stay apart whichever single colour a theme skips.
+ */
+export const STATUS_CYCLE: readonly StatusColorName[] = ['purple', 'teal', 'pink', 'blue', 'green', 'red', 'amber'];
 
 const KNOWN_STATUS_COLORS: Readonly<Record<string, StatusColor>> = { done: 'green', working: 'blue', doing: 'blue', 'in-progress': 'blue', todo: 'amber', inbox: 'primary', archived: 'muted' };
 
 const explicitColor = (entry: NotebookStatus) => typeof entry === 'string' ? undefined : entry.color;
 
 const normalizeStatus = (status: string) => status.trim().toLowerCase();
+
+const isKnownStatus = (status: string) => Object.hasOwn(KNOWN_STATUS_COLORS, normalizeStatus(status));
 
 /** The name of one `statuses` entry, whichever form it was written in. */
 export function noteStatusName(entry: NotebookStatus): string {
@@ -63,32 +69,42 @@ export function configuredNoteStatuses(notebook?: Pick<NotebookConfig, 'statuses
 
 /**
  * The colour of a status dot. A colour the notebook gives the status wins; then a known name (done, working,
- * doing, in-progress, todo, inbox, archived) keeps its familiar colour; otherwise a listed status takes the
- * palette by its position in the list, and a status that is not listed stays muted.
+ * doing, in-progress, todo, inbox, archived) keeps its familiar colour; otherwise a listed status takes the cycle by
+ * its position among the custom (non-known-name) entries of its own list, and a status that is not listed stays muted.
+ * `avoid` is a cycle colour to skip, the one a theme already uses for its primary, which an inbox wears.
  */
-export function statusColor(status: string, notebookStatuses: readonly NotebookStatus[] = []): StatusColor {
+export function statusColor(status: string, notebookStatuses: readonly NotebookStatus[] = [], avoid?: StatusColorName): StatusColor {
   const entries = notebookStatuses;
   let index = entries.findIndex(entry => noteStatusName(entry) === status);
   if (index === -1) index = entries.findIndex(entry => normalizeStatus(noteStatusName(entry)) === normalizeStatus(status));
   const entry = index === -1 ? undefined : entries[index];
   const given = entry && explicitColor(entry);
   if (given) return given;
-  const known = Object.hasOwn(KNOWN_STATUS_COLORS, normalizeStatus(status)) ? KNOWN_STATUS_COLORS[normalizeStatus(status)] : undefined;
-  if (known) return known;
-  return index === -1 ? 'muted' : STATUS_CYCLE[index % STATUS_CYCLE.length];
+  if (isKnownStatus(status)) return KNOWN_STATUS_COLORS[normalizeStatus(status)];
+  if (index === -1) return 'muted';
+  const cycle = STATUS_CYCLE.filter(color => color !== avoid);
+  return cycle[entries.slice(0, index).filter(earlier => !isKnownStatus(noteStatusName(earlier))).length % cycle.length];
 }
 
-/** The statuses of several notebooks as one list: first occurrence of a name keeps its place, the first colour given to a name wins, and a notebook without statuses contributes the defaults. */
-export function mergeNotebookStatuses(notebooks: readonly Pick<NotebookConfig, 'statuses'>[]): NotebookStatus[] {
-  const merged = new Map<string, NotebookStatus>();
+/**
+ * The statuses of several notebooks as one list. Each custom status without a colour is resolved against its own
+ * notebook's list, so it wears the same colour whichever notebooks are listed and in what order. A name keeps the
+ * colour the first notebook defining it gives, except that a colour written in a manifest beats a cycled one; a notebook
+ * without statuses contributes the defaults, which are all known names.
+ */
+export function mergeNotebookStatuses(notebooks: readonly Pick<NotebookConfig, 'statuses'>[], avoid?: StatusColorName): NotebookStatus[] {
+  const merged = new Map<string, { entry: NotebookStatus; written: boolean; }>();
   for (const notebook of notebooks) {
-    for (const entry of configuredNotebookStatuses(notebook)) {
+    const entries = configuredNotebookStatuses(notebook);
+    for (const entry of entries) {
       const name = noteStatusName(entry);
+      const written = explicitColor(entry) !== undefined;
       const current = merged.get(name);
-      if (current === undefined || (!explicitColor(current) && explicitColor(entry))) merged.set(name, entry);
+      if (current && (current.written || !written)) continue;
+      merged.set(name, { entry: written || isKnownStatus(name) ? entry : { name, color: statusColor(name, entries, avoid) as StatusColorName }, written });
     }
   }
-  return [...merged.values()];
+  return [...merged.values()].map(({ entry }) => entry);
 }
 
 /** Ordered notebook choices followed by observed extensions; metadata stays unchanged. */

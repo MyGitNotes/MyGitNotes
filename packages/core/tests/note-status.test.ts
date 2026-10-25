@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkspaceConfig, serializeWorkspaceConfig, validateWorkspaceConfig } from '../src/config.js';
-import { isNoteHidden, mergeNotebookStatuses, noteStatusNames, resolveNoteStatuses, STATUS_COLOR_NAMES, statusColor, withNoteStatus } from '../src/note-status.js';
+import { isNoteHidden, mergeNotebookStatuses, noteStatusNames, resolveNoteStatuses, STATUS_COLOR_NAMES, STATUS_CYCLE, statusColor, withNoteStatus } from '../src/note-status.js';
 
 const manifest = (statuses?: unknown) => ({ schema_version: 1, workspace: { title: 'Notes', default_notebook: 'personal' }, notebooks: [{ id: 'personal', title: 'Personal', root: 'notes/personal', ...(statuses !== undefined ? { statuses } : {}) }, { id: 'research', title: 'Research', root: 'notes/research' }] });
 
@@ -105,13 +105,39 @@ describe('statusColor', () => {
     expect(statusColor('done', [{ name: 'done', color: 'teal' }])).toBe('teal');
   });
 
-  it('cycles the palette by position for uncoloured custom statuses', () => {
+  it('cycles the palette by position for uncoloured custom statuses, never reaching gray', () => {
     const list = ['capture', 'draft', 'review', 'ship', 'edit', 'qa', 'wait', 'misc', 'more'];
     const colours = list.map(status => statusColor(status, list));
-    expect(colours.slice(0, 8)).toEqual([...new Set(colours.slice(0, 8))]);
-    expect(new Set(colours.slice(0, 8))).toEqual(new Set(STATUS_COLOR_NAMES));
-    expect(colours[8]).toBe(colours[0]);
-    expect(colours.every(colour => colour !== 'muted')).toBe(true);
+    expect(colours.slice(0, 7)).toEqual([...new Set(colours.slice(0, 7))]);
+    expect(new Set(colours.slice(0, 7))).toEqual(new Set(STATUS_COLOR_NAMES.filter(color => color !== 'gray')));
+    expect(colours[7]).toBe(colours[0]);
+    expect(colours.every(colour => colour !== 'muted' && colour !== 'gray')).toBe(true);
+    expect(statusColor('quiet', [{ name: 'quiet', color: 'gray' }])).toBe('gray');
+  });
+
+  it('counts only custom entries, so known names and defaults do not shift the cycle', () => {
+    expect(statusColor('capture', ['inbox', 'capture', 'done', 'review'])).toBe(statusColor('capture', ['capture', 'review']));
+    expect(statusColor('review', ['inbox', 'capture', 'done', 'review'])).toBe(statusColor('review', ['capture', 'review']));
+    expect(statusColor('review', ['Done', 'capture', 'review'])).toBe(statusColor('review', ['capture', 'review']));
+  });
+
+  it('skips the colour a theme asks it to avoid', () => {
+    const list = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+    for (const avoid of STATUS_CYCLE) {
+      const colours = list.map(status => statusColor(status, list, avoid));
+      expect(colours, avoid).not.toContain(avoid);
+      expect(new Set(colours.slice(0, 6)).size, avoid).toBe(6);
+    }
+  });
+
+  it('keeps pink and red apart in the cycle whichever colour is skipped', () => {
+    for (const avoid of [undefined, ...STATUS_CYCLE]) {
+      const cycle = STATUS_CYCLE.filter(color => color !== avoid);
+      const pink = cycle.indexOf('pink');
+      const red = cycle.indexOf('red');
+      if (pink === -1 || red === -1) continue;
+      expect(Math.min((pink - red + cycle.length) % cycle.length, (red - pink + cycle.length) % cycle.length), String(avoid)).toBeGreaterThan(1);
+    }
   });
 
   it('colours by position in the list as written, so reordering moves the colour', () => {
@@ -132,5 +158,23 @@ describe('statusColor', () => {
   it('merges several notebooks, keeping the first explicit colour for a name', () => {
     expect(noteStatusNames(mergeNotebookStatuses([{ statuses: ['a', { name: 'b', color: 'red' }] }, { statuses: [{ name: 'a', color: 'teal' }, 'b', 'c'] }, {}]))).toEqual(['a', 'b', 'c', 'inbox', 'working', 'done', 'archived']);
     expect(mergeNotebookStatuses([{ statuses: ['a', { name: 'b', color: 'red' }] }, { statuses: [{ name: 'a', color: 'teal' }, 'b'] }]).find(entry => noteStatusNames([entry])[0] === 'a')).toEqual({ name: 'a', color: 'teal' });
+  });
+
+  it('gives a status the same colour whichever notebooks are listed and in what order', () => {
+    const alone = mergeNotebookStatuses([{ statuses: ['capture', 'review'] }]);
+    const colours = (entries: ReturnType<typeof mergeNotebookStatuses>) => ['capture', 'review'].map(status => statusColor(status, entries));
+    expect(colours(alone)).toEqual(['purple', 'teal']);
+    expect(colours(mergeNotebookStatuses([{}, { statuses: ['capture', 'review'] }]))).toEqual(colours(alone));
+    expect(colours(mergeNotebookStatuses([{ statuses: ['capture', 'review'] }, {}]))).toEqual(colours(alone));
+    expect(colours(mergeNotebookStatuses([{ statuses: [] }, { statuses: ['capture', 'review'] }]))).toEqual(colours(alone));
+  });
+
+  it('keeps each notebook\'s own cycle in a merged scope and the first defining notebook\'s colour for a shared name', () => {
+    const merged = mergeNotebookStatuses([{ statuses: ['capture', 'review'] }, { statuses: ['draft', 'review', 'capture', 'extra'] }]);
+    expect(['capture', 'review', 'draft', 'extra'].map(status => statusColor(status, merged))).toEqual(['purple', 'teal', 'purple', 'blue']);
+  });
+
+  it('passes the colour to avoid on to the cycled statuses', () => {
+    expect(['capture', 'review'].map(status => statusColor(status, mergeNotebookStatuses([{ statuses: ['capture', 'review'] }], 'purple')))).toEqual(['teal', 'pink']);
   });
 });

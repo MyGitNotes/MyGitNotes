@@ -61,7 +61,7 @@ it('paints each column dot from the notebook statuses', async () => {
   );
   await waitFor(() => expect(screen.getByText('notes/life/loose.md')).toBeInTheDocument());
   const dot = (status: string) => document.querySelector(`[data-status-column="${status}"] .status-dot`);
-  expect(['inbox', 'doing', 'later', 'stray'].map(status => [...dot(status)!.classList].find(name => name.startsWith('bg-')))).toEqual(['bg-primary', 'bg-danger', 'bg-status-pink', 'bg-muted']);
+  expect(['inbox', 'doing', 'later', 'stray'].map(status => [...dot(status)!.classList].find(name => name.startsWith('bg-')))).toEqual(['bg-primary', 'bg-danger', 'bg-status-purple', 'bg-muted']);
 });
 
 it('counts each column and the board from the server totals', async () => {

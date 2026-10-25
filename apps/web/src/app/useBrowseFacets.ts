@@ -1,5 +1,6 @@
 import { noteQueryStatuses } from '@mygitnotes/core/note-query';
 import { mergeNotebookStatuses } from '@mygitnotes/core/note-status';
+import { useStatusAvoidColor } from '../lib/status-color.js';
 import { parseWorkspaceRoute } from '../lib/routes.js';
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useNoteFacets } from '../lib/use-note-queries.js';
@@ -36,9 +37,10 @@ export function useBrowseFacets({ showHidden, config, scopeNotebookId, selectedF
   }, [merged, route.kind]);
   const notebookStatuses = useMemo(() => noteQueryStatuses(config?.notebooks || [], facetNotebookIds.length === 1 ? facetNotebookIds[0] : 'all', Object.keys(notebookFacets.statuses)), [config, facetNotebookIds, notebookFacets]);
   // A new note is created in the current notebook, so it offers that notebook's statuses even while every notebook is listed.
-  // The statuses of the notebooks being listed decide each status dot's colour.
-  const statusEntries = useMemo(() => mergeNotebookStatuses((config?.notebooks || []).filter(notebook => facetNotebookIds.includes(notebook.id))), [config, facetNotebookIds]);
   const newNoteStatuses = useMemo(() => noteQueryStatuses(config?.notebooks || [], selectedNotebookId, Object.keys(facetsQuery.facets?.[selectedNotebookId]?.statuses || {})), [config, selectedNotebookId, facetsQuery.facets]);
+  // The statuses of the notebooks being listed decide each status dot's colour; the theme decides which cycle colour to skip.
+  const avoidColor = useStatusAvoidColor();
+  const statusEntries = useMemo(() => mergeNotebookStatuses((config?.notebooks || []).filter(notebook => facetNotebookIds.includes(notebook.id)), avoidColor), [config, facetNotebookIds, avoidColor]);
   const selectedTags = useMemo(() => [...new Set(route.tags)], [route.tags]);
   // Stable across renders so memoized note rows skip re-rendering; calls reach the latest handlers.
   const tagHandlers = useRef({ previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag });

@@ -2,11 +2,15 @@
 import { createElement } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { setThemeChoice } from '../lib/themes.js';
 import '@testing-library/jest-dom/vitest';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
 import { StatusColorProvider, statusDotClass } from '../lib/status-color.js';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  setThemeChoice({ familyId: 'flexoki', mode: 'system' });
+});
 
 const status = (props: Partial<Parameters<typeof NoteStatusSelect>[0]> = {}) => render(createElement(NoteStatusSelect, { status: 'done', statuses: ['inbox', 'working', 'done'], readOnly: false, onChange: vi.fn(), label: 'Status for Alpha', ...props }));
 
@@ -44,6 +48,16 @@ it('cycles the palette for an uncoloured custom status and mutes one the noteboo
   expect(dot({ status: 'review' }, list)).toHaveClass('bg-status-pink');
   cleanup();
   expect(dot({ status: 'stray' }, list)).toHaveClass('bg-muted');
+});
+
+it('skips the cycle colour closest to the theme primary, so no cycled status looks like an inbox', () => {
+  const list = ['inbox', 'capture', 'review'];
+  expect(dot({ status: 'review' }, list)).toHaveClass('bg-status-pink');
+  cleanup();
+  setThemeChoice({ familyId: 'catppuccin', mode: 'dark' });
+  expect(dot({ status: 'capture' }, list)).toHaveClass('bg-status-teal');
+  cleanup();
+  expect(dot({ status: 'inbox' }, list)).toHaveClass('bg-primary');
 });
 
 it('has a themed class for every palette colour', () => {

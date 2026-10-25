@@ -69,12 +69,19 @@ Every status dot resolves through `statusColor(status, statuses)` in core
 (`packages/core/src/note-status.ts`). A color the notebook gives wins; then the known
 names keep their colors (`done` green, `working`/`doing`/`in-progress` blue, `todo`
 amber, `inbox` the theme primary, `archived` muted); any other listed status takes
-`purple, teal, pink, red, gray, green, blue, amber` by its position in the list; a
-status that is not listed stays muted gray. Web components read it through
-`useStatusDotClass()` (`apps/web/src/lib/status-color.tsx`), which resolves against the
-statuses of the notebooks being listed (`StatusColorProvider`, fed by
-`mergeNotebookStatuses`); for a note of a known notebook use
-`statusDotClass(statusColor(status, configuredNotebookStatuses(notebook)))`.
+`purple, teal, pink, blue, green, red, amber` by its position among the custom
+(non-known-name) entries of its own notebook's list, so a colour never depends on which
+notebooks are listed or in what order; gray is for explicit use only. The theme family
+asks the cycle to skip the colour closest to its primary (`statusAvoidColor`, from the
+light and dark values in `palettes.ts`: teal for Flexoki, purple for Catppuccin and
+Rosé Pine), so no cycled status looks like an inbox. A status that is not listed stays
+muted gray. Web components read it through `useStatusDotClass()`
+(`apps/web/src/lib/status-color.tsx`), which resolves against the statuses of the
+notebooks being listed (`StatusColorProvider`, fed by `mergeNotebookStatuses`, which
+resolves each notebook's cycled colours before merging; a name keeps the colour the
+first notebook defining it gives, and a colour written in a manifest beats a cycled
+one); for a note of a known notebook use
+`statusDotClass(statusColor(status, configuredNotebookStatuses(notebook), avoid))`.
 Green, blue, amber and red are the theme's `success`, `info`, `warning` and `danger`
 tokens; the other four are `--color-status-*` tokens defined in `palettes.ts`.
 
