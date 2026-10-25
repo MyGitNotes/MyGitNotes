@@ -23,6 +23,16 @@ Workspace (/.mygitnotes.yaml)
 4. **Frontmatter**: Preserve unknown frontmatter keys. A note without frontmatter is valid.
 5. **Git Save**: Every programmatic or user edit transaction should create a clean Git commit.
 
+## 任務、負責人、優先順序與里程碑語法
+
+這些都是筆記裡的純文字；寫入時沿用，不要另建欄位，也不要改動沒有用到的筆記。
+
+1. **任務行**：`- [ ] 內容`，完成後 `- [x] 內容 ✅ YYYY-MM-DD`。日期標記：`🛫 YYYY-MM-DD` 開始、`📅 YYYY-MM-DD` 到期。
+2. **負責人**：任務文字開頭或空白之後的 `@名字`，例如 `- [ ] @小林 @alice 寫規格 📅 2026-10-30`。名字用字母、數字、`_`，`.` 或 `-` 只放在名字中間；可寫多位。`a@b.com`、網址與 `@types/node` 不是負責人。
+3. **優先順序**：任務行放一個 Obsidian Tasks 表情符號：`🔺` 最高、`⏫` 高、`🔼` 中、`🔽` 低、`⏬` 最低；不寫就是一般。
+4. **里程碑**：該筆記的 frontmatter 寫 `milestone: YYYY-MM-DD`（真實日期的字串）。不要用 `due`，它是任務到期日的用語。
+5. 勾選或取消勾選任務只增減 `✅ 日期`；其他標記與負責人原樣保留。
+
 ## 資料夾索引
 
 建立或整理資料夾入口時：
