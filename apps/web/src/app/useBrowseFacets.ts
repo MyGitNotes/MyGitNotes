@@ -1,4 +1,5 @@
 import { noteQueryStatuses } from '@mygitnotes/core/note-query';
+import { mergeNotebookStatuses } from '@mygitnotes/core/note-status';
 import { parseWorkspaceRoute } from '../lib/routes.js';
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useNoteFacets } from '../lib/use-note-queries.js';
@@ -35,6 +36,8 @@ export function useBrowseFacets({ showHidden, config, scopeNotebookId, selectedF
   }, [merged, route.kind]);
   const notebookStatuses = useMemo(() => noteQueryStatuses(config?.notebooks || [], facetNotebookIds.length === 1 ? facetNotebookIds[0] : 'all', Object.keys(notebookFacets.statuses)), [config, facetNotebookIds, notebookFacets]);
   // A new note is created in the current notebook, so it offers that notebook's statuses even while every notebook is listed.
+  // The statuses of the notebooks being listed decide each status dot's colour.
+  const statusEntries = useMemo(() => mergeNotebookStatuses((config?.notebooks || []).filter(notebook => facetNotebookIds.includes(notebook.id))), [config, facetNotebookIds]);
   const newNoteStatuses = useMemo(() => noteQueryStatuses(config?.notebooks || [], selectedNotebookId, Object.keys(facetsQuery.facets?.[selectedNotebookId]?.statuses || {})), [config, selectedNotebookId, facetsQuery.facets]);
   const selectedTags = useMemo(() => [...new Set(route.tags)], [route.tags]);
   // Stable across renders so memoized note rows skip re-rendering; calls reach the latest handlers.
@@ -52,5 +55,5 @@ export function useBrowseFacets({ showHidden, config, scopeNotebookId, selectedF
   // Flat and Kanban list the whole notebook, without folder navigation.
   const folderless = viewMode === 'flat' || viewMode === 'kanban' || kindList;
 
-  return { facetsQuery, notebookFacets, compilationFacets: merged.compilations, notebookStatuses, newNoteStatuses, selectedTags, workspaceTagNames, noteTagActions, searchQuery, viewMode, folderless };
+  return { facetsQuery, notebookFacets, compilationFacets: merged.compilations, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, noteTagActions, searchQuery, viewMode, folderless };
 }

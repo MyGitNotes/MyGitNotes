@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { PALETTE_FAMILIES } from './palettes.js';
-import { applyTheme, getThemeChoice, resolveThemeChoice, setThemeChoice, subscribeThemeChoice, themeTokens } from './themes.js';
+import { PALETTE_FAMILIES, type PaletteMode } from './palettes.js';
+import { applyTheme, getThemeChoice, resolveThemeChoice, setThemeChoice, statusTokens, subscribeThemeChoice, themeTokens } from './themes.js';
 
 const luminance = (hex: string) => {
   const [r, g, b] = hex.slice(1, 7).match(/.{2}/g)!.map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
@@ -83,5 +83,23 @@ describe('palette families', () => {
     for (const family of PALETTE_FAMILIES) {
       for (const variant of Object.values(family.variants)) expect(Object.keys(themeTokens(variant)).filter(name => name.startsWith('--color-accent-'))).toHaveLength(6);
     }
+  });
+
+  it('keeps the status colours at 4.5:1 on every family background, surface and sidebar', () => {
+    for (const family of PALETTE_FAMILIES) {
+      for (const [mode, variant] of Object.entries(family.variants)) {
+        const colors = Object.entries(statusTokens(mode as PaletteMode));
+        expect(colors.map(([name]) => name)).toEqual(['--color-status-purple', '--color-status-teal', '--color-status-pink', '--color-status-gray']);
+        for (const ground of [variant.background, variant.surface, variant.sidebar]) {
+          for (const [name, color] of colors) expect(contrast(color, ground), `${family.id}/${mode} ${name} on ${ground}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
+  it('applies the status tokens with the theme and caches them for the first paint', () => {
+    applyTheme({ familyId: 'gruvbox', mode: 'dark' });
+    expect(document.documentElement.style.getPropertyValue('--color-status-purple')).toBe(statusTokens('dark')['--color-status-purple']);
+    expect(JSON.parse(localStorage.getItem('github_notes_theme_tokens')!).tokens['--color-status-teal']).toBe(statusTokens('dark')['--color-status-teal']);
   });
 });

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { agentEditMessage, DEFAULT_NOTE_STATUSES, deleteNoteFile, keptNoteMetadata, loadWorkspaceConfig, type NotebookConfig, NoteItem, noteSummary, readNoteFile, resolveNoteStatuses, resolveSafePath, scanNotebookNotes, versionFilePath, withNoteEdits, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
+import { agentEditMessage, DEFAULT_NOTE_STATUSES, deleteNoteFile, keptNoteMetadata, loadWorkspaceConfig, type NotebookConfig, NoteItem, noteStatusNames, noteSummary, readNoteFile, resolveNoteStatuses, resolveSafePath, scanNotebookNotes, versionFilePath, withNoteEdits, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
 import { generateCommitMessage, stageAndCommit } from '@mygitnotes/git';
 import { assertNoteResource, assertUserWorkspaceBranch } from '../guards.js';
 import type { ToolContext } from './context.js';
@@ -102,7 +102,7 @@ export async function handleGetStatuses(ctx: ToolContext, args: { notebookId?: s
     const notes = scanNotebookNotes(ctx.repoRoot, nb);
     const observed = notes.map((n) => n.status);
     const allStatuses = resolveNoteStatuses(nb, observed);
-    return { notebookId: nb.id, configuredStatuses: nb.statuses || [...DEFAULT_NOTE_STATUSES], observedStatuses: [...new Set(observed.filter(Boolean) as string[])], allStatuses };
+    return { notebookId: nb.id, configuredStatuses: nb.statuses?.length ? noteStatusNames(nb.statuses) : [...DEFAULT_NOTE_STATUSES], observedStatuses: [...new Set(observed.filter(Boolean) as string[])], allStatuses };
   });
 
   return { defaultStatuses: [...DEFAULT_NOTE_STATUSES], notebooks: result };

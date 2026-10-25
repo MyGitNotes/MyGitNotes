@@ -14,7 +14,7 @@ notebooks:
     statuses:
       - inbox
       - working
-      - review
+      - { name: review, color: purple }
       - done
 files:
   hide_dotfiles: true

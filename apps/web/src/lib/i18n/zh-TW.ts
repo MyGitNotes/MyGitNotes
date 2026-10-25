@@ -1594,7 +1594,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'settings.coreBranchNoticeDesc': '目前 app 直接開啟 core checkout 本身。平常 core 會搭配另一個 main worktree 讀取筆記，核心更新只會 fast-forward core。',
   'settings.coreBranchNoticeCmd': '若要建立您的個人工作區分支，請在終端機中執行：',
   'settings.coreBranchReadOnly': 'core 分支為唯讀',
-  'settings.manifestHint': '每個筆記本皆可自訂 statuses: [inbox, working, done, archived]。留空或省略則使用預設值。排序決定了看板欄位順序以及新筆記的初始狀態。',
+  'settings.manifestHint': '每個筆記本皆可自訂 statuses: [inbox, working, done, archived]。留空或省略則使用預設值。排序決定了看板欄位順序以及新筆記的初始狀態。條目也可寫成含 name 與 color 的物件來指定圓點顏色，color 可填 green / blue / amber / red / purple / teal / pink / gray。',
   'settings.coreBranchManifestWarning': '注意：本儲存庫目前處於 core 產品開發分支。.mygitnotes.yaml（或舊名 .github-notes.yaml）屬於使用者個人工作區分支 (main)，在 core 上為唯讀。',
   'settings.coreUpdateLocalOnly': '請在本機工作區執行核心更新。',
   'settings.coreUpdateCoreBranch': '目前開啟的是 core 產品分支本身。核心更新要在 core 搭配 main 工作區 worktree 時執行。建立工作區請執行：pnpm bootstrap-workspace',

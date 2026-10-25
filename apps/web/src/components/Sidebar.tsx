@@ -12,7 +12,7 @@ import { mergeNotebookFacets, queryNotebookIds } from '../lib/note-facets.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { WorkspaceSidebar } from './WorkspaceChrome.js';
 import { Select } from './Select.js';
-import { statusDotClass } from './NoteStatusSelect.js';
+import { useStatusDotClass } from '../lib/status-color.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { filterAndSortTags, getSavedTagSort, saveTagSort, TagSort } from '../lib/tag-list.js';
 import { NavTree, NavTreeRow } from './NavTree.js';
@@ -57,6 +57,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, changeCount, onPulled, repoRoot = '', canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag }) => {
   const { t, language } = useTranslation();
   const { value, statuses, onChange } = filters;
+  const dotClass = useStatusDotClass();
   const sections = useSidebarSections();
   const { status: selectedStatus, tags: selectedTags } = value;
   const [expandedNotebooks, setExpandedNotebooks] = useState<Set<string>>(() => new Set(selectedNotebookId ? [selectedNotebookId] : []));
@@ -263,7 +264,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
             return (
               <button type='button' key={status} data-status-filter={status} onClick={() => onSelectStatus(isSelected ? null : status)} aria-pressed={isSelected} style={isSelected ? selectedItemStyle : undefined} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition ${isSelected ? 'font-semibold hover:opacity-90' : 'text-muted hover:bg-fg/5 hover:text-fg'}`}>
                 <div className='flex items-center gap-2'>
-                  <span className={`status-dot ${statusDotClass(status)}`} aria-hidden='true' />
+                  <span className={`status-dot ${dotClass(status)}`} aria-hidden='true' />
                   <span className='truncate'>{status}</span>
                 </div>
                 <span className='text-xs text-muted'>{count ?? '—'}</span>

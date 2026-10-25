@@ -288,7 +288,7 @@ notebooks:
     statuses:
       - inbox
       - working
-      - review
+      - { name: review, color: purple }
       - done
       - archived
 `;

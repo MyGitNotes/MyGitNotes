@@ -1,4 +1,4 @@
-import { INK, PALETTE_FAMILIES, type PaletteFamily, type PaletteMode, type PaletteVariant } from './palettes.js';
+import { INK, PALETTE_FAMILIES, type PaletteFamily, type PaletteMode, type PaletteVariant, STATUS_PALETTE } from './palettes.js';
 
 export type ThemeMode = PaletteMode | 'system';
 
@@ -79,6 +79,11 @@ export function themeTokens(variant: PaletteVariant): Record<string, string> {
   return tokens;
 }
 
+/** CSS custom properties for the notebook status colours of one mode; the other four status colours are the theme's own tokens. */
+export function statusTokens(mode: PaletteMode): Record<string, string> {
+  return Object.fromEntries(Object.entries(STATUS_PALETTE[mode]).map(([name, value]) => [`--color-status-${name}`, value]));
+}
+
 export function applyTheme(choice: ThemeChoice): void {
   try {
     localStorage.setItem(THEME_FAMILY_KEY, choice.familyId);
@@ -91,7 +96,7 @@ export function applyTheme(choice: ThemeChoice): void {
   root.setAttribute('data-theme-mode', mode);
   root.classList.toggle('dark', mode === 'dark');
   root.style.colorScheme = mode;
-  const tokens = themeTokens(getFamily(choice.familyId).variants[mode]);
+  const tokens = { ...themeTokens(getFamily(choice.familyId).variants[mode]), ...statusTokens(mode) };
   for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value);
   try {
     localStorage.setItem(THEME_TOKENS_KEY, JSON.stringify({ mode, tokens }));

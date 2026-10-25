@@ -57,6 +57,27 @@ Each manifest notebook accepts an optional ordered `statuses` array, for example
 new notes; the order also determines Kanban columns. Update definitions through
 the local Settings manifest editor or the source repository manifest.
 
+An entry is a bare name or `{ name: review, color: purple }`, so
+`statuses: [capture, { name: review, color: purple }, published]` is valid. `color`
+takes a palette name only: `green`, `blue`, `amber`, `red`, `purple`, `teal`, `pink`
+or `gray`, each with a light and a dark value in the theme tokens; any other value,
+an unknown key, or a repeated name fails config validation. The validated config keeps
+each entry as written, so a manifest save writes colors back. Code that needs only the
+vocabulary reads names through `noteStatusNames` / `configuredNoteStatuses`.
+
+Every status dot resolves through `statusColor(status, statuses)` in core
+(`packages/core/src/note-status.ts`). A color the notebook gives wins; then the known
+names keep their colors (`done` green, `working`/`doing`/`in-progress` blue, `todo`
+amber, `inbox` the theme primary, `archived` muted); any other listed status takes
+`purple, teal, pink, red, gray, green, blue, amber` by its position in the list; a
+status that is not listed stays muted gray. Web components read it through
+`useStatusDotClass()` (`apps/web/src/lib/status-color.tsx`), which resolves against the
+statuses of the notebooks being listed (`StatusColorProvider`, fed by
+`mergeNotebookStatuses`); for a note of a known notebook use
+`statusDotClass(statusColor(status, configuredNotebookStatuses(notebook)))`.
+Green, blue, amber and red are the theme's `success`, `info`, `warning` and `danger`
+tokens; the other four are `--color-status-*` tokens defined in `palettes.ts`.
+
 The browser-safe core note-status module combines definitions with observed note
 values. Unknown values extend choices for that notebook; definitions remain
 unchanged. Values are case-sensitive and retain their original spelling. Existing

@@ -1,7 +1,8 @@
 import YAML from 'yaml';
 import path from 'node:path';
 import fs from 'node:fs';
-import { NotebookConfig, NotebookMetadataField, NoteTemplate, WorkspaceConfig } from './types.js';
+import { NotebookConfig, NotebookMetadataField, NotebookStatus, NoteTemplate, StatusColorName, WorkspaceConfig } from './types.js';
+import { STATUS_COLOR_NAMES } from './note-status.js';
 import { normalizePreferences } from './workspace-preferences.js';
 import { NOTEBOOK_ID_PATTERN } from './notebook-key.js';
 
@@ -42,6 +43,28 @@ export class NotebookSourceError extends ConfigValidationError {
 /** `files.hide_dotfiles` no longer does anything; a manifest that sets it keeps it, so a save writes it back unchanged. */
 function obsoleteFiles(files: unknown): Pick<WorkspaceConfig, 'files'> {
   return files && typeof files === 'object' && 'hide_dotfiles' in files ? { files: { hide_dotfiles: Boolean(files.hide_dotfiles) } } : {};
+}
+
+const isStatusName = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim()) && value === value.trim();
+
+/** Validates a notebook's `statuses`: names, or `{ name, color }` with a palette colour name; entries keep the form they were written in. */
+function validateStatuses(notebookId: string, statuses: unknown): NotebookStatus[] {
+  const shape = `Notebook '${notebookId}' statuses must be an array of distinct names (nonblank strings without surrounding whitespace) or objects with a name and an optional color`;
+  if (!Array.isArray(statuses)) throw new ConfigValidationError(shape);
+  const validated = statuses.map((entry): NotebookStatus => {
+    if (isStatusName(entry)) return entry;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry) || !isStatusName((entry as { name?: unknown; }).name)) throw new ConfigValidationError(shape);
+    const { name, color, ...rest } = entry as { name: string; color?: unknown; };
+    const unknownKey = Object.keys(rest)[0];
+    if (unknownKey !== undefined) throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an unknown key '${unknownKey}'; an entry takes only name and color`);
+    if (!('color' in entry)) return { name };
+    if (typeof color !== 'string' || !(STATUS_COLOR_NAMES as readonly string[]).includes(color)) {
+      throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an unknown color ${JSON.stringify(color)}; use one of ${STATUS_COLOR_NAMES.join(', ')}`);
+    }
+    return { name, color: color as StatusColorName };
+  });
+  if (new Set(validated.map(entry => typeof entry === 'string' ? entry : entry.name)).size !== validated.length) throw new ConfigValidationError(shape);
+  return validated;
 }
 
 /**
@@ -126,10 +149,9 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
       throw new ConfigValidationError(`Notebook '${item.id}' assets must be a relative directory within its notebook`);
     }
 
+    let validatedStatuses: NotebookStatus[] | undefined;
     if (item.statuses !== undefined) {
-      if (!Array.isArray(item.statuses) || item.statuses.some(status => typeof status !== 'string' || !status.trim() || status !== status.trim()) || new Set(item.statuses).size !== item.statuses.length) {
-        throw new ConfigValidationError(`Notebook '${item.id}' statuses must be an array of distinct nonblank strings without surrounding whitespace`);
-      }
+      validatedStatuses = validateStatuses(item.id as string, item.statuses);
     }
 
     let validatedTemplates: NoteTemplate[] | undefined;
@@ -216,7 +238,7 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
       }
     }
 
-    validatedNotebooks.push({ id: item.id, title: item.title, root: normalizedRoot, assets: assetPath, default_view: (item.default_view as 'list' | 'card' | 'kanban' | 'flat') || 'list', ...(item.statuses !== undefined ? { statuses: [...item.statuses as string[]] } : {}), ...(validatedTemplates !== undefined ? { templates: validatedTemplates } : {}), ...(validatedMetadata !== undefined ? { metadata: validatedMetadata } : {}), ...(validatedPathAliases !== undefined ? { pathAliases: validatedPathAliases } : {}) });
+    validatedNotebooks.push({ id: item.id, title: item.title, root: normalizedRoot, assets: assetPath, default_view: (item.default_view as 'list' | 'card' | 'kanban' | 'flat') || 'list', ...(validatedStatuses !== undefined ? { statuses: validatedStatuses } : {}), ...(validatedTemplates !== undefined ? { templates: validatedTemplates } : {}), ...(validatedMetadata !== undefined ? { metadata: validatedMetadata } : {}), ...(validatedPathAliases !== undefined ? { pathAliases: validatedPathAliases } : {}) });
   }
 
   // Ensure default_notebook exists
