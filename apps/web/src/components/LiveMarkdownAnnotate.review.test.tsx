@@ -67,6 +67,21 @@ describe('annotating: the next click while the session request is still out', ()
   });
 });
 
+describe('two annotate blocks', () => {
+  it('does not hand a removed block\'s mode to the block that takes its place (R-F006)', async () => {
+    const first = block('a');
+    const second = block('b');
+    const { editor, widgets } = await mount(`${first}\n\nmiddle\n\n${second}`);
+    expect(widgets()).toHaveLength(2);
+    fireEvent.click(within(widgets()[0]).getByRole('button', { name: /Click the image to drop a pin/ }));
+    expect(widgets()[0]).toHaveClass('is-annotating');
+    editor.dispatch({ changes: { from: 0, to: first.length + 2 } });
+    await waitFor(() => expect(widgets()).toHaveLength(1));
+    expect(widgets()[0]).not.toHaveClass('is-annotating');
+    expect(widgets()[0].querySelector('img')?.getAttribute('src')).toContain('b.png');
+  });
+});
+
 describe('the Annotate button', () => {
   it('is not offered on the image line of an annotate block shown as source (R-F005)', async () => {
     const { editor, container } = await mount(`${block('a')}\n\nafter`);

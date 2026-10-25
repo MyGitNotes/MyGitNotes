@@ -42,7 +42,9 @@ export class LiveMarkdownAnnotate extends WidgetType {
 
   updateDOM(dom: HTMLElement) {
     const controller = controllers.get(dom);
-    if (!controller || dom.dataset.annotatePath !== this.path || dom.dataset.annotateReadOnly !== String(this.readOnly)) return false;
+    // A widget is only kept for the block at the position it was drawn for: when another block moves into the place of a removed one,
+    // taking its DOM would carry the other block's mode, selection and open comment form over.
+    if (!controller || dom.dataset.directiveFrom !== String(this.from) || dom.dataset.annotatePath !== this.path || dom.dataset.annotateReadOnly !== String(this.readOnly)) return false;
     controller.retarget(this);
     return true;
   }
