@@ -1,0 +1,46 @@
+/* The notes of the narrow dock beside a Focus: two-line rows, and the hover card that carries the rest of what a note card shows. */
+.focus-note-list { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.focus-list-rows, .focus-list-uncommitted > [role='list'] { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.focus-list-uncommitted { margin-bottom: 8px; }
+.focus-list-uncommitted > h3 { margin: 0 4px 4px; font-size: 12px; font-weight: 600; color: var(--color-warning); text-transform: uppercase; }
+.focus-list-rows > .note-group-heading { margin: 10px 8px 4px; }
+.focus-list-rows > .note-group-heading:first-child { margin-top: 2px; }
+.focus-list-rows > .note-group-toggle { width: calc(100% - 16px); }
+
+.focus-row { display: flex; align-items: flex-start; gap: 4px; min-width: 0; padding: 9px 10px 9px 6px; border-radius: var(--radius-panel); color: var(--color-text); cursor: pointer; transition: background-color 120ms ease; }
+.focus-row:hover, .focus-row[data-hovered] { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.focus-row[data-open] { background: color-mix(in srgb, var(--color-primary) 14%, transparent); }
+.focus-row[data-selected] { background: color-mix(in srgb, var(--color-primary) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 45%, transparent); }
+.focus-row[data-open][data-selected] { background: color-mix(in srgb, var(--color-primary) 18%, transparent); }
+.focus-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.focus-row.is-lifted { opacity: 0.6; }
+
+/* Two lines of the card title's face (text-sm, leading-snug) are always reserved, so every row is as tall as the next. */
+.focus-row-title { flex: 1; min-width: 0; min-height: calc(var(--title-lines, 2) * 1.375em); font-size: 14px; font-weight: 600; line-height: 1.375; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--title-lines, 2); line-clamp: var(--title-lines, 2); overflow-wrap: anywhere; }
+.focus-row-kind { display: inline-block; width: 14px; height: 14px; margin: 0 4px -2px 0; color: var(--color-primary); }
+.focus-row-check { margin: 3px 4px 0 4px; }
+
+/* The status dot is the only control on a row. Its hit area is a little larger than the dot and sits on the title's first line. */
+.focus-row .status-cell-dot.select-trigger { width: 24px; min-width: 24px; min-height: 24px; height: 24px; padding: 0; margin-top: -2px; justify-content: center; }
+.focus-row .status-cell-dot .select-value { flex: none; display: inline-flex; justify-content: center; }
+.focus-row .status-cell-dot .select-chevron { display: none; }
+.focus-row .status-cell-dot:not(:disabled):hover { background: color-mix(in srgb, var(--color-text) 12%, transparent); }
+.focus-row .status-cell-dot .status-dot { width: 9px; height: 9px; }
+.focus-row .status-cell-dot:disabled { opacity: 1; cursor: default; }
+
+/* Beside the dock, never over the list: the card is placed from the row's and dock's rectangles (hoverCardPosition). */
+.note-hover-card { position: fixed; z-index: 60; width: 320px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-md); }
+.note-hover-title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.note-hover-status { display: flex; margin: -4px 0 0 -6px; }
+.note-hover-tags { gap: 4px; }
+.note-hover-fields { display: grid; gap: 6px; margin: 0; font-size: 12px; }
+.note-hover-field { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.note-hover-field > dt { display: flex; align-items: center; gap: 5px; color: var(--color-muted); }
+.note-hover-field > dt > svg { width: 12px; height: 12px; flex: none; }
+.note-hover-field > dd { margin: 0; min-width: 0; font-variant-numeric: tabular-nums; }
+.note-hover-path { font-family: 'JetBrains Mono', monospace; font-size: 11px; overflow-wrap: anywhere; }
+.note-hover-excerpt { margin: 0; padding-top: 10px; border-top: 1px solid var(--color-line); font-size: 12px; line-height: 1.55; color: var(--color-muted); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow: hidden; overflow-wrap: anywhere; }
+.note-hover-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; border-top: 1px solid var(--color-line); }
+.note-hover-actions .ui-button svg { width: 13px; height: 13px; }
+@media (prefers-reduced-motion: no-preference) { .note-hover-card { animation: note-hover-in 120ms ease-out; } }
+@keyframes note-hover-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }

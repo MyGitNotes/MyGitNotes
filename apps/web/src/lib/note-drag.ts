@@ -1,5 +1,6 @@
 import type { DragEvent } from 'react';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
+import type { NoteItem } from './types.js';
 
 /** Native drag payload MIME type: carries a note's path from the browse region into a Focus pane. */
 export const NOTE_DRAG_TYPE = 'application/x-mygitnotes-note';
@@ -17,6 +18,12 @@ export interface DraggedNote {
 export interface NoteBrowseFocusMode {
   onZoomNote: (note: NoteListItem) => void;
   canDrag: (note: NoteListItem) => boolean;
+  /** The list sits in the narrow left dock, so it lists two-line rows that open a hover card instead of cards. */
+  compactRows?: boolean;
+  /** Path of the note the active pane shows, which the rows mark as open. */
+  openPath?: string;
+  /** Reads a note's body, for the hover card's excerpt. */
+  readNote?: (note: NoteListItem) => Promise<NoteItem>;
 }
 
 /**

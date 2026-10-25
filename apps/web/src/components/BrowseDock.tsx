@@ -23,7 +23,7 @@ export interface BrowseDockProps {
   children: ReactNode;
 }
 
-const MIN_LEFT_WIDTH = 220;
+const MIN_LEFT_WIDTH = 200;
 const MAX_LEFT_RATIO = 0.6;
 const MIN_TOP_HEIGHT = 120;
 const MAX_TOP_RATIO = 0.7;

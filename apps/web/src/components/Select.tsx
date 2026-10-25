@@ -10,6 +10,8 @@ type Props = Omit<ComponentPropsWithoutRef<typeof RadixSelect.Trigger>, 'value' 
   groups?: { label: string; values: string[]; }[];
   /** Shown in the trigger in place of the selected label. */
   icon?: ReactNode;
+  /** Told when the options open or close, for a host that must stay put while its menu is open. */
+  onOpenChange?: (open: boolean) => void;
 };
 
 interface SelectOption {
@@ -29,7 +31,7 @@ function SelectItem({ option }: { option: SelectOption; }) {
   );
 }
 
-export function Select({ value, onValueChange, options, groups, icon, disabled, className = '', onFocus, ...props }: Props) {
+export function Select({ value, onValueChange, options, groups, icon, disabled, className = '', onFocus, onOpenChange, ...props }: Props) {
   const trigger = useRef<HTMLButtonElement>(null);
   const [portal, setPortal] = useState<HTMLElement>();
   const [contentReady, setContentReady] = useState(false);
@@ -46,6 +48,7 @@ export function Select({ value, onValueChange, options, groups, icon, disabled, 
       onValueChange={next => onValueChange(next.slice(7))}
       onOpenChange={open => {
         if (open) setContentReady(true);
+        onOpenChange?.(open);
       }}
       disabled={disabled}
     >
