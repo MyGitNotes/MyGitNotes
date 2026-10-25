@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearDemoScope, DEMO_TTL_MS, demoHooks, demoRemainingMs, demoWasUpdated, dismissDemoUpdated, expireDemoData, noteDemoWrite, noteDemoWriteIn, readDemoRecord, registerDemoRepositories, resetDemo } from './demo-storage.js';
+import { clearDemoScope, DEMO_TTL_MS, demoHooks, demoRemainingMs, demoWasUpdated, dismissDemoUpdated, expireDemoData, noteDemoViewWrite, noteDemoWrite, noteDemoWriteIn, readDemoRecord, registerDemoRepositories, resetDemo } from './demo-storage.js';
 import { documentDraftKey } from './use-workspace-document.js';
 import { stashText } from './history-stash.js';
 import { updateWorkingNote } from './working-notes.js';
@@ -45,6 +45,67 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe('view state without a change', () => {
+  const viewKey = `gh_notes_demo_view:${SCOPE}`;
+  it('keeps a view record, not a clock, and clears the scope’s views 24 hours after it', () => {
+    localStorage.setItem(focusViewStorageKey(REPO, NOTEBOOK), '{}');
+    expect(noteDemoViewWrite(SCOPE, 1000)).toBe(true);
+    expect(noteDemoViewWrite(SCOPE, 9000)).toBe(true);
+    expect(readDemoRecord(SCOPE)).toBeUndefined();
+    expect(demoRemainingMs(SCOPE, 2000)).toBeUndefined();
+    expect(JSON.parse(localStorage.getItem(viewKey)!)).toMatchObject({ firstWrite: 1000, base: 'head1' });
+    expect(expireDemoData(1000 + DEMO_TTL_MS - 1)).toEqual([]);
+    expect(expireDemoData(1000 + DEMO_TTL_MS)).toEqual([SCOPE]);
+    expect(keysOf()).toEqual([]);
+  });
+
+  it('gives way to the clock when a change starts it, and a write past the 24 hours writes nothing', () => {
+    noteDemoViewWrite(SCOPE, 1000);
+    noteDemoWrite(SCOPE, 5000);
+    expect(localStorage.getItem(viewKey)).toBeNull();
+    expect(readDemoRecord(SCOPE)).toMatchObject({ firstWrite: 5000 });
+    const reload = vi.spyOn(demoHooks, 'reload').mockImplementation(() => {});
+    localStorage.clear();
+    noteDemoViewWrite(SCOPE, 1000);
+    expect(noteDemoViewWrite(SCOPE, 1000 + DEMO_TTL_MS)).toBe(false);
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('is cleared when the demo content moved on, like a clock', () => {
+    localStorage.setItem(focusViewStorageKey(REPO, NOTEBOOK), '{}');
+    noteDemoViewWrite(SCOPE, 1000);
+    registerDemoRepositories([repository('head2')]);
+    expect(keysOf()).toEqual([]);
+    expect(demoWasUpdated()).toBe(true);
+  });
+});
+
+describe('a Focus view kept before its repository was known', () => {
+  const orphan = `github-notes:focus-view::${NOTEBOOK}`;
+  const foreign = 'github-notes:focus-view::kb~life';
+  it('is swept with the demo scope whose alias names its notebook, and no other', () => {
+    noteDemoWrite(SCOPE, 1000);
+    localStorage.setItem(orphan, '{}');
+    localStorage.setItem(foreign, '{}');
+    expect(expireDemoData(1000 + DEMO_TTL_MS)).toEqual([SCOPE]);
+    expect(keysOf()).toEqual([foreign]);
+  });
+
+  it('is swept with a scope whose record predates the alias', () => {
+    localStorage.setItem(`gh_notes_demo:${SCOPE}`, JSON.stringify({ firstWrite: 1000, base: 'head1', repository: `demo:${REPO}` }));
+    localStorage.setItem(orphan, '{}');
+    expect(expireDemoData(1000 + DEMO_TTL_MS)).toEqual([SCOPE]);
+    expect(keysOf()).toEqual([]);
+  });
+
+  it('goes with Reset demo', () => {
+    noteDemoWrite(SCOPE, 1000);
+    localStorage.setItem(orphan, '{}');
+    resetDemo();
+    expect(keysOf()).toEqual([]);
+  });
 });
 
 describe('the 24-hour clock', () => {

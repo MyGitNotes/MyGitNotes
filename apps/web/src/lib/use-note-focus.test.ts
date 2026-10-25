@@ -442,4 +442,45 @@ describe('useNoteFocus in a demo repository', () => {
     expect(expireDemoData(record!.firstWrite + DEMO_TTL_MS)).toEqual([draftScope(demo)]);
     expect(Object.keys(localStorage).filter(key => key.startsWith('github-notes:focus-view:'))).toEqual([]);
   });
+
+  const focusKeys = () => Object.keys(localStorage).filter(key => key.startsWith('github-notes:focus-view:'));
+  const open = (repository: string, extra: { restoreLast?: boolean; } = {}) => renderHook(() => useNoteFocus({ page: fakeController(), notebookId: 'demo~trpg-en', repository, scope: SCOPE, focusKey: null, restoreLast: true, writable: true, flushEditors: async () => true, ...extra }), { wrapper });
+
+  it('does not start the clock by showing a notebook, and still sweeps the view state it kept', async () => {
+    registerDemoRepositories([demo]);
+    const { result } = open(demo.id);
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    // The Focus last shown was kept, but nothing the visitor changed: no clock, so the banner has no countdown.
+    expect(focusKeys()).toHaveLength(1);
+    expect(readDemoRecord(draftScope(demo))).toBeUndefined();
+    const kept = Object.keys(localStorage).find(key => key.startsWith('gh_notes_demo_view:'));
+    expect(kept).toBeDefined();
+    const { firstWrite } = JSON.parse(localStorage.getItem(kept!)!) as { firstWrite: number; };
+    expect(expireDemoData(firstWrite + DEMO_TTL_MS - 1)).toEqual([]);
+    expect(focusKeys()).toHaveLength(1);
+    expect(expireDemoData(firstWrite + DEMO_TTL_MS)).toEqual([draftScope(demo)]);
+    expect(focusKeys()).toEqual([]);
+    expect(localStorage.getItem(kept!)).toBeNull();
+  });
+
+  it('starts the clock at the visitor’s first layout change, which then rules the view state', async () => {
+    registerDemoRepositories([demo]);
+    const { result } = open(demo.id);
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => {
+      await result.current.place(CURRENT_FOCUS, tab('a'), 'p1');
+    });
+    expect(readDemoRecord(draftScope(demo))).toBeDefined();
+    expect(Object.keys(localStorage).filter(key => key.startsWith('gh_notes_demo_view:'))).toEqual([]);
+  });
+
+  it('keeps no view of a notebook whose repository is not yet known', async () => {
+    const { result } = open('');
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => {
+      await result.current.place(CURRENT_FOCUS, tab('a'), 'p1');
+    });
+    expect(focusKeys()).toEqual([]);
+    expect(Object.keys(localStorage).filter(key => key.includes('focus-view'))).toEqual([]);
+  });
 });

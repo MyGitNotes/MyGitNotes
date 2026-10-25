@@ -2,7 +2,7 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, mergePanes, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, relocateFocusLayout, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
 import type { FocusPageController } from './use-focus-page.js';
-import { noteDemoWriteIn } from './demo-storage.js';
+import { noteDemoViewWriteIn, noteDemoWriteIn } from './demo-storage.js';
 import { useNoteLookup } from './use-note-queries.js';
 import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
@@ -44,7 +44,8 @@ const noteKeys = (notebookId: string, keys: (string | null)[]) => notePaths(keys
 
 /** Named Focus (Git-synced through the Focus workspace document) and this browser's (current) Focus and view state for one notebook. */
 export function useNoteFocus({ page, notebookId, repository, scope, focusKey, restoreLast = false, writable, splitBeside = false, flushEditors }: NoteFocusOptions) {
-  const key = adoptedFocusViewKey(repository, scope, notebookId);
+  // Until the workspace says which repository serves the notebook the view has no home: it is not read or kept, or it would be filed under no repository at all.
+  const key = repository ? adoptedFocusViewKey(repository, scope, notebookId) : '';
   const [stored, setStored] = useState(() => ({ key, view: loadView(key) }));
   const view = stored.key === key ? stored.view : loadView(key);
   const viewRef = useRef(view);
@@ -59,12 +60,13 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     window.addEventListener('storage', sync);
     return () => window.removeEventListener('storage', sync);
   }, [key]);
-  const update = useCallback((change: (view: FocusViewState) => FocusViewState) => {
+  /** `arranges` marks a layout change the visitor made; everything else (the Focus last shown, the active pane, sizes) is view state that follows them around. */
+  const update = useCallback((change: (view: FocusViewState) => FocusViewState, arranges = false) => {
     const next = change(viewRef.current);
     viewRef.current = next;
     try {
-      // A demo repository's view is kept in this browser like its other changes, so it starts the 24-hour clock and is cleared with them.
-      if (noteDemoWriteIn(repository)) localStorage.setItem(key, JSON.stringify(next));
+      // A demo repository's view is kept in this browser; only the visitor's own layout change starts the 24-hour clock, and view state alone is cleared 24 hours after it was first kept.
+      if (key && (arranges ? noteDemoWriteIn(repository) : noteDemoViewWriteIn(repository))) localStorage.setItem(key, JSON.stringify(next));
     } catch { /* The view still applies to this tab. */ }
     setStored({ key, view: next });
   }, [key, repository]);
@@ -114,7 +116,7 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   const mutate = (target: string, change: (layout: FocusLayout) => FocusLayout): boolean => {
     if (!editable(target)) return false;
     try {
-      if (target === CURRENT_FOCUS) update(current => ({ ...current, current: change(pruneFocus(current.current, present)) }));
+      if (target === CURRENT_FOCUS) update(current => ({ ...current, current: change(pruneFocus(current.current, present)) }), true);
       else page.change(updateFocus(page.page, target, focus => ({ ...focus, ...change(pruneFocus(focus, present)) })));
       setMutationError(null);
       return true;
@@ -302,7 +304,7 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   const relocatePaths = (movedNotebookId: string, move: (path: string) => string) => {
     if (movedNotebookId !== notebookId) return;
     const layout = structuredClone(viewRef.current.current);
-    if (relocateFocusLayout(layout, move)) update(current => ({ ...current, current: layout }));
+    if (relocateFocusLayout(layout, move)) update(current => ({ ...current, current: layout }), true);
   };
 
   const canName = namedWritable && page.page.focuses.length < FOCUS_MAX_FOCUSES;

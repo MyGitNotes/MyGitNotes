@@ -5,6 +5,8 @@ import { draftScope, storageId } from './workspace-repositories.js';
 export const DEMO_TTL_MS = 24 * 60 * 60 * 1000;
 
 const RECORD_PREFIX = 'gh_notes_demo:';
+/** The record of a scope whose only browser data is Focus view state (nothing the visitor changed), so no clock runs; see `noteDemoViewWrite`. */
+const VIEW_RECORD_PREFIX = 'gh_notes_demo_view:';
 const WORKING_PREFIX = 'gh_notes_working:';
 const EDITOR_DRAFT_PREFIX = 'gh_notes_draft:';
 const CONFLICT_DISMISS_PREFIX = 'gh_notes_conflict_dismissed:';
@@ -19,6 +21,8 @@ export interface DemoRecord {
   base: string;
   /** The repository's storage id (`storageId`), so the sweep finds the keys that carry it and no other repository's. */
   repository: string;
+  /** The alias that names the repository's notebooks by key; absent in a record made before the sweep needed it. */
+  alias?: string;
 }
 
 /** A demo repository of the loaded workspace, as the storage layer needs to know it. */
@@ -74,9 +78,11 @@ const storageKeys = (): string[] => {
 };
 
 /** Reads one scope's clock record; undefined when there is none or it cannot be read. */
-export function readDemoRecord(scope: string): DemoRecord | undefined {
+export const readDemoRecord = (scope: string): DemoRecord | undefined => readRecord(RECORD_PREFIX + scope);
+const readViewRecord = (scope: string): DemoRecord | undefined => readRecord(VIEW_RECORD_PREFIX + scope);
+function readRecord(key: string): DemoRecord | undefined {
   try {
-    const value = JSON.parse(localStorage.getItem(RECORD_PREFIX + scope) ?? 'null') as Partial<DemoRecord> | null;
+    const value = JSON.parse(localStorage.getItem(key) ?? 'null') as Partial<DemoRecord> | null;
     return value && typeof value.firstWrite === 'number' && typeof value.base === 'string' && typeof value.repository === 'string' ? value as DemoRecord : undefined;
   } catch {
     return undefined;
@@ -85,11 +91,15 @@ export function readDemoRecord(scope: string): DemoRecord | undefined {
 
 /** Removes every key a demo scope's changes were kept under, and its record. Other scopes and ordinary keys stay. */
 export function clearDemoScope(record: DemoRecord, scope: string): void {
-  const { repository } = record;
+  const { repository, alias } = record;
   const owned = (key: string): boolean => {
-    if (key === RECORD_PREFIX + scope || key === WORKING_PREFIX + scope || key === COMMITS_PREFIX + scope) return true;
+    if (key === RECORD_PREFIX + scope || key === VIEW_RECORD_PREFIX + scope || key === WORKING_PREFIX + scope || key === COMMITS_PREFIX + scope) return true;
     if (key.startsWith(`${EDITOR_DRAFT_PREFIX}${scope}:`) || key.startsWith(`${CONFLICT_DISMISS_PREFIX}${scope}:`)) return true;
-    if (key.startsWith(FOCUS_VIEW_PREFIX)) return key.startsWith(`${FOCUS_VIEW_PREFIX}${repository}:`);
+    if (key.startsWith(FOCUS_VIEW_PREFIX)) {
+      if (key.startsWith(`${FOCUS_VIEW_PREFIX}${repository}:`)) return true;
+      // A view kept before the repository was known has no owner (`focus-view::<notebook key>`): it is the demo's when the notebook is, and without an alias to tell by, any such view is.
+      return key.startsWith(`${FOCUS_VIEW_PREFIX}:`) && (alias === undefined || key.startsWith(`${FOCUS_VIEW_PREFIX}:${alias}~`));
+    }
     if (key.startsWith(STASH_PREFIX)) {
       try {
         const [, owner] = JSON.parse(key.slice(STASH_PREFIX.length)) as [string, string, string];
@@ -105,7 +115,8 @@ export function clearDemoScope(record: DemoRecord, scope: string): void {
 }
 
 /**
- * Removes the data of every demo scope whose first change is older than 24 hours; runs at every app boot before
+ * Removes the data of every demo scope whose first change, or whose first Focus view state when it has nothing else, is
+ * older than 24 hours; runs at every app boot before
  * anything renders, and before each demo write. Answers the scopes it cleared.
  */
 export function expireDemoData(now = Date.now()): string[] {
@@ -119,6 +130,16 @@ export function expireDemoData(now = Date.now()): string[] {
       continue;
     }
     if (now - record.firstWrite >= DEMO_TTL_MS) {
+      clearDemoScope(record, scope);
+      cleared.push(scope);
+    }
+  }
+  for (const key of storageKeys()) {
+    if (!key.startsWith(VIEW_RECORD_PREFIX)) continue;
+    const scope = key.slice(VIEW_RECORD_PREFIX.length), record = readViewRecord(scope);
+    // Once a change started the scope's clock the clock rules its view state; a record that cannot be read is not a clock.
+    if (!record || readDemoRecord(scope)) localStorage.removeItem(key);
+    else if (now - record.firstWrite >= DEMO_TTL_MS) {
       clearDemoScope(record, scope);
       cleared.push(scope);
     }
@@ -142,7 +163,7 @@ export function registerDemoRepositories(repositories: readonly Pick<RepositoryS
     if (!repository.demo) continue;
     const scope = draftScope(repository);
     scopes.set(scope, { scope, repository: repository.id, owner: storageId(repository), alias: repository.alias, revision: repository.revision, notebooks: repository.notebooks });
-    const record = readDemoRecord(scope);
+    const record = readDemoRecord(scope) ?? readViewRecord(scope);
     if (record && record.base !== repository.revision) {
       clearDemoScope(record, scope);
       updatedNotice = true;
@@ -184,10 +205,31 @@ export function noteDemoWrite(scope: string, now = Date.now()): boolean {
   if (!demo) return true;
   if (demoExpired(scope, now)) return false;
   if (readDemoRecord(scope)) return true;
-  const record: DemoRecord = { firstWrite: now, base: demo.revision, repository: demo.owner };
+  const record: DemoRecord = { firstWrite: now, base: demo.revision, repository: demo.owner, alias: demo.alias };
   localStorage.setItem(RECORD_PREFIX + scope, JSON.stringify(record));
+  localStorage.removeItem(VIEW_RECORD_PREFIX + scope);
   notify();
   return true;
+}
+/**
+ * Notes that a demo scope is about to keep view state the visitor did not choose (the Focus last shown, a pane made
+ * active, a size): it is kept, but it is not a change, so it does not start the 24-hour clock the banner counts. A scope
+ * with no clock gets a view record instead, and its view state is cleared 24 hours after that, so nothing stays for good.
+ * Answers whether the writer may write, as `noteDemoWrite` does.
+ */
+export function noteDemoViewWrite(scope: string, now = Date.now()): boolean {
+  const demo = scopes.get(scope);
+  if (!demo) return true;
+  if (demoExpired(scope, now)) return false;
+  if (readDemoRecord(scope) || readViewRecord(scope)) return true;
+  const record: DemoRecord = { firstWrite: now, base: demo.revision, repository: demo.owner, alias: demo.alias };
+  localStorage.setItem(VIEW_RECORD_PREFIX + scope, JSON.stringify(record));
+  return true;
+}
+/** `noteDemoViewWrite` for a writer that knows only the repository id. */
+export function noteDemoViewWriteIn(repository: string, now = Date.now()): boolean {
+  const demo = demoScopeOfRepository(repository);
+  return demo ? noteDemoViewWrite(demo.scope, now) : true;
 }
 /** `noteDemoWrite` for a writer that knows only the repository id. */
 export function noteDemoWriteIn(repository: string, now = Date.now()): boolean {
