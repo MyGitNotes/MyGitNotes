@@ -10,6 +10,8 @@ import { getSavedRightPanelWidth, RIGHT_PANEL_RAIL_WIDTH } from './WorkspaceChro
 import { CalendarTool } from './CalendarTool.js';
 import { TodoTool } from './TodoTool.js';
 import { ChangesTool, type SyncTarget } from './ChangesTool.js';
+import { PhoneSheet } from './PhoneSheet.js';
+import { phoneToolLabel } from './note-editor/phone-tools.js';
 
 interface RightPanelProps {
   onFileMetadataContainer?: (element: HTMLDivElement | null) => void;
@@ -45,6 +47,8 @@ interface RightPanelProps {
   onWidthChange?: (width: number) => void;
   /** While a Focus is displayed: the rail offers the active pane's document panel, which its editor renders into the container. */
   documentPanel?: { enabled: boolean; onContainer: (element: HTMLDivElement | null) => void; };
+  /** A phone's Notes page: no rail, and the open tool is a full-height sheet that the note's "⋯" sheet opens. */
+  phoneSheet?: boolean;
 }
 
 const WORKSPACE_TOOL_ICONS: Record<WorkspaceToolId, typeof CalendarDays> = { calendar: CalendarDays, todo: ListTodo, changes: GitBranch };
@@ -55,7 +59,7 @@ const DOCUMENT_TOOL_LABELS: Record<DocumentToolId, 'editor.outline' | 'editor.fi
 const FILE_MODE_TOOLS: readonly WorkspaceToolId[] = ['changes'];
 
 /** The workspace-level Calendar/Todo/Changes panel. Hidden while a note is open — the editor has its own document panel. */
-export function RightPanel({ notebooks, selectedNotebookId, currentFolder, onOpenNote, onSaveNote, onReadNote, gitStatus, changeCount, deletedNotes, onRestoreNote, onOpenCommitModal, remoteChanges, getPreview, writable, onSynced, syncTargets, repoRoot, repositoryHeading, fileMode = false, fileMetadata, onFileMetadataContainer, metadataOpen = false, onMetadataOpenChange, onWidthChange, documentPanel }: RightPanelProps) {
+export function RightPanel({ notebooks, selectedNotebookId, currentFolder, onOpenNote, onSaveNote, onReadNote, gitStatus, changeCount, deletedNotes, onRestoreNote, onOpenCommitModal, remoteChanges, getPreview, writable, onSynced, syncTargets, repoRoot, repositoryHeading, fileMode = false, fileMetadata, onFileMetadataContainer, metadataOpen = false, onMetadataOpenChange, onWidthChange, documentPanel, phoneSheet = false }: RightPanelProps) {
   const { t } = useTranslation();
   const panel = usePanelContext();
   const visible = !panel.hasOpenNote;
@@ -66,7 +70,7 @@ export function RightPanel({ notebooks, selectedNotebookId, currentFolder, onOpe
   const isOpen = showingMetadata || showingWorkspaceTool || showingDocument;
 
   useLayoutEffect(() => {
-    if (!visible) {
+    if (!visible || phoneSheet) {
       document.documentElement.style.setProperty('--right-panel-width', '0px');
       onWidthChange?.(0);
       return;
@@ -78,29 +82,40 @@ export function RightPanel({ notebooks, selectedNotebookId, currentFolder, onOpe
       document.documentElement.style.setProperty('--right-panel-width', '0px');
       onWidthChange?.(0);
     };
-  }, [isOpen, visible, onWidthChange]);
+  }, [isOpen, visible, phoneSheet, onWidthChange]);
 
   if (!visible) return null;
 
   const changesCount = changeCount + deletedNotes.length;
 
+  const content = (
+    <>
+      {showingMetadata && (
+        <section className='file-metadata-panel'>
+          <h2>{t('files.metadataLabel')}</h2>
+          {fileMetadata}
+          <div ref={onFileMetadataContainer} />
+        </section>
+      )}
+      {showingWorkspaceTool && panel.activeTool === 'calendar' && <CalendarTool notebooks={notebooks} selectedNotebookId={selectedNotebookId} currentFolder={currentFolder} onOpenNote={onOpenNote} />}
+      {showingWorkspaceTool && panel.activeTool === 'todo' && <TodoTool notebooks={notebooks} selectedNotebookId={selectedNotebookId} currentFolder={currentFolder} onOpenNote={onOpenNote} onSaveNote={onSaveNote} onReadNote={onReadNote} />}
+      {showingWorkspaceTool && panel.activeTool === 'changes' && <ChangesTool writable={writable} remoteChanges={remoteChanges} getPreview={getPreview} gitStatus={gitStatus} deletedNotes={deletedNotes} onRestoreNote={onRestoreNote} onOpenCommitModal={onOpenCommitModal} onSynced={onSynced} syncTargets={syncTargets} repoRoot={repoRoot} repositoryHeading={repositoryHeading} />}
+      {showingDocument && <div ref={documentPanel?.onContainer} className='right-panel-document' />}
+    </>
+  );
+  if (phoneSheet) {
+    return isOpen
+      ? (
+        <PhoneSheet variant='full' title={t(phoneToolLabel(panel.activeTool))} onClose={panel.close}>
+          <div className='right-panel-content phone-tool-content'>{content}</div>
+        </PhoneSheet>
+      )
+      : null;
+  }
+
   return (
     <aside className='right-panel' data-open={isOpen}>
-      {isOpen && (
-        <div className='right-panel-content'>
-          {showingMetadata && (
-            <section className='file-metadata-panel'>
-              <h2>{t('files.metadataLabel')}</h2>
-              {fileMetadata}
-              <div ref={onFileMetadataContainer} />
-            </section>
-          )}
-          {showingWorkspaceTool && panel.activeTool === 'calendar' && <CalendarTool notebooks={notebooks} selectedNotebookId={selectedNotebookId} currentFolder={currentFolder} onOpenNote={onOpenNote} />}
-          {showingWorkspaceTool && panel.activeTool === 'todo' && <TodoTool notebooks={notebooks} selectedNotebookId={selectedNotebookId} currentFolder={currentFolder} onOpenNote={onOpenNote} onSaveNote={onSaveNote} onReadNote={onReadNote} />}
-          {showingWorkspaceTool && panel.activeTool === 'changes' && <ChangesTool writable={writable} remoteChanges={remoteChanges} getPreview={getPreview} gitStatus={gitStatus} deletedNotes={deletedNotes} onRestoreNote={onRestoreNote} onOpenCommitModal={onOpenCommitModal} onSynced={onSynced} syncTargets={syncTargets} repoRoot={repoRoot} repositoryHeading={repositoryHeading} />}
-          {showingDocument && <div ref={documentPanel?.onContainer} className='right-panel-document' />}
-        </div>
-      )}
+      {isOpen && <div className='right-panel-content'>{content}</div>}
       <div className='right-panel-rail' role='tablist' aria-label={t('panel.title')}>
         {fileMode && (
           <Button

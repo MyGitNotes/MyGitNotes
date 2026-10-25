@@ -239,3 +239,8 @@ it('places the hover card beside the dock at the row height, never over the list
   // With no room on the right it stays inside the window.
   expect(hoverCardPosition({ rowRect: rect(50, 200, 228, 56), dockRect: dock }, { width: 320, height: 300 }, { width: 500, height: 900 }).left).toBe(172);
 });
+
+it('carries no native title tooltip on a row, so the hover card is not covered', () => {
+  setup();
+  for (const name of ['a', 'b']) expect(rowOf(name)).not.toHaveAttribute('title');
+});

@@ -1,0 +1,16 @@
+/* A phone's sheet: a layer over the page that is as tall as the visible screen (the keyboard shortens it), with the sheet at its bottom edge or filling it. */
+.phone-sheet-layer { position: fixed; z-index: 85; left: 0; right: 0; top: var(--visual-top, 0px); height: var(--visual-height, 100dvh); display: flex; flex-direction: column; justify-content: flex-end; }
+.phone-sheet-backdrop { position: absolute; inset: 0; min-width: 0; min-height: 0; border: 0; background: color-mix(in srgb, var(--color-scrim) 40%, transparent); animation: phone-sheet-fade 160ms ease-out; }
+.phone-sheet { position: relative; display: flex; flex-direction: column; min-height: 0; max-height: 85%; border: 1px solid var(--color-line); border-bottom: 0; border-radius: 16px 16px 0 0; background: var(--color-surface); color: var(--color-text); box-shadow: 0 -10px 30px color-mix(in srgb, var(--color-scrim) 30%, transparent); outline: none; padding-bottom: env(safe-area-inset-bottom); animation: phone-sheet-rise 200ms ease-out; transition: transform 160ms ease-out; }
+.phone-sheet[data-dragging] { transition: none; }
+.phone-sheet-layer[data-variant='full'] .phone-sheet { height: 100%; max-height: none; border: 0; border-radius: 0; padding-top: env(safe-area-inset-top); }
+.phone-sheet-top { flex: none; touch-action: none; cursor: grab; }
+.phone-sheet-grip { display: block; width: 36px; height: 4px; margin: 8px auto 0; border-radius: 2px; background: var(--color-line-strong); }
+.phone-sheet-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 0 4px 0 16px; }
+.phone-sheet-heading h2 { min-width: 0; margin: 0; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.phone-sheet-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px 16px; }
+/* A tool's own panel fills the full-height sheet and scrolls itself. */
+.phone-sheet-layer[data-variant='full'] .phone-sheet-body { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+@keyframes phone-sheet-rise { from { transform: translateY(24px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+@keyframes phone-sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .phone-sheet, .phone-sheet-backdrop { animation: none; transition: none; } }

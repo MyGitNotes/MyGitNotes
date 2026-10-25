@@ -11,6 +11,7 @@ import { isDocumentTool, usePanelContext } from '../lib/panel-context.js';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import type { NotePanelMode } from '../components/note-editor/types.js';
 import type { WorkspaceState } from './workspace-state.js';
+import { isPhoneViewport } from '../lib/use-phone.js';
 
 interface Params {
   selectedNotebookId: WorkspaceState['selectedNotebookId'];
@@ -40,14 +41,16 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
   // A Notes page whose URL names no Focus shows the one it displayed last, decided while rendering so the list never paints first.
   const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && !editorRoute.note, writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
   const focusDisplay = noteFocus.layout && noteFocus.entry ? displayedPanes(noteFocus.entry, noteFocus.layout, focusCapacity) : undefined;
-  /** On phones the browse region and the Focus take turns filling the screen. */
-  const [focusNarrowView, setFocusNarrowView] = useState<'focus' | 'browse'>('focus');
+  /** On phones the browse region and the Focus take turns filling the screen; a phone starts on the list. */
+  const [focusNarrowView, setFocusNarrowView] = useState<'focus' | 'browse'>(() => isPhoneViewport() ? 'browse' : 'focus');
   const [addingToFocus, setAddingToFocus] = useState<{ tab: FocusTab; label: string; } | null>(null);
   // The rail shows the active pane's document panel when that pane displays a note.
   const panel = usePanelContext();
   const [documentContainer, setDocumentContainer] = useState<HTMLDivElement | null>(null);
   const activeKey = noteFocus.entry ? focusDisplay?.panes.find(pane => pane.panes.includes(noteFocus.entry!.activePane))?.key : undefined;
   // A compilation pane has no editor, so it has no document panel either.
+  /** Whether the active pane shows a tab at all: a phone's note screen has nothing to show without one. */
+  const hasActiveTab = Boolean(activeKey);
   /** The path of the note the active pane shows, if it shows one. */
   const activeNotePath = activeKey?.startsWith('note:') ? activeKey.slice('note:'.length) : undefined;
   const activePaneNote = Boolean(activeKey?.startsWith('note:') && !isCompilationPath(activeKey.slice('note:'.length)));
@@ -74,5 +77,5 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
     if (noteFocus.shown === CURRENT_FOCUS) void noteFocus.clear().catch(() => {});
     else if (noteFocus.shown) setConfirmingClear(true);
   };
-  return { requestClear, confirmingClear, setConfirmingClear, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus };
+  return { requestClear, confirmingClear, setConfirmingClear, hasActiveTab, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus };
 }

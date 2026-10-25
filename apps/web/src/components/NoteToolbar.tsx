@@ -41,6 +41,9 @@ interface NoteToolbarProps {
   searchRef?: Ref<NoteSearchHandle>;
 }
 
+/** The orders the notes list offers, as the sort menu lists them. */
+export const noteSortOptions = (t: ReturnType<typeof useTranslation>['t']) => [{ value: 'updated:desc', label: t('sort.updatedDesc'), Icon: ClockArrowDown }, { value: 'updated:asc', label: t('sort.updatedAsc'), Icon: ClockArrowUp }, { value: 'created:desc', label: t('sort.createdDesc'), Icon: CalendarArrowDown }, { value: 'created:asc', label: t('sort.createdAsc'), Icon: CalendarArrowUp }, { value: 'title:asc', label: t('sort.titleAsc'), Icon: ArrowDownAZ }, { value: 'title:desc', label: t('sort.titleDesc'), Icon: ArrowDownZA }, { value: 'status:asc', label: t('sort.status'), Icon: ListOrdered }];
+
 export interface NoteSearchHandle {
   focus: () => void;
 }
@@ -50,7 +53,7 @@ export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, s
   // Below 768px the field is hidden behind a button and expands over the toolbar.
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
-  const sortOptions = [{ value: 'updated:desc', label: t('sort.updatedDesc'), Icon: ClockArrowDown }, { value: 'updated:asc', label: t('sort.updatedAsc'), Icon: ClockArrowUp }, { value: 'created:desc', label: t('sort.createdDesc'), Icon: CalendarArrowDown }, { value: 'created:asc', label: t('sort.createdAsc'), Icon: CalendarArrowUp }, { value: 'title:asc', label: t('sort.titleAsc'), Icon: ArrowDownAZ }, { value: 'title:desc', label: t('sort.titleDesc'), Icon: ArrowDownZA }, { value: 'status:asc', label: t('sort.status'), Icon: ListOrdered }];
+  const sortOptions = noteSortOptions(t);
   const currentSort = sortOptions.find(option => option.value === `${sortField}:${sortOrder}`) ?? sortOptions[0];
   useImperativeHandle(searchRef, () => ({
     focus: () => {

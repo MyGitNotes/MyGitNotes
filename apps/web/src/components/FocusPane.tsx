@@ -1,6 +1,6 @@
 import React, { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronDown, Columns2, FileText, GalleryHorizontalEnd, ListPlus, Maximize2, PanelsTopLeft, PanelTopClose, Rows2, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Columns2, FileText, GalleryHorizontalEnd, ListPlus, Maximize2, PanelsTopLeft, PanelTopClose, Rows2, X } from 'lucide-react';
 import { findFocusPane, findFocusTabInPane, type FocusEdge, focusPaneIndex, focusPanes, type FocusTab, focusTabKey } from '@mygitnotes/core/focus-page';
 import { COMPILATION_SUFFIX, isCompilationPath } from '@mygitnotes/core/compilation';
 import type { NoteFocus } from '../lib/use-note-focus.js';
@@ -16,6 +16,7 @@ import { Button } from './Button.js';
 import { paneDimmed, tabDimmed } from '../lib/focus-search.js';
 import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 import { usePhone } from '../lib/use-phone.js';
+import { usePhoneNotes } from '../lib/phone-notes.js';
 
 /** Below this width a pane folds its secondary buttons (split, batch add, hide toolbar) into one menu, so its tabs keep room for a readable title. */
 const COMPACT_PANE_WIDTH = 560;
@@ -213,6 +214,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
       data-drop-zone={edge && !edge.refusal ? edge.edge : undefined}
       data-hide-toolbar={hideToolbar || undefined}
       data-compact={compact || undefined}
+      data-phone={phone || undefined}
       data-tight={tight || undefined}
       aria-label={t('focus.paneNumber', { number: numberOf(displayed.pane) })}
       onPointerDownCapture={() => focus.activate(displayed.pane)}
@@ -322,6 +324,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
           )}
         </div>
       </div>
+      {phone && (!shown || isCompilationPath(shown.tab.path)) && <PhoneBackBar title={shown?.label ?? ''} />}
       <div id={panelId} className='focus-pane-body' role='tabpanel' aria-label={shown?.label} onDragOver={bodyOver} onDrop={bodyDrop}>
         {shown
           ? isCompilationPath(shown.tab.path)
@@ -342,6 +345,20 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
       </div>
       {batchAddOpen && focus.shown && <BatchAddDialog focus={focus} target={focus.shown} pane={displayed.pane} notebookId={focus.notebookId} notebookRoot={notebookRoot} folders={folders} onClose={() => setBatchAddOpen(false)} />}
     </section>
+  );
+};
+
+/** A phone's pane has no tab bar, and a note brings its own title bar; a compilation or an empty pane gets just the way back to the list. */
+const PhoneBackBar: React.FC<{ title: string; }> = ({ title }) => {
+  const { t } = useTranslation();
+  const { back } = usePhoneNotes();
+  return (
+    <div className='phone-note-bar'>
+      <button type='button' className='ui-icon-button' aria-label={t('phone.back')} title={t('phone.back')} onClick={back}>
+        <ArrowLeft aria-hidden='true' />
+      </button>
+      <div className='phone-note-title' title={title}>{title}</div>
+    </div>
   );
 };
 

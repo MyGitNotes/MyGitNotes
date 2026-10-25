@@ -24,6 +24,19 @@ describe('NotesEmptyState', () => {
     expect(screen.queryByRole('button', { name: 'Create Note' })).toBeNull();
   });
 
+  it("leaves a phone's plain note list to the navigation's New Note, and keeps the outline and compilation buttons", () => {
+    window.matchMedia = ((query: string) => ({ matches: query.includes('max-width: 767px'), media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false })) as typeof window.matchMedia;
+    try {
+      renderEmpty();
+      expect(screen.queryByRole('button', { name: 'Create Note' })).toBeNull();
+      cleanup();
+      renderEmpty('outline');
+      expect(screen.getByRole('button', { name: 'Create Outline Note' })).toBeTruthy();
+    } finally {
+      Reflect.deleteProperty(window, 'matchMedia');
+    }
+  });
+
   it('offers a compilation note in the compilation list', () => {
     renderEmpty('compilation');
     expect(screen.getByRole('button', { name: 'Create Compilation Note' })).toBeTruthy();
