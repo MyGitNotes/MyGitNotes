@@ -45,6 +45,7 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
     observer.observe(element);
     return () => observer.disconnect();
   }, [tags, expanded]);
+  const untagged = tags.length === 0;
   useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;
@@ -58,7 +59,7 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [locked, tags.length === 0]);
+  }, [locked, untagged]);
   useEffect(() => {
     if (adding) field.current?.focus();
   }, [adding]);
@@ -116,7 +117,16 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
       </ul>
       {tags.length > 0 && (hidden > 0 || expanded) && <button type='button' className='note-tag-more' aria-expanded={expanded} aria-label={t('editor.moreTags', { count: tags.length - fit })} onClick={() => setExpanded(open => !open)}>{expanded ? <X aria-hidden='true' /> : `+${hidden}`}</button>}
       {!locked && folded && (
-        <button type='button' className='note-tag-add-button' aria-label={t('editor.addTagShort')} title={t('editor.addTagShort')} onClick={() => { setExpanded(false); setAdding(true); }}>
+        <button
+          type='button'
+          className='note-tag-add-button'
+          aria-label={t('editor.addTagShort')}
+          title={t('editor.addTagShort')}
+          onClick={() => {
+            setExpanded(false);
+            setAdding(true);
+          }}
+        >
           <Plus aria-hidden='true' />
         </button>
       )}

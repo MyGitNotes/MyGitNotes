@@ -1,5 +1,5 @@
 import { Braces } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import '../note-row.css';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import { useTranslation } from '../../lib/i18n/index.js';

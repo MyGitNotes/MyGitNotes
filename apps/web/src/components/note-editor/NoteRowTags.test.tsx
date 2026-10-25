@@ -12,7 +12,7 @@ afterEach(() => {
 
 /** Renders the tags in a row the given width wide, as the row's ResizeObserver would measure it. */
 const tagsIn = (width: number) => {
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
     return { width: this.classList.contains('note-tags') ? width : 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON: () => ({}) };
   });
   const setMetadata = vi.fn();
