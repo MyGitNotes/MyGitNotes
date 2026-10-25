@@ -23,7 +23,7 @@ One repository uses two branches in separate worktrees:
 
 ## Quick start
 
-Requires Node.js 22+, pnpm 9+, and Git 2.42+. Local mode needs no OAuth account.
+Requires Node.js 22+, pnpm 12+, and Git 2.42+. Local mode needs no OAuth account.
 
 ~~~bash
 git clone --branch core --single-branch https://github.com/wayne930242/MyGitNotes.git mygitnotes

@@ -1,6 +1,6 @@
 name: Install dependencies
 description: >-
-  Set up Node, pnpm 9.15.9 and a cached pnpm store, install with the frozen
+  Set up Node, pnpm 12.15.0 and a cached pnpm store, install with the frozen
   lockfile, and fail if the install changes the checkout.
 inputs:
   node-version:
@@ -12,8 +12,8 @@ runs:
     - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: ${{ inputs.node-version }}
-    # pnpm 9.15.9 writes pnpm-lock.yaml; another version rewrites it.
-    - run: npm install --global pnpm@9.15.9
+    # pnpm 12.15.0 writes pnpm-lock.yaml; another version rewrites it.
+    - run: npm install --global pnpm@12.15.0
       shell: bash
     - id: store
       run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
@@ -29,7 +29,7 @@ runs:
     # lockfiles; drop them so the saved cache does not grow with every change.
     - run: pnpm store prune
       shell: bash
-    # A frozen pnpm 9 install can still rewrite the lockfile (it once added
+    # A frozen pnpm install can still rewrite the lockfile (it once added
     # `apps/pi-bridge: {}`). Stop here, not at a later step that needs a
     # clean checkout.
     - name: Check that install left the checkout clean
@@ -37,7 +37,7 @@ runs:
         if [ -n "$(git status --porcelain)" ]; then
           echo "::error title=Install changed the checkout::" \
             "pnpm install --frozen-lockfile modified tracked files." \
-            "Run pnpm install with pnpm 9.15.9 and commit the result."
+            "Run pnpm install with pnpm 12.15.0 and commit the result."
           git status --porcelain
           git diff
           exit 1

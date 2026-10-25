@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM node:22-bookworm-slim AS build
-RUN npm install --global pnpm@9.15.9
+RUN npm install --global pnpm@12.15.0
 WORKDIR /build
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages ./packages

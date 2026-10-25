@@ -3,6 +3,7 @@
   "version": "0.11.0",
   "license": "AGPL-3.0-only",
   "private": true,
+  "packageManager": "pnpm@12.15.0",
   "type": "module",
   "scripts": {
     "link-workspace": "tsx scripts/link-workspace.ts",
@@ -27,11 +28,6 @@
     "lint:fix": "node scripts/source-tools.mjs lint-fix",
     "check:version": "node apps/check-version.mjs",
     "release": "semantic-release --extends ./.github/release.config.cjs"
-  },
-  "pnpm": {
-    "overrides": {
-      "qs": "^6.16.0"
-    }
   },
   "devDependencies": {
     "@dprint/typescript": "^0.96.1",

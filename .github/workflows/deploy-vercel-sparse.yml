@@ -61,7 +61,7 @@ jobs:
           node-version: '22'
       - name: Install tooling
         if: steps.settings.outputs.enabled == 'true'
-        run: npm install --global pnpm@9.15.9 vercel@59
+        run: npm install --global pnpm@12.15.0 vercel@59
       # `vercel build` runs `pnpm install --frozen-lockfile` with this store.
       - name: Find pnpm store
         id: store

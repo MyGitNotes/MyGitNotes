@@ -76,8 +76,9 @@ workflow 從 core 部署產品路徑；main 的筆記異動不會觸發 build，
 - 使用預設 Vercel 路徑的 Vercel 與 GitHub CLI。
 
 1. 在 GitHub 設定 workflow 停用變數：`gh variable set MYGITNOTES_VERCEL_DEPLOY --body git-integration`
-2. 在 Vercel「**Settings → Git**」確認 production branch 為 core；vercel.json 已允許從 core 部署。
-3. 在 Vercel「**Deployments**」確認最新的 core 部署狀態為 Ready，並開啟網域確認筆記檢視正常。
+2. 讓 Vercel 透過 corepack 使用 package.json 指定的 pnpm（12）建置；只看 lockfile 的話它會挑 pnpm 9 或 10：`vercel env add ENABLE_EXPERIMENTAL_COREPACK production --value 1`
+3. 在 Vercel「**Settings → Git**」確認 production branch 為 core；vercel.json 已允許從 core 部署。
+4. 在 Vercel「**Deployments**」確認最新的 core 部署狀態為 Ready，並開啟網域確認筆記檢視正常。
 
 此路徑會由 Vercel 複製完整儲存庫，不需要 `VERCEL_TOKEN`、`VERCEL_ORG_ID` 或 `VERCEL_PROJECT_ID`。
 

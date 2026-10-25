@@ -23,7 +23,7 @@ Markdown 是內容來源，Git 記錄並發布變更，儲存庫擁有者管理�
 
 ## 快速開始
 
-需要 Node.js 22+、pnpm 9+ 與 Git 2.42+。本機模式不需要 OAuth 帳號。
+需要 Node.js 22+、pnpm 12+ 與 Git 2.42+。本機模式不需要 OAuth 帳號。
 
 ~~~bash
 git clone --branch core --single-branch https://github.com/wayne930242/MyGitNotes.git mygitnotes

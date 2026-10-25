@@ -76,8 +76,9 @@ The workflow deploys product paths from core; note-only changes on main do not t
 - Use the Vercel and GitHub CLIs from the default Vercel path.
 
 1. In GitHub, set the workflow opt-out variable: `gh variable set MYGITNOTES_VERCEL_DEPLOY --body git-integration`
-2. In Vercel **Settings → Git**, confirm the production branch is core; vercel.json enables deployments from core.
-3. In Vercel **Deployments**, confirm the latest core deployment is Ready and the domain serves the Notes view.
+2. Let Vercel build with the pnpm that package.json names (12) through corepack; from the lockfile alone it picks pnpm 9 or 10: `vercel env add ENABLE_EXPERIMENTAL_COREPACK production --value 1`
+3. In Vercel **Settings → Git**, confirm the production branch is core; vercel.json enables deployments from core.
+4. In Vercel **Deployments**, confirm the latest core deployment is Ready and the domain serves the Notes view.
 
 This path clones the full repository on Vercel. It does not need `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID`.
 
