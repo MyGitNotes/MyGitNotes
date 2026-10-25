@@ -60,13 +60,16 @@ function markdownCodeRanges(raw: string): [number, number][] {
 }
 
 /** `raw` with every percent-escape that decodes cleanly decoded, so a link names a file however its characters are escaped. */
-const unescaped = (raw: string) => raw.includes('%') ? raw.replace(/(?:%[0-9a-f]{2})+/gi, run => {
-  try {
-    return decodeURIComponent(run);
-  } catch {
-    return run;
-  }
-}) : raw;
+const unescaped = (raw: string) =>
+  raw.includes('%')
+    ? raw.replace(/(?:%[0-9a-f]{2})+/gi, run => {
+      try {
+        return decodeURIComponent(run);
+      } catch {
+        return run;
+      }
+    })
+    : raw;
 
 /**
  * `relocateLinks` for a move of `source`: a note that does not name the moved file or folder by its last path segment

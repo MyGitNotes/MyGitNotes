@@ -11,10 +11,7 @@ const snapshot = (files: Record<string, string>): FileSnapshot => {
 const text = (plan: ReturnType<typeof planFileChange>, file: string) => plan.files.get(file)?.toString();
 
 it('renames a note and retitles it in the same plan, links of other notes following the new path', () => {
-  const plan = planFileChange(snapshot({
-    'notes/a/old-name.md': '---\ntitle: Old name\ntags:\n  - x\n---\n\n# Old name\n\n[Other](other.md)\n',
-    'notes/a/other.md': '# Other\n\n[Back](old-name.md#part)\n',
-  }), { kind: 'move', notebookId: 'a', path: 'notes/a/old-name.md', destination: 'notes/a/new-name.md', title: 'New name' });
+  const plan = planFileChange(snapshot({ 'notes/a/old-name.md': '---\ntitle: Old name\ntags:\n  - x\n---\n\n# Old name\n\n[Other](other.md)\n', 'notes/a/other.md': '# Other\n\n[Back](old-name.md#part)\n' }), { kind: 'move', notebookId: 'a', path: 'notes/a/old-name.md', destination: 'notes/a/new-name.md', title: 'New name' });
   expect(plan.files.has('notes/a/old-name.md')).toBe(false);
   const moved = text(plan, 'notes/a/new-name.md')!;
   expect(moved).toMatch(/^---\ntitle: New name\ntags:\n {2}- x\nupdated: /);
@@ -46,11 +43,7 @@ it('still refuses a taken destination when the move carries a title', () => {
   expect(() => planFileChange(snapshot({ 'notes/a/one.md': '# One\n', 'notes/a/two.md': '# Two\n' }), { kind: 'move', notebookId: 'a', path: 'notes/a/one.md', destination: 'notes/a/two.md', title: 'Two' })).toThrow('Destination already exists.');
 });
 
-const spellings = (name: string) => [
-  `[a](${name})`, `[a](./${name}#h)`, `[a](../x/${name}?q=1)`, `[a](<${name}>)`, `![i](${encodeURIComponent(name)})`, `[a](${encodeURIComponent(name).toLowerCase()})`, `[a](%${name.charCodeAt(0).toString(16)}${name.slice(1)})`,
-  `[ref]: ${name}`, `[a](/notes/a/x/${name})`, `[a](/raw-assets/notes/a/x/${encodeURIComponent(name)})`, `[a](/api/files/raw?notebookId=a&path=notes%2Fa%2Fx%2F${encodeURIComponent(name)})`,
-  `[a](/api/files/raw?notebookId=a&path=notes/a/x/${name.replace(/ /g, '+')})`, '`[code](' + name + ')`', 'plain mention of ' + name,
-];
+const spellings = (name: string) => [`[a](${name})`, `[a](./${name}#h)`, `[a](../x/${name}?q=1)`, `[a](<${name}>)`, `![i](${encodeURIComponent(name)})`, `[a](${encodeURIComponent(name).toLowerCase()})`, `[a](%${name.charCodeAt(0).toString(16)}${name.slice(1)})`, `[ref]: ${name}`, `[a](/notes/a/x/${name})`, `[a](/raw-assets/notes/a/x/${encodeURIComponent(name)})`, `[a](/api/files/raw?notebookId=a&path=notes%2Fa%2Fx%2F${encodeURIComponent(name)})`, `[a](/api/files/raw?notebookId=a&path=notes/a/x/${name.replace(/ /g, '+')})`, '`[code](' + name + ')`', 'plain mention of ' + name];
 
 it.each(['note.md', 'my note.md', 'café.md', '中文筆記.md'])('the link prefilter gives the results of parsing every note for a link to %s', name => {
   const source = `notes/a/x/${name}`, destination = `notes/a/y/${name.replace('.md', '-2.md')}`;

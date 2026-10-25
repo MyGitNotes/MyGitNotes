@@ -58,9 +58,11 @@ it('repairs selected folder and open-note routes when preserving contents moves 
 });
 it('shows a renamed open note at its new path before the workspace is read again, when asked to work in the background', async () => {
   let settle = () => {};
-  const refreshWorkspace = vi.fn(() => new Promise<void>(resolve => {
-    settle = resolve;
-  }));
+  const refreshWorkspace = vi.fn(() =>
+    new Promise<void>(resolve => {
+      settle = resolve;
+    })
+  );
   const { params, model } = fixture({ refreshWorkspace, editorRoute: parseWorkspaceRoute('/notebooks/a/notes/one/nested/note.md', '') });
   await model.onFilesChanged({ revision: 'r2', selectedPath: 'notes/a/one/nested/fresh.md', pathMap: { 'notes/a/one/nested/note.md': 'notes/a/one/nested/fresh.md' }, deletedPaths: [] }, { background: true });
   expect(params.navigate).toHaveBeenCalledWith('/notebooks/a/notes/one/nested/fresh.md', { replace: true });
