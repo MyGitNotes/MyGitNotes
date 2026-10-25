@@ -8,9 +8,9 @@ Three additions that let a notebook run as a small project: who owns a task, whi
 
 On a task line (`- [ ]` / `- [x]`), after the checkbox:
 
-- `@` at the start of the text or after whitespace, then a name of Unicode letters, numbers and `_`, with `.` or `-` allowed between name characters: `@alice`, `@小林`, `@j.doe`, `@mary-ann`.
+- `@` at the start of the text, after whitespace (the fullwidth space included) or after CJK punctuation (`、，；：（「『【`), so `@小林、@小美` names both; then a name of Unicode letters, numbers and `_`, with `.` or `-` allowed between name characters: `@alice`, `@小林`, `@j.doe`, `@mary-ann`.
 - Several are allowed; the order of appearance is kept and a repeated name counts once.
-- Not an assignee: an `@` glued to a word (`a@b.com`), after a URL character (`https://x.com/@user`, `?to=@bob`) or in a scoped package (`@types/node`, a name followed by `/` or `@`). Trailing sentence punctuation is not part of the name (`ask @alice.` is `alice`).
+- Not an assignee: an `@` inside a backtick code span (it is also left in the displayed text), an `@` glued to a word (`a@b.com`), after a URL character (`https://x.com/@user`, `?to=@bob`) or in a scoped package (`@types/node`, a name followed by `/` or `@`). Trailing sentence punctuation is not part of the name (`ask @alice.` is `alice`).
 - Names are case-sensitive and compared as written.
 
 Core: `getTaskAssignees(line)`; `TodoTask.assignees: string[]` (empty when none). `stripTaskTokens` removes the tokens (the Todo tool shows them as a chip instead).
@@ -44,7 +44,7 @@ The agenda part kept in a remote cache is now stored under the kind `agenda:v2:<
 
 ### Calendar
 
-A milestone note appears on its day as a diamond (its own marker beside the notes and due dots), and in the day detail under **Milestones** with the title and path, above Notes and Tasks. With no day selected the list covers the month. It does not depend on the Created / Updated switch; a milestone note still also shows under Notes on its created or updated day.
+A milestone note appears on its day as a diamond (its own marker beside the notes and due dots), and in the day detail under **Milestones** with the title and path, above Notes and Tasks. With no day selected the list covers the month. It does not depend on the Created / Updated switch; a milestone note still also shows under Notes on its created or updated day. Tasks in the day detail carry the same owner and priority chips as the Todo tool.
 
 ## Not in scope
 
