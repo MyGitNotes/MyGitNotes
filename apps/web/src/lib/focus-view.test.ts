@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type FocusDivision, type FocusLayout, type FocusNode, type FocusTab, legacyFocusTree } from '@mygitnotes/core/focus-page';
-import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasRestoredFocus, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
+import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasRestoredFocus, isEmptyFocus, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
 const note = (path: string): FocusTab => ({ kind: 'note', path });
 const lane = (id: string): FocusTab => ({ kind: 'note', path: `notes/${id}.compilation.yml` });
@@ -345,5 +345,16 @@ describe('hasRestoredFocus', () => {
   it('is true when the current Focus holds a tab or a named Focus was shown last', () => {
     expect(hasRestoredFocus(state({ current: layout('single', [note('notes/a.md')]) }))).toBe(true);
     expect(hasRestoredFocus(state({ last: 'reading' }))).toBe(true);
+  });
+});
+
+describe('isEmptyFocus', () => {
+  it('is true for a Focus whose panes hold no tab, however many panes it has', () => {
+    expect(isEmptyFocus(emptyFocusView().current)).toBe(true);
+    expect(isEmptyFocus(layout('columns-2', [], []))).toBe(true);
+  });
+  it('is false once any pane holds a tab', () => {
+    expect(isEmptyFocus(layout('single', [note('notes/a.md')]))).toBe(false);
+    expect(isEmptyFocus(layout('columns-2', [], [note('notes/a.md')]))).toBe(false);
   });
 });

@@ -39,7 +39,7 @@ import { type NoteLocation, NoteLocationProvider, readOnlyReason } from './lib/n
 import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
 import { useFoldAnimation } from './lib/use-fold-animation.js';
-import { hasStoredFocusView } from './lib/focus-view.js';
+import { hasStoredFocusView, isEmptyFocus } from './lib/focus-view.js';
 import { noteLookupOptions } from './lib/use-note-queries.js';
 import { notebookRoute, noteRoute, noteTrail, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
 import { draftScope, editable, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
@@ -319,9 +319,11 @@ export const AppContent: React.FC = () => {
   // What the Changes tool counts: pending changes, and for a local workspace the deletions awaiting commit.
   const phoneChangesCount = remote ? changeCount : changeCount + deletedNotes.length;
   const phoneNotesValue = useMemo(() => ({ back: () => setFocusNarrowView('browse'), changesCount: phoneChangesCount, deleteNote: canWrite ? (note: NoteItem) => void handleDeleteNote(note as NoteListItem) : undefined }), [setFocusNarrowView, phoneChangesCount, canWrite, handleDeleteNote]);
+  // A shown Focus (Default or named) with no open note has nothing to lay out: the notes list fills the page as plain browsing does, and the dock, its collapsed state and the Focus itself stay as they are.
+  const focusEmpty = Boolean(noteFocus.layout && isEmptyFocus(noteFocus.layout));
   // The browse region's toggle, where the Notes toolbar shows one: collapsing it folds the sidebar and the header away with it so the Focus gets the room.
   // Only where that toggle can bring them back, so no page and no screen size is left without navigation.
-  const browseDock = activeTab === 'notes' && !route.study && noteFocus.layout && focusCapacity !== 1 ? { collapsed: noteFocus.view.dock.collapsed, toggle: () => noteFocus.setDock({ collapsed: !noteFocus.view.dock.collapsed }) } : undefined;
+  const browseDock = activeTab === 'notes' && !route.study && noteFocus.layout && !focusEmpty && focusCapacity !== 1 ? { collapsed: noteFocus.view.dock.collapsed, toggle: () => noteFocus.setDock({ collapsed: !noteFocus.view.dock.collapsed }) } : undefined;
   // A zoomed note covers the page and has no Focus under it; the sidebar and header keep their fold meanwhile, so closing the zoom does not replay the animation.
   const browseCollapsed = Boolean(browseDock?.collapsed) || (activeTab === 'notes' && !route.study && focusCapacity !== 1 && noteEditorOpen && noteFocus.view.dock.collapsed);
   const headerFolding = useFoldAnimation(browseCollapsed);
@@ -354,12 +356,12 @@ export const AppContent: React.FC = () => {
 
   // With a Focus displayed, the browse region docks beside it (flat, folder) or above it (kanban).
   const topDock = viewMode === 'kanban';
-  const browseFocusMode = noteFocus.layout || phone ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, compactRows: phone || focusCapacity !== 1, openPath: activeNotePath, readNote: readNoteForChange } : undefined;
+  const browseFocusMode = noteFocus.layout || phone ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, compactRows: phone || (focusCapacity !== 1 && !focusEmpty), openPath: activeNotePath, readNote: readNoteForChange } : undefined;
   // Either dock collapses and reopens from the toolbar's left end.
-  const dockToggle = noteFocus.layout && focusCapacity !== 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} /> : undefined;
+  const dockToggle = noteFocus.layout && !focusEmpty && focusCapacity !== 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} /> : undefined;
   // Beside a Focus the filter sidebar folds to an icon rail (the drawer below the desktop breakpoint stays a drawer), and the filters in force show as chips above the list.
   const desktop = useIsDesktop();
-  const dockedFocus = activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && focusCapacity !== 1;
+  const dockedFocus = activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && !focusEmpty && focusCapacity !== 1;
   const railed = dockedFocus && desktop;
   const [railSection, setRailSection] = useState<RailSectionId | null>(null);
   const [wasRailed, setWasRailed] = useState(railed);
@@ -640,7 +642,7 @@ export const AppContent: React.FC = () => {
                                 <NoteToolbar searchRef={browseCollapsed ? undefined : noteSearch} browseCollapsed={browseCollapsed} onRevealSearch={focusNoteSearch} utilities={browseCollapsed ? <HeaderUtilities activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={noteEditorOpen || isCommitOpen} onOpenCommands={() => setShortcutMode('palette')} /> : undefined} onImportLegacy={legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined} readOnly={!canWrite} viewMode={viewMode} setViewMode={setViewMode} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} showHidden={showHidden} onShowHiddenChange={value => changeFilters({ showHidden: value })} onNewNote={() => void createNote()} onNewOutline={() => void createNote({ kind: 'outline' })} onNewCompilation={() => void createUntitledCompilation()} templates={config?.notebooks.find(nb => nb.id === selectedNotebookId)?.templates} onNewFromTemplate={templateId => void createNote({ templateId })} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} focusControls={<FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} />} />
                               </PageToolbar>
                             )}
-                          {noteFocus.layout
+                          {noteFocus.layout && !focusEmpty
                             ? (
                               <BrowseDock
                                 placement={topDock ? 'top' : 'left'}

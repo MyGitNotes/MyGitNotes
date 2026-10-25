@@ -1,8 +1,11 @@
-import { displayFocus, emptyFocusLayout, findFocusPane, type FocusDisplay, type FocusLayout, type FocusNode, focusPanes, type FocusSplitNode, focusTabKey, readFocusLayout } from '@mygitnotes/core/focus-page';
+import { displayFocus, emptyFocusLayout, findFocusPane, type FocusDisplay, type FocusLayout, type FocusNode, focusPanes, type FocusSplitNode, focusTabCount, focusTabKey, readFocusLayout } from '@mygitnotes/core/focus-page';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import { storageOwner } from './demo-storage.js';
 
 export const CURRENT_FOCUS = 'current';
+
+/** Whether no pane of the Focus holds a note: the Notes page then shows the notes list in full instead of empty panes. */
+export const isEmptyFocus = (layout: FocusLayout): boolean => focusTabCount(layout) === 0;
 
 /** View state for one Focus (the unnamed (current) one under key CURRENT_FOCUS, or a named one under its id), keyed by the ids of the layout's panes and splits. */
 export interface FocusEntryView {
