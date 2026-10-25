@@ -34,3 +34,24 @@ Workspace (/.mygitnotes.yaml)
 5. 完成前確認目標資料夾的索引卡片位置、點開的檔案路徑與相對連結；只有索引而沒有其他筆記的資料夾也應顯示卡片，不應誤報為空資料夾。
 
 可操作的教學範例位於 `examples/demo-workspace/notes/example/index.md`。Core 維護教學時修改 examples；不要把教學寫入使用者的 `notes/**`。
+
+## Image annotations (`:::annotate`)
+
+A note holds review comments on an image as plain Markdown. Read and write the rows directly; an agent that can see the image adds a row by coordinates.
+
+```markdown
+:::annotate[Homepage v3 review]
+![Homepage v3](/raw-assets/by-hash/3f2a9c0d6b1e4f5a8c7d2e9b0a1f3c4d5e6f7a8b)
+
+- {#1 pin x=41.2% y=23.3%} The logo is small and misses the nav baseline.
+- {#2 region x=8% y=61.5% w=35% h=12% by=alice} CTA contrast is low.
+  Check the hover state too.
+- {#3 pin x=88% y=7% resolved by=bob} Make the avatar round.
+:::
+```
+
+- The first body line is one inline Markdown image (any ref a note image takes; prefer `/raw-assets/by-hash/<hash>`, which pins the version). Rows follow after a blank line, one list item each.
+- `x`, `y`, `w`, `h` are percentages (`41.2%`) of the image width and height from its top-left corner; a pin has `x y`, a region `x y w h` and must fit inside the image. `resolved` is a bare word; `by=name` is optional (`by="Ann Lee"` with spaces).
+- `#n` is the number shown on the marker: new rows take the highest number plus one, ids are unique in the block, and deleting a row never renumbers the others.
+- The comment is the Markdown after `}` and its indented continuation lines.
+- Change only the row you mean to: edit a value in place, add or remove the word `resolved`, append a row at the end. Do not reorder, renumber or reformat other rows. An unknown word (such as a misspelt `resolved`) or a bad value makes the row show a problem tag, so check what you wrote.
