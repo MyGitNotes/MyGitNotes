@@ -28,7 +28,9 @@
   .note-editor[data-phone-bar='overlay'] .cm-scroller { padding-top: 56px !important; }
   .note-editor[data-phone-bar='overlay'] .note-editor-body textarea { padding-top: 56px; }
   .note-editor[data-phone-bar] .note-source-heading { display: none; }
+  /* No tab row lies over the text's bottom any more (a phone opens the document panel as a sheet), so the body keeps no room for one. */
   .note-editor-body { overflow-wrap: anywhere; }
+  .note-editor[data-phone-bar] .note-editor-body { padding-bottom: 0; }
 
   /* A phone's note is plain text on the page: no card frame, no gutter, and nothing wider than the screen (a long link or code line wraps, a table or a code block scrolls on its own). */
   .cm-card-background-layer, .cm-lineNumbers { display: none !important; }
