@@ -26,6 +26,7 @@ interface Params {
   editorRoute: ReturnType<typeof parseWorkspaceRoute>;
   editorNotebookId: string;
   setEditingNote: React.Dispatch<React.SetStateAction<NoteListItem | null>>;
+  setActionError: WorkspaceState['setActionError'];
   navigate: ReturnType<typeof useNavigate>;
   location: ReturnType<typeof useLocation>;
   returnTo: string;
@@ -36,7 +37,7 @@ interface Params {
   handleOpenFolderIndex: ReturnType<typeof useNoteRestoration>['handleOpenFolderIndex'];
 }
 
-export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, navigate, location, returnTo, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex }: Params) {
+export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, setActionError, navigate, location, returnTo, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex }: Params) {
   /**
    * Saves the open editors, then refuses a change that would strand drafts: those under the paths it touches. A change
    * without a scope touches no note (an R2 asset move rewrites links, which the commit of any draft merges).
@@ -50,13 +51,18 @@ export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDra
     const notebook = config?.notebooks.find(nb => nb.id === notebookId);
     if (notebook) setFileDialog({ notebookId, path: notebook.root + (relativePath ? '/' + relativePath : ''), showDocuments: true, initialOperation: action === 'delete' ? 'remove-directory' : action === 'move' ? 'move' : undefined });
   };
-  const onFilesChanged = async (result: FileResult) => {
+  /**
+   * Brings the page up to date with `result`. With `background`, a change that moved the open note shows the note at its
+   * new path at once and the workspace is read again while the person already works there.
+   */
+  const onFilesChanged = async (result: FileResult, { background = false }: { background?: boolean; } = {}) => {
     // A file action commits in a remote workspace; read the head past the server's cache.
-    await refreshWorkspace(true);
-    await refreshDocuments();
+    const refresh = Promise.all([refreshWorkspace(true), refreshDocuments()]).then(() => {});
+    const nb = editorRoute.note ? config?.notebooks.find(nb => nb.id === editorNotebookId) : undefined;
+    const previous = nb ? nb.root + '/' + editorRoute.note : '';
+    if (background && nb && result.pathMap[previous]) refresh.catch(error => setActionError((error as Error).message));
+    else await refresh;
     if (editorRoute.note) {
-      const nb = config?.notebooks.find(nb => nb.id === editorNotebookId);
-      const previous = nb ? nb.root + '/' + editorRoute.note : '';
       if (nb && result.pathMap[previous]) {
         setEditingNote(null);
         navigate(noteRoute(nb.id, result.pathMap[previous].slice(nb.root.length + 1)) + location.search, { replace: true });

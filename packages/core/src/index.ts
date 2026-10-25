@@ -11,6 +11,7 @@ export * from './bookmark-anchor.js';
 export * from './bookmark-query.js';
 export * from './bookmark-resolution.js';
 export * from './note-status.js';
+export * from './note-title.js';
 export * from './config.js';
 export * from './workspace-preferences.js';
 export * from './workspace-migration.js';

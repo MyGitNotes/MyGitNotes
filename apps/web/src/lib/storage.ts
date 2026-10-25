@@ -33,6 +33,23 @@ export function clearLocalDraft(branch: string, notePath: string): void {
   }
 }
 
+/** Moves the draft kept for `from` to `to` within a scope, with the dismissed notice of a conflict copy; nothing when there is none. */
+export function moveLocalDraft(scope: string, from: string, to: string): void {
+  try {
+    const draft = getLocalDraft(scope, from);
+    if (!draft) return;
+    localStorage.setItem(makeDraftKey(scope, to), JSON.stringify({ ...draft, path: to }));
+    localStorage.removeItem(makeDraftKey(scope, from));
+    const dismissed = localStorage.getItem(makeConflictDismissKey(scope, from));
+    if (dismissed !== null) {
+      localStorage.setItem(makeConflictDismissKey(scope, to), dismissed);
+      localStorage.removeItem(makeConflictDismissKey(scope, from));
+    }
+  } catch (err) {
+    console.error('Failed to move local draft:', err);
+  }
+}
+
 /**
  * The unsaved editor drafts of a scope. The copy an editor keeps of a draft that conflicted with the remote version
  * lives in the nested `<scope>:conflict` scope; it is a recovery copy, not a pending edit, so it is not listed.

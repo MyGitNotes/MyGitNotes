@@ -9,12 +9,13 @@ import { HostedNoteEditor } from './NoteEditorHost.js';
 
 const alpha = { id: 'a', path: 'notes/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: {}, content: '# Alpha\n\nBody.' };
 
-vi.mock('../lib/use-note-queries.js', () => ({ useNoteLookup: () => ({ notes: [{ id: 'a', path: 'notes/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: {}, content: '# Alpha\n\nBody.' }], committed: [], loading: false, error: '' }) }));
+const lookup = vi.hoisted(() => ({ note: { id: 'a', path: 'notes/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: {} as Record<string, unknown>, content: '# Alpha\n\nBody.' }, typing: false }));
+vi.mock('../lib/use-note-queries.js', () => ({ useNoteLookup: () => ({ notes: [lookup.note], committed: [], loading: false, error: '' }) }));
 vi.mock('./NoteEditor.js', () => ({
   NoteEditor: forwardRef<unknown, NoteEditorProps>(({ frame, note, onSession }, _ref) => {
     /* eslint-disable react-hooks/exhaustive-deps -- The test double reports one mounted session and its cleanup; prop refreshes are exercised independently of mounting. */
     useEffect(() => {
-      onSession?.({ content: note.content, title: note.title, dirty: false, locked: false });
+      onSession?.({ content: note.content, title: note.title, dirty: lookup.typing, locked: false });
       return () => onSession?.(null);
     }, []);
     /* eslint-enable react-hooks/exhaustive-deps */
@@ -22,7 +23,11 @@ vi.mock('./NoteEditor.js', () => ({
   }),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  lookup.note = { ...lookup.note, content: '# Alpha\n\nBody.', title: 'Alpha' };
+  lookup.typing = false;
+});
 
 let editing: ReturnType<typeof useNoteEditing>;
 const Probe = () => {
@@ -130,4 +135,20 @@ it('shows the preview with its Edit here button, not the loading status, once an
   expect(screen.getByTestId('card')).toHaveTextContent('This note is open for editing elsewhere.');
   expect(screen.getByTestId('card')).not.toHaveTextContent('Loading note');
   expect(within(screen.getByTestId('card')).getByRole('button', { name: 'Edit here' })).toBeInTheDocument();
+});
+
+it('shows a note that changed under its editor, as a rename that retitled it does', () => {
+  const view = render(twoHosts());
+  expect(screen.getByTestId('editor')).toHaveTextContent('# Alpha');
+  lookup.note = { ...lookup.note, title: 'Beta', content: '# Beta\n\nBody.' };
+  view.rerender(twoHosts());
+  expect(screen.getByTestId('editor')).toHaveTextContent('# Beta');
+});
+
+it('keeps the editor on its own text when the note changes under unsaved typing', () => {
+  lookup.typing = true;
+  const view = render(twoHosts());
+  lookup.note = { ...lookup.note, title: 'Beta', content: '# Beta\n\nBody.' };
+  view.rerender(twoHosts());
+  expect(screen.getByTestId('editor')).toHaveTextContent('# Alpha');
 });

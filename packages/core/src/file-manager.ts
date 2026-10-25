@@ -3,7 +3,10 @@ import YAML from 'yaml';
 import { z } from 'zod';
 import type { NotebookConfig } from './types.js';
 import { parseFolderConfig } from './folders.js';
-import { relocateLinks } from './folder-plan.js';
+import { relocateMovedLinks } from './folder-plan.js';
+import { retitle } from './note-title.js';
+import { isNoteFile, parseNoteFile, serializeNoteFile } from './note-file.js';
+import { isOutlinePath } from './outline.js';
 import { relocateWorkspaceDocuments, workspaceDocument } from './workspace-documents.js';
 import { isCompilationPath, relocateCompilation } from './compilation.js';
 import { decodeAsset } from './assets.js';
@@ -13,7 +16,7 @@ import { LEGACY_WORKSPACE_CONFIG_FILENAME, WORKSPACE_CONFIG_FILENAME } from './c
 const filePath = z.string().min(1).max(2048).refine(value => !/[\\\x00-\x1f\x7f]/.test(value) && value.split('/').every(p => p && p !== '.' && p !== '..'), 'Use a relative workspace path.');
 /* eslint-enable no-control-regex */
 const target = { notebookId: z.string().min(1), path: filePath };
-export const FileCommandSchema = z.discriminatedUnion('kind', [z.object({ ...target, kind: z.literal('create') }).strict(), z.object({ ...target, kind: z.literal('write'), content: z.string() }).strict(), z.object({ ...target, kind: z.literal('upload'), base64: z.string() }).strict(), z.object({ ...target, kind: z.literal('mkdir') }).strict(), z.object({ ...target, kind: z.literal('move'), destination: filePath }).strict(), z.object({ ...target, kind: z.literal('delete') }).strict(), z.object({ ...target, kind: z.literal('delete-directory') }).strict(), z.object({ ...target, kind: z.literal('remove-directory'), destination: filePath }).strict(), z.object({ ...target, kind: z.literal('metadata'), title: z.string().trim().min(1).max(120), description: z.string().max(10000), order: z.number().finite() }).strict()]);
+export const FileCommandSchema = z.discriminatedUnion('kind', [z.object({ ...target, kind: z.literal('create') }).strict(), z.object({ ...target, kind: z.literal('write'), content: z.string() }).strict(), z.object({ ...target, kind: z.literal('upload'), base64: z.string() }).strict(), z.object({ ...target, kind: z.literal('mkdir') }).strict(), z.object({ ...target, kind: z.literal('move'), destination: filePath, title: z.string().trim().min(1).max(500).optional() }).strict(), z.object({ ...target, kind: z.literal('delete') }).strict(), z.object({ ...target, kind: z.literal('delete-directory') }).strict(), z.object({ ...target, kind: z.literal('remove-directory'), destination: filePath }).strict(), z.object({ ...target, kind: z.literal('metadata'), title: z.string().trim().min(1).max(120), description: z.string().max(10000), order: z.number().finite() }).strict()]);
 export type FileCommand = z.infer<typeof FileCommandSchema>;
 export interface FileSnapshot {
   notebooks: NotebookConfig[];
@@ -69,6 +72,16 @@ export function filePresentation(file: string): 'image' | 'pdf' | 'audio' | 'vid
 export function editableFile(file: string, bytes: Uint8Array): string | undefined {
   if (filePresentation(file) !== 'file' && !/\.svg$/i.test(file) || /\.(zip|gz|7z|rar|exe|dll|bin|woff2?|ttf|otf)$/i.test(file)) return;
   return decodeTextFile(bytes);
+}
+
+/**
+ * The stored form of the note `raw` once renamed `title`: the frontmatter title, or the heading that names the note,
+ * follow `retitle`. Not applied to a compilation, which keeps its name in its own file.
+ */
+export function retitleNoteFile(raw: string, file: string, title: string, now: Date = new Date()): string {
+  const parsed = parseNoteFile(raw, file);
+  const next = retitle(parsed.content, parsed.metadata, title, isOutlinePath(file), parsed.title);
+  return serializeNoteFile(file, next.metadata, next.content, false, now, raw);
 }
 
 export function planFileChange(snapshot: FileSnapshot, input: unknown) {
@@ -132,6 +145,7 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
       assertParent(destination);
       if (exists(destination)) throw new Error('Destination already exists.');
     }
+    const title = command.kind === 'move' ? command.title : undefined;
     const relocate = (file: string) => withinPath(file, command.path) ? destination + file.slice(command.path.length) : file;
     const removedMetadata = command.kind === 'remove-directory' ? command.path + '/_dir.yml' : '';
     for (const source of [...directories, ...files.keys()]) {
@@ -150,7 +164,10 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
       const raw = /\.(md|markdown)$/i.test(file) ? decodeTextFile(bytes) : undefined;
       // A compilation pins paths of its notebook; they follow the move like a link does.
       const pinned = isCompilationPath(file) && bytes.length ? relocateCompilation(decodeTextFile(bytes) ?? '', relocate) : null;
-      files.set(next, pinned !== null ? Buffer.from(pinned) : raw === undefined ? bytes : Buffer.from(relocateLinks(raw, file, next, relocate)));
+      const relinked = pinned !== null ? Buffer.from(pinned) : raw === undefined ? bytes : Buffer.from(relocateMovedLinks(raw, file, next, relocate, command.path));
+      // The moved note takes its new title in the same write, so the move never leaves the old title behind.
+      const text = title && file === command.path && !isDirectory && isNoteFile(file) && !isCompilationPath(file) ? decodeTextFile(relinked) : undefined;
+      files.set(next, text === undefined ? relinked : Buffer.from(retitleNoteFile(text, next, title!)));
     }
     pathMap[command.path] = destination;
     relocateWorkspaceDocuments({ get: file => files.get(file)?.toString('utf8'), set: (file, text) => files.set(file, Buffer.from(text)) }, nb!, relocate);

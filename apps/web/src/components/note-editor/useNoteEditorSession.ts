@@ -14,6 +14,7 @@ import { useEditorRegistry } from '../../lib/note-editing.js';
 import type { NoteEditorSession, NoteEditorSharedProps } from './types.js';
 import type { NewVersionRequest } from '../../lib/history-api.js';
 import { externalEditCount, subscribeExternalEdits } from '../../lib/external-note-edits.js';
+import { isNoteMoving } from '../../lib/moving-notes.js';
 import { readStoredWorkingNotes } from '../../lib/working-notes.js';
 
 /** Server-managed on every save; excluded when deciding whether there is a new edit to save. */
@@ -70,6 +71,14 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   const autosaving = useRef(false);
   // The last autosaved draft: the `note` prop reaches it only after the notes refetch.
   const lastSaved = useRef<{ content: string; metadata: Record<string, unknown>; } | null>(null);
+  // The states this session has held as saved, newest last: a `note` prop that only echoes one of them is not news.
+  const savedStates = useRef<{ content: string; metadata: Record<string, unknown>; }[]>([]);
+  // The note being adopted until the state has caught up with it, so the save effect does not take the state it replaces for an edit.
+  const adopting = useRef<{ content: string; metadata: Record<string, unknown>; } | null>(null);
+  const markSaved = (saved: { content: string; metadata: Record<string, unknown>; }) => {
+    lastSaved.current = saved;
+    savedStates.current = [...savedStates.current.slice(-7), saved];
+  };
   const closing = useRef(false);
   const nextRemoteCheck = useRef(0);
   const mounted = useRef(true);
@@ -83,6 +92,11 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   /* eslint-disable react/refs -- The editor keeps current draft and event callbacks in refs for async saves and imperative keyboard handlers. */
   current.current = { content, metadata, baseNote, blocked };
   /* eslint-enable react/refs */
+  /** Whether the session holds typing or metadata edits that no save has taken yet. */
+  const hasUnsaved = () => {
+    const saved = lastSaved.current, state = current.current;
+    return !(saved && state.content === saved.content && sameIgnoringTimestamps(state.metadata, saved.metadata));
+  };
   /* eslint-disable react/refs -- The editor keeps current draft and event callbacks in refs for async saves and imperative keyboard handlers. */
   const locked = readOnly || blocked || closing.current || (!autoSave && isSaving);
   /* eslint-enable react/refs */
@@ -120,7 +134,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     } else if (!hasLocalEdits) {
       // A clean pass-through adoption: the new content is itself already "saved" for this
       // session, so the debounce below must not mistake it for a fresh edit to persist.
-      lastSaved.current = { content: result.draft.content, metadata: result.draft.metadata };
+      markSaved({ content: result.draft.content, metadata: result.draft.metadata });
     }
     current.current = { ...state, ...result.draft, baseNote: latest };
     setBaseNote(latest);
@@ -133,6 +147,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     if (error instanceof ApiError && (error.retryAfter || error.status === 429)) {
       nextRemoteCheck.current = Date.now() + (error.retryAfter || 60) * 1000;
     }
+    // A note this page just moved is not deleted: the editor of its old path is on its way out.
+    if (error instanceof ApiError && error.status === 404 && isNoteMoving(noteRefKey(note))) return;
     if (error instanceof ApiError && error.status === 404) {
       preserveConflict();
       current.current.blocked = true;
@@ -194,7 +210,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       setBaseNote(latest);
       setContent(latest.content);
       setMetadata(latest.metadata);
-      lastSaved.current = { content: latest.content, metadata: latest.metadata };
+      markSaved({ content: latest.content, metadata: latest.metadata });
       current.current = { ...latest, baseNote: latest, blocked: false };
       clearLocalDraft(draftScope || branch, note.path);
       setRecoveredDraft(null);
@@ -252,7 +268,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     // `note` already reflects whatever is durably persisted for this session (the file on disk in
     // local mode, or the currently staged working draft in draftMode); treat it as already-saved so
     // opening a note never re-triggers a save of content it did not actually change.
-    lastSaved.current = { content: note.content, metadata: note.metadata || {} };
+    markSaved({ content: note.content, metadata: note.metadata || {} });
 
     const draft = readOnly ? null : getLocalDraft(draftScope || branch, note.path);
     if (draft && (draft.content !== note.content || !sameValue(draft.metadata, note.metadata))) {
@@ -274,9 +290,30 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     setMetadata(entry.note.metadata || {});
     setHasUnsavedChanges(false);
     /* eslint-enable react/set-state-in-effect */
-    lastSaved.current = { content: entry.note.content, metadata: entry.note.metadata || {} };
+    markSaved({ content: entry.note.content, metadata: entry.note.metadata || {} });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Only an outside edit reloads; the note's identity is the session's own reset.
   }, [externalEdits]);
+
+  // A note that changed under a session with nothing unsaved (a rename that retitled it, a change staged elsewhere) is the
+  // session's note now: the editor shows it, and no later save writes the older text back over it.
+  /* eslint-disable react-hooks/exhaustive-deps -- Only a change of the incoming note matters; the session reads its own state through refs. */
+  useEffect(() => {
+    const saved = lastSaved.current;
+    if (readOnly || !saved || sameIgnoringTimestamps(note.metadata || {}, saved.metadata) && note.content === saved.content) return;
+    if (savedStates.current.some(state => state.content === note.content && sameIgnoringTimestamps(state.metadata, note.metadata || {}))) return;
+    if (hasUnsaved() || current.current.blocked || operation.current || autosaving.current || closing.current) return;
+    markSaved({ content: note.content, metadata: note.metadata || {} });
+    adopting.current = { content: note.content, metadata: note.metadata || {} };
+    current.current = { ...current.current, content: note.content, metadata: note.metadata || {}, baseNote: remoteBase || note };
+    /* eslint-disable react/set-state-in-effect -- Adopting the changed note replaces the session's text and baseline in one step. */
+    setBaseNote(remoteBase || note);
+    setContent(note.content);
+    setMetadata(note.metadata || {});
+    setHasUnsavedChanges(false);
+    /* eslint-enable react/set-state-in-effect */
+    clearLocalDraft(draftScope || branch, note.path);
+  }, [note]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Debounced auto-save directly to disk on edit
   useEffect(() => {
@@ -285,6 +322,10 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     // open, after a successful save, and on a clean remote pass-through); comparing against it
     // directly - rather than against `baseNote` or the parent's possibly-stale `note` prop - is
     // what correctly separates a real edit from content that already matches what was saved.
+    if (adopting.current) {
+      if (content !== adopting.current.content || !sameValue(metadata, adopting.current.metadata)) return;
+      adopting.current = null;
+    }
     const saved = lastSaved.current;
     const isDifferent = !(saved && content === saved.content && sameIgnoringTimestamps(metadata, saved.metadata));
 
@@ -307,7 +348,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
         /* eslint-enable react/set-state-in-effect */
         void onSave({ path: note.path, content, metadata, baseNote }).then(saved => {
           if (!mounted.current) return;
-          lastSaved.current = { content, metadata };
+          markSaved({ content, metadata });
           clearLocalDraft(draftScope || branch, note.path);
           absorbTimestamps(saved);
           setHasUnsavedChanges(false);
@@ -338,7 +379,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
         autosaving.current = true;
         try {
           const saved = await onSave({ path: note.path, content, metadata });
-          lastSaved.current = { content, metadata };
+          markSaved({ content, metadata });
           clearLocalDraft(draftScope || branch, note.path);
           absorbTimestamps(saved);
           // The file on disk now matches this draft; adopt it as the base so a later
@@ -385,7 +426,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       setBaseNote(saved);
       setContent(saved.content);
       setMetadata(saved.metadata);
-      lastSaved.current = { content: saved.content, metadata: saved.metadata };
+      markSaved({ content: saved.content, metadata: saved.metadata });
       current.current = { ...saved, baseNote: saved, blocked: false };
       clearLocalDraft(draftScope || branch, note.path);
       setHasUnsavedChanges(false);
@@ -420,7 +461,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
         const written = await onSave({ path: note.path, content: state.content, metadata: state.metadata, baseNote: state.baseNote });
         if (!mounted.current) return false;
         // Adopting the written note supersedes a pending autosave of the same edit.
-        lastSaved.current = { content: written.content, metadata: written.metadata };
+        markSaved({ content: written.content, metadata: written.metadata });
         current.current = { ...current.current, content: written.content, metadata: written.metadata, baseNote: written };
         setBaseNote(written);
         setContent(written.content);
@@ -468,7 +509,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       const restored = await onRestoreFile(note.path);
       clearLocalDraft(draftScope || branch, note.path);
       if (!mounted.current || !restored) return;
-      lastSaved.current = { content: restored.content, metadata: restored.metadata };
+      markSaved({ content: restored.content, metadata: restored.metadata });
       current.current = { content: restored.content, metadata: restored.metadata, baseNote: restored, blocked: false };
       setBaseNote(restored);
       setContent(restored.content);
@@ -489,8 +530,9 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   useEffect(() => {
     const persist = async () => {
       const draft = current.current;
-      if (draft.content === note.content && sameValue(draft.metadata, note.metadata)) {
-        // Nothing newer than the note is left to recover; an autosave that finished while the editor was going away leaves its draft behind.
+      if (!hasUnsaved()) {
+        // Nothing newer than what was saved is left to recover; an autosave that finished while the editor was going away leaves its draft behind.
+        // The session writes only what it changed itself, so it cannot put older text over a note that was staged or retitled elsewhere.
         clearLocalDraft(draftScope || branch, note.path);
         return true;
       }
@@ -498,7 +540,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       try {
         const saved = await onSave({ path: note.path, content: draft.content, metadata: draft.metadata, baseNote: draft.baseNote });
         // What was just written is what is persisted: without this, the draft effect compares the next `note` refresh against an older save and writes the draft back.
-        lastSaved.current = { content: draft.content, metadata: draft.metadata };
+        markSaved({ content: draft.content, metadata: draft.metadata });
         clearLocalDraft(draftScope || branch, note.path);
         // The written note is the new base, so the next remote check does not take the app's own write for an external change; a draft is not a committed base.
         if (mounted.current && !draftMode) {
@@ -533,13 +575,13 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
 
   const close = async () => {
     if (closing.current || operation.current) return;
-    if (autoSave && !readOnly && !current.current.blocked && (draftMode || current.current.content !== note.content || !sameIgnoringTimestamps(current.current.metadata, note.metadata))) {
+    if (autoSave && !readOnly && !current.current.blocked && hasUnsaved()) {
       closing.current = true;
       setIsSaving(true);
       try {
         const saved = await onSave({ path: note.path, content: current.current.content, metadata: current.current.metadata, baseNote: current.current.baseNote });
         // A borrowed editor stays mounted after this close, so what it just wrote must count as persisted or the draft effect writes the draft back.
-        lastSaved.current = { content: current.current.content, metadata: current.current.metadata };
+        markSaved({ content: current.current.content, metadata: current.current.metadata });
         clearLocalDraft(draftScope || branch, note.path);
         if (mounted.current && !draftMode) {
           current.current = { ...current.current, baseNote: saved };

@@ -59,6 +59,32 @@ function markdownCodeRanges(raw: string): [number, number][] {
   return ranges;
 }
 
+/** `raw` with every percent-escape that decodes cleanly decoded, so a link names a file however its characters are escaped. */
+const unescaped = (raw: string) =>
+  raw.includes('%')
+    ? raw.replace(/(?:%[0-9a-f]{2})+/gi, run => {
+      try {
+        return decodeURIComponent(run);
+      } catch {
+        return run;
+      }
+    })
+    : raw;
+
+/**
+ * `relocateLinks` for a move of `source`: a note that does not name the moved file or folder by its last path segment
+ * has no link to rewrite, and a note that stays where it is is returned without being parsed. A note that moves with
+ * `source` still has its own relative links rewritten.
+ */
+export function relocateMovedLinks(raw: string, oldFile: string, newFile: string, relocate: (file: string) => string, source: string): string {
+  if (oldFile === newFile) {
+    const name = source.slice(source.lastIndexOf('/') + 1);
+    // A raw-file link spells a path as a query value, where `+` stands for a space; it is always read.
+    if (!name || !raw.includes(name) && !unescaped(raw).includes(name) && !raw.includes('/api/files/raw?')) return raw;
+  }
+  return relocateLinks(raw, oldFile, newFile, relocate);
+}
+
 /** Resolve links against the original document, then express them from its new location. */
 export function relocateLinks(raw: string, oldFile: string, newFile: string, relocate: (file: string) => string): string {
   const rewrite = (href: string) => {
@@ -143,7 +169,7 @@ export function planFolderChange(snapshot: FolderSnapshot, input: unknown) {
     if (file === removedMetadata) continue;
     const next = relocate(file);
     if (file !== next && (snapshot.files.has(next) && !inside(next, source) || snapshot.directories.includes(next) || snapshot.protectedPaths.includes(next))) throw new Error('Destination already exists.');
-    files.set(next, /\.(md|markdown)$/i.test(file) ? relocateLinks(raw, file, next, relocate) : isCompilationPath(file) ? relocateCompilation(raw, relocate) ?? raw : raw);
+    files.set(next, /\.(md|markdown)$/i.test(file) ? relocateMovedLinks(raw, file, next, relocate, source) : isCompilationPath(file) ? relocateCompilation(raw, relocate) ?? raw : raw);
   }
   if (command.kind === 'create') {
     directories.add(destination);

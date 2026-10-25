@@ -308,7 +308,9 @@ export function createFileManagerRouter(): Router {
     const execute = async () => {
       const state = await load(res, FileCommandSchema.parse(req.body?.command)), { command } = state;
       if (!state.writable) throw new SourceError('Write access on the main workspace branch is required.', 403);
-      if (!req.body.revision || req.body.revision !== state.revision) throw new SourceError('The workspace changed. Reload before saving.', 409);
+      // A move is planned from the snapshot read here, so it needs no revision of the client's view: a named one must still be current.
+      const unversioned = command.kind === 'move' && req.body.revision === undefined;
+      if (!unversioned && (!req.body.revision || req.body.revision !== state.revision)) throw new SourceError('The workspace changed. Reload before saving.', 409);
       const after = planFileChange(state.snapshot, command), paths = changedFiles(state.snapshot, after);
       // Version files follow their files: moved along the path map, deleted with a deleted file.
       const relocate = (file: string) => after.pathMap[file] ?? file;

@@ -142,6 +142,22 @@ it.each(['github', 'gitlab'])('%s note delete and move go through the same atomi
     expect(files.has('notes/a/note.md')).toBe(false);
     expect(files.get('notes/a/renamed.md')!.toString()).toBe('# Note\n');
 
+    // A rename carries the new title: the moved note is retitled in the same commit, not by a later save.
+    published.length = 0;
+    files.set('notes/a/draft.md', Buffer.from('---\ntitle: Draft name\n---\n\n# Draft name\n\n[Second](second.md)\n'));
+    files.set('notes/a/links.md', Buffer.from('[Draft](draft.md)\n'));
+    const renamed = await fetch(base + '/api/files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: { notebookId: nb('a'), kind: 'move', path: 'notes/a/draft.md', destination: 'notes/a/final-name.md', title: 'Final name' } }) });
+    expect(renamed.status).toBe(200);
+    expect(published).toHaveLength(1);
+    expect(files.has('notes/a/draft.md')).toBe(false);
+    expect(files.get('notes/a/final-name.md')!.toString()).toMatch(/^---\ntitle: Final name\nupdated: [^\n]+\n---\n\n# Final name\n\n\[Second\]\(second\.md\)\n$/);
+    expect(files.get('notes/a/links.md')!.toString()).toBe('[Draft](final-name.md)\n');
+    expect(published[0].map(change => change.path).sort()).toEqual(['notes/a/draft.md', 'notes/a/final-name.md', 'notes/a/links.md']);
+    // A named revision must still be current, and a taken destination is still refused.
+    expect((await post({ notebookId: nb('a'), kind: 'move', path: 'notes/a/final-name.md', destination: 'notes/a/second.md', title: 'Second' })).status).toBe(400);
+    expect((await post({ notebookId: nb('a'), kind: 'move', path: 'notes/a/final-name.md', destination: 'notes/a/other.md', title: 'Other' }, 'one')).status).toBe(409);
+    expect(files.has('notes/a/final-name.md')).toBe(true);
+
     expect((await post({ notebookId: nb('a'), kind: 'delete', path: 'notes/a/second.md' }, 'one')).status).toBe(409);
     expect(files.has('notes/a/second.md')).toBe(true);
 

@@ -23,6 +23,10 @@
       "types": "./dist/repository.d.ts",
       "import": "./dist/repository.js"
     },
+    "./note-title": {
+      "types": "./dist/note-title.d.ts",
+      "import": "./dist/note-title.js"
+    },
     "./note-status": {
       "types": "./dist/note-status.d.ts",
       "import": "./dist/note-status.js"
