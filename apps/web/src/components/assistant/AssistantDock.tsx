@@ -18,8 +18,9 @@ function useViewportWidth(): number {
 }
 
 /**
- * The assistant: Pi's conversation in a column on the right edge of the window. It is a sibling of the app shell in
- * the layout, so the page reflows beside it instead of sitting under it; the zoom overlays end at its left edge through
+ * The assistant: Pi's conversation in a column below the header, between the page and the right panel (document panel
+ * and tool rail). It shares a row with the page, so the page reflows beside it instead of sitting under it; while a note
+ * is zoomed the right panel is gone and the dock is at the window's right edge, where the zoom overlays end through
  * `--assistant-dock-width`. Below 768px it is a full-screen sheet above the page.
  */
 export function AssistantDock({ onOpenAgents, agentsDisabled }: { onOpenAgents?: () => void; agentsDisabled?: boolean; }) {
@@ -45,12 +46,13 @@ export function AssistantDock({ onOpenAgents, agentsDisabled }: { onOpenAgents?:
     event.currentTarget.setPointerCapture(event.pointerId);
   };
   const drag = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) assistantDock.setWidth(window.innerWidth - event.clientX, window.innerWidth);
+    // The dock's right edge stays where its neighbour is, so its width is the distance from there to the pointer.
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) assistantDock.setWidth((event.currentTarget.parentElement?.getBoundingClientRect().right ?? window.innerWidth) - event.clientX, window.innerWidth);
   };
   const stopDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  // The dock is on the right, so the edge moves left to widen it.
+  // The dock's right edge is fixed, so its left edge moves left to widen it.
   const resizeByKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const step = event.key === 'ArrowLeft' ? ASSISTANT_DOCK_KEY_STEP : event.key === 'ArrowRight' ? -ASSISTANT_DOCK_KEY_STEP : 0;
     if (!step) return;
@@ -72,7 +74,7 @@ export function AssistantDock({ onOpenAgents, agentsDisabled }: { onOpenAgents?:
           agentsDisabled,
         }}
       />
-      {/* After the panel in the tab order, so focus runs header, conversation, message box; it sits on the dock's left edge. */}
+      {/* After the panel in the tab order, so focus runs header, conversation, message box; it sits on the dock's left edge, beside the page. */}
       {!phone && <div className='assistant-dock-resizer' role='separator' aria-orientation='vertical' aria-label={t('piAgent.dock.resize')} aria-valuenow={width} aria-valuemin={MIN_ASSISTANT_DOCK_WIDTH} aria-valuemax={maxAssistantDockWidth(viewport)} tabIndex={0} onPointerDown={startDrag} onPointerMove={drag} onPointerUp={stopDrag} onPointerCancel={stopDrag} onKeyDown={resizeByKey} />}
     </div>
   );

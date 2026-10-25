@@ -388,6 +388,9 @@
 .workspace-sidebar-slot > .workspace-sidebar { flex: 1 1 auto; }
 .workspace-split-sidebar-panel .workspace-sidebar { width: 100% !important; max-width: 100% !important; flex: 1 1 100% !important; border-right: none !important; }
 .workspace-split-main-panel { display: flex; flex-direction: column; flex: 1 1 0%; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+.workspace-split-main-panel.workspace-main-row { flex-direction: row; }
+/* The page keeps the column it had before the assistant dock took the room beside it. */
+.workspace-main-column { display: flex; flex-direction: column; flex: 1 1 0%; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
 .workspace-sidebar-scroll { min-height: 0; flex: 1; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 16px; padding: 16px 12px 16px 16px; }
 .workspace-sidebar-scroll > * { flex-shrink: 0; }
 .workspace-sidebar h4, .sidebar-section-label { font: 500 11px/1.5 var(--font-body); letter-spacing: 0.04em; color: var(--color-muted); margin-bottom: 10px; padding: 0 10px; }

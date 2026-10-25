@@ -24,6 +24,21 @@ it('is closed at 380px by default, and remembers open, width and expanded in the
   expect(assistantDock.get().open).toBe(false);
 });
 
+it('keeps its own state apart from the right panel, so both can be open at once with each width as the person left it', () => {
+  localStorage.setItem('mygitnotes:right-panel-width', '420');
+  localStorage.setItem(PANEL_TOOL_STORAGE_KEY, 'frontmatter');
+  localStorage.setItem(PANEL_OPEN_STORAGE_KEY, 'true');
+  assistantDock.open();
+  assistantDock.setWidth(450, 1440);
+  expect(localStorage.getItem('mygitnotes:right-panel-width')).toBe('420');
+  expect(localStorage.getItem(PANEL_TOOL_STORAGE_KEY)).toBe('frontmatter');
+  expect(localStorage.getItem(PANEL_OPEN_STORAGE_KEY)).toBe('true');
+  assistantDock.reload();
+  expect(assistantDock.get()).toEqual({ open: true, width: 450, expanded: false });
+  assistantDock.close();
+  expect(localStorage.getItem(PANEL_OPEN_STORAGE_KEY)).toBe('true');
+});
+
 it('keeps a dragged width between 320px and half the window, and a chosen width ends the expanded state', () => {
   assistantDock.setExpanded(true);
   assistantDock.setWidth(100, 1440);

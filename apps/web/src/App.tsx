@@ -500,6 +500,7 @@ export const AppContent: React.FC = () => {
                     sidebarDomId={activeTab === 'notes' ? 'notebook-panel' : activeTab === 'agent' ? 'agent-sidebar-panel' : activeTab === 'assets' ? 'assets-sidebar-panel' : activeTab === 'settings' ? 'settings-sidebar-panel' : undefined}
                     closeLabel={t('sidebar.closeFilters')}
                     rightPanelWidth={rightPanelWidth}
+                    assistant={<AssistantDock onOpenAgents={() => setActiveTab('agent')} agentsDisabled={noteEditorOpen || isCommitOpen} />}
                     rightPanel={
                       <RightPanel
                         documentPanel={activeTab === 'notes' && noteFocus.layout ? { enabled: activePaneNote, onContainer: setDocumentContainer } : undefined}
@@ -813,11 +814,7 @@ export const AppContent: React.FC = () => {
     <PiAgentProvider webTools={remote ? webAgentTools : undefined} enabled={agentEnabled} defaultRepository={sourceId} notebooks={config?.notebooks ?? NO_NOTEBOOKS} repositories={repositories}>
       <AgentFocusCommand />
       <OutlineActionsProvider value={outlineActions.value}>
-        {/* The shell and the assistant dock share a row; the dock is part of the layout, not an overlay on it. */}
-        <div className='app-frame'>
-          <StatusColorProvider statuses={statusEntries}>{content}</StatusColorProvider>
-          <AssistantDock onOpenAgents={() => setActiveTab('agent')} agentsDisabled={noteEditorOpen || isCommitOpen} />
-        </div>
+        <StatusColorProvider statuses={statusEntries}>{content}</StatusColorProvider>
       </OutlineActionsProvider>
     </PiAgentProvider>
   );

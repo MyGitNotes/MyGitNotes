@@ -83,7 +83,7 @@ Run `pnpm update-core` from a clean `core` checkout; it fast-forwards `core` fro
 - A note's top bars: the actions first, then a note row. The actions are the view — one button switches live preview and source (its icon is the mode in use, in a graph card too; in zoom and in a Focus pane the leader `Mod+Shift+E` then `M` does the same, beside `F` for find and `/` for the outline), the line numbers toggle and the formatting toolbar toggle — and a `⋯` menu with Add to outline, Move note, and the export and copy items. A Focus pane puts them in its tab bar, ahead of its split, batch-add, zoom and hide buttons; zoom adds refresh and the document panel and assistant toggles. The note row holds the title (click it to edit in place; Enter or leaving the field renames the note — title and file name together, the new file name shown while you type — and Escape cancels), the status, the tag chips (remove with ×, add with autocomplete, a `+N` that lists every tag when the row is narrow) and a `{ }` button that opens the full frontmatter, where the Title field renames the same way. A pane's hide-toolbar button hides the note row; in zoom the back button, note row and actions share one row. In a Focus pane narrower than 720px the document card drops its frame and margin; a phone keeps the actions in a row above the note row.
 - Settings → Editor turns on Vim keys for this browser in live preview and the file source editor, with Vim's status line below the text; a note's source mode stays a plain text box. `:w` does what the note's Commit does (Save in a note saved by hand), `:q` closes a zoomed note, and `:wq` or `:x` commits, then closes only if the commit succeeded. In normal mode Escape still closes the note's panel. The shortcut help (`Mod+/`) then lists the Vim keys as their own group, which filtering for `vim` shows whole.
 - [Compilations](#compilations) organize notebook content and replace the old Screen lanes; Markdown pages can also become flashcards.
-- Local mode offers a [Pi agent](#pi-agent-local-mode) in a dock on the right edge, and [`pnpm dev:remote`](#use-it-from-other-devices-pnpm-devremote) opens the workspace from your other devices.
+- Local mode offers a [Pi agent](#pi-agent-local-mode) in a dock beside the page, and [`pnpm dev:remote`](#use-it-from-other-devices-pnpm-devremote) opens the workspace from your other devices.
 - Choose from **nine palette families**, each with light and dark variants. **Flexoki** is the default; choices are saved in the browser.
 - Connect local agents through stdio or remote agents through Streamable HTTP MCP with named read-only or write grants.
 - The Files page manages notebook folders, notes, text files, and attachments: 3 MiB uploads, 5 MiB reads and changes, up to 200 changed files per operation.
@@ -134,13 +134,13 @@ They remain a file-move blocker until explicitly discarded.
 
 ## Pi agent (local mode)
 
-With [Pi](https://github.com/earendil-works/pi) installed, local mode adds the assistant dock: a column on the right edge of the window, beside the right rail, a zoomed note, a zoomed compilation, a Focus and the Files page.
+With [Pi](https://github.com/earendil-works/pi) installed, local mode adds the assistant dock: a column below the header, between the page (a Focus, the Files page, a graph or Settings) and the right panel, so the order is Focus, Agent, document panel, right rail. A zoomed note or compilation has no right panel, so the dock is at the window's right edge beside it.
 The agent button in the header and the one at the end of the zoom editor's actions open and close it; they are hidden when `pi` (or the command in `MYGITNOTES_PI_COMMAND`) is not found, and the header then offers the Agents page button in their place.
 While the dock is offered, the Agents page opens from the dock's header.
 `Cmd+'` on macOS (``Ctrl+` `` elsewhere) from outside the dock opens it, focuses the message box and starts Pi if none runs; from the message box it returns to the editor the agent names, or closes the dock when no note is open.
 
 - The dock is 380px wide by default. Drag its left edge, or focus the edge and press the arrow keys, to resize it between 320px and half the window; Expand switches to half the window, at most 760px.
-  Whether it is open and how wide persist in the browser, and a zoomed note or compilation ends at the dock's left edge, so the two sit side by side.
+  Whether it is open and how wide persist in the browser, separately from the right panel, and a zoomed note or compilation ends at the dock's left edge, so the two sit side by side.
   Below 768px the dock is a full-screen sheet with a close button.
 - `pi --mode rpc` starts in the background when the workspace loads; after a page reload or a `pnpm dev` restart, the dock resumes the same conversation.
 - Pi runs in an agent workspace: a folder with its own core instructions (`AGENTS.md`) and skills (`.agents/skills/`), set up on the Agents page.
