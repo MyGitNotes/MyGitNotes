@@ -22,3 +22,10 @@ describe('extractTodoTasks — start date', () => {
     expect(tasks[0]).toMatchObject({ start: '2026-09-18', due: undefined });
   });
 });
+
+describe('extractTodoTasks — assignees', () => {
+  it('carries the assignees of each task line, empty when there are none', () => {
+    const tasks = extractTodoTasks([note('a.md', '- [ ] @alice Draft 📅 2026-10-30\n- [ ] Plain\n- [x] Review @小林 @bob ✅ 2026-10-20\n')]);
+    expect(tasks.map(task => task.assignees)).toEqual([['alice'], [], ['小林', 'bob']]);
+  });
+});

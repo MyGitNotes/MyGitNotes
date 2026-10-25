@@ -8,7 +8,7 @@ function note(path: string, metadata: Record<string, unknown>): NoteItem {
 }
 
 function task(id: string, due: string | undefined, checked = false): TodoTask {
-  return { id, notePath: `${id}.md`, notebookId: 'nb', noteTitle: id, lineIndex: 0, lineText: '', checked, due };
+  return { id, notePath: `${id}.md`, notebookId: 'nb', noteTitle: id, lineIndex: 0, lineText: '', checked, due, assignees: [] };
 }
 
 describe('dayKeyFromISO', () => {

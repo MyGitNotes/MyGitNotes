@@ -8,6 +8,11 @@ const TASK_DATE_TOKENS: [string, boolean][] = [[DUE_EMOJI, false], [DONE_EMOJI, 
 const DATE_VALUE = '\\d{4}-\\d{2}-\\d{2}';
 const DATE_TIME_VALUE = `${DATE_VALUE} \\d{2}:\\d{2}`;
 
+const NAME_CHAR = '[\\p{L}\\p{M}\\p{N}_]';
+// A name runs letters/numbers/_ with `.` or `-` only between them, so sentence punctuation stays outside it. The
+// lookahead refuses a name that is only the front of a longer path, package or address (`@types/node`, `@a.b/c`).
+const ASSIGNEE_SOURCE = `@(${NAME_CHAR}+(?:[.-]${NAME_CHAR}+)*)(?!${NAME_CHAR}|[/@]|[.-](?:${NAME_CHAR}|[/@]))`;
+
 export interface TokenMatch {
   start: number;
   end: number;
@@ -51,10 +56,22 @@ export function isTaskLine(line: string): boolean {
   return TASK_MARKER_RE.test(line);
 }
 
-/** Removes the checkbox marker and every recognized date token, leaving just the task's text. */
+/**
+ * The `@name` assignees of a task line, in order of appearance without repeats. An `@` counts only at the start of the
+ * task's text or after whitespace, so an email, a URL or a scoped package is not an assignee.
+ */
+export function getTaskAssignees(line: string): string[] {
+  if (!isTaskLine(line)) return [];
+  const text = line.replace(TASK_MARKER_RE, '');
+  const names = [...text.matchAll(new RegExp(`(?<![^\\s])${ASSIGNEE_SOURCE}`, 'gu'))].map(match => match[1]);
+  return [...new Set(names)];
+}
+
+/** Removes the checkbox marker and every recognized token (dates, assignees), leaving just the task's text. */
 export function stripTaskTokens(line: string): string {
   let text = line.replace(TASK_MARKER_RE, '');
   for (const [emoji, withTime] of TASK_DATE_TOKENS) text = setTokenValue(text, emoji, null, withTime);
+  text = text.replace(new RegExp(`(^|\\s+)${ASSIGNEE_SOURCE}`, 'gu'), '');
   return text.trim();
 }
 

@@ -430,6 +430,9 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 .todo-group .todo-task-dates { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; margin: 2px 0 0 22px; padding: 0; list-style: none; }
 .todo-task-date-chip { display: inline-flex; align-items: center; gap: 3px; color: var(--color-muted); font-size: 10px; }
 .todo-task-date-chip svg { width: 11px; height: 11px; }
+.todo-task-assignee-chip { color: var(--color-text); }
+.todo-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.todo-filters > * { flex: 1 1 120px; min-width: 0; }
 
 .todo-task-stale { padding-left: 22px; color: var(--color-danger); font-size: 10px; }
 .todo-completed-toggle { display: flex; align-items: center; gap: 4px; color: var(--color-muted); }

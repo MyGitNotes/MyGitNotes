@@ -1,4 +1,4 @@
-import { DUE_EMOJI, getTokenValue, isTaskChecked, isTaskLine, START_EMOJI } from './task-tokens.js';
+import { DUE_EMOJI, getTaskAssignees, getTokenValue, isTaskChecked, isTaskLine, START_EMOJI } from './task-tokens.js';
 
 export interface TodoTask {
   id: string;
@@ -10,6 +10,8 @@ export interface TodoTask {
   checked: boolean;
   due?: string;
   start?: string;
+  /** The `@name` assignees on the line, in order; empty when none. */
+  assignees: string[];
 }
 
 export interface AgendaSourceNote {
@@ -25,7 +27,7 @@ export function extractTodoTasks(notes: AgendaSourceNote[]): TodoTask[] {
   for (const note of notes) {
     note.content.split('\n').forEach((lineText, lineIndex) => {
       if (!isTaskLine(lineText)) return;
-      tasks.push({ id: `${note.path}#${lineIndex}`, notePath: note.path, notebookId: note.notebookId, noteTitle: note.title, lineIndex, lineText, checked: isTaskChecked(lineText) ?? false, due: getTokenValue(lineText, DUE_EMOJI), start: getTokenValue(lineText, START_EMOJI) });
+      tasks.push({ id: `${note.path}#${lineIndex}`, notePath: note.path, notebookId: note.notebookId, noteTitle: note.title, lineIndex, lineText, checked: isTaskChecked(lineText) ?? false, due: getTokenValue(lineText, DUE_EMOJI), start: getTokenValue(lineText, START_EMOJI), assignees: getTaskAssignees(lineText) });
     });
   }
   return tasks;

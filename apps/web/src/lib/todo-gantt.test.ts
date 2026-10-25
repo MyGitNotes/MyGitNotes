@@ -3,7 +3,7 @@ import type { TodoTask } from './todo-list.js';
 import { computeGanttRange, computeGanttRows, computeGanttTicks, formatDayIndex, ganttDayWidth, getSavedGanttScale, saveGanttScale } from './todo-gantt.js';
 
 function task(overrides: Partial<TodoTask>): TodoTask {
-  return { id: 'a.md#0', notePath: 'a.md', notebookId: 'nb', noteTitle: 'a', lineIndex: 0, lineText: '- [ ] Task', checked: false, ...overrides };
+  return { id: 'a.md#0', notePath: 'a.md', notebookId: 'nb', noteTitle: 'a', lineIndex: 0, lineText: '- [ ] Task', checked: false, assignees: [], ...overrides };
 }
 
 describe('computeGanttRange', () => {

@@ -18,9 +18,8 @@ interface TodoGanttChartProps {
 
 function barTitle(row: GanttRow): string {
   const text = stripTaskTokens(row.task.lineText);
-  if (row.kind === 'range') return `${text} · ${row.task.start} → ${row.task.due}`;
-  if (row.kind === 'dueOnly') return `${text} · ${row.task.due}`;
-  return `${text} · ${row.task.start}`;
+  const when = row.kind === 'range' ? `${row.task.start} → ${row.task.due}` : row.kind === 'dueOnly' ? row.task.due : row.task.start;
+  return [text, when, ...row.task.assignees.map(name => `@${name}`)].join(' · ');
 }
 
 /** `'day'`/`'week'` ticks show `MM-DD`; `'month'` ticks show a locale month/year (e.g. "Sep 2026" / "2026年9月"). */

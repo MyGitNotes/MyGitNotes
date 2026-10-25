@@ -4,7 +4,7 @@ import { filterNotesByFolder, filterTasksByFolder, pathInFolder } from './folder
 import type { TodoTask } from './todo-list.js';
 
 function task(notePath: string): TodoTask {
-  return { id: `${notePath}#0`, notePath, notebookId: 'nb', noteTitle: notePath, lineIndex: 0, lineText: '- [ ] Task', checked: false };
+  return { id: `${notePath}#0`, notePath, notebookId: 'nb', noteTitle: notePath, lineIndex: 0, lineText: '- [ ] Task', checked: false, assignees: [] };
 }
 
 function note(path: string): NoteListItem {

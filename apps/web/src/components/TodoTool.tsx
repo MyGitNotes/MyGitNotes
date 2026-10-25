@@ -2,7 +2,7 @@ import type { NoteRef } from '@mygitnotes/core/note-query';
 import { Button } from './Button.js';
 import { TodoGanttChart } from './TodoGanttChart.js';
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, User } from 'lucide-react';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { NotebookConfig, NoteItem } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -11,6 +11,7 @@ import { formatDateYMD } from '../lib/date-utils.js';
 import { DONE_EMOJI, DUE_EMOJI, getTokenValue, setTaskChecked, START_EMOJI, stripTaskTokens, TIMESTAMP_EMOJI } from '../lib/task-tokens.js';
 import { TASK_TOKEN_ICON } from '../lib/task-icons.js';
 import { filterTasksByFolder } from '../lib/folder-filter.js';
+import { ALL_PEOPLE, filterTasksByPerson, listAssignees, personFilterValue, resolvePersonFilter, UNASSIGNED } from '../lib/todo-filter.js';
 import { groupTodoTasks, type TodoTask } from '../lib/todo-list.js';
 import { effectivePanelScope, getSavedPanelScope, type PanelScope, savePanelScope } from '../lib/panel-scope.js';
 import { useNoteAgenda } from '../lib/use-note-queries.js';
@@ -54,18 +55,21 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
   };
   const effectiveScope = effectivePanelScope(scope, currentFolder);
   const [groupMode, setGroupMode] = useState<'date' | 'note' | 'gantt'>('date');
+  const [personChoice, setPersonChoice] = useState(ALL_PEOPLE);
   const [showCompleted, setShowCompleted] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
   const [saveErrors, setSaveErrors] = useState<Map<string, string>>(new Map());
 
   const agenda = useNoteAgenda(effectiveScope === 'all' || notebooks.length <= 1 ? 'all' : selectedNotebookId);
-  const tasks = useMemo(() => {
+  const scopedTasks = useMemo(() => {
     const raw = agenda.agenda?.tasks ?? [];
     return effectiveScope === 'folder' && currentFolder ? filterTasksByFolder(raw, currentFolder) : raw;
   }, [agenda.agenda, effectiveScope, currentFolder]);
+  const assignees = useMemo(() => listAssignees(scopedTasks), [scopedTasks]);
+  const person = resolvePersonFilter(personChoice, assignees);
+  const tasks = useMemo(() => filterTasksByPerson(scopedTasks, person), [scopedTasks, person]);
   const groups = useMemo(() => groupTodoTasks(tasks, formatDateYMD(new Date())), [tasks]);
-  const totalOpen = groups.overdue.length + groups.today.length + groups.upcoming.length + groups.noDate.length;
   const noteGroups = useMemo(() => {
     const byPath = new Map<string, { title: string; tasks: TodoTask[]; }>();
     for (const task of tasks) {
@@ -120,8 +124,14 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
           <input type='checkbox' checked={task.checked} disabled={pendingIds.has(task.id)} onChange={() => void toggleTask(task)} />
           <span className='todo-task-text'>{stripTaskTokens(task.lineText)}</span>
         </label>
-        {chips.length > 0 && (
+        {(chips.length > 0 || task.assignees.length > 0) && (
           <ul className='todo-task-dates'>
+            {task.assignees.map(name => (
+              <li key={`@${name}`} className='todo-task-date-chip todo-task-assignee-chip' title={t('panel.todoAssignedTo')}>
+                <User aria-hidden='true' />
+                {name}
+              </li>
+            ))}
             {chips.map(chip => {
               const Icon = TASK_TOKEN_ICON[chip.emoji];
               return (
@@ -165,8 +175,14 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
       )}
       {agenda.error && <p role='alert' className='todo-task-stale'>{agenda.error}</p>}
       {agenda.loading && <LoadingStatus className='todo-empty'>{t('notes.loading')}</LoadingStatus>}
-      {!agenda.loading && totalOpen === 0 && groups.completed.length === 0 && <p className='todo-empty'>{t('panel.todoEmpty')}</p>}
-      {(totalOpen > 0 || groups.completed.length > 0) && (
+      {!agenda.loading && scopedTasks.length === 0 && <p className='todo-empty'>{t('panel.todoEmpty')}</p>}
+      {!agenda.loading && scopedTasks.length > 0 && tasks.length === 0 && <p className='todo-empty'>{t('panel.todoNoMatch')}</p>}
+      {assignees.length > 0 && (
+        <div className='todo-filters'>
+          <Select aria-label={t('panel.todoPeople')} value={person} onValueChange={setPersonChoice} options={[{ value: ALL_PEOPLE, label: t('panel.todoAllPeople') }, ...assignees.map(name => ({ value: personFilterValue(name), label: name })), { value: UNASSIGNED, label: t('panel.todoUnassigned') }]} />
+        </div>
+      )}
+      {scopedTasks.length > 0 && (
         <div className='todo-group-mode-toggle' role='group'>
           <Button type='button' aria-pressed={groupMode === 'date'} onClick={() => setGroupMode('date')}>{t('panel.todoGroupByDate')}</Button>
           <Button type='button' aria-pressed={groupMode === 'note'} onClick={() => setGroupMode('note')}>{t('panel.todoGroupByNote')}</Button>
