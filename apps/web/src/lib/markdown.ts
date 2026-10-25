@@ -226,8 +226,8 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     embed.append(poster);
   }
   for (const link of parsed.querySelectorAll('a')) {
-    // A marker or number inside an annotation figure only jumps within the figure; the page-level listener handles the click.
-    if (annotated && link.closest('.ann-figure') && !link.classList.contains('ann-open') && (link.getAttribute('href') || '').startsWith('#')) continue;
+    // A marker or number of an annotation figure only jumps within the figure; the page-level listener handles the click.
+    if (annotated && (link.matches('a.ann-marker, a.ann-ref'))) continue;
     const href = link.getAttribute('href') || '';
     if (href.startsWith('/r2-assets/')) continue;
     const r2Key = parseR2Reference(href);
@@ -254,7 +254,11 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
 function resolveStageImage(image: Element, src: string, notePath: string, notebookId: string | undefined): void {
   const target = resolveWorkspaceHref(src, notePath);
   if (target?.kind === 'path') image.setAttribute('src', `/raw-assets/${target.path.split('/').map(encodeURIComponent).join('/')}${notebookId ? `?notebook=${encodeURIComponent(notebookId)}` : ''}`);
-  else if (!target && !/^data:image\//i.test(src)) image.remove();
+  else if (!target && !/^data:image\//i.test(src)) {
+    // Without its image the stage has nothing to lay the markers over.
+    image.closest('.ann-stage')?.querySelector('.ann-overlay')?.remove();
+    image.remove();
+  }
 }
 
 function r2Preview(doc: Document, key: string, notePath: string, label: string): HTMLElement {

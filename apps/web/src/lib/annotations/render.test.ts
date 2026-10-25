@@ -267,6 +267,18 @@ describe('the figure inside a note: comments and links', () => {
     expect(document.querySelector('figure.ann-figure')!.nextElementSibling?.textContent).toBe('tail');
   });
 
+  it('gives a heading link in a comment its in-app handling, and leaves markers and numbers alone (R-F004)', () => {
+    const document = dom(note('- {#1 pin x=1% y=1%} [see](#after)'));
+    const link = document.querySelector<HTMLAnchorElement>('.ann-comment a')!;
+    expect(link.dataset.workspaceLink).toBe('#after');
+    for (const own of document.querySelectorAll('a.ann-marker, a.ann-ref')) expect(own.getAttribute('data-workspace-link')).toBeNull();
+  });
 
+  it('drops the overlay with its image when the image source is not allowed (overlay)', () => {
+    const out = renderer.renderNote(':::annotate\n![a](ftp://files.example/a.png)\n\n- {#1 pin x=1% y=1%} c\n:::', 'n.md');
+    const document = dom(out);
+    expect(document.querySelector('.ann-stage img')).toBeNull();
+    expect(document.querySelector('.ann-overlay')).toBeNull();
+  });
 
 });
