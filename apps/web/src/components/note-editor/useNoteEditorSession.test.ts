@@ -60,3 +60,44 @@ describe('useNoteEditorSession and a note that changes under it', () => {
     expect(hook.result.current.content).toBe('# Old name\n\nTyped.\n');
   });
 });
+
+describe('useNoteEditorSession after the committed note moved under a clean session', () => {
+  const server = note('Contract', '# Contract\n\nClause 1.\n');
+  // A commit stamps `updated` on the note it keeps, which the session's own copy does not have.
+  const committed = { ...server, content: '# Contract\n\nClause 1.\nLOCAL line.\n', metadata: { ...server.metadata, updated: '2026-10-25T14:14:24.845Z' } };
+
+  /** A draft-mode session whose reads answer `latest` (a demo reads the notes committed in this browser). */
+  function open() {
+    const onSave = vi.fn(async (params: { path: string; content: string; metadata?: Record<string, unknown>; }) => ({ ...server, content: params.content, metadata: params.metadata ?? server.metadata }));
+    const latest = { current: server };
+    const onReadRemote = vi.fn(async () => latest.current);
+    const base = { readOnly: false, autoSave: true, draftMode: true, propIsDirty: false, branch: 'main', draftScope: 'repo', onSave: onSave as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote, onRestoreFile: vi.fn(), onCommitFile: undefined, conflictReason: undefined, onMarkConflict: undefined } satisfies Omit<UseNoteEditorSessionParams, 'note' | 'remoteBase'>;
+    const hook = renderHook(({ current, remoteBase }: { current: NoteItem; remoteBase: NoteItem; }) => useNoteEditorSession({ ...base, note: current, remoteBase }), { initialProps: { current: server, remoteBase: server } });
+    return { hook, latest };
+  }
+
+  it('takes the committed note as its base, so a restore afterwards replaces the text instead of merging the commit back in', async () => {
+    const { hook, latest } = open();
+    act(() => hook.result.current.setContent(committed.content));
+    await vi.waitFor(() => expect(hook.result.current.hasUnsavedChanges).toBe(false));
+    // The text was committed elsewhere (the Changes dialog): the committed note is now what the session holds.
+    latest.current = committed;
+    hook.rerender({ current: committed, remoteBase: committed });
+    expect(hook.result.current.baseNote.content).toBe(committed.content);
+    // Restoring an earlier version puts the older text back; a read of the committed note must not undo that.
+    act(() => hook.result.current.setContent(server.content));
+    await vi.waitFor(() => expect(hook.result.current.hasUnsavedChanges).toBe(false));
+    await act(() => hook.result.current.pullLatest());
+    expect(hook.result.current.content).toBe(server.content);
+    expect(hook.result.current.remoteNotice).toBe('');
+    expect(hook.result.current.blocked).toBe(false);
+  });
+
+  it('keeps its base while the session holds text the committed note does not', () => {
+    const { hook } = open();
+    act(() => hook.result.current.setContent('# Contract\n\nTyped.\n'));
+    hook.rerender({ current: committed, remoteBase: committed });
+    expect(hook.result.current.content).toBe('# Contract\n\nTyped.\n');
+    expect(hook.result.current.baseNote.content).toBe(server.content);
+  });
+});

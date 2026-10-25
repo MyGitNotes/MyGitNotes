@@ -315,6 +315,25 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   }, [note]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
+  // A commit made outside this session (the Changes dialog) leaves the committed note holding the text the session holds: that note
+  // is its base now. Left on the note the session opened on, a later restore of an older text would be merged with the commit,
+  // which in the demo, where the head never moves, brought an earlier commit's lines back into the restored text.
+  /* eslint-disable react-hooks/exhaustive-deps -- Only a change of the committed note matters; the session reads its own state through refs. */
+  useEffect(() => {
+    const state = current.current;
+    if (readOnly || !remoteBase || state.blocked || state.baseNote.revision === remoteBase.revision && state.baseNote.content === remoteBase.content) return;
+    // The commit stamped its own timestamps on the note, so only the rest of the metadata has to match.
+    if (state.content !== remoteBase.content || !sameIgnoringTimestamps(state.metadata, remoteBase.metadata || {})) return;
+    const metadata = remoteBase.metadata || {};
+    markSaved({ content: state.content, metadata });
+    current.current = { ...state, metadata, baseNote: remoteBase };
+    /* eslint-disable react/set-state-in-effect -- The session's base, and the timestamps its text carries, follow the committed note it now equals. */
+    setBaseNote(remoteBase);
+    setMetadata(metadata);
+    /* eslint-enable react/set-state-in-effect */
+  }, [remoteBase]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+
   // Debounced auto-save directly to disk on edit
   useEffect(() => {
     if (readOnly || closing.current) return;
