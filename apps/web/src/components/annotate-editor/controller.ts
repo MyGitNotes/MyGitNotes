@@ -161,11 +161,11 @@ export class AnnotateController {
       this.discardPending();
       return;
     }
-    const id = nextId(this.host.text);
-    const by = await sessionAuthor();
-    // The note may have changed while the session was asked; the pending shape still applies to the block as it is now.
-    if (this.pending !== pending) return;
+    // The comment is taken before the session is asked: a press on the image while the answer is out starts the next
+    // pending form, and that must not drop this one.
     this.pending = undefined;
+    const by = await sessionAuthor();
+    const id = nextId(this.host.text);
     // The change redraws the figure at once, so the new row is selected before it is written.
     this.selected = String(id);
     if (!this.change(text => addRow(text, { ...pending.shape, comment, by }))) {
