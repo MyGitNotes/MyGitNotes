@@ -1,6 +1,6 @@
 import React, { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ChevronDown, Columns2, FileText, GalleryHorizontalEnd, ListPlus, Maximize2, PanelTopClose, Rows2, X } from 'lucide-react';
+import { ChevronDown, Columns2, FileText, GalleryHorizontalEnd, ListPlus, Maximize2, PanelsTopLeft, PanelTopClose, Rows2, X } from 'lucide-react';
 import { findFocusPane, findFocusTabInPane, type FocusEdge, focusPaneIndex, focusPanes, type FocusTab, focusTabKey } from '@mygitnotes/core/focus-page';
 import { COMPILATION_SUFFIX, isCompilationPath } from '@mygitnotes/core/compilation';
 import type { NoteFocus } from '../lib/use-note-focus.js';
@@ -16,6 +16,11 @@ import { Button } from './Button.js';
 import { paneDimmed, tabDimmed } from '../lib/focus-search.js';
 import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 import { usePhone } from '../lib/use-phone.js';
+
+/** Below this width a pane folds its secondary buttons (split, batch add, hide toolbar) into one menu, so its tabs keep room for a readable title. */
+const COMPACT_PANE_WIDTH = 560;
+/** Below this width the shown tab and every button no longer fit one row (a tab keeps 120px for its title), so the buttons take a row of their own and zoom folds into the menu too. */
+const TIGHT_PANE_WIDTH = 400;
 
 /** Drag payload for a tab moved inside the displayed Focus: its FocusTab and the pane it was dragged from, as JSON. */
 const TAB_DRAG_TYPE = 'application/x-mygitnotes-focus-tab';
@@ -75,6 +80,34 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   // The shown note's editor puts its actions in this slot of the tab bar; a phone's bar has no room, so there they stay with the note row.
   const phone = usePhone();
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
+  // The pane's own width, not the window's: side-by-side panes are narrow on a wide screen. A width not measured yet (0) counts as wide.
+  const section = useRef<HTMLElement>(null);
+  const [paneWidth, setPaneWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = section.current;
+    if (!element) return;
+    const measure = () => setPaneWidth(element.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const compact = !phone && paneWidth > 0 && paneWidth < COMPACT_PANE_WIDTH;
+  const tight = compact && paneWidth < TIGHT_PANE_WIDTH;
+
+  /** The split buttons, shown only where the tree is fully on screen and the shown tab can be split. */
+  const splits = edgeDrops && editable && displayed.key
+    ? (['right', 'bottom'] as const).map(side => {
+      const refusal = dropRefusal(layout, displayed.pane, side);
+      return {
+        side,
+        refusal,
+        label: t(side === 'right' ? 'focus.splitRight' : 'focus.splitDown'),
+        reason: refusal ? t(refusal === 'pane-limit' ? 'focus.paneLimit' : refusal === 'depth-limit' ? 'focus.depthLimit' : 'focus.limit') : undefined,
+        run: () => void focus.splitShown(displayed.pane, side === 'right' ? 'horizontal' : 'vertical').catch(() => {}),
+      };
+    })
+    : [];
 
   const list = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -88,8 +121,8 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
     return () => observer.disconnect();
   }, [tabs.length]);
   useEffect(() => {
-    list.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [displayed.key]);
+    list.current?.querySelector<HTMLElement>('.focus-tab[data-shown]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [displayed.key, paneWidth, overflowing]);
 
   const [slot, setSlot] = useState<DropSlot>();
   /** The edge a drag hovers (the new pane takes that half) and the limit that would refuse it, which the preview names instead. */
@@ -177,6 +210,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
 
   return (
     <section
+      ref={section}
       className='focus-pane'
       data-focus-pane={displayed.pane}
       data-active={active || undefined}
@@ -184,6 +218,8 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
       data-dropping={slot ? true : undefined}
       data-drop-zone={edge && !edge.refusal ? edge.edge : undefined}
       data-hide-toolbar={hideToolbar || undefined}
+      data-compact={compact || undefined}
+      data-tight={tight || undefined}
       aria-label={t('focus.paneNumber', { number: numberOf(displayed.pane) })}
       onPointerDownCapture={() => focus.activate(displayed.pane)}
       onFocusCapture={() => focus.activate(displayed.pane)}
@@ -263,25 +299,34 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
         <div className='focus-pane-actions'>
           {!phone && <div ref={setActionsSlot} className='focus-pane-note-actions' />}
           {overflowing && <FocusMenu label={t('focus.allTabs')} icon={<ChevronDown aria-hidden='true' />} items={tabs.map(tab => ({ key: `${tab.pane}:${tab.key}`, label: tab.label, current: tab.pane === displayed.pane && tab.key === displayed.key, onSelect: () => void focus.show(tab.pane, tab.key) }))} />}
-          {edgeDrops && editable && displayed.key && (['right', 'bottom'] as const).map(side => {
-            const refusal = dropRefusal(layout, displayed.pane, side);
-            const label = t(side === 'right' ? 'focus.splitRight' : 'focus.splitDown');
-            const reason = refusal ? t(refusal === 'pane-limit' ? 'focus.paneLimit' : refusal === 'depth-limit' ? 'focus.depthLimit' : 'focus.limit') : undefined;
-            return <button key={side} type='button' className='ui-icon-button focus-pane-split' data-split={side} disabled={Boolean(refusal)} aria-label={label} title={reason ? `${label}. ${reason}` : label} onClick={() => void focus.splitShown(displayed.pane, side === 'right' ? 'horizontal' : 'vertical').catch(() => {})}>{side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />}</button>;
-          })}
-          {editable && (
+          {compact
+            ? (
+              <PaneMenu
+                label={t('focus.paneActions')}
+                items={[
+                  ...splits.map(split => ({ key: split.side, label: split.label, icon: split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />, disabled: Boolean(split.refusal), hint: split.reason, onSelect: split.run })),
+                  ...(editable ? [{ key: 'batch-add', label: t('focus.batchAdd'), icon: <ListPlus aria-hidden='true' />, onSelect: () => setBatchAddOpen(true) }] : []),
+                  ...(tight && shown ? [{ key: 'zoom', label: t('focus.zoomNote'), icon: <Maximize2 aria-hidden='true' />, onSelect: () => onZoomNote(shown.tab.path) }] : []),
+                  { key: 'hide-toolbar', label: t('focus.hideToolbar'), icon: <PanelTopClose aria-hidden='true' />, checked: hideToolbar, onSelect: () => focus.setHideToolbar(displayed.pane, !hideToolbar) },
+                ]}
+              />
+            )
+            : splits.map(split => <button key={split.side} type='button' className='ui-icon-button focus-pane-split' data-split={split.side} disabled={Boolean(split.refusal)} aria-label={split.label} title={split.reason ? `${split.label}. ${split.reason}` : split.label} onClick={split.run}>{split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />}</button>)}
+          {!compact && editable && (
             <button type='button' className='ui-icon-button' aria-label={t('focus.batchAdd')} title={t('focus.batchAdd')} onClick={() => setBatchAddOpen(true)}>
               <ListPlus aria-hidden='true' />
             </button>
           )}
-          {shown && (
+          {shown && !tight && (
             <button type='button' className='ui-icon-button' aria-label={t('focus.zoomNote')} title={t('focus.zoomNote')} onClick={() => onZoomNote(shown.tab.path)}>
               <Maximize2 aria-hidden='true' />
             </button>
           )}
-          <button type='button' className='ui-icon-button focus-pane-hide-toolbar' aria-pressed={hideToolbar} aria-label={t('focus.hideToolbar')} title={t('focus.hideToolbar')} onClick={() => focus.setHideToolbar(displayed.pane, !hideToolbar)}>
-            <PanelTopClose aria-hidden='true' />
-          </button>
+          {!compact && (
+            <button type='button' className='ui-icon-button focus-pane-hide-toolbar' aria-pressed={hideToolbar} aria-label={t('focus.hideToolbar')} title={t('focus.hideToolbar')} onClick={() => focus.setHideToolbar(displayed.pane, !hideToolbar)}>
+              <PanelTopClose aria-hidden='true' />
+            </button>
+          )}
         </div>
       </div>
       <div id={panelId} className='focus-pane-body' role='tabpanel' aria-label={shown?.label} onDragOver={bodyOver} onDrop={bodyDrop}>
@@ -338,6 +383,30 @@ const FocusMenu: React.FC<{ label: string; showLabel?: boolean; icon: ReactNode;
       : <DropdownMenu.Trigger className='ui-icon-button' aria-label={label} title={label}>{icon}</DropdownMenu.Trigger>}
     <DropdownMenu.Portal>
       <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={label} onEscapeKeyDown={event => event.stopPropagation()}>{items.map(item => <DropdownMenu.Item key={item.key} data-current={item.current || undefined} onSelect={item.onSelect}>{item.label}</DropdownMenu.Item>)}</DropdownMenu.Content>
+    </DropdownMenu.Portal>
+  </DropdownMenu.Root>
+);
+
+/** A narrow pane's secondary buttons as one menu: each item carries the button's name, and a limit's reason shows beside a disabled split. */
+const PaneMenu: React.FC<{ label: string; items: { key: string; label: string; icon: ReactNode; onSelect: () => void; disabled?: boolean; hint?: string; checked?: boolean; }[]; }> = ({ label, items }) => (
+  <DropdownMenu.Root>
+    <DropdownMenu.Trigger className='ui-icon-button focus-pane-menu' aria-label={label} title={label}><PanelsTopLeft aria-hidden='true' /></DropdownMenu.Trigger>
+    <DropdownMenu.Portal>
+      <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={label} onEscapeKeyDown={event => event.stopPropagation()}>
+        {items.map(item => item.checked === undefined
+          ? (
+            <DropdownMenu.Item key={item.key} data-item={item.key} disabled={item.disabled} title={item.hint} onSelect={item.onSelect}>
+              {item.icon}
+              <span>{item.hint ? `${item.label}. ${item.hint}` : item.label}</span>
+            </DropdownMenu.Item>
+          )
+          : (
+            <DropdownMenu.CheckboxItem key={item.key} data-item={item.key} checked={item.checked} onSelect={item.onSelect}>
+              {item.icon}
+              <span>{item.label}</span>
+            </DropdownMenu.CheckboxItem>
+          ))}
+      </DropdownMenu.Content>
     </DropdownMenu.Portal>
   </DropdownMenu.Root>
 );

@@ -1816,6 +1816,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'focus.paneTabs': '窗格 {number} 的 tab',
   'focus.closeTab': '關閉 {name}',
   'focus.allTabs': '這個窗格的所有 tab',
+  'focus.paneActions': '窗格動作',
   'focus.hideToolbar': '隱藏工具列',
   'focus.dismissError': '關閉',
   'focus.emptyPane': '從瀏覽區點選筆記，或把筆記拖曳到這裡。',

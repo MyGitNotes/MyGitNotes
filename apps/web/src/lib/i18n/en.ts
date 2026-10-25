@@ -1815,6 +1815,7 @@ export const en = {
   'focus.paneTabs': 'Tabs in pane {number}',
   'focus.closeTab': 'Close {name}',
   'focus.allTabs': 'All tabs in this pane',
+  'focus.paneActions': 'Pane actions',
   'focus.hideToolbar': 'Hide toolbar',
   'focus.dismissError': 'Dismiss',
   'focus.emptyPane': 'Click a note in the browse panel, or drag one here.',

@@ -19,6 +19,7 @@
 .focus-mutation-error > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .focus-menu { z-index: 100; display: grid; min-width: 12rem; max-width: min(20rem, calc(100vw - 16px)); max-height: min(70dvh, 28rem); overflow-y: auto; padding: 0.25rem; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--surface-glass); backdrop-filter: var(--surface-blur); color: var(--color-text); box-shadow: var(--shadow-md); }
 .focus-menu [role^='menuitem'] { display: flex; align-items: center; gap: 0.5rem; min-width: 0; padding: 0.4rem 0.5rem; border-radius: 0.35rem; font-size: 0.8rem; color: var(--color-text); cursor: default; outline: none; }
+.focus-menu [role^='menuitem'] > svg { flex: none; width: 14px; height: 14px; }
 .focus-menu [role^='menuitem'] > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .focus-menu [role^='menuitem'][data-highlighted] { background: var(--color-sidebar); }
 .focus-menu [role^='menuitem'][data-state='checked'], .focus-menu [role='menuitem'][data-current] { background: var(--workspace-selection); font-weight: 600; }
@@ -72,6 +73,13 @@
 .focus-pane-actions .ui-icon-button svg { width: 15px; height: 15px; }
 .focus-pane-actions .focus-menu-trigger { min-height: 28px; gap: 4px; padding: 4px 8px; }
 .focus-pane-actions .focus-menu-trigger svg { width: 14px; height: 14px; }
+/* A narrow pane folds its secondary buttons into one menu; the shown tab keeps 120px for its title (icon, gaps and close button around it), the others scroll. */
+.focus-pane[data-compact] .focus-tab[data-shown] { min-width: calc(120px + 52px); }
+.focus-pane[data-compact] .focus-pane-actions .ui-icon-button { width: 28px; }
+/* Too narrow for tabs and buttons in one row: the tabs keep the bar's row and the buttons take a second one under it. */
+.focus-pane[data-tight] .focus-pane-bar { flex-wrap: wrap; height: auto; }
+.focus-pane[data-tight] .focus-tabs { flex: 1 0 100%; height: 38px; }
+.focus-pane[data-tight] .focus-pane-actions { flex: 1 0 100%; justify-content: flex-end; height: 34px; border-top: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); }
 .focus-pane-body { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .focus-pane-body > .focus-lane { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
 .focus-pane-empty { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; color: var(--color-muted); font-size: 13px; text-align: center; }

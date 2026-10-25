@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, createEvent, fireEvent, render } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { type FocusLayout, splitPane } from '@mygitnotes/core/focus-page';
@@ -16,6 +16,9 @@ vi.mock('./NoteEditorHost.js', () => ({
     return null;
   },
 }));
+
+// The batch-add dialog reads notes through a query client this test does not provide; it only has to appear.
+vi.mock('./BatchAddDialog.js', () => ({ BatchAddDialog: () => createElement('div', { role: 'dialog', 'aria-label': 'Add matching' }) }));
 
 beforeEach(() => {
   window.localStorage.setItem('github-notes:language', 'en');
@@ -217,5 +220,68 @@ describe('pane buttons', () => {
     const only: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [] } };
     mount({ focus: editable({ layout: only, entry: { ...focus.entry, shown: { p1: null } } }), key: null });
     expect(document.querySelector('.focus-pane-empty button')).toBeNull();
+  });
+});
+
+describe('a narrow pane', () => {
+  const splitShown = vi.fn(async () => true), setHideToolbar = vi.fn();
+  const editable = { ...focus, editable: true, shown: 'current', activate: vi.fn(), splitShown, setHideToolbar } as unknown as NoteFocus;
+  const onZoomNote = vi.fn();
+  let width = 0;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    width = 0;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ width, height: 38, left: 0, top: 0, right: width, bottom: 38, x: 0, y: 0, toJSON: () => ({}) }));
+  });
+  afterEach(() => vi.restoreAllMocks());
+  function mount(paneWidth: number) {
+    width = paneWidth;
+    const displayed = { panes: ['p1'], pane: 'p1', key: 'note:notes/a.md' };
+    return render(createElement(I18nProvider, null, createElement(FocusPane, { focus: editable, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote, searchMatches: null, displayed, edgeDrops: true })));
+  }
+  const openMenu = async () => {
+    const trigger = screen.getByRole('button', { name: 'Pane actions' });
+    trigger.focus();
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: 'Enter' });
+    });
+  };
+  const barNames = (view: ReturnType<typeof mount>) => [...view.container.querySelectorAll('.focus-pane-actions button')].map(button => button.getAttribute('aria-label'));
+
+  it('keeps every button in the bar while the pane is wide', () => {
+    const view = mount(900);
+    expect(barNames(view)).toEqual(['Split right', 'Split down', 'Add matching', 'Open in zoom', 'Hide toolbar']);
+    expect(screen.queryByRole('button', { name: 'Pane actions' })).toBeNull();
+  });
+
+  it('folds split, add matching and hide toolbar into one menu, keeping zoom in the bar', async () => {
+    const view = mount(500);
+    expect(barNames(view)).toEqual(['Pane actions', 'Open in zoom']);
+    expect(view.container.querySelector('.focus-pane')).toHaveAttribute('data-compact');
+    expect(view.container.querySelector('.focus-pane')).not.toHaveAttribute('data-tight');
+    await openMenu();
+    expect((await screen.findAllByRole('menuitem')).map(item => item.textContent)).toEqual(['Split right', 'Split down', 'Add matching']);
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Hide toolbar' })).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it.each([
+    ['Split right', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'horizontal')],
+    ['Split down', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'vertical')],
+    ['Hide toolbar', 'menuitemcheckbox', () => expect(setHideToolbar).toHaveBeenCalledWith('p1', true)],
+    ['Add matching', 'menuitem', () => expect(screen.getByRole('dialog')).toBeInTheDocument()],
+  ] as const)('fires %s from the folded menu', async (name, role, expectFired) => {
+    mount(500);
+    await openMenu();
+    fireEvent.click(await screen.findByRole(role, { name }));
+    expectFired();
+  });
+
+  it('puts zoom in the menu too once the pane cannot hold the bar in one row', async () => {
+    const view = mount(300);
+    expect(view.container.querySelector('.focus-pane')).toHaveAttribute('data-tight');
+    expect(barNames(view)).toEqual(['Pane actions']);
+    await openMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open in zoom' }));
+    expect(onZoomNote).toHaveBeenCalledWith('notes/a.md');
   });
 });
