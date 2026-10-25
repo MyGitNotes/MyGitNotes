@@ -1512,6 +1512,12 @@ export const en = {
   'auth.noGrants': 'No persistent agent grants yet.',
   'auth.openingWorkspace': 'Opening your workspace…',
   'auth.retry': 'Retry',
+  'pwa.updateAvailable': 'A new version is available',
+  'pwa.reload': 'Reload',
+  'pwa.later': 'Later',
+  'pwa.offlineTitle': 'You are offline',
+  'pwa.offlineMessage': 'MyGitNotes cannot reach the server. Notes open again when you are back online; drafts kept in this browser stay safe.',
+  'pwa.offlineDrafts': 'Drafts kept in this browser',
 
   // MCP Tutorial Modal
   'mcpGuide.title': 'MCP Connector Guide',

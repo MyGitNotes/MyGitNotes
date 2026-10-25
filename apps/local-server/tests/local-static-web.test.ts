@@ -40,3 +40,13 @@ it('serves the product checkout web build, not a stale build left in the content
   expect(response.status).toBe(200);
   expect(await response.text()).toBe('PRODUCT_BUILD');
 });
+
+it('serves the service worker file uncached so a deployment reaches installed apps, while built assets keep the default caching', async () => {
+  fs.mkdirSync(path.join(productRoot, 'apps/web/dist/assets'), { recursive: true });
+  fs.writeFileSync(path.join(productRoot, 'apps/web/dist/sw.js'), '// worker');
+  fs.writeFileSync(path.join(productRoot, 'apps/web/dist/assets/app-abc123.js'), '// app');
+  const worker = await fetch(`${base}/sw.js`);
+  expect(worker.status).toBe(200);
+  expect(worker.headers.get('cache-control')).toBe('no-cache');
+  expect((await fetch(`${base}/assets/app-abc123.js`)).headers.get('cache-control')).not.toBe('no-cache');
+});

@@ -9,6 +9,8 @@ import { KeyboardRoot } from '../lib/keyboard/KeyboardDispatcher.js';
 import { WorkspaceGate } from '../components/WorkspaceSetup.js';
 import { ConnectionState } from '../components/AuthControls.js';
 import { PanelProvider } from '../lib/panel-context.js';
+import { UpdateNotice } from '../components/UpdateNotice.js';
+import { registerServiceWorker } from '../pwa/register.js';
 import '../index.css';
 import '../workspace.css';
 import '../ui-buttons.css';
@@ -65,6 +67,9 @@ export function WebApp({ features = [] }: WebAppOptions) {
   return (
     <QueryClientProvider client={queryClient}>
       <WebFeaturesProvider features={features}>
+        <I18nProvider>
+          <UpdateNotice />
+        </I18nProvider>
         <NuqsAdapter>
           <BrowserRouter>
             <PanelProvider>
@@ -92,6 +97,7 @@ export function WebApp({ features = [] }: WebAppOptions) {
 
 /** Renders the web app into `root`; an edition's entry calls it with its features. */
 export function createWebApp(root: HTMLElement, options: WebAppOptions = {}) {
+  registerServiceWorker();
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
       <WebApp {...options} />

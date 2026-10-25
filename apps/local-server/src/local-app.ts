@@ -12,6 +12,7 @@ import { createLocalAssetsRouter } from './local-assets.js';
 import { createLocalGitRouter } from './local-git.js';
 import { createLocalCoreUpdateRouter } from './local-core-update.js';
 import { createLocalRawAssetsRouter } from './local-raw-assets.js';
+import { webStatic } from './web-static.js';
 import { asLocal, localRepository, noteRepository, repositoryOrDefault } from './request-workspace.js';
 
 function validateWorkspacePath(repoRoot: string, reqPath: string, candidate: unknown, config: WorkspaceConfig): void {
@@ -100,7 +101,7 @@ export function createLocalApp(appRoot: string): express.Express {
   // 7. Static Web UI Serving
   const webDist = path.join(appRoot, 'apps/web/dist');
   if (fs.existsSync(webDist)) {
-    app.use(express.static(webDist, { redirect: false }));
+    app.use(webStatic(webDist));
     app.get('*', (req: Request, res: Response, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/raw-assets') || req.path.startsWith('/r2-assets')) {
         return next();

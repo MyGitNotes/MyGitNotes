@@ -1,6 +1,8 @@
 import { Button } from './Button.js';
 import { Select } from './Select.js';
 import { useEffect, useState } from 'react';
+import { isNetworkFailure, useOnline } from '../lib/connectivity.js';
+import { OfflineNotice } from './OfflineNotice.js';
 import { ArrowLeftRight, Check, ChevronDown, Copy, HelpCircle, KeyRound, LogIn, LogOut, Plus, Trash2 } from 'lucide-react';
 import { McpTutorialModal } from './McpTutorialModal.js';
 import { copyToClipboard } from '../lib/clipboard.js';
@@ -306,11 +308,20 @@ export function AgentAccessSettings({ local = false }: { local?: boolean; }) {
 }
 export function ConnectionState({ loading, error, onRetry }: { loading: boolean; error: string; onRetry: () => void; }) {
   const { t } = useTranslation();
+  const online = useOnline();
+  const offline = !loading && (!online || isNetworkFailure(error));
+  // The request that failed is repeated by itself once the connection returns.
+  useEffect(() => {
+    if (!offline) return;
+    const retry = () => onRetry();
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [offline, onRetry]);
   return (
-    <main className='min-h-screen p-8 flex items-center justify-center' style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
+    <main className='connection-state min-h-screen flex items-center justify-center' style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <div className='max-w-xl w-full p-8 rounded-2xl border' style={{ background: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
         <h1 className='text-2xl font-semibold mb-4'>MyGitNotes</h1>
-        {loading ? <LoadingStatus className='mb-6'>{t('auth.openingWorkspace')}</LoadingStatus> : <p role='status' className='mb-6'>{error}</p>}
+        {loading ? <LoadingStatus className='mb-6'>{t('auth.openingWorkspace')}</LoadingStatus> : offline ? <OfflineNotice /> : <p role='status' className='mb-6'>{error}</p>}
         {!loading && (
           <div className='flex flex-wrap items-center gap-3'>
             <button onClick={onRetry} className={`${connectionActionClass} border hover:bg-fg/5 transition active:scale-95`}>{t('auth.retry')}</button>
