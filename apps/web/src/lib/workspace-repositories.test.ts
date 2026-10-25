@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { draftScope, groupByRepository, notebookRepositories, pageRepository, repositoryOf, revisionSet, type WorkspaceRepository } from './workspace-repositories.js';
+import { draftScope, groupByRepository, legacyImportOffered, notebookRepositories, pageRepository, repositoryOf, revisionSet, type WorkspaceRepository } from './workspace-repositories.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
 
 const home: WorkspaceRepository = { id: 'github:me/notes@main', alias: 'notes', type: 'github', repository: 'me/notes', branch: 'main', revision: 'a'.repeat(40), write: true, notebooks: ['notes~life', 'notes~work'], title: 'notes', defaultNotebook: null, preferences: DEFAULT_WORKSPACE_PREFERENCES, config: null, configRevision: '' };
 const other: WorkspaceRepository = { id: 'github:me/campaign@main', alias: 'campaign', type: 'github', repository: 'me/campaign', branch: 'main', revision: 'b'.repeat(40), write: false, notebooks: ['campaign~trpg'], title: 'campaign', defaultNotebook: null, preferences: DEFAULT_WORKSPACE_PREFERENCES, config: null, configRevision: '' };
 
 describe('workspace repositories', () => {
+  it('offers the legacy bookmark import to every repository but a demo one', () => {
+    expect(legacyImportOffered(home)).toBe(true);
+    expect(legacyImportOffered(other)).toBe(true);
+    expect(legacyImportOffered(undefined)).toBe(true);
+    expect(legacyImportOffered({ ...other, demo: true })).toBe(false);
+  });
+
   it('keeps the home repository drafts under the scope the workspace used before', () => {
     // Earlier releases stored drafts under `${source identity}:${branch}`; the home repository id is that identity.
     expect(draftScope(home)).toBe('github:me/notes@main:main');

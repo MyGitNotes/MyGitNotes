@@ -12,6 +12,9 @@ export type WorkspaceAnswer = Omit<WorkspaceStatus, 'repositories'> & { reposito
  */
 export const editable = (repository: Pick<RepositoryStatus, 'write' | 'demo'> | undefined): boolean => Boolean(repository && (repository.write || repository.demo === true));
 
+/** Whether "Import legacy bookmarks" is offered: it reads and writes the repository's file on the server, which a demo never reaches. */
+export const legacyImportOffered = (repository: Pick<RepositoryStatus, 'demo'> | undefined): boolean => repository?.demo !== true;
+
 /**
  * The name a repository's browser data is kept under. A demo repository has a namespace of its own, so a demo whose id is
  * also a signed-in person's repository never shares, or sweeps, that person's drafts, Focus views or kept texts.
