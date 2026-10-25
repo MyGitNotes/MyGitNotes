@@ -1,5 +1,6 @@
 /// The service worker, built by `apps/web/pwa/service-worker-plugin.ts` into `sw.js` with the build's file list.
 /// It keeps the app shell so the app opens offline; it never keeps notes, API answers or sign-in routes (see `sw-routing.ts`).
+import { navigateWithShell } from './sw-navigate.js';
 import { routeRequest, type SwRequest } from './sw-routing.js';
 import type { SwManifest } from './sw-manifest.js';
 
@@ -31,8 +32,6 @@ const manifest = __SW_MANIFEST__;
 const SHELL_PREFIX = 'mygitnotes-shell-';
 const SHELL_CACHE = `${SHELL_PREFIX}${manifest.version}`;
 const RUNTIME_CACHE = 'mygitnotes-runtime';
-/** A page load that takes longer than this opens the cached shell instead of waiting on a bad connection. */
-const NAVIGATION_PATIENCE_MS = 4000;
 
 // A registration's scope is always an absolute URL.
 const scope = new URL(worker.registration.scope);
@@ -87,26 +86,9 @@ async function activate(): Promise<void> {
   await worker.clients.claim();
 }
 
-/** The network first; when it fails, answers 5xx or is slow, the cached shell, which the app turns into its own offline state. */
-async function navigate(request: Request): Promise<Response> {
-  const shell = () => caches.match(at(manifest.shell));
-  const network = fetch(request);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const slow = new Promise<null>(resolve => {
-    timer = setTimeout(() => resolve(null), NAVIGATION_PATIENCE_MS);
-  });
-  try {
-    const response = await Promise.race([network, slow]);
-    if (response === null) return (await shell()) ?? await network;
-    if (response.status >= 500) return (await shell()) ?? response;
-    return response;
-  } catch (error) {
-    const cached = await shell();
-    if (cached) return cached;
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
+/** The network's answer; the cached shell only when the network fails or the server answers 5xx. */
+function navigate(request: Request): Promise<Response> {
+  return navigateWithShell(request, fetch, async () => (await caches.open(SHELL_CACHE)).match(at(manifest.shell)));
 }
 
 /** The cached copy when there is one; otherwise the network's, remembered. `keep` is false for files that change under one URL. */

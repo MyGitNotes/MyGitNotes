@@ -1,4 +1,5 @@
-import { announceUpdate } from './update-store.js';
+import { reloadOnPreloadError } from './preload-error.js';
+import { announceUpdate, type WorkerContainer } from './update-store.js';
 
 /** How often an open page asks the server whether a new version was deployed. */
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
@@ -9,13 +10,12 @@ export function serviceWorkerUrl(base: string, origin: string): URL {
 }
 
 /** Watches a registration, announcing a newer worker once it has installed behind the running one. */
-export function watchRegistration(registration: ServiceWorkerRegistration, container: Pick<ServiceWorkerContainer, 'controller'>): void {
-  const controlled = () => container.controller !== null;
-  if (registration.waiting) announceUpdate(registration.waiting, controlled());
+export function watchRegistration(registration: ServiceWorkerRegistration, container: WorkerContainer): void {
+  if (registration.waiting) announceUpdate(registration.waiting, container);
   registration.addEventListener('updatefound', () => {
     const installing = registration.installing;
     installing?.addEventListener('statechange', () => {
-      if (installing.state === 'installed') announceUpdate(installing, controlled());
+      if (installing.state === 'installed') announceUpdate(installing, container);
     });
   });
 }
@@ -25,6 +25,7 @@ export function watchRegistration(registration: ServiceWorkerRegistration, conta
  * (`__SERVICE_WORKER__` unset) register nothing.
  */
 export function registerServiceWorker(): void {
+  if (import.meta.env.PROD) reloadOnPreloadError(window, sessionStorage, () => window.location.reload());
   if (typeof __SERVICE_WORKER__ === 'undefined' || !__SERVICE_WORKER__ || !import.meta.env.PROD) return;
   if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
   const url = serviceWorkerUrl(import.meta.env.BASE_URL, window.location.origin);

@@ -18,7 +18,7 @@ export interface SwRequest {
 }
 
 /** Paths under the scope that belong to the server, not to the shell: data, sign-in and its callbacks, file downloads. */
-export const SERVER_PATHS = ['api/', 'mcp/', 'raw-assets/', 'r2-assets/'] as const;
+export const SERVER_PATHS = ['api', 'mcp', 'raw-assets', 'r2-assets'] as const;
 /** The worker's own file is never cached, so a deployment can replace it. */
 export const SERVICE_WORKER_FILE = 'sw.js';
 const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
@@ -38,7 +38,7 @@ export function routeRequest(request: SwRequest, base: URL, precached: ReadonlyS
   if (!url.pathname.startsWith(base.pathname)) return 'bypass';
   const path = decodeRelative(url.pathname.slice(base.pathname.length));
   if (path === null || path === SERVICE_WORKER_FILE) return 'bypass';
-  if (SERVER_PATHS.some(prefix => path.startsWith(prefix))) return 'bypass';
+  if (SERVER_PATHS.some(server => path === server || path.startsWith(`${server}/`))) return 'bypass';
   if (request.mode === 'navigate') return 'navigate';
   return precached.has(path) || path.startsWith(HASHED_FOLDER) ? 'asset' : 'bypass';
 }

@@ -20,10 +20,15 @@ describe('routeRequest', () => {
   });
 
   it('never touches API, MCP, raw file or R2 requests, nor the sign-in and callback routes under them', () => {
-    for (const path of ['api/workspace', 'api/auth/session', 'api/auth/github', 'api/auth/github/callback?code=1&state=2', 'api/files/raw?path=a.pdf', 'mcp/', 'raw-assets/notes/a.png', 'r2-assets/key']) {
+    for (const path of ['api/workspace', 'api/auth/session', 'api/auth/github', 'api/auth/github/callback?code=1&state=2', 'api/files/raw?path=a.pdf', 'mcp/', 'mcp', 'api', 'raw-assets', 'r2-assets', 'raw-assets/notes/a.png', 'r2-assets/key']) {
       expect(route(`https://notes.example/${path}`), path).toBe('bypass');
       expect(route(`https://notes.example/${path}`, { mode: 'navigate' }), `${path} (navigation)`).toBe('bypass');
     }
+  });
+
+  it('still serves the app routes that only start like a server path', () => {
+    expect(route('https://notes.example/api-docs', { mode: 'navigate' })).toBe('navigate');
+    expect(route('https://notes.example/mcp-guide', { mode: 'navigate' })).toBe('navigate');
   });
 
   it('does not slip past a server path with an escaped or dotted spelling', () => {
