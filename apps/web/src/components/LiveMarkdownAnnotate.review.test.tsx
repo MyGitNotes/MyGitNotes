@@ -21,7 +21,14 @@ beforeEach(() => {
   };
   resetAnnotationAuthor();
   // A hosted session request that takes longer than a click.
-  vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { answerSession = () => resolve(new Response(JSON.stringify({ authenticated: false }))); })));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() =>
+      new Promise<Response>(resolve => {
+        answerSession = () => resolve(new Response(JSON.stringify({ authenticated: false })));
+      })
+    ),
+  );
 });
 afterEach(() => {
   cleanup();
@@ -68,7 +75,7 @@ describe('annotating: the next click while the session request is still out', ()
 });
 
 describe('two annotate blocks', () => {
-  it('does not hand a removed block\'s mode to the block that takes its place (R-F006)', async () => {
+  it("does not hand a removed block's mode to the block that takes its place (R-F006)", async () => {
     const first = block('a');
     const second = block('b');
     const { editor, widgets } = await mount(`${first}\n\nmiddle\n\n${second}`);
