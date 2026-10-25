@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { serviceWorkerPlugin, type ServiceWorkerOptions } from './service-worker-plugin.js';
+import { type ServiceWorkerOptions, serviceWorkerPlugin } from './service-worker-plugin.js';
 
 let publicDir: string;
 beforeEach(() => {

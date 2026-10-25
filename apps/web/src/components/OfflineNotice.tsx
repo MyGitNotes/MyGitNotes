@@ -17,11 +17,7 @@ export function OfflineNotice() {
       {drafts.length > 0 && (
         <section aria-label={t('pwa.offlineDrafts')}>
           <h2 className='mb-1 text-sm font-medium'>{t('pwa.offlineDrafts')}</h2>
-          <ul className='max-h-48 overflow-auto text-sm'>
-            {drafts.map(draft => (
-              <li key={draft.key} className='truncate py-1' title={draft.path}>{draft.title}</li>
-            ))}
-          </ul>
+          <ul className='max-h-48 overflow-auto text-sm'>{drafts.map(draft => <li key={draft.key} className='truncate py-1' title={draft.path}>{draft.title}</li>)}</ul>
         </section>
       )}
     </div>

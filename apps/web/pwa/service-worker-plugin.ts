@@ -68,19 +68,8 @@ export function serviceWorkerPlugin(options: ServiceWorkerOptions = {}): Plugin 
       const entries: SwEntry[] = [{ url: options.shell ?? 'index.html', revision: digest(html.source) }];
       for (const file of shellFiles(bundle)) entries.push({ url: file, revision: null });
       for (const file of options.publicFiles ?? defaultPublicFiles(publicDir)) entries.push({ url: file, revision: digest(fs.readFileSync(path.join(publicDir, file))) });
-      const manifest: SwManifest = {
-        version: digest(entries.map(entry => `${entry.url}:${entry.revision ?? ''}`).join('\n')).slice(0, 12),
-        shell: entries[0].url,
-        entries,
-        hashed: Object.keys(bundle).filter(file => file.startsWith('assets/') && !isMap(file)).sort(),
-      };
-      const result = await build({
-        configFile: false,
-        logLevel: 'silent',
-        publicDir: false,
-        define: { __SW_MANIFEST__: JSON.stringify(manifest) },
-        build: { write: false, minify: true, target: 'es2020', lib: { entry: swSource, formats: ['iife'], name: 'mygitnotesServiceWorker', fileName: () => 'sw.js' } },
-      });
+      const manifest: SwManifest = { version: digest(entries.map(entry => `${entry.url}:${entry.revision ?? ''}`).join('\n')).slice(0, 12), shell: entries[0].url, entries, hashed: Object.keys(bundle).filter(file => file.startsWith('assets/') && !isMap(file)).sort() };
+      const result = await build({ configFile: false, logLevel: 'silent', publicDir: false, define: { __SW_MANIFEST__: JSON.stringify(manifest) }, build: { write: false, minify: true, target: 'es2020', lib: { entry: swSource, formats: ['iife'], name: 'mygitnotesServiceWorker', fileName: () => 'sw.js' } } });
       const outputs = (Array.isArray(result) ? result : [result]).flatMap(output => 'output' in output ? output.output : []);
       const code = outputs.find(output => output.type === 'chunk')?.code;
       if (!code) throw new Error('The service worker build produced no code.');
