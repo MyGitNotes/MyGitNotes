@@ -81,13 +81,17 @@ const menuItem = async (page, label) => {
 /** A Focus can no longer be given an empty pane from the UI, so the steps that start from empty panes seed this device's scratch Focus with a version 1 division (still readable) and reload. */
 const seedDefaultDivision = async (page, division, paneCount) => {
   // The Focus view is stored per repository and notebook, and an earlier key may still be adopted from; seed every one.
-  await page.evaluate((division, paneCount) => {
-    for (const key of Object.keys(localStorage).filter(name => name.startsWith('github-notes:focus-view:'))) {
-      const view = JSON.parse(localStorage.getItem(key));
-      view.current = { division, panes: Array.from({ length: paneCount }, () => ({ tabs: [] })) };
-      localStorage.setItem(key, JSON.stringify(view));
-    }
-  }, division, paneCount);
+  await page.evaluate(
+    (division, paneCount) => {
+      for (const key of Object.keys(localStorage).filter(name => name.startsWith('github-notes:focus-view:'))) {
+        const view = JSON.parse(localStorage.getItem(key));
+        view.current = { division, panes: Array.from({ length: paneCount }, () => ({ tabs: [] })) };
+        localStorage.setItem(key, JSON.stringify(view));
+      }
+    },
+    division,
+    paneCount,
+  );
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.focus-area');
 };

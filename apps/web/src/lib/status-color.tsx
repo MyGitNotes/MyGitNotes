@@ -1,5 +1,5 @@
 import { createContext, type ReactNode, useContext } from 'react';
-import { type StatusColor, STATUS_CYCLE, statusColor } from '@mygitnotes/core/note-status';
+import { STATUS_CYCLE, type StatusColor, statusColor } from '@mygitnotes/core/note-status';
 import { useThemeChoice } from '../app/useTheme.js';
 import { PALETTE_FAMILIES, type PaletteMode, type PaletteVariant, STATUS_PALETTE } from './palettes.js';
 import type { NotebookStatus, StatusColorName } from './types.js';
@@ -32,7 +32,7 @@ export function statusDotClass(color: StatusColor): string {
 
 const MODES: readonly PaletteMode[] = ['light', 'dark'];
 
-/** The hex a palette colour has in one variant: green, blue, amber and red are the variant's own tokens. */
+/** The hex a palette colour has in one variant: the first four of the cycle (success, info, warning, danger) are the variant's own tokens. */
 function paletteHex(color: StatusColorName, variant: PaletteVariant, mode: PaletteMode): string {
   switch (color) {
     case 'green':
@@ -48,14 +48,14 @@ function paletteHex(color: StatusColorName, variant: PaletteVariant, mode: Palet
   }
 }
 
-/** Squared distance in OKLab, where equal steps look about equally different. */
+/** Squared distance in a perceptual (OKLab) space, where equal steps look about equally different. */
 function colorDistance(a: string, b: string): number {
-  const [l1, m1, s1] = oklab(a);
-  const [l2, m2, s2] = oklab(b);
+  const [l1, m1, s1] = perceptualCoordinates(a);
+  const [l2, m2, s2] = perceptualCoordinates(b);
   return (l1 - l2) ** 2 + (m1 - m2) ** 2 + (s1 - s2) ** 2;
 }
 
-function oklab(hex: string): [number, number, number] {
+function perceptualCoordinates(hex: string): [number, number, number] {
   const [r, g, b] = [1, 3, 5].map(start => parseInt(hex.slice(start, start + 2), 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
   const l = Math.cbrt(.4122214708 * r + .5363325363 * g + .0514459929 * b);
   const m = Math.cbrt(.2119034982 * r + .6806995451 * g + .1073969566 * b);

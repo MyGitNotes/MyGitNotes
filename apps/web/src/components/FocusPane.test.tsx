@@ -264,12 +264,7 @@ describe('a narrow pane', () => {
     expect(screen.getByRole('menuitemcheckbox', { name: 'Hide toolbar' })).toHaveAttribute('aria-checked', 'false');
   });
 
-  it.each([
-    ['Split right', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'horizontal')],
-    ['Split down', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'vertical')],
-    ['Hide toolbar', 'menuitemcheckbox', () => expect(setHideToolbar).toHaveBeenCalledWith('p1', true)],
-    ['Add matching', 'menuitem', () => expect(screen.getByRole('dialog')).toBeInTheDocument()],
-  ] as const)('fires %s from the folded menu', async (name, role, expectFired) => {
+  it.each([['Split right', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'horizontal')], ['Split down', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'vertical')], ['Hide toolbar', 'menuitemcheckbox', () => expect(setHideToolbar).toHaveBeenCalledWith('p1', true)], ['Add matching', 'menuitem', () => expect(screen.getByRole('dialog')).toBeInTheDocument()]] as const)('fires %s from the folded menu', async (name, role, expectFired) => {
     mount(500);
     await openMenu();
     fireEvent.click(await screen.findByRole(role, { name }));

@@ -133,7 +133,11 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
           </button>
         )}
         {!readOnly && onDelete && (
-          <button type='button' className={`ui-button ui-button-small ${deleteArmed ? 'ui-button-danger' : ''}`} onClick={() => onDelete(note) && onDone()}>
+          <button
+            type='button'
+            className={`ui-button ui-button-small ${deleteArmed ? 'ui-button-danger' : ''}`}
+            onClick={() => onDelete(note) && onDone()}
+          >
             <Trash2 aria-hidden='true' />
             {deleteArmed ? t('notes.confirmDelete') : t('notes.delete')}
           </button>

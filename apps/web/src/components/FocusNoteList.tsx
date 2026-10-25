@@ -77,7 +77,9 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
         aria-current={open ? 'true' : undefined}
         title={draft || selectionActive ? undefined : t('notes.multiSelectHint')}
         draggable={canDrag || canMove}
-        onDragStart={canDrag || canMove ? event => startNoteDrag(event, note, { focus: canDrag, move: canMove }) : undefined}
+        onDragStart={canDrag || canMove
+          ? event => startNoteDrag(event, note, { focus: canDrag, move: canMove })
+          : undefined}
         className='focus-row'
         {...touchSelection.itemProps(note, onOpenNote, !draft)}
         {...rowHandlers}
@@ -120,24 +122,7 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
           return header ? <React.Fragment key={noteRefKey(note)}>{header}{renderRow(note)}</React.Fragment> : renderRow(note);
         })}
       </div>
-      {hover.target && (
-        <NoteHoverCard
-          key={noteRefKey(hover.target.note)}
-          target={hover.target}
-          cardRef={hover.card}
-          cardProps={hover.cardProps}
-          statuses={statuses}
-          readOnly={readOnly}
-          readNote={focusMode?.readNote}
-          onUpdateStatus={onUpdateNoteStatus}
-          onZoom={focusMode?.onZoomNote}
-          onMove={onMoveNote}
-          onDelete={canDelete ? deleteNote : undefined}
-          deleteArmed={pendingDeletePath === noteRefKey(hover.target.note)}
-          onMenuOpenChange={hover.holdOpen}
-          onDone={() => hover.close()}
-        />
-      )}
+      {hover.target && <NoteHoverCard key={noteRefKey(hover.target.note)} target={hover.target} cardRef={hover.card} cardProps={hover.cardProps} statuses={statuses} readOnly={readOnly} readNote={focusMode?.readNote} onUpdateStatus={onUpdateNoteStatus} onZoom={focusMode?.onZoomNote} onMove={onMoveNote} onDelete={canDelete ? deleteNote : undefined} deleteArmed={pendingDeletePath === noteRefKey(hover.target.note)} onMenuOpenChange={hover.holdOpen} onDone={() => hover.close()} />}
     </div>
   );
 }

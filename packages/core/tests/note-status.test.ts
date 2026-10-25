@@ -169,7 +169,7 @@ describe('statusColor', () => {
     expect(colours(mergeNotebookStatuses([{ statuses: [] }, { statuses: ['capture', 'review'] }]))).toEqual(colours(alone));
   });
 
-  it('keeps each notebook\'s own cycle in a merged scope and the first defining notebook\'s colour for a shared name', () => {
+  it("keeps each notebook's own cycle in a merged scope and the first defining notebook's colour for a shared name", () => {
     const merged = mergeNotebookStatuses([{ statuses: ['capture', 'review'] }, { statuses: ['draft', 'review', 'capture', 'extra'] }]);
     expect(['capture', 'review', 'draft', 'extra'].map(status => statusColor(status, merged))).toEqual(['purple', 'teal', 'purple', 'blue']);
   });

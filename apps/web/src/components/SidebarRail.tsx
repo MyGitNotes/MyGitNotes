@@ -98,7 +98,9 @@ export function SidebarRail({ label, sections, open, onOpenChange }: { label: st
               aria-controls={expanded ? `${id}-${section.id}` : undefined}
               onClick={() => onOpenChange(expanded ? null : section.id)}
               // Dragging a note over the notebooks opens its folders, so the note can be dropped on one.
-              onDragEnter={section.id === 'notebooks' ? event => carriesNoteMove(event) && onOpenChange(section.id) : undefined}
+              onDragEnter={section.id === 'notebooks'
+                ? event => carriesNoteMove(event) && onOpenChange(section.id)
+                : undefined}
             >
               {section.icon}
               {typeof section.active === 'number' && section.active > 0 ? <span className='sidebar-rail-count'>{section.active}</span> : section.active ? <span className='sidebar-rail-mark' aria-hidden='true' /> : null}

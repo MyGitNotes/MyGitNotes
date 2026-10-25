@@ -99,13 +99,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   const splits = edgeDrops && editable && displayed.key
     ? (['right', 'bottom'] as const).map(side => {
       const refusal = dropRefusal(layout, displayed.pane, side);
-      return {
-        side,
-        refusal,
-        label: t(side === 'right' ? 'focus.splitRight' : 'focus.splitDown'),
-        reason: refusal ? t(refusal === 'pane-limit' ? 'focus.paneLimit' : refusal === 'depth-limit' ? 'focus.depthLimit' : 'focus.limit') : undefined,
-        run: () => void focus.splitShown(displayed.pane, side === 'right' ? 'horizontal' : 'vertical').catch(() => {}),
-      };
+      return { side, refusal, label: t(side === 'right' ? 'focus.splitRight' : 'focus.splitDown'), reason: refusal ? t(refusal === 'pane-limit' ? 'focus.paneLimit' : refusal === 'depth-limit' ? 'focus.depthLimit' : 'focus.limit') : undefined, run: () => void focus.splitShown(displayed.pane, side === 'right' ? 'horizontal' : 'vertical').catch(() => {}) };
     })
     : [];
 
@@ -298,20 +292,19 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
         </div>
         <div className='focus-pane-actions'>
           {!phone && <div ref={setActionsSlot} className='focus-pane-note-actions' />}
-          {overflowing && <FocusMenu label={t('focus.allTabs')} icon={<ChevronDown aria-hidden='true' />} items={tabs.map(tab => ({ key: `${tab.pane}:${tab.key}`, label: tab.label, current: tab.pane === displayed.pane && tab.key === displayed.key, onSelect: () => void focus.show(tab.pane, tab.key) }))} />}
-          {compact
-            ? (
-              <PaneMenu
-                label={t('focus.paneActions')}
-                items={[
-                  ...splits.map(split => ({ key: split.side, label: split.label, icon: split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />, disabled: Boolean(split.refusal), hint: split.reason, onSelect: split.run })),
-                  ...(editable ? [{ key: 'batch-add', label: t('focus.batchAdd'), icon: <ListPlus aria-hidden='true' />, onSelect: () => setBatchAddOpen(true) }] : []),
-                  ...(tight && shown ? [{ key: 'zoom', label: t('focus.zoomNote'), icon: <Maximize2 aria-hidden='true' />, onSelect: () => onZoomNote(shown.tab.path) }] : []),
-                  { key: 'hide-toolbar', label: t('focus.hideToolbar'), icon: <PanelTopClose aria-hidden='true' />, checked: hideToolbar, onSelect: () => focus.setHideToolbar(displayed.pane, !hideToolbar) },
-                ]}
-              />
-            )
-            : splits.map(split => <button key={split.side} type='button' className='ui-icon-button focus-pane-split' data-split={split.side} disabled={Boolean(split.refusal)} aria-label={split.label} title={split.reason ? `${split.label}. ${split.reason}` : split.label} onClick={split.run}>{split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />}</button>)}
+          {overflowing && (
+            <FocusMenu
+              label={t('focus.allTabs')}
+              icon={<ChevronDown aria-hidden='true' />}
+              items={tabs.map(tab => ({
+                key: `${tab.pane}:${tab.key}`,
+                label: tab.label,
+                current: tab.pane === displayed.pane && tab.key === displayed.key,
+                onSelect: () => void focus.show(tab.pane, tab.key),
+              }))}
+            />
+          )}
+          {compact ? <PaneMenu label={t('focus.paneActions')} items={[...splits.map(split => ({ key: split.side, label: split.label, icon: split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />, disabled: Boolean(split.refusal), hint: split.reason, onSelect: split.run })), ...(editable ? [{ key: 'batch-add', label: t('focus.batchAdd'), icon: <ListPlus aria-hidden='true' />, onSelect: () => setBatchAddOpen(true) }] : []), ...(tight && shown ? [{ key: 'zoom', label: t('focus.zoomNote'), icon: <Maximize2 aria-hidden='true' />, onSelect: () => onZoomNote(shown.tab.path) }] : []), { key: 'hide-toolbar', label: t('focus.hideToolbar'), icon: <PanelTopClose aria-hidden='true' />, checked: hideToolbar, onSelect: () => focus.setHideToolbar(displayed.pane, !hideToolbar) }]} /> : splits.map(split => <button key={split.side} type='button' className='ui-icon-button focus-pane-split' data-split={split.side} disabled={Boolean(split.refusal)} aria-label={split.label} title={split.reason ? `${split.label}. ${split.reason}` : split.label} onClick={split.run}>{split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />}</button>)}
           {!compact && editable && (
             <button type='button' className='ui-icon-button' aria-label={t('focus.batchAdd')} title={t('focus.batchAdd')} onClick={() => setBatchAddOpen(true)}>
               <ListPlus aria-hidden='true' />
@@ -390,22 +383,26 @@ const FocusMenu: React.FC<{ label: string; showLabel?: boolean; icon: ReactNode;
 /** A narrow pane's secondary buttons as one menu: each item carries the button's name, and a limit's reason shows beside a disabled split. */
 const PaneMenu: React.FC<{ label: string; items: { key: string; label: string; icon: ReactNode; onSelect: () => void; disabled?: boolean; hint?: string; checked?: boolean; }[]; }> = ({ label, items }) => (
   <DropdownMenu.Root>
-    <DropdownMenu.Trigger className='ui-icon-button focus-pane-menu' aria-label={label} title={label}><PanelsTopLeft aria-hidden='true' /></DropdownMenu.Trigger>
+    <DropdownMenu.Trigger className='ui-icon-button focus-pane-menu' aria-label={label} title={label}>
+      <PanelsTopLeft aria-hidden='true' />
+    </DropdownMenu.Trigger>
     <DropdownMenu.Portal>
       <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={label} onEscapeKeyDown={event => event.stopPropagation()}>
-        {items.map(item => item.checked === undefined
-          ? (
-            <DropdownMenu.Item key={item.key} data-item={item.key} disabled={item.disabled} title={item.hint} onSelect={item.onSelect}>
-              {item.icon}
-              <span>{item.hint ? `${item.label}. ${item.hint}` : item.label}</span>
-            </DropdownMenu.Item>
-          )
-          : (
-            <DropdownMenu.CheckboxItem key={item.key} data-item={item.key} checked={item.checked} onSelect={item.onSelect}>
-              {item.icon}
-              <span>{item.label}</span>
-            </DropdownMenu.CheckboxItem>
-          ))}
+        {items.map(item =>
+          item.checked === undefined
+            ? (
+              <DropdownMenu.Item key={item.key} data-item={item.key} disabled={item.disabled} title={item.hint} onSelect={item.onSelect}>
+                {item.icon}
+                <span>{item.hint ? `${item.label}. ${item.hint}` : item.label}</span>
+              </DropdownMenu.Item>
+            )
+            : (
+              <DropdownMenu.CheckboxItem key={item.key} data-item={item.key} checked={item.checked} onSelect={item.onSelect}>
+                {item.icon}
+                <span>{item.label}</span>
+              </DropdownMenu.CheckboxItem>
+            )
+        )}
       </DropdownMenu.Content>
     </DropdownMenu.Portal>
   </DropdownMenu.Root>
