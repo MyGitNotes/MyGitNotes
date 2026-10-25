@@ -85,6 +85,7 @@ Run `pnpm update-core` from a clean `core` checkout; it fast-forwards `core` fro
 - [Compilations](#compilations) organize notebook content and replace the old Screen lanes; Markdown pages can also become flashcards.
 - Local mode offers a [Pi agent](#pi-agent-local-mode) in a dock beside the page, and [`pnpm dev:remote`](#use-it-from-other-devices-pnpm-devremote) opens the workspace from your other devices.
 - Choose from **nine palette families**, each with light and dark variants. **Flexoki** is the default; choices are saved in the browser.
+- A deployment can offer a **demo** at `/demo/<scenario>` to visitors who are not signed in: they edit, commit with version names and restore in their own browser, with commits shown in the version history beside the repository's own, and everything is cleared 24 hours after their first change. A community deployment supplies the demo repository through its configuration source (`WorkspaceConfigSource.demo`, see [demo mode](docs/specs/2026-10-25-demo-mode/spec.md)).
 - Connect local agents through stdio or remote agents through Streamable HTTP MCP with named read-only or write grants.
 - The Files page manages notebook folders, notes, text files, and attachments: 3 MiB uploads, 5 MiB reads and changes, up to 200 changed files per operation.
 
