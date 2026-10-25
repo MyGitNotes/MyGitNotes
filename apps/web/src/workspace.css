@@ -553,6 +553,8 @@
   .keyboard-shortcuts-panel { top: max(12px, var(--safe-top)); }
   .app-shell { --workspace-padding: 16px; }
   .workspace-header .header-layout { padding: 8px 12px 8px; }
+  /* The bar below is fixed to the screen; a backdrop-filter on its header would make the header its containing block, and a banner above the header would push the bar off the screen. */
+  .workspace-header { backdrop-filter: none; }
   .workspace-header .header-nav { padding: 4px var(--safe-right) calc(4px + var(--safe-bottom)) var(--safe-left); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); background: var(--color-surface); }
   .workspace-header .header-nav .desktop-only { display: none !important; }
   .workspace-header .header-nav button { height: 56px; gap: 4px; padding: 4px 0; font-size: 11px; }
