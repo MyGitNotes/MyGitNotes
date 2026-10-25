@@ -11,6 +11,8 @@ import type { I18nContextValue } from '../../lib/i18n/index.js';
 import { LiveMarkdownDirective } from '../LiveMarkdownDirective.js';
 import { LiveMarkdownInfographic } from '../LiveMarkdownInfographic.js';
 import { LiveMarkdownArgumentMap } from '../LiveMarkdownArgumentMap.js';
+import { LiveMarkdownAnnotate } from '../LiveMarkdownAnnotate.js';
+import { isAnnotateName } from '../../lib/annotations/parse.js';
 import { isArgumentMapName } from '../../lib/argument-maps/parse.js';
 import { isInfographicKind } from '../../lib/infographics/model.js';
 import { LiveMarkdownTable, tableUIState } from '../LiveMarkdownTable.js';
@@ -227,8 +229,8 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
   }
 
   for (const block of collapsedDirectives) {
-    // The infographic kinds and the argument map are classes of their own, with their own widgets.
-    const widget = isArgumentMapName(block.type) ? new LiveMarkdownArgumentMap(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isInfographicKind(block.type) ? new LiveMarkdownInfographic(block.rawText, notePath, block.from, state.readOnly, block.type, t, notebookId) : new LiveMarkdownDirective(block.rawText, notePath, block.from, state.readOnly, block.type, block.attrs.variant, t, notebookId);
+    // The infographic kinds, the argument map and the image annotation are classes of their own, with their own widgets.
+    const widget = isAnnotateName(block.type) ? new LiveMarkdownAnnotate(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isArgumentMapName(block.type) ? new LiveMarkdownArgumentMap(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isInfographicKind(block.type) ? new LiveMarkdownInfographic(block.rawText, notePath, block.from, state.readOnly, block.type, t, notebookId) : new LiveMarkdownDirective(block.rawText, notePath, block.from, state.readOnly, block.type, block.attrs.variant, t, notebookId);
     marks.push(Decoration.replace({ widget, block: true }).range(block.from, block.to));
   }
 

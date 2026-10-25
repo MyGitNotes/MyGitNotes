@@ -3,6 +3,7 @@
 import type { TranslationKey } from './i18n/en.js';
 import { type DirectiveTranslate, matchDirectiveClose, parseDirectiveOpen } from './directives.js';
 import { isInfographicKind } from './infographics/model.js';
+import { isAnnotateName } from './annotations/parse.js';
 import { isArgumentMapName } from './argument-maps/parse.js';
 
 export interface DirectiveTemplate {
@@ -117,8 +118,8 @@ export function findDirectiveBlocks(text: string): ParsedDirectiveBlock[] {
 export function updateDirectiveType(rawText: string, newType: string): string {
   const lines = rawText.split('\n');
   if (lines.length === 0) return rawText;
-  // The infographic kinds and the argument map are classes of their own: a generic block neither becomes one nor is one turned into a generic block.
-  const own = (name: string) => isInfographicKind(name) || isArgumentMapName(name);
+  // The infographic kinds, the argument map and the image annotation are classes of their own: a generic block neither becomes one nor is one turned into a generic block.
+  const own = (name: string) => isInfographicKind(name) || isArgumentMapName(name) || isAnnotateName(name);
   if (own(newType.toLowerCase()) || own(parseDirectiveOpen(lines[0])?.name ?? '')) return rawText;
 
   const headerMatch = /^(\s*)(:{3,})([a-zA-Z0-9_-]+)(.*)$/.exec(lines[0]);

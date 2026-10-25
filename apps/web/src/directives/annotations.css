@@ -72,3 +72,45 @@
 @media (prefers-reduced-motion: no-preference) { .ann-item, .ann-marker path, .ann-marker rect, .ann-marker circle { transition: border-color 0.15s, stroke 0.15s, stroke-width 0.15s; } .ann-item.is-flash { animation: ann-flash 0.9s ease-out; } }
 
 @keyframes ann-flash { from { background: color-mix(in srgb, var(--color-primary) 22%, var(--color-bg)); } }
+
+/* ----- editing in the live editor (components/annotate-editor) ----- */
+
+.live-md-annotate .ann-figure { margin: 0.75rem 0; }
+.live-annotate-toolbar .live-annotate-toggle[aria-pressed='true'], .live-annotate-toolbar .live-annotate-resolved[aria-pressed='true'] { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-on-primary); }
+
+.ann-stage:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ann-edit-under, .ann-edit-over { position: absolute; inset: 0; pointer-events: none; }
+.is-annotating .ann-stage { touch-action: none; }
+.is-annotating .ann-edit-under { pointer-events: auto; cursor: crosshair; touch-action: none; }
+.ann-edit-over > * { pointer-events: auto; }
+
+/* The drag targets of a selected annotation; the visual handle is small, the hit area is 44px. */
+.ann-move-pin { position: absolute; width: 44px; height: 44px; transform: translate(-50%, -85%); border-radius: 999px; cursor: move; touch-action: none; }
+.ann-move-box { position: absolute; cursor: move; touch-action: none; }
+.ann-handle { position: absolute; width: 44px; height: 44px; transform: translate(-50%, -50%); border: 0; background: transparent; padding: 0; touch-action: none; }
+.ann-handle::after { content: ''; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; transform: translate(-50%, -50%); border: 2px solid var(--color-text); border-radius: 2px; background: var(--color-bg); }
+.ann-handle-nw, .ann-handle-se { cursor: nwse-resize; }
+.ann-handle-ne, .ann-handle-sw { cursor: nesw-resize; }
+.is-dragging .ann-marker.is-selected { visibility: hidden; }
+.is-dragging :is(.ann-handle, .ann-move) { opacity: 0; }
+
+.ann-pending, .ann-feedback { position: absolute; pointer-events: none; }
+.ann-pending-pin, .ann-feedback-pin { width: 24px; height: 24px; transform: translate(-50%, -100%); border: 2px solid var(--color-bg); border-radius: 999px 999px 999px 2px; rotate: -45deg; background: var(--color-primary); }
+.ann-pending-pin .ann-pending-badge { rotate: 45deg; }
+.ann-pending-region, .ann-feedback-region { box-sizing: border-box; border: 2px dashed var(--color-primary); border-radius: 3px; background: color-mix(in srgb, var(--color-primary) 12%, transparent); }
+.ann-pending-badge { position: absolute; left: 0; top: 0; display: grid; place-items: center; min-width: 22px; height: 22px; font: 700 11px var(--font-body, sans-serif); color: var(--color-on-primary); }
+.ann-pending-pin .ann-pending-badge { inset: 0; min-width: 0; height: auto; }
+.ann-pending-region .ann-pending-badge { transform: translate(-50%, -50%); border-radius: 999px; background: var(--color-primary); }
+
+.ann-actions, .ann-form-actions { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
+.ann-action { min-height: 2.25rem; border: 1px solid var(--ann-line); border-radius: 6px; background: var(--color-surface); padding: 0 0.7rem; font-size: 0.8125rem; color: var(--color-text); cursor: pointer; }
+.ann-action:hover { background: color-mix(in srgb, var(--color-text) 7%, var(--color-surface)); }
+.ann-action:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ann-form { display: grid; gap: 0.35rem; }
+.ann-textarea { box-sizing: border-box; width: 100%; min-height: 4.5rem; resize: vertical; border: 1px solid var(--ann-line); border-radius: 6px; background: var(--color-bg); padding: 0.45rem 0.55rem; font: inherit; color: var(--color-text); }
+.ann-textarea:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.ann-hint { margin: 0; font-size: 0.75rem; color: var(--color-muted); }
+.ann-item.is-selected { border-color: var(--color-text); }
+
+/* On a phone the toolbar is one row that scrolls sideways, not four rows above the image. */
+@media (max-width: 767px) { .live-annotate-toolbar { flex-wrap: nowrap; overflow-x: auto; } .live-annotate-toolbar > * { flex: 0 0 auto; } }

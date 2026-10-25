@@ -35,7 +35,7 @@ function label(strings: AnnotateStrings, key: string, params: Record<string, str
 /** A coordinate as the SVG presentation attribute carries it. */
 const pct = (value: number | undefined): string => `${Number((value ?? 0).toFixed(2))}%`;
 
-interface Item {
+export interface Item {
   row: AnnotationRow;
   index: number;
   /** The key in DOM ids: the annotation number when it identifies the row, else the row's position. */
@@ -46,7 +46,7 @@ interface Item {
   numbered: boolean;
 }
 
-function itemsOf(rows: readonly AnnotationRow[]): Item[] {
+export function itemsOf(rows: readonly AnnotationRow[]): Item[] {
   const claimed = new Set<number>();
   return rows.map((row, index) => {
     const unique = row.id !== undefined && !claimed.has(row.id);
