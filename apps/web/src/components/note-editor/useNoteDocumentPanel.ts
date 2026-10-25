@@ -8,6 +8,7 @@ import type { NotePanelMode } from './types.js';
 import { insideAssistantDock } from '../../lib/assistant-dock.js';
 import { DOCUMENT_PANEL_OPEN_STORAGE_KEY, DOCUMENT_PANEL_STORAGE_KEY } from '../../lib/panel-state.js';
 import { vimOwnsEscape } from '../../lib/vim-mode.js';
+import { isPhoneViewport } from '../../lib/use-phone.js';
 
 export interface UseNoteDocumentPanelParams {
   frame: 'zoom' | 'pane' | 'compact' | 'inline';
@@ -43,10 +44,11 @@ function savedPanel(isMarkdown: boolean): NotePanelMode {
 /** The document panel's visibility, find/outline navigation, its frontmatter form/tag state, and its keyboard leader menu. */
 export function useNoteDocumentPanel({ frame, active, isMarkdown, content, editorMode, setEditorMode, documentPanel, editorRef, metadata, notePath, branch, draftScope, readOnly }: UseNoteDocumentPanelParams) {
   const lastNotePanel = useRef<NotePanelMode>(savedPanel(isMarkdown));
-  // A zoomed note reopens its panel as the user left it; a Focus pane follows the rail, which remembers its own.
+  // A zoomed note reopens its panel as the user left it; a Focus pane follows the rail, which remembers its own. On a phone the panel is a
+  // full-height sheet over the note, which only the person opening it should bring up, so it never starts open nor changes what a larger screen remembers.
   const [ownPanel, updateNotePanel] = useState<NotePanelMode | null>(() => {
     try {
-      return localStorage.getItem(PANEL_OPEN_KEY) === 'true' ? savedPanel(isMarkdown) : null;
+      return !isPhoneViewport() && localStorage.getItem(PANEL_OPEN_KEY) === 'true' ? savedPanel(isMarkdown) : null;
     } catch {
       return null;
     }
@@ -58,7 +60,7 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
         lastNotePanel.current = next;
         localStorage.setItem(PANEL_KEY, next);
       }
-      if (frame !== 'pane') localStorage.setItem(PANEL_OPEN_KEY, String(next !== null));
+      if (frame !== 'pane' && !isPhoneViewport()) localStorage.setItem(PANEL_OPEN_KEY, String(next !== null));
     } catch { /* The in-memory preference remains available. */ }
     if (frame === 'pane') documentPanel?.onChange(next);
     else updateNotePanel(next);

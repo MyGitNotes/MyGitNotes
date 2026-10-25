@@ -2126,6 +2126,16 @@ export const en = {
   'settings.versionNumbersDescription': 'Every version has a running number (v1, v2…) and a date number (2026.10.07). Choose which one to show first on this device.',
   'settings.versionBySequence': 'Running number',
   'settings.versionByDate': 'Date number',
+  'phone.back': 'Back to the note list',
+  'phone.dragHandle': 'Drag down to close',
+  'phone.filterTitle': 'Filter and sort',
+  'phone.display': 'Display',
+  'phone.noteBar': 'Note',
+  'phone.listBar': 'Notes',
+  'phone.noteTools': 'Tools',
+  'phone.noteActions': 'This note',
+  'phone.saveState': 'Save status',
+  'phone.utilities': 'Assistant and account',
 };
 
 export type TranslationKey = keyof typeof en;

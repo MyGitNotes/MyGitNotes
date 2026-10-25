@@ -10,6 +10,7 @@ import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { NoteActionsMenu } from './NoteActionsMenu.js';
 import { NoteRefreshAction } from './NoteQuickActions.js';
 import { NoteRow } from './NoteRow.js';
+import { PhoneNoteChrome, type PhoneNoteChromeProps } from './PhoneNoteChrome.js';
 import type { NoteDocumentPanelState } from './useNoteDocumentPanel.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
 
@@ -42,6 +43,8 @@ interface NoteEditorToolbarProps {
   actionsSlot?: HTMLElement | null;
   /** On a phone, where a note opens for reading: whether it is being edited, and the buttons that switch. */
   phoneEditing?: { editing: boolean; onEdit: () => void; onDone: () => void; };
+  /** On a phone the toolbar is the note screen's title bar and its "⋯" sheet instead of the rows below. */
+  phoneChrome?: Pick<PhoneNoteChromeProps, 'quickActions' | 'hasHistory' | 'overlay' | 'hidden'>;
 }
 
 /** Switches a phone's note between reading and editing. */
@@ -108,10 +111,14 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
  * The zoom and pane editor's top bars. The note row carries the title, status, tags and the frontmatter button; the actions
  * follow it in zoom, which makes one row led by the back button, and go into the Focus pane's tab bar in a pane.
  */
-export function NoteEditorToolbar({ onClose, onRename, statuses, availableTags, actionsSlot, phoneEditing, ...actions }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ onClose, onRename, statuses, availableTags, actionsSlot, phoneEditing, phoneChrome, ...actions }: NoteEditorToolbarProps) {
   const { t } = useTranslation();
   const { frame, note, session, docPanel, readOnly } = actions;
   const zoom = frame === 'zoom';
+  if (phoneChrome) {
+    const { frame: phoneFrame, note: phoneNote, session: phoneSession, docPanel: phoneDocPanel, isMarkdown, autoSave, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onMove } = actions;
+    return <PhoneNoteChrome {...phoneChrome} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
+  }
   const controls: ReactNode = <NoteActions {...actions} phoneEditing={phoneEditing} />;
   return (
     <div className='note-toolbar relative shrink-0 px-4 py-2 border-b border-line flex items-center justify-between gap-4 bg-sidebar/60' data-actions={zoom ? 'row' : actionsSlot ? 'bar' : 'inline'}>

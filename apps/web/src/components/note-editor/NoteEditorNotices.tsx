@@ -4,6 +4,11 @@ import { EditorNotice } from '../EditorNotice.js';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
 
+/** Whether the editor shows any notice, which sits above the text. */
+export function hasEditorNotices(session: NoteEditorSessionState): boolean {
+  return Boolean((session.recoveredDraft && !session.blocked) || session.saveError || session.blocked || session.showRemoteNotice || session.showConflictDraftNotice);
+}
+
 /** The editor's notices: crash recovery, a save error, and the remote change or conflict notice. */
 export function NoteEditorNotices({ session, notePath }: { session: NoteEditorSessionState; notePath: string; }) {
   const { t } = useTranslation();

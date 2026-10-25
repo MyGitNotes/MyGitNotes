@@ -561,7 +561,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
         : (
           <div className='flex-1 flex flex-col min-h-0 bg-surface'>
             {!compact && (
-              <div className='px-3 py-1 bg-sidebar border-b border-line text-[11px] font-semibold text-muted uppercase tracking-wider flex items-center justify-between gap-4'>
+              <div className='note-source-heading px-3 py-1 bg-sidebar border-b border-line text-[11px] font-semibold text-muted uppercase tracking-wider flex items-center justify-between gap-4'>
                 <span>{isMarkdown ? t('editor.rawSource') : t('editor.plainTextSource')}</span>
                 <span className='font-mono truncate'>{path}</span>
               </div>

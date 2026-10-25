@@ -13,13 +13,14 @@ import { usePanelContext } from '../lib/panel-context.js';
 import { usePhone } from '../lib/use-phone.js';
 import { type NoteEditorSessionState, useNoteEditorSession } from './note-editor/useNoteEditorSession.js';
 import { useNoteDocumentPanel } from './note-editor/useNoteDocumentPanel.js';
-import { NoteEditorNotices } from './note-editor/NoteEditorNotices.js';
 import { NoteCompactFrame } from './note-editor/NoteCompactFrame.js';
 import { NoteInlineFrame } from './note-editor/NoteInlineFrame.js';
 import { NoteEditorToolbar } from './note-editor/NoteEditorToolbar.js';
 import { NoteEditorDocumentPanel } from './note-editor/NoteEditorDocumentPanel.js';
 import { NoteEditorLeader } from './note-editor/NoteEditorLeader.js';
 import { useVimCommands } from './note-editor/useVimCommands.js';
+import { hasEditorNotices, NoteEditorNotices } from './note-editor/NoteEditorNotices.js';
+import { usePhoneBarHidden } from './note-editor/usePhoneBarHidden.js';
 import { FileManagerDialog } from './files/index.js';
 import { today, type VersionText } from '../lib/history-api.js';
 import { useNoteDiffStats } from './note-editor/useNoteDiffStats.js';
@@ -76,6 +77,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     return () => setHasOpenNote(false);
   }, [frame, setHasOpenNote]);
 
+  // A phone has no room for line numbers, and its notes have no card frame: whatever this device chose for a larger screen stays stored.
+  const phone = usePhone();
   const [editorMode, setEditorMode] = useState<MarkdownEditorMode>('live');
   const [showLineNumbers, setShowLineNumbers] = useState(() => readShowLineNumbers(note.notebookId));
   const toggleLineNumbers = () =>
@@ -92,6 +95,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
       return next;
     });
   const viewPreferences = useNoteViewPreferences();
+  const lineNumbersShown = showLineNumbers && !phone;
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null);
   const editorRef = useRef<MarkdownEditorHandle>(null);
   // The editor's view is rebuilt when the note moves between frames, as a zoom borrows it from a card or a Book section; this hands its caret and undo history over.
@@ -122,7 +126,6 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
 
   // A phone opens every note for reading: a long press then only selects text instead of raising the keyboard,
   // whose resize moved the page under the selection. Editing starts from the toolbar's Edit button.
-  const phone = usePhone();
   const [editing, setEditing] = useState(false);
   const reading = phone && !editing && !session.locked;
   const finishEditing = () => {
@@ -166,6 +169,15 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // write it succeeds, so `:wq` still closes. `:q` closes a zoomed note the way its back button does.
   const canCommitNow = Boolean(footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) }).onCommit);
   const vimRoot = useVimCommands({ write: async () => canCommitNow ? session.commitNote() : !autoSave && !readOnly && session.hasUnsavedChanges ? session.handleExplicitSave() : true, quit: frame === 'zoom' && onClose ? session.close : undefined });
+  // A phone's note screen: the title bar rides over the text and slides away while it scrolls down, unless a notice or the formatting toolbar sits above the text and needs the room the bar would cover.
+  const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
+  const rootRef = useCallback((node: HTMLElement | null) => {
+    vimRoot(node);
+    setRootElement(node);
+  }, [vimRoot]);
+  const formatToolbarShown = showFormatToolbar && !reading;
+  const barOverlay = phone && !hasEditorNotices(session) && !formatToolbarShown;
+  const barHidden = usePhoneBarHidden(rootElement, barOverlay);
 
   if (frame === 'inline') {
     return (
@@ -195,28 +207,29 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
             {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
           </p>
         )}
-        <NoteCompactFrame note={note} session={session} editorRef={editorRef} isMarkdown={isMarkdown} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={showLineNumbers} toggleLineNumbers={toggleLineNumbers} onCaret={onCaret} carry={carry} />
+        <NoteCompactFrame note={note} session={session} editorRef={editorRef} isMarkdown={isMarkdown} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} onCaret={onCaret} carry={carry} />
       </div>
     );
   }
 
+  const quickActions = <NoteQuickActions {...footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) })} changes={changes} disabled={session.isSaving} />;
   const history = { target: historyTarget, dirty: session.isDirty, current: currentFile, onRestore: readOnly || session.locked ? undefined : restoreFile, onCommitVersion: onCommitFile && !readOnly ? async (text: VersionText) => void await session.commitNote({ path: note.path, today: today(), ...text }) : undefined };
   const panel = { ...docPanel, isMarkdown, history, onRename: readOnly ? undefined : onRename, notePath: note.path, content: session.content, lineNumberOffset: session.baseNote.lineNumberOffset || 0, metadata: session.metadata, setMetadata: session.setMetadata, statuses, metadataFields, availableTags, locked: session.locked, notebookId: note.notebookId, readOnly };
   return (
-    <div ref={vimRoot} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} style={noteViewStyle(viewPreferences)}>
+    <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
-      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={showLineNumbers} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked && !reading ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : undefined} onRefresh={refresh} onClose={onClose} onMove={readOnly ? undefined : onMove} onRename={readOnly ? undefined : onRename} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} />
+      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : undefined} onRefresh={refresh} onClose={onClose} onMove={readOnly ? undefined : onMove} onRename={readOnly ? undefined : onRename} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden } : undefined} />
       {awaitingRecovery && (
         <p role='status'>
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
         </p>
       )}
-      {showFormatToolbar && !reading && <div ref={setToolbarSlot} className='note-format-toolbar' />}
+      {formatToolbarShown && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       <div className='note-editor-body'>
-        <MarkdownEditor ref={editorRef} content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked || reading} onChange={session.setContent} onCaret={trackCaret} toolbarSlot={showFormatToolbar ? toolbarSlot : null} ariaLabel='Note content' showLineNumbers={showLineNumbers} lineNumberOffset={session.baseNote.lineNumberOffset} onInsertImage={session.locked ? undefined : () => setImagePickerOpen(true)} carry={carry} />
+        <MarkdownEditor ref={editorRef} content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked || reading} onChange={session.setContent} onCaret={trackCaret} toolbarSlot={showFormatToolbar ? toolbarSlot : null} ariaLabel='Note content' showLineNumbers={lineNumbersShown} lineNumberOffset={session.baseNote.lineNumberOffset} onInsertImage={session.locked ? undefined : () => setImagePickerOpen(true)} carry={carry} />
         <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />
       </div>
-      <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={<NoteQuickActions {...footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) })} changes={changes} disabled={session.isSaving} />} />
+      {!phone && <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={quickActions} />}
       {docPanel.isEditorLeaderOpen && <NoteEditorLeader docPanel={docPanel} isMarkdown={isMarkdown} />}
       {imagePickerOpen && <FileManagerDialog notebookId={note.notebookId} writable={!readOnly} mode='pick-image' onInsert={session.locked ? undefined : insertImage} beforeChange={beforeFileChange} onChanged={onFilesChanged} onClose={() => setImagePickerOpen(false)} />}
     </div>

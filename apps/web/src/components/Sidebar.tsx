@@ -51,9 +51,11 @@ interface SidebarProps {
   /** The rail's open section; set by an owner that opens it from elsewhere (the list's "+ filter" chip), else the rail keeps its own. */
   railSection?: RailSectionId | null;
   onRailSectionChange?: (section: RailSectionId | null) => void;
+  /** Only the filters that narrow the list (status and tags): a phone's filter sheet, where the drawer already holds the notebook tree. */
+  filtersOnly?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, rail = false, railSection, onRailSectionChange }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, rail = false, filtersOnly = false, railSection, onRailSectionChange }) => {
   const { t, language } = useTranslation();
   const { value, statuses, onChange } = filters;
   const dotClass = useStatusDotClass();
@@ -315,7 +317,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   return (
     <WorkspaceSidebar label={t('sidebar.statusFilter')} className='notes-sidebar'>
       <section className='sidebar-search' aria-label={t('filters.title')}>
-        <div className='sidebar-search-row'>{expandControls}</div>
+        {!filtersOnly && <div className='sidebar-search-row'>{expandControls}</div>}
         {filterSummary}
         {!foldersLoading && value.folders.filter(path =>
           !filters.notebooks.some(nb => path === nb.root.replace(/\/$/, '')) && !folders.some(folder => {
@@ -329,7 +331,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
           </button>
         ))}
       </section>
-      {onSelectFolder && (
+      {onSelectFolder && !filtersOnly && (
         <details className='sidebar-filter-section sidebar-notebooks' open={sections.isOpen('notebooks')} onToggle={event => sections.setOpen('notebooks', event.currentTarget.open)}>
           <summary>{t('sidebar.notebooks')}</summary>
           {notebooksBody}

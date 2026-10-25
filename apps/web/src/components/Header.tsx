@@ -28,18 +28,67 @@ interface HeaderProps {
   createNoteDisabled?: boolean;
   onOpenCommands: () => void;
   navigationDisabled?: boolean;
+  /** A phone's Notes page draws its own bars at the top; the header then keeps only the bottom navigation. */
+  navOnly?: boolean;
 }
 
-export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, createNoteDisabled, onOpenCommands, navigationDisabled = false }: HeaderProps) {
+/** The assistant dock's button, the command palette's, and the account controls: the header's right end, and a phone's Notes drawer where there is no header. */
+export function HeaderUtilities({ activeTab, setActiveTab, navigationDisabled = false, onOpenCommands, accountControls, className = 'header-utilities' }: Pick<HeaderProps, 'activeTab' | 'setActiveTab' | 'navigationDisabled' | 'onOpenCommands' | 'accountControls'> & { className?: string; }) {
   const { t } = useTranslation();
   const dockOffer = usePiAgentOffer();
-  useEffect(() => {
-    document.title = `${t(`nav.${activeTab}`)} · MyGitNotes`;
-  }, [activeTab, t]);
   // The button opens quick open on note search, the same as its chord.
   const [paletteKeys] = bindingsFor(keymapEntry('palette.notes'), keyEnvironment);
   const paletteLabel = paletteKeys ? t('shortcuts.openWithKeys', { keys: formatKeys(paletteKeys, keyEnvironment).join(' ') }) : t('shortcuts.open');
+  return (
+    <div className={className}>
+      {/* Where the assistant dock is offered, the Agents page opens from the dock's header instead, so the header shows one agent button; while the server has not yet said, the dock's own button waits disabled in its place. */}
+      {dockOffer === 'none' && (
+        <button type='button' disabled={navigationDisabled} className='ui-icon-button header-agent' data-header-agent='' aria-label={t('nav.agent')} title={t('nav.agent')} aria-current={activeTab === 'agent' ? 'page' : undefined} onClick={() => setActiveTab('agent')}>
+          <Bot size={17} />
+        </button>
+      )}
+      <AssistantDockToggle className='header-assistant' />
+      <button type='button' disabled={navigationDisabled} className='ui-icon-button header-command' data-header-command='' aria-label={t('shortcuts.open')} aria-keyshortcuts={paletteKeys && ariaKeyShortcuts(paletteKeys, keyEnvironment)} title={paletteLabel} onClick={onOpenCommands}>
+        <Keyboard size={17} />
+      </button>
+      {accountControls}
+    </div>
+  );
+}
+
+export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, createNoteDisabled, onOpenCommands, navigationDisabled = false, navOnly = false }: HeaderProps) {
+  const { t } = useTranslation();
+  useEffect(() => {
+    document.title = `${t(`nav.${activeTab}`)} · MyGitNotes`;
+  }, [activeTab, t]);
   const items = [{ id: 'notes', label: t('nav.notes'), icon: BookOpen }, { id: 'graph', label: t('nav.graph'), icon: Network }, { id: 'assets', label: t('nav.assets'), icon: ImageIcon }, { id: 'settings', label: t('nav.settings'), icon: Settings }] as const;
+  const nav = (
+    <nav aria-label='Main navigation' className='header-nav'>
+      {items.map(({ id, label, icon: Icon, ...item }, index) => (
+        <React.Fragment key={id}>
+          {index === 2 && (
+            <Button variant='primary' type='button' className='mobile-nav-create' aria-label={t('header.newNote')} disabled={createNoteDisabled || navigationDisabled} onClick={onCreateNote}>
+              <Plus aria-hidden='true' />
+              <span>{t('header.newNote')}</span>
+            </Button>
+          )}
+          <button
+            type='button'
+            disabled={navigationDisabled}
+            onClick={() => setActiveTab(id)}
+            aria-label={label}
+            title={label}
+            className={'desktopOnly' in item && item.desktopOnly ? 'desktop-only' : undefined}
+            aria-current={activeTab === id ? 'page' : undefined}
+          >
+            <Icon aria-hidden='true' />
+            <span>{label}</span>
+          </button>
+        </React.Fragment>
+      ))}
+    </nav>
+  );
+  if (navOnly) return <header className='workspace-header' data-nav-only=''>{nav}</header>;
   return (
     <header className='workspace-header'>
       <div className='header-layout'>
@@ -51,30 +100,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
           </div>
           <span id='workspace-sidebar-toggle-slot' className='sidebar-toggle-slot' />
         </div>
-        <nav aria-label='Main navigation' className='header-nav'>
-          {items.map(({ id, label, icon: Icon, ...item }, index) => (
-            <React.Fragment key={id}>
-              {index === 2 && (
-                <Button variant='primary' type='button' className='mobile-nav-create' aria-label={t('header.newNote')} disabled={createNoteDisabled || navigationDisabled} onClick={onCreateNote}>
-                  <Plus aria-hidden='true' />
-                  <span>{t('header.newNote')}</span>
-                </Button>
-              )}
-              <button
-                type='button'
-                disabled={navigationDisabled}
-                onClick={() => setActiveTab(id)}
-                aria-label={label}
-                title={label}
-                className={'desktopOnly' in item && item.desktopOnly ? 'desktop-only' : undefined}
-                aria-current={activeTab === id ? 'page' : undefined}
-              >
-                <Icon aria-hidden='true' />
-                <span>{label}</span>
-              </button>
-            </React.Fragment>
-          ))}
-        </nav>
+        {nav}
         <div className='header-account'>
           <div className='header-notebook'>
             <span id='workspace-sidebar-toggle-slot-mobile' className='sidebar-toggle-slot' />
@@ -85,19 +111,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
               </>
             )}
           </div>
-          <div className='header-utilities'>
-            {/* Where the assistant dock is offered, the Agents page opens from the dock's header instead, so the header shows one agent button; while the server has not yet said, the dock's own button waits disabled in its place. */}
-            {dockOffer === 'none' && (
-              <button type='button' disabled={navigationDisabled} className='ui-icon-button header-agent' data-header-agent='' aria-label={t('nav.agent')} title={t('nav.agent')} aria-current={activeTab === 'agent' ? 'page' : undefined} onClick={() => setActiveTab('agent')}>
-                <Bot size={17} />
-              </button>
-            )}
-            <AssistantDockToggle className='header-assistant' />
-            <button type='button' disabled={navigationDisabled} className='ui-icon-button header-command' data-header-command='' aria-label={t('shortcuts.open')} aria-keyshortcuts={paletteKeys && ariaKeyShortcuts(paletteKeys, keyEnvironment)} title={paletteLabel} onClick={onOpenCommands}>
-              <Keyboard size={17} />
-            </button>
-            {accountControls}
-          </div>
+          <HeaderUtilities activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={navigationDisabled} onOpenCommands={onOpenCommands} accountControls={accountControls} />
         </div>
       </div>
     </header>
