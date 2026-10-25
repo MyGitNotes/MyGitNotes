@@ -9,6 +9,7 @@ import type { FilterControls } from '../lib/filter-controls.js';
 import { SIDEBAR_SECTIONS_KEY } from '../lib/sidebar-sections.js';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { Sidebar } from './Sidebar.js';
+import { StatusColorProvider } from '../lib/status-color.js';
 import { NOTE_MOVE_DRAG_TYPE } from '../lib/note-drag.js';
 import { startTouchNoteDrag } from '../lib/touch-note-drag.js';
 
@@ -47,6 +48,19 @@ it('has three collapsible sections, Notebooks, Status and Tags, and no search fi
   const summaries = [...document.querySelectorAll('details.sidebar-filter-section > summary')].map(summary => summary.textContent);
   expect(summaries).toEqual(['Notebooks', 'Status', 'Tags']);
   expect(screen.queryByRole('searchbox', { name: /search notes/i })).not.toBeInTheDocument();
+});
+
+it('paints each status filter dot from the notebook statuses, muting one the notebook does not list', () => {
+  const filters = { ...controls(), statuses: ['todo', 'review', 'later', 'stray'] };
+  render(
+    <StatusColorProvider statuses={['todo', { name: 'review', color: 'teal' }, 'later']}>
+      <I18nProvider>
+        <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} changeCount={0} />
+      </I18nProvider>
+    </StatusColorProvider>,
+  );
+  const dot = (status: string) => document.querySelector(`[data-status-filter="${status}"] .status-dot`);
+  expect([dot('todo'), dot('review'), dot('later'), dot('stray')].map(node => [...node!.classList].find(name => name.startsWith('bg-')))).toEqual(['bg-warning', 'bg-status-teal', 'bg-status-pink', 'bg-muted']);
 });
 
 it('remembers a collapsed section in localStorage for this browser', () => {

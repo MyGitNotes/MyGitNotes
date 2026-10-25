@@ -1,4 +1,4 @@
-export type { NotebookConfig, NotebookMetadataField, ViewMode, WorkspaceConfig } from '@mygitnotes/core';
+export type { NotebookConfig, NotebookMetadataField, NotebookStatus, StatusColorName, ViewMode, WorkspaceConfig } from '@mygitnotes/core';
 
 export interface NoteItem {
   revision?: string;

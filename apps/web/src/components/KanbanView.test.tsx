@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { setNoteQueryScope } from '../lib/use-note-queries.js';
 import { KanbanView } from './KanbanView.js';
+import { StatusColorProvider } from '../lib/status-color.js';
 import { NOTE_DRAG_TYPE } from '../lib/note-drag.js';
 
 const REVISION = 'd'.repeat(40);
@@ -49,6 +50,18 @@ it('asks the server for the notes that carry no status', async () => {
   await waitFor(() => expect(screen.getByText('notes/life/loose.md')).toBeInTheDocument());
   expect(requests.some(url => url.includes('noStatus=1'))).toBe(true);
   expect(requests.some(url => url.includes('status=inbox'))).toBe(true);
+});
+
+it('paints each column dot from the notebook statuses', async () => {
+  render(
+    <StatusColorProvider statuses={['inbox', { name: 'doing', color: 'red' }, 'later']}>
+      <KanbanView query={{ notebookId: 'life' }} statuses={['inbox', 'doing', 'later', 'stray']} onOpenNote={() => {}} onUpdateNoteStatus={() => {}} onDeleteNote={() => {}} onNewNoteWithStatus={() => {}} />
+    </StatusColorProvider>,
+    { wrapper },
+  );
+  await waitFor(() => expect(screen.getByText('notes/life/loose.md')).toBeInTheDocument());
+  const dot = (status: string) => document.querySelector(`[data-status-column="${status}"] .status-dot`);
+  expect(['inbox', 'doing', 'later', 'stray'].map(status => [...dot(status)!.classList].find(name => name.startsWith('bg-')))).toEqual(['bg-primary', 'bg-danger', 'bg-status-purple', 'bg-muted']);
 });
 
 it('counts each column and the board from the server totals', async () => {

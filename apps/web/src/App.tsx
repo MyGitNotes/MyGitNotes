@@ -85,6 +85,7 @@ import { useFocusSearch } from './lib/focus-search.js';
 import { LegacyScreenRedirect } from './components/LegacyScreenRedirect.js';
 import { LegacySchemaNotice } from './components/LegacySchemaNotice.js';
 import { CompilationActionsProvider } from './lib/compilation-actions.js';
+import { StatusColorProvider } from './lib/status-color.js';
 import { useCompilationActionsValue } from './app/useCompilationActionsValue.js';
 import { BrowseDock, BrowseDockToggle } from './components/BrowseDock.js';
 import { RightPanel } from './components/RightPanel.js';
@@ -180,7 +181,7 @@ export const AppContent: React.FC = () => {
   /** With several repositories, the notebook switcher groups notebooks under each repository's title. */
   const notebookGroups = repositories.length > 1 ? repositories.filter(repository => repository.notebooks.length).map(repository => ({ label: repository.title, notebooks: repository.notebooks })) : undefined;
 
-  const { facetsQuery, notebookFacets, notebookStatuses, newNoteStatuses, selectedTags, workspaceTagNames, noteTagActions, searchQuery, viewMode, folderless } = useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route, canManageTags, previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag });
+  const { facetsQuery, notebookFacets, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, noteTagActions, searchQuery, viewMode, folderless } = useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route, canManageTags, previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag });
 
   const { focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, focusDocumentPanel, setDocumentContainer, showFocus, requestClear, confirmingClear, setConfirmingClear } = useFocusPanes({ selectedNotebookId, notebookRepository: repositoryFor(selectedNotebookId)?.id ?? '', focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite: canWriteNotebook(selectedNotebookId), editorRegistry, location, navigate, editorRoute, resolveBareNotebook });
 
@@ -789,7 +790,7 @@ export const AppContent: React.FC = () => {
       <OutlineActionsProvider value={outlineActions.value}>
         {/* The shell and the assistant dock share a row; the dock is part of the layout, not an overlay on it. */}
         <div className='app-frame'>
-          {content}
+          <StatusColorProvider statuses={statusEntries}>{content}</StatusColorProvider>
           <AssistantDock onOpenAgents={() => setActiveTab('agent')} agentsDisabled={noteEditorOpen || isCommitOpen} />
         </div>
       </OutlineActionsProvider>

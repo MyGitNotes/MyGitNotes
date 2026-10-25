@@ -14,13 +14,19 @@ export interface NotebookMetadataField {
   label?: string;
 }
 
+/** The fixed palette a notebook status may take its colour from, by name only. */
+export type StatusColorName = 'green' | 'blue' | 'amber' | 'red' | 'purple' | 'teal' | 'pink' | 'gray';
+
+/** One entry of a notebook's `statuses`: the bare name, or the name with the colour its dot wears. */
+export type NotebookStatus = string | { name: string; color?: StatusColorName; };
+
 export interface NotebookConfig {
   id: string;
   title: string;
   root: string;
   assets?: string;
   default_view?: ViewMode;
-  statuses?: string[];
+  statuses?: NotebookStatus[];
   templates?: NoteTemplate[];
   metadata?: NotebookMetadataField[];
   pathAliases?: Record<string, string>;
