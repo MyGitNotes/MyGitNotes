@@ -116,3 +116,12 @@ it('keeps only the Focus controls, New and the header buttons once the browse re
   expect(screen.getByRole('button', { name: 'Focus' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Commands' })).toBeInTheDocument();
 });
+
+it('marks a search still in force once the browse region is collapsed, and reopens it from there', () => {
+  const reveal = vi.fn();
+  const { rerender } = render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, browseCollapsed: true, onRevealSearch: reveal })));
+  expect(screen.queryByRole('button', { name: /^搜尋/ })).toBeNull();
+  rerender(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, browseCollapsed: true, onRevealSearch: reveal, query: 'pnpm' })));
+  fireEvent.click(screen.getByRole('button', { name: /: pnpm$/ }));
+  expect(reveal).toHaveBeenCalledOnce();
+});

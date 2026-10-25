@@ -43,6 +43,8 @@ interface NoteToolbarProps {
   browseCollapsed?: boolean;
   /** The header's assistant and command buttons, shown here while the header is folded away. */
   utilities?: ReactNode;
+  /** While collapsed, a search in force still dims the Focus: a button names it and reopens the browse region at the field. */
+  onRevealSearch?: () => void;
 }
 
 /** The orders the notes list offers, as the sort menu lists them. */
@@ -52,7 +54,7 @@ export interface NoteSearchHandle {
   focus: () => void;
 }
 
-export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, sortField, sortOrder, onSortChange, groupByFolder, readOnly, viewMode, setViewMode, onNewNote, onNewCompilation, onNewOutline, templates = [], onNewFromTemplate, query, onQueryChange, filtersOpen, onToggleFilters, focusControls, onImportLegacy, searchRef, browseCollapsed = false, utilities }: NoteToolbarProps) {
+export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, sortField, sortOrder, onSortChange, groupByFolder, readOnly, viewMode, setViewMode, onNewNote, onNewCompilation, onNewOutline, templates = [], onNewFromTemplate, query, onQueryChange, filtersOpen, onToggleFilters, focusControls, onImportLegacy, searchRef, browseCollapsed = false, utilities, onRevealSearch }: NoteToolbarProps) {
   const { t } = useTranslation();
   // Below 768px the field is hidden behind a button and expands over the toolbar.
   const [searchOpen, setSearchOpen] = useState(false);
@@ -119,6 +121,11 @@ export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, s
             )}
           </div>
         </>
+      )}
+      {browseCollapsed && query.trim() && onRevealSearch && (
+        <button type='button' className='ui-icon-button note-search-active' aria-label={`${t('header.searchPlaceholder')}: ${query.trim()}`} title={query.trim()} onClick={onRevealSearch}>
+          <Search size={16} aria-hidden='true' />
+        </button>
       )}
       {focusControls && <div className='note-focus-controls' role='group' aria-label={t('focus.title')}>{focusControls}</div>}
       {/* View Switcher Desktop */}
