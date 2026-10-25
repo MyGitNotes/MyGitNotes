@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 const note: NoteItem = { id: 'a', path: 'notes/a.md', notebookId: 'a', title: 'Alpha', tags: ['work'], metadata: { title: 'Alpha', status: 'working', tags: ['work'] }, content: '# Alpha\n\nBody words here.\n' };
-const editor = (props: Partial<NoteEditorProps> = {}, back = () => {}, changesCount = 0) => createElement(PhoneNotesProvider, { value: { back, changesCount } }, createElement(PanelProvider, null, createElement(NoteEditor, { note, frame: 'pane', active: true, statuses: ['inbox', 'working', 'done'], autoSave: true, onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main', ...props } as NoteEditorProps)));
+const editor = (props: Partial<NoteEditorProps> = {}, back = () => {}, changesCount = 0, deleteNote?: (note: NoteItem) => void) => createElement(PhoneNotesProvider, { value: { back, changesCount, deleteNote } }, createElement(PanelProvider, null, createElement(NoteEditor, { note, frame: 'pane', active: true, statuses: ['inbox', 'working', 'done'], autoSave: true, onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main', ...props } as NoteEditorProps)));
 const bar = () => screen.getByRole('group', { name: 'Note' });
 
 it("shows one title bar with back, the title, the status, edit and more, and nothing of a desktop note's rows", () => {
@@ -127,4 +127,22 @@ it('keeps the rows, actions and footer of a larger screen', () => {
   expect(screen.getByRole('group', { name: 'Note properties' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Line Numbers' })).toBeInTheDocument();
   expect(screen.getByText(/^\d+ words$/)).toBeInTheDocument();
+});
+
+it('deletes the note from the sheet on a second tap, then returns to the list', () => {
+  const back = vi.fn(), deleteNote = vi.fn();
+  render(editor({}, back, 0, deleteNote));
+  fireEvent.click(within(bar()).getByRole('button', { name: 'More actions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+  expect(deleteNote).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Click again to confirm deletion' }));
+  expect(deleteNote).toHaveBeenCalledWith(expect.objectContaining({ path: 'notes/a.md' }));
+  expect(back).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('offers no delete where the notebook cannot be written', () => {
+  render(editor({ readOnly: true }, () => {}, 0, vi.fn()));
+  fireEvent.click(within(bar()).getByRole('button', { name: 'More actions' }));
+  expect(screen.queryByRole('button', { name: 'Delete note' })).toBeNull();
 });

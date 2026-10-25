@@ -1,5 +1,5 @@
-import { type ReactNode, useState } from 'react';
-import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, ListTree, MoreHorizontal, Pencil, PencilLine, Printer, Save, Type } from 'lucide-react';
+import { type ReactNode, useEffect, useState } from 'react';
+import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, ListTree, MoreHorizontal, Pencil, PencilLine, Printer, Save, Trash2, Type } from 'lucide-react';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import '../phone-notes.css';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -144,7 +144,14 @@ function RenameRow({ title, onRename, onDone }: { title: string; onRename: (titl
 function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onMove, onRename, statuses, availableTags, hasHistory, quickActions, title, onClose }: PhoneNoteChromeProps & { title: string; onClose: () => void; }) {
   const { t } = useTranslation();
   const panel = usePanelContext();
-  const { changesCount } = usePhoneNotes();
+  const { changesCount, deleteNote, back } = usePhoneNotes();
+  // Deleting asks for a second tap, which lapses if it is not given.
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  useEffect(() => {
+    if (!deleteArmed) return;
+    const timer = setTimeout(() => setDeleteArmed(false), 4000);
+    return () => clearTimeout(timer);
+  }, [deleteArmed]);
   const words = session.content.trim().split(/\s+/).filter(Boolean).length;
   const filename = note.path.split('/').pop() || 'note.md';
   // A zoomed note covers the workspace tools; only the note's own sections are offered there.
@@ -197,6 +204,20 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         <SheetItem icon={<Copy aria-hidden='true' />} label={t(session.copyState === 'copied' ? 'editor.noteCopied' : session.copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.exportCopy')} onClick={() => void session.copyNote()} />
         <SheetItem icon={<FileText aria-hidden='true' />} label={t('editor.exportMarkdown')} onClick={act(() => downloadTextFile(filename, session.content, 'text/markdown;charset=utf-8'))} />
         <SheetItem icon={<Printer aria-hidden='true' />} label={t('editor.exportPdf')} onClick={act(() => void printNoteAsPdf(session.title || filename, session.content, note.path, t('mermaid.error'), note.notebookId))} />
+        {deleteNote && !readOnly && (
+          <SheetItem
+            icon={<Trash2 aria-hidden='true' />}
+            label={t(deleteArmed ? 'notes.confirmDelete' : 'notes.delete')}
+            pressed={deleteArmed}
+            onClick={() => {
+              if (!deleteArmed) return setDeleteArmed(true);
+              onClose();
+              deleteNote(note);
+              if (frame === 'pane') back();
+              else session.close();
+            }}
+          />
+        )}
       </section>
     </PhoneSheet>
   );

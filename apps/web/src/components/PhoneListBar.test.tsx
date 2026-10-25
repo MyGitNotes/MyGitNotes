@@ -50,7 +50,13 @@ it('opens the search over the bar, which sends what is typed, and the command th
 
 it("holds the list's view, order and hidden notes in the filter sheet, above the filter sections", () => {
   const onShowHiddenChange = vi.fn(), onSortChange = vi.fn(), onClose = vi.fn(), onChange = vi.fn();
-  render(createElement(I18nProvider, null, createElement(PhoneFilterSheet, { onClose, sortField: 'updated', sortOrder: 'desc', onSortChange, viewMode: 'flat', setViewMode: vi.fn(), showHidden: false, hiddenNoteCount: 4, onShowHiddenChange, groupByFolder: { value: false, onChange }, children: createElement('p', null, 'Status and tags go here') })));
+  render(createElement(
+    I18nProvider,
+    null,
+    (<PhoneFilterSheet onClose={onClose} sortField='updated' sortOrder='desc' onSortChange={onSortChange} viewMode='flat' setViewMode={vi.fn()} showHidden={false} hiddenNoteCount={4} onShowHiddenChange={onShowHiddenChange} groupByFolder={{ value: false, onChange }}>
+      <p>Status and tags go here</p>
+    </PhoneFilterSheet>),
+  ));
   const sheet = within(screen.getByRole('dialog', { name: 'Filter and sort' }));
   expect(sheet.getByRole('combobox', { name: 'Sort' })).toBeInTheDocument();
   expect(sheet.getByRole('combobox', { name: 'Note view' })).toBeInTheDocument();

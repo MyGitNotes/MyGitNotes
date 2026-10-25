@@ -309,7 +309,7 @@ export const AppContent: React.FC = () => {
   const [phoneFilterOpen, setPhoneFilterOpen] = useState(false);
   // What the Changes tool counts: pending changes, and for a local workspace the deletions awaiting commit.
   const phoneChangesCount = remote ? changeCount : changeCount + deletedNotes.length;
-  const phoneNotesValue = useMemo(() => ({ back: () => setFocusNarrowView('browse'), changesCount: phoneChangesCount }), [setFocusNarrowView, phoneChangesCount]);
+  const phoneNotesValue = useMemo(() => ({ back: () => setFocusNarrowView('browse'), changesCount: phoneChangesCount, deleteNote: canWrite ? (note: NoteItem) => void handleDeleteNote(note as NoteListItem) : undefined }), [setFocusNarrowView, phoneChangesCount, canWrite, handleDeleteNote]);
   // The browse region's toggle, where the Notes toolbar shows one: collapsing it folds the sidebar and the header away with it so the Focus gets the room.
   // Only where that toggle can bring them back, so no page and no screen size is left without navigation.
   const browseDock = activeTab === 'notes' && !route.study && noteFocus.layout && focusCapacity !== 1 ? { collapsed: noteFocus.view.dock.collapsed, toggle: () => noteFocus.setDock({ collapsed: !noteFocus.view.dock.collapsed }) } : undefined;

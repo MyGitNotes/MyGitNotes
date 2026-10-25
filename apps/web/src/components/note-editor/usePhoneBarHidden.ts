@@ -12,10 +12,7 @@ export const PHONE_BAR_HEIGHT = 44;
 export function usePhoneBarHidden(root: HTMLElement | null, enabled: boolean): boolean {
   const [hidden, setHidden] = useState(false);
   useEffect(() => {
-    if (!root || !enabled) {
-      setHidden(false);
-      return;
-    }
+    if (!root || !enabled) return;
     const last = new WeakMap<Element, { top: number; anchor: number; direction: number; }>();
     const onScroll = (event: Event) => {
       const scroller = event.target;
@@ -31,7 +28,10 @@ export function usePhoneBarHidden(root: HTMLElement | null, enabled: boolean): b
       else if (direction < 0 && anchor - scrollTop >= SCROLL_STEP) setHidden(false);
     };
     root.addEventListener('scroll', onScroll, true);
-    return () => root.removeEventListener('scroll', onScroll, true);
+    return () => {
+      root.removeEventListener('scroll', onScroll, true);
+      setHidden(false);
+    };
   }, [root, enabled]);
   return hidden;
 }

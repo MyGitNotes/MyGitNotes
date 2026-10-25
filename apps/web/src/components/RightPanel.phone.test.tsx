@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createElement } from 'react';
+import { createElement, useEffect } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
@@ -29,7 +29,10 @@ afterEach(() => {
 
 let panelApi: ReturnType<typeof usePanelContext>;
 function Capture() {
-  panelApi = usePanelContext();
+  const api = usePanelContext();
+  useEffect(() => {
+    panelApi = api;
+  });
   return null;
 }
 const panel = (phoneSheet: boolean) => render(createElement(I18nProvider, null, createElement(PanelProvider, null, createElement(Capture), createElement(RightPanel, { phoneSheet, notebooks: [], selectedNotebookId: 'a', onOpenNote: vi.fn(), onSaveNote: vi.fn() as never, onReadNote: vi.fn() as never, gitStatus: null, changeCount: 0, deletedNotes: [], onRestoreNote: vi.fn(), onOpenCommitModal: vi.fn(), writable: true }))));
