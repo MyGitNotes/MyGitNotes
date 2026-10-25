@@ -54,6 +54,7 @@ export * from './notebook-key.js';
 export * from './newer-version-error.js';
 export * from './repository.js';
 export * from './workspace-config-source.js';
+export * from './demo.js';
 export * from './workspace-repositories.js';
 export * from './local-manifest.js';
 export * from './repository-manifest.js';

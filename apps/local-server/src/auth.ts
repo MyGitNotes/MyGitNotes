@@ -262,7 +262,7 @@ function sessionRouter({ sessions, configSource, choices, identity, agentFor }: 
       // where each person keeps repositories in Settings (`accountMembers`), the add flow until they have one.
       const choice = !choosesRepository() ? {} : choices ? { repositoryChoice: true, workspace: await choices.read(req) } : { repositoryChoice: true, accountMembers: true, workspace: signedIn ? firstMember(await configSource.settings(req)) : null };
       // `provider` and `loginUrl` stay for a web bundle cached across the deploy that predates `signInOptions`.
-      res.json({ authenticated: Boolean(signedIn), login: signedIn?.login, provider: signInOptions[0]?.id, loginUrl: signInOptions[0]?.url, signInOptions, platformAccess, storage: sessions.kind, ...choice, ...signedIn && agentFor && await agentFor(req, res) ? { agent: true } : {}, configured: await identity.configured(req) });
+      res.json({ authenticated: Boolean(signedIn), login: signedIn?.login, provider: signInOptions[0]?.id, loginUrl: signInOptions[0]?.url, signInOptions, platformAccess, storage: sessions.kind, ...configSource.demo ? { demo: true } : {}, ...choice, ...signedIn && agentFor && await agentFor(req, res) ? { agent: true } : {}, configured: await identity.configured(req) });
     } catch {
       res.status(503).json({ error: 'Session store or source configuration unavailable.' });
     }

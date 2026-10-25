@@ -191,7 +191,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         // them, or one it was never asked for is not named.
         const entries = signedIn(res) ? listed : listed.filter(entry => !('unavailable' in entry) || READABLE_UNAVAILABLE.includes(entry.unavailable.reason));
         const repositories = await Promise.all(entries.map(async (entry): Promise<RepositoryStatus> => {
-          const base = { id: entry.ref.id, type: entry.ref.source.type, repository: entry.ref.source.type === 'local' ? undefined : entry.ref.source.repository, alias: entry.alias, notebooks: entry.notebooks.map(notebook => notebook.key) };
+          const base = { id: entry.ref.id, ...(entry.member.demo ? { demo: true as const } : {}), type: entry.ref.source.type, repository: entry.ref.source.type === 'local' ? undefined : entry.ref.source.repository, alias: entry.alias, notebooks: entry.notebooks.map(notebook => notebook.key) };
           const manifest = repositoryManifestStatus(await workspace.manifestOf(entry.ref.id));
           // A repository whose manifest does not load is still read, so Settings can fix that manifest.
           const handle = ('handle' in entry ? entry.handle : await workspace.handleOf(entry.ref.id)) as RemoteHandle | undefined;

@@ -53,6 +53,11 @@ export interface WorkspaceMember {
    * (visitor choice included), `account` in an edition that keeps membership per person.
    */
   editable: 'server-file' | 'account' | 'environment' | 'none';
+  /**
+   * A demo repository: public content a signed-out visitor may read. It stays read-only on the server (`write` false);
+   * the browser lets the visitor edit and commit locally, and nothing they do reaches the repository.
+   */
+  demo?: true;
 }
 /** A repository to add to a workspace: a platform repository, or in local mode a worktree; `folder` when it has no manifest. */
 export interface NewMember {
@@ -121,6 +126,8 @@ export interface WorkspaceSettings {
 export interface WorkspaceConfigSource {
   /** Local deployments serve worktrees; remote deployments reach every repository through a provider API. */
   readonly mode: 'local' | 'remote';
+  /** Whether this deployment offers a demo to visitors who are not signed in; the session probe reports it. */
+  readonly demo?: boolean;
   settings(request: WorkspaceRequest): Promise<WorkspaceSettings>;
   /** Changes the membership of the request's workspace; absent, or undefined for a request, where it is read-only. */
   membership?(request: WorkspaceRequest): MembershipStore | undefined;

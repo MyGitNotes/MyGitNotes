@@ -73,6 +73,8 @@ export interface RepositoryStatus {
   revision: string;
   /** Whether the requester may commit to this repository. */
   write: boolean;
+  /** A demo repository: read-only here, but the browser keeps the visitor's edits and commits locally. */
+  demo?: true;
   /** The repository's alias in this workspace, the first part of its notebooks' keys. */
   alias: string;
   /** Keys of the notebooks this repository serves. */
