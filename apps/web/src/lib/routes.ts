@@ -3,6 +3,10 @@ import { noteWebPath } from '@mygitnotes/core/workspace-links';
 import { isBareNotebookId } from '@mygitnotes/core/notebook-key';
 import { matchPath } from 'react-router-dom';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
+/** The paths the router serves with the app itself, before any edition's routes. */
+export const APP_ROUTE_PATHS = ['/', '/notes', '/index.html', '/notebooks', '/notebooks/:notebook', '/notebooks/:notebook/folders/*', '/notebooks/:notebook/notes/*', '/assets', '/files', '/agent', '/graph', '/settings', '/screen', '/screen/lanes/:lane', '/notes/study'];
+/** The first segment of each app path: a one-segment address starting with one is a page of the app, not something else's name. */
+export const APP_ROOT_SEGMENTS = [...new Set(APP_ROUTE_PATHS.map(path => path.split('/')[1]!).filter(Boolean))];
 export type WorkspaceTab = 'notes' | 'assets' | 'agent' | 'graph' | 'settings';
 export function parseWorkspaceRoute(pathname: string, search: string) {
   pathname = pathname.replace(/\/+$/, '') || '/';

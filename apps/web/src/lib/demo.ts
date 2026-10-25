@@ -2,6 +2,7 @@ import { createContext, createElement, type ReactNode, useContext } from 'react'
 import { DEMO_COOKIE, type DemoLanguage } from '@mygitnotes/core/demo';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import type { Language } from './i18n/context.js';
+import { APP_ROOT_SEGMENTS } from './routes.js';
 
 /** The path prefix the demo lives under; the router's basename while it is shown. */
 export const DEMO_BASE = '/demo';
@@ -16,7 +17,7 @@ export function parseDemoPath(pathname: string): { scenario?: string; } | null {
 }
 
 /** The scenario slugs the router resolves before a notebook route: names the app's own first path segments use are not scenarios. */
-export const RESERVED_SCENARIOS = ['notes', 'notebooks', 'assets', 'agent', 'settings', 'index.html'];
+export const RESERVED_SCENARIOS = [...APP_ROOT_SEGMENTS, 'index'];
 
 /** The demo language a UI language asks for. */
 export const demoLanguageOf = (language: Language): DemoLanguage => language === 'zh-TW' ? 'zh-tw' : 'en';

@@ -32,6 +32,7 @@ import '../directives/infographic-editor.css';
 import '../directives/mobile-adaptations.css';
 
 import { type WebFeature, WebFeaturesProvider } from '../lib/web-features.js';
+import { APP_ROUTE_PATHS } from '../lib/routes.js';
 import { DEMO_BASE, DemoProvider, parseDemoPath } from '../lib/demo.js';
 import { expireDemoData } from '../lib/demo-storage.js';
 
@@ -81,16 +82,7 @@ export function WebApp({ features = [] }: WebAppOptions) {
               <PanelProvider>
                 <DemoProvider value={demo}>
                   <Routes>
-                    <Route path='/' element={<App />} />
-                    <Route path='/notes' element={<App />} />
-                    <Route path='/index.html' element={<App />} />
-                    <Route path='/notebooks' element={<App />} />
-                    <Route path='/notebooks/:notebook' element={<App />} />
-                    <Route path='/notebooks/:notebook/folders/*' element={<App />} />
-                    <Route path='/notebooks/:notebook/notes/*' element={<App />} />
-                    <Route path='/assets' element={<App />} />
-                    <Route path='/agent' element={<App />} />
-                    <Route path='/settings' element={<App />} />
+                    {APP_ROUTE_PATHS.map(path => <Route key={path} path={path} element={<App />} />)}
                     {demo && <Route path='/:scenario' element={<App />} />}
                     {features.flatMap(feature => feature.routes ?? []).map(route => <Route key={route.path} path={route.path} element={route.element} />)}
                     <Route path='*' element={<App />} />

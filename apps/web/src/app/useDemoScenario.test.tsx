@@ -3,6 +3,7 @@ import { createElement, type ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { DemoProvider } from '../lib/demo.js';
+import { APP_ROOT_SEGMENTS, parseWorkspaceRoute } from '../lib/routes.js';
 import { demoScenarioNotice, setDemoScenarioNotice } from '../lib/demo-storage.js';
 import { useDemoScenario } from './useDemoScenario.js';
 import type { WorkspaceConfig } from '../lib/types.js';
@@ -27,6 +28,18 @@ it('opens the default notebook and says so for an unknown scenario', () => {
 
 it('leaves the app’s own paths, the demo root and deeper routes alone', () => {
   for (const pathname of ['/', '/settings', '/notebooks', '/notebooks/demo~trpg-zh-tw', '/assets']) expect(run(pathname)).not.toHaveBeenCalled();
+  expect(demoScenarioNotice()).toBeNull();
+});
+
+it('leaves every static app route alone, so none is read as a scenario', () => {
+  for (const segment of APP_ROOT_SEGMENTS) expect(run(`/${segment}`), segment).not.toHaveBeenCalled();
+  for (const pathname of ['/files', '/graph', '/screen', '/index', '/index.html']) expect(run(pathname), pathname).not.toHaveBeenCalled();
+  // Whatever the route parser accepts as a one-segment app page is one of those segments.
+  for (const word of ['notes', 'notebooks', 'assets', 'files', 'agent', 'graph', 'settings', 'screen', 'index', 'index.html', 'trpg']) {
+    const route = parseWorkspaceRoute(`/${word}`, '');
+    const isPage = route.valid && (route.tab !== 'notes' || route.legacyScreen || ['notes', 'notebooks', 'index', 'index.html'].includes(word));
+    if (isPage) expect(run(`/${word}`), word).not.toHaveBeenCalled();
+  }
   expect(demoScenarioNotice()).toBeNull();
 });
 
