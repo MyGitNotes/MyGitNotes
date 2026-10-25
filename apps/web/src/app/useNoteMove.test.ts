@@ -57,7 +57,8 @@ function setup({ draft, focusTabs = [] as string[], remote = true }: { draft?: W
     act(() => hook.result.current.renameNote(target, applyTitle)?.());
     await act(() => hook.result.current.confirmRename(title));
   };
-  return { params, drafts, focus, move, rename, order, hook };
+  const renameTo = (title: string, target: NoteItem = note) => act(() => hook.result.current.renameNoteTo(target, title));
+  return { params, drafts, focus, move, rename, renameTo, order, hook };
 }
 
 beforeEach(() => {
@@ -176,6 +177,28 @@ describe('useNoteMove', () => {
     const { params, rename } = setup({});
     await rename('!!!');
     expect(params.setActionError).toHaveBeenLastCalledWith('files.renameInvalid');
+    expect(params.flushEditors).not.toHaveBeenCalled();
+  });
+
+  it('renames at once from a typed title, without the dialog: file name and title together', async () => {
+    files.fetchFiles.mockResolvedValue({ revision: 'r1' });
+    files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/plans.md' }, deletedPaths: [] });
+    api.readNote.mockResolvedValue({ ...note, path: 'notes/plans.md' });
+    const { params, renameTo, hook } = setup({ remote: false });
+    await renameTo(' Plans ');
+    expect(hook.result.current.request).toBeNull();
+    expect(files.mutateFile).toHaveBeenCalledWith({ kind: 'move', notebookId: 'nb', path: 'notes/idea.md', destination: 'notes/plans.md' }, 'r1');
+    expect(params.saveNote).toHaveBeenCalledWith({ path: 'notes/plans.md', notebookId: 'nb', content: '# Plans', metadata: {} });
+  });
+
+  it('refuses a typed title with nothing to name a file after, and a notebook it cannot write', async () => {
+    const { params, renameTo, hook } = setup({});
+    await renameTo('!!!');
+    expect(params.setActionError).toHaveBeenLastCalledWith('files.renameInvalid');
+    expect(params.flushEditors).not.toHaveBeenCalled();
+    params.canWriteNotebook = () => false;
+    hook.rerender();
+    await renameTo('Plans');
     expect(params.flushEditors).not.toHaveBeenCalled();
   });
 });

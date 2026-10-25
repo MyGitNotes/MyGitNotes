@@ -9,7 +9,13 @@ import { I18nProvider } from '../lib/i18n/index.js';
 import { FocusPane } from './FocusPane.js';
 
 // The pane body hosts a note editor; this test is about the tab bar and the pane frame.
-vi.mock('./NoteEditorHost.js', () => ({ HostedNoteEditor: () => null }));
+const hosted = vi.hoisted(() => ({ slots: [] as unknown[] }));
+vi.mock('./NoteEditorHost.js', () => ({
+  HostedNoteEditor: ({ actionsSlot }: { actionsSlot?: unknown; }) => {
+    hosted.slots.push(actionsSlot);
+    return null;
+  },
+}));
 
 beforeEach(() => {
   window.localStorage.setItem('github-notes:language', 'en');
@@ -57,6 +63,15 @@ it('dims a pane as a whole when none of its tabs match, and clearing the search 
   view.rerender(createElement(I18nProvider, null, createElement(FocusPane, { focus, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p2'], pane: 'p2', key: 'note:notes/c.md' } })));
   expect(dimmedTabs()).toEqual([]);
   expect(document.querySelector('.focus-pane[data-dimmed]')).toBeNull();
+});
+
+it("offers the shown note's editor a slot at the start of the bar's actions, ahead of the pane's own buttons", () => {
+  hosted.slots.length = 0;
+  const view = pane(0, null);
+  const actions = view.container.querySelector('.focus-pane-actions')!;
+  const slot = actions.firstElementChild;
+  expect(slot).toHaveClass('focus-pane-note-actions');
+  expect(hosted.slots.at(-1)).toBe(slot);
 });
 
 describe('drop zones', () => {

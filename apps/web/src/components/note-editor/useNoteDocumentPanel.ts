@@ -196,6 +196,8 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
       if (insideAssistantDock(event.target)) return;
       // Help and quick open own the keys typed in them, Escape included.
       if (event.target instanceof Element && event.target.closest('[data-key-scope="help"], [data-key-scope="palette"]')) return;
+      // A field that takes Escape to cancel its own edit keeps it from closing the panel.
+      if (event.key === 'Escape' && event.target instanceof Element && event.target.closest('[data-escape-local]')) return;
       if (shortcutAction.current(event)) {
         event.preventDefault();
         event.stopPropagation();

@@ -17,7 +17,7 @@ it('leaves zoom from the heading at the left, apart from the document-panel togg
   const onClose = vi.fn();
   const { container } = render(editor({ onClose }));
   const back = screen.getByRole('button', { name: 'Close note' });
-  expect(container.querySelector('.note-heading')?.firstElementChild).toBe(back);
+  expect(container.querySelector('.note-toolbar')?.firstElementChild).toBe(back);
   expect(container.querySelector('.note-controls')?.contains(back)).toBe(false);
 
   await act(async () => {

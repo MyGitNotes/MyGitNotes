@@ -15,6 +15,7 @@ import { BatchAddDialog } from './BatchAddDialog.js';
 import { Button } from './Button.js';
 import { paneDimmed, tabDimmed } from '../lib/focus-search.js';
 import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
+import { usePhone } from '../lib/use-phone.js';
 
 /** Drag payload for a tab moved inside the displayed Focus: its FocusTab and the pane it was dragged from, as JSON. */
 const TAB_DRAG_TYPE = 'application/x-mygitnotes-focus-tab';
@@ -71,6 +72,9 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   const shown = tabs.find(tab => tab.pane === displayed.pane && tab.key === displayed.key);
   const panelId = `focus-pane-${displayed.pane}`;
   const hideToolbar = entry.hideToolbar[displayed.pane];
+  // The shown note's editor puts its actions in this slot of the tab bar; a phone's bar has no room, so there they stay with the note row.
+  const phone = usePhone();
+  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
 
   const list = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -257,6 +261,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
           ))}
         </div>
         <div className='focus-pane-actions'>
+          {!phone && <div ref={setActionsSlot} className='focus-pane-note-actions' />}
           {overflowing && <FocusMenu label={t('focus.allTabs')} icon={<ChevronDown aria-hidden='true' />} items={tabs.map(tab => ({ key: `${tab.pane}:${tab.key}`, label: tab.label, current: tab.pane === displayed.pane && tab.key === displayed.key, onSelect: () => void focus.show(tab.pane, tab.key) }))} />}
           {edgeDrops && editable && displayed.key && (['right', 'bottom'] as const).map(side => {
             const refusal = dropRefusal(layout, displayed.pane, side);
@@ -288,7 +293,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
                 {renderCompilation(shown.tab.path, displayed.pane)}
               </React.Fragment>
             )
-            : <PaneNoteEditor key={shown.tab.path} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} />
+            : <PaneNoteEditor key={shown.tab.path} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} actionsSlot={phone ? undefined : actionsSlot} />
           : (
             <div className='focus-pane-empty'>
               <p>{editable ? t('focus.emptyPane') : t('focus.emptyPaneReadonly')}</p>
@@ -345,4 +350,4 @@ function CompilationAgentTarget({ notebookId, path, active }: { notebookId: stri
   return null;
 }
 
-const PaneNoteEditor: React.FC<{ notebookId: string; path: string; active: boolean; documentPanel?: NoteEditorProps['documentPanel']; }> = ({ notebookId, path, active, documentPanel }) => <HostedNoteEditor notebookId={notebookId} path={path} frame='pane' active={active} documentPanel={documentPanel} />;
+const PaneNoteEditor: React.FC<{ notebookId: string; path: string; active: boolean; documentPanel?: NoteEditorProps['documentPanel']; actionsSlot?: HTMLElement | null; }> = ({ notebookId, path, active, documentPanel, actionsSlot }) => <HostedNoteEditor notebookId={notebookId} path={path} frame='pane' active={active} documentPanel={documentPanel} actionsSlot={actionsSlot} />;

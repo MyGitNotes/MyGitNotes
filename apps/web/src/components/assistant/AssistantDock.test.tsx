@@ -40,8 +40,8 @@ const separator = () => screen.getByRole('separator', { name: 'Resize agent' });
 const header = () => createElement(Header, { workspaceTitle: 'Notes', activeTab: 'notes', setActiveTab: () => {}, selectedNotebookId: 'work', notebooks: [], onSelectNotebook: () => {}, onCreateNote: () => {}, onOpenCommands: () => {} });
 
 const note = { id: 'a', path: 'notes/untitled.md', notebookId: 'a', title: 'Untitled', tags: [], metadata: {}, content: '# Untitled' };
-const session = { title: 'Untitled', locked: false, isSaving: false, hasUnsavedChanges: false, content: note.content, copyState: 'idle', copyNote: vi.fn(), close: vi.fn() };
-const toolbar = () => createElement(NoteEditorToolbar, { frame: 'zoom', note, session: session as never, docPanel: { notePanel: null, lastNotePanel: { current: 'find' } } as never, isMarkdown: false, autoSave: true, readOnly: false, editorMode: 'live', setEditorMode: vi.fn(), showLineNumbers: false, toggleLineNumbers: vi.fn(), showFormatToolbar: false, onClose: vi.fn() });
+const session = { title: 'Untitled', metadata: {}, setMetadata: vi.fn(), locked: false, isSaving: false, hasUnsavedChanges: false, content: note.content, copyState: 'idle', copyNote: vi.fn(), close: vi.fn() };
+const toolbar = () => createElement(NoteEditorToolbar, { frame: 'zoom', note, session: session as never, docPanel: { notePanel: null, lastNotePanel: { current: 'find' } } as never, isMarkdown: false, autoSave: true, readOnly: false, editorMode: 'live', setEditorMode: vi.fn(), showLineNumbers: false, toggleLineNumbers: vi.fn(), showFormatToolbar: false, onClose: vi.fn(), statuses: [], availableTags: [] });
 
 it('toggles the dock from the header, the one agent button there, naming its key, and says whether it is open', () => {
   render(withAgent(createElement('div', null, header(), createElement(AssistantDock))));

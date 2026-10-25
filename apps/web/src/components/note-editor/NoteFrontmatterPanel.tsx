@@ -1,8 +1,10 @@
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useId, useMemo, useState } from 'react';
 import { isNoteHidden, withNoteStatus } from '@mygitnotes/core/note-status';
 import { Select } from '../Select.js';
 import { NotebookMetadataField } from '../../lib/types.js';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { noteStem } from '../../lib/note-move.js';
+import { cleanTag, noteTags, suggestTags, withoutTag, withTag } from './tag-edit.js';
 import { AddMetadataField, FrontmatterHeader, FrontmatterYaml, MetadataFieldList, metadataFieldSpecs } from './FrontmatterParts.js';
 
 const RESERVED_METADATA_KEYS: ReadonlySet<string> = new Set(['title', 'status', 'hiden', 'tags', 'created', 'updated']);
@@ -26,42 +28,69 @@ export interface NoteFrontmatterPanelProps {
   setTagInput: (value: string) => void;
   isTagDropdownOpen: boolean;
   setIsTagDropdownOpen: (value: boolean) => void;
+  /** Renames the note to the title typed here, its file name following, as the note row's title does; absent where the title is only a field. */
+  onRename?: (title: string) => Promise<void> | void;
   /** Shown below the fields, in the same scroll. */
   children?: ReactNode;
 }
 
+/** The title field: typed freely, then Enter or leaving the field renames the note (title and file name together). Without a rename it edits the field. */
+function TitleField({ metadata, setMetadata, onRename }: Pick<NoteFrontmatterPanelProps, 'metadata' | 'setMetadata' | 'onRename'>) {
+  const { t } = useTranslation();
+  const title = String(metadata.title || '');
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    const next = draft?.trim();
+    setDraft(null);
+    if (next && next !== title && noteStem(next)) void onRename?.(next);
+  };
+  return (
+    <div>
+      <label htmlFor={id} className='block text-muted font-semibold mb-1'>{t('editor.title')}</label>
+      <input
+        id={id}
+        type='text'
+        value={onRename ? draft ?? title : title}
+        onChange={event => onRename ? setDraft(event.target.value) : setMetadata({ ...metadata, title: event.target.value })}
+        onBlur={onRename ? commit : undefined}
+        onKeyDown={event => {
+          if (!onRename || event.nativeEvent.isComposing || event.keyCode === 229) return;
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+          } else if (event.key === 'Escape' && draft !== null) {
+            event.stopPropagation();
+            setDraft(null);
+          }
+        }}
+        placeholder={t('editor.titlePlaceholder')}
+        data-escape-local={draft !== null ? '' : undefined}
+        aria-invalid={draft !== null && draft.trim() !== '' && !noteStem(draft) ? true : undefined}
+        className='ui-control w-full'
+      />
+      {onRename && draft !== null && draft.trim() !== '' && !noteStem(draft) && <p className='text-xs text-danger mt-1' role='status'>{t('files.renameInvalid')}</p>}
+    </div>
+  );
+}
+
 /** A note's frontmatter: title, status, tags with autocomplete, custom metadata fields, and a raw-YAML view; `children` follow it. */
-export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadataFields, availableTags, locked, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, children }: NoteFrontmatterPanelProps) {
+export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadataFields, availableTags, locked, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, onRename, children }: NoteFrontmatterPanelProps) {
   const { t } = useTranslation();
 
   const customFields = useMemo(() => metadataFieldSpecs(metadata, RESERVED_METADATA_KEYS, metadataFields), [metadataFields, metadata]);
 
-  const currentTags: string[] = useMemo(() => {
-    return Array.isArray(metadata.tags) ? metadata.tags.map(String) : [];
-  }, [metadata.tags]);
-
-  const suggestedTags = useMemo(() => {
-    const query = tagInput.trim().toLowerCase();
-    return availableTags.filter((t) => {
-      if (currentTags.includes(t)) return false;
-      if (!query) return true;
-      return t.toLowerCase().includes(query);
-    });
-  }, [availableTags, currentTags, tagInput]);
+  const currentTags = useMemo(() => noteTags(metadata), [metadata]);
+  const suggestedTags = useMemo(() => suggestTags(availableTags, currentTags, tagInput), [availableTags, currentTags, tagInput]);
 
   const handleAddTag = (tagToAdd: string) => {
-    const cleanTag = tagToAdd.trim().replace(/^,+|,+$/g, '');
-    if (!cleanTag) return;
-    if (!currentTags.includes(cleanTag)) {
-      setMetadata({ ...metadata, tags: [...currentTags, cleanTag] });
-    }
+    if (!cleanTag(tagToAdd)) return;
+    setMetadata(withTag(metadata, tagToAdd));
     setTagInput('');
     setIsTagDropdownOpen(false);
   };
 
-  const handleRemoveTag = (tagToRemove: string) => {
-    setMetadata({ ...metadata, tags: currentTags.filter((t) => t !== tagToRemove) });
-  };
+  const handleRemoveTag = (tagToRemove: string) => setMetadata(withoutTag(metadata, tagToRemove));
 
   return (
     <div className='note-frontmatter-panel note-panel-scroll flex flex-col h-full'>
@@ -77,10 +106,7 @@ export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadata
       {frontmatterViewMode === 'form'
         ? (
           <fieldset disabled={locked} className='note-metadata min-w-0 text-xs animate-fadeIn space-y-3'>
-            <div>
-              <label className='block text-muted font-semibold mb-1'>{t('editor.title')}</label>
-              <input type='text' value={String(metadata.title || '')} onChange={(e) => setMetadata({ ...metadata, title: e.target.value })} placeholder={t('editor.titlePlaceholder')} className='ui-control w-full' />
-            </div>
+            <TitleField metadata={metadata} setMetadata={setMetadata} onRename={onRename} />
             <div>
               <label className='block text-muted font-semibold mb-1'>{t('editor.status')}</label>
               <Select aria-label={t('editor.status')} disabled={locked} value={String(metadata.status || '')} onValueChange={value => setMetadata(withNoteStatus(metadata, value))} options={Array.from(new Set(['', ...statuses, String(metadata.status || '')])).map(value => ({ value, label: value || t('editor.noStatus') }))} className={`w-full ${metadata.status ? '' : 'status-empty'}`} />
