@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DUE_EMOJI, findToken, getTaskAssignees, getTokenValue, setTaskChecked, setTokenValue, START_EMOJI, stripTaskTokens } from '../src/task-tokens.js';
+import { DUE_EMOJI, findToken, getTaskAssignees, getTaskPriority, getTokenValue, PRIORITY_EMOJI, setTaskChecked, setTokenValue, START_EMOJI, stripTaskTokens, TASK_PRIORITIES } from '../src/task-tokens.js';
 
 describe('start-date token', () => {
   it('finds a start-date token', () => {
@@ -94,6 +94,47 @@ describe('toggling a task keeps its assignee tokens', () => {
     const line = '- [ ] @小林 write the spec @alice 📅 2026-10-30';
     const checked = setTaskChecked(line, true, '2026-10-25');
     expect(checked).toBe('- [x] @小林 write the spec @alice 📅 2026-10-30 ✅ 2026-10-25');
+    expect(setTaskChecked(checked, false, '2026-10-25')).toBe(line);
+  });
+});
+
+describe('getTaskPriority', () => {
+  it('reads the Obsidian Tasks priority emojis', () => {
+    expect(getTaskPriority('- [ ] Ship 🔺')).toBe('highest');
+    expect(getTaskPriority('- [ ] Ship ⏫')).toBe('high');
+    expect(getTaskPriority('- [ ] Ship 🔼')).toBe('medium');
+    expect(getTaskPriority('- [ ] Ship 🔽')).toBe('low');
+    expect(getTaskPriority('- [ ] Ship ⏬')).toBe('lowest');
+  });
+
+  it('is undefined (normal) without an emoji, and reads one anywhere on the line beside the other tokens', () => {
+    expect(getTaskPriority('- [ ] Ship it')).toBeUndefined();
+    expect(getTaskPriority('- [ ] ⏫ Ship it 📅 2026-10-30')).toBe('high');
+    expect(getTaskPriority('- [ ] @alice Ship it 🛫 2026-10-20 📅 2026-10-30 🔺')).toBe('highest');
+    expect(getTaskPriority('- [ ] Ship it ⏫\uFE0F')).toBe('high');
+  });
+
+  it('takes the first emoji when a line has several, and none from a line that is not a task', () => {
+    expect(getTaskPriority('- [ ] Ship 🔽 or ⏫')).toBe('low');
+    expect(getTaskPriority('⏫ not a task')).toBeUndefined();
+  });
+
+  it('names every level with its emoji, highest first', () => {
+    expect(TASK_PRIORITIES.map(level => PRIORITY_EMOJI[level])).toEqual(['🔺', '⏫', '🔼', '🔽', '⏬']);
+  });
+});
+
+describe('priority in stripTaskTokens and task toggling', () => {
+  it('removes the emoji from the display text and keeps the rest', () => {
+    expect(stripTaskTokens('- [ ] ⏫ Ship it 📅 2026-10-30')).toBe('Ship it');
+    expect(stripTaskTokens('- [ ] Ship it 🔺 @alice')).toBe('Ship it');
+    expect(stripTaskTokens('- [ ] Ship⏫ it')).toBe('Ship it');
+  });
+
+  it('keeps the emoji when a task is checked and unchecked', () => {
+    const line = '- [ ] Ship it ⏫ @alice 📅 2026-10-30';
+    const checked = setTaskChecked(line, true, '2026-10-25');
+    expect(checked).toBe('- [x] Ship it ⏫ @alice 📅 2026-10-30 ✅ 2026-10-25');
     expect(setTaskChecked(checked, false, '2026-10-25')).toBe(line);
   });
 });

@@ -1,6 +1,8 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../lib/i18n/index.js';
 import { stripTaskTokens } from '../lib/task-tokens.js';
+import { PRIORITY_ICON } from '../lib/task-icons.js';
+import { PRIORITY_LABEL_KEY } from '../lib/todo-filter.js';
 import { computeGanttEntries, computeGanttRange, computeGanttTicks, GANTT_SCALES, ganttDayWidth, type GanttRow, type GanttScale, getSavedGanttScale, saveGanttScale } from '../lib/todo-gantt.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { TodoTask } from '../lib/todo-list.js';
@@ -20,10 +22,10 @@ interface TodoGanttChartProps {
   onOpenMilestone: (note: NoteListItem) => void;
 }
 
-function barTitle(row: GanttRow): string {
+function barTitle(row: GanttRow, priorityLabel?: string): string {
   const text = stripTaskTokens(row.task.lineText);
   const when = row.kind === 'range' ? `${row.task.start} → ${row.task.due}` : row.kind === 'dueOnly' ? row.task.due : row.task.start;
-  return [text, when, ...row.task.assignees.map(name => `@${name}`)].join(' · ');
+  return [text, when, priorityLabel, ...row.task.assignees.map(name => `@${name}`)].filter(Boolean).join(' · ');
 }
 
 /** `'day'`/`'week'` ticks show `MM-DD`; `'month'` ticks show a locale month/year (e.g. "Sep 2026" / "2026年9月"). */
@@ -90,12 +92,15 @@ export function TodoGanttChart({ tasks, milestones, today, onOpenTask, onOpenMil
             );
           }
           const { row } = entry;
+          const priority = row.task.priority;
+          const PriorityIcon = priority ? PRIORITY_ICON[priority] : undefined;
+          const priorityLabel = priority ? t(PRIORITY_LABEL_KEY[priority]) : undefined;
           return (
             <div className='todo-gantt-row' key={row.task.id}>
-              <button type='button' className='todo-gantt-label-cell todo-gantt-label-button' title={`${stripTaskTokens(row.task.lineText)} · ${row.task.noteTitle}`} onClick={() => onOpenTask(row.task)}>{stripTaskTokens(row.task.lineText)}</button>
+              <button type='button' className='todo-gantt-label-cell todo-gantt-label-button' title={`${stripTaskTokens(row.task.lineText)} · ${row.task.noteTitle}`} onClick={() => onOpenTask(row.task)}>{PriorityIcon && <PriorityIcon aria-label={priorityLabel} className='todo-gantt-priority-icon' data-priority={priority} />}{stripTaskTokens(row.task.lineText)}</button>
               <div className='todo-gantt-track' style={{ width: trackWidth }}>
                 <span className='todo-gantt-today-line' style={{ left: range.todayOffset * dayWidth }} aria-hidden='true' />
-                <span className={`todo-gantt-bar todo-gantt-bar-${row.kind}`} style={{ left: row.offset * dayWidth, width: row.span * dayWidth }} title={barTitle(row)} />
+                <span className={`todo-gantt-bar todo-gantt-bar-${row.kind}`} style={{ left: row.offset * dayWidth, width: row.span * dayWidth }} data-priority={priority} title={barTitle(row, priorityLabel)} />
               </div>
             </div>
           );

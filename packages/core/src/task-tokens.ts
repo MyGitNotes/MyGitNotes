@@ -13,6 +13,16 @@ const NAME_CHAR = '[\\p{L}\\p{M}\\p{N}_]';
 // lookahead refuses a name that is only the front of a longer path, package or address (`@types/node`, `@a.b/c`).
 const ASSIGNEE_SOURCE = `@(${NAME_CHAR}+(?:[.-]${NAME_CHAR}+)*)(?!${NAME_CHAR}|[/@]|[.-](?:${NAME_CHAR}|[/@]))`;
 
+export type TaskPriority = 'highest' | 'high' | 'medium' | 'low' | 'lowest';
+
+/** The levels, highest first. A line with no priority emoji is normal, which ranks between medium and low. */
+export const TASK_PRIORITIES: readonly TaskPriority[] = ['highest', 'high', 'medium', 'low', 'lowest'];
+
+/** Obsidian Tasks' priority emojis. */
+export const PRIORITY_EMOJI: Record<TaskPriority, string> = { highest: '🔺', high: '⏫', medium: '🔼', low: '🔽', lowest: '⏬' };
+
+const PRIORITY_SOURCE = `(${TASK_PRIORITIES.map(level => PRIORITY_EMOJI[level]).join('|')})\\uFE0F?`;
+
 export interface TokenMatch {
   start: number;
   end: number;
@@ -67,11 +77,18 @@ export function getTaskAssignees(line: string): string[] {
   return [...new Set(names)];
 }
 
-/** Removes the checkbox marker and every recognized token (dates, assignees), leaving just the task's text. */
+/** The priority emoji on a task line (the first when there are several), or undefined for a normal-priority task. */
+export function getTaskPriority(line: string): TaskPriority | undefined {
+  if (!isTaskLine(line)) return undefined;
+  const emoji = new RegExp(PRIORITY_SOURCE, 'u').exec(line.replace(TASK_MARKER_RE, ''))?.[1];
+  return TASK_PRIORITIES.find(level => PRIORITY_EMOJI[level] === emoji);
+}
+
+/** Removes the checkbox marker and every recognized token (dates, assignees, priority), leaving just the task's text. */
 export function stripTaskTokens(line: string): string {
   let text = line.replace(TASK_MARKER_RE, '');
   for (const [emoji, withTime] of TASK_DATE_TOKENS) text = setTokenValue(text, emoji, null, withTime);
-  text = text.replace(new RegExp(`(^|\\s+)${ASSIGNEE_SOURCE}`, 'gu'), '');
+  text = text.replace(new RegExp(`(^|\\s+)${ASSIGNEE_SOURCE}`, 'gu'), '').replace(new RegExp(`\\s*${PRIORITY_SOURCE}`, 'gu'), '');
   return text.trim();
 }
 

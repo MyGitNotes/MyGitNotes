@@ -1,8 +1,11 @@
-import { CalendarCheck, CalendarDays, Clock, type LucideIcon, PlaneTakeoff } from 'lucide-react';
-import { DONE_EMOJI, DUE_EMOJI, START_EMOJI, TIMESTAMP_EMOJI } from './task-tokens.js';
+import { CalendarCheck, CalendarDays, ChevronDown, ChevronsDown, ChevronsUp, ChevronUp, Clock, Equal, type LucideIcon, PlaneTakeoff } from 'lucide-react';
+import { DONE_EMOJI, DUE_EMOJI, START_EMOJI, type TaskPriority, TIMESTAMP_EMOJI } from './task-tokens.js';
 
 /** Maps each date-token emoji to its lucide-react icon, for React UI (e.g. the Todo panel). */
 export const TASK_TOKEN_ICON: Record<string, LucideIcon> = { [DUE_EMOJI]: CalendarDays, [DONE_EMOJI]: CalendarCheck, [TIMESTAMP_EMOJI]: Clock, [START_EMOJI]: PlaneTakeoff };
+
+/** The icon for each priority level, for the Todo tool's chips and Gantt labels. */
+export const PRIORITY_ICON: Record<TaskPriority, LucideIcon> = { highest: ChevronsUp, high: ChevronUp, medium: Equal, low: ChevronDown, lowest: ChevronsDown };
 
 function svg(inner: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;

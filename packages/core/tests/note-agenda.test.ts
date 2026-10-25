@@ -48,3 +48,10 @@ describe('getNoteMilestone', () => {
     expect(getNoteMilestone({ milestone: null })).toBeUndefined();
   });
 });
+
+describe('extractTodoTasks — priority', () => {
+  it('carries the priority of each task line, undefined when normal', () => {
+    const tasks = extractTodoTasks([note('a.md', '- [ ] Ship 🔺\n- [ ] Plain\n- [x] Old ⏬ ✅ 2026-10-20\n')]);
+    expect(tasks.map(task => task.priority)).toEqual(['highest', undefined, 'lowest']);
+  });
+});

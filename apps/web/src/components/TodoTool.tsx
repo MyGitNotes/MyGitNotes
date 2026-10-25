@@ -9,9 +9,10 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { Select } from './Select.js';
 import { formatDateYMD } from '../lib/date-utils.js';
 import { DONE_EMOJI, DUE_EMOJI, getTokenValue, setTaskChecked, START_EMOJI, stripTaskTokens, TIMESTAMP_EMOJI } from '../lib/task-tokens.js';
-import { TASK_TOKEN_ICON } from '../lib/task-icons.js';
+import { PRIORITY_ICON, TASK_TOKEN_ICON } from '../lib/task-icons.js';
 import { filterNotesByFolder, filterTasksByFolder } from '../lib/folder-filter.js';
-import { ALL_PEOPLE, filterTasksByPerson, listAssignees, personFilterValue, resolvePersonFilter, UNASSIGNED } from '../lib/todo-filter.js';
+import { ALL_PEOPLE, ANY_PRIORITY, filterTasksByPerson, filterTasksByPriority, listAssignees, NORMAL_PRIORITY, personFilterValue, PRIORITY_LABEL_KEY, resolvePersonFilter, sortTodoTasks, type TodoSort, UNASSIGNED } from '../lib/todo-filter.js';
+import { TASK_PRIORITIES } from '../lib/task-tokens.js';
 import { groupTodoTasks, type TodoTask } from '../lib/todo-list.js';
 import { effectivePanelScope, getSavedPanelScope, type PanelScope, savePanelScope } from '../lib/panel-scope.js';
 import { useNoteAgenda } from '../lib/use-note-queries.js';
@@ -56,6 +57,8 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
   const effectiveScope = effectivePanelScope(scope, currentFolder);
   const [groupMode, setGroupMode] = useState<'date' | 'note' | 'gantt'>('date');
   const [personChoice, setPersonChoice] = useState(ALL_PEOPLE);
+  const [priorityFilter, setPriorityFilter] = useState(ANY_PRIORITY);
+  const [sort, setSort] = useState<TodoSort>('list');
   const [showCompleted, setShowCompleted] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
@@ -72,7 +75,7 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
   }, [agenda.agenda, effectiveScope, currentFolder]);
   const assignees = useMemo(() => listAssignees(scopedTasks), [scopedTasks]);
   const person = resolvePersonFilter(personChoice, assignees);
-  const tasks = useMemo(() => filterTasksByPerson(scopedTasks, person), [scopedTasks, person]);
+  const tasks = useMemo(() => sortTodoTasks(filterTasksByPriority(filterTasksByPerson(scopedTasks, person), priorityFilter), sort), [scopedTasks, person, priorityFilter, sort]);
   const groups = useMemo(() => groupTodoTasks(tasks, formatDateYMD(new Date())), [tasks]);
   const noteGroups = useMemo(() => {
     const byPath = new Map<string, { title: string; tasks: TodoTask[]; }>();
@@ -128,7 +131,7 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
           <input type='checkbox' checked={task.checked} disabled={pendingIds.has(task.id)} onChange={() => void toggleTask(task)} />
           <span className='todo-task-text'>{stripTaskTokens(task.lineText)}</span>
         </label>
-        {(chips.length > 0 || task.assignees.length > 0) && (
+        {(chips.length > 0 || task.assignees.length > 0 || task.priority) && (
           <ul className='todo-task-dates'>
             {task.assignees.map(name => (
               <li key={`@${name}`} className='todo-task-date-chip todo-task-assignee-chip' title={t('panel.todoAssignedTo')}>
@@ -136,6 +139,15 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
                 {name}
               </li>
             ))}
+            {task.priority && (() => {
+              const PriorityIcon = PRIORITY_ICON[task.priority];
+              return (
+                <li key='priority' className='todo-task-date-chip todo-task-priority-chip' data-priority={task.priority}>
+                  <PriorityIcon aria-hidden='true' />
+                  {t(PRIORITY_LABEL_KEY[task.priority])}
+                </li>
+              );
+            })()}
             {chips.map(chip => {
               const Icon = TASK_TOKEN_ICON[chip.emoji];
               return (
@@ -181,9 +193,11 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
       {agenda.loading && <LoadingStatus className='todo-empty'>{t('notes.loading')}</LoadingStatus>}
       {!agenda.loading && scopedTasks.length === 0 && <p className='todo-empty'>{t('panel.todoEmpty')}</p>}
       {!agenda.loading && scopedTasks.length > 0 && tasks.length === 0 && <p className='todo-empty'>{t('panel.todoNoMatch')}</p>}
-      {assignees.length > 0 && (
+      {scopedTasks.length > 0 && (
         <div className='todo-filters'>
-          <Select aria-label={t('panel.todoPeople')} value={person} onValueChange={setPersonChoice} options={[{ value: ALL_PEOPLE, label: t('panel.todoAllPeople') }, ...assignees.map(name => ({ value: personFilterValue(name), label: name })), { value: UNASSIGNED, label: t('panel.todoUnassigned') }]} />
+          {assignees.length > 0 && <Select aria-label={t('panel.todoPeople')} value={person} onValueChange={setPersonChoice} options={[{ value: ALL_PEOPLE, label: t('panel.todoAllPeople') }, ...assignees.map(name => ({ value: personFilterValue(name), label: name })), { value: UNASSIGNED, label: t('panel.todoUnassigned') }]} />}
+          <Select aria-label={t('panel.todoPriority')} value={priorityFilter} onValueChange={setPriorityFilter} options={[{ value: ANY_PRIORITY, label: t('panel.todoAnyPriority') }, ...TASK_PRIORITIES.map(level => ({ value: level, label: t(PRIORITY_LABEL_KEY[level]) })), { value: NORMAL_PRIORITY, label: t('panel.todoNormalPriority') }]} />
+          <Select aria-label={t('panel.todoSort')} value={sort} onValueChange={value => setSort(value as TodoSort)} options={[{ value: 'list', label: t('panel.todoSortList') }, { value: 'priority', label: t('panel.todoSortPriority') }]} />
         </div>
       )}
       {(scopedTasks.length > 0 || milestones.length > 0) && (
