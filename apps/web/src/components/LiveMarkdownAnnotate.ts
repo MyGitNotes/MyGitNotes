@@ -1,9 +1,8 @@
 import { EditorView, WidgetType } from '@codemirror/view';
 import { AnnotateController } from './annotate-editor/controller.js';
 import { annotateRequest, openAnnotateMode } from './annotate-editor/open-request.js';
+import { controllerOf, forgetController, registerController } from './annotate-editor/registry.js';
 import type { Translate } from './infographic-editor/labels.js';
-
-const controllers = new WeakMap<HTMLElement, AnnotateController>();
 
 /**
  * The last drawn height of each block, by note and position. A text change inside the block replaces its widget, and the
@@ -41,7 +40,7 @@ export class LiveMarkdownAnnotate extends WidgetType {
   }
 
   updateDOM(dom: HTMLElement) {
-    const controller = controllers.get(dom);
+    const controller = controllerOf(dom);
     // A widget is only kept for the block at the position it was drawn for: when another block moves into the place of a removed one,
     // taking its DOM would carry the other block's mode, selection and open comment form over.
     if (!controller || dom.dataset.directiveFrom !== String(this.from) || dom.dataset.annotatePath !== this.path || dom.dataset.annotateReadOnly !== String(this.readOnly)) return false;
@@ -50,8 +49,8 @@ export class LiveMarkdownAnnotate extends WidgetType {
   }
 
   destroy(dom: HTMLElement) {
-    controllers.get(dom)?.destroy();
-    controllers.delete(dom);
+    controllerOf(dom)?.destroy();
+    forgetController(dom);
   }
 
   toDOM(view: EditorView) {
@@ -63,7 +62,7 @@ export class LiveMarkdownAnnotate extends WidgetType {
     root.dataset.annotatePath = this.path;
     root.dataset.annotateReadOnly = String(this.readOnly);
     const controller = new AnnotateController(view, this, root, (host, height) => drawnHeights.set(`${host.path}:${host.from}`, height));
-    controllers.set(root, controller);
+    registerController(root, controller);
     // A block just made from an image asks to start in annotate mode; the request is withdrawn once taken so a rebuilt widget does not repeat it.
     if (!this.readOnly && !this.quoted && view.state.field(annotateRequest, false) === this.from) {
       controller.startAnnotating();

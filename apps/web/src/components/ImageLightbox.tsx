@@ -1,13 +1,30 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ExternalLink, Maximize, Minus, Plus, X } from 'lucide-react';
 import { newTabRel } from '../lib/same-origin.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import type { AnnotateController } from './annotate-editor/controller.js';
+import { controllerOf } from './annotate-editor/registry.js';
 import './image-lightbox.css';
 import { LoadingStatus } from './LoadingStatus.js';
 
-type ImageSource = { src: string; alt: string; };
+/** What an annotated image brings to its preview: the live editor's controller (the note's text is edited through it), or, where nothing is edited, the figure as the page draws it. */
+type Annotation = { controller: AnnotateController; } | { figure: HTMLElement; };
+type ImageSource = { src: string; alt: string; annotation?: Annotation; };
 type Point = { x: number; y: number; };
+/** The parts of an annotated preview that run their own pointer, wheel and double-click handling, which the preview's pan and zoom must leave alone. */
+const KEEPS_OWN_INPUT = '.ann-side, .ann-marker, .ann-edit-under, .ann-edit-over, textarea, button';
+const keepsOwnInput = (target: EventTarget | null) => target instanceof Element && target.closest(KEEPS_OWN_INPUT) !== null;
+
+/** A copy of a figure for the preview; its ids and the links to them get a suffix so the page keeps its ids unique. */
+function previewFigure(figure: HTMLElement): HTMLElement {
+  const copy = figure.cloneNode(true) as HTMLElement;
+  for (const node of [copy, ...copy.querySelectorAll<HTMLElement>('[id]')]) if (node.id) node.id = `${node.id}-preview`;
+  for (const link of copy.querySelectorAll('a[href^="#"]')) link.setAttribute('href', `${link.getAttribute('href')}-preview`);
+  for (const node of copy.querySelectorAll('.is-linked, .is-flash')) node.classList.remove('is-linked', 'is-flash');
+  return copy;
+}
+
 const clampZoom = (scale: number, fit: number) => Math.max(0.05, Math.min(Math.max(8, fit * 4), scale));
 
 function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => void; }) {
@@ -20,6 +37,14 @@ function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => v
   const [position, setPosition] = useState<Point>({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [editable, setEditable] = useState(false);
+  const annotatedHost = useRef<HTMLDivElement>(null);
+  const toolbarSlot = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
+  const { annotation } = image;
   const pointers = useRef(new Map<number, Point>());
   const moved = useRef(false);
   const backdropPress = useRef(false);
@@ -45,6 +70,31 @@ function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => v
     };
   }, []);
 
+  // An annotated image is drawn by the figure's own markup, which the image element in it cannot report the size of in time; a probe does.
+  useEffect(() => {
+    if (!annotation) return;
+    const probe = new Image();
+    probe.onload = () => setSize({ width: probe.naturalWidth, height: probe.naturalHeight });
+    probe.onerror = () => setFailed(true);
+    probe.src = image.src;
+    return () => {
+      probe.onload = null;
+      probe.onerror = null;
+    };
+  }, [annotation, image.src]);
+
+  useEffect(() => {
+    const host = annotatedHost.current;
+    if (!annotation || !host) return;
+    if ('controller' in annotation) {
+      const drawing = annotation.controller.openLightbox(host, { toolbar: toolbarSlot.current!, onGone: () => closeRef.current() });
+      setEditable(drawing.editable);
+      return () => drawing.dispose();
+    }
+    host.replaceChildren(previewFigure(annotation.figure));
+    return () => host.replaceChildren();
+  }, [annotation]);
+
   useEffect(() => {
     const element = stage.current!;
     const observer = new ResizeObserver(([entry]) => {
@@ -57,6 +107,8 @@ function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => v
   useEffect(() => {
     const element = stage.current!;
     const wheel = (event: WheelEvent) => {
+      // The comment list scrolls itself.
+      if (event.target instanceof Element && event.target.closest('.ann-side, textarea')) return;
       event.preventDefault();
       if (ready) changeZoom(Math.exp(-Math.max(-100, Math.min(100, event.deltaY)) * 0.003));
     };
@@ -107,16 +159,17 @@ function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => v
         ref={stage}
         className='image-lightbox-stage'
         data-dragging={dragging}
+        data-annotated={annotation !== undefined}
         onClick={event => {
           if (event.target === event.currentTarget && backdropPress.current && !moved.current) onClose();
         }}
-        onDoubleClick={() => {
-          if (!ready || backdropPress.current) return;
+        onDoubleClick={event => {
+          if (!ready || backdropPress.current || keepsOwnInput(event.target)) return;
           if (zoom === null) setZoom(Math.max(1, fit * 2));
           else reset();
         }}
         onPointerDown={event => {
-          if (event.button !== 0 || !ready) return;
+          if (event.button !== 0 || !ready || keepsOwnInput(event.target)) return;
           moved.current = false;
           backdropPress.current = event.target === event.currentTarget;
           pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -146,7 +199,8 @@ function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => v
         }}
       >
         {!ready && (failed ? <p role='status'>{t('lightbox.error')}</p> : <LoadingStatus>{t('lightbox.loading')}</LoadingStatus>)}
-        {!failed && <img src={image.src} alt={image.alt} draggable={false} onLoad={event => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setFailed(true)} style={{ width: ready ? size.width * scale : undefined, height: ready ? size.height * scale : undefined, visibility: ready ? 'visible' : 'hidden', transform: `translate(${offset.x}px, ${offset.y}px)` }} />}
+        {annotation && <div ref={annotatedHost} className='image-lightbox-annotated prose-custom' hidden={failed} style={{ '--lb-w': `${size.width * scale}px`, '--lb-h': `${size.height * scale}px`, '--lb-x': `${offset.x}px`, '--lb-y': `${offset.y}px`, visibility: ready ? 'visible' : 'hidden' } as CSSProperties} />}
+        {!failed && !annotation && <img src={image.src} alt={image.alt} draggable={false} onLoad={event => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setFailed(true)} style={{ width: ready ? size.width * scale : undefined, height: ready ? size.height * scale : undefined, visibility: ready ? 'visible' : 'hidden', transform: `translate(${offset.x}px, ${offset.y}px)` }} />}
       </div>
       <footer className='image-lightbox-footer'>
         <div className='image-lightbox-controls' role='group' aria-label={t('lightbox.title')}>
@@ -174,11 +228,21 @@ function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => v
             <Maximize size={18} />
           </button>
         </div>
-        <p className='image-lightbox-help'>{t('lightbox.help')}</p>
+        {annotation && <div ref={toolbarSlot} className='image-lightbox-annotate-toolbar' />}
+        <p className='image-lightbox-help'>{t(annotation ? editable ? 'lightbox.helpAnnotate' : 'lightbox.helpAnnotated' : 'lightbox.help')}</p>
       </footer>
     </dialog>,
     document.body,
   );
+}
+
+/** The annotations on the image that was clicked, when it is the image of an annotation figure that has any to show (or a note that can take them). */
+function annotationOf(target: HTMLImageElement): Annotation | undefined {
+  const figure = target.closest<HTMLElement>('figure.ann-figure:not(.ann-pdf)');
+  if (!figure || !target.closest('.ann-stage')) return undefined;
+  const controller = controllerOf(target.closest('.live-md-annotate'));
+  if (controller) return controller.canOpenLightbox() ? { controller } : undefined;
+  return figure.querySelector('.ann-marker, .ann-item') ? { figure } : undefined;
 }
 
 export function ImageLightbox() {
@@ -188,12 +252,12 @@ export function ImageLightbox() {
       const target = event.target;
       if (!(target instanceof HTMLImageElement)) return;
       if (!target.closest('.prose-custom, .live-md-rendered, [data-markdown-view], .markdown-preview, .screen-markdown, .note-r2-image')) return;
-      if (target.closest('button.screen-image-button, .note-youtube-poster, .editor-notice')) return;
+      if (target.closest('button.screen-image-button, .note-youtube-poster, .editor-notice, .image-lightbox')) return;
       const src = target.currentSrc || target.src;
       if (!src) return;
       event.preventDefault();
       event.stopPropagation();
-      setImage({ src, alt: target.alt || target.title || '' });
+      setImage({ src, alt: target.alt || target.title || '', annotation: annotationOf(target) });
     };
     document.addEventListener('click', open, true);
     return () => document.removeEventListener('click', open, true);

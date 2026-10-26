@@ -163,6 +163,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'lightbox.actual': '原始尺寸（1）',
   'lightbox.original': '開啟原始圖片',
   'lightbox.help': '滾輪縮放 · 拖曳移動 · 按兩下放大',
+  'lightbox.helpAnnotated': '滾輪縮放 · 拖曳移動 · 點編號可在圖上找到它',
+  'lightbox.helpAnnotate': '滾輪縮放 · 拖曳移動 · 標註：P 標記點、R 區域、方向鍵移動、Alt＋方向鍵調整大小、Enter 寫留言、Delete 刪除、Esc 退出',
   'lightbox.loading': '正在載入圖片…',
   'lightbox.error': '無法載入這張圖片。',
 

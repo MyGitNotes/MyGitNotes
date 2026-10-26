@@ -124,6 +124,8 @@ The phase-1 controller and widget, page-aware. Nothing else changes: one transac
 - **Entry points.** (1) A line that is only a PDF reference (a link whose path ends in `.pdf`, an `r2:` image or link whose key ends in `.pdf`, which today renders as an iframe preview) shows the **Annotate** button; it wraps the line as `:::annotate\n[label](src)\n:::`, rewriting image syntax to link syntax. (2) The Insert group's **Annotated image** becomes **Annotate image or PDF**: the picker accepts both, and a PDF is inserted as a link.
 - **Phones.** The pager bar's buttons are 44px; no swipe between pages, because a horizontal swipe fights page scroll and annotate-mode drags. In annotate mode the stage uses `touch-action: pinch-zoom` instead of phase 1's `none`, so one finger still taps a pin or drags a region while two fingers pinch-zoom with the browser; the viewer redraws sharper after a zoom. A fitted A4 page on a 360px screen has about 4px text, so this zoom is how a phone reviewer reads the page. An in-figure zoom and pan viewer stays out of scope, as in phase 1.
 
+- **No image preview.** A page is a `<canvas>`, so the click that opens the annotated image preview (see the image spec's "Image preview") opens nothing on a PDF figure; the pager and the phone pinch-zoom are the way to read a page closely. The comment cards share the image figure's padding rules, which a note's prose reset used to zero.
+
 ## Pro public pages
 
 The public page has no script and its CSP allows only same-origin images (`PUBLIC_CSP`, `default-src 'none'`), so pdf.js cannot run there. Two steps:

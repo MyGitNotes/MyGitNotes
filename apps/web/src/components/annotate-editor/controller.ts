@@ -41,6 +41,20 @@ interface Drag {
   current?: Shape;
 }
 
+/** What the image preview supplies when it draws the block a second time over the same note text. */
+export interface LightboxOptions {
+  /** Where the preview wants the toolbar (the note's own sits above the figure). */
+  toolbar: HTMLElement;
+  /** The block left the note while the preview was open; the preview closes. */
+  onGone: () => void;
+}
+
+/** What a block's drawings share: the resolved filter is one state for the note and its image preview, and a text change reaches every member. */
+interface Family {
+  showResolved: boolean;
+  members: Set<AnnotateController>;
+}
+
 // CodeMirror's history only joins adjacent changes of a typing user event, so a run of nudges is named as typing.
 const NUDGE_EVENT = 'input.type.annotate.nudge';
 
@@ -78,7 +92,9 @@ export class AnnotateController {
   private selected: string | undefined;
   private pending: Pending | undefined;
   private editing: { key: string; draft: string; } | undefined;
-  private showResolved = false;
+  private family: Family = { showResolved: false, members: new Set([this]) };
+  /** Set on the second drawing of a block, the one in the image preview. */
+  private lightbox: LightboxOptions | undefined;
   private drag: Drag | undefined;
   /** True while the figure's DOM is replaced: the browser blurs a focused form that is removed, which is no decision of the writer's. */
   private redrawing = false;
@@ -87,7 +103,12 @@ export class AnnotateController {
   /** Ends the page viewer of a PDF block, which is drawn by the same code as in a read surface. */
   private stopPdf = () => {};
 
-  constructor(private readonly view: EditorView, private host: AnnotateHost, readonly dom: HTMLElement, private readonly remember: (host: AnnotateHost, height: number) => void = () => {}) {
+  constructor(private readonly view: EditorView, private host: AnnotateHost, readonly dom: HTMLElement, private readonly remember: (host: AnnotateHost, height: number) => void = () => {}, family?: Family, lightbox?: LightboxOptions) {
+    if (family) {
+      this.family = family;
+      family.members.add(this);
+    }
+    this.lightbox = lightbox;
     dom.addEventListener('keydown', event => this.onKeydown(event));
     dom.addEventListener('click', event => this.onClick(event), true);
     dom.addEventListener('dblclick', event => this.onDoubleClick(event));
@@ -95,27 +116,70 @@ export class AnnotateController {
     dom.addEventListener('mousedown', event => {
       if (!isTextField(event.target)) event.preventDefault();
     });
-    this.toolbarHost = element('div', 'live-annotate-toolbar-host');
+    this.toolbarHost = lightbox?.toolbar ?? element('div', 'live-annotate-toolbar-host');
     this.figure = element('div', 'live-directive-preview-content');
-    dom.replaceChildren(this.toolbarHost, this.figure);
+    dom.replaceChildren(...lightbox ? [this.figure] : [this.toolbarHost, this.figure]);
     this.render();
+  }
+
+  private get showResolved(): boolean {
+    return this.family.showResolved;
+  }
+
+  private set showResolved(on: boolean) {
+    this.family.showResolved = on;
   }
 
   private get t(): Translate {
     return this.host.t;
   }
 
-  /** The widget left the editor: its PDF document goes back to the pool. */
+  /** The widget left the editor: its PDF document goes back to the pool, and an image preview drawn from it closes. */
   destroy(): void {
     this.stopPdf();
+    for (const member of this.family.members) if (member !== this) member.lightbox?.onGone();
   }
 
-  /** The widget was rebuilt with newer text or a new position; the DOM stays and is redrawn. */
+  /** The widget was rebuilt with newer text or a new position; the DOM stays and is redrawn, and so is any image preview of the block. */
   retarget(host: AnnotateHost): void {
+    this.adopt(host);
+    for (const member of this.family.members) if (member !== this) member.adopt(host);
+  }
+
+  private adopt(host: AnnotateHost): void {
     const changed = host.text !== this.host.text;
     this.host = host;
-    this.dom.dataset.directiveFrom = String(host.from);
+    if (!this.lightbox) this.dom.dataset.directiveFrom = String(host.from);
     if (changed) this.render();
+  }
+
+  /** Whether this drawing takes edits: the block is an image in a note that is written and not quoted. */
+  get editable(): boolean {
+    return this.writable;
+  }
+
+  /** Whether the block has anything to show in an image preview: an image with notes on it, or one that can take them. */
+  canOpenLightbox(): boolean {
+    const parsed = this.parsed();
+    return parsed?.media.kind === 'image' && (parsed.rows.length > 0 || this.writable);
+  }
+
+  /**
+   * Draws the block again, into `root`, for the image preview. It reads and writes the same note text through the same editor, so an
+   * edit there is an edit of the note (undoable, drafted, committed like any other), and the resolved filter is shared with the note.
+   */
+  openLightbox(root: HTMLElement, options: LightboxOptions): AnnotateController {
+    return new AnnotateController(this.view, this.host, root, undefined, this.family, options);
+  }
+
+  /** The preview closed: a comment still being written is kept as clicking away would keep it, and the drawing leaves the block's family. */
+  dispose(): void {
+    if (this.pending?.comment.trim()) void this.savePending();
+    this.pending = undefined;
+    this.family.members.delete(this);
+    this.stopPdf();
+    this.dom.replaceChildren();
+    this.toolbarHost.replaceChildren();
   }
 
   // ---------------------------------------------------------------------------
@@ -242,7 +306,7 @@ export class AnnotateController {
     // The image element survives the redraw: a new one is empty until decoded, which collapses the block's height and
     // moves everything below it, and the editor keeps the scroll position it had.
     const image = this.figure.querySelector<HTMLImageElement>('.ann-stage img');
-    const height = this.figure.offsetHeight;
+    const height = this.lightbox ? 0 : this.figure.offsetHeight;
     if (height) this.figure.style.minHeight = `${height}px`;
     // renderNote ends in DOMPurify, so these nodes are the sanitised figure.
     this.stopPdf();
@@ -255,10 +319,12 @@ export class AnnotateController {
     if (details) details.open = this.showResolved;
     const fresh = this.figure.querySelector('.ann-stage img');
     if (image && fresh && image.getAttribute('src') === fresh.getAttribute('src')) fresh.replaceWith(image);
-    requestAnimationFrame(() => {
-      this.figure.style.removeProperty('min-height');
-      this.remember(this.host, this.dom.offsetHeight);
-    });
+    if (!this.lightbox) {
+      requestAnimationFrame(() => {
+        this.figure.style.removeProperty('min-height');
+        this.remember(this.host, this.dom.offsetHeight);
+      });
+    }
     this.dom.classList.toggle('is-annotating', this.annotating && this.writable);
     this.renderToolbar();
     if (this.writable) this.decorate();
@@ -295,15 +361,15 @@ export class AnnotateController {
   private renderToolbar(): void {
     const { t } = this;
     const parsed = this.parsed();
-    const toolbar = element('div', 'live-directive-toolbar live-infographic-toolbar live-annotate-toolbar', { role: 'toolbar', 'aria-label': t('imageAnnotation.editor.toolbarLabel') });
-    if (this.host.readOnly) {
+    const toolbar = element('div', this.lightbox ? 'ann-lightbox-toolbar' : 'live-directive-toolbar live-infographic-toolbar live-annotate-toolbar', { role: 'toolbar', 'aria-label': t('imageAnnotation.editor.toolbarLabel') });
+    if (this.host.readOnly || (this.lightbox && !this.writable)) {
       this.toolbarHost.replaceChildren();
       return;
     }
     const open = parsed ? parsed.rows.filter(row => !row.resolved).length : 0;
     const resolved = parsed ? parsed.rows.length - open : 0;
     const pdf = parsed?.media.kind === 'pdf';
-    toolbar.append(this.text('span', 'live-infographic-badge', t(pdf ? 'imageAnnotation.editor.badgePdf' : 'imageAnnotation.editor.badge', { open })));
+    if (!this.lightbox) toolbar.append(this.text('span', 'live-infographic-badge', t(pdf ? 'imageAnnotation.editor.badgePdf' : 'imageAnnotation.editor.badge', { open })));
     if (parsed && !this.host.quoted) {
       if (!pdf) {
         const annotate = this.button('live-annotate-toggle', t('imageAnnotation.editor.annotate'), t('imageAnnotation.editor.annotateHint'), () => this.setAnnotating(!this.annotating));
@@ -314,7 +380,7 @@ export class AnnotateController {
       if (resolved) {
         const toggle = this.button('live-annotate-resolved', t(this.showResolved ? 'imageAnnotation.editor.hideResolved' : 'imageAnnotation.editor.showResolved', { count: resolved }), '', () => {
           this.showResolved = !this.showResolved;
-          this.render();
+          for (const member of this.family.members) member.render();
         });
         toggle.setAttribute('aria-pressed', String(this.showResolved));
         toggle.dataset.focusId = 'resolved';
@@ -323,8 +389,8 @@ export class AnnotateController {
       const numbering = parsed.rows.some(row => row.problems.some(problem => ['duplicate-id', 'missing-id', 'invalid-id'].includes(problem.code)));
       if (numbering) toolbar.append(this.button('live-annotate-fix', t('imageAnnotation.editor.fixNumbering'), t('imageAnnotation.editor.fixNumberingHint'), () => this.change(text => fixNumbering(text))));
     }
-    toolbar.append(this.button('live-infographic-markdown-btn', t('imageAnnotation.editor.markdown'), t('imageAnnotation.editor.markdownHint'), () => this.openMarkdown()));
-    if (parsed && !this.host.quoted) toolbar.append(this.button('live-annotate-remove', t('imageAnnotation.editor.remove'), t('imageAnnotation.editor.removeHint'), () => this.removeAnnotations()));
+    if (!this.lightbox) toolbar.append(this.button('live-infographic-markdown-btn', t('imageAnnotation.editor.markdown'), t('imageAnnotation.editor.markdownHint'), () => this.openMarkdown()));
+    if (parsed && !this.host.quoted && !this.lightbox) toolbar.append(this.button('live-annotate-remove', t('imageAnnotation.editor.remove'), t('imageAnnotation.editor.removeHint'), () => this.removeAnnotations()));
     this.toolbarHost.replaceChildren(toolbar);
   }
 
@@ -701,6 +767,8 @@ export class AnnotateController {
     event.preventDefault();
     event.stopPropagation();
     this.select(key);
+    // The preview has no other place for the keyboard to be: arrows, Enter and Delete act on the selection from the image.
+    if (this.lightbox) this.focusStage();
   }
 
   private keyOf(marker: Element): string | undefined {
@@ -730,6 +798,8 @@ export class AnnotateController {
     }
     if (isTextField(event.target)) return;
     if (key === 'Escape') {
+      // In the preview an Escape with nothing left to dismiss is the preview's own: it closes.
+      if (this.lightbox && !this.pending && this.selected === undefined && !this.annotating) return;
       event.preventDefault();
       event.stopPropagation();
       if (this.pending) this.discardPending();

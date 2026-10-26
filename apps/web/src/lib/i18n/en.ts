@@ -161,6 +161,8 @@ export const en = {
   'lightbox.actual': 'Original size (1)',
   'lightbox.original': 'Open original image',
   'lightbox.help': 'Scroll to zoom · Drag to pan · Double-click to zoom',
+  'lightbox.helpAnnotated': 'Scroll to zoom · Drag to pan · Click a number to find it on the image',
+  'lightbox.helpAnnotate': 'Scroll to zoom · Drag to pan · Annotate: P pin, R region, arrows move, Alt+arrows resize, Enter comment, Delete remove, Esc back',
   'lightbox.loading': 'Loading image…',
   'lightbox.error': 'This image could not be loaded.',
 

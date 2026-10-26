@@ -65,6 +65,7 @@ A note holds review comments on an image as plain Markdown. Read and write the r
 - `x`, `y`, `w`, `h` are percentages (`41.2%`) of the image width and height from its top-left corner; a pin has `x y`, a region `x y w h` and must fit inside the image. `resolved` is a bare word; `by=name` is optional (`by="Ann Lee"` with spaces).
 - `#n` is the number shown on the marker: new rows take the highest number plus one, ids are unique in the block, and deleting a row never renumbers the others.
 - The comment is the Markdown after `}` and its indented continuation lines.
+- In the app a person sees and edits these rows in the note's figure or, after clicking the image, in the image preview; both write the same rows into the note's text, so a change made there reads like any other edit of the block. A PDF page opens no preview.
 - Change only the row you mean to: edit a value in place, add or remove the word `resolved`, append a row at the end. Do not reorder, renumber or reformat other rows. An unknown word (such as a misspelt `resolved`) or a bad value makes the row show a problem tag, so check what you wrote.
 
 ### PDF pages
