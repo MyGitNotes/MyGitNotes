@@ -148,7 +148,7 @@ export const AppContent: React.FC = () => {
   // Moves, renames, folders and assets are changes the server makes; a demo repository allows none of them.
   const canWriteFiles = canChangeFiles(selectedNotebookId);
   // The Focus file is read for the open notebook's repository, which is the demo repository's; a file that fails to load names no Focus.
-  const demoFocuses = useMemo(() => demoFocusesOf(focusPage), [focusPage.loading, focusPage.error, focusPage.page]);
+  const demoFocuses = demoFocusesOf(focusPage);
   useDemoScenario({ config, loading, pathname: location.pathname, navigate, hasGuide: async (notebookId, path) => (await queryClient.fetchQuery(noteLookupOptions(queryScope, [{ notebookId, path }], false))).notes.length > 0, hasRestoredView: notebookKey => hasStoredFocusView(repositoryFor(notebookKey)?.id ?? '', notebookKey), focuses: demoFocuses });
   /** Where a note lives, for the note Info tab: the repository and branch of its notebook, and why it is read-only. */
   const locateNote = (note: NoteRef): NoteLocation | undefined => {
