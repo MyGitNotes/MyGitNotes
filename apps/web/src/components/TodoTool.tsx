@@ -220,7 +220,7 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
       ))}
       {groupMode === 'gantt' && (
         <>
-          <TodoGanttChart tasks={tasks} milestones={milestones} today={formatDateYMD(new Date())} onOpenTask={task => onOpenNote(taskNote(task))} onOpenMilestone={onOpenNote} />
+          <TodoGanttChart tasks={tasks} allTasks={scopedTasks} milestones={milestones} today={formatDateYMD(new Date())} onOpenTask={task => onOpenNote(taskNote(task))} onOpenMilestone={onOpenNote} />
           {undatedOpenTasks.length > 0 && (
             <section className='todo-group'>
               <h4>

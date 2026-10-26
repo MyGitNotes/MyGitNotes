@@ -223,6 +223,12 @@ describe('milestones on the Gantt', () => {
       expect(formatDayIndex(range.startDay)).toBe('2025-01-09');
     });
 
+    it("ignores a filter that hides its note's open tasks", () => {
+      const milestones = [milestone('old.md', '2025-01-10')];
+      const range = computeGanttRange([], today, 'day', milestones, [openTask('old.md')]);
+      expect(formatDayIndex(range.startDay)).toBe('2025-01-09');
+    });
+
     it('keeps an upcoming milestone in the range', () => {
       const range = computeGanttRange([], today, 'day', [milestone('m.md', '2026-10-20')]);
       expect(formatDayIndex(range.startDay + range.days - 2)).toBe('2026-10-20');

@@ -15,6 +15,8 @@ const SCALE_LABEL_KEY: Record<GanttScale, 'panel.todoGanttScaleDay' | 'panel.tod
 
 interface TodoGanttChartProps {
   tasks: TodoTask[];
+  /** Every task before the People/Priority filters; decides which milestones are done. Defaults to `tasks`. */
+  allTasks?: TodoTask[];
   /** Notes with a `milestone` date; each is drawn as a diamond on its day. */
   milestones: NoteListItem[];
   today: string;
@@ -35,11 +37,11 @@ function tickLabel(date: string, scale: GanttScale, language: string): string {
   return new Intl.DateTimeFormat(language, { year: 'numeric', month: 'short' }).format(Date.UTC(year, month - 1, 1));
 }
 
-export function TodoGanttChart({ tasks, milestones, today, onOpenTask, onOpenMilestone }: TodoGanttChartProps) {
+export function TodoGanttChart({ tasks, allTasks, milestones, today, onOpenTask, onOpenMilestone }: TodoGanttChartProps) {
   const { t, language } = useTranslation();
   const [scale, setScale] = useState<GanttScale>(getSavedGanttScale);
   const dayWidth = ganttDayWidth(scale);
-  const range = useMemo(() => computeGanttRange(tasks, today, scale, milestones), [tasks, today, scale, milestones]);
+  const range = useMemo(() => computeGanttRange(tasks, today, scale, milestones, allTasks ?? tasks), [tasks, allTasks, today, scale, milestones]);
   const rows = useMemo(() => computeGanttEntries(tasks, milestones, range), [tasks, milestones, range]);
   const ticks = useMemo(() => computeGanttTicks(range, scale), [range, scale]);
   const trackWidth = range.days * dayWidth;

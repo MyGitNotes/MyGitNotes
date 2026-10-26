@@ -92,7 +92,7 @@ export interface GanttRange {
 /**
  * A milestone is done once its day is before today and its note has no open
  * task. A milestone has no status of its own, so the open tasks in its note
- * (the ones the chart was given) say whether the work around it is finished.
+ * (pass every task, not a People/Priority-filtered subset) say whether the work around it is finished.
  */
 export function isMilestoneDone(note: NoteListItem, tasks: TodoTask[], today: string): boolean {
   const date = getNoteMilestone(note.metadata);
@@ -104,15 +104,17 @@ export function isMilestoneDone(note: NoteListItem, tasks: TodoTask[], today: st
  * The visible day range: covers every open task's start/due dates, the date
  * of every milestone that is not done (see `isMilestoneDone`) and today, with
  * one day of padding on each side. A done milestone never stretches it.
+ * `allTasks` (default `tasks`) is what decides done-ness, so filtering the
+ * shown tasks never changes which milestones are done.
  *
  * At `'day'` scale the span is at least 7 days. At `'week'`/`'month'` scale
  * the range additionally snaps to whole week/month boundaries (so header
  * columns align to full weeks/months) and spans at least 4 weeks / 3 months.
  */
-export function computeGanttRange(tasks: TodoTask[], today: string, scale: GanttScale = 'day', milestones: NoteListItem[] = []): GanttRange {
+export function computeGanttRange(tasks: TodoTask[], today: string, scale: GanttScale = 'day', milestones: NoteListItem[] = [], allTasks: TodoTask[] = tasks): GanttRange {
   const todayDay = dayIndex(today);
   const taskDays = tasks.filter(task => !task.checked).flatMap(task => [task.start, task.due]).filter((value): value is string => Boolean(value)).map(dayIndex);
-  const milestoneDays = milestones.filter(note => !isMilestoneDone(note, tasks, today)).map(note => getNoteMilestone(note.metadata)).filter((value): value is string => value !== undefined).map(dayIndex);
+  const milestoneDays = milestones.filter(note => !isMilestoneDone(note, allTasks, today)).map(note => getNoteMilestone(note.metadata)).filter((value): value is string => value !== undefined).map(dayIndex);
   const all = [...taskDays, ...milestoneDays, todayDay];
   const min = Math.min(...all);
   const max = Math.max(...all);
