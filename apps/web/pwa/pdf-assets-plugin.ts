@@ -3,15 +3,15 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 
-/** The folders pdf.js reads on demand: CJK cmaps, the 14 standard fonts, and the wasm image decoders. Scripting (`quickjs-eval.*`) is unused. */
-const FOLDERS = ['cmaps', 'standard_fonts', 'wasm'] as const;
+/** The folders pdf.js reads on demand: CJK cmaps, ICC colour profiles, the 14 standard fonts, and the wasm image decoders. Scripting (`quickjs-eval.*`) is unused. */
+const FOLDERS = ['cmaps', 'iccs', 'standard_fonts', 'wasm'] as const;
 const skipped = (file: string) => file.startsWith('quickjs-eval.');
 
 const MIME: Record<string, string> = { '.wasm': 'application/wasm', '.bcmap': 'application/octet-stream', '.pfb': 'application/octet-stream', '.ttf': 'font/ttf' };
 
 /**
  * Ships the data folders of `pdfjs-dist` under `pdfjs/<version>/` in the build output and serves them from the dev server, so the page
- * viewer can pass their address to pdf.js (`cMapUrl`, `standardFontDataUrl`, `wasmUrl`). The files are fetched only when a PDF needs one,
+ * viewer can pass their address to pdf.js (`cMapUrl`, `iccUrl`, `standardFontDataUrl`, `wasmUrl`). The files are fetched only when a PDF needs one,
  * so a note without a PDF figure never requests them. Both the community and the Pro web configs use it.
  */
 export function pdfAssetsPlugin(): Plugin {
@@ -24,7 +24,13 @@ export function pdfAssetsPlugin(): Plugin {
     name: 'mygitnotes-pdf-assets',
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
-        const pathname = decodeURIComponent((request.url ?? '').split('?')[0]);
+        let pathname: string;
+        try {
+          pathname = decodeURIComponent((request.url ?? '').split('?')[0]);
+        } catch {
+          // A malformed escape (`%E0%A4%A`) names no file; the next handler answers it as it would any other unknown address.
+          return next();
+        }
         const [folder, file, ...rest] = pathname.startsWith(base) ? pathname.slice(base.length).split('/') : [];
         if (!(FOLDERS as readonly string[]).includes(folder) || !file || rest.length || skipped(file) || !files(folder).includes(file)) return next();
         response.setHeader('Content-Type', MIME[path.extname(file)] ?? 'application/octet-stream');

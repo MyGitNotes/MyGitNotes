@@ -40,7 +40,7 @@
       "destination": "/api"
     },
     {
-      "source": "/((?!assets/|sw\\.js$).*)",
+      "source": "/((?!assets/|pdfjs/|sw\\.js$).*)",
       "destination": "/index.html"
     }
   ],

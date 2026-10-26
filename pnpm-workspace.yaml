@@ -7,3 +7,5 @@ allowBuilds:
 minimumReleaseAge: 0
 overrides:
   qs: '^6.16.0'
+ignoredOptionalDependencies:
+  - '@napi-rs/canvas'
