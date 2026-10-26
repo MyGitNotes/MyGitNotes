@@ -3,6 +3,7 @@ import type { AgentFile, AgentWorkspace } from './agent-workspaces.js';
 import { AssetItem, FolderItem, GitCommit, GitStatus, NoteItem } from './types.js';
 import type { RepositoryId } from '@mygitnotes/core/repository';
 import type { WorkspaceAnswer } from './workspace-repositories.js';
+import { demoScopeOfNotebook, hasDemoScopes } from './demo-storage.js';
 import { localCommittedEntry } from './local-commits.js';
 
 const API_BASE = '/api';
@@ -87,7 +88,12 @@ export async function readNote(path: string, notebookId?: string): Promise<NoteI
   }
   const url = `${API_BASE}/notes/read?path=${encodeURIComponent(path)}${notebookId ? `&notebookId=${encodeURIComponent(notebookId)}` : ''}`;
   const res = await fetch(url);
-  if (!res.ok) throw await responseError(res, 'Failed to read note');
+  if (!res.ok) {
+    const failure = await responseError(res, 'Failed to read note');
+    // A demo repository never changes, so a note its server cannot find means the demo cookie no longer matches this page (it expired, was cleared, or another tab chose another language), not that the note moved or was deleted. A 404 would make the editor keep a conflict draft of a note nobody edited.
+    if (failure.status === 404 && (notebookId ? demoScopeOfNotebook(notebookId) : hasDemoScopes())) throw new Error(failure.message);
+    throw failure;
+  }
   const data = await res.json();
   return data.note;
 }

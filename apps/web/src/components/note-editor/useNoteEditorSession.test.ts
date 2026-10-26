@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../lib/api.js';
 import type { NoteItem } from '../../lib/types.js';
 import { useNoteEditorSession, type UseNoteEditorSessionParams } from './useNoteEditorSession.js';
 
@@ -118,5 +119,29 @@ describe('useNoteEditorSession and a late committed note equal to unsaved text',
     hook.rerender({ remoteBase: { ...first } });
     await vi.waitFor(() => expect(onSave.mock.calls.at(-1)?.[0].content).toBe(first.content));
     expect(hook.result.current.hasUnsavedChanges).toBe(false);
+  });
+});
+
+describe('useNoteEditorSession when the check of the remote note fails', () => {
+  function open(failure: Error) {
+    const onMarkConflict = vi.fn();
+    const base = { readOnly: false, autoSave: true, draftMode: true, propIsDirty: false, branch: 'main', draftScope: 'repo', onSave: vi.fn() as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote: vi.fn(async () => Promise.reject(failure)), onRestoreFile: vi.fn(), onCommitFile: undefined, remoteBase: undefined, conflictReason: undefined, onMarkConflict } satisfies Omit<UseNoteEditorSessionParams, 'note'>;
+    const hook = renderHook(() => useNoteEditorSession({ ...base, note: note('Contract') }));
+    return { hook, onMarkConflict };
+  }
+
+  it('keeps a conflict draft of a note the remote reports gone', async () => {
+    const { hook, onMarkConflict } = open(new ApiError('Not found', 404));
+    await vi.waitFor(() => expect(hook.result.current.blocked).toBe(true));
+    expect(onMarkConflict).toHaveBeenCalledOnce();
+    expect(localStorage.getItem('gh_notes_draft:repo:conflict:notes/idea.md')).not.toBeNull();
+  });
+
+  it('shows another failure without a conflict draft, so a note nobody edited is not listed as a conflict', async () => {
+    const { hook, onMarkConflict } = open(new Error('Notebook is not configured.'));
+    await vi.waitFor(() => expect(hook.result.current.saveError).toBe('Notebook is not configured.'));
+    expect(hook.result.current.blocked).toBe(false);
+    expect(onMarkConflict).not.toHaveBeenCalled();
+    expect(Object.keys(localStorage)).toEqual([]);
   });
 });

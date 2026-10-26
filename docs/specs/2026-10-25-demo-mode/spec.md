@@ -10,7 +10,7 @@ A deployment can let visitors who are not signed in try the app on public conten
 
 ## The demo cookie
 
-`mygitnotes_demo` holds only a language (`en` or `zh-tw`), is written by the web app on a `/demo` page (`Path=/; Max-Age=86400; SameSite=Lax`, `Secure` on https) and carries no authority. `demoLanguage(request)` (`@mygitnotes/core/demo`) reads it and ignores anything else; the configuration source decides what the language selects. `demoNotebooks(config, language)` keeps, for each scenario (a notebook id without its `-en` or `-zh-tw` suffix), the notebook in the asked language, else its `-en` twin, else the first, and moves `default_notebook` to the kept twin.
+`mygitnotes_demo` holds only a language (`en` or `zh-tw`), is written by the web app on a `/demo` page (`Path=/; Max-Age=86400; SameSite=Lax`, `Secure` on https) and carries no authority. `demoLanguage(request)` (`@mygitnotes/core/demo`) reads it and ignores anything else; the configuration source decides what the language selects. `demoNotebooks(config, language)` keeps, for each scenario (a notebook id without its `-en` or `-zh-tw` suffix), the notebook in the asked language, else its `-en` twin, else the first, and moves `default_notebook` to the kept twin. A page keeps working when the cookie no longer matches it (it expired after 24 hours, the visitor cleared it, or another tab chose the other language): the server then answers 404 for the notebook, and `readNote` raises that as a plain error, not as an `ApiError` 404, since a demo repository never changes and its note cannot have been moved or deleted. The editor shows the error and makes no conflict draft, so Changes never lists a note nobody edited as a conflict.
 
 ## Web app
 
@@ -63,4 +63,4 @@ A Focus view is kept only once the workspace says which repository serves its no
 
 ## Where it is tested
 
-`packages/core/src/demo.test.ts`; `apps/local-server/tests/demo-member.test.ts`; in `apps/web/src`: `lib/demo.test.ts`, `lib/demo-storage.test.ts`, `lib/local-commits.test.ts`, `lib/draft-overlay.compose.test.ts`, `lib/history-api.demo.test.ts`, `lib/use-workspace-sync.demo.test.tsx`, `app/useWorkingNoteCommit.demo.test.tsx`, `app/useDemoScenario.test.tsx`, `components/WorkspaceSetup.demo.test.tsx`, `components/DemoBanner.test.tsx` and a demo case in `components/NoteHistoryPanel.test.tsx`.
+`packages/core/src/demo.test.ts`; `apps/local-server/tests/demo-member.test.ts`; in `apps/web/src`: `lib/demo.test.ts`, `lib/demo-storage.test.ts`, `lib/local-commits.test.ts`, `lib/draft-overlay.compose.test.ts`, `lib/history-api.demo.test.ts`, `lib/api.demo.test.ts`, `lib/use-workspace-sync.demo.test.tsx`, `app/useWorkingNoteCommit.demo.test.tsx`, `app/useDemoScenario.test.tsx`, `components/WorkspaceSetup.demo.test.tsx`, `components/DemoBanner.test.tsx` and a demo case in `components/NoteHistoryPanel.test.tsx`.
