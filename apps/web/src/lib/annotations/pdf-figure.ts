@@ -24,7 +24,12 @@ const remembered = new Map<string, number>();
 /** Forgets the pages figures were left on, so a test starts from a clean session. */
 export function resetRememberedPages(): void {
   remembered.clear();
+  shapes.clear();
 }
+
+/** The shape of each page last drawn, by address and page, so a figure that is hydrated again has its final height before the document is back. */
+const shapes = new Map<string, string>();
+const REMEMBERED_SHAPES = 200;
 
 const noop = () => undefined;
 
@@ -54,6 +59,8 @@ class PdfFigure {
   private handle: PdfHandle | undefined;
   private pdf: PdfDocument | undefined;
   private render: PdfRender | undefined;
+  /** Counts the draws; one that finds a newer number after an await gives up. */
+  private drawId = 0;
   private drawn = new WeakMap<Element, string>();
   private stopped = false;
   private pager: { status: HTMLElement; previous: HTMLButtonElement; next: HTMLButtonElement; input: HTMLInputElement; live: HTMLElement; chips: Map<number, HTMLButtonElement>; } | undefined;
@@ -84,6 +91,10 @@ class PdfFigure {
     this.status.textContent = this.label('loading');
     this.main.append(this.status, this.pages);
     this.showOnly(this.current);
+    for (const section of this.pages.querySelectorAll<HTMLElement>('section.ann-page')) {
+      const shape = shapes.get(`${this.url}|${pageNumberOf(section)}`);
+      if (shape) section.querySelector<HTMLElement>('.ann-stage')?.style.setProperty('aspect-ratio', shape);
+    }
     this.figure.addEventListener(REVEAL_EVENT, this.onReveal);
     this.cleanups.push(() => this.figure.removeEventListener(REVEAL_EVENT, this.onReveal));
     if (typeof IntersectionObserver === 'function') {
@@ -103,7 +114,7 @@ class PdfFigure {
   /** Gives the document back and returns the figure to its static shape, so a figure that is hydrated again starts clean. */
   private stop(): void {
     this.stopped = true;
-    this.render?.cancel();
+    this.cancelRender();
     for (const cleanup of this.cleanups.splice(0)) cleanup();
     void this.handle?.release();
     this.handle = undefined;
@@ -283,7 +294,7 @@ class PdfFigure {
     this.sectionOf(page);
     const changed = page !== this.current;
     this.current = page;
-    this.render?.cancel();
+    this.cancelRender();
     this.showOnly(page);
     for (const section of this.pages.querySelectorAll<HTMLElement>('section.ann-page')) {
       if (section.hidden) section.querySelector('canvas')?.remove();
@@ -312,6 +323,13 @@ class PdfFigure {
     if (announce) live.textContent = this.label('pageChanged', { page: this.current, count: this.count });
   }
 
+  /** Cancels the render in progress and forgets it, so its canvas is never swapped in. */
+  private cancelRender(): void {
+    this.drawId++;
+    this.render?.cancel();
+    this.render = undefined;
+  }
+
   private pixelRatio(): number {
     const zoom = typeof visualViewport === 'undefined' || !visualViewport ? 1 : Math.max(1, visualViewport.scale);
     return (window.devicePixelRatio || 1) * zoom;
@@ -329,21 +347,27 @@ class PdfFigure {
     const pixelRatio = this.pixelRatio();
     const signature = `${page}:${cssWidth}:${pixelRatio}`;
     if (!force && this.drawn.get(stage) === signature) return;
-    this.render?.cancel();
+    this.cancelRender();
+    const drawId = this.drawId;
     const canvas = element('canvas', 'ann-canvas', { role: 'img', 'aria-label': this.label('pageCanvas', { page, count: this.count, name: this.name }) });
+    let render: PdfRender;
     try {
       const size = await pdf.pageSize(page);
-      if (this.stopped || page !== this.current) return;
-      stage.style.aspectRatio = `${size.width} / ${size.height}`;
+      if (this.stopped || drawId !== this.drawId) return;
+      const shape = `${size.width} / ${size.height}`;
+      stage.style.aspectRatio = shape;
+      shapes.delete(`${this.url}|${page}`);
+      shapes.set(`${this.url}|${page}`, shape);
+      if (shapes.size > REMEMBERED_SHAPES) shapes.delete(shapes.keys().next().value!);
       this.onSettled?.();
-      const render = pdf.render(page, canvas, { cssWidth, pixelRatio });
+      render = pdf.render(page, canvas, { cssWidth, pixelRatio });
       this.render = render;
       await render.promise;
     } catch {
-      if (!this.stopped && page === this.current) this.fail('load-failed');
+      if (!this.stopped && drawId === this.drawId) this.fail('load-failed');
       return;
     }
-    if (this.stopped || page !== this.current || this.render === undefined) return;
+    if (this.stopped || drawId !== this.drawId || this.render !== render) return;
     stage.querySelector('canvas')?.remove();
     stage.prepend(canvas);
     this.drawn.set(stage, signature);

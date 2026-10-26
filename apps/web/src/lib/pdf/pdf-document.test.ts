@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { openPdfBytes, PdfLoadError, sharedPdf } from './pdf-document.js';
+import { IDLE_DESTROY_MS, IDLE_DOCUMENTS, openPdfBytes, PdfLoadError, sharedPdf } from './pdf-document.js';
 
 const fixture = (name: string) => new Uint8Array(readFileSync(new URL(`../annotations/fixtures/pdf/${name}.pdf`, import.meta.url)));
 const codeOf = async (promise: Promise<unknown>) => (await promise.catch((error: unknown) => error) as PdfLoadError).code;
@@ -48,9 +48,14 @@ describe('openPdfBytes: real files', () => {
 });
 
 describe('sharedPdf: one document per address', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(async () => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    await sharedPdf.flush();
+  });
 
-  it('loads an address once for two holders and destroys it with the last one', async () => {
+  it('loads an address once for two holders and destroys it after the last one let go and the idle time passed', async () => {
+    vi.useFakeTimers();
     const bytes = fixture('multi-page');
     const fetched = vi.fn(async () => new Response(bytes, { status: 200 }));
     vi.stubGlobal('fetch', fetched);
@@ -60,14 +65,52 @@ describe('sharedPdf: one document per address', () => {
     expect(a.pdf).toBe(b.pdf);
     const destroy = vi.spyOn(a.pdf, 'destroy');
     await a.release();
+    await vi.advanceTimersByTimeAsync(IDLE_DESTROY_MS * 2);
     expect(destroy).not.toHaveBeenCalled();
     await b.release();
+    expect(destroy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(IDLE_DESTROY_MS - 1);
+    expect(destroy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
     expect(destroy).toHaveBeenCalledTimes(1);
     await b.release();
+    await vi.advanceTimersByTimeAsync(IDLE_DESTROY_MS);
     expect(destroy).toHaveBeenCalledTimes(1);
     const again = await sharedPdf.acquire('/raw-assets/shared.pdf');
     expect(fetched).toHaveBeenCalledTimes(2);
     await again.release();
+    await vi.advanceTimersByTimeAsync(IDLE_DESTROY_MS);
+    vi.unstubAllGlobals();
+  });
+
+  it('hands the same document to the next holder of an address released in the same turn, without fetching again', async () => {
+    const bytes = fixture('multi-page');
+    const fetched = vi.fn(async () => new Response(bytes, { status: 200 }));
+    vi.stubGlobal('fetch', fetched);
+    const a = await sharedPdf.acquire('/raw-assets/redraw.pdf');
+    const destroy = vi.spyOn(a.pdf, 'destroy');
+    void a.release(); // what a figure does when the note's HTML changes or its widget redraws
+    const b = await sharedPdf.acquire('/raw-assets/redraw.pdf');
+    expect(fetched).toHaveBeenCalledTimes(1);
+    expect(b.pdf).toBe(a.pdf);
+    expect(destroy).not.toHaveBeenCalled();
+    await b.release();
+    await sharedPdf.flush();
+    expect(destroy).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps only a few released documents and destroys the one released longest ago first', async () => {
+    const bytes = fixture('multi-page');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(bytes, { status: 200 })));
+    const handles = [];
+    for (let i = 0; i <= IDLE_DOCUMENTS; i++) handles.push(await sharedPdf.acquire(`/raw-assets/lru-${i}.pdf`));
+    const destroys = handles.map(handle => vi.spyOn(handle.pdf, 'destroy'));
+    for (const handle of handles) await handle.release();
+    expect(destroys[0]).toHaveBeenCalledTimes(1);
+    for (const destroy of destroys.slice(1)) expect(destroy).not.toHaveBeenCalled();
+    await sharedPdf.flush();
+    for (const destroy of destroys) expect(destroy).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
   });
 

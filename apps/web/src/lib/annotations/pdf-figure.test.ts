@@ -287,6 +287,85 @@ describe('hydratePdfFigures: the pager', () => {
   });
 });
 
+describe('hydratePdfFigures: a page drawn again', () => {
+  /** A document whose renders finish only when the test says so; a cancelled one resolves at once, as pdf-document.ts does. */
+  function slowPdf() {
+    const renders: Array<{ canvas: HTMLCanvasElement; finish: () => void; cancelled: boolean; }> = [];
+    const pdf: PdfDocument = {
+      pageCount: 3,
+      pageSize: async () => ({ width: 612, height: 792 }),
+      destroy: async () => undefined,
+      render: (_page, canvas) => {
+        let finish!: () => void;
+        const promise = new Promise<void>(resolve => (finish = resolve));
+        const entry = { canvas, finish, cancelled: false };
+        renders.push(entry);
+        return { promise, cancel: () => ((entry.cancelled = true), finish()) };
+      },
+    };
+    return { pdf, renders };
+  }
+
+  it('never puts the canvas of a cancelled render on the page', async () => {
+    const { pdf, renders } = slowPdf();
+    acquire.mockResolvedValue({ pdf, release });
+    const root = mount(figureHtml(...ROWS));
+    const inserted: Node[] = [];
+    new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => node instanceof HTMLCanvasElement && inserted.push(node)))).observe(root, { childList: true, subtree: true });
+    const stop = hydratePdfFigures(root, { t });
+    await settle();
+    expect(renders).toHaveLength(1);
+    // The chip of the page already shown draws it again, the way a resize does.
+    root.querySelector<HTMLButtonElement>('.ann-pager-chip[aria-current=page]')!.click();
+    await settle();
+    expect(renders).toHaveLength(2);
+    expect(renders[0].cancelled).toBe(true);
+    await settle();
+    expect(inserted).not.toContain(renders[0].canvas);
+    renders[1].finish();
+    await settle();
+    expect(root.querySelector('section.ann-p-2 canvas')).toBe(renders[1].canvas);
+    stop();
+  });
+
+  it('draws only the latest of two draws that were waiting for the page size', async () => {
+    const { pdf, renders } = slowPdf();
+    let size!: () => void;
+    const waiting = new Promise<void>(resolve => (size = resolve));
+    pdf.pageSize = async () => (await waiting, { width: 612, height: 792 });
+    acquire.mockResolvedValue({ pdf, release });
+    const root = mount(figureHtml(...ROWS));
+    const stop = hydratePdfFigures(root, { t });
+    await settle();
+    root.querySelector<HTMLButtonElement>('.ann-pager-chip[aria-current=page]')!.click();
+    size();
+    await settle();
+    expect(renders).toHaveLength(1);
+    stop();
+  });
+
+  it('gives a figure that is hydrated again the page shape it had, so the placeholder does not jump', async () => {
+    const first = await ready();
+    expect(first.root.querySelector<HTMLElement>('section.ann-p-2 .ann-stage')!.style.aspectRatio).toBe('612 / 792');
+    first.stop();
+    first.root.remove();
+    const root = mount(figureHtml(...ROWS));
+    acquire.mockReturnValue(new Promise(() => undefined));
+    const stop = hydratePdfFigures(root, { t });
+    expect(root.querySelector<HTMLElement>('section.ann-p-2 .ann-stage')!.style.aspectRatio).toBe('612 / 792');
+    stop();
+  });
+
+  async function ready() {
+    const fake = fakePdf(3);
+    acquire.mockResolvedValue({ pdf: fake.pdf, release });
+    const root = mount(figureHtml(...ROWS));
+    const stop = hydratePdfFigures(root, { t });
+    await settle();
+    return { root, stop, ...fake };
+  }
+});
+
 describe('hydratePdfFigures: loading and errors', () => {
   it('says it is loading, with progress for a large file, until the document arrives', async () => {
     let finish!: (handle: unknown) => void;

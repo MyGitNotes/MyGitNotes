@@ -42,6 +42,13 @@ export const MAX_CANVAS_PIXELS = 16_700_000;
 type Library = typeof PdfJs;
 
 let library: Promise<Library> | undefined;
+let worker: PdfJs.PDFWorker | undefined;
+
+/** One PDFWorker serves the page: every document is opened on it, so a second PDF does not start a second worker thread. */
+function sharedWorker(lib: Library): PdfJs.PDFWorker {
+  if (!worker || worker.destroyed) worker = new lib.PDFWorker();
+  return worker;
+}
 
 function loadLibrary(): Promise<Library> {
   library ??= (async () => {
@@ -69,11 +76,11 @@ function codeOf(error: unknown): PdfErrorCode {
   }
 }
 
-/** The fixed font, cmap and wasm folders the build copies next to the app (see `pwa/pdf-assets-plugin.ts`). */
+/** The fixed font, cmap, icc profile and wasm folders the build copies next to the app (see `pwa/pdf-assets-plugin.ts`). */
 function dataUrls(lib: Library): Record<string, string> {
   if (typeof window === 'undefined') return {};
   const base = `${import.meta.env.BASE_URL}pdfjs/${lib.version}/`;
-  return { cMapUrl: `${base}cmaps/`, cMapPacked: true as unknown as string, standardFontDataUrl: `${base}standard_fonts/`, wasmUrl: `${base}wasm/` };
+  return { cMapUrl: `${base}cmaps/`, cMapPacked: true as unknown as string, standardFontDataUrl: `${base}standard_fonts/`, wasmUrl: `${base}wasm/`, iccUrl: `${base}iccs/` };
 }
 
 class Document implements PdfDocument {
@@ -139,7 +146,7 @@ export async function openPdfBytes(bytes: Uint8Array): Promise<PdfDocument> {
     throw new PdfLoadError('load-failed', 'pdf.js could not be loaded');
   });
   try {
-    const loading = lib.getDocument({ data: bytes, enableXfa: false, ...dataUrls(lib) });
+    const loading = lib.getDocument({ data: bytes, enableXfa: false, worker: sharedWorker(lib), ...dataUrls(lib) });
     return new Document(await loading.promise, loading);
   } catch (error) {
     throw new PdfLoadError(codeOf(error), (error as Error)?.message);
@@ -187,15 +194,35 @@ interface Entry {
   document: Promise<PdfDocument>;
   holders: number;
   listeners: Set<PdfProgress>;
+  /** Set while nobody holds the document and it waits to be destroyed. */
+  idleTimer?: ReturnType<typeof setTimeout>;
 }
 
 export interface PdfHandle {
   readonly pdf: PdfDocument;
-  /** Gives the document back; the last holder to release it destroys it. Releasing twice counts once. */
+  /** Gives the document back; it is destroyed once nobody has held it for {@link IDLE_DESTROY_MS}. Releasing twice counts once. */
   release(): Promise<void>;
 }
 
+/**
+ * A document nobody holds is kept this long, so a redraw of the note (new HTML, the editor rebuilding a widget, Show resolved)
+ * that releases a figure and acquires it again in the same turn reuses it instead of fetching and parsing the file again.
+ */
+export const IDLE_DESTROY_MS = 30_000;
+/** At most this many released documents are kept; past it the one released longest ago is destroyed. */
+export const IDLE_DOCUMENTS = 2;
+
 const entries = new Map<string, Entry>();
+/** Released documents, the one released longest ago first. */
+const idle = new Map<string, Entry>();
+
+async function destroyEntry(url: string, entry: Entry): Promise<void> {
+  clearTimeout(entry.idleTimer);
+  entry.idleTimer = undefined;
+  if (entries.get(url) === entry) entries.delete(url);
+  if (idle.get(url) === entry) idle.delete(url);
+  await entry.document.then(document => document.destroy(), () => undefined);
+}
 
 /** One {@link PdfDocument} per address, shared by every figure of the same PDF and counted by holders. */
 export const sharedPdf = {
@@ -208,22 +235,36 @@ export const sharedPdf = {
       entry = created;
     }
     const held = entry;
+    clearTimeout(held.idleTimer);
+    held.idleTimer = undefined;
+    idle.delete(url);
     held.holders++;
     if (onProgress) held.listeners.add(onProgress);
     let released = false;
-    const release = async () => {
+    const release = async (failed = false) => {
       if (released) return;
       released = true;
       if (onProgress) held.listeners.delete(onProgress);
       if (--held.holders > 0) return;
-      if (entries.get(url) === held) entries.delete(url);
-      await held.document.then(document => document.destroy(), () => undefined);
+      if (failed) return destroyEntry(url, held);
+      idle.set(url, held);
+      held.idleTimer = setTimeout(() => void destroyEntry(url, held), IDLE_DESTROY_MS);
+      (held.idleTimer as { unref?: () => void; }).unref?.();
+      while (idle.size > IDLE_DOCUMENTS) {
+        const [oldestUrl, oldest] = idle.entries().next().value!;
+        void destroyEntry(oldestUrl, oldest);
+      }
     };
     try {
-      return { pdf: await held.document, release };
+      return { pdf: await held.document, release: () => release() };
     } catch (error) {
-      await release();
+      await release(true);
       throw error;
     }
+  },
+
+  /** Destroys every document nobody holds right now, without waiting for the idle time. */
+  async flush(): Promise<void> {
+    await Promise.all([...idle].map(([url, entry]) => destroyEntry(url, entry)));
   },
 };
