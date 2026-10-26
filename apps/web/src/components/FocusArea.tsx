@@ -2,7 +2,7 @@ import './focus.css';
 import React from 'react';
 import { Group, Panel, Separator } from 'react-resizable-panels';
 import type { DisplayNode } from '@mygitnotes/core/focus-page';
-import { displayedPanes } from '../lib/focus-view.js';
+import { displayedPanes, openingSizes } from '../lib/focus-view.js';
 import { useIsDesktop } from './WorkspaceChrome.js';
 import { usePhone } from '../lib/use-phone.js';
 import { FocusPane, type FocusPaneContext } from './FocusPane.js';
@@ -24,16 +24,15 @@ export const FocusArea: React.FC<FocusPaneContext & { capacity: 1 | 2 | 'all'; }
 
   const render = (node: DisplayNode): React.ReactNode => {
     if (node.kind === 'pane') return <FocusPane {...context} displayed={leaves.get(node.id)!} edgeDrops={capacity === 'all'} />;
-    // Stored sizes apply only while they cover exactly the children; otherwise the children share equally.
-    const stored = ratios[node.id];
-    const covers = stored !== undefined && Object.keys(stored).length === node.children.length && node.children.every(child => typeof stored[child.id] === 'number');
+    // Sizes the visitor dragged to apply only while they cover exactly the children; otherwise the Focus's own sizes, else equal shares.
+    const sizes = openingSizes(ratios, node);
     return (
       <Group
         key={node.id}
         id={node.id}
         orientation={node.orientation}
         className='focus-split'
-        defaultLayout={covers ? stored : undefined}
+        defaultLayout={sizes}
         onLayoutChanged={(layout, meta) => {
           if (meta.isUserInteraction) focus.setRatios(node.id, Object.fromEntries(node.children.map(child => [child.id, layout[child.id]])));
         }}

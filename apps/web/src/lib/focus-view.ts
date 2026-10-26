@@ -1,4 +1,4 @@
-import { displayFocus, emptyFocusLayout, findFocusPane, type FocusDisplay, type FocusLayout, type FocusNode, focusPanes, type FocusSplitNode, focusTabCount, focusTabKey, readFocusLayout } from '@mygitnotes/core/focus-page';
+import { displayFocus, displaySizes, type DisplaySplit, emptyFocusLayout, findFocusPane, type FocusDisplay, type FocusLayout, type FocusNode, focusPanes, type FocusSplitNode, focusTabCount, focusTabKey, readFocusLayout } from '@mygitnotes/core/focus-page';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import { storageOwner } from './demo-storage.js';
 
@@ -260,11 +260,21 @@ type Ratios = FocusEntryView['ratios'];
 
 const parentSplit = (layout: FocusLayout, id: string): FocusSplitNode | undefined => splitNodes(layout.root).find(split => split.children.some(child => child.id === id));
 
-/** A split's sizes: the stored ones while they cover exactly its children, else equal shares. */
-function sizesOf(ratios: Ratios, split: FocusSplitNode): Record<string, number> {
+/** The sizes stored for a split while they cover exactly its children. */
+function coveredSizes(ratios: Ratios, split: { id: string; children: readonly { id: string; }[]; }): Record<string, number> | undefined {
   const stored = ratios[split.id];
   const covers = stored !== undefined && Object.keys(stored).length === split.children.length && split.children.every(child => typeof stored[child.id] === 'number');
-  return covers ? stored : Object.fromEntries(split.children.map(child => [child.id, 100 / split.children.length]));
+  return covers ? stored : undefined;
+}
+
+/** The sizes a displayed split opens with: the ones the visitor dragged it to while they cover its panes, else the ones the Focus gives them; undefined for equal shares. */
+export function openingSizes(ratios: Ratios, split: DisplaySplit): Record<string, number> | undefined {
+  return coveredSizes(ratios, split) ?? displaySizes(split);
+}
+
+/** A split's sizes: the stored ones while they cover exactly its children, else the ones the Focus gives them, else equal shares. */
+function sizesOf(ratios: Ratios, split: FocusSplitNode): Record<string, number> {
+  return coveredSizes(ratios, split) ?? displaySizes(split) ?? Object.fromEntries(split.children.map(child => [child.id, 100 / split.children.length]));
 }
 
 /**

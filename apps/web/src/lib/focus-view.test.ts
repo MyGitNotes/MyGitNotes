@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type FocusDivision, type FocusLayout, type FocusNode, type FocusTab, legacyFocusTree } from '@mygitnotes/core/focus-page';
-import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasRestoredFocus, isEmptyFocus, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
+import { activatePane, openingSizes, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasRestoredFocus, isEmptyFocus, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
 const note = (path: string): FocusTab => ({ kind: 'note', path });
 const lane = (id: string): FocusTab => ({ kind: 'note', path: `notes/${id}.compilation.yml` });
@@ -358,3 +358,28 @@ describe('isEmptyFocus', () => {
     expect(isEmptyFocus(layout('columns-2', [], [note('notes/a.md')]))).toBe(false);
   });
 });
+
+describe('sizes a Focus opens with', () => {
+  const sized = (size: number, id: string): FocusNode => ({ ...leaf(id), size });
+  const columns = (...children: FocusNode[]): FocusLayout => ({ root: split('s', 'horizontal', ...children) });
+  const display = (layout: FocusLayout) => displayedPanes(entry({ activePane: 'p1' }), layout, 'all').root;
+  it('are the sizes the file gives its panes, as percentages', () => {
+    const root = display(columns(sized(1, 'p1'), sized(3, 'p2')));
+    expect(root.kind === 'split' && openingSizes({}, root)).toEqual({ p1: 25, p2: 75 });
+  });
+  it('give way to the sizes the visitor dragged them to, while those cover the panes', () => {
+    const root = display(columns(sized(1, 'p1'), sized(3, 'p2')));
+    expect(root.kind === 'split' && openingSizes({ s: { p1: 60, p2: 40 } }, root)).toEqual({ p1: 60, p2: 40 });
+    expect(root.kind === 'split' && openingSizes({ s: { p1: 100 } }, root)).toEqual({ p1: 25, p2: 75 });
+  });
+  it('are none for panes without sizes, which share equally', () => {
+    const root = display(columns(leaf('p1'), leaf('p2')));
+    expect(root.kind === 'split' && openingSizes({}, root)).toBeUndefined();
+  });
+  it('are where splitting a pane starts from before the visitor has dragged anything', () => {
+    const before = columns(sized(25, 'p1'), sized(75, 'p2'));
+    const after = columns(leaf('p1'), leaf('p2'), leaf('p3'));
+    expect(splitRatios({}, before, after, 'p2', 'p3')).toEqual({ s: { p1: 25, p2: 37.5, p3: 37.5 } });
+  });
+});
+
