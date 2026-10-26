@@ -243,9 +243,11 @@ describe('hydratePdfFigures: the pager', () => {
   it('gives a document back that arrives after the figure was stopped', async () => {
     const { pdf } = fakePdf();
     let finish!: (handle: unknown) => void;
-    acquire.mockReturnValue(new Promise(resolve => {
-      finish = resolve;
-    }));
+    acquire.mockReturnValue(
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+    );
     const root = mount(figureHtml(...ROWS));
     const stop = hydratePdfFigures(root, { t });
     await settle();
@@ -254,6 +256,24 @@ describe('hydratePdfFigures: the pager', () => {
     await settle();
     expect(release).toHaveBeenCalledTimes(1);
     expect(root.querySelector('nav.ann-pager')).toBeNull();
+  });
+
+  it('draws the page again, sharper, after a pinch-zoom, and not when the zoom did not change', async () => {
+    const listeners = new Map<string, () => void>();
+    const viewport = { scale: 1, addEventListener: (name: string, listener: () => void) => void listeners.set(name, listener), removeEventListener: vi.fn() };
+    vi.stubGlobal('visualViewport', viewport);
+    const { renders, stop } = await ready();
+    expect(renders.map(render => render.pixelRatio)).toEqual([1]);
+    listeners.get('resize')!();
+    await new Promise(resolve => setTimeout(resolve, 320));
+    expect(renders).toHaveLength(1);
+    viewport.scale = 2.5;
+    listeners.get('resize')!();
+    await new Promise(resolve => setTimeout(resolve, 320));
+    expect(renders.map(render => render.pixelRatio)).toEqual([1, 2.5]);
+    stop();
+    expect(viewport.removeEventListener).toHaveBeenCalledWith('resize', listeners.get('resize'));
+    vi.unstubAllGlobals();
   });
 
   it('keeps the page across a redraw of the same figure', async () => {
@@ -291,12 +311,7 @@ describe('hydratePdfFigures: loading and errors', () => {
     stop();
   });
 
-  it.each([
-    ['not-found', 'The PDF was not found.'],
-    ['not-pdf', 'This file is not a PDF.'],
-    ['password', 'This PDF is password-protected; annotate an unprotected copy.'],
-    ['load-failed', 'The PDF could not be loaded.'],
-  ])('replaces the stage with a %s box and keeps the list', async (code, text) => {
+  it.each([['not-found', 'The PDF was not found.'], ['not-pdf', 'This file is not a PDF.'], ['password', 'This PDF is password-protected; annotate an unprotected copy.'], ['load-failed', 'The PDF could not be loaded.']])('replaces the stage with a %s box and keeps the list', async (code, text) => {
     acquire.mockRejectedValue(Object.assign(new Error(code), { code }));
     const root = mount(figureHtml(...ROWS));
     const stop = hydratePdfFigures(root, { t });

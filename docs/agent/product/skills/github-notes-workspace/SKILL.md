@@ -66,3 +66,21 @@ A note holds review comments on an image as plain Markdown. Read and write the r
 - `#n` is the number shown on the marker: new rows take the highest number plus one, ids are unique in the block, and deleting a row never renumbers the others.
 - The comment is the Markdown after `}` and its indented continuation lines.
 - Change only the row you mean to: edit a value in place, add or remove the word `resolved`, append a row at the end. Do not reorder, renumber or reformat other rows. An unknown word (such as a misspelt `resolved`) or a bad value makes the row show a problem tag, so check what you wrote.
+
+### PDF pages
+
+The same block annotates a PDF. The first body line is an inline Markdown **link**, not an image, and every row carries `page=N`:
+
+```markdown
+:::annotate[Contract draft review]
+[Contract v2.pdf](/raw-assets/by-hash/9c1e0d2b7a4f5e6d8c3b2a1f0e9d8c7b6a5f4e3d)
+
+- {#1 region x=12% y=18.5% w=76% h=9% page=1 by=alice} The party name must match the seal page.
+- {#2 pin x=63% y=41% page=3} Confirm the penalty rate in clause 5.
+:::
+```
+
+- Write a PDF as a link. `![name](file.pdf)` is a block error; a reference-style link is too.
+- `page=N` counts pages from 1 at the start of the file (not the printed page label). A row without it, or with `page=0`, `page=2.5` or `page=3%`, shows a problem tag and no marker. A page past the file's end gets a problem tag once the app has loaded the PDF.
+- `x y w h` are percentages of the page as a viewer shows it, with the page's own rotation applied, from its top-left corner.
+- Ids are unique in the block, not per page. An agent places rows only if it can see the page; no tool here renders PDF pages.

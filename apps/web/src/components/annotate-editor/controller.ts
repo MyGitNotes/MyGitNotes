@@ -2,6 +2,7 @@ import { isolateHistory, redo, undo } from '@codemirror/commands';
 import type { EditorView } from '@codemirror/view';
 import { addRow, deleteRow, fixNumbering, nextId, removeAnnotations, setComment, setGeometry, setResolved } from '../../lib/annotations/edit.js';
 import { type AnnotationRow, parseAnnotate, type ParsedAnnotate } from '../../lib/annotations/parse.js';
+import { hydratePdfFigures } from '../../lib/annotations/pdf-figure.js';
 import { itemsOf } from '../../lib/annotations/render.js';
 import { renderNote } from '../../lib/markdown.js';
 import { youtubeLabels } from '../../lib/youtube-embed.js';
@@ -83,6 +84,8 @@ export class AnnotateController {
   private redrawing = false;
   private figure!: HTMLElement;
   private toolbarHost!: HTMLElement;
+  /** Ends the page viewer of a PDF block, which is drawn by the same code as in a read surface. */
+  private stopPdf = () => {};
 
   constructor(private readonly view: EditorView, private host: AnnotateHost, readonly dom: HTMLElement, private readonly remember: (host: AnnotateHost, height: number) => void = () => {}) {
     dom.addEventListener('keydown', event => this.onKeydown(event));
@@ -100,6 +103,11 @@ export class AnnotateController {
 
   private get t(): Translate {
     return this.host.t;
+  }
+
+  /** The widget left the editor: its PDF document goes back to the pool. */
+  destroy(): void {
+    this.stopPdf();
   }
 
   /** The widget was rebuilt with newer text or a new position; the DOM stays and is redrawn. */
@@ -223,7 +231,8 @@ export class AnnotateController {
   // Drawing
 
   private get writable(): boolean {
-    return !this.host.readOnly && !this.host.quoted && this.parsed() !== undefined;
+    // A PDF block is only read in this version: its pages are shown and navigated, and the rows are edited as Markdown.
+    return !this.host.readOnly && !this.host.quoted && this.parsed()?.media.kind === 'image';
   }
 
   render(): void {
@@ -236,9 +245,11 @@ export class AnnotateController {
     const height = this.figure.offsetHeight;
     if (height) this.figure.style.minHeight = `${height}px`;
     // renderNote ends in DOMPurify, so these nodes are the sanitised figure.
+    this.stopPdf();
     this.redrawing = true;
     this.figure.innerHTML = html;
     this.redrawing = false;
+    this.stopPdf = hydratePdfFigures(this.figure, { t: this.t, onSettled: () => this.view.requestMeasure() });
     const fresh = this.figure.querySelector('.ann-stage img');
     if (image && fresh && image.getAttribute('src') === fresh.getAttribute('src')) fresh.replaceWith(image);
     requestAnimationFrame(() => {
@@ -288,12 +299,15 @@ export class AnnotateController {
     }
     const open = parsed ? parsed.rows.filter(row => !row.resolved).length : 0;
     const resolved = parsed ? parsed.rows.length - open : 0;
-    toolbar.append(this.text('span', 'live-infographic-badge', t('imageAnnotation.editor.badge', { open })));
+    const pdf = parsed?.media.kind === 'pdf';
+    toolbar.append(this.text('span', 'live-infographic-badge', t(pdf ? 'imageAnnotation.editor.badgePdf' : 'imageAnnotation.editor.badge', { open })));
     if (parsed && !this.host.quoted) {
-      const annotate = this.button('live-annotate-toggle', t('imageAnnotation.editor.annotate'), t('imageAnnotation.editor.annotateHint'), () => this.setAnnotating(!this.annotating));
-      annotate.setAttribute('aria-pressed', String(this.annotating));
-      annotate.dataset.focusId = 'annotate';
-      toolbar.append(annotate);
+      if (!pdf) {
+        const annotate = this.button('live-annotate-toggle', t('imageAnnotation.editor.annotate'), t('imageAnnotation.editor.annotateHint'), () => this.setAnnotating(!this.annotating));
+        annotate.setAttribute('aria-pressed', String(this.annotating));
+        annotate.dataset.focusId = 'annotate';
+        toolbar.append(annotate);
+      }
       if (resolved) {
         const toggle = this.button('live-annotate-resolved', t(this.showResolved ? 'imageAnnotation.editor.hideResolved' : 'imageAnnotation.editor.showResolved', { count: resolved }), '', () => {
           this.showResolved = !this.showResolved;

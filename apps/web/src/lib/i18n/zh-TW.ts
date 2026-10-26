@@ -361,6 +361,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'imageAnnotation.pdf.printOmitted': '只列印前 {count} 個有標註的頁面；所有留言都列在清單中。',
   'imageAnnotation.insert': '標註圖片',
   'imageAnnotation.editor.badge': '圖片標註 · {open} 則未解決',
+  'imageAnnotation.editor.badgePdf': 'PDF 標註 · {open} 則未解決',
   'imageAnnotation.editor.toolbarLabel': '圖片標註工具列',
   'imageAnnotation.editor.annotate': '標註',
   'imageAnnotation.editor.annotateHint': '點圖片放標記點，拖曳框選區域；按 Esc 結束。',

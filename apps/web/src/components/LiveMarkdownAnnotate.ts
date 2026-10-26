@@ -50,6 +50,7 @@ export class LiveMarkdownAnnotate extends WidgetType {
   }
 
   destroy(dom: HTMLElement) {
+    controllers.get(dom)?.destroy();
     controllers.delete(dom);
   }
 

@@ -7,7 +7,7 @@ const fixture = (name: string) => new Uint8Array(readFileSync(new URL(`../annota
 const codeOf = async (promise: Promise<unknown>) => (await promise.catch((error: unknown) => error) as PdfLoadError).code;
 
 describe('openPdfBytes: real files', () => {
-  it('reports the page count and every page\'s size as pdf.js displays it', async () => {
+  it("reports the page count and every page's size as pdf.js displays it", async () => {
     const pdf = await openPdfBytes(fixture('multi-page'));
     expect(pdf.pageCount).toBe(4);
     expect(await pdf.pageSize(1)).toEqual({ width: 612, height: 792 });
@@ -15,7 +15,7 @@ describe('openPdfBytes: real files', () => {
     await pdf.destroy();
   });
 
-  it('applies the page\'s own /Rotate, so a rotated portrait page reads as landscape', async () => {
+  it("applies the page's own /Rotate, so a rotated portrait page reads as landscape", async () => {
     const pdf = await openPdfBytes(fixture('multi-page'));
     expect(await pdf.pageSize(3)).toEqual({ width: 600, height: 400 });
     await pdf.destroy();
@@ -76,7 +76,12 @@ describe('sharedPdf: one document per address', () => {
     expect(await codeOf(sharedPdf.acquire('/raw-assets/missing.pdf'))).toBe('not-found');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 500 })));
     expect(await codeOf(sharedPdf.acquire('/raw-assets/broken.pdf'))).toBe('load-failed');
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('network'); }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network');
+      }),
+    );
     expect(await codeOf(sharedPdf.acquire('/raw-assets/offline.pdf'))).toBe('load-failed');
     vi.unstubAllGlobals();
   });

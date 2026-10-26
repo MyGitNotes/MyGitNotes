@@ -35,12 +35,7 @@ const hex = bytes => `<${Buffer.from(bytes).toString('hex')}>`;
 
 /** The pages as `{ width, height, rotate?, content, fonts }`; returns the objects of a document, numbered from 1. */
 function documentObjects() {
-  const pages = [
-    { width: 612, height: 792, content: 'BT /F1 28 Tf 72 700 Td (Page one) Tj ET 72 560 300 60 re S BT /F1 12 Tf 72 530 Td (Letter portrait, 612 x 792) Tj ET' },
-    { width: 842, height: 595, content: 'BT /F1 28 Tf 72 500 Td (Page two) Tj ET 400 200 300 120 re S BT /F1 12 Tf 72 470 Td (A4 landscape, 842 x 595) Tj ET' },
-    { width: 400, height: 600, rotate: 90, content: 'BT /F1 28 Tf 40 520 Td (Page three) Tj ET 40 300 200 100 re S BT /F1 12 Tf 40 490 Td (Stored 400 x 600 with Rotate 90) Tj ET' },
-    { width: 612, height: 792, content: `BT /F2 26 Tf 72 700 Td <${big5('合約草稿')}> Tj ET BT /F2 14 Tf 72 660 Td <${big5('甲方名稱與統編要和用印頁一致')}> Tj ET 72 540 320 80 re S` },
-  ];
+  const pages = [{ width: 612, height: 792, content: 'BT /F1 28 Tf 72 700 Td (Page one) Tj ET 72 560 300 60 re S BT /F1 12 Tf 72 530 Td (Letter portrait, 612 x 792) Tj ET' }, { width: 842, height: 595, content: 'BT /F1 28 Tf 72 500 Td (Page two) Tj ET 400 200 300 120 re S BT /F1 12 Tf 72 470 Td (A4 landscape, 842 x 595) Tj ET' }, { width: 400, height: 600, rotate: 90, content: 'BT /F1 28 Tf 40 520 Td (Page three) Tj ET 40 300 200 100 re S BT /F1 12 Tf 40 490 Td (Stored 400 x 600 with Rotate 90) Tj ET' }, { width: 612, height: 792, content: `BT /F2 26 Tf 72 700 Td <${big5('合約草稿')}> Tj ET BT /F2 14 Tf 72 660 Td <${big5('甲方名稱與統編要和用印頁一致')}> Tj ET 72 540 320 80 re S` }];
   const objects = [];
   const add = body => objects.push(body) && objects.length;
   const catalog = add('');
@@ -74,7 +69,11 @@ function big5(text) {
       }
     }
   }
-  return [...text].map(char => big5Codes.get(char) ?? (char === ' ' ? '20' : (() => { throw new Error(`no Big5 code for ${char}`); })())).join('');
+  return [...text].map(char =>
+    big5Codes.get(char) ?? (char === ' ' ? '20' : (() => {
+      throw new Error(`no Big5 code for ${char}`);
+    })())
+  ).join('');
 }
 
 function serialise({ objects, root }, encryption) {

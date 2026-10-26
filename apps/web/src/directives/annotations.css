@@ -133,7 +133,7 @@
 .ann-pdf .ann-page { min-width: 0; }
 .ann-pdf .ann-page[hidden] { display: none !important; }
 /* In the viewer every page can be turned to, so a page whose notes are all resolved stays; only its markers are hidden. */
-.ann-pdf.is-viewer .ann-page.is-resolved-only { display: block; }
+.ann-pdf.is-viewer:has(.ann-resolved:not([open])) .ann-page.is-resolved-only { display: block; }
 .ann-pdf .ann-stage { display: block; justify-self: stretch; width: 100%; line-height: 0; }
 .ann-pdf .ann-stage:not(:has(canvas, img)) { aspect-ratio: 1 / 1.414; border: 1px dashed var(--ann-line); border-radius: 4px; background: color-mix(in srgb, var(--color-text) 4%, var(--color-surface)); }
 .ann-pdf .ann-stage > canvas { display: block; width: 100%; height: 100%; border-radius: 2px; box-shadow: 0 0 0 1px var(--ann-line); }

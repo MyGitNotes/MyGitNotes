@@ -2,7 +2,7 @@
 import { Marked } from 'marked';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { en } from '../i18n/en.js';
-import { renderPdfPageImages, MAX_PRINT_PAGES } from './pdf-print.js';
+import { MAX_PRINT_PAGES, renderPdfPageImages } from './pdf-print.js';
 import { renderAnnotate } from './render.js';
 
 const { loaded, acquire } = vi.hoisted(() => ({ loaded: vi.fn(), acquire: vi.fn() }));

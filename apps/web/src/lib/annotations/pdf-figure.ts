@@ -46,7 +46,6 @@ class PdfFigure {
   private readonly name: string;
   private readonly url: string | null;
   private readonly key: string;
-  private readonly body: HTMLElement;
   private readonly pages: HTMLElement;
   private readonly main: HTMLElement;
   private readonly annotated: number[];
@@ -61,12 +60,11 @@ class PdfFigure {
   private status: HTMLElement | undefined;
   private readonly cleanups: Array<() => void> = [];
 
-  constructor(private readonly figure: HTMLElement, private readonly t: Translate) {
+  constructor(private readonly figure: HTMLElement, private readonly t: Translate, private readonly onSettled?: () => void) {
     this.name = figure.getAttribute('aria-label') ?? '';
     const open = figure.querySelector<HTMLAnchorElement>('a.ann-open');
     this.url = open?.getAttribute('href') ?? null;
     this.key = `${this.url}|${this.name}`;
-    this.body = figure.querySelector<HTMLElement>('.ann-body')!;
     this.pages = figure.querySelector<HTMLElement>('.ann-pages')!;
     this.main = element('div', 'ann-main');
     this.annotated = [...this.pages.querySelectorAll('section.ann-page')].map(section => pageNumberOf(section)).filter((page): page is number => page !== undefined);
@@ -149,6 +147,7 @@ class PdfFigure {
     message.textContent = this.label(key);
     box.append(message);
     this.main.replaceChildren(box);
+    this.onSettled?.();
   }
 
   private ready(pdf: PdfDocument): void {
@@ -336,6 +335,7 @@ class PdfFigure {
       const size = await pdf.pageSize(page);
       if (this.stopped || page !== this.current) return;
       stage.style.aspectRatio = `${size.width} / ${size.height}`;
+      this.onSettled?.();
       const render = pdf.render(page, canvas, { cssWidth, pixelRatio });
       this.render = render;
       await render.promise;
@@ -347,6 +347,7 @@ class PdfFigure {
     stage.querySelector('canvas')?.remove();
     stage.prepend(canvas);
     this.drawn.set(stage, signature);
+    this.onSettled?.();
   }
 
   /** Redraws on a width change and, after a pinch-zoom on a phone, sharper. */
@@ -382,9 +383,9 @@ class PdfFigure {
  * without a PDF figure does nothing here, and does not load pdf.js. Returns the function that stops the viewers and gives
  * their documents back.
  */
-export function hydratePdfFigures(root: ParentNode, options: { t: Translate; }): () => void {
+export function hydratePdfFigures(root: ParentNode, options: { t: Translate; /** Called when a figure's size may have changed (the editor re-measures its widget). */ onSettled?: () => void; }): () => void {
   const figures = [...root.querySelectorAll<HTMLElement>('figure.ann-pdf')].filter(figure => !figure.classList.contains('is-viewer') && figure.querySelector('.ann-pages'));
   if (!figures.length) return noop;
-  const stops = figures.map(figure => new PdfFigure(figure, options.t).start());
+  const stops = figures.map(figure => new PdfFigure(figure, options.t, options.onSettled).start());
   return () => stops.forEach(stop => stop());
 }
