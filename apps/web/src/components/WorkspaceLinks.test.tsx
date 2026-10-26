@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+import { DemoProvider } from '../lib/demo.js';
 import { WorkspaceLinks } from './WorkspaceLinks.js';
 
 const navigate = vi.fn();
@@ -99,6 +100,28 @@ it('opens a same-origin absolute URL in a new tab on a modifier click', async ()
   });
   expect(windowOpen).toHaveBeenCalledWith('/notebooks/nb1/notes/a.md', '_blank', 'noopener,noreferrer');
   expect(navigate).not.toHaveBeenCalled();
+});
+
+it('keeps the demo prefix on a route opened in a new tab from a demo page', async () => {
+  const { getByTestId } = render(createElement(DemoProvider, { value: {}, children: workspace('/notebooks/nb1/notes/a.md') }), { wrapper });
+  await act(async () => {
+    fireEvent.click(getByTestId('link'), { ctrlKey: true });
+  });
+  expect(windowOpen).toHaveBeenCalledWith('/demo/notebooks/nb1/notes/a.md', '_blank', 'noopener,noreferrer');
+});
+
+it('opens a notebook folder route of a demo page in a new tab under the demo prefix', async () => {
+  const notebooks = [{ id: 'nb1', title: 'N', root: 'notes' }];
+  const view = render(
+    <DemoProvider value={{}}>
+      <WorkspaceLinks notebooks={notebooks} folders={[]} onOpenNote={() => {}}>{link('/notebooks/nb1')}</WorkspaceLinks>
+    </DemoProvider>,
+    { wrapper },
+  );
+  await act(async () => {
+    fireEvent.click(view.getByTestId('link'), { ctrlKey: true });
+  });
+  expect(windowOpen.mock.calls[0]?.[0]).toMatch(/^\/demo\//);
 });
 
 /* eslint-disable react/no-children-prop -- Required children are explicit in createElement component props. */

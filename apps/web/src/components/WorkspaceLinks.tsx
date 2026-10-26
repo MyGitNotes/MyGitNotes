@@ -12,6 +12,7 @@ import { WorkspaceDialog } from './WorkspaceDialog.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useAltWheelHorizontalScroll } from '../lib/use-alt-wheel-horizontal-scroll.js';
 import { keyedLink, linkAliases, linkedNote, linkScope, useLinkedNotePreload } from '../lib/use-linked-note-preload.js';
+import { DEMO_BASE, useDemo } from '../lib/demo.js';
 import { newTabRel } from '../lib/same-origin.js';
 import { useNoteYouTubeEmbed } from '../lib/use-note-youtube-embed.js';
 
@@ -28,6 +29,9 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const demo = useDemo();
+  // The router's basename is not part of a route, so a new tab on a demo page names it or opens the person's own app.
+  const inDemo = (route: string) => demo && route.startsWith('/') && route !== DEMO_BASE && !route.startsWith(`${DEMO_BASE}/`) ? `${DEMO_BASE}${route}` : route;
   const queryClient = useQueryClient();
   const scope = useNoteQueryScope();
   const before = useRef(new Set<BeforeNavigate>());
@@ -78,7 +82,7 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
         setError(t('links.missing'));
         return;
       }
-      if (newTab) window.open(link.url, '_blank', 'noopener,noreferrer');
+      if (newTab) window.open(inDemo(link.url), '_blank', 'noopener,noreferrer');
       else {
         const target = linkedNote(href, sourcePath, reach, window.location.origin);
         if (target) {
@@ -105,7 +109,7 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
       }
     }
     if (note && notebook && link.kind === 'path') {
-      if (newTab) window.open(`${noteRoute(notebook.id, note.path.slice(notebook.root.length + 1))}${link.anchor ? `#${encodeURIComponent(link.anchor)}` : ''}`, '_blank', 'noopener,noreferrer');
+      if (newTab) window.open(inDemo(`${noteRoute(notebook.id, note.path.slice(notebook.root.length + 1))}${link.anchor ? `#${encodeURIComponent(link.anchor)}` : ''}`), '_blank', 'noopener,noreferrer');
       else if (await ready()) {
         // The destination reads the body from the shared cache and overlays its latest local draft.
         // Passing a committed body here would pin it ahead of that draft in the routed editor.
@@ -117,7 +121,7 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
       const root = `${notebook.root}/${notebook.assets || 'assets'}`;
       if (link.path === root || link.path.startsWith(`${root}/`) && !/\.[^/]+$/.test(link.path)) {
         const route = `/assets?notebook=${encodeURIComponent(notebook.id)}&directory=${encodeURIComponent(link.path.slice(root.length + 1))}`;
-        if (newTab) window.open(route, '_blank', 'noopener,noreferrer');
+        if (newTab) window.open(inDemo(route), '_blank', 'noopener,noreferrer');
         else if (await ready()) navigate(route);
         return;
       }
@@ -134,7 +138,7 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
     };
     if (link.kind === 'path' && notebook && (link.path === notebook.root || folders.some(folder => folder.notebookId === notebook.id && `${notebook.root}/${folder.path}` === link.path) || await folderHasNotes())) {
       const route = notebookRoute(notebook.id, link.path.slice(notebook.root.length + 1) || null);
-      if (newTab) window.open(route, '_blank', 'noopener,noreferrer');
+      if (newTab) window.open(inDemo(route), '_blank', 'noopener,noreferrer');
       else if (await ready()) navigate(route);
       return;
     }
