@@ -15,7 +15,7 @@ import { useTheme } from '../app/useTheme.js';
 import { updateWorkspaceConfig } from '../lib/api.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 import YAML from 'yaml';
-import { PlatformAccessProvider, ServerAgentProvider, usePlatformAccess } from '../lib/web-features.js';
+import { PlatformAccessProvider, ServerAgentProvider, usePlatformAccess, useSignInIntro } from '../lib/web-features.js';
 import { addressScenario, DEMO_BASE, demoLanguageOf, DemoProvider, useDemo, writeDemoCookie } from '../lib/demo.js';
 import { fetchWorkspace } from '../lib/api.js';
 
@@ -50,7 +50,10 @@ const FEATURES = [{ icon: ListTree, key: 'setup.featureNotes' }, { icon: Network
  */
 function SetupCard({ children }: { children: ReactNode; }) {
   const { t, language, setLanguage } = useTranslation();
+  const intro = useSignInIntro();
   useTheme();
+  // An edition words the left panel itself; without one these are the community's.
+  const points = intro ? intro.points : FEATURES.map(({ icon, key }) => ({ icon, text: t(key) }));
   return (
     <main className='min-h-screen grid md:grid-cols-2' style={{ background: 'var(--color-bg)', color: 'var(--color-text)' }}>
       <section className='flex flex-col justify-center gap-6 md:gap-8 px-6 py-8 md:px-16 md:py-10 bg-sidebar'>
@@ -58,18 +61,18 @@ function SetupCard({ children }: { children: ReactNode; }) {
           <img src={`${import.meta.env.BASE_URL}brand/github-notes-192.png`} width='56' height='56' alt='' className='rounded-xl' />
           <div>
             <h1 className='text-3xl font-semibold'>MyGitNotes</h1>
-            <p className='text-sm text-muted'>{t('header.gitWorkspace')}</p>
+            <p className='text-sm text-muted'>{intro?.tagline ?? t('header.gitWorkspace')}</p>
           </div>
         </div>
-        <p className='max-w-md text-base'>{t('setup.brandDescription')}</p>
+        <p className='max-w-md text-base'>{intro?.description ?? t('setup.brandDescription')}</p>
         {/* On a phone the features would push the sign-in below the fold. */}
         <ul className='hidden md:flex flex-col gap-4 max-w-md'>
-          {FEATURES.map(({ icon: Icon, key }) => (
-            <li key={key} className='flex items-start gap-3 text-sm'>
+          {points.map(({ icon: Icon, text }) => (
+            <li key={text} className='flex items-start gap-3 text-sm'>
               <span className='shrink-0 w-8 h-8 rounded-lg bg-primary-soft text-primary flex items-center justify-center'>
                 <Icon size={16} aria-hidden='true' />
               </span>
-              <span className='pt-1.5'>{t(key)}</span>
+              <span className='pt-1.5'>{text}</span>
             </li>
           ))}
         </ul>
@@ -90,14 +93,15 @@ function SetupCard({ children }: { children: ReactNode; }) {
 /** The first screen where visitors choose their repository: why to sign in, the GitHub button, and what the sign-in can reach. */
 function SignIn({ storage, githubOnly }: { storage?: SessionProbe['storage']; githubOnly: boolean; }) {
   const { t } = useTranslation();
+  const intro = useSignInIntro();
   return (
     <SetupCard>
       <h2 className='text-xl font-semibold mb-2'>{t('setup.signInTitle')}</h2>
-      <p className='text-sm text-muted mb-6'>{t(githubOnly ? 'setup.signInDescription' : 'setup.signInDescriptionAny')}</p>
+      <p className='text-sm text-muted mb-6'>{intro?.signInDescription ?? t(githubOnly ? 'setup.signInDescription' : 'setup.signInDescriptionAny')}</p>
       <AuthControls connection />
       <div className='mt-6 p-3 rounded-lg bg-sidebar flex items-start gap-2 text-xs text-muted'>
         <ShieldCheck size={16} aria-hidden='true' className='shrink-0 text-primary' />
-        <span>{t(storage === 'cookie' ? 'setup.privacy' : 'setup.privacyStored')}</span>
+        <span>{intro?.privacy ?? t(storage === 'cookie' ? 'setup.privacy' : 'setup.privacyStored')}</span>
       </div>
     </SetupCard>
   );

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { WorkspaceGate } from './WorkspaceSetup.js';
 import { DemoProvider, useDemo } from '../lib/demo.js';
 import { I18nProvider } from '../lib/i18n/index.js';
+import { WebFeaturesProvider } from '../lib/web-features.js';
 
 vi.mock('./AuthControls.js', () => ({ AuthControls: () => createElement('a', { href: '/api/auth/github' }, 'Sign in with GitHub'), ConnectionState: () => createElement('p', null, 'Opening workspace') }));
 
@@ -152,4 +153,14 @@ it('asks for cookies when the workspace comes back without the demo repository, 
   await settle();
   await settle();
   expect(container.textContent).toBe('workspace');
+});
+
+it('shows an edition’s sign-in intro on the demo’s notices too', async () => {
+  serve({ authenticated: false, demo: true }, { repositories: [] });
+  await act(async () => root.render(createElement(I18nProvider, null, createElement(WebFeaturesProvider, { features: [{ id: 'pro', signInIntro: () => ({ tagline: '有記憶的筆記本', description: '第一次登入，就會有一本你自己的筆記本。', points: [] }) }] }, createElement(DemoProvider, { value: { scenario: 'trpg' } }, createElement(WorkspaceGate, null, createElement('p', null, 'workspace')))))));
+  await settle();
+  await settle();
+  expect(container.textContent).toContain('Cookie');
+  expect(container.textContent).toContain('有記憶的筆記本');
+  expect(container.textContent).toContain('第一次登入，就會有一本你自己的筆記本。');
 });

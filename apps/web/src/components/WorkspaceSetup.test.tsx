@@ -4,7 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DerivedManifestNotice, WorkspaceGate } from './WorkspaceSetup.js';
 import type { WorkspaceConfig } from '../lib/types.js';
-import { WebFeaturesProvider } from '../lib/web-features.js';
+import { History, Sparkles } from 'lucide-react';
+import { type SignInIntro, WebFeaturesProvider } from '../lib/web-features.js';
 
 vi.mock('./AuthControls.js', () => ({ AuthControls: () => createElement('a', { href: '/api/auth/github' }, 'Sign in with GitHub'), ConnectionState: () => createElement('p', null, 'Opening workspace') }));
 vi.mock('../lib/api.js', () => ({ updateWorkspaceConfig: vi.fn(async () => ({ success: true, configRevision: 'next' })) }));
@@ -225,4 +226,46 @@ it('forgets which repositories the session opened when a visitor signs out of th
   expect(localStorage.getItem('gh_notes_opened_scopes')).toBeNull();
   expect(reload).toHaveBeenCalled();
   vi.unstubAllGlobals();
+});
+
+const intro: SignInIntro = { tagline: 'Notes with a memory', description: 'The first time you sign in, you get a notebook of your own.', points: [{ icon: History, text: 'Every version you commit is kept.' }, { icon: Sparkles, text: 'Connect the AI assistant you already use.' }], signInDescription: 'Sign in with Google or GitHub. Nothing else to set up.', privacy: 'Your sign-in is stored encrypted on our server.' };
+
+it("shows the community's own words on the sign-in screen when no feature supplies an intro", async () => {
+  serve({ authenticated: false, repositoryChoice: true, workspace: null, signInOptions: [{ id: 'github' }, { id: 'google' }] });
+  await render(createElement(WebFeaturesProvider, { features: [{ id: 'plain' }] }, createElement(WorkspaceGate, null, createElement('p', null, 'workspace'))));
+  expect(container.textContent).toContain('Git-Native Workspace');
+  expect(container.textContent).toContain('Markdown notes, outlines and flashcards that live in your own GitHub repository');
+  expect(container.textContent).toContain('Your repository stays the only copy');
+  expect(container.textContent).toContain('Sign in, then choose where your notes live.');
+  expect(container.textContent).toContain('MyGitNotes only reaches the repositories you grant to its GitHub App');
+});
+
+it("replaces the left panel's tagline, description and points, and the right panel's two lines, with a feature's intro", async () => {
+  serve({ authenticated: false, repositoryChoice: true, workspace: null, signInOptions: [{ id: 'github' }, { id: 'google' }] });
+  await render(createElement(WebFeaturesProvider, { features: [{ id: 'pro', signInIntro: () => intro }] }, createElement(WorkspaceGate, null, createElement('p', null, 'workspace'))));
+  expect(container.querySelector('h1 + p')?.textContent).toBe('Notes with a memory');
+  expect(container.textContent).toContain('The first time you sign in, you get a notebook of your own.');
+  expect([...container.querySelectorAll('section ul li')].map(item => item.textContent)).toEqual(['Every version you commit is kept.', 'Connect the AI assistant you already use.']);
+  expect(container.querySelectorAll('section ul li svg')).toHaveLength(2);
+  expect(container.textContent).toContain('Sign in with Google or GitHub. Nothing else to set up.');
+  expect(container.textContent).toContain('Your sign-in is stored encrypted on our server.');
+  for (const replaced of ['Git-Native Workspace', 'Markdown notes, outlines', 'Your repository stays the only copy', 'Sign in, then choose where', 'only reaches the repositories you grant']) expect(container.textContent).not.toContain(replaced);
+});
+
+it('keeps the community lines for the right panel when the intro words only the left', async () => {
+  serve({ authenticated: false, storage: 'cookie', repositoryChoice: true, workspace: null, signInOptions: [{ id: 'github' }] });
+  const { signInDescription: _description, privacy: _privacy, ...leftOnly } = intro;
+  await render(createElement(WebFeaturesProvider, { features: [{ id: 'pro', signInIntro: () => leftOnly }] }, createElement(WorkspaceGate, null, createElement('p', null, 'workspace'))));
+  expect(container.textContent).toContain('Notes with a memory');
+  expect(container.textContent).toContain('Sign in with GitHub, then choose the repository that holds your notes.');
+  expect(container.textContent).toContain('your sign-in is kept in this browser, not on our server');
+});
+
+it('lets the last feature that sets an intro win, and shows it on the other setup screens too', async () => {
+  serve({ authenticated: true, login: 'visitor', repositoryChoice: true, workspace: null });
+  const other: SignInIntro = { ...intro, tagline: 'Another tagline' };
+  await render(createElement(WebFeaturesProvider, { features: [{ id: 'a', signInIntro: () => intro }, { id: 'b', signInIntro: () => other }, { id: 'c' }] }, createElement(WorkspaceGate, null, createElement('p', null, 'workspace'))));
+  expect(container.textContent).toContain('Choose a repository');
+  expect(container.textContent).toContain('Another tagline');
+  expect(container.textContent).not.toContain('Notes with a memory');
 });

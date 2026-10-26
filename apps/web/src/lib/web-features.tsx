@@ -121,6 +121,30 @@ export interface FeatureGate {
   reason?: ReactNode;
 }
 
+/** One of the points the sign-in screen's left panel lists under its description. */
+export interface SignInIntroPoint {
+  icon: LucideIcon;
+  text: string;
+}
+
+/**
+ * The words of the screens shown before a workspace opens (sign-in, repository choice, the demo's notices). The left
+ * panel's text is the edition's, already in the person's language; the two right-panel lines are optional, and each
+ * the community wording answers for when left out.
+ */
+export interface SignInIntro {
+  /** The line under the product name. */
+  tagline: string;
+  /** The paragraph under it. */
+  description: string;
+  /** The points listed below, each with an icon; the panel shows them on wide screens only. */
+  points: readonly SignInIntroPoint[];
+  /** The line under the sign-in card's title, in place of "Sign in, then choose where your notes live." */
+  signInDescription?: string;
+  /** The note under the sign-in buttons about what the sign-in can reach and where it is kept. */
+  privacy?: string;
+}
+
 /**
  * What another edition adds to the web app at build time (see docs/adr/0002-open-core-editions.md).
  * Slots are added here when an edition needs one; without features the app renders as the community edition.
@@ -180,6 +204,12 @@ export interface WebFeature {
   gate?: (featureId: string) => FeatureGate;
   /** Replaces the demo banner's call to action ("Sign in to keep your own notes"); the last feature that sets it wins. */
   demoCallToAction?: ComponentType;
+  /**
+   * The words of the screens before a workspace opens, in place of the community's (see `SignInIntro`); the last
+   * feature that sets it wins. It is called while the screen renders, as `gate` is, so it may use hooks such as the
+   * edition's own translation.
+   */
+  signInIntro?: () => SignInIntro;
 }
 
 const FeaturesContext = createContext<readonly WebFeature[]>([]);
@@ -279,4 +309,9 @@ export function useFeatureGate(featureId: string): FeatureGate {
 export function useDemoCallToAction(): { Component: ComponentType; } | undefined {
   const Component = useContext(FeaturesContext).reduce<ComponentType | undefined>((found, feature) => feature.demoCallToAction ?? found, undefined);
   return Component && { Component };
+}
+
+/** The edition's words for the screens before a workspace opens, or undefined for the community ones. */
+export function useSignInIntro(): SignInIntro | undefined {
+  return useContext(FeaturesContext).reduce<(() => SignInIntro) | undefined>((found, feature) => feature.signInIntro ?? found, undefined)?.();
 }
