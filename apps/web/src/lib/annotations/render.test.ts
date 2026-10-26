@@ -287,3 +287,98 @@ describe('the figure inside a note: comments and links', () => {
     expect(css).toMatch(/\.ann-comment ol \{[^}]*list-style: decimal/);
   });
 });
+
+describe('renderAnnotate: a PDF figure', () => {
+  const pdfFixture = readFileSync(new URL('./fixtures/review-pdf.md', import.meta.url), 'utf8').replace(/\n$/, '');
+  const html = render(pdfFixture);
+  const document = dom(html);
+  const figure = document.querySelector('figure')!;
+
+  it('is a PDF figure with the Open PDF link and no image anywhere', () => {
+    expect(html).not.toContain('\n');
+    expect(figure.classList.contains('ann-pdf')).toBe(true);
+    expect(figure.getAttribute('data-type')).toBe('annotate');
+    expect(document.querySelector('a.ann-open')!.textContent).toBe('Open PDF');
+    expect(document.querySelector('a.ann-open')!.getAttribute('href')).toBe('/raw-assets/by-hash/9c1e0d2b7a4f5e6d8c3b2a1f0e9d8c7b6a5f4e3d');
+    expect(document.querySelectorAll('img')).toHaveLength(0);
+  });
+
+  it('writes one section per annotated page, ascending, with the page in class and id', () => {
+    const sections = [...document.querySelectorAll('.ann-pages > section.ann-page')];
+    expect(sections.map(section => section.className)).toEqual(['ann-page ann-p-1', 'ann-page ann-p-2', 'ann-page ann-p-3']);
+    expect(sections.map(section => section.id)).toEqual([`${figure.id}-p1`, `${figure.id}-p2`, `${figure.id}-p3`]);
+    expect(sections.map(section => section.getAttribute('aria-label'))).toEqual(['Page 1', 'Page 2', 'Page 3']);
+    expect(sections[0].querySelector('.ann-stage > svg.ann-overlay')!.getAttribute('aria-label')).toBe('Annotations on page 1 of 合約草稿 v2.pdf');
+  });
+
+  it('puts each marker in its own page overlay', () => {
+    const idsOf = (page: number) => [...document.querySelectorAll(`.ann-p-${page} .ann-marker`)].map(marker => marker.getAttribute('class')!.match(/ann-n-(\d+)/)![1]);
+    expect(idsOf(1)).toEqual(['1']);
+    expect(idsOf(2)).toEqual(['4']);
+    expect(idsOf(3)).toEqual(['2', '3']);
+  });
+
+  it('marks a page whose rows are all resolved', () => {
+    const resolvedOnly = render(`:::annotate\n[a](a.pdf)\n\n- {#1 pin x=1% y=1% page=1} a\n- {#2 pin x=1% y=1% page=2 resolved} b\n:::`);
+    const sections = [...dom(resolvedOnly).querySelectorAll('section.ann-page')];
+    expect(sections.map(section => section.classList.contains('is-resolved-only'))).toEqual([false, true]);
+  });
+
+  it('orders the list by page, then source order, and names the page of every item', () => {
+    const open = [...document.querySelectorAll('.ann-side > .ann-list > .ann-item')];
+    expect(open.map(item => item.querySelector('.ann-ref')!.textContent)).toEqual(['1', '4', '2']);
+    expect(open.map(item => item.querySelector('.ann-page-ref')!.textContent)).toEqual(['p. 1', 'p. 2', 'p. 3']);
+    expect(open[2].querySelector('a.ann-page-ref')!.getAttribute('href')).toBe(`#${figure.id}-p3`);
+    expect(document.querySelector('details.ann-resolved .ann-page-ref')!.textContent).toBe('p. 3');
+  });
+
+  it('keeps source order inside a page', () => {
+    const out = dom(render(`:::annotate\n[a](a.pdf)\n\n- {#5 pin x=1% y=1% page=2} five\n- {#1 pin x=1% y=1% page=2} one\n- {#9 pin x=1% y=1% page=1} nine\n:::`));
+    expect([...out.querySelectorAll('.ann-item .ann-ref')].map(ref => ref.textContent)).toEqual(['9', '5', '1']);
+  });
+
+  it('keeps a row without a valid page in the list, without a marker, after the paged rows', () => {
+    const out = dom(render(`:::annotate\n[a](a.pdf)\n\n- {#1 pin x=1% y=1%} no page\n- {#2 pin x=1% y=1% page=0} bad page\n- {#3 pin x=1% y=1% page=2} fine\n:::`));
+    expect([...out.querySelectorAll('.ann-item .ann-ref')].map(ref => ref.textContent)).toEqual(['3', '1', '2']);
+    expect(out.querySelectorAll('.ann-marker')).toHaveLength(1);
+    expect(out.querySelectorAll('section.ann-page')).toHaveLength(1);
+    expect(out.querySelectorAll('.ann-item')[1].querySelector('.ann-problem')!.textContent).toBe('Missing page');
+    expect(out.querySelectorAll('.ann-item')[2].querySelector('.ann-problem')!.textContent).toBe('page must be a whole number from 1, such as page=3');
+    expect(out.querySelectorAll('.ann-item')[1].querySelector('a.ann-page-ref')).toBeNull();
+  });
+
+  it('writes no inline style and no data attribute besides data-type', () => {
+    for (const element of document.querySelectorAll('*')) {
+      expect(element.hasAttribute('style')).toBe(false);
+      expect(element.getAttributeNames().filter(name => name.startsWith('data-'))).toEqual(element === figure ? ['data-type'] : []);
+    }
+  });
+
+  it('translates the labels', () => {
+    const zh = dom(render(pdfFixture, zhTW));
+    expect(zh.querySelector('a.ann-open')!.textContent).toBe('開啟 PDF');
+    expect(zh.querySelector('section.ann-page')!.getAttribute('aria-label')).toBe('第 1 頁');
+  });
+
+  it('keeps every element and attribute through the app sanitiser', () => {
+    const window = new JSDOM('<!doctype html><body></body>').window;
+    const purify = createDOMPurify(window as unknown as Window & typeof globalThis);
+    const out = new window.DOMParser().parseFromString(createNoteRenderer({ parser: new window.DOMParser() as unknown as DOMParser, purify, origin: 'https://app.example' }).renderNote(pdfFixture, 'n.md'), 'text/html');
+    expect(out.querySelectorAll('section.ann-page')).toHaveLength(3);
+    expect(out.querySelectorAll('.ann-page svg.ann-overlay a.ann-marker')).toHaveLength(4);
+    expect(out.querySelector('a.ann-page-ref')!.getAttribute('href')).toMatch(/^#ann-\d+-p1$/);
+    expect(out.querySelector('a.ann-open')!.getAttribute('href')).toBe('/raw-assets/by-hash/9c1e0d2b7a4f5e6d8c3b2a1f0e9d8c7b6a5f4e3d');
+    expect(out.querySelector('a.ann-page-ref')!.hasAttribute('data-workspace-link')).toBe(false);
+  });
+
+  it('resolves the PDF address like an image: relative path, r2 and https', () => {
+    const window = new JSDOM('<!doctype html><body></body>').window;
+    const purify = createDOMPurify(window as unknown as Window & typeof globalThis);
+    const renderer = createNoteRenderer({ parser: new window.DOMParser() as unknown as DOMParser, purify, origin: 'https://app.example' });
+    const href = (src: string) => new window.DOMParser().parseFromString(renderer.renderNote(`:::annotate\n[a](${src})\n:::`, 'docs/n.md', undefined, undefined, 'nb1'), 'text/html').querySelector('a.ann-open')?.getAttribute('href');
+    expect(href('files/a%20b.pdf')).toBe('/raw-assets/docs/files/a%20b.pdf?notebook=nb1');
+    expect(href('https://example.com/a.pdf')).toBe('https://example.com/a.pdf');
+    expect(href('r2:docs/a.pdf')).toMatch(/^\/r2-assets\//);
+    expect(href('ftp://example.com/a.pdf')).toBeNull();
+  });
+});

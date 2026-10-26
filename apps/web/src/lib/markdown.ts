@@ -160,8 +160,9 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     const r2Key = parseR2Reference(src);
     // The image of an annotation figure keeps its place under the overlay and is no link: a click on it annotates.
     if (annotated && image.closest('.ann-stage')) {
-      if (r2Key !== null) image.setAttribute('src', r2AssetUrl(r2Key, notePath));
-      else resolveStageImage(image, src, notePath, notebookId);
+      const url = annotationMediaUrl(src, notePath, notebookId);
+      if (url !== undefined) image.setAttribute('src', url);
+      else dropStageImage(image);
       continue;
     }
     if (r2Key !== null) {
@@ -243,7 +244,18 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
   }
   for (const link of parsed.querySelectorAll('a')) {
     // A marker or number of an annotation figure only jumps within the figure; the page-level listener handles the click.
-    if (annotated && (link.matches('a.ann-marker, a.ann-ref'))) continue;
+    if (annotated && (link.matches('a.ann-marker, a.ann-ref, a.ann-page-ref'))) continue;
+    // A PDF figure's link is the address the page viewer loads: resolved like its image would be, and no workspace link.
+    if (annotated && link.matches('.ann-pdf a.ann-open')) {
+      const url = annotationMediaUrl(link.getAttribute('href') || '', notePath, notebookId);
+      if (url === undefined) link.removeAttribute('href');
+      else {
+        link.setAttribute('href', url);
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+      }
+      continue;
+    }
     const href = link.getAttribute('href') || '';
     if (href.startsWith('/r2-assets/')) continue;
     const r2Key = parseR2Reference(href);
@@ -266,15 +278,23 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
   return purify.sanitize(parsed.body.innerHTML, DOMPURIFY_DIRECTIVE_CONFIG);
 }
 
-/** The src of an annotation figure's image, resolved like any note image but without the link behaviour. */
-function resolveStageImage(image: Element, src: string, notePath: string, notebookId: string | undefined): void {
+/**
+ * The address an annotation figure loads its image or PDF from, resolved like any note asset but without the link behaviour;
+ * undefined when the source is not allowed. The image stage and the PDF viewer both read it, so the two cannot drift.
+ */
+export function annotationMediaUrl(src: string, notePath: string, notebookId: string | undefined): string | undefined {
+  const r2Key = parseR2Reference(src);
+  if (r2Key !== null) return r2AssetUrl(r2Key, notePath);
   const target = resolveWorkspaceHref(src, notePath);
-  if (target?.kind === 'path') image.setAttribute('src', `/raw-assets/${target.path.split('/').map(encodeURIComponent).join('/')}${notebookId ? `?notebook=${encodeURIComponent(notebookId)}` : ''}`);
-  else if (!target && !/^data:image\//i.test(src)) {
-    // Without its image the stage has nothing to lay the markers over.
-    image.closest('.ann-stage')?.querySelector('.ann-overlay')?.remove();
-    image.remove();
-  }
+  if (target?.kind === 'path') return `/raw-assets/${target.path.split('/').map(encodeURIComponent).join('/')}${notebookId ? `?notebook=${encodeURIComponent(notebookId)}` : ''}`;
+  if (!target && !/^data:image\//i.test(src)) return undefined;
+  return src;
+}
+
+function dropStageImage(image: Element): void {
+  // Without its image the stage has nothing to lay the markers over.
+  image.closest('.ann-stage')?.querySelector('.ann-overlay')?.remove();
+  image.remove();
 }
 
 function r2Preview(doc: Document, key: string, notePath: string, label: string): HTMLElement {

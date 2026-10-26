@@ -1,5 +1,5 @@
 /**
- * The image-annotation directive's syntax: `:::annotate` holds one Markdown image line and a list of rows
+ * The annotation directive's syntax: `:::annotate` holds one Markdown image line (or, for a PDF, one inline link) and a list of rows
  * `- {#id pin x=41.2% y=23.3% [resolved] [by=alice]} comment`. Block errors throw {@link AnnotateError} (the caller shows the
  * figure error box); a bad row never throws, it keeps its text and carries `problems`. Every node keeps its source range so
  * `edit.ts` can change one token without touching the bytes around it.
@@ -11,7 +11,7 @@ export const ANNOTATE_DIRECTIVE = 'annotate';
 
 export type AnnotationKind = 'pin' | 'region';
 
-export type RowProblemCode = 'malformed' | 'missing-id' | 'invalid-id' | 'duplicate-id' | 'missing-kind' | 'unknown-kind' | 'missing-key' | 'invalid-value' | 'out-of-range' | 'unknown-token' | 'duplicate-key' | 'page-on-image';
+export type RowProblemCode = 'malformed' | 'missing-id' | 'invalid-id' | 'duplicate-id' | 'missing-kind' | 'unknown-kind' | 'missing-key' | 'invalid-value' | 'out-of-range' | 'unknown-token' | 'duplicate-key' | 'page-on-image' | 'invalid-page';
 
 export interface RowProblem {
   code: RowProblemCode;
@@ -39,6 +39,8 @@ export interface AnnotationRow {
   y?: number;
   w?: number;
   h?: number;
+  /** The 1-based PDF page; only a row of a PDF block has one. */
+  page?: number;
   resolved: boolean;
   by?: string;
   /** The row's Markdown, continuation lines without their indent. */
@@ -53,7 +55,12 @@ export interface AnnotationRow {
   hasGeometry: boolean;
 }
 
+export type MediaKind = 'image' | 'pdf';
+
 export interface AnnotateMedia {
+  /** `pdf` for an inline link `[name](src)`, `image` for an image line. The syntax decides, not the file name. */
+  kind: MediaKind;
+  /** The image's alt text, or the PDF link's label. */
   alt: string;
   src: string;
   title?: string;
@@ -83,7 +90,11 @@ function fail(message: string): never {
 }
 
 const EPSILON = 1e-9;
+const FIRST_LINE = 'the first body line must be a Markdown image, ![alt](path), or a PDF link, [name](path)';
 const IMAGE = /^!\[((?:[^\]\\]|\\.)*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\)$/;
+const LINK = /^\[((?:[^\]\\]|\\.)*)\]\(\s*(<[^>]*>|[^\s)]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\)$/;
+const REFERENCE_LINK = /^\[[^\]]*\]\s*(?:\[[^\]]*\])?$/;
+const PDF_PATH = /\.pdf(?:[?#].*)?$/i;
 const REFERENCE_IMAGE = /^!\[[^\]]*\]\s*(?:\[[^\]]*\])?$/;
 const LIST_ITEM = /^( {0,3})([-*+])(?:([ \t]+)|$)/;
 const PERCENT = /^(\d+(?:\.\d+)?)%$/;
@@ -109,19 +120,36 @@ const indentOf = (text: string): number => /^ */.exec(text)![0].length;
 /** Two decimals is all a coordinate reads. */
 const roundCoordinate = (value: number): number => Math.round(value * 100) / 100;
 
+function unwrapSrc(raw: string): string {
+  return raw.startsWith('<') ? raw.slice(1, -1) : raw;
+}
+
 function readMedia(line: Line): AnnotateMedia {
   const text = line.text.trim();
   const lead = line.text.length - line.text.trimStart().length;
-  const match = IMAGE.exec(text);
-  if (!match) {
+  const range = { from: line.from + lead, to: line.from + lead + text.length };
+  const image = IMAGE.exec(text);
+  if (image) {
+    if ((text.match(/!\[/g) ?? []).length > 1) fail('the body holds exactly one image');
+    const src = unwrapSrc(image[2]);
+    if (PDF_PATH.test(src)) fail('write a PDF as a link, [name](path), not as an image');
+    return { kind: 'image', alt: image[1], src, title: image[3], range };
+  }
+  if (text.startsWith('!')) {
     if (REFERENCE_IMAGE.test(text)) fail('a reference-style image is not supported: write the image inline, ![alt](path)');
     if (/!\[[^\]]*\]\(/.test(text)) fail('the body holds exactly one image and nothing else on its line');
-    fail('the first body line must be a Markdown image, ![alt](path)');
+    fail(FIRST_LINE);
   }
-  if ((text.match(/!\[/g) ?? []).length > 1) fail('the body holds exactly one image');
-  const rawSrc = match[2];
-  const src = rawSrc.startsWith('<') ? rawSrc.slice(1, -1) : rawSrc;
-  return { alt: match[1], src, title: match[3], range: { from: line.from + lead, to: line.from + lead + text.length } };
+  const link = LINK.exec(text);
+  if (link) {
+    if (/!\[[^\]]*\]\(/.test(text)) fail('the body holds an image or a PDF link, not both');
+    if ((text.match(/\]\(/g) ?? []).length > 1) fail('the body holds exactly one PDF link');
+    return { kind: 'pdf', alt: link[1], src: unwrapSrc(link[2]), title: link[3], range };
+  }
+  if (/!\[[^\]]*\]\(/.test(text) && /(?<!!)\[[^\]]*\]\(/.test(text)) fail('the body holds an image or a PDF link, not both');
+  if (REFERENCE_LINK.test(text)) fail('a reference-style link is not supported: write the PDF link inline, [name](path)');
+  if (/\[[^\]]*\]\(/.test(text)) fail('the body holds exactly one link and nothing else on its line');
+  fail(FIRST_LINE);
 }
 
 /** The words of a row head's inner text, with a quoted value kept whole. */
@@ -163,7 +191,7 @@ interface RowDraft {
   lines: Line[];
 }
 
-function parseRow(draft: RowDraft): AnnotationRow {
+function parseRow(draft: RowDraft, media: MediaKind): AnnotationRow {
   const [first, ...rest] = draft.lines;
   const bullet = LIST_ITEM.exec(first.text)!;
   const textStart = bullet[0].length;
@@ -185,12 +213,12 @@ function parseRow(draft: RowDraft): AnnotationRow {
   row.comment = withContinuation(first.text.slice(close + 1).trim());
   row.tokens = readWords(first.text.slice(open + 1, close), first.from + open + 1).map(token => ({ ...token }));
 
-  readHead(row);
+  readHead(row, media);
   return row;
 }
 
 /** Reads the head's words into the row's fields and problems; positional words first (`#id`, kind), then `key=value` words. */
-function readHead(row: AnnotationRow): void {
+function readHead(row: AnnotationRow, media: MediaKind): void {
   const words = row.tokens;
   const geometry: Partial<Record<typeof GEOMETRY_KEYS[number], number>> = {};
   const invalid = new Set<string>();
@@ -232,7 +260,15 @@ function readHead(row: AnnotationRow): void {
       if (value) row.by = value;
       else row.problems.push({ code: 'invalid-value', detail: 'by' });
     } else if (key === 'page' && value !== undefined) {
-      row.problems.push({ code: 'page-on-image' });
+      if (media === 'image') {
+        row.problems.push({ code: 'page-on-image' });
+      } else if (seen.has('page')) {
+        row.problems.push({ code: 'duplicate-key', detail: 'page' });
+      } else {
+        seen.add('page');
+        if (/^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value))) row.page = Number(value);
+        else row.problems.push({ code: 'invalid-page' });
+      }
     } else if ((GEOMETRY_KEYS as readonly string[]).includes(key) && value !== undefined && allowed.includes(key)) {
       if (seen.has(key)) {
         row.problems.push({ code: 'duplicate-key', detail: key });
@@ -254,6 +290,7 @@ function readHead(row: AnnotationRow): void {
   if (row.kind) {
     const needed = row.kind === 'region' ? GEOMETRY_KEYS : (['x', 'y'] as const);
     for (const key of needed) if (!(key in geometry) && !invalid.has(key)) row.problems.push({ code: 'missing-key', detail: key });
+    if (media === 'pdf' && !seen.has('page')) row.problems.push({ code: 'missing-key', detail: 'page' });
   }
   Object.assign(row, geometry);
 
@@ -263,7 +300,7 @@ function readHead(row: AnnotationRow): void {
     if (complete) {
       const { x = 0, y = 0, w = 0, h = 0 } = geometry;
       const inRange = x >= 0 && x <= 100 && y >= 0 && y <= 100 && (row.kind === 'pin' || (w > 0 && h > 0 && x + w <= 100 + EPSILON && y + h <= 100 + EPSILON));
-      if (inRange) row.hasGeometry = true;
+      if (inRange) row.hasGeometry = media === 'image' || row.page !== undefined;
       else row.problems.push({ code: 'out-of-range' });
     }
   }
@@ -285,7 +322,7 @@ export function parseAnnotate(source: string): ParsedAnnotate {
 
   const body = lines.slice(1, -1);
   const mediaIndex = body.findIndex(line => line.text.trim());
-  if (mediaIndex < 0) fail('the first body line must be a Markdown image, ![alt](path)');
+  if (mediaIndex < 0) fail(FIRST_LINE);
   const media = readMedia(body[mediaIndex]);
 
   const drafts: RowDraft[] = [];
@@ -303,14 +340,14 @@ export function parseAnnotate(source: string): ParsedAnnotate {
     } else if (parseDirectiveOpen(line.text)) {
       fail('a nested container is not allowed inside an annotate block');
     } else if (/!\[/.test(line.text)) {
-      fail('the body holds exactly one image');
+      fail(media.kind === 'pdf' ? 'the body holds an image or a PDF link, not both' : 'the body holds exactly one image');
     } else {
-      fail(`unexpected content after the image: "${line.text.trim().slice(0, 40)}" (rows are list items, - {#1 pin x=10% y=10%} comment)`);
+      fail(`unexpected content after the ${media.kind === 'pdf' ? 'link' : 'image'}: "${line.text.trim().slice(0, 40)}" (rows are list items, - {#1 pin x=10% y=10%} comment)`);
     }
     pendingBlank = [];
   }
 
-  const rows = drafts.map(parseRow);
+  const rows = drafts.map(draft => parseRow(draft, media.kind));
   const claimed = new Set<number>();
   for (const row of rows) {
     if (row.id === undefined) continue;

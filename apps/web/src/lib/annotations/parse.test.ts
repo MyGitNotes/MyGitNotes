@@ -117,7 +117,7 @@ describe('parseAnnotate: block errors', () => {
   it('rejects a paragraph in the body', () => fails(`:::annotate\n${IMG}\n\nsome text\n:::`, /unexpected/i));
   it('rejects a heading in the body', () => fails(`:::annotate\n${IMG}\n\n## Heading\n:::`, /unexpected/i));
   it('rejects a nested container', () => fails(`:::annotate\n${IMG}\n\n::::info\nx\n::::\n:::`, /nested|unexpected/i));
-  it('rejects a link instead of an image', () => fails(':::annotate\n[a](a.png)\n:::', /image/i));
+  it('rejects plain text instead of an image or a PDF link', () => fails(':::annotate\nhello\n:::', /image/i));
   it('rejects an unknown block attribute', () => fails(`:::annotate{scale="2"}\n${IMG}\n:::`, /scale/));
   it('rejects a block that never closes', () => fails(`:::annotate\n${IMG}`, /not closed/i));
   it('rejects another directive name', () => fails(`:::info\n${IMG}\n:::`, /not an annotate/i));
@@ -192,5 +192,70 @@ describe('parseAnnotate: row problems keep the row and name the cause', () => {
 
   it('collects several problems of one row', () => {
     expect(problems(block('- {#1 pin x=1% reslved} a'))).toEqual([['unknown-token', 'missing-key']]);
+  });
+});
+
+describe('parseAnnotate: a PDF block', () => {
+  const LINK = '[合約.pdf](/raw-assets/by-hash/9c1e0d2b7a4f5e6d8c3b2a1f0e9d8c7b6a5f4e3d "草稿")';
+  const pdf = (...rows: string[]) => [':::annotate', LINK, '', ...rows, ':::'].join('\n');
+  const pdfProblems = (...rows: string[]) => parseAnnotate(pdf(...rows)).rows.map(row => row.problems);
+
+  it('reads an inline link as a PDF figure whose label is the name', () => {
+    const parsed = parseAnnotate(fixture('review-pdf'));
+    expect(parsed.media).toMatchObject({ kind: 'pdf', alt: '合約草稿 v2.pdf', src: '/raw-assets/by-hash/9c1e0d2b7a4f5e6d8c3b2a1f0e9d8c7b6a5f4e3d' });
+    expect(parseAnnotate(pdf()).media).toMatchObject({ kind: 'pdf', title: '草稿' });
+    expect(parseAnnotate(block()).media.kind).toBe('image');
+  });
+
+  it('reads page on every row and keeps the row complete', () => {
+    const { rows } = parseAnnotate(fixture('review-pdf'));
+    expect(rows.map(row => row.page)).toEqual([1, 3, 3, 2]);
+    expect(rows.every(row => row.problems.length === 0 && row.hasGeometry)).toBe(true);
+  });
+
+  it('records the page token with its range for in-place edits', () => {
+    const source = fixture('review-pdf');
+    const token = parseAnnotate(source).rows[1].tokens.find(item => item.key === 'page')!;
+    expect(source.slice(token.from, token.to)).toBe('page=3');
+  });
+
+  it('flags a row without page and draws no marker for it', () => {
+    const [row] = parseAnnotate(pdf('- {#1 pin x=1% y=1%} a')).rows;
+    expect(row.problems).toEqual([{ code: 'missing-key', detail: 'page' }]);
+    expect(row.hasGeometry).toBe(false);
+  });
+
+  it.each(['page=0', 'page=2.5', 'page=3%', 'page=', 'page=-1', 'page=abc'])('flags %s as an invalid page', page => {
+    const [row] = parseAnnotate(pdf(`- {#1 pin x=1% y=1% ${page}} a`)).rows;
+    expect(row.problems.map(problem => problem.code)).toContain(page === 'page=' ? 'invalid-page' : 'invalid-page');
+    expect(row.page).toBeUndefined();
+    expect(row.hasGeometry).toBe(false);
+  });
+
+  it('flags a repeated page and keeps the first', () => {
+    const [row] = parseAnnotate(pdf('- {#1 pin x=1% y=1% page=2 page=3} a')).rows;
+    expect(row.problems).toEqual([{ code: 'duplicate-key', detail: 'page' }]);
+    expect(row.page).toBe(2);
+  });
+
+  it('keeps page-on-image for an image block', () => {
+    expect(problems(block('- {#1 pin x=1% y=1% page=2} a'))).toEqual([['page-on-image']]);
+  });
+
+  it('does not ask a pin for w and h', () => {
+    expect(pdfProblems('- {#1 pin x=1% y=1% page=1} a')).toEqual([[]]);
+    expect(pdfProblems('- {#1 region x=1% y=1% page=1} a')).toEqual([[{ code: 'missing-key', detail: 'w' }, { code: 'missing-key', detail: 'h' }]]);
+  });
+
+  it('rejects the block shapes the spec lists', () => {
+    const fails = (body: string) => () => parseAnnotate([':::annotate', body, ':::'].join('\n'));
+    expect(fails('[合約][ref]')).toThrow(AnnotateError);
+    expect(fails('[合約][ref]')).toThrow(/reference-style link/);
+    expect(fails('see [合約](a.pdf) please')).toThrow(/exactly one link/);
+    expect(fails('[合約](a.pdf) and more')).toThrow(AnnotateError);
+    expect(fails('[合約](a.pdf) ![x](b.png)')).toThrow(/not both/);
+    expect(fails('![合約](a.pdf)')).toThrow(/write a PDF as a link/);
+    expect(fails('![合約](/raw-assets/a.PDF?v=1)')).toThrow(/write a PDF as a link/);
+    expect(() => parseAnnotate([':::annotate', '[合約](a.pdf)', '![x](b.png)', ':::'].join('\n'))).toThrow(/not both/);
   });
 });

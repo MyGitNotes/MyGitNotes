@@ -8,7 +8,7 @@
 import { escapeHtml } from '../directives.js';
 import type { TranslationKey } from '../i18n/en.js';
 import type { AnnotateError } from './parse.js';
-import { type AnnotationRow, parseAnnotate, type RowProblem } from './parse.js';
+import { type AnnotateMedia, type AnnotationRow, parseAnnotate, type RowProblem } from './parse.js';
 
 export { AnnotateError } from './parse.js';
 
@@ -85,13 +85,42 @@ function problemText(strings: AnnotateStrings, problem: RowProblem): string {
 function listItemHtml(figure: string, item: Item, context: AnnotateContext): string {
   const { row } = item;
   const { strings } = context;
+  const pageRef = row.page === undefined ? '' : row.hasGeometry ? `<a class="ann-page-ref" href="#${figure}-p${row.page}">${escapeHtml(label(strings, 'pageRef', { page: row.page }))}</a>` : `<span class="ann-page-ref">${escapeHtml(label(strings, 'pageRef', { page: row.page }))}</span>`;
   const ref = row.hasGeometry ? `<a class="ann-ref" href="#${figure}-${item.key}-m">${escapeHtml(item.label)}</a>` : `<span class="ann-ref">${escapeHtml(item.label)}</span>`;
   const kind = row.kind ? `<span class="ann-kind">${escapeHtml(label(strings, row.kind === 'region' ? 'kindRegion' : 'kindPin'))}</span>` : '';
   const state = row.resolved ? `<span class="ann-state">${escapeHtml(label(strings, 'resolvedMark'))}</span>` : '';
   const by = row.by ? `<span class="ann-by">${escapeHtml(row.by)}</span>` : '';
   const comment = row.comment ? `<div class="ann-comment">${context.renderMarkdown(row.comment).replace(/\n/g, '&#10;')}</div>` : `<div class="ann-comment ann-empty">${escapeHtml(label(strings, 'noComment'))}</div>`;
   const problems = row.problems.map(problem => `<span class="ann-problem">${escapeHtml(problemText(strings, problem))}</span>`).join('');
-  return `<li id="${figure}-${item.key}" class="ann-item ${itemClasses(item)}">${ref}${kind}${state}${by}${problems}${comment}</li>`;
+  return `<li id="${figure}-${item.key}" class="ann-item ${itemClasses(item)}">${ref}${pageRef}${kind}${state}${by}${problems}${comment}</li>`;
+}
+
+/** Items by page, then source order; a row without a valid page goes last. The sort is stable, so source order is kept within a page. */
+function byPage(items: Item[]): Item[] {
+  return [...items].sort((a, b) => (a.row.page ?? Infinity) - (b.row.page ?? Infinity));
+}
+
+function markersOf(figure: string, items: Item[], strings: AnnotateStrings): string {
+  const drawn = items.filter(item => item.row.hasGeometry);
+  return [...drawn.filter(item => item.row.kind === 'region'), ...drawn.filter(item => item.row.kind === 'pin')].map(item => markerHtml(figure, item, strings)).join('');
+}
+
+/** One section per page that carries a marker, ascending; the stage holds no page image (the app draws a canvas, print and Pro an `<img>`). */
+function pagesHtml(figure: string, items: Item[], name: string, strings: AnnotateStrings): string {
+  const pages = [...new Set(items.filter(item => item.row.hasGeometry).map(item => item.row.page!))].sort((a, b) => a - b);
+  const sections = pages.map(page => {
+    const here = items.filter(item => item.row.hasGeometry && item.row.page === page);
+    const resolvedOnly = here.every(item => item.row.resolved);
+    const overlay = `<svg class="ann-overlay" aria-label="${escapeHtml(label(strings, 'overlayPage', { name, page }))}">${markersOf(figure, here, strings)}</svg>`;
+    return `<section class="ann-page ann-p-${page}${resolvedOnly ? ' is-resolved-only' : ''}" id="${figure}-p${page}" aria-label="${escapeHtml(label(strings, 'page', { page }))}"><div class="ann-stage">${overlay}</div></section>`;
+  });
+  return `<div class="ann-pages">${sections.join('')}</div>`;
+}
+
+function imageStageHtml(figure: string, items: Item[], media: AnnotateMedia, name: string, strings: AnnotateStrings): string {
+  const image = `<img src="${escapeHtml(media.src)}" alt="${escapeHtml(media.alt)}"${media.title ? ` title="${escapeHtml(media.title)}"` : ''}>`;
+  const overlay = `<svg class="ann-overlay" aria-label="${escapeHtml(label(strings, 'overlay', { name: media.alt || name }))}">${markersOf(figure, items, strings)}</svg>`;
+  return `<div class="ann-stage">${image}${overlay}</div>`;
 }
 
 /** The figure for an annotate block's source. Throws {@link AnnotateError} for a block error. */
@@ -100,19 +129,18 @@ export function renderAnnotate(source: string, context: AnnotateContext): string
   const parsed = parseAnnotate(source);
   const figure = `ann-${++figureCount}`;
   const items = itemsOf(parsed.rows);
-  const open = items.filter(item => !item.row.resolved);
-  const resolved = items.filter(item => item.row.resolved);
-  const drawn = items.filter(item => item.row.hasGeometry);
-  const markers = [...drawn.filter(item => item.row.kind === 'region'), ...drawn.filter(item => item.row.kind === 'pin')].map(item => markerHtml(figure, item, strings)).join('');
+  const pdf = parsed.media.kind === 'pdf';
+  const ordered = pdf ? byPage(items) : items;
+  const open = ordered.filter(item => !item.row.resolved);
+  const resolved = ordered.filter(item => item.row.resolved);
   const name = parsed.title ?? (parsed.media.alt || parsed.media.src);
 
-  const caption = `<figcaption class="ann-caption">${parsed.title ? `<span class="ann-title">${escapeHtml(parsed.title)}</span>` : ''}<span class="ann-counts">${escapeHtml(label(strings, 'counts', { open: open.length, resolved: resolved.length }))}</span> <a class="ann-open" href="${escapeHtml(parsed.media.src)}">${escapeHtml(label(strings, 'open'))}</a></figcaption>`;
-  const image = `<img src="${escapeHtml(parsed.media.src)}" alt="${escapeHtml(parsed.media.alt)}"${parsed.media.title ? ` title="${escapeHtml(parsed.media.title)}"` : ''}>`;
-  const overlay = `<svg class="ann-overlay" aria-label="${escapeHtml(label(strings, 'overlay', { name: parsed.media.alt || name }))}">${markers}</svg>`;
+  const caption = `<figcaption class="ann-caption">${parsed.title ? `<span class="ann-title">${escapeHtml(parsed.title)}</span>` : ''}<span class="ann-counts">${escapeHtml(label(strings, 'counts', { open: open.length, resolved: resolved.length }))}</span> <a class="ann-open" href="${escapeHtml(parsed.media.src)}">${escapeHtml(label(strings, pdf ? 'openPdf' : 'open'))}</a></figcaption>`;
+  const stage = pdf ? pagesHtml(figure, items, parsed.media.alt || name, strings) : imageStageHtml(figure, items, parsed.media, name, strings);
   const openList = open.length ? `<ol class="ann-list" aria-label="${escapeHtml(label(strings, 'listOpen'))}">${open.map(item => listItemHtml(figure, item, context)).join('')}</ol>` : '';
   const resolvedList = resolved.length ? `<details class="ann-resolved"><summary>${escapeHtml(label(strings, 'resolvedSummary', { count: resolved.length }))}</summary><ol class="ann-list" aria-label="${escapeHtml(label(strings, 'listResolved'))}">${resolved.map(item => listItemHtml(figure, item, context)).join('')}</ol></details>` : '';
 
-  return `<figure class="ann-figure" data-type="annotate" id="${figure}" aria-label="${escapeHtml(name)}">${caption}<div class="ann-body"><div class="ann-stage">${image}${overlay}</div><div class="ann-side">${openList}${resolvedList}</div></div></figure>`;
+  return `<figure class="ann-figure${pdf ? ' ann-pdf' : ''}" data-type="annotate" id="${figure}" aria-label="${escapeHtml(name)}">${caption}<div class="ann-body">${stage}<div class="ann-side">${openList}${resolvedList}</div></div></figure>`;
 }
 
 /** The box shown in a block's place when its syntax is rejected. */
