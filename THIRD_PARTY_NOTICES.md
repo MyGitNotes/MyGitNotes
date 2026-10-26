@@ -39,6 +39,7 @@ The build copies pdf.js's data files to `pdfjs/<version>/` in the web output, ea
 | Folder | Content | Licence (file in the same folder) |
 | --- | --- | --- |
 | `cmaps/` | Adobe character maps for CJK text | Adobe BSD-style licence (`LICENSE`) |
+| `iccs/` | An ICC colour profile for CMYK images | CC0 1.0 (`LICENSE`) |
 | `standard_fonts/` | Foxit fonts and Liberation fonts for the 14 standard PDF fonts | PDFium BSD-3-Clause (`LICENSE_FOXIT`); Liberation Fonts, GNU GPL v2 with the font exception (`LICENSE_LIBERATION`) |
 | `wasm/` | OpenJPEG (JPEG 2000), JBIG2 and qcms (ICC colour) decoders | BSD-2-Clause (`LICENSE_OPENJPEG`, `LICENSE_PDFJS_OPENJPEG`); BSD-3-Clause (`LICENSE_JBIG2`) and Apache-2.0 (`LICENSE_PDFJS_JBIG2`); MIT (`LICENSE_QCMS`, `LICENSE_PDFJS_QCMS`) |
 
