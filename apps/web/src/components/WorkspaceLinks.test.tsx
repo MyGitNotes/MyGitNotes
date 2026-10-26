@@ -103,7 +103,7 @@ it('opens a same-origin absolute URL in a new tab on a modifier click', async ()
 });
 
 it('keeps the demo prefix on a route opened in a new tab from a demo page', async () => {
-  const { getByTestId } = render(createElement(DemoProvider, { value: {}, children: workspace('/notebooks/nb1/notes/a.md') }), { wrapper });
+  const { getByTestId } = render(<DemoProvider value={{}}>{workspace('/notebooks/nb1/notes/a.md')}</DemoProvider>, { wrapper });
   await act(async () => {
     fireEvent.click(getByTestId('link'), { ctrlKey: true });
   });
