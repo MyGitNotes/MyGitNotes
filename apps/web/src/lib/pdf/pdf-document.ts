@@ -146,7 +146,7 @@ export async function openPdfBytes(bytes: Uint8Array): Promise<PdfDocument> {
   }
 }
 
-async function fetchBytes(url: string, onProgress?: (fraction: number) => void): Promise<Uint8Array> {
+async function fetchBytes(url: string, onProgress?: PdfProgress): Promise<Uint8Array> {
   let response: Response;
   try {
     response = await fetch(url, { credentials: 'same-origin' });
@@ -166,7 +166,7 @@ async function fetchBytes(url: string, onProgress?: (fraction: number) => void):
       if (done) break;
       parts.push(value);
       received += value.length;
-      if (total) onProgress?.(Math.min(1, received / total));
+      if (total) onProgress?.(Math.min(1, received / total), total);
     }
   } catch {
     throw new PdfLoadError('load-failed');
@@ -180,10 +180,13 @@ async function fetchBytes(url: string, onProgress?: (fraction: number) => void):
   return bytes;
 }
 
+/** Called as bytes arrive, with the fraction received and the file's total size in bytes. */
+export type PdfProgress = (fraction: number, total: number) => void;
+
 interface Entry {
   document: Promise<PdfDocument>;
   holders: number;
-  listeners: Set<(fraction: number) => void>;
+  listeners: Set<PdfProgress>;
 }
 
 export interface PdfHandle {
@@ -196,11 +199,11 @@ const entries = new Map<string, Entry>();
 
 /** One {@link PdfDocument} per address, shared by every figure of the same PDF and counted by holders. */
 export const sharedPdf = {
-  async acquire(url: string, onProgress?: (fraction: number) => void): Promise<PdfHandle> {
+  async acquire(url: string, onProgress?: PdfProgress): Promise<PdfHandle> {
     let entry = entries.get(url);
     if (!entry) {
       const created: Entry = { holders: 0, listeners: new Set(), document: undefined as unknown as Promise<PdfDocument> };
-      created.document = fetchBytes(url, fraction => created.listeners.forEach(listener => listener(fraction))).then(openPdfBytes);
+      created.document = fetchBytes(url, (fraction, total) => created.listeners.forEach(listener => listener(fraction, total))).then(openPdfBytes);
       entries.set(url, created);
       entry = created;
     }

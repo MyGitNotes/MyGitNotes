@@ -17,7 +17,7 @@ export const webStatic = (dir: string): express.RequestHandler =>
   });
 
 /**
- * A path that names a built file: the worker file or something under `assets/`. When no such file exists the answer is a plain 404,
+ * A path that names a built file: the worker file, something under `assets/`, or a data file of the PDF viewer under `pdfjs/`. When no such file exists the answer is a plain 404,
  * never the app's `index.html`, which a browser would take for the file (a "worker" that is a page, or a script that is a page).
  */
-export const namesBuiltFile = (requestPath: string): boolean => requestPath === `/${SERVICE_WORKER_FILE}` || /^\/assets\/./.test(requestPath);
+export const namesBuiltFile = (requestPath: string): boolean => requestPath === `/${SERVICE_WORKER_FILE}` || /^\/(?:assets|pdfjs)\/./.test(requestPath);

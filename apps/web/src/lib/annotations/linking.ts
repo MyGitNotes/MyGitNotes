@@ -5,6 +5,9 @@
  * highlights.
  */
 
+/** Sent on a jump target before it scrolls; a PDF figure turns to the target's page. */
+export const REVEAL_EVENT = 'annotation:reveal';
+
 const NUMBER = /(?:^|\s)(ann-n-\d+)(?=\s|$)/;
 
 function twinsOf(element: Element): { figure: Element; twins: Element[]; } | undefined {
@@ -36,13 +39,15 @@ function unlink(target: EventTarget | null, next: EventTarget | null): void {
 
 function jump(event: MouseEvent): void {
   if (event.defaultPrevented || !(event.target instanceof Element)) return;
-  const anchor = event.target.closest('a.ann-marker, a.ann-ref');
+  const anchor = event.target.closest('a.ann-marker, a.ann-ref, a.ann-page-ref');
   const figure = anchor?.closest('.ann-figure');
   const href = anchor?.getAttribute('href') ?? '';
   if (!anchor || !figure || !href.startsWith('#')) return;
   event.preventDefault();
   const target = [...figure.querySelectorAll('[id]')].find(element => element.id === href.slice(1));
   if (!target) return;
+  // A page viewer shows the target's page now, so the scroll below lands on something that is on screen.
+  target.dispatchEvent(new CustomEvent(REVEAL_EVENT, { bubbles: true }));
   const flash = target.closest('.ann-item') ?? target;
   const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   target.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });

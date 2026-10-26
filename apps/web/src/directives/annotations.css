@@ -41,6 +41,7 @@
 
 /* Resolved annotations are hidden until their group is opened; the same HTML filters without script. */
 .ann-figure:has(.ann-resolved:not([open])) .ann-marker.is-resolved { display: none; }
+.ann-figure:has(.ann-resolved:not([open])) .ann-page.is-resolved-only { display: none; }
 
 .ann-side { min-width: 0; }
 .ann-list { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
@@ -125,3 +126,32 @@
 .live-md-image-rendered:hover .live-md-annotate-image-btn, .live-md-annotate-image-btn:focus-visible { opacity: 1; }
 @media (hover: none) { .live-md-annotate-image-btn { opacity: 1; } }
 .live-md-annotate-image-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+/* ----- PDF figures (figure.ann-pdf): one section per annotated page; the viewer in lib/annotations/pdf-figure.ts shows one at a time ----- */
+
+.ann-pdf .ann-pages, .ann-pdf .ann-main { display: grid; gap: 0.75rem; min-width: 0; align-content: start; }
+.ann-pdf .ann-page { min-width: 0; }
+.ann-pdf .ann-page[hidden] { display: none !important; }
+/* In the viewer every page can be turned to, so a page whose notes are all resolved stays; only its markers are hidden. */
+.ann-pdf.is-viewer .ann-page.is-resolved-only { display: block; }
+.ann-pdf .ann-stage { display: block; justify-self: stretch; width: 100%; line-height: 0; }
+.ann-pdf .ann-stage:not(:has(canvas, img)) { aspect-ratio: 1 / 1.414; border: 1px dashed var(--ann-line); border-radius: 4px; background: color-mix(in srgb, var(--color-text) 4%, var(--color-surface)); }
+.ann-pdf .ann-stage > canvas { display: block; width: 100%; height: 100%; border-radius: 2px; box-shadow: 0 0 0 1px var(--ann-line); }
+.ann-pdf .ann-stage:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ann-page-ref { font-size: 0.75rem; font-variant-numeric: tabular-nums; color: var(--color-muted); }
+.ann-pdf-status { margin: 0; font-size: 0.8125rem; color: var(--color-muted); }
+.ann-pdf .ann-pdf-error { margin: 0; }
+
+.ann-pager { display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; align-items: center; }
+.ann-pager-button, .ann-pager-chip, .ann-pager-input { box-sizing: border-box; min-height: 2.75rem; border: 1px solid var(--ann-line); border-radius: 6px; background: var(--color-surface); font: inherit; font-size: 0.8125rem; color: var(--color-text); }
+.ann-pager-button { min-width: 2.75rem; font-size: 1.25rem; line-height: 1; cursor: pointer; }
+.ann-pager-button:disabled { opacity: 0.4; cursor: default; }
+.ann-pager-chip { padding: 0 0.7rem; cursor: pointer; font-variant-numeric: tabular-nums; }
+.ann-pager-chip[aria-current='page'] { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-on-primary); }
+.ann-pager-button:hover:not(:disabled), .ann-pager-chip:hover { background: color-mix(in srgb, var(--color-text) 7%, var(--color-surface)); }
+.ann-pager-chip[aria-current='page']:hover { background: var(--color-primary); }
+.ann-pager :is(button, input):focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.ann-pager-status { font-size: 0.8125rem; font-variant-numeric: tabular-nums; color: var(--color-muted); }
+.ann-pager-input { width: 4.5rem; padding: 0 0.5rem; text-align: center; }
+.ann-pager-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.ann-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

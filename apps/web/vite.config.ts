@@ -5,6 +5,7 @@ import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { loadEnvDefaults } from '@mygitnotes/core';
 import { readDevPorts, toPort, writeDevPorts } from '../local-server/src/dev-ports.js';
+import { pdfAssetsPlugin } from './pwa/pdf-assets-plugin.js';
 import { serviceWorkerPlugin } from './pwa/service-worker-plugin.js';
 
 const repoRoot = path.resolve(fileURLToPath(import.meta.url), '../../..');
@@ -54,5 +55,5 @@ function recordWebPort(): Plugin {
 export default defineConfig(async ({ command }) => {
   const apiTarget = `http://127.0.0.1:${command === 'serve' ? await resolveApiPort() : 4321}`;
 
-  return { define: { __PRODUCT_BUILD__: JSON.stringify(readBuildInfo()) }, plugins: [react(), recordWebPort(), serviceWorkerPlugin()], server: { port: toPort(Number(webPort)) ?? 5173, allowedHosts: ['.ts.net'], proxy: { '/api': { target: apiTarget, changeOrigin: true, ws: true }, '/raw-assets': { target: apiTarget, changeOrigin: true }, '/r2-assets': { target: apiTarget, changeOrigin: true } } } };
+  return { define: { __PRODUCT_BUILD__: JSON.stringify(readBuildInfo()) }, plugins: [react(), recordWebPort(), pdfAssetsPlugin(), serviceWorkerPlugin()], server: { port: toPort(Number(webPort)) ?? 5173, allowedHosts: ['.ts.net'], proxy: { '/api': { target: apiTarget, changeOrigin: true, ws: true }, '/raw-assets': { target: apiTarget, changeOrigin: true }, '/r2-assets': { target: apiTarget, changeOrigin: true } } } };
 });

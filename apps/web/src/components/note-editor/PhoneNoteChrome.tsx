@@ -203,7 +203,7 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         {onAddToOutline && <SheetItem icon={<ListTree aria-hidden='true' />} label={t('outline.add')} disabled={session.locked} onClick={act(onAddToOutline)} />}
         <SheetItem icon={<Copy aria-hidden='true' />} label={t(session.copyState === 'copied' ? 'editor.noteCopied' : session.copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.exportCopy')} onClick={() => void session.copyNote()} />
         <SheetItem icon={<FileText aria-hidden='true' />} label={t('editor.exportMarkdown')} onClick={act(() => downloadTextFile(filename, session.content, 'text/markdown;charset=utf-8'))} />
-        <SheetItem icon={<Printer aria-hidden='true' />} label={t('editor.exportPdf')} onClick={act(() => void printNoteAsPdf(session.title || filename, session.content, note.path, t('mermaid.error'), note.notebookId))} />
+        <SheetItem icon={<Printer aria-hidden='true' />} label={t('editor.exportPdf')} onClick={act(() => void printNoteAsPdf(session.title || filename, session.content, note.path, t('mermaid.error'), note.notebookId, t))} />
         {deleteNote && !readOnly && (
           <SheetItem
             icon={<Trash2 aria-hidden='true' />}

@@ -31,7 +31,7 @@ export function NoteExportItems({ path, notebookId, title, content, onCopy }: Ex
         <FileText size={14} aria-hidden='true' />
         <span>{t('editor.exportMarkdown')}</span>
       </DropdownMenu.Item>
-      <DropdownMenu.Item onSelect={() => void printNoteAsPdf(title || filename, content, path, t('mermaid.error'), notebookId)}>
+      <DropdownMenu.Item onSelect={() => void printNoteAsPdf(title || filename, content, path, t('mermaid.error'), notebookId, t)}>
         <Printer size={14} aria-hidden='true' />
         <span>{t('editor.exportPdf')}</span>
       </DropdownMenu.Item>

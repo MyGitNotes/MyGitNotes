@@ -1,3 +1,5 @@
+import type { Translate } from './annotations/pdf-figure.js';
+import { renderPdfPageImages } from './annotations/pdf-print.js';
 import { renderNote } from './markdown.js';
 import { currentAppearance, renderMermaidBlocks } from './mermaid.js';
 // Inlined because the print frame loads none of the app's stylesheets; Vite rewrites its font url()s to the served
@@ -21,6 +23,10 @@ const PRINT_STYLE = `
   .markdown-table-scroll { overflow: visible; }
   .katex-display { break-inside: avoid; }
   .ann-figure { margin: 1em 0; }
+  .ann-pdf .ann-stage { display: block; width: 100%; }
+  .ann-pdf .ann-page { margin-bottom: 0.8em; break-inside: avoid; }
+  .ann-pdf .ann-stage img { width: 100%; }
+  .ann-pdf .ann-print-omitted { margin: 0.4em 0; font-size: 9pt; opacity: 0.8; }
   .ann-caption { display: flex; flex-wrap: wrap; gap: 0 0.75em; align-items: baseline; margin-bottom: 0.4em; font-size: 9.5pt; }
   .ann-title { font-weight: 700; }
   .ann-stage { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
@@ -51,13 +57,15 @@ export function downloadTextFile(filename: string, text: string, type: string): 
 }
 
 /** The note's printable body: `renderNote` HTML with its diagrams drawn, on the light variant since paper is white. */
-export async function renderPrintableNote(content: string, notePath: string, errorLabel?: string, notebookId?: string): Promise<string> {
+export async function renderPrintableNote(content: string, notePath: string, errorLabel?: string, notebookId?: string, t?: Translate): Promise<string> {
   const printable = new DOMParser().parseFromString(renderNote(content, notePath, undefined, undefined, notebookId), 'text/html');
   // The print frame has no viewport, so lazy images never approach an intersection threshold.
   for (const image of printable.images) image.removeAttribute('loading');
   // Paper cannot click a group open: it shows every annotation.
   for (const group of printable.querySelectorAll('details.ann-resolved')) group.setAttribute('open', '');
   await renderMermaidBlocks(printable.body, { ...currentAppearance(), mode: 'light' }, { errorLabel });
+  // The PDF pages are drawn here, since the print frame runs no script.
+  if (t) await renderPdfPageImages(printable.body, t);
   return printable.body.innerHTML;
 }
 
@@ -68,11 +76,11 @@ export function printDocument(title: string, body: string): string {
 }
 
 /** Opens the browser's print dialog on the rendered note, where "Save as PDF" produces the file. */
-export async function printNoteAsPdf(title: string, content: string, notePath: string, errorLabel?: string, notebookId?: string): Promise<void> {
+export async function printNoteAsPdf(title: string, content: string, notePath: string, errorLabel?: string, notebookId?: string, t?: Translate): Promise<void> {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
-  frame.srcdoc = printDocument(title, await renderPrintableNote(content, notePath, errorLabel, notebookId));
+  frame.srcdoc = printDocument(title, await renderPrintableNote(content, notePath, errorLabel, notebookId, t));
   const remove = () => frame.remove();
   frame.addEventListener('load', async () => {
     const view = frame.contentWindow;
