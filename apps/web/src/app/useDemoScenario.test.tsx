@@ -10,11 +10,11 @@ import type { WorkspaceConfig } from '../lib/types.js';
 
 const config = { schema_version: 4, workspace: { title: 'Demo', default_notebook: 'demo~contract-zh-tw' }, notebooks: [{ id: 'demo~contract-zh-tw', title: '契約', root: '' }, { id: 'demo~trpg-zh-tw', title: '跑團', root: 'trpg-zh-tw/' }] } as unknown as WorkspaceConfig;
 const inDemo = (demo: boolean) => ({ children }: { children: ReactNode; }) => createElement(DemoProvider, { value: demo ? { scenario: 'x' } : null }, children);
-const run = (pathname: string, options: { demo?: boolean; loading?: boolean; config?: WorkspaceConfig | null; guides?: string[]; restored?: boolean; } = {}) => {
+const run = (pathname: string, options: { demo?: boolean; loading?: boolean; config?: WorkspaceConfig | null; guides?: string[]; restored?: boolean; focuses?: { id: string; notebookId: string; }[] | null; } = {}) => {
   const navigate = vi.fn();
   const hasGuide = vi.fn(async (_notebookId: string, path: string) => (options.guides ?? []).includes(path));
   const hasRestoredView = vi.fn(() => options.restored ?? false);
-  renderHook(() => useDemoScenario({ config: options.config === undefined ? config : options.config, loading: options.loading ?? false, pathname, navigate, hasGuide, hasRestoredView }), { wrapper: inDemo(options.demo ?? true) });
+  renderHook(() => useDemoScenario({ config: options.config === undefined ? config : options.config, loading: options.loading ?? false, pathname, navigate, hasGuide, hasRestoredView, focuses: options.focuses === undefined ? [] : options.focuses }), { wrapper: inDemo(options.demo ?? true) });
   return navigate;
 };
 afterEach(() => setDemoScenarioNotice(null));
@@ -38,6 +38,44 @@ it('finds the guide of a notebook whose root is the repository root', async () =
 it('keeps the notebook page for a visitor whose Focus view is restored', async () => {
   const navigate = run('/trpg', { guides: ['trpg-zh-tw/index.md'], restored: true });
   await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw', { replace: true }));
+});
+
+it('opens the notebook with its Focus shown when the Focus file names one for it, whatever the guide', async () => {
+  const navigate = run('/trpg', { guides: ['trpg-zh-tw/index.md'], focuses: [{ id: 'trpg-zh-tw-table', notebookId: 'demo~trpg-zh-tw' }] });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw?focus=trpg-zh-tw-table', { replace: true }));
+  expect(navigate).toHaveBeenCalledTimes(1);
+});
+
+it('picks the first Focus of the notebook in the file, and ignores the Focuses of other notebooks', async () => {
+  const navigate = run('/trpg', { focuses: [{ id: 'contract-review', notebookId: 'demo~contract-zh-tw' }, { id: 'trpg-b', notebookId: 'demo~trpg-zh-tw' }, { id: 'trpg-a', notebookId: 'demo~trpg-zh-tw' }] });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw?focus=trpg-b', { replace: true }));
+});
+
+it('opens the guide when the Focus file names none for the notebook', async () => {
+  const navigate = run('/trpg', { guides: ['trpg-zh-tw/index.md'], focuses: [{ id: 'contract-review', notebookId: 'demo~contract-zh-tw' }] });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw/notes/index.md', { replace: true }));
+});
+
+it('lets a restored view win over the notebook’s Focus', async () => {
+  const navigate = run('/trpg', { restored: true, focuses: [{ id: 'trpg-zh-tw-table', notebookId: 'demo~trpg-zh-tw' }] });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw', { replace: true }));
+});
+
+it('waits for the Focus file to load before choosing where to go', async () => {
+  const navigate = vi.fn();
+  const hasGuide = vi.fn(async () => true);
+  const hasRestoredView = vi.fn(() => false);
+  type Focuses = { id: string; notebookId: string; }[] | null;
+  const { rerender } = renderHook(({ focuses }: { focuses: Focuses; }) => useDemoScenario({ config, loading: false, pathname: '/trpg', navigate, hasGuide, hasRestoredView, focuses }), { wrapper: inDemo(true), initialProps: { focuses: null as Focuses } });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(navigate).not.toHaveBeenCalled();
+  rerender({ focuses: [{ id: 'trpg-zh-tw-table', notebookId: 'demo~trpg-zh-tw' }] });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~trpg-zh-tw?focus=trpg-zh-tw-table', { replace: true }));
+});
+
+it('still opens the default notebook for an unknown scenario while the Focus file loads', async () => {
+  const navigate = run('/nope', { focuses: null });
+  await waitFor(() => expect(navigate).toHaveBeenCalledWith('/notebooks/demo~contract-zh-tw', { replace: true }));
 });
 
 it('opens the default notebook and says so for an unknown scenario, without its guide', async () => {
