@@ -5,7 +5,7 @@ status: done
 ---
 # Configuring Note Sources
 
-Application deployment is configured independently from note storage. This demo site reads and writes notes from the `main` branch of `wayne930242/MyGitNotes`, while application product code is maintained on `core`.
+Application deployment is configured independently from note storage. This demo site reads and writes notes from the `main` branch of `MyGitNotes/MyGitNotes`, while application product code is maintained on `core`.
 
 ## Local Directory
 
