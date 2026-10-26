@@ -31,7 +31,7 @@ describe('Pulling from the Changes rail', () => {
   it('is offered only where the workspace syncs with Git, while the credit link always shows', () => {
     mount();
     expect(screen.queryByRole('button', { name: 'Pull main from its upstream' })).toBeNull();
-    expect(screen.getByRole('link', { name: /powered by MyGitNotes/ })).toHaveAttribute('href', 'https://github.com/wayne930242/MyGitNotes');
+    expect(screen.getByRole('link', { name: /powered by MyGitNotes/ })).toHaveAttribute('href', 'https://github.com/MyGitNotes/MyGitNotes');
   });
   it('waits for an upstream branch, as syncing does', () => {
     mount(vi.fn(), null);

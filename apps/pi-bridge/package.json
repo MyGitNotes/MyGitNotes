@@ -24,7 +24,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wayne930242/MyGitNotes.git",
+    "url": "git+https://github.com/MyGitNotes/MyGitNotes.git",
     "directory": "apps/pi-bridge"
   },
   "publishConfig": {

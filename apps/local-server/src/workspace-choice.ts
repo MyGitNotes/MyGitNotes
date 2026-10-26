@@ -89,7 +89,7 @@ export async function availableRepositories(token: string, githubApp: boolean, u
 
 /** Whether people sign in through a GitHub App, whose installations decide which repositories it reaches. */
 export const githubApp = () => process.env.GITHUB_APP_TYPE === 'github-app';
-const defaultStarter = 'wayne930242/mygitnotes-starter';
+const defaultStarter = 'MyGitNotes/mygitnotes-starter';
 /**
  * GitHub's own page for a new private repository from the starter template, prefilled through its documented
  * query parameters; creating it there needs no extra permission for the app. The default starter lives on

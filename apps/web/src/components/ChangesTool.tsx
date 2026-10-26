@@ -188,7 +188,7 @@ export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenComm
       )}
       {onSynced && (syncTargets && syncTargets.length > 1 ? syncTargets.map(target => <GitSyncSection key={target.id} repository={target.id} label={target.label} gitStatus={target.gitStatus} onSynced={onSynced} />) : <GitSyncSection gitStatus={gitStatus} onSynced={onSynced} />)}
       {onSynced && <GitPullSection onPulled={onSynced} repoRoot={repoRoot} upstream={gitStatus?.upstream} />}
-      <a className='panel-credit' href='https://github.com/wayne930242/MyGitNotes' target='_blank' rel='noopener noreferrer' title='MyGitNotes by wayne930242'>
+      <a className='panel-credit' href='https://github.com/MyGitNotes/MyGitNotes' target='_blank' rel='noopener noreferrer' title='MyGitNotes by the MyGitNotes organization'>
         {'powered by '}
         <span>MyGitNotes</span>
       </a>

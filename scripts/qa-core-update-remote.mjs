@@ -6,7 +6,7 @@ import { assertFreshBuild } from './lib/require-fresh-build.mjs';
 import { CORE_SYNC_WORKFLOW, githubCoreComparison, githubCoreState, GitHubCoreUpdate } from '../packages/core/dist/index.js';
 
 assertFreshBuild(fileURLToPath(new URL('..', import.meta.url)));
-const repository = 'wayne930242/knowledge-base', upstream = 'wayne930242/MyGitNotes';
+const repository = 'wayne930242/knowledge-base', upstream = 'MyGitNotes/MyGitNotes';
 const apply = process.argv.includes('--apply-authorized-sync');
 const allowedSha = '1a5a6b9ab9893d161919f0a057c5340b49361ead';
 let dispatches = 0, installs = 0, secrets = 0;

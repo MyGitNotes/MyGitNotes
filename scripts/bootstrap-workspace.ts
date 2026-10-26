@@ -1,7 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { getCurrentBranch, runGit, stageAndCommit } from '../packages/git/src/index.js';
-import { CORE_UPSTREAM_REPOSITORY, GITHUB_COM, loadWorkspaceConfig, normalizeGitHubUrl, resolveSafePath, resolveWorkspaceConfigPath, SUPPORTED_SCHEMA_VERSION, WORKSPACE_CONFIG_FILENAME } from '../packages/core/src/index.js';
+import { CORE_UPSTREAM_REPOSITORY, GITHUB_COM, isCoreUpstreamRepository, loadWorkspaceConfig, normalizeGitHubUrl, resolveSafePath, resolveWorkspaceConfigPath, SUPPORTED_SCHEMA_VERSION, WORKSPACE_CONFIG_FILENAME } from '../packages/core/src/index.js';
 
 const EMPTY_WORKSPACE_CONFIG = `schema_version: ${SUPPORTED_SCHEMA_VERSION}
 workspace:
@@ -47,7 +47,7 @@ async function adoptCoreUpstream(productRoot: string): Promise<'renamed' | 'adde
   const remotes = (await git(['remote'], productRoot)).split('\n');
   if (remotes.includes('upstream')) return undefined;
   const url = remotes.includes('origin') ? (await git(['config', '--get', 'remote.origin.url'], productRoot)).toLowerCase().replace(/\/$/, '').replace(/\.git$/, '') : '';
-  if (['/', ':'].some(separator => url.endsWith(`github.com${separator}${CORE_UPSTREAM_REPOSITORY.toLowerCase()}`))) {
+  if (/github\.com[/:]([^/:]+\/[^/:]+)$/.test(url) && isCoreUpstreamRepository(url.replace(/^.*github\.com[/:]/, ''))) {
     await runGit(['remote', 'rename', 'origin', 'upstream'], productRoot);
     return 'renamed';
   }
@@ -92,7 +92,7 @@ async function productRepositoryOf(productRoot: string, githubUrl: string | unde
   if (!(await git(['remote'], productRoot)).split('\n').includes('origin')) return undefined;
   const repository = githubRepositoryOf(await git(['config', '--get', 'remote.origin.url'], productRoot), githubUrl);
   // MyGitNotes itself is never this deployment's product repository.
-  return repository?.toLowerCase() === CORE_UPSTREAM_REPOSITORY.toLowerCase() ? undefined : repository;
+  return repository && isCoreUpstreamRepository(repository) ? undefined : repository;
 }
 
 /**

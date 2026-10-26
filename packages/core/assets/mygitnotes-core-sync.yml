@@ -39,7 +39,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.MYGITNOTES_CORE_SYNC_TOKEN }}
       - name: Fetch upstream Core
-        run: git fetch https://github.com/wayne930242/MyGitNotes.git +refs/heads/core:refs/remotes/mygitnotes/core
+        run: git fetch https://github.com/MyGitNotes/MyGitNotes.git +refs/heads/core:refs/remotes/mygitnotes/core
       - name: Verify upstream target
         env:
           TARGET_SHA: ${{ inputs.target_sha }}

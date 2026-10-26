@@ -4,7 +4,10 @@ import { GitHubApi, SourceError } from './github-api.js';
 import { type CoreComparison, coreComparisonState, type CoreStatus, type CoreUpdateReceipt, type CoreUpdateRun } from './core-status.js';
 
 export { CORE_SYNC_WORKFLOW } from './core-sync-workflow.js';
-export const CORE_UPSTREAM_REPOSITORY = 'wayne930242/MyGitNotes';
+export const CORE_UPSTREAM_REPOSITORY = 'MyGitNotes/MyGitNotes';
+/** Addresses MyGitNotes had before moving to its organization; existing clones may still point at them. */
+export const LEGACY_CORE_UPSTREAM_REPOSITORIES = ['wayne930242/MyGitNotes'];
+export const isCoreUpstreamRepository = (repository: string): boolean => [CORE_UPSTREAM_REPOSITORY, ...LEGACY_CORE_UPSTREAM_REPOSITORIES].some(known => known.toLowerCase() === repository.toLowerCase());
 export class RemoteCoreError extends SourceError {
   constructor(message: string, public code: string, status: number) {
     super(message, status);

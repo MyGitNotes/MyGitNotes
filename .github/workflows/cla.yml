@@ -17,7 +17,7 @@ permissions:
 jobs:
   cla:
     # Workspaces that merge Core carry this file too; only the product repository collects signatures.
-    if: github.repository == 'wayne930242/MyGitNotes' && (github.event_name == 'pull_request_target' || github.event.issue.pull_request && (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA'))
+    if: github.repository == 'MyGitNotes/MyGitNotes' && (github.event_name == 'pull_request_target' || github.event.issue.pull_request && (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA'))
     runs-on: ubuntu-latest
     steps:
       # contributor-assistant/github-action v2.6.1, pinned by commit because it runs with write access.
@@ -25,7 +25,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          path-to-document: https://github.com/wayne930242/MyGitNotes/blob/core/CLA.md
+          path-to-document: https://github.com/MyGitNotes/MyGitNotes/blob/core/CLA.md
           path-to-signatures: signatures/cla.json
           branch: cla-signatures
           allowlist: wayne930242,dependabot[bot],renovate[bot]

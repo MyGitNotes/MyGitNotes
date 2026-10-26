@@ -13,7 +13,7 @@ let root: Root;
 let container: HTMLElement;
 let requests: { url: string; init?: RequestInit; }[];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
-const repositories = { repositories: [{ fullName: 'visitor/notes', defaultBranch: 'main', private: true, updatedAt: '2026-10-01T00:00:00Z' }, { fullName: 'team/handbook', defaultBranch: 'trunk', private: false, updatedAt: '2026-09-01T00:00:00Z' }], total: 2, githubApp: true, installUrl: 'https://github.com/apps/my-notes/installations/new', newRepositoryUrl: 'https://github.com/new?template_owner=wayne930242&template_name=mygitnotes-starter' };
+const repositories = { repositories: [{ fullName: 'visitor/notes', defaultBranch: 'main', private: true, updatedAt: '2026-10-01T00:00:00Z' }, { fullName: 'team/handbook', defaultBranch: 'trunk', private: false, updatedAt: '2026-09-01T00:00:00Z' }], total: 2, githubApp: true, installUrl: 'https://github.com/apps/my-notes/installations/new', newRepositoryUrl: 'https://github.com/new?template_owner=MyGitNotes&template_name=mygitnotes-starter' };
 let available = repositories;
 
 function serve(session: unknown) {

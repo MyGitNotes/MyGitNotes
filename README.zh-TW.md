@@ -4,7 +4,7 @@
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
-[線上展示](https://my-gh-core.vercel.app) · [單字卡展示](https://my-gh-core.vercel.app/notes/study?notebook=learning&path=notes%2Flearning%2F%E5%AD%B8%E7%BF%92-%E4%B8%80%E6%AC%A1%E4%B8%80%E5%BC%B5%E5%8D%A1%E7%89%87.compilation.yml) · [範例工作區](https://github.com/wayne930242/MyGitNotes/tree/main)
+[線上展示](https://my-gh-core.vercel.app) · [單字卡展示](https://my-gh-core.vercel.app/notes/study?notebook=learning&path=notes%2Flearning%2F%E5%AD%B8%E7%BF%92-%E4%B8%80%E6%AC%A1%E4%B8%80%E5%BC%B5%E5%8D%A1%E7%89%87.compilation.yml) · [範例工作區](https://github.com/MyGitNotes/MyGitNotes/tree/main)
 
 ![MyGitNotes architecture](docs/assets/mygitnotes-architecture-zh-TW.png)
 
@@ -26,7 +26,7 @@ Markdown 是內容來源，Git 記錄並發布變更，儲存庫擁有者管理�
 需要 Node.js 22+、pnpm 12+ 與 Git 2.42+。本機模式不需要 OAuth 帳號。
 
 ~~~bash
-git clone --branch core --single-branch https://github.com/wayne930242/MyGitNotes.git mygitnotes
+git clone --branch core --single-branch https://github.com/MyGitNotes/MyGitNotes.git mygitnotes
 cd mygitnotes
 pnpm install
 pnpm build                 # 建置 bootstrap 指令所需的套件

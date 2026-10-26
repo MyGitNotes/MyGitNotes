@@ -15,7 +15,7 @@ function fixture(options: { ahead?: number; behind?: number; push?: boolean; sco
     if (url.endsWith('/repos/user/notes')) {
       body = { fork: false, default_branch: 'main', permissions: { push: options.push ?? true } };
       if (options.scopes !== null) headers['X-OAuth-Scopes'] = options.scopes ?? 'repo, workflow';
-    } else if (url.endsWith('/repos/wayne930242/MyGitNotes/git/ref/heads/core')) body = { object: { sha: latest } };
+    } else if (url.endsWith('/repos/MyGitNotes/MyGitNotes/git/ref/heads/core')) body = { object: { sha: latest } };
     else if (url.endsWith('/repos/user/notes/git/ref/heads/core')) body = { object: { sha: options.currentSha ?? old } };
     else if (url.includes('/commits/')) {
       body = { sha: old };
@@ -24,7 +24,7 @@ function fixture(options: { ahead?: number; behind?: number; push?: boolean; sco
       body = { ahead_by: 1, behind_by: 0 };
       status = options.localComparisonStatus ?? 404;
     } else if (url.includes('/compare/')) {
-      expect(url).toContain('/repos/wayne930242/MyGitNotes/');
+      expect(url).toContain('/repos/MyGitNotes/MyGitNotes/');
       body = { ahead_by: options.ahead ?? 2, behind_by: options.behind ?? 0 };
       status = options.comparisonStatus ?? 200;
     } else if (url.includes('/contents/')) {

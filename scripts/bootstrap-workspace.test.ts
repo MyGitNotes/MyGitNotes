@@ -150,11 +150,11 @@ describe('canonical starter workspace CLI', () => {
   });
 
   it('renames a MyGitNotes origin to upstream so origin is free for the user repository', () => {
-    coreGit('remote', 'add', 'origin', 'https://github.com/wayne930242/MyGitNotes.git');
+    coreGit('remote', 'add', 'origin', 'https://github.com/MyGitNotes/MyGitNotes.git');
     coreGit('update-ref', 'refs/remotes/origin/main', 'HEAD');
     const output = bootstrap().toString();
     expect(coreGit('remote')).toBe('upstream');
-    expect(coreGit('remote', 'get-url', 'upstream')).toBe('https://github.com/wayne930242/MyGitNotes.git');
+    expect(coreGit('remote', 'get-url', 'upstream')).toBe('https://github.com/MyGitNotes/MyGitNotes.git');
     expect(git('rev-list', '--max-parents=0', 'HEAD')).toBe(git('rev-parse', 'HEAD'));
     expect(output).toContain('git remote add origin <your-repository-url>');
     coreGit('remote', 'add', 'origin', 'git@github.com:someone/notes.git');
@@ -162,12 +162,19 @@ describe('canonical starter workspace CLI', () => {
     expect(coreGit('remote').split('\n').sort()).toEqual(['origin', 'upstream']);
   });
 
+  it('still recognises a clone whose origin is the pre-organization MyGitNotes address', () => {
+    coreGit('remote', 'add', 'origin', 'https://github.com/wayne930242/MyGitNotes.git');
+    bootstrap();
+    expect(coreGit('remote')).toBe('upstream');
+    expect(coreGit('remote', 'get-url', 'upstream')).toBe('https://github.com/wayne930242/MyGitNotes.git');
+  });
+
   it('adds a MyGitNotes upstream beside an origin that is the user repository', () => {
     coreGit('remote', 'add', 'origin', 'git@github.com:someone/notes.git');
     const output = bootstrap().toString();
     expect(coreGit('remote').split('\n').sort()).toEqual(['origin', 'upstream']);
     expect(coreGit('remote', 'get-url', 'origin')).toBe('git@github.com:someone/notes.git');
-    expect(coreGit('config', '--get', 'remote.upstream.url')).toBe('https://github.com/wayne930242/MyGitNotes.git');
+    expect(coreGit('config', '--get', 'remote.upstream.url')).toBe('https://github.com/MyGitNotes/MyGitNotes.git');
     expect(coreGit('config', '--get', 'remote.upstream.fetch')).toBe('+refs/heads/core:refs/remotes/upstream/core');
     expect(output).toContain("Added remote 'upstream'");
     expect(output).not.toContain('git remote add origin');

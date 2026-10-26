@@ -119,7 +119,7 @@ describe('a lightweight deployment that lets each visitor choose a repository', 
     // A visitor without a notes repository creates one on GitHub from the starter template.
     const create = new URL(listed.newRepositoryUrl);
     expect(create.origin + create.pathname).toBe('https://github.com/new');
-    expect(Object.fromEntries(create.searchParams)).toMatchObject({ template_owner: 'wayne930242', template_name: 'mygitnotes-starter', visibility: 'private' });
+    expect(Object.fromEntries(create.searchParams)).toMatchObject({ template_owner: 'MyGitNotes', template_name: 'mygitnotes-starter', visibility: 'private' });
     expect(await fetch(`${base}/api/repositories/available?query=HAND`, { headers: { Cookie: session } }).then(response => response.json())).toMatchObject({ total: 1 });
     const choose = (body: unknown) => fetch(`${base}/api/workspace/choice`, { method: 'POST', headers: { Cookie: session, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     expect((await choose({ repository: 'visitor/missing' })).status).toBe(404);

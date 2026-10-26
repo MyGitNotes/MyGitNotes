@@ -2,7 +2,7 @@
 
 MyGitNotes ships as two editions that share one product core.
 The **community edition** is this repository, licensed AGPL-3.0, and holds every single-user feature: notes, editors, sources, Git, MCP, the agent panel, the lightweight (no-Redis) deployment, GitHub App sign-in and importing any repository.
-The **Pro edition** is the private repository `wayne930242/MyGitNotes-Pro`, which adds only what a hosted, multi-user service needs: tenants with per-user repository lists, a Postgres (Neon) record store, a hosted Pi sandbox with user-supplied provider keys, and billing.
+The **Pro edition** is the private repository `MyGitNotes/MyGitNotes-Pro`, which adds only what a hosted, multi-user service needs: tenants with per-user repository lists, a Postgres (Neon) record store, a hosted Pi sandbox with user-supplied provider keys, and billing.
 
 Pro never edits community code.
 It includes this repository as a Git submodule inside its own pnpm workspace, pinned by commit, and composes the community packages through extension points: the server's composition root (`createApp` services and route hooks) and the web app's build-time feature registry (`createWebApp({ features })`).

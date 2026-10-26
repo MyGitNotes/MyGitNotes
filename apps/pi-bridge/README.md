@@ -21,5 +21,5 @@ The full guide, with security notes and troubleshooting, is in [English][guide] 
 
 [pi]: https://github.com/earendil-works/pi
 [cloudflared]: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
-[guide]: https://github.com/wayne930242/MyGitNotes/blob/core/docs/pi-bridge.md
-[guide-zh]: https://github.com/wayne930242/MyGitNotes/blob/core/docs/pi-bridge.zh-TW.md
+[guide]: https://github.com/MyGitNotes/MyGitNotes/blob/core/docs/pi-bridge.md
+[guide-zh]: https://github.com/MyGitNotes/MyGitNotes/blob/core/docs/pi-bridge.zh-TW.md

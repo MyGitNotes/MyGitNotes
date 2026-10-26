@@ -4,7 +4,7 @@ A local-first workspace for Markdown notes, outlines, compilations, flashcards, 
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
-[Live Demo](https://my-gh-core.vercel.app) · [Flashcard Demo](https://my-gh-core.vercel.app/notes/study?notebook=learning&path=notes%2Flearning%2F%E5%AD%B8%E7%BF%92-%E4%B8%80%E6%AC%A1%E4%B8%80%E5%BC%B5%E5%8D%A1%E7%89%87.compilation.yml) · [Example Workspace](https://github.com/wayne930242/MyGitNotes/tree/main)
+[Live Demo](https://my-gh-core.vercel.app) · [Flashcard Demo](https://my-gh-core.vercel.app/notes/study?notebook=learning&path=notes%2Flearning%2F%E5%AD%B8%E7%BF%92-%E4%B8%80%E6%AC%A1%E4%B8%80%E5%BC%B5%E5%8D%A1%E7%89%87.compilation.yml) · [Example Workspace](https://github.com/MyGitNotes/MyGitNotes/tree/main)
 
 ![MyGitNotes architecture](docs/assets/mygitnotes-architecture-en.png)
 
@@ -26,7 +26,7 @@ One repository uses two branches in separate worktrees:
 Requires Node.js 22+, pnpm 12+, and Git 2.42+. Local mode needs no OAuth account.
 
 ~~~bash
-git clone --branch core --single-branch https://github.com/wayne930242/MyGitNotes.git mygitnotes
+git clone --branch core --single-branch https://github.com/MyGitNotes/MyGitNotes.git mygitnotes
 cd mygitnotes
 pnpm install
 pnpm build                 # builds the packages the bootstrap script needs
