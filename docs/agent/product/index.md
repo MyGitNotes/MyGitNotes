@@ -84,9 +84,9 @@ Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/
 ### Focus 配置所有權
 
 工作區根目錄 `.github-notes-focus.yaml` 保存使用者具名 Focus 的名稱，以及窗格分割樹：節點是窗格（`id`、tab）或分割（`id`、方向、子節點），節點 `id` 在一個 Focus 內不重複；窗格最多 8 個、分割巢狀最多 4 層。
-分割的大小是各裝置的檢視狀態，不存在檔案裡。
-檔案格式為 version 2；version 1（劃分加窗格清單）讀入時依劃分決定性地轉成樹（窗格 `p1`…，分割 `id` 取自劃分名稱），同一個檔案讀兩次結果相同。
-寫入時，只要每個 Focus 都剛好是七種舊劃分之一，仍寫成 version 1，讓只認得 version 1 的部署繼續運作；任何一個 Focus 成為其他形狀，整個檔案就寫成 version 2。收回這個 version 1 寫入要等所有部署都跨過 phase 1，由使用者決定。
+窗格或分割節點可帶 `size`（1–100 的整數，是同一分割內兄弟節點的份額，只在每個兄弟都有時才生效，只存在 version 3）；平常拖曳出的大小是各裝置的檢視狀態，不存在檔案裡。App 內的結構編輯（例如拆分窗格）會丟掉它動到的分割的 `size`。
+檔案格式為 version 2，帶 `size` 時為 version 3（`size` 只在 version 3 讀入，version 1、2 維持嚴格；舊版 core 把 version 3 當成較新的版本而拒絕，需要 core 0.13.8 以上，否則該倉庫的筆記搬移也會被擋）；version 1（劃分加窗格清單）讀入時依劃分決定性地轉成樹（窗格 `p1`…，分割 `id` 取自劃分名稱），同一個檔案讀兩次結果相同。
+寫入時，只要每個 Focus 都剛好是七種舊劃分之一且沒有 `size`，仍寫成 version 1，讓只認得 version 1 的部署繼續運作；任何一個 Focus 成為其他形狀，整個檔案就寫成 version 2；任何一個節點有 `size`，整個檔案寫成 version 3。收回這個 version 1 寫入要等所有部署都跨過 phase 1，由使用者決定。
 Core 不得追蹤真實配置，工作區更新必須保留此檔案；測試配置只建立於隔離暫存工作區。
 每個 Focus 記錄 `notebookId`，tab 只參照該筆記本的筆記或合輯（路徑分頁）；預設 Focus（程式內 `CURRENT_FOCUS`）與作用窗格等檢視狀態只存在瀏覽器。
 
