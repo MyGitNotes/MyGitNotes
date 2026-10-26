@@ -73,7 +73,7 @@ it('answers a stored version 1 file as the tree of its division, and writes a sh
   expect((await fetch(url).then(r => r.json())).page).toEqual(split);
 });
 it('names a Focus file saved by a newer app instead of reporting it as invalid', async () => {
-  await writeFile(path.join(root, FOCUS_PAGE_FILE), 'version: 3\nfocuses: []\n');
+  await writeFile(path.join(root, FOCUS_PAGE_FILE), 'version: 4\nfocuses: []\n');
   const response = await fetch(url);
   expect(response.status).toBe(422);
   expect((await response.json()).error).toMatch(/saved by a newer MyGitNotes.*update this deployment/);

@@ -25,7 +25,7 @@ describe('workspace documents', () => {
     const focus = workspaceDocument(FOCUS_PAGE_FILE)!;
     expect(() => validateWorkspaceDocument(focus, 'version: 1\nfocuses: []\n')).not.toThrow();
     expect(() => validateWorkspaceDocument(focus, 'version: 2\nfocuses: []\n')).not.toThrow();
-    expect(() => validateWorkspaceDocument(focus, 'version: 3\nfocuses: []\n')).toThrow('Invalid Focus YAML.');
+    expect(() => validateWorkspaceDocument(focus, 'version: 4\nfocuses: []\n')).toThrow('Invalid Focus YAML.');
     expect(() => validateWorkspaceDocument(focus, 'x'.repeat(focus.maxBytes + 1))).toThrow('Focus YAML is required.');
     expect(() => validateWorkspaceDocument(focus, undefined)).toThrow('Focus YAML is required.');
   });
@@ -57,7 +57,7 @@ describe('workspace documents', () => {
     expect(stored.focuses[0].root.children[1].children[0].tabs[0].path).toBe('notes/a/two/note.md');
   });
   it('refuses to move content in a repository whose Focus file a newer app wrote, saying so', () => {
-    const files = new Map([[FOCUS_PAGE_FILE, YAML.stringify({ version: 3, focuses: [] })]]);
+    const files = new Map([[FOCUS_PAGE_FILE, YAML.stringify({ version: 4, focuses: [] })]]);
     expect(() => relocateWorkspaceDocuments(files, notebooks[0], move)).toThrow(/saved by a newer MyGitNotes.*update this deployment/);
   });
   it('updates study and Focus references when a folder moves', () => {
