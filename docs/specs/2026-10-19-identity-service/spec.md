@@ -36,7 +36,7 @@ A person is present exactly when the provider session is (the session reader alr
 
 ## Web
 
-`AuthControls` and the sign-in screen render one button per `signInOptions` entry (GitHub and GitLab icons and wording kept, a generic icon and `Sign in with {provider}` otherwise); a server without `signInOptions` is read from `provider`. `WebFeature.signInNotice` is shown below the buttons of the sign-in and connection screens.
+`AuthControls` and the sign-in screen render one button per `signInOptions` entry (GitHub and GitLab icons and wording kept, a generic icon and `Sign in with {provider}` otherwise); a server without `signInOptions` is read from `provider`. `WebFeature.signInNotice` is shown below the buttons of the sign-in and connection screens. `WebFeature.signInIntro` (a function called while the screen renders, so it may use hooks; the last feature that sets it wins) words the setup screens in place of the community's: the left panel's `tagline`, `description` and `points` (an icon and a text each), and, optionally, the sign-in card's `signInDescription` and the note under its buttons, `privacy`. Any part left out keeps the community's own words, and the same left panel shows on the repository-choice, first-repository and demo notice screens.
 
 ## Verification
 
