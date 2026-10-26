@@ -12,20 +12,22 @@ interface Params {
   commitWorkingNotes: ReturnType<typeof useWorkingNoteCommit>['commitWorkingNotes'];
   activeWorkingNotes: WorkspaceState['activeWorkingNotes'];
   t: (key: TranslationKey, params?: Record<string, string | number>) => string;
+  /** What a status is called in the visitor's language, for the commit's description. */
+  statusLabel?: (status: string) => string;
 }
 
 /** The fixed message of a one-note local commit, which has no draft to describe; it needs no diff review. */
 export const quickCommitMessage = (path: string) => `docs(notes): update ${path.split('/').pop()!.replace(/\.[^.]+$/, '')}`;
 
 /** Commits one note's saved changes alone, from the editor footer. */
-export function useQuickNoteCommit({ remote, repositoryFor, refreshWorkspace, commitWorkingNotes, activeWorkingNotes, t }: Params) {
+export function useQuickNoteCommit({ remote, repositoryFor, refreshWorkspace, commitWorkingNotes, activeWorkingNotes, t, statusLabel }: Params) {
   /** With `version`, the commit also records this note's new version. */
   const commitNoteFile = async (path: string, notebookId: string, version?: NewVersionRequest) => {
     const repository = repositoryFor(notebookId)?.id;
     if (remote) {
       // A remote draft holds both versions, so the commit names what changed in it.
       const draft = Object.values(activeWorkingNotes).find(entry => entry.note.path === path && entry.note.notebookId === notebookId);
-      const summary = draft && summarizeCommit([noteChangeFacts(draft.note, draft.base)], [], t);
+      const summary = draft && summarizeCommit([noteChangeFacts(draft.note, draft.base)], [], t, statusLabel);
       await commitWorkingNotes([{ path, repository }], summary ? commitMessage(summary.subject, summary.details) : quickCommitMessage(path), version);
     } else {
       const message = quickCommitMessage(path);

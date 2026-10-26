@@ -26,6 +26,12 @@ describe('note change facts', () => {
 });
 
 describe('commit summary', () => {
+  it('names a status change by the label the visitor sees, not the stored name', () => {
+    const label = (status: string) => ({ working: '進行中', done: '完成' })[status] ?? status;
+    expect(summarizeCommit([noteChangeFacts(after, before)], [], chinese, label).subject).toBe('Weekly Review：狀態 進行中 → 完成、完成 1 項任務');
+    expect(summarizeCommit([noteChangeFacts(after, before)], [], chinese).subject).toBe('Weekly Review：狀態 working → done、完成 1 項任務');
+  });
+
   it('names one note and its most telling changes in the subject, and lists everything below', () => {
     const summary = summarizeCommit([noteChangeFacts(after, before)], [], english);
     expect(summary.subject).toBe('Weekly Review: status working → done, completed 1 task(s)');

@@ -12,6 +12,7 @@ import type { StudyController } from '../lib/use-study-workspace.js';
 import { useNoteLookup } from '../lib/use-note-queries.js';
 import { renderNote } from '../lib/markdown.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { useStatusLabel } from '../lib/status-color.js';
 import { Select } from './Select.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 import { youtubeLabels } from '../lib/youtube-embed.js';
@@ -179,6 +180,7 @@ function StudyPostpone({ note, row, controller, disabled, onDone }: { note: Note
 /** A study card shows the note's pages, so the current card is the one note read in full. */
 function StudyLaneCard({ note: listed, row, controller, disabled, onDone, onOpen, previous, next, onMove, more, remaining }: { note: NoteListItem; row: CompilationRow; controller: StudyController; disabled: boolean; onDone: () => void; onOpen: () => void; previous: boolean; next: boolean; onMove: (direction: number) => void; more: ReactNode; remaining: number; }) {
   const { t } = useTranslation();
+  const labelOf = useStatusLabel();
   const lookup = useNoteLookup([listed], true);
   const found = lookup.notes[0];
   const note = (typeof found?.content === 'string' ? found : { ...listed, content: '' }) as NoteItem;
@@ -226,9 +228,9 @@ function StudyLaneCard({ note: listed, row, controller, disabled, onDone, onOpen
         <header>
           <button type='button' className='screen-card-title' aria-label={`${t('links.open')}: ${note.title}`} onClick={onOpen}>{note.title}</button>
           {totalStages > 0 && (
-            <div className='study-card-stage' title={`${currentStatus} · ${currentStage?.intervalDays ?? 0} ${t('study.days')}`}>
+            <div className='study-card-stage' title={`${currentStatus ? labelOf(currentStatus) : ''} · ${currentStage?.intervalDays ?? 0} ${t('study.days')}`}>
               <span className='study-card-stars' aria-label={`Stage ${currentStar} of ${totalStages}`}>{starDisplay}</span>
-              <span className='study-card-stage-status'>{currentStatus}</span>
+              <span className='study-card-stage-status'>{currentStatus ? labelOf(currentStatus) : currentStatus}</span>
             </div>
           )}
         </header>
@@ -267,6 +269,7 @@ function StudyLaneCard({ note: listed, row, controller, disabled, onDone, onOpen
 
 function StudyFooter({ progression, status, pageCount, page, revealed = false, canRate, disabled, previous, next, onMove, onPage, onRate, onDone, more, remaining }: { progression: StudyProgression; status?: string; pageCount: number; page: number; revealed?: boolean; canRate: boolean; disabled: boolean; previous: boolean; next: boolean; onMove: (direction: number) => void; onPage: (page: number) => void; onRate: (rating: Familiarity) => void; onDone: () => void; more: ReactNode; remaining: number; }) {
   const { t } = useTranslation();
+  const labelOf = useStatusLabel();
   const ratingOptions = useMemo(() => deduplicatedStudyRatings(progression, status), [progression, status]);
   return (
     <footer className='study-footer' aria-label={t('study.controls')}>
@@ -284,7 +287,7 @@ function StudyFooter({ progression, status, pageCount, page, revealed = false, c
             const labelKey = (['study.again', 'study.hard', 'study.good', 'study.easy'] as const)[rating - 1];
             const starDisplay = totalStages <= 7 ? '★'.repeat(starCount) : `★${starCount}`;
             return (
-              <Button data-rating={rating} key={rating} disabled={!canRate} onClick={() => onRate(rating)} title={`${t(labelKey)} · ${targetStage.status} · ${targetStage.intervalDays} ${t('study.days')}`}>
+              <Button data-rating={rating} key={rating} disabled={!canRate} onClick={() => onRate(rating)} title={`${t(labelKey)} · ${labelOf(targetStage.status)} · ${targetStage.intervalDays} ${t('study.days')}`}>
                 <span className='study-rating-label'>{t(labelKey)}</span>
                 <span className='study-rating-stars' aria-label={`Stage ${starCount} of ${totalStages}`}>{starDisplay}</span>
                 <small>{targetStage.intervalDays} {t('study.days')}</small>

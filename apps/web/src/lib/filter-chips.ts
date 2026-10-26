@@ -13,7 +13,7 @@ export interface FilterChip {
 type Translate = (key: 'focusList.allNotebooks' | 'outline.list' | 'sidebar.compilations' | 'sidebar.allStatuses', params?: Record<string, string | number>) => string;
 
 /** The filters that narrow the list, as chips: the notebook or folders, a note kind, a status, each tag, and the search text. */
-export function filterChips(filters: FilterControls, t: Translate): FilterChip[] {
+export function filterChips(filters: FilterControls, t: Translate, statusLabel: (status: string) => string = status => status): FilterChip[] {
   const { value } = filters;
   const chips: FilterChip[] = [];
   const notebook = filters.notebooks.find(item => item.id === value.notebookId);
@@ -24,7 +24,7 @@ export function filterChips(filters: FilterControls, t: Translate): FilterChip[]
     chips.push({ id: `folder:${folder}`, label: root && folder.startsWith(`${root}/`) ? folder.slice(root.length + 1) : folder, section: 'notebooks', remove: () => filters.onChange({ folders: value.folders.filter(item => item !== folder) }) });
   }
   if (value.kind === 'outline' || value.kind === 'compilation') chips.push({ id: `kind:${value.kind}`, label: t(value.kind === 'outline' ? 'outline.list' : 'sidebar.compilations'), section: 'notebooks', remove: () => filters.onChange({ kind: 'note' }) });
-  if (value.status !== null) chips.push({ id: `status:${value.status}`, label: value.status, section: 'status', remove: () => filters.onChange({ status: null }) });
+  if (value.status !== null) chips.push({ id: `status:${value.status}`, label: statusLabel(value.status), section: 'status', remove: () => filters.onChange({ status: null }) });
   for (const tag of value.tags) chips.push({ id: `tag:${tag}`, label: `#${tag}`, section: 'tags', remove: () => filters.onChange({ tags: value.tags.filter(item => item !== tag) }) });
   if (value.q.trim()) chips.push({ id: 'search', label: `“${value.q.trim()}”`, section: 'notebooks', remove: () => filters.onChange({ q: '' }) });
   return chips;

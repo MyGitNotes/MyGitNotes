@@ -16,7 +16,7 @@ import { useNoteTouchSelection } from '../lib/use-note-touch-selection.js';
 import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteZoomButton } from './NoteZoomButton.js';
 import { NoteTags } from './NoteTags.js';
-import { useStatusDotClass } from '../lib/status-color.js';
+import { useStatusDotClass, useStatusLabel } from '../lib/status-color.js';
 
 interface KanbanViewProps {
   /** The board's filter; each column adds its own status condition and pages on its own. */
@@ -272,6 +272,7 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
 export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leading, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, sortField = 'updated', sortOrder = 'desc', onSortChange, focusMode, selectedKeys, onToggleSelect }) => {
   const { t } = useTranslation();
   const dotClass = useStatusDotClass();
+  const labelOf = useStatusLabel();
   const [dragged, setDragged] = useState<NoteListItem | null>(null);
   const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null);
   const [totals, setTotals] = useState<Record<string, number>>({});
@@ -281,7 +282,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leadi
   // Per-column sort override state
   const [columnSorts, setColumnSorts] = useState<Record<string, { field: SortField; order: SortOrder; }>>({});
 
-  const columns: Column[] = statuses.map((status) => ({ id: status, title: status, color: dotClass(status) }));
+  const columns: Column[] = statuses.map((status) => ({ id: status, title: labelOf(status), color: dotClass(status) }));
 
   // Board sort key: inside Kanban, 'status' defaults to 'updated'
   const effectiveBoardSortField = sortField === 'status' ? 'updated' : sortField;

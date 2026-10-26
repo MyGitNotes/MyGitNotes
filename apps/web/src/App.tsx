@@ -95,6 +95,7 @@ import { LegacyScreenRedirect } from './components/LegacyScreenRedirect.js';
 import { LegacySchemaNotice } from './components/LegacySchemaNotice.js';
 import { CompilationActionsProvider } from './lib/compilation-actions.js';
 import { StatusColorProvider } from './lib/status-color.js';
+import { statusLabel } from '@mygitnotes/core/note-status';
 import { useCompilationActionsValue } from './app/useCompilationActionsValue.js';
 import { BrowseDock, BrowseDockToggle } from './components/BrowseDock.js';
 import { RightPanel } from './components/RightPanel.js';
@@ -121,7 +122,7 @@ const NO_NOTEBOOKS: NotebookConfig[] = [];
 /** The workspace itself, behind the sign-in gate; the entry loads it as its own chunk. */
 export const AppContent: React.FC = () => {
   useVisualViewport();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const renderAccountControls = useAccountControls();
   const { sortField, sortOrder, handleSortChange } = useNoteSort();
 
@@ -241,7 +242,7 @@ export const AppContent: React.FC = () => {
   // The agent's note tools edit this page's working changes; only a remote workspace has them, as local Pi edits its files.
   const webAgentTools = useWebAgentTools({ config, activeWorkingNotes, repositoryFor, canWriteNotebook, revisionFor, readDraft, updateDraft, stageWorkingNote, findCommittedNote, resolveBareNotebook });
   const { commitWorkingNotes } = useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError });
-  const { commitNoteFile } = useQuickNoteCommit({ remote, repositoryFor, refreshWorkspace, commitWorkingNotes, activeWorkingNotes, t });
+  const { commitNoteFile } = useQuickNoteCommit({ remote, repositoryFor, refreshWorkspace, commitWorkingNotes, activeWorkingNotes, t, statusLabel: status => statusLabel(status, statusEntries, language) });
   const legacyRecovery = useLegacyBookmarkRecovery(repositories.map(repository => repository.id));
   const [legacyImportOpen, setLegacyImportOpen] = useState(false);
 

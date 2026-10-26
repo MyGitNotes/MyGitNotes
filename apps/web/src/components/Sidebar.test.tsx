@@ -70,6 +70,22 @@ it('paints each status filter dot from the notebook statuses, muting one the not
   expect([dot('todo'), dot('review'), dot('later'), dot('stray')].map(node => [...node!.classList].find(name => name.startsWith('bg-')))).toEqual(['bg-warning', 'bg-status-teal', 'bg-status-pink', 'bg-muted']);
 });
 
+it.each([['zh-TW', ['審核中', '完成', 'later']], ['en', ['In review', 'done', 'later']]])('lists each status filter by its label in %s and filters by the stored name', (language, labels) => {
+  window.localStorage.setItem('github-notes:language', language);
+  const onChange = vi.fn();
+  const filters = { ...controls({}, onChange), statuses: ['review', 'done', 'later'] };
+  render(
+    <StatusColorProvider statuses={[{ name: 'review', label: { en: 'In review', 'zh-TW': '審核中' } }, 'done', 'later']}>
+      <I18nProvider>
+        <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} />
+      </I18nProvider>
+    </StatusColorProvider>,
+  );
+  expect(['review', 'done', 'later'].map(status => document.querySelector(`[data-status-filter="${status}"] .truncate`)?.textContent)).toEqual(labels);
+  fireEvent.click(document.querySelector('[data-status-filter="review"]')!);
+  expect(onChange).toHaveBeenCalledWith({ status: 'review' });
+});
+
 it('remembers a collapsed section in localStorage for this browser', () => {
   const first = sidebar(controls());
   const status = [...document.querySelectorAll('details.sidebar-filter-section')][1] as HTMLDetailsElement;

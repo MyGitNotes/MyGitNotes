@@ -2,10 +2,12 @@ import { type ReactNode, useId, useRef, useState } from 'react';
 import { Filter, Search, X } from 'lucide-react';
 import type { FilterControls } from '../lib/filter-controls.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { useStatusLabel } from '../lib/status-color.js';
 import './graph-filters.css';
 
 export function GraphFilters({ value, neighbors, notebooks, folders, tags, statuses, onChange, allNotebooks, onAllNotebooksChange, onClear, showOrphans, onToggleOrphans, children, extraCount = 0 }: FilterControls & { showOrphans?: boolean; onToggleOrphans?: () => void; children?: ReactNode; extraCount?: number; }) {
   const { t } = useTranslation();
+  const labelOf = useStatusLabel();
   const [open, setOpen] = useState(false);
   const [optionSearch, setOptionSearch] = useState('');
   const trigger = useRef<HTMLButtonElement>(null);
@@ -20,7 +22,7 @@ export function GraphFilters({ value, neighbors, notebooks, folders, tags, statu
     return notebook && (value.notebookId === 'all' || notebook.id === value.notebookId) ? [{ path: `${notebook.root.replace(/\/$/, '')}/${folder.path}`, label: `${notebook.title} / ${folder.path}` }] : [];
   }).sort((a, b) => a.label.localeCompare(b.label));
   const folderLabel = (path: string) => folderChoices.find(folder => folder.path === path)?.label || path;
-  const chips: { key: string; label: string; remove: () => void; }[] = [...value.folders.map(folder => ({ key: `folder:${folder}`, label: folderLabel(folder), remove: () => onChange({ folders: value.folders.filter(item => item !== folder) }) })), ...value.tags.map(tag => ({ key: `tag:${tag}`, label: `#${tag}`, remove: () => onChange({ tags: value.tags.filter(item => item !== tag) }) })), ...(!value.descendants ? [{ key: 'descendants', label: t('filters.directOnly'), remove: () => onChange({ descendants: true }) }] : []), ...(value.tagMode === 'all' ? [{ key: 'tagMode', label: t('filters.all'), remove: () => onChange({ tagMode: 'any' }) }] : []), ...(value.q ? [{ key: 'q', label: value.q, remove: () => onChange({ q: '' }) }] : []), ...(value.status ? [{ key: 'status', label: value.status, remove: () => onChange({ status: null }) }] : []), ...(value.showHidden ? [{ key: 'hidden', label: t('filters.hidden'), remove: () => onChange({ showHidden: false }) }] : []), ...(neighbors ? [{ key: 'neighbors', label: t('filters.neighbors'), remove: () => onChange({ neighbors: false }) }] : [])];
+  const chips: { key: string; label: string; remove: () => void; }[] = [...value.folders.map(folder => ({ key: `folder:${folder}`, label: folderLabel(folder), remove: () => onChange({ folders: value.folders.filter(item => item !== folder) }) })), ...value.tags.map(tag => ({ key: `tag:${tag}`, label: `#${tag}`, remove: () => onChange({ tags: value.tags.filter(item => item !== tag) }) })), ...(!value.descendants ? [{ key: 'descendants', label: t('filters.directOnly'), remove: () => onChange({ descendants: true }) }] : []), ...(value.tagMode === 'all' ? [{ key: 'tagMode', label: t('filters.all'), remove: () => onChange({ tagMode: 'any' }) }] : []), ...(value.q ? [{ key: 'q', label: value.q, remove: () => onChange({ q: '' }) }] : []), ...(value.status ? [{ key: 'status', label: labelOf(value.status), remove: () => onChange({ status: null }) }] : []), ...(value.showHidden ? [{ key: 'hidden', label: t('filters.hidden'), remove: () => onChange({ showHidden: false }) }] : []), ...(neighbors ? [{ key: 'neighbors', label: t('filters.neighbors'), remove: () => onChange({ neighbors: false }) }] : [])];
   const needle = optionSearch.toLocaleLowerCase();
   const visibleFolders = folderChoices.filter(folder => folder.label.toLocaleLowerCase().includes(needle));
   const visibleTags = [...new Set([...value.tags, ...tags])].filter(tag => tag.toLocaleLowerCase().includes(needle)).sort();
@@ -78,7 +80,7 @@ export function GraphFilters({ value, neighbors, notebooks, folders, tags, statu
               {t('sidebar.statusFilter')}
               <select value={value.status || ''} onChange={event => onChange({ status: event.target.value || null })}>
                 <option value=''>{t('sidebar.allStatuses')}</option>
-                {[...new Set([...(value.status ? [value.status] : []), ...statuses])].map(status => <option key={status} value={status}>{status}</option>)}
+                {[...new Set([...(value.status ? [value.status] : []), ...statuses])].map(status => <option key={status} value={status}>{labelOf(status)}</option>)}
               </select>
             </label>
           </div>

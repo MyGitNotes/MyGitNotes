@@ -3,6 +3,7 @@ import { Plus, X } from 'lucide-react';
 import type { FilterControls } from '../lib/filter-controls.js';
 import { filterChips } from '../lib/filter-chips.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { useStatusLabel } from '../lib/status-color.js';
 import type { RailSectionId } from './SidebarRail.js';
 import './filter-chips.css';
 
@@ -13,7 +14,8 @@ import './filter-chips.css';
  */
 export function FilterChips({ filters, sections, onAdd }: { filters: FilterControls; sections: { id: RailSectionId; label: string; }[]; onAdd: (section: RailSectionId | null) => void; }) {
   const { t } = useTranslation();
-  const chips = filterChips(filters, t);
+  const labelOf = useStatusLabel();
+  const chips = filterChips(filters, t, labelOf);
   const removable = chips.filter(chip => chip.remove).length;
   const add = sections.length > 0
     ? (

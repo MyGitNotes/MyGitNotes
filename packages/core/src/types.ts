@@ -17,8 +17,11 @@ export interface NotebookMetadataField {
 /** The fixed palette a notebook status may take its colour from, by name only. */
 export type StatusColorName = 'green' | 'blue' | 'amber' | 'red' | 'purple' | 'teal' | 'pink' | 'gray';
 
-/** One entry of a notebook's `statuses`: the bare name, or the name with the colour its dot wears. */
-export type NotebookStatus = string | { name: string; color?: StatusColorName; };
+/** What a status is called on screen: one name for every language, or a name per UI language tag (`en`, `zh-TW`). */
+export type StatusLabel = string | Readonly<Record<string, string>>;
+
+/** One entry of a notebook's `statuses`: the bare name, or the name with the colour its dot wears and the label it shows. */
+export type NotebookStatus = string | { name: string; color?: StatusColorName; label?: StatusLabel; };
 
 export interface NotebookConfig {
   id: string;

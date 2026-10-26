@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { setThemeChoice } from '../lib/themes.js';
 import '@testing-library/jest-dom/vitest';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
 import { StatusColorProvider, statusDotClass } from '../lib/status-color.js';
+import { I18nProvider } from '../lib/i18n/index.js';
 
 afterEach(() => {
   cleanup();
+  window.localStorage.removeItem('github-notes:language');
   setThemeChoice({ familyId: 'flexoki', mode: 'system' });
 });
 
@@ -75,4 +77,38 @@ it('shows a hollow dot and the no-status label for a note without a status', () 
 it('is disabled when the list is read-only', () => {
   status({ readOnly: true });
   expect(screen.getByRole('combobox', { name: 'Status for Alpha' })).toBeDisabled();
+});
+
+const inLanguage = (language: string, statuses: Parameters<typeof StatusColorProvider>[0]['statuses'], props: Partial<Parameters<typeof NoteStatusSelect>[0]> = {}) => {
+  window.localStorage.setItem('github-notes:language', language);
+  return render(
+    <I18nProvider>
+      <StatusColorProvider statuses={statuses}>
+        <NoteStatusSelect status='working' statuses={['inbox', 'working', 'review']} readOnly={false} onChange={vi.fn()} label='Status for Alpha' {...props} />
+      </StatusColorProvider>
+    </I18nProvider>,
+  );
+};
+
+it('shows the notebook label for the UI language in the trigger and the menu, and still stores the name', () => {
+  const onChange = vi.fn();
+  const statuses = [{ name: 'working', label: { en: 'In progress', 'zh-TW': '進行中（自訂）' } }, { name: 'review', label: '審核中' }];
+  const view = inLanguage('zh-TW', statuses, { onChange });
+  const trigger = screen.getByRole('combobox', { name: 'Status for Alpha' });
+  expect(trigger).toHaveTextContent('進行中（自訂）');
+  fireEvent.click(trigger);
+  expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['無狀態', '收件匣', '進行中（自訂）', '審核中']);
+  fireEvent.click(screen.getByRole('option', { name: '審核中' }));
+  expect(onChange).toHaveBeenCalledWith('review');
+  view.unmount();
+  inLanguage('en', statuses);
+  expect(screen.getByRole('combobox', { name: 'Status for Alpha' })).toHaveTextContent('In progress');
+});
+
+it('translates the built-in statuses for a notebook without labels and leaves custom ones as written', () => {
+  inLanguage('zh-TW', ['inbox', 'working', 'review'], { status: 'review' });
+  expect(screen.getByRole('combobox', { name: 'Status for Alpha' })).toHaveTextContent('review');
+  cleanup();
+  inLanguage('zh-TW', ['inbox', 'working', 'review'], { status: 'inbox' });
+  expect(screen.getByRole('combobox', { name: 'Status for Alpha' })).toHaveTextContent('收件匣');
 });

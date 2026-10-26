@@ -1,6 +1,7 @@
 import { createContext, type ReactNode, useContext } from 'react';
-import { STATUS_CYCLE, type StatusColor, statusColor } from '@mygitnotes/core/note-status';
+import { STATUS_CYCLE, type StatusColor, statusColor, statusLabel } from '@mygitnotes/core/note-status';
 import { useThemeChoice } from '../app/useTheme.js';
+import { useTranslation } from './i18n/index.js';
 import { PALETTE_FAMILIES, type PaletteMode, type PaletteVariant, STATUS_PALETTE } from './palettes.js';
 import type { NotebookStatus, StatusColorName } from './types.js';
 
@@ -88,4 +89,15 @@ export function useStatusDotClass(): (status: string) => string {
   const statuses = useContext(StatusColorContext);
   const avoid = useStatusAvoidColor();
   return status => statusDotClass(statusColor(status, statuses, avoid));
+}
+
+/**
+ * What a status is called on screen: the label its notebook gives it for the UI language, else the built-in name of a default status,
+ * else the stored name. Every place that shows a status resolves through this; the stored name stays what notes, filters and routes use.
+ * `entries` overrides the statuses being shown, for a view that belongs to one notebook.
+ */
+export function useStatusLabel(entries?: readonly NotebookStatus[]): (status: string) => string {
+  const shown = useContext(StatusColorContext);
+  const { language } = useTranslation();
+  return status => statusLabel(status, entries ?? shown, language);
 }

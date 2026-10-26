@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseWorkspaceConfig, serializeWorkspaceConfig, validateWorkspaceConfig } from '../src/config.js';
-import { isNoteHidden, mergeNotebookStatuses, noteStatusNames, resolveNoteStatuses, STATUS_COLOR_NAMES, STATUS_CYCLE, statusColor, withNoteStatus } from '../src/note-status.js';
+import { isNoteHidden, mergeNotebookStatuses, noteStatusNames, resolveNoteStatuses, STATUS_COLOR_NAMES, STATUS_CYCLE, statusColor, statusLabel, withNoteStatus } from '../src/note-status.js';
 
 const manifest = (statuses?: unknown) => ({ schema_version: 1, workspace: { title: 'Notes', default_notebook: 'personal' }, notebooks: [{ id: 'personal', title: 'Personal', root: 'notes/personal', ...(statuses !== undefined ? { statuses } : {}) }, { id: 'research', title: 'Research', root: 'notes/research' }] });
 
@@ -176,5 +176,70 @@ describe('statusColor', () => {
 
   it('passes the colour to avoid on to the cycled statuses', () => {
     expect(['capture', 'review'].map(status => statusColor(status, mergeNotebookStatuses([{ statuses: ['capture', 'review'] }], 'purple')))).toEqual(['teal', 'pink']);
+  });
+});
+
+describe('notebook status labels', () => {
+  const labelled = [{ name: 'working', color: 'blue', label: { en: 'In progress', 'zh-TW': '進行中' } }, { name: 'review', label: '審核中' }, 'later'];
+
+  it('accepts a label as a string or a map of language to string and keeps it through a round trip', () => {
+    const config = validateWorkspaceConfig(manifest(labelled));
+    expect(config.notebooks[0].statuses).toEqual(labelled);
+    expect(parseWorkspaceConfig(serializeWorkspaceConfig(config)).notebooks[0].statuses).toEqual(labelled);
+    expect(noteStatusNames(config.notebooks[0].statuses)).toEqual(['working', 'review', 'later']);
+  });
+
+  it('parses the YAML form of a label', () => {
+    const config = parseWorkspaceConfig(`schema_version: 1
+workspace: { title: Notes, default_notebook: a }
+notebooks:
+  - id: a
+    title: A
+    root: notes/a
+    statuses:
+      - { name: working, color: blue, label: { en: In progress, zh-TW: 進行中 } }
+      - { name: review, label: 審核中 }
+`);
+    expect(config.notebooks[0].statuses).toEqual([{ name: 'working', color: 'blue', label: { en: 'In progress', 'zh-TW': '進行中' } }, { name: 'review', label: '審核中' }]);
+  });
+
+  it.each([[3], [''], ['  '], [[]], [['x']], [{}], [{ en: '' }], [{ en: 3 }], [{ '': 'x' }], [null]])('rejects the label %j and says what a label is', label => {
+    expect(() => validateWorkspaceConfig(manifest([{ name: 'review', label }]))).toThrow(/status 'review' has an invalid label.*string.*language/);
+  });
+
+  it('still rejects unknown keys, now naming label among the accepted ones', () => {
+    expect(() => validateWorkspaceConfig(manifest([{ name: 'review', title: 'x' }]))).toThrow(/unknown key 'title'; an entry takes only name, color and label/);
+  });
+
+  it('resolves a label for the language, then the primary language, then the built-in label, then the name', () => {
+    expect(statusLabel('working', labelled, 'en')).toBe('In progress');
+    expect(statusLabel('working', labelled, 'zh-TW')).toBe('進行中');
+    expect(statusLabel('working', [{ name: 'working', label: { zh: '進行中' } }], 'zh-TW')).toBe('進行中');
+    expect(statusLabel('working', [{ name: 'working', label: { 'zh-tw': '進行中' } }], 'zh-TW')).toBe('進行中');
+    expect(statusLabel('working', [{ name: 'working', label: { en: 'In progress' } }], 'zh-TW')).toBe('進行中');
+    expect(statusLabel('review', [{ name: 'review', label: { en: 'In review' } }], 'zh-TW')).toBe('review');
+    expect(statusLabel('review', labelled, 'en')).toBe('審核中');
+    expect(statusLabel('later', labelled, 'zh-TW')).toBe('later');
+  });
+
+  it('translates the built-in statuses only when the manifest gives no label', () => {
+    expect(['inbox', 'working', 'done', 'archived'].map(status => statusLabel(status, [], 'zh-TW'))).toEqual(['收件匣', '進行中', '完成', '封存']);
+    expect(['inbox', 'working', 'done', 'archived'].map(status => statusLabel(status, undefined, 'en'))).toEqual(['inbox', 'working', 'done', 'archived']);
+    expect(statusLabel('done', ['inbox', 'done'], 'zh-TW')).toBe('完成');
+    expect(statusLabel('done', [{ name: 'done', label: 'Shipped' }], 'zh-TW')).toBe('Shipped');
+    expect(statusLabel('Done', [], 'zh-TW')).toBe('完成');
+  });
+
+  it('keeps a custom status or an unknown language as its name', () => {
+    expect(statusLabel('capture', [], 'zh-TW')).toBe('capture');
+    expect(statusLabel('done', [], 'fr')).toBe('done');
+    expect(statusLabel('', [], 'zh-TW')).toBe('');
+  });
+
+  it('carries a label through a merge, taking the first notebook that gives one', () => {
+    const merged = mergeNotebookStatuses([{ statuses: ['a', { name: 'b', label: 'B1' }] }, { statuses: [{ name: 'a', color: 'teal', label: 'A2' }, { name: 'b', label: 'B2' }, { name: 'c', label: 'C' }] }]);
+    expect(merged.map(entry => statusLabel(noteStatusNames([entry])[0], merged, 'en'))).toEqual(['A2', 'B1', 'C']);
+    expect(statusColor('a', merged)).toBe('teal');
+    expect(statusLabel('c', mergeNotebookStatuses([{ statuses: ['x', { name: 'c', label: 'C' }] }]), 'en')).toBe('C');
   });
 });

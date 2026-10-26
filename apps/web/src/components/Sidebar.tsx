@@ -12,7 +12,7 @@ import { mergeNotebookFacets, queryNotebookIds } from '../lib/note-facets.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { WorkspaceSidebar } from './WorkspaceChrome.js';
 import { Select } from './Select.js';
-import { useStatusDotClass } from '../lib/status-color.js';
+import { useStatusDotClass, useStatusLabel } from '../lib/status-color.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { filterAndSortTags, getSavedTagSort, saveTagSort, TagSort } from '../lib/tag-list.js';
 import { NavTree, NavTreeRow } from './NavTree.js';
@@ -59,6 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   const { t, language } = useTranslation();
   const { value, statuses, onChange } = filters;
   const dotClass = useStatusDotClass();
+  const labelOf = useStatusLabel();
   const sections = useSidebarSections();
   // The rail's open section is the owner's when it passes one (the list's "+ filter" chip opens it), else the rail's own.
   const [ownRailSection, setOwnRailSection] = useState<RailSectionId | null>(null);
@@ -246,7 +247,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
             <button type='button' key={status} data-status-filter={status} onClick={() => onSelectStatus(isSelected ? null : status)} aria-pressed={isSelected} style={isSelected ? selectedItemStyle : undefined} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition ${isSelected ? 'font-semibold hover:opacity-90' : 'text-muted hover:bg-fg/5 hover:text-fg'}`}>
               <div className='flex items-center gap-2'>
                 <span className={`status-dot ${dotClass(status)}`} aria-hidden='true' />
-                <span className='truncate'>{status}</span>
+                <span className='truncate'>{labelOf(status)}</span>
               </div>
               <span className='text-xs text-muted'>{count ?? '—'}</span>
             </button>

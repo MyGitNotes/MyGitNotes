@@ -71,13 +71,28 @@ Each manifest notebook accepts an optional ordered `statuses` array, for example
 new notes; the order also determines Kanban columns. Update definitions through
 the local Settings manifest editor or the source repository manifest.
 
-An entry is a bare name or `{ name: review, color: purple }`, so
+An entry is a bare name or `{ name: review, color: purple, label: … }`, so
 `statuses: [capture, { name: review, color: purple }, published]` is valid. `color`
 takes a palette name only: `green`, `blue`, `amber`, `red`, `purple`, `teal`, `pink`
 or `gray`, each with a light and a dark value in the theme tokens; any other value,
 an unknown key, or a repeated name fails config validation. The validated config keeps
 each entry as written, so a manifest save writes colors back. Code that needs only the
 vocabulary reads names through `noteStatusNames` / `configuredNoteStatuses`.
+
+`label` is what the status is called on screen; `name` stays the value stored in a
+note's `status:` frontmatter, in filters, routes and commits' trailers. A label is one
+nonblank string, or a map from a UI language tag to a nonblank string
+(`label: { en: In progress, zh-TW: 進行中 }`); anything else fails config validation with
+the shape it expects. `statusLabel(status, statuses, language)` in core resolves it: the
+entry's label for the language (exact tag, then ignoring case, then the primary language
+such as `zh` for `zh-TW`), else the built-in name of a default status (`BUILTIN_STATUS_LABELS`:
+inbox / working / done / archived in `en` and `zh-TW`), else the stored name. Web components
+read it through `useStatusLabel()` (`apps/web/src/lib/status-color.tsx`), which resolves
+against the same `StatusColorProvider` statuses as the dots, and `mergeNotebookStatuses`
+keeps the first label a notebook gives a name. The status select, the frontmatter status
+field, Kanban column titles, the sidebar and graph status filters, the filter chips, the
+graph legend when coloured by status, the bulk status menu, the study stage names and the
+status change a commit message describes all show the label.
 
 Every status dot resolves through `statusColor(status, statuses)` in core
 (`packages/core/src/note-status.ts`). A color the notebook gives wins; then the known

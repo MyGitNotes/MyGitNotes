@@ -7,6 +7,7 @@ import { GitCommit, Minus, Plus, RefreshCw, RotateCcw } from 'lucide-react';
 import type { ChangeRequest, FileChange, GitStatus } from '../lib/types.js';
 import { commitStagedChanges, fetchFileChanges, fetchFileDiff, generateSemanticCommit, manageFileChange, PartialCommitError } from '../lib/api.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { useStatusLabel } from '../lib/status-color.js';
 import { changeKey, groupChanges } from '../lib/file-changes.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { commitMessage, type NoteChangeFacts, polishedCommit, summarizeCommit } from '../lib/commit-summary.js';
@@ -34,6 +35,7 @@ export const CommitModal = (props: Props) => props.isOpen ? <Changes {...props} 
 
 function Changes({ request, writable, gitStatus, remoteChanges, getPreview, describeChanges, restoreFile, commitFiles, repositoryHeading, onChanged, onCommitted, onClose }: Props) {
   const { t } = useTranslation();
+  const labelOf = useStatusLabel();
   const remote = Boolean(commitFiles);
   /** A remote row is a draft held in this browser, so discarding it needs neither write access nor a committable state. */
   const canRestore = useCallback((file: FileChange) => remote || Boolean(writable && file.available), [remote, writable]);
@@ -67,7 +69,7 @@ function Changes({ request, writable, gitStatus, remoteChanges, getPreview, desc
   const staged = changes.filter(file => selectionMode ? included.includes(changeKey(file)) : file.staged);
   // A remote commit is described from its drafts and follows the selection until the visitor writes their own subject.
   const described = describeChanges && staged.length ? describeChanges(staged) : undefined;
-  const summary = described ? summarizeCommit(described.notes, described.documents, t) : undefined;
+  const summary = described ? summarizeCommit(described.notes, described.documents, t, labelOf) : undefined;
   const message = typed ?? summary?.subject ?? '';
   const setMessage = setTyped;
   // A polished body describes the notes it was written for, so a changed selection goes back to the generated one.

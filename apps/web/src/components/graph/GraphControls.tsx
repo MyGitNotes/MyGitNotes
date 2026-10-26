@@ -2,6 +2,7 @@ import './graph-controls.css';
 import type { ReactNode, RefObject } from 'react';
 import { Select } from '../Select.js';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { useStatusLabel } from '../../lib/status-color.js';
 import { GRAPH_COLOR_MODES, GRAPH_LABEL_MODES, GRAPH_PALETTES, type GraphAppearance } from '../../lib/graph-colors.js';
 
 interface GraphControlsProps {
@@ -15,6 +16,8 @@ interface GraphControlsProps {
 
 export function GraphControls({ controlsRef, filterPanel, appearance, onAppearanceChange, visibleColorGroups, appearanceSaveError }: GraphControlsProps) {
   const { t } = useTranslation();
+  const statusLabelOf = useStatusLabel();
+  const legendLabel = (label: string) => appearance.mode === 'status' && label ? statusLabelOf(label) : label;
   return (
     <div ref={controlsRef} className='graph-controls'>
       <div className='graph-filter-slot'>{filterPanel}</div>
@@ -32,7 +35,7 @@ export function GraphControls({ controlsRef, filterPanel, appearance, onAppearan
             {visibleColorGroups.map(group => (
               <li key={group.key} className='flex items-center gap-2'>
                 <span className='h-2.5 w-2.5 shrink-0 rounded-full' style={{ backgroundColor: group.color }} />
-                <span className='break-words text-muted'>{group.label || t('editor.noStatus')}</span>
+                <span className='break-words text-muted'>{legendLabel(group.label) || t('editor.noStatus')}</span>
               </li>
             ))}
           </ul>

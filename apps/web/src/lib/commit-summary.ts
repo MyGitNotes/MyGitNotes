@@ -23,6 +23,8 @@ export interface NoteChangeFacts {
 }
 
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
+/** What a status is called in the visitor's language; the default shows the stored name. */
+type StatusLabelOf = (status: string) => string;
 
 const HEADING = /^#{1,6}\s+(.+?)\s*#*\s*$/;
 const TASK = /^\s*[-*+]\s+\[([ xX])\]\s+(.+?)\s*$/;
@@ -74,12 +76,12 @@ export function noteChangeFacts(note: NoteItem, base: NoteItem | null, deleted =
 }
 
 /** The phrases that describe one note's change, most telling first. */
-export function changePhrases(facts: NoteChangeFacts, t: Translate): string[] {
+export function changePhrases(facts: NoteChangeFacts, t: Translate, statusLabel: StatusLabelOf = status => status): string[] {
   if (facts.added) return [t('commitSummary.created')];
   if (facts.deleted) return [t('commitSummary.deleted')];
   const phrases: string[] = [];
   if (facts.titleFrom !== undefined) phrases.push(t('commitSummary.renamed', { from: facts.titleFrom }));
-  if (facts.statusFrom !== undefined || facts.statusTo !== undefined) phrases.push(t('commitSummary.status', { from: facts.statusFrom || '—', to: facts.statusTo || '—' }));
+  if (facts.statusFrom !== undefined || facts.statusTo !== undefined) phrases.push(t('commitSummary.status', { from: facts.statusFrom ? statusLabel(facts.statusFrom) : '—', to: facts.statusTo ? statusLabel(facts.statusTo) : '—' }));
   if (facts.tasksDone) phrases.push(t('commitSummary.tasksDone', { count: facts.tasksDone }));
   if (facts.tasksReopened) phrases.push(t('commitSummary.tasksReopened', { count: facts.tasksReopened }));
   if (facts.tasksAdded) phrases.push(t('commitSummary.tasksAdded', { count: facts.tasksAdded }));
@@ -128,12 +130,12 @@ export function polishedCommit(polished: string, notes: NoteChangeFacts[], docum
 }
 
 /** Describes a commit of note drafts and workspace documents in the visitor's language. */
-export function summarizeCommit(notes: NoteChangeFacts[], documents: string[], t: Translate): CommitSummary {
+export function summarizeCommit(notes: NoteChangeFacts[], documents: string[], t: Translate, statusLabel: StatusLabelOf = status => status): CommitSummary {
   const fileName = (path: string) => path.split('/').pop() || path;
   let subject: string;
   if (notes.length === 1 && !documents.length) {
     const [facts] = notes;
-    subject = facts.added ? t('commitSummary.subjectCreated', { title: facts.title }) : `${facts.title}${t('commitSummary.colon')}${changePhrases(facts, t).slice(0, 2).join(separator(t))}`;
+    subject = facts.added ? t('commitSummary.subjectCreated', { title: facts.title }) : `${facts.title}${t('commitSummary.colon')}${changePhrases(facts, t, statusLabel).slice(0, 2).join(separator(t))}`;
   } else if (!notes.length && documents.length === 1) subject = t('commitSummary.subjectDocument', { name: fileName(documents[0]) });
   else {
     const created = notes.filter(facts => facts.added).length;
@@ -141,10 +143,10 @@ export function summarizeCommit(notes: NoteChangeFacts[], documents: string[], t
     const listed = names.slice(0, 3).join(separator(t)) + (names.length > 3 ? t('commitSummary.andMore', { count: names.length - 3 }) : '');
     subject = created === notes.length && !documents.length ? t('commitSummary.subjectCreatedMany', { count: created, names: listed }) : t('commitSummary.subjectMany', { count: names.length, names: listed });
   }
-  const lines = [...notes.map(facts => `- ${facts.title}${t('commitSummary.colon')}${changePhrases(facts, t).join(separator(t))}`), ...documents.map(path => `- ${fileName(path)}${t('commitSummary.colon')}${t('commitSummary.documentUpdated')}`)];
+  const lines = [...notes.map(facts => `- ${facts.title}${t('commitSummary.colon')}${changePhrases(facts, t, statusLabel).join(separator(t))}`), ...documents.map(path => `- ${fileName(path)}${t('commitSummary.colon')}${t('commitSummary.documentUpdated')}`)];
   const trailers = commitTrailers(notes, documents).join('\n');
   // One change, whole in its subject: a body bullet would only repeat it. A change whose phrases the subject cut off keeps its body.
-  const repeatsSubject = lines.length === 1 && subject.length <= SUBJECT_LIMIT && (!notes.length || notes[0].added || changePhrases(notes[0], t).length <= 2);
+  const repeatsSubject = lines.length === 1 && subject.length <= SUBJECT_LIMIT && (!notes.length || notes[0].added || changePhrases(notes[0], t, statusLabel).length <= 2);
   return { subject: clip(subject), details: repeatsSubject ? trailers : `${lines.join('\n')}\n\n${trailers}` };
 }
 

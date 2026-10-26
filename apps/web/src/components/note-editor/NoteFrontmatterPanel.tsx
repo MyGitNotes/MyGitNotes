@@ -3,6 +3,7 @@ import { isNoteHidden, withNoteStatus } from '@mygitnotes/core/note-status';
 import { Select } from '../Select.js';
 import { NotebookMetadataField } from '../../lib/types.js';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { useStatusLabel } from '../../lib/status-color.js';
 import { noteStem } from '../../lib/note-move.js';
 import { cleanTag, noteTags, suggestTags, withoutTag, withTag } from './tag-edit.js';
 import { AddMetadataField, FrontmatterHeader, FrontmatterYaml, MetadataFieldList, metadataFieldSpecs } from './FrontmatterParts.js';
@@ -77,6 +78,7 @@ function TitleField({ metadata, setMetadata, onRename }: Pick<NoteFrontmatterPan
 /** A note's frontmatter: title, status, tags with autocomplete, custom metadata fields, and a raw-YAML view; `children` follow it. */
 export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadataFields, availableTags, locked, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, onRename, children }: NoteFrontmatterPanelProps) {
   const { t } = useTranslation();
+  const labelOf = useStatusLabel();
 
   const customFields = useMemo(() => metadataFieldSpecs(metadata, RESERVED_METADATA_KEYS, metadataFields), [metadataFields, metadata]);
 
@@ -109,7 +111,7 @@ export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadata
             <TitleField metadata={metadata} setMetadata={setMetadata} onRename={onRename} />
             <div>
               <label className='block text-muted font-semibold mb-1'>{t('editor.status')}</label>
-              <Select aria-label={t('editor.status')} disabled={locked} value={String(metadata.status || '')} onValueChange={value => setMetadata(withNoteStatus(metadata, value))} options={Array.from(new Set(['', ...statuses, String(metadata.status || '')])).map(value => ({ value, label: value || t('editor.noStatus') }))} className={`w-full ${metadata.status ? '' : 'status-empty'}`} />
+              <Select aria-label={t('editor.status')} disabled={locked} value={String(metadata.status || '')} onValueChange={value => setMetadata(withNoteStatus(metadata, value))} options={Array.from(new Set(['', ...statuses, String(metadata.status || '')])).map(value => ({ value, label: value ? labelOf(value) : t('editor.noStatus') }))} className={`w-full ${metadata.status ? '' : 'status-empty'}`} />
               <label className='flex items-center gap-2 min-h-11 cursor-pointer'>
                 <input type='checkbox' aria-label={t('editor.hideNote')} checked={isNoteHidden(metadata)} onChange={event => setMetadata({ ...metadata, hiden: event.target.checked })} className='w-4 h-4 accent-primary' />
                 {t('editor.hideNote')}

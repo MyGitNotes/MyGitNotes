@@ -7,6 +7,7 @@ import '@testing-library/jest-dom/vitest';
 import { setNoteQueryScope } from '../lib/use-note-queries.js';
 import { KanbanView } from './KanbanView.js';
 import { StatusColorProvider } from '../lib/status-color.js';
+import { I18nProvider } from '../lib/i18n/index.js';
 import { NOTE_DRAG_TYPE } from '../lib/note-drag.js';
 
 const REVISION = 'd'.repeat(40);
@@ -38,6 +39,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  window.localStorage.removeItem('github-notes:language');
   vi.unstubAllGlobals();
 });
 
@@ -62,6 +64,20 @@ it('paints each column dot from the notebook statuses', async () => {
   await waitFor(() => expect(screen.getByText('notes/life/loose.md')).toBeInTheDocument());
   const dot = (status: string) => document.querySelector(`[data-status-column="${status}"] .status-dot`);
   expect(['inbox', 'doing', 'later', 'stray'].map(status => [...dot(status)!.classList].find(name => name.startsWith('bg-')))).toEqual(['bg-primary', 'bg-danger', 'bg-status-purple', 'bg-muted']);
+});
+
+it.each([['zh-TW', ['收件匣', '審核中', '進行中', 'later']], ['en', ['inbox', 'In review', 'working', 'later']]])('titles each column with the notebook label for %s and keeps the stored name as its id', async (language, titles) => {
+  window.localStorage.setItem('github-notes:language', language);
+  render(
+    <I18nProvider>
+      <StatusColorProvider statuses={['inbox', { name: 'review', label: { en: 'In review', 'zh-TW': '審核中' } }, 'working', 'later']}>
+        <KanbanView query={{ notebookId: 'life' }} statuses={['inbox', 'review', 'working', 'later']} onOpenNote={() => {}} onUpdateNoteStatus={() => {}} onDeleteNote={() => {}} onNewNoteWithStatus={() => {}} />
+      </StatusColorProvider>
+    </I18nProvider>,
+    { wrapper },
+  );
+  await waitFor(() => expect(screen.getByText('notes/life/loose.md')).toBeInTheDocument());
+  expect(['inbox', 'review', 'working', 'later'].map(id => document.querySelector(`[data-status-column="${id}"] h3`)?.textContent)).toEqual(titles);
 });
 
 it('counts each column and the board from the server totals', async () => {

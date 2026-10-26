@@ -1,7 +1,7 @@
 import YAML from 'yaml';
 import path from 'node:path';
 import fs from 'node:fs';
-import { NotebookConfig, NotebookMetadataField, NotebookStatus, NoteTemplate, StatusColorName, WorkspaceConfig } from './types.js';
+import { NotebookConfig, NotebookMetadataField, NotebookStatus, NoteTemplate, StatusColorName, StatusLabel, WorkspaceConfig } from './types.js';
 import { STATUS_COLOR_NAMES } from './note-status.js';
 import { normalizePreferences } from './workspace-preferences.js';
 import { NOTEBOOK_ID_PATTERN } from './notebook-key.js';
@@ -47,21 +47,33 @@ function obsoleteFiles(files: unknown): Pick<WorkspaceConfig, 'files'> {
 
 const isStatusName = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim()) && value === value.trim();
 
-/** Validates a notebook's `statuses`: names, or `{ name, color }` with a palette colour name; entries keep the form they were written in. */
+const isLabelText = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim());
+
+/** A label is one nonblank string, or a nonempty map from a language tag to a nonblank string. */
+function isStatusLabel(value: unknown): value is StatusLabel {
+  if (isLabelText(value)) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length > 0 && entries.every(([language, text]) => Boolean(language.trim()) && isLabelText(text));
+}
+
+/** Validates a notebook's `statuses`: names, or `{ name, color, label }` with a palette colour name and a display label; entries keep the form they were written in. */
 function validateStatuses(notebookId: string, statuses: unknown): NotebookStatus[] {
-  const shape = `Notebook '${notebookId}' statuses must be an array of distinct names (nonblank strings without surrounding whitespace) or objects with a name and an optional color`;
+  const shape = `Notebook '${notebookId}' statuses must be an array of distinct names (nonblank strings without surrounding whitespace) or objects with a name, an optional color and an optional label`;
   if (!Array.isArray(statuses)) throw new ConfigValidationError(shape);
   const validated = statuses.map((entry): NotebookStatus => {
     if (isStatusName(entry)) return entry;
     if (!entry || typeof entry !== 'object' || Array.isArray(entry) || !isStatusName((entry as { name?: unknown; }).name)) throw new ConfigValidationError(shape);
-    const { name, color, ...rest } = entry as { name: string; color?: unknown; };
+    const { name, color, label, ...rest } = entry as { name: string; color?: unknown; label?: unknown; };
     const unknownKey = Object.keys(rest)[0];
-    if (unknownKey !== undefined) throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an unknown key '${unknownKey}'; an entry takes only name and color`);
-    if (!('color' in entry)) return { name };
-    if (typeof color !== 'string' || !(STATUS_COLOR_NAMES as readonly string[]).includes(color)) {
+    if (unknownKey !== undefined) throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an unknown key '${unknownKey}'; an entry takes only name, color and label`);
+    if ('label' in entry && !isStatusLabel(label)) {
+      throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an invalid label ${JSON.stringify(label)}; use a nonblank string, or a map of language to nonblank string such as { en: In progress, zh-TW: 進行中 }`);
+    }
+    if ('color' in entry && (typeof color !== 'string' || !(STATUS_COLOR_NAMES as readonly string[]).includes(color))) {
       throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an unknown color ${JSON.stringify(color)}; use one of ${STATUS_COLOR_NAMES.join(', ')}`);
     }
-    return { name, color: color as StatusColorName };
+    return { name, ...('color' in entry ? { color: color as StatusColorName } : {}), ...('label' in entry ? { label: label as StatusLabel } : {}) };
   });
   if (new Set(validated.map(entry => typeof entry === 'string' ? entry : entry.name)).size !== validated.length) throw new ConfigValidationError(shape);
   return validated;

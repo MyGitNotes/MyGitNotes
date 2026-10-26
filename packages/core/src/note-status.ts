@@ -1,4 +1,4 @@
-import type { NotebookConfig, NotebookStatus, NoteMetadata, StatusColorName } from './types.js';
+import type { NotebookConfig, NotebookStatus, NoteMetadata, StatusColorName, StatusLabel } from './types.js';
 
 export const DEFAULT_NOTE_STATUSES: readonly string[] = ['inbox', 'working', 'done', 'archived'];
 
@@ -45,6 +45,35 @@ const explicitColor = (entry: NotebookStatus) => typeof entry === 'string' ? und
 
 const normalizeStatus = (status: string) => status.trim().toLowerCase();
 
+const explicitLabel = (entry: NotebookStatus) => typeof entry === 'string' ? undefined : entry.label;
+
+/** The names the four default statuses go by in each UI language, used when a manifest gives a status no label. */
+export const BUILTIN_STATUS_LABELS: Readonly<Record<string, Readonly<Record<string, string>>>> = { inbox: { en: 'inbox', 'zh-TW': '收件匣' }, working: { en: 'working', 'zh-TW': '進行中' }, done: { en: 'done', 'zh-TW': '完成' }, archived: { en: 'archived', 'zh-TW': '封存' } };
+
+/** The text a label gives one UI language: the exact tag, the tag ignoring case, then its primary language (`zh` for `zh-TW`). */
+function labelFor(label: StatusLabel, language: string): string | undefined {
+  if (typeof label === 'string') return label;
+  const lower = language.toLowerCase();
+  const keys = Object.keys(label);
+  const key = keys.find(candidate => candidate === language) ?? keys.find(candidate => candidate.toLowerCase() === lower) ?? keys.find(candidate => candidate.toLowerCase() === lower.split('-')[0]);
+  return key === undefined ? undefined : label[key];
+}
+
+/**
+ * What a status is called on screen in a UI language. The notebook's own label for the status wins; without one for this
+ * language a default status uses its built-in name, and anything else shows its stored name, which stays what a note's
+ * `status:` holds. The status is matched to a list entry the way its colour is: exactly, then ignoring case.
+ */
+export function statusLabel(status: string, notebookStatuses: readonly NotebookStatus[] = [], language = 'en'): string {
+  const entries = notebookStatuses;
+  const entry = entries.find(candidate => noteStatusName(candidate) === status) ?? entries.find(candidate => normalizeStatus(noteStatusName(candidate)) === normalizeStatus(status));
+  const given = entry && explicitLabel(entry);
+  const own = given === undefined ? undefined : labelFor(given, language);
+  if (own !== undefined) return own;
+  const builtin = isKnownStatus(status) && Object.hasOwn(BUILTIN_STATUS_LABELS, normalizeStatus(status)) ? labelFor(BUILTIN_STATUS_LABELS[normalizeStatus(status)], language) : undefined;
+  return builtin ?? status;
+}
+
 const isKnownStatus = (status: string) => Object.hasOwn(KNOWN_STATUS_COLORS, normalizeStatus(status));
 
 /** The name of one `statuses` entry, whichever form it was written in. */
@@ -89,22 +118,29 @@ export function statusColor(status: string, notebookStatuses: readonly NotebookS
 /**
  * The statuses of several notebooks as one list. Each custom status without a colour is resolved against its own
  * notebook's list, so it wears the same colour whichever notebooks are listed and in what order. A name keeps the
- * colour the first notebook defining it gives, except that a colour written in a manifest beats a cycled one; a notebook
- * without statuses contributes the defaults, which are all known names.
+ * colour the first notebook defining it gives, except that a colour written in a manifest beats a cycled one, and takes the
+ * label of the first notebook that gives it one; a notebook without statuses contributes the defaults, which are all known names.
  */
 export function mergeNotebookStatuses(notebooks: readonly Pick<NotebookConfig, 'statuses'>[], avoid?: StatusColorName): NotebookStatus[] {
   const merged = new Map<string, { entry: NotebookStatus; written: boolean; }>();
+  const labels = new Map<string, StatusLabel>();
   for (const notebook of notebooks) {
     const entries = configuredNotebookStatuses(notebook);
     for (const entry of entries) {
       const name = noteStatusName(entry);
       const written = explicitColor(entry) !== undefined;
+      const label = explicitLabel(entry);
+      if (label !== undefined && !labels.has(name)) labels.set(name, label);
       const current = merged.get(name);
       if (current && (current.written || !written)) continue;
       merged.set(name, { entry: written || isKnownStatus(name) ? entry : { name, color: statusColor(name, entries, avoid) as StatusColorName }, written });
     }
   }
-  return [...merged.values()].map(({ entry }) => entry);
+  return [...merged.entries()].map(([name, { entry }]) => {
+    const label = labels.get(name);
+    if (label === undefined || explicitLabel(entry) === label) return entry;
+    return { ...(typeof entry === 'string' ? { name } : entry), label };
+  });
 }
 
 /** Ordered notebook choices followed by observed extensions; metadata stays unchanged. */

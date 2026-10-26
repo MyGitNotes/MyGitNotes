@@ -3,6 +3,7 @@ import { FolderInput, X } from 'lucide-react';
 import { Button } from './Button.js';
 import { Select } from './Select.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { useStatusLabel } from '../lib/status-color.js';
 
 interface BulkActionsToolbarProps {
   count: number;
@@ -25,6 +26,7 @@ interface BulkActionsToolbarProps {
  * multi-select convention. */
 export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({ count, statuses, availableTags, busy, readOnly, canMove, onSetStatus, onAddTag, onRemoveTag, onMove, onClear }) => {
   const { t } = useTranslation();
+  const labelOf = useStatusLabel();
   const [tagInput, setTagInput] = useState('');
 
   const submitTag = (action: (tag: string) => void) => {
@@ -39,7 +41,7 @@ export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({ count, s
       <span className='font-semibold text-fg shrink-0'>{t('bulk.selectedCount', { count })}</span>
       {!readOnly && (
         <>
-          <Select aria-label={t('bulk.setStatus')} value='' disabled={busy} onValueChange={onSetStatus} options={[{ value: '', label: t('bulk.setStatus') }, ...statuses.map(status => ({ value: status, label: status }))]} className='w-full sm:w-40 min-h-7 px-2 py-1 text-xs' />
+          <Select aria-label={t('bulk.setStatus')} value='' disabled={busy} onValueChange={onSetStatus} options={[{ value: '', label: t('bulk.setStatus') }, ...statuses.map(status => ({ value: status, label: labelOf(status) }))]} className='w-full sm:w-40 min-h-7 px-2 py-1 text-xs' />
           <div className='flex w-full flex-wrap items-center gap-1 sm:w-auto'>
             <input
               type='text'

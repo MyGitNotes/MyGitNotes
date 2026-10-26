@@ -64,6 +64,8 @@ MCP 的 `get_system_prompt`、`list_skills` 與 `invoke_skill` 照舊從目標�
 舊版 `.github-notes-screen.yaml`（Screen Page）已由 `pnpm migrate-workspace` 轉成合輯檔並刪除。
 本機草稿只是尚未儲存的恢復副本，不代表合輯已同步。
 
+筆記本可以替每個狀態設定顯示名稱（`label`），依介面語言顯示，沒有就退回狀態的 `name`。筆記 frontmatter 的 `status:` 只存 `name`，不受介面語言影響；預設的四個狀態沒有 label 時顯示內建的英文與繁體中文名稱。
+
 ## 專案任務
 
 任務行、負責人、優先順序與里程碑都是筆記裡的純文字，沒有額外儲存；沒用到的筆記不受影響，勾選任務只增減 `✅`，其他標記原樣保留。解析在 core（`@mygitnotes/core/task-tokens`、`note-agenda`），呈現在 web 的待辦事項、甘特圖與行事曆。

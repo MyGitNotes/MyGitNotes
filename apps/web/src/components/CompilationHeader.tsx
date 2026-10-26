@@ -4,6 +4,7 @@ import type { CompilationRow, CompilationSort } from '@mygitnotes/core/compilati
 import { type NotebookFacets, noteQueryStatuses } from '@mygitnotes/core/note-query';
 import type { NotebookConfig } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { useStatusLabel } from '../lib/status-color.js';
 import type { ScrollDirection } from '../lib/use-hold-scroll.js';
 import { Button } from './Button.js';
 import { Select } from './Select.js';
@@ -42,6 +43,7 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
   const [queryOpen, setQueryOpen] = useState(false);
   const query = row.study || { filter: 'all' as const, dueFirst: false };
   const filtered = Boolean(query.status);
+  const labelOf = useStatusLabel(notebooks.find(notebook => notebook.id === row.notebookId)?.statuses);
   const statuses = noteQueryStatuses(notebooks, row.notebookId, Object.keys(facets?.[row.notebookId]?.statuses || {}));
   const source = row.kind === 'dynamic' ? row.source.kind === 'tag' ? `#${row.source.tag}` : row.source.path : '';
   return (
@@ -79,7 +81,7 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
               {t('study.status')}
               <select className='ui-control' disabled={disabled} value={query.status || ''} onChange={event => onStudyChange?.({ ...query, status: event.target.value || undefined })}>
                 <option value=''>{t('study.filter.all')}</option>
-                {statuses.map(status => <option key={status} value={status}>{status}</option>)}
+                {statuses.map(status => <option key={status} value={status}>{labelOf(status)}</option>)}
               </select>
             </label>
             {row.kind === 'dynamic' && (
