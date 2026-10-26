@@ -12,6 +12,8 @@ export const FOCUS_MAX_DEPTH = 4;
 export const FOCUS_MAX_TABS = 100;
 /** The version the Focus file is read into; version 1 (a division and a flat list of panes) is migrated on read. */
 const FOCUS_VERSION = 2;
+/** The stored version of a Focus file in which a pane or split carries a `size`; an older build refuses it as newer than it knows. */
+const FOCUS_SIZED_VERSION = 3;
 
 const id = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
 /* eslint-disable no-control-regex -- Reject control characters in persisted paths, identifiers or filenames. */
@@ -159,6 +161,25 @@ function checkFocusPage(page: { focuses: { id: string; notebookId: string; name:
 }
 export const FocusPageSchema = z.object({ version: z.literal(FOCUS_VERSION), focuses: z.array(FocusSchema).max(FOCUS_MAX_FOCUSES) }).strict().superRefine(checkFocusPage) as z.ZodType<FocusPage, z.ZodTypeDef, unknown>;
 
+/** Whether any node of the layout carries a size. */
+function hasSize(root: FocusNode): boolean {
+  const stack = [root];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    if (node.size !== undefined) return true;
+    if (node.kind === 'split') stack.push(...node.children);
+  }
+  return false;
+}
+const hasSizedNode = (page: { focuses: FocusLayout[]; }): boolean => page.focuses.some(focus => hasSize(focus.root));
+/** Version 2 as stored: sizes belong to version 3, so a version 2 file that carries one is invalid. */
+const StoredPageSchema = FocusPageSchema.refine(page => !hasSizedNode(page), 'A Focus size needs version 3');
+/** Version 3 as stored: the same page with sizes, kept in memory as version 2. */
+const SizedPageSchema = z.object({ version: z.literal(FOCUS_SIZED_VERSION), focuses: z.array(FocusSchema).max(FOCUS_MAX_FOCUSES) }).strict().superRefine(checkFocusPage);
+interface SizedFocusPage {
+  version: 3;
+  focuses: Focus[];
+}
+
 export class FocusError extends Error {
   constructor(public readonly code: 'tab-limit' | 'focus-limit' | 'duplicate-name' | 'unknown-focus' | 'invalid-pane' | 'pane-limit' | 'depth-limit', message: string) {
     super(message);
@@ -224,6 +245,7 @@ function skeleton(node: FocusNode): string {
 
 /** The division whose tree (ids included) `layout` is, if any. A layout that is none can only be stored as version 2. */
 export function legacyDivisionOf(layout: FocusLayout): FocusDivision | undefined {
+  if (hasSize(layout.root)) return undefined;
   const panes = focusPanes(layout);
   const shape = skeleton(layout.root);
   return FOCUS_DIVISIONS.find(division => PANE_COUNTS[division] === panes.length && skeleton(legacyFocusTree(division, panes.map(pane => pane.tabs))) === shape);
@@ -274,17 +296,19 @@ function withoutLaneTabs<T>(value: T): T {
  */
 export function readFocusPage(value: unknown): FocusPage {
   const version = (value as { version?: unknown; } | null)?.version;
-  if (typeof version === 'number' && version > FOCUS_VERSION) throw new NewerVersionError('Focus');
-  if (version !== 1) return FocusPageSchema.parse(value);
+  if (typeof version === 'number' && version > FOCUS_SIZED_VERSION) throw new NewerVersionError('Focus');
+  if (version === FOCUS_SIZED_VERSION) return { ...SizedPageSchema.parse(value), version: FOCUS_VERSION };
+  if (version !== 1) return StoredPageSchema.parse(value) as FocusPage;
   const legacy = LegacyFocusPageSchema.parse(withoutLaneTabs(value));
   return FocusPageSchema.parse({ version: FOCUS_VERSION, focuses: legacy.focuses.map(({ division, panes, ...focus }) => ({ ...focus, root: legacyTree({ division, panes }) })) });
 }
 
 /**
  * What is stored for `page`. While every Focus is a division the file stays version 1, which a deployment that only knows version 1 still reads;
- * one Focus in another shape makes the whole file version 2.
+ * one Focus in another shape makes the whole file version 2, and one with a size makes it version 3.
  */
-export function writeFocusPage(page: FocusPage): FocusPage | LegacyFocusPage {
+export function writeFocusPage(page: FocusPage): FocusPage | SizedFocusPage | LegacyFocusPage {
+  if (hasSizedNode(page)) return { version: FOCUS_SIZED_VERSION, focuses: page.focuses };
   const divisions = page.focuses.map(legacyDivisionOf);
   if (!divisions.every((division): division is FocusDivision => division !== undefined)) return page;
   return { version: 1, focuses: page.focuses.map((focus, index) => ({ id: focus.id, notebookId: focus.notebookId, name: focus.name, division: divisions[index], panes: focusPanes(focus).map(pane => ({ tabs: pane.tabs })) })) };
@@ -592,6 +616,6 @@ export function ownFocusPage(page: FocusPage, notebooks: readonly { id: string; 
 }
 
 /** The Focus file as stored, in any version it is read from: every Focus names its notebook by local id. */
-const FocusFileSchema = z.union([LegacyFocusPageSchema, FocusPageSchema]).refine(page => page.focuses.every(focus => focus.notebookId.length <= NOTEBOOK_ID_MAX_LENGTH && !focus.notebookId.includes(KEY_SEPARATOR)), 'A stored Focus names its notebook by local id, never by key.');
+const FocusFileSchema = z.union([LegacyFocusPageSchema, StoredPageSchema, SizedPageSchema]).refine(page => page.focuses.every(focus => focus.notebookId.length <= NOTEBOOK_ID_MAX_LENGTH && !focus.notebookId.includes(KEY_SEPARATOR)), 'A stored Focus names its notebook by local id, never by key.');
 
 export const FOCUS_DOCUMENT: WorkspaceDocument<FocusPage> = { file: FOCUS_PAGE_FILE, label: 'Focus', maxBytes: FOCUS_MAX_BYTES, scopes: ['focus', 'folders', 'files'], schema: FocusPageSchema, fileSchema: FocusFileSchema, empty: emptyFocusPage, read: readFocusPage, write: writeFocusPage, relocate: (page, notebook, move) => relocateFocusPaths(page, notebook.id, move), own: ownFocusPage, mapNotebookIds: (page, map) => ({ ...page, focuses: page.focuses.map(focus => ({ ...focus, notebookId: map(focus.notebookId) })) }) };

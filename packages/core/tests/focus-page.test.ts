@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { closePane, closeTab, displayFocus, displaySizes, emptyFocusLayout, findFocusPane, findFocusTab, findFocusTabInPane, FOCUS_DIVISIONS, FOCUS_DOCUMENT, FOCUS_MAX_DEPTH, FOCUS_MAX_PANES, FOCUS_MAX_TABS, FocusError, type FocusLayout, FocusLayoutSchema, type FocusNode, FocusPageSchema, focusPaneIndex, focusPanes, FocusSchema, focusTabCount, focusTabKey, foreignFocusTab, legacyDivisionOf, legacyFocusTree, mergePanes, moveTab, moveTabToSplit, nameFocus, nextFocusId, notebookFocuses, ownFocusPage, placeTab, placeTabs, pruneFocus, readFocusLayout, readFocusPage, relocateFocusPaths, removeFocus, renameFocus, splitPane, updateFocus, writeFocusPage } from '../src/focus-page.js';
 import { NewerVersionError } from '../src/newer-version-error.js';
 import { parse as parseYaml } from 'yaml';
-import { readWorkspaceDocument, validateWorkspaceDocument, writeWorkspaceDocument } from '../src/workspace-documents.js';
+import { readWorkspaceDocument, relocateWorkspaceDocuments, validateWorkspaceDocument, writeWorkspaceDocument } from '../src/workspace-documents.js';
 
 const note = (path: string) => ({ kind: 'note' as const, path });
 /** A tab to a compilation is a path tab like any note. */
@@ -145,9 +145,9 @@ describe('reading version 1', () => {
     const page = readFocusPage({ version: 1, focuses: [{ id: 'f1', notebookId: 'nb1', name: 'Work', division: 'single', panes: [{ tabs: [note('a.md'), note('a.md')] }] }] });
     expect(tabsOf(page.focuses[0])).toEqual([[note('a.md')]]);
   });
-  it('fails with the newer-version error for a version above 2', () => {
-    expect(() => readFocusPage({ version: 3, focuses: [] })).toThrow(NewerVersionError);
-    expect(() => readFocusPage({ version: 3, focuses: [] })).toThrow('saved by a newer MyGitNotes');
+  it('fails with the newer-version error for a version above 3', () => {
+    expect(() => readFocusPage({ version: 4, focuses: [] })).toThrow(NewerVersionError);
+    expect(() => readFocusPage({ version: 4, focuses: [] })).toThrow('saved by a newer MyGitNotes');
     expect(() => readFocusPage({ version: 0, focuses: [] })).toThrow(/./);
   });
   it('reads a scratch layout stored as a division or as a tree', () => {
@@ -191,7 +191,7 @@ describe('writing', () => {
     const yaml = (value: unknown) => JSON.stringify(value);
     expect(() => validateWorkspaceDocument(FOCUS_DOCUMENT, yaml(v1Page))).not.toThrow();
     expect(() => validateWorkspaceDocument(FOCUS_DOCUMENT, yaml({ version: 2, focuses: [focus()] }))).not.toThrow();
-    expect(() => validateWorkspaceDocument(FOCUS_DOCUMENT, yaml({ version: 3, focuses: [] }))).toThrow();
+    expect(() => validateWorkspaceDocument(FOCUS_DOCUMENT, yaml({ version: 4, focuses: [] }))).toThrow();
     expect(() => validateWorkspaceDocument(FOCUS_DOCUMENT, yaml({ version: 2, focuses: [focus({ notebookId: 'repo~nb1' })] }))).toThrow();
   });
 });
@@ -574,3 +574,39 @@ describe('pane sizes', () => {
   });
 });
 
+
+describe('sizes in the stored file', () => {
+  const sized = (size: number, id: string, ...tabs: Tab[]) => ({ ...leaf(id, ...tabs), size });
+  const withSizes = (version: number) => ({ version, focuses: [focus({ root: split('columns-2', 'horizontal', sized(30, 'p1', note('a.md')), sized(70, 'p2', note('b.md'))) })] });
+  it('writes a page with a size as version 3 and reads it back with the sizes', () => {
+    const page = { ...withSizes(2), version: 2 as const } as unknown as ReturnType<typeof readFocusPage>;
+    const stored = writeFocusPage(page);
+    expect(stored.version).toBe(3);
+    expect(readFocusPage(JSON.parse(JSON.stringify(stored)))).toEqual(page);
+  });
+  it('does not collapse a legacy-shaped page with sizes to version 1', () => {
+    const page = readFocusPage(withSizes(3));
+    expect(legacyDivisionOf(page.focuses[0])).toBeUndefined();
+    expect(writeFocusPage(page).version).toBe(3);
+  });
+  it('rejects a size in a version 2 file', () => {
+    expect(() => readFocusPage(withSizes(2))).toThrow();
+    expect(FOCUS_DOCUMENT.fileSchema.safeParse(withSizes(2)).success).toBe(false);
+    expect(FOCUS_DOCUMENT.fileSchema.safeParse(withSizes(3)).success).toBe(true);
+  });
+  it('keeps a page without sizes at version 2, or 1 while every Focus is a division', () => {
+    const plain = readFocusPage({ version: 2, focuses: [focus({ root: split('x', 'horizontal', leaf('p1'), leaf('p2'), leaf('p3')) })] });
+    expect(writeFocusPage(plain).version).toBe(2);
+    expect(writeFocusPage(readFocusPage({ version: 2, focuses: [focus({ root: filled('columns-2') })] })).version).toBe(1);
+  });
+  it('keeps the sizes when a note move rewrites the file, and refuses a newer file with the newer-version message', () => {
+    const file = JSON.stringify(withSizes(3));
+    const files = new Map([[FOCUS_DOCUMENT.file, file]]);
+    relocateWorkspaceDocuments(files, { id: 'nb1', root: 'notes' }, path => path === 'a.md' ? 'moved.md' : path);
+    const written = parseYaml(files.get(FOCUS_DOCUMENT.file)!);
+    expect(written.version).toBe(3);
+    expect(JSON.stringify(written)).toContain('"size":30');
+    const newer = new Map([[FOCUS_DOCUMENT.file, JSON.stringify({ version: 4, focuses: [] })]]);
+    expect(() => relocateWorkspaceDocuments(newer, { id: 'nb1', root: 'notes' }, path => path)).toThrow('saved by a newer MyGitNotes');
+  });
+});
