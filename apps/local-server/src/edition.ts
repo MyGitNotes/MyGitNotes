@@ -5,6 +5,7 @@
 export { applicationRoot, type AppServices, createApp } from './app.js';
 export { type AuthServices, authToken, createAuth, credentialIdFor, CredentialRejected, credentialToken, githubOAuth } from './auth.js';
 export { type IdentityService, providerIdentity, type SignedIn, type SignInOption } from './identity.js';
+export { demoPageCredentials, isDemoPage } from './demo-page.js';
 export { type AssetScope, type AssetStorage, envAssetStorage } from './asset-storage.js';
 export { type PublishedNote } from './gists.js';
 export { type PublishingRequest, type PublishingService, type PublishSync } from './publishing.js';

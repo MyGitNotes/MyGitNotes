@@ -13,6 +13,7 @@ import { createRemoteCoreUpdateRouter } from './remote-core-update.js';
 import { createLocalApp } from './local-app.js';
 import { namesBuiltFile, webStatic } from './web-static.js';
 import { createAuth } from './auth.js';
+import { demoPageCredentials, refuseDemoPageSignIn } from './demo-page.js';
 import type { EditionSources } from './edition-sources.js';
 import { type IdentityService, providerIdentity } from './identity.js';
 import { asLocal, asRemote, defaultRepository, eachRepository, namedRemote, namedRepository, notebookRepository, noteRepository, type RemoteHandle, repositoryOrDefault, requestCatalog, requestPerson, requestToken, requestWorkspace, storedDocumentDrafts, workspaceOf } from './request-workspace.js';
@@ -103,6 +104,8 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   if (product && choosesRepository()) throw new Error("A product repository (MYGITNOTES_PRODUCT_REPOSITORY or product_repository) offers Core updates, which a deployment where each visitor chooses a repository does not give its visitors. Remove it, or name the deployment's repository with MYGITNOTES_REPOSITORY.");
   const app = express();
   app.disable('x-powered-by');
+  // First, so no reader of the request's headers sees the credentials of a demo page; a deployment without a demo is unchanged.
+  if (configSource.demo) app.use(demoPageCredentials());
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'same-origin');
@@ -125,7 +128,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   app.use((req, res, next) => req.path === '/mcp' || req.path.startsWith('/mcp/') ? next() : smallBody(req, res, next));
   // A parse error message can quote part of the body, such as an API key, so it is answered with fixed text and never logged.
   app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => (error as { type?: string; } | null)?.type === 'entity.parse.failed' ? res.status(400).json({ error: 'Request body is not valid JSON.', code: 'bad-json' }) : next(error));
-  app.use('/api/auth', createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity, agentFor: piAgent?.availableTo }));
+  app.use('/api/auth', refuseDemoPageSignIn, createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity, agentFor: piAgent?.availableTo }));
   app.use('/api', workspaceChoiceRouter({ identity, choices: workspaceChoices ?? undefined }));
   services.routes?.(app, services);
   app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources));

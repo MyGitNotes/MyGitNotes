@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { createHash } from 'node:crypto';
 import type { BrowserSessions } from './browser-sessions.js';
+import { isDemoPage } from './demo-page.js';
 import type { IdentityService } from './identity.js';
 import { choosesRepository, type WorkspaceChoices } from './repository-choice.js';
 import { digest, random, recordLifetime as lifetime, type RecordStore, sealedElsewhere, type StoredRecord } from './record-store/index.js';
@@ -263,7 +264,7 @@ function sessionRouter({ sessions, configSource, choices, identity, agentFor }: 
       const choice = !choosesRepository() ? {} : choices ? { repositoryChoice: true, workspace: await choices.read(req) } : { repositoryChoice: true, accountMembers: true, workspace: signedIn ? firstMember(await configSource.settings(req)) : null };
       // `provider` and `loginUrl` stay for a web bundle cached across the deploy that predates `signInOptions`; such a bundle labels any provider but GitLab "GitHub", so an edition that lists another first marks the option to name.
       const legacy = signInOptions.find(option => option.legacy) ?? signInOptions[0];
-      res.json({ authenticated: Boolean(signedIn), login: signedIn?.login, provider: legacy?.id, loginUrl: legacy?.url, signInOptions, platformAccess, storage: sessions.kind, ...configSource.demo ? { demo: true } : {}, ...choice, ...signedIn && agentFor && await agentFor(req, res) ? { agent: true } : {}, configured: await identity.configured(req) });
+      res.json({ authenticated: Boolean(signedIn), login: signedIn?.login, provider: legacy?.id, loginUrl: legacy?.url, signInOptions, platformAccess, storage: sessions.kind, ...configSource.demo ? { demo: true } : {}, ...isDemoPage(req) ? { demoPage: true } : {}, ...choice, ...signedIn && agentFor && await agentFor(req, res) ? { agent: true } : {}, configured: await identity.configured(req) });
     } catch {
       res.status(503).json({ error: 'Session store or source configuration unavailable.' });
     }

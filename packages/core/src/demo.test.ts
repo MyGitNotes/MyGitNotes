@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { demoLanguage, demoNotebooks, demoScenarioOf } from './demo.js';
+import { DEMO_BASE, demoLanguage, demoNotebooks, demoPageRequest, demoScenarioOf } from './demo.js';
 import type { WorkspaceConfig } from './types.js';
 
 const request = (cookie?: string | string[]) => ({ headers: cookie === undefined ? {} : { cookie } });
@@ -45,5 +45,30 @@ describe('demoNotebooks', () => {
     const original = config(['a-en', 'a-zh-tw'], 'a-en');
     demoNotebooks(original, 'zh-tw');
     expect(original.notebooks).toHaveLength(2);
+  });
+});
+
+describe('demoPageRequest', () => {
+  const from = (referer?: string | string[]) => ({ headers: referer === undefined ? {} : { referer } });
+
+  it('is true for a request that comes from the demo page or under it, whichever origin the page names', () => {
+    for (const referer of ['https://h/demo', 'https://h/demo/', 'https://h/demo/trpg', 'https://h/demo/trpg/notebooks/x?y=1#z', 'http://localhost:5173/demo/notes', 'https://evil.example/demo']) expect(demoPageRequest(from(referer)), referer).toBe(true);
+  });
+
+  it('is false for any other page, a lookalike path, and a Referer that names no demo path outside its path', () => {
+    for (const referer of ['https://h/demonstration', 'https://h/demo-x/a', 'https://h/', 'https://h', 'https://h/notes?r=/demo', 'https://h/notes#/demo', 'https://h/Demo', 'https://h/a/demo', 'https://h/demo%2Fx', 'https://h/x/../notes', 'https://demo/']) expect(demoPageRequest(from(referer)), referer).toBe(false);
+  });
+
+  it('judges the path as the browser resolved it, so dot segments cannot reach the demo path from another page', () => {
+    expect(demoPageRequest(from('https://h/notes/../demo/trpg'))).toBe(true);
+    expect(demoPageRequest(from('https://h/demo/../notes'))).toBe(false);
+  });
+
+  it('is false for a missing, empty, malformed or repeated Referer', () => {
+    for (const referer of [undefined, '', ' ', 'not a url', '/demo', '//demo', 'demo', 'javascript:/demo', 'file:///demo', 'ftp://h/demo', ['https://h/demo', 'https://h/demo']]) expect(demoPageRequest(from(referer as string | string[] | undefined)), String(referer)).toBe(false);
+  });
+
+  it('shares the base the web app uses for the demo address', () => {
+    expect(DEMO_BASE).toBe('/demo');
   });
 });

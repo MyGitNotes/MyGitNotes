@@ -1,11 +1,11 @@
 import { createContext, createElement, type ReactNode, useContext } from 'react';
-import { DEMO_COOKIE, type DemoLanguage } from '@mygitnotes/core/demo';
+import { DEMO_BASE, DEMO_COOKIE, type DemoLanguage } from '@mygitnotes/core/demo';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import type { Language } from './i18n/context.js';
 import { APP_ROOT_SEGMENTS } from './routes.js';
 
 /** The path prefix the demo lives under; the router's basename while it is shown. */
-export const DEMO_BASE = '/demo';
+export { DEMO_BASE };
 const SLUG = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 /** What `/demo`, `/demo/<scenario>` and `/demo/<scenario>/…` name; null for any other path. */

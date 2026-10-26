@@ -1,5 +1,7 @@
 import type { WorkspaceConfig } from './types.js';
 
+/** The path prefix the demo lives under; the web app's router uses it as its basename while the demo is shown. */
+export const DEMO_BASE = '/demo';
 /** The cookie the web app writes on a `/demo` page; it carries only the language of the public demo content. */
 export const DEMO_COOKIE = 'mygitnotes_demo';
 /** The languages a demo repository keeps its scenarios in, as the cookie spells them. */
@@ -17,6 +19,24 @@ export function demoLanguage(request: { headers: Record<string, string | string[
     return (DEMO_LANGUAGES as readonly string[]).includes(value) ? value as DemoLanguage : undefined;
   }
   return undefined;
+}
+
+/**
+ * Whether the request was made by a page of the demo: its `Referer` is an http(s) address whose path is `/demo` or under
+ * `/demo/`. A browser sends the `Referer` on every request a page makes (fetch, images, event streams, downloads), so this
+ * names the page a request comes from and not the browser. Only the path counts, never the origin: a request that wrongly
+ * matches loses its credentials (see `demoPageCredentials`), so a forged or foreign `Referer` can only reduce authority.
+ */
+export function demoPageRequest(request: { headers: Record<string, string | string[] | undefined>; }): boolean {
+  const referer = request.headers.referer;
+  if (typeof referer !== 'string') return false;
+  let page: URL;
+  try {
+    page = new URL(referer);
+  } catch {
+    return false;
+  }
+  return (page.protocol === 'https:' || page.protocol === 'http:') && (page.pathname === DEMO_BASE || page.pathname.startsWith(`${DEMO_BASE}/`));
 }
 
 /** A notebook id split into its scenario and language: `trpg-zh-tw` is scenario `trpg`; an id without a language suffix has none. */
