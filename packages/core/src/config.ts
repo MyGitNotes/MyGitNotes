@@ -47,6 +47,9 @@ function obsoleteFiles(files: unknown): Pick<WorkspaceConfig, 'files'> {
 
 const isStatusName = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim()) && value === value.trim();
 
+/** A BCP-47-like language tag with no surrounding whitespace, such as `en` or `zh-TW`. */
+const LANGUAGE_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
 const isLabelText = (value: unknown): value is string => typeof value === 'string' && Boolean(value.trim());
 
 /** A label is one nonblank string, or a nonempty map from a language tag to a nonblank string. */
@@ -54,7 +57,7 @@ function isStatusLabel(value: unknown): value is StatusLabel {
   if (isLabelText(value)) return true;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const entries = Object.entries(value);
-  return entries.length > 0 && entries.every(([language, text]) => Boolean(language.trim()) && isLabelText(text));
+  return entries.length > 0 && entries.every(([language, text]) => LANGUAGE_TAG.test(language) && isLabelText(text));
 }
 
 /** Validates a notebook's `statuses`: names, or `{ name, color, label }` with a palette colour name and a display label; entries keep the form they were written in. */
@@ -68,7 +71,7 @@ function validateStatuses(notebookId: string, statuses: unknown): NotebookStatus
     const unknownKey = Object.keys(rest)[0];
     if (unknownKey !== undefined) throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an unknown key '${unknownKey}'; an entry takes only name, color and label`);
     if ('label' in entry && !isStatusLabel(label)) {
-      throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an invalid label ${JSON.stringify(label)}; use a nonblank string, or a map of language to nonblank string such as { en: In progress, zh-TW: 進行中 }`);
+      throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an invalid label ${JSON.stringify(label)}; use a nonblank string, or a map of language tag (such as en or zh-TW, no surrounding spaces) to nonblank string such as { en: In progress, zh-TW: 進行中 }`);
     }
     if ('color' in entry && (typeof color !== 'string' || !(STATUS_COLOR_NAMES as readonly string[]).includes(color))) {
       throw new ConfigValidationError(`Notebook '${notebookId}' status '${name}' has an unknown color ${JSON.stringify(color)}; use one of ${STATUS_COLOR_NAMES.join(', ')}`);

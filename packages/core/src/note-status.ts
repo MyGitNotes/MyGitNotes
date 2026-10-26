@@ -47,21 +47,24 @@ const normalizeStatus = (status: string) => status.trim().toLowerCase();
 
 const explicitLabel = (entry: NotebookStatus) => typeof entry === 'string' ? undefined : entry.label;
 
-/** The names the four default statuses go by in each UI language, used when a manifest gives a status no label. */
-export const BUILTIN_STATUS_LABELS: Readonly<Record<string, Readonly<Record<string, string>>>> = { inbox: { en: 'inbox', 'zh-TW': '收件匣' }, working: { en: 'working', 'zh-TW': '進行中' }, done: { en: 'done', 'zh-TW': '完成' }, archived: { en: 'archived', 'zh-TW': '封存' } };
+/** The names the four default statuses go by in a UI language other than English, used when a manifest gives a status no label; English shows the stored name. */
+export const BUILTIN_STATUS_LABELS: Readonly<Record<string, Readonly<Record<string, string>>>> = { inbox: { 'zh-TW': '收件匣' }, working: { 'zh-TW': '進行中' }, done: { 'zh-TW': '完成' }, archived: { 'zh-TW': '封存' } };
 
-/** The text a label gives one UI language: the exact tag, the tag ignoring case, then its primary language (`zh` for `zh-TW`). */
+/** The key a merged label map uses for a plain-string label, which answers every language. */
+const ALL_LANGUAGES = '*';
+
+/** The text a label gives one UI language: the exact tag, the tag ignoring case, then its primary language (`zh` for `zh-TW`), then a merged all-language entry. */
 function labelFor(label: StatusLabel, language: string): string | undefined {
   if (typeof label === 'string') return label;
   const lower = language.toLowerCase();
   const keys = Object.keys(label);
-  const key = keys.find(candidate => candidate === language) ?? keys.find(candidate => candidate.toLowerCase() === lower) ?? keys.find(candidate => candidate.toLowerCase() === lower.split('-')[0]);
+  const key = keys.find(candidate => candidate === language) ?? keys.find(candidate => candidate.toLowerCase() === lower) ?? keys.find(candidate => candidate.toLowerCase() === lower.split('-')[0]) ?? keys.find(candidate => candidate === ALL_LANGUAGES);
   return key === undefined ? undefined : label[key];
 }
 
 /**
  * What a status is called on screen in a UI language. The notebook's own label for the status wins; without one for this
- * language a default status uses its built-in name, and anything else shows its stored name, which stays what a note's
+ * language a default status uses its built-in name (none for English), and anything else shows its stored name, which stays what a note's
  * `status:` holds. The status is matched to a list entry the way its colour is: exactly, then ignoring case.
  */
 export function statusLabel(status: string, notebookStatuses: readonly NotebookStatus[] = [], language = 'en'): string {
@@ -115,22 +118,31 @@ export function statusColor(status: string, notebookStatuses: readonly NotebookS
   return cycle[entries.slice(0, index).filter(earlier => !isKnownStatus(noteStatusName(earlier))).length % cycle.length];
 }
 
+/** Adds one notebook's label to the merged map: each language keeps the first text given, and a plain string answers every language still unset and ends the merge. */
+function mergeLabel(merged: Record<string, string>, label: StatusLabel): Record<string, string> {
+  if (ALL_LANGUAGES in merged) return merged;
+  if (typeof label === 'string') return { ...merged, [ALL_LANGUAGES]: label };
+  const next = { ...merged };
+  for (const [language, text] of Object.entries(label)) if (!Object.keys(next).some(key => key.toLowerCase() === language.toLowerCase())) next[language] = text;
+  return next;
+}
+
 /**
  * The statuses of several notebooks as one list. Each custom status without a colour is resolved against its own
  * notebook's list, so it wears the same colour whichever notebooks are listed and in what order. A name keeps the
- * colour the first notebook defining it gives, except that a colour written in a manifest beats a cycled one, and takes the
- * label of the first notebook that gives it one; a notebook without statuses contributes the defaults, which are all known names.
+ * colour the first notebook defining it gives, except that a colour written in a manifest beats a cycled one, and takes its
+ * labels per language from the first notebook giving that language (a plain string label counts as every language for its notebook); a notebook without statuses contributes the defaults, which are all known names.
  */
 export function mergeNotebookStatuses(notebooks: readonly Pick<NotebookConfig, 'statuses'>[], avoid?: StatusColorName): NotebookStatus[] {
   const merged = new Map<string, { entry: NotebookStatus; written: boolean; }>();
-  const labels = new Map<string, StatusLabel>();
+  const labels = new Map<string, Record<string, string>>();
   for (const notebook of notebooks) {
     const entries = configuredNotebookStatuses(notebook);
     for (const entry of entries) {
       const name = noteStatusName(entry);
       const written = explicitColor(entry) !== undefined;
       const label = explicitLabel(entry);
-      if (label !== undefined && !labels.has(name)) labels.set(name, label);
+      if (label !== undefined) labels.set(name, mergeLabel(labels.get(name) ?? {}, label));
       const current = merged.get(name);
       if (current && (current.written || !written)) continue;
       merged.set(name, { entry: written || isKnownStatus(name) ? entry : { name, color: statusColor(name, entries, avoid) as StatusColorName }, written });
@@ -138,7 +150,9 @@ export function mergeNotebookStatuses(notebooks: readonly Pick<NotebookConfig, '
   }
   return [...merged.entries()].map(([name, { entry }]) => {
     const label = labels.get(name);
-    if (label === undefined || explicitLabel(entry) === label) return entry;
+    if (label === undefined || Object.keys(label).length === 0) return entry;
+    const own = explicitLabel(entry);
+    if (own !== undefined && typeof own !== 'string' && JSON.stringify(own) === JSON.stringify(label)) return entry;
     return { ...(typeof entry === 'string' ? { name } : entry), label };
   });
 }

@@ -8,7 +8,7 @@ Default transport is **stdio** for local agent integration (e.g. Claude Desktop,
 
 ## Exposed Tools
 
-1. `get_workspace_config`: Returns parsed `.mygitnotes.yaml` (or legacy `.github-notes.yaml`) workspace manifest. A notebook's `statuses` entries are returned as written: a bare name or `{ name, color }`, so a client must read `entry.name` when an entry is an object.
+1. `get_workspace_config`: Returns parsed `.mygitnotes.yaml` (or legacy `.github-notes.yaml`) workspace manifest. A notebook's `statuses` entries are returned as written: a bare name or `{ name, color, label }`, so a client must read `entry.name` when an entry is an object. `label` is display-only (a string or a map of UI language to string); agents must write `name` to a note's `status:`, never a label.
 2. `list_notebooks`: Lists all configured notebooks and their root directories.
 3. `list_notes`: Lists note summaries within a notebook, paged by `offset` and `limit` (default 100), returning `total` and `nextOffset`. Each entry carries frontmatter, a file path and a bounded `description` in place of the Markdown body.
 4. `read_note`: Reads a note file and parses its frontmatter and raw Markdown body (supports `metadataOnly: true` to return metadata without the markdown body).
@@ -25,7 +25,7 @@ Default transport is **stdio** for local agent integration (e.g. Claude Desktop,
 15. `mkdir`: Creates a notebook folder or updates display metadata (`title`, `order`, `description`, and custom fields) in `_dir.yml` (supports `overwrite: true`), creating an atomic Git commit.
 16. `search_notes`: Searches note files using plain text or regular expressions (regex). Hosted sources rank results; see below.
 17. `replace_notes`: Searches and replaces plain text or regular expressions across note files and creates an atomic Git commit.
-18. `get_statuses`: Returns configured, observed, and available valid note statuses for a notebook or workspace to ensure accurate status tagging. Statuses are names only (colours are dropped); a notebook with an empty or missing `statuses` list reports the default statuses as its configured ones.
+18. `get_statuses`: Returns configured, observed, and available valid note statuses for a notebook or workspace to ensure accurate status tagging. Statuses are names only (colours and labels are dropped), and these names are what an agent writes to `status:`; a notebook with an empty or missing `statuses` list reports the default statuses as its configured ones.
 
 > [!NOTE]
 > Backward Compatibility: Redundant endpoints (`get_note_metadata`, `update_note_metadata`, `get_folder_metadata`, `update_folder_metadata`, `list_agent_resources`, `check_core_update`) remain supported via tool dispatch aliases for backward compatibility with existing callers.

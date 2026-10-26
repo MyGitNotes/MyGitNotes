@@ -12,9 +12,9 @@ schemas and annotations; read-only discovery contains only read operations.
 Read the workspace configuration and notebooks, then exercise ls, glob, read and
 find against an existing example note. Compare paths, raw Markdown, frontmatter
 and revisions with the website and GitHub. Custom notebook statuses appear in
-the returned manifest, each either a bare name or a `{ name, color }` entry as
+the returned manifest, each either a bare name or a `{ name, color, label }` entry as
 written in the manifest (`get_workspace_config` returns the entries unchanged;
-`get_statuses` returns names only). A notebook without statuses lists the
+`get_statuses` returns names only, without colours or labels; an agent writes the `name` to a note, never a label). A notebook without statuses lists the
 defaults (`inbox`, `working`, `done`, `archived`) in `get_statuses`; unlisted
 note statuses retain their exact values.
 

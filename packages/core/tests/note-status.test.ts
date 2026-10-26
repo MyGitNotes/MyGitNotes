@@ -225,6 +225,8 @@ notebooks:
   it('translates the built-in statuses only when the manifest gives no label', () => {
     expect(['inbox', 'working', 'done', 'archived'].map(status => statusLabel(status, [], 'zh-TW'))).toEqual(['收件匣', '進行中', '完成', '封存']);
     expect(['inbox', 'working', 'done', 'archived'].map(status => statusLabel(status, undefined, 'en'))).toEqual(['inbox', 'working', 'done', 'archived']);
+    expect(statusLabel('Done', [], 'en')).toBe('Done');
+    expect(statusLabel('INBOX', [], 'en')).toBe('INBOX');
     expect(statusLabel('done', ['inbox', 'done'], 'zh-TW')).toBe('完成');
     expect(statusLabel('done', [{ name: 'done', label: 'Shipped' }], 'zh-TW')).toBe('Shipped');
     expect(statusLabel('Done', [], 'zh-TW')).toBe('完成');
@@ -234,6 +236,29 @@ notebooks:
     expect(statusLabel('capture', [], 'zh-TW')).toBe('capture');
     expect(statusLabel('done', [], 'fr')).toBe('done');
     expect(statusLabel('', [], 'zh-TW')).toBe('');
+  });
+
+  it.each([[{ ' en': 'x' }], [{ 'en ': 'x' }], [{ 'e n': 'x' }], [{ e: 'x' }], [{ '*': 'x' }], [{ 'en_US': 'x' }]])('rejects the language tag in %j', label => {
+    expect(() => validateWorkspaceConfig(manifest([{ name: 'review', label }]))).toThrow(/invalid label/);
+  });
+
+  it('accepts region and script language tags', () => {
+    expect(() => validateWorkspaceConfig(manifest([{ name: 'review', label: { en: 'a', 'zh-TW': 'b', 'zh-Hant-TW': 'c', fil: 'd' } }]))).not.toThrow();
+  });
+
+  it('merges labels per language across notebooks, the first notebook winning each language', () => {
+    const merged = mergeNotebookStatuses([{ statuses: [{ name: 'a', label: { en: 'A-en' } }] }, { statuses: [{ name: 'a', label: { en: 'A2', 'zh-TW': 'A-zh' } }] }]);
+    expect(statusLabel('a', merged, 'en')).toBe('A-en');
+    expect(statusLabel('a', merged, 'zh-TW')).toBe('A-zh');
+  });
+
+  it('lets a string label answer every language for its notebook', () => {
+    const merged = mergeNotebookStatuses([{ statuses: [{ name: 'a', label: { en: 'A-en' } }] }, { statuses: [{ name: 'a', label: 'Any' }] }, { statuses: [{ name: 'a', label: { fr: 'A-fr' } }] }]);
+    expect(statusLabel('a', merged, 'en')).toBe('A-en');
+    expect(statusLabel('a', merged, 'zh-TW')).toBe('Any');
+    expect(statusLabel('a', merged, 'fr')).toBe('Any');
+    const first = mergeNotebookStatuses([{ statuses: [{ name: 'a', label: 'Any' }] }, { statuses: [{ name: 'a', label: { en: 'A-en' } }] }]);
+    expect(statusLabel('a', first, 'en')).toBe('Any');
   });
 
   it('carries a label through a merge, taking the first notebook that gives one', () => {

@@ -21,7 +21,7 @@ Workspace (/.mygitnotes.yaml)
 2. **Notebook Slugs**: Notebook IDs must be unique URL/filesystem-safe slugs.
 3. **Roots**: Notebook roots must be relative to repository root and must not overlap.
 4. **Frontmatter**: Preserve unknown frontmatter keys. A note without frontmatter is valid.
-5. **Status Labels**: A notebook's `statuses` entries are a name or `{ name, color?, label? }`. `name` is the value stored in a note's `status:` and never changes with the UI language. `label` is display-only: one string, or a map of UI language tag to string (`label: { en: In progress, zh-TW: 進行中 }`). Never put a label into a note's frontmatter. A missing label falls back to the built-in name of a default status (`inbox`, `working`, `done`, `archived` in `en` and `zh-TW`), then to `name`.
+5. **Status Labels**: A notebook's `statuses` entries are a name or `{ name, color?, label? }`. `name` is the value stored in a note's `status:` and never changes with the UI language. `label` is display-only: one string, or a map of UI language tag to string (`label: { en: In progress, zh-TW: 進行中 }`). Never put a label into a note's frontmatter. A missing label falls back to the built-in name of a default status (`inbox`, `working`, `done`, `archived` in `zh-TW` only; English shows `name` as written), then to `name`. Always write `name`, never a label.
 6. **Git Save**: Every programmatic or user edit transaction should create a clean Git commit.
 
 ## 任務、負責人、優先順序與里程碑語法

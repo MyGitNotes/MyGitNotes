@@ -64,7 +64,7 @@ MCP 的 `get_system_prompt`、`list_skills` 與 `invoke_skill` 照舊從目標�
 舊版 `.github-notes-screen.yaml`（Screen Page）已由 `pnpm migrate-workspace` 轉成合輯檔並刪除。
 本機草稿只是尚未儲存的恢復副本，不代表合輯已同步。
 
-筆記本可以替每個狀態設定顯示名稱（`label`），依介面語言顯示，沒有就退回狀態的 `name`。筆記 frontmatter 的 `status:` 只存 `name`，不受介面語言影響；預設的四個狀態沒有 label 時顯示內建的英文與繁體中文名稱。
+筆記本可以替每個狀態設定顯示名稱（`label`），依介面語言顯示，沒有就退回狀態的 `name`。筆記 frontmatter 的 `status:` 只存 `name`，不受介面語言影響；預設的四個狀態沒有 label 時在繁體中文介面顯示內建名稱，英文介面顯示儲存的名稱。多個筆記本的 label 依語言合併，同一語言由先給出的筆記本決定。
 
 ## 專案任務
 
