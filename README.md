@@ -1,6 +1,6 @@
 # MyGitNotes
 
-MyGitNotes is open source (AGPL-3.0) and built for developers who want to run it themselves: a local-first workspace for Markdown notes, outlines, compilations, flashcards, and knowledge graphs. Your content stays in Git. Self-host it with Docker, Docker Compose, or Vercel, or run it in local mode, which also serves an MCP endpoint and puts the Pi agent beside your notes.
+MyGitNotes is open source (AGPL-3.0) and built for developers who want to run it themselves: a local-first workspace for Markdown notes, outlines, compilations, flashcards, and knowledge graphs. Your content stays in Git. Self-host it with Docker, Docker Compose, or Vercel, each of which serves an MCP endpoint for your agents, or run it in local mode, which also puts the Pi agent beside your notes.
 
 Don't want to run it yourself? Use the hosted service at [mygitnotes.com](https://mygitnotes.com): no setup, sign in with Google or GitHub.
 

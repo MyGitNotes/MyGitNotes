@@ -11,7 +11,7 @@ concurrency:
 jobs:
   release:
     # Workspaces that track Core carry this file too; only the product repository releases.
-    if: github.repository == 'MyGitNotes/MyGitNotes' && (github.ref == 'refs/heads/core' || github.ref_type == 'tag')
+    if: contains(fromJSON('["MyGitNotes/MyGitNotes","wayne930242/MyGitNotes"]'), github.repository) && (github.ref == 'refs/heads/core' || github.ref_type == 'tag')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

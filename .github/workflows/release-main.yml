@@ -13,7 +13,7 @@ jobs:
   # Workspaces that track Core carry this file too; only the product repository verifies and publishes the demo.
   # Every job carries the repository guard, and a skipped verification job skips `release` through `needs`.
   static:
-    if: github.repository == 'MyGitNotes/MyGitNotes'
+    if: contains(fromJSON('["MyGitNotes/MyGitNotes","wayne930242/MyGitNotes"]'), github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -24,7 +24,7 @@ jobs:
       - run: pnpm check:vercel-sparse-paths --core
       - run: pnpm lint
   build:
-    if: github.repository == 'MyGitNotes/MyGitNotes'
+    if: contains(fromJSON('["MyGitNotes/MyGitNotes","wayne930242/MyGitNotes"]'), github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -34,7 +34,7 @@ jobs:
       - uses: ./.github/actions/install-dependencies
       - run: pnpm build
   test:
-    if: github.repository == 'MyGitNotes/MyGitNotes'
+    if: contains(fromJSON('["MyGitNotes/MyGitNotes","wayne930242/MyGitNotes"]'), github.repository)
     name: test (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -51,7 +51,7 @@ jobs:
       # `pnpm test --shard` fails (pnpm rejects the unknown option); `pnpm run` forwards it to vitest.
       - run: pnpm run test --shard=${{ matrix.shard }}/3
   release:
-    if: github.repository == 'MyGitNotes/MyGitNotes'
+    if: contains(fromJSON('["MyGitNotes/MyGitNotes","wayne930242/MyGitNotes"]'), github.repository)
     needs: [static, build, test]
     runs-on: ubuntu-latest
     timeout-minutes: 25
