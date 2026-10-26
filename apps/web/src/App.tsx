@@ -44,7 +44,7 @@ import { noteLookupOptions } from './lib/use-note-queries.js';
 import { notebookRoute, noteRoute, noteTrail, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
 import { draftScope, editable, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
 import { DemoBanner } from './components/DemoBanner.js';
-import { useDemoScenario } from './app/useDemoScenario.js';
+import { demoFocusesOf, useDemoScenario } from './app/useDemoScenario.js';
 import { clearLocalDraft, moveLocalDraft } from './lib/storage.js';
 import { sameValue } from './lib/merge-note.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -148,7 +148,7 @@ export const AppContent: React.FC = () => {
   // Moves, renames, folders and assets are changes the server makes; a demo repository allows none of them.
   const canWriteFiles = canChangeFiles(selectedNotebookId);
   // The Focus file is read for the open notebook's repository, which is the demo repository's; a file that fails to load names no Focus.
-  const demoFocuses = useMemo(() => focusPage.loading ? null : focusPage.error ? [] : focusPage.page.focuses, [focusPage.loading, focusPage.error, focusPage.page]);
+  const demoFocuses = useMemo(() => demoFocusesOf(focusPage), [focusPage.loading, focusPage.error, focusPage.page]);
   useDemoScenario({ config, loading, pathname: location.pathname, navigate, hasGuide: async (notebookId, path) => (await queryClient.fetchQuery(noteLookupOptions(queryScope, [{ notebookId, path }], false))).notes.length > 0, hasRestoredView: notebookKey => hasStoredFocusView(repositoryFor(notebookKey)?.id ?? '', notebookKey), focuses: demoFocuses });
   /** Where a note lives, for the note Info tab: the repository and branch of its notebook, and why it is read-only. */
   const locateNote = (note: NoteRef): NoteLocation | undefined => {

@@ -5,7 +5,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { DemoProvider } from '../lib/demo.js';
 import { APP_ROOT_SEGMENTS, parseWorkspaceRoute } from '../lib/routes.js';
 import { demoScenarioNotice, setDemoScenarioNotice } from '../lib/demo-storage.js';
-import { useDemoScenario } from './useDemoScenario.js';
+import { demoFocusesOf, useDemoScenario } from './useDemoScenario.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 
 const config = { schema_version: 4, workspace: { title: 'Demo', default_notebook: 'demo~contract-zh-tw' }, notebooks: [{ id: 'demo~contract-zh-tw', title: '契約', root: '' }, { id: 'demo~trpg-zh-tw', title: '跑團', root: 'trpg-zh-tw/' }] } as unknown as WorkspaceConfig;
@@ -105,4 +105,12 @@ it('waits for the workspace and does nothing outside the demo', () => {
   expect(run('/trpg', { loading: true })).not.toHaveBeenCalled();
   expect(run('/trpg', { config: null })).not.toHaveBeenCalled();
   expect(run('/trpg', { demo: false })).not.toHaveBeenCalled();
+});
+
+it('names no Focus once the Focus file failed to load, though the load stays marked as loading', () => {
+  const page = { version: 2 as const, focuses: [{ id: 'f', notebookId: 'n', name: 'F', root: { kind: 'pane' as const, id: 'p1', tabs: [] } }] };
+  expect(demoFocusesOf({ loading: true, error: 'Request failed (500)', page: { focuses: [] } })).toEqual([]);
+  expect(demoFocusesOf({ loading: true, error: 'invalid', page })).toEqual([]);
+  expect(demoFocusesOf({ loading: true, error: '', page })).toBeNull();
+  expect(demoFocusesOf({ loading: false, error: '', page })).toEqual(page.focuses);
 });

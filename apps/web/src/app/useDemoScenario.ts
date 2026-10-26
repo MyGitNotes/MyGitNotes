@@ -6,6 +6,11 @@ import type { Focus } from '@mygitnotes/core/focus-page';
 import { notebookRoute, noteRoute } from '../lib/routes.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 
+/** The Focuses the demo may choose from: none once the Focus file failed to load (a failed load leaves `loading` set), null while it loads. */
+export function demoFocusesOf(focus: { loading: boolean; error: string; page: { focuses: Focus[]; }; }): Focus[] | null {
+  return focus.error ? [] : focus.loading ? null : focus.page.focuses;
+}
+
 /**
  * In the demo, `/demo/<scenario>` names a notebook of the demo repository rather than a page of the app: once the
  * workspace is loaded the address is replaced by the notebook's best view. That is the first named Focus the Focus file
