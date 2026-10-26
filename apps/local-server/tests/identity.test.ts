@@ -69,6 +69,12 @@ describe('an identity with a person and no token', () => {
     expect((await call('GET', '/api/auth/session', undefined, false)).body).toMatchObject({ authenticated: false, platformAccess: false });
   });
 
+  it('names the marked sign-in option, not the first, in the probe\'s provider and loginUrl', async () => {
+    await start();
+    identity.signInOptions = async () => [{ id: 'google', label: 'Google', url: '/api/auth/google' }, { id: 'github', label: 'GitHub', url: '/api/auth/github', legacy: true }];
+    expect((await call('GET', '/api/auth/session')).body).toMatchObject({ provider: 'github', loginUrl: '/api/auth/github', signInOptions: [{ id: 'google' }, { id: 'github', legacy: true }] });
+  });
+
   it('keeps an agent grant of the person without a credential, owned by the identity', async () => {
     const store = await start();
     const made = await call('POST', '/api/auth/agent-token', { name: 'client' });

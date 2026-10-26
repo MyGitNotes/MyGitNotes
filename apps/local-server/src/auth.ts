@@ -261,8 +261,9 @@ function sessionRouter({ sessions, configSource, choices, identity, agentFor }: 
       // Where visitors bring their repository, the app shows the sign-in screen, then the picker until they chose one or,
       // where each person keeps repositories in Settings (`accountMembers`), the add flow until they have one.
       const choice = !choosesRepository() ? {} : choices ? { repositoryChoice: true, workspace: await choices.read(req) } : { repositoryChoice: true, accountMembers: true, workspace: signedIn ? firstMember(await configSource.settings(req)) : null };
-      // `provider` and `loginUrl` stay for a web bundle cached across the deploy that predates `signInOptions`.
-      res.json({ authenticated: Boolean(signedIn), login: signedIn?.login, provider: signInOptions[0]?.id, loginUrl: signInOptions[0]?.url, signInOptions, platformAccess, storage: sessions.kind, ...configSource.demo ? { demo: true } : {}, ...choice, ...signedIn && agentFor && await agentFor(req, res) ? { agent: true } : {}, configured: await identity.configured(req) });
+      // `provider` and `loginUrl` stay for a web bundle cached across the deploy that predates `signInOptions`; such a bundle labels any provider but GitLab "GitHub", so an edition that lists another first marks the option to name.
+      const legacy = signInOptions.find(option => option.legacy) ?? signInOptions[0];
+      res.json({ authenticated: Boolean(signedIn), login: signedIn?.login, provider: legacy?.id, loginUrl: legacy?.url, signInOptions, platformAccess, storage: sessions.kind, ...configSource.demo ? { demo: true } : {}, ...choice, ...signedIn && agentFor && await agentFor(req, res) ? { agent: true } : {}, configured: await identity.configured(req) });
     } catch {
       res.status(503).json({ error: 'Session store or source configuration unavailable.' });
     }
