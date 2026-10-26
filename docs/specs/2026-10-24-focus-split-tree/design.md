@@ -174,6 +174,8 @@ interface FocusEntryView {
 - Sizes keep their meaning across structure changes: `splitRatios(entry, layout, before, after)` gives a new sibling half of its target's share (the new split of a wrapped pane starts at 50/50), `collapseRatios` gives a removed child's share to its neighbour (the previous one, else the next). A split whose stored sizes do not cover exactly its children falls back to equal sizes.
 - `sideTarget(entry, source, panes)` takes the pane order; with one pane it returns `undefined`, which `openNote` reads as "split right" on desktop (D9) and as the source pane elsewhere.
 
+**Opening sizes (added after D2).** A pane or split node in the file may carry `size`, a whole number from 1 to 100: its share of the parent split when the Focus opens, read as a proportion of its siblings' sizes. A split whose children are not all sized shares equally, so a layout built by dragging in the app writes none. Sizes are dropped when normalising merges children into a parent (a flattened split), and a split reduced to one child hands its own `size` to that child. A visitor's dragged sizes (`ratios`) still win while they cover the split's children; the Focus's `size` only replaces the equal-share fallback, including the starting point for splitting a pane. A narrow-screen display (tablet, phone) ignores them. A demo repository's author uses them to give a wide table or an image the width it needs on entry.
+
 D2 alternative: if sizes move into the file, `ratios` leaves `FocusEntryView` and becomes an optional `sizes: number[]` on split nodes (version 2 only, which also makes every resized Focus version 2).
 
 ## Web

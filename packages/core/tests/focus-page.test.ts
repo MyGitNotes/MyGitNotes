@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { closePane, closeTab, displayFocus, emptyFocusLayout, findFocusPane, findFocusTab, findFocusTabInPane, FOCUS_DIVISIONS, FOCUS_DOCUMENT, FOCUS_MAX_DEPTH, FOCUS_MAX_PANES, FOCUS_MAX_TABS, FocusError, type FocusLayout, FocusLayoutSchema, type FocusNode, FocusPageSchema, focusPaneIndex, focusPanes, FocusSchema, focusTabCount, focusTabKey, foreignFocusTab, legacyDivisionOf, legacyFocusTree, mergePanes, moveTab, moveTabToSplit, nameFocus, nextFocusId, notebookFocuses, ownFocusPage, placeTab, placeTabs, pruneFocus, readFocusLayout, readFocusPage, relocateFocusPaths, removeFocus, renameFocus, splitPane, updateFocus, writeFocusPage } from '../src/focus-page.js';
+import { closePane, closeTab, displayFocus, displaySizes, emptyFocusLayout, findFocusPane, findFocusTab, findFocusTabInPane, FOCUS_DIVISIONS, FOCUS_DOCUMENT, FOCUS_MAX_DEPTH, FOCUS_MAX_PANES, FOCUS_MAX_TABS, FocusError, type FocusLayout, FocusLayoutSchema, type FocusNode, FocusPageSchema, focusPaneIndex, focusPanes, FocusSchema, focusTabCount, focusTabKey, foreignFocusTab, legacyDivisionOf, legacyFocusTree, mergePanes, moveTab, moveTabToSplit, nameFocus, nextFocusId, notebookFocuses, ownFocusPage, placeTab, placeTabs, pruneFocus, readFocusLayout, readFocusPage, relocateFocusPaths, removeFocus, renameFocus, splitPane, updateFocus, writeFocusPage } from '../src/focus-page.js';
 import { NewerVersionError } from '../src/newer-version-error.js';
 import { parse as parseYaml } from 'yaml';
 import { readWorkspaceDocument, validateWorkspaceDocument, writeWorkspaceDocument } from '../src/workspace-documents.js';
@@ -539,3 +539,38 @@ describe('closePane and mergePanes', () => {
     expect(focusPanes(pruneFocus(layout, tab => tab.path !== 'c.md' && tab.path !== 'b.md' && tab.path !== 'a.md'))).toHaveLength(3);
   });
 });
+
+describe('pane sizes', () => {
+  const sized = (size: number, id: string, ...tabs: Tab[]) => ({ ...leaf(id, ...tabs), size });
+  it('keeps the size of every child of a split, whole numbers from 1 to 100', () => {
+    const layout = { root: split('s', 'horizontal', sized(40, 'p1', note('a.md')), sized(60, 'p2', note('b.md'))) };
+    expect(FocusLayoutSchema.parse(layout)).toEqual(layout);
+  });
+  it('rejects a size that is not a whole number from 1 to 100', () => {
+    for (const size of [0, 101, 12.5, -3, '40']) expect(FocusLayoutSchema.safeParse({ root: split('s', 'horizontal', { ...leaf('p1', note('a.md')), size }, leaf('p2')) }).success, String(size)).toBe(false);
+  });
+  it('drops the sizes of a split whose children are not all sized, so they share equally', () => {
+    const parsed = FocusLayoutSchema.parse({ root: split('s', 'horizontal', sized(40, 'p1', note('a.md')), leaf('p2', note('b.md')), leaf('p3')) });
+    expect(parsed).toEqual({ root: split('s', 'horizontal', leaf('p1', note('a.md')), leaf('p2', note('b.md')), leaf('p3')) });
+  });
+  it('gives a split\'s size to the only child that replaces it, and drops the sizes of a flattened split', () => {
+    const lone = { root: split('s', 'horizontal', sized(30, 'p1'), { ...split('t', 'vertical', leaf('p2', note('a.md'))), size: 70 }) };
+    expect(FocusLayoutSchema.parse(lone)).toEqual({ root: split('s', 'horizontal', sized(30, 'p1'), sized(70, 'p2', note('a.md'))) });
+    const nested = { root: split('s', 'horizontal', sized(30, 'p1'), { ...split('t', 'horizontal', sized(50, 'p2'), sized(50, 'p3')), size: 70 }) };
+    expect(FocusLayoutSchema.parse(nested)).toEqual({ root: split('s', 'horizontal', leaf('p1'), leaf('p2'), leaf('p3')) });
+  });
+  it('shows the sizes in a display with room for every pane, and none in the one a narrow screen makes', () => {
+    const layout = { root: split('s', 'horizontal', sized(25, 'p1'), sized(75, 'p2')) } as unknown as FocusLayout;
+    const wide = displayFocus(layout, 'all').root;
+    expect(wide.kind === 'split' && wide.children.map(child => child.size)).toEqual([25, 75]);
+    const three = { root: split('s', 'horizontal', sized(20, 'p1'), sized(30, 'p2'), sized(50, 'p3')) } as unknown as FocusLayout;
+    expect(JSON.stringify(displayFocus(three, 2).root)).not.toContain('size');
+  });
+  it('turns the sizes of a displayed split into percentages of its children, or none when they are not all sized', () => {
+    const root = displayFocus({ root: split('s', 'horizontal', sized(1, 'p1'), sized(3, 'p2')) } as unknown as FocusLayout, 'all').root;
+    expect(root.kind === 'split' && displaySizes(root)).toEqual({ p1: 25, p2: 75 });
+    const plain = displayFocus({ root: split('s', 'horizontal', leaf('p1'), leaf('p2')) } as unknown as FocusLayout, 'all').root;
+    expect(plain.kind === 'split' && displaySizes(plain)).toBeUndefined();
+  });
+});
+

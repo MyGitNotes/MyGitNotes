@@ -35,6 +35,8 @@ export interface FocusPaneNode {
   kind: 'pane';
   id: string;
   tabs: FocusTab[];
+  /** The share of its split's row or column when the Focus opens, a whole number from 1 to 100 (see `displaySizes`). */
+  size?: number;
 }
 /** Children laid out along one axis: `horizontal` places them left to right, `vertical` top to bottom. */
 export interface FocusSplitNode {
@@ -42,6 +44,8 @@ export interface FocusSplitNode {
   id: string;
   orientation: FocusOrientation;
   children: FocusNode[];
+  /** The share of the parent split's row or column when the Focus opens, as on a pane. */
+  size?: number;
 }
 export type FocusNode = FocusPaneNode | FocusSplitNode;
 export interface FocusLayout {
@@ -57,8 +61,9 @@ export interface FocusPage {
   focuses: Focus[];
 }
 
-const PaneNodeSchema = z.object({ kind: z.literal('pane'), id, tabs: z.array(FocusTabSchema) }).strict();
-const SplitNodeSchema = z.object({ kind: z.literal('split'), id, orientation: z.enum(['horizontal', 'vertical']), children: z.array(z.lazy((): z.ZodType<FocusNode, z.ZodTypeDef, unknown> => FocusNodeSchema)).min(1) }).strict();
+const nodeSize = z.number().int().min(1).max(100).optional();
+const PaneNodeSchema = z.object({ kind: z.literal('pane'), id, tabs: z.array(FocusTabSchema), size: nodeSize }).strict();
+const SplitNodeSchema = z.object({ kind: z.literal('split'), id, size: nodeSize, orientation: z.enum(['horizontal', 'vertical']), children: z.array(z.lazy((): z.ZodType<FocusNode, z.ZodTypeDef, unknown> => FocusNodeSchema)).min(1) }).strict();
 export const FocusNodeSchema: z.ZodType<FocusNode, z.ZodTypeDef, unknown> = z.discriminatedUnion('kind', [PaneNodeSchema, SplitNodeSchema]);
 
 /** Whether a raw layout nests deeper than a valid one can, found without recursion so a hostile file cannot exhaust the stack of the schema that follows. */
@@ -90,9 +95,19 @@ function normalizeNode(node: FocusNode): FocusNode {
     });
     return tabs.length === node.tabs.length ? node : { ...node, tabs };
   }
-  const children = node.children.map(normalizeNode).flatMap(child => child.kind === 'split' && child.orientation === node.orientation ? child.children : [child]);
-  if (children.length === 1) return children[0];
+  const normalized = node.children.map(normalizeNode);
+  const flattened = normalized.some(child => child.kind === 'split' && child.orientation === node.orientation);
+  const merged = normalized.flatMap(child => child.kind === 'split' && child.orientation === node.orientation ? child.children : [child]);
+  // Sizes are shares of one split: they stay only while every child has one and no child was merged in, else the children share equally.
+  const keepSizes = !flattened && merged.every(child => child.size !== undefined);
+  const children = keepSizes ? merged : merged.map(unsized);
+  if (children.length === 1) return node.size === undefined ? unsized(children[0]) : { ...children[0], size: node.size };
   return children.length === node.children.length && children.every((child, index) => child === node.children[index]) ? node : { ...node, children };
+}
+function unsized(node: FocusNode): FocusNode {
+  if (node.size === undefined) return node;
+  const { size: _size, ...rest } = node;
+  return rest as FocusNode;
 }
 
 /**
@@ -452,12 +467,14 @@ export interface DisplayLeaf {
   /** The first stored pane's id. */
   id: string;
   panes: string[];
+  size?: number;
 }
 export interface DisplaySplit {
   kind: 'split';
   id: string;
   orientation: FocusOrientation;
   children: DisplayNode[];
+  size?: number;
 }
 export type DisplayNode = DisplayLeaf | DisplaySplit;
 /** What the screen shows at a capacity: the layout, and the stored panes behind each displayed pane in display order. */
@@ -468,7 +485,15 @@ export interface FocusDisplay {
 
 const leafOf = (panes: FocusPaneNode[]): DisplayLeaf => ({ kind: 'pane', id: panes[0].id, panes: panes.map(pane => pane.id) });
 function displayOf(node: FocusNode): DisplayNode {
-  return node.kind === 'pane' ? leafOf([node]) : { kind: 'split', id: node.id, orientation: node.orientation, children: node.children.map(displayOf) };
+  const size = node.size === undefined ? {} : { size: node.size };
+  return node.kind === 'pane' ? { ...leafOf([node]), ...size } : { kind: 'split', id: node.id, orientation: node.orientation, children: node.children.map(displayOf), ...size };
+}
+
+/** The percentage of each child of a displayed split when it opens, from the sizes the Focus gives them; undefined when they are not all sized, so the children share equally. */
+export function displaySizes(split: { children: readonly { id: string; size?: number; }[]; }): Record<string, number> | undefined {
+  if (split.children.some(child => child.size === undefined)) return undefined;
+  const total = split.children.reduce((sum, child) => sum + child.size!, 0);
+  return Object.fromEntries(split.children.map(child => [child.id, child.size! * 100 / total]));
 }
 
 /**
