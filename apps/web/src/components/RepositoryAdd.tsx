@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { ArrowLeft, ExternalLink, FolderPlus } from 'lucide-react';
 import { Button } from './Button.js';
 import { LoadingStatus } from './LoadingStatus.js';
@@ -53,6 +53,8 @@ export function RepositoryAddFlow({ members, onAdded, onStale, onShow }: Reposit
   const { t } = useTranslation();
   const platformAccess = usePlatformAccess();
   const additions = useRepositoryAdd();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerId = useId();
   const [folderStep, setFolderStep] = useState<{ repository: string; branch?: string; found?: MemberFolders; }>();
   const [folder, setFolder] = useState('');
   const [busy, setBusy] = useState(false);
@@ -167,11 +169,28 @@ export function RepositoryAddFlow({ members, onAdded, onStale, onShow }: Reposit
       </div>
     );
   }
+  // An edition that leads with its own choices keeps the platform picker behind a toggle under them; the picker is not even loaded until it is opened.
+  const advanced = options.length > 0 && additions.some(feature => feature.platformAdvanced);
+  const picker = (withNotice: boolean) => (
+    <RepositoryChooser actionLabel={t('repositories.add')} busyLabel={t('repositories.adding')} onChoose={(repository, branch) => add(repository.fullName, branch)} members={members.members} {...(onShow ? { onShow } : {})} {...(blockedReason ? { showBlocked: blockedReason } : {})} notice={withNotice ? notice : null} blocked={full} />
+  );
+  if (advanced) {
+    return (
+      <div className='flex flex-col gap-4'>
+        <div className='flex flex-col gap-3' data-repository-add-options>{options}</div>
+        {notice}
+        <div className='pt-4 border-t border-line flex flex-col gap-3'>
+          <button type='button' aria-expanded={pickerOpen} aria-controls={pickerId} onClick={() => setPickerOpen(open => !open)} className='self-start text-sm text-muted hover:text-fg underline underline-offset-2' data-platform-advanced>{t('repositories.platformAdvanced')}</button>
+          <div id={pickerId}>{pickerOpen && picker(false)}</div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className='flex flex-col gap-4'>
       {options.length > 0 && <div className='flex flex-col gap-3 pb-4 border-b border-line' data-repository-add-options>{options}</div>}
       {options.length > 0 && <p className='text-xs text-muted -mb-2'>{t('repositories.orFromPlatform')}</p>}
-      <RepositoryChooser actionLabel={t('repositories.add')} busyLabel={t('repositories.adding')} onChoose={(repository, branch) => add(repository.fullName, branch)} members={members.members} {...(onShow ? { onShow } : {})} {...(blockedReason ? { showBlocked: blockedReason } : {})} notice={notice} blocked={full} />
+      {picker(true)}
     </div>
   );
 }

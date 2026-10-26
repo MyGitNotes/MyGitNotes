@@ -107,6 +107,8 @@ export interface RepositoryAddFeature {
   options?: ComponentType<RepositoryAddOptionProps>;
   /** Shown in place of the platform picker when the signed-in person holds no credential on the workspace's platform. */
   noPlatformNotice?: ComponentType;
+  /** Puts the platform picker behind an "advanced" choice under the edition's options, which come first, instead of showing it beside them. */
+  platformAdvanced?: boolean;
 }
 
 /** The features an edition may gate; `WebFeature.gate` is asked about each by one of these ids. */

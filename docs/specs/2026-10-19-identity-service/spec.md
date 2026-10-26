@@ -6,7 +6,7 @@ An edition can sign people in without a provider token. The server asks one seam
 
 - **C1. A replaceable identity service.** `AppServices.identity` owns sign-in, who is signed in, the provider token for a site, a grant's token and sign-out. Left out, it is `providerIdentity`. Reason: an edition cannot add another sign-in while the provider's routes are mounted with no seam.
 - **C2. Signed in means a person, not a token.** Writes, the members list and grants follow `identity.signedIn`; each repository still checks its own access (`canWrite`). The request is also signed in when it holds a token (a request a test or an edition authenticates by token alone). Reason: an account with only hosted repositories is signed in without any provider token.
-- **C3. The session probe** (`/api/auth/session`) adds `signInOptions` (every way to sign in) and `platformAccess` (whether the person has a credential on the workspace's site), and keeps `provider` and `loginUrl` (the first option's) for a web bundle cached across a deploy.
+- **C3. The session probe** (`/api/auth/session`) adds `signInOptions` (every way to sign in) and `platformAccess` (whether the person has a credential on the workspace's site), and keeps `provider` and `loginUrl` for a web bundle cached across a deploy: the option marked `legacy`, else the first.
 - **C6. Token-free grants.** `/mcp` asks the identity service for the grant's token at each call and accepts none stored on the request. A new grant records what the identity says: its person, its owner, and a credential only when the identity gives one.
 - **C7. Sign-in state carries extra data.** `PendingSignIn.data` passes through the OAuth round trip (`BrowserSessions.beginSignIn` to `finishSignIn`, stored and cookie modes), so a link flow returns knowing its intent and account.
 
@@ -22,7 +22,7 @@ An edition can sign people in without a provider token. The server asks one seam
 | `grantCredential(req, res, signedIn, site)` | What a new grant records beside its person and owner. |
 | `grantToken(grant, person, site)` | A grant's provider token at call time; `undefined` is not an error. |
 | `noCredentialMessage(site)` | Why a provider repository cannot open for a person with no credential on `site`. |
-| `signInOptions(req)` | Every way to sign in: `{ id, label, url }`. |
+| `signInOptions(req)` | Every way to sign in: `{ id, label, url, legacy? }`; `legacy` marks the option the probe's `provider` and `loginUrl` name. |
 | `configured(req)` | Whether sign-in is configured (`configured` in the probe). |
 | `signOut(req, res)` | Ends the request's sign-in. |
 

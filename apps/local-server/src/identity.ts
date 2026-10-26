@@ -16,6 +16,8 @@ export interface SignInOption {
   id: string;
   label: string;
   url: string;
+  /** Marks the option the probe's `provider` and `loginUrl` name for a web bundle cached across a deploy (the first option when none is marked). */
+  legacy?: boolean;
 }
 /**
  * Who is signed in, and the credentials they hold. The server asks this service wherever it used to read a provider

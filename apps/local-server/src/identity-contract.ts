@@ -79,7 +79,10 @@ export function identityContract(name: string, makeFixture: () => IdentityFixtur
     it('lists its sign-in options as links', async () => {
       const options = await fixture.identity.signInOptions(browser({}).exchange().req);
       expect(options.length).toBeGreaterThan(0);
-      for (const option of options) expect(option).toEqual({ id: expect.any(String), label: expect.any(String), url: expect.stringMatching(/^\/api\/auth\//) });
+      for (const { legacy, ...option } of options) {
+        expect(option).toEqual({ id: expect.any(String), label: expect.any(String), url: expect.stringMatching(/^\/api\/auth\//) });
+        expect(typeof legacy === 'boolean' || legacy === undefined).toBe(true);
+      }
     });
 
     it('lets a grant it made reach the same token later, for its person', async () => {

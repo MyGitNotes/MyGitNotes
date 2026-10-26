@@ -4,7 +4,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { addMember, fetchMembers, type MembersAnswer, MembershipApiError, removeMember, reorderMembers, setDefaultMember, setMemberHidden, type WorkspaceMemberStatus } from '../lib/members-api.js';
 import { discardRepositoryDrafts, type DraftRepository, type RepositoryDraft, repositoryDrafts } from '../lib/repository-drafts.js';
 import type { WorkspaceRepository } from '../lib/workspace-repositories.js';
-import { useRepositoryBadges, useRepositoryNotices } from '../lib/web-features.js';
+import { useRepositoryAdd, useRepositoryBadges, useRepositoryNotices } from '../lib/web-features.js';
 import { Button } from './Button.js';
 import { limitReached, MembersLimitLine, RepositoryAddFlow } from './RepositoryAdd.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
@@ -46,6 +46,8 @@ export function RepositoriesSettings({ repositories, onMembershipChanged, onOpen
   // A change the limit refused reads as part of the limit line, not as an error.
   const [limitRefusal, setLimitRefusal] = useState('');
   const notices = useRepositoryNotices();
+  // Where an edition's own choices lead the add flow, the dialog speaks of where notes are kept, not of platform repositories alone.
+  const editionLeads = useRepositoryAdd().some(feature => feature.platformAdvanced);
   const badgesOf = useRepositoryBadges();
 
   const load = useCallback(async () => {
@@ -259,7 +261,7 @@ export function RepositoriesSettings({ repositories, onMembershipChanged, onOpen
       )}
       {adding && (
         <WorkspaceDialog title={t('repositories.addTitle')} onClose={() => setAdding(false)}>
-          <p className='text-sm text-muted'>{t('repositories.addDescription')}</p>
+          <p className='text-sm text-muted'>{t(editionLeads ? 'repositories.addDescriptionEdition' : 'repositories.addDescription')}</p>
           <RepositoryAddFlow
             members={answer}
             onAdded={added}
