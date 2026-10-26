@@ -12,23 +12,12 @@ import { WorkspaceDialog } from './WorkspaceDialog.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useAltWheelHorizontalScroll } from '../lib/use-alt-wheel-horizontal-scroll.js';
 import { keyedLink, linkAliases, linkedNote, linkScope, useLinkedNotePreload } from '../lib/use-linked-note-preload.js';
+import { newTabRel } from '../lib/same-origin.js';
 import { useNoteYouTubeEmbed } from '../lib/use-note-youtube-embed.js';
 
 type BeforeNavigate = () => Promise<boolean>;
 const Context = createContext({ registerBeforeNavigate: (_handler: BeforeNavigate): () => void => () => {} });
 export const useWorkspaceLinks = () => useContext(Context);
-
-/**
- * Whether an address belongs to this site. Its new tab then keeps the Referer: the server reads the page a request comes
- * from, so an asset opened from a demo page is asked for as the demo's and not as the person who is signed in.
- */
-const sameOrigin = (url: string) => {
-  try {
-    return new URL(url, window.location.href).origin === window.location.origin;
-  } catch {
-    return false;
-  }
-};
 
 export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
   notebooks: NotebookConfig[];
@@ -212,7 +201,7 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
             <p className='asset-location'>{preview.asset.path}</p>
             {/\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(preview.asset.name) ? <img src={preview.asset.rawUrl} alt={preview.asset.name} /> : <p>{t('assets.openToViewFormat')}</p>}
             <div className='workspace-dialog-actions'>
-              <a href={preview.asset.rawUrl} target='_blank' rel={sameOrigin(preview.asset.rawUrl) ? 'noopener' : 'noopener noreferrer'} className='ui-button'>{t('assets.openOriginal')}</a>
+              <a href={preview.asset.rawUrl} target='_blank' rel={newTabRel(preview.asset.rawUrl)} className='ui-button'>{t('assets.openOriginal')}</a>
               <Button
                 variant='primary'
                 onClick={async () => {

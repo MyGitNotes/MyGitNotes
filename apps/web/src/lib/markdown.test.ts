@@ -250,6 +250,17 @@ describe('renderNote R2 assets', () => {
     expect(html).toContain('target="_blank"');
   });
 
+  it('keeps the Referer on a new-tab asset link of this site, so a demo page’s asset is asked for as the demo', () => {
+    vi.stubGlobal('window', { location: { href: 'https://app.example/demo/x', origin: 'https://app.example' } });
+    try {
+      const html = renderNote('<p>See <a href="r2:docs/sheet.xlsx">sheet</a></p>', 'notes/demo/n.md');
+      expect(html).toContain('rel="noopener"');
+      expect(html).not.toContain('noreferrer');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('renders images using @/ alias without removing them', () => {
     const notebooks = [{ id: 'blog', title: 'Blog', root: 'blog/src/content/posts', pathAliases: { '@/*': 'blog/src/*' } }];
     setWorkspaceNotebooks(notebooks);

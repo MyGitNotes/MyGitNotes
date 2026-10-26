@@ -5,6 +5,7 @@ import type { NotebookConfig } from '../lib/types.js';
 import { fetchAssets } from '../lib/api.js';
 import { notebookRoute } from '../lib/routes.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { newTabRel } from '../lib/same-origin.js';
 import { Button } from './Button.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 import type { CompilationAsset, CompilationContentProps } from './CompilationCard.js';
@@ -39,7 +40,7 @@ export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; a
   const previewNode: ReactNode = preview
     ? (
       <WorkspaceDialog title={preview.name} onClose={() => setPreview(undefined)} className='asset-preview-dialog'>
-        <div className='workspace-asset-preview'>{/\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(preview.name) ? <img src={preview.rawUrl} alt={preview.name} /> : <a href={preview.rawUrl} target='_blank' rel='noopener noreferrer'>{preview.name}</a>}</div>
+        <div className='workspace-asset-preview'>{/\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(preview.name) ? <img src={preview.rawUrl} alt={preview.name} /> : <a href={preview.rawUrl} target='_blank' rel={newTabRel(preview.rawUrl)}>{preview.name}</a>}</div>
         <div className='workspace-dialog-actions'>
           <Button onClick={() => navigate(`/assets?notebook=${encodeURIComponent(preview.notebookId)}&asset=${encodeURIComponent(preview.path)}`)}>{t('links.locateAsset')}</Button>
         </div>

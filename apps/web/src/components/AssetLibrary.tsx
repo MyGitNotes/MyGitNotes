@@ -4,6 +4,7 @@ import { Check, File, Folder, Image as ImageIcon, Upload, X } from 'lucide-react
 import type { AssetItem } from '../lib/types.js';
 import { copyToClipboard } from '../lib/clipboard.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { newTabRel } from '../lib/same-origin.js';
 
 export interface AssetLibraryProps {
   assets: AssetItem[];
@@ -256,7 +257,7 @@ export function AssetLibrary({ assets, initialAssetPath, initialDirectory, onUpl
                   <div className='p-3 flex items-center gap-4 border-b theme-border'>
                     <ImageIcon className='w-4 h-4' />
                     <span className='text-sm mr-auto min-w-0 truncate'>{preview.name}</span>
-                    <a href={preview.rawUrl} target='_blank' rel='noopener noreferrer' className='text-xs underline shrink-0'>{t('assets.openOriginal')}</a>
+                    <a href={preview.rawUrl} target='_blank' rel={newTabRel(preview.rawUrl)} className='text-xs underline shrink-0'>{t('assets.openOriginal')}</a>
                     <button aria-label='Close asset preview' onClick={() => setPreview(null)} className='ui-icon-button'>
                       <X className='w-5 h-5' />
                     </button>

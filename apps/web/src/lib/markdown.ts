@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 import { parseYouTubeUrl } from '@mygitnotes/core/compilation';
 import { isOutlinePath } from '@mygitnotes/core/outline';
 import { parseR2Reference, r2AssetUrl, r2PreviewType } from '@mygitnotes/core/r2-references';
+import { newTabRel } from './same-origin.js';
 import { headingSlug, resolveWorkspaceHref } from './workspace-links.js';
 import { escapeHtml, type NoteLanguage, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
 import { isMermaidInfo } from './mermaid.js';
@@ -252,7 +253,7 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
       else {
         link.setAttribute('href', url);
         link.setAttribute('target', '_blank');
-        link.setAttribute('rel', 'noopener noreferrer');
+        link.setAttribute('rel', newTabRel(url));
       }
       continue;
     }
@@ -260,9 +261,10 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     if (href.startsWith('/r2-assets/')) continue;
     const r2Key = parseR2Reference(href);
     if (r2Key !== null) {
-      link.setAttribute('href', r2AssetUrl(r2Key, notePath));
+      const r2Url = r2AssetUrl(r2Key, notePath);
+      link.setAttribute('href', r2Url);
       link.setAttribute('target', '_blank');
-      link.setAttribute('rel', 'noopener noreferrer');
+      link.setAttribute('rel', newTabRel(r2Url));
       continue;
     }
     const target = resolveWorkspaceHref(href, notePath, undefined, origin);
@@ -308,7 +310,7 @@ function r2Preview(doc: Document, key: string, notePath: string, label: string):
     link.className = 'note-r2-file-link';
     link.setAttribute('href', url);
     link.setAttribute('target', '_blank');
-    link.setAttribute('rel', 'noopener noreferrer');
+    link.setAttribute('rel', newTabRel(url));
     const icon = doc.createElement('span');
     icon.className = 'note-r2-file-icon';
     icon.textContent = '📎';
@@ -340,7 +342,7 @@ function r2Preview(doc: Document, key: string, notePath: string, label: string):
   const open = doc.createElement('a');
   open.setAttribute('href', url);
   open.setAttribute('target', '_blank');
-  open.setAttribute('rel', 'noopener noreferrer');
+  open.setAttribute('rel', newTabRel(url));
   open.textContent = name;
   const extIcon = doc.createElement('span');
   extIcon.className = 'note-r2-ext-icon';

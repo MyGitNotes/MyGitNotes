@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ExternalLink, Maximize, Minus, Plus, X } from 'lucide-react';
+import { newTabRel } from '../lib/same-origin.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import './image-lightbox.css';
 import { LoadingStatus } from './LoadingStatus.js';
@@ -95,7 +96,7 @@ function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => v
           <strong>{image.alt || t('lightbox.title')}</strong>
           {ready && <span>{size.width}{' × '}{size.height}</span>}
         </div>
-        <a href={image.src} target='_blank' rel='noopener noreferrer' aria-label={t('lightbox.original')} title={t('lightbox.original')}>
+        <a href={image.src} target='_blank' rel={newTabRel(image.src)} aria-label={t('lightbox.original')} title={t('lightbox.original')}>
           <ExternalLink size={18} />
         </a>
         <button type='button' autoFocus onClick={onClose} aria-label={t('lightbox.close')} title={t('lightbox.close')}>
