@@ -104,6 +104,8 @@ describe('useNoteEditorSession after the committed note moved under a clean sess
 });
 
 describe('useNoteEditorSession and a late committed note equal to unsaved text', () => {
+  // An autosave waits 750 ms before it writes; vi.waitFor's default 1000 ms would leave a busy machine 250 ms for the write itself.
+  const SAVE_WAIT = { timeout: 10_000 };
   it('still saves an undo that a late read of an older save happens to match', async () => {
     const start = note('Idea', '# Idea\n\nC0.\n');
     const first = { ...start, content: '# Idea\n\nC1.\n' };
@@ -111,14 +113,17 @@ describe('useNoteEditorSession and a late committed note equal to unsaved text',
     const base = { readOnly: false, autoSave: true, draftMode: false, propIsDirty: false, branch: 'main', draftScope: '', onSave: onSave as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote: undefined, onRestoreFile: vi.fn(), onCommitFile: undefined, conflictReason: undefined, onMarkConflict: undefined } satisfies Omit<UseNoteEditorSessionParams, 'note' | 'remoteBase'>;
     const hook = renderHook(({ remoteBase }: { remoteBase: NoteItem; }) => useNoteEditorSession({ ...base, note: start, remoteBase }), { initialProps: { remoteBase: start } });
     act(() => hook.result.current.setContent(first.content));
-    await vi.waitFor(() => expect(hook.result.current.hasUnsavedChanges).toBe(false));
+    await vi.waitFor(() => expect(hook.result.current.hasUnsavedChanges).toBe(false), SAVE_WAIT);
     act(() => hook.result.current.setContent('# Idea\n\nC2.\n'));
-    await vi.waitFor(() => expect(hook.result.current.hasUnsavedChanges).toBe(false));
+    await vi.waitFor(() => expect(hook.result.current.hasUnsavedChanges).toBe(false), SAVE_WAIT);
     // Undo back to C1, then the read that followed the first save arrives late, holding C1.
     act(() => hook.result.current.setContent(first.content));
     hook.rerender({ remoteBase: { ...first } });
-    await vi.waitFor(() => expect(onSave.mock.calls.at(-1)?.[0].content).toBe(first.content));
-    expect(hook.result.current.hasUnsavedChanges).toBe(false);
+    // The hook marks the session saved only after the write resolves and React renders, which can land after the poll that sees the write.
+    await vi.waitFor(() => {
+      expect(onSave.mock.calls.at(-1)?.[0].content).toBe(first.content);
+      expect(hook.result.current.hasUnsavedChanges).toBe(false);
+    }, SAVE_WAIT);
   });
 });
 
