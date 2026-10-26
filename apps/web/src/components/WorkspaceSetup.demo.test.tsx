@@ -71,6 +71,32 @@ it('writes the language cookie before any request, then opens the workspace for 
   expect(requests).toEqual(['/api/auth/session', '/api/auth/session', '/api/workspace']);
 });
 
+it('takes the language of a notebook or scenario the address names over the app\'s, writing it before any request and switching the app to it', async () => {
+  for (const [path, stored, cookie, app] of [
+    ['/demo/notebooks/demo~trpg-en?focus=trpg-en-table', 'zh-TW', 'en', 'en'],
+    ['/demo/notebooks/demo~trpg-zh-tw', 'en', 'zh-tw', 'zh-TW'],
+    ['/demo/notebooks/demo%7Econtract-zh-tw/notes/index.md', 'en', 'zh-tw', 'zh-TW'],
+    ['/demo/study-zh-tw', 'en', 'zh-tw', 'zh-TW'],
+  ] as const) {
+    history.replaceState(null, '', path);
+    localStorage.setItem('github-notes:language', stored);
+    document.cookie = 'mygitnotes_demo=; Max-Age=0; Path=/';
+    cookies = [];
+    serve({ authenticated: false, demo: true });
+    const assign = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, pathname: new URL(path, 'https://app.test').pathname, assign } as Location);
+    await render();
+    expect(cookies[0], path).toContain(`mygitnotes_demo=${cookie}`);
+    expect(cookies.every(value => value.includes(`mygitnotes_demo=${cookie}`)), path).toBe(true);
+    expect(assign, path).not.toHaveBeenCalled();
+    expect(localStorage.getItem('github-notes:language'), path).toBe(app);
+    act(() => root.unmount());
+    root = createRoot(container);
+    vi.restoreAllMocks();
+  }
+  history.replaceState(null, '', '/');
+});
+
 it('says the demo is not available, with a sign-in link, when the deployment offers none', async () => {
   serve({ authenticated: false });
   await render();

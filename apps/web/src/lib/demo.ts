@@ -54,6 +54,23 @@ export function addressScenario(pathname: string, fallback?: string): string | u
   }
 }
 
+/**
+ * The language of the notebook or scenario the address names, such as `/demo/notebooks/demo~trpg-zh-tw` or
+ * `/demo/trpg-en`, or undefined when it names none. A link to one language's notebook opens in that language.
+ */
+export function addressDemoLanguage(pathname: string): DemoLanguage | undefined {
+  const notebook = /\/notebooks\/([^/]+)/.exec(pathname)?.[1];
+  let name = notebook ?? /^\/demo\/([^/]+)\/?$/.exec(pathname)?.[1];
+  if (!name) return undefined;
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    return undefined;
+  }
+  const suffix = /-(en|zh-tw)$/i.exec(name)?.[1]?.toLowerCase();
+  return suffix === 'en' || suffix === 'zh-tw' ? suffix : undefined;
+}
+
 /** The demo the page shows, or null outside it. */
 export interface DemoContextValue {
   /** The slug in the address when the page was opened. */

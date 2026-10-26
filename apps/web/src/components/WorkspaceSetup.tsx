@@ -16,7 +16,7 @@ import { updateWorkspaceConfig } from '../lib/api.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 import YAML from 'yaml';
 import { PlatformAccessProvider, ServerAgentProvider, usePlatformAccess, useSignInIntro } from '../lib/web-features.js';
-import { addressScenario, DEMO_BASE, demoLanguageOf, DemoProvider, useDemo, writeDemoCookie } from '../lib/demo.js';
+import { addressDemoLanguage, addressScenario, DEMO_BASE, demoLanguageOf, DemoProvider, useDemo, writeDemoCookie } from '../lib/demo.js';
 import { fetchWorkspace } from '../lib/api.js';
 
 /**
@@ -210,12 +210,23 @@ type DemoState = 'probing' | 'unavailable' | 'referrer' | 'cookies' | 'ready';
  * opens, with no sign-in screen.
  */
 function DemoGate({ children }: { children: ReactNode; }) {
-  const { t, language } = useTranslation();
+  const { t, language, setLanguage } = useTranslation();
   const demo = useDemo();
   const [state, setState] = useState<DemoState>('probing');
   const [signedIn, setSignedIn] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const cookieLanguage = demoLanguageOf(language);
+  // A link to one language's notebook (the site links each page's language) opens in that language: the address wins
+  // over the app's language until the app has switched to it, so the first request already asks for that notebook.
+  const [linked] = useState(() => addressDemoLanguage(location.pathname));
+  const [following, setFollowing] = useState(linked !== undefined);
+  const cookieLanguage = following && linked ? linked : demoLanguageOf(language);
+  useEffect(() => {
+    if (!following || !linked) return;
+    /* eslint-disable react/set-state-in-effect -- The app's language follows the address once; after that the person's own choice rules. */
+    if (demoLanguageOf(language) === linked) setFollowing(false);
+    else setLanguage(linked === 'zh-tw' ? 'zh-TW' : 'en');
+    /* eslint-enable react/set-state-in-effect */
+  }, [following, linked, language, setLanguage]);
   const written = useRef<string>();
   // Cookie first, so the very first workspace request is already in the visitor's language.
   useEffect(() => {
