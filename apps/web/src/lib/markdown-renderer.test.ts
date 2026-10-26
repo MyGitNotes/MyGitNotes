@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { JSDOM } from 'jsdom';
 import createDOMPurify from 'dompurify';
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createNoteRenderer } from './markdown.js';
 
 const NOTE = '# Title\n\nA **bold** word, `code`, and a [link](https://example.com).\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n::: tip\nKeep going\n:::\n\nInline $x^2$ and\n\n$$\\frac{1}{2}$$\n\n![Alt](images/pic.png)\n\n```mermaid\ngraph TD\n  A --> B\n```\n';
@@ -36,4 +36,26 @@ it('draws formulas as MathML without inline style or the TeX source when asked',
 it('keeps the app output for HTML formulas', () => {
   const html = serverRenderer('html').renderNote('Inline $x^2$\n', 'notes/a.md');
   expect(html).toContain('class="katex-html"');
+});
+
+// A pasted block of spaces once cost seconds: marked's inline text rule read to the end of the run at every space.
+describe('a long run of spaces inside a line', () => {
+  const SPACES = ' '.repeat(120_000);
+  const render = (source: string) => serverRenderer().renderNote(source, 'notes/a.md');
+
+  it.each([['a list item', `- a${SPACES}x`], ['a task list item', `- [ ] a${SPACES}x`], ['a paragraph', `a${SPACES}x`], ['a heading', `# a${SPACES}x`], ['a line before a line break', `a${SPACES}\nx`]])('renders %s in well under a second', (_name, source) => {
+    const started = performance.now();
+    const html = render(source);
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(html).toContain('a');
+  });
+
+  it('keeps line breaks and the text around trailing spaces as before', () => {
+    expect(render('a  \nb')).toBe('<p>a<br>b</p>\n');
+    expect(render('a\nb')).toBe('<p>a<br>b</p>\n');
+    expect(render('a   \n')).toBe('<p>a   </p>\n');
+    expect(render('a b  c   \n\nd')).toBe('<p>a b  c   </p>\n<p>d</p>\n');
+    expect(render('  a  \n  b\n')).toBe('<p>  a<br>b</p>\n');
+    expect(render('x  `y  `  \nz')).toBe('<p>x  <code>y  </code><br>z</p>\n');
+  });
 });

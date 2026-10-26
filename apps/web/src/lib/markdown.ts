@@ -1,4 +1,4 @@
-import { Marked, type MarkedExtension } from 'marked';
+import { Lexer, Marked, type MarkedExtension } from 'marked';
 import markedCjkFriendly from 'marked-cjk-friendly';
 import DOMPurify from 'dompurify';
 import { parseYouTubeUrl } from '@mygitnotes/core/compilation';
@@ -10,10 +10,26 @@ import { isMermaidInfo } from './mermaid.js';
 import { createMarkedMath, type MathOutput } from './math.js';
 import { DEFAULT_YOUTUBE_LABELS, type YouTubeDisplayMode, type YouTubeLabels } from './youtube-embed.js';
 
+// With `breaks`, marked's inline text rule stops before every `\n` that follows spaces by testing ` *\n` at each position
+// of a run of spaces, which reads to the end of the run each time: a line of n spaces costs n² steps, seconds for a
+// pasted block of 100k. The test is redundant inside the rule: the non-space character before a run already ends the
+// text there (`[^ ](?= *\n)`), and so does the check at the start of the match. Dropping it matches the same text.
+const BREAKS_TEXT_RULE = Lexer.rules.inline.breaks.text;
+const LINEAR_BREAKS_TEXT_RULE = new RegExp(BREAKS_TEXT_RULE.source.replace('\\b_| *\\n', '\\b_'));
+const linearBreaksText: MarkedExtension = LINEAR_BREAKS_TEXT_RULE.source === BREAKS_TEXT_RULE.source ? {} : {
+  tokenizer: {
+    inlineText(src) {
+      if (!this.options.gfm || !this.options.breaks) return false;
+      const cap = LINEAR_BREAKS_TEXT_RULE.exec(src);
+      return cap ? { type: 'text', raw: cap[0], text: cap[0], escaped: this.lexer.state.inRawBlock } : false;
+    },
+  },
+};
+
 // CommonMark cannot close emphasis when a full-width punctuation mark sits before the delimiter and
 // a CJK character after it, so `**二口女（ふたくちおんな）**意象` renders as literal asterisks.
 function newMarked(math: MarkedExtension): Marked {
-  const marked = new Marked(markedCjkFriendly(), math);
+  const marked = new Marked(markedCjkFriendly(), linearBreaksText, math);
   // A mermaid fence renders to a placeholder holding its source as text; sanitized HTML cannot carry the SVG, so each
   // surface draws the diagram once the HTML is mounted (see hydrateMermaid). The source stays in the <pre> because
   // DOMPurify drops an attribute value containing `-->`, which every flowchart edge does.
