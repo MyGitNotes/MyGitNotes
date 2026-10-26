@@ -250,6 +250,9 @@ export class AnnotateController {
     this.figure.innerHTML = html;
     this.redrawing = false;
     this.stopPdf = hydratePdfFigures(this.figure, { t: this.t, onSettled: () => this.view.requestMeasure() });
+    // Outside decorate(): a PDF block is never decorated, and its resolved group follows the filter all the same.
+    const details = this.figure.querySelector<HTMLDetailsElement>('details.ann-resolved');
+    if (details) details.open = this.showResolved;
     const fresh = this.figure.querySelector('.ann-stage img');
     if (image && fresh && image.getAttribute('src') === fresh.getAttribute('src')) fresh.replaceWith(image);
     requestAnimationFrame(() => {
@@ -353,9 +356,6 @@ export class AnnotateController {
     if (!parsed || !stage) return;
     const figure = this.figureId();
     const items = itemsOf(parsed.rows);
-    const details = this.figure.querySelector<HTMLDetailsElement>('details.ann-resolved');
-    if (details) details.open = this.showResolved;
-
     stage.tabIndex = 0;
     stage.setAttribute('role', 'group');
     stage.setAttribute('aria-label', t('imageAnnotation.editor.stage'));
