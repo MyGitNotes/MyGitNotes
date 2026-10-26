@@ -1,6 +1,8 @@
 # MyGitNotes
 
-以本機為主的 Markdown 工作區，整合筆記、大綱、合輯、單字卡與知識圖譜；本機模式還能在側欄直接和 Pi agent 對話。內容保存在 Git；可在本機使用，也能透過 Docker、Docker Compose 或 Vercel 部署。
+MyGitNotes 是開源專案（AGPL-3.0），寫給想自己架設的開發者：以本機為主的 Markdown 工作區，整合筆記、大綱、合輯、單字卡與知識圖譜，內容保存在 Git。你可以用 Docker、Docker Compose 或 Vercel 自行部署，也可以直接跑本機模式；本機模式提供 MCP endpoint，並讓 Pi agent 在側欄陪你處理筆記。
+
+不想自己架？直接使用代管服務 [mygitnotes.com](https://mygitnotes.com)：不用安裝設定，以 Google 或 GitHub 帳號登入即可。
 
 [English](README.md) · [繁體中文](README.zh-TW.md)
 
