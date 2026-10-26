@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { TodoTask } from './todo-list.js';
-import { computeGanttEntries, computeGanttRange, computeGanttRows, computeGanttTicks, formatDayIndex, ganttDayWidth, getSavedGanttScale, saveGanttScale } from './todo-gantt.js';
+import { computeGanttEntries, computeGanttRange, computeGanttRows, computeGanttTicks, formatDayIndex, ganttDayWidth, getSavedGanttScale, isMilestoneDone, saveGanttScale } from './todo-gantt.js';
 
 function task(overrides: Partial<TodoTask>): TodoTask {
   return { id: 'a.md#0', notePath: 'a.md', notebookId: 'nb', noteTitle: 'a', lineIndex: 0, lineText: '- [ ] Task', checked: false, assignees: [], ...overrides };
@@ -191,6 +191,55 @@ describe('milestones on the Gantt', () => {
     expect(entries.map(entry => (entry.type === 'milestone' ? entry.note.path : entry.row.task.id))).toEqual(['early.md', 't1', 'late.md', 't2']);
     const early = entries[0];
     expect(early.type === 'milestone' && formatDayIndex(range.startDay + early.offset)).toBe('2026-09-18');
+  });
+
+  describe('a done milestone', () => {
+    const openTask = (path: string) => task({ id: `${path}#0`, notePath: path });
+
+    it('is one whose day is before today and whose note has no open task', () => {
+      const past = milestone('m.md', '2026-09-01');
+      expect(isMilestoneDone(past, [], today)).toBe(true);
+      expect(isMilestoneDone(past, [task({ notePath: 'm.md', checked: true })], today)).toBe(true);
+      expect(isMilestoneDone(past, [openTask('m.md')], today)).toBe(false);
+      expect(isMilestoneDone(past, [{ ...openTask('m.md'), notebookId: 'other' }], today)).toBe(true);
+      expect(isMilestoneDone(past, [openTask('other.md')], today)).toBe(true);
+    });
+
+    it('is never today, a later day or a note without a real date', () => {
+      expect(isMilestoneDone(milestone('m.md', today), [], today)).toBe(false);
+      expect(isMilestoneDone(milestone('m.md', '2026-09-30'), [], today)).toBe(false);
+      expect(isMilestoneDone(milestone('m.md', 'soon'), [], today)).toBe(false);
+    });
+
+    it('does not stretch the range back to its day', () => {
+      const milestones = [milestone('old.md', '2025-01-10')];
+      expect(computeGanttRange([], today, 'day', milestones)).toEqual(computeGanttRange([], today, 'day'));
+      expect(computeGanttRange([], today, 'month', milestones)).toEqual(computeGanttRange([], today, 'month'));
+    });
+
+    it('stretches the range while its note still has an open task', () => {
+      const milestones = [milestone('old.md', '2025-01-10')];
+      const range = computeGanttRange([openTask('old.md')], today, 'day', milestones);
+      expect(formatDayIndex(range.startDay)).toBe('2025-01-09');
+    });
+
+    it('keeps an upcoming milestone in the range', () => {
+      const range = computeGanttRange([], today, 'day', [milestone('m.md', '2026-10-20')]);
+      expect(formatDayIndex(range.startDay + range.days - 2)).toBe('2026-10-20');
+    });
+
+    it('still gets its row when its day is inside the range', () => {
+      const tasks = [task({ id: 't1', start: '2026-09-01', due: '2026-09-20' })];
+      const milestones = [milestone('m.md', '2026-09-05')];
+      const range = computeGanttRange(tasks, today, 'day', milestones);
+      expect(computeGanttEntries(tasks, milestones, range).map(entry => entry.type)).toEqual(['task', 'milestone']);
+    });
+
+    it('is not drawn when its day falls outside the range', () => {
+      const milestones = [milestone('old.md', '2025-01-10')];
+      const range = computeGanttRange([], today, 'day', milestones);
+      expect(computeGanttEntries([], milestones, range)).toEqual([]);
+    });
   });
 
   it('draws a milestone even when no task has a date', () => {

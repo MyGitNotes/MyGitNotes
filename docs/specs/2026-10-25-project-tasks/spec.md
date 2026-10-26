@@ -40,7 +40,7 @@ The agenda part kept in a remote cache is now stored under the kind `agenda:v2:<
 ### Gantt
 
 - Task bar: tinted by priority (highest and high warm, medium accent, low and lowest muted); the bar title names priority and assignees.
-- Milestone: a diamond on its date in its own row, labelled with the note title, placed with the tasks by date; clicking the label or diamond opens the note. Milestone dates widen the visible range like task dates, and a milestone is never "completed".
+- Milestone: a diamond on its date in its own row, labelled with the note title, placed with the tasks by date; clicking the label or diamond opens the note. A milestone has no completed state of its own, but it counts as **done** once its day is before today and its note has no open task (checked in the tasks the chart shows, so a People or Priority filter that hides the note's open tasks makes it done too). A done milestone does not widen the visible range: the range comes from open tasks, today and the milestones that are not done (today, later days and past days whose note still has an open task). A done milestone whose day falls inside that range is still drawn; one outside it is not.
 
 ### Calendar
 
