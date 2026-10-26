@@ -273,6 +273,52 @@ describe('a list an account keeps', () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
+    it('keeps the picker behind an advanced toggle, unloaded, and shows and hides it there with focus kept on the toggle', async () => {
+      open();
+      listing(['octo/scraps']);
+      const fetch = vi.spyOn(globalThis, 'fetch');
+      show({ repositories, onMembershipChanged: vi.fn(async () => {}) }, [{ id: 'edition', repositoryAdd: { options: Option, noPlatformNotice: NoPlatform, platformAdvanced: true } }]);
+      await screen.findByText('NOTES');
+      fireEvent.click(screen.getByRole('button', { name: 'Add repository' }));
+      const dialog = within(await screen.findByRole('dialog'));
+      expect(dialog.getByRole('button', { name: 'Create a hosted repository' })).toBeInTheDocument();
+      expect(dialog.queryByText('octo/scraps')).toBeNull();
+      expect(dialog.queryByText('Or add a repository you can push to:')).toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+      // The description does not speak of platform repositories alone while the options lead.
+      expect(dialog.getByText(/Choose where your notes are kept/)).toBeInTheDocument();
+      expect(dialog.queryByText(/Repositories you can push to\./)).toBeNull();
+      const toggle = dialog.getByRole('button', { name: 'Advanced: add a repository you can push to' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      toggle.focus();
+      fireEvent.click(toggle);
+      await dialog.findByText('octo/scraps');
+      // The toggle stays, now open, and controls the region the picker is in, which is below the options.
+      const open_ = dialog.getByRole('button', { name: 'Advanced: add a repository you can push to' });
+      expect(open_).toBe(toggle);
+      expect(open_).toHaveAttribute('aria-expanded', 'true');
+      expect(open_).toHaveFocus();
+      const region = document.getElementById(open_.getAttribute('aria-controls')!)!;
+      expect(region).toContainElement(dialog.getByText('octo/scraps'));
+      expect(dialog.getByRole('button', { name: 'Create a hosted repository' }).compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(dialog.getByRole('button', { name: 'Create a hosted repository' })).toBeInTheDocument();
+      fireEvent.click(open_);
+      expect(open_).toHaveAttribute('aria-expanded', 'false');
+      expect(dialog.queryByText('octo/scraps')).toBeNull();
+    });
+
+    it('shows the limit line and a refusal while the picker is collapsed', async () => {
+      open({ limit: { visible: 1, max: 2 } });
+      show({ repositories, onMembershipChanged: vi.fn(async () => {}) }, [{ id: 'edition', repositoryAdd: { options: Option, noPlatformNotice: NoPlatform, platformAdvanced: true } }]);
+      await screen.findByText('NOTES');
+      fireEvent.click(screen.getByRole('button', { name: 'Add repository' }));
+      const dialog = within(await screen.findByRole('dialog'));
+      expect(await dialog.findByText('1 of 2 visible repositories')).toBeInTheDocument();
+      expect(dialog.getByRole('button', { name: 'Advanced: add a repository you can push to' })).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(dialog.getByRole('button', { name: 'Pretend refused' }));
+      expect(await dialog.findByText('Hide a repository to add or show another.')).toBeInTheDocument();
+    });
+
     it('says why there is no picker when the edition gives no notice', async () => {
       open();
       showWithoutPlatform([]);
