@@ -45,7 +45,8 @@
 
 .ann-side { min-width: 0; }
 .ann-list { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
-.ann-item { position: relative; display: flex; flex-wrap: wrap; gap: 0.15rem 0.5rem; align-items: center; border: 1px solid var(--ann-line); border-radius: 8px; background: var(--color-bg); padding: 0.5rem 0.6rem; scroll-margin: 4rem; }
+/* `.ann-figure` in front of the card, resolved group and summary: the note's prose reset above is two classes strong and would otherwise zero their padding and margin. */
+.ann-figure .ann-item { position: relative; display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; border: 1px solid var(--ann-line); border-radius: 8px; background: var(--color-bg); padding: 0.65rem 0.8rem; scroll-margin: 4rem; }
 .ann-item:is(.is-linked, .is-selected, :target) { border-color: var(--color-text); }
 .ann-ref { position: relative; display: inline-grid; place-items: center; min-width: 1.6rem; height: 1.6rem; border-radius: 999px; background: var(--color-primary); padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700; font-variant-numeric: tabular-nums; text-decoration: none; color: var(--color-on-primary); }
 .ann-figure a.ann-ref { color: var(--color-on-primary); }
@@ -64,8 +65,8 @@
 .prose-custom .ann-figure .ann-comment li::marker { color: var(--color-muted); }
 .ann-comment img { max-width: 100%; height: auto; }
 .ann-empty { color: var(--color-muted); font-style: italic; }
-.ann-resolved { margin-top: 0.6rem; }
-.ann-resolved > summary { cursor: pointer; font-size: 0.8125rem; color: var(--color-muted); padding: 0.3rem 0; }
+.ann-figure .ann-resolved { margin-top: 0.6rem; }
+.ann-figure .ann-resolved > summary { cursor: pointer; font-size: 0.8125rem; color: var(--color-muted); padding: 0.3rem 0; }
 .ann-resolved > summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
 .ann-resolved > .ann-list { margin-top: 0.4rem; }
 
@@ -107,7 +108,7 @@
 .ann-pending-pin .ann-pending-badge { inset: 0; min-width: 0; height: auto; }
 .ann-pending-region .ann-pending-badge { transform: translate(-50%, -50%); border-radius: 999px; background: var(--color-primary); }
 
-.ann-actions, .ann-form-actions { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.25rem; }
+.ann-actions, .ann-form-actions { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
 .ann-action { min-height: 2.25rem; border: 1px solid var(--ann-line); border-radius: 6px; background: var(--color-surface); padding: 0 0.7rem; font-size: 0.8125rem; color: var(--color-text); cursor: pointer; }
 .ann-action:hover { background: color-mix(in srgb, var(--color-text) 7%, var(--color-surface)); }
 .ann-action:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }

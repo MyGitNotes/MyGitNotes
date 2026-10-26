@@ -31,4 +31,30 @@ describe('annotation figure styles', () => {
     expect(css).not.toMatch(/object-fit/);
     expect(css).toMatch(/\.ann-stage \{[^}]*display: inline-block/);
   });
+
+  // The note's prose reset (`.prose-custom .ann-figure :where(p, ul, ol, li, details, summary)`) is two classes strong; a figure rule on the
+  // same element with one class loses to it, which once left every comment card with no padding at all.
+  describe('against the prose reset', () => {
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [...bare.matchAll(/([^{}@]+)\{([^{}]*)\}/g)].map((match, order) => ({ selectors: match[1].split(/,(?![^(]*\))/).map(selector => selector.trim()), body: match[2], order }));
+    const specificity = (selector: string): [number, number, number] => {
+      const bare = selector.replace(/:where\([^)]*\)/g, '');
+      const classes = (bare.match(/\.[\w-]+|\[[^\]]*\]|(?<!:):[\w-]+/g) ?? []).length;
+      const types = (bare.replace(/\.[\w-]+|\[[^\]]*\]|::?[\w-]+(?:\([^)]*\))?/g, ' ').match(/(?:^|[\s>+~])[a-z][\w-]*/g) ?? []).length;
+      return [0, classes, types];
+    };
+    const beats = (a: [number, number, number], b: [number, number, number]) => a[1] !== b[1] ? a[1] > b[1] : a[2] >= b[2];
+    const reset = rules.find(rule => rule.selectors.some(selector => selector.startsWith('.prose-custom .ann-figure :where(p, ul, ol, li')))!;
+    const resetPower = specificity(reset.selectors[0]);
+
+    it('understands the reset it measures against', () => {
+      expect(resetPower).toEqual([0, 2, 0]);
+    });
+
+    it.each([['.ann-item', 'padding'], ['.ann-resolved', 'margin-top'], ['.ann-resolved > summary', 'padding']])('lets %s keep its %s inside a note', (tail, property) => {
+      const declaring = rules.filter(rule => new RegExp(`(?:^|[;\\s])${property}\\s*:`).test(rule.body)).flatMap(rule => rule.selectors.filter(selector => selector === tail || selector.endsWith(` ${tail}`)).map(selector => ({ selector, order: rule.order })));
+      expect(declaring.length).toBeGreaterThan(0);
+      expect(declaring.some(({ selector, order }) => beats(specificity(selector), resetPower) && (specificity(selector)[1] > resetPower[1] || order > reset.order))).toBe(true);
+    });
+  });
 });
