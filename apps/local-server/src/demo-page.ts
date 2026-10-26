@@ -13,6 +13,8 @@ const isSetCookie = (name: unknown) => typeof name === 'string' && name.toLowerC
 /** The headers a `writeHead` call was given, less any `Set-Cookie`; Node takes an object, or a flat list of names and values. */
 function withoutSetCookie<Headers extends object>(headers: Headers): Headers {
   if (!Array.isArray(headers)) return Object.fromEntries(Object.entries(headers).filter(([name]) => !isSetCookie(name))) as Headers;
+  // A list of [name, value] pairs.
+  if (headers.every(entry => Array.isArray(entry))) return headers.filter(([name]) => !isSetCookie(name)) as Headers;
   // An odd list is Node's to refuse.
   return headers.length % 2 ? headers : headers.filter((_value, index) => !isSetCookie(headers[index - index % 2])) as Headers;
 }

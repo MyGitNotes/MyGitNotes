@@ -297,6 +297,8 @@ describe('demoPageCredentials', () => {
   let bare: Server, bareBase: string;
   const mount = async (...handlers: express.RequestHandler[]) => {
     const app = express();
+    // Node takes a list of pairs only while no header is set yet, and Express sets this one.
+    app.disable('x-powered-by');
     app.use(...handlers);
     app.get('/echo', (req, res) => res.json({ cookie: req.headers.cookie ?? null, authorization: req.headers.authorization ?? null, marked: isDemoPage(req) }));
     app.get('/set-header', (_req, res) => {
@@ -325,6 +327,10 @@ describe('demoPageCredentials', () => {
     });
     app.get('/write-head-flat', (_req, res) => {
       res.writeHead(200, ['Set-Cookie', 'a=1', 'Content-Type', 'application/json', 'SET-COOKIE', 'b=2', 'X-Kept', 'yes']);
+      res.end('{}');
+    });
+    app.get('/write-head-pairs', (_req, res) => {
+      res.writeHead(200, [['Set-Cookie', 'a=1'], ['Content-Type', 'application/json'], ['set-cookie', 'b=2'], ['X-Kept', 'yes']] as never);
       res.end('{}');
     });
     app.get('/write-head-after-set', (_req, res) => {
@@ -384,7 +390,7 @@ describe('demoPageCredentials', () => {
     expect(JSON.parse((await get('/echo', { Cookie: 'x=1; mygitnotes_demo=en', Authorization: 'Bearer x', Referer: PAGE })).text)).toEqual({ cookie: 'mygitnotes_demo=en', authorization: null, marked: true });
   });
 
-  it.each(['/echo', '/set-header', '/append', '/clear', '/redirect', '/write-head', '/write-head-message', '/write-head-flat', '/write-head-after-set', '/stream', '/send-file', '/error', '/missing'])('writes no Set-Cookie on %s, however the route sets it', async url => {
+  it.each(['/echo', '/set-header', '/append', '/clear', '/redirect', '/write-head', '/write-head-message', '/write-head-flat', '/write-head-pairs', '/write-head-after-set', '/stream', '/send-file', '/error', '/missing'])('writes no Set-Cookie on %s, however the route sets it', async url => {
     await mount(demoPageCredentials());
     const demoPage = await get(url, { Referer: PAGE });
     expect(demoPage.setCookie, url).toEqual([]);
@@ -393,7 +399,7 @@ describe('demoPageCredentials', () => {
     if (!['/echo', '/error', '/missing'].includes(url)) expect((await get(url)).setCookie.length, `${url} sets a cookie`).toBeGreaterThan(0);
   });
 
-  it.each(['/write-head-message', '/write-head-flat', '/write-head-after-set'])('keeps the status, the body and the other headers of %s', async url => {
+  it.each(['/write-head-message', '/write-head-flat', '/write-head-pairs', '/write-head-after-set'])('keeps the status, the body and the other headers of %s', async url => {
     await mount(demoPageCredentials());
     const answer = await get(url, { Referer: PAGE });
     expect(answer.response.status).toBe(200);
