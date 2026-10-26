@@ -58,6 +58,8 @@ export function addressScenario(pathname: string, fallback?: string): string | u
 export interface DemoContextValue {
   /** The slug in the address when the page was opened. */
   scenario?: string;
+  /** The browser holds a sign-in of its own, which the demo never uses: the banner offers a way back to the person's notes instead of a way to sign in. Set once the gate has asked. */
+  signedIn?: boolean;
 }
 const DemoContext = createContext<DemoContextValue | null>(null);
 export const DemoProvider = ({ value, children }: { value: DemoContextValue | null; children?: ReactNode; }) => createElement(DemoContext.Provider, { value }, children);

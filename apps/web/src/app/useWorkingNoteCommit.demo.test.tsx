@@ -118,7 +118,7 @@ it('never sends a remote commit from the demo page, whichever repository the ans
     requests.push({ url: String(url), method: init?.method ?? 'GET' });
     return new Response(JSON.stringify(answer));
   });
-  await expect(commitWorkingNotes([{ ...change(ownNote.path), repository: own.id }], 'x')).rejects.toThrow('demo.signedIn');
+  await expect(commitWorkingNotes([{ ...change(ownNote.path), repository: own.id }], 'x')).rejects.toThrow('demo.referrer');
   expect(requests.filter(request => request.method !== 'GET')).toEqual([]);
   expect(Object.keys(readWorkingNotes(draftStore(own)))).toEqual([ownNote.path]);
 });

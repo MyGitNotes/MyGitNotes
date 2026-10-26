@@ -64,7 +64,7 @@ import { useNoteMove } from './app/useNoteMove.js';
 import { folderCommandScope } from './lib/file-change-scope.js';
 import { noteFolder } from './lib/note-move.js';
 import { RenameNoteDialog } from './components/RenameNoteDialog.js';
-import { AgentAccessSettings, AuthControls, ConnectionState } from './components/AuthControls.js';
+import { AccountControls, AgentAccessSettings, ConnectionState } from './components/AuthControls.js';
 import { Header, HeaderUtilities } from './components/Header.js';
 import { PhoneFilterSheet, PhoneListBar } from './components/PhoneListBar.js';
 import { PhoneNotesProvider, phoneNotesScreen } from './lib/phone-notes.js';
@@ -102,7 +102,7 @@ import { RightPanel } from './components/RightPanel.js';
 import { FileManager, FileManagerDialog, FileMetadata } from './components/files/index.js';
 import { AgentSystemView } from './components/AgentSystemView.js';
 import { SettingsModal } from './components/SettingsModal.js';
-import { useAccountControls, useAgentEnabled } from './lib/web-features.js';
+import { useAgentEnabled } from './lib/web-features.js';
 import { DerivedManifestNotice, RepositorySwitch, WorkspaceGate } from './components/WorkspaceSetup.js';
 import { useLeaveWarning } from './lib/use-leave-warning.js';
 import { CommitModal } from './components/CommitModal.js';
@@ -123,7 +123,6 @@ const NO_NOTEBOOKS: NotebookConfig[] = [];
 export const AppContent: React.FC = () => {
   useVisualViewport();
   const { t, language } = useTranslation();
-  const renderAccountControls = useAccountControls();
   const { sortField, sortOrder, handleSortChange } = useNoteSort();
 
   const { filtersOpen, setFiltersOpen, location, queryState, setFilterQuery } = useFilterSidebar();
@@ -551,7 +550,7 @@ export const AppContent: React.FC = () => {
               {defaultRepository?.manifest === 'derived' && defaultRepository.config && <DerivedManifestNotice repository={defaultRepository.id} config={defaultRepository.config} configRevision={defaultRepository.configRevision} canWrite={manifestWritable} onCreated={() => refreshWorkspace(true)} />}
               {/* Top Header */}
               <div className='workspace-header-fold' data-folded={browseCollapsed || undefined} data-animating={headerFolding || undefined} {...(browseCollapsed ? { inert: '' } : {})}>
-                <Header unavailableNotebooks={repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks)} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={renderAccountControls ? renderAccountControls({ local: !remote }) : <AuthControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={() => void createNote()} createNoteDisabled={!canWrite} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} navOnly={phoneNotes} />
+                <Header unavailableNotebooks={repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks)} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={<AccountControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={() => void createNote()} createNoteDisabled={!canWrite} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} navOnly={phoneNotes} />
               </div>
               <KeyboardShortcuts mode={shortcutMode} onModeChange={setShortcutMode} suspended={isCommitOpen} selectedNotebookId={selectedNotebookId} onOpenNote={note => void handleOpenNote(note)} />
               {routeError && (
@@ -629,7 +628,7 @@ export const AppContent: React.FC = () => {
                     )}
                     {!notebookUnavailable && activeTab === 'notes' && !route.study && (
                       <>
-                        <WorkspaceSidebarPortal>{phone && <HeaderUtilities className='phone-drawer-utilities' activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={noteEditorOpen || isCommitOpen} onOpenCommands={() => setShortcutMode('palette')} accountControls={renderAccountControls ? renderAccountControls({ local: !remote }) : <AuthControls local={!remote} />} />} {renderSidebar()}</WorkspaceSidebarPortal>
+                        <WorkspaceSidebarPortal>{phone && <HeaderUtilities className='phone-drawer-utilities' activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={noteEditorOpen || isCommitOpen} onOpenCommands={() => setShortcutMode('palette')} accountControls={<AccountControls local={!remote} />} />} {renderSidebar()}</WorkspaceSidebarPortal>
                         {/* Main Content Area */}
                         <main className='workspace-main notes-main'>
                           {phone

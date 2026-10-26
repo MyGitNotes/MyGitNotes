@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { clearAgentDrafts } from '../lib/pi-agent/draft.js';
 import { clearOpenedScopes } from '../lib/kept-drafts.js';
 import { ArrowLeftRight, GitBranch, Languages, ListTree, LogOut, Network, ShieldCheck } from 'lucide-react';
@@ -16,7 +16,7 @@ import { updateWorkspaceConfig } from '../lib/api.js';
 import type { WorkspaceConfig } from '../lib/types.js';
 import YAML from 'yaml';
 import { PlatformAccessProvider, ServerAgentProvider, usePlatformAccess } from '../lib/web-features.js';
-import { addressScenario, DEMO_BASE, demoLanguageOf, useDemo, writeDemoCookie } from '../lib/demo.js';
+import { addressScenario, DEMO_BASE, demoLanguageOf, DemoProvider, useDemo, writeDemoCookie } from '../lib/demo.js';
 import { fetchWorkspace } from '../lib/api.js';
 
 /**
@@ -37,6 +37,8 @@ export interface SessionProbe {
   agent?: boolean;
   /** The deployment offers a demo to visitors who are not signed in. */
   demo?: boolean;
+  /** The server took the request for one made by a demo page, so it ignored the session of the browser (see `demoPageRequest`). */
+  demoPage?: boolean;
   workspace?: { repository: string; branch: string; } | null;
 }
 
@@ -192,17 +194,22 @@ function DemoNotice({ message, action }: { message: string; action: ReactNode; }
   );
 }
 
-type DemoState = 'probing' | 'unavailable' | 'signed-in' | 'cookies' | 'ready';
+type DemoState = 'probing' | 'unavailable' | 'referrer' | 'cookies' | 'ready';
 
 /**
- * The demo's gate: the visitor's language goes to the server as a cookie first, then the probe says whether the demo is
- * offered and whether this browser is signed in, and the workspace says whether the demo repository came back. Only then
- * does the workspace open, with no sign-in screen.
+ * The demo's gate: the visitor's language goes to the server as a cookie first. Two probes then go out together. The
+ * demo's own carries the page's address, so a server that recognises the demo page answers as it does a visitor who is
+ * not signed in, `demoPage` set. The account probe is sent with no Referer, which makes it the one request of a demo page
+ * that is the browser's own: its answer says only whether this browser is signed in, for the banner. A signed-in browser
+ * whose demo probe did not say `demoPage` (an extension hid the page's address) or whose workspace answer holds a
+ * repository that is not the demo's gets a notice and nothing of its own opens under the demo. Otherwise the workspace
+ * opens, with no sign-in screen.
  */
 function DemoGate({ children }: { children: ReactNode; }) {
   const { t, language } = useTranslation();
   const demo = useDemo();
   const [state, setState] = useState<DemoState>('probing');
+  const [signedIn, setSignedIn] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const cookieLanguage = demoLanguageOf(language);
   const written = useRef<string>();
@@ -222,24 +229,33 @@ function DemoGate({ children }: { children: ReactNode; }) {
     const settle = (next: DemoState) => !cancelled && setState(next);
     void (async () => {
       setState('probing');
-      const probe: SessionProbe = await fetch('/api/auth/session').then(response => response.ok ? response.json() : {}).catch(() => ({}));
+      const read = (request: Promise<Response>): Promise<SessionProbe> => request.then(response => response.ok ? response.json() : {}).catch(() => ({}));
+      const [probe, account] = await Promise.all([read(fetch('/api/auth/session')), read(fetch('/api/auth/session', { referrerPolicy: 'no-referrer' }))]);
+      if (cancelled) return;
       if (!probe.demo) return settle('unavailable');
-      if (probe.authenticated) return settle('signed-in');
+      setSignedIn(account.authenticated === true);
+      // The server must have taken this page for the demo's. If it did not, the browser's own session answers the workspace.
+      if (probe.authenticated || (account.authenticated && !probe.demoPage)) return settle('referrer');
       const workspace = await fetchWorkspace().catch(() => null);
+      if (workspace?.repositories.some(repository => !repository.demo)) return settle('referrer');
       settle(workspace?.repositories.some(repository => repository.demo) ? 'ready' : 'cookies');
     })();
     return () => {
       cancelled = true;
     };
   }, [attempt]);
+  // The demo the workspace sees knows whether the browser is signed in, which only the banner uses.
+  const shown = useMemo(() => ({ ...demo, signedIn }), [demo, signedIn]);
   if (state === 'probing') return <ConnectionState loading error='' onRetry={() => {}} />;
   if (state === 'unavailable') return <DemoNotice message={t('demo.unavailable')} action={<a className='ui-button' href='/'>{t('demo.signIn')}</a>} />;
-  if (state === 'signed-in') return <DemoNotice message={t('demo.signedIn')} action={<a className='ui-button' href='/'>{t('demo.openMine')}</a>} />;
+  if (state === 'referrer') return <DemoNotice message={t('demo.referrer')} action={<a className='ui-button' href='/'>{t('demo.openMine')}</a>} />;
   if (state === 'cookies') return <DemoNotice message={t('demo.cookies')} action={<Button onClick={() => setAttempt(count => count + 1)}>{t('demo.retry')}</Button>} />;
   return (
-    <PlatformAccessProvider platformAccess>
-      <ServerAgentProvider agent={false}>{children}</ServerAgentProvider>
-    </PlatformAccessProvider>
+    <DemoProvider value={shown}>
+      <PlatformAccessProvider platformAccess>
+        <ServerAgentProvider agent={false}>{children}</ServerAgentProvider>
+      </PlatformAccessProvider>
+    </DemoProvider>
   );
 }
 

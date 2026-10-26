@@ -1,3 +1,5 @@
+import { DEMO_STORAGE_PREFIX } from './workspace-repositories.js';
+
 /** A note edit this browser keeps in localStorage, found without knowing which repository it belongs to. */
 export interface KeptDraft {
   /** The repository and branch the draft belongs to (`draftScope`). */
@@ -86,9 +88,12 @@ export interface OfflineDrafts {
 /**
  * The drafts of the scopes the session last opened, listed by title. Drafts of any other account or repository in this browser,
  * or all of them when no session is recorded (signed out), are only counted: their titles are not shown to whoever holds the screen.
+ *
+ * The demo's drafts live in scopes of their own (`demo:`), and the demo and the person's notes share this browser: a screen
+ * of the person's notes counts none of the demo's, and the demo's counts only its own and lists none of the person's titles.
  */
-export function offlineDrafts(storage: Storage): OfflineDrafts {
-  const all = listKeptDrafts(storage);
-  const scopes = openedScopes(storage);
+export function offlineDrafts(storage: Storage, { demo = false }: { demo?: boolean; } = {}): OfflineDrafts {
+  const all = listKeptDrafts(storage).filter(draft => draft.scope.startsWith(DEMO_STORAGE_PREFIX) === demo);
+  const scopes = demo ? null : openedScopes(storage);
   return { listed: scopes ? all.filter(draft => scopes.includes(draft.scope)) : [], total: all.length };
 }

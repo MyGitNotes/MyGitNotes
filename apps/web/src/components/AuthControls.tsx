@@ -13,7 +13,8 @@ import { GithubMark, GitlabMark } from './ProviderMarks.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { clearAgentDrafts } from '../lib/pi-agent/draft.js';
 import { clearOpenedScopes } from '../lib/kept-drafts.js';
-import { useAccountMenuItems, useSignInNotice } from '../lib/web-features.js';
+import { useDemo } from '../lib/demo.js';
+import { useAccountControls, useAccountMenuItems, useSignInNotice } from '../lib/web-features.js';
 
 class GrantRequestError extends Error {
   constructor(public key: TranslationKey) {
@@ -57,7 +58,22 @@ export function signInOptionsOf(session: Pick<Session, 'provider' | 'loginUrl' |
 }
 const connectionActionClass = 'inline-flex min-h-11 items-center justify-center px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap shrink-0';
 
-export function AuthControls({ local = false, connection = false }: { local?: boolean; connection?: boolean; }) {
+/**
+ * Sign-in and the account menu, except in the demo: a demo page signs nobody in or out (the server refuses it), and the
+ * demo's banner is the way to the person's own notes.
+ */
+export function AuthControls(props: { local?: boolean; connection?: boolean; }) {
+  return useDemo() ? null : <AccountMenu {...props} />;
+}
+
+/** The header's account controls: the edition's own when it supplies them, else the community ones; none in the demo. */
+export function AccountControls({ local }: { local: boolean; }) {
+  const renderAccountControls = useAccountControls();
+  if (useDemo()) return null;
+  return renderAccountControls ? renderAccountControls({ local }) : <AuthControls local={local} />;
+}
+
+function AccountMenu({ local = false, connection = false }: { local?: boolean; connection?: boolean; }) {
   const { t } = useTranslation();
   const session = useSession();
   const menuItems = useAccountMenuItems();

@@ -2309,7 +2309,7 @@ export const en = {
   'demo.dismiss': 'Dismiss',
   'demo.unavailable': 'The demo is not available.',
   'demo.signIn': 'Sign in',
-  'demo.signedIn': 'You are signed in, so this browser opens your own notes. Open them, or try the demo in a private window.',
+  'demo.referrer': 'Your browser is not telling this site that you opened the demo, so the demo cannot open while you are signed in. Open my notes, or try the demo in a private window.',
   'demo.openMine': 'Open my notes',
   'demo.cookies': 'The demo needs cookies for this site. Allow them, then try again.',
   'demo.retry': 'Try again',

@@ -13,7 +13,8 @@ export function remainingText(ms: number, t: ReturnType<typeof useTranslation>['
 
 /**
  * Above the demo workspace: your edits and commits stay in this browser and are cleared 24 hours after the first change
- * (with the time left once there is one), a way to start over, and a way to keep your own notes. Renders nothing outside the demo.
+ * (with the time left once there is one), a way to start over, and a way to keep your own notes: to sign in, or, for a browser
+ * that is signed in already, to go to its notes. Renders nothing outside the demo.
  */
 export function DemoBanner() {
   const { t } = useTranslation();
@@ -39,7 +40,7 @@ export function DemoBanner() {
       <div role='status' data-testid='demo-banner' className='shrink-0 px-4 py-2 text-sm bg-surface border-b border-line flex flex-wrap items-center gap-2'>
         <span className='flex-1 min-w-0'>{remaining === undefined ? t('demo.banner') : t('demo.bannerClock', { time: remainingText(remaining, t) })}</span>
         <Button size='small' onClick={reset}>{t('demo.reset')}</Button>
-        {callToAction ? <callToAction.Component /> : <a className='ui-button' href='/'>{t('demo.callToAction')}</a>}
+        {callToAction ? <callToAction.Component /> : <a className='ui-button' href='/'>{t(demo.signedIn ? 'demo.openMine' : 'demo.callToAction')}</a>}
       </div>
       {demoWasUpdated() && (
         <div role='status' className='shrink-0 px-4 py-2 text-sm bg-surface border-b border-line flex flex-wrap items-center gap-2'>

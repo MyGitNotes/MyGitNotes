@@ -19,7 +19,7 @@ function serve(repositories: WorkspaceRepository[]) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
-      const body = url.startsWith('/api/workspace') ? { keyedConfig: config, local: false, defaultRepository: repositories[0].id, repositories, coreUpdate: false } : url.startsWith('/api/folders') || url.startsWith('/api/assets') ? [] : { page: { version: 2, focuses: [] }, revision: 'r', writable: false, path: 'f' };
+      const body = url.startsWith('/api/workspace') ? { keyedConfig: config, local: false, defaultRepository: repositories[0]?.id ?? null, repositories, coreUpdate: false } : url.startsWith('/api/folders') || url.startsWith('/api/assets') ? [] : { page: { version: 2, focuses: [] }, revision: 'r', writable: false, path: 'f' };
       return new Response(JSON.stringify(body));
     }),
   );
@@ -74,7 +74,26 @@ it('refuses to show the demo as a signed-in person’s notebooks when the sessio
 it('refuses to show a signed-in person’s own repositories on the demo page when a refresh answers without the demo', async () => {
   serve([repository({ write: true, id: 'github:me/notes@main', alias: 'notes', notebooks: ['notes~life'] })]);
   const { result } = renderHook(() => useWorkspaceSync({}), { wrapper: wrapper(true) });
-  await waitFor(() => expect(result.current.loadError).toMatch(/signed in|已登入/));
+  await waitFor(() => expect(result.current.loadError).toMatch(/not telling this site|沒有告訴網站/));
   expect(result.current.config).toBeNull();
   expect(result.current.canWriteNotebook('notes~life')).toBe(false);
+});
+
+it('refuses an answer that holds the demo beside a repository that is not the demo’s, and opens none of it', async () => {
+  const own = repository({ write: true, id: 'github:me/notes@main', alias: 'notes', notebooks: ['notes~life'] });
+  serve([repository({ demo: true }), own]);
+  updateWorkingNote(draftStore(own), draft.path, { note: { ...draft, notebookId: 'notes~life' }, base: null });
+  const { result } = renderHook(() => useWorkspaceSync({}), { wrapper: wrapper(true) });
+  await waitFor(() => expect(result.current.loadError).toMatch(/not telling this site|沒有告訴網站/));
+  expect(result.current.config).toBeNull();
+  expect(result.current.canWriteNotebook('notes~life')).toBe(false);
+  expect(result.current.canWriteNotebook('demo~contract-en')).toBe(false);
+  expect(result.current.activeWorkingNotes).toEqual({});
+});
+
+it('refuses an answer with no repository in the demo, which is a demo cookie that did not arrive', async () => {
+  serve([]);
+  const { result } = renderHook(() => useWorkspaceSync({}), { wrapper: wrapper(true) });
+  await waitFor(() => expect(result.current.loadError).not.toBe(''));
+  expect(result.current.config).toBeNull();
 });

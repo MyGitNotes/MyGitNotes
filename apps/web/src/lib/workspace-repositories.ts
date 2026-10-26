@@ -15,11 +15,14 @@ export const editable = (repository: Pick<RepositoryStatus, 'write' | 'demo'> | 
 /** Whether "Import legacy bookmarks" is offered: it reads and writes the repository's file on the server, which a demo never reaches. */
 export const legacyImportOffered = (repository: Pick<RepositoryStatus, 'demo'> | undefined): boolean => repository?.demo !== true;
 
+/** What every demo repository's browser data starts with, in its draft scope and in every other key it makes. */
+export const DEMO_STORAGE_PREFIX = 'demo:';
+
 /**
  * The name a repository's browser data is kept under. A demo repository has a namespace of its own, so a demo whose id is
  * also a signed-in person's repository never shares, or sweeps, that person's drafts, Focus views or kept texts.
  */
-export const storageId = (repository: { id: string; demo?: boolean; }) => repository.demo === true ? `demo:${repository.id}` : repository.id;
+export const storageId = (repository: { id: string; demo?: boolean; }) => repository.demo === true ? `${DEMO_STORAGE_PREFIX}${repository.id}` : repository.id;
 
 /** Where one repository's drafts are stored; for the repository a workspace had before it had several, this is the workspace's earlier draft scope, so drafts carry over. */
 export const draftScope = (repository: Pick<RepositoryStatus, 'id' | 'branch' | 'demo'>) => `${storageId(repository)}:${repository.branch}`;

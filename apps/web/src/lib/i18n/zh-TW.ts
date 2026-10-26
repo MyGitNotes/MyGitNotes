@@ -2310,7 +2310,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'demo.dismiss': '關閉',
   'demo.unavailable': '目前沒有提供示範。',
   'demo.signIn': '登入',
-  'demo.signedIn': '你已經登入，這個瀏覽器會開啟你自己的筆記。可以前往你的筆記，或改用私密視窗體驗示範。',
+  'demo.referrer': '你的瀏覽器沒有告訴網站你開的是示範頁，所以登入時無法開啟示範。可以前往你的筆記，或改用私密視窗體驗示範。',
   'demo.openMine': '前往我的筆記',
   'demo.cookies': '示範需要這個網站的 Cookie。請允許後再試一次。',
   'demo.retry': '再試一次',

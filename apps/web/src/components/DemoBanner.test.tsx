@@ -3,7 +3,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DemoBanner, remainingText } from './DemoBanner.js';
-import { DemoProvider } from '../lib/demo.js';
+import { DemoProvider, useDemo } from '../lib/demo.js';
 import { DEMO_TTL_MS, noteDemoWrite, readDemoRecord, registerDemoRepositories, setDemoScenarioNotice } from '../lib/demo-storage.js';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { WebFeaturesProvider } from '../lib/web-features.js';
@@ -11,7 +11,7 @@ import { WebFeaturesProvider } from '../lib/web-features.js';
 let root: Root;
 let container: HTMLElement;
 const REPO = 'edition:demo:scenarios@main', SCOPE = `demo:${REPO}:main`;
-const mount = (demo: boolean, features: Parameters<typeof WebFeaturesProvider>[0]['features'] = []) => act(async () => root.render(createElement(WebFeaturesProvider, { features }, createElement(I18nProvider, null, createElement(DemoProvider, { value: demo ? { scenario: 'trpg' } : null }, createElement(DemoBanner))))));
+const mount = (demo: boolean, features: Parameters<typeof WebFeaturesProvider>[0]['features'] = [], signedIn?: boolean) => act(async () => root.render(createElement(WebFeaturesProvider, { features }, createElement(I18nProvider, null, createElement(DemoProvider, { value: demo ? { scenario: 'trpg', ...(signedIn === undefined ? {} : { signedIn }) } : null }, createElement(DemoBanner))))));
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean; }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -43,6 +43,26 @@ it('says the data stays in this browser for 24 hours after the first change, wit
   expect(container.textContent).toContain('Reset demo');
   expect(container.querySelector('a')?.getAttribute('href')).toBe('/');
   expect(container.textContent).toContain('Sign in to keep your own notes');
+});
+
+it('offers a signed-in person their own notes in place of signing in, linked to the app and not to the demo', async () => {
+  await mount(true, [], true);
+  const link = [...container.querySelectorAll('a')].find(candidate => candidate.textContent === 'Open my notes');
+  expect(link?.getAttribute('href')).toBe('/');
+  expect(container.textContent).not.toContain('Sign in to keep your own notes');
+  expect(container.textContent).toContain('Reset demo');
+});
+
+it('still offers to sign in to a visitor who is not signed in', async () => {
+  await mount(true, [], false);
+  expect(container.textContent).toContain('Sign in to keep your own notes');
+  expect(container.textContent).not.toContain('Open my notes');
+});
+
+it('gives an edition’s call to action the same demo context, so it can tell a signed-in person', async () => {
+  const Seen = () => createElement('a', { href: '/signup' }, useDemo()?.signedIn ? 'Back to my notes' : 'Create a free account');
+  await mount(true, [{ id: 'pro', demoCallToAction: Seen }], true);
+  expect(container.textContent).toContain('Back to my notes');
 });
 
 it('counts down once the first change is kept', async () => {

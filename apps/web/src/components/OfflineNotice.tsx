@@ -1,15 +1,17 @@
 import { WifiOff } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from '../lib/i18n/index.js';
+import { useDemo } from '../lib/demo.js';
 import { offlineDrafts } from '../lib/kept-drafts.js';
 
 /**
  * Says the server cannot be reached and lists the drafts of what this session opened, which the app shell can show without any network.
- * Without a session on record it only counts the drafts the browser keeps.
+ * Without a session on record it only counts the drafts the browser keeps. In the demo it lists none and counts the demo's own.
  */
 export function OfflineNotice() {
   const { t } = useTranslation();
-  const { listed, total } = useMemo(() => offlineDrafts(localStorage), []);
+  const demo = useDemo() !== null;
+  const { listed, total } = useMemo(() => offlineDrafts(localStorage, { demo }), [demo]);
   return (
     <div role='status' className='mb-6 flex flex-col gap-3'>
       <p className='flex items-center gap-2 font-medium'>

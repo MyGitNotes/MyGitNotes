@@ -143,3 +143,38 @@ it('opens a preloaded link without another read and leaves draft selection to th
 });
 
 /* eslint-enable react/no-children-prop */
+
+/** Opens the preview of an asset whose original is at `rawUrl`, as a click on a link to it does, and answers the preview's "Open original" link. */
+async function originalLink(rawUrl: string) {
+  // The preview is a native dialog, which jsdom does not open.
+  HTMLDialogElement.prototype.showModal = function(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+  const { setNoteQueryScope } = await import('../lib/use-note-queries.js');
+  setNoteQueryScope({ sourceId: 'test:asset-preview', revisions: {}, repositories: {}, drafts: {} });
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => String(url).includes('/assets') ? { assets: [{ name: 'pic.png', path: 'notes/assets/pic.png', rawUrl, hash: 'h' }] } : { revisions: {}, notes: [] } })));
+  const view = render(<WorkspaceLinks notebooks={[{ id: 'n', title: 'Notes', root: 'notes' }]} folders={[]} onOpenNote={vi.fn()}>{link('assets/pic.png')}</WorkspaceLinks>, { wrapper });
+  await act(async () => {
+    fireEvent.click(view.getByTestId('link'));
+  });
+  return await view.findByText('Open original');
+}
+
+it('opens the original of an asset of this site with the page as its Referer, so a demo page’s asset is asked for as the demo, and keeps noopener', async () => {
+  const original = await originalLink('/raw-assets/by-hash/' + 'a'.repeat(40));
+  expect(original.getAttribute('target')).toBe('_blank');
+  expect(original.getAttribute('rel')).toBe('noopener');
+});
+
+it('opens the original of an asset of this site named by an absolute URL the same way', async () => {
+  const original = await originalLink(`${window.location.origin}/raw-assets/notes/assets/pic.png?notebook=n`);
+  expect(original.getAttribute('rel')).toBe('noopener');
+});
+
+it('still sends no Referer to an original that lives on another site', async () => {
+  const original = await originalLink('https://cdn.example/pic.png');
+  expect(original.getAttribute('rel')).toBe('noopener noreferrer');
+});

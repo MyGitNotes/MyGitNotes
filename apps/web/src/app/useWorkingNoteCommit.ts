@@ -91,7 +91,7 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
   const commitGroup = async (group: CommitGroup, message: string, version?: NewVersionRequest): Promise<{ gists: GistSync[]; published: PublishSync[]; }> => {
     if (group.repository.demo) return commitLocally(group, message, version);
     // The demo page says a commit stays in this browser: a repository of the signed-in person's own never gets one sent from it.
-    if (inDemo) throw new Error(t('demo.signedIn'));
+    if (inDemo) throw new Error(t('demo.referrer'));
     const { repository, entries, documents: sentDocuments } = group;
     if (!repository.write) throw new Error('Sign in with write access to this workspace before committing.');
     const store = draftStore(repository);
