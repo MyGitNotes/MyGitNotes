@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { EditorSelection, EditorState } from '@codemirror/state';
-import { drawSelection, EditorView } from '@codemirror/view';
+import { Decoration, drawSelection, EditorView, WidgetType } from '@codemirror/view';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { restingCaret } from './resting-caret.js';
 
@@ -18,8 +18,8 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const editor = () => {
-  const view = new EditorView({ parent: document.body, state: EditorState.create({ doc: 'one two\nthree', extensions: [drawSelection(), restingCaret] }) });
+const editor = (extensions: unknown[] = []) => {
+  const view = new EditorView({ parent: document.body, state: EditorState.create({ doc: 'one two\nthree', extensions: [drawSelection(), restingCaret, ...extensions as never[]] }) });
   views.push(view);
   return view;
 };
@@ -54,4 +54,33 @@ it('keeps the caret marked after focus moves from the editor to another input', 
   expect(view.dom.classList.contains('cm-caret-placed')).toBe(true);
   expect(view.dom.classList.contains('cm-focused')).toBe(false);
   expect(view.state.selection.main.head).toBe(4);
+});
+
+class Card extends WidgetType {
+  toDOM() {
+    return document.createElement('div');
+  }
+}
+
+it('draws no resting caret inside a block the blurred editor shows as a card, and keeps it beside one', async () => {
+  // The live editor replaces a directive's lines with its card while unfocused; here the card covers both lines throughout.
+  const collapsed = EditorView.decorations.of(Decoration.set(Decoration.replace({ widget: new Card() }).range(0, 13)));
+  const view = editor([collapsed]);
+  view.focus();
+  view.dispatch({ selection: EditorSelection.cursor(4) });
+  await settle();
+  expect(view.dom.classList.contains('cm-caret-covered')).toBe(false);
+  focusChatInput();
+  await settle();
+  expect(view.dom.classList.contains('cm-caret-covered')).toBe(true);
+  expect(view.state.selection.main.head).toBe(4);
+
+  const inline = editor([EditorView.decorations.of(Decoration.set(Decoration.replace({}).range(0, 3)))]);
+  inline.focus();
+  inline.dispatch({ selection: EditorSelection.cursor(2) });
+  await settle();
+  focusChatInput();
+  await settle();
+  expect(inline.dom.classList.contains('cm-caret-placed')).toBe(true);
+  expect(inline.dom.classList.contains('cm-caret-covered')).toBe(false);
 });

@@ -28,7 +28,7 @@ import { liveDecorations } from './live-markdown/decorations.js';
 import { cardBackgroundLayer, theme } from './live-markdown/theme.js';
 import { attachGutterLineCopy, blockWidgetLineNumbers } from './live-markdown/gutter-line-copy.js';
 import { headingGutter } from './live-markdown/heading-gutter.js';
-import { restingCaret } from './live-markdown/resting-caret.js';
+import { caretPlacedIn, restingCaret } from './live-markdown/resting-caret.js';
 import { tableBoundaries } from './live-markdown/table-boundaries.js';
 import { useNoteViewPreferences } from '../lib/editor-preferences.js';
 import { getVimMode, useVimMode } from '../lib/vim-mode.js';
@@ -273,7 +273,8 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           }),
           EditorView.updateListener.of(update => {
             if (update.docChanged) callback.current(update.state.doc.toString());
-            if ((update.selectionSet || update.docChanged || update.focusChanged) && update.view.hasFocus) caretCallback.current?.(update.state.selection.main.head, update.state.selection.main.anchor);
+            // An edit while focus is elsewhere (the agent writing into the note) moves the resting caret, so its new place is reported too.
+            if ((update.selectionSet || update.docChanged || update.focusChanged) && update.view.hasFocus || update.docChanged && caretPlacedIn(update.state)) caretCallback.current?.(update.state.selection.main.head, update.state.selection.main.anchor);
           }),
         ],
       }),
