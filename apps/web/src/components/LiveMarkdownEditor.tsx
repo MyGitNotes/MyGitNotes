@@ -28,6 +28,7 @@ import { liveDecorations } from './live-markdown/decorations.js';
 import { cardBackgroundLayer, theme } from './live-markdown/theme.js';
 import { attachGutterLineCopy, blockWidgetLineNumbers } from './live-markdown/gutter-line-copy.js';
 import { headingGutter } from './live-markdown/heading-gutter.js';
+import { restingCaret } from './live-markdown/resting-caret.js';
 import { tableBoundaries } from './live-markdown/table-boundaries.js';
 import { useNoteViewPreferences } from '../lib/editor-preferences.js';
 import { getVimMode, useVimMode } from '../lib/vim-mode.js';
@@ -215,6 +216,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           formatKeymap,
           markdownEditorKeymap(),
           drawSelection(),
+          restingCaret,
           continuous ? [] : cardBackgroundLayer,
           headingGutter,
           lineNumberGutter.current.of(
