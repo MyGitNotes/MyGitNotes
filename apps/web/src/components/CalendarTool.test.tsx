@@ -17,7 +17,8 @@ afterEach(cleanup);
 
 it('shows the owners and priority of each task in the day detail', () => {
   const { container } = render(createElement(CalendarTool, { notebooks: [], selectedNotebookId: 'nb', onOpenNote: vi.fn() }));
-  fireEvent.click(container.querySelector(`[data-date='${today}'], [data-day='${today}']`) ?? screen.getAllByRole('button').find(button => button.textContent?.trim() === String(new Date().getDate()))!);
+  // A day's button is named by its date; its number alone also names a day of the next or the previous month in the grid.
+  fireEvent.click(screen.getByRole('button', { name: today }));
   const list = container.querySelector('.calendar-day-tasks') as HTMLElement;
   expect(within(list).getByText('小林')).toBeInTheDocument();
   expect(within(list).getByText('alice')).toBeInTheDocument();
