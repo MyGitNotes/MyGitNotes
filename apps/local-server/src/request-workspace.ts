@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type express from 'express';
-import { type AvailableRepository, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
+import { aliasedMedia, type AvailableRepository, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import type { EditionSources } from './edition-sources.js';
 import { CredentialRejected } from './auth.js';
@@ -290,18 +290,19 @@ export function storedDocumentDrafts(alias: string, documents: unknown): Documen
 
 /**
  * The repository of a note or asset path: through the notebook the request names, which must
- * contain the path, or else through the notebook whose root contains it.
+ * contain the path, or else through the notebook whose root contains it. With `aliasedMedia`, a media file under a
+ * notebook's path alias target (`@/assets/x.png` → `blog/src/assets/x.png`) also belongs to that notebook.
  */
-export async function noteRepository(res: express.Response, file: unknown, notebookId?: unknown): Promise<ResolvedRepository> {
+export async function noteRepository(res: express.Response, file: unknown, notebookId?: unknown, options: { aliasedMedia?: boolean; } = {}): Promise<ResolvedRepository> {
   if (typeof file !== 'string' || !file) throw new SourceError('path is required.');
   if (workspaceDocument(file)) throw new SourceError('Workspace metadata is protected.', 403);
   let found: ResolvedRepository;
   if (notebookId !== undefined && notebookId !== '') {
     found = await notebookRepository(res, notebookId);
-    if (!file.startsWith(`${found.notebook.root}/`)) throw new SourceError('Path is not in the named notebook.', 403);
+    if (!file.startsWith(`${found.notebook.root}/`) && !(options.aliasedMedia && aliasedMedia(file, found.notebook))) throw new SourceError('Path is not in the named notebook.', 403);
   } else {
     const workspace = workspaceOf(res);
-    found = await resolved(workspace, await workspace.forPath(file));
+    found = await resolved(workspace, await workspace.forPath(file, options));
   }
   // Match managed-file policy: a lexical notebook path cannot alias metadata or another owner.
   if (found.handle.kind === 'local') regularPath(found.handle.root, file.replace(/\\/g, '/'));

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { ClassifiedResource, WorkspaceConfig } from './types.js';
+import { ClassifiedResource, NotebookConfig, WorkspaceConfig } from './types.js';
 import { LEGACY_WORKSPACE_CONFIG_FILENAME, WORKSPACE_CONFIG_FILENAME } from './config.js';
 import { workspaceAgentKind } from './workspace-agent.js';
 import { isCompilationPath } from './compilation.js';
@@ -14,6 +14,9 @@ const HIDDEN_PATTERNS = [
   /(?:^|\/)Thumbs\.db$/,
   /(?:^|\/)\.gitkeep$/,
 ];
+
+/** The media a note may reach through a path alias such as `@/assets/...`. */
+const ALIASED_MEDIA_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif', '.ico', '.pdf', '.mp4', '.webm', '.m4a', '.mp3', '.ogg'];
 
 /**
  * Checks if a relative path matches standard hidden / noise criteria.
@@ -98,7 +101,7 @@ export function classifyResource(relPath: string, config?: WorkspaceConfig | nul
           const targetDir = target.replace(/\*$/, '').replace(/\/$/, '');
           if (targetDir && (normalized === targetDir || normalized.startsWith(`${targetDir}/`))) {
             const ext = path.posix.extname(normalized).toLowerCase();
-            if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif', '.ico', '.pdf', '.mp4', '.webm', '.m4a', '.mp3', '.ogg'].includes(ext) || normalized.includes('/assets/')) {
+            if (ALIASED_MEDIA_EXTENSIONS.includes(ext) || normalized.includes('/assets/')) {
               return { path: normalized, type: 'asset', notebookId: nb.id };
             }
           }
@@ -126,4 +129,22 @@ export function classifyResource(relPath: string, config?: WorkspaceConfig | nul
   }
 
   return { path: normalized, type: 'product_source' };
+}
+
+/**
+ * Whether `file` is a media file under one of `notebook`'s path alias targets but outside its root, as `@/assets/x.png`
+ * resolves to `blog/src/assets/x.png` for a notebook at `blog/src/content/posts` with tsconfig `@/*` → `blog/src/*`.
+ * Its notes link such files, so they are read as the notebook's assets; nothing else under the target is.
+ */
+export function aliasedMedia(file: string, notebook: NotebookConfig): boolean {
+  if (!notebook.pathAliases || path.posix.normalize(file) !== file || file.startsWith('../') || path.posix.isAbsolute(file)) return false;
+  const root = notebook.root.replace(/\/$/, '');
+  if (file === root || file.startsWith(`${root}/`)) return false;
+  if (!ALIASED_MEDIA_EXTENSIONS.includes(path.posix.extname(file).toLowerCase())) return false;
+  const kind = classifyResource(file, { notebooks: [notebook] } as WorkspaceConfig).type;
+  if (kind !== 'asset') return false;
+  return Object.values(notebook.pathAliases).some(target => {
+    const dir = target.replace(/\*$/, '').replace(/\/$/, '');
+    return dir !== '' && dir !== '.' && dir !== '..' && !dir.startsWith('../') && file.startsWith(`${dir}/`);
+  });
 }

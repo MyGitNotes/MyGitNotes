@@ -281,8 +281,9 @@ export function createFileManagerRouter(): Router {
         }
       } else if (req.path.startsWith('/raw-assets/')) {
         file = (req.params as Record<string, string>)[0];
-        // `notebook` names the asset's notebook, since notebook roots may repeat across repositories.
-        const resolved = await noteRepository(res, file, req.query.notebook).catch((error: unknown) => {
+        // `notebook` names the asset's notebook, since notebook roots may repeat across repositories. A note's image may lie
+        // outside its notebook under a path alias (`@/assets/...`); only such media is served from there.
+        const resolved = await noteRepository(res, file, req.query.notebook, { aliasedMedia: true }).catch((error: unknown) => {
           if (error instanceof SourceError && error.status === 403) throw new SourceError('Path is outside the notebooks.', 403);
           throw error;
         });

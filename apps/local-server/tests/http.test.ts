@@ -333,6 +333,40 @@ describe('real HTTP local boundaries', () => {
     expect(saved.status).toBe(200);
     expect(fs.readFileSync(path.join(root, 'my-notes/notes/life/note.md'), 'utf8')).toBe('# Updated Life Note');
   });
+  it('serves the media a note links through a tsconfig path alias, outside its notebook root, and nothing else there', async () => {
+    fs.writeFileSync(path.join(root, 'notes/.github-notes.yaml'), 'schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: example\nnotebooks:\n  - id: example\n    title: Example\n    root: notes/example\n  - id: blog\n    title: Blog\n    root: blog/src/content/posts\n');
+    fs.mkdirSync(path.join(root, 'blog/src/content/posts'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'blog/src/assets/images'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'blog/tsconfig.json'), '{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["src/*"] } } }');
+    fs.writeFileSync(path.join(root, 'blog/src/content/posts/post.md'), '# Post\n\n![](@/assets/images/a.png)\n');
+    fs.writeFileSync(path.join(root, 'blog/src/assets/images/a.png'), 'png-bytes');
+    fs.writeFileSync(path.join(root, 'blog/src/assets/images/b.svg'), '<svg/>');
+    fs.writeFileSync(path.join(root, 'blog/src/assets/data.json'), '{"secret":1}');
+    fs.writeFileSync(path.join(root, 'blog/src/assets/draft.md'), '# Draft');
+    fs.writeFileSync(path.join(root, 'blog/src/config.ts'), 'export const key = 1;');
+    fs.writeFileSync(path.join(root, 'blog/logo.png'), 'outside-target');
+    fs.mkdirSync(path.join(root, 'blog/src/.private'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'blog/src/.private/x.png'), 'hidden');
+    fs.symlinkSync(path.join(root, '.env'), path.join(root, 'blog/src/assets/images/link.png'));
+    git('add', '.');
+    git('commit', '-m', 'blog');
+    const raw = (file: string, notebook?: string) => fetch(`${base}/raw-assets/${file}${notebook ? `?notebook=${notebook}` : ''}`).then(async response => ({ status: response.status, body: await response.text() }));
+    expect(await raw('blog/src/assets/images/a.png', nb('blog'))).toEqual({ status: 200, body: 'png-bytes' });
+    expect(await raw('blog/src/assets/images/a.png')).toEqual({ status: 200, body: 'png-bytes' });
+    expect((await raw('blog/src/assets/images/b.svg', nb('blog'))).status).toBe(200);
+    expect((await raw('blog/src/assets/images/missing.png', nb('blog'))).status).toBe(404);
+    // The alias belongs to the blog notebook alone, and lends nothing but media to it.
+    expect((await raw('blog/src/assets/images/a.png', nb('example'))).status).toBe(403);
+    for (const file of ['blog/src/assets/data.json', 'blog/src/assets/draft.md', 'blog/src/config.ts', 'blog/logo.png', 'blog/src/.private/x.png', 'blog/tsconfig.json']) {
+      expect([file, (await raw(file, nb('blog'))).status]).toEqual([file, 403]);
+      expect([file, (await raw(file)).status]).toEqual([file, 403]);
+    }
+    expect((await raw('blog/src/assets/images/link.png', nb('blog'))).status).toBe(403);
+    expect((await raw('blog/src/assets/images/link.png')).status).toBe(403);
+    expect((await raw('blog/src/assets/images/..%2F..%2F..%2F..%2F.env', nb('blog'))).status).not.toBe(200);
+    // Note and file routes keep to the notebook's root.
+    expect((await fetch(`${base}/api/notes/read?path=blog/src/assets/images/a.png&notebookId=${nb('blog')}`)).status).toBe(403);
+  });
   it('blocks raw secret reads, product-file writes, foreign origins and core branch writes', async () => {
     expect((await fetch(`${base}/raw-assets/.env`)).status).toBe(403);
     expect((await fetch(`${base}/api/notes/read?path=.env`)).status).toBe(403);

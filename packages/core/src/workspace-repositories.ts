@@ -1,3 +1,4 @@
+import { aliasedMedia } from './classifier.js';
 import { NotebookSourceError, SUPPORTED_SCHEMA_VERSION } from './config.js';
 import { SourceError } from './github-api.js';
 import { isBareNotebookId, type NotebookKey, notebookKey, parseNotebookKey, repositoryName } from './notebook-key.js';
@@ -58,8 +59,9 @@ export interface WorkspaceRepositories<H> {
   /**
    * The repository whose notebook contains a repository-relative `path`, with that notebook.
    * A path inside notebooks of several repositories is ambiguous and must be named by notebook.
+   * With `aliasedMedia`, a media file under a notebook's path alias target counts as that notebook's when no root holds it.
    */
-  forPath(path: string): Promise<AvailableRepository<H> & { notebook: KeyedNotebook; }>;
+  forPath(path: string, options?: { aliasedMedia?: boolean; }): Promise<AvailableRepository<H> & { notebook: KeyedNotebook; }>;
   byId(id: RepositoryId): Promise<AvailableRepository<H>>;
   /** The opened repository, also when its manifest does not load (so that manifest can be fixed); undefined when it cannot be reached. */
   handleOf(id: RepositoryId): Promise<H | undefined>;
@@ -189,11 +191,16 @@ export function createWorkspaceRepositories<H>(options: WorkspaceRepositoriesOpt
       if (matches.length === 1) return matches[0].key;
       return repositories.find(repository => repository.member.default)?.notebooks.find(notebook => notebook.id === localId)?.key ?? null;
     },
-    async forPath(file) {
-      const matches = (await all()).flatMap(repository => repository.notebooks.filter(notebook => file.startsWith(`${notebook.root}/`)).map(notebook => ({ repository, notebook })));
+    async forPath(file, options) {
+      const repositories = await all();
+      const within = (test: (notebook: KeyedNotebook) => boolean) => repositories.flatMap(repository => repository.notebooks.filter(test).map(notebook => ({ repository, notebook })));
+      let matches = within(notebook => file.startsWith(`${notebook.root}/`));
+      // Media a note links through a path alias (`@/assets/x.png`) lies outside every root; notebooks of one repository may share the alias.
+      if (!matches.length && options?.aliasedMedia) matches = within(notebook => aliasedMedia(file, notebook));
       if (!matches.length) throw new SourceError('Path is not in a configured notebook.', 403);
       if (new Set(matches.map(match => match.repository.ref.id)).size > 1) throw new SourceError('The path lies in notebooks of more than one repository. Name its notebook.', 400);
-      // Roots of one manifest never overlap, so one repository holds at most one match.
+      // Roots of one manifest never overlap, so one repository holds at most one root match; alias matches may share a
+      // repository, whose first notebook serves the file.
       const [{ repository, notebook }] = matches;
       return { ...(repository as AvailableRepository<H>), notebook };
     },
