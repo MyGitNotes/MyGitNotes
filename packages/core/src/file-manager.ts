@@ -2,6 +2,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { z } from 'zod';
 import type { NotebookConfig } from './types.js';
+import { aliasedMedia, isHiddenPath } from './classifier.js';
 import { parseFolderConfig } from './folders.js';
 import { relocateMovedLinks } from './folder-plan.js';
 import { retitle } from './note-title.js';
@@ -27,30 +28,26 @@ export interface FileSnapshot {
 }
 export const withinPath = (file: string, dir: string) => file === dir || file.startsWith(dir + '/');
 
-/** File browsing includes assets and dotfiles; note discovery keeps its own narrower rule. */
-export function managedNotebook(file: string, notebooks: NotebookConfig[]): NotebookConfig | undefined {
-  if (!filePath.safeParse(file).success || workspaceDocument(file)) return;
-  let nb = [...notebooks].sort((a, b) => b.root.length - a.root.length).find(nb => withinPath(file, nb.root));
-  if (nb) {
-    const relative = file.slice(nb.root.length + 1);
-    if (relative.split('/').some(part => ['.git', '.claude', '.codex', '.agents', '.agent', 'node_modules', 'dist', 'build', 'agents.md', 'claude.md', 'gemini.md', WORKSPACE_CONFIG_FILENAME, LEGACY_WORKSPACE_CONFIG_FILENAME].includes(part.toLowerCase())) || /(^|\/)docs\/agent(\/|$)/.test(relative)) return;
-    return nb;
-  }
+const EXCLUDED_PARTS = ['.git', '.claude', '.codex', '.agents', '.agent', 'node_modules', 'dist', 'build', 'agents.md', 'claude.md', 'gemini.md', WORKSPACE_CONFIG_FILENAME, LEGACY_WORKSPACE_CONFIG_FILENAME];
+const excluded = (relative: string) => relative.split('/').some(part => EXCLUDED_PARTS.includes(part.toLowerCase())) || /(^|\/)docs\/agent(\/|$)/.test(relative);
 
-  // Also check if file is within a pathAliases target (e.g. blog/src/assets/**)
-  nb = notebooks.find(n => {
-    if (!n.pathAliases) return false;
-    return Object.values(n.pathAliases).some(target => {
+/**
+ * File browsing includes assets and dotfiles; note discovery keeps its own narrower rule. Outside every root, a notebook's
+ * path alias target (tsconfig `@/*` → `blog/src/*`) lends it only the media its notes link, as `aliasedMedia` decides, and
+ * the directories leading to them, so the rest of that source tree (code, configuration, data) is never browsed, read or
+ * written. Pass `directory` for a directory path.
+ */
+export function managedNotebook(file: string, notebooks: NotebookConfig[], kind: 'file' | 'directory' = 'file'): NotebookConfig | undefined {
+  if (!filePath.safeParse(file).success || workspaceDocument(file)) return;
+  const nb = [...notebooks].sort((a, b) => b.root.length - a.root.length).find(nb => withinPath(file, nb.root));
+  if (nb) return excluded(file.slice(nb.root.length + 1)) ? undefined : nb;
+  if (excluded(file)) return;
+  return notebooks.find(n =>
+    kind === 'file' ? aliasedMedia(file, n) : !isHiddenPath(file) && Object.values(n.pathAliases ?? {}).some(target => {
       const targetDir = target.replace(/\*$/, '').replace(/\/$/, '');
       return targetDir && withinPath(file, targetDir);
-    });
-  });
-  if (nb) {
-    if (file.split('/').some(part => ['.git', '.claude', '.codex', '.agents', '.agent', 'node_modules', 'dist', 'build', 'agents.md', 'claude.md', 'gemini.md', WORKSPACE_CONFIG_FILENAME, LEGACY_WORKSPACE_CONFIG_FILENAME].includes(part.toLowerCase())) || /(^|\/)docs\/agent(\/|$)/.test(file)) return;
-    return nb;
-  }
-
-  return undefined;
+    })
+  );
 }
 
 export function decodeTextFile(bytes: Uint8Array): string | undefined {
@@ -88,10 +85,13 @@ export function retitleNoteFile(raw: string, file: string, title: string, now: D
 export function planFileChange(snapshot: FileSnapshot, input: unknown) {
   const command = FileCommandSchema.parse(input);
   const nb = snapshot.notebooks.find(n => n.id === command.notebookId);
-  const assertPath = (file: string, allowRoot = false) => {
-    if (!nb || managedNotebook(file, snapshot.notebooks)?.id !== nb.id || !allowRoot && file === nb.root || snapshot.protectedPaths.some(p => withinPath(file, p))) throw new Error('Path is not an editable file in this notebook.');
+  const snapshotDirectories = new Set(snapshot.directories);
+  const assertPath = (file: string, allowRoot = false, directory = snapshotDirectories.has(file)) => {
+    if (!nb || managedNotebook(file, snapshot.notebooks, directory ? 'directory' : 'file')?.id !== nb.id || !allowRoot && file === nb.root || snapshot.protectedPaths.some(p => withinPath(file, p))) throw new Error('Path is not an editable file in this notebook.');
   };
-  assertPath(command.path, command.kind === 'metadata');
+  assertPath(command.path, command.kind === 'metadata', command.kind === 'mkdir' || snapshotDirectories.has(command.path));
+  // A folder keeps its title in `_dir.yml`, which a path alias target, lending only media, does not hold.
+  if (command.kind === 'mkdir' || command.kind === 'metadata') assertPath(`${command.path}/_dir.yml`, false, false);
   const files = new Map(snapshot.files), directories = new Set(snapshot.directories);
   const exists = (file: string) => files.has(file) || directories.has(file) || snapshot.protectedPaths.includes(file);
   // Every check runs before the plan changes anything, so one index of the snapshot's names, folded to lower case, serves them all.
@@ -141,7 +141,7 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
     selectedPath = path.posix.dirname(command.path);
   } else if (command.kind === 'move' || command.kind === 'remove-directory') {
     const destination = command.destination;
-    assertPath(destination, command.kind === 'remove-directory');
+    assertPath(destination, command.kind === 'remove-directory', command.kind === 'remove-directory' || snapshotDirectories.has(command.path));
     const isDirectory = directories.has(command.path);
     if (!isDirectory && !files.has(command.path)) throw new Error('Source does not exist.');
     if (command.path === destination || isDirectory && withinPath(destination, command.path)) throw new Error('Choose a destination outside the source.');
@@ -161,7 +161,7 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
     for (const source of [...directories, ...files.keys()]) {
       if (!withinPath(source, command.path) || source === removedMetadata || command.kind === 'remove-directory' && source === command.path) continue;
       const next = relocate(source);
-      assertPath(next);
+      assertPath(next, false, snapshotDirectories.has(source));
       if (exists(next)) throw new Error('Destination already exists.');
       assertCase(next, inSource);
       pathMap[source] = next;

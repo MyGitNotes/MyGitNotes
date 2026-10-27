@@ -141,6 +141,8 @@ export function aliasedMedia(file: string, notebook: NotebookConfig): boolean {
   const root = notebook.root.replace(/\/$/, '');
   if (file === root || file.startsWith(`${root}/`)) return false;
   if (!ALIASED_MEDIA_EXTENSIONS.includes(path.posix.extname(file).toLowerCase())) return false;
+  // Build output and dependencies stay out whatever their letter case, which the hidden-path patterns match exactly.
+  if (file.split('/').some(part => ['node_modules', 'dist', 'build'].includes(part.toLowerCase()))) return false;
   const kind = classifyResource(file, { notebooks: [notebook] } as WorkspaceConfig).type;
   if (kind !== 'asset') return false;
   return Object.values(notebook.pathAliases).some(target => {

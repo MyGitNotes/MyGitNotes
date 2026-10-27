@@ -94,5 +94,23 @@ describe('file planning', () => {
   it('recognizes files under pathAliases target paths in managedNotebook', () => {
     const notebooks = [{ id: 'blog', title: 'Blog', root: 'blog/src/content/posts', pathAliases: { '@/*': 'blog/src/*' } }];
     expect(managedNotebook('blog/src/assets/images/photo.png', notebooks)?.id).toBe('blog');
+    // Only the media and the directories leading to it; the rest of the source tree stays unmanaged.
+    expect(managedNotebook('blog/src/assets/images', notebooks, 'directory')?.id).toBe('blog');
+    for (const file of ['blog/src/config.ts', 'blog/src/assets/data.json', 'blog/src/assets/draft.md', 'blog/src/assets/images/_dir.yml', 'blog/src/.env', 'blog/src/DIST/a.png', 'blog/src/Node_Modules/a.png']) expect([file, managedNotebook(file, notebooks)]).toEqual([file, undefined]);
+    for (const dir of ['blog/src/node_modules', 'blog/src/.git', 'blog/src/.private', 'blog/package']) expect([dir, managedNotebook(dir, notebooks, 'directory')]).toEqual([dir, undefined]);
+    // Inside the root every file still counts.
+    expect(managedNotebook('blog/src/content/posts/data.json', notebooks)?.id).toBe('blog');
+  });
+
+  it('plans media only under a path alias target, and no folders there', () => {
+    const snapshot: FileSnapshot = { notebooks: [{ id: 'blog', title: 'Blog', root: 'blog/src/content/posts', pathAliases: { '@/*': 'blog/src/*' } }], directories: ['blog/src/content/posts', 'blog/src/assets', 'blog/src/assets/images'], protectedPaths: ['blog/src/config.ts'], files: new Map([['blog/src/assets/images/a.png', Buffer.from([137, 80])]]) };
+    const plan = (command: object) => () => planFileChange(snapshot, { notebookId: 'blog', ...command });
+    expect(plan({ kind: 'upload', path: 'blog/src/assets/images/b.png', base64: 'iVA=' })().files.has('blog/src/assets/images/b.png')).toBe(true);
+    expect(plan({ kind: 'move', path: 'blog/src/assets/images/a.png', destination: 'blog/src/assets/c.png' })().files.has('blog/src/assets/c.png')).toBe(true);
+    expect(plan({ kind: 'create', path: 'blog/src/assets/images/x.ts' })).toThrow('Path is not an editable file in this notebook.');
+    expect(plan({ kind: 'move', path: 'blog/src/assets/images/a.png', destination: 'blog/src/assets/a.ts' })).toThrow('Path is not an editable file in this notebook.');
+    expect(plan({ kind: 'mkdir', path: 'blog/src/assets/new' })).toThrow('Path is not an editable file in this notebook.');
+    expect(plan({ kind: 'metadata', path: 'blog/src/assets/images', title: 'Images', description: '', order: 0 })).toThrow('Path is not an editable file in this notebook.');
+    expect(plan({ kind: 'mkdir', path: 'blog/src/content/posts/new' })().directories).toContain('blog/src/content/posts/new');
   });
 });

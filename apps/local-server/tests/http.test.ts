@@ -364,8 +364,19 @@ describe('real HTTP local boundaries', () => {
     expect((await raw('blog/src/assets/images/link.png', nb('blog'))).status).toBe(403);
     expect((await raw('blog/src/assets/images/link.png')).status).toBe(403);
     expect((await raw('blog/src/assets/images/..%2F..%2F..%2F..%2F.env', nb('blog'))).status).not.toBe(200);
-    // Note and file routes keep to the notebook's root.
+    // Note routes keep to the notebook's root; the file manager reaches the same media and nothing else under the alias.
     expect((await fetch(`${base}/api/notes/read?path=blog/src/assets/images/a.png&notebookId=${nb('blog')}`)).status).toBe(403);
+    const files = (route: string, file: string) => fetch(`${base}/api/files/${route}?notebookId=${nb('blog')}&path=${encodeURIComponent(file)}`).then(response => response.status);
+    expect(await files('raw', 'blog/src/assets/images/a.png')).toBe(200);
+    expect(await files('read', 'blog/src/assets/images/a.png')).toBe(200);
+    for (const file of ['blog/src/config.ts', 'blog/src/assets/data.json', 'blog/src/assets/draft.md', 'blog/src/.private/x.png', 'blog/tsconfig.json']) {
+      expect([file, await files('raw', file)]).toEqual([file, 403]);
+      expect([file, await files('read', file)]).toEqual([file, 403]);
+    }
+    const listed = await fetch(`${base}/api/files?notebookId=${nb('blog')}`).then(response => response.json());
+    const paths = listed.entries.map((entry: { path: string; }) => entry.path);
+    expect(paths).toEqual(expect.arrayContaining(['blog/src/assets/images/a.png', 'blog/src/assets/images']));
+    expect(paths.filter((file: string) => /config\.ts|data\.json|draft\.md|\.private/.test(file))).toEqual([]);
   });
   it('blocks raw secret reads, product-file writes, foreign origins and core branch writes', async () => {
     expect((await fetch(`${base}/raw-assets/.env`)).status).toBe(403);

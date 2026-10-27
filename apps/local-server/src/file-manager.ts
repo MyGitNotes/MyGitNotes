@@ -39,7 +39,7 @@ export function localFileCatalog(root: string, notebooks: NotebookConfig[]): Fil
     catalog.directories.push(dir);
     for (const entry of fs.readdirSync(full, { withFileTypes: true })) {
       const file = dir + '/' + entry.name;
-      if (!managedNotebook(file, notebooks) || entry.isSymbolicLink() || !entry.isFile() && !entry.isDirectory()) catalog.protectedPaths.push(file);
+      if (!managedNotebook(file, notebooks, entry.isDirectory() ? 'directory' : 'file') || entry.isSymbolicLink() || !entry.isFile() && !entry.isDirectory()) catalog.protectedPaths.push(file);
       else if (entry.isDirectory()) visit(file, path.join(full, entry.name));
       else add(file, path.join(full, entry.name));
     }
@@ -115,7 +115,7 @@ async function remoteFiles(reader: RemoteSource, command: FileCommand): Promise<
   const readable: string[] = [];
   for (const entry of state.entries) {
     if (!config.notebooks.some(nb => withinPath(entry.path, nb.root)) && !auxiliary.includes(entry.path)) continue;
-    if (entry.mode === '120000' || !['blob', 'tree'].includes(entry.type) || !auxiliary.includes(entry.path) && !managedNotebook(entry.path, config.notebooks)) snapshot.protectedPaths.push(entry.path);
+    if (entry.mode === '120000' || !['blob', 'tree'].includes(entry.type) || !auxiliary.includes(entry.path) && !managedNotebook(entry.path, config.notebooks, entry.type === 'tree' ? 'directory' : 'file')) snapshot.protectedPaths.push(entry.path);
     else if (entry.type === 'tree') snapshot.directories.push(entry.path);
     else readable.push(entry.path);
   }
@@ -198,7 +198,7 @@ export function createFileManagerRouter(): Router {
     const state = await reader.getSnapshot(true);
     const index: FileCatalog = { notebooks: config.notebooks, directories: [], protectedPaths: [], files: new Map() };
     for (const entry of state.entries) {
-      if (entry.mode === '120000' || !managedNotebook(entry.path, config.notebooks)) continue;
+      if (entry.mode === '120000' || !managedNotebook(entry.path, config.notebooks, entry.type === 'tree' ? 'directory' : 'file')) continue;
       if (entry.type === 'tree') index.directories.push(entry.path);
       else if (entry.type === 'blob') index.files.set(entry.path, { size: entry.size || 0, stamp: entry.sha, hash: entry.sha });
     }
@@ -212,7 +212,7 @@ export function createFileManagerRouter(): Router {
   router.get('/api/files', async (req, res) => {
     try {
       const { state, nb } = await catalog(res, req.query.notebookId);
-      const entries = [...state.index.directories.map(file => ({ path: file, directory: true, size: 0 })), ...[...state.index.files].map(([file, info]) => ({ path: file, directory: false, size: info.size }))].filter(entry => managedNotebook(entry.path, state.index.notebooks)?.id === nb.id && entry.path !== nb.root).map(entry => ({ ...entry, noteDirectory: entry.directory && isNotebookContent(entry.path.slice(nb.root.length + 1), nb), name: path.posix.basename(entry.path), hidden: entry.path.slice(nb.root.length + 1).split('/').some(p => p.startsWith('.')), presentation: filePresentation(entry.path) }));
+      const entries = [...state.index.directories.map(file => ({ path: file, directory: true, size: 0 })), ...[...state.index.files].map(([file, info]) => ({ path: file, directory: false, size: info.size }))].filter(entry => managedNotebook(entry.path, state.index.notebooks, entry.directory ? 'directory' : 'file')?.id === nb.id && entry.path !== nb.root).map(entry => ({ ...entry, noteDirectory: entry.directory && isNotebookContent(entry.path.slice(nb.root.length + 1), nb), name: path.posix.basename(entry.path), hidden: entry.path.slice(nb.root.length + 1).split('/').some(p => p.startsWith('.')), presentation: filePresentation(entry.path) }));
       res.json({ root: nb.root, entries, revision: state.revision, writable: state.writable, remote: state.local === undefined });
     } catch (error) {
       fail(res, error);
@@ -221,7 +221,7 @@ export function createFileManagerRouter(): Router {
   router.get('/api/files/read', async (req, res) => {
     try {
       const { state, nb } = await catalog(res, req.query.notebookId), file = String(req.query.path || '');
-      if (managedNotebook(file, state.index.notebooks)?.id !== nb.id) throw new SourceError('Path is outside this notebook.', 403);
+      if (managedNotebook(file, state.index.notebooks, state.index.directories.includes(file) ? 'directory' : 'file')?.id !== nb.id) throw new SourceError('Path is outside this notebook.', 403);
       if (state.index.directories.includes(file)) {
         const raw = state.index.files.has(file + '/_dir.yml') ? (await state.read(file + '/_dir.yml')).toString('utf8') : '';
         return res.json({ path: file, metadata: parseFolderConfig(raw, path.posix.basename(file), file), revision: state.revision });
