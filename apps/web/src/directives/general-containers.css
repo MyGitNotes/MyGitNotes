@@ -1,74 +1,71 @@
 /* ==========================================================================
    MyGitNotes Directives & MDX Styling
-   Standard editorial directives, character sheets, player handouts,
-   bilingual quotes, source cards, and presentation grids.
-   Designed to seamlessly adapt to all themes and light/dark modes.
+   Editorial callouts, character sheets, player handouts, bilingual quotes,
+   source cards, and presentation grids, in the theme's tokens.
+   A callout is a soft tinted block with no frame; its kind shows in the tint,
+   an icon and the title colour, never in a border on one side.
    ========================================================================== */
 
-/* ===== 1. General Directive Containers ===== */
-.prose-custom .custom-directive, .prose-custom .comment-directive { margin: 0.6rem 0; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--color-text) 14%, var(--color-border)); padding: 0.65rem 1.25rem; box-sizing: border-box; width: 100%; box-shadow: 0 1px 2px color-mix(in srgb, var(--color-scrim) 3%, transparent); transition: border-color 150ms ease, box-shadow 150ms ease; background: color-mix(in srgb, var(--color-text) 2.5%, var(--color-surface)); }
+/* Icons drawn as masks, so they take the colour of the element that shows them. */
+.prose-custom { --icon-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4M12 8h.01'/%3E%3C/svg%3E"); --icon-important: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5M9 18h6M10 22h4'/%3E%3C/svg%3E"); --icon-comment: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.4 3.6a2.1 2.1 0 0 1 3 3L7.4 18.6a2 2 0 0 1-.9.5l-2.9.8.8-2.9a2 2 0 0 1 .5-.9z'/%3E%3C/svg%3E"); --icon-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E"); --icon-quote: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M4 11.5C4 7.9 6.1 5.4 9.5 4.5l.6 1.4C8 6.8 7 8.3 6.9 10H10v7H4zm10 0c0-3.6 2.1-6.1 5.5-7l.6 1.4C18 6.8 17 8.3 16.9 10H20v7h-6z'/%3E%3C/svg%3E"); --icon-pencil: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21.2 6.8a1 1 0 0 0-4-4L3.8 16.2a2 2 0 0 0-.5.8l-1.3 4.4a.5.5 0 0 0 .6.6l4.4-1.3a2 2 0 0 0 .8-.5zM15 5l4 4'/%3E%3C/svg%3E"); --icon-link: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7'/%3E%3Cpath d='M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7'/%3E%3C/svg%3E"); /* The fill and radius every structured block (document, stat card, quote, source card, cell) shares. */ --directive-card-bg: color-mix(in srgb, var(--color-text) 3.5%, var(--color-surface)); --directive-radius: 12px; }
 
-.prose-custom .custom-directive > .directive-body, .prose-custom .comment-directive > .directive-body { padding-top: 0.4rem; font-size: 0.935rem; line-height: 1.6; }
+/* An element with this icon box shows the icon in --directive-icon, in its own colour. */
+.prose-custom :is(.directive-title, .comment-title, .optional-summary, .handout-keeper-kicker, .embedded-card-badge)::before, .prose-custom blockquote.parallel-quote::before { content: ''; display: inline-block; flex: none; width: 1em; height: 1em; background-color: currentColor; -webkit-mask: var(--directive-icon) center / contain no-repeat; mask: var(--directive-icon) center / contain no-repeat; }
 
-/* 消除前後多餘留白：首尾子元素外距清零 */
-.prose-custom .custom-directive > :first-child:not(.directive-title):not(.comment-title), .prose-custom .directive-body > :first-child { margin-top: 0 !important; }
+/* ===== 1. Body typography inside every block =====
+   Every directive renderer puts the same content class on its body, so a new kind needs no selector of its own. */
+.prose-custom .directive-content { font-size: 0.95rem; line-height: 1.65; }
 
-.prose-custom .custom-directive > :last-child, .prose-custom .directive-body > :last-child { margin-bottom: 0 !important; }
+.prose-custom .directive-content > :first-child { margin-top: 0 !important; }
 
-/* 內文段落與清單 Typography 校準。所有 directive renderer 都掛上同一個內容 class，
-   新增 directive 類型時不需要擴充領域專用 selector。 */
-.prose-custom .directive-content p { margin-top: 0; margin-bottom: 0.75rem !important; line-height: 1.6; }
+.prose-custom .directive-content > :last-child { margin-bottom: 0 !important; }
 
-.prose-custom .directive-content ul, .prose-custom .directive-content ol { margin-top: 0.2rem; margin-bottom: 0.25rem !important; padding-left: 1.35rem; }
+.prose-custom .directive-content p { margin: 0 0 0.6em !important; line-height: 1.65; }
 
-.prose-custom .directive-content li { margin-top: 0.05rem; margin-bottom: 0.1rem !important; line-height: 1.5; }
+.prose-custom .directive-content :is(ul, ol) { margin: 0.2em 0 0.6em !important; padding-left: 1.3rem; }
+
+.prose-custom .directive-content li { margin: 0.1em 0 !important; line-height: 1.55; }
 
 .prose-custom .directive-content li > p { margin: 0 !important; display: inline; }
 
-.prose-custom .directive-content hr { margin: 0.65rem 0; border-color: color-mix(in srgb, var(--color-text) 12%, var(--color-border)); }
+.prose-custom .directive-content hr { margin: 0.75rem 0; border: 0; border-top: 1px solid var(--color-line); }
 
-.prose-custom .directive-content blockquote { margin: 0.35rem 0 !important; padding: 0.25rem 0.65rem; border-left: 2px solid color-mix(in srgb, var(--color-text) 22%, var(--color-border)) !important; background: color-mix(in srgb, var(--color-text) 2.5%, transparent) !important; border-radius: 0 4px 4px 0; font-style: normal; }
+.prose-custom .directive-content blockquote { margin: 0.5rem 0 !important; padding: 0.4rem 0.75rem; border: 1px solid var(--color-line) !important; border-radius: 6px; background: transparent !important; font-style: normal; color: var(--color-muted); }
 
-.prose-custom :is(.directive-title, .comment-title, .optional-summary) { margin: 0; color: var(--color-text); font-weight: 700; }
+/* ===== 2. Callouts: info, sidebar (important), comment, optional, and any other name ===== */
+.prose-custom .info-directive { --directive-icon: var(--icon-info); --directive-accent: var(--color-info); }
 
-.prose-custom :is(.directive-title, .comment-title, .optional-summary).directive-title-default { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.72rem; line-height: 1; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-muted); }
+.prose-custom .sidebar-directive { --directive-icon: var(--icon-important); --directive-accent: var(--color-primary); }
 
-.prose-custom :is(.directive-title, .comment-title, .optional-summary).directive-title-custom { font-size: 0.975rem; line-height: 1.35; letter-spacing: -0.01em; }
+.prose-custom .comment-directive { --directive-icon: var(--icon-comment); --directive-accent: var(--color-warning); }
 
-/* --- INFO DIRECTIVE --- (沉穩冷灰紙質感，全包覆微細框，徹底移除厚重 left-border) */
-.prose-custom .info-directive { background: color-mix(in srgb, var(--color-text) 2.8%, var(--color-surface)); border: 1px solid color-mix(in srgb, var(--color-text) 14%, var(--color-border)); }
+.prose-custom .generic-directive { --directive-icon: var(--icon-info); --directive-accent: var(--color-muted); }
 
-.dark .prose-custom .info-directive { background: color-mix(in srgb, var(--color-text) 5%, var(--color-surface)); border-color: color-mix(in srgb, var(--color-text) 18%, var(--color-border)); }
+.prose-custom .optional-directive { --directive-icon: var(--icon-chevron); }
 
-.prose-custom .info-directive > .directive-title-default { color: var(--color-muted); }
+.prose-custom :is(.custom-directive, .comment-directive) { box-sizing: border-box; width: 100%; margin: 1rem 0; padding: 0.9rem 1.2rem 1rem; border: 0; border-radius: var(--directive-radius); background: color-mix(in srgb, var(--directive-accent) 9%, var(--color-surface)); box-shadow: none; font-style: normal; }
 
-/* --- SIDEBAR / IMPORTANT DIRECTIVE --- (經典專欄風格，全包覆微細框，去除頂部/左側厚邊條) */
-.prose-custom .sidebar-directive { background: color-mix(in srgb, var(--color-primary) 3.5%, var(--color-surface)); border: 1px solid color-mix(in srgb, var(--color-primary) 22%, var(--color-border)); }
+.prose-custom .info-directive { background: color-mix(in srgb, var(--color-info) 8%, var(--color-surface)); }
 
-.dark .prose-custom .sidebar-directive { background: color-mix(in srgb, var(--color-primary) 7.5%, var(--color-surface)); border-color: color-mix(in srgb, var(--color-primary) 28%, var(--color-border)); }
+.prose-custom :is(.directive-title, .comment-title) { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.45rem; font-size: 0.95rem; line-height: 1.4; font-weight: 700; letter-spacing: 0; color: color-mix(in srgb, var(--directive-accent) 55%, var(--color-text)); }
 
-.prose-custom .sidebar-directive > .directive-title-default { color: color-mix(in srgb, var(--color-primary) 85%, var(--color-text)); }
+.prose-custom :is(.directive-title, .comment-title)::before { width: 1.05em; height: 1.05em; background-color: var(--directive-accent); }
 
-/* --- COMMENT DIRECTIVE --- (溫潤羊皮紙色調，微細全框，移除厚左條) */
-.prose-custom aside.comment-directive { background: color-mix(in srgb, var(--color-warning) 5%, var(--color-surface)); border: 1px solid color-mix(in srgb, var(--color-warning) 22%, var(--color-border)); border-radius: 6px; padding: 0.65rem 0.95rem; font-style: normal; }
+.prose-custom :is(.directive-title, .comment-title).directive-title-default { font-size: 0.82rem; }
 
-.prose-custom .comment-directive > .comment-title.directive-title-default { color: var(--color-warning); }
+.prose-custom :is(.custom-directive, .comment-directive) > .directive-body { padding: 0; }
 
-/* --- OPTIONAL / DISCLOSURE DIRECTIVE --- */
-.prose-custom details.optional-directive { border: 1px solid color-mix(in srgb, var(--color-text) 14%, var(--color-border)); background: color-mix(in srgb, var(--color-text) 2.5%, var(--color-surface)); border-radius: 6px; padding: 0; overflow: hidden; }
+/* --- OPTIONAL: a disclosure whose chevron turns as it opens --- */
+.prose-custom details.optional-directive { padding: 0; overflow: hidden; background: color-mix(in srgb, var(--color-text) 4%, var(--color-surface)); }
 
-.dark .prose-custom details.optional-directive { border-color: color-mix(in srgb, var(--color-text) 18%, var(--color-border)); background: color-mix(in srgb, var(--color-text) 5%, var(--color-surface)); }
-
-.prose-custom details.optional-directive > summary.optional-summary { display: flex; cursor: pointer; list-style: none; align-items: center; justify-content: space-between; gap: 1rem; user-select: none; padding: 0.6rem 0.95rem; background: color-mix(in srgb, var(--color-text) 2.5%, var(--color-surface)); transition: background-color 150ms ease; }
-
-.prose-custom details.optional-directive > summary.optional-summary:hover { background: color-mix(in srgb, var(--color-text) 8%, var(--color-surface)); }
+.prose-custom details.optional-directive > summary.optional-summary { display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.8rem 1.2rem; cursor: pointer; list-style: none; user-select: none; font-size: 0.95rem; line-height: 1.4; font-weight: 600; color: var(--color-text); transition: background-color 150ms ease; }
 
 .prose-custom details.optional-directive > summary.optional-summary::-webkit-details-marker { display: none; }
 
-.prose-custom details.optional-directive > summary.optional-summary::after { content: '+'; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 1.2rem; line-height: 1; font-weight: 600; color: var(--color-primary); transition: transform 0.15s ease; }
+.prose-custom details.optional-directive > summary.optional-summary::before { color: var(--color-muted); transition: transform 150ms ease; }
 
-.prose-custom details.optional-directive[open] > summary.optional-summary { border-bottom: 1.5px solid color-mix(in srgb, var(--color-text) 16%, var(--color-border)); }
+.prose-custom details.optional-directive[open] > summary.optional-summary::before { transform: rotate(90deg); }
 
-.prose-custom details.optional-directive[open] > summary.optional-summary::after { content: '−'; }
+.prose-custom details.optional-directive > summary.optional-summary:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
 
-.prose-custom details.optional-directive > .directive-body { padding: 1rem 1.25rem; }
+.prose-custom details.optional-directive > .directive-body { padding: 0 1.2rem 1rem 2.7rem; }

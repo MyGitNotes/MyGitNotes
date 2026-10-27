@@ -527,6 +527,7 @@
    it out here so the Agent System document view keeps using --workspace-padding alone instead
    of stacking both insets. */
 .agent-content .cm-line { padding-left: 0 !important; padding-right: 0 !important; }
+.agent-content .cm-content > .live-md-directive { --directive-inset: 0px !important; }
 .settings-panel { max-width: 980px; display: flex; flex-direction: column; gap: 48px; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 0; }
 .settings-panel > [id], .settings-group > [id] { scroll-margin-top: 24px; }
 .settings-group { display: flex; flex-direction: column; gap: 32px; }
@@ -641,6 +642,7 @@
   .cm-scroller { padding: 12px 8px !important; }
   .cm-content { padding: 20px 0 !important; border-radius: 0 !important; box-shadow: none !important; min-height: 100% !important; }
   .cm-line { padding: 0 16px !important; }
+  .cm-content > .live-md-directive { --directive-inset: 16px !important; }
   /* .cm-line's !important shorthand above would otherwise collapse the quote's own
      paddingLeft calc (see LiveMarkdownEditor's theme) back to 16px, losing the border-width
      offset and the nested-depth indent; reassert it against the narrower 16px inset here. */
@@ -678,6 +680,7 @@
 .compilation-inline-editor [data-live-markdown][data-continuous] .cm-scroller { padding: 8px 16px 8px !important; line-height: 1.65; }
 .compilation-inline-editor [data-live-markdown][data-continuous] .cm-content { max-width: none; min-height: 0 !important; margin: 0; padding: 0 !important; font-size: 13px; border-radius: 0 !important; box-shadow: none !important; }
 .compilation-inline-editor [data-live-markdown][data-continuous] .cm-line { padding: 0 !important; }
+.compilation-inline-editor [data-live-markdown][data-continuous] .cm-content > .live-md-directive { --directive-inset: 0px !important; }
 .compilation-inline-editor [data-live-markdown][data-continuous] .live-md-h1 { font-size: 21px; }
 .compilation-inline-editor [data-live-markdown][data-continuous] .live-md-h2 { font-size: 18px; }
 .compilation-inline-editor [data-live-markdown][data-continuous] .live-md-h3 { font-size: 16px; }

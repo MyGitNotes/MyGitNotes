@@ -1,14 +1,17 @@
-/* ===== 5. Embedded Source Cards ===== */
-.prose-custom .embedded-card { margin: 1.25rem 0; display: block; width: 100%; overflow: hidden; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+/* ===== 5. Embedded Source Cards =====
+   The platform and title on one line, the excerpt under it. */
+.prose-custom .embedded-card { margin: 1rem 0; display: block; width: 100%; overflow: hidden; border-radius: var(--directive-radius); background: var(--directive-card-bg); transition: background-color 150ms ease; }
 
-.prose-custom .embedded-card:hover { border-color: color-mix(in srgb, var(--color-primary) 50%, var(--color-border)); box-shadow: 0 2px 10px color-mix(in srgb, var(--color-scrim) 5%, transparent); }
+.prose-custom .embedded-card:hover { background: color-mix(in srgb, var(--color-primary) 6%, var(--directive-card-bg)); }
 
-.prose-custom .embedded-card-header { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-text) 2.5%, var(--color-surface)); }
+.prose-custom .embedded-card-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.6rem; padding: 0.8rem 1.1rem 0.2rem; }
 
-.prose-custom .embedded-card-badge { display: inline-flex; align-items: center; padding: 0.2rem 0.5rem; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.05em; background: color-mix(in srgb, var(--color-primary) 12%, transparent); color: var(--color-primary); }
+.prose-custom .embedded-card-badge { --directive-icon: var(--icon-link); display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; font-weight: 600; color: var(--color-muted); }
 
-.prose-custom .embedded-card-link { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; font-weight: 600; color: var(--color-text); text-decoration: none; }
+.prose-custom .embedded-card-link { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.95rem; font-weight: 600; color: var(--color-text); text-decoration: none; }
 
-.prose-custom .embedded-card-link:hover { color: var(--color-primary); text-decoration: underline; }
+.prose-custom .embedded-card-link:hover { color: var(--color-primary); }
 
-.prose-custom .embedded-card-body { padding: 0.85rem 1rem; font-size: 0.88rem; color: var(--color-muted); }
+.prose-custom .embedded-card-header > .embedded-card-title { font-size: 0.95rem; font-weight: 600; color: var(--color-text); }
+
+.prose-custom .embedded-card-body { padding: 0.1rem 1.1rem 0.85rem; font-size: 0.88rem; color: var(--color-muted); }

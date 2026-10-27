@@ -187,28 +187,28 @@ export function renderContainerDirective(name: string, label: string | undefined
   const normName = name.toLowerCase();
 
   if (normName === 'info') {
-    const title = parseDirectiveTitle(attrs, label, 'INFO');
+    const title = parseDirectiveTitle(attrs, label, strings['directive.info.defaultTitle']);
     const bodyHtml = renderMarkdown(bodyMarkdown);
     const titleClass = title.isDefault ? 'directive-title-default' : 'directive-title-custom';
     return `<div class="custom-directive info-directive" data-type="info" aria-label="${escapeHtml(title.label)}"><p class="directive-title ${titleClass}">${escapeHtml(title.label)}</p><div class="directive-body directive-content">${bodyHtml}</div></div>`;
   }
 
   if (normName === 'sidebar') {
-    const title = parseDirectiveTitle(attrs, label, 'IMPORTANT');
+    const title = parseDirectiveTitle(attrs, label, strings['directive.sidebar.defaultTitle']);
     const bodyHtml = renderMarkdown(bodyMarkdown);
     const titleClass = title.isDefault ? 'directive-title-default' : 'directive-title-custom';
     return `<div class="custom-directive sidebar-directive" data-type="sidebar" aria-label="${escapeHtml(title.label)}"><p class="directive-title ${titleClass}">${escapeHtml(title.label)}</p><div class="directive-body directive-content">${bodyHtml}</div></div>`;
   }
 
   if (normName === 'optional') {
-    const title = parseDirectiveTitle(attrs, label, 'DETAILS');
+    const title = parseDirectiveTitle(attrs, label, strings['directive.optional.defaultTitle']);
     const bodyHtml = renderMarkdown(bodyMarkdown);
     const titleClass = title.isDefault ? 'directive-title-default' : 'directive-title-custom';
     return `<details class="custom-directive optional-directive" data-type="optional" aria-label="${escapeHtml(title.label)}"><summary class="optional-summary ${titleClass}">${escapeHtml(title.label)}</summary><div class="directive-body directive-content">${bodyHtml}</div></details>`;
   }
 
   if (normName === 'comment') {
-    const title = parseDirectiveTitle(attrs, label, 'COMMENT');
+    const title = parseDirectiveTitle(attrs, label, strings['directive.comment.defaultTitle']);
     const bodyHtml = renderMarkdown(bodyMarkdown);
     const titleClass = title.isDefault ? 'directive-title-default' : 'directive-title-custom';
     return `<aside class="comment-directive" data-type="comment" aria-label="${escapeHtml(title.label)}"><p class="comment-title ${titleClass}">${escapeHtml(title.label)}</p><div class="directive-body directive-content">${bodyHtml}</div></aside>`;
@@ -280,7 +280,7 @@ export function renderContainerDirective(name: string, label: string | undefined
 
     const keeperNote = keeper ? `<aside class="handout-keeper-note"><p class="handout-keeper-kicker">${escapeHtml(strings['directive.handout.keeperLabel'])}</p><p class="handout-keeper-text">${escapeHtml(keeper)}</p></aside>` : '';
 
-    return `<section class="handout-block handout-variant-${escapeHtml(variant)}" id="${escapeHtml(id)}" data-type="handout" data-variant="${escapeHtml(variant)}" aria-label="${escapeHtml(fill(strings['directive.handout.ariaLabel'], { id, title }))}">${keeperNote}<div class="handout-reference"><span class="handout-code">${escapeHtml(id)}</span><span class="handout-variant-label">${escapeHtml(variantLabel)}</span></div><article class="handout-document"><header class="handout-document-header"><h4 class="handout-title">${escapeHtml(title)}</h4></header><div class="handout-body directive-content">${bodyHtml}</div></article></section>`;
+    return `<section class="handout-block handout-variant-${escapeHtml(variant)}" id="${escapeHtml(id)}" data-type="handout" data-variant="${escapeHtml(variant)}" aria-label="${escapeHtml(fill(strings['directive.handout.ariaLabel'], { id, title }))}">${keeperNote}<article class="handout-document"><header class="handout-document-header"><div class="handout-reference"><span class="handout-code">${escapeHtml(id)}</span><span class="handout-variant-label">${escapeHtml(variantLabel)}</span></div><h4 class="handout-title">${escapeHtml(title)}</h4></header><div class="handout-body directive-content">${bodyHtml}</div></article></section>`;
   }
 
   if (normName === 'parallel-quote') {

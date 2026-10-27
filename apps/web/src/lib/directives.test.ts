@@ -150,7 +150,7 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       const output = transformDirectives(input, dummyRender);
       expect(output).toContain('class="custom-directive info-directive"');
       expect(output).toContain('data-type="info"');
-      expect(output).toContain('INFO');
+      expect(output).toContain('<p class="directive-title directive-title-default">Info</p>');
       expect(output).toContain('<p>重要資訊說明</p>');
     });
 
@@ -173,7 +173,7 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       const input = `:::comment\n筆者眉批\n:::`;
       const output = transformDirectives(input, dummyRender);
       expect(output).toContain('<aside class="comment-directive"');
-      expect(output).toContain('COMMENT');
+      expect(output).toContain('<p class="comment-title directive-title-default">Comment</p>');
       expect(output).toContain('筆者眉批');
     });
 
@@ -264,7 +264,7 @@ describe('directives and MDX Layer 2 preprocessor', () => {
         expect(stats).toContain('<span class="coc-stat-label-name">傷害加值</span>');
         expect(stats).toContain('<h3 class="coc-stat-name">人物資料</h3>');
         expect(stats).toContain('aria-label="人物資料的 CoC 數值"');
-        expect(stats).toContain('COC 7E｜人物數值');
+        expect(stats).toContain('COC 7E · 人物數值');
         expect(render(protectedContent, 'zh-TW')).toContain('受保護內容');
       });
 
@@ -273,13 +273,23 @@ describe('directives and MDX Layer 2 preprocessor', () => {
         expect(english).toContain('data-collapse-label="Hide original −"');
         expect(english).toContain('data-expand-label="Show original +"');
         expect(english).toContain('aria-label="Toggle original"');
-        expect(english).toContain('data-label="ORIGINAL"');
-        expect(english).toContain('data-label="TRANSLATION"');
+        expect(english).toContain('data-label="Original"');
+        expect(english).toContain('data-label="Translation"');
         const chinese = render(quote, 'zh-TW');
         expect(chinese).toContain('data-collapse-label="收合原文 −"');
         expect(chinese).toContain('data-expand-label="展開原文 +"');
-        expect(chinese).toContain('data-label="ORIGINAL / 原文"');
-        expect(chinese).toContain('data-label="TRANSLATION / 譯文"');
+        expect(chinese).toContain('data-label="原文"');
+        expect(chinese).toContain('data-label="譯文"');
+      });
+
+      it("title an untitled callout in the note's language", () => {
+        const callouts = (language: 'en' | 'zh-TW') => ['info', 'sidebar', 'optional', 'comment'].map(name => render(`:::${name}\nbody\n:::`, language).match(/directive-title-default">([^<]*)</)?.[1]);
+        expect(callouts('en')).toEqual(['Info', 'Important', 'Details', 'Comment']);
+        expect(callouts('zh-TW')).toEqual(['資訊', '重點', '詳細內容', '旁註']);
+      });
+
+      it('put the handout reference inside the document, above its title', () => {
+        expect(render(handout, 'en')).toMatch(/<header class="handout-document-header"><div class="handout-reference"><span class="handout-code">H-02<\/span><span class="handout-variant-label">Journal<\/span><\/div><h4 class="handout-title">/);
       });
     });
 

@@ -40,17 +40,13 @@
   .live-directive-editor-hint { text-align: center; font-size: 11px; }
 
   /* Prose Cards adaptations on Mobile */
-  .prose-custom .custom-directive { margin: 1.25rem 0; padding: 0.75rem 1rem; }
+  .prose-custom :is(.custom-directive, .comment-directive) { padding: 0.75rem 1rem; }
 
-  .prose-custom .handout-card { padding: 0.75rem 0.85rem; }
+  .prose-custom details.optional-directive > summary.optional-summary { padding: 0.75rem 1rem; }
 
-  .prose-custom .handout-header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .prose-custom details.optional-directive > .directive-body { padding: 0 1rem 0.85rem 2.5rem; }
 
-  .prose-custom .coc-stat-characteristics, .prose-custom .coc-stat-derived { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .prose-custom :is(.handout-document-header, .handout-body) { padding-inline: 1.1rem; }
 
-  .prose-custom .coc-stat-cell { padding: 0.5rem 0.6rem; }
-
-  .prose-custom .coc-stat-name { font-size: 1.25rem; }
-
-  .prose-custom .parallel-quote-grid { grid-template-columns: 1fr !important; gap: 0.75rem; }
+  .prose-custom .coc-stat-name { font-size: 1.2rem !important; }
 }

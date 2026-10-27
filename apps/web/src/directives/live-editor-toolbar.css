@@ -1,22 +1,27 @@
 /* ===== 9. Live Editor Directive Toolbar & Inline Editing ===== */
 /* The gap is padding, not margin: CodeMirror measures a block widget's border box, so a margin
    goes uncounted and every directive above a line pushes the text below its line number. */
-.live-md-directive { --directive-gap: 0.35rem; position: relative; display: block; width: 100%; padding: var(--directive-gap) 0; }
+/* --directive-inset is the line's own horizontal inset (see the live editor's theme), so a block lines up with the text
+   around it instead of reaching the card's edges; every place that narrows .cm-line narrows it too. */
+.live-md-directive { --directive-gap: 0.35rem; --directive-inset: 0px; position: relative; display: block; box-sizing: border-box; width: 100%; padding: var(--directive-gap) var(--directive-inset); }
+
+.cm-content > .live-md-directive { --directive-inset: 40px; }
 
 /* CodeMirror uses break-spaces for source text. Rendered HTML needs normal whitespace,
-   otherwise newlines between list-item tags become visible blank lines. */
-.live-md-directive .live-directive-preview-content { white-space: normal; }
+   otherwise newlines between list-item tags become visible blank lines; a read-only note puts
+   the rendered HTML straight in the block, without the preview wrapper. */
+.live-md-directive, .live-md-directive .live-directive-preview-content { white-space: normal; }
 
 /* 消除 live editor preview 內 renderNote 輸出的容器自帶 margin/padding，
    避免 .live-md-directive padding 和內部容器 margin 疊加 */
 .live-md-directive .live-directive-preview-content > .custom-directive, .live-md-directive .live-directive-preview-content > .comment-directive, .live-md-directive .live-directive-preview-content > .handout-block, .live-md-directive .live-directive-preview-content > .coc-stat-block, .live-md-directive .live-directive-preview-content > .embedded-card { margin: 0; }
 
 /* The editing frame rings the card 3px out, inside the gap padding rather than around it. */
-.live-md-directive.live-directive-editing::after { content: ''; position: absolute; inset: calc(var(--directive-gap) - 5px) -5px; border: 2px solid var(--color-primary); border-radius: 12px; pointer-events: none; }
+.live-md-directive.live-directive-editing::after { content: ''; position: absolute; inset: calc(var(--directive-gap) - 5px) calc(var(--directive-inset) - 5px); border: 2px solid var(--color-primary); border-radius: 12px; pointer-events: none; }
 
 /* Toolbar */
 .live-directive-toolbar { position: absolute; top: -14px; right: 14px; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid color-mix(in srgb, var(--color-text) 18%, var(--color-border)); border-radius: 6px; background: var(--color-surface); box-shadow: 0 3px 10px color-mix(in srgb, var(--color-scrim) 8%, transparent); opacity: 0; pointer-events: none; transition: opacity 120ms ease, top 120ms ease; z-index: 20; }
-.live-md-directive > .live-directive-toolbar { top: calc(var(--directive-gap) - 14px); }
+.live-md-directive > .live-directive-toolbar { top: calc(var(--directive-gap) - 14px); right: calc(var(--directive-inset) + 14px); }
 
 .live-md-directive:hover .live-directive-toolbar, .live-md-directive:focus-within .live-directive-toolbar { opacity: 1; pointer-events: auto; top: calc(var(--directive-gap) - 18px); }
 

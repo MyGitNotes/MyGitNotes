@@ -1,28 +1,38 @@
-/* ===== 2. Structured stat cards ===== */
-.prose-custom .coc-stat-block { margin: 2rem 0; display: block; width: 100%; overflow: hidden; border: 1px solid var(--color-border); border-radius: 8px; background: color-mix(in srgb, var(--color-text) 2.5%, var(--color-surface)); }
+/* ===== 2. Structured stat cards =====
+   Each characteristic is a cell of value over code over name, in a grid that wraps whole cells, never their text;
+   the derived values (damage bonus, build, move) follow as pills. */
+.prose-custom .coc-stat-block { margin: 1.25rem 0; display: block; width: 100%; overflow: hidden; border-radius: var(--directive-radius); background: var(--directive-card-bg); }
 
-.prose-custom .coc-stat-header { margin: 0; padding: 1rem 1.25rem; background: var(--color-text); color: var(--color-surface); }
+.prose-custom .coc-stat-header { margin: 0; padding: 1rem 1.25rem 0.85rem; }
 
-.prose-custom .coc-stat-kicker { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.65rem; line-height: 1; font-weight: 600; letter-spacing: 0.18em; opacity: 0.75; color: var(--color-surface) !important; }
+.prose-custom .coc-stat-kicker { margin: 0; font-size: 0.72rem; line-height: 1.2; font-weight: 600; letter-spacing: 0.06em; color: var(--color-muted); }
 
-.prose-custom .coc-stat-name { margin: 0.5rem 0 0; font-size: 1.5rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; color: var(--color-surface) !important; }
+.prose-custom .coc-stat-name { margin: 0.3rem 0 0 !important; padding: 0 !important; border: 0 !important; font-family: var(--font-heading); font-size: 1.35rem !important; line-height: 1.25; font-weight: 700; color: var(--color-text); }
 
-.prose-custom .coc-stat-role { margin: 0.25rem 0 0; font-size: 0.85rem; line-height: 1.3; opacity: 0.85; color: var(--color-surface) !important; }
+.prose-custom .coc-stat-role { margin: 0.15rem 0 0; font-size: 0.85rem; line-height: 1.3; color: var(--color-muted); }
 
-.prose-custom .coc-stat-characteristics, .prose-custom .coc-stat-derived { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr)); border-top: 1px solid var(--color-border); }
+.prose-custom .coc-stat-characteristics { display: grid; grid-template-columns: repeat(auto-fit, minmax(4.5rem, 1fr)); margin: 0 -1px -1px 0; border-top: 1px solid var(--color-line); }
 
-.prose-custom .coc-stat-cell { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.65rem 0.75rem; border-inline-end: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
+.prose-custom .coc-stat-cell { display: flex; min-width: 0; flex-direction: column-reverse; justify-content: flex-end; gap: 0.2rem; padding: 0.55rem 0.75rem 0.6rem; box-shadow: inset -1px -1px 0 var(--color-line); }
 
-.prose-custom .coc-stat-label { display: flex; min-width: 0; flex-direction: column; gap: 0.2rem; }
+.prose-custom .coc-stat-label { display: flex; min-width: 0; flex-direction: column-reverse; gap: 0.1rem; }
 
-.prose-custom .coc-stat-label-name { font-size: 0.68rem; line-height: 1; color: var(--color-muted); }
+.prose-custom .coc-stat-label-name { overflow: hidden; font-size: 0.68rem; line-height: 1.2; white-space: nowrap; text-overflow: ellipsis; color: var(--color-muted); }
 
-.prose-custom .coc-stat-code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.7rem; line-height: 1; font-weight: 600; letter-spacing: 0.08em; text-decoration: none; color: var(--color-text); }
+.prose-custom .coc-stat-code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.7rem; line-height: 1.2; font-weight: 700; letter-spacing: 0.06em; text-decoration: none; color: var(--color-muted); }
 
-.prose-custom .coc-stat-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 1.15rem; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--color-text); }
+.prose-custom .coc-stat-value { font-size: 1.3rem; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--color-text); }
 
-.prose-custom .coc-stat-body { padding: 1.25rem; }
+.prose-custom .coc-stat-derived { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.7rem 1.25rem; border-top: 1px solid var(--color-line); }
 
-.prose-custom .coc-stat-body > *:first-child { margin-top: 0; }
+.prose-custom .coc-stat-derived .coc-stat-cell { flex-direction: row; align-items: baseline; gap: 0.45rem; padding: 0.2rem 0.65rem; border: 1px solid var(--color-line); border-radius: 999px; box-shadow: none; }
 
-.prose-custom .coc-stat-body > *:last-child { margin-bottom: 0; }
+.prose-custom .coc-stat-derived .coc-stat-label { flex-direction: row; }
+
+.prose-custom .coc-stat-derived .coc-stat-label-name { font-size: 0.75rem; }
+
+.prose-custom .coc-stat-derived .coc-stat-code { display: none; }
+
+.prose-custom .coc-stat-derived .coc-stat-value { font-size: 0.9rem; }
+
+.prose-custom .coc-stat-body { padding: 0.9rem 1.25rem 1rem; border-top: 1px solid var(--color-line); }
