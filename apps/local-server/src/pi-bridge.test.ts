@@ -22,6 +22,8 @@ process.stdin.on('data', chunk => {
     if (command.type === 'prompt' && command.message === 'tool') {
       fetch(process.env.MYGITNOTES_WEB_TOOLS_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.MYGITNOTES_WEB_TOOLS_TOKEN }, body: JSON.stringify({ tool: 'read_note', arguments: { path: 'notes/a.md' } }) })
         .then(async res => out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ status: res.status, body: await res.json() }) }] } }));
+    } else if (command.type === 'prompt' && command.message === 'workspace') {
+      out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ repository: process.env.MYGITNOTES_AGENT_REPOSITORY, folder: process.env.MYGITNOTES_AGENT_FOLDER }) }] } });
     } else if (command.type === 'prompt') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ args: process.argv.slice(2), model: process.env.FAKE_MODEL, bridgeVariables: Object.keys(process.env).filter(name => name.startsWith('MYGITNOTES_BRIDGE_')), message: command.message, images: command.images }) }] } });
   }
 });
@@ -166,6 +168,15 @@ it("answers Pi's note tools from the page holding the panel", async () => {
   page.ws.send(JSON.stringify({ type: 'web_tool_response', id: request.id, result: { content: 'From the page.' } }));
   expect(reply(await page.until(record => record.type === 'message_end'))).toEqual({ status: 200, body: { result: { content: 'From the page.' } } });
   expect((await fetch(`${bridge!.url}/web-tools`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: '{}' })).status).toBe(401);
+});
+
+it("tells Pi's tools extension the agent workspace the session starts in", async () => {
+  await start();
+  await call('POST', '/session', { location: { repository: 'github:octo/notes@main', folder: 'blog' } });
+  const page = open();
+  await page.opened;
+  page.ws.send(JSON.stringify({ type: 'prompt', message: 'workspace' }));
+  expect(reply(await page.until(record => record.type === 'message_end'))).toEqual({ repository: 'github:octo/notes@main', folder: 'blog' });
 });
 
 it('restarts in a new place and ends on request', async () => {

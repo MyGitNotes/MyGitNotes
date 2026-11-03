@@ -52,6 +52,8 @@ process.stdin.on('data', chunk => {
       // What the web tools extension does: call the bridge with the session's token, and report the answer.
       fetch(process.env.MYGITNOTES_WEB_TOOLS_URL, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + (command.message === 'tool forged' ? 'x' : process.env.MYGITNOTES_WEB_TOOLS_TOKEN) }, body: JSON.stringify({ tool: 'read_note', arguments: { path: 'notes/a.md' } }) })
         .then(async res => out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ message: command.message, status: res.status, body: await res.json() }) }] } }));
+    } else if (command.type === 'prompt' && command.message === 'workspace') {
+      out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ repository: process.env.MYGITNOTES_AGENT_REPOSITORY, folder: process.env.MYGITNOTES_AGENT_FOLDER }) }] } });
     } else if (command.type === 'prompt' && command.message === 'ask') out({ type: 'extension_ui_request', id: 'dialog-1', method: 'select', title: 'Pick', options: ['A', 'B'] });
     else if (command.type === 'prompt') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2), message: command.message, images: command.images }) }] } });
     if (command.type === 'extension_ui_response') out({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'answered ' + command.value }] } });
@@ -524,6 +526,16 @@ describe('web agent note tools', () => {
     expect(await answered).toEqual({ status: 200, body: { result: { source: 'working', content: '# A' } } });
   });
 
+  it('tells the tools extension which agent workspace the session runs in', async () => {
+    const { base, port, workspace } = await start({ webTools: true });
+    fs.mkdirSync(path.join(workspace, 'blog'));
+    await post(base, 'POST', { repository: 'home', folder: 'blog' });
+    const client = connect(port, base);
+    await client.opened;
+    client.send({ id: 'workspace', type: 'prompt', message: 'workspace' });
+    expect(JSON.parse(assistantText(await client.next(record => record.type === 'message_end')))).toEqual({ repository: 'home', folder: 'blog' });
+  });
+
   it("passes on the page's refusal, and refuses a call without the session's token or without a page", async () => {
     const { base, port } = await start({ webTools: true });
     await post(base, 'POST');
@@ -560,6 +572,9 @@ describe('web agent note tools', () => {
     client.send({ id: 'argv', type: 'prompt', message: 'argv' });
     const args = JSON.parse(assistantText(await client.next(record => record.type === 'message_end'))).args as string[];
     expect(args).not.toContain(WEB_TOOLS_EXTENSION);
+    client.send({ id: 'workspace', type: 'prompt', message: 'workspace' });
+    // Nothing names the workspace to a Pi that has no tools extension to read it.
+    expect(assistantText(await client.next(record => record.type === 'message_end' && assistantText(record) === '{}'))).toBe('{}');
     expect((await fetch(`${base}/api/pi/web-tools`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status).toBe(404);
   });
 });
