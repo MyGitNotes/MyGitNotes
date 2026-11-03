@@ -108,10 +108,10 @@ Keep those log files readable only by you, and run `--rotate-secret` if one is e
 - **The shell box is off.**
   The chat box's `!command` shell lines are refused.
 - **By default Pi gets only the note tools and MCP.**
-  The bridge starts Pi with the five MyGitNotes note tools and the tools of the MCP servers configured in your Pi (its `mcp` tool and `mcp__<server>__<tool>` tools).
+  The bridge starts Pi with the MyGitNotes tools (five note tools, and two read-only tools for the workspace's `AGENTS.md` and skills) and the tools of the MCP servers configured in your Pi (its `mcp` tool and `mcp__<server>__<tool>` tools).
   Pi's file and command tools (`read`, `write`, `edit`, `bash` and the others) are off, and other extensions' tools are not offered.
   The note tools change your notes only as working changes in your browser, which you review and commit.
-  Pi's working folder is empty.
+  Pi's working folder is empty; the `AGENTS.md` files and skill list of the agent workspace you chose are read from the repository and added to Pi's system prompt.
   This choice is fixed by the bridge: it comes after anything you pass to Pi, which is why `-- --tools …` is refused.
   **Your own MCP servers are reachable.**
   Whatever MCP servers you set up in Pi (`pi mcp list` shows them) are available to the agent, with the access they have; a server that can read your files or call a service as you does so for the agent too.
@@ -119,7 +119,7 @@ Keep those log files readable only by you, and run `--rotate-secret` if one is e
 - **`--allow-local-tools` gives Pi your computer.**
   It restores all of Pi's tools, and the bridge prints a warning when it starts.
   Pi then runs as you and can read files, write files and run commands.
-  Three things can steer it: text in a note that tells the agent what to do (a note you opened from someone else, or a web page it was asked to read), anyone who holds the secret and can reach the bridge, and, on a self-hosted deployment, every login listed in `MYGITNOTES_EXTERNAL_PI_OWNERS`, because they all talk to the same Pi.
+  Three things can steer it: text in a note or in the workspace's `AGENTS.md` and skills that tells the agent what to do (a repository you opened from someone else, or a web page it was asked to read), anyone who holds the secret and can reach the bridge, and, on a self-hosted deployment, every login listed in `MYGITNOTES_EXTERNAL_PI_OWNERS`, because they all talk to the same Pi.
   Use it only on a computer and in an account you are willing to expose, and keep the pairing code private.
 
 ## Troubleshooting
