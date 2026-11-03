@@ -57,12 +57,14 @@
 .pi-agent-idle p { margin: 0; color: var(--color-muted); }
 .pi-agent-dialog, .pi-agent-switch { display: flex; flex: none; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: color-mix(in srgb, var(--color-text) 3%, transparent); }
 .pi-agent-switch { margin: 8px 8px 0; }
-.pi-agent-dialog header { display: flex; align-items: center; gap: 6px; }
-.pi-agent-dialog header svg { flex: none; width: 15px; height: 15px; color: var(--color-primary); }
-.pi-agent-dialog h3 { margin: 0; color: var(--color-text); font-size: 12px; font-weight: 600; }
+.pi-agent-dialog header { display: flex; align-items: flex-start; gap: 6px; }
+/* Beside the heading's first line, however many lines a long question takes. */
+.pi-agent-dialog header svg { flex: none; width: 15px; height: 15px; margin-top: 1px; color: var(--color-primary); }
+.pi-agent-dialog h3 { min-width: 0; margin: 0; color: var(--color-text); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .pi-agent-dialog-detail { max-height: 240px; overflow-y: auto; color: var(--color-muted); font-size: 12px; }
 .pi-agent-dialog-options { display: flex; flex-direction: column; gap: 4px; }
-.pi-agent-dialog-options .ui-button { justify-content: flex-start; text-align: left; }
+/* An option is often a sentence: it wraps inside its button instead of running past the card. */
+.pi-agent-dialog-options .ui-button { justify-content: flex-start; min-width: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .pi-agent-dialog-form, .pi-agent-switch label { display: flex; flex-direction: column; gap: 6px; }
 .pi-agent-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .pi-agent-check { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-text); }
