@@ -1,6 +1,9 @@
+import { splitAgentSkillContent } from '@mygitnotes/core/agent-skill-metadata';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { isNoteFile } from '@mygitnotes/core/note-file';
 import { useCallback } from 'react';
+import YAML from 'yaml';
+import { fetchAgentResources, readAgentResource } from '../lib/api.js';
 import { getLocalDraft } from '../lib/storage.js';
 import { noteExternalEdit } from '../lib/external-note-edits.js';
 import { workingDiff, type WorkingNote } from '../lib/working-notes.js';
@@ -29,18 +32,50 @@ const text = (value: unknown, name: string) => {
   return value;
 };
 
+/** A path Pi may ask the agent-system tools about: repository-relative, with no traversal; a trailing slash is dropped. */
+const repositoryPath = (value: unknown) => {
+  const path = text(value, 'path').replace(/\/$/, '');
+  if (!path || path.includes('\\') || path.includes('\0') || path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Use a repository-relative path with no traversal segments.');
+  return path;
+};
+
+/** The agent workspace the bridge started this session in, which it names in every agent-system call; absent when it did not. */
+const sessionWorkspace = (value: unknown): { repository: string; folder: string; } | undefined => {
+  const workspace = value as { repository?: unknown; folder?: unknown; } | null | undefined;
+  return workspace && typeof workspace.repository === 'string' && workspace.repository && typeof workspace.folder === 'string' ? { repository: workspace.repository, folder: workspace.folder } : undefined;
+};
+
+/** A target directory and each ancestor up to the repository root, root first. */
+const chain = (directory: string) => {
+  const parts = directory ? directory.split('/') : [];
+  return ['', ...parts.map((_, index) => parts.slice(0, index + 1).join('/'))];
+};
+
+/** The `description` of a SKILL.md's frontmatter; empty when it has none or cannot be read. */
+function skillDescription(content: string): string {
+  try {
+    const { frontmatter } = splitAgentSkillContent(content);
+    const metadata = frontmatter ? YAML.parse(frontmatter.replace(/^---\r?\n/, '').replace(/\r?\n---\r?\n?$/, '')) as { description?: unknown; } | null : null;
+    return typeof metadata?.description === 'string' ? metadata.description : '';
+  } catch {
+    return '';
+  }
+}
+
+const AGENT_FILE = /(?:^|\/)AGENTS\.md$|(?:^|\/)\.agents\/skills\//;
+
 /**
  * The agent's note tools for a remote workspace: reads see the person's working changes, and writes become
  * working changes of this page, which the person commits. Nothing here commits or reaches the repository host.
  */
 export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, canWriteNotebook, revisionFor, readDraft, updateDraft, stageWorkingNote, findCommittedNote, resolveBareNotebook }: Params): WebToolHandler {
   return useCallback<WebToolHandler>(async (tool, args) => {
+    // A bare local id, as tool calls written before notebook keys name one, resolves as an MCP tool argument does.
+    const named = typeof args.notebookId === 'string' ? isNotebookKey(args.notebookId) ? args.notebookId : resolveBareNotebook(args.notebookId) ?? args.notebookId : undefined;
     /** The notebook a repository-relative path belongs to; `notebookId` tells repositories with the same path apart. */
     const locate = () => {
       const path = text(args.path, 'path');
       if (!isNoteFile(path) || path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error(`${path} is not a note path.`);
-      // A bare local id, as tool calls written before notebook keys name one, resolves as an MCP tool argument does.
-      const named = typeof args.notebookId === 'string' ? isNotebookKey(args.notebookId) ? args.notebookId : resolveBareNotebook(args.notebookId) ?? args.notebookId : undefined;
       const candidates = (config?.notebooks ?? []).filter(notebook => (!named || notebook.id === named) && path.startsWith(`${notebook.root}/`));
       if (!candidates.length) throw new Error(`${path} is not inside ${named ? `notebook ${named}` : 'any notebook'}.`);
       if (candidates.length > 1) throw new Error(`${path} is in several notebooks (${candidates.map(notebook => notebook.id).join(', ')}); name one as notebookId.`);
@@ -79,7 +114,65 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       return { path, notebookId, source: 'working' as const, created: !base };
     };
 
+    /** The repository of the notebook the call names, else of the agent workspace the session runs in. */
+    const agentRepository = () => {
+      if (named) {
+        const repository = repositoryFor(named);
+        if (!repository) throw new Error(`Unknown notebook: ${named}`);
+        return repository.id;
+      }
+      const workspace = sessionWorkspace(args.workspace);
+      if (!workspace) throw new Error('Name a notebookId: this session did not report its agent workspace.');
+      return workspace.repository;
+    };
+    /** Where an agent-system call looks: a note or folder path, a notebook's root, or the session's own workspace. */
+    const agentTarget = () => {
+      const notebooks = config?.notebooks ?? [];
+      if (args.path !== undefined) {
+        const path = repositoryPath(args.path);
+        // The agent-resource listing has only agent files, so a path with an extension is taken for a note and a folder otherwise.
+        const directory = isNoteFile(path) || /\.[^./]+$/.test(path.split('/').pop() ?? '') ? path.split('/').slice(0, -1).join('/') : path;
+        const candidates = notebooks.filter(notebook => (!named || notebook.id === named) && (directory === notebook.root || directory.startsWith(`${notebook.root}/`)));
+        if (!candidates.length) throw new Error(`${path} is not inside ${named ? `notebook ${named}` : 'any notebook'}; target a notebook, or a note or folder inside one.`);
+        if (candidates.length > 1) throw new Error(`${path} is in several notebooks (${candidates.map(notebook => notebook.id).join(', ')}); name one as notebookId.`);
+        const repository = repositoryFor(candidates[0].id);
+        if (!repository) throw new Error(`Unknown notebook: ${candidates[0].id}`);
+        return { repository: repository.id, directory, notebookId: candidates[0].id };
+      }
+      if (named) {
+        const notebook = notebooks.find(candidate => candidate.id === named);
+        if (!notebook) throw new Error(`Unknown notebook: ${named}`);
+        return { repository: agentRepository(), directory: notebook.root, notebookId: notebook.id };
+      }
+      const workspace = sessionWorkspace(args.workspace);
+      if (!workspace) throw new Error('Pass a path or notebookId: this session did not report its agent workspace.');
+      return { repository: workspace.repository, directory: workspace.folder, notebookId: undefined };
+    };
+
     switch (tool) {
+      case 'agent_system': {
+        const { repository, directory, notebookId } = agentTarget();
+        const listing = await fetchAgentResources(repository);
+        const folders = chain(directory);
+        const instructions = folders.flatMap(folder => listing.files.filter(file => file.kind === 'instructions' && file.folder === folder));
+        // Along the chain the nearest folder wins a shared skill name, as Pi loads them.
+        const chosen = new Map<string, (typeof listing.files)[number]>();
+        for (const folder of [...folders].reverse()) for (const file of listing.files) if (file.kind === 'skill' && file.folder === folder && file.skill && !chosen.has(file.skill)) chosen.set(file.skill, file);
+        const [files, skills] = await Promise.all([
+          Promise.all(instructions.map(async file => ({ path: file.path, content: (await readAgentResource(file.path, repository)).content }))),
+          Promise.all([...chosen.values()].sort((a, b) => a.skill!.localeCompare(b.skill!)).map(async file => ({ name: file.skill!, description: skillDescription((await readAgentResource(file.path, repository)).content), path: file.path, directory: file.path.slice(0, -'/SKILL.md'.length) }))),
+        ]);
+        return { workspace: { repository, folder: directory }, ...notebookId ? { notebookId } : {}, ...listing.revision ? { revision: listing.revision } : {}, files, skills };
+      }
+      case 'read_agent_file': {
+        const path = repositoryPath(args.path);
+        if (!AGENT_FILE.test(path)) throw new Error(`${path} is not an AGENTS.md or skill file of the agent workspace.`);
+        const repository = agentRepository();
+        const resource = await readAgentResource(path, repository).catch(() => {
+          throw new Error(`${path} is not an AGENTS.md or skill file of this workspace, or it does not exist.`);
+        });
+        return { path, workspace: { repository }, content: resource.content, ...resource.revision ? { revision: resource.revision } : {} };
+      }
       case 'read_note': {
         const { path, notebookId } = locate();
         const { draft, note } = await current(notebookId, path);
