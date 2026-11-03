@@ -30,16 +30,18 @@ interface Params {
   navigate: ReturnType<typeof useNavigate>;
   editorRoute: ReturnType<typeof parseWorkspaceRoute>;
   resolveBareNotebook: WorkspaceState['resolveBareNotebook'];
+  /** Whether the page was loaded on a note's link, which opens in the Focus displayed last. */
+  openingNoteLink: boolean;
 }
 
-export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite, editorRegistry, location, navigate, editorRoute, resolveBareNotebook }: Params) {
+export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite, editorRegistry, location, navigate, editorRoute, resolveBareNotebook, openingNoteLink }: Params) {
   // Focus: the URL names the displayed one; named Focus sync through their workspace document.
   const focusCapacity = usePaneCapacity();
   // A view kept before notebook keys belongs to the notebook its local id stands for, as an old URL's does.
   const localId = parseNotebookKey(selectedNotebookId)?.localId;
   const focusScope = localId && resolveBareNotebook(localId) === selectedNotebookId ? remote ? sourceId : `local:${repoRoot}` : null;
   // A Notes page whose URL names no Focus shows the one it displayed last, decided while rendering so the list never paints first.
-  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && !editorRoute.note, writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
+  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && (!editorRoute.note || openingNoteLink), writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
   const focusDisplay = noteFocus.layout && noteFocus.entry ? displayedPanes(noteFocus.entry, noteFocus.layout, focusCapacity) : undefined;
   /** On phones the browse region and the Focus take turns filling the screen; a phone starts on the list. */
   const [focusNarrowView, setFocusNarrowView] = useState<'focus' | 'browse'>(() => isPhoneViewport() ? 'browse' : 'focus');
