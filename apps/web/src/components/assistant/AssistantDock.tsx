@@ -2,6 +2,8 @@ import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useR
 import { useTranslation } from '../../lib/i18n/index.js';
 import { ASSISTANT_DOCK_KEY_STEP, assistantDock, assistantDockWidth, maxAssistantDockWidth, MIN_ASSISTANT_DOCK_WIDTH, useAssistantDock } from '../../lib/assistant-dock.js';
 import { usePhone } from '../../lib/use-phone.js';
+import { useAssistantSwipe } from '../../lib/assistant-swipe.js';
+import { usePiAgentAvailable } from '../../lib/pi-agent/session.js';
 import { AgentPanel } from '../pi-agent/AgentPanel.js';
 import { useAssistantDockVisible } from './useAssistantDockVisible.js';
 import './assistant-dock.css';
@@ -17,17 +19,21 @@ function useViewportWidth(): number {
   return width;
 }
 
+const dockOpen = () => assistantDock.get().open;
+
 /**
  * The assistant: Pi's conversation in a column below the header, between the page and the right panel (document panel
  * and tool rail). It shares a row with the page, so the page reflows beside it instead of sitting under it; while a note
  * is zoomed the right panel is gone and the dock is at the window's right edge, where the zoom overlays end through
- * `--assistant-dock-width`. Below 768px it is a full-screen sheet above the page.
+ * `--assistant-dock-width`. Below 768px it is a full-screen sheet above the page, which `swipe` lets a finger open and close.
  */
-export function AssistantDock({ onOpenAgents, agentsDisabled }: { onOpenAgents?: () => void; agentsDisabled?: boolean; }) {
+export function AssistantDock({ onOpenAgents, agentsDisabled, swipe = false }: { onOpenAgents?: () => void; agentsDisabled?: boolean; /** Whether a phone's swipe opens and closes the dock here: the page has no gesture of its own sideways. */ swipe?: boolean; }) {
   const { t } = useTranslation();
   const visible = useAssistantDockVisible();
   const dock = useAssistantDock();
   const phone = usePhone();
+  const available = usePiAgentAvailable();
+  useAssistantSwipe(swipe && phone && available, { isOpen: dockOpen, onOpen: assistantDock.open, onClose: assistantDock.close });
   const viewport = useViewportWidth();
   const width = assistantDockWidth(dock, viewport);
   const reserved = visible && !phone ? width : 0;

@@ -5,6 +5,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { LINE_NUMBERS_STORAGE_KEY } from '../lib/editor-preferences.js';
 import { PanelProvider } from '../lib/panel-context.js';
+import { PiAgentContext, type PiAgentValue } from '../lib/pi-agent/session.js';
+import { assistantDock } from '../lib/assistant-dock.js';
 import { PhoneNotesProvider } from '../lib/phone-notes.js';
 import type { NoteItem } from '../lib/types.js';
 import { NoteEditor, type NoteEditorProps } from './NoteEditor.js';
@@ -41,6 +43,17 @@ it("shows one title bar with back, the title, the status, edit and more, and not
   expect(screen.queryByText(/^\d+ words$/)).toBeNull();
   fireEvent.click(inBar.getByRole('button', { name: 'Back to the note list' }));
   expect(back).toHaveBeenCalledTimes(1);
+});
+
+it('opens the assistant from the bar where the agent is offered, and shows no button where it is not', () => {
+  const { rerender } = render(createElement(PiAgentContext.Provider, { value: { available: true } as unknown as PiAgentValue }, editor()));
+  const toggle = within(bar()).getByRole('button', { name: 'Agent' });
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(toggle);
+  expect(assistantDock.get().open).toBe(true);
+  act(() => assistantDock.close());
+  rerender(createElement(PiAgentContext.Provider, { value: { available: false } as unknown as PiAgentValue }, editor()));
+  expect(within(bar()).queryByRole('button', { name: 'Agent' })).toBeNull();
 });
 
 it('toggles between reading and editing from the bar', () => {

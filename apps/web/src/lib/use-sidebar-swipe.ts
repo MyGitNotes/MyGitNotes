@@ -16,7 +16,8 @@ export function useSidebarSwipe(enabled: boolean, open: boolean, onChange: (open
       // A fresh touch is an intentional interaction, not the drag's compatibility click.
       suppressClickUntil.current = 0;
       if (!window.matchMedia('(max-width: 1100px)').matches || event.touches.length !== 1) return;
-      if ((event.target as Element).closest('input, textarea, select, [role="combobox"], [contenteditable="true"]')) return;
+      // The assistant's sheet lies over the page on a phone; a swipe on it is its own (see assistant-swipe.ts).
+      if ((event.target as Element).closest('input, textarea, select, [role="combobox"], [contenteditable="true"], #assistant-dock')) return;
       // The drawer mounts only in the narrow layout, so it is looked up when a gesture starts.
       const panel = root.querySelector<HTMLElement>('[data-responsive-sidebar]');
       if (!panel) return;

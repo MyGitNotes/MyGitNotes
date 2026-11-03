@@ -9,6 +9,7 @@ import { type PanelToolId, usePanelContext } from '../../lib/panel-context.js';
 import { usePhoneNotes } from '../../lib/phone-notes.js';
 import type { NoteItem } from '../../lib/types.js';
 import type { MarkdownEditorMode } from '../MarkdownEditor.js';
+import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { NoteStatusSelect } from '../NoteStatusSelect.js';
 import { PhoneSheet } from '../PhoneSheet.js';
 import { PHONE_TOOLS } from './phone-tools.js';
@@ -45,7 +46,7 @@ export interface PhoneNoteChromeProps {
   hidden: boolean;
 }
 
-/** A phone's note screen top: back to the list, the title, the status dot, edit or read, and the "⋯" sheet that holds everything else. */
+/** A phone's note screen top: back to the list, the title, the status dot, edit or read, the assistant, and the "⋯" sheet that holds everything else. */
 export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
   const { t } = useTranslation();
   const { frame, session, autoSave, readOnly, statuses, phoneEditing, overlay, hidden } = props;
@@ -74,6 +75,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
           </button>
         )}
         {phoneEditing && <button type='button' className='ui-icon-button phone-note-edit' aria-pressed={phoneEditing.editing} aria-label={t(phoneEditing.editing ? 'editor.finishEditing' : 'editor.startEditing')} title={t(phoneEditing.editing ? 'editor.finishEditing' : 'editor.startEditing')} onClick={phoneEditing.editing ? phoneEditing.onDone : phoneEditing.onEdit}>{phoneEditing.editing ? <Check aria-hidden='true' /> : <Pencil aria-hidden='true' />}</button>}
+        <AssistantDockToggle />
         <button type='button' className='ui-icon-button' aria-label={t('editor.moreActions')} title={t('editor.moreActions')} aria-haspopup='dialog' aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
           <MoreHorizontal aria-hidden='true' />
         </button>

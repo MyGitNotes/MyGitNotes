@@ -11,3 +11,7 @@
 .assistant-dock-toggle[data-open] { background: var(--color-primary-light); color: var(--color-primary); }
 /* A phone has no room beside the page: the dock is a sheet over all of it, with the panel's close button to leave. */
 @media (max-width: 767px) { .assistant-dock { position: fixed; top: var(--visual-top, 0px); right: 0; left: 0; z-index: 60; height: var(--visual-height, 100dvh); padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); border-left: 0; } }
+/* It comes in from the right edge, where the swipe that opens it starts, and follows a finger that swipes it away. */
+@media (max-width: 767px) and (prefers-reduced-motion: no-preference) { .assistant-dock { animation: assistant-dock-in 180ms ease-out; } }
+@media (max-width: 767px) { .assistant-dock.is-dragging { transform: translateX(var(--assistant-drag, 0px)); transition: none; } }
+@keyframes assistant-dock-in { from { transform: translateX(100%); } }
