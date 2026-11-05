@@ -193,12 +193,11 @@ it("puts a pane's actions into the tab bar slot it is given, leaving only the no
   slot.remove();
 });
 
-it("keeps a pane's actions in a row above the note row where the tab bar has no slot, as on a phone", () => {
+it("keeps a pane's actions in one row after the note row where the tab bar gives no slot", () => {
   const { container } = render(toolbar(vi.fn(), { frame: 'pane', isMarkdown: true }));
   const bar = container.querySelector('.note-toolbar')!;
-  expect(bar).toHaveAttribute('data-actions', 'inline');
-  expect(bar.querySelector('.note-controls')).not.toBeNull();
-  expect(bar.querySelector('.note-row')).not.toBeNull();
+  expect(bar).toHaveAttribute('data-actions', 'row');
+  expect([...bar.children].map(child => child.className.split(' ')[0])).toEqual(['note-row', 'note-controls']);
 });
 
 it('switches the mode with one icon button that shows the mode in use and names the other, with the leader key for the same switch', () => {

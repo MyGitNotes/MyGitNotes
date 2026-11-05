@@ -50,7 +50,8 @@
 .focus-pane[data-active] .focus-pane-bar { background: var(--color-sidebar); }
 .focus-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .focus-tabs::-webkit-scrollbar { display: none; }
-.focus-tab { position: relative; display: flex; flex: 0 1 auto; align-items: center; min-width: 5.5rem; max-width: 14rem; border-right: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); color: var(--color-muted); }
+/* A tab keeps about eight characters of its title however many tabs there are; the rest scroll, and the tab list holds them all. */
+.focus-tab { position: relative; display: flex; flex: 0 1 auto; align-items: center; min-width: 10rem; max-width: 14rem; border-right: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); color: var(--color-muted); }
 .focus-tab:hover { color: var(--color-text); background: color-mix(in srgb, var(--color-surface) 55%, transparent); }
 .focus-tab[data-shown] { background: var(--color-surface); color: var(--color-text); }
 .focus-pane:not([data-active]) .focus-tab[data-shown] { color: color-mix(in srgb, var(--color-text) 75%, var(--color-muted)); }
@@ -71,12 +72,20 @@
 .focus-pane-actions { display: flex; flex: none; align-items: center; gap: 2px; padding: 0 4px; }
 .focus-pane-actions .ui-icon-button { width: 30px; height: 30px; }
 .focus-pane-actions .ui-icon-button svg { width: 15px; height: 15px; }
-.focus-pane-actions .focus-menu-trigger { min-height: 28px; gap: 4px; padding: 4px 8px; }
-.focus-pane-actions .focus-menu-trigger svg { width: 14px; height: 14px; }
-/* A narrow pane folds its secondary buttons into one menu; the shown tab keeps 120px for its title (icon, gaps and close button around it), the others scroll. */
-.focus-pane[data-compact] .focus-tab[data-shown] { min-width: calc(120px + 52px); }
-.focus-pane[data-compact] .focus-pane-actions .ui-icon-button { width: 28px; }
-/* Too narrow for tabs and buttons in one row: the tabs keep the bar's row and the buttons take a second one under it. */
+/* The tab list: a row per tab, with its close button and the insertion line of a drag. */
+.focus-tab-list { min-width: 16rem; }
+.focus-tab-list [role='menuitem'] { position: relative; padding-right: 0.25rem; }
+.focus-tab-list [role='menuitem'] > span { flex: 1; }
+.focus-tab-list-cue { flex: none; padding: 1px 4px; border-radius: 999px; background: var(--workspace-selection); color: var(--color-muted); font-size: 9px; font-weight: 600; line-height: 14px; }
+.focus-tab-list-close { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; color: var(--color-muted); opacity: 0; }
+.focus-tab-list [role='menuitem'][data-highlighted] .focus-tab-list-close, .focus-tab-list [role='menuitem'][data-current] .focus-tab-list-close { opacity: 1; }
+.focus-tab-list-close:hover { background: var(--workspace-selection); color: var(--color-text); }
+.focus-tab-list-close > svg { width: 13px; height: 13px; }
+.focus-tab-list [role='menuitem'][data-drop]::before { content: ''; position: absolute; left: 6px; right: 6px; height: 2px; border-radius: 1px; background: var(--color-primary); pointer-events: none; }
+.focus-tab-list [role='menuitem'][data-drop='before']::before { top: -1px; }
+.focus-tab-list [role='menuitem'][data-drop='after']::before { bottom: -1px; }
+@media (pointer: coarse) { .focus-tab-list-close { width: 32px; height: 32px; opacity: 1; } }
+/* With the note row hidden, the editor's actions join the bar; too narrow for tabs and buttons in one row, the tabs keep the bar's row and the buttons take a second one under it. */
 .focus-pane[data-tight] .focus-pane-bar { flex-wrap: wrap; height: auto; }
 .focus-pane[data-tight] .focus-tabs { flex: 1 0 100%; height: 38px; }
 .focus-pane[data-tight] .focus-pane-actions { flex: 1 0 100%; justify-content: flex-end; height: 34px; border-top: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent); }
@@ -149,6 +158,5 @@
 /* The toolbar search dims what it does not match; a dimmed tab or pane stays usable. */
 .focus-tab[data-dimmed] { opacity: 0.4; }
 .focus-pane[data-dimmed] .focus-pane-body { opacity: 0.55; }
-.focus-pane-actions .focus-pane-hide-toolbar[aria-pressed='true'] { background: var(--workspace-selection); color: var(--color-text); }
 /* Toolbar toggle: the pane keeps its tab bar, with the editor's actions in it, and hides the note row under it. */
 .focus-pane[data-hide-toolbar] .note-toolbar, .focus-pane[data-hide-toolbar] .screen-lane-header { display: none; }

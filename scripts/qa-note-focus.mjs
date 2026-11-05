@@ -426,7 +426,8 @@ try {
   console.log('PASS 8 a pane reopens a note with the text saved in zoom');
 
   // Batch add fills a pane from a folder or a tag filter, deduplicated against what it already holds.
-  await page.click('[data-focus-pane="p1"] [aria-label="Add matching"]');
+  await page.click('[data-focus-pane="p1"] [aria-label="Pane actions"]');
+  await menuItem(page, 'Add matching');
   await page.waitForSelector('.focus-batch-dialog');
   await page.click('.focus-batch-dialog .screen-form > .filter-check input[type="checkbox"]');
   await chooseSelect(page, '.focus-batch-folder .select-trigger', 'notes/work/sub');
@@ -438,7 +439,8 @@ try {
   await waitTabs(page, 0, ['Alpha', 'Omega']);
   console.log('PASS 8i batch add by folder with subfolders excluded adds only its direct notes');
 
-  await page.click('[data-focus-pane="p1"] [aria-label="Add matching"]');
+  await page.click('[data-focus-pane="p1"] [aria-label="Pane actions"]');
+  await menuItem(page, 'Add matching');
   await page.waitForSelector('.focus-batch-dialog');
   await chooseSelect(page, '.focus-batch-folder .select-trigger', 'notes/work/sub');
   await page.waitForFunction(() => document.querySelector('.focus-batch-dialog .filter-results')?.textContent.includes('2 matching'));
@@ -449,7 +451,8 @@ try {
   await waitTabs(page, 0, ['Alpha', 'Omega', 'Deep']);
   console.log('PASS 8j batch add by folder including subfolders adds the nested note, skipping what is already present');
 
-  await page.click('[data-focus-pane="p1"] [aria-label="Add matching"]');
+  await page.click('[data-focus-pane="p1"] [aria-label="Pane actions"]');
+  await menuItem(page, 'Add matching');
   await page.waitForSelector('.focus-batch-dialog');
   await clickTagOption(page, 'project');
   await page.waitForFunction(() => document.querySelector('.focus-batch-dialog .filter-results')?.textContent.includes('3 matching'));
@@ -460,7 +463,8 @@ try {
   await waitTabs(page, 0, ['Alpha', 'Omega', 'Deep', 'Gamma']);
   console.log('PASS 8k batch add by tag adds every match, reporting what was already present');
 
-  await page.click('[data-focus-pane="p1"] [aria-label="Add matching"]');
+  await page.click('[data-focus-pane="p1"] [aria-label="Pane actions"]');
+  await menuItem(page, 'Add matching');
   await page.waitForSelector('.focus-batch-dialog');
   await clickTagOption(page, 'project');
   await page.click('.focus-batch-dialog button[type="submit"]');
@@ -497,7 +501,8 @@ try {
   await device.keyboard.type(' typed');
   await waitFile('delta', 'Delta body. typed');
   const editorCount = await device.$$eval('.note-editor', editors => editors.length);
-  await device.click('[data-focus-pane="p3"] .focus-pane-actions [aria-label="Open in zoom"]');
+  await device.click('[data-focus-pane="p3"] .focus-pane-actions [aria-label="Pane actions"]');
+  await menuItem(device, 'Open in zoom');
   await device.waitForSelector('.note-editor[data-frame="zoom"]');
   assert.equal(await device.$$eval('.note-editor', editors => editors.length), editorCount, 'Zoom must borrow the pane editor');
   assert.equal(await device.$('[data-focus-pane="p3"] .note-editor'), null, 'The pane lends its editor to zoom');

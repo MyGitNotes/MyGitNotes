@@ -69,11 +69,18 @@ it('dims a pane as a whole when none of its tabs match, and clearing the search 
   expect(document.querySelector('.focus-pane[data-dimmed]')).toBeNull();
 });
 
-it("offers the shown note's editor a slot at the start of the bar's actions, ahead of the pane's own buttons", () => {
+it("leaves the shown note's actions in its own row, so the bar keeps its width for tabs", () => {
   hosted.slots.length = 0;
   const view = pane(0, null);
-  const actions = view.container.querySelector('.focus-pane-actions')!;
-  const slot = actions.firstElementChild;
+  expect(view.container.querySelector('.focus-pane-note-actions')).toBeNull();
+  expect(hosted.slots.at(-1)).toBeUndefined();
+});
+
+it("offers the shown note's editor a slot at the start of the bar's actions while the pane hides its note row", () => {
+  hosted.slots.length = 0;
+  const hidden = { ...focus, entry: { ...focus.entry, hideToolbar: { p1: true, p2: false } } } as unknown as NoteFocus;
+  const view = render(createElement(I18nProvider, null, createElement(FocusPane, { focus: hidden, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p1'], pane: 'p1', key: 'note:notes/a.md' } })));
+  const slot = view.container.querySelector('.focus-pane-actions')!.firstElementChild;
   expect(slot).toHaveClass('focus-pane-note-actions');
   expect(hosted.slots.at(-1)).toBe(slot);
 });
@@ -172,10 +179,19 @@ describe('drop zones', () => {
   });
 });
 
+/** Opens the pane's own menu by keyboard, as Radix menus do not open on a jsdom click. */
+async function openPaneMenu() {
+  const trigger = screen.getByRole('button', { name: 'Pane actions' });
+  trigger.focus();
+  await act(async () => {
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+  });
+}
+
 describe('pane buttons', () => {
   const splitShown = vi.fn(async () => true), closeEmptyPane = vi.fn(async () => true);
   const withEmptyPane: FocusLayout = { root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }] }, { kind: 'pane', id: 'p2', tabs: [] }] } };
-  const editable = (overrides: Record<string, unknown> = {}) => ({ ...focus, editable: true, shown: 'current', splitShown, closeEmptyPane, ...overrides }) as unknown as NoteFocus;
+  const editable = (overrides: Record<string, unknown> = {}) => ({ ...focus, editable: true, shown: 'current', activate: vi.fn(), splitShown, closeEmptyPane, ...overrides }) as unknown as NoteFocus;
   function mount(options: { focus?: NoteFocus; edgeDrops?: boolean; pane?: string; key?: string | null; }) {
     const pane = options.pane ?? 'p1';
     const displayed = { panes: [pane], pane, key: options.key === undefined ? 'note:notes/a.md' : options.key };
@@ -183,31 +199,34 @@ describe('pane buttons', () => {
   }
   beforeEach(() => vi.clearAllMocks());
 
-  it('shows Split right and Split down beside the tab bar of a pane on desktop, and splits the shown note', () => {
+  it('offers Split right and Split down in the pane menu on desktop, and splits the shown note', async () => {
     mount({});
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.focus-pane-split')];
-    expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(['Split right', 'Split down']);
-    buttons[0].click();
-    buttons[1].click();
+    await openPaneMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Split right' }));
+    await openPaneMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Split down' }));
     expect(splitShown).toHaveBeenNthCalledWith(1, 'p1', 'horizontal');
     expect(splitShown).toHaveBeenNthCalledWith(2, 'p1', 'vertical');
   });
 
-  it('shows no split buttons below desktop, in a read-only Focus, or in a pane that shows nothing', () => {
+  it('offers no split below desktop, in a read-only Focus, or in a pane that shows nothing', async () => {
     for (const options of [{ edgeDrops: false }, { focus: editable({ editable: false }) }, { key: null }]) {
       const view = mount(options);
-      expect(document.querySelector('.focus-pane-split')).toBeNull();
+      await openPaneMenu();
+      await screen.findByRole('menuitemcheckbox', { name: 'Hide toolbar' });
+      expect(screen.queryByRole('menuitem', { name: 'Split right' })).toBeNull();
       view.unmount();
     }
   });
 
-  it('disables the split buttons at the pane limit and says why', () => {
+  it('disables the split items at the pane limit and says why', async () => {
     let wide: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }] } };
     for (let count = 1; count < 8; count++) wide = splitPane(wide, 'p1', 'right', { kind: 'note', path: `notes/n${count}.md` }).layout;
     mount({ focus: editable({ layout: wide }) });
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.focus-pane-split')];
-    expect(buttons.map(button => button.disabled)).toEqual([true, true]);
-    expect(buttons[0].title).toContain('at most 8 panes');
+    await openPaneMenu();
+    const items = (await screen.findAllByRole('menuitem')).filter(item => item.textContent?.startsWith('Split'));
+    expect(items.map(item => item.getAttribute('aria-disabled'))).toEqual(['true', 'true']);
+    expect(items[0]).toHaveTextContent('at most 8 panes');
   });
 
   it('offers Close pane on an empty pane next to another, not on the only pane', () => {
@@ -224,9 +243,9 @@ describe('pane buttons', () => {
   });
 });
 
-describe('a narrow pane', () => {
+describe('the pane menu', () => {
   const splitShown = vi.fn(async () => true), setHideToolbar = vi.fn();
-  const editable = { ...focus, editable: true, shown: 'current', activate: vi.fn(), splitShown, setHideToolbar } as unknown as NoteFocus;
+  const editable = (hideToolbar = false) => ({ ...focus, editable: true, shown: 'current', activate: vi.fn(), splitShown, setHideToolbar, entry: { ...focus.entry, hideToolbar: { p1: hideToolbar, p2: false } } }) as unknown as NoteFocus;
   const onZoomNote = vi.fn();
   let width = 0;
   beforeEach(() => {
@@ -235,50 +254,114 @@ describe('a narrow pane', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ width, height: 38, left: 0, top: 0, right: width, bottom: 38, x: 0, y: 0, toJSON: () => ({}) }));
   });
   afterEach(() => vi.restoreAllMocks());
-  function mount(paneWidth: number) {
+  function mount(paneWidth: number, hideToolbar = false) {
     width = paneWidth;
     const displayed = { panes: ['p1'], pane: 'p1', key: 'note:notes/a.md' };
-    return render(createElement(I18nProvider, null, createElement(FocusPane, { focus: editable, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote, searchMatches: null, displayed, edgeDrops: true })));
+    return render(createElement(I18nProvider, null, createElement(FocusPane, { focus: editable(hideToolbar), notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote, searchMatches: null, displayed, edgeDrops: true })));
   }
-  const openMenu = async () => {
-    const trigger = screen.getByRole('button', { name: 'Pane actions' });
-    trigger.focus();
-    await act(async () => {
-      fireEvent.keyDown(trigger, { key: 'Enter' });
-    });
-  };
   const barNames = (view: ReturnType<typeof mount>) => [...view.container.querySelectorAll('.focus-pane-actions button')].map(button => button.getAttribute('aria-label'));
 
-  it('keeps every button in the bar while the pane is wide', () => {
-    const view = mount(900);
-    expect(barNames(view)).toEqual(['Split right', 'Split down', 'Add matching', 'Open in zoom', 'Hide toolbar']);
-    expect(screen.queryByRole('button', { name: 'Pane actions' })).toBeNull();
-  });
-
-  it('folds split, add matching and hide toolbar into one menu, keeping zoom in the bar', async () => {
-    const view = mount(500);
-    expect(barNames(view)).toEqual(['Pane actions', 'Open in zoom']);
-    expect(view.container.querySelector('.focus-pane')).toHaveAttribute('data-compact');
+  it.each([900, 300])('keeps only the pane menu beside the tabs of a %ipx pane', async width => {
+    const view = mount(width);
+    expect(barNames(view)).toEqual(['Pane actions']);
     expect(view.container.querySelector('.focus-pane')).not.toHaveAttribute('data-tight');
-    await openMenu();
-    expect((await screen.findAllByRole('menuitem')).map(item => item.textContent)).toEqual(['Split right', 'Split down', 'Add matching']);
+    await openPaneMenu();
+    expect((await screen.findAllByRole('menuitem')).map(item => item.textContent)).toEqual(['Split right', 'Split down', 'Add matching', 'Open in zoom']);
     expect(screen.getByRole('menuitemcheckbox', { name: 'Hide toolbar' })).toHaveAttribute('aria-checked', 'false');
   });
 
-  it.each([['Split right', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'horizontal')], ['Split down', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'vertical')], ['Hide toolbar', 'menuitemcheckbox', () => expect(setHideToolbar).toHaveBeenCalledWith('p1', true)], ['Add matching', 'menuitem', () => expect(screen.getByRole('dialog')).toBeInTheDocument()]] as const)('fires %s from the folded menu', async (name, role, expectFired) => {
-    mount(500);
-    await openMenu();
+  it.each([['Split right', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'horizontal')], ['Split down', 'menuitem', () => expect(splitShown).toHaveBeenCalledWith('p1', 'vertical')], ['Hide toolbar', 'menuitemcheckbox', () => expect(setHideToolbar).toHaveBeenCalledWith('p1', true)], ['Open in zoom', 'menuitem', () => expect(onZoomNote).toHaveBeenCalledWith('notes/a.md')], ['Add matching', 'menuitem', () => expect(screen.getByRole('dialog')).toBeInTheDocument()]] as const)('fires %s from the menu', async (name, role, expectFired) => {
+    mount(900);
+    await openPaneMenu();
     fireEvent.click(await screen.findByRole(role, { name }));
     expectFired();
   });
 
-  it('puts zoom in the menu too once the pane cannot hold the bar in one row', async () => {
-    const view = mount(300);
-    expect(view.container.querySelector('.focus-pane')).toHaveAttribute('data-tight');
-    expect(barNames(view)).toEqual(['Pane actions']);
-    await openMenu();
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open in zoom' }));
-    expect(onZoomNote).toHaveBeenCalledWith('notes/a.md');
+  it("gives the bar's buttons a row of their own once the note row is hidden and the pane cannot hold them beside its tabs", () => {
+    expect(mount(900, true).container.querySelector('.focus-pane')).not.toHaveAttribute('data-tight');
+    cleanup();
+    expect(mount(300, true).container.querySelector('.focus-pane')).toHaveAttribute('data-tight');
+  });
+});
+
+describe('the tab list', () => {
+  const show = vi.fn(async () => true), close = vi.fn(async () => true), place = vi.fn(async () => true);
+  const many: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: ['a', 'd', 'e', 'f'].map(name => ({ kind: 'note' as const, path: `notes/${name}.md` })) } };
+  const editable = { ...focus, layout: many, editable: true, shown: 'current', activate: vi.fn(), show, close, place, entry: { ...focus.entry, shown: { p1: 'note:notes/e.md' } }, notes: new Map([['notes/a.md', { title: 'Alpha' }], ['notes/d.md', { title: 'Delta' }], ['notes/e.md', { title: 'Epsilon' }], ['notes/f.md', { title: 'Zeta' }]]) } as unknown as NoteFocus;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // The bar holds less than its tabs.
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(800);
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300);
+  });
+  afterEach(() => vi.restoreAllMocks());
+  const openList = async () => {
+    render(createElement(I18nProvider, null, createElement(FocusPane, { focus: editable, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p1'], pane: 'p1', key: 'note:notes/e.md' }, edgeDrops: true })));
+    const trigger = screen.getByRole('button', { name: 'All tabs in this pane' });
+    trigger.focus();
+    await act(async () => {
+      fireEvent.keyDown(trigger, { key: 'Enter' });
+    });
+    return screen.findAllByRole('menuitem');
+  };
+
+  const mountBar = () => render(createElement(I18nProvider, null, createElement(FocusPane, { focus: editable, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p1'], pane: 'p1', key: 'note:notes/e.md' }, edgeDrops: true }))).container.querySelector<HTMLElement>('.focus-tabs')!;
+
+  it('scrolls the list, and only the list, until the shown tab is whole', () => {
+    // The list shows 0-300; the shown tab sits at 400-560 until the list scrolls.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
+      const scroll = this.closest<HTMLElement>('.focus-tabs')?.scrollLeft ?? 0;
+      const box = this.matches('.focus-tab[data-shown]') ? { left: 400 - scroll, width: 160 } : { left: 0, width: 300 };
+      return { ...box, top: 0, height: 38, right: box.left + box.width, bottom: 38, x: box.left, y: 0, toJSON: () => ({}) };
+    });
+    expect(mountBar().scrollLeft).toBe(260);
+  });
+
+  it('scrolls the tabs sideways with the wheel', () => {
+    const list = mountBar();
+    list.scrollLeft = 0;
+    const wheel = new WheelEvent('wheel', { deltaY: 120, cancelable: true });
+    list.dispatchEvent(wheel);
+    expect(list.scrollLeft).toBe(120);
+    expect(wheel.defaultPrevented).toBe(true);
+  });
+
+  it('lists every tab and marks the shown one', async () => {
+    const rows = await openList();
+    expect(rows.map(row => row.textContent)).toEqual(['Alpha', 'Delta', 'Epsilon', 'Zeta']);
+    expect(rows[2]).toHaveAttribute('data-current');
+    fireEvent.click(rows[1]);
+    expect(show).toHaveBeenCalledWith('p1', 'note:notes/d.md');
+  });
+
+  it("closes a tab from its row's button without showing it, and keeps the list open", async () => {
+    await openList();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Delta' }));
+    expect(close).toHaveBeenCalledWith('note:notes/d.md', 'p1');
+    expect(show).not.toHaveBeenCalled();
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+
+  it('closes the focused row with Delete', async () => {
+    const rows = await openList();
+    fireEvent.keyDown(rows[3], { key: 'Delete' });
+    expect(close).toHaveBeenCalledWith('note:notes/f.md', 'p1');
+  });
+
+  it('reorders a row dropped on the upper half of another', async () => {
+    const rows = await openList();
+    const data: Record<string, string> = {};
+    const transfer = { types: [] as string[], getData: (type: string) => data[type] ?? '', setData: (type: string, value: string) => void (data[type] = value, transfer.types.push(type)), dropEffect: 'none', effectAllowed: 'all' };
+    fireEvent.dragStart(rows[3], { dataTransfer: transfer });
+    rows[1].getBoundingClientRect = () => ({ left: 0, top: 100, width: 200, height: 30, right: 200, bottom: 130, x: 0, y: 100, toJSON: () => ({}) });
+    const over = createEvent.dragOver(rows[1], { dataTransfer: transfer });
+    Object.defineProperty(over, 'clientY', { value: 105 });
+    fireEvent(rows[1], over);
+    expect(rows[1]).toHaveAttribute('data-drop', 'before');
+    const dropped = createEvent.drop(rows[1], { dataTransfer: transfer });
+    Object.defineProperty(dropped, 'clientY', { value: 105 });
+    fireEvent(rows[1], dropped);
+    expect(place).toHaveBeenCalledWith('current', { kind: 'note', path: 'notes/f.md' }, 'p1', 1);
   });
 });
 

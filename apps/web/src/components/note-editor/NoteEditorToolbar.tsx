@@ -109,7 +109,7 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
 
 /**
  * The zoom and pane editor's top bars. The note row carries the title, status, tags and the frontmatter button; the actions
- * follow it in zoom, which makes one row led by the back button, and go into the Focus pane's tab bar in a pane.
+ * follow it in one row, led by the back button in zoom, and go into the Focus pane's tab bar while the pane hides this bar.
  */
 export function NoteEditorToolbar({ onClose, onRename, statuses, availableTags, actionsSlot, phoneEditing, phoneChrome, ...actions }: NoteEditorToolbarProps) {
   const { t } = useTranslation();
@@ -121,7 +121,7 @@ export function NoteEditorToolbar({ onClose, onRename, statuses, availableTags, 
   }
   const controls: ReactNode = <NoteActions {...actions} phoneEditing={phoneEditing} />;
   return (
-    <div className='note-toolbar relative shrink-0 px-4 py-2 border-b border-line flex items-center justify-between gap-4 bg-sidebar/60' data-actions={zoom ? 'row' : actionsSlot ? 'bar' : 'inline'}>
+    <div className='note-toolbar relative shrink-0 px-4 py-2 border-b border-line flex items-center justify-between gap-4 bg-sidebar/60' data-actions={actionsSlot ? 'bar' : zoom || frame === 'pane' ? 'row' : 'inline'}>
       {zoom && (onClose
         ? (
           <button type='button' aria-label={t('editor.closeNote')} title={t('editor.closeNote')} onClick={session.close} className='note-close ui-icon-button toolbar-icon-button shrink-0'>

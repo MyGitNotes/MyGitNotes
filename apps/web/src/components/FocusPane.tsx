@@ -18,9 +18,7 @@ import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 import { usePhone } from '../lib/use-phone.js';
 import { usePhoneNotes } from '../lib/phone-notes.js';
 
-/** Below this width a pane folds its secondary buttons (split, batch add, hide toolbar) into one menu, so its tabs keep room for a readable title. */
-const COMPACT_PANE_WIDTH = 560;
-/** Below this width the shown tab and every button no longer fit one row (a tab keeps 120px for its title), so the buttons take a row of their own and zoom folds into the menu too. */
+/** Below this width a pane whose note row is hidden cannot hold the editor's actions beside its tabs, so the buttons take a row of their own. */
 const TIGHT_PANE_WIDTH = 400;
 
 /** Drag payload for a tab moved inside the displayed Focus: its FocusTab and the pane it was dragged from, as JSON. */
@@ -78,8 +76,9 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   const shown = tabs.find(tab => tab.pane === displayed.pane && tab.key === displayed.key);
   const panelId = `focus-pane-${displayed.pane}`;
   const hideToolbar = entry.hideToolbar[displayed.pane];
-  // The shown note's editor puts its actions in this slot of the tab bar; a phone's bar has no room, so there they stay with the note row.
+  // The tab bar holds the tabs; the shown note's editor keeps its actions in its own note row, and puts them in this slot of the bar only while that row is hidden. A phone's bar has no room, so there they stay with the note.
   const phone = usePhone();
+  const barActions = !phone && hideToolbar;
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
   // The pane's own width, not the window's: side-by-side panes are narrow on a wide screen. A width not measured yet (0) counts as wide.
   const section = useRef<HTMLElement>(null);
@@ -93,8 +92,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const compact = !phone && paneWidth > 0 && paneWidth < COMPACT_PANE_WIDTH;
-  const tight = compact && paneWidth < TIGHT_PANE_WIDTH;
+  const tight = barActions && paneWidth > 0 && paneWidth < TIGHT_PANE_WIDTH;
 
   /** The split buttons, shown only where the tree is fully on screen and the shown tab can be split. */
   const splits = edgeDrops && editable && displayed.key
@@ -106,18 +104,34 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
 
   const list = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
+  const tabOrder = tabs.map(tab => `${tab.pane}:${tab.key}`).join('\n');
+  // Any change in the size of the list or of a tab (a resize, a tab added or closed, fonts loading) measures the overflow again and brings the shown tab back into view.
   useLayoutEffect(() => {
     const element = list.current;
     if (!element) return;
-    const measure = () => setOverflowing(element.scrollWidth > element.clientWidth + 1);
-    measure();
-    const observer = new ResizeObserver(measure);
+    const update = () => {
+      setOverflowing(element.scrollWidth > element.clientWidth + 1);
+      const shownTab = element.querySelector<HTMLElement>('.focus-tab[data-shown]');
+      if (shownTab) revealTab(element, shownTab);
+    };
+    update();
+    const observer = new ResizeObserver(update);
     observer.observe(element);
+    for (const child of element.children) observer.observe(child);
     return () => observer.disconnect();
-  }, [tabs.length]);
+  }, [tabOrder, displayed.pane, displayed.key]);
+  // The wheel scrolls an overflowing tab list sideways; a trackpad's sideways swipe already does.
   useEffect(() => {
-    list.current?.querySelector<HTMLElement>('.focus-tab[data-shown]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [displayed.key, paneWidth, overflowing]);
+    const element = list.current;
+    if (!element) return;
+    const wheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || element.scrollWidth <= element.clientWidth) return;
+      event.preventDefault();
+      element.scrollLeft += event.deltaY;
+    };
+    element.addEventListener('wheel', wheel, { passive: false });
+    return () => element.removeEventListener('wheel', wheel);
+  }, []);
 
   const [slot, setSlot] = useState<DropSlot>();
   /** The edge a drag hovers (the new pane takes that half) and the limit that would refuse it, which the preview names instead. */
@@ -169,10 +183,11 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
     const dropped = droppedTab(event.dataTransfer, notebookRoot);
     if (dropped && focus.shown) void focus.split(focus.shown, displayed.pane, zone, dropped.tab, dropped.pane, event.shiftKey).catch(() => {});
   };
-  /** Over a tab, the half under the pointer picks the gap before or after it. */
-  const slotAt = (event: React.DragEvent, tab: PaneTab): DropSlot => {
+  /** Over a tab, the half under the pointer picks the gap before or after it: the left or right half in the bar, the upper or lower half in the tab list. */
+  const slotAt = (event: React.DragEvent, tab: PaneTab, axis: 'x' | 'y' = 'x'): DropSlot => {
     const box = event.currentTarget.getBoundingClientRect();
-    return { pane: tab.pane, index: event.clientX > box.left + box.width / 2 ? tab.index + 1 : tab.index };
+    const after = axis === 'x' ? event.clientX > box.left + box.width / 2 : event.clientY > box.top + box.height / 2;
+    return { pane: tab.pane, index: after ? tab.index + 1 : tab.index };
   };
   /** The insertion line sits before the tab at the slot, or after the last tab of its pane. */
   const marker = (tab: PaneTab) => {
@@ -213,7 +228,6 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
       data-dropping={slot ? true : undefined}
       data-drop-zone={edge && !edge.refusal ? edge.edge : undefined}
       data-hide-toolbar={hideToolbar || undefined}
-      data-compact={compact || undefined}
       data-phone={phone || undefined}
       data-tight={tight || undefined}
       aria-label={t('focus.paneNumber', { number: numberOf(displayed.pane) })}
@@ -293,35 +307,24 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
           ))}
         </div>
         <div className='focus-pane-actions'>
-          {!phone && <div ref={setActionsSlot} className='focus-pane-note-actions' />}
+          {barActions && <div ref={setActionsSlot} className='focus-pane-note-actions' />}
           {overflowing && (
-            <FocusMenu
+            <TabListMenu
               label={t('focus.allTabs')}
-              icon={<ChevronDown aria-hidden='true' />}
-              items={tabs.map(tab => ({
-                key: `${tab.pane}:${tab.key}`,
-                label: tab.label,
-                current: tab.pane === displayed.pane && tab.key === displayed.key,
-                onSelect: () => void focus.show(tab.pane, tab.key),
-              }))}
+              editable={editable}
+              items={tabs.map(tab => ({ tab, current: tab.pane === displayed.pane && tab.key === displayed.key, cue: repeatedLabels.has(tab.label) ? t('focus.paneShort', { number: numberOf(tab.pane) }) : undefined, closeLabel: t('focus.closeTab', { name: tab.label }), drop: marker(tab) }))}
+              onShow={tab => void focus.show(tab.pane, tab.key)}
+              onClose={tab => void focus.close(tab.key, tab.pane).catch(() => {})}
+              onDragStart={(event, tab) => {
+                event.dataTransfer.setData(TAB_DRAG_TYPE, JSON.stringify({ tab: tab.tab, pane: tab.pane }));
+                event.dataTransfer.effectAllowed = 'copyMove';
+                draggedTab = { pane: tab.pane, key: tab.key };
+              }}
+              onDragOver={(event, tab) => hover(event, slotAt(event, tab, 'y'))}
+              onDrop={(event, tab) => drop(event, slotAt(event, tab, 'y'))}
             />
           )}
-          {compact ? <PaneMenu label={t('focus.paneActions')} items={[...splits.map(split => ({ key: split.side, label: split.label, icon: split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />, disabled: Boolean(split.refusal), hint: split.reason, onSelect: split.run })), ...(editable ? [{ key: 'batch-add', label: t('focus.batchAdd'), icon: <ListPlus aria-hidden='true' />, onSelect: () => setBatchAddOpen(true) }] : []), ...(tight && shown ? [{ key: 'zoom', label: t('focus.zoomNote'), icon: <Maximize2 aria-hidden='true' />, onSelect: () => onZoomNote(shown.tab.path) }] : []), { key: 'hide-toolbar', label: t('focus.hideToolbar'), icon: <PanelTopClose aria-hidden='true' />, checked: hideToolbar, onSelect: () => focus.setHideToolbar(displayed.pane, !hideToolbar) }]} /> : splits.map(split => <button key={split.side} type='button' className='ui-icon-button focus-pane-split' data-split={split.side} disabled={Boolean(split.refusal)} aria-label={split.label} title={split.reason ? `${split.label}. ${split.reason}` : split.label} onClick={split.run}>{split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />}</button>)}
-          {!compact && editable && (
-            <button type='button' className='ui-icon-button' aria-label={t('focus.batchAdd')} title={t('focus.batchAdd')} onClick={() => setBatchAddOpen(true)}>
-              <ListPlus aria-hidden='true' />
-            </button>
-          )}
-          {shown && !tight && (
-            <button type='button' className='ui-icon-button' aria-label={t('focus.zoomNote')} title={t('focus.zoomNote')} onClick={() => onZoomNote(shown.tab.path)}>
-              <Maximize2 aria-hidden='true' />
-            </button>
-          )}
-          {!compact && (
-            <button type='button' className='ui-icon-button focus-pane-hide-toolbar' aria-pressed={hideToolbar} aria-label={t('focus.hideToolbar')} title={t('focus.hideToolbar')} onClick={() => focus.setHideToolbar(displayed.pane, !hideToolbar)}>
-              <PanelTopClose aria-hidden='true' />
-            </button>
-          )}
+          <PaneMenu label={t('focus.paneActions')} items={[...splits.map(split => ({ key: split.side, label: split.label, icon: split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />, disabled: Boolean(split.refusal), hint: split.reason, onSelect: split.run })), ...(editable ? [{ key: 'batch-add', label: t('focus.batchAdd'), icon: <ListPlus aria-hidden='true' />, onSelect: () => setBatchAddOpen(true) }] : []), ...(shown ? [{ key: 'zoom', label: t('focus.zoomNote'), icon: <Maximize2 aria-hidden='true' />, onSelect: () => onZoomNote(shown.tab.path) }] : []), { key: 'hide-toolbar', label: t('focus.hideToolbar'), icon: <PanelTopClose aria-hidden='true' />, checked: hideToolbar, onSelect: () => focus.setHideToolbar(displayed.pane, !hideToolbar) }]} />
         </div>
       </div>
       {phone && (!shown || isCompilationPath(shown.tab.path)) && <PhoneBackBar title={shown?.label ?? ''} />}
@@ -334,7 +337,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
                 {renderCompilation(shown.tab.path, displayed.pane)}
               </React.Fragment>
             )
-            : <PaneNoteEditor key={shown.tab.path} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} actionsSlot={phone ? undefined : actionsSlot} />
+            : <PaneNoteEditor key={shown.tab.path} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} actionsSlot={barActions ? actionsSlot : undefined} />
           : (
             <div className='focus-pane-empty'>
               <p>{editable ? t('focus.emptyPane') : t('focus.emptyPaneReadonly')}</p>
@@ -381,23 +384,90 @@ function droppedTab(data: DataTransfer, notebookRoot: string): DroppedTab | unde
   return path.startsWith(`${notebookRoot}/`) && (path.endsWith('.md') || path.endsWith(COMPILATION_SUFFIX)) ? { tab: { kind: 'note', path } } : undefined;
 }
 
-const FocusMenu: React.FC<{ label: string; showLabel?: boolean; icon: ReactNode; items: { key: string; label: string; current?: boolean; onSelect: () => void; }[]; }> = ({ label, showLabel, icon, items }) => (
-  <DropdownMenu.Root>
-    {showLabel
-      ? (
-        <DropdownMenu.Trigger className='ui-button focus-menu-trigger'>
-          {icon}
-          <span>{label}</span>
-        </DropdownMenu.Trigger>
-      )
-      : <DropdownMenu.Trigger className='ui-icon-button' aria-label={label} title={label}>{icon}</DropdownMenu.Trigger>}
-    <DropdownMenu.Portal>
-      <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={label} onEscapeKeyDown={event => event.stopPropagation()}>{items.map(item => <DropdownMenu.Item key={item.key} data-current={item.current || undefined} onSelect={item.onSelect}>{item.label}</DropdownMenu.Item>)}</DropdownMenu.Content>
-    </DropdownMenu.Portal>
-  </DropdownMenu.Root>
-);
+/** Brings `tab` fully into the tab list's view, scrolling the list only: scrollIntoView would scroll the page around it too. */
+function revealTab(list: HTMLElement, tab: HTMLElement) {
+  const view = list.getBoundingClientRect(), box = tab.getBoundingClientRect();
+  if (box.left < view.left) list.scrollLeft -= view.left - box.left;
+  else if (box.right > view.right) list.scrollLeft += Math.min(box.right - view.right, box.left - view.left);
+}
 
-/** A narrow pane's secondary buttons as one menu: each item carries the button's name, and a limit's reason shows beside a disabled split. */
+interface TabListItem {
+  tab: PaneTab;
+  current: boolean;
+  /** "P2" beside a title another pane's tab shares. */
+  cue?: string;
+  closeLabel: string;
+  /** The insertion line of a drag over the list, as in the bar. */
+  drop?: 'before' | 'after';
+}
+
+/**
+ * Every tab of the pane, for a bar too narrow to show them all: it opens on the shown tab, and a row shows its tab, closes it
+ * (its button or Delete) and drags to reorder, as the bar's own tabs do.
+ */
+const TabListMenu: React.FC<{ label: string; editable: boolean; items: TabListItem[]; onShow: (tab: PaneTab) => void; onClose: (tab: PaneTab) => void; onDragStart: (event: React.DragEvent, tab: PaneTab) => void; onDragOver: (event: React.DragEvent, tab: PaneTab) => void; onDrop: (event: React.DragEvent, tab: PaneTab) => void; }> = ({ label, editable, items, onShow, onClose, onDragStart, onDragOver, onDrop }) => {
+  const content = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  // The menu focuses its first row as it opens; the shown tab's row takes the focus over, so the list opens scrolled to it.
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => content.current?.querySelector<HTMLElement>('[data-current]')?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+  return (
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <DropdownMenu.Trigger className='ui-icon-button focus-tab-list-trigger' aria-label={label} title={label}>
+        <ChevronDown aria-hidden='true' />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content ref={content} className='focus-menu focus-tab-list' align='end' sideOffset={4} collisionPadding={8} aria-label={label} onEscapeKeyDown={event => event.stopPropagation()}>
+          {items.map(({ tab, current, cue, closeLabel, drop }) => (
+            <DropdownMenu.Item
+              key={`${tab.pane}:${tab.key}`}
+              data-current={current || undefined}
+              data-drop={drop}
+              draggable={editable}
+              title={tab.label}
+              onSelect={() => onShow(tab)}
+              onKeyDown={event => {
+                if (editable && event.key === 'Delete') {
+                  event.preventDefault();
+                  onClose(tab);
+                }
+              }}
+              onDragStart={event => onDragStart(event, tab)}
+              onDragOver={event => onDragOver(event, tab)}
+              onDrop={event => onDrop(event, tab)}
+            >
+              {isCompilationPath(tab.tab.path) ? <GalleryHorizontalEnd aria-hidden='true' /> : <FileText aria-hidden='true' />}
+              <span>{tab.label}</span>
+              {cue && <small className='focus-tab-list-cue'>{cue}</small>}
+              {editable && (
+                // A click here closes the tab and keeps the list open; it must not reach the row, which would show the tab and close the list.
+                <button
+                  type='button'
+                  className='focus-tab-list-close'
+                  tabIndex={-1}
+                  aria-label={closeLabel}
+                  title={closeLabel}
+                  onClick={event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onClose(tab);
+                  }}
+                >
+                  <X aria-hidden='true' />
+                </button>
+              )}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+};
+
+/** The pane's own actions as one menu, so the bar keeps its width for tabs: each item carries the button's name, and a limit's reason shows beside a disabled split. */
 const PaneMenu: React.FC<{ label: string; items: { key: string; label: string; icon: ReactNode; onSelect: () => void; disabled?: boolean; hint?: string; checked?: boolean; }[]; }> = ({ label, items }) => (
   <DropdownMenu.Root>
     <DropdownMenu.Trigger className='ui-icon-button focus-pane-menu' aria-label={label} title={label}>
