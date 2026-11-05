@@ -61,7 +61,7 @@ function chatHref(href: string, base: ChatLinkBase): string | null {
  * names a host of its own. Both schemes, since `https:host` is a path on an https page but a host on an http one.
  */
 const WORKSPACE_PROBES = ['https://workspace.invalid/folder/', 'http://workspace.invalid/folder/'];
-/** Whether `source` loads from another host, parsed as the browser would (`//host`, `/\host`, `https:host` and any scheme with a host count); `r2:`, `@/` and relative paths stay in the workspace. */
+/** Whether `source` loads from another host, parsed as the browser would (`//host`, `/\host`, `https:host` and any scheme with a host count); `@/`, repository-rooted and relative paths stay in the workspace, and a source with no host at all (`data:`, `r2:`) counts as elsewhere, so it shows as a link. */
 function loadsFromElsewhere(source: string): boolean {
   return WORKSPACE_PROBES.some(probe => {
     try {
