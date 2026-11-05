@@ -2,11 +2,12 @@
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 
-const { stop, hydrate } = vi.hoisted(() => {
+const { stop, hydrate, hydratePdf } = vi.hoisted(() => {
   const stop = vi.fn();
-  return { stop, hydrate: vi.fn(() => stop) };
+  return { stop, hydrate: vi.fn(() => stop), hydratePdf: vi.fn(() => () => {}) };
 });
 vi.mock('../lib/mermaid.js', () => ({ hydrateMermaid: hydrate }));
+vi.mock('../lib/annotations/pdf-figure.js', () => ({ hydratePdfFigures: hydratePdf }));
 vi.mock('../lib/i18n/index.js', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 import { NoteHtml } from './NoteHtml.js';
@@ -26,4 +27,10 @@ it('draws the diagrams in the mounted HTML and again when the HTML changes', () 
   expect(stop).toHaveBeenCalledTimes(1);
   unmount();
   expect(stop).toHaveBeenCalledTimes(2);
+});
+
+it('draws nothing in untrusted HTML, whatever classes it carries', () => {
+  render(<NoteHtml className='prose-custom' html={'<section class="note-mermaid"><pre>graph LR</pre></section><figure class="ann-pdf"><div class="ann-pages"></div></figure>'} untrusted />);
+  expect(hydrate).not.toHaveBeenCalled();
+  expect(hydratePdf).not.toHaveBeenCalled();
 });

@@ -7,7 +7,7 @@ import { parseR2Reference, r2AssetUrl, r2PreviewType } from '@mygitnotes/core/r2
 import { newTabRel } from './same-origin.js';
 import { headingSlug, resolveWorkspaceHref } from './workspace-links.js';
 import { escapeHtml, type NoteLanguage, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
-import { isMermaidInfo } from './mermaid.js';
+import { isMermaidInfo, MERMAID_BLOCK_SELECTOR } from './mermaid.js';
 import { createMarkedMath, type MathOutput } from './math.js';
 import { DEFAULT_YOUTUBE_LABELS, type YouTubeDisplayMode, type YouTubeLabels } from './youtube-embed.js';
 
@@ -57,12 +57,76 @@ function chatHref(href: string, base: ChatLinkBase): string | null {
 }
 
 /**
- * HTML for a chat reply, in the notes' Markdown dialect (CJK emphasis, math, mermaid). Links are workspace
+ * Pages a reply could be read on, at a host no URL in it can name: a source resolved against one that lands elsewhere
+ * names a host of its own. Both schemes, since `https:host` is a path on an https page but a host on an http one.
+ */
+const WORKSPACE_PROBES = ['https://workspace.invalid/folder/', 'http://workspace.invalid/folder/'];
+/** Whether `source` loads from another host, parsed as the browser would (`//host`, `/\host`, `https:host` and any scheme with a host count); `@/`, repository-rooted and relative paths stay in the workspace, and a source with no host at all (`data:`, `r2:`) counts as elsewhere, so it shows as a link. */
+function loadsFromElsewhere(source: string): boolean {
+  return WORKSPACE_PROBES.some(probe => {
+    try {
+      return new URL(source, probe).host !== 'workspace.invalid';
+    } catch {
+      return false;
+    }
+  });
+}
+/** Attributes that only name or describe, which nothing reads as CSS; math keeps its TeX source, backslashes and all, in `aria-label`. `src` is a URL, checked on its own below. */
+const TEXT_ATTRIBUTE = /^(?:alt|title|aria-[\w-]+)$/;
+/** Attributes that load a resource on their own, beside `src`; a reply needs none of them. */
+const LOADING_ATTRIBUTES = ['srcset', 'poster', 'background', 'data', 'lowsrc', 'dynsrc', 'formaction', 'ping'];
+
+/**
+ * A reply can quote any note an injected instruction told the agent to read, so nothing in it may load from another
+ * host without a click: such a load sends whatever its URL carries. An image from elsewhere becomes a link to it (its
+ * alt text and address), other media from elsewhere go, and so do the attributes and styles that load by themselves,
+ * the PDF figures, which load their `href`, and the mermaid diagrams, which load the images they name. Workspace
+ * images stay. `<style>` never gets here: the sanitizer drops it.
+ */
+function keepLoadsInWorkspace(document: Document) {
+  for (const element of document.body.querySelectorAll('*')) {
+    for (const name of LOADING_ATTRIBUTES) element.removeAttribute(name);
+    if (/url|image|@import|\\/i.test(element.getAttribute('style') ?? '')) element.removeAttribute('style');
+    if (element.tagName !== 'A') {
+      for (const name of ['href', 'xlink:href']) if (loadsFromElsewhere(element.getAttribute(name) ?? '')) element.removeAttribute(name);
+      // SVG reads `fill`, `mask`, `filter`, `clip-path` and the like as CSS, where `url(` and `image-set(` load and an escape can spell either.
+      for (const { name, value } of Array.from(element.attributes)) if (!TEXT_ATTRIBUTE.test(name) && name !== 'src' && /url|image|\\/i.test(value)) element.removeAttribute(name);
+    }
+    if (element.matches('figure.ann-pdf')) element.classList.remove('ann-pdf');
+    // Mermaid loads the images a diagram names while it draws it, before anything could clean its SVG, so a reply's
+    // diagram stays its source, as a code block.
+    if (element.matches(MERMAID_BLOCK_SELECTOR)) {
+      const code = document.createElement('code');
+      code.className = 'language-mermaid';
+      code.textContent = element.textContent;
+      const block = document.createElement('pre');
+      block.append(code);
+      element.replaceWith(block);
+      continue;
+    }
+    const source = element.getAttribute('src');
+    if (source === null || !loadsFromElsewhere(source)) continue;
+    if (element.tagName !== 'IMG') {
+      element.remove();
+      continue;
+    }
+    const alt = element.getAttribute('alt')?.trim();
+    const link = document.createElement('a');
+    link.href = source;
+    link.className = 'chat-external-image';
+    link.textContent = alt ? `${alt} (${source})` : source;
+    element.replaceWith(link);
+  }
+}
+
+/**
+ * HTML for a chat reply, in the notes' Markdown dialect (CJK emphasis, math; a mermaid diagram stays its source). Links are workspace
  * links, so the surrounding WorkspaceLinks opens a note in the app and a web page in a new tab; without a
- * `base` only web links stay.
+ * `base` only web links stay. Nothing in it loads from another host until it is clicked.
  */
 export function renderChatMarkdown(text: string, base?: ChatLinkBase): string {
-  const parsed = new DOMParser().parseFromString(DOMPurify.sanitize(md.parse(text, { gfm: true }) as string), 'text/html');
+  const parsed = new DOMParser().parseFromString(DOMPurify.sanitize(md.parse(text, { gfm: true }) as string, { FORBID_TAGS: ['style'] }), 'text/html');
+  keepLoadsInWorkspace(parsed);
   const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
   // A file standing in the folder, since relative hrefs resolve from their source file's folder.
   const sourcePath = base ? `${base.folder}/.pi-agent` : '';

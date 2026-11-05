@@ -165,7 +165,7 @@ While the dock is offered, the Agents page opens from the dock's header.
   It is removed only when the message is sent (or you empty the box yourself), never when a send is refused or the dock closes; a full or blocked browser storage just means the draft is not kept. A message held while Pi starts keeps its stored draft until it is written to the socket. Signing out removes every saved draft.
   Attached images are not saved, since a few of them would fill the browser's storage quota; they wait only while the dock stays open, and a reload asks you to attach them again.
 - Switch the model and thinking level from the selects in the message box's bottom row.
-  Replies render as Markdown, links to notes open in the app, and questions Pi's extensions ask appear as cards in the conversation.
+  Replies render as Markdown, links to notes open in the app, nothing in a reply loads from another host until clicked (an image from elsewhere shows as a link to it, so text an agent read cannot leave through an image address; workspace images still show, and a mermaid diagram in a reply stays its source as a code block, since drawing it would load the images it names), and questions Pi's extensions ask appear as cards in the conversation.
   Consecutive tool calls fold into one row (*Ran 2 tools: bash, read*) that opens onto the calls; it stays open while a tool runs or after one failed.
 - When Pi changes a file on disk, the open editor updates at once.
   Unsaved edits are merged first; if they cannot be merged, the editor blocks and keeps your draft.
