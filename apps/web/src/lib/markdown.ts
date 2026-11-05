@@ -7,7 +7,7 @@ import { parseR2Reference, r2AssetUrl, r2PreviewType } from '@mygitnotes/core/r2
 import { newTabRel } from './same-origin.js';
 import { headingSlug, resolveWorkspaceHref } from './workspace-links.js';
 import { escapeHtml, type NoteLanguage, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
-import { isMermaidInfo } from './mermaid.js';
+import { isMermaidInfo, MERMAID_BLOCK_SELECTOR } from './mermaid.js';
 import { createMarkedMath, type MathOutput } from './math.js';
 import { DEFAULT_YOUTUBE_LABELS, type YouTubeDisplayMode, type YouTubeLabels } from './youtube-embed.js';
 
@@ -89,13 +89,13 @@ function keepLoadsInWorkspace(document: Document) {
     if (/url|image|@import|\\/i.test(element.getAttribute('style') ?? '')) element.removeAttribute('style');
     if (element.tagName !== 'A') {
       for (const name of ['href', 'xlink:href']) if (loadsFromElsewhere(element.getAttribute(name) ?? '')) element.removeAttribute(name);
-      // SVG reads `fill`, `mask`, `filter`, `clip-path` and the like as CSS, where `url(` loads and an escape can spell it.
-      for (const { name, value } of Array.from(element.attributes)) if (!TEXT_ATTRIBUTE.test(name) && name !== 'src' && /url\s*\(|\\/i.test(value)) element.removeAttribute(name);
+      // SVG reads `fill`, `mask`, `filter`, `clip-path` and the like as CSS, where `url(` and `image-set(` load and an escape can spell either.
+      for (const { name, value } of Array.from(element.attributes)) if (!TEXT_ATTRIBUTE.test(name) && name !== 'src' && /url|image|\\/i.test(value)) element.removeAttribute(name);
     }
     if (element.matches('figure.ann-pdf')) element.classList.remove('ann-pdf');
     // Mermaid loads the images a diagram names while it draws it, before anything could clean its SVG, so a reply's
     // diagram stays its source, as a code block.
-    if (element.matches('div.note-mermaid')) {
+    if (element.matches(MERMAID_BLOCK_SELECTOR)) {
       const code = document.createElement('code');
       code.className = 'language-mermaid';
       code.textContent = element.textContent;

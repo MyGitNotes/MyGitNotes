@@ -66,7 +66,7 @@ describe('renderChatMarkdown', () => {
   });
 
   it('drops style sheets, CSS escapes, SVG paint references and a host after a bare scheme', () => {
-    const view = html(['intro', '<p>x</p><style>@import url(https://e.invalid/import)</style>', '<svg><style>rect{mask:url(//e.invalid/svgstyle)}</style></svg>', '<span style="background:u\\72l(https://e.invalid/escape)">escaped</span>', '<svg width="20" height="20"><rect width="10" height="10" mask="url(https://e.invalid/mask#m)" fill="url(https://e.invalid/fill#g)" stroke="u\\72l(https://e.invalid/stroke)"></rect></svg>', '![bare](https:e.invalid/bare-scheme)'].join('\n\n'));
+    const view = html(['intro', '<p>x</p><style>@import url(https://e.invalid/import)</style>', '<svg><style>rect{mask:url(//e.invalid/svgstyle)}</style></svg>', '<span style="background:u\\72l(https://e.invalid/escape)">escaped</span>', '<svg width="20" height="20"><rect width="10" height="10" mask="url(https://e.invalid/mask#m)" fill="url(https://e.invalid/fill#g)" stroke="u\\72l(https://e.invalid/stroke)"></rect></svg>', '![bare](https:e.invalid/bare-scheme)', '<svg width="20" height="20"><rect width="10" height="10" mask="image-set(\'https://e.invalid/image-set\' 1x)"></rect><rect mask="-webkit-image-set(\'https://e.invalid/webkit\' 1x)"></rect></svg>'].join('\n\n'));
     expect(view.querySelector('style')).toBeNull();
     const loads = [...view.querySelectorAll('*')].filter(element => element.tagName !== 'A').flatMap(element => [...element.attributes].filter(attribute => attribute.value.includes('e.invalid')).map(attribute => `${element.tagName} ${attribute.name}`));
     expect(loads).toEqual([]);
@@ -75,9 +75,9 @@ describe('renderChatMarkdown', () => {
   });
 
   it('shows a mermaid diagram as its source, since drawing it would load the images it names', () => {
-    const view = html('```mermaid\nflowchart LR\n  A["<img src=\'https://e.invalid/label\'>"] --> B\n```\n\n<div class="note-mermaid"><pre>flowchart LR\nC --> D</pre></div>');
-    expect(view.querySelector('.note-mermaid')).toBeNull();
-    expect([...view.querySelectorAll('pre code.language-mermaid')].map(code => code.textContent)).toEqual(['flowchart LR\n  A["<img src=\'https://e.invalid/label\'>"] --> B', 'flowchart LR\nC --> D']);
+    const view = html('```mermaid\nflowchart LR\n  A["<img src=\'https://e.invalid/label\'>"] --> B\n```\n\n<div class="note-mermaid"><pre>flowchart LR\nC --> D</pre></div>\n\n<section class="note-mermaid"><pre>flowchart LR\nE --> F</pre></section>\n\n<p class="note-mermaid" data-mermaid-source="flowchart LR">G</p>');
+    expect(view.querySelector('.note-mermaid, [data-mermaid-source]')).toBeNull();
+    expect([...view.querySelectorAll('pre code.language-mermaid')].map(code => code.textContent)).toEqual(['flowchart LR\n  A["<img src=\'https://e.invalid/label\'>"] --> B', 'flowchart LR\nC --> D', 'flowchart LR\nE --> F', 'G']);
   });
 
   it('keeps the inline styles math is drawn with', () => {

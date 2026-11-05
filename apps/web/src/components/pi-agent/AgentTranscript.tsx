@@ -103,7 +103,7 @@ function ShellRun({ entry }: { entry: ShellEntry; }) {
 /** Pi writes Markdown; the reply is re-rendered as it streams in. */
 function MarkdownText({ text, links }: { text: string; links?: ChatLinks; }) {
   const html = useMemo(() => renderChatMarkdown(text, links?.base), [text, links?.base]);
-  return <NoteHtml className='prose-custom pi-agent-markdown' html={html} notebookId={links?.notebookId} />;
+  return <NoteHtml className='prose-custom pi-agent-markdown' html={html} notebookId={links?.notebookId} untrusted />;
 }
 
 /** Where reply links resolve: the session's notebook, which scopes them to its repository, and its folder. */
