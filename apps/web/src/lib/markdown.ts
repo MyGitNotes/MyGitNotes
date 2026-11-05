@@ -56,13 +56,56 @@ function chatHref(href: string, base: ChatLinkBase): string | null {
   return href.startsWith(`${base.repositoryRoot}/`) ? href.slice(base.repositoryRoot.length) : null;
 }
 
+/** A host no URL in a reply can name: a source resolved against it that lands elsewhere names a host of its own. */
+const WORKSPACE_PROBE = 'https://workspace.invalid/folder/';
+/** Whether `source` loads from another host, parsed as the browser would (`//host`, `/\host` and any scheme with a host count); `r2:`, `@/` and relative paths stay in the workspace. */
+function loadsFromElsewhere(source: string): boolean {
+  try {
+    return new URL(source, WORKSPACE_PROBE).host !== 'workspace.invalid';
+  } catch {
+    return false;
+  }
+}
+/** Attributes that load a resource on their own, beside `src`; a reply needs none of them. */
+const LOADING_ATTRIBUTES = ['srcset', 'poster', 'background', 'data', 'lowsrc', 'dynsrc', 'formaction', 'ping'];
+
+/**
+ * A reply can quote any note an injected instruction told the agent to read, so nothing in it may load from another
+ * host without a click: such a load sends whatever its URL carries. An image from elsewhere becomes a link to it (its
+ * alt text and address), other media from elsewhere go, and so do the attributes and styles that load by themselves
+ * and the PDF figures, which load their `href`. Workspace images stay.
+ */
+function keepLoadsInWorkspace(document: Document) {
+  for (const element of document.body.querySelectorAll('*')) {
+    for (const name of LOADING_ATTRIBUTES) element.removeAttribute(name);
+    if (/url\s*\(|image-set|image\s*\(|@import/i.test(element.getAttribute('style') ?? '')) element.removeAttribute('style');
+    if (element.tagName !== 'A') {
+      for (const name of ['href', 'xlink:href']) if (loadsFromElsewhere(element.getAttribute(name) ?? '')) element.removeAttribute(name);
+    }
+    if (element.matches('figure.ann-pdf')) element.classList.remove('ann-pdf');
+    const source = element.getAttribute('src');
+    if (source === null || !loadsFromElsewhere(source)) continue;
+    if (element.tagName !== 'IMG') {
+      element.remove();
+      continue;
+    }
+    const alt = element.getAttribute('alt')?.trim();
+    const link = document.createElement('a');
+    link.href = source;
+    link.className = 'chat-external-image';
+    link.textContent = alt ? `${alt} (${source})` : source;
+    element.replaceWith(link);
+  }
+}
+
 /**
  * HTML for a chat reply, in the notes' Markdown dialect (CJK emphasis, math, mermaid). Links are workspace
  * links, so the surrounding WorkspaceLinks opens a note in the app and a web page in a new tab; without a
- * `base` only web links stay.
+ * `base` only web links stay. Nothing in it loads from another host until it is clicked.
  */
 export function renderChatMarkdown(text: string, base?: ChatLinkBase): string {
   const parsed = new DOMParser().parseFromString(DOMPurify.sanitize(md.parse(text, { gfm: true }) as string), 'text/html');
+  keepLoadsInWorkspace(parsed);
   const origin = typeof window !== 'undefined' ? window.location.origin : undefined;
   // A file standing in the folder, since relative hrefs resolve from their source file's folder.
   const sourcePath = base ? `${base.folder}/.pi-agent` : '';
