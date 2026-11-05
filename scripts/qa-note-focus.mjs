@@ -38,7 +38,7 @@ const tabLabels = (page, pane) => page.$$eval(`[data-focus-pane="${paneId(pane)}
 const shownTab = (page, pane) => page.$eval(`[data-focus-pane="${paneId(pane)}"] .focus-tab [role="tab"][aria-selected="true"]`, tab => tab.textContent.trim()).catch(() => null);
 const paneCount = page => page.$$eval('[data-focus-pane]', panes => panes.length);
 const activePane = page => page.$eval('[data-focus-pane][data-active]', pane => Number(pane.dataset.focusPane.slice(1)) - 1);
-const BROWSE_ROW_SELECTOR = '.workspace-scroll :is(.note-list tbody tr, [data-notepath], .cursor-pointer.rounded-xl)';
+const BROWSE_ROW_SELECTOR = '.workspace-scroll :is(.note-list tbody tr, [data-focus-row], [data-notepath], .cursor-pointer.rounded-xl)';
 /** A note in the browse region: a list row, a card or a Kanban card. */
 const browseRow = (page, title) => page.evaluateHandle((selector, title) => [...document.querySelectorAll(selector)].find(row => row.textContent.includes(title)), BROWSE_ROW_SELECTOR, title);
 /** A Focus opens with the browse region collapsed; the notes to put in it come from there. */
@@ -61,15 +61,24 @@ const clickRow = async (page, title) => {
   const label = await row.evaluateHandle((row, title) => [...row.querySelectorAll('*')].reverse().find(element => element.textContent.trim() === title), title);
   await (label.asElement() ?? row.asElement()).click();
 };
-/** A compilation opens from the Compilations list; `leave` returns the browse region to the notebook's notes. */
+/** Beside a Focus the notebook sidebar is an icon rail: its Notebooks icon opens the notebook tree as a flyout, which closes after an entry is picked. */
+const openNotebookTree = async page => {
+  if (!await page.$('.sidebar-flyout')) await page.click('[aria-label="Filter by Notebooks"]');
+  await page.waitForSelector('.sidebar-flyout .sidebar-notebook-group');
+};
+/** A compilation opens from the Compilations list; `leaveCompilations` returns the browse region to the notebook's notes. */
 const openCompilation = async (page, title) => {
   await showBrowse(page);
   await page.click('.desktop-views > button:nth-child(1)');
   await new Promise(r => setTimeout(r, 500));
+  await openNotebookTree(page);
   await page.evaluate(() => [...document.querySelectorAll('.sidebar-compilations-row')].find(row => row.textContent.includes('Compilations')).querySelector('button').click());
   await clickRow(page, title);
 };
-const leaveCompilations = page => page.evaluate(() => document.querySelector('.sidebar-notebook-group > *').querySelector('button:not([aria-expanded])').click());
+const leaveCompilations = async page => {
+  await openNotebookTree(page);
+  await page.evaluate(() => document.querySelector('.sidebar-notebook-group > *').querySelector('button:not([aria-expanded])').click());
+};
 const clickTagOption = async (page, tag) => {
   const label = await page.waitForFunction(tag => [...document.querySelectorAll('.focus-batch-dialog .filter-options label')].find(item => item.textContent.trim() === `#${tag}`), {}, tag);
   await (await label.asElement().$('input')).click();
@@ -93,7 +102,7 @@ const seedDefaultDivision = async (page, division, paneCount) => {
     paneCount,
   );
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.focus-area');
+  await page.waitForSelector('.focus-switcher');
 };
 /** Drags with HTML5 drag and drop: puppeteer's mouse does not start native drags, so the events are dispatched with one DataTransfer.
  *  `shift: true` holds the Shift modifier through the drop, matching a Shift-held tab-bar drag (copy instead of move).
@@ -172,23 +181,27 @@ try {
   page = await newPage(1440);
   await page.goto(`${base}/notebooks/work?view=list`, { waitUntil: 'domcontentloaded' });
 
-  // 1. Normal browsing opens zoom and closing returns to the list.
+  // 1. Normal browsing opens a note as a tab of the Focus and closing the tab returns to the full list.
   await clickRow(page, 'Alpha');
-  await page.waitForSelector('.note-editor[data-frame="zoom"]');
-  await page.click('[aria-label="Close note"]');
-  await page.waitForFunction(() => !document.querySelector('.note-editor'));
+  await page.waitForSelector('.focus-area .note-editor[data-frame="pane"]');
+  assert(!await page.$('.note-editor[data-frame="zoom"]'), 'A note opens in a Focus pane, not in zoom');
+  await page.waitForFunction(() => document.querySelector('.focus-area [role="tab"][aria-selected="true"]')?.textContent.trim() === 'Alpha');
+  await page.click('.focus-area [aria-label="Close Alpha"]');
+  await page.waitForFunction(() => !document.querySelector('.note-editor') && !document.querySelector('.focus-area'));
   assert.equal(new URL(page.url()).pathname, `/notebooks/${work}`);
-  console.log('PASS 1 normal browsing opens zoom and returns to the list');
+  console.log('PASS 1 normal browsing opens a note as a Focus tab and closing it returns to the list');
 
-  // 2. Show (current), dock the list left, seed major-left, open three notes, drag one to the top-right pane.
-  await page.click('.focus-switcher .select-button-trigger');
-  await menuItem(page, 'Default');
-  await page.waitForSelector('.focus-area');
-  assert.equal(search(page).get('focus'), 'current');
-  assert.equal(await page.$eval('.browse-dock', dock => dock.dataset.placement), 'left');
+  // 2. The Default Focus is always the one shown: dock the list left, seed major-left, open three notes, drag one to the top-right pane.
+  assert.equal(await page.$eval('.focus-switcher .select-button-primary', button => button.textContent.trim()), 'Default');
   await seedDefaultDivision(page, 'major-left', 3);
+  await page.waitForSelector('.desktop-views');
+  // Each tab is opened before the next row is clicked, so the tabs keep the click order.
+  for (const [index, title] of ['Alpha', 'Beta', 'Gamma'].entries()) {
+    await clickRow(page, title);
+    await page.waitForFunction((title, count) => [...document.querySelectorAll('[data-focus-pane="p1"] .focus-tab [role="tab"]')].length === count && document.querySelector('[data-focus-pane="p1"] .focus-tab [role="tab"][aria-selected="true"]')?.textContent.trim() === title, { timeout: 5000 }, title, index + 1);
+  }
   await page.waitForFunction(() => document.querySelectorAll('[data-focus-pane]').length === 3);
-  for (const title of ['Alpha', 'Beta', 'Gamma']) await clickRow(page, title);
+  assert.equal(await page.$eval('.browse-dock', dock => dock.dataset.placement), 'left');
   await waitTabs(page, 0, ['Alpha', 'Beta', 'Gamma']);
   assert.equal(await shownTab(page, 0), 'Gamma');
   await page.waitForSelector('[data-focus-pane="p1"] .note-editor[data-frame="pane"]');
@@ -222,6 +235,10 @@ try {
   await dragTo(page, await tabHandle(page, 0, 'Gamma'), '[data-focus-pane="p2"] .focus-pane-body');
   await waitTabs(page, 0, ['Alpha']);
   await waitTabs(page, 1, ['Beta', 'Gamma']);
+  // A moved tab does not switch notes: the target pane keeps showing Beta, the source falls back to its previous tab, and the active pane stays.
+  assert.equal(await shownTab(page, 1), 'Beta');
+  assert.equal(await shownTab(page, 0), 'Alpha');
+  assert.equal(await activePane(page), 1);
   console.log('PASS 2c a tab-bar drag without Shift moves the tab out of its source pane');
   await dragTo(page, await tabHandle(page, 1, 'Gamma'), '[data-focus-pane="p1"] .focus-pane-body');
   await waitTabs(page, 0, ['Alpha', 'Gamma']);
@@ -238,7 +255,7 @@ try {
   await waitTabs(page, 1, ['Beta']);
 
   // 3. Kanban docks above the Focus; a card opens in the active pane.
-  await page.click('.desktop-views > button:nth-child(4)');
+  await page.click('.desktop-views > button:nth-child(3)');
   await page.waitForFunction(() => document.querySelector('.browse-dock')?.dataset.placement === 'top' && document.querySelector('[data-kanban-columns]'));
   await clickRow(page, 'Delta');
   await waitTabs(page, 1, ['Beta', 'Delta']);
@@ -310,46 +327,30 @@ try {
   await waitTabs(device, 2, ['Delta']);
   console.log('PASS 5 a named Focus is written to the workspace and restores from the Focus switcher on another device');
 
-  // 6. Zoom opened from Graph adds a note to the named Focus's left pane, closes the zoom and switches to Focus mode.
-  await device.goto(`${base}/notebooks/work/notes/zeta.md?returnTo=${encodeURIComponent('/graph?notebook=work')}`, { waitUntil: 'domcontentloaded' });
-  await device.waitForSelector('.note-editor[data-frame="zoom"]');
-  await device.click('.note-editor[data-frame="zoom"] [aria-label="Add to Focus"]');
-  await device.waitForSelector('.focus-add-dialog .focus-layout-thumbnail');
-  await chooseSelect(device, '.focus-add-dialog .select-trigger', focusId);
-  await device.click('.focus-add-dialog .focus-layout-thumbnail > button:nth-child(1)');
-  await device.click('.focus-add-dialog button[type="submit"]');
-  await device.waitForFunction(() => !document.querySelector('.note-editor[data-frame="zoom"]'), { timeout: 3000 });
-  await device.waitForSelector('.focus-area');
-  assert.equal(new URL(device.url()).searchParams.get('focus'), focusId, 'Adding to Focus from a zoomed note must switch to that Focus');
+  // 6. A browse row opens in the pane that is active on the other device's copy of the named Focus, and the tab is written to the workspace.
+  await clickTab(device, 0, 'Alpha');
+  assert.equal(await activePane(device), 0);
+  await clickRow(device, 'Zeta');
   await waitTabs(device, 0, ['Alpha', 'Gamma', 'Zeta']);
+  assert.equal(await shownTab(device, 0), 'Zeta');
   await saved('notes/work/zeta.md');
-  console.log('PASS 6 Add to Focus from a Graph zoom places the note in the chosen pane, closes the zoom and switches to Focus mode');
+  console.log('PASS 6 a browse row opens its note as a tab of the active pane of a named Focus and the tab is written to the workspace');
 
-  // 6a. The same close-and-switch behavior holds at a phone-width viewport.
+  // 7. A phone shows a list screen and a note screen, never both, and no pane tab bar; tablets show two panes; desktops restore all three.
   await device.setViewport({ width: 412, height: 900 });
-  await device.goto(`${base}/notebooks/work/notes/sub/omega.md?returnTo=${encodeURIComponent('/notebooks/work?view=list')}`, { waitUntil: 'domcontentloaded' });
-  await device.waitForSelector('.note-editor[data-frame="zoom"]');
-  await shot(device, 'phone-zoom-open');
-  await device.click('.note-editor[data-frame="zoom"] [aria-label="Add to Focus"]');
-  await device.waitForSelector('.focus-add-dialog .focus-layout-thumbnail');
-  await chooseSelect(device, '.focus-add-dialog .select-trigger', focusId);
-  await device.click('.focus-add-dialog .focus-layout-thumbnail > button:nth-child(1)');
-  await device.click('.focus-add-dialog button[type="submit"]');
-  await device.waitForFunction(() => !document.querySelector('.note-editor[data-frame="zoom"]'), { timeout: 3000 });
-  await device.waitForSelector('.focus-area');
-  assert.equal(new URL(device.url()).searchParams.get('focus'), focusId, 'Phone-width add to Focus must also switch to Focus mode');
-  await device.waitForFunction(() => !document.querySelector('.focus-add-dialog'), { timeout: 3000 });
-  await shot(device, 'phone-focus-mode');
-  await saved('notes/work/sub/omega.md');
-  await device.setViewport({ width: 1440, height: 900 });
-  await waitTabs(device, 0, ['Alpha', 'Gamma', 'Zeta', 'Omega']);
-  // A direct DOM click, not page.click(), because the close button's hover-only opacity leaves it unclickable by Puppeteer's pointer coordinates.
-  await device.evaluate(() => document.querySelector('[data-focus-pane="p1"] [aria-label="Close Omega"]').click());
-  await waitTabs(device, 0, ['Alpha', 'Gamma', 'Zeta']);
-  console.log('PASS 6a the same close-and-switch behavior holds at a phone-width viewport');
-
-  // 7. Phones show one pane whose tab list holds every pane's tabs; tablets two; desktops restore all three.
-  const widths = { 412: [['Alpha', 'Gamma', 'Zeta', 'Beta', 'Epsilon', 'Delta']], 900: [['Alpha', 'Gamma', 'Zeta'], ['Beta', 'Epsilon', 'Delta']], 1440: [['Alpha', 'Gamma', 'Zeta'], ['Beta', 'Epsilon'], ['Delta']] };
+  await device.goto(`${base}/notebooks/work?view=list&focus=${focusId}`, { waitUntil: 'domcontentloaded' });
+  await waitRow(device, 'Alpha');
+  assert(!await device.$('.focus-area'), 'The phone list screen does not show the Focus');
+  assert(!await device.evaluate(() => document.documentElement.scrollWidth > innerWidth), 'Horizontal overflow at 412px on the list screen');
+  await shot(device, '412');
+  await clickRow(device, 'Alpha');
+  await device.waitForSelector('.note-editor');
+  const visible = selector => device.evaluate(selector => [...document.querySelectorAll(selector)].some(element => element.getClientRects().length > 0), selector);
+  assert(!await visible('.focus-tab, .focus-pane-bar'), 'The phone note screen shows no pane tab bar');
+  assert(!await visible('.focus-row, .note-list'), 'The phone note screen does not show the list');
+  assert(!await device.evaluate(() => document.documentElement.scrollWidth > innerWidth), 'Horizontal overflow at 412px on the note screen');
+  await shot(device, '412-note');
+  const widths = { 900: [['Alpha', 'Gamma', 'Zeta'], ['Beta', 'Epsilon', 'Delta']], 1440: [['Alpha', 'Gamma', 'Zeta'], ['Beta', 'Epsilon'], ['Delta']] };
   for (const [width, panes] of Object.entries(widths)) {
     await device.setViewport({ width: Number(width), height: 900 });
     await device.goto(`${base}/notebooks/work?view=list&focus=${focusId}`, { waitUntil: 'domcontentloaded' });
@@ -359,22 +360,20 @@ try {
     for (const [index, labels] of panes.entries()) await waitTabs(device, displayed[index], labels);
     assert(!await device.evaluate(() => document.documentElement.scrollWidth > innerWidth), `Horizontal overflow at ${width}px`);
     await shot(device, `${width}`);
-    if (width === '412') {
-      assert(await device.$(`[data-focus-pane="${paneId(displayed[0])}"] [aria-label="All tabs in this pane"]`), 'Overflowing tabs must offer the all-tabs menu');
-      await device.click('[aria-label="Show browse panel"]');
-      await clickRow(device, 'Alpha');
-      await device.waitForFunction(() => document.querySelector('.focus-area') && !document.querySelector('.browse-dock-scroll'));
-      assert.equal(await shownTab(device, displayed[0]), 'Alpha');
-    }
   }
-  console.log('PASS 7 narrow widths fold panes for display only and desktops restore every pane');
+  console.log('PASS 7 a phone shows a list screen and a note screen without a pane tab bar, tablets fold panes for display only and desktops restore every pane');
 
   // 7a. A merged displayed pane (narrow screens folding several stored panes into one tab bar) keeps a duplicate
   // tab per stored pane when they share a note, marks only the shown one, and closes only the one touched.
   await device.setViewport({ width: 1440, height: 900 });
+  const shownBefore7a = await shownTab(device, 1), activeBefore7a = await activePane(device);
   await dragTo(device, await tabHandle(device, 2, 'Delta'), '[data-focus-pane="p2"] .focus-pane-body', { shift: true });
   await waitTabs(device, 1, ['Beta', 'Epsilon', 'Delta']);
   await waitTabs(device, 2, ['Delta']);
+  // A drag only copies the tab: the target pane keeps showing its note and the active pane stays.
+  assert.equal(await shownTab(device, 1), shownBefore7a);
+  assert.equal(await activePane(device), activeBefore7a);
+  await clickTab(device, 2, 'Delta');
   await device.setViewport({ width: 900, height: 900 });
   await device.waitForFunction(() => document.querySelectorAll('[data-focus-pane]').length === 2);
   const merged7a = (await device.$$eval('[data-focus-pane]', elements => elements.map(element => Number(element.dataset.focusPane.slice(1)) - 1)))[1];
@@ -401,13 +400,11 @@ try {
     }
     assert.fail(`notes/work/${name}.md does not contain ${text}`);
   };
-  // Naming moved the layout out of (current), which starts as one empty pane with a hint.
+  // Naming moved the layout out of the Default Focus, which starts empty: with no open note the list fills the page.
   await page.goto(`${base}/notebooks/work?view=list&focus=current`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.focus-area');
-  assert.equal(await paneCount(page), 1);
-  assert.deepEqual(await tabLabels(page, 0), []);
-  await page.waitForFunction(() => document.querySelector('[data-focus-pane="p1"] .focus-pane-empty')?.textContent.includes('drag one here'));
-  console.log('PASS 8 (current) is empty after naming and its empty pane shows the hint');
+  await waitRow(page, 'Alpha');
+  assert(!await page.$('.focus-area'), 'An empty Default Focus shows the notes list in full, not a Focus');
+  console.log('PASS 8 the Default Focus is empty after naming and its notes list fills the page');
 
   // A note edited in zoom reopens in a pane with the saved text, not an earlier cached copy.
   await clickRow(page, 'Alpha');
@@ -548,8 +545,11 @@ try {
   // Clean up the pane-2 copy so later panes keep their original contents; the row zoom button leaves the Focus unchanged.
   await device.click('[data-focus-pane="p3"] [aria-label="Close Beta"]');
   await waitTabs(device, 2, ['Delta']);
+  // Resting the pointer on a dock row opens its card, which holds Open in zoom.
   const beta = await browseRow(device, 'Beta');
-  await (await beta.asElement().$('[aria-label="Open in zoom"]')).click();
+  await beta.asElement().hover();
+  const zoomButton = await device.waitForFunction(() => [...document.querySelectorAll('.note-hover-card button')].find(button => button.textContent.trim() === 'Open in zoom'), { timeout: 5000 });
+  await zoomButton.asElement().click();
   await device.waitForSelector('.note-editor[data-frame="zoom"]');
   await device.click('[aria-label="Close note"]');
   await device.waitForFunction(() => !document.querySelector('.note-editor[data-frame="zoom"]'));
@@ -557,24 +557,25 @@ try {
   console.log('PASS 8d the row zoom button leaves the Focus unchanged');
 
   // Tabs reorder within a pane; the browse panel collapses and expands.
+  const shownBefore8e = await shownTab(device, 0), activeBefore8e = await activePane(device);
   await dragTo(device, await tabHandle(device, 0, 'Zeta'), await tabHandle(device, 0, 'Alpha'));
   await waitTabs(device, 0, ['Zeta', 'Alpha', 'Gamma']);
+  // Reloading before the reorder is written would read the earlier file.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const text = fs.readFileSync(focusFile, 'utf8');
+    if (text.indexOf('notes/work/zeta.md') < text.indexOf('notes/work/alpha.md')) break;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  // The drag only reordered: the pane still shows its note.
+  assert.equal(await shownTab(device, 0), shownBefore8e);
+  assert.equal(await activePane(device), activeBefore8e);
   await device.click('[aria-label="Collapse browse panel and header"]');
-  await device.waitForFunction(() => !document.querySelector('.browse-dock-scroll'));
+  await device.waitForSelector('.browse-dock[data-collapsed]');
+  await device.waitForFunction(() => !document.querySelector('.header-nav')?.getClientRects().length, { timeout: 5000 }).catch(() => assert.fail('Collapsing the browse region also hides the header'));
   await device.click('[aria-label="Expand browse panel and header"]');
-  await device.waitForSelector('.browse-dock-scroll');
+  await device.waitForSelector('.browse-dock:not([data-collapsed])');
+  await device.waitForFunction(() => document.querySelector('.header-nav')?.getClientRects().length, { timeout: 5000 });
   console.log('PASS 8e tabs reorder within a pane and the browse panel collapses and expands');
-
-  // Other notebooks' notes only open in zoom and cannot be dragged.
-  await device.goto(`${focusUrl}&allNotebooks=true`, { waitUntil: 'domcontentloaded' });
-  const outside = await waitRow(device, 'Outside');
-  assert.equal(await outside.evaluate(row => row.getAttribute('draggable')), 'false');
-  await clickRow(device, 'Outside');
-  await device.waitForSelector('.note-editor[data-frame="zoom"]');
-  await device.click('[aria-label="Close note"]');
-  await device.waitForFunction(() => !document.querySelector('.note-editor[data-frame="zoom"]'));
-  assert(!(await tabLabels(device, 0)).includes('Outside'));
-  console.log('PASS 8f notes of other notebooks open in zoom only');
 
   // Palette commands act on the displayed Focus; Merge all panes folds every pane's tabs into the first.
   await device.goto(focusUrl, { waitUntil: 'domcontentloaded' });
@@ -596,6 +597,49 @@ try {
   await waitTabs(device, 0, ['Zeta', 'Alpha', 'Gamma', 'Beta', 'Epsilon', 'Delta']);
   console.log('PASS 8g palette commands move between panes, merge and split without restoring tabs');
 
+  // A pane's tab bar holds only its tabs, the All tabs list and one Pane actions menu; the editor's actions sit in the note row.
+  const bar = '[data-focus-pane="p1"] .focus-pane-bar';
+  assert.equal(await device.$$eval(`${bar} button:not([role="tab"]):not(.focus-tab-close)`, buttons => buttons.map(button => button.getAttribute('aria-label')).sort().join('|')), 'All tabs in this pane|Pane actions');
+  assert(await device.$('[data-focus-pane="p1"] .note-toolbar[data-actions="row"] .note-row'), 'The note row holds the title, status and tags');
+  assert(await device.$('[data-focus-pane="p1"] .note-toolbar[data-actions="row"]'), 'The editor actions sit in the note row');
+  assert(!await device.$(`${bar} .focus-pane-note-actions`), 'The tab bar holds no editor actions while the note row shows');
+  await device.click('[data-focus-pane="p1"] [aria-label="Pane actions"]');
+  await device.waitForSelector('.focus-menu [role^="menuitem"]');
+  assert.deepEqual(await device.$$eval('.focus-menu [role^="menuitem"]', items => items.map(item => item.textContent.trim())), ['Split right', 'Split down', 'Add matching', 'Open in zoom', 'Hide toolbar']);
+  // Hide toolbar hides the note row, and the editor's actions move into the tab bar until it is shown again.
+  await menuItem(device, 'Hide toolbar');
+  await device.waitForSelector('[data-focus-pane="p1"][data-hide-toolbar], [data-focus-pane="p1"] [data-hide-toolbar]');
+  await device.waitForFunction(() => ![...document.querySelectorAll('[data-focus-pane="p1"] .note-row')].some(row => row.getClientRects().length), { timeout: 5000 }).catch(() => assert.fail('Hide toolbar hides the note row'));
+  await device.waitForSelector(`${bar} .focus-pane-note-actions *`, { timeout: 5000 }).catch(() => assert.fail('Hide toolbar moves the editor actions into the tab bar'));
+  await device.click('[data-focus-pane="p1"] [aria-label="Pane actions"]');
+  await menuItem(device, 'Hide toolbar');
+  await device.waitForFunction(() => [...document.querySelectorAll('[data-focus-pane="p1"] .note-row')].some(row => row.getClientRects().length), { timeout: 5000 }).catch(() => assert.fail('Showing the toolbar brings the note row back'));
+  assert(!await device.$(`${bar} .focus-pane-note-actions *`), 'Showing the toolbar returns the editor actions to the note row');
+  console.log('PASS 8m a pane tab bar holds tabs, All tabs and Pane actions; Hide toolbar moves the editor actions into the bar and back');
+
+  // All tabs lists every tab of an overflowing pane, opens on the shown one, closes a tab without closing the list and reorders by drag.
+  const shownBeforeList = await shownTab(device, 0);
+  await device.click('[data-focus-pane="p1"] [aria-label="All tabs in this pane"]');
+  await device.waitForSelector('.focus-tab-list [role="menuitem"]');
+  const listed = () => device.$$eval('.focus-tab-list [role="menuitem"]', items => items.map(item => item.querySelector('span').textContent.trim()));
+  assert.deepEqual(await listed(), await tabLabels(device, 0));
+  await device.waitForFunction(shown => document.activeElement?.dataset.current !== undefined && document.activeElement.textContent.includes(shown), {}, await shownTab(device, 0));
+  await device.click('.focus-tab-list [role="menuitem"]:nth-child(4) .focus-tab-list-close');
+  await waitTabs(device, 0, ['Zeta', 'Alpha', 'Gamma', 'Epsilon', 'Delta']);
+  assert(await device.$('.focus-tab-list'), 'Closing a tab from the list keeps the list open');
+  await device.focus('.focus-tab-list [role="menuitem"]:nth-child(4)');
+  await device.keyboard.press('Delete');
+  await waitTabs(device, 0, ['Zeta', 'Alpha', 'Gamma', 'Delta']);
+  assert(await device.$('.focus-tab-list'), 'Delete on a list row closes its tab and keeps the list open');
+  await dragTo(device, '.focus-tab-list [role="menuitem"]:nth-child(3)', '.focus-tab-list [role="menuitem"]:nth-child(1)', { at: 'top' });
+  await waitTabs(device, 0, ['Gamma', 'Zeta', 'Alpha', 'Delta']);
+  assert.equal(await shownTab(device, 0), shownBeforeList, 'Reordering from the list does not change the shown tab');
+  assert(await device.$('.focus-tab-list'), 'Reordering keeps the list open');
+  await device.click('.focus-tab-list [role="menuitem"]:nth-child(2)');
+  await device.waitForFunction(() => !document.querySelector('.focus-tab-list'));
+  assert.equal(await shownTab(device, 0), 'Zeta');
+  console.log('PASS 8n the All tabs list opens on the shown tab, closes tabs and reorders them without closing, and shows a tab on pick');
+
   // Rename and delete a named Focus; deleting keeps the notes.
   await device.click('.focus-switcher .select-button-trigger');
   await menuItem(device, 'Rename…');
@@ -608,7 +652,9 @@ try {
   await menuItem(device, 'Delete…');
   const remove = await device.waitForFunction(() => [...document.querySelectorAll('.workspace-dialog-actions button')].find(button => button.textContent.trim() === 'Delete'));
   await remove.asElement().click();
-  await device.waitForFunction(() => !new URL(location.href).searchParams.has('focus') && !document.querySelector('.focus-area'));
+  // Deleting a Focus shows the Default, which is empty here, so the list fills the page.
+  await device.waitForFunction(focusId => new URL(location.href).searchParams.get('focus') !== focusId && !document.querySelector('.focus-area'), {}, focusId);
+  assert.equal(await device.$eval('.focus-switcher .select-button-primary', button => button.textContent.trim()), 'Default');
   for (let attempt = 0; attempt < 50 && fs.readFileSync(focusFile, 'utf8').includes('月報'); attempt++) await new Promise(resolve => setTimeout(resolve, 100));
   assert(!fs.readFileSync(focusFile, 'utf8').includes('月報'), 'The deleted Focus must leave the Focus file');
   assert(fs.existsSync(path.join(root, 'notes/work/delta.md')), 'Deleting a Focus keeps its notes');
