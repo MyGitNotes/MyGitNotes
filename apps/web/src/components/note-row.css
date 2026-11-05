@@ -47,7 +47,11 @@
 .note-toolbar[data-actions='row'] > .note-controls { padding-left: 12px; border-left: 1px solid var(--color-line); }
 @media (max-width: 767px) { .note-toolbar[data-actions='row'] { flex-direction: row; flex-wrap: wrap; align-items: flex-start; } .note-toolbar[data-actions='row'] > .note-controls { flex: 1 0 100%; padding-left: 0; border-left: 0; } .note-toolbar[data-actions='row'] > .note-row { flex: 1 1 0; } }
 
-/* A Focus pane keeps the actions in its tab bar, ahead of the pane's own buttons; the note row is the toolbar left under it. */
+/* A Focus pane keeps the actions in its note row, one tight line under the tab bar; while the pane hides that row they go into the tab bar, ahead of the pane's own buttons. */
+.note-editor[data-frame='pane'] .note-toolbar[data-actions='row'] { min-height: 40px; padding-block: 4px; }
+.note-editor[data-frame='pane'] .note-toolbar[data-actions='row'] > .note-controls { gap: 2px; }
+.note-editor[data-frame='pane'] .note-toolbar[data-actions='row'] .note-controls .toolbar-icon-button { width: 30px; min-width: 30px; height: 30px; min-height: 30px; }
+.note-editor[data-frame='pane'] .note-toolbar[data-actions='row'] .note-controls .toolbar-icon-button > svg { width: 15px; height: 15px; }
 .focus-pane-note-actions { display: flex; flex: none; align-items: center; }
 .focus-pane-note-actions:empty { display: none; }
 .focus-pane-note-actions:not(:empty) { margin-right: 2px; padding-right: 4px; border-right: 1px solid var(--color-line); }
