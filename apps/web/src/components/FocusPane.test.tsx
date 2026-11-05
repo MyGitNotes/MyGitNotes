@@ -69,6 +69,17 @@ it('dims a pane as a whole when none of its tabs match, and clearing the search 
   expect(document.querySelector('.focus-pane[data-dimmed]')).toBeNull();
 });
 
+it('does not make a pane active on a press on one of its tabs, which may start a drag, but does on a press anywhere else', () => {
+  const activate = vi.fn();
+  const view = render(createElement(I18nProvider, null, createElement(FocusPane, { focus: { ...focus, activate } as unknown as NoteFocus, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p2'], pane: 'p2', key: 'note:notes/c.md' } })));
+  const tab = screen.getByRole('tab', { name: 'Gamma' });
+  fireEvent.pointerDown(tab);
+  fireEvent.focusIn(tab);
+  expect(activate).not.toHaveBeenCalled();
+  fireEvent.pointerDown(view.container.querySelector('.focus-pane-body')!);
+  expect(activate).toHaveBeenCalledWith('p2');
+});
+
 it("leaves the shown note's actions in its own row, so the bar keeps its width for tabs", () => {
   hosted.slots.length = 0;
   const view = pane(0, null);
@@ -125,7 +136,7 @@ describe('drop zones', () => {
     dragAt('dragOver', body, data, 200, 100);
     expect(section).not.toHaveAttribute('data-drop-zone');
     dragAt('drop', body, data, 200, 100);
-    expect(place).toHaveBeenCalledWith('current', { kind: 'note', path: 'notes/new.md' }, 'p2', undefined);
+    expect(place).toHaveBeenCalledWith('current', { kind: 'note', path: 'notes/new.md' }, 'p2', undefined, false);
     expect(split).not.toHaveBeenCalled();
   });
 
@@ -361,7 +372,8 @@ describe('the tab list', () => {
     const dropped = createEvent.drop(rows[1], { dataTransfer: transfer });
     Object.defineProperty(dropped, 'clientY', { value: 105 });
     fireEvent(rows[1], dropped);
-    expect(place).toHaveBeenCalledWith('current', { kind: 'note', path: 'notes/f.md' }, 'p1', 1);
+    // A tab-bar drag only reorders; the pane goes on showing its tab.
+    expect(place).toHaveBeenCalledWith('current', { kind: 'note', path: 'notes/f.md' }, 'p1', 1, true);
   });
 });
 

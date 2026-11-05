@@ -196,7 +196,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
     const count = tabsOf(tab.pane).length;
     return tab.index === count - 1 && (slot.index === undefined || slot.index >= count) ? 'after' : undefined;
   };
-  /** A tab-bar drag moves by default; Shift copies instead. A browse-row drag (no source pane) always copies. Same-pane drops always reorder. */
+  /** A tab-bar drag moves by default; Shift copies instead. A browse-row drag (no source pane) always copies and shows the note. Same-pane drops always reorder. A tab-bar drag leaves every pane showing what it showed. */
   const drop = (event: React.DragEvent, target: DropSlot) => {
     forgetDraggedTab();
     setSlot(undefined);
@@ -215,8 +215,10 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
       void focus.moveTab(focus.shown, key, sourcePane, target.pane, index).catch(() => {});
       return;
     }
-    void focus.place(focus.shown, tab, target.pane, index).catch(() => {});
+    void focus.place(focus.shown, tab, target.pane, index, sourcePane !== undefined).catch(() => {});
   };
+  // Pressing a tab does not make its pane active: the press may start a drag, which moves the tab without switching notes; a click shows the tab, which activates the pane.
+  const tabPress = useRef(false);
 
   return (
     <section
@@ -231,8 +233,16 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
       data-phone={phone || undefined}
       data-tight={tight || undefined}
       aria-label={t('focus.paneNumber', { number: numberOf(displayed.pane) })}
-      onPointerDownCapture={() => focus.activate(displayed.pane)}
-      onFocusCapture={() => focus.activate(displayed.pane)}
+      onPointerDownCapture={event => {
+        tabPress.current = Boolean((event.target as Element).closest('.focus-tab'));
+        if (!tabPress.current) focus.activate(displayed.pane);
+      }}
+      onKeyDownCapture={() => {
+        tabPress.current = false;
+      }}
+      onFocusCapture={event => {
+        if (!(tabPress.current && (event.target as Element).closest('.focus-tab'))) focus.activate(displayed.pane);
+      }}
       onDragOver={event => hover(event, { pane: displayed.pane })}
       onDragLeave={event => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
