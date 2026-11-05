@@ -65,7 +65,24 @@ describe('renderChatMarkdown', () => {
     expect(view.textContent).toContain('styled');
   });
 
+  it('drops style sheets, CSS escapes, SVG paint references and a host after a bare scheme', () => {
+    const view = html(['intro', '<p>x</p><style>@import url(https://e.invalid/import)</style>', '<svg><style>rect{mask:url(//e.invalid/svgstyle)}</style></svg>', '<span style="background:u\\72l(https://e.invalid/escape)">escaped</span>', '<svg width="20" height="20"><rect width="10" height="10" mask="url(https://e.invalid/mask#m)" fill="url(https://e.invalid/fill#g)" stroke="u\\72l(https://e.invalid/stroke)"></rect></svg>', '![bare](https:e.invalid/bare-scheme)'].join('\n\n'));
+    expect(view.querySelector('style')).toBeNull();
+    const loads = [...view.querySelectorAll('*')].filter(element => element.tagName !== 'A').flatMap(element => [...element.attributes].filter(attribute => attribute.value.includes('e.invalid')).map(attribute => `${element.tagName} ${attribute.name}`));
+    expect(loads).toEqual([]);
+    expect(view.querySelector('a.chat-external-image')?.textContent).toBe('bare (https:e.invalid/bare-scheme)');
+    expect(view.querySelector('rect')?.getAttribute('width')).toBe('10');
+  });
+
+  it('shows a mermaid diagram as its source, since drawing it would load the images it names', () => {
+    const view = html('```mermaid\nflowchart LR\n  A["<img src=\'https://e.invalid/label\'>"] --> B\n```\n\n<div class="note-mermaid"><pre>flowchart LR\nC --> D</pre></div>');
+    expect(view.querySelector('.note-mermaid')).toBeNull();
+    expect([...view.querySelectorAll('pre code.language-mermaid')].map(code => code.textContent)).toEqual(['flowchart LR\n  A["<img src=\'https://e.invalid/label\'>"] --> B', 'flowchart LR\nC --> D']);
+  });
+
   it('keeps the inline styles math is drawn with', () => {
-    expect(html('$x^2$').querySelector('.katex [style]')).not.toBeNull();
+    const view = html('$x^2$ $\\frac{a}{b}$');
+    expect(view.querySelector('.katex [style]')).not.toBeNull();
+    expect(view.querySelectorAll('[aria-label*="\\\\frac"]')).toHaveLength(1);
   });
 });
