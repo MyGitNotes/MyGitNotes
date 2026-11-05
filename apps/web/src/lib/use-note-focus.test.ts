@@ -246,6 +246,34 @@ describe('useNoteFocus split and collapse', () => {
     await act(() => result.current.moveTab(CURRENT_FOCUS, keyOf('c'), 'p2', 'p1'));
     expect(focusPanes(result.current.layout!).map(pane => pane.id)).toEqual(['p1']);
     expect(tabsAt(result.current.layout, 0)).toEqual([tab('a'), tab('b'), tab('c')]);
+    // The target goes on showing its own note; the drag only moved the tab.
+    expect(result.current.entry?.shown.p1).toBe(keyOf('a'));
+    expect(result.current.entry?.activePane).toBe('p1');
+  });
+
+  it('moves a tab between panes without switching either pane or the active pane, the source showing its previous tab', async () => {
+    const { result } = render(undefined, { root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [tab('a'), tab('b')] }, { kind: 'pane', id: 'p2', tabs: [tab('c'), tab('d')] }] } });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(() => result.current.show('p2', keyOf('c')));
+    await act(() => result.current.show('p2', keyOf('d')));
+    act(() => result.current.activate('p1'));
+    await act(() => result.current.moveTab(CURRENT_FOCUS, keyOf('d'), 'p2', 'p1', 0));
+    expect(tabsAt(result.current.layout, 0)).toEqual([tab('d'), tab('a'), tab('b')]);
+    expect(result.current.entry?.shown).toEqual({ p1: keyOf('a'), p2: keyOf('c') });
+    expect(result.current.entry?.activePane).toBe('p1');
+  });
+
+  it('reorders or copies a tab-bar drag in place, showing it only in a pane that showed nothing', async () => {
+    const { result } = render(undefined, { root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [tab('a'), tab('b')] }, { kind: 'pane', id: 'p2', tabs: [] }] } });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(() => result.current.place(CURRENT_FOCUS, tab('b'), 'p1', 0, true));
+    expect(tabsAt(result.current.layout, 0)).toEqual([tab('b'), tab('a')]);
+    expect(result.current.entry?.shown.p1).toBe(keyOf('a'));
+    await act(() => result.current.place(CURRENT_FOCUS, tab('a'), 'p2', undefined, true));
+    expect(result.current.entry?.shown.p2).toBe(keyOf('a'));
+    expect(result.current.entry?.activePane).toBe('p1');
+    // A note dropped from the browse region still opens and shows there.
+    await act(() => result.current.place(CURRENT_FOCUS, tab('c'), 'p1'));
     expect(result.current.entry?.shown.p1).toBe(keyOf('c'));
   });
 });

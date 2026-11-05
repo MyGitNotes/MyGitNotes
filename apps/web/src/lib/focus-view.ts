@@ -202,6 +202,11 @@ export function showTab(entry: FocusEntryView, pane: string, key: string): Focus
   return activatePane({ ...entry, shown: { ...entry.shown, [pane]: key }, history: { ...entry.history, [pane]: [key, ...(entry.history[pane] || []).filter(value => value !== key)] } }, pane);
 }
 
+/** A tab dragged into `pane` is shown there only when the pane shows nothing, and never makes it the active pane: a drag moves tabs, it does not switch notes. */
+export function fillPane(entry: FocusEntryView, pane: string, key: string): FocusEntryView {
+  return entry.shown[pane] ? entry : { ...entry, shown: { ...entry.shown, [pane]: key }, history: { ...entry.history, [pane]: [key, ...(entry.history[pane] || []).filter(value => value !== key)] } };
+}
+
 /** The pane a row clicked in the browse region opens into. */
 export function browseTarget(entry: FocusEntryView): string {
   return entry.activePane;
