@@ -532,7 +532,7 @@ const attachedImages = () => [...document.querySelectorAll<HTMLImageElement>('.p
 it('attaches images from the paperclip with a thumbnail and a remove button, sends them with the message and clears them after it goes', async () => {
   const value = agent({ modelState: imageModel });
   panel(value);
-  expect(filePicker().accept).toBe('image/png,image/jpeg,image/gif,image/webp');
+  expect(filePicker().accept.split(',')).toEqual(expect.arrayContaining(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf', '.md']));
   expect(filePicker().multiple).toBe(true);
   fireEvent.change(filePicker(), { target: { files: [picked('one.png'), picked('two.jpg', 'image/jpeg', 'xyz')] } });
   await waitFor(() => expect(attachedImages()).toHaveLength(2));
@@ -574,10 +574,36 @@ it('adds images dropped on the message box and refuses other files with a visibl
   const card = document.querySelector('.pi-agent-composer-card')!;
   fireEvent.dragOver(card, { dataTransfer: { types: ['Files'] } });
   expect(card.getAttribute('data-dragging')).toBe('true');
-  fireEvent.drop(card, { dataTransfer: { types: ['Files'], files: [picked('shot.webp', 'image/webp'), picked('notes.pdf', 'application/pdf')] } });
+  fireEvent.drop(card, { dataTransfer: { types: ['Files'], files: [picked('shot.webp', 'image/webp'), picked('archive.zip', 'application/zip')] } });
   await waitFor(() => expect(attachedImages()).toHaveLength(1));
   expect(card.hasAttribute('data-dragging')).toBe(false);
-  expect(screen.getByRole('alert').textContent).toBe('notes.pdf is not a PNG, JPEG, GIF or WebP image, so it was not attached.');
+  expect(screen.getByRole('alert').textContent).toBe('archive.zip is not a PNG, JPEG, GIF or WebP image, a PDF or a UTF-8 text or code file, so it was not attached.');
+});
+
+const attachedFiles = () => [...document.querySelectorAll('.pi-agent-attachment-file')].map(item => item.textContent);
+
+it('attaches a text file by name with a remove button, and sends its text as a file with the message', async () => {
+  const value = agent({ modelState: imageModel });
+  panel(value);
+  fireEvent.change(filePicker(), { target: { files: [picked('plan.md', '', '# Plan'), picked('one.png')] } });
+  await waitFor(() => expect(attachedFiles()).toEqual(['plan.md']));
+  expect(screen.getByRole('button', { name: 'Remove plan.md' })).toBeTruthy();
+  write('Compare');
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  expect(value.send).toHaveBeenCalledWith('Compare', undefined, [{ type: 'image', data: 'YWJj', mimeType: 'image/png' }], [{ name: 'plan.md', text: '# Plan' }]);
+  expect(attachedFiles()).toEqual([]);
+});
+
+it('shows the files a sent message carried as chips beside its text', () => {
+  panel(agent({ transcript: { ...emptyTranscript, entries: [{ kind: 'user', key: 0, text: 'Compare', files: ['plan.md', 'report.pdf'] }], nextKey: 1 } }));
+  const message = document.querySelector('.pi-agent-message[data-role="user"]')!;
+  expect([...message.querySelectorAll('.pi-agent-focus-chip[data-kind="file"]')].map(chip => [chip.textContent, chip.getAttribute('title')])).toEqual([['plan.md', 'plan.md went with the message as text'], ['report.pdf', 'report.pdf went with the message as text']]);
+  expect(message.querySelector('.pi-agent-text')!.textContent).toBe('Compare');
+});
+
+it('puts the files of a held message back in the tray when it returns to the message box', async () => {
+  panel(agent({ editorText: { text: 'look', serial: 1, files: [{ name: 'plan.md', text: '# Plan' }] } }));
+  await waitFor(() => expect(attachedFiles()).toEqual(['plan.md']));
 });
 
 it('does not take a drag of text as a file drop', () => {
@@ -605,19 +631,19 @@ it('puts the images of a held message back in the tray when it returns to the me
   expect((screen.getByRole('textbox', { name: 'Message to Pi' }) as HTMLTextAreaElement).value).toBe('look');
 });
 
-it('offers no paperclip, paste or drop for a model that cannot read images, and shows them for one that can', async () => {
-  panel(agent({ modelState: { model: 'pro/haiku', models: [], levels: [], images: false } }));
-  expect(screen.queryByRole('button', { name: 'Attach images' })).toBeNull();
-  expect(filePicker()).toBeNull();
+it('offers PDFs and text files but no images to a model that cannot read images, and says so for an image it is given', async () => {
+  const value = agent({ modelState: { model: 'pro/haiku', models: [], levels: [], images: false } });
+  panel(value);
+  expect(screen.getByRole('button', { name: 'Attach images, PDFs or text files' })).toBeTruthy();
+  expect(filePicker().accept.split(',')).not.toContain('image/png');
+  expect(filePicker().accept.split(',')).toContain('application/pdf');
   const card = document.querySelector('.pi-agent-composer-card')!;
-  expect(fireEvent.dragOver(card, { dataTransfer: { types: ['Files'] } })).toBe(true);
-  fireEvent.drop(card, { dataTransfer: { types: ['Files'], files: [picked('shot.png')] } });
-  expect(fireEvent.paste(box(), { clipboardData: { files: [picked('image.png')], getData: () => '' } })).toBe(true);
-  await new Promise(resolve => setTimeout(resolve, 20));
+  fireEvent.drop(card, { dataTransfer: { types: ['Files'], files: [picked('shot.png'), picked('notes.txt', 'text/plain', 'hello')] } });
+  await waitFor(() => expect(attachedFiles()).toEqual(['notes.txt']));
   expect(attachedImages()).toHaveLength(0);
-  cleanup();
-  panel(agent({ modelState: imageModel }));
-  expect(screen.getByRole('button', { name: 'Attach images' })).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toBe('shot.png was not attached: the current model cannot read images.');
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  expect(value.send).toHaveBeenCalledWith('', undefined, [], [{ name: 'notes.txt', text: 'hello' }]);
 });
 
 it('keeps attached images when the model switches to one that cannot read them, but refuses to send them', async () => {

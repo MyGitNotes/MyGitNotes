@@ -30,6 +30,7 @@ function fakePdf(pageCount = 3) {
       renders.push({ page, ...options, cancel });
       return { promise: Promise.resolve(), cancel };
     }),
+    text: async () => '',
     destroy: vi.fn(async () => undefined),
   };
   return { pdf, renders };
@@ -294,6 +295,7 @@ describe('hydratePdfFigures: a page drawn again', () => {
     const pdf: PdfDocument = {
       pageCount: 3,
       pageSize: async () => ({ width: 612, height: 792 }),
+      text: async () => '',
       destroy: async () => undefined,
       render: (_page, canvas) => {
         let finish!: () => void;

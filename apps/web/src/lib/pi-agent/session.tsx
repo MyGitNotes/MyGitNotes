@@ -8,7 +8,7 @@ import { FEATURE_IDS, useFeatureGate } from '../web-features.js';
 import { frameBytes, imagesWithinLimits, MAX_FRAME_BYTES, type PiImage } from './attachments.js';
 import type { CaretStore } from './caret-store.js';
 import { commandsFromResponse, commandWithFocus, parseComposerInput, type PiCommand } from './commands.js';
-import { type AgentDialog, type AgentFocus, applyRecord, emptyTranscript, queuedText, startShell, transcriptFromMessages, type TranscriptState, withFocus } from './transcript.js';
+import { type AgentDialog, type AgentFocus, applyRecord, type AttachedFile, emptyTranscript, queuedText, startShell, transcriptFromMessages, type TranscriptState, withFiles, withFocus } from './transcript.js';
 
 /** Where Pi runs: an agent workspace, a folder of one repository (`folder` empty for its root). */
 export interface PiLocation {
@@ -135,6 +135,8 @@ export interface PiEditorText {
   serial: number;
   /** The images that went with a held message, which return to the message box with its text. */
   images?: PiImage[];
+  /** The files that went with a held message, which return with it too. */
+  files?: AttachedFile[];
 }
 
 function contextUsageOf(data: unknown): PiContextUsage | undefined {
@@ -177,10 +179,10 @@ export interface PiAgentValue {
   wake: () => void;
   /**
    * Sends what the message box holds, read as Pi's terminal editor reads it (see parseComposerInput); returns false
-   * when it is not complete enough to send, such as /name without a name, or Pi is not connected. `images` go with a
-   * message or a command Pi expands; a shell run or built-in takes none.
+   * when it is not complete enough to send, such as /name without a name, or Pi is not connected. `images` and `files`
+   * (appended to the text, see withFiles) go with a message or a command Pi expands; a shell run or built-in takes none.
    */
-  send: (text: string, focus?: AgentFocus, images?: readonly PiImage[]) => boolean;
+  send: (text: string, focus?: AgentFocus, images?: readonly PiImage[], files?: readonly AttachedFile[]) => boolean;
   /** A message sent before Pi was ready, which goes once Pi connects; if Pi fails to start it returns to the message box. */
   held: string | null;
   /** The slash commands Pi offers, as of the last `loadCommands`; the built-ins are the panel's to add. */
@@ -334,15 +336,15 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
     }
   }, []);
   const [editorText, setEditorText] = useState<PiEditorText | null>(null);
-  /** What `held` names, with the prompt it becomes and the images that go with it, kept in a ref for the socket that sends it. */
-  const heldMessage = useRef<{ text: string; message: string; images: PiImage[]; } | null>(null);
+  /** What `held` names, with the prompt it becomes and the images and files that go with it, kept in a ref for the socket that sends it. */
+  const heldMessage = useRef<{ text: string; message: string; images: PiImage[]; files: AttachedFile[]; } | null>(null);
   const [held, setHeld] = useState<string | null>(null);
   const releaseHeld = useCallback(() => {
     const waiting = heldMessage.current;
     if (!waiting) return;
     heldMessage.current = null;
     setHeld(null);
-    setEditorText(current => ({ text: waiting.text, serial: (current?.serial ?? 0) + 1, ...waiting.images.length ? { images: waiting.images } : {} }));
+    setEditorText(current => ({ text: waiting.text, serial: (current?.serial ?? 0) + 1, ...waiting.images.length ? { images: waiting.images } : {}, ...waiting.files.length ? { files: waiting.files } : {} }));
   }, []);
   const socket = useRef<WebSocket | null>(null);
   /** The socket the live session named, kept here because `connect` also runs from timers that have only the ref. */
@@ -594,14 +596,15 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
     starting,
     start,
     wake,
-    send: (text, focus, images = []) => {
+    send: (text, focus, images = [], files = []) => {
       const input = parseComposerInput(text);
+      const prompt = input.kind === 'message' || input.kind === 'command' ? withFiles(input.text, files) : '';
       // Before Pi connects a message or command waits, starting Pi if none runs; the built-ins and shell runs need Pi itself.
       const waiting = socket.current?.readyState !== WebSocket.OPEN && (startingNow.current || (session ? session.status !== 'exited' : ready));
       if (waiting && (input.kind === 'message' || input.kind === 'command')) {
-        const message = input.kind === 'message' ? withFocus(input.text, focus) : commandWithFocus(input.text, focus);
+        const message = input.kind === 'message' ? withFocus(prompt, focus) : commandWithFocus(prompt, focus);
         const before = heldMessage.current;
-        const merged = before ? { text: `${before.text}\n\n${text}`, message: `${before.message}\n\n${message}`, images: [...before.images, ...images] } : { text, message, images: [...images] };
+        const merged = before ? { text: `${before.text}\n\n${text}`, message: `${before.message}\n\n${message}`, images: [...before.images, ...images], files: [...before.files, ...files] } : { text, message, images: [...images], files: [...files] };
         // Merging must not make a frame the server refuses; the held message stays as it was and the new one stays in the box.
         if (!imagesWithinLimits(merged.images) || frameBytes(JSON.stringify({ id: crypto.randomUUID(), type: 'prompt', message: merged.message, ...promptImages(merged.images) })) > MAX_FRAME_BYTES) {
           setError(HELD_TOO_LARGE_TO_ADD);
@@ -630,9 +633,9 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
           if (input.args) return command({ type: 'set_session_name', name: input.args });
           return false;
         case 'command':
-          return command({ type: 'prompt', message: commandWithFocus(input.text, focus), ...promptImages(images), ...steer });
+          return command({ type: 'prompt', message: commandWithFocus(prompt, focus), ...promptImages(images), ...steer });
         case 'message':
-          return command({ type: 'prompt', message: withFocus(input.text, focus), ...promptImages(images), ...steer });
+          return command({ type: 'prompt', message: withFocus(prompt, focus), ...promptImages(images), ...steer });
       }
     },
     held,

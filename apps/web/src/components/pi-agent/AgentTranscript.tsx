@@ -174,7 +174,7 @@ export function AgentTranscript({ transcript, links, children }: { transcript: T
         {transcript.entries.length === 0 && !transcript.streaming && <p className='pi-agent-empty'>{t('piAgent.empty')}</p>}
         {transcript.entries.map(entry => {
           if (entry.kind === 'user') {
-            return <div key={entry.key} className='pi-agent-message' data-role='user'>{(entry.skill || entry.focus) && <span className='pi-agent-chips'>{entry.skill && <span className='pi-agent-focus-chip' data-kind='skill' title={t('piAgent.skillChip')}>/skill:{entry.skill}</span>}{entry.focus && <span className='pi-agent-focus-chip' title={entry.focus.file}>{focusLabel(entry.focus)}</span>}</span>}{entry.text && <p className='pi-agent-text'>{entry.text}</p>}</div>;
+            return <div key={entry.key} className='pi-agent-message' data-role='user'>{(entry.skill || entry.focus || entry.files) && <span className='pi-agent-chips'>{entry.skill && <span className='pi-agent-focus-chip' data-kind='skill' title={t('piAgent.skillChip')}>/skill:{entry.skill}</span>}{entry.focus && <span className='pi-agent-focus-chip' title={entry.focus.file}>{focusLabel(entry.focus)}</span>}{entry.files?.map((file, index) => <span key={index} className='pi-agent-focus-chip' data-kind='file' title={t('piAgent.fileChip', { name: file })}>{file}</span>)}</span>}{entry.text && <p className='pi-agent-text'>{entry.text}</p>}</div>;
           }
           if (entry.kind === 'assistant') {
             return (

@@ -4,6 +4,7 @@
 // encrypted.pdf   the same document, RC4 40-bit, opened only by the user password "secret"
 // truncated.pdf   multi-page.pdf cut in half
 // not-a-pdf.pdf   a PNG with a .pdf name
+// scanned.pdf     two Letter pages: one of text, one with a drawing and no text, as a scanned page has none
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -33,9 +34,11 @@ const PAD = Buffer.from('28BF4E5E4E758A4164004E56FFFA01082E2E00B6D0683E802F0CA9F
 const pad = password => Buffer.concat([latin(password), PAD]).subarray(0, 32);
 const hex = bytes => `<${Buffer.from(bytes).toString('hex')}>`;
 
-/** The pages as `{ width, height, rotate?, content, fonts }`; returns the objects of a document, numbered from 1. */
-function documentObjects() {
-  const pages = [{ width: 612, height: 792, content: 'BT /F1 28 Tf 72 700 Td (Page one) Tj ET 72 560 300 60 re S BT /F1 12 Tf 72 530 Td (Letter portrait, 612 x 792) Tj ET' }, { width: 842, height: 595, content: 'BT /F1 28 Tf 72 500 Td (Page two) Tj ET 400 200 300 120 re S BT /F1 12 Tf 72 470 Td (A4 landscape, 842 x 595) Tj ET' }, { width: 400, height: 600, rotate: 90, content: 'BT /F1 28 Tf 40 520 Td (Page three) Tj ET 40 300 200 100 re S BT /F1 12 Tf 40 490 Td (Stored 400 x 600 with Rotate 90) Tj ET' }, { width: 612, height: 792, content: `BT /F2 26 Tf 72 700 Td <${big5('合約草稿')}> Tj ET BT /F2 14 Tf 72 660 Td <${big5('甲方名稱與統編要和用印頁一致')}> Tj ET 72 540 320 80 re S` }];
+const multiPage = () => [{ width: 612, height: 792, content: 'BT /F1 28 Tf 72 700 Td (Page one) Tj ET 72 560 300 60 re S BT /F1 12 Tf 72 530 Td (Letter portrait, 612 x 792) Tj ET' }, { width: 842, height: 595, content: 'BT /F1 28 Tf 72 500 Td (Page two) Tj ET 400 200 300 120 re S BT /F1 12 Tf 72 470 Td (A4 landscape, 842 x 595) Tj ET' }, { width: 400, height: 600, rotate: 90, content: 'BT /F1 28 Tf 40 520 Td (Page three) Tj ET 40 300 200 100 re S BT /F1 12 Tf 40 490 Td (Stored 400 x 600 with Rotate 90) Tj ET' }, { width: 612, height: 792, content: `BT /F2 26 Tf 72 700 Td <${big5('合約草稿')}> Tj ET BT /F2 14 Tf 72 660 Td <${big5('甲方名稱與統編要和用印頁一致')}> Tj ET 72 540 320 80 re S` }];
+const SCANNED = [{ width: 612, height: 792, content: 'BT /F1 18 Tf 72 700 Td (A page of typed text) Tj ET' }, { width: 612, height: 792, content: '0.5 g 72 300 468 400 re f 0 g 100 400 m 500 600 l S' }];
+
+/** The pages as `{ width, height, rotate?, content }`; returns the objects of a document, numbered from 1. */
+function documentObjects(pages = multiPage()) {
   const objects = [];
   const add = body => objects.push(body) && objects.length;
   const catalog = add('');
@@ -126,4 +129,5 @@ const plain = serialise(documentObjects());
 writeFileSync(join(out, 'multi-page.pdf'), plain);
 writeFileSync(join(out, 'encrypted.pdf'), serialise(documentObjects(), encryptionFor('secret', 'owner')));
 writeFileSync(join(out, 'truncated.pdf'), plain.subarray(0, Math.floor(plain.length / 2)));
+writeFileSync(join(out, 'scanned.pdf'), serialise(documentObjects(SCANNED)));
 writeFileSync(join(out, 'not-a-pdf.pdf'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGD4DwABBAEAHg3XWAAAAABJRU5ErkJggg==', 'base64'));

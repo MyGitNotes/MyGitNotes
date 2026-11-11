@@ -12,7 +12,7 @@ import { CommandMenu } from './CommandMenu.js';
 import { BUILTIN_COMMANDS, matchCommands, parseComposerInput, type PiCommand, slashQuery } from '../../lib/pi-agent/commands.js';
 import { type PiContextUsage, type PiEditorText, type PiLocation, type PiSessionInfo, usePiAgent } from '../../lib/pi-agent/session.js';
 import { draftKey, useAgentDraft } from '../../lib/pi-agent/draft.js';
-import { addImageFiles, ATTACHMENT_TYPES, type AttachmentProblem, type ImageAttachment, thumbnailUrl } from '../../lib/pi-agent/attachments.js';
+import { acceptedTypes, addFiles, type Attachment, attachmentFiles, attachmentImages, type AttachmentProblem, thumbnailUrl } from '../../lib/pi-agent/attachments.js';
 import { sameWorkspace, workspaceKey, workspaceName } from '../../lib/agent-workspaces.js';
 import { useAgentInputFocusRequest } from '../../lib/pi-agent/input-focus.js';
 import { type AgentFocus, focusLabel, selectionPosition } from '../../lib/pi-agent/transcript.js';
@@ -212,8 +212,8 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   useEffect(() => {
     if (!agent.held) storedDraft.settle();
   }, [agent.held, draft, storedDraft]);
-  /** Images waiting to go with the next message, and why the last file offered was left out. */
-  const [attachments, setAttachments] = useState<ImageAttachment[]>([]);
+  /** Images and files waiting to go with the next message, and why the last file offered was left out or cut. */
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachProblems, setAttachProblems] = useState<AttachmentProblem[]>([]);
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
@@ -238,9 +238,11 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   if (editorText && editorText !== shownEditorText) {
     setShownEditorText(editorText);
     setDraft(editorText.text);
-    // The images of a message that was held while Pi started come back with its text.
-    const images = editorText.images ?? [];
-    if (images.length) setAttachments(current => [...current, ...images.map((image, index) => ({ id: `held-${editorText.serial}-${index}`, name: 'image', size: Math.floor(image.data.length * 3 / 4), image }))]);
+    // The images and files of a message that was held while Pi started come back with its text; a PDF's page pictures come back as images.
+    const images = editorText.images ?? [], files = editorText.files ?? [];
+    if (images.length || files.length) {
+      setAttachments(current => [...current, ...images.map((image, index): Attachment => ({ kind: 'image', id: `held-${editorText.serial}-${index}`, name: 'image', size: Math.floor(image.data.length * 3 / 4), image })), ...files.map((file, index): Attachment => ({ kind: 'file', id: `held-${editorText.serial}-file-${index}`, name: file.name, size: file.text.length, file, images: [] }))]);
+    }
   }
   useEffect(() => {
     if (!editorText) return;
@@ -257,7 +259,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   const attach = (files: File[]) => {
     if (!files.length) return;
     reading.current = reading.current.then(async () => {
-      const added = await addImageFiles(latestAttachments.current, files);
+      const added = await addFiles(latestAttachments.current, files, { images: readsImages });
       latestAttachments.current = added.attachments;
       setAttachments(added.attachments);
       setAttachProblems(added.problems);
@@ -289,8 +291,8 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
 
   const session = agent.session;
   const model = agent.modelState;
-  /** Images are offered only for a model that declares image input. */
-  const canAttach = model.images === true;
+  /** Images are taken, and a PDF page without text drawn as one, only for a model that declares image input. */
+  const readsImages = model.images === true;
   const currentModel = model.models.find(option => option.value === model.model);
   const links = useMemo(() => chatLinks(session, agent.notebooks, agent.repositories), [session, agent.notebooks, agent.repositories]);
   const name = useWorkspaceName();
@@ -329,16 +331,17 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   const send = () => {
     const text = draft.trim();
     if (!text && !attachments.length) return;
-    // A shell run or built-in has nowhere to put images, so they stay for the message that follows.
+    // A shell run or built-in has nowhere to put images or files, so they stay for the message that follows.
     const kind = parseComposerInput(text).kind;
     const carries = kind === 'message' || kind === 'command';
-    const images = carries ? attachments.map(attachment => attachment.image) : [];
+    const images = carries ? attachmentImages(attachments) : [];
+    const files = carries ? attachmentFiles(attachments) : [];
     // Images kept from a model that read them stay in the box; a model that cannot read them gets nothing until they are removed.
     if (images.length && !agent.modelState.images) {
       setAttachProblems([{ kind: 'model', name: '' }]);
       return;
     }
-    if (images.length ? agent.send(text, focus, images) : agent.send(text, focus)) {
+    if (files.length ? agent.send(text, focus, images, files) : images.length ? agent.send(text, focus, images) : agent.send(text, focus)) {
       storedDraft.retain();
       setDraft('');
       if (carries) setAttachments([]);
@@ -417,7 +420,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
             className='pi-agent-composer-card'
             data-dragging={dragging || undefined}
             onDragOver={event => {
-              if (!canAttach || !event.dataTransfer.types.includes('Files')) return;
+              if (!event.dataTransfer.types.includes('Files')) return;
               event.preventDefault();
               setDragging(true);
             }}
@@ -425,7 +428,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
               if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
             }}
             onDrop={event => {
-              if (!canAttach || !event.dataTransfer.types.includes('Files')) return;
+              if (!event.dataTransfer.types.includes('Files')) return;
               event.preventDefault();
               setDragging(false);
               attach([...event.dataTransfer.files]);
@@ -490,8 +493,13 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
             {attachments.length > 0 && (
               <ul className='pi-agent-attachments' aria-label={t('piAgent.attachments')}>
                 {attachments.map(attachment => (
-                  <li key={attachment.id}>
-                    <img src={thumbnailUrl(attachment.image)} alt={attachment.name} title={attachment.name} />
+                  <li key={attachment.id} data-kind={attachment.kind}>
+                    {attachment.kind === 'image' ? <img src={thumbnailUrl(attachment.image)} alt={attachment.name} title={attachment.name} /> : (
+                      <span className='pi-agent-attachment-file' title={attachment.name}>
+                        <FileText aria-hidden='true' />
+                        <span>{attachment.name}</span>
+                      </span>
+                    )}
                     <button
                       type='button'
                       title={t('piAgent.attachment.remove', { name: attachment.name })}
@@ -504,7 +512,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                 ))}
               </ul>
             )}
-            {attachProblems.length > 0 && <ul role='alert' className='pi-agent-attach-problems'>{attachProblems.map((problem, index) => <li key={index}>{t(`piAgent.attachment.${problem.kind}` as const, { name: problem.name })}</li>)}</ul>}
+            {attachProblems.length > 0 && <ul role='alert' className='pi-agent-attach-problems'>{attachProblems.map((problem, index) => <li key={index}>{t(`piAgent.attachment.${problem.kind}` as const, { name: problem.name, limit: 'limit' in problem ? problem.limit : '' })}</li>)}</ul>}
             <div className='pi-agent-input'>
               {menuOpen && <CommandMenu id={menuId} commands={matches} highlight={active} onPick={pick} />}
               <textarea
@@ -523,7 +531,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                 onPaste={event => {
                   // Pasted text goes in as text, even when the source also put an image of it on the clipboard.
                   const files = [...event.clipboardData.files];
-                  if (!canAttach || !files.length || event.clipboardData.getData('text/plain')) return;
+                  if (!files.length || event.clipboardData.getData('text/plain')) return;
                   event.preventDefault();
                   attach(files);
                 }}
@@ -554,27 +562,23 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
               />
             </div>
             <div className='pi-agent-dialog-actions pi-agent-composer-bar'>
-              {canAttach && (
-                <input
-                  ref={picker}
-                  type='file'
-                  hidden
-                  multiple
-                  accept={ATTACHMENT_TYPES.join(',')}
-                  aria-label={t('piAgent.attach')}
-                  tabIndex={-1}
-                  onChange={event => {
-                    attach([...event.target.files ?? []]);
-                    // The same file chosen again after removing it still fires a change.
-                    event.target.value = '';
-                  }}
-                />
-              )}
-              {canAttach && (
-                <Button size='icon' title={t('piAgent.attach')} aria-label={t('piAgent.attach')} onClick={() => picker.current?.click()}>
-                  <Paperclip aria-hidden='true' />
-                </Button>
-              )}
+              <input
+                ref={picker}
+                type='file'
+                hidden
+                multiple
+                accept={acceptedTypes(readsImages)}
+                aria-label={t('piAgent.attach')}
+                tabIndex={-1}
+                onChange={event => {
+                  attach([...event.target.files ?? []]);
+                  // The same file chosen again after removing it still fires a change.
+                  event.target.value = '';
+                }}
+              />
+              <Button size='icon' title={t('piAgent.attach')} aria-label={t('piAgent.attach')} onClick={() => picker.current?.click()}>
+                <Paperclip aria-hidden='true' />
+              </Button>
               {ready && model.models.length > 0 && (
                 <div className='pi-agent-model-row'>
                   {/* The button names the model alone, since a provider suffix pushes the part that tells models apart out of view; the menu and tooltip keep it. */}

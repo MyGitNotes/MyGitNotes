@@ -13,7 +13,13 @@ export interface AgentFocus {
 
 export type AssistantBlock = { type: 'text'; text: string; } | { type: 'thinking'; text: string; } | { type: 'toolCall'; id: string; name: string; args: unknown; };
 
-export type TranscriptEntry = { kind: 'user'; key: number; text: string; focus?: AgentFocus; skill?: string; } | { kind: 'assistant'; key: number; blocks: AssistantBlock[]; error?: string; } | { kind: 'notice'; key: number; level: 'info' | 'warning' | 'error'; text: string; } | ShellEntry;
+/** A file whose contents go into a message as text: a text or code file as it is, a PDF as the text of its pages. */
+export interface AttachedFile {
+  name: string;
+  text: string;
+}
+
+export type TranscriptEntry = { kind: 'user'; key: number; text: string; focus?: AgentFocus; skill?: string; files?: string[]; } | { kind: 'assistant'; key: number; blocks: AssistantBlock[]; error?: string; } | { kind: 'notice'; key: number; level: 'info' | 'warning' | 'error'; text: string; } | ShellEntry;
 
 /** A shell command the user ran with `!` (or `!!`, kept out of Pi's context), streaming its output until Pi answers. */
 export interface ShellEntry {
@@ -110,16 +116,40 @@ export function splitFocus(message: string): { text: string; focus?: AgentFocus;
   return { text, focus: named };
 }
 
+const escapeName = (name: string) => name.replace(/[\r\n]+/g, ' ').replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+const unescapeName = (name: string) => name.replaceAll('&quot;', '"').replaceAll('&amp;', '&');
+// A file that names the tag itself cannot end its block early or start a new one.
+const escapeContent = (text: string) => text.replace(/<(\/?)attached-file/g, '&lt;$1attached-file');
+
+/**
+ * Appends files to a message, each as an `<attached-file>` block, after what the person typed. Pi gets them as text,
+ * since its `prompt` takes only images beside the message, and reads them as part of it.
+ */
+export function withFiles(text: string, files: readonly AttachedFile[]): string {
+  const blocks = files.map(file => `<attached-file name="${escapeName(file.name)}">\n${escapeContent(file.text)}\n</attached-file>`);
+  return [text, ...blocks].filter(Boolean).join('\n\n');
+}
+
+const FILES_PATTERN = /(?:^|\n\n)((?:<attached-file name="[^"]*">\n[\s\S]*?\n<\/attached-file>(?:\n\n|$))+)$/;
+
+/** Splits the files {@link withFiles} appended back off a message, for display: the text before them and their names. */
+export function splitFiles(message: string): { text: string; files?: string[]; } {
+  const match = FILES_PATTERN.exec(message);
+  if (!match) return { text: message };
+  return { text: message.slice(0, match.index), files: [...match[1].matchAll(/<attached-file name="([^"]*)">\n/g)].map(name => unescapeName(name[1])) };
+}
+
 const SKILL_PATTERN = /^<skill name="([^"]+)" location="[^"]*">\n[\s\S]*?\n<\/skill>(?:\n\n|$)/;
 
 /**
- * Splits a sent message for display: the skill Pi expanded `/skill:name` into, then the focus prefix. A skill
- * reads as its command, since its whole body otherwise fills the transcript.
+ * Splits a sent message for display: the skill Pi expanded `/skill:name` into, then the focus prefix, then the files at
+ * its end. A skill reads as its command and a file as its name, since their whole text otherwise fills the transcript.
  */
-export function splitUserMessage(message: string): { text: string; focus?: AgentFocus; skill?: string; } {
+export function splitUserMessage(message: string): { text: string; focus?: AgentFocus; skill?: string; files?: string[]; } {
   const skill = SKILL_PATTERN.exec(message);
-  if (!skill) return splitFocus(message);
-  return { ...splitFocus(message.slice(skill[0].length)), skill: skill[1] };
+  const { text, focus } = splitFocus(skill ? message.slice(skill[0].length) : message);
+  const { text: typed, files } = splitFiles(text);
+  return { text: typed, ...focus ? { focus } : {}, ...skill ? { skill: skill[1] } : {}, ...files ? { files } : {} };
 }
 
 /** A queued message as the user typed it, so taking it back restores the command rather than the skill's body. */
@@ -159,6 +189,14 @@ function contentText(content: unknown): string {
   return content.filter(isRecord).map(block => block.type === 'text' && typeof block.text === 'string' ? block.text : block.type === 'image' ? '[image]' : '').filter(Boolean).join('\n');
 }
 
+/** A user message for display: its text split by {@link splitUserMessage}, then an `[image]` line for each image it carried. */
+function userEntry(content: unknown): Omit<Extract<TranscriptEntry, { kind: 'user'; }>, 'key'> {
+  const blocks = Array.isArray(content) ? content.filter(isRecord) : [];
+  const entry = splitUserMessage(typeof content === 'string' ? content : contentText(blocks.filter(block => block.type === 'text')));
+  const images = blocks.filter(block => block.type === 'image').length;
+  return { kind: 'user', ...entry, text: [entry.text, ...Array.from({ length: images }, () => '[image]')].filter(Boolean).join('\n') };
+}
+
 function assistantBlocks(content: unknown): AssistantBlock[] {
   if (!Array.isArray(content)) return [];
   return content.filter(isRecord).flatMap((block): AssistantBlock[] => {
@@ -178,7 +216,7 @@ function append(state: TranscriptState, entry: NewEntry): TranscriptState {
 /** Adds one finished message; returns the state unchanged for roles the panel does not show. */
 function addMessage(state: TranscriptState, message: unknown): TranscriptState {
   if (!isRecord(message)) return state;
-  if (message.role === 'user') return append(state, { kind: 'user', ...splitUserMessage(contentText(message.content)) });
+  if (message.role === 'user') return append(state, userEntry(message.content));
   if (message.role === 'bashExecution') {
     return append(state, { kind: 'shell', command: String(message.command ?? ''), output: String(message.output ?? ''), excluded: message.excludeFromContext === true, running: false, ...(typeof message.exitCode === 'number' ? { exitCode: message.exitCode } : {}), ...(message.cancelled === true ? { cancelled: true } : {}) });
   }
