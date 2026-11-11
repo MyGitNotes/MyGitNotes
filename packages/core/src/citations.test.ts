@@ -100,6 +100,15 @@ describe('findCitations', () => {
     expect(found('a\n@b')).toEqual(['narrative:@b -> b']);
     expect(found('[see @a, p. 3] 與 @b')).toEqual(['narrative:@b -> b']);
     expect(found('[@a, x-->y]')).toEqual([]);
+    expect(found('[^1]: @a 指出，*書名*')).toEqual(['narrative:@a -> a']);
+    expect(found('[^2]: [@b, 23]；另見')).toEqual(['group:[@b, 23] -> b|23']);
+    expect(found('甲 [@a;')).toEqual([]);
+  });
+
+  it('reads front matter as strip-frontmatter does: a BOM may lead it, and a thematic break is not one', () => {
+    expect(found('\uFEFF---\nowner: @b\n---\n[@b]')).toEqual(['group:[@b] -> b']);
+    expect(found('---\n---\n@a 說')).toEqual(['narrative:@a -> a']);
+    expect(found('---\n\n@a 說\n\n---\n')).toEqual(['narrative:@a -> a']);
   });
 });
 

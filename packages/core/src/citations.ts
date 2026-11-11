@@ -41,7 +41,9 @@ const WORD_CHAR = 'A-Za-z0-9._\\\\@/:=?&%+-';
 // citation); 5-7 a bare `@key` with an optional `[locator]`, not inside an email or URL.
 const CITE_SOURCE = `\\[([^\\[\\]]*)\\]\\[@(${CITATION_KEY_SOURCE})\\]` + `|\\[(\\s*-?@${CITATION_KEY_SOURCE}[^\\[\\]]*)\\]` + `|\\[([^\\[\\]@]*[^\\s\\[\\]@][^\\[\\]@]*@${CITATION_KEY_SOURCE}[^\\[\\]]*)\\]` + `|(^|[^${WORD_CHAR}\\[\\]])@(${CITATION_KEY_SOURCE})(?:\\s*\\[([^\\[\\]@^]*)\\])?`;
 const CITE_ITEM = new RegExp(`^\\s*(-?)@(${CITATION_KEY_SOURCE})\\s*(?:,\\s*(.*?))?\\s*$`, 'u');
-const FRONT_MATTER = /^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)??(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/;
+// As in Pandoc, the line after the opening `---` is not blank, so a note that opens with a thematic break keeps its text.
+const FRONT_MATTER_CLOSE = '(?:---|\\.\\.\\.)[ \\t]*(?:\\r?\\n|$)';
+const FRONT_MATTER = new RegExp(`^\\uFEFF?---[ \\t]*\\r?\\n(?:${FRONT_MATTER_CLOSE}|[^\\r\\n]*\\S[^\\r\\n]*\\r?\\n(?:[\\s\\S]*?\\r?\\n)??${FRONT_MATTER_CLOSE})`);
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
 const INDENTED = /^( {4}|\t)/;
 const LIST_ITEM = /^ {0,3}([-*+]|\d+[.)])(\s|$)/;
