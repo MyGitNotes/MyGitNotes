@@ -12,6 +12,7 @@ import { createLocalAssetsRouter } from './local-assets.js';
 import { createLocalGitRouter } from './local-git.js';
 import { createLocalCoreUpdateRouter } from './local-core-update.js';
 import { createLocalRawAssetsRouter } from './local-raw-assets.js';
+import { createTypstPreviewRouter } from './typst-preview/router.js';
 import { namesBuiltFile, webStatic } from './web-static.js';
 import { asLocal, localRepository, noteRepository, repositoryOrDefault } from './request-workspace.js';
 
@@ -97,6 +98,7 @@ export function createLocalApp(appRoot: string): express.Express {
   app.use('/api/agent-resources', createLocalAgentResourcesRouter());
   app.use('/api/assets', createLocalAssetsRouter());
   app.use('/api/git', createLocalGitRouter());
+  app.use('/api/typst-preview', createTypstPreviewRouter());
 
   // 7. Static Web UI Serving
   const webDist = path.join(appRoot, 'apps/web/dist');
