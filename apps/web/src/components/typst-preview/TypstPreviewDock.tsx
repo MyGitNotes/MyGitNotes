@@ -141,7 +141,7 @@ function OfferedDock({ openPdf = openPdfBytes }: { openPdf?: (bytes: Uint8Array)
   return (
     <div id='typst-preview-dock' className='typst-preview-dock' style={{ width }}>
       <div className='typst-preview-dock-header'>
-        <span className='typst-preview-dock-title' title={`${project.name} / ${chosen}`}>{project.name} / {chosen}</span>
+        <span className='typst-preview-dock-title' title={`${project.name} / ${chosen}`}>{project.name}{' / '}{chosen}</span>
         {!setup && <span className='typst-preview-dock-status' aria-live='polite'>{compiling ? t('typstPreview.compiling') : durationMs !== undefined && !failure ? t('typstPreview.compiled', { seconds: (durationMs / 1000).toFixed(1) }) : ''}</span>}
         {!setup && project.targets.length > 1 && <select className='typst-preview-dock-target' aria-label={t('typstPreview.target')} value={chosen} onChange={event => previewDock.setTarget(projectKey, event.target.value)}>{project.targets.map(name => <option key={name} value={name}>{name}</option>)}</select>}
         {!setup && <button type='button' className='ui-icon-button' aria-label={t('typstPreview.recompile')} title={t('typstPreview.recompile')} onClick={compile}>{compiling ? <LoaderCircle aria-hidden='true' className='typst-preview-spin' /> : <RefreshCw aria-hidden='true' />}</button>}

@@ -75,6 +75,6 @@ export const PreviewPages = forwardRef<PreviewPagesHandle, { view: PreviewView; 
       cancels.clear();
     };
   }, [view, width]);
-  return <div ref={scroller} className='typst-preview-pages' data-stale={stale || undefined}>{view.sizes.map((size, index) => <div key={`${view.revision}:${index + 1}`} className='typst-preview-page' data-page={index + 1} role='img' aria-label={pageLabel(index + 1)} style={{ aspectRatio: `${size.width} / ${size.height}` }} />)}</div>;
+  return <div ref={scroller} className='typst-preview-pages' data-revision={view.revision} data-stale={stale || undefined}>{view.sizes.map((size, index) => <div key={`${view.revision}:${index + 1}`} className='typst-preview-page' data-page={index + 1} role='img' aria-label={pageLabel(index + 1)} style={{ aspectRatio: `${size.width} / ${size.height}` }} />)}</div>;
 });
 PreviewPages.displayName = 'PreviewPages';
