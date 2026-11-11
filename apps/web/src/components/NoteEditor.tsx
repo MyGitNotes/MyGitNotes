@@ -28,6 +28,7 @@ import { noteViewStyle, readShowFormatToolbar, readShowLineNumbers, useNoteViewP
 import type { NoteEditorSession, NoteEditorSharedProps, NotePanelMode } from './note-editor/types.js';
 import { createCaretStore } from '../lib/pi-agent/caret-store.js';
 import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
+import { usePublishPreviewTarget } from '../lib/typst-preview/preview-target.js';
 
 export interface NoteEditorHandle {
   /** Inserts `text` at `at`, or at the caret; no-op while the session is locked. */
@@ -123,6 +124,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   const lineNumberOffset = session.baseNote.lineNumberOffset || 0;
   const agentTarget = useMemo(() => ({ notebookId: note.notebookId, path: note.path, caret, content: () => contentRef.current, lineNumberOffset, focusEditor: () => editorRef.current?.focus() }), [note.notebookId, note.path, caret, lineNumberOffset, editorRef]);
   usePublishAgentTarget(agentTarget, active && (frame === 'zoom' || frame === 'pane'));
+  // The same editor is the note the Typst preview follows.
+  const previewNote = useMemo(() => ({ notebookId: note.notebookId, path: note.path }), [note.notebookId, note.path]);
+  usePublishPreviewTarget(previewNote, active && (frame === 'zoom' || frame === 'pane'));
 
   // A phone opens every note for reading: a long press then only selects text instead of raising the keyboard,
   // whose resize moved the page under the selection. Editing starts from the toolbar's Edit button.

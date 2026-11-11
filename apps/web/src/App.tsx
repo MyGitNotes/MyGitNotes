@@ -8,6 +8,7 @@ import { PiAgentProvider } from './lib/pi-agent/session.js';
 import { TypstPreviewProvider } from './lib/typst-preview/preview-target.js';
 import { AgentFocusCommand } from './components/pi-agent/AgentFocusCommand.js';
 import { AssistantDock } from './components/assistant/AssistantDock.js';
+import { TypstPreviewDock } from './components/typst-preview/TypstPreviewDock.js';
 import { useWebAgentTools } from './app/useWebAgentTools.js';
 import { AddToOutlineDialog } from './components/AddToOutlineDialog.js';
 import { useFilterSidebar } from './app/useFilterSidebar.js';
@@ -574,7 +575,12 @@ export const AppContent: React.FC = () => {
                     sidebarDomId={activeTab === 'notes' ? 'notebook-panel' : activeTab === 'agent' ? 'agent-sidebar-panel' : activeTab === 'assets' ? 'assets-sidebar-panel' : activeTab === 'settings' ? 'settings-sidebar-panel' : undefined}
                     closeLabel={t('sidebar.closeFilters')}
                     rightPanelWidth={rightPanelWidth}
-                    assistant={<AssistantDock onOpenAgents={() => setActiveTab('agent')} agentsDisabled={noteEditorOpen || isCommitOpen} swipe={(activeTab === 'notes' && !filtersOpen) || noteEditorOpen} />}
+                    assistant={
+                      <>
+                        <TypstPreviewDock />
+                        <AssistantDock onOpenAgents={() => setActiveTab('agent')} agentsDisabled={noteEditorOpen || isCommitOpen} swipe={(activeTab === 'notes' && !filtersOpen) || noteEditorOpen} />
+                      </>
+                    }
                     rightPanel={
                       <RightPanel
                         phoneSheet={phoneNotes}

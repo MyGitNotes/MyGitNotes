@@ -2,6 +2,7 @@ import { type KeyboardEvent, type PointerEvent, useEffect, useLayoutEffect, useR
 import { useTranslation } from '../../lib/i18n/index.js';
 import { ASSISTANT_DOCK_KEY_STEP, assistantDock, assistantDockWidth, maxAssistantDockWidth, MIN_ASSISTANT_DOCK_WIDTH, useAssistantDock } from '../../lib/assistant-dock.js';
 import { usePhone } from '../../lib/use-phone.js';
+import { reserveDockWidth } from '../../lib/dock-reserve.js';
 import { useAssistantSwipe } from '../../lib/assistant-swipe.js';
 import { usePiAgentAvailable } from '../../lib/pi-agent/session.js';
 import { AgentPanel } from '../pi-agent/AgentPanel.js';
@@ -25,7 +26,7 @@ const dockOpen = () => assistantDock.get().open;
  * The assistant: Pi's conversation in a column below the header, between the page and the right panel (document panel
  * and tool rail). It shares a row with the page, so the page reflows beside it instead of sitting under it; while a note
  * is zoomed the right panel is gone and the dock is at the window's right edge, where the zoom overlays end through
- * `--assistant-dock-width`. Below 768px it is a full-screen sheet above the page, which `swipe` lets a finger open and close.
+ * `--assistant-dock-width` (the width of this dock plus the Typst preview dock's, see `dock-reserve.ts`). Below 768px it is a full-screen sheet above the page, which `swipe` lets a finger open and close.
  */
 export function AssistantDock({ onOpenAgents, agentsDisabled, swipe = false }: { onOpenAgents?: () => void; agentsDisabled?: boolean; /** Whether a phone's swipe opens and closes the dock here: the page has no gesture of its own sideways. */ swipe?: boolean; }) {
   const { t } = useTranslation();
@@ -38,8 +39,9 @@ export function AssistantDock({ onOpenAgents, agentsDisabled, swipe = false }: {
   const width = assistantDockWidth(dock, viewport);
   const reserved = visible && !phone ? width : 0;
   useLayoutEffect(() => {
-    document.documentElement.style.setProperty('--assistant-dock-width', `${reserved}px`);
-    return () => document.documentElement.style.setProperty('--assistant-dock-width', '0px');
+    // `--assistant-dock-width` is the sum of what this dock and the Typst preview dock reserve.
+    reserveDockWidth('assistant', reserved);
+    return () => reserveDockWidth('assistant', 0);
   }, [reserved]);
   const shown = useRef(visible);
   useEffect(() => {

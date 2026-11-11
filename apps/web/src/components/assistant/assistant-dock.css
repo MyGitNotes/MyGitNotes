@@ -5,7 +5,7 @@
 .assistant-dock-resizer { position: absolute; top: 0; bottom: 0; left: 0; z-index: 2; width: 9px; margin-left: -4px; cursor: col-resize; outline: none; touch-action: none; user-select: none; }
 .assistant-dock-resizer::after { content: ''; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; transition: background 150ms ease, width 150ms ease, left 150ms ease; }
 .assistant-dock-resizer:hover::after, .assistant-dock-resizer:focus-visible::after, .assistant-dock-resizer:active::after { left: 3px; width: 2px; background: var(--color-primary); }
-/* The zoom overlays (note, compilation, loading) end at the dock's left edge; the dock stays beside them, usable. */
+/* The zoom overlays (note, compilation, loading) end at the left edge of the docks (this one and the Typst preview dock, whose widths the variable sums); the docks stay beside them, usable. */
 /* While a note is zoomed the right panel is gone, so the dock is at the window's right edge. */
 @media (min-width: 768px) { .fixed.dock-edge { right: var(--assistant-dock-width, 0px); } }
 .assistant-dock-toggle[data-open] { background: var(--color-primary-light); color: var(--color-primary); }

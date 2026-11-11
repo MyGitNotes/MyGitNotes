@@ -46,7 +46,10 @@ export function createTypstPreviewRouter(compiler = new PreviewCompiler()): Rout
       const { root, project } = await projectOf(res, req.query.path, req.query.notebookId);
       if (!project) return res.json({ project: null });
       const toolkit = findToolkit(root, project.configDir);
-      res.json({ project: { name: project.name, targets: project.targets, defaultTarget: project.defaultTarget, bibliographyRevision: bibliographyRevision(project.bibliography) }, toolkit: toolkit.ok ? { ok: true, version: toolkit.version } : toolkit });
+      res.json({ // `directory` lets the page tell which saved notes belong to the project, without asking about each.
+        project: { name: project.name, directory: path.relative(fs.realpathSync(root), project.projectDir).split(path.sep).join('/'), targets: project.targets, defaultTarget: project.defaultTarget, bibliographyRevision: bibliographyRevision(project.bibliography) },
+        toolkit: toolkit.ok ? { ok: true, version: toolkit.version } : toolkit,
+      });
     } catch (error) {
       fail(res, error);
     }

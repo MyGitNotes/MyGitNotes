@@ -1,4 +1,4 @@
-import { createContext, type Dispatch, type ReactNode, type SetStateAction, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 /** A note the Typst preview may follow. */
 export interface PreviewNote {
@@ -11,19 +11,26 @@ interface PreviewTargetValue {
   enabled: boolean;
   /** The note in the zoomed editor or the active Focus pane. */
   note: PreviewNote | null;
-  publish: Dispatch<SetStateAction<PreviewNote | null>>;
+  /** Names a note while its editor is the active one; the answer takes it back. */
+  register: (note: PreviewNote) => () => void;
 }
 
-const NOTHING: PreviewTargetValue = { enabled: false, note: null, publish: () => {} };
+const NOTHING: PreviewTargetValue = { enabled: false, note: null, register: () => () => {} };
 const PreviewTargetContext = createContext<PreviewTargetValue>(NOTHING);
 
 /**
  * Says whether the workspace offers the Typst preview and carries the note it follows. Without a provider (tests,
  * embedded editors, remote mode) nothing is offered and no preview request is ever made.
  */
-export function TypstPreviewProvider({ enabled, children }: { enabled: boolean; children: ReactNode; }) {
-  const [note, setNote] = useState<PreviewNote | null>(null);
-  const value = useMemo(() => ({ enabled, note: enabled ? note : null, publish: setNote }), [enabled, note]);
+export function TypstPreviewProvider({ enabled, children }: { enabled: boolean; children?: ReactNode; }) {
+  // The most recently activated editor wins; when it leaves, the one it covered (a Focus pane under a zoomed note) is followed again.
+  const [notes, setNotes] = useState<PreviewNote[]>([]);
+  const register = useCallback((note: PreviewNote) => {
+    setNotes(current => [...current, note]);
+    return () => setNotes(current => current.filter(entry => entry !== note));
+  }, []);
+  const note = enabled ? notes.at(-1) ?? null : null;
+  const value = useMemo(() => ({ enabled, note, register }), [enabled, note, register]);
   return <PreviewTargetContext.Provider value={value}>{children}</PreviewTargetContext.Provider>;
 }
 
@@ -38,13 +45,7 @@ export function usePreviewTarget(): PreviewNote | null {
 
 /** Publishes the note an editor shows while `active` (the zoomed editor, or the active Focus pane) as the one the preview follows. */
 export function usePublishPreviewTarget(note: PreviewNote | null, active: boolean): void {
-  const { publish } = useContext(PreviewTargetContext);
+  const { register } = useContext(PreviewTargetContext);
   const notebookId = note?.notebookId, path = note?.path;
-  useEffect(() => {
-    if (!active || !path) return;
-    const published = { notebookId, path };
-    publish(published);
-    // Leaving clears only what this editor published, so a pane that took over meanwhile keeps its note.
-    return () => publish(current => current === published ? null : current);
-  }, [active, notebookId, path, publish]);
+  useEffect(() => active && path ? register({ notebookId, path }) : undefined, [active, notebookId, path, register]);
 }

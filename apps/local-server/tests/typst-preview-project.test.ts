@@ -63,7 +63,7 @@ const project = async (file: string) => (await get('project', file)).json();
 it('answers the project of a note inside it, with its targets and the toolkit', async () => {
   const res = await get('project', 'projects/demo/body.md');
   expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ project: { name: 'demo', targets: ['anon', 'main'], defaultTarget: 'main', bibliographyRevision: expect.stringMatching(/^[a-f0-9]{16}$/) }, toolkit: { ok: true, version: '0.1.6' } });
+  expect(await res.json()).toEqual({ project: { name: 'demo', directory: 'projects/demo', targets: ['anon', 'main'], defaultTarget: 'main', bibliographyRevision: expect.stringMatching(/^[a-f0-9]{16}$/) }, toolkit: { ok: true, version: '0.1.6' } });
   expect(await project('projects/demo/arguments/deep/note.md')).toMatchObject({ project: { name: 'demo' } });
 });
 

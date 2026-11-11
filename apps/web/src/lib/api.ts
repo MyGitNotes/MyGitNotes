@@ -342,6 +342,8 @@ export async function moveAsset(params: { path: string; directory: string; revis
 /** A thesis-toolkit project a note belongs to, as the local server found it (local mode only). */
 export interface TypstPreviewProject {
   name: string;
+  /** The project's directory in its worktree; a note under it belongs to the project. */
+  directory: string;
   targets: string[];
   defaultTarget: string;
   bibliographyRevision: string;

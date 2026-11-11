@@ -3,6 +3,7 @@ import { type NoteListItem } from '@mygitnotes/core/note-query';
 import { adoptGraphDrafts } from '../lib/storage.js';
 import React, { useEffect } from 'react';
 import { fetchGitStatus, saveNote } from '../lib/api.js';
+import { notifyLocalSave } from '../lib/typst-preview/local-save-events.js';
 import type { NoteItem } from '../lib/types.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
 import type { WorkspaceState } from './workspace-state.js';
@@ -39,6 +40,8 @@ export function useNoteSaving({ canWriteNotebook, remote, readDraft, readCommitt
     }
     // Local saves update the working tree for the explicit Commit action.
     const res = await saveNote({ ...params, noCommit: true });
+    // The file is on disk now, which is what the Typst preview compiles.
+    notifyLocalSave({ notebookId: params.notebookId, path: params.path });
     // The local workspace keeps one revision, so its cached query answers are refetched.
     invalidateNotes();
     setEditingNote(prev => prev && sameNote(prev, res.note) ? res.note : prev);
