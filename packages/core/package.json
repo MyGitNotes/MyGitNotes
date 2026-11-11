@@ -111,6 +111,10 @@
       "types": "./dist/tag-ops.d.ts",
       "import": "./dist/tag-ops.js"
     },
+    "./citations": {
+      "types": "./dist/citations.d.ts",
+      "import": "./dist/citations.js"
+    },
     "./task-tokens": {
       "types": "./dist/task-tokens.d.ts",
       "import": "./dist/task-tokens.js"
