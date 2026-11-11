@@ -5,6 +5,7 @@ import { Button } from './components/Button.js';
 import { useOutlineActions } from './app/useOutlineActions.js';
 import { OutlineActionsProvider } from './lib/outline-actions.js';
 import { PiAgentProvider } from './lib/pi-agent/session.js';
+import { TypstPreviewProvider } from './lib/typst-preview/preview-target.js';
 import { AgentFocusCommand } from './components/pi-agent/AgentFocusCommand.js';
 import { AssistantDock } from './components/assistant/AssistantDock.js';
 import { useWebAgentTools } from './app/useWebAgentTools.js';
@@ -873,7 +874,10 @@ export const AppContent: React.FC = () => {
       <AgentFocusCommand />
       <OutlineActionsProvider value={outlineActions.value}>
         <StatusColorProvider statuses={statusEntries}>
-          <PhoneNotesProvider value={phoneNotesValue}>{content}</PhoneNotesProvider>
+          {/* The Typst preview and its citations run on this machine, so only a local workspace has them. */}
+          <TypstPreviewProvider enabled={!remote && !loading}>
+            <PhoneNotesProvider value={phoneNotesValue}>{content}</PhoneNotesProvider>
+          </TypstPreviewProvider>
         </StatusColorProvider>
       </OutlineActionsProvider>
     </PiAgentProvider>

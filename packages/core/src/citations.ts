@@ -171,6 +171,11 @@ function authorLabel(entry: CitationEntry): string {
   return entry.authors.length === 2 ? `${first} 及 ${second}` : `${first} 等`;
 }
 
+/** An entry as a one-item citation prints it, without the parentheses: `Sosa 2007`. */
+export function citationEntryLabel(entry: CitationEntry): string {
+  return `${authorLabel(entry)} ${yearLabel(entry, undefined)}`;
+}
+
 function yearLabel(entry: CitationEntry, locator: string | undefined): string {
   return `${entry.year || 'n.d.'}${locator ? `, ${locator}` : ''}`;
 }

@@ -3,11 +3,15 @@ import type { EditorView } from '@codemirror/view';
 import { DUE_EMOJI, isTaskLine, START_EMOJI } from '../../lib/task-tokens.js';
 import { getAtCompletionItems } from '../../lib/at-completion.js';
 import { chipEditChanged } from './chip-editing.js';
+import { citationKeyAt, citationLibrary } from './citations.js';
 
 export function atCompletionSource(context: CompletionContext): CompletionResult | null {
   const match = context.matchBefore(/@\w*/);
   if (!match || (match.from === match.to && !context.explicit)) return null;
-  const onTaskLine = isTaskLine(context.state.doc.lineAt(match.from).text);
+  const line = context.state.doc.lineAt(match.from);
+  // In a thesis-toolkit project, an `@` inside citation brackets completes a citation key instead.
+  if (context.state.facet(citationLibrary) && citationKeyAt(line.text.slice(0, match.to - line.from)) !== null) return null;
+  const onTaskLine = isTaskLine(line.text);
   const query = match.text.slice(1).toLowerCase();
   const allItems = getAtCompletionItems({ onTaskLine, now: new Date() });
   const items = query ? allItems.filter(item => item.label.toLowerCase().split(' ').some(word => word.startsWith(query))) : allItems;

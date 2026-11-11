@@ -25,6 +25,9 @@ import { atCompletionSource } from './live-markdown/at-completion-source.js';
 import { cjkEmphasis } from './live-markdown/cjk-emphasis.js';
 import { anchorMermaidSwap } from './live-markdown/mermaid-scroll.js';
 import { liveDecorations } from './live-markdown/decorations.js';
+import { citationLibrary } from './live-markdown/citations.js';
+import { citationCompletionSource } from './live-markdown/citation-completion-source.js';
+import { useCitationLibrary } from '../lib/typst-preview/use-citation-library.js';
 import { cardBackgroundLayer, theme } from './live-markdown/theme.js';
 import { attachGutterLineCopy, blockWidgetLineNumbers } from './live-markdown/gutter-line-copy.js';
 import { headingGutter } from './live-markdown/heading-gutter.js';
@@ -116,6 +119,13 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   /* eslint-enable react/refs */
   const permission = useRef(new Compartment());
   const lineNumberGutter = useRef(new Compartment());
+  // The bibliography of the note's thesis-toolkit project, when it is in one; it arrives after the editor opens.
+  const citations = useRef(new Compartment());
+  const library = useCitationLibrary(notebookId, notePath);
+  const currentLibrary = useRef(library);
+  /* eslint-disable react/refs -- The persistent CodeMirror view reads current callbacks and options through refs. */
+  currentLibrary.current = library;
+  /* eslint-enable react/refs */
   const vimBindings = useRef(vimCompartment());
   const copyLinesCallback = useRef(onCopyLines);
   /* eslint-disable react/refs -- The persistent CodeMirror view reads current callbacks and options through refs. */
@@ -248,7 +258,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
                 return span;
               },
             }],
-            override: [atCompletionSource, async context => {
+            override: [citationCompletionSource, atCompletionSource, async context => {
               const text = context.state.doc.toString(), match = noteCompletionAt(text, context.pos);
               if (!match || context.state.readOnly) return null;
               // Typing must not send one query per character; a superseded completion is dropped.
@@ -262,6 +272,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           }),
           EditorView.atomicRanges.of(view => view.state.field(field).decorations.update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof LiveMarkdownTable })),
           permission.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
+          citations.current.of(citationLibrary.of(currentLibrary.current)),
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel, 'role': 'textbox', 'aria-multiline': 'true', 'data-key-scope': 'markdown-editor' }),
           EditorView.domEventHandlers({
             focus: (_event, view) => {
@@ -298,6 +309,9 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   useEffect(() => {
     editor.current?.dispatch({ effects: permission.current.reconfigure([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]) });
   }, [readOnly]);
+  useEffect(() => {
+    editor.current?.dispatch({ effects: citations.current.reconfigure(citationLibrary.of(library)) });
+  }, [library]);
   // The host editor applies the view preferences as CSS variables; CodeMirror caches line heights and the
   // content box, so it re-measures once the new size and width are in the DOM.
   const viewPreferences = useNoteViewPreferences();

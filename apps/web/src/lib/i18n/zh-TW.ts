@@ -1191,6 +1191,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'common.delete': '刪除',
   'common.restore': '還原',
   'common.save': '儲存',
+  'citation.missingKey': '書目中找不到 {key}',
   'links.open': '開啟連結',
   'links.invalid': '無法開啟這個連結。',
   'links.missing': '找不到連結的項目或標題。',

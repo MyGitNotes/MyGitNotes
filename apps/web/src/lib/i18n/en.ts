@@ -1190,6 +1190,7 @@ export const en = {
   'common.delete': 'Delete',
   'common.restore': 'Restore',
   'common.save': 'Save',
+  'citation.missingKey': 'Not in the bibliography: {key}',
   'links.open': 'Open link',
   'links.invalid': 'This link is not supported.',
   'links.missing': 'The linked item or heading was not found.',

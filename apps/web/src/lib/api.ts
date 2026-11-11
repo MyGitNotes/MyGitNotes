@@ -338,3 +338,52 @@ export async function moveAsset(params: { path: string; directory: string; revis
   if (!res.ok) throw new ApiError(data.error || 'Failed to move asset', res.status);
   return data;
 }
+
+/** A thesis-toolkit project a note belongs to, as the local server found it (local mode only). */
+export interface TypstPreviewProject {
+  name: string;
+  targets: string[];
+  defaultTarget: string;
+  bibliographyRevision: string;
+}
+export type TypstToolkitStatus = { ok: true; version: string; } | { ok: false; code: 'missing' | 'too-old' | 'unsupported-platform'; version?: string; };
+export interface TypstPreviewProjectAnswer {
+  project: TypstPreviewProject | null;
+  toolkit?: TypstToolkitStatus;
+}
+export interface TypstCompileResult {
+  ok: boolean;
+  revision?: string;
+  durationMs: number;
+  log: string;
+}
+
+const typstPreviewQuery = (path: string, notebookId?: string) => `path=${encodeURIComponent(path)}${notebookId ? `&notebookId=${encodeURIComponent(notebookId)}` : ''}`;
+
+/** The thesis-toolkit project of a note, or `project: null` for a note outside one. */
+export async function fetchTypstPreviewProject(path: string, notebookId?: string): Promise<TypstPreviewProjectAnswer> {
+  const res = await fetch(`${API_BASE}/typst-preview/project?${typstPreviewQuery(path, notebookId)}`);
+  if (!res.ok) throw await responseError(res, 'Failed to read the Typst project');
+  return res.json();
+}
+
+/** The entries of the bibliography the note's project cites from. */
+export async function fetchTypstBibliography(path: string, notebookId?: string): Promise<{ revision: string; entries: import('@mygitnotes/core/citations').CitationEntry[]; }> {
+  const res = await fetch(`${API_BASE}/typst-preview/bibliography?${typstPreviewQuery(path, notebookId)}`);
+  if (!res.ok) throw await responseError(res, 'Failed to read the bibliography');
+  return res.json();
+}
+
+/** Compiles the note's project from the saved files; answers when the run (or the one queued behind a running one) ends. */
+export async function compileTypstPreview(path: string, notebookId: string | undefined, target: string): Promise<TypstCompileResult> {
+  const res = await fetch(`${API_BASE}/typst-preview/compile`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path, notebookId, target }) });
+  if (!res.ok) throw await responseError(res, 'Failed to compile the preview');
+  return res.json();
+}
+
+/** The PDF of one compiled revision. */
+export async function fetchTypstPreviewPdf(path: string, notebookId: string | undefined, target: string, revision: string): Promise<Uint8Array> {
+  const res = await fetch(`${API_BASE}/typst-preview/pdf?${typstPreviewQuery(path, notebookId)}&target=${encodeURIComponent(target)}&revision=${encodeURIComponent(revision)}`);
+  if (!res.ok) throw await responseError(res, 'Failed to load the preview');
+  return new Uint8Array(await res.arrayBuffer());
+}

@@ -68,6 +68,9 @@ export const theme = EditorView.theme({
   '.live-md-strike': { textDecoration: 'line-through' },
   '.live-md-underline': { textDecoration: 'underline' },
   '.live-md-link, .live-md-link span, .live-md-url': { color: 'var(--color-link)', textDecoration: 'underline' },
+  // A citation drawn as the PDF prints it; clicking it brings its source back. A missing key keeps its source, underlined.
+  '.live-md-citation': { cursor: 'text' },
+  '.live-md-citation-missing, .live-md-citation-missing span': { textDecoration: 'underline dotted', textDecorationColor: 'var(--color-warning)', textUnderlineOffset: '3px' },
   '.live-md-hr': { color: 'var(--color-text)' },
   '.live-md-code': { fontFamily: 'monospace', backgroundColor: 'var(--color-code-bg)', borderRadius: '4px' },
   // Both sides are explicit (not just the extra indent) because .live-md-codeblock is a .cm-line

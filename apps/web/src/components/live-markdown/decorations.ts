@@ -19,6 +19,8 @@ import { LiveMarkdownTable, tableUIState } from '../LiveMarkdownTable.js';
 import { findMath, mathTailLength } from '../../lib/math.js';
 import { type AnnotateOffer, BulletMarker, DateAdder, ExternalLink, MathFormula, MdxImportWidget, MermaidDiagram, PageBreak, PageFooter, RenderedMarkdown, TaskCheckbox, TokenChip, TokenEditor, YouTubeWidget } from './widgets.js';
 import { chipEditState } from './chip-editing.js';
+import { findCitations, formatCitation } from '@mygitnotes/core/citations';
+import { CitationChip, citationLibrary } from './citations.js';
 import { mermaidFenceAt } from './mermaid-fence.js';
 
 /** Inline/reference destinations interpret character references once; bare/autolinks do not. */
@@ -232,6 +234,34 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
     const { from, to, value } = marks[i];
     if (!(value.spec.widget instanceof MermaidDiagram) && mermaidRanges.some(range => from >= range.from && to <= range.to)) marks.splice(i, 1);
     else if (!(value.spec.widget instanceof MathFormula) && mathRanges.some(range => from < to ? from >= range.from && to <= range.to : from > range.from && from < range.to)) marks.splice(i, 1);
+  }
+
+  // In a thesis-toolkit project a citation reads as the PDF prints it; its source returns with the caret, and the text never changes.
+  const library = state.facet(citationLibrary);
+  if (library) {
+    const taken = [...nonMath, ...mermaidRanges, ...mathRanges, ...collapsedDirectives];
+    const citationRanges: { from: number; to: number; }[] = [];
+    for (const citation of findCitations(docText)) {
+      const { from, to } = citation;
+      if (taken.some(range => from < range.to && to > range.from)) continue;
+      // A bare `@name` is a citation only for a key of the bibliography, and on a task line it is an assignee.
+      if (citation.kind === 'narrative' && (!library.get(citation.items[0].key) || isTaskLine(state.doc.lineAt(from).text))) continue;
+      const text = formatCitation(citation, library);
+      if (text === undefined) {
+        const key = citation.items.find(item => !library.get(item.key))!.key;
+        marks.push(Decoration.mark({ class: 'live-md-citation-missing', attributes: { title: t('citation.missingKey', { key }) } }).range(from, to));
+        continue;
+      }
+      if (active(from, to)) continue;
+      citationRanges.push({ from, to });
+      marks.push(Decoration.replace({ widget: new CitationChip(text, docText.slice(from, to)) }).range(from, to));
+    }
+    // What the Markdown parser made of the brackets (a reference link's styling, hidden marks, its open-link button) goes with the source.
+    for (let i = marks.length - 1; i >= 0; i--) {
+      const { from, to, value } = marks[i];
+      if (value.spec.widget instanceof CitationChip) continue;
+      if (citationRanges.some(range => from < to ? from >= range.from && to <= range.to : from > range.from && (from < range.to || (from === range.to && value.spec.widget instanceof ExternalLink)))) marks.splice(i, 1);
+    }
   }
 
   for (const block of collapsedDirectives) {
