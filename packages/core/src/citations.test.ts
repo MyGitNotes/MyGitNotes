@@ -74,8 +74,32 @@ describe('findCitations', () => {
 
   it('finds several citations on one line, as md-cites would', () => {
     expect(found('[@a] 與 [@b]，另見 @a。')).toEqual(['group:[@a] -> a', 'group:[@b] -> b', 'narrative:@a -> a']);
-    // md-cites takes the character after `]` with the group, so the `@b` that follows is not read.
+    // A `@` right after `]` is not a narrative citation.
     expect(found('[@a]@b')).toEqual(['group:[@a] -> a']);
+  });
+
+  it('follows md-cites on links, code, comments and locators (the cases of its own test)', () => {
+    expect(found('甲 [@a,]')).toEqual(['group:[@a,] -> a']);
+    expect(found('甲 @a [] 乙')).toEqual(['narrative:@a [] -> a']);
+    expect(found('甲 @a(2007) 乙')).toEqual(['narrative:@a -> a']);
+    expect(found('甲 @a [連結](http://x.org) 乙')).toEqual(['narrative:@a -> a']);
+    expect(found('甲 @a [連結][ref] 乙')).toEqual(['narrative:@a -> a']);
+    expect(found('[mail me@x.org]')).toEqual([]);
+    expect(found('[@a][ref]')).toEqual([]);
+    expect(found('[^1] 與 [^1]: 註')).toEqual([]);
+    expect(found('甲 [@a]: 乙')).toEqual(['group:[@a] -> a']);
+    expect(found('``code ` @a`` 後 @b 說')).toEqual(['narrative:@b -> b']);
+    expect(found('孤 ` 號 @b 說')).toEqual(['narrative:@b -> b']);
+    expect(found('段落\n\n    code @a')).toEqual([]);
+    expect(found('- 項目\n\n    續 @a 說')).toEqual(['narrative:@a -> a']);
+    expect(found('````\n```\n@a\n```\n@b\n````\n@c')).toEqual(['narrative:@c -> c']);
+    expect(found('<!-- 先拿掉 [@a] 備註 @b -->後 @c 說')).toEqual(['narrative:@c -> c']);
+    expect(found('<!-- 跨行\n@b 還在註解 -->\n@c 說')).toEqual(['narrative:@c -> c']);
+    expect(found('- @a 指出')).toEqual(['narrative:@a -> a']);
+    expect(found('> [@a] 主張')).toEqual(['group:[@a] -> a']);
+    expect(found('a\n@b')).toEqual(['narrative:@b -> b']);
+    expect(found('[see @a, p. 3] 與 @b')).toEqual(['narrative:@b -> b']);
+    expect(found('[@a, x-->y]')).toEqual([]);
   });
 });
 
