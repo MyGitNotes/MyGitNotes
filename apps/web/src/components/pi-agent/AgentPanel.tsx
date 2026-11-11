@@ -9,13 +9,13 @@ import { AgentDialogCard } from './AgentDialogCard.js';
 import { InfoDrawer, InfoToggles, useInfoSection } from './AgentInfo.js';
 import { AgentTranscript, type ChatLinks } from './AgentTranscript.js';
 import { CommandMenu } from './CommandMenu.js';
-import { BUILTIN_COMMANDS, matchCommands, parseComposerInput, type PiCommand, slashQuery } from '../../lib/pi-agent/commands.js';
+import { BUILTIN_COMMANDS, isSkillCommand, matchCommands, parseComposerInput, type PiCommand, slashQuery } from '../../lib/pi-agent/commands.js';
 import { type PiContextUsage, type PiEditorText, type PiLocation, type PiSessionInfo, usePiAgent } from '../../lib/pi-agent/session.js';
 import { draftKey, useAgentDraft } from '../../lib/pi-agent/draft.js';
-import { acceptedTypes, addFiles, type Attachment, attachmentFiles, attachmentImages, type AttachmentProblem, thumbnailUrl } from '../../lib/pi-agent/attachments.js';
+import { acceptedTypes, addFiles, type Attachment, attachmentFiles, attachmentImages, type AttachmentProblem, imageBytes, thumbnailUrl } from '../../lib/pi-agent/attachments.js';
 import { sameWorkspace, workspaceKey, workspaceName } from '../../lib/agent-workspaces.js';
 import { useAgentInputFocusRequest } from '../../lib/pi-agent/input-focus.js';
-import { type AgentFocus, focusLabel, selectionPosition } from '../../lib/pi-agent/transcript.js';
+import { type AgentFocus, type AttachedFile, focusLabel, selectionPosition } from '../../lib/pi-agent/transcript.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { FEATURE_IDS, useAgentModelSetup, useFeatureGate } from '../../lib/web-features.js';
 import './pi-agent.css';
@@ -134,6 +134,9 @@ function fromCwd(absolute: string, cwd: string | undefined): string {
 }
 
 /** The agent panel, or the reason an edition's gate gives for withholding it (an upgrade prompt, say). */
+/** Files that come back to the message box with a held or taken-back message; a PDF's page pictures return as images of their own. */
+const restoredFiles = (files: readonly AttachedFile[], key: string) => files.map((file, index): Attachment => ({ kind: 'file', id: `${key}-file-${index}`, name: file.name, size: file.text.length, file, images: [] }));
+
 const PI_PROVIDERS_URL = 'https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md';
 
 /** Takes the message box's place while Pi has no model it can call: the edition's guidance, else Pi's own setup. */
@@ -215,6 +218,8 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   /** Images and files waiting to go with the next message, and why the last file offered was left out or cut. */
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachProblems, setAttachProblems] = useState<AttachmentProblem[]>([]);
+  /** Files still being read, a PDF taking a while; nothing is sent until they are in. */
+  const [readingFiles, setReadingFiles] = useState(0);
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState(savedContextMode);
@@ -239,9 +244,9 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
     setShownEditorText(editorText);
     setDraft(editorText.text);
     // The images and files of a message that was held while Pi started come back with its text; a PDF's page pictures come back as images.
-    const images = editorText.images ?? [], files = editorText.files ?? [];
-    if (images.length || files.length) {
-      setAttachments(current => [...current, ...images.map((image, index): Attachment => ({ kind: 'image', id: `held-${editorText.serial}-${index}`, name: 'image', size: Math.floor(image.data.length * 3 / 4), image })), ...files.map((file, index): Attachment => ({ kind: 'file', id: `held-${editorText.serial}-file-${index}`, name: file.name, size: file.text.length, file, images: [] }))]);
+    const images = editorText.images ?? [];
+    if (images.length || editorText.files?.length) {
+      setAttachments(current => [...current, ...images.map((image, index): Attachment => ({ kind: 'image', id: `held-${editorText.serial}-${index}`, name: 'image', size: imageBytes(image), image })), ...restoredFiles(editorText.files ?? [], `held-${editorText.serial}`)]);
     }
   }
   useEffect(() => {
@@ -258,11 +263,15 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   const reading = useRef<Promise<void>>(Promise.resolve());
   const attach = (files: File[]) => {
     if (!files.length) return;
+    setReadingFiles(count => count + 1);
     reading.current = reading.current.then(async () => {
-      const added = await addFiles(latestAttachments.current, files, { images: readsImages });
-      latestAttachments.current = added.attachments;
-      setAttachments(added.attachments);
+      const before = latestAttachments.current;
+      const added = await addFiles(before, files, { images: readsImages });
+      // Only the new ones are added, to the list as it is now: one sent or removed while a PDF was read stays gone.
+      const fresh = added.attachments.slice(before.length);
+      setAttachments(current => (latestAttachments.current = [...current, ...fresh]));
       setAttachProblems(added.problems);
+      setReadingFiles(count => count - 1);
     });
   };
   const removeAttachment = (id: string) => {
@@ -331,11 +340,15 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   const send = () => {
     const text = draft.trim();
     if (!text && !attachments.length) return;
-    // A shell run or built-in has nowhere to put images or files, so they stay for the message that follows.
+    if (readingFiles) return;
+    // A shell run or built-in has nowhere to put images or files, so they stay for the message that follows; files go
+    // with a message or a skill only, since another command splits its arguments into words.
     const kind = parseComposerInput(text).kind;
     const carries = kind === 'message' || kind === 'command';
-    const images = carries ? attachmentImages(attachments) : [];
-    const files = carries ? attachmentFiles(attachments) : [];
+    const carriesFiles = kind === 'message' || isSkillCommand(text);
+    const sent = carriesFiles ? attachments : carries ? attachments.filter(attachment => attachment.kind === 'image') : [];
+    const images = attachmentImages(sent);
+    const files = attachmentFiles(sent);
     // Images kept from a model that read them stay in the box; a model that cannot read them gets nothing until they are removed.
     if (images.length && !agent.modelState.images) {
       setAttachProblems([{ kind: 'model', name: '' }]);
@@ -344,8 +357,9 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
     if (files.length ? agent.send(text, focus, images, files) : images.length ? agent.send(text, focus, images) : agent.send(text, focus)) {
       storedDraft.retain();
       setDraft('');
-      if (carries) setAttachments([]);
-      setAttachProblems([]);
+      const kept = attachments.filter(attachment => !sent.includes(attachment));
+      setAttachments(current => (latestAttachments.current = current.filter(attachment => !sent.includes(attachment))));
+      setAttachProblems(carries && kept.some(attachment => attachment.kind === 'file') ? [{ kind: 'command', name: '' }] : []);
     } // A built-in that is not ready to send, /name without a name, waits for its argument.
     else if (kind === 'builtin') setDraft(`${text} `);
   };
@@ -512,6 +526,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                 ))}
               </ul>
             )}
+            {readingFiles > 0 && <LoadingStatus className='pi-agent-attach-reading'>{t('piAgent.attachment.reading')}</LoadingStatus>}
             {attachProblems.length > 0 && <ul role='alert' className='pi-agent-attach-problems'>{attachProblems.map((problem, index) => <li key={index}>{t(`piAgent.attachment.${problem.kind}` as const, { name: problem.name, limit: 'limit' in problem ? problem.limit : '' })}</li>)}</ul>}
             <div className='pi-agent-input'>
               {menuOpen && <CommandMenu id={menuId} commands={matches} highlight={active} onPick={pick} />}
@@ -591,9 +606,10 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                   size='small'
                   onClick={async () => {
                     const restored = await agent.abort();
-                    if (restored) {
-                      setDraft(current => current.trim() ? `${restored}\n\n${current}` : restored);
+                    if (restored.text) {
+                      setDraft(current => current.trim() ? `${restored.text}\n\n${current}` : restored.text);
                     }
+                    if (restored.files.length) setAttachments(current => (latestAttachments.current = [...current, ...restoredFiles(restored.files, `taken-${crypto.randomUUID()}`)]));
                   }}
                   title={t(agent.transcript.queued.length ? 'piAgent.abortQueued' : 'piAgent.abort')}
                 >
@@ -601,7 +617,7 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                   {t('piAgent.abort')}
                 </Button>
               )}
-              <Button type='submit' variant='primary' size='small' disabled={!draft.trim() && attachments.length === 0}>{shell ? <SquareTerminal aria-hidden='true' /> : <Send aria-hidden='true' />}{t(shell ? 'piAgent.run' : agent.transcript.running ? 'piAgent.steer' : 'piAgent.send')}</Button>
+              <Button type='submit' variant='primary' size='small' disabled={readingFiles > 0 || (!draft.trim() && attachments.length === 0)} title={readingFiles > 0 ? t('piAgent.attachment.reading') : undefined}>{shell ? <SquareTerminal aria-hidden='true' /> : <Send aria-hidden='true' />}{t(shell ? 'piAgent.run' : agent.transcript.running ? 'piAgent.steer' : 'piAgent.send')}</Button>
             </div>
           </div>
         </form>

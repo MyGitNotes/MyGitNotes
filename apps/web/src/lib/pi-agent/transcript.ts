@@ -120,6 +120,7 @@ const escapeName = (name: string) => name.replace(/[\r\n]+/g, ' ').replaceAll('&
 const unescapeName = (name: string) => name.replaceAll('&quot;', '"').replaceAll('&amp;', '&');
 // A file that names the tag itself cannot end its block early or start a new one.
 const escapeContent = (text: string) => text.replace(/<(\/?)attached-file/g, '&lt;$1attached-file');
+const unescapeContent = (text: string) => text.replace(/&lt;(\/?)attached-file/g, '<$1attached-file');
 
 /**
  * Appends files to a message, each as an `<attached-file>` block, after what the person typed. Pi gets them as text,
@@ -130,13 +131,39 @@ export function withFiles(text: string, files: readonly AttachedFile[]): string 
   return [text, ...blocks].filter(Boolean).join('\n\n');
 }
 
-const FILES_PATTERN = /(?:^|\n\n)((?:<attached-file name="[^"]*">\n[\s\S]*?\n<\/attached-file>(?:\n\n|$))+)$/;
+const FILE_OPEN = /<attached-file name="([^"]*)">\n/g;
+const FILE_CLOSE = '\n</attached-file>';
 
-/** Splits the files {@link withFiles} appended back off a message, for display: the text before them and their names. */
+/**
+ * Takes the files {@link withFiles} wrote out of a message, wherever they stand (messages held while Pi started are
+ * joined, so blocks may sit between texts): the text around them, joined, and each file. A block opens at the start
+ * of the message or after a blank line; its content cannot hold the closing line, which {@link withFiles} escapes,
+ * so each block ends at the first one, and the scan is linear.
+ */
+export function takeFiles(message: string): { text: string; files: AttachedFile[]; } {
+  const files: AttachedFile[] = [];
+  const texts: string[] = [];
+  let at = 0;
+  FILE_OPEN.lastIndex = 0;
+  for (let open = FILE_OPEN.exec(message); open; open = FILE_OPEN.exec(message)) {
+    const close = message.indexOf(FILE_CLOSE, open.index + open[0].length);
+    const standalone = open.index === 0 || message.startsWith('\n\n', open.index - 2);
+    const end = close + FILE_CLOSE.length;
+    if (!standalone || close < 0 || (end < message.length && !message.startsWith('\n\n', end))) continue;
+    texts.push(message.slice(at, open.index));
+    files.push({ name: unescapeName(open[1]), text: unescapeContent(message.slice(open.index + open[0].length, close)) });
+    at = end;
+    FILE_OPEN.lastIndex = end;
+  }
+  if (!files.length) return { text: message, files };
+  texts.push(message.slice(at));
+  return { text: texts.map(text => text.trim()).filter(Boolean).join('\n\n'), files };
+}
+
+/** Splits the files {@link withFiles} appended back off a message, for display: the text around them and their names. */
 export function splitFiles(message: string): { text: string; files?: string[]; } {
-  const match = FILES_PATTERN.exec(message);
-  if (!match) return { text: message };
-  return { text: message.slice(0, match.index), files: [...match[1].matchAll(/<attached-file name="([^"]*)">\n/g)].map(name => unescapeName(name[1])) };
+  const { text, files } = takeFiles(message);
+  return files.length ? { text, files: files.map(file => file.name) } : { text: message };
 }
 
 const SKILL_PATTERN = /^<skill name="([^"]+)" location="[^"]*">\n[\s\S]*?\n<\/skill>(?:\n\n|$)/;

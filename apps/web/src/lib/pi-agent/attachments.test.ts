@@ -65,7 +65,7 @@ describe('text and code files', () => {
     const first = await addFiles([], [file('a.txt', 'text/plain', 'x'.repeat(MAX_ATTACHED_TEXT - 10)), file('b.txt', 'text/plain', 'y'.repeat(30))], withImages);
     expect(first.problems).toEqual([{ kind: 'truncated', name: 'b.txt' }]);
     const cut = attachmentFiles(first.attachments)[1].text;
-    expect(cut).toBe(`${'y'.repeat(10)}\n[cut: only the first 10 of 30 characters are attached]`);
+    expect(cut).toBe(`${'y'.repeat(10)}\n[cut: the rest of this file is not attached]`);
     const second = await addFiles(first.attachments, [file('c.txt', 'text/plain', 'z')], withImages);
     expect(second.attachments).toHaveLength(2);
     expect(second.problems).toEqual([{ kind: 'textTotal', name: 'c.txt' }]);
@@ -81,10 +81,10 @@ describe('PDFs', () => {
   const body = 'A paragraph of the report with enough letters.';
 
   it('puts the text of each page under its number, and draws a page without text as an image for a model that reads them', async () => {
-    const { pdf, openPdf, renderPage } = fakePdf([body, '  ', '3', `${body}\n${body}`]);
+    const { pdf, openPdf, renderPage } = fakePdf([body, '  ', '', '3', `${body}\n${body}`]);
     const { attachments, problems } = await addFiles([], [file('report.pdf', 'application/pdf', '%PDF')], { images: true, openPdf, renderPage });
     expect(problems).toEqual([]);
-    expect(attachmentFiles(attachments)).toEqual([{ name: 'report.pdf', text: `[PDF, 4 pages]\n\n[page 1]\n${body}\n\n[page 2: no text layer; its picture is attached as an image]\n\n[page 3: no text layer; its picture is attached as an image]\n3\n\n[page 4]\n${body}\n${body}` }]);
+    expect(attachmentFiles(attachments)).toEqual([{ name: 'report.pdf', text: `[PDF, 5 pages]\n\n[page 1]\n${body}\n\n[page 2: no text layer; its picture is attached as an image]\n\n[page 3: no text layer; its picture is attached as an image]\n\n[page 4]\n3\n\n[page 5]\n${body}\n${body}` }]);
     expect(renderPage.mock.calls.map(call => call[1])).toEqual([2, 3]);
     expect(attachmentImages(attachments)).toEqual([picture(2), picture(3)]);
     expect(pdf.destroy).toHaveBeenCalledOnce();
@@ -104,14 +104,30 @@ describe('PDFs', () => {
     expect(problems).toEqual([{ kind: 'pages', name: 'report.pdf' }]);
   });
 
-  it('draws pages only while the images of the message have room', async () => {
+  it('draws pages only while the images of the message have room, and none after one found no room', async () => {
     const images = await addFiles([], Array.from({ length: MAX_ATTACHMENTS - 1 }, (_, index) => file(`${index}.png`, 'image/png')), withImages);
-    const { openPdf, renderPage } = fakePdf(['', '', body]);
+    const { openPdf, renderPage } = fakePdf(['', '', body, '']);
     const { attachments, problems } = await addFiles(images.attachments, [file('scan.pdf', 'application/pdf')], { images: true, openPdf, renderPage });
     expect(attachmentImages(attachments)).toHaveLength(MAX_ATTACHMENTS);
     expect(renderPage).toHaveBeenCalledOnce();
     expect(attachmentFiles(attachments)[0].text).toContain('[page 2: no text layer; not attached]');
+    expect(attachmentFiles(attachments)[0].text).toContain('[page 4: no text layer; not attached]');
     expect(problems).toEqual([{ kind: 'pages', name: 'scan.pdf' }]);
+  });
+
+  it('stops reading pages once the text passes what the message may still take, and cuts it there', async () => {
+    const pages = Array.from({ length: 50 }, () => 'p'.repeat(MAX_ATTACHED_TEXT / 10));
+    const { pdf, openPdf } = fakePdf(pages);
+    const read = vi.spyOn(pdf, 'text');
+    const { attachments, problems } = await addFiles([], [file('book.pdf', 'application/pdf')], { images: false, openPdf });
+    expect(read.mock.calls.length).toBeLessThanOrEqual(11);
+    expect(attachmentFiles(attachments)[0].text.endsWith('\n[cut: the rest of this file is not attached]')).toBe(true);
+    expect(problems).toEqual([{ kind: 'truncated', name: 'book.pdf' }]);
+  });
+
+  it('never cuts a character in half', async () => {
+    const { attachments } = await addFiles([], [file('a.txt', 'text/plain', 'x'.repeat(MAX_ATTACHED_TEXT - 1)), file('emoji.txt', 'text/plain', '😀😀')], { images: false });
+    expect(attachmentFiles(attachments)[1].text).toBe('\n[cut: the rest of this file is not attached]');
   });
 
   it('refuses a PDF with nothing to read, a locked one and a broken one, naming why', async () => {

@@ -288,14 +288,15 @@ it('takes queued messages back before stopping the run, and resolves with their 
     socket.readyState = FakeSocket.OPEN;
     socket.onopen?.();
   });
-  let restored: Promise<string> | undefined;
+  let restored: Promise<{ text: string; files: unknown[]; }> | undefined;
   act(() => {
     restored = agent.current!.abort();
   });
   const clear = socket.sent.find(command => command.type === 'clear_queue')!;
   expect(socket.sent.indexOf(clear)).toBeLessThan(socket.sent.findIndex(command => command.type === 'abort'));
-  act(() => socket.receive({ type: 'response', id: clear.id, command: 'clear_queue', success: true, data: { steering: ['<editor-context>\nfile: notes/a.md\n</editor-context>\n\nlook here'], followUp: ['then this'] } }));
-  await expect(restored).resolves.toBe('look here\n\nthen this');
+  act(() => socket.receive({ type: 'response', id: clear.id, command: 'clear_queue', success: true, data: { steering: ['<editor-context>\nfile: notes/a.md\n</editor-context>\n\nlook here'], followUp: ['then this\n\n<attached-file name="plan.md">\n# Plan\n</attached-file>'] } }));
+  // The files a queued message carried come back whole, to return to the message box with its text.
+  await expect(restored).resolves.toEqual({ text: 'look here\n\nthen this', files: [{ name: 'plan.md', text: '# Plan' }] });
 });
 
 async function opened() {
@@ -512,7 +513,7 @@ it('returns the images of a held message to the message box with its text when P
 
 const notes = { name: 'notes.md', text: '# Notes' };
 
-it("appends a message's files to its text after the focus, for a command too, and none to a shell run", async () => {
+it("appends a message's files to its text after the focus, for a skill too, and none to another command or a shell run", async () => {
   const { agent, socket } = await opened();
   const sent = () => socket.sent.at(-1) as Record<string, unknown>;
   act(() => void agent.current!.send('read this', { file: 'notes/a.md' }, [], [notes]));
@@ -521,6 +522,12 @@ it("appends a message's files to its text after the focus, for a command too, an
   expect(sent()).toEqual({ id: expect.any(String), type: 'prompt', message: '<attached-file name="notes.md">\n# Notes\n</attached-file>', images: [png] });
   act(() => void agent.current!.send('/skill:review look', undefined, [], [notes]));
   expect(sent()).toMatchObject({ type: 'prompt', message: '/skill:review look\n\n<attached-file name="notes.md">\n# Notes\n</attached-file>' });
+  // Pi takes a skill's name up to the first space, so files without arguments still follow one.
+  act(() => void agent.current!.send('/skill:review', undefined, [], [notes]));
+  expect(sent()).toMatchObject({ type: 'prompt', message: '/skill:review <attached-file name="notes.md">\n# Notes\n</attached-file>' });
+  // A prompt template would split a file into words, so another command takes none.
+  act(() => void agent.current!.send('/template a', undefined, [], [notes]));
+  expect(sent()).toMatchObject({ type: 'prompt', message: '/template a' });
   act(() => void agent.current!.send('!ls', undefined, [], [notes]));
   expect(sent()).toEqual({ id: expect.any(String), type: 'bash', command: 'ls' });
 });

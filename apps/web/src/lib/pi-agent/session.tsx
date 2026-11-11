@@ -7,8 +7,8 @@ import type { AgentWorkspace } from '../agent-workspaces.js';
 import { FEATURE_IDS, useFeatureGate } from '../web-features.js';
 import { frameBytes, imagesWithinLimits, MAX_FRAME_BYTES, type PiImage } from './attachments.js';
 import type { CaretStore } from './caret-store.js';
-import { commandsFromResponse, commandWithFocus, parseComposerInput, type PiCommand } from './commands.js';
-import { type AgentDialog, type AgentFocus, applyRecord, type AttachedFile, emptyTranscript, queuedText, startShell, transcriptFromMessages, type TranscriptState, withFiles, withFocus } from './transcript.js';
+import { commandsFromResponse, commandWithFocus, isSkillCommand, parseComposerInput, type PiCommand } from './commands.js';
+import { type AgentDialog, type AgentFocus, applyRecord, type AttachedFile, emptyTranscript, queuedText, startShell, takeFiles, transcriptFromMessages, type TranscriptState, withFiles, withFocus } from './transcript.js';
 
 /** Where Pi runs: an agent workspace, a folder of one repository (`folder` empty for its root). */
 export interface PiLocation {
@@ -129,6 +129,12 @@ export interface PiContextUsage {
   percent: number | null;
 }
 
+/** Queued messages taken back: their texts as typed, joined, and the files they carried, which return to the message box. */
+export interface TakenBack {
+  text: string;
+  files: AttachedFile[];
+}
+
 /** Text an extension placed in the message box (`set_editor_text`); `serial` tells a repeat of the same text apart. */
 export interface PiEditorText {
   text: string;
@@ -179,8 +185,9 @@ export interface PiAgentValue {
   wake: () => void;
   /**
    * Sends what the message box holds, read as Pi's terminal editor reads it (see parseComposerInput); returns false
-   * when it is not complete enough to send, such as /name without a name, or Pi is not connected. `images` and `files`
-   * (appended to the text, see withFiles) go with a message or a command Pi expands; a shell run or built-in takes none.
+   * when it is not complete enough to send, such as /name without a name, or Pi is not connected. `images` go with a
+   * message or a command Pi expands, and `files` (appended to the text, see withFiles) with a message or a skill; a shell
+   * run or built-in takes none.
    */
   send: (text: string, focus?: AgentFocus, images?: readonly PiImage[], files?: readonly AttachedFile[]) => boolean;
   /** A message sent before Pi was ready, which goes once Pi connects; if Pi fails to start it returns to the message box. */
@@ -194,8 +201,8 @@ export interface PiAgentValue {
   editorText: PiEditorText | null;
   /** Marks `text` as placed in the message box, so a panel opened later does not place it again. */
   takeEditorText: (text: PiEditorText) => void;
-  /** Stops the run after taking back the messages still queued, as Esc does in Pi's terminal; resolves with their text. */
-  abort: () => Promise<string>;
+  /** Stops the run after taking back the messages still queued, as Esc does in Pi's terminal; resolves with their text and files. */
+  abort: () => Promise<TakenBack>;
   answer: (dialog: AgentDialog, answer: DialogAnswer) => void;
   newConversation: () => void;
   end: () => Promise<void>;
@@ -352,7 +359,7 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
   const sessionId = useRef<string | null>(null);
   const pending = useRef(new Map<string, 'messages' | 'state'>());
   /** `clear_queue` requests waiting for the queued text they take back. */
-  const takenBack = useRef(new Map<string, (text: string) => void>());
+  const takenBack = useRef(new Map<string, (taken: TakenBack) => void>());
 
   const disconnect = useCallback(() => {
     const current = socket.current;
@@ -441,7 +448,8 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       if (restore) {
         takenBack.current.delete(record.id as string);
         const data = (record.data ?? {}) as { steering?: unknown[]; followUp?: unknown[]; };
-        restore([...data.steering ?? [], ...data.followUp ?? []].map(text => queuedText(String(text))).join('\n\n'));
+        const messages = [...data.steering ?? [], ...data.followUp ?? []].map(String);
+        restore({ text: messages.map(queuedText).join('\n\n'), files: messages.flatMap(message => takeFiles(message).files) });
         return;
       }
       const request = typeof record.id === 'string' && record.type === 'response' ? pending.current.get(record.id) : undefined;
@@ -598,13 +606,14 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
     wake,
     send: (text, focus, images = [], files = []) => {
       const input = parseComposerInput(text);
-      const prompt = input.kind === 'message' || input.kind === 'command' ? withFiles(input.text, files) : '';
       // Before Pi connects a message or command waits, starting Pi if none runs; the built-ins and shell runs need Pi itself.
       const waiting = socket.current?.readyState !== WebSocket.OPEN && (startingNow.current || (session ? session.status !== 'exited' : ready));
       if (waiting && (input.kind === 'message' || input.kind === 'command')) {
-        const message = input.kind === 'message' ? withFocus(prompt, focus) : commandWithFocus(prompt, focus);
+        const message = input.kind === 'message' ? withFocus(withFiles(input.text, files), focus) : commandWithFocus(input.text, focus, files);
+        // Only a message or a skill carries files (see commandWithFocus), so only theirs come back if Pi fails to start.
+        const carried = input.kind === 'message' || isSkillCommand(input.text) ? files : [];
         const before = heldMessage.current;
-        const merged = before ? { text: `${before.text}\n\n${text}`, message: `${before.message}\n\n${message}`, images: [...before.images, ...images], files: [...before.files, ...files] } : { text, message, images: [...images], files: [...files] };
+        const merged = before ? { text: `${before.text}\n\n${text}`, message: `${before.message}\n\n${message}`, images: [...before.images, ...images], files: [...before.files, ...carried] } : { text, message, images: [...images], files: [...carried] };
         // Merging must not make a frame the server refuses; the held message stays as it was and the new one stays in the box.
         if (!imagesWithinLimits(merged.images) || frameBytes(JSON.stringify({ id: crypto.randomUUID(), type: 'prompt', message: merged.message, ...promptImages(merged.images) })) > MAX_FRAME_BYTES) {
           setError(HELD_TOO_LARGE_TO_ADD);
@@ -633,9 +642,9 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
           if (input.args) return command({ type: 'set_session_name', name: input.args });
           return false;
         case 'command':
-          return command({ type: 'prompt', message: commandWithFocus(prompt, focus), ...promptImages(images), ...steer });
+          return command({ type: 'prompt', message: commandWithFocus(input.text, focus, files), ...promptImages(images), ...steer });
         case 'message':
-          return command({ type: 'prompt', message: withFocus(prompt, focus), ...promptImages(images), ...steer });
+          return command({ type: 'prompt', message: withFocus(withFiles(input.text, files), focus), ...promptImages(images), ...steer });
       }
     },
     held,
@@ -648,11 +657,11 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       const ws = socket.current;
       if (ws?.readyState !== WebSocket.OPEN) {
         command({ type: 'abort' });
-        return Promise.resolve('');
+        return Promise.resolve({ text: '', files: [] });
       }
       // Queued messages would otherwise run on their own once the run stops; they go back to the message box instead.
       const id = crypto.randomUUID();
-      const taken = new Promise<string>(resolve => takenBack.current.set(id, resolve));
+      const taken = new Promise<TakenBack>(resolve => takenBack.current.set(id, resolve));
       ws.send(JSON.stringify({ id, type: 'clear_queue' }));
       command({ type: 'abort' });
       return taken;

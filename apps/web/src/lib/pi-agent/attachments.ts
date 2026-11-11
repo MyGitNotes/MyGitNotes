@@ -56,8 +56,6 @@ export const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024;
  * limit beside the images, and a share of a model's context a person can still see coming.
  */
 export const MAX_ATTACHED_TEXT = 200_000;
-/** A PDF page with fewer letters than this has no real text layer, such as a scan with a page number. */
-export const MIN_PAGE_TEXT = 16;
 /** The longest side of a PDF page drawn as a picture, in pixels; vision models scale larger images down to about this. */
 export const PAGE_IMAGE_EDGE = 1568;
 
@@ -68,7 +66,7 @@ export const MAX_FRAME_BYTES = 15.5 * 1024 * 1024;
 export const frameBytes = (frame: string) => new TextEncoder().encode(frame).length;
 
 /** The bytes an image's base64 decodes to, its `=` padding left out. */
-const imageBytes = (image: PiImage) => Math.floor(image.data.length * 3 / 4) - (image.data.endsWith('==') ? 2 : image.data.endsWith('=') ? 1 : 0);
+export const imageBytes = (image: PiImage) => Math.floor(image.data.length * 3 / 4) - (image.data.endsWith('==') ? 2 : image.data.endsWith('=') ? 1 : 0);
 
 /** Whether images together stay inside the count and size limits a single message is held to, measured from their base64. */
 export function imagesWithinLimits(images: readonly PiImage[]): boolean {
@@ -87,7 +85,7 @@ export const attachmentFiles = (attachments: readonly Attachment[]) => attachmen
  * file's start, `pages` keeps a PDF whose pages without text found no room as pictures, and `imageModel` refuses an
  * image for a model that cannot read one.
  */
-export type AttachmentProblem = { kind: 'size'; name: string; limit: string; } | { kind: 'model' | 'imageModel' | 'type' | 'total' | 'count' | 'read' | 'password' | 'empty' | 'textTotal' | 'truncated' | 'pages'; name: string; };
+export type AttachmentProblem = { kind: 'size'; name: string; limit: string; } | { kind: 'model' | 'imageModel' | 'command' | 'type' | 'total' | 'count' | 'read' | 'password' | 'empty' | 'textTotal' | 'truncated' | 'pages'; name: string; };
 
 function readBase64(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -138,10 +136,11 @@ async function readText(file: File, name: string): Promise<Read> {
 }
 
 /**
- * The text of every page of a PDF, each under a `[page N]` line. A page without text is drawn as a picture while the
- * model reads images and `room` has space for one; otherwise its line says it was left out.
+ * The text of every page of a PDF, each under a `[page N]` line, until it holds `room.text` characters (the rest would
+ * be cut). A page without text is drawn as a picture while the model reads images and `room` has space for one;
+ * otherwise, and after one picture found no room, its line says it was left out.
  */
-async function readPdf(file: File, name: string, options: AddFilesOptions, room: { count: number; bytes: number; }): Promise<Read> {
+async function readPdf(file: File, name: string, options: AddFilesOptions, room: { count: number; bytes: number; text: number; }): Promise<Read> {
   if (file.size > MAX_PDF_BYTES) return { problem: { kind: 'size', name, limit: megabytes(MAX_PDF_BYTES) } };
   let pdf: PdfDocument;
   try {
@@ -150,24 +149,27 @@ async function readPdf(file: File, name: string, options: AddFilesOptions, room:
     return { problem: { kind: error instanceof PdfLoadError && error.code === 'password' ? 'password' : 'read', name } };
   }
   const parts: string[] = [], images: PiImage[] = [];
-  let missing = 0, textPages = 0;
+  let missing = 0, textPages = 0, length = 0, drawing = options.images;
   try {
-    for (let page = 1; page <= pdf.pageCount; page++) {
+    for (let page = 1; page <= pdf.pageCount && length <= room.text; page++) {
       const text = (await pdf.text(page)).trim();
-      if (text.replace(/\s/g, '').length >= MIN_PAGE_TEXT) {
+      if (text) {
         textPages++;
         parts.push(`[page ${page}]\n${text}`);
-        continue;
-      }
-      const image = options.images && room.count > images.length ? await (options.renderPage ?? renderPageImage)(pdf, page).catch(() => undefined) : undefined;
-      if (image && imageBytes(image) <= MAX_ATTACHMENT_BYTES && imageBytes(image) <= room.bytes) {
-        images.push(image);
-        room.bytes -= imageBytes(image);
-        parts.push(`[page ${page}: no text layer; its picture is attached as an image]${text ? `\n${text}` : ''}`);
       } else {
-        missing++;
-        parts.push(`[page ${page}: no text layer; not attached]${text ? `\n${text}` : ''}`);
+        const image = drawing && room.count > images.length ? await (options.renderPage ?? renderPageImage)(pdf, page).catch(() => undefined) : undefined;
+        if (image && imageBytes(image) <= MAX_ATTACHMENT_BYTES && imageBytes(image) <= room.bytes) {
+          images.push(image);
+          room.bytes -= imageBytes(image);
+          parts.push(`[page ${page}: no text layer; its picture is attached as an image]`);
+        } else {
+          // Once one page finds no room, later ones would not either, so none is drawn just to be dropped.
+          drawing = false;
+          missing++;
+          parts.push(`[page ${page}: no text layer; not attached]`);
+        }
       }
+      length += parts.at(-1)!.length + 2;
     }
   } catch {
     return { problem: { kind: 'read', name } };
@@ -215,13 +217,15 @@ export async function addFiles(existing: readonly Attachment[], files: readonly 
       problems.push({ kind: 'textTotal', name });
       continue;
     }
-    const read = isPdf(file) ? await readPdf(file, name, options, { count: MAX_ATTACHMENTS - images().length, bytes: MAX_ATTACHMENTS_BYTES - imageTotal() }) : await readText(file, name);
+    const read = isPdf(file) ? await readPdf(file, name, options, { count: MAX_ATTACHMENTS - images().length, bytes: MAX_ATTACHMENTS_BYTES - imageTotal(), text: room }) : await readText(file, name);
     if ('problem' in read) {
       problems.push(read.problem);
       continue;
     }
     const cut = read.text.length > room;
-    const text = cut ? `${read.text.slice(0, room)}\n[cut: only the first ${room} of ${read.text.length} characters are attached]` : read.text;
+    // A cut between the two halves of a surrogate pair would leave half a character.
+    const kept = cut ? read.text.slice(0, /[\uD800-\uDBFF]/.test(read.text[room - 1]) ? room - 1 : room) : read.text;
+    const text = cut ? `${kept}\n[cut: the rest of this file is not attached]` : read.text;
     attachments.push({ kind: 'file', id: crypto.randomUUID(), name, size: file.size, file: { name, text }, images: read.images });
     problems.push(...read.problems, ...cut ? [{ kind: 'truncated' as const, name }] : []);
   }
