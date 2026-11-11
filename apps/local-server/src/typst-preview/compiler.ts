@@ -55,7 +55,8 @@ function hookProcessEnd(): void {
   if (hooked) return;
   hooked = true;
   const disposeAll = () => {
-    for (const compiler of [...compilers]) compiler.dispose();
+    // dispose() takes the compiler out of the set, which a Set allows while it is being walked.
+    for (const compiler of compilers) compiler.dispose();
   };
   process.on('exit', disposeAll);
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
