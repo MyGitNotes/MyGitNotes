@@ -158,10 +158,7 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
         // Along the chain the nearest folder wins a shared skill name, as Pi loads them.
         const chosen = new Map<string, (typeof listing.files)[number]>();
         for (const folder of [...folders].reverse()) for (const file of listing.files) if (file.kind === 'skill' && file.folder === folder && file.skill && !chosen.has(file.skill)) chosen.set(file.skill, file);
-        const [files, skills] = await Promise.all([
-          Promise.all(instructions.map(async file => ({ path: file.path, content: (await readAgentResource(file.path, repository)).content }))),
-          Promise.all([...chosen.values()].sort((a, b) => a.skill!.localeCompare(b.skill!)).map(async file => ({ name: file.skill!, description: skillDescription((await readAgentResource(file.path, repository)).content), path: file.path, directory: file.path.slice(0, -'/SKILL.md'.length) }))),
-        ]);
+        const [files, skills] = await Promise.all([Promise.all(instructions.map(async file => ({ path: file.path, content: (await readAgentResource(file.path, repository)).content }))), Promise.all([...chosen.values()].sort((a, b) => a.skill!.localeCompare(b.skill!)).map(async file => ({ name: file.skill!, description: skillDescription((await readAgentResource(file.path, repository)).content), path: file.path, directory: file.path.slice(0, -'/SKILL.md'.length) })))]);
         return { workspace: { repository, folder: directory }, ...notebookId ? { notebookId } : {}, ...listing.revision ? { revision: listing.revision } : {}, files, skills };
       }
       case 'read_agent_file': {

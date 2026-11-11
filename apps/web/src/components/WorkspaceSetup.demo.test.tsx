@@ -71,13 +71,8 @@ it('writes the language cookie before any request, then opens the workspace for 
   expect(requests).toEqual(['/api/auth/session', '/api/auth/session', '/api/workspace']);
 });
 
-it('takes the language of a notebook or scenario the address names over the app\'s, writing it before any request and switching the app to it', async () => {
-  for (const [path, stored, cookie, app] of [
-    ['/demo/notebooks/demo~trpg-en?focus=trpg-en-table', 'zh-TW', 'en', 'en'],
-    ['/demo/notebooks/demo~trpg-zh-tw', 'en', 'zh-tw', 'zh-TW'],
-    ['/demo/notebooks/demo%7Econtract-zh-tw/notes/index.md', 'en', 'zh-tw', 'zh-TW'],
-    ['/demo/study-zh-tw', 'en', 'zh-tw', 'zh-TW'],
-  ] as const) {
+it("takes the language of a notebook or scenario the address names over the app's, writing it before any request and switching the app to it", async () => {
+  for (const [path, stored, cookie, app] of [['/demo/notebooks/demo~trpg-en?focus=trpg-en-table', 'zh-TW', 'en', 'en'], ['/demo/notebooks/demo~trpg-zh-tw', 'en', 'zh-tw', 'zh-TW'], ['/demo/notebooks/demo%7Econtract-zh-tw/notes/index.md', 'en', 'zh-tw', 'zh-TW'], ['/demo/study-zh-tw', 'en', 'zh-tw', 'zh-TW']] as const) {
     history.replaceState(null, '', path);
     localStorage.setItem('github-notes:language', stored);
     document.cookie = 'mygitnotes_demo=; Max-Age=0; Path=/';

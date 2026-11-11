@@ -553,7 +553,7 @@ describe('pane sizes', () => {
     const parsed = FocusLayoutSchema.parse({ root: split('s', 'horizontal', sized(40, 'p1', note('a.md')), leaf('p2', note('b.md')), leaf('p3')) });
     expect(parsed).toEqual({ root: split('s', 'horizontal', leaf('p1', note('a.md')), leaf('p2', note('b.md')), leaf('p3')) });
   });
-  it('gives a split\'s size to the only child that replaces it, and drops the sizes of a flattened split', () => {
+  it("gives a split's size to the only child that replaces it, and drops the sizes of a flattened split", () => {
     const lone = { root: split('s', 'horizontal', sized(30, 'p1'), { ...split('t', 'vertical', leaf('p2', note('a.md'))), size: 70 }) };
     expect(FocusLayoutSchema.parse(lone)).toEqual({ root: split('s', 'horizontal', sized(30, 'p1'), sized(70, 'p2', note('a.md'))) });
     const nested = { root: split('s', 'horizontal', sized(30, 'p1'), { ...split('t', 'horizontal', sized(50, 'p2'), sized(50, 'p3')), size: 70 }) };
@@ -573,7 +573,6 @@ describe('pane sizes', () => {
     expect(plain.kind === 'split' && displaySizes(plain)).toBeUndefined();
   });
 });
-
 
 describe('sizes in the stored file', () => {
   const sized = (size: number, id: string, ...tabs: Tab[]) => ({ ...leaf(id, ...tabs), size });

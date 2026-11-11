@@ -8,14 +8,13 @@ vi.mock('typebox', () => {
   return { Type: { Object: schema, String: schema, Optional: schema, Record: schema, Unknown: schema } };
 });
 
-interface Call { tool: string; arguments: Record<string, unknown>; }
+interface Call {
+  tool: string;
+  arguments: Record<string, unknown>;
+}
 type Handler = (event: { systemPrompt: string; }) => Promise<{ systemPrompt: string; } | undefined>;
 
-const agentSystem = {
-  workspace: { repository: 'github:me/notes@main', folder: '' },
-  files: [{ path: 'AGENTS.md', content: 'Root rules.\n' }, { path: 'blog/AGENTS.md', content: 'Blog rules.\n' }],
-  skills: [{ name: 'post', description: 'Write a post', path: 'blog/.agents/skills/post/SKILL.md', directory: 'blog/.agents/skills/post' }],
-};
+const agentSystem = { workspace: { repository: 'github:me/notes@main', folder: '' }, files: [{ path: 'AGENTS.md', content: 'Root rules.\n' }, { path: 'blog/AGENTS.md', content: 'Blog rules.\n' }], skills: [{ name: 'post', description: 'Write a post', path: 'blog/.agents/skills/post/SKILL.md', directory: 'blog/.agents/skills/post' }] };
 
 let server: Server | undefined;
 let calls: Call[];

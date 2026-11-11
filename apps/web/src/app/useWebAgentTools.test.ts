@@ -93,22 +93,8 @@ it('refuses a note with typing not yet saved, a read-only notebook, and a path o
 
 // The agent system of a repository: root and blog instructions, a root skill, and a blog skill that shadows a root one.
 const other: WorkspaceRepository = { ...repository, id: 'github:me/docs@main', alias: 'docs', repository: 'me/docs', notebooks: ['docs~all'] };
-const agentFiles = [
-  { path: '.agents/skills/post/SKILL.md', folder: '', kind: 'skill', skill: 'post' },
-  { path: '.agents/skills/review/SKILL.md', folder: '', kind: 'skill', skill: 'review' },
-  { path: 'AGENTS.md', folder: '', kind: 'instructions' },
-  { path: 'blog/.agents/skills/post/SKILL.md', folder: 'blog', kind: 'skill', skill: 'post' },
-  { path: 'blog/.agents/skills/post/references/style.md', folder: 'blog', kind: 'reference', skill: 'post' },
-  { path: 'blog/AGENTS.md', folder: 'blog', kind: 'instructions' },
-].map(file => ({ ...file, editable: true }));
-const agentContents: Record<string, string> = {
-  'AGENTS.md': 'Root rules.\n',
-  'blog/AGENTS.md': 'Blog rules.\n',
-  '.agents/skills/post/SKILL.md': '---\nname: post\ndescription: Root post\n---\n\nBody.\n',
-  '.agents/skills/review/SKILL.md': '---\nname: review\ndescription: >-\n  Review a draft\n  before it ships.\n---\n',
-  'blog/.agents/skills/post/SKILL.md': '---\nname: post\ndescription: Blog post\n---\n',
-  'blog/.agents/skills/post/references/style.md': 'Short sentences.\n',
-};
+const agentFiles = [{ path: '.agents/skills/post/SKILL.md', folder: '', kind: 'skill', skill: 'post' }, { path: '.agents/skills/review/SKILL.md', folder: '', kind: 'skill', skill: 'review' }, { path: 'AGENTS.md', folder: '', kind: 'instructions' }, { path: 'blog/.agents/skills/post/SKILL.md', folder: 'blog', kind: 'skill', skill: 'post' }, { path: 'blog/.agents/skills/post/references/style.md', folder: 'blog', kind: 'reference', skill: 'post' }, { path: 'blog/AGENTS.md', folder: 'blog', kind: 'instructions' }].map(file => ({ ...file, editable: true }));
+const agentContents: Record<string, string> = { 'AGENTS.md': 'Root rules.\n', 'blog/AGENTS.md': 'Blog rules.\n', '.agents/skills/post/SKILL.md': '---\nname: post\ndescription: Root post\n---\n\nBody.\n', '.agents/skills/review/SKILL.md': '---\nname: review\ndescription: >-\n  Review a draft\n  before it ships.\n---\n', 'blog/.agents/skills/post/SKILL.md': '---\nname: post\ndescription: Blog post\n---\n', 'blog/.agents/skills/post/references/style.md': 'Short sentences.\n' };
 
 function agentTools() {
   const config = { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }, { id: 'blog~posts', title: 'Posts', root: 'blog/posts' }, { id: 'docs~all', title: 'Docs', root: 'notes' }] } as never;
@@ -131,10 +117,7 @@ it("answers a note's agent system: the instructions from the root down, and the 
   expect(result.workspace).toEqual({ repository: repository.id, folder: 'blog/posts' });
   expect(result.notebookId).toBe('blog~posts');
   expect(result.files).toEqual([{ path: 'AGENTS.md', content: 'Root rules.\n' }, { path: 'blog/AGENTS.md', content: 'Blog rules.\n' }]);
-  expect(result.skills).toEqual([
-    { name: 'post', description: 'Blog post', path: 'blog/.agents/skills/post/SKILL.md', directory: 'blog/.agents/skills/post' },
-    { name: 'review', description: 'Review a draft before it ships.', path: '.agents/skills/review/SKILL.md', directory: '.agents/skills/review' },
-  ]);
+  expect(result.skills).toEqual([{ name: 'post', description: 'Blog post', path: 'blog/.agents/skills/post/SKILL.md', directory: 'blog/.agents/skills/post' }, { name: 'review', description: 'Review a draft before it ships.', path: '.agents/skills/review/SKILL.md', directory: '.agents/skills/review' }]);
 });
 
 it('leaves out the folders a path is not inside, and takes a folder path with or without a slash for its notebook root', async () => {

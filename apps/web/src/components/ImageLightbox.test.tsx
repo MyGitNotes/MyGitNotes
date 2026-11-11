@@ -4,11 +4,14 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ImageLightbox } from './ImageLightbox.js';
 
 beforeEach(() => {
-  vi.stubGlobal('ResizeObserver', class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  });
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
 });
 afterEach(() => {
   cleanup();

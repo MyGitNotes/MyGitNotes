@@ -171,9 +171,7 @@ export function RepositoryAddFlow({ members, onAdded, onStale, onShow }: Reposit
   }
   // An edition that leads with its own choices keeps the platform picker behind a toggle under them; the picker is not even loaded until it is opened.
   const advanced = options.length > 0 && additions.some(feature => feature.platformAdvanced);
-  const picker = (withNotice: boolean) => (
-    <RepositoryChooser actionLabel={t('repositories.add')} busyLabel={t('repositories.adding')} onChoose={(repository, branch) => add(repository.fullName, branch)} members={members.members} {...(onShow ? { onShow } : {})} {...(blockedReason ? { showBlocked: blockedReason } : {})} notice={withNotice ? notice : null} blocked={full} />
-  );
+  const picker = (withNotice: boolean) => <RepositoryChooser actionLabel={t('repositories.add')} busyLabel={t('repositories.adding')} onChoose={(repository, branch) => add(repository.fullName, branch)} members={members.members} {...(onShow ? { onShow } : {})} {...(blockedReason ? { showBlocked: blockedReason } : {})} notice={withNotice ? notice : null} blocked={full} />;
   if (advanced) {
     return (
       <div className='flex flex-col gap-4'>
@@ -186,11 +184,5 @@ export function RepositoryAddFlow({ members, onAdded, onStale, onShow }: Reposit
       </div>
     );
   }
-  return (
-    <div className='flex flex-col gap-4'>
-      {options.length > 0 && <div className='flex flex-col gap-3 pb-4 border-b border-line' data-repository-add-options>{options}</div>}
-      {options.length > 0 && <p className='text-xs text-muted -mb-2'>{t('repositories.orFromPlatform')}</p>}
-      {picker(true)}
-    </div>
-  );
+  return <div className='flex flex-col gap-4'>{options.length > 0 && <div className='flex flex-col gap-3 pb-4 border-b border-line' data-repository-add-options>{options}</div>}{options.length > 0 && <p className='text-xs text-muted -mb-2'>{t('repositories.orFromPlatform')}</p>}{picker(true)}</div>;
 }

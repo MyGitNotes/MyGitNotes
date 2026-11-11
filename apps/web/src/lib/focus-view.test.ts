@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type FocusDivision, type FocusLayout, type FocusNode, type FocusTab, legacyFocusTree } from '@mygitnotes/core/focus-page';
-import { activatePane, openingSizes, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasRestoredFocus, isEmptyFocus, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
+import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, displayedPanes, emptyFocusView, entryView, type FocusEntryView, type FocusViewState, focusViewStorageKey, groupShown, hasRestoredFocus, isEmptyFocus, openingSizes, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
 const note = (path: string): FocusTab => ({ kind: 'note', path });
 const lane = (id: string): FocusTab => ({ kind: 'note', path: `notes/${id}.compilation.yml` });
@@ -382,4 +382,3 @@ describe('sizes a Focus opens with', () => {
     expect(splitRatios({}, before, after, 'p2', 'p3')).toEqual({ s: { p1: 25, p2: 37.5, p3: 37.5 } });
   });
 });
-
