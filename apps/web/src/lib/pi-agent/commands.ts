@@ -1,4 +1,4 @@
-import { type AgentFocus, withFocus } from './transcript.js';
+import { type AgentFocus, type AttachedFile, withFiles, withFocus } from './transcript.js';
 
 /**
  * A slash command the panel offers. Pi reports its extension commands, prompt templates and skills through
@@ -30,14 +30,21 @@ export function parseComposerInput(text: string): ComposerInput {
   return { kind: 'message', text: trimmed };
 }
 
+const SKILL_COMMAND = /^(\/skill:\S+)(?:\s+([\s\S]*))?$/;
+
+/** Whether a command is a skill, the one kind of command whose arguments Pi passes on as they are, files included. */
+export const isSkillCommand = (text: string) => SKILL_COMMAND.test(text.trim());
+
 /**
  * A command as Pi should receive it. Pi recognizes a command only at the very start of the message, so the editor
- * context never goes before one; a skill still gets it inside its arguments, which Pi appends after the skill.
+ * context never goes before one; a skill still gets it and its files inside its arguments, which Pi appends after the
+ * skill, a space after the name since Pi takes the name up to the first space. Another command takes neither: a prompt
+ * template splits its arguments into words, which would break a file's lines apart.
  */
-export function commandWithFocus(text: string, focus: AgentFocus | undefined): string {
-  const skill = /^(\/skill:\S+)(?:\s+([\s\S]*))?$/.exec(text);
-  if (!skill || !focus) return text;
-  return `${skill[1]} ${withFocus(skill[2] ?? '', focus)}`;
+export function commandWithFocus(text: string, focus: AgentFocus | undefined, files: readonly AttachedFile[] = []): string {
+  const skill = SKILL_COMMAND.exec(text);
+  if (!skill || (!focus && !files.length)) return text;
+  return `${skill[1]} ${withFocus(withFiles(skill[2] ?? '', files), focus)}`;
 }
 
 /** The command name being typed, while the message is still just `/` and a name; undefined once arguments start. */

@@ -288,14 +288,15 @@ it('takes queued messages back before stopping the run, and resolves with their 
     socket.readyState = FakeSocket.OPEN;
     socket.onopen?.();
   });
-  let restored: Promise<string> | undefined;
+  let restored: Promise<{ text: string; files: unknown[]; }> | undefined;
   act(() => {
     restored = agent.current!.abort();
   });
   const clear = socket.sent.find(command => command.type === 'clear_queue')!;
   expect(socket.sent.indexOf(clear)).toBeLessThan(socket.sent.findIndex(command => command.type === 'abort'));
-  act(() => socket.receive({ type: 'response', id: clear.id, command: 'clear_queue', success: true, data: { steering: ['<editor-context>\nfile: notes/a.md\n</editor-context>\n\nlook here'], followUp: ['then this'] } }));
-  await expect(restored).resolves.toBe('look here\n\nthen this');
+  act(() => socket.receive({ type: 'response', id: clear.id, command: 'clear_queue', success: true, data: { steering: ['<editor-context>\nfile: notes/a.md\n</editor-context>\n\nlook here'], followUp: ['then this\n\n<attached-file name="plan.md">\n# Plan\n</attached-file>'] } }));
+  // The files a queued message carried come back whole, to return to the message box with its text.
+  await expect(restored).resolves.toEqual({ text: 'look here\n\nthen this', files: [{ name: 'plan.md', text: '# Plan' }] });
 });
 
 async function opened() {
@@ -508,6 +509,47 @@ it('returns the images of a held message to the message box with its text when P
   act(() => void agent.current!.send('look', undefined, [png]));
   await waitFor(() => expect(agent.current?.editorText?.text).toBe('look'));
   expect(agent.current?.editorText?.images).toEqual([png]);
+});
+
+const notes = { name: 'notes.md', text: '# Notes' };
+
+it("appends a message's files to its text after the focus, for a skill too, and none to another command or a shell run", async () => {
+  const { agent, socket } = await opened();
+  const sent = () => socket.sent.at(-1) as Record<string, unknown>;
+  act(() => void agent.current!.send('read this', { file: 'notes/a.md' }, [], [notes]));
+  expect(sent()).toEqual({ id: expect.any(String), type: 'prompt', message: '<editor-context>\nfile: notes/a.md\n</editor-context>\n\nread this\n\n<attached-file name="notes.md">\n# Notes\n</attached-file>' });
+  act(() => void agent.current!.send('', undefined, [png], [notes]));
+  expect(sent()).toEqual({ id: expect.any(String), type: 'prompt', message: '<attached-file name="notes.md">\n# Notes\n</attached-file>', images: [png] });
+  act(() => void agent.current!.send('/skill:review look', undefined, [], [notes]));
+  expect(sent()).toMatchObject({ type: 'prompt', message: '/skill:review look\n\n<attached-file name="notes.md">\n# Notes\n</attached-file>' });
+  // Pi takes a skill's name up to the first space, so files without arguments still follow one.
+  act(() => void agent.current!.send('/skill:review', undefined, [], [notes]));
+  expect(sent()).toMatchObject({ type: 'prompt', message: '/skill:review <attached-file name="notes.md">\n# Notes\n</attached-file>' });
+  // A prompt template would split a file into words, so another command takes none.
+  act(() => void agent.current!.send('/template a', undefined, [], [notes]));
+  expect(sent()).toMatchObject({ type: 'prompt', message: '/template a' });
+  act(() => void agent.current!.send('!ls', undefined, [], [notes]));
+  expect(sent()).toEqual({ id: expect.any(String), type: 'bash', command: 'ls' });
+});
+
+it('sends the files of a held message once the socket opens, and returns them with its text when Pi fails to start', async () => {
+  const agent = mount([], undefined, false);
+  await waitFor(() => expect(agent.current?.available).toBe(true));
+  act(() => void agent.current!.send('first', undefined, [], [notes]));
+  await waitFor(() => expect(FakeSocket.last).toBeDefined());
+  const socket = FakeSocket.last!;
+  act(() => {
+    socket.readyState = FakeSocket.OPEN;
+    socket.onopen?.();
+  });
+  expect(socket.sent.at(-1)).toMatchObject({ type: 'prompt', message: 'first\n\n<attached-file name="notes.md">\n# Notes\n</attached-file>' });
+  cleanup();
+  localStorage.setItem('mygitnotes.piAgent.location', JSON.stringify({ repository: home, folder: 'flaky' }));
+  const failing = mount([], undefined, false);
+  await waitFor(() => expect(failing.current?.available).toBe(true));
+  act(() => void failing.current!.send('look', undefined, [], [notes]));
+  await waitFor(() => expect(failing.current?.editorText?.text).toBe('look'));
+  expect(failing.current?.editorText?.files).toEqual([notes]);
 });
 
 it('does not take a message as sent once the session has ended, so the message box keeps it', async () => {

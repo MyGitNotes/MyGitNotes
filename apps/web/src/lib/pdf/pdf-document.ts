@@ -33,6 +33,8 @@ export interface PdfDocument {
   pageSize(page: number): Promise<PdfPageSize>;
   /** Draws `page` into `canvas`, sizing the canvas to `cssWidth` times `pixelRatio` (reduced to stay under {@link MAX_CANVAS_PIXELS}). */
   render(page: number, canvas: HTMLCanvasElement, options: { cssWidth: number; pixelRatio: number; }): PdfRender;
+  /** The text layer of `page` in reading order, a line break where pdf.js reports one; empty for a page of pictures alone. */
+  text(page: number): Promise<string>;
   destroy(): Promise<void>;
 }
 
@@ -133,6 +135,11 @@ class Document implements PdfDocument {
         task?.cancel();
       },
     };
+  }
+
+  async text(page: number): Promise<string> {
+    const content = await (await this.proxy.getPage(page)).getTextContent();
+    return content.items.map(item => 'str' in item ? item.str + (item.hasEOL ? '\n' : '') : '').join('');
   }
 
   async destroy(): Promise<void> {

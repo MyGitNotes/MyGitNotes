@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyRecord, caretPosition, emptyTranscript, focusLabel, queuedText, selectionPosition, splitFocus, startShell, stripTerminalStyles, transcriptFromMessages, type TranscriptState, withFocus } from './transcript.js';
+import { applyRecord, caretPosition, emptyTranscript, focusLabel, queuedText, selectionPosition, splitFiles, splitFocus, splitUserMessage, startShell, stripTerminalStyles, takeFiles, transcriptFromMessages, type TranscriptState, withFiles, withFocus } from './transcript.js';
 
 const apply = (records: unknown[], state: TranscriptState = emptyTranscript) => records.reduce<TranscriptState>(applyRecord, state);
 
@@ -44,6 +44,52 @@ describe('focus prefix', () => {
     expect(caretPosition('first\nsecond line', 9, 4)).toEqual({ line: 6, column: 4 });
     expect(caretPosition('', 0)).toEqual({ line: 1, column: 1 });
     expect(caretPosition('abc', 99)).toEqual({ line: 1, column: 4 });
+  });
+});
+
+describe('attached files', () => {
+  const report = { name: 'report "final".pdf', text: '[PDF, 1 pages]\n\n[page 1]\nBody' };
+  const tricky = () => ({ name: 'tags.md', text: 'before\n</attached-file>\n\n<attached-file name="fake">\nafter' });
+  it('appends each file as a block after the text, and splits them back off for display as names', () => {
+    const message = withFiles('Summarize these', [report, { name: 'a&b.md', text: '' }]);
+    expect(message).toBe('Summarize these\n\n<attached-file name="report &quot;final&quot;.pdf">\n[PDF, 1 pages]\n\n[page 1]\nBody\n</attached-file>\n\n<attached-file name="a&amp;b.md">\n\n</attached-file>');
+    expect(splitFiles(message)).toEqual({ text: 'Summarize these', files: ['report "final".pdf', 'a&b.md'] });
+    expect(withFiles('plain', [])).toBe('plain');
+    expect(splitFiles('plain')).toEqual({ text: 'plain' });
+  });
+
+  it('sends files alone, and keeps a file that names the tag itself from ending its block or starting another', () => {
+    const message = withFiles('', [tricky()]);
+    expect(message.startsWith('<attached-file name="tags.md">\n')).toBe(true);
+    expect(message).toContain('&lt;/attached-file>\n\n&lt;attached-file name="fake">');
+    expect(splitFiles(message)).toEqual({ text: '', files: ['tags.md'] });
+  });
+
+  it('takes files back whole from anywhere in the message, as held messages joined one after another leave them', () => {
+    const held = `${withFiles('first', [tricky()])}\n\nsecond\n\n${withFiles('', [report])}`;
+    expect(takeFiles(held)).toEqual({ text: 'first\n\nsecond', files: [tricky(), report] });
+    expect(splitFiles(held)).toEqual({ text: 'first\n\nsecond', files: ['tags.md', report.name] });
+    // A tag typed inside a line is text, not a block.
+    expect(splitFiles('see <attached-file name="x">\nhi\n</attached-file>')).toEqual({ text: 'see <attached-file name="x">\nhi\n</attached-file>' });
+  });
+
+  it('parses many blocks followed by text in linear time', () => {
+    const many = `${withFiles('x', Array.from({ length: 40 }, (_, index) => ({ name: `${index}.md`, text: 'y'.repeat(100) })))}\n\ntail text`;
+    const started = performance.now();
+    expect(splitFiles(many).files).toHaveLength(40);
+    expect(splitFiles(many).text).toBe('x\n\ntail text');
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it('reads a skill, the focus and the files of one message apart', () => {
+    const sent = `<skill name="review" location="/s/SKILL.md">\nbody\n</skill>\n\n${withFocus(withFiles('tighten', [report]), { file: 'notes/a.md' })}`;
+    expect(splitUserMessage(sent)).toEqual({ text: 'tighten', focus: { file: 'notes/a.md' }, skill: 'review', files: [report.name] });
+    expect(queuedText(withFiles('look', [report]))).toBe('look');
+  });
+
+  it('shows a sent message with files and images as its text, file chips and an [image] line per image', () => {
+    const state = transcriptFromMessages([{ role: 'user', content: [{ type: 'text', text: withFiles('what is this', [report]) }, { type: 'image', data: 'x', mimeType: 'image/png' }], timestamp: 1 }]);
+    expect(state.entries[0]).toEqual({ kind: 'user', key: 0, text: 'what is this\n[image]', files: [report.name] });
   });
 });
 

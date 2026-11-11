@@ -31,3 +31,13 @@ it('opens every document on one shared PDFWorker, and destroying a document leav
   await second.destroy();
   await third.destroy();
 });
+
+it('reads the text layer of a page, and none from a page that only draws', async () => {
+  const pdf = await openPdfBytes(new Uint8Array(readFileSync(new URL('../annotations/fixtures/pdf/scanned.pdf', import.meta.url))));
+  expect((await pdf.text(1)).trim()).toBe('A page of typed text');
+  expect(await pdf.text(2)).toBe('');
+  const pages = await openPdfBytes(bytes());
+  expect(await pages.text(2)).toContain('A4 landscape, 842 x 595');
+  await pdf.destroy();
+  await pages.destroy();
+});
