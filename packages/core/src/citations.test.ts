@@ -115,6 +115,14 @@ describe('findCitations', () => {
   });
 });
 
+describe('findCitations on a long line', () => {
+  it('stays linear on a long unclosed bracket', () => {
+    const started = performance.now();
+    expect(findCitations('[' + '字'.repeat(80_000))).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+});
+
 describe('formatCitation', () => {
   it('copies the default author-date style', () => {
     expect(shown('[@sosa2007]')).toEqual(['(Sosa 2007)']);

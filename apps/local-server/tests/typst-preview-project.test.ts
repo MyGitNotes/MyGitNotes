@@ -101,6 +101,12 @@ it('answers no project when the bibliography or the Typst root is a symlink out 
   expect(await project('projects/demo/body.md')).toEqual({ project: null });
 });
 
+it('answers no project when its references.generated.bib is a symlink out of the worktree', async () => {
+  fs.writeFileSync(path.join(outside, 'victim.txt'), 'keep me');
+  fs.symlinkSync(path.join(outside, 'victim.txt'), path.join(root, 'projects/demo/references.generated.bib'));
+  expect(await project('projects/demo/body.md')).toEqual({ project: null });
+});
+
 it('answers no project for a project whose name would be read as a flag', async () => {
   expect(await project('projects/-w/body.md')).toEqual({ project: null });
 });

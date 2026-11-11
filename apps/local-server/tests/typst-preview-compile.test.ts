@@ -22,6 +22,7 @@ const control = JSON.parse(fs.readFileSync(path.join(here, 'control.json'), 'utf
 const body = fs.readFileSync(path.join(process.cwd(), 'projects', process.argv[3], 'body.md'), 'utf8');
 fs.appendFileSync(path.join(here, 'runs.jsonl'), JSON.stringify({ argv: process.argv.slice(1), env: Object.keys(process.env), cwd: process.cwd(), pid: process.pid }) + '\\n');
 if (control.ignoreTerm) process.on('SIGTERM', () => {});
+if (control.grandchildMs) require('node:child_process').spawn('sleep', [String(control.grandchildMs / 1000)], { stdio: 'inherit' });
 console.log('compiling ' + process.argv[3] + ' ' + process.argv[4]);
 setTimeout(() => {
   if (body.includes('[@missing]')) {
@@ -31,7 +32,7 @@ setTimeout(() => {
   fs.writeFileSync(process.argv[process.argv.indexOf('--output') + 1], '%PDF-1.4\\n' + body);
 }, control.sleepMs);
 `;
-const control = (value: { sleepMs: number; ignoreTerm?: boolean; }) => write('node_modules/thesis-toolkit/control.json', JSON.stringify(value));
+const control = (value: { sleepMs: number; ignoreTerm?: boolean; grandchildMs?: number; }) => write('node_modules/thesis-toolkit/control.json', JSON.stringify(value));
 const runs = (): { argv: string[]; env: string[]; cwd: string; pid: number; }[] => {
   const file = path.join(root, 'node_modules/thesis-toolkit/runs.jsonl');
   return fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
@@ -196,6 +197,37 @@ it('kills a run that outlasts the timeout, with SIGKILL when it ignores SIGTERM'
     expect(stubborn.ok).toBe(false);
     expect(alive(runs()[1]!.pid)).toBe(false);
     expect(compiler.pdf('k')).toBeUndefined();
+  } finally {
+    compiler.dispose();
+  }
+});
+
+it('frees its slot within the timeout when the toolkit leaves a child holding its output', async () => {
+  const compiler = new PreviewCompiler({ timeoutMs: 300, killGraceMs: 200 });
+  try {
+    control({ sleepMs: 60_000, ignoreTerm: true, grandchildMs: 8000 });
+    const started = performance.now();
+    const result = await compiler.compile(job());
+    expect(result.ok).toBe(false);
+    expect(performance.now() - started).toBeLessThan(3000);
+  } finally {
+    compiler.dispose();
+  }
+});
+
+it('never runs two compiles of one queue at once, whatever their keys', async () => {
+  const compiler = new PreviewCompiler();
+  try {
+    control({ sleepMs: 300 });
+    const first = compiler.compile({ ...job(), key: 'a', queue: 'demo' });
+    await until(() => runs().length === 1);
+    const second = compiler.compile({ ...job(), key: 'b', queue: 'demo' });
+    await new Promise(resolve => setTimeout(resolve, 150));
+    expect(runs()).toHaveLength(1);
+    expect((await Promise.all([first, second])).map(result => result.ok)).toEqual([true, true]);
+    expect(runs()).toHaveLength(2);
+    expect(compiler.pdf('a')).toBeDefined();
+    expect(compiler.pdf('b')).toBeDefined();
   } finally {
     compiler.dispose();
   }

@@ -120,6 +120,8 @@ export function findPreviewProject(worktreeRoot: string, noteRelPath: string, lo
   if (!directories(projectsReal).includes(name)) return refuse(`project "${name}" is not a plain directory name`);
   const projectDir = path.join(projectsReal, name);
   if (!contained(rootReal, projectDir) || !contained(rootReal, path.join(projectDir, 'src'))) return refuse(`project "${name}" resolves outside the worktree`);
+  // The toolkit writes the project's bibliography subset here and follows a link, so the file must stay inside too.
+  if (!contained(rootReal, path.join(projectDir, 'references.generated.bib'))) return refuse(`project "${name}" writes its bibliography outside the worktree`);
   const targets = directories(path.join(projectDir, 'src')).filter(target => {
     const main = path.join(projectDir, 'src', target, 'main.typ');
     return fs.statSync(main, { throwIfNoEntry: false })?.isFile() && contained(rootReal, main);

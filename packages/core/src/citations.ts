@@ -39,7 +39,9 @@ const WORD_CHAR = 'A-Za-z0-9._\\\\@/:=?&%+-';
 // The same alternatives, in the same order, as zh-journal's `_cite-pattern`:
 // 1-2 cmarker's `[locator][@key]`; 3 a bracketed group; 4 brackets with text before the `@` (`[see @a]`, never a
 // citation); 5-7 a bare `@key` with an optional `[locator]`, not inside an email or URL.
-const CITE_SOURCE = `\\[([^\\[\\]]*)\\]\\[@(${CITATION_KEY_SOURCE})\\]` + `|\\[(\\s*-?@${CITATION_KEY_SOURCE}[^\\[\\]]*)\\]` + `|\\[([^\\[\\]@]*[^\\s\\[\\]@][^\\[\\]@]*@${CITATION_KEY_SOURCE}[^\\[\\]]*)\\]` + `|(^|[^${WORD_CHAR}\\[\\]])@(${CITATION_KEY_SOURCE})(?:\\s*\\[([^\\[\\]@^]*)\\])?`;
+// Alternative 4 (`[see @a]`, text before the key) is tried after alternative 3 at the same `[`, so it never sees a
+// blank prefix and needs no non-space class of its own; that class made it quadratic on a long unclosed `[`.
+const CITE_SOURCE = `\\[([^\\[\\]]*)\\]\\[@(${CITATION_KEY_SOURCE})\\]` + `|\\[(\\s*-?@${CITATION_KEY_SOURCE}[^\\[\\]]*)\\]` + `|\\[([^\\[\\]@]*@${CITATION_KEY_SOURCE}[^\\[\\]]*)\\]` + `|(^|[^${WORD_CHAR}\\[\\]])@(${CITATION_KEY_SOURCE})(?:\\s*\\[([^\\[\\]@^]*)\\])?`;
 const CITE_ITEM = new RegExp(`^\\s*(-?)@(${CITATION_KEY_SOURCE})\\s*(?:,\\s*(.*?))?\\s*$`, 'u');
 // As in Pandoc, the line after the opening `---` is not blank, so a note that opens with a thematic break keeps its text.
 const FRONT_MATTER_CLOSE = '(?:---|\\.\\.\\.)[ \\t]*(?:\\r?\\n|$)';

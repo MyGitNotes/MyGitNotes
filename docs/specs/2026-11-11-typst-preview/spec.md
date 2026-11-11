@@ -42,6 +42,7 @@ Remote and hosted workspaces; editing `.typ` files; citations in the read-only r
 
 ## Known limits
 
-- thesis-toolkit 0.1.6 runs `typst` with `spawnSync` and does not forward signals, so a compile stopped by the 60 s timeout or by the server ending can leave its `typst` process to finish on its own.
+- Each run is its own process group, so the timeout and the server's exit or signal reach the toolkit and its `typst` together. A server ended with SIGKILL runs no hook, and a compile already running finishes on its own.
+- The editor reads citations line by line, before the template joins wrapped lines, so a bracketed group wrapped across lines is a citation in the PDF and plain text in the editor.
 - Typst stamps each PDF, so two compiles of the same text give two revisions.
 - The first compile downloads `@preview/cmarker`; offline it fails with Typst's network error in the log.

@@ -26,6 +26,7 @@ function fail(res: Response, error: unknown): void {
 
 /** Names one project and target of one configuration file; a run and its PDF are kept under it. */
 const jobKey = (project: PreviewProject, target: string) => createHash('sha256').update(`${project.configFile}\0${project.name}\0${target}`).digest('hex');
+const queueKey = (project: PreviewProject) => createHash('sha256').update(`${project.configFile}\0${project.name}`).digest('hex');
 
 /** The target a request names when the project, as just read from disk, has it. */
 const knownTarget = (project: PreviewProject, target: unknown): string | undefined => typeof target === 'string' && project.targets.includes(target) ? target : undefined;
@@ -78,7 +79,7 @@ export function createTypstPreviewRouter(compiler = new PreviewCompiler()): Rout
       if (!target) return res.status(400).json({ error: 'target must be one of the targets of the project.' });
       const toolkit = findToolkit(root, project.configDir);
       if (!toolkit.ok) return res.status(409).json({ error: SETUP_MESSAGES[toolkit.code], code: toolkit.code });
-      res.json(await compiler.compile({ key: jobKey(project, target), cli: toolkit.cli, cwd: project.configDir, project: project.name, target }));
+      res.json(await compiler.compile({ key: jobKey(project, target), queue: queueKey(project), cli: toolkit.cli, cwd: project.configDir, project: project.name, target }));
     } catch (error) {
       fail(res, error);
     }

@@ -16,8 +16,13 @@ const ENVIRONMENT = ['PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'TMPDIR', 'XDG_CA
 
 /** One compile to run. Every value comes from the detected project and the installed toolkit, none from a request. */
 export interface CompileJob {
-  /** Names the project and target; runs with one key never overlap, and its PDF is kept under it. */
+  /** Names the project and target; its PDF is kept under it. */
   key: string;
+  /**
+   * Names the project; runs with one queue never overlap. The toolkit rewrites one `references.generated.bib` per
+   * project, so two targets of a project must not compile at once. Defaults to `key`.
+   */
+  queue?: string;
   /** The toolkit's CLI script, run with this server's Node. */
   cli: string;
   /** The directory of `thesis-toolkit.json`. */
@@ -70,6 +75,21 @@ function hookProcessEnd(): void {
   }
 }
 
+const queueOf = (job: CompileJob) => job.queue ?? job.key;
+
+/** Signals a run's whole process group (the toolkit and its `typst`), or the run alone if the group is gone. */
+function killRun(child: ChildProcess, signal: NodeJS.Signals): void {
+  try {
+    if (child.pid !== undefined) {
+      process.kill(-child.pid, signal);
+      return;
+    }
+  } catch {
+    // The group has ended already; fall through to the child itself.
+  }
+  child.kill(signal);
+}
+
 /** Appends to a log kept to its last `MAX_LOG_BYTES`. */
 function tail(log: Buffer, chunk: Buffer): Buffer {
   const joined = Buffer.concat([log, chunk]);
@@ -102,7 +122,7 @@ export class PreviewCompiler {
   }
 
   compile(job: CompileJob): Promise<CompileResult> {
-    const flight = this.flights.get(job.key);
+    const flight = this.flights.get(queueOf(job));
     if (!flight) return this.start(job);
     flight.next ??= flight.running.then(() => this.start(job));
     return flight.next;
@@ -117,7 +137,7 @@ export class PreviewCompiler {
   dispose(): void {
     this.disposed = true;
     compilers.delete(this);
-    for (const child of this.children) child.kill('SIGKILL');
+    for (const child of this.children) killRun(child, 'SIGKILL');
     this.pdfs.clear();
     for (const release of this.waiting.splice(0)) release();
     if (this.directory) fs.rmSync(this.directory, { recursive: true, force: true });
@@ -125,11 +145,12 @@ export class PreviewCompiler {
   }
 
   private start(job: CompileJob): Promise<CompileResult> {
+    const queue = queueOf(job);
     const running = this.run(job).finally(() => {
-      // The follow-up, if any, has taken this flight over by starting; otherwise the key is idle.
-      if (this.flights.get(job.key)?.running === running) this.flights.delete(job.key);
+      // The follow-up, if any, has taken this flight over by starting; otherwise the queue is idle.
+      if (this.flights.get(queue)?.running === running) this.flights.delete(queue);
     });
-    this.flights.set(job.key, { running });
+    this.flights.set(queue, { running });
     return running;
   }
 
@@ -164,8 +185,9 @@ export class PreviewCompiler {
     const env: NodeJS.ProcessEnv = {};
     for (const key of ENVIRONMENT) if (this.env[key] !== undefined) env[key] = this.env[key];
     return new Promise<CompileResult>(resolve => {
-      // Not detached: Ctrl-C and a kill of the server's process group reach the run too.
-      const child = spawn(process.execPath, [job.cli, 'compile', job.project, job.target, '--output', output], { cwd: job.cwd, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+      // A process group of its own, so the timeout and dispose() reach the toolkit's `typst` as well; a `typst` left
+      // alive would hold the pipes open and keep the run's slot. The server's exit and signal hooks dispose it.
+      const child = spawn(process.execPath, [job.cli, 'compile', job.project, job.target, '--output', output], { cwd: job.cwd, env, shell: false, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
       this.children.add(child);
       let log: Buffer = Buffer.alloc(0), timedOut = false, settled = false;
       child.stdout.on('data', (chunk: Buffer) => log = tail(log, chunk));
@@ -173,8 +195,8 @@ export class PreviewCompiler {
       let killTimer: NodeJS.Timeout | undefined;
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill('SIGTERM');
-        killTimer = setTimeout(() => child.kill('SIGKILL'), this.killGraceMs);
+        killRun(child, 'SIGTERM');
+        killTimer = setTimeout(() => killRun(child, 'SIGKILL'), this.killGraceMs);
       }, this.timeoutMs);
       const finish = (code: number | null, failure?: string) => {
         if (settled) return;
