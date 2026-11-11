@@ -103,6 +103,9 @@ describe('findCitations', () => {
     expect(found('[^1]: @a 指出，*書名*')).toEqual(['narrative:@a -> a']);
     expect(found('[^2]: [@b, 23]；另見')).toEqual(['group:[@b, 23] -> b|23']);
     expect(found('甲 [@a;')).toEqual([]);
+    expect(found('[^1]: 第一段。\n\n    第二段 @b 指出')).toEqual(['narrative:@b -> b']);
+    expect(found('見 \\[@b\\] 說')).toEqual([]);
+    expect(found('甲\r\n@b 說\r\n[@a]\r\n')).toEqual(['narrative:@b -> b', 'group:[@a] -> a']);
   });
 
   it('reads front matter as strip-frontmatter does: a BOM may lead it, and a thematic break is not one', () => {

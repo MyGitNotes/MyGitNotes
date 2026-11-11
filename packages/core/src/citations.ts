@@ -47,6 +47,7 @@ const FRONT_MATTER = new RegExp(`^\\uFEFF?---[ \\t]*\\r?\\n(?:${FRONT_MATTER_CLO
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
 const INDENTED = /^( {4}|\t)/;
 const LIST_ITEM = /^ {0,3}([-*+]|\d+[.)])(\s|$)/;
+const FOOTNOTE_DEFINITION = /^ {0,3}\[\^[^\]]+\]:/;
 const INLINE_TOKEN = /<!--|-->|`+/g;
 
 /** A locator as the template passes it on: trimmed, none when blank, and refused (it stops the compile) when it holds `-->`. */
@@ -75,6 +76,8 @@ function groupItems(group: string): { year: boolean; items: CitationItem[]; } | 
 function citationsInPiece(piece: string, offset: number, out: Citation[]): void {
   for (const match of piece.matchAll(new RegExp(CITE_SOURCE, 'gu'))) {
     const from = offset + match.index, end = match.index + match[0].length;
+    // `\[@a\]`: escaped brackets are text.
+    if (piece[match.index - 1] === '\\') continue;
     // A `(` or `[` right after `]` makes the brackets a link's text.
     const after = piece[end] ?? '';
     const link = after === '(' || after === '[';
@@ -144,7 +147,8 @@ function textLines(lines: string[]): boolean[] {
     } else if (line.trim() === '') kind = 'blank';
     else if (INDENTED.test(line) && (previous === 'code' || (previous === 'blank' && !inList))) kind = 'code';
     else {
-      if (!INDENTED.test(line)) inList = LIST_ITEM.test(line);
+      // A footnote definition's later paragraphs are indented like a list item's.
+      if (!INDENTED.test(line)) inList = LIST_ITEM.test(line) || FOOTNOTE_DEFINITION.test(line);
       kind = 'text';
     }
     previous = kind;
