@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { blockInsertion, DIRECTIVE_TEMPLATES, findDirectiveBlocks, GRID_COLUMN_OPTIONS, gridColumnCount, localizedDirectiveLabel, localizedDirectiveSnippet, parseDirectiveModel, serializeDirectiveModel, setGridColumns, updateDirectiveType, updateDirectiveVariant } from './directive-editing.js';
-import { localizedHandoutVariants, parseDirectiveAttributes, parseDirectiveTitle, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
+import { fencedCodeLines, indentedCodeLines, localizedHandoutVariants, parseDirectiveAttributes, parseDirectiveTitle, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
 import { en, type TranslationKey } from './i18n/en.js';
 import { marked } from 'marked';
 
@@ -473,5 +473,43 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       expect(DIRECTIVE_TEMPLATES[0].type).toBe('info');
       expect(DIRECTIVE_TEMPLATES[0].defaultSnippet).toContain(':::info');
     });
+  });
+});
+
+describe('fenced code lines', () => {
+  // Each probe word P1, P2, … marks a line; it is code when marked puts it in a code token.
+  const markedCode = (text: string) => {
+    const texts: string[] = [];
+    const walk = (tokens: unknown[]) => {
+      for (const token of tokens as Record<string, unknown>[]) {
+        if (token.type === 'code') texts.push(String(token.text));
+        for (const key of ['tokens', 'items']) if (Array.isArray(token[key])) walk(token[key]);
+      }
+    };
+    walk(marked.lexer(text));
+    return (probe: string) => texts.some(code => new RegExp(`\\b${probe}\\b`).test(code));
+  };
+  const ourCode = (text: string) => {
+    const fenced = fencedCodeLines(), indented = indentedCodeLines(), code = new Map<string, boolean>();
+    for (const line of text.split('\n')) {
+      let inCode = fenced(line);
+      if (inCode) indented.interrupt();
+      else inCode = indented.line(line);
+      const probe = /P\d/.exec(line)?.[0];
+      if (probe) code.set(probe, inCode);
+    }
+    return code;
+  };
+
+  it.each([
+    ['a line with more quote markers than the fence stays code', '> ```\n> > P1\n> > ```\n> P2\n> ```\nP3'],
+    ['a quoted line in a list item fence stays code', '- ```md\n  > P1\n  ```\n\nP2'],
+    ['a quoted line in a quoted list item fence stays code', '> - ```md\n>   > P1\n>   ```\n\nP2'],
+    ['a quoted closing fence inside a fence stays code', '```md\n> ```\nP1\n```\n\nP2'],
+    ['a closing fence indented four columns stays code', '```\nP1\n    ```\nP2\n```\n\nP3'],
+    ['a deeper quoted closing fence inside a quoted fence stays code', '> ```\n> > ```\n> P1\n> ```\n\nP2'],
+  ])('%s, as Markdown does', (_name, text) => {
+    const isCode = markedCode(text);
+    for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
   });
 });
