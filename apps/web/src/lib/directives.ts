@@ -56,16 +56,25 @@ export function parseDirectiveOpen(line: string): { fenceLength: number; name: s
  */
 export function fencedCodeLines(): (line: string) => boolean {
   // `column` is the content column of the list item a fence opened on, past any quote markers; the item, and the fence, end at a line
-  // indented less.
-  let open: { mark: string; length: number; column: number; } | null = null;
-  const quoted = (line: string) => line.replace(/^(?: {0,3}> ?)*/, '');
+  // indented less. Columns count a tab to the next multiple of four, as Markdown does. `depth` is the number of quotes the fence opened
+  // in; a line with fewer quote markers ends them, and the fence with them.
+  let open: { mark: string; length: number; column: number; depth: number; } | null = null;
+  const markers = (line: string) => /^(?: {0,3}> ?)*/.exec(line)![0];
+  const width = (text: string) => {
+    let column = 0;
+    for (const char of text) column = char === '\t' ? column - (column % 4) + 4 : column + 1;
+    return column;
+  };
   return line => {
-    if (open && open.column > 0 && line.trim() && /^ */.exec(quoted(line))![0].length < open.column) open = null;
+    const prefix = markers(line), quoted = line.slice(prefix.length);
+    const depth = prefix.split('>').length - 1;
+    if (open && depth < open.depth) open = null;
+    if (open && open.column > 0 && quoted.trim() && width(/^[ \t]*/.exec(quoted)![0]) < open.column) open = null;
     if (!open) {
       // A fence may open on a list item's marker line (`- ```js`); its content and closing fence are then indented under the item.
       const fence = /^(\s*(?:>\s*)*)((?:(?:[-*+]|\d{1,9}[.)])\s+)*)(`{3,}|~{3,})(.*)$/.exec(line);
       // A backtick fence's info string holds no backtick; such a line is inline code.
-      if (fence && !(fence[3][0] === '`' && fence[4].includes('`'))) open = { mark: fence[3][0], length: fence[3].length, column: fence[2] ? quoted(line).indexOf(fence[3]) : 0 };
+      if (fence && !(fence[3][0] === '`' && fence[4].includes('`'))) open = { mark: fence[3][0], length: fence[3].length, column: fence[2] ? width(quoted.slice(0, quoted.indexOf(fence[3]))) : 0, depth };
       return open !== null;
     }
     const fence = /^\s*(?:>\s*)*(`{3,}|~{3,})(.*)$/.exec(line);

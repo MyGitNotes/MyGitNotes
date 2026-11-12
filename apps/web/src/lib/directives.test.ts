@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { blockInsertion, DIRECTIVE_TEMPLATES, findDirectiveBlocks, GRID_COLUMN_OPTIONS, gridColumnCount, localizedDirectiveLabel, localizedDirectiveSnippet, parseDirectiveModel, serializeDirectiveModel, setGridColumns, updateDirectiveType, updateDirectiveVariant } from './directive-editing.js';
 import { localizedHandoutVariants, parseDirectiveAttributes, parseDirectiveTitle, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
 import { en, type TranslationKey } from './i18n/en.js';
+import { marked } from 'marked';
 
 const enT = (key: TranslationKey, params?: Record<string, string | number>): string => {
   let text = en[key] ?? key;
@@ -407,6 +408,23 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       const reopened = '- ```js\n  code\n```\n\n:::info\nhello\n:::\n';
       expect(findDirectiveBlocks(reopened)).toEqual([]);
       expect(transformDirectives(reopened, md => `<p>${md.trim()}</p>`)).not.toContain('custom-directive');
+    });
+
+    it('measures a list item fence by columns, so tab-indented code and its closing fence stay in the item, as Markdown does', () => {
+      for (const fence of ['- ```js\n\tconst x = 1;\n\t```', '- a\n\t- ```js\n\t  x\n\t  ```']) {
+        const text = `${fence}\n\n:::note\nhi\n:::\n`;
+        // marked closes the fence, so the directive after it is not code.
+        expect(marked.lexer(text).some(token => token.type === 'paragraph' && token.raw.startsWith(':::note'))).toBe(true);
+        expect(findDirectiveBlocks(text).map(block => block.rawText)).toEqual([':::note\nhi\n:::']);
+        expect(transformDirectives(text, md => `<p>${md.trim()}</p>`)).toContain('custom-directive');
+      }
+    });
+
+    it('ends a fence opened in a quote at a lazy line without a quote marker, as Markdown does', () => {
+      const text = '> - ```js\n> x\n> ```\n\n:::note\nhi\n:::\n';
+      expect(marked.lexer(text).some(token => token.type === 'paragraph' && token.raw.startsWith(':::note'))).toBe(true);
+      expect(findDirectiveBlocks(text).map(block => block.rawText)).toEqual([':::note\nhi\n:::']);
+      expect(transformDirectives(text, md => `<p>${md.trim()}</p>`)).toContain('custom-directive');
     });
 
     it('reads no directive in an indented code block, as Markdown does', () => {
