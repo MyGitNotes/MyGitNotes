@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import '../phone-notes.css';
@@ -54,6 +54,8 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
   const { frame, session, autoSave, readOnly, statuses, phoneEditing, overlay, hidden } = props;
   const { back } = usePhoneNotes();
   const [menuOpen, setMenuOpen] = useState(false);
+  // The sheet's rows are gone once one is pressed; what they open returns the focus here.
+  const trigger = useRef<HTMLButtonElement>(null);
   const title = session.title || t('editor.untitled');
   return (
     <>
@@ -78,11 +80,11 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
         )}
         {phoneEditing && <button type='button' className='ui-icon-button phone-note-edit' aria-pressed={phoneEditing.editing} aria-label={t(phoneEditing.editing ? 'editor.finishEditing' : 'editor.startEditing')} title={t(phoneEditing.editing ? 'editor.finishEditing' : 'editor.startEditing')} onClick={phoneEditing.editing ? phoneEditing.onDone : phoneEditing.onEdit}>{phoneEditing.editing ? <Check aria-hidden='true' /> : <Pencil aria-hidden='true' />}</button>}
         <AssistantDockToggle />
-        <button type='button' className='ui-icon-button' aria-label={t('editor.moreActions')} title={t('editor.moreActions')} aria-haspopup='dialog' aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
+        <button ref={trigger} type='button' className='ui-icon-button' aria-label={t('editor.moreActions')} title={t('editor.moreActions')} aria-haspopup='dialog' aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
           <MoreHorizontal aria-hidden='true' />
         </button>
       </div>
-      {menuOpen && <PhoneNoteSheet {...props} title={title} onClose={() => setMenuOpen(false)} />}
+      {menuOpen && <PhoneNoteSheet {...props} title={title} trigger={trigger} onClose={() => setMenuOpen(false)} />}
     </>
   );
 }
@@ -145,7 +147,7 @@ function RenameRow({ title, onRename, onDone }: { title: string; onRename: (titl
 }
 
 /** The "⋯" sheet: the note's status and tags, the tools the rail offered on a larger screen, and the actions that file or export it. */
-function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, statuses, availableTags, hasHistory, quickActions, title, onClose }: PhoneNoteChromeProps & { title: string; onClose: () => void; }) {
+function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, statuses, availableTags, hasHistory, quickActions, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
   const { t } = useTranslation();
   const panel = usePanelContext();
   const { changesCount, deleteNote, back } = usePhoneNotes();
@@ -199,8 +201,8 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         </div>
       </section>
       <section className='phone-sheet-section phone-sheet-list'>
-        {onPlaySlides && <SheetItem icon={<Play aria-hidden='true' />} label={t('slides.playTitle')} onClick={act(() => onPlaySlides('deck'))} />}
-        {onPlaySlides && <SheetItem icon={<ScrollText aria-hidden='true' />} label={t('slides.notesViewTitle')} onClick={act(() => onPlaySlides('notes'))} />}
+        {onPlaySlides && <SheetItem icon={<Play aria-hidden='true' />} label={t('slides.playTitle')} onClick={act(() => onPlaySlides('deck', trigger.current ?? undefined))} />}
+        {onPlaySlides && <SheetItem icon={<ScrollText aria-hidden='true' />} label={t('slides.notesViewTitle')} onClick={act(() => onPlaySlides('notes', trigger.current ?? undefined))} />}
         {isMarkdown && <SheetItem icon={editorMode === 'live' ? <Code2 aria-hidden='true' /> : <Eye aria-hidden='true' />} label={t(editorMode === 'live' ? 'editor.switchToSource' : 'editor.switchToLive')} onClick={act(() => setEditorMode(editorMode === 'live' ? 'raw' : 'live'))} />}
         {toggleFormatToolbar && <SheetItem icon={<Type aria-hidden='true' />} label={t('editor.formatToolbar')} pressed={showFormatToolbar} onClick={toggleFormatToolbar} />}
         <div className='phone-sheet-quick'>{quickActions}</div>

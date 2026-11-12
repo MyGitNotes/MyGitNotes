@@ -159,3 +159,20 @@ it('offers no delete where the notebook cannot be written', () => {
   fireEvent.click(within(bar()).getByRole('button', { name: 'More actions' }));
   expect(screen.queryByRole('button', { name: 'Delete note' })).toBeNull();
 });
+
+it('returns the focus to the "⋯" button when a deck played from the sheet closes, since the sheet is gone', async () => {
+  // jsdom has no modal dialogs.
+  HTMLDialogElement.prototype.showModal ??= function(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close ??= function(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+  render(editor({ note: { ...note, metadata: { title: 'Alpha', type: 'slide' }, content: '## One\n\n::summary\n' } }));
+  const more = within(bar()).getByRole('button', { name: 'More actions' });
+  fireEvent.click(more);
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Alpha' })).getByRole('button', { name: 'Play as slides' }));
+  // The note is refused, so the deck shows the reason with a way back.
+  fireEvent.click(await screen.findByRole('button', { name: 'Back to the note' }, { timeout: 10_000 }));
+  expect(more).toHaveFocus();
+});
