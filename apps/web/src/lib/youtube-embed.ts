@@ -146,9 +146,10 @@ export function populateYouTubeEmbed(embed: HTMLElement, labels: YouTubeLabels =
 // The player mounts inside whichever of these owns the target right now, instead of
 // `document.body`, so it inherits that ancestor's stacking context: contained beneath a
 // dialog opened over the note (a sibling stacking context at the same or a higher z-index)
-// instead of racing it on a single global z-index.
+// instead of racing it on a single global z-index. A playing deck is a modal dialog that leaves the rest of the page
+// inert, so a video on a slide mounts inside it.
 function playerMountRoot(target: HTMLElement): HTMLElement {
-  return target.closest<HTMLElement>('.note-overlay') ?? target.closest<HTMLElement>('.app-shell') ?? document.body;
+  return target.closest<HTMLElement>('.slide-deck') ?? target.closest<HTMLElement>('.note-overlay') ?? target.closest<HTMLElement>('.app-shell') ?? document.body;
 }
 
 export function activateYouTubeEmbed(poster: HTMLElement) {
