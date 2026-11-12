@@ -71,10 +71,14 @@ export function fencedCodeLines(): (line: string) => boolean {
     for (let marker; depth < most && (marker = /^ {0,3}>/.exec(line.slice(at))); depth++) {
       at += marker[0].length;
       columns = width(line.slice(0, at));
-      if (line[at] === ' ' || line[at] === '\t') (at++, columns++);
+      if (line[at] === ' ' || line[at] === '\t') {
+        at++;
+        columns++;
+      }
     }
     return { depth, at, columns };
   };
+  let items: { depth: number; columns: number[]; } = { depth: 0, columns: [] };
   // The columns from past the quote markers to `end`.
   const indent = (line: string, quote: { at: number; columns: number; }, end: number) => width(line.slice(0, end)) - quote.columns;
   return line => {
@@ -91,11 +95,19 @@ export function fencedCodeLines(): (line: string) => boolean {
       }
     }
     const quote = quotes(line, Infinity), quoted = line.slice(quote.at);
+    const margin = indent(line, quote, quote.at + /^[ \t]*/.exec(quoted)![0].length);
+    // The content columns of the list items the line is in, innermost last; a line indented less than an item's content ends the item.
+    if (quote.depth !== items.depth) items = { depth: quote.depth, columns: [] };
+    if (quoted.trim()) { while (items.columns.length && margin < items.columns[items.columns.length - 1]) items.columns.pop(); }
+    const item = /^[ \t]*(?:[-*+]|\d{1,9}[.)])( {1,4}(?=\S)|[ \t]+|$)/.exec(quoted);
+    const content = items.columns[items.columns.length - 1] ?? 0;
+    if (item) items.columns.push(item[1].length > 4 || !item[1] ? indent(line, quote, quote.at + item[0].length - item[1].length) + 1 : indent(line, quote, quote.at + item[0].length));
     // A fence may open on a list item's marker line (`- ```js`); its content and closing fence are then indented under the item.
     const fence = /^[ \t]*((?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*)(`{3,}|~{3,})(.*)$/.exec(quoted);
-    // A backtick fence's info string holds no backtick; such a line is inline code.
-    if (fence && !(fence[2][0] === '`' && fence[3].includes('`'))) {
-      const column = fence[1] ? indent(line, quote, quote.at + quoted.indexOf(fence[2])) : 0;
+    // A fence is indented at most three columns past the content of the list item it is in; one indented further is indented code, or
+    // paragraph text. A backtick fence's info string holds no backtick; such a line is inline code.
+    if (fence && (fence[1] || margin - content < 4) && !(fence[2][0] === '`' && fence[3].includes('`'))) {
+      const column = fence[1] ? indent(line, quote, quote.at + quoted.indexOf(fence[2])) : content;
       open = { mark: fence[2][0], length: fence[2].length, column, depth: quote.depth };
     }
     return open !== null;

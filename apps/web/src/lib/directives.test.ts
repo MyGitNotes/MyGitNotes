@@ -501,15 +501,7 @@ describe('fenced code lines', () => {
     return code;
   };
 
-  it.each([
-    ['a line with more quote markers than the fence stays code', '> ```\n> > P1\n> > ```\n> P2\n> ```\nP3'],
-    ['a quoted line in a list item fence stays code', '- ```md\n  > P1\n  ```\n\nP2'],
-    ['a quoted line in a quoted list item fence stays code', '> - ```md\n>   > P1\n>   ```\n\nP2'],
-    ['a quoted closing fence inside a fence stays code', '```md\n> ```\nP1\n```\n\nP2'],
-    ['a closing fence indented four columns stays code', '```\nP1\n    ```\nP2\n```\n\nP3'],
-    ['a deeper quoted closing fence inside a quoted fence stays code', '> ```\n> > ```\n> P1\n> ```\n\nP2'],
-    ['a tab after a quote marker counts only to its tab stop', '> 1. ```\n>\tP1\n\nP2'],
-  ])('%s, as Markdown does', (_name, text) => {
+  it.each([['a line with more quote markers than the fence stays code', '> ```\n> > P1\n> > ```\n> P2\n> ```\nP3'], ['a quoted line in a list item fence stays code', '- ```md\n  > P1\n  ```\n\nP2'], ['a quoted line in a quoted list item fence stays code', '> - ```md\n>   > P1\n>   ```\n\nP2'], ['a quoted closing fence inside a fence stays code', '```md\n> ```\nP1\n```\n\nP2'], ['a closing fence indented four columns stays code', '```\nP1\n    ```\nP2\n```\n\nP3'], ['a deeper quoted closing fence inside a quoted fence stays code', '> ```\n> > ```\n> P1\n> ```\n\nP2'], ['a tab after a quote marker counts only to its tab stop', '> 1. ```\n>\tP1\n\nP2'], ['a fence indented four columns opens none', 'para\n    ```\nP1\n\nP2'], ['a fence indented four columns under a list item opens one', '- a\n    ```\n    P1\n    ```\n\nP2'], ['a fence in a later paragraph of a list item opens one', '1. a\n\n     ```\n     P1\n     ```\n\nP2']])('%s, as Markdown does', (_name, text) => {
     const isCode = markedCode(text);
     for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
   });
