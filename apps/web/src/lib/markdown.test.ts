@@ -286,6 +286,17 @@ describe('renderNote generic directives and MDX Layer 2', () => {
     expect(html).toContain('點擊展開');
   });
 
+  it('renders the directives and icons after a code fence opened on a list item', () => {
+    for (const marker of ['-', '1.', '> -']) {
+      const indent = ' '.repeat(marker.length + 1);
+      const lines = [`${marker} \`\`\`js`, `${indent}const a = 1;`, `${indent}\`\`\``].map(line => (marker.startsWith('>') && !line.startsWith('>') ? `> ${line.slice(2)}` : line));
+      const html = renderNote(`${lines.join('\n')}\n\n:::info\nhello\n:::\n\ntext :icon{name="Heart"}`, 'notes/demo/note.md');
+      expect(html).toContain('class="custom-directive info-directive"');
+      expect(html).not.toContain(':::info');
+      expect(html).not.toContain(':icon{');
+    }
+  });
+
   it('renders MDX files with stripped imports and converted JSX components', () => {
     const mdx = `import YouTubeEmbed from "@/components/YouTubeEmbed.astro";\nimport { Card } from "@/components/ui";\n\n# 標題\n\n<YouTubeEmbed id="abc12345678" />\n\n<ProtectedContent title="密件">機密內容</ProtectedContent>`;
     const html = renderNote(mdx, 'blog/src/content/posts/article.mdx');

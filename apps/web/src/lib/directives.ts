@@ -57,12 +57,14 @@ export function parseDirectiveOpen(line: string): { fenceLength: number; name: s
 export function fencedCodeLines(): (line: string) => boolean {
   let open: { mark: string; length: number; } | null = null;
   return line => {
-    const fence = /^\s*(?:>\s*)*(`{3,}|~{3,})(.*)$/.exec(line);
     if (!open) {
+      // A fence may open on a list item's marker line (`- ```js`); its content and closing fence are then indented under the item.
+      const fence = /^\s*(?:>\s*)*(?:(?:[-*+]|\d{1,9}[.)])\s+)*(`{3,}|~{3,})(.*)$/.exec(line);
       // A backtick fence's info string holds no backtick; such a line is inline code.
       if (fence && !(fence[1][0] === '`' && fence[2].includes('`'))) open = { mark: fence[1][0], length: fence[1].length };
       return open !== null;
     }
+    const fence = /^\s*(?:>\s*)*(`{3,}|~{3,})(.*)$/.exec(line);
     if (fence && fence[1][0] === open.mark && fence[1].length >= open.length && !fence[2].trim()) open = null;
     return true;
   };

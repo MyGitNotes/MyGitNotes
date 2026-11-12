@@ -390,6 +390,14 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       expect(updated).toContain('variant="newspaper"');
     });
 
+    it('reads a code fence opened on a list item as code, and finds the block after it', () => {
+      for (const fence of ['- ```js\n  const a = 1;\n  ```', '1. ```md\n   :::info\n   ```', '> * ~~~\n>   x\n>   ~~~']) {
+        const text = `${fence}\n\n:::info\nhello\n:::\n`;
+        expect(findDirectiveBlocks(text).map(block => block.rawText)).toEqual([':::info\nhello\n:::']);
+        expect(transformDirectives(text, md => `<p>${md.trim()}</p>`)).toContain('class="custom-directive info-directive"');
+      }
+    });
+
     it('finds no block inside a fenced code block, and lets no fence line of one close a block', () => {
       const text = 'intro\n\n```md\n:::info\nan example\n:::\n```\n\n:::info\n~~~\n:::\n~~~\nbody\n:::\n';
       const blocks = findDirectiveBlocks(text);

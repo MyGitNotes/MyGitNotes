@@ -32,6 +32,16 @@ describe('a slide note built by the MyGitNotes renderer and contour-deck', () =>
   });
 });
 
+describe('a slide note with a code fence opened on a list item', () => {
+  it('splits its pages and finds its notes after the fence as the blog chain does', () => {
+    const body = '## A\n\n- ```js\n  const a = 1;\n  ```\n\n::vertical\n\n## A\n\n:::summary\nnotes\n:::\n';
+    const blog = deckOutline(blogDeck(body, 'T')), notes = notesDeck(body, 'T');
+    expect(deckCounts(blog)).toEqual({ blocks: 1, slides: 1, pages: 2, steps: 0, notes: 1 });
+    expect(deckCounts(notes)).toEqual(deckCounts(blog));
+    expectSameDeck(notes, blog);
+  });
+});
+
 describe('a slide note with slideOptions.structure: headings', () => {
   it.each(HEADINGS_DECKS)('%s has the blocks, slides and pages the blog chain builds from its headings', (name, body, title) => {
     const blog = deckOutline(blogDeck(body, title, 'headings')), notes = notesDeck(body, title, 'headings');
