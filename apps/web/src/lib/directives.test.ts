@@ -505,6 +505,12 @@ describe('fenced code lines', () => {
     const isCode = markedCode(text);
     for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
   });
+  it.each([['a plain fence', '```\nP1\n```\nP2'], ['a list item fence', '- ```js\n  P1\n  ```\n\nP2'], ['a quoted fence', '> ```\n> P1\n> ```\n\nP2']])('%s with CRLF line endings is code, as Markdown reads it', (_name, text) => {
+    const crlf = text.replace(/\n/g, '\r\n'), isCode = markedCode(crlf), ours = ourCode(crlf);
+    expect(ours.get('P1')).toBe(true);
+    for (const [probe, code] of ours) expect([probe, code]).toEqual([probe, isCode(probe)]);
+  });
+
   it('reads a line of 32,000 quote markers in linear time', () => {
     const fenced = fencedCodeLines(), started = performance.now();
     fenced(`${'>'.repeat(32000)} \`\`\``);

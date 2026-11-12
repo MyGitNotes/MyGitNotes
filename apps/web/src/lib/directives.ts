@@ -85,7 +85,9 @@ export function fencedCodeLines(): (line: string) => boolean {
   let items: { depth: number; columns: number[]; } = { depth: 0, columns: [] };
   // The columns from past the quote markers to `end`.
   const indent = (line: string, quote: { at: number; columns: number; }, end: number) => width(line.slice(0, end)) - quote.columns;
-  return line => {
+  return text => {
+    // A note saved with CRLF line endings keeps a carriage return on each line; Markdown reads it as the line's end.
+    const line = text.endsWith('\r') ? text.slice(0, -1) : text;
     if (open) {
       const quote = quotes(line, open.depth), inner = line.slice(quote.at);
       const margin = indent(line, quote, quote.at + /^[ \t]*/.exec(inner)![0].length);
