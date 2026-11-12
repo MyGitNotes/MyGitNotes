@@ -46,6 +46,7 @@
     "hast-util-from-dom": "5.0.1",
     "hast-util-to-dom": "4.0.1",
     "katex": "^0.19.0",
+    "lucide": "0.441.0",
     "lucide-react": "^0.441.0",
     "marked": "^18.0.13",
     "marked-cjk-friendly": "^0.1.2",

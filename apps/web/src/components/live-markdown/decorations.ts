@@ -25,6 +25,7 @@ import { mermaidFenceAt } from './mermaid-fence.js';
 import { editorSlideStructure, slideNote } from './slide-structure.js';
 import { SlideDirectiveChip, SlideDirectiveLine, SlidePageBreak } from './slide-widgets.js';
 import { type SeparatorLabel, separatorLabelText } from '../../lib/slides/structure.js';
+import { addInlineIcons } from './inline-icons.js';
 
 /** Inline/reference destinations interpret character references once; bare/autolinks do not. */
 function decodeDestinationEntities(href: string): string {
@@ -274,6 +275,9 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
       if (citationRanges.some(range => from < to ? from >= range.from && to <= range.to : from > range.from && (from < range.to || (from === range.to && value.spec.widget instanceof ExternalLink)))) marks.splice(i, 1);
     }
   }
+
+  // `:icon{name="User"}` reads as the icon while the caret is outside it.
+  addInlineIcons(marks, state, [...nonMath, ...mermaidRanges, ...mathRanges, ...collapsedDirectives], focused && !state.readOnly);
 
   for (const block of collapsedDirectives) {
     // The infographic kinds, the argument map and the image annotation are classes of their own, with their own widgets.

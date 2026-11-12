@@ -3,7 +3,7 @@ import { bookmarkOriginalRange, normalizeBookmarkBody } from '@mygitnotes/core/b
 import React, { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Bold, ChartColumn, ChevronRight, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, ListTree, type LucideIcon, MessageSquarePlus, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
+import { Bold, ChartColumn, ChevronRight, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, ListTree, type LucideIcon, MessageSquarePlus, Plus, Quote, SeparatorHorizontal, Shapes, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
 import type { LiveEditorCarry, LiveMarkdownHandle } from './LiveMarkdownEditor.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
 import { noteCompletionAt, useNoteCandidates } from '../lib/note-completion.js';
@@ -26,6 +26,7 @@ import { textChange } from '../lib/text-change.js';
 import { formatKeys } from '../lib/keyboard/keys.js';
 import { bindingsFor, keymapEntry, matchesCommand } from '../lib/keyboard/keymap.js';
 import { keyEnvironment } from '../lib/keyboard/platform.js';
+import { IconPickerDialog } from './IconPickerDialog.js';
 
 const LiveMarkdownEditor = React.lazy(() => import('./LiveMarkdownEditor.js').then(module => ({ default: module.LiveMarkdownEditor })));
 export type MarkdownEditorMode = 'live' | 'raw';
@@ -98,6 +99,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
   const [dismissed, setDismissed] = useState(false);
   const [choice, setChoice] = useState(0);
   const [picker, setPicker] = useState(false), [query, setQuery] = useState('');
+  const [iconPicker, setIconPicker] = useState(false);
   // A chosen block keeps the editor's focus instead of returning it to the menu trigger.
   const directiveInserted = useRef(false);
   const infographicInserted = useRef(false);
@@ -287,6 +289,23 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       changeSource(content.slice(0, position) + text + content.slice(position));
     }
   };
+  /** Puts an `:icon{…}` directive in at the caret, or in place of the selection in live mode, and returns the caret to the editor. */
+  const insertIcon = (directive: string) => {
+    setIconPicker(false);
+    if (mode === 'live') {
+      live.current?.insert(directive);
+      // The modal dialog still holds focus until it unmounts.
+      requestAnimationFrame(() => live.current?.focus());
+      return;
+    }
+    const target = source.current;
+    const position = target?.selectionStart ?? content.length;
+    changeSource(content.slice(0, position) + directive + content.slice(position));
+    requestAnimationFrame(() => {
+      source.current?.focus();
+      source.current?.setSelectionRange(position + directive.length, position + directive.length);
+    });
+  };
   const applyFormat = (format: MarkdownFormat) => {
     if (readOnly) return;
     if (mode === 'live') {
@@ -381,6 +400,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
           )}
           <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('table.insert')} title={t('table.insert')} onClick={insertTable}>
             <Table2 aria-hidden='true' />
+            <span className='insert-plus-badge' aria-hidden='true'>
+              <Plus />
+            </span>
+          </button>
+          <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('icon.insert')} title={t('icon.insert')} aria-haspopup='dialog' onClick={() => setIconPicker(true)}>
+            <Shapes aria-hidden='true' />
             <span className='insert-plus-badge' aria-hidden='true'>
               <Plus />
             </span>
@@ -571,6 +596,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
     <div className='relative flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden' data-markdown-editor>
       {toolbar && (toolbarSlot === undefined ? <div className='markdown-insert-toolbar'>{toolbar}</div> : toolbarSlot && createPortal(toolbar, toolbarSlot))}
       {outline && !readOnly && !compact && <p className='px-3 py-1 text-xs text-muted' data-outline-hint>{t('outline.keys')}</p>}
+      {iconPicker && <IconPickerDialog onPick={insertIcon} onClose={() => setIconPicker(false)} />}
       {picker && (
         <div className='note-link-picker'>
           <input

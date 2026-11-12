@@ -42,7 +42,7 @@ function newMarked(math: MarkedExtension): Marked {
 
 const md = newMarked(createMarkedMath('html'));
 
-export const DOMPURIFY_DIRECTIVE_CONFIG = { ADD_TAGS: ['iframe', 'details', 'summary', 'aside', 'section', 'article', 'header', 'footer', 'figure', 'figcaption', 'abbr', 'svg', 'path', 'circle', 'cite'], ADD_ATTR: ['allow', 'allowfullscreen', 'loading', 'data-video-id', 'data-start', 'data-youtube-mode', 'data-youtube-mode-option', 'data-youtube-session', 'data-youtube-source-url', 'data-youtube-copy', 'data-copy-label', 'data-copied-label', 'data-copy-failed-label', 'controls', 'preload', 'data-type', 'data-variant', 'data-stat', 'data-cols', 'data-col-span', 'data-direction', 'data-arrow', 'data-icon', 'data-qrcode', 'data-size', 'data-component-name', 'data-lucide', 'data-slide-index', 'data-vertical', 'data-label', 'data-card-type', 'open', 'aria-label', 'aria-hidden', 'style', 'viewBox', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'] };
+export const DOMPURIFY_DIRECTIVE_CONFIG = { ADD_TAGS: ['iframe', 'details', 'summary', 'aside', 'section', 'article', 'header', 'footer', 'figure', 'figcaption', 'abbr', 'svg', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse', 'cite'], ADD_ATTR: ['allow', 'allowfullscreen', 'loading', 'data-video-id', 'data-start', 'data-youtube-mode', 'data-youtube-mode-option', 'data-youtube-session', 'data-youtube-source-url', 'data-youtube-copy', 'data-copy-label', 'data-copied-label', 'data-copy-failed-label', 'controls', 'preload', 'data-type', 'data-variant', 'data-stat', 'data-cols', 'data-col-span', 'data-direction', 'data-arrow', 'data-icon', 'data-qrcode', 'data-size', 'data-component-name', 'data-lucide', 'data-slide-index', 'data-vertical', 'data-label', 'data-card-type', 'open', 'aria-label', 'aria-hidden', 'style', 'viewBox', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'] };
 
 /** Where a chat reply's links resolve from: the folder Pi runs in, repository-relative and on disk. */
 export interface ChatLinkBase {
@@ -154,6 +154,8 @@ export function renderChatMarkdown(text: string, base?: ChatLinkBase): string {
   }
   return parsed.body.innerHTML;
 }
+
+export { loadLucideIcons } from './icons/lucide-registry.js';
 
 /** What a note is rendered with: the HTML parser and the DOMPurify instance of the window it runs in. */
 export interface NoteRendererOptions {
