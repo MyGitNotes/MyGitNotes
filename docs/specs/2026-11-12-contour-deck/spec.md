@@ -31,6 +31,10 @@ The numbering follows contour-deck 0.3.0's headings mode. A `---` always starts 
 
 The note's `slideOptions.structure` is not read. A note that names `slides`, an empty value, a value contour-deck does not know, or nothing at all plays by its headings, and nothing reports the field. A blog does read it, and reads a note without it by its separators, so a note meant for a blog says `slideOptions.structure: headings`.
 
+### Starting a slide note
+
+The New note menu (新增筆記) offers **Slides** (`投影片`) after the notebook's own templates. It creates a note with `type: slide` and `slideOptions: { engine: contour, structure: headings }` (a blog needs both to play it as the app does) and a few lines that show the structure, in the language of the app: the note's title as a `#` heading, a `---` block with a `####` kicker title, a `##` slide with a `:::build` list and a `:::summary` box of notes, and a second `##` slide with a `###` second page. Its heading names the note, as a blank note's does.
+
 In the live editor a `:::summary` or `:::build` block of a slide note has no format select and no title field, only Edit content, since it has no other format to change to. The source of a line returns while the caret is on it.
 
 ### In any other note
@@ -75,11 +79,16 @@ The owner's decision of 2026-11-13, verbatim: "不用支援舊的切法，一律
 
 13. **Every slide note is read by its headings.** The separators of decision 6 are gone: `remarkDeck` and `rehypeDeck` are always given `structure: "headings"`, `slideOptions.structure` is not read, and nothing reports a note that still names `slides`. The code that numbered slides by their separators (`SlideStructureReader`), its labels and its fixtures were removed; what that reading was is kept under [Superseded](#superseded-the-separators-before-0141).
 
+The owner's decision of 2026-11-13 on templates, verbatim: "新增筆記選單加兩個投影片範本" (add two slide templates to the New note menu).
+
+14. **One built-in template, Slides.** With one structure left, the two templates asked for are one. It is built into the app, not a file of the workspace, so every notebook offers it; see [Starting a slide note](#starting-a-slide-note).
+
 ## How the tests hold it
 
 - `deck-parity.test.ts`: two decks written here (`fixtures/headings.md`: a title slide, a `####` kicker block, a `::block` without a title, an empty `---` group, `###` pages, headings inside a quote and a list; `fixtures/kicker-builds.md`: `:::build` lists and tables, `:::summary`, a `::block` with every attribute, `::slide`, a `***` break, the MyGitNotes directives inside slides, directives inside code) are built by a blog's chain (unified, remark-parse, remark-gfm, remark-directive, `remarkDeck`, remark-rehype, `rehypeDeck`, both given `structure: "headings"`) and by the MyGitNotes chain. The counts of blocks, slides, pages, steps and notes, the block titles, labels, minutes and kinds, the slide ids, the slide titles that come from a heading, and the steps and notes of every page must be equal.
 - `structure.test.ts` and `slide-structure.test.ts`: the labels of the preview and of the editor give the blocks and the pages per slide `rehypeDeck` builds, on the same decks, and the preview marks as many steps.
 - `slide-preview.test.ts`: every directive in a slide note and in another note, each error box (`::vertical` among them), and the refusals of the deck with their lines.
+- `builtin-templates.test.ts`: the Slides template, in both languages, is built by the blog's chain and by the MyGitNotes chain as two blocks of three slides, the last of two pages; `useCreateNote.test.tsx` creates a note from it without asking the workspace.
 - `SlideDeck.test.tsx`: Play and Notes for slide notes only, the refusal screen, and a note whose `slideOptions.structure` names nothing, `slides`, an empty value or an unknown value, which the editor and the deck read by its headings.
 
 When contour-deck is upgraded, these run first.

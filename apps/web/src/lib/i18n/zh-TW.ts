@@ -833,6 +833,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'header.searchPlaceholder': '搜尋筆記、標籤、內文...',
   'header.newNote': '新增筆記',
   'header.newFromTemplate': '新增筆記：{template}',
+  'template.slides': '投影片',
+  'template.slides.body': '# {title}\n\n---\n\n#### 一、開場\n\n## 第一張投影片\n\n:::build\n- 第一點\n- 第二點，下一步才出現\n:::\n\n:::summary\n講這張投影片時要說的話。播放時按 N 看講稿。\n:::\n\n## 第二張投影片\n\n`---` 開始一個區塊，`##` 開始一張投影片。\n\n### 第二頁\n\n`###` 開始同一張投影片的下一頁。\n',
   'shortcuts.title': '鍵盤快速鍵',
   'shortcuts.paletteTitle': '快速開啟',
   'shortcuts.open': '快速開啟',

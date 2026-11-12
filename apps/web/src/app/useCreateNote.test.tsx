@@ -115,3 +115,13 @@ it('refuses a cross-notebook initial link without creating anything', async () =
   expect(input.onError).toHaveBeenLastCalledWith('outline.changed');
   expect(api.saveNote).not.toHaveBeenCalled();
 });
+
+it('creates a slide note from the built-in Slides template, without asking the workspace', async () => {
+  const input = params({ t: ((key: string, values?: Record<string, string>) => key === 'createNote.untitled' ? 'Untitled' : key === 'template.slides.body' ? `# ${values?.title}\n\n---\n` : key) as Params['t'] });
+  const hook = renderHook(useCreateNote, { initialProps: input });
+  await act(() => hook.result.current.createNote({ templateId: 'builtin:slides' }));
+  expect(api.renderNoteTemplate).not.toHaveBeenCalled();
+  expect(api.saveNote.mock.calls[0][0]).toMatchObject({ path: 'notes/shared/untitled.md', content: '# Untitled\n\n---\n' });
+  // The heading names the note, as for a blank note; the blog needs both slideOptions to read it by its headings.
+  expect(api.saveNote.mock.calls[0][0].metadata).toEqual({ id: 'untitled', type: 'slide', slideOptions: { engine: 'contour', structure: 'headings' }, tags: [], status: 'inbox' });
+});

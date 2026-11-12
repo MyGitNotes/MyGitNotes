@@ -4,6 +4,7 @@ import { noteMarkdownLink } from '@mygitnotes/core/workspace-links';
 import type { QueryClient } from '@tanstack/react-query';
 import { fetchGitStatus, renderNoteTemplate, saveNote } from '../lib/api.js';
 import { buildNewNoteDraft } from '../lib/new-note.js';
+import { isBuiltinTemplate, renderBuiltinNoteTemplate } from '../lib/builtin-templates.js';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import { noteLookupOptions, type NoteQueryScope } from '../lib/use-note-queries.js';
 import type { FolderItem, GitStatus, NotebookConfig, NoteItem } from '../lib/types.js';
@@ -107,7 +108,8 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       const title = t('createNote.untitled');
       const status = opts.status || newNoteStatuses[0];
       const tags = opts.tags || (opts.tag ? [opts.tag] : []);
-      const template = kind === 'note' && opts.templateId ? await renderNoteTemplate({ notebookId: notebook.id, templateId: opts.templateId, title }) : undefined;
+      // A built-in template is filled in here; a notebook's own is read from its file by the workspace.
+      const template = kind !== 'note' || !opts.templateId ? undefined : isBuiltinTemplate(opts.templateId) ? renderBuiltinNoteTemplate(opts.templateId, title, t) : await renderNoteTemplate({ notebookId: notebook.id, templateId: opts.templateId, title });
       const draft = buildNewNoteDraft({ slug, title, tags, status, template });
       if (opts.initialLink && opts.initialLink.notebookId !== notebook.id) throw new Error(t('outline.changed'));
       const content = kind === 'outline' ? `- ${opts.initialLink ? noteMarkdownLink(notePath, opts.initialLink.path, opts.initialLink.title) : ''}` : draft.content;

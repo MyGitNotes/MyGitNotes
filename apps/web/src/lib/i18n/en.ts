@@ -832,6 +832,8 @@ export const en = {
   'header.searchPlaceholder': 'Search notes, tags, content...',
   'header.newNote': 'New Note',
   'header.newFromTemplate': 'New note: {template}',
+  'template.slides': 'Slides',
+  'template.slides.body': '# {title}\n\n---\n\n#### Part one\n\n## First slide\n\n:::build\n- The first point\n- The second, one step later\n:::\n\n:::summary\nWhat you say over this slide. Press N while playing to see it.\n:::\n\n## Second slide\n\n`---` starts a block, `##` a slide.\n\n### Second page\n\n`###` starts another page of the same slide.\n',
   'shortcuts.title': 'Keyboard shortcuts',
   'shortcuts.paletteTitle': 'Quick Open',
   'shortcuts.open': 'Quick open',
