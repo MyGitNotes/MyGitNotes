@@ -1,6 +1,6 @@
 import { syntaxTree } from '@codemirror/language';
 import { type EditorState, Facet } from '@codemirror/state';
-import { fencedCodeLines, parseDirectiveOpen } from '../../lib/directives.js';
+import { fencedCodeLines, indentedCodeLines, parseDirectiveOpen } from '../../lib/directives.js';
 import { isSlideContainer, isSlideDirective, parseDirectiveLine } from '../../lib/slides/directives.js';
 import { readsByHeadings } from '../../lib/slides/note.js';
 import { type HeadingLabel, HeadingStructureReader, type SeparatorLabel, type SlideBreak, SlideStructureReader } from '../../lib/slides/structure.js';
@@ -71,14 +71,16 @@ export function editorSlideStructure(state: EditorState, blocks: readonly { from
   const lines: SlideDirectiveLine[] = [];
   const breaks: { from: number; kind: SlideBreak; }[] = [];
   const headed: { from: number; level: 2 | 3; index: number; }[] = [];
-  const inCode = fencedCodeLines();
+  const inCode = fencedCodeLines(), indentedCode = indentedCodeLines();
   let block = 0, headingEnd = -1;
   for (let number = 1; number <= state.doc.lines; number++) {
     const line = state.doc.line(number);
     while (block < blocks.length && blocks[block].to < line.from) block++;
     const contained = block < blocks.length && line.from >= blocks[block].from && line.to <= blocks[block].to;
-    // The fence tracker reads every line in turn; a container block's lines only count as content.
-    if (inCode(line.text) || contained) {
+    // The fence tracker reads every line in turn; a container block's lines only count as content, and so does indented code.
+    const code = inCode(line.text);
+    if (code || contained) indentedCode.interrupt();
+    if (code || contained || indentedCode.line(line.text)) {
       reader.content(headings.get(line.from));
       if (contained && blocks[block].type === 'summary') headingReader.notes();
       else headingReader.content();

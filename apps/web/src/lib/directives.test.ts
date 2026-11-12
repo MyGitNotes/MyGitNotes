@@ -409,6 +409,15 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       expect(transformDirectives(reopened, md => `<p>${md.trim()}</p>`)).not.toContain('custom-directive');
     });
 
+    it('reads no directive in an indented code block, as Markdown does', () => {
+      const text = 'intro\n\n    :::info\n    hello\n    :::\n\n    ::vertical\n\n:::info\nafter\n:::\n';
+      expect(findDirectiveBlocks(text).map(block => block.rawText)).toEqual([':::info\nafter\n:::']);
+      const html = transformDirectives(text, md => `<p>${md.trim()}</p>`);
+      expect(html.match(/custom-directive info-directive/g)).toHaveLength(1);
+      expect(html).toContain('    :::info\n    hello\n    :::');
+      expect(html).not.toContain('vertical-slide-break');
+    });
+
     it('finds no block inside a fenced code block, and lets no fence line of one close a block', () => {
       const text = 'intro\n\n```md\n:::info\nan example\n:::\n```\n\n:::info\n~~~\n:::\n~~~\nbody\n:::\n';
       const blocks = findDirectiveBlocks(text);

@@ -81,6 +81,11 @@ describe('the live editor on a type: slide note', () => {
     expect(drawn.filter(({ widget }) => widget instanceof LiveMarkdownDirective).map(({ line }) => line)).toEqual([7, 15]);
   });
 
+  it('reads no slide directive in an indented code block', () => {
+    const view = editor('## A\n\ntext\n\n    :::vertical\n\n    ::summary\n', true);
+    expect(widgets(view).filter(({ widget }) => widget instanceof SlideDirectiveLine)).toEqual([]);
+  });
+
   it('shows the source of a slide directive line while the cursor is on it', () => {
     const view = editor(DECK, true, DECK.indexOf('::vertical'));
     expect(widgets(view).filter(({ widget }) => widget instanceof SlidePageBreak).map(({ line }) => line)).toEqual([22]);

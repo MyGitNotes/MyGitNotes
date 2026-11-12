@@ -1,7 +1,7 @@
 /** Editor-side directive support: insertion templates, block discovery and the structured directive model. */
 
 import type { TranslationKey } from './i18n/en.js';
-import { type DirectiveTranslate, fencedCodeLines, matchDirectiveClose, parseDirectiveOpen } from './directives.js';
+import { type DirectiveTranslate, fencedCodeLines, indentedCodeLines, matchDirectiveClose, parseDirectiveOpen } from './directives.js';
 import { isInfographicKind } from './infographics/model.js';
 import { isAnnotateName } from './annotations/parse.js';
 import { isArgumentMapName } from './argument-maps/parse.js';
@@ -116,6 +116,7 @@ export function findDirectiveBlocks(text: string, slides = false): ParsedDirecti
   }
   const stack: OpenFence[] = [];
   const inCode = fencedCodeLines();
+  const indentedCode = indentedCodeLines();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -125,9 +126,12 @@ export function findDirectiveBlocks(text: string, slides = false): ParsedDirecti
 
     // A directive written inside a code block is code.
     if (inCode(line)) {
+      indentedCode.interrupt();
       if (stack.length > 0) stack[stack.length - 1].bodyLines.push(line);
       continue;
     }
+    // So is one in an indented code block; inside a block the lines are the block's.
+    if (stack.length === 0 ? indentedCode.line(line) : (indentedCode.interrupt(), false)) continue;
 
     const open = parseDirectiveOpen(line);
     if (open && !(slides && isSlideDirective(open.name) && !isSlideContainer(open.name))) {

@@ -488,8 +488,13 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
       else output.push(line);
       continue;
     }
-    // An indented code block shows `:icon{…}` as it is written; the lines of a container are judged when its content is transformed.
+    // An indented code block keeps its lines as written, `:icon{…}` and directives alike; the lines of a container are judged when its
+    // content is transformed.
     const literal = stack.length === 0 ? indentedCode.line(line) : (indentedCode.interrupt(), false);
+    if (literal) {
+      output.push(line);
+      continue;
+    }
 
     const open = parseDirectiveOpen(line);
     if (open && (isInfographicKind(open.name) || isArgumentMapName(open.name) || isAnnotateName(open.name))) {
@@ -559,7 +564,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
       stack[stack.length - 1].lines.push(line);
     } else {
       // Process inline directives in line
-      output.push(literal ? line : transformInlineDirectives(line));
+      output.push(transformInlineDirectives(line));
     }
   }
 

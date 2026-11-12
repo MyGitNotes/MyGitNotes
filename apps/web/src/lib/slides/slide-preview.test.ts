@@ -160,6 +160,12 @@ describe('the deck of a type: slide note', () => {
     expect(failure('::slide{#title}\n\n## A slide\n').message).toMatch(/id/);
   });
 
+  it('holds no directive of an indented code block', () => {
+    const html = renderNote('## A\n\ntext\n\n    :::vertical\n    :::summary\n    notes\n    :::\n', 'slides/deck.md', undefined, undefined, undefined, { slides: 'deck' });
+    expect(html).not.toContain('data-ct-');
+    expect(() => readDeck(html, 'Deck')).not.toThrow();
+  });
+
   it('holds no directive of a code block', () => {
     const html = renderNote('## A\n\n```md\n::vertical\n::summary\n```\n', 'slides/deck.md', undefined, undefined, undefined, { slides: 'deck' });
     expect(html).not.toContain('data-ct-mark');

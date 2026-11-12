@@ -77,7 +77,7 @@ Decisions taken while building it:
 7. **contour-deck validates its own directives.** Each slide directive is handed to `remarkDeck` as the node remark-directive would have parsed (`containerDirective`, `leafDirective` or `textDirective`, with its attributes). What comes back is the marker element, or the message of the refusal, which the error box and the refusal screen show unchanged. `contour-deck/remark` is therefore part of the note renderer (about 2 KB); the core, the stylesheet, the rehype plugin and the hast utilities load on Play.
 8. **A deck is never built from a note contour-deck would refuse.** The deck rendering throws where the preview draws an error box.
 9. **The labels are a reading of the same rules, held to contour-deck by tests.** `SlideStructureReader` (`apps/web/src/lib/slides/structure.ts`) is the one place that numbers slides and pages and names a build's steps, for the editor and for the rendered preview. The tests build every fixture deck with a blog's chain and compare.
-10. **A directive inside a fenced code block is code**, in every note. Before, the directive pass rewrote it and the code block showed HTML.
+10. **A directive inside a code block is code**, in every note, whether the block is fenced or indented. Before, the directive pass rewrote it and the code block showed HTML. A fence opened on a list item ends with the item, as Markdown ends it.
 11. **A slide id the sanitizer drops refuses the deck.** DOMPurify removes an `id` that would shadow a property of the page (`title`, `body`); a deck that opened with another id in its place would differ from the blog's, so Play names the line instead.
 
 ## How the tests hold it
