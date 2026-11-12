@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { type ChangeEvent, createElement, forwardRef, useImperativeHandle } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { PanelProvider } from '../../lib/panel-context.js';
 import type { MarkdownEditorHandle } from '../MarkdownEditor.js';
@@ -17,8 +17,18 @@ vi.mock('../MarkdownEditor.js', () => ({
 
 afterEach(cleanup);
 
+// jsdom has no modal dialogs.
+beforeEach(() => {
+  HTMLDialogElement.prototype.showModal ??= function(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close ??= function(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+});
+
 const slideNote = { id: 'a', path: 'notes/a/deck.md', notebookId: 'a', title: 'Deck', tags: [], metadata: { title: 'Deck', type: 'slide' }, content: '## One\n\n::summary\n', lineNumberOffset: 4 };
-const editor = (note: typeof slideNote | (Omit<typeof slideNote, 'metadata'> & { metadata: Record<string, unknown>; })) => createElement(PanelProvider, null, createElement(NoteEditor, { note, frame: 'pane', active: true, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' } as unknown as NoteEditorProps));
+const editor = (note: typeof slideNote | (Omit<typeof slideNote, 'metadata'> & { metadata: Record<string, unknown>; }), frame: 'pane' | 'zoom' = 'pane') => createElement(PanelProvider, null, createElement(NoteEditor, { note, frame, active: true, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' } as unknown as NoteEditorProps));
 
 describe('a type: slide note in the editor', () => {
   it('offers Play and Notes, and tells its editor it is a slide note', () => {
@@ -61,6 +71,42 @@ describe('a type: slide note in the editor', () => {
     const refusal = await screen.findByRole('alertdialog', undefined, { timeout: 10_000 });
     expect(refusal).toHaveTextContent('::vertical has no meaning with structure: "headings": start the next page with a ### heading');
     expect(refusal).toHaveTextContent('Line 9');
+  });
+});
+
+describe('a deck played over a note whose outline panel is open', () => {
+  it('takes Enter, the arrows and Escape, which the panel behind it does not see', async () => {
+    // What contour-deck asks of a browser that jsdom lacks.
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {} }));
+    Element.prototype.getAnimations ??= () => [];
+    Element.prototype.scrollIntoView ??= () => {};
+    Element.prototype.animate ??= () => ({ finished: Promise.resolve(), cancel() {} }) as unknown as Animation;
+    render(editor({ ...slideNote, content: '## One\n\ntext\n\n::vertical\n\nmore\n\n---\n\n## Two\n\nlast\n' }, 'zoom'));
+    // The leader, then / opens the outline.
+    fireEvent.keyDown(document.body, { key: 'E', code: 'KeyE', ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(document.body, { key: '/', code: 'Slash' });
+    expect(await screen.findByRole('navigation', { name: 'Outline' })).toBeInTheDocument();
+    const play = screen.getByRole('button', { name: 'Play' });
+    fireEvent.click(play);
+    await waitFor(() => expect(document.querySelector('.ct-app')).not.toBeNull(), { timeout: 10_000 });
+    const app = document.querySelector<HTMLElement>('.ct-app')!;
+    expect(app.dataset.ctMode).toBe('overview');
+    fireEvent.keyDown(app, { key: 'Enter' });
+    await waitFor(() => expect(app.dataset.ctMode).toBe('stage'));
+    // contour-deck takes the arrows (jsdom lays out no page to scroll to); the outline behind the deck stays where it was.
+    const outlineAt = () => document.querySelector('.note-outline [aria-current="true"]')?.textContent;
+    const before = outlineAt();
+    for (const key of ['ArrowDown', 'ArrowUp', 'j']) expect(fireEvent.keyDown(app, { key })).toBe(key === 'j');
+    expect(outlineAt()).toBe(before);
+    // A chord of the app opens nothing under the deck.
+    fireEvent.keyDown(app, { key: 'p', code: 'KeyP', ctrlKey: true });
+    expect(document.querySelector('[data-key-scope="palette"]')).toBeNull();
+    fireEvent.keyDown(app, { key: 'Escape' });
+    await waitFor(() => expect(app.dataset.ctMode).toBe('overview'));
+    // The outline is still open behind the deck: Escape went to the deck, not to the panel.
+    expect(screen.getByRole('navigation', { name: 'Outline', hidden: true })).toBeInTheDocument();
+    fireEvent.keyDown(app, { key: 'Escape' });
+    await waitFor(() => expect(document.querySelector('.ct-app')).toBeNull());
   });
 });
 

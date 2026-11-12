@@ -34,9 +34,13 @@ type Status = { state: 'loading'; } | { state: 'open'; } | { state: 'failed'; me
  * A slide note played over the whole window by contour-deck. The deck and everything it needs load when this mounts; while they do, and
  * when contour-deck refuses the note, a plain screen stands in its place with the reason and the line. Leaving the deck (Esc on the
  * outline, its close button) or the note's page closes it.
+ *
+ * The deck is a modal dialog: the app behind it is inert, Tab stays in it, and the note's own key handlers, which stand aside for an open
+ * dialog, leave its keys to contour-deck.
  */
 export function SlideDeck({ content, path, notebookId, title, structure, lineNumberOffset = 0, view, onClose }: SlideDeckProps) {
   const { t, language } = useTranslation();
+  const dialog = useRef<HTMLDialogElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>({ state: 'loading' });
   // The deck plays the note as it was when it opened, and leaves through the latest handler.
@@ -50,7 +54,14 @@ export function SlideDeck({ content, path, notebookId, title, structure, lineNum
   useEffect(() => {
     const source = opened.current;
     // Focus goes back to whatever opened the deck.
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const modal = dialog.current!;
+    modal.showModal();
+    // The app's chords (quick open, help, search) would open their panels under the deck; contour-deck reads no chord, so none goes past it.
+    const holdChords = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) event.stopPropagation();
+    };
+    window.addEventListener('keydown', holdChords, true);
     let left = false;
     let closeDeck: (() => void) | undefined;
     void import('../../lib/slides/deck-runtime.js').then(runtime => {
@@ -66,8 +77,10 @@ export function SlideDeck({ content, path, notebookId, title, structure, lineNum
     });
     return () => {
       left = true;
+      window.removeEventListener('keydown', holdChords, true);
       closeDeck?.();
-      opener?.focus();
+      modal.close();
+      returnTo?.focus();
     };
   }, []);
 
@@ -88,7 +101,14 @@ export function SlideDeck({ content, path, notebookId, title, structure, lineNum
   }, [standingIn]);
 
   return createPortal(
-    <div className='slide-deck' data-source-notebook={notebookId}>
+    <dialog
+      ref={dialog}
+      className='slide-deck'
+      aria-label={title}
+      data-source-notebook={notebookId}
+      // contour-deck answers Escape itself; the dialog never closes on its own.
+      onCancel={event => event.preventDefault()}
+    >
       <div ref={host} className='slide-deck-host' />
       {routed && <LeavesWithThePage onLeave={() => close.current()} />}
       {status.state === 'loading' && <LoadingStatus as='div' className='slide-deck-status'>{t('slides.loading')}</LoadingStatus>}
@@ -100,7 +120,7 @@ export function SlideDeck({ content, path, notebookId, title, structure, lineNum
           <Button variant='primary' autoFocus onClick={onClose}>{t('slides.back')}</Button>
         </div>
       )}
-    </div>,
+    </dialog>,
     document.body,
   );
 }
