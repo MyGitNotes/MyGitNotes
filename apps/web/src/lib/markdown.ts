@@ -179,6 +179,11 @@ export interface NoteRenderOptions {
    * deck from, and throws a `SlideDeckError` for such a directive. Without it a note keeps the general rendering.
    */
   slides?: SlideRendering;
+  /**
+   * The slide note's `slideOptions.structure` (`slideStructureOf`): with `headings`, contour-deck's headings mode, a `---` is a block, a
+   * `##` a slide and a `###` a page, and `::vertical` is refused. Without it the note is read by its separators.
+   */
+  structure?: string;
 }
 
 interface RenderContext {
@@ -206,14 +211,14 @@ export function renderNote(content: string, notePath: string, tableLabel?: strin
   return renderNoteIn({ marked: md, parser: new DOMParser(), purify: DOMPurify, origin: typeof window !== 'undefined' ? window.location.origin : undefined }, content, notePath, tableLabel, youtubeLabels, notebookId, options);
 }
 
-function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string, { slides }: NoteRenderOptions = {}): string {
+function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string, { slides, structure }: NoteRenderOptions = {}): string {
   const isMdx = /\.mdx$/i.test(notePath);
   let preprocessed = content;
   if (isMdx) {
     preprocessed = stripMdxImports(preprocessed);
   }
 
-  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML, slides && { rendering: slides, lineOf: index => index + 1 });
+  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML, slides && { rendering: slides, structure, lineOf: index => index + 1 });
 
   if (isMdx || /<(?:YouTubeEmbed|YouTube|ProtectedContent|Card|Tag|Badge|[A-Z][a-zA-Z0-9_-]*)\b/.test(preprocessed)) {
     preprocessed = transformMdxComponents(preprocessed, language);
@@ -355,7 +360,7 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     link.setAttribute('rel', 'noopener noreferrer');
     if (target.kind === 'external') link.setAttribute('target', '_blank');
   }
-  if (slides === 'preview') labelSlidePreview(parsed.body, stringsFor(language));
+  if (slides === 'preview') labelSlidePreview(parsed.body, stringsFor(language), structure);
   return purify.sanitize(parsed.body.innerHTML, DOMPURIFY_DIRECTIVE_CONFIG);
 }
 

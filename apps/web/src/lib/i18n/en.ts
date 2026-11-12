@@ -145,6 +145,7 @@ export const en = {
   'slides.blockMinutes': '{count} min',
   'slides.slideLabel': 'Slide {slide}',
   'slides.pageLabel': 'Page {slide}.{page}',
+  'slides.blockNumberLabel': 'Block {block}',
   'slides.anchorLabel': 'Slide id',
   'slides.play': 'Play',
   'slides.playTitle': 'Play as slides',

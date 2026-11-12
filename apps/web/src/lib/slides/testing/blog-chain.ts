@@ -11,7 +11,8 @@ import { rehypeDeck } from 'contour-deck/rehype';
 import { remarkDeck } from 'contour-deck/remark';
 import type { DeckNode } from './deck-outline.js';
 
-export function blogDeck(markdown: string, title?: string): DeckNode {
-  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkDirective).use(remarkDeck).use(remarkRehype).use(rehypeDeck, { title });
+/** `structure` is what the blog reads from the note's `slideOptions.structure`, given to both plugins. */
+export function blogDeck(markdown: string, title?: string, structure?: string): DeckNode {
+  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkDirective).use(remarkDeck, { structure: structure as never }).use(remarkRehype).use(rehypeDeck, { title, structure: structure as never });
   return processor.runSync(processor.parse(markdown)) as DeckNode;
 }

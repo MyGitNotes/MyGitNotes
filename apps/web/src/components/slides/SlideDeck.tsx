@@ -19,6 +19,8 @@ export interface SlideDeckProps {
   notebookId?: string;
   /** The note's title, shown over the outline. */
   title: string;
+  /** The note's `slideOptions.structure` (`slideStructureOf`): `headings` plays it by its headings. */
+  structure?: string;
   /** The lines the frontmatter takes above the text, so a failure names the line the editor shows. */
   lineNumberOffset?: number;
   /** `deck` plays the slides, starting on the outline; `notes` opens the speaker notes as a scrolling script. */
@@ -33,12 +35,12 @@ type Status = { state: 'loading'; } | { state: 'open'; } | { state: 'failed'; me
  * when contour-deck refuses the note, a plain screen stands in its place with the reason and the line. Leaving the deck (Esc on the
  * outline, its close button) or the note's page closes it.
  */
-export function SlideDeck({ content, path, notebookId, title, lineNumberOffset = 0, view, onClose }: SlideDeckProps) {
+export function SlideDeck({ content, path, notebookId, title, structure, lineNumberOffset = 0, view, onClose }: SlideDeckProps) {
   const { t, language } = useTranslation();
   const host = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>({ state: 'loading' });
   // The deck plays the note as it was when it opened, and leaves through the latest handler.
-  const opened = useRef({ content, path, notebookId, title, lineNumberOffset, view, t, language });
+  const opened = useRef({ content, path, notebookId, title, structure, lineNumberOffset, view, t, language });
   const close = useRef(onClose);
   useEffect(() => {
     close.current = onClose;
@@ -53,8 +55,8 @@ export function SlideDeck({ content, path, notebookId, title, lineNumberOffset =
     let closeDeck: (() => void) | undefined;
     void import('../../lib/slides/deck-runtime.js').then(runtime => {
       if (left || !host.current) return;
-      const html = renderNote(source.content, source.path, source.t('preview.scrollableTable'), youtubeLabels(source.t), source.notebookId, { slides: 'deck' });
-      closeDeck = runtime.openDeck(host.current, { html, title: source.title, view: source.view, language: source.language, t: source.t, onExit: () => close.current() });
+      const html = renderNote(source.content, source.path, source.t('preview.scrollableTable'), youtubeLabels(source.t), source.notebookId, { slides: 'deck', structure: source.structure });
+      closeDeck = runtime.openDeck(host.current, { html, title: source.title, structure: source.structure, view: source.view, language: source.language, t: source.t, onExit: () => close.current() });
       setStatus({ state: 'open' });
     }).catch((error: unknown) => {
       if (left) return;

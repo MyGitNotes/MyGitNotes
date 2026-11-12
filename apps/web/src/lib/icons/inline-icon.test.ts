@@ -115,14 +115,7 @@ describe('inline icons in rendered notes', () => {
 
 describe('an icon directive inside a code block', () => {
   const icon = ':icon{name="User"}';
-  const blocks: [string, string][] = [
-    ['a backtick fence', `Before\n\n\`\`\`md\n${icon}\n\`\`\`\n\nAfter ${icon}`],
-    ['a tilde fence', `Before\n\n~~~\ntext ${icon} text\n~~~\n\nAfter ${icon}`],
-    ['an indented block', `Before\n\n    ${icon}\n\n    more ${icon}\n\nAfter ${icon}`],
-    ['an indented block at the top of the note', `    ${icon}\n\nAfter ${icon}`],
-    ['a tab-indented block', `Before\n\n\t${icon}\n\nAfter ${icon}`],
-    ['an indented block inside a list item', `- item\n\n      ${icon}\n\nAfter ${icon}`],
-  ];
+  const blocks: [string, string][] = [['a backtick fence', `Before\n\n\`\`\`md\n${icon}\n\`\`\`\n\nAfter ${icon}`], ['a tilde fence', `Before\n\n~~~\ntext ${icon} text\n~~~\n\nAfter ${icon}`], ['an indented block', `Before\n\n    ${icon}\n\n    more ${icon}\n\nAfter ${icon}`], ['an indented block at the top of the note', `    ${icon}\n\nAfter ${icon}`], ['a tab-indented block', `Before\n\n\t${icon}\n\nAfter ${icon}`], ['an indented block inside a list item', `- item\n\n      ${icon}\n\nAfter ${icon}`]];
   // The print export draws `renderNote` without options; a slide note's preview and its deck pass `slides`.
   const renderings: [string, { slides: 'preview' | 'deck'; } | undefined][] = [['a note and its print', undefined], ['a slide preview', { slides: 'preview' }], ['a deck', { slides: 'deck' }]];
   const cases = renderings.flatMap(([rendering, options]) => blocks.map(([block, markdown]) => [block, rendering, markdown, options] as const));

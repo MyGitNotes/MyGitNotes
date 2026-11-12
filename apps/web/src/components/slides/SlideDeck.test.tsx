@@ -9,9 +9,9 @@ import { NoteEditor, type NoteEditorProps } from '../NoteEditor.js';
 import { SlideDeck } from './SlideDeck.js';
 
 vi.mock('../MarkdownEditor.js', () => ({
-  MarkdownEditor: forwardRef<MarkdownEditorHandle, { content: string; slides?: boolean; onChange: (content: string) => void; }>(({ content, slides, onChange }, ref) => {
+  MarkdownEditor: forwardRef<MarkdownEditorHandle, { content: string; slides?: string; onChange: (content: string) => void; }>(({ content, slides, onChange }, ref) => {
     useImperativeHandle(ref, () => ({ insert() {}, insertAnnotated() {}, revealRange() {}, goToLine() {}, getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus() {} }), []);
-    return createElement('textarea', { 'aria-label': 'Note content', value: content, 'data-slides': slides ? 'true' : 'false', onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) });
+    return createElement('textarea', { 'aria-label': 'Note content', value: content, 'data-slides': slides ?? 'none', onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) });
   }),
 }));
 
@@ -25,7 +25,7 @@ describe('a type: slide note in the editor', () => {
     render(editor(slideNote));
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Notes' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Note content')).toHaveAttribute('data-slides', 'true');
+    expect(screen.getByLabelText('Note content')).toHaveAttribute('data-slides', 'slides');
   });
 
   it('offers them whatever engine its slideOptions name', () => {
@@ -37,7 +37,7 @@ describe('a type: slide note in the editor', () => {
     render(editor({ ...slideNote, metadata: { title: 'Deck' } }));
     expect(screen.queryByRole('button', { name: 'Play' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Notes' })).toBeNull();
-    expect(screen.getByLabelText('Note content')).toHaveAttribute('data-slides', 'false');
+    expect(screen.getByLabelText('Note content')).toHaveAttribute('data-slides', 'none');
   });
 
   it('shows what contour-deck refuses the note for, and the line as the editor numbers it, instead of a deck', async () => {
@@ -51,6 +51,16 @@ describe('a type: slide note in the editor', () => {
     expect(document.querySelector('.ct-app')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Back to the note' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('reads a note with slideOptions.structure: headings by its headings, in the editor and in the deck', async () => {
+    render(editor({ ...slideNote, metadata: { type: 'slide', slideOptions: { structure: 'headings' } }, content: '## One\n\ntext\n\n::vertical\n\n### Two\n' }));
+    expect(screen.getByLabelText('Note content')).toHaveAttribute('data-slides', 'headings');
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    // The same text plays in a note read by its separators; here contour-deck refuses its ::vertical.
+    const refusal = await screen.findByRole('alertdialog', undefined, { timeout: 10_000 });
+    expect(refusal).toHaveTextContent('::vertical has no meaning with structure: "headings": start the next page with a ### heading');
+    expect(refusal).toHaveTextContent('Line 9');
   });
 });
 

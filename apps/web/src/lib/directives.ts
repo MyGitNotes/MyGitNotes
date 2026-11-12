@@ -95,7 +95,7 @@ export function indentedCodeLines(): { line: (line: string) => boolean; interrup
       }
       const marker = /^(?:[-*+]|\d{1,9}[.)])(?: +|\t|$)/.exec(text.slice(start));
       // A line that is no list item and follows no blank line continues the paragraph above it, wherever it is indented.
-      if (marker || afterBlank) while (lists.length > 0 && lists[lists.length - 1] > indent) lists.pop();
+      if (marker || afterBlank) { while (lists.length > 0 && lists[lists.length - 1] > indent) lists.pop(); }
       // An item's content starts after its marker and the spaces behind it; five or more spaces are one space and an indented code block.
       if (marker) lists.push(indent + (/^\S+ {1,4}\S/.test(marker.input) ? marker[0].length : marker[0].trimEnd().length + 1));
       afterBlank = false;
@@ -391,6 +391,8 @@ interface DirectiveStackItem {
 /** How the slide directives of a `type: slide` note are written, and where the text being read sits in the note. */
 export interface SlideDirectiveOptions {
   rendering: SlideRendering;
+  /** The note's `slideOptions.structure`; none is contour-deck's default. */
+  structure?: string;
   /** The 1-based line of the note that the line at `index` of the text being read is on. */
   lineOf: (index: number) => number;
 }
@@ -468,7 +470,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
   const inCode = fencedCodeLines();
   const indentedCode = indentedCodeLines();
   /** A slide directive on the line at `index`, written for the note's slide rendering; `body` is a container's rendered content. */
-  const slideDirective = (options: SlideDirectiveOptions, name: string, form: 'container' | 'leaf' | 'text', rawAttrs: string | undefined, source: string, index: number, body?: string) => renderSlideDirective(name, form, rawAttrs, source, { rendering: options.rendering, strings, line: options.lineOf(index) }, body);
+  const slideDirective = (options: SlideDirectiveOptions, name: string, form: 'container' | 'leaf' | 'text', rawAttrs: string | undefined, source: string, index: number, body?: string) => renderSlideDirective(name, form, rawAttrs, source, { rendering: options.rendering, strings, line: options.lineOf(index), structure: options.structure }, body);
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -515,7 +517,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         const item = stack.pop()!;
         const innerBody = item.lines.join('\n');
         // Recursively transform directives within this container; what they report is on the container's opening line.
-        const within = slides && { rendering: slides.rendering, lineOf: () => slides.lineOf(item.index) };
+        const within = slides && { rendering: slides.rendering, structure: slides.structure, lineOf: () => slides.lineOf(item.index) };
         const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline, language, balance, within);
         // A label (`:::summary[…]`) is the container's first paragraph, as remark-directive reads it.
         const renderedHtml = slides && isSlideContainer(item.name) ? slideDirective(slides, item.name, 'container', item.rawAttrs, lines.slice(item.index, i + 1).join('\n'), item.index, renderMarkdown(item.label ? `${item.label}\n\n${transformedInner}` : transformedInner)) : renderContainerDirective(item.name, item.label, item.attrs, transformedInner, renderMarkdown, strings);

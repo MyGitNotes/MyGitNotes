@@ -5,9 +5,9 @@ import { SlideDeckError } from './errors.js';
 import { readDeck } from './deck.js';
 
 /** The note's rendered HTML as a document: a slide note's preview, its deck markup, or (without `slides`) any other note. */
-function render(markdown: string, slides?: 'preview' | 'deck'): HTMLElement {
+function render(markdown: string, slides?: 'preview' | 'deck', structure?: string): HTMLElement {
   const host = document.createElement('div');
-  host.innerHTML = renderNote(markdown, 'slides/deck.md', undefined, undefined, undefined, slides ? { slides } : undefined);
+  host.innerHTML = renderNote(markdown, 'slides/deck.md', undefined, undefined, undefined, slides ? { slides, structure } : undefined);
   return host;
 }
 
@@ -156,5 +156,55 @@ describe('the deck of a type: slide note', () => {
     const html = renderNote('## A\n\n```md\n::vertical\n::summary\n```\n', 'slides/deck.md', undefined, undefined, undefined, { slides: 'deck' });
     expect(html).not.toContain('data-ct-mark');
     expect(() => readDeck(html, 'Deck')).not.toThrow();
+  });
+});
+
+describe('a slide note read by its headings (slideOptions.structure: headings)', () => {
+  const NO_VERTICAL = '::vertical has no meaning with structure: "headings": start the next page with a ### heading';
+  const failure = (run: () => unknown): SlideDeckError => {
+    try {
+      run();
+    } catch (error) {
+      if (error instanceof SlideDeckError) return error;
+      throw error;
+    }
+    throw new Error('the deck was built');
+  };
+
+  it('shows an error box for ::vertical, with what contour-deck says to write, and keeps the rest of the note', () => {
+    const preview = render('## One\n\ntext\n\n::vertical\n\n### Two\n\nmore', 'preview', 'headings');
+    expect(preview.querySelector('.slide-error .ig-error-message')?.textContent).toBe(NO_VERTICAL);
+    expect(preview.querySelector('.slide-error .ig-error-source')?.textContent).toBe('::vertical');
+    expect(preview.querySelector('.slide-page-break')).toBeNull();
+    expect([...preview.querySelectorAll('h2, h3')].map(heading => heading.getAttribute('data-label'))).toEqual(['Slide 1', 'Page 1.2']);
+  });
+
+  it('does not build a deck from a note with ::vertical, and names its line', () => {
+    const error = failure(() => render('## One\n\ntext\n\n::vertical\n\n### Two', 'deck', 'headings'));
+    expect(error.message).toBe(NO_VERTICAL);
+    expect(error.line).toBe(5);
+  });
+
+  it('keeps ::vertical a page divider in a note that names no structure', () => {
+    const preview = render('## One\n\ntext\n\n::vertical\n\n### Two\n\nmore', 'preview');
+    expect(preview.querySelector('.slide-error')).toBeNull();
+    expect(preview.querySelector('hr.slide-page-break')?.getAttribute('data-label')).toBe('Page 1.1');
+  });
+
+  it('takes a ::block without a title, which only sets what it names, and still refuses an empty one', () => {
+    const preview = render('::block{minutes=5}\n\n#### Kicker\n\n## One', 'preview', 'headings');
+    expect(preview.querySelector('.slide-error')).toBeNull();
+    expect(preview.querySelector('.slide-block-title')?.textContent).toBe('Block5 min');
+    expect(preview.querySelector('.slide-block-name')).toBeNull();
+    expect(render('::block{title="Named"}\n\n## One', 'preview', 'headings').querySelector('.slide-block-name')?.textContent).toBe('Named');
+    expect(render('::block{title=""}\n\n## One', 'preview', 'headings').querySelector('.slide-error .ig-error-message')?.textContent).toBe('::block title is empty: leave it out to title the block by its heading');
+    // The default structure still needs the title.
+    expect(render('::block{minutes=5}\n\n## One', 'preview').querySelector('.slide-error .ig-error-message')?.textContent).toContain('::block needs a title');
+  });
+
+  it('reports a structure contour-deck does not know on every slide directive, and refuses the deck', () => {
+    const message = 'structure must be "slides" or "headings", got "heading"';
+    expect(render(':::summary\nnotes\n:::', 'preview', 'heading').querySelector('.slide-error .ig-error-message')?.textContent).toBe(message);
+    expect(failure(() => readDeck(renderNote('## One', 'slides/deck.md', undefined, undefined, undefined, { slides: 'deck', structure: 'heading' }), 'T', 'heading')).message).toBe(message);
   });
 });

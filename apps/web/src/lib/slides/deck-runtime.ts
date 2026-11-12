@@ -19,6 +19,8 @@ export interface OpenDeckOptions {
   html: string;
   /** The deck's title, shown over the outline. */
   title?: string;
+  /** The note's `slideOptions.structure`, the one `html` was rendered with. */
+  structure?: string;
   /** `deck` opens on the outline, `notes` on the speaker notes as a scrolling script. */
   view: 'deck' | 'notes';
   language: I18nContextValue['language'];
@@ -31,8 +33,8 @@ export interface OpenDeckOptions {
  * Builds the deck inside `host` and opens it over the window; the returned function closes it and takes it out again. Throws a
  * `SlideDeckError` where contour-deck refuses the note, and an `EmptyDeckError` for a note without a slide.
  */
-export function openDeck(host: HTMLElement, { html, title, view, language, t, onExit }: OpenDeckOptions): () => void {
-  const root = buildDeck(html, title);
+export function openDeck(host: HTMLElement, { html, title, structure, view, language, t, onExit }: OpenDeckOptions): () => void {
+  const root = buildDeck(html, title, structure);
   if (!root.querySelector('[data-ct-slide]')) throw new EmptyDeckError();
   // A page is drawn with the note's own styles, so a slide's content looks as it does in the preview; the shell around it stays contour-deck's.
   for (const page of root.querySelectorAll('[data-ct-page]')) page.classList.add('prose-custom');

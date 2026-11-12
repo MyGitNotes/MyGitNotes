@@ -147,6 +147,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'slides.blockMinutes': '約 {count} 分',
   'slides.slideLabel': '投影片 {slide}',
   'slides.pageLabel': '頁 {slide}.{page}',
+  'slides.blockNumberLabel': '區塊 {block}',
   'slides.anchorLabel': '投影片 id',
   'slides.play': '播放',
   'slides.playTitle': '播放投影片',

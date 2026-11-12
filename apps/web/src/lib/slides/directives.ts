@@ -64,12 +64,14 @@ interface DirectiveNode {
   data?: { hName?: string; hProperties?: Record<string, unknown>; };
 }
 
-const readDirective = remarkDeck();
-
-/** What contour-deck makes of one slide directive; throws a {@link SlideDeckError} with the message it refuses the directive with. */
-function slideMarker(name: string, form: SlideDirectiveForm, attributes: Record<string, string>): SlideMarker {
+/**
+ * What contour-deck makes of one slide directive in a note of this `structure` (`slideOptions.structure`; none is its default); throws a
+ * {@link SlideDeckError} with the message it refuses the directive with, or the structure.
+ */
+function slideMarker(name: string, form: SlideDirectiveForm, attributes: Record<string, string>, structure: string | undefined): SlideMarker {
   const node: DirectiveNode = { type: `${form}Directive`, name, attributes, children: [] };
-  readDirective({ type: 'root', children: [node] }, {
+  // Which structures there are is contour-deck's to say, so the value is not narrowed here.
+  remarkDeck({ structure: structure as never })({ type: 'root', children: [node] }, {
     data: {},
     fail(reason) {
       throw new SlideDeckError(reason);
@@ -94,6 +96,8 @@ export interface SlideDirectiveContext {
   strings: Record<TranslationKey, string>;
   /** The 1-based line of the note's text the directive opens on. */
   line: number;
+  /** The note's `slideOptions.structure`, which decides what contour-deck takes: `::vertical` is refused in a note read by its headings. */
+  structure?: string;
 }
 
 /** The directive as its source reads, for an error box. */
@@ -105,10 +109,10 @@ function errorBox(message: string, source: string, strings: Record<TranslationKe
  * The HTML of a slide directive: `body` is the rendered content of a container, absent for a leaf. In a preview a directive contour-deck
  * refuses is an error box showing `source`; in a deck it throws, so a deck is never built from a note it would split wrongly.
  */
-export function renderSlideDirective(name: string, form: SlideDirectiveForm, rawAttrs: string | undefined, source: string, { rendering, strings, line }: SlideDirectiveContext, body?: string): string {
+export function renderSlideDirective(name: string, form: SlideDirectiveForm, rawAttrs: string | undefined, source: string, { rendering, strings, line, structure }: SlideDirectiveContext, body?: string): string {
   let marker: SlideMarker;
   try {
-    marker = slideMarker(name, form, parseSlideAttributes(rawAttrs));
+    marker = slideMarker(name, form, parseSlideAttributes(rawAttrs), structure);
   } catch (error) {
     if (!(error instanceof SlideDeckError)) throw error;
     if (rendering === 'deck') throw new SlideDeckError(error.message, line);
@@ -124,7 +128,9 @@ export function renderSlideDirective(name: string, form: SlideDirectiveForm, raw
   if (name === 'block') {
     const { dataTitle, dataMinutes } = marker.properties;
     const minutes = dataMinutes === undefined ? '' : `<span class="slide-block-minutes">${escapeHtml(strings['slides.blockMinutes'].replace('{count}', String(dataMinutes)))}</span>`;
-    return `<div class="slide-block-title" data-type="block"><span class="slide-block-label">${escapeHtml(strings['slides.blockLabel'])}</span><span class="slide-block-name">${escapeHtml(String(dataTitle))}</span>${minutes}</div>`;
+    // A note read by its headings titles a block by its heading, and a `::block` there may name only the minutes or the label.
+    const title = dataTitle === undefined ? '' : `<span class="slide-block-name">${escapeHtml(String(dataTitle))}</span>`;
+    return `<div class="slide-block-title" data-type="block"><span class="slide-block-label">${escapeHtml(strings['slides.blockLabel'])}</span>${title}${minutes}</div>`;
   }
   // `::slide{#id}` names the slide and shows nothing.
   return '<div class="slide-anchor" data-type="slide"></div>';
