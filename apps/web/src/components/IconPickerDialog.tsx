@@ -42,7 +42,7 @@ export function IconPickerDialog({ onPick, onClose }: { onPick: (directive: stri
     };
   }, []);
 
-  const names = status === 'ready' ? lucideIconNames() : [];
+  const names = useMemo(() => status === 'ready' ? lucideIconNames() : [], [status]);
   const result = useMemo(() => searchIconNames(names, query, ICON_GRID_LIMIT), [names, query]);
   const active = Math.min(focused, Math.max(result.names.length - 1, 0));
 
@@ -68,8 +68,10 @@ export function IconPickerDialog({ onPick, onClose }: { onPick: (directive: stri
     else if (event.key === 'ArrowLeft') focusOption(from - 1);
     else if (event.key === 'ArrowDown') focusOption(from + row);
     // Up from the first row goes back to the search box.
-    else if (event.key === 'ArrowUp') from < row ? search.current?.focus() : focusOption(from - row);
-    else return;
+    else if (event.key === 'ArrowUp') {
+      if (from < row) search.current?.focus();
+      else focusOption(from - row);
+    } else return;
     event.preventDefault();
   };
 
