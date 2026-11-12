@@ -22,7 +22,10 @@ export interface SeparatorLabel {
 
 interface Chunk {
   content: boolean;
+  /** The text of its first second-level heading, none where that heading is empty. */
   heading?: string;
+  /** It holds a second-level heading, empty or not. */
+  headed?: boolean;
   starts: boolean;
 }
 
@@ -38,10 +41,12 @@ export class SlideStructureReader {
     return this.chunks[this.chunks.length - 1];
   }
 
-  /** Anything a slide shows; `heading` is the text of a second-level heading it holds. */
+  /** Anything a slide shows; `heading` is the text of a second-level heading it holds. Only the first counts, and an empty one is none. */
   content(heading?: string): void {
     this.chunk.content = true;
-    if (heading !== undefined) this.chunk.heading ??= heading.replace(/\s+/g, ' ').trim();
+    if (heading === undefined || this.chunk.headed) return;
+    this.chunk.headed = true;
+    this.chunk.heading = heading.replace(/\s+/g, ' ').trim() || undefined;
   }
 
   /** A `::block` or a `::slide`: what follows starts a slide. */

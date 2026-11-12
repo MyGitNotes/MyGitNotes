@@ -57,6 +57,18 @@ describe('the preview of a slide note', () => {
   });
 });
 
+describe('a page whose first second-level heading is empty', () => {
+  it('has no heading, as contour-deck reads it, so it is a further page of the slide before it', () => {
+    const body = '## A\n\none\n\n::vertical\n\n## \n\n## B\n\ntwo\n';
+    const deck = deckOutline(blogDeck(body, 'T'));
+    expect(deck.blocks.flatMap(block => block.slides.map(slide => slide.pages.length))).toEqual([2]);
+    const host = document.createElement('div');
+    host.innerHTML = renderNote(body, 'slides/deck.md', undefined, undefined, undefined, { slides: 'preview' });
+    const { separators, end } = previewSeparators(host);
+    expect(pagesPerSlide([...separators.map(separator => separator.label), end].filter((label): label is SeparatorLabel => Boolean(label)))).toEqual([2]);
+  });
+});
+
 describe('a note read by its headings', () => {
   /** A deck written as words: `|` is a `---`, a digit a top-level heading of that level, `n` a `:::summary`, `.` any other content. */
   function read(deck: string) {
