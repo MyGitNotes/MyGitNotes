@@ -44,3 +44,11 @@ The build copies pdf.js's data files to `pdfjs/<version>/` in the web output, ea
 | `wasm/` | OpenJPEG (JPEG 2000), JBIG2 and qcms (ICC colour) decoders | BSD-2-Clause (`LICENSE_OPENJPEG`, `LICENSE_PDFJS_OPENJPEG`); BSD-3-Clause (`LICENSE_JBIG2`) and Apache-2.0 (`LICENSE_PDFJS_JBIG2`); MIT (`LICENSE_QCMS`, `LICENSE_PDFJS_QCMS`) |
 
 The scripting engine (`quickjs-eval.*`) is not copied, because the viewer never runs a PDF's scripts.
+
+## Slide decks (contour-deck)
+
+A `type: slide` note is played by [contour-deck](https://github.com/wayne930242/contour-deck) 0.2.2, copyright 洪偉, under the [Mozilla Public License, version 2.0](https://www.mozilla.org/MPL/2.0/). Its files are used unmodified, and their source is in that repository and in the `contour-deck` package on npm. The note renderer includes its `remark` entry, which reads the slide directives; the core, the stylesheet and the `rehype` entry are loaded only when a note is played.
+
+The deck is built from the note's HTML with [hast-util-from-dom](https://github.com/syntax-tree/hast-util-from-dom) 5.0.1 and [hast-util-to-dom](https://github.com/syntax-tree/hast-util-to-dom) 4.0.1, copyright Keith McKnight, under the ISC License; both are loaded only when a note is played.
+
+The test fixtures `kicker-deck.md`, `slide-templates-demo.md` and `you-dont-have-to-lead-climb-alone.md` in `apps/web/src/lib/slides/fixtures/` are contour-deck's own fixture decks, unchanged, under the same Mozilla Public License; they are not part of the built app.

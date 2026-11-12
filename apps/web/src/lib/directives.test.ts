@@ -390,6 +390,13 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       expect(updated).toContain('variant="newspaper"');
     });
 
+    it('finds no block inside a fenced code block, and lets no fence line of one close a block', () => {
+      const text = 'intro\n\n```md\n:::info\nan example\n:::\n```\n\n:::info\n~~~\n:::\n~~~\nbody\n:::\n';
+      const blocks = findDirectiveBlocks(text);
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0].rawText).toBe(':::info\n~~~\n:::\n~~~\nbody\n:::');
+    });
+
     it('supports blockquote > prefixes for closing and opening fences', () => {
       const text = `:::sidebar{title="導入"}\n嗨，調查員\n> 註：相關說明\n> :::\n\n後續內容`;
       const blocks = findDirectiveBlocks(text);

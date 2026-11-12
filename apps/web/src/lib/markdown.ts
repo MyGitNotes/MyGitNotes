@@ -6,7 +6,9 @@ import { isOutlinePath } from '@mygitnotes/core/outline';
 import { parseR2Reference, r2AssetUrl, r2PreviewType } from '@mygitnotes/core/r2-references';
 import { newTabRel } from './same-origin.js';
 import { headingSlug, resolveWorkspaceHref } from './workspace-links.js';
-import { escapeHtml, type NoteLanguage, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
+import { escapeHtml, type NoteLanguage, stringsFor, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
+import type { SlideRendering } from './slides/directives.js';
+import { labelSlidePreview } from './slides/structure.js';
 import { isMermaidInfo, MERMAID_BLOCK_SELECTOR } from './mermaid.js';
 import { createMarkedMath, type MathOutput } from './math.js';
 import { DEFAULT_YOUTUBE_LABELS, type YouTubeDisplayMode, type YouTubeLabels } from './youtube-embed.js';
@@ -167,6 +169,16 @@ export interface NoteRendererOptions {
   language?: NoteLanguage;
 }
 
+/** What a note is, beyond its text, that changes how it is drawn. */
+export interface NoteRenderOptions {
+  /**
+   * Set for a `type: slide` note. `preview` draws its slide directives as a reader sees them (labelled notes, numbered steps, labelled
+   * slide and page dividers, an error box for a directive contour-deck refuses); `deck` writes them as the markers contour-deck builds a
+   * deck from, and throws a `SlideDeckError` for such a directive. Without it a note keeps the general rendering.
+   */
+  slides?: SlideRendering;
+}
+
 interface RenderContext {
   marked: Marked;
   parser: DOMParser;
@@ -183,23 +195,23 @@ export function createNoteRenderer({ parser, purify, origin, mathOutput = 'html'
   const marked = mathOutput === 'html' ? md : newMarked(createMarkedMath(mathOutput));
   return {
     /** `notebookId` names the note's notebook, so an asset URL reaches the right repository when notebook roots repeat across repositories. */
-    renderNote: (content: string, notePath: string, tableLabel?: string, youtubeLabels?: YouTubeLabels, notebookId?: string): string => renderNoteIn({ marked, parser, purify, origin, language }, content, notePath, tableLabel, youtubeLabels, notebookId),
+    renderNote: (content: string, notePath: string, tableLabel?: string, youtubeLabels?: YouTubeLabels, notebookId?: string, options?: NoteRenderOptions): string => renderNoteIn({ marked, parser, purify, origin, language }, content, notePath, tableLabel, youtubeLabels, notebookId, options),
   };
 }
 
 /** `notebookId` names the note's notebook, so an asset URL reaches the right repository when notebook roots repeat across repositories. */
-export function renderNote(content: string, notePath: string, tableLabel?: string, youtubeLabels?: YouTubeLabels, notebookId?: string): string {
-  return renderNoteIn({ marked: md, parser: new DOMParser(), purify: DOMPurify, origin: typeof window !== 'undefined' ? window.location.origin : undefined }, content, notePath, tableLabel, youtubeLabels, notebookId);
+export function renderNote(content: string, notePath: string, tableLabel?: string, youtubeLabels?: YouTubeLabels, notebookId?: string, options?: NoteRenderOptions): string {
+  return renderNoteIn({ marked: md, parser: new DOMParser(), purify: DOMPurify, origin: typeof window !== 'undefined' ? window.location.origin : undefined }, content, notePath, tableLabel, youtubeLabels, notebookId, options);
 }
 
-function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string): string {
+function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string, { slides }: NoteRenderOptions = {}): string {
   const isMdx = /\.mdx$/i.test(notePath);
   let preprocessed = content;
   if (isMdx) {
     preprocessed = stripMdxImports(preprocessed);
   }
 
-  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML);
+  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML, slides && { rendering: slides, lineOf: index => index + 1 });
 
   if (isMdx || /<(?:YouTubeEmbed|YouTube|ProtectedContent|Card|Tag|Badge|[A-Z][a-zA-Z0-9_-]*)\b/.test(preprocessed)) {
     preprocessed = transformMdxComponents(preprocessed, language);
@@ -341,6 +353,7 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     link.setAttribute('rel', 'noopener noreferrer');
     if (target.kind === 'external') link.setAttribute('target', '_blank');
   }
+  if (slides === 'preview') labelSlidePreview(parsed.body, stringsFor(language));
   return purify.sanitize(parsed.body.innerHTML, DOMPURIFY_DIRECTIVE_CONFIG);
 }
 

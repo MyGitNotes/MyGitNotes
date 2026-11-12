@@ -12,6 +12,7 @@ import { isArgumentMapName } from './argument-maps/parse.js';
 import { ArgumentMapError, renderArgumentMap, renderArgumentMapError } from './argument-maps/render.js';
 import { isAnnotateName } from './annotations/parse.js';
 import { AnnotateError, renderAnnotate, renderAnnotateError } from './annotations/render.js';
+import { isSlideContainer, isSlideDirective, parseDirectiveLine, renderSlideDirective, type SlideRendering } from './slides/directives.js';
 
 /** The language a server renders a note in; the browser takes it from the page. */
 export type NoteLanguage = 'en' | 'zh-TW';
@@ -42,10 +43,28 @@ export function parseDirectiveAttributes(rawAttrs?: string): Record<string, stri
   return result;
 }
 
-/** An opening container fence `:::name[label]{attrs}`, allowing `>` blockquote prefixes. */
-export function parseDirectiveOpen(line: string): { fenceLength: number; name: string; label?: string; attrs: Record<string, string>; } | null {
+/** An opening container fence `:::name[label]{attrs}`, allowing `>` blockquote prefixes; `rawAttrs` is the text between its braces. */
+export function parseDirectiveOpen(line: string): { fenceLength: number; name: string; label?: string; attrs: Record<string, string>; rawAttrs?: string; } | null {
   const match = /^(\s*(?:>\s*)*)(:{3,})([a-zA-Z0-9_-]+)(?:\[([^\]]*)\])?(?:\{([^}]*)\})?\s*$/.exec(line);
-  return match ? { fenceLength: match[2].length, name: match[3], label: match[4], attrs: parseDirectiveAttributes(match[5]) } : null;
+  return match ? { fenceLength: match[2].length, name: match[3], label: match[4], attrs: parseDirectiveAttributes(match[5]), rawAttrs: match[5] } : null;
+}
+
+/**
+ * Follows fenced code blocks down a text's lines: the returned function says, for each line in turn, whether it belongs to one (its
+ * fences included). A directive written inside a code block is code, as it is to Markdown.
+ */
+export function fencedCodeLines(): (line: string) => boolean {
+  let open: { mark: string; length: number; } | null = null;
+  return line => {
+    const fence = /^\s*(?:>\s*)*(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!open) {
+      // A backtick fence's info string holds no backtick; such a line is inline code.
+      if (fence && !(fence[1][0] === '`' && fence[2].includes('`'))) open = { mark: fence[1][0], length: fence[1].length };
+      return open !== null;
+    }
+    if (fence && fence[1][0] === open.mark && fence[1].length >= open.length && !fence[2].trim()) open = null;
+    return true;
+  };
 }
 
 /**
@@ -214,6 +233,9 @@ export function renderContainerDirective(name: string, label: string | undefined
     return `<aside class="comment-directive" data-type="comment" aria-label="${escapeHtml(title.label)}"><p class="comment-title ${titleClass}">${escapeHtml(title.label)}</p><div class="directive-body directive-content">${bodyHtml}</div></aside>`;
   }
 
+  // Outside a slide note a build has nothing to reveal step by step: its content reads as written.
+  if (normName === 'build') return `<div class="slide-build" data-type="build">${renderMarkdown(bodyMarkdown)}</div>`;
+
   if (normName === 'summary') {
     const slide = attrs.slide ?? '0';
     const bodyHtml = renderMarkdown(bodyMarkdown);
@@ -324,7 +346,17 @@ interface DirectiveStackItem {
   name: string;
   label?: string;
   attrs: Record<string, string>;
+  rawAttrs?: string;
   lines: string[];
+  /** The index of the opening fence among the lines being read. */
+  index: number;
+}
+
+/** How the slide directives of a `type: slide` note are written, and where the text being read sits in the note. */
+export interface SlideDirectiveOptions {
+  rendering: SlideRendering;
+  /** The 1-based line of the note that the line at `index` of the text being read is on. */
+  lineOf: (index: number) => number;
 }
 
 /** The line where the figure block (an infographic or an argument map) opened at `start` closes, tracking the containers nested in it; undefined when it never does. */
@@ -392,14 +424,24 @@ function renderArgumentMapBlock(blockLines: readonly string[], renderInline: (md
  * Main parser that scans for container directives, leaf directives, inline directives,
  * and recursively converts them to HTML before main markdown processing.
  */
-export function transformDirectives(content: string, renderMarkdown: (md: string) => string, renderInline: (md: string) => string = md => renderMarkdown(md).trim().replace(/^<p>([\s\S]*)<\/p>$/, '$1'), language?: NoteLanguage, balance: (html: string) => string = html => html): string {
+export function transformDirectives(content: string, renderMarkdown: (md: string) => string, renderInline: (md: string) => string = md => renderMarkdown(md).trim().replace(/^<p>([\s\S]*)<\/p>$/, '$1'), language?: NoteLanguage, balance: (html: string) => string = html => html, slides?: SlideDirectiveOptions): string {
   const strings = stringsFor(language);
   const lines = content.split('\n');
   const output: string[] = [];
   const stack: DirectiveStackItem[] = [];
+  const inCode = fencedCodeLines();
+  /** A slide directive on the line at `index`, written for the note's slide rendering; `body` is a container's rendered content. */
+  const slideDirective = (options: SlideDirectiveOptions, name: string, form: 'container' | 'leaf' | 'text', rawAttrs: string | undefined, source: string, index: number, body?: string) => renderSlideDirective(name, form, rawAttrs, source, { rendering: options.rendering, strings, line: options.lineOf(index) }, body);
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    // A code block keeps its lines as written, whatever they look like.
+    if (inCode(line)) {
+      if (stack.length > 0) stack[stack.length - 1].lines.push(line);
+      else output.push(line);
+      continue;
+    }
 
     const open = parseDirectiveOpen(line);
     if (open && (isInfographicKind(open.name) || isArgumentMapName(open.name) || isAnnotateName(open.name))) {
@@ -414,8 +456,15 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         continue;
       }
     }
+    // `:::vertical`, `:::block` and `:::slide` hold no content: in a slide note the line is the error contour-deck reports, and no block opens.
+    if (open && slides && isSlideDirective(open.name) && !isSlideContainer(open.name)) {
+      const refused = `\n${slideDirective(slides, open.name, 'container', open.rawAttrs, line.trim(), i)}\n`;
+      if (stack.length > 0) stack[stack.length - 1].lines.push(refused);
+      else output.push(refused);
+      continue;
+    }
     if (open) {
-      stack.push({ ...open, lines: [] });
+      stack.push({ ...open, lines: [], index: i });
       continue;
     }
 
@@ -425,9 +474,11 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         if (close.trailing) stack[stack.length - 1].lines.push(close.trailing);
         const item = stack.pop()!;
         const innerBody = item.lines.join('\n');
-        // Recursively transform directives within this container
-        const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline, language, balance);
-        const renderedHtml = renderContainerDirective(item.name, item.label, item.attrs, transformedInner, renderMarkdown, strings);
+        // Recursively transform directives within this container; what they report is on the container's opening line.
+        const within = slides && { rendering: slides.rendering, lineOf: () => slides.lineOf(item.index) };
+        const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline, language, balance, within);
+        // A label (`:::summary[…]`) is the container's first paragraph, as remark-directive reads it.
+        const renderedHtml = slides && isSlideContainer(item.name) ? slideDirective(slides, item.name, 'container', item.rawAttrs, lines.slice(item.index, i + 1).join('\n'), item.index, renderMarkdown(item.label ? `${item.label}\n\n${transformedInner}` : transformedInner)) : renderContainerDirective(item.name, item.label, item.attrs, transformedInner, renderMarkdown, strings);
 
         if (stack.length > 0) {
           stack[stack.length - 1].lines.push(renderedHtml);
@@ -436,6 +487,17 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         }
         continue;
       }
+    }
+
+    // The slide directives that stand on a line of their own; a note that is no deck shows nothing for `::block` and `::slide`.
+    const leaf = stack.length === 0 ? parseDirectiveLine(line) : null;
+    if (leaf && isSlideDirective(leaf.name)) {
+      if (slides) {
+        // Blank lines keep the element apart from the Markdown around it.
+        output.push(`\n${slideDirective(slides, leaf.name, leaf.form, leaf.rawAttrs, line.trim(), i)}\n`);
+        continue;
+      }
+      if (leaf.form === 'leaf' && (leaf.name === 'block' || leaf.name === 'slide')) continue;
     }
 
     // Leaf directive: ::vertical
