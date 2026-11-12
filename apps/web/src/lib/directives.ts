@@ -59,40 +59,45 @@ export function fencedCodeLines(): (line: string) => boolean {
   // indented less. Columns count a tab to the next multiple of four, as Markdown does. `depth` is the number of quotes the fence opened
   // in; a line with fewer quote markers ends them, and the fence with them, and any further marker on a line inside is code.
   let open: { mark: string; length: number; column: number; depth: number; } | null = null;
-  const markers = (line: string) => /^(?: {0,3}> ?)*/.exec(line)![0];
   const width = (text: string) => {
     let column = 0;
     for (const char of text) column = char === '\t' ? column - (column % 4) + 4 : column + 1;
     return column;
   };
-  // The line past exactly `depth` quote markers, or null when it has fewer.
-  const unquote = (line: string, depth: number) => {
-    let rest = line;
-    for (let i = 0; i < depth; i++) {
-      const marker = /^ {0,3}> ?/.exec(rest);
-      if (!marker) return null;
-      rest = rest.slice(marker[0].length);
+  // Up to `most` quote markers at the line's start: how many, where the text past them starts, and the columns they take. A marker takes
+  // one column of the space or tab after it; the rest of a tab's columns, counted on the whole line, indent the text.
+  const quotes = (line: string, most: number) => {
+    let depth = 0, at = 0, columns = 0;
+    for (let marker; depth < most && (marker = /^ {0,3}>/.exec(line.slice(at))); depth++) {
+      at += marker[0].length;
+      columns = width(line.slice(0, at));
+      if (line[at] === ' ' || line[at] === '\t') (at++, columns++);
     }
-    return rest;
+    return { depth, at, columns };
   };
+  // The columns from past the quote markers to `end`.
+  const indent = (line: string, quote: { at: number; columns: number; }, end: number) => width(line.slice(0, end)) - quote.columns;
   return line => {
     if (open) {
-      const inner = unquote(line, open.depth);
-      if (inner === null) open = null;
-      else if (open.column > 0 && inner.trim() && width(/^[ \t]*/.exec(inner)![0]) < open.column) open = null;
+      const quote = quotes(line, open.depth), inner = line.slice(quote.at);
+      const margin = indent(line, quote, quote.at + /^[ \t]*/.exec(inner)![0].length);
+      if (quote.depth < open.depth) open = null;
+      else if (open.column > 0 && inner.trim() && margin < open.column) open = null;
       else {
         // A closing fence is indented less than four columns past the content, and holds nothing else.
-        const close = /^([ \t]*)(`{3,}|~{3,})[ \t]*$/.exec(inner);
-        if (close && width(close[1]) < open.column + 4 && close[2][0] === open.mark && close[2].length >= open.length) open = null;
+        const close = /^[ \t]*(`{3,}|~{3,})[ \t]*$/.exec(inner);
+        if (close && margin < open.column + 4 && close[1][0] === open.mark && close[1].length >= open.length) open = null;
         return true;
       }
     }
-    const prefix = markers(line), quoted = line.slice(prefix.length);
-    const depth = prefix.split('>').length - 1;
+    const quote = quotes(line, Infinity), quoted = line.slice(quote.at);
     // A fence may open on a list item's marker line (`- ```js`); its content and closing fence are then indented under the item.
-    const fence = /^(\s*(?:>\s*)*)((?:(?:[-*+]|\d{1,9}[.)])\s+)*)(`{3,}|~{3,})(.*)$/.exec(line);
+    const fence = /^[ \t]*((?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*)(`{3,}|~{3,})(.*)$/.exec(quoted);
     // A backtick fence's info string holds no backtick; such a line is inline code.
-    if (fence && !(fence[3][0] === '`' && fence[4].includes('`'))) open = { mark: fence[3][0], length: fence[3].length, column: fence[2] ? width(quoted.slice(0, quoted.indexOf(fence[3]))) : 0, depth };
+    if (fence && !(fence[2][0] === '`' && fence[3].includes('`'))) {
+      const column = fence[1] ? indent(line, quote, quote.at + quoted.indexOf(fence[2])) : 0;
+      open = { mark: fence[2][0], length: fence[2].length, column, depth: quote.depth };
+    }
     return open !== null;
   };
 }

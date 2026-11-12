@@ -508,6 +508,7 @@ describe('fenced code lines', () => {
     ['a quoted closing fence inside a fence stays code', '```md\n> ```\nP1\n```\n\nP2'],
     ['a closing fence indented four columns stays code', '```\nP1\n    ```\nP2\n```\n\nP3'],
     ['a deeper quoted closing fence inside a quoted fence stays code', '> ```\n> > ```\n> P1\n> ```\n\nP2'],
+    ['a tab after a quote marker counts only to its tab stop', '> 1. ```\n>\tP1\n\nP2'],
   ])('%s, as Markdown does', (_name, text) => {
     const isCode = markedCode(text);
     for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
