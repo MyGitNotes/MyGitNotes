@@ -515,6 +515,24 @@ describe('fenced code lines', () => {
     expect(transformDirectives(note, md => `<p>${md.trim()}</p>`)).toContain('custom-directive');
   });
 
+  it('keeps a later item of a tight ordered list in the list, so a directive shown in its code block stays code, as Markdown does', () => {
+    const note = '1. Open settings\n2. Paste this:\n    ```md\n    :::note\n    hi\n    :::\n    ```\n3. Save\n';
+    expect(marked.lexer(note).some(token => token.type === 'paragraph' && token.raw.includes(':::note'))).toBe(false);
+    expect(findDirectiveBlocks(note)).toEqual([]);
+    expect(transformDirectives(note, md => `<p>${md.trim()}</p>`)).not.toContain('custom-directive');
+  });
+
+  it.each([['a thematic break', '- a\n***\n  ```\nP1\n```\nP2\n\nP3'], ['a dash break', '- a\n---\n  ```\nP1\n```\nP2\n\nP3'], ['a setext heading before a numbered line', 'text\n---\n2. foo\n   ```\nP1\n```\nP2'], ['a setext title before a numbered line', 'text\n===\n2. foo\n   ```\nP1\n```\nP2']])('%s ends the paragraph and the list item before it, as Markdown does', (_name, text) => {
+    const isCode = markedCode(text);
+    for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
+  });
+
+  it('ends a list item at an HTML line, so a directive after the fence below it still renders', () => {
+    const note = '- a\n<div>x</div>\n  ```\nP1\n```\nP2\n\nP3\n\n:::note\nhi\n:::\n';
+    expect(findDirectiveBlocks(note).map(block => block.rawText)).toEqual([':::note\nhi\n:::']);
+    expect(transformDirectives(note, md => `<p>${md.trim()}</p>`)).toContain('custom-directive');
+  });
+
   it('keeps a fence after a lazy line in its list item, so a blank line and an unindented line end it, as Markdown does', () => {
     const text = '- a\nlazy\n  ```\n  P1\n\nP2', isCode = markedCode(text);
     for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
