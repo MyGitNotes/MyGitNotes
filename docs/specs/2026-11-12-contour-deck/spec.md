@@ -14,7 +14,7 @@ The live editor, and every place a note is shown read-only (a note another pane 
 
 | Markdown | Drawn as |
 | --- | --- |
-| `---` (any thematic break at the top level) | The divider between slides, labelled with the slide that ends there: `Slide 3` (`投影片 3`), where another note says `Page 3`. The end of the note carries the last slide's number. |
+| `---` (any thematic break at the top level) | The divider between slides, labelled with the slide that ends there: `Slide 3` (`投影片 3`), where another note says `Page 3`. In the live editor the end of the note carries the last slide's number. |
 | `::vertical` | A lighter, dashed divider labelled with what ends there: `Page 3.1` (`頁 3.1`) when the next page belongs to the same slide, `Slide 3` when the page after it starts a slide of its own. |
 | `:::build` … `:::` | Its content as written, each step with a small number in the margin: every list item, every body row of a table, and any other block as a whole. |
 | `:::summary` … `:::` | A box labelled `Notes` (`講稿`). |
@@ -34,7 +34,7 @@ A slide note whose frontmatter has `slideOptions.structure: headings` is read by
 
 | Markdown | Drawn as |
 | --- | --- |
-| `---` (at the top level) | The divider between blocks, labelled with the block that ends there: `Block 2` (`區塊 2`). The end of the note carries the last block's number. |
+| `---` (at the top level) | The divider between blocks, labelled with the block that ends there: `Block 2` (`區塊 2`). In the live editor the end of the note carries the last block's number. |
 | `##` (at the top level) | The heading, labelled in the live editor with the slide it starts. Content before a block's first `##` is the block's first slide (a title slide or a divider). |
 | `###` (at the top level) | The heading, labelled in the live editor with the page it starts within its slide. |
 | `::vertical` | An error box with contour-deck's message: start the next page with a `###` heading. The deck refuses the note. |
@@ -102,6 +102,11 @@ When contour-deck is upgraded, these run first.
 
 - A slide directive written in the middle of a line of text (`see :slide here`) fails a blog build with remark-directive; here only a directive that stands alone on its line is read, so such a note plays.
 - An unclosed `:::summary` or `:::build` runs to the end of its container on a blog; here it stays as written, like any unclosed block.
-- The editor's labels read second-level headings from the Markdown, the deck from the rendered HTML. A heading written as raw HTML (`<h2>`) is seen only by the deck.
+- The editor's labels read second-level headings from the Markdown, the deck from the rendered HTML. A heading written as raw HTML (`<h2>`) is seen only by the deck. The editor also compares a heading's source, not its text, so `## *A* \`b\`` and `## A b` are two slides to its labels and one slide of two pages to the deck.
+- A `::block{id="…"}` loses its id to the sanitizer without a word; only a `::slide` id that is dropped refuses the deck.
+- Attribute values are read as written: a character reference (`kind="x&quot;y"`) stays literal where remark-directive decodes it, and a `}` inside a quoted value keeps the line from being read as a directive.
+- A `:::` line inside a code fence inside a container is code here; remark-directive closes the container there, so a blog splits such a note differently.
+- An indented `::vertical` under a list item is a page break here; on a blog it is nested in the item and breaks nothing.
+- Raw HTML in a note can write contour-deck's markers itself (`data-ct-act`, `data-ct-go`, `data-ct-mark`, `data-ct-notes`), which the deck then reads: the author's own note can trigger deck actions or skip directive checks, with no script and nothing gained across users. Hardening, left for later: stamp the markers the renderer writes with a per-render token, and have the deck drop any `data-ct-*` without it.
 - A slide without a heading is titled by the first 40 characters of its text. Where MyGitNotes draws a figure (an infographic, an argument map) that text is the figure's, so such a title can differ from the blog's.
 - Figures drawn by the note's own styles (infographics, argument maps, handouts, stat cards) keep their document sizes in a slide; headings, lists, tables, code, grid cells and callouts follow the size of the stage.
