@@ -107,8 +107,10 @@ export function fencedCodeLines(): (line: string) => boolean {
     const margin = indent(line, quote, quote.at + /^[ \t]*/.exec(quoted)![0].length);
     // The content columns of the list items the line is in, innermost last; a line indented less than an item's content ends the item.
     if (quote.depth !== items.depth) items = { depth: quote.depth, columns: [] };
-    if (quoted.trim()) { while (items.columns.length && margin < items.columns[items.columns.length - 1]) items.columns.pop(); }
     const item = /^[ \t]*(?:[-*+]|(\d{1,9})[.)])( {1,4}(?=\S)|[ \t]+|$)/.exec(quoted);
+    // A line of plain text right under paragraph text continues that paragraph lazily, in its item, wherever it is indented.
+    const lazy = paragraph && !item && !/^[ \t]*(?:`{3,}|~{3,}|#{1,6}(?:[ \t]|$))/.test(quoted);
+    if (quoted.trim() && !lazy) { while (items.columns.length && margin < items.columns[items.columns.length - 1]) items.columns.pop(); }
     const content = items.columns[items.columns.length - 1] ?? 0;
     const starts = item && !(paragraph && !items.columns.length && ((item[1] !== undefined && Number(item[1]) !== 1) || !quoted.slice(item[0].length).trim()));
     // Indented code under no paragraph, a heading and a blank line are no paragraph text.

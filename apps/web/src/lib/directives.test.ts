@@ -515,6 +515,13 @@ describe('fenced code lines', () => {
     expect(transformDirectives(note, md => `<p>${md.trim()}</p>`)).toContain('custom-directive');
   });
 
+  it('keeps a fence after a lazy line in its list item, so a blank line and an unindented line end it, as Markdown does', () => {
+    const text = '- a\nlazy\n  ```\n  P1\n\nP2', isCode = markedCode(text);
+    for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
+    const note = `${text}\n\n:::note\nhi\n:::\n`;
+    expect(findDirectiveBlocks(note).map(block => block.rawText)).toEqual([':::note\nhi\n:::']);
+  });
+
   it.each([['a plain fence', '```\nP1\n```\nP2'], ['a list item fence', '- ```js\n  P1\n  ```\n\nP2'], ['a quoted fence', '> ```\n> P1\n> ```\n\nP2']])('%s with CRLF line endings is code, as Markdown reads it', (_name, text) => {
     const crlf = text.replace(/\n/g, '\r\n'), isCode = markedCode(crlf), ours = ourCode(crlf);
     expect(ours.get('P1')).toBe(true);
