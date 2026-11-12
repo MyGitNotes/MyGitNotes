@@ -41,11 +41,18 @@ export interface EditorSlideStructure {
 export function editorSlideStructure(state: EditorState, blocks: readonly { from: number; to: number; type?: string; }[]): EditorSlideStructure {
   const slides = state.facet(slideNote);
   // The Markdown parser knows which `---` is a thematic break (not a heading's underline) and where the top-level headings are.
-  const rules = new Set<number>(), levels = new Map<number, { level: number; to: number; }>();
+  const rules = new Set<number>(), comments = new Set<number>(), levels = new Map<number, { level: number; to: number; }>();
   if (slides) {
     syntaxTree(state).iterate({
       enter({ name, from, to, node }) {
         if (name === 'HorizontalRule' && node.parent?.name === 'Document') rules.add(state.doc.lineAt(from).from);
+        // An HTML comment at the top level is no content: contour-deck makes no slide of it, nor a block.
+        if (name === 'CommentBlock' && node.parent?.name === 'Document') {
+          for (let line = state.doc.lineAt(from);; line = state.doc.line(line.number + 1)) {
+            comments.add(line.from);
+            if (line.to >= to || line.number === state.doc.lines) break;
+          }
+        }
         const heading = /^(?:ATX|Setext)Heading([1-6])$/.exec(name);
         // Only a heading at the top level structures a deck; one inside a list or a quote is content.
         if (heading && node.parent?.name === 'Document') levels.set(state.doc.lineAt(from).from, { level: Number(heading[1]), to });
@@ -85,7 +92,7 @@ export function editorSlideStructure(state: EditorState, blocks: readonly { from
       if (!(directive.form === 'leaf' && (directive.name === 'block' || directive.name === 'slide'))) reader.content();
       continue;
     }
-    if (!line.text.trim()) continue;
+    if (!line.text.trim() || comments.has(line.from)) continue;
     const heading = levels.get(line.from);
     if (heading) {
       const index = reader.heading(heading.level);

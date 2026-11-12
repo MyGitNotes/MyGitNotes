@@ -69,7 +69,7 @@ describe('a slide note, read by its headings', () => {
 
   it('labels each --- with the block that ends there, each ## with its slide and each ### with its page', () => {
     const host = preview(FIXTURE_DECKS[0][1]);
-    expect([...host.querySelectorAll('hr')].map(rule => [rule.className, rule.getAttribute('data-label')])).toEqual([['slide-break', 'Block 1'], ['slide-break', 'Block 2'], ['slide-break', 'Block 3'], ['slide-break', null]]);
-    expect(previewHeadings(host).headings.map(({ element }) => [element.tagName, element.textContent, element.getAttribute('data-label')])).toEqual([['H2', '引言', 'Slide 2'], ['H2', '兩種步驟', 'Slide 3'], ['H3', '清單', 'Page 3.1'], ['H3', '表格', 'Page 3.2'], ['H3', '結尾', 'Page 3.3'], ['H2', '區塊', 'Slide 4'], ['H2', '沒有標題的區塊', 'Slide 5'], ['H3', '第一頁', 'Page 5.1'], ['H3', '第二頁', 'Page 5.2'], ['H2', '最後', 'Slide 6']]);
+    expect([...host.querySelectorAll('hr')].map(rule => [rule.className, rule.getAttribute('data-label')])).toEqual([['slide-break', 'Block 1'], ['slide-break', 'Block 2'], ['slide-break', 'Block 3'], ['slide-break', null], ['slide-break', null], ['slide-break', 'Block 4']]);
+    expect(previewHeadings(host).headings.map(({ element }) => [element.tagName, element.textContent, element.getAttribute('data-label')])).toEqual([['H2', '引言', 'Slide 2'], ['H2', '兩種步驟', 'Slide 3'], ['H3', '清單', 'Page 3.1'], ['H3', '表格', 'Page 3.2'], ['H3', '結尾', 'Page 3.3'], ['H2', '區塊', 'Slide 4'], ['H2', '沒有標題的區塊', 'Slide 5'], ['H3', '第一頁', 'Page 5.1'], ['H3', '第二頁', 'Page 5.2'], ['H2', '最後', 'Slide 6'], ['H2', '收尾', 'Slide 8']]);
   });
 });
