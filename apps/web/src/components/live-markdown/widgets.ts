@@ -140,7 +140,7 @@ export class PageBreak extends WidgetType {
 
     const shelf = document.createElement('div');
     shelf.className = 'live-md-page-break-shelf';
-    // A separator with nothing above it ends no slide, and carries no label.
+    // A separator with nothing above it ends no block, and carries no label.
     if (this.label) {
       const tag = document.createElement('span');
       tag.className = 'live-md-page-break-tag';

@@ -3,7 +3,7 @@
  * parts of a `:::build` are its steps. This is the one place the editor's and the preview's labels come from.
  *
  * contour-deck's `rehypeDeck` is what builds the deck; this module only reads the same structure off the source or the preview, by the
- * rules of contour-deck 0.3.0's headings mode (`docs/PLUGINS.md`, "Headings mode" and "Steps"), and `structure.test.ts` holds it to
+ * rules of contour-deck 0.3.1's headings mode (`docs/PLUGINS.md`, "Headings mode" and "Steps"), and `structure.test.ts` holds it to
  * `rehypeDeck` on the fixture decks.
  */
 import type { TranslationKey } from '../i18n/en.js';
