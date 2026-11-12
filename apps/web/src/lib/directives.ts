@@ -69,6 +69,47 @@ export function fencedCodeLines(): (line: string) => boolean {
 }
 
 /**
+ * Follows indented code blocks down a text's lines, as {@link fencedCodeLines} follows fenced ones: `line` says, for each line outside a
+ * fenced block in turn, whether it is indented code, and `interrupt` is told of anything else that stands between two lines (a fenced
+ * block). A line is code when it is indented four columns past the content of the list items it is in, and follows a blank line or
+ * another line of the block: an indented line right under a paragraph continues the paragraph, and the paragraphs of a list item are
+ * indented without being code.
+ */
+export function indentedCodeLines(): { line: (line: string) => boolean; interrupt: () => void; } {
+  // The content columns of the list items the lines are in, outermost first.
+  const lists: number[] = [];
+  let afterBlank = true, inBlock = false;
+  return {
+    line(line) {
+      const text = line.replace(/^(?: {0,3}> ?)+/, '');
+      if (!text.trim()) {
+        afterBlank = true;
+        return false;
+      }
+      let indent = 0, start = 0;
+      for (; start < text.length && (text[start] === ' ' || text[start] === '\t'); start++) indent = text[start] === '\t' ? indent - (indent % 4) + 4 : indent + 1;
+      if (indent >= (lists.at(-1) ?? 0) + 4 && (afterBlank || inBlock)) {
+        afterBlank = false;
+        inBlock = true;
+        return true;
+      }
+      const marker = /^(?:[-*+]|\d{1,9}[.)])(?: +|\t|$)/.exec(text.slice(start));
+      // A line that is no list item and follows no blank line continues the paragraph above it, wherever it is indented.
+      if (marker || afterBlank) while (lists.length > 0 && lists[lists.length - 1] > indent) lists.pop();
+      // An item's content starts after its marker and the spaces behind it; five or more spaces are one space and an indented code block.
+      if (marker) lists.push(indent + (/^\S+ {1,4}\S/.test(marker.input) ? marker[0].length : marker[0].trimEnd().length + 1));
+      afterBlank = false;
+      inBlock = false;
+      return false;
+    },
+    interrupt() {
+      afterBlank = false;
+      inBlock = false;
+    },
+  };
+}
+
+/**
  * Whether `line` closes a container opened with `fenceLength` colons: a bare fence (`:::`, `> :::`)
  * or text followed by a trailing fence, whose text is returned as `trailing`.
  */
@@ -425,6 +466,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
   const output: string[] = [];
   const stack: DirectiveStackItem[] = [];
   const inCode = fencedCodeLines();
+  const indentedCode = indentedCodeLines();
   /** A slide directive on the line at `index`, written for the note's slide rendering; `body` is a container's rendered content. */
   const slideDirective = (options: SlideDirectiveOptions, name: string, form: 'container' | 'leaf' | 'text', rawAttrs: string | undefined, source: string, index: number, body?: string) => renderSlideDirective(name, form, rawAttrs, source, { rendering: options.rendering, strings, line: options.lineOf(index) }, body);
 
@@ -433,10 +475,13 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
 
     // A code block keeps its lines as written, whatever they look like.
     if (inCode(line)) {
+      indentedCode.interrupt();
       if (stack.length > 0) stack[stack.length - 1].lines.push(line);
       else output.push(line);
       continue;
     }
+    // An indented code block shows `:icon{…}` as it is written; the lines of a container are judged when its content is transformed.
+    const literal = stack.length === 0 ? indentedCode.line(line) : (indentedCode.interrupt(), false);
 
     const open = parseDirectiveOpen(line);
     if (open && (isInfographicKind(open.name) || isArgumentMapName(open.name) || isAnnotateName(open.name))) {
@@ -506,7 +551,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
       stack[stack.length - 1].lines.push(line);
     } else {
       // Process inline directives in line
-      output.push(transformInlineDirectives(line));
+      output.push(literal ? line : transformInlineDirectives(line));
     }
   }
 

@@ -113,6 +113,43 @@ describe('inline icons in rendered notes', () => {
   });
 });
 
+describe('an icon directive inside a code block', () => {
+  const icon = ':icon{name="User"}';
+  const blocks: [string, string][] = [
+    ['a backtick fence', `Before\n\n\`\`\`md\n${icon}\n\`\`\`\n\nAfter ${icon}`],
+    ['a tilde fence', `Before\n\n~~~\ntext ${icon} text\n~~~\n\nAfter ${icon}`],
+    ['an indented block', `Before\n\n    ${icon}\n\n    more ${icon}\n\nAfter ${icon}`],
+    ['an indented block at the top of the note', `    ${icon}\n\nAfter ${icon}`],
+    ['a tab-indented block', `Before\n\n\t${icon}\n\nAfter ${icon}`],
+    ['an indented block inside a list item', `- item\n\n      ${icon}\n\nAfter ${icon}`],
+  ];
+  // The print export draws `renderNote` without options; a slide note's preview and its deck pass `slides`.
+  const renderings: [string, { slides: 'preview' | 'deck'; } | undefined][] = [['a note and its print', undefined], ['a slide preview', { slides: 'preview' }], ['a deck', { slides: 'deck' }]];
+  const cases = renderings.flatMap(([rendering, options]) => blocks.map(([block, markdown]) => [block, rendering, markdown, options] as const));
+
+  it.each(cases)('%s stays literal text in %s', (_block, _rendering, markdown, options) => {
+    const page = new JSDOM(serverRenderer().renderNote(markdown, 'notes/a.md', undefined, undefined, undefined, options)).window.document;
+    const code = page.querySelector('pre code')!;
+    expect(code.textContent).toContain(icon);
+    expect(code.querySelector('svg')).toBeNull();
+    expect(page.body.textContent).not.toContain('lucide-icon');
+    // The one after the block is still drawn.
+    expect(page.querySelectorAll('svg')).toHaveLength(1);
+  });
+
+  it('still draws an icon in the indented paragraphs of a list item, which are no code', () => {
+    const page = new JSDOM(render(`- item\n\n    ${icon} in the item\n\n  - nested\n\n      ${icon} in the nested item\n\n1. numbered\n\n    ${icon} in the numbered item`)).window.document;
+    expect(page.querySelector('pre')).toBeNull();
+    expect(page.querySelectorAll('li svg')).toHaveLength(3);
+  });
+
+  it('still draws an icon on an indented line that continues a paragraph', () => {
+    const page = new JSDOM(render(`A paragraph\n    continued ${icon} here`)).window.document;
+    expect(page.querySelector('pre')).toBeNull();
+    expect(page.querySelectorAll('p svg')).toHaveLength(1);
+  });
+});
+
 describe('findInlineIcons', () => {
   it('lists each directive with its range, name and size, and skips a bare :icon and :icons', () => {
     const text = 'a :icon{name="User"} b :icon[FileText]{size="20"} :icon :icons{name="X"}';
