@@ -112,6 +112,7 @@ When contour-deck is upgraded, these run first.
 - Raw HTML in a note can write contour-deck's markers itself (`data-ct-act`, `data-ct-go`, `data-ct-mark`, `data-ct-notes`), which the deck then reads: the author's own note can trigger deck actions or skip directive checks, with no script and nothing gained across users. Hardening, left for later: stamp the markers the renderer writes with a per-render token, and have the deck drop any `data-ct-*` without it.
 - A slide without a heading is titled by the first 40 characters of its text. Where MyGitNotes draws a figure (an infographic, an argument map) that text is the figure's, so such a title can differ from the blog's.
 - Figures drawn by the note's own styles (infographics, argument maps, handouts, stat cards) keep their document sizes in a slide; headings, lists, tables, code, grid cells and callouts follow the size of the stage.
+- The Slides template is offered only in the desktop New note menu. A phone's new-note button offers no template, as it never offered a notebook's own templates either.
 
 ## Superseded: the separators, before 0.14.1
 
