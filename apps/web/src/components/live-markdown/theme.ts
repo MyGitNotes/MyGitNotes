@@ -26,7 +26,7 @@ export const theme = EditorView.theme({
   // selection-rectangle geometry (rectanglesForRange) reads a line's computed padding to
   // find the text edge for whole-line selection spans; padding on .cm-content itself is
   // invisible to that calculation and left the selection tint jutting into the card margin.
-  '.cm-content': { padding: '32px 0 0', maxWidth: 'var(--note-content-width, 880px)', fontSize: 'var(--note-font-size, inherit)', margin: '0 auto', minHeight: 'calc(100% - 48px)', width: '100%', caretColor: 'var(--color-primary)' },
+  '.cm-content': { padding: '32px 0 0', maxWidth: 'var(--note-content-width, 880px)', fontSize: 'var(--note-font-size, inherit)', margin: '0 auto', minHeight: 'calc(100% - 48px)', flex: '1 1 0', minWidth: '0', caretColor: 'var(--color-primary)' },
   '.cm-card-background': { backgroundColor: 'var(--color-surface)', borderRadius: 'var(--radius-panel)', boxShadow: 'var(--shadow-sm), 0 0 0 1px var(--color-line)' },
   '.cm-line': { padding: '0 40px' },
   '.cm-cursor': { borderLeftColor: 'var(--color-primary)' },
