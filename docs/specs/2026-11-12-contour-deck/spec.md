@@ -5,7 +5,7 @@ Amended at: 2026-11-13, by the owner's decision 13: every slide note is read by 
 
 # Slide notes (contour-deck)
 
-A note whose frontmatter has `type: slide` is a slide deck written in Markdown. The preview draws its slide directives the way [contour-deck](https://github.com/wayne930242/contour-deck) reads them, and the note plays as a contour-deck deck over the window: an outline of blocks, slides that reveal step by step, and the speaker notes. The note is read by its headings, as contour-deck 0.3.0's headings mode reads it: the outline of the deck is the outline of the Markdown. The same note built by a blog with `contour-deck/remark` and `contour-deck/rehype` given `structure: "headings"` splits into the same blocks, slides and pages.
+A note whose frontmatter has `type: slide` is a slide deck written in Markdown. The preview draws its slide directives the way [contour-deck](https://github.com/wayne930242/contour-deck) reads them, and the note plays as a contour-deck deck over the window: an outline of blocks, slides that reveal step by step, and the speaker notes. The note is read by its headings, as contour-deck 0.3.1's headings mode reads it: the outline of the deck is the outline of the Markdown. The same note built by a blog with `contour-deck/remark` and `contour-deck/rehype` given `structure: "headings"` splits into the same blocks, slides and pages.
 
 ## What a person sees
 
@@ -27,7 +27,7 @@ The live editor, and every place a note is shown read-only (a note another pane 
 
 The labels follow the language of the app. A directive inside a code block, fenced or indented, is code and draws nothing.
 
-The numbering follows contour-deck 0.3.0's headings mode. A `---` always starts a block, a `##` a slide and a `###` a further page of the slide. Content before a block's first `##` is the block's first slide (a title slide or a divider), unless it is nothing but a `####` kicker and notes, which open the first `##` slide. A `###` right under its `##`, with nothing between them but notes, heads the slide's first page with it. A heading inside a quote, a list or a container is content. A `---` with nothing above it ends nothing and carries no label.
+The numbering follows contour-deck 0.3.1's headings mode. In a deck of several blocks, a block with no `#` or `####` heading of its own takes the title of its first slide; HTML comments are not content. A `---` always starts a block, a `##` a slide and a `###` a further page of the slide. Content before a block's first `##` is the block's first slide (a title slide or a divider), unless it is nothing but a `####` kicker and notes, which open the first `##` slide. A `###` right under its `##`, with nothing between them but notes, heads the slide's first page with it. A heading inside a quote, a list or a container is content. A `---` with nothing above it ends nothing and carries no label.
 
 The note's `slideOptions.structure` is not read. A note that names `slides`, an empty value, a value contour-deck does not know, or nothing at all plays by its headings, and nothing reports the field. A blog does read it, and reads a note without it by its separators, so a note meant for a blog says `slideOptions.structure: headings`.
 

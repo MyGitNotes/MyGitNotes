@@ -13,7 +13,7 @@ const notesDeck = (body: string, title: string) => deckOutline(readDeck(renderNo
 const COUNTS: Record<string, ReturnType<typeof deckCounts>> = { 'headings.md': { blocks: 4, slides: 6, pages: 9, steps: 4, notes: 2 }, 'kicker-builds.md': { blocks: 5, slides: 7, pages: 9, steps: 10, notes: 5 } };
 
 /** The block titles and slide titles of each fixture deck. */
-const TITLES: Record<string, [unknown, unknown[]][]> = { 'headings.md': [['標題即輪廓', ['標題即輪廓']], ['一、規則', ['引言', '兩種步驟']], ['附錄 A｜名詞', ['區塊']], ['標題即輪廓', ['沒有標題的區塊', '最後']]], 'kicker-builds.md': [['開場｜兩分鐘', ['步驟與堆疊']], ['一、逐步顯示', ['清單一項一步', '表格不在 build 裡', '格線與資訊框']], ['二、程式與圖', ['圍籬裡的指令不算']], ['附錄 A｜名詞', ['區塊']], ['附錄 B｜分隔線', ['另一種分隔線']]] };
+const TITLES: Record<string, [unknown, unknown[]][]> = { 'headings.md': [['標題即輪廓', ['標題即輪廓']], ['一、規則', ['引言', '兩種步驟']], ['附錄 A｜名詞', ['區塊']], ['沒有標題的區塊', ['沒有標題的區塊', '最後']]], 'kicker-builds.md': [['開場｜兩分鐘', ['步驟與堆疊']], ['一、逐步顯示', ['清單一項一步', '表格不在 build 裡', '格線與資訊框']], ['二、程式與圖', ['圍籬裡的指令不算']], ['附錄 A｜名詞', ['區塊']], ['附錄 B｜分隔線', ['另一種分隔線']]] };
 
 /** A deck's blocks, their slides by id and heading, and the steps and notes of every page: what two producers of one deck must agree on. */
 function expectSameDeck(notes: DeckOutline, blog: DeckOutline) {
