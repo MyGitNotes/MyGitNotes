@@ -2,7 +2,8 @@ import { EditorView, WidgetType } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
 import { DIRECTIVE_TEMPLATES, type DirectiveModel, GRID_COLUMN_OPTIONS, gridColumnCount, localizedDirectiveLabel, parseDirectiveModel, serializeDirectiveModel, setGridColumns } from '../lib/directive-editing.js';
 import { localizedHandoutVariants } from '../lib/directives.js';
-import { renderNote } from '../lib/markdown.js';
+import { type NoteRenderOptions, renderNote } from '../lib/markdown.js';
+import { isSlideDirective } from '../lib/slides/directives.js';
 import { hydrateMermaid } from '../lib/mermaid.js';
 import type { TranslationKey } from '../lib/i18n/en.js';
 import { DEFAULT_YOUTUBE_LABELS, youtubeLabels } from '../lib/youtube-embed.js';
@@ -10,12 +11,30 @@ import { DEFAULT_YOUTUBE_LABELS, youtubeLabels } from '../lib/youtube-embed.js';
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
 export class LiveMarkdownDirective extends WidgetType {
-  constructor(readonly text: string, readonly path: string, readonly from: number, readonly readOnly: boolean, readonly currentType: string, readonly currentVariant?: string, readonly t?: Translate, readonly notebookId?: string) {
+  /** `slides`: the block is in a `type: slide` note, whose slide directives draw as a deck reads them. */
+  constructor(readonly text: string, readonly path: string, readonly from: number, readonly readOnly: boolean, readonly currentType: string, readonly currentVariant?: string, readonly t?: Translate, readonly notebookId?: string, readonly slides = false) {
     super();
   }
 
   eq(other: LiveMarkdownDirective) {
-    return (this.text === other.text && this.path === other.path && this.from === other.from && this.readOnly === other.readOnly && this.currentType === other.currentType && this.currentVariant === other.currentVariant && this.notebookId === other.notebookId);
+    return (this.text === other.text && this.path === other.path && this.from === other.from && this.readOnly === other.readOnly && this.currentType === other.currentType && this.currentVariant === other.currentVariant && this.notebookId === other.notebookId && this.slides === other.slides);
+  }
+
+  private get renderOptions(): NoteRenderOptions | undefined {
+    return this.slides ? { slides: 'preview' } : undefined;
+  }
+
+  /** The block formats a select offers: the templates, and the block's own type when it is none of them, so choosing nothing never changes it. */
+  private typeOptions(select: HTMLSelectElement, current: string) {
+    const types = DIRECTIVE_TEMPLATES.map(template => template.type);
+    for (const type of types.includes(current) ? types : [...types, current]) {
+      const option = document.createElement('option');
+      option.value = type;
+      option.textContent = types.includes(type) ? localizedDirectiveLabel(type, this.t) : type;
+      if (type === current) option.selected = true;
+      select.append(option);
+    }
+    select.value = current;
   }
 
   private stopMermaid = () => {};
@@ -67,7 +86,7 @@ export class LiveMarkdownDirective extends WidgetType {
     root.dataset.directiveType = model.type;
 
     if (this.readOnly) {
-      root.innerHTML = renderNote(this.text, this.path, undefined, this.t ? youtubeLabels(this.t) : DEFAULT_YOUTUBE_LABELS, this.notebookId);
+      root.innerHTML = renderNote(this.text, this.path, undefined, this.t ? youtubeLabels(this.t) : DEFAULT_YOUTUBE_LABELS, this.notebookId, this.renderOptions);
       this.hydrateDiagrams(view, root);
       return root;
     }
@@ -97,20 +116,15 @@ export class LiveMarkdownDirective extends WidgetType {
       typeSelect.className = 'live-directive-type-select';
       typeSelect.title = this.tt('directive.editor.changeFormat', '更換區塊格式');
       typeSelect.setAttribute('aria-label', this.tt('directive.editor.changeFormat', '更換區塊格式'));
-      for (const tpl of DIRECTIVE_TEMPLATES) {
-        const option = document.createElement('option');
-        option.value = tpl.type;
-        option.textContent = localizedDirectiveLabel(tpl.type, this.t);
-        if (tpl.type === model.type) option.selected = true;
-        typeSelect.append(option);
-      }
-      typeSelect.value = model.type;
+      this.typeOptions(typeSelect, model.type);
       typeSelect.addEventListener('mousedown', event => event.stopPropagation());
       typeSelect.addEventListener('change', () => {
         model.type = typeSelect.value;
         saveChanges(model);
       });
-      toolbar.append(typeSelect);
+      // A slide directive of a slide note is no general block: it has no other format to change to, and no title.
+      const slideDirective = this.slides && isSlideDirective(model.type);
+      if (!slideDirective) toolbar.append(typeSelect);
 
       // Document style select (the handout type name remains for syntax compatibility)
       if (model.type === 'handout') {
@@ -173,7 +187,7 @@ export class LiveMarkdownDirective extends WidgetType {
           titleInput.blur();
         }
       });
-      toolbar.append(titleInput);
+      if (!slideDirective) toolbar.append(titleInput);
 
       // Edit body button (明確文字「編輯內文」)
       const editBtn = document.createElement('button');
@@ -194,7 +208,7 @@ export class LiveMarkdownDirective extends WidgetType {
       // 2. Render Card Content
       const contentContainer = document.createElement('div');
       contentContainer.className = 'live-directive-preview-content';
-      contentContainer.innerHTML = renderNote(this.text, this.path, undefined, this.t ? youtubeLabels(this.t) : DEFAULT_YOUTUBE_LABELS, this.notebookId);
+      contentContainer.innerHTML = renderNote(this.text, this.path, undefined, this.t ? youtubeLabels(this.t) : DEFAULT_YOUTUBE_LABELS, this.notebookId, this.renderOptions);
 
       // Double click to enter edit form
       contentContainer.addEventListener('dblclick', event => {
@@ -232,14 +246,7 @@ export class LiveMarkdownDirective extends WidgetType {
       const typeLabel = document.createElement('label');
       typeLabel.textContent = this.tt('directive.editor.blockFormat', '區塊格式');
       const formTypeSelect = document.createElement('select');
-      for (const tpl of DIRECTIVE_TEMPLATES) {
-        const option = document.createElement('option');
-        option.value = tpl.type;
-        option.textContent = localizedDirectiveLabel(tpl.type, this.t);
-        if (tpl.type === model.type) option.selected = true;
-        formTypeSelect.append(option);
-      }
-      formTypeSelect.value = model.type;
+      this.typeOptions(formTypeSelect, model.type);
       typeField.append(typeLabel, formTypeSelect);
 
       const titleField = document.createElement('div');
@@ -252,7 +259,7 @@ export class LiveMarkdownDirective extends WidgetType {
       formTitleInput.placeholder = this.tt('directive.editor.titleInputPlaceholder', '輸入標題...');
       titleField.append(titleLabel, formTitleInput);
 
-      row1.append(typeField, titleField);
+      if (!(this.slides && isSlideDirective(model.type))) row1.append(typeField, titleField);
 
       // Form Row 2 (document / stats compatibility fields)
       let row2: HTMLDivElement | null = null;

@@ -29,6 +29,8 @@ import type { NoteEditorSession, NoteEditorSharedProps, NotePanelMode } from './
 import { createCaretStore } from '../lib/pi-agent/caret-store.js';
 import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 import { usePublishPreviewTarget } from '../lib/typst-preview/preview-target.js';
+import { isSlideNote } from '../lib/slides/note.js';
+import { SlideDeck, type SlideDeckView } from './slides/SlideDeck.js';
 
 export interface NoteEditorHandle {
   /** Inserts `text` at `at`, or at the caret; no-op while the session is locked. */
@@ -175,6 +177,10 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     setEditing(true);
   };
 
+  // A slide note plays as a deck over the window, from the text as it is now; the toolbar offers it for a Markdown note only.
+  const [deckView, setDeckView] = useState<SlideDeckView | null>(null);
+  const slideDeck = isMarkdown && isSlideNote(session.metadata) ? setDeckView : undefined;
+
   // Vim's `:w` does what the footer's Commit does, or the toolbar's Save where the note saves by hand; with nothing to
   // write it succeeds, so `:wq` still closes. `:q` closes a zoomed note the way its back button does.
   const canCommitNow = Boolean(footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) }).onCommit);
@@ -228,7 +234,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   return (
     <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
-      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : undefined} onRefresh={refresh} onClose={onClose} onMove={readOnly ? undefined : onMove} onRename={readOnly ? undefined : onRename} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden } : undefined} />
+      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : undefined} onRefresh={refresh} onClose={onClose} onMove={readOnly ? undefined : onMove} onRename={readOnly ? undefined : onRename} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden } : undefined} />
       {awaitingRecovery && (
         <p role='status'>
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
@@ -254,11 +260,13 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
             setImagePickerOpen(true);
           }}
           carry={carry}
+          slides={isSlideNote(session.metadata)}
         />
         <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />
       </div>
       {!phone && <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={quickActions} />}
       {docPanel.isEditorLeaderOpen && <NoteEditorLeader docPanel={docPanel} isMarkdown={isMarkdown} />}
+      {deckView && <SlideDeck content={session.content} path={note.path} notebookId={note.notebookId} title={session.title} lineNumberOffset={session.baseNote.lineNumberOffset || 0} view={deckView} onClose={() => setDeckView(null)} />}
       {imagePickerOpen && <FileManagerDialog notebookId={note.notebookId} writable={!readOnly} mode='pick-image' onInsert={session.locked ? undefined : insertImage} beforeChange={beforeFileChange} onChanged={onFilesChanged} onClose={() => setImagePickerOpen(false)} />}
     </div>
   );

@@ -1,0 +1,10 @@
+/* The screen that stands in for a slide note's deck while it loads, and when the note cannot be played. The deck's own styles load with it (lib/slides/deck.css). */
+.slide-deck-status { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; padding: 1.5rem; background: var(--color-surface); color: var(--color-text); text-align: center; }
+
+.slide-deck-status h2 { margin: 0; font-size: 1.1rem; font-weight: 700; }
+
+.slide-deck-status p { margin: 0; max-width: 40rem; overflow-wrap: anywhere; }
+
+.slide-deck-error-message { padding: 0.75rem 1rem; border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent); border-radius: var(--radius-panel, 10px); background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface)); font-size: 0.9rem; }
+
+.slide-deck-error-line { font-size: 0.85rem; color: var(--color-muted); font-variant-numeric: tabular-nums; }

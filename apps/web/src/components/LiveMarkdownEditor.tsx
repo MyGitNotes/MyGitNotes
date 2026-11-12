@@ -26,6 +26,7 @@ import { cjkEmphasis } from './live-markdown/cjk-emphasis.js';
 import { anchorMermaidSwap } from './live-markdown/mermaid-scroll.js';
 import { liveDecorations } from './live-markdown/decorations.js';
 import { citationLibrary } from './live-markdown/citations.js';
+import { slideNote } from './live-markdown/slide-structure.js';
 import { citationCompletionSource } from './live-markdown/citation-completion-source.js';
 import { useCitationLibrary } from '../lib/typst-preview/use-citation-library.js';
 import { cardBackgroundLayer, theme } from './live-markdown/theme.js';
@@ -89,10 +90,12 @@ interface Props {
   continuous?: boolean;
   /** Where the view leaves its state for the next view of the same note to start from; used once, and only while the text is unchanged. */
   carry?: MutableRefObject<LiveEditorCarry | null>;
+  /** The note is a `type: slide` note: `---` and `::vertical` are labelled with the slide and page they end, and the slide directives draw as a deck reads them. */
+  slides?: boolean;
 }
 const focusChanged = StateEffect.define<boolean>();
 let youtubeEditorSequence = 0;
-export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry }, ref) => {
+export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry, slides = false }, ref) => {
   const { t } = useTranslation();
   const linkLabel = t('links.open');
   const tableLabel = t('preview.scrollableTable'), pageLabel = t('editor.page');
@@ -125,6 +128,11 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   const currentLibrary = useRef(library);
   /* eslint-disable react/refs -- The persistent CodeMirror view reads current callbacks and options through refs. */
   currentLibrary.current = library;
+  /* eslint-enable react/refs */
+  const slideMode = useRef(new Compartment());
+  const currentSlides = useRef(slides);
+  /* eslint-disable react/refs -- The persistent CodeMirror view reads current callbacks and options through refs. */
+  currentSlides.current = slides;
   /* eslint-enable react/refs */
   const vimBindings = useRef(vimCompartment());
   const copyLinesCallback = useRef(onCopyLines);
@@ -273,6 +281,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           EditorView.atomicRanges.of(view => view.state.field(field).decorations.update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof LiveMarkdownTable })),
           permission.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
           citations.current.of(citationLibrary.of(currentLibrary.current)),
+          slideMode.current.of(slideNote.of(currentSlides.current)),
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel, 'role': 'textbox', 'aria-multiline': 'true', 'data-key-scope': 'markdown-editor' }),
           EditorView.domEventHandlers({
             focus: (_event, view) => {
@@ -312,6 +321,9 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   useEffect(() => {
     editor.current?.dispatch({ effects: citations.current.reconfigure(citationLibrary.of(library)) });
   }, [library]);
+  useEffect(() => {
+    editor.current?.dispatch({ effects: slideMode.current.reconfigure(slideNote.of(slides)) });
+  }, [slides]);
   // The host editor applies the view preferences as CSS variables; CodeMirror caches line heights and the
   // content box, so it re-measures once the new size and width are in the DOM.
   const viewPreferences = useNoteViewPreferences();

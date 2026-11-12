@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Check, ListOrdered, PanelRight, Pencil, Save, Type } from 'lucide-react';
+import { ArrowLeft, Check, ListOrdered, PanelRight, Pencil, Play, Save, ScrollText, Type } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import type { NoteItem } from '../../lib/types.js';
 import { Button } from '../Button.js';
@@ -34,6 +34,8 @@ interface NoteEditorToolbarProps {
   onRefresh?: () => Promise<void>;
   onClose?: () => void;
   onAddToOutline?: () => void;
+  /** Present for a slide note: plays it as a deck, or opens its speaker notes. */
+  onPlaySlides?: (view: 'deck' | 'notes') => void;
   /** Moves the note to another folder of its notebook; a new note starts at the root and is filed from here. */
   onMove?: () => void;
   /** Renames the note to the typed title, its file name following; absent where the note cannot be renamed. */
@@ -69,7 +71,7 @@ function togglePanel(docPanel: NoteDocumentPanelState, isMarkdown: boolean) {
 }
 
 /** The editor's actions: refresh and save, the view (mode, line numbers, formatting toolbar), the "⋯" menu, and in zoom the panels. */
-function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onMove, phoneEditing }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onClose' | 'onRename' | 'actionsSlot'>) {
+function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, phoneEditing }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onClose' | 'onRename' | 'actionsSlot'>) {
   const { t } = useTranslation();
   const zoom = frame === 'zoom';
   return (
@@ -82,6 +84,16 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
         </Button>
       )}
       {!zoom && phoneEditing && <PhoneEditToggle {...phoneEditing} />}
+      {onPlaySlides && (
+        <div role='group' className='note-controls-group' aria-label={t('slides.playTitle')}>
+          <button type='button' aria-label={t('slides.play')} title={t('slides.playTitle')} onClick={() => onPlaySlides('deck')} className='ui-icon-button toolbar-icon-button editor-slides-play-action'>
+            <Play aria-hidden='true' />
+          </button>
+          <button type='button' aria-label={t('slides.notesView')} title={t('slides.notesViewTitle')} onClick={() => onPlaySlides('notes')} className='ui-icon-button toolbar-icon-button editor-slides-notes-action'>
+            <ScrollText aria-hidden='true' />
+          </button>
+        </div>
+      )}
       {/* Two groups in zoom, set apart by a thin separator: the view with the "⋯" menu, and the panels. */}
       <div role='group' className='note-controls-group' aria-label={t('editor.controlsView')}>
         {isMarkdown && <EditorModeToggle mode={editorMode} onChange={setEditorMode} className='ui-icon-button toolbar-icon-button editor-mode-toggle' showKey />}
@@ -118,8 +130,8 @@ export function NoteEditorToolbar({ onClose, onRename, statuses, availableTags, 
   const { frame, note, session, docPanel, readOnly } = actions;
   const zoom = frame === 'zoom';
   if (phoneChrome) {
-    const { frame: phoneFrame, note: phoneNote, session: phoneSession, docPanel: phoneDocPanel, isMarkdown, autoSave, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onMove } = actions;
-    return <PhoneNoteChrome {...phoneChrome} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
+    const { frame: phoneFrame, note: phoneNote, session: phoneSession, docPanel: phoneDocPanel, isMarkdown, autoSave, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove } = actions;
+    return <PhoneNoteChrome {...phoneChrome} onPlaySlides={onPlaySlides} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
   }
   const controls: ReactNode = <NoteActions {...actions} phoneEditing={phoneEditing} />;
   return (

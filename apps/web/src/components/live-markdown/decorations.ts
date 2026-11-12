@@ -22,6 +22,9 @@ import { chipEditState } from './chip-editing.js';
 import { findCitations, formatCitation } from '@mygitnotes/core/citations';
 import { CitationChip, citationLibrary } from './citations.js';
 import { mermaidFenceAt } from './mermaid-fence.js';
+import { editorSlideStructure, slideNote } from './slide-structure.js';
+import { SlideDirectiveChip, SlideDirectiveLine, SlidePageBreak } from './slide-widgets.js';
+import { type SeparatorLabel, separatorLabelText } from '../../lib/slides/structure.js';
 
 /** Inline/reference destinations interpret character references once; bare/autolinks do not. */
 function decodeDestinationEntities(href: string): string {
@@ -50,6 +53,12 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
   const docText = state.doc.toString();
   const directiveBlocks = findDirectiveBlocks(docText);
   const collapsedDirectives = directiveBlocks.filter(b => !active(b.from, b.to));
+  // A slide note's separators are slides and pages, and its slide directives draw as a deck reads them.
+  const slides = state.facet(slideNote);
+  const slideStructure = editorSlideStructure(state, directiveBlocks);
+  const endsLabel = (ends: SeparatorLabel | undefined) => ends ? separatorLabelText(ends, (key, params) => t(key, params)) : '';
+  // The slide directive lines a widget stands for while the caret is elsewhere: every one in a slide note, and in any other note the `::block` and `::slide` that draw nothing there.
+  const drawnSlideLines = slideStructure.lines.filter(line => (slides || (line.form === 'leaf' && (line.name === 'block' || line.name === 'slide'))) && !active(line.from, line.to));
   // A nested quote line carries one QuoteMark per level; each reveal is taken out of flow to the
   // same spot (see .live-md-quote-mark-reveal), so adjacent marks are merged into one span here —
   // otherwise a depth-2+ line's revealed markers would render on top of each other.
@@ -67,6 +76,7 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
       if (collapsedDirectives.some(b => from >= b.from && to <= b.to)) {
         return false;
       }
+      if (drawnSlideLines.some(line => from >= line.from && to <= line.to)) return false;
       const editing = active(from, to);
       if (/^(ATXHeading|SetextHeading)[1-6]$/.test(name)) marks.push(Decoration.line({ class: `live-md-heading live-md-h${name.at(-1)}`, attributes: { 'data-heading-slug': headingSlug(state.sliceDoc(from, to).split('\n')[0]) } }).range(state.doc.lineAt(from).from));
       if (name === 'Blockquote') {
@@ -114,10 +124,11 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
           underlineOpen = null;
         }
       }
-      if (!continuous && name === 'HorizontalRule' && node.node.parent?.name === 'Document' && state.sliceDoc(from, to).trim() === '---') {
+      // In a slide note every thematic break starts a slide, and is labelled with the slide that ends there.
+      if (!continuous && name === 'HorizontalRule' && node.node.parent?.name === 'Document' && (slides || state.sliceDoc(from, to).trim() === '---')) {
         const currentPage = pageNumber;
         pageNumber++;
-        const label = `${pageLabel} ${currentPage}`;
+        const label = slides ? endsLabel(slideStructure.separators.get(state.doc.lineAt(from).from)?.label) : `${pageLabel} ${currentPage}`;
         if (editing) marks.push(Decoration.line({ class: 'live-md-page-divider', attributes: { 'data-page-break': String(currentPage), 'data-page-label': label } }).range(state.doc.lineAt(from).from));
         else marks.push(Decoration.replace({ widget: new PageBreak(from, label, currentPage), block: true }).range(from, to));
         return false;
@@ -266,7 +277,7 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
 
   for (const block of collapsedDirectives) {
     // The infographic kinds, the argument map and the image annotation are classes of their own, with their own widgets.
-    const widget = isAnnotateName(block.type) ? new LiveMarkdownAnnotate(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isArgumentMapName(block.type) ? new LiveMarkdownArgumentMap(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isInfographicKind(block.type) ? new LiveMarkdownInfographic(block.rawText, notePath, block.from, state.readOnly, block.type, t, notebookId) : new LiveMarkdownDirective(block.rawText, notePath, block.from, state.readOnly, block.type, block.attrs.variant, t, notebookId);
+    const widget = isAnnotateName(block.type) ? new LiveMarkdownAnnotate(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isArgumentMapName(block.type) ? new LiveMarkdownArgumentMap(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isInfographicKind(block.type) ? new LiveMarkdownInfographic(block.rawText, notePath, block.from, state.readOnly, block.type, t, notebookId) : new LiveMarkdownDirective(block.rawText, notePath, block.from, state.readOnly, block.type, block.attrs.variant, t, notebookId, slides);
     marks.push(Decoration.replace({ widget, block: true }).range(block.from, block.to));
   }
 
@@ -276,6 +287,14 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
   for (let lineNumber = 1; lineNumber <= state.doc.lines; lineNumber++) {
     const line = state.doc.line(lineNumber);
     if (collapsedDirectives.some(b => line.from >= b.from && line.to <= b.to)) {
+      continue;
+    }
+    const slideLine = drawnSlideLines.find(drawn => drawn.from === line.from);
+    if (slideLine) {
+      if (!slides) marks.push(Decoration.replace({ widget: new SlideDirectiveChip(slideLine.text, line.from) }).range(line.from, line.to));
+      // A column without pages (a card, a Book section) numbers nothing.
+      else if (slideLine.pageBreak) marks.push(Decoration.replace({ widget: new SlidePageBreak(line.from, continuous ? '' : endsLabel(slideStructure.separators.get(line.from)?.label)), block: true }).range(line.from, line.to));
+      else marks.push(Decoration.replace({ widget: new SlideDirectiveLine(slideLine.text, notePath, line.from, notebookId), block: true }).range(line.from, line.to));
       continue;
     }
     // MDX import statement: low-key display when not active/editing
@@ -304,7 +323,7 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
       }
     }
   }
-  if (!continuous) marks.push(Decoration.widget({ widget: new PageFooter(pageNumber, `${pageLabel} ${pageNumber}`), side: 1, block: true }).range(state.doc.length));
+  if (!continuous) marks.push(Decoration.widget({ widget: new PageFooter(pageNumber, slides ? endsLabel(slideStructure.end) : `${pageLabel} ${pageNumber}`), side: 1, block: true }).range(state.doc.length));
   return Decoration.set(marks, true);
 }
 

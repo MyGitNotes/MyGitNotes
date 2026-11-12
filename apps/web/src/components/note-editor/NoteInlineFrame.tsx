@@ -3,6 +3,7 @@ import type { NoteItem } from '../../lib/types.js';
 import type { LiveEditorCarry } from '../LiveMarkdownEditor.js';
 import { MarkdownEditor, type MarkdownEditorHandle } from '../MarkdownEditor.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
+import { isSlideNote } from '../../lib/slides/note.js';
 
 interface NoteInlineFrameProps {
   note: NoteItem;
@@ -17,7 +18,7 @@ export function NoteInlineFrame({ note, session, editorRef, onCaret, carry }: No
   return (
     <>
       <div className='note-editor-body'>
-        <MarkdownEditor ref={editorRef} compact continuous content={session.content} path={note.path} notebookId={note.notebookId} mode='live' readOnly={session.locked} onChange={session.setContent} onCaret={onCaret} ariaLabel='Note content' showLineNumbers={false} carry={carry} />
+        <MarkdownEditor ref={editorRef} compact continuous content={session.content} path={note.path} notebookId={note.notebookId} mode='live' readOnly={session.locked} onChange={session.setContent} onCaret={onCaret} ariaLabel='Note content' showLineNumbers={false} carry={carry} slides={isSlideNote(session.metadata)} />
       </div>
       <p role='status' className='note-inline-status' data-state={session.editorState}>
         <span className={`note-compact-dot ${session.editorState === 'saving' ? 'animate-pulse' : ''}`} aria-hidden='true' />

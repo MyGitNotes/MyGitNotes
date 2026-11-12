@@ -140,10 +140,13 @@ export class PageBreak extends WidgetType {
 
     const shelf = document.createElement('div');
     shelf.className = 'live-md-page-break-shelf';
-    const tag = document.createElement('span');
-    tag.className = 'live-md-page-break-tag';
-    tag.textContent = this.label;
-    shelf.appendChild(tag);
+    // A separator with nothing above it ends no slide, and carries no label.
+    if (this.label) {
+      const tag = document.createElement('span');
+      tag.className = 'live-md-page-break-tag';
+      tag.textContent = this.label;
+      shelf.appendChild(tag);
+    }
 
     const gap = document.createElement('div');
     gap.className = 'live-md-page-break-gap';
@@ -176,10 +179,12 @@ export class PageFooter extends WidgetType {
 
     const shelf = document.createElement('div');
     shelf.className = 'live-md-page-break-shelf';
-    const tag = document.createElement('span');
-    tag.className = 'live-md-page-break-tag';
-    tag.textContent = this.label;
-    shelf.appendChild(tag);
+    if (this.label) {
+      const tag = document.createElement('span');
+      tag.className = 'live-md-page-break-tag';
+      tag.textContent = this.label;
+      shelf.appendChild(tag);
+    }
 
     dom.appendChild(shelf);
     return dom;

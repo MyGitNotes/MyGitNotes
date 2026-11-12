@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react';
-import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, ListTree, MoreHorizontal, Pencil, PencilLine, Printer, Save, Trash2, Type } from 'lucide-react';
+import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import '../phone-notes.css';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -31,6 +31,8 @@ export interface PhoneNoteChromeProps {
   /** Present when the note offers a formatting toolbar: an editable Markdown note. */
   toggleFormatToolbar?: () => void;
   onAddToOutline?: () => void;
+  /** Present for a slide note: plays it as a deck, or opens its speaker notes. */
+  onPlaySlides?: (view: 'deck' | 'notes') => void;
   onMove?: () => void;
   onRename?: (title: string) => Promise<void> | void;
   statuses: string[];
@@ -143,7 +145,7 @@ function RenameRow({ title, onRename, onDone }: { title: string; onRename: (titl
 }
 
 /** The "⋯" sheet: the note's status and tags, the tools the rail offered on a larger screen, and the actions that file or export it. */
-function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onMove, onRename, statuses, availableTags, hasHistory, quickActions, title, onClose }: PhoneNoteChromeProps & { title: string; onClose: () => void; }) {
+function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, statuses, availableTags, hasHistory, quickActions, title, onClose }: PhoneNoteChromeProps & { title: string; onClose: () => void; }) {
   const { t } = useTranslation();
   const panel = usePanelContext();
   const { changesCount, deleteNote, back } = usePhoneNotes();
@@ -197,6 +199,8 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         </div>
       </section>
       <section className='phone-sheet-section phone-sheet-list'>
+        {onPlaySlides && <SheetItem icon={<Play aria-hidden='true' />} label={t('slides.playTitle')} onClick={act(() => onPlaySlides('deck'))} />}
+        {onPlaySlides && <SheetItem icon={<ScrollText aria-hidden='true' />} label={t('slides.notesViewTitle')} onClick={act(() => onPlaySlides('notes'))} />}
         {isMarkdown && <SheetItem icon={editorMode === 'live' ? <Code2 aria-hidden='true' /> : <Eye aria-hidden='true' />} label={t(editorMode === 'live' ? 'editor.switchToSource' : 'editor.switchToLive')} onClick={act(() => setEditorMode(editorMode === 'live' ? 'raw' : 'live'))} />}
         {toggleFormatToolbar && <SheetItem icon={<Type aria-hidden='true' />} label={t('editor.formatToolbar')} pressed={showFormatToolbar} onClick={toggleFormatToolbar} />}
         <div className='phone-sheet-quick'>{quickActions}</div>

@@ -12,6 +12,7 @@ import { youtubeLabels } from '../lib/youtube-embed.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { NoteHtml } from './NoteHtml.js';
 import { sameValue } from '../lib/merge-note.js';
+import { isSlideNote } from '../lib/slides/note.js';
 
 /** Whether two reads of a note hold the same text and metadata, apart from the timestamps every save stamps. */
 function sameNoteBody(a: NoteItem, b: NoteItem): boolean {
@@ -143,7 +144,8 @@ export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, 
 const NotePreview: React.FC<{ note: NoteItem; onClaim: () => void; }> = ({ note, onClaim }) => {
   const { t } = useTranslation();
   const tableLabel = t('preview.scrollableTable');
-  const html = useMemo(() => renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId), [note.content, note.path, note.notebookId, tableLabel, t]);
+  const slides = isSlideNote(note.metadata);
+  const html = useMemo(() => renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview' } : undefined), [note.content, note.path, note.notebookId, tableLabel, t, slides]);
   return (
     <div className='note-preview'>
       <div className='note-preview-bar'>

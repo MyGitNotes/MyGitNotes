@@ -64,6 +64,8 @@ interface Props {
   onInsertImage?: (options?: { annotated?: boolean; }) => void;
   /** Keeps the live editor's caret and undo history across this editor being rebuilt in another frame of the same note. */
   carry?: MutableRefObject<LiveEditorCarry | null>;
+  /** The note is a `type: slide` note: the live editor draws its separators and slide directives as a deck reads them. */
+  slides?: boolean;
 }
 
 /** The formatting toolbar's groups; a format with a KEYMAP entry shows its key in the button's label. */
@@ -90,7 +92,7 @@ export function MarkdownEditorModeSwitch({ mode, onChange }: { mode: MarkdownEdi
   );
 }
 
-export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage, carry }, ref) => {
+export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage, carry, slides = false }, ref) => {
   const { t } = useTranslation();
   const [caret, setCaret] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -597,7 +599,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       {mode === 'live' && isMarkdown
         ? (
           <React.Suspense fallback={<LoadingStatus className='p-6 text-sm text-muted'>{t('editor.loadingEditor')}</LoadingStatus>}>
-            <LiveMarkdownEditor key={path} ref={live} content={content} notePath={path} notebookId={notebookId} readOnly={readOnly} onChange={onChange} onCaret={onCaret} ariaLabel={ariaLabel} showLineNumbers={showLineNumbers} lineNumberOffset={lineNumberOffset} onCopyLines={copyLines} continuous={continuous} carry={carry} />
+            <LiveMarkdownEditor key={path} ref={live} content={content} notePath={path} notebookId={notebookId} readOnly={readOnly} onChange={onChange} onCaret={onCaret} ariaLabel={ariaLabel} showLineNumbers={showLineNumbers} lineNumberOffset={lineNumberOffset} onCopyLines={copyLines} continuous={continuous} carry={carry} slides={slides} />
           </React.Suspense>
         )
         : (

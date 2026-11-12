@@ -1,0 +1,40 @@
+/* The open deck of a slide note. Loaded with the deck itself, on the first Play. */
+
+/* contour-deck takes the app's palette, in light and dark alike: the theme tokens it reads resolve from the page. Its outline is drawn
+   in the border colour alone, so that one is the app's border strengthened towards the text. */
+.ct-app { --ct-bg: var(--color-surface); --ct-fg: var(--color-text); --ct-accent: var(--color-primary); --ct-accent-fg: var(--color-on-primary); --ct-border: color-mix(in srgb, var(--color-text) 14%, var(--color-border)); --ct-muted: var(--color-muted); font-family: inherit; }
+
+/* A page is a .prose-custom, so its content is drawn as the preview draws it. The type of a page follows the size of the stage; what the
+   note's styles size for a document (rem) is sized here against the page instead (em), so headings and blocks grow with it. */
+.ct-app .ct-stage [data-ct-page] :is(h1, h2, h3, h4, h5, h6) { margin: 0 0 0.5em; padding: 0; border: 0; line-height: 1.2; text-wrap: balance; }
+
+.ct-app .ct-stage [data-ct-page] h1 { font-size: 2.05em; font-weight: 800; letter-spacing: -0.02em; }
+
+.ct-app .ct-stage [data-ct-page] h2 { font-size: 1.45em; font-weight: 750; letter-spacing: -0.01em; }
+
+.ct-app .ct-stage [data-ct-page] h3 { font-size: 1.1em; font-weight: 700; }
+
+/* A `####` that opens a slide is its kicker: the block's name, small over the title. */
+.ct-app .ct-stage [data-ct-page] :is(h4, h5, h6) { font-size: 0.62em; font-weight: 600; letter-spacing: 0.08em; color: var(--ct-muted); }
+
+.ct-app .ct-stage [data-ct-page] :is(p, ul, ol, blockquote, pre, table, .markdown-table-scroll) { margin-top: 0; margin-bottom: 0.6em; }
+
+.ct-app .ct-stage [data-ct-page] :is(ul, ol) { padding-left: 1.3em; }
+
+.ct-app .ct-stage [data-ct-page] li { margin-bottom: 0.3em; }
+
+.ct-app .ct-stage [data-ct-page] pre { font-size: 0.7em; }
+
+.ct-app .ct-stage [data-ct-page] :is(table, .slide-cell, .slide-step, .custom-directive, .comment-directive) { font-size: 0.82em; }
+
+.ct-app .ct-stage [data-ct-page] :is(.slide-cell, .slide-step, .custom-directive, .comment-directive) table { font-size: 1em; }
+
+/* A callout's title and text follow the page too. */
+.ct-app .ct-stage [data-ct-page] :is(.custom-directive, .comment-directive) :is(.directive-title, .comment-title, .optional-summary, .directive-body) { font-size: 1em; }
+
+.ct-app .ct-stage [data-ct-page] > :last-child { margin-bottom: 0; }
+
+/* The speaker notes in the panel and in the notes view are the note's own HTML. */
+.ct-app :is(.ct-nb, .ct-sn) :is(ul, ol) { margin: 0 0 0.8em; padding-left: 1.4em; list-style: revert; }
+
+.ct-app :is(.ct-nb, .ct-sn) code { padding: 0.1em 0.3em; border-radius: 0.25rem; background: var(--color-code-bg); font-size: 0.9em; }
