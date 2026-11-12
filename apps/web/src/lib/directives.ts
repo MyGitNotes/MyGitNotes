@@ -83,6 +83,8 @@ export function fencedCodeLines(): (line: string) => boolean {
     return { depth, at, columns };
   };
   let items: { depth: number; columns: number[]; } = { depth: 0, columns: [] };
+  // Whether the line before was paragraph text, which a list may interrupt only with an item that has content and, if ordered, number 1.
+  let paragraph = false;
   // The columns from past the quote markers to `end`.
   const indent = (line: string, quote: { at: number; columns: number; }, end: number) => width(line.slice(0, end)) - quote.columns;
   return text => {
@@ -97,6 +99,7 @@ export function fencedCodeLines(): (line: string) => boolean {
         // A closing fence is indented less than four columns past the content, and holds nothing else.
         const close = /^[ \t]*(`{3,}|~{3,})[ \t]*$/.exec(inner);
         if (close && margin < open.column + 4 && close[1][0] === open.mark && close[1].length >= open.length) open = null;
+        paragraph = false;
         return true;
       }
     }
@@ -105,9 +108,12 @@ export function fencedCodeLines(): (line: string) => boolean {
     // The content columns of the list items the line is in, innermost last; a line indented less than an item's content ends the item.
     if (quote.depth !== items.depth) items = { depth: quote.depth, columns: [] };
     if (quoted.trim()) { while (items.columns.length && margin < items.columns[items.columns.length - 1]) items.columns.pop(); }
-    const item = /^[ \t]*(?:[-*+]|\d{1,9}[.)])( {1,4}(?=\S)|[ \t]+|$)/.exec(quoted);
+    const item = /^[ \t]*(?:[-*+]|(\d{1,9})[.)])( {1,4}(?=\S)|[ \t]+|$)/.exec(quoted);
     const content = items.columns[items.columns.length - 1] ?? 0;
-    if (item) items.columns.push(item[1].length > 4 || !item[1] ? indent(line, quote, quote.at + item[0].length - item[1].length) + 1 : indent(line, quote, quote.at + item[0].length));
+    const starts = item && !(paragraph && !items.columns.length && ((item[1] !== undefined && Number(item[1]) !== 1) || !quoted.slice(item[0].length).trim()));
+    // Indented code under no paragraph, a heading and a blank line are no paragraph text.
+    paragraph = Boolean(quoted.trim()) && !/^ {0,3}#{1,6}(?:[ \t]|$)/.test(quoted) && (paragraph || margin - content < 4);
+    if (item && starts) items.columns.push(item[2].length > 4 || !item[2] ? indent(line, quote, quote.at + item[0].length - item[2].length) + 1 : indent(line, quote, quote.at + item[0].length));
     // A fence may open on a list item's marker line (`- ```js`); its content and closing fence are then indented under the item.
     const fence = /^[ \t]*((?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*)(`{3,}|~{3,})(.*)$/.exec(quoted);
     // A fence is indented at most three columns past the content of the list item it is in; one indented further is indented code, or
@@ -115,6 +121,7 @@ export function fencedCodeLines(): (line: string) => boolean {
     if (fence && (fence[1] || margin - content < 4) && !(fence[2][0] === '`' && fence[3].includes('`'))) {
       const column = fence[1] ? indent(line, quote, quote.at + quoted.indexOf(fence[2])) : content;
       open = { mark: fence[2][0], length: fence[2].length, column, depth: quote.depth };
+      paragraph = false;
     }
     return open !== null;
   };

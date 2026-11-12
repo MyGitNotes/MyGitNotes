@@ -505,6 +505,16 @@ describe('fenced code lines', () => {
     const isCode = markedCode(text);
     for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
   });
+
+  it.each([['an ordered marker not numbered 1 under a paragraph', 'para\n2. foo\n   ```\nP1\n```\nP2'], ['a numbered step under a paragraph', 'Steps:\n3. run\n   ```sh\nP1\n```\nP2'], ['an empty marker under a paragraph', 'para\n-\n  ```\nP1\n```\nP2']])('%s continues the paragraph and starts no list, as Markdown does', (_name, text) => {
+    const isCode = markedCode(text);
+    for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
+    const note = `${text}\n\n:::note\nhi\n:::\n`;
+    expect(marked.lexer(note).some(token => token.type === 'paragraph' && token.raw.startsWith(':::note'))).toBe(true);
+    expect(findDirectiveBlocks(note).map(block => block.rawText)).toEqual([':::note\nhi\n:::']);
+    expect(transformDirectives(note, md => `<p>${md.trim()}</p>`)).toContain('custom-directive');
+  });
+
   it.each([['a plain fence', '```\nP1\n```\nP2'], ['a list item fence', '- ```js\n  P1\n  ```\n\nP2'], ['a quoted fence', '> ```\n> P1\n> ```\n\nP2']])('%s with CRLF line endings is code, as Markdown reads it', (_name, text) => {
     const crlf = text.replace(/\n/g, '\r\n'), isCode = markedCode(crlf), ours = ourCode(crlf);
     expect(ours.get('P1')).toBe(true);
