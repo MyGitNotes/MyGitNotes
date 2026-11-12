@@ -100,9 +100,9 @@ export interface SlideDirectiveContext {
   structure?: string;
 }
 
-/** The directive as its source reads, for an error box. */
+/** The directive as its source reads, for an error box; its line breaks are character references, so the box stays one HTML block. */
 function errorBox(message: string, source: string, strings: Record<TranslationKey, string>): string {
-  return `<div class="ig-error slide-error" role="alert"><p class="ig-error-title">${escapeHtml(strings['slides.directiveError'])}</p><p class="ig-error-message">${escapeHtml(message)}</p><pre class="ig-error-source">${escapeHtml(source)}</pre></div>`;
+  return `<div class="ig-error slide-error" role="alert"><p class="ig-error-title">${escapeHtml(strings['slides.directiveError'])}</p><p class="ig-error-message">${escapeHtml(message)}</p><pre class="ig-error-source">${escapeHtml(source).replaceAll('\n', '&#10;')}</pre></div>`;
 }
 
 /**

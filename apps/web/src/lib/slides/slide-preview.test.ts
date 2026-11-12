@@ -82,6 +82,14 @@ describe('the preview of a type: slide note', () => {
     expect(box.querySelector('.ig-error-source')?.textContent).toBe(':::summary{slide=2}\nnotes\n:::');
   });
 
+  it('keeps a source with a blank line whole in its error box, its Markdown unread', () => {
+    const preview = render(':::summary{foo=bar}\nline one\n\n[x](https://e.com) **bold**\n:::\n\nafter', 'preview');
+    const box = preview.querySelector('.slide-error')!;
+    expect(box.querySelector('.ig-error-source')?.textContent).toBe(':::summary{foo=bar}\nline one\n\n[x](https://e.com) **bold**\n:::');
+    expect(box.querySelector('a, strong')).toBeNull();
+    expect(preview.lastElementChild?.textContent).toBe('after');
+  });
+
   it('reads no directive inside a code block', () => {
     const preview = render('```md\n::vertical\n\n:::build\n- a\n:::\n\n::summary\n```\n', 'preview');
     expect(preview.querySelector('hr, .slide-build, .slide-error')).toBeNull();
