@@ -46,11 +46,13 @@ export function editorSlideStructure(state: EditorState, blocks: readonly { from
     syntaxTree(state).iterate({
       enter({ name, from, to, node }) {
         if (name === 'HorizontalRule' && node.parent?.name === 'Document') rules.add(state.doc.lineAt(from).from);
-        // An HTML comment at the top level is no content: contour-deck makes no slide of it, nor a block.
+        // An HTML comment at the top level is no content: contour-deck makes no slide of it, nor a block. Text after its `-->` on the
+        // last line is content, as the rendered deck shows it.
         if (name === 'CommentBlock' && node.parent?.name === 'Document') {
           for (let line = state.doc.lineAt(from);; line = state.doc.line(line.number + 1)) {
-            comments.add(line.from);
-            if (line.to >= to || line.number === state.doc.lines) break;
+            const last = line.to >= to || line.number === state.doc.lines;
+            if (!last || !line.text.includes('-->') || !line.text.slice(line.text.lastIndexOf('-->') + 3).trim()) comments.add(line.from);
+            if (last) break;
           }
         }
         const heading = /^(?:ATX|Setext)Heading([1-6])$/.exec(name);

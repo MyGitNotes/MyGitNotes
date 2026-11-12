@@ -114,6 +114,19 @@ describe('the live editor on a type: slide note', () => {
     expect(widgets(view).filter(({ widget }) => widget instanceof SlideDirectiveLine)).toEqual([]);
   });
 
+  it('reads text after a comment on its line as content, as the rendered deck does', () => {
+    const read = (doc: string) => {
+      const state = editor(doc, true).state;
+      ensureSyntaxTree(state, state.doc.length, 5000);
+      return editorSlideStructure(state, findDirectiveBlocks(doc, true)).pages;
+    };
+    // "visible" makes a slide of its own before ## B, whether it follows the comment on its line or on the next.
+    expect(read('## A\n\nx\n\n---\n\n<!-- c --> visible\n\n## B\n\ny\n')).toEqual([1, 1, 1]);
+    expect(read('## A\n\nx\n\n---\n\n<!-- c -->\nvisible\n\n## B\n\ny\n')).toEqual([1, 1, 1]);
+    // A comment alone on its lines is no content.
+    expect(read('## A\n\nx\n\n---\n\n<!-- c\nstill c -->  \n\n## B\n\ny\n')).toEqual([1, 1]);
+  });
+
   it('shows the source of a slide directive line while the cursor is on it', () => {
     const view = editor(DECK, true, DECK.indexOf('::slide'));
     expect(widgets(view).filter(({ widget }) => widget instanceof SlideDirectiveLine).map(({ line }) => line)).toEqual([5, 22]);
