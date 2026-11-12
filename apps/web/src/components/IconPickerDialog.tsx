@@ -90,6 +90,9 @@ export function IconPickerDialog({ onPick, onClose }: { onPick: (directive: stri
           if (event.key === 'ArrowDown' && result.names.length > 0) {
             event.preventDefault();
             focusOption(active);
+          } else if (event.key === 'Enter' && result.names.length > 0) {
+            event.preventDefault();
+            onPick(iconDirective(result.names[active], size));
           }
         }}
       />

@@ -24,6 +24,7 @@ import { chipEditState } from './live-markdown/chip-editing.js';
 import { atCompletionSource } from './live-markdown/at-completion-source.js';
 import { cjkEmphasis } from './live-markdown/cjk-emphasis.js';
 import { anchorMermaidSwap } from './live-markdown/mermaid-scroll.js';
+import { inlineIconAtomicRanges } from './live-markdown/inline-icons.js';
 import { liveDecorations } from './live-markdown/decorations.js';
 import { citationLibrary } from './live-markdown/citations.js';
 import { citationCompletionSource } from './live-markdown/citation-completion-source.js';
@@ -270,6 +271,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
               return { from: match.from, to: match.to, filter: false, options: notes.map(note => ({ label: note.title, detail: `${note.notebookId} · ${note.path}`, apply: noteLinkHref(notePath, note.path) + (text[context.pos] === ')' ? '' : ')') })) };
             }],
           }),
+          inlineIconAtomicRanges(view => view.state.field(field).decorations),
           EditorView.atomicRanges.of(view => view.state.field(field).decorations.update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof LiveMarkdownTable })),
           permission.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
           citations.current.of(citationLibrary.of(currentLibrary.current)),

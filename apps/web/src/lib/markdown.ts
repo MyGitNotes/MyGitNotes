@@ -153,6 +153,8 @@ export function renderChatMarkdown(text: string, base?: ChatLinkBase): string {
   return parsed.body.innerHTML;
 }
 
+export { loadLucideIcons } from './icons/lucide-registry.js';
+
 /** What a note is rendered with: the HTML parser and the DOMPurify instance of the window it runs in. */
 export interface NoteRendererOptions {
   /** `new DOMParser()` of a browser window, or of a jsdom window on a server. */

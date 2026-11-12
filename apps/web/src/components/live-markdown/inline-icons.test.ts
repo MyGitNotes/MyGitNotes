@@ -8,7 +8,8 @@ import { cjkEmphasis } from './cjk-emphasis.js';
 import { chipEditState } from './chip-editing.js';
 import { tableUIState } from '../LiveMarkdownTable.js';
 import { liveDecorations } from './decorations.js';
-import { InlineIconWidget } from './inline-icons.js';
+import { deleteCharBackward, deleteCharForward } from '@codemirror/commands';
+import { inlineIconAtomicRanges, InlineIconWidget } from './inline-icons.js';
 import { loadLucideIcons } from '../../lib/icons/lucide-registry.js';
 
 const t = (key: string) => key;
@@ -16,7 +17,7 @@ const decorations = StateField.define<DecorationSet>({ create: state => liveDeco
 
 const views: EditorView[] = [];
 function editor(doc: string, cursor = doc.length) {
-  const view = new EditorView({ parent: document.body, state: EditorState.create({ doc, selection: { anchor: cursor }, extensions: [markdown({ base: markdownLanguage, extensions: [cjkEmphasis] }), chipEditState, tableUIState, decorations] }) });
+  const view = new EditorView({ parent: document.body, state: EditorState.create({ doc, selection: { anchor: cursor }, extensions: [markdown({ base: markdownLanguage, extensions: [cjkEmphasis] }), chipEditState, tableUIState, decorations, inlineIconAtomicRanges(view => view.state.field(decorations))] }) });
   views.push(view);
   ensureSyntaxTree(view.state, view.state.doc.length, 5000);
   view.dispatch({});
@@ -50,6 +51,17 @@ describe('inline icons in the live editor', () => {
     expect(drawn[1].querySelector('svg')!.getAttribute('width')).toBe('20');
     expect(view.dom.textContent).toContain('評論人　洪偉｜');
     expect(view.dom.textContent).not.toContain(':icon{name="User"}');
+  });
+
+  it('removes the whole directive with Backspace or Delete at its edge', () => {
+    const doc = 'a :icon{name="User"} b';
+    const from = 2, to = from + ':icon{name="User"}'.length;
+    const back = editor(doc, to);
+    deleteCharBackward(back);
+    expect(back.state.doc.toString()).toBe('a  b');
+    const forward = editor(doc, from);
+    deleteCharForward(forward);
+    expect(forward.state.doc.toString()).toBe('a  b');
   });
 
   it('leaves code alone', () => {

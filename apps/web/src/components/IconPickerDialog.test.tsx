@@ -101,3 +101,10 @@ it('closes from its Close button', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   expect(onClose).toHaveBeenCalled();
 });
+
+it('picks the active result with Enter in the search box', async () => {
+  const { onPick, search } = await open();
+  fireEvent.change(search, { target: { value: 'user' } });
+  fireEvent.keyDown(search, { key: 'Enter' });
+  expect(onPick).toHaveBeenCalledWith(':icon{name="User"}');
+});
