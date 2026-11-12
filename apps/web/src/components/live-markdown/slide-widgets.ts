@@ -43,16 +43,17 @@ export class SlidePageBreak extends WidgetType {
  * the writer can still reach.
  */
 export class SlideDirectiveLine extends WidgetType {
-  constructor(readonly text: string, readonly path: string, readonly from: number, readonly notebookId?: string) {
+  /** `structure` is the note's `slideOptions.structure`, which decides what contour-deck takes: a `::vertical` is refused in a note read by its headings. */
+  constructor(readonly text: string, readonly path: string, readonly from: number, readonly notebookId?: string, readonly structure?: string) {
     super();
   }
   eq(other: SlideDirectiveLine) {
-    return this.text === other.text && this.path === other.path && this.from === other.from && this.notebookId === other.notebookId;
+    return this.text === other.text && this.path === other.path && this.from === other.from && this.notebookId === other.notebookId && this.structure === other.structure;
   }
   toDOM(view: EditorView) {
     const dom = document.createElement('div');
     dom.className = 'live-md-directive live-md-slide-directive live-md-rendered prose-custom';
-    dom.innerHTML = renderNote(this.text, this.path, undefined, undefined, this.notebookId, { slides: 'preview' });
+    dom.innerHTML = renderNote(this.text, this.path, undefined, undefined, this.notebookId, { slides: 'preview', structure: this.structure });
     if (dom.querySelector('.slide-anchor')) {
       dom.className = 'live-md-directive live-md-slide-directive live-md-slide-quiet';
       dom.textContent = this.text.trim();

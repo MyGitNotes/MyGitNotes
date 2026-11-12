@@ -65,8 +65,8 @@ interface Props {
   onInsertImage?: (options?: { annotated?: boolean; }) => void;
   /** Keeps the live editor's caret and undo history across this editor being rebuilt in another frame of the same note. */
   carry?: MutableRefObject<LiveEditorCarry | null>;
-  /** The note is a `type: slide` note: the live editor draws its separators and slide directives as a deck reads them. */
-  slides?: boolean;
+  /** The structure of a `type: slide` note (`slideStructureOf`), none for any other note: the live editor draws its separators, headings and slide directives as a deck reads them. */
+  slides?: string;
 }
 
 /** The formatting toolbar's groups; a format with a KEYMAP entry shows its key in the button's label. */
@@ -93,7 +93,7 @@ export function MarkdownEditorModeSwitch({ mode, onChange }: { mode: MarkdownEdi
   );
 }
 
-export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage, carry, slides = false }, ref) => {
+export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage, carry, slides }, ref) => {
   const { t } = useTranslation();
   const [caret, setCaret] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState(false);

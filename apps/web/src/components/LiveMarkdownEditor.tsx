@@ -91,12 +91,16 @@ interface Props {
   continuous?: boolean;
   /** Where the view leaves its state for the next view of the same note to start from; used once, and only while the text is unchanged. */
   carry?: MutableRefObject<LiveEditorCarry | null>;
-  /** The note is a `type: slide` note: `---` and `::vertical` are labelled with the slide and page they end, and the slide directives draw as a deck reads them. */
-  slides?: boolean;
+  /**
+   * The structure of a `type: slide` note (`slideStructureOf`), none for any other note: `---` and `::vertical` are labelled with the slide
+   * and page they end, or in a note read by its headings `---` with the block and `##` and `###` with the slide and page they head, and
+   * the slide directives draw as a deck reads them.
+   */
+  slides?: string;
 }
 const focusChanged = StateEffect.define<boolean>();
 let youtubeEditorSequence = 0;
-export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry, slides = false }, ref) => {
+export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry, slides }, ref) => {
   const { t } = useTranslation();
   const linkLabel = t('links.open');
   const tableLabel = t('preview.scrollableTable'), pageLabel = t('editor.page');

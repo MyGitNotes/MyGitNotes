@@ -11,8 +11,8 @@ import { DEFAULT_YOUTUBE_LABELS, youtubeLabels } from '../lib/youtube-embed.js';
 type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
 export class LiveMarkdownDirective extends WidgetType {
-  /** `slides`: the block is in a `type: slide` note, whose slide directives draw as a deck reads them. */
-  constructor(readonly text: string, readonly path: string, readonly from: number, readonly readOnly: boolean, readonly currentType: string, readonly currentVariant?: string, readonly t?: Translate, readonly notebookId?: string, readonly slides = false) {
+  /** `slides`: the structure of the `type: slide` note the block is in (`slideStructureOf`), whose slide directives draw as a deck reads them. */
+  constructor(readonly text: string, readonly path: string, readonly from: number, readonly readOnly: boolean, readonly currentType: string, readonly currentVariant?: string, readonly t?: Translate, readonly notebookId?: string, readonly slides?: string) {
     super();
   }
 
@@ -21,7 +21,7 @@ export class LiveMarkdownDirective extends WidgetType {
   }
 
   private get renderOptions(): NoteRenderOptions | undefined {
-    return this.slides ? { slides: 'preview' } : undefined;
+    return this.slides ? { slides: 'preview', structure: this.slides } : undefined;
   }
 
   /** The block formats a select offers: the templates, and the block's own type when it is none of them, so choosing nothing never changes it. */

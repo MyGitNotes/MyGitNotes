@@ -642,6 +642,10 @@
 .live-md-slide-page-break-rule { position: relative; width: 100%; height: 0; border-top: 1px dashed var(--workspace-divider); }
 .live-md-slide-page-break-tag { position: absolute; right: 36px; top: 0; transform: translateY(-50%); background: var(--color-surface); color: var(--color-muted); font-size: 10px; letter-spacing: 0.02em; padding: 0 8px; border-radius: 9999px; border: 1px dashed var(--workspace-divider); white-space: nowrap; line-height: 1.6; }
 .live-md-slide-page-break:hover .live-md-slide-page-break-tag { color: var(--color-primary); border-color: var(--color-primary); }
+/* A slide note read by its headings: a top-level ## carries the slide it heads, a ### the page (drawn lighter). */
+.live-md-heading[data-slide-label] { position: relative; }
+.live-md-heading[data-slide-label]::after { content: attr(data-slide-label); position: absolute; right: 36px; top: 14px; padding: 0 8px; border: 1px solid var(--workspace-divider); border-radius: 9999px; background: var(--color-surface); color: var(--color-muted); font-family: var(--font-body); font-size: 10px; font-weight: 500; letter-spacing: 0.02em; line-height: 1.6; white-space: nowrap; pointer-events: none; user-select: none; }
+.live-md-h3[data-slide-label]::after { border-style: dashed; font-weight: 400; }
 /* A slide directive on its own line: the preview's drawing of it, or its source as a quiet line when it draws nothing. */
 .live-md-slide-directive { cursor: pointer; }
 .live-md-slide-directive > :first-child { margin-top: 0; }
@@ -661,6 +665,7 @@
   [data-live-markdown] .cm-content { padding-bottom: 0 !important; }
   .live-md-page-break-tag { right: 16px; }
   .live-md-slide-page-break-tag { right: 16px; }
+  .live-md-heading[data-slide-label]::after { right: 16px; }
   .live-md-page-footer { padding-top: 24px; }
   .live-md-page-divider { padding: 31px 16px !important; }
   .live-md-page-divider::after { right: 16px; }

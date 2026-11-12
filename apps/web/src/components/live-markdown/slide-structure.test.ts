@@ -9,7 +9,7 @@ import { en, type TranslationKey } from '../../lib/i18n/en.js';
 import type { SeparatorLabel } from '../../lib/slides/structure.js';
 import { blogDeck } from '../../lib/slides/testing/blog-chain.js';
 import { deckOutline } from '../../lib/slides/testing/deck-outline.js';
-import { FIXTURE_DECKS, pagesPerSlide } from '../../lib/slides/testing/fixtures.js';
+import { FIXTURE_DECKS, HEADINGS_DECKS, pagesPerSlide } from '../../lib/slides/testing/fixtures.js';
 import { LiveMarkdownDirective } from '../LiveMarkdownDirective.js';
 import { tableUIState } from '../LiveMarkdownTable.js';
 import { chipEditState } from './chip-editing.js';
@@ -28,8 +28,8 @@ afterEach(() => {
 });
 
 /** The live editor on `doc`, as a slide note or any other; the cursor starts on the first line unless given. */
-function editor(doc: string, slides: boolean, cursor = 0) {
-  const view = new EditorView({ parent: document.body, state: EditorState.create({ doc, selection: { anchor: cursor }, extensions: [markdown({ base: markdownLanguage, extensions: [cjkEmphasis] }), chipEditState, tableUIState, slideNote.of(slides), decorations] }) });
+function editor(doc: string, slides: boolean | 'headings', cursor = 0) {
+  const view = new EditorView({ parent: document.body, state: EditorState.create({ doc, selection: { anchor: cursor }, extensions: [markdown({ base: markdownLanguage, extensions: [cjkEmphasis] }), chipEditState, tableUIState, slideNote.of(slides === true ? 'slides' : slides || undefined), decorations] }) });
   views.push(view);
   // The first parse runs on a time budget; finish it and let the decorations recompute, as the editor does once its parser catches up.
   ensureSyntaxTree(view.state, view.state.doc.length, 5000);
@@ -89,6 +89,50 @@ describe('the live editor on a type: slide note', () => {
     const { separators, end } = editorSlideStructure(view.state, findDirectiveBlocks(body));
     const ends = [...[...separators.values()].map(separator => separator.label), end].filter((label): label is SeparatorLabel => Boolean(label));
     expect(pagesPerSlide(ends)).toEqual(deckOutline(blogDeck(body, title)).blocks.flatMap(block => block.slides.map(slide => slide.pages.length)));
+  });
+});
+
+describe('the live editor on a slide note read by its headings', () => {
+  const HEADED = '# Title\n\n---\n\n#### Kicker\n\n## A\n\n### First\n\ntext\n\n### Second\n\n:::summary\n## not a heading\n:::\n\n::vertical\n\nSetext\n------\n\n- ## in a list\n\n---\n';
+  /** The label each heading line carries, by line number. */
+  function headingLabels(view: EditorView): [number, string][] {
+    const found: [number, string][] = [];
+    view.state.field(decorations).between(0, view.state.doc.length, (from, _to, value) => {
+      const label = (value.spec.attributes as Record<string, string> | undefined)?.['data-slide-label'];
+      if (label) found.push([view.state.doc.lineAt(from).number, label]);
+    });
+    return found;
+  }
+
+  it('labels each --- with the block that ends there, each ## with the slide and each ### with the page it heads', () => {
+    const view = editor(HEADED, 'headings');
+    const drawn = widgets(view);
+    expect(drawn.filter(({ widget }) => widget instanceof PageBreak).map(({ line, widget }) => [line, (widget as PageBreak).label])).toEqual([[3, 'Block 1'], [26, 'Block 2']]);
+    // The kicker opens the first ## slide; the first ### heads its first page; a Setext ## starts a slide; a heading in a block or a list is content.
+    expect(headingLabels(view)).toEqual([[7, 'Slide 2'], [9, 'Page 2.1'], [13, 'Page 2.2'], [21, 'Slide 3']]);
+    // Nothing follows the last ---, so no block ends with the note.
+    expect(drawn.filter(({ widget }) => widget instanceof PageFooter).map(({ widget }) => (widget as PageFooter).label)).toEqual(['']);
+  });
+
+  it('draws ::vertical as the error contour-deck reports, not as a page divider', () => {
+    const view = editor(HEADED, 'headings');
+    const drawn = widgets(view);
+    expect(drawn.some(({ widget }) => widget instanceof SlidePageBreak)).toBe(false);
+    const line = drawn.find(({ widget }) => widget instanceof SlideDirectiveLine)!;
+    expect(line.line).toBe(19);
+    expect(line.widget.toDOM(view).querySelector('.slide-error .ig-error-message')?.textContent).toBe('::vertical has no meaning with structure: "headings": start the next page with a ### heading');
+  });
+
+  it('labels no heading in a note read by its separators', () => {
+    expect(headingLabels(editor(HEADED, true))).toEqual([]);
+  });
+
+  it.each(HEADINGS_DECKS)('%s reads the blocks, slides and pages contour-deck builds', (_name, body, title) => {
+    const view = editor(body, 'headings');
+    const read = editorSlideStructure(view.state, findDirectiveBlocks(body)).byHeadings!;
+    const deck = deckOutline(blogDeck(body, title, 'headings'));
+    expect(read.pages).toEqual(deck.blocks.flatMap(block => block.slides.map(slide => slide.pages.length)));
+    expect([...read.blocks.values(), read.end].filter(block => block !== undefined)).toEqual(deck.blocks.map((_block, index) => index + 1));
   });
 });
 
