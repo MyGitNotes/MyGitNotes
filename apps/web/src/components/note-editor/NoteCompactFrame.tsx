@@ -7,7 +7,7 @@ import { MarkdownEditor, type MarkdownEditorHandle, type MarkdownEditorMode } fr
 import { NoteExportMenu } from '../NoteExportMenu.js';
 import { EditorModeToggle } from './EditorModeToggle.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
-import { slideStructureOf } from '../../lib/slides/note.js';
+import { isSlideNote } from '../../lib/slides/note.js';
 
 interface NoteCompactFrameProps {
   note: NoteItem;
@@ -28,7 +28,7 @@ export function NoteCompactFrame({ note, session, editorRef, isMarkdown, editorM
   return (
     <>
       <div className='note-editor-body'>
-        <MarkdownEditor ref={editorRef} compact content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked} onChange={session.setContent} onCaret={onCaret} ariaLabel='Note content' showLineNumbers={showLineNumbers} lineNumberOffset={session.baseNote.lineNumberOffset} carry={carry} slides={slideStructureOf(session.metadata)} />
+        <MarkdownEditor ref={editorRef} compact content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked} onChange={session.setContent} onCaret={onCaret} ariaLabel='Note content' showLineNumbers={showLineNumbers} lineNumberOffset={session.baseNote.lineNumberOffset} carry={carry} slides={isSlideNote(session.metadata)} />
       </div>
       <div className='note-compact-bar'>
         {isMarkdown && <EditorModeToggle mode={editorMode} onChange={setEditorMode} className='ui-icon-button' iconSize={14} />}

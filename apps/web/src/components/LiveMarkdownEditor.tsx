@@ -92,11 +92,10 @@ interface Props {
   /** Where the view leaves its state for the next view of the same note to start from; used once, and only while the text is unchanged. */
   carry?: MutableRefObject<LiveEditorCarry | null>;
   /**
-   * The structure of a `type: slide` note (`slideStructureOf`), none for any other note: `---` and `::vertical` are labelled with the slide
-   * and page they end, or in a note read by its headings `---` with the block and `##` and `###` with the slide and page they head, and
-   * the slide directives draw as a deck reads them.
+   * Set for a `type: slide` note: each `---` is labelled with the block it ends and each `##` and `###` with the slide and page it heads,
+   * and the slide directives draw as a deck reads them.
    */
-  slides?: string;
+  slides?: boolean;
 }
 const focusChanged = StateEffect.define<boolean>();
 let youtubeEditorSequence = 0;
@@ -287,7 +286,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           EditorView.atomicRanges.of(view => view.state.field(field).decorations.update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof LiveMarkdownTable })),
           permission.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
           citations.current.of(citationLibrary.of(currentLibrary.current)),
-          slideMode.current.of(slideNote.of(currentSlides.current)),
+          slideMode.current.of(slideNote.of(Boolean(currentSlides.current))),
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel, 'role': 'textbox', 'aria-multiline': 'true', 'data-key-scope': 'markdown-editor' }),
           EditorView.domEventHandlers({
             focus: (_event, view) => {
@@ -328,7 +327,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
     editor.current?.dispatch({ effects: citations.current.reconfigure(citationLibrary.of(library)) });
   }, [library]);
   useEffect(() => {
-    editor.current?.dispatch({ effects: slideMode.current.reconfigure(slideNote.of(slides)) });
+    editor.current?.dispatch({ effects: slideMode.current.reconfigure(slideNote.of(Boolean(slides))) });
   }, [slides]);
   // The host editor applies the view preferences as CSS variables; CodeMirror caches line heights and the
   // content box, so it re-measures once the new size and width are in the DOM.

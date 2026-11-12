@@ -9,9 +9,9 @@ import { NoteEditor, type NoteEditorProps } from '../NoteEditor.js';
 import { SlideDeck } from './SlideDeck.js';
 
 vi.mock('../MarkdownEditor.js', () => ({
-  MarkdownEditor: forwardRef<MarkdownEditorHandle, { content: string; slides?: string; onChange: (content: string) => void; }>(({ content, slides, onChange }, ref) => {
+  MarkdownEditor: forwardRef<MarkdownEditorHandle, { content: string; slides?: boolean; onChange: (content: string) => void; }>(({ content, slides, onChange }, ref) => {
     useImperativeHandle(ref, () => ({ insert() {}, insertAnnotated() {}, revealRange() {}, goToLine() {}, getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus() {} }), []);
-    return createElement('textarea', { 'aria-label': 'Note content', value: content, 'data-slides': slides ?? 'none', onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) });
+    return createElement('textarea', { 'aria-label': 'Note content', value: content, 'data-slides': slides ? 'slides' : 'none', onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) });
   }),
 }));
 
@@ -63,11 +63,11 @@ describe('a type: slide note in the editor', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
-  it('reads a note with slideOptions.structure: headings by its headings, in the editor and in the deck', async () => {
-    render(editor({ ...slideNote, metadata: { type: 'slide', slideOptions: { structure: 'headings' } }, content: '## One\n\ntext\n\n::vertical\n\n### Two\n' }));
-    expect(screen.getByLabelText('Note content')).toHaveAttribute('data-slides', 'headings');
+  it.each([['names no structure', undefined], ['names the separators', 'slides'], ['names an empty structure', ''], ['names one contour-deck does not know', 'heading']])('reads a note whose slideOptions %s by its headings, in the editor and in the deck', async (_what, structure) => {
+    render(editor({ ...slideNote, metadata: { type: 'slide', slideOptions: { structure } }, content: '## One\n\ntext\n\n::vertical\n\n### Two\n' }));
+    expect(screen.getByLabelText('Note content')).toHaveAttribute('data-slides', 'slides');
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
-    // The same text plays in a note read by its separators; here contour-deck refuses its ::vertical.
+    // Read by its separators, the same text would play; by its headings contour-deck refuses its ::vertical.
     const refusal = await screen.findByRole('alertdialog', undefined, { timeout: 10_000 });
     expect(refusal).toHaveTextContent('::vertical has no meaning with structure: "headings": start the next page with a ### heading');
     expect(refusal).toHaveTextContent('Line 9');
@@ -81,7 +81,7 @@ describe('a deck played over a note whose outline panel is open', () => {
     Element.prototype.getAnimations ??= () => [];
     Element.prototype.scrollIntoView ??= () => {};
     Element.prototype.animate ??= () => ({ finished: Promise.resolve(), cancel() {} }) as unknown as Animation;
-    render(editor({ ...slideNote, content: '## One\n\ntext\n\n::vertical\n\nmore\n\n---\n\n## Two\n\nlast\n' }, 'zoom'));
+    render(editor({ ...slideNote, content: '## One\n\ntext\n\n### More\n\nmore\n\n---\n\n## Two\n\nlast\n' }, 'zoom'));
     // The leader, then / opens the outline.
     fireEvent.keyDown(document.body, { key: 'E', code: 'KeyE', ctrlKey: true, shiftKey: true });
     fireEvent.keyDown(document.body, { key: '/', code: 'Slash' });
@@ -123,7 +123,7 @@ describe('the deck of a slide note', () => {
   it('closes on Escape while a refusal stands in its place', async () => {
     const onClose = vi.fn();
     render(deck('::block{title="A"}\n', onClose));
-    expect(await screen.findByRole('alertdialog', undefined, { timeout: 10_000 })).toHaveTextContent('::block "A" has no slide after it');
+    expect(await screen.findByRole('alertdialog', undefined, { timeout: 10_000 })).toHaveTextContent('::block stands in a block with no slide');
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });

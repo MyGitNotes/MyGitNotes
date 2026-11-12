@@ -1,7 +1,6 @@
 # Slide fixtures
 
-Decks the parity tests build twice, once with a blog's chain (`remarkDeck` and `rehypeDeck` under unified) and once with the MyGitNotes renderer, and compare.
+Decks the parity tests build twice, once with a blog's chain (`remarkDeck` and `rehypeDeck` under unified, with `structure: "headings"`) and once with the MyGitNotes renderer, and compare. Both were written for MyGitNotes in contour-deck 0.3.0's headings mode, which every slide note is read by.
 
-- `kicker-deck.md`, `slide-templates-demo.md` and `you-dont-have-to-lead-climb-alone.md` are the fixture decks of [contour-deck](https://github.com/wayne930242/contour-deck) 0.2.2 (`tests/fixtures/`), unchanged. Copyright 洪偉, MPL-2.0.
-- `kicker-builds.md` and `blocks.md` were written for MyGitNotes: `####` kicker blocks, `:::build` lists and tables, `::vertical` stacks, `:::summary`, `::block`, `::slide` and the MyGitNotes directives inside slides.
-- `headings.md` was written for MyGitNotes too: a deck in contour-deck 0.3.0's headings mode (`slideOptions.structure: headings`), with a title slide, a `####` kicker block, a `::block` without a title, an empty `---` group, `###` pages and headings inside a quote and a list.
+- `headings.md`: a title slide, a `####` kicker block, a `::block` without a title, an empty `---` group, `###` pages and headings inside a quote and a list.
+- `kicker-builds.md`: `####` kicker blocks, `:::build` lists, tables and other blocks, `:::summary`, a `::block` with every attribute, `::slide`, a `***` break, the MyGitNotes directives inside slides (grid, info, icon, math, mermaid) and directives inside fenced and indented code.

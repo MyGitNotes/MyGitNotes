@@ -5,7 +5,7 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { AssetItem, NotebookConfig } from '../lib/types.js';
 import { noteSummary } from '../lib/compilation-content.js';
 import { renderNote } from '../lib/markdown.js';
-import { slideStructureOf } from '../lib/slides/note.js';
+import { isSlideNote } from '../lib/slides/note.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useNoteEditing } from '../lib/note-editing.js';
 import { youtubeLabels } from '../lib/youtube-embed.js';
@@ -40,8 +40,8 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
   const title = compilationItemTitle(item, content.notes, content.assets);
   const tableLabel = t('preview.scrollableTable');
   /* eslint-disable react/preserve-manual-memoization -- Memoization follows the note content/path and display inputs used by the renderer. */
-  const slides = slideStructureOf(note?.metadata);
-  const html = useMemo(() => note?.content && view !== 'thumbnail' ? renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview', structure: slides } : undefined) : '', [note?.content, note?.path, note?.notebookId, view, tableLabel, t, slides]);
+  const slides = isSlideNote(note?.metadata);
+  const html = useMemo(() => note?.content && view !== 'thumbnail' ? renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview' } : undefined) : '', [note?.content, note?.path, note?.notebookId, view, tableLabel, t, slides]);
   /* eslint-enable react/preserve-manual-memoization */
   const icon = item.kind === 'note' ? <FileText /> : item.kind === 'folder' ? <Folder /> : item.kind === 'asset' ? <ImageIcon /> : <Youtube />;
   // A pinned folder lists its visible notes straight from the server, a page at a time.

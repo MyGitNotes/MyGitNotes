@@ -34,16 +34,12 @@
 
 .prose-custom .slide-build-step:not(tr)::before, .prose-custom tr.slide-build-step > :first-child::before { content: counter(slide-step); position: absolute; left: 0; min-width: 1.15rem; height: 1.15rem; margin-top: 0.25em; box-sizing: border-box; padding: 0 0.25rem; border-radius: 999px; background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface)); color: var(--color-primary); font-size: 0.65rem; font-weight: 600; font-style: normal; line-height: 1.15rem; text-align: center; text-indent: 0; font-variant-numeric: tabular-nums; }
 
-/* The separators of a slide note: `---` ends a slide, `::vertical` a page of it (drawn lighter); each names what ends there. */
-.prose-custom hr:is(.slide-break, .slide-page-break) { position: relative; height: 0; margin: 2.25rem 0; border: 0; border-top: 1px solid var(--color-border); overflow: visible; background: none; }
+/* A slide note's `---` ends a block and names the block that ends there. */
+.prose-custom hr.slide-break { position: relative; height: 0; margin: 2.25rem 0; border: 0; border-top: 1px solid var(--color-border); overflow: visible; background: none; }
 
-.prose-custom hr.slide-page-break { margin: 1.5rem 0; border-top-style: dashed; }
+.prose-custom hr.slide-break[data-label]::after { content: attr(data-label); position: absolute; right: 0; top: 0; transform: translateY(-50%); padding: 1px 10px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-muted); font-size: 11px; font-weight: 500; line-height: 1.5; white-space: nowrap; }
 
-.prose-custom hr:is(.slide-break, .slide-page-break)[data-label]::after { content: attr(data-label); position: absolute; right: 0; top: 0; transform: translateY(-50%); padding: 1px 10px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-muted); font-size: 11px; font-weight: 500; line-height: 1.5; white-space: nowrap; }
-
-.prose-custom hr.slide-page-break[data-label]::after { padding: 0 8px; border-style: dashed; font-size: 10px; font-weight: 400; }
-
-/* In a slide note read by its headings (slideOptions.structure: headings) a `---` ends a block, a top-level `##` names the slide it heads and a `###` the page (drawn lighter). */
+/* A slide note's top-level `##` names the slide it heads, and a `###` the page (drawn lighter). */
 .prose-custom :is(h2, h3).slide-heading[data-label]::before { content: attr(data-label); float: right; margin: 0.4em 0 0 12px; padding: 1px 10px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-muted); font-family: var(--font-body); font-size: 11px; font-weight: 500; font-style: normal; letter-spacing: 0; line-height: 1.5; white-space: nowrap; }
 
 .prose-custom h3.slide-heading[data-label]::before { padding: 0 8px; border-style: dashed; font-size: 10px; font-weight: 400; }

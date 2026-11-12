@@ -9,51 +9,22 @@ function placeCaret(view: EditorView, dom: HTMLElement, from: number) {
   });
 }
 
-/** A `::vertical` of a slide note: a divider lighter than a slide's, labelled with the page (or the slide) that ends there. */
-export class SlidePageBreak extends WidgetType {
-  constructor(readonly from: number, readonly label: string) {
-    super();
-  }
-  eq(other: SlidePageBreak) {
-    return this.from === other.from && this.label === other.label;
-  }
-  toDOM(view: EditorView) {
-    const dom = document.createElement('div');
-    dom.className = 'live-md-slide-page-break';
-    const rule = document.createElement('div');
-    rule.className = 'live-md-slide-page-break-rule';
-    dom.append(rule);
-    if (this.label) {
-      const tag = document.createElement('span');
-      tag.className = 'live-md-slide-page-break-tag';
-      tag.textContent = this.label;
-      rule.append(tag);
-    }
-    placeCaret(view, dom, this.from);
-    return dom;
-  }
-  get estimatedHeight() {
-    return 32;
-  }
-}
-
 /**
  * A slide directive that stands on a line of its own in a slide note, drawn as the preview draws it: the title bar of a `::block`, or the
  * error box of a directive contour-deck refuses. A `::slide{#id}` shows nothing in the preview, so here its source stays as a quiet line
  * the writer can still reach.
  */
 export class SlideDirectiveLine extends WidgetType {
-  /** `structure` is the note's `slideOptions.structure`, which decides what contour-deck takes: a `::vertical` is refused in a note read by its headings. */
-  constructor(readonly text: string, readonly path: string, readonly from: number, readonly notebookId?: string, readonly structure?: string) {
+  constructor(readonly text: string, readonly path: string, readonly from: number, readonly notebookId?: string) {
     super();
   }
   eq(other: SlideDirectiveLine) {
-    return this.text === other.text && this.path === other.path && this.from === other.from && this.notebookId === other.notebookId && this.structure === other.structure;
+    return this.text === other.text && this.path === other.path && this.from === other.from && this.notebookId === other.notebookId;
   }
   toDOM(view: EditorView) {
     const dom = document.createElement('div');
     dom.className = 'live-md-directive live-md-slide-directive live-md-rendered prose-custom';
-    dom.innerHTML = renderNote(this.text, this.path, undefined, undefined, this.notebookId, { slides: 'preview', structure: this.structure });
+    dom.innerHTML = renderNote(this.text, this.path, undefined, undefined, this.notebookId, { slides: 'preview' });
     if (dom.querySelector('.slide-anchor')) {
       dom.className = 'live-md-directive live-md-slide-directive live-md-slide-quiet';
       dom.textContent = this.text.trim();

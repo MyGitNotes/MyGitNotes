@@ -1,13 +1,16 @@
 ---
 title: 步驟與堆疊
 type: slide
+slideOptions:
+  engine: contour
+  structure: headings
 ---
 
 #### 開場｜兩分鐘
 
 # 步驟與堆疊
 
-一份用 `####` 分區塊的簡報。
+一份用 `####` 為區塊命名的簡報。
 
 :::summary
 〔開場〕先說這份簡報要測什麼。
@@ -31,9 +34,7 @@ type: slide
 清單的三個項目各是一步。
 :::
 
-::vertical
-
-## 清單一項一步
+### 有序清單
 
 :::build
 1. 有序清單
@@ -42,9 +43,7 @@ type: slide
 
 接著是不在 build 裡的段落。
 
-::vertical
-
-### 只有三級標題的頁
+### 表格與其他區塊
 
 :::build
 | 元素 | 一步是什麼 |
@@ -59,10 +58,8 @@ type: slide
 :::
 
 :::summary
-這一頁沒有 `##`，所以仍是上一張投影片的一頁。
+`###` 是同一張投影片的下一頁。
 :::
-
----
 
 ## 表格不在 build 裡
 
@@ -71,9 +68,7 @@ type: slide
 | a  | 1  |
 | b  | 2  |
 
-::vertical
-
-## 換了標題就是新的一張
+## 格線與資訊框
 
 ::::grid{cols=3}
 :::cell
@@ -98,7 +93,7 @@ type: slide
 :::
 
 :::summary
-這一頁的 `##` 和前一頁不同。
+每個 `##` 開一張新的投影片。
 :::
 
 ---
@@ -117,6 +112,12 @@ type: slide
 ::summary
 ```
 
+    ::vertical
+
+    :::build
+    - 縮排的程式碼也不是步驟
+    :::
+
 ```mermaid
 graph TD
   A --> B
@@ -127,7 +128,7 @@ $$
 $$
 
 :::summary
-圍籬裡的 `::vertical` 與 `:::build` 是程式碼。
+程式碼裡的 `::vertical` 與 `:::build` 是程式碼。
 :::
 
 ---
@@ -140,6 +141,10 @@ $$
 
 ***
 
+::block{title="附錄 B｜分隔線" minutes=2.5 kind=appendix #rules}
+
+::slide{#stars}
+
 ## 另一種分隔線
 
-`***` 也開始下一張投影片。
+`***` 也開始下一個區塊。

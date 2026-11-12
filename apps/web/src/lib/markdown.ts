@@ -174,16 +174,12 @@ export interface NoteRendererOptions {
 /** What a note is, beyond its text, that changes how it is drawn. */
 export interface NoteRenderOptions {
   /**
-   * Set for a `type: slide` note. `preview` draws its slide directives as a reader sees them (labelled notes, numbered steps, labelled
-   * slide and page dividers, an error box for a directive contour-deck refuses); `deck` writes them as the markers contour-deck builds a
-   * deck from, and throws a `SlideDeckError` for such a directive. Without it a note keeps the general rendering.
+   * Set for a `type: slide` note, which contour-deck reads by its headings: a `---` is a block, a `##` a slide and a `###` a page.
+   * `preview` draws its slide directives as a reader sees them (labelled notes, numbered steps, an error box for a directive contour-deck
+   * refuses) and labels its blocks, slides and pages; `deck` writes them as the markers contour-deck builds a deck from, and throws a
+   * `SlideDeckError` for such a directive. Without it a note keeps the general rendering.
    */
   slides?: SlideRendering;
-  /**
-   * The slide note's `slideOptions.structure` (`slideStructureOf`): with `headings`, contour-deck's headings mode, a `---` is a block, a
-   * `##` a slide and a `###` a page, and `::vertical` is refused. Without it the note is read by its separators.
-   */
-  structure?: string;
 }
 
 interface RenderContext {
@@ -211,14 +207,14 @@ export function renderNote(content: string, notePath: string, tableLabel?: strin
   return renderNoteIn({ marked: md, parser: new DOMParser(), purify: DOMPurify, origin: typeof window !== 'undefined' ? window.location.origin : undefined }, content, notePath, tableLabel, youtubeLabels, notebookId, options);
 }
 
-function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string, { slides, structure }: NoteRenderOptions = {}): string {
+function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string, { slides }: NoteRenderOptions = {}): string {
   const isMdx = /\.mdx$/i.test(notePath);
   let preprocessed = content;
   if (isMdx) {
     preprocessed = stripMdxImports(preprocessed);
   }
 
-  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML, slides && { rendering: slides, structure, lineOf: index => index + 1 });
+  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML, slides && { rendering: slides, lineOf: index => index + 1 });
 
   if (isMdx || /<(?:YouTubeEmbed|YouTube|ProtectedContent|Card|Tag|Badge|[A-Z][a-zA-Z0-9_-]*)\b/.test(preprocessed)) {
     preprocessed = transformMdxComponents(preprocessed, language);
@@ -360,7 +356,7 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     link.setAttribute('rel', 'noopener noreferrer');
     if (target.kind === 'external') link.setAttribute('target', '_blank');
   }
-  if (slides === 'preview') labelSlidePreview(parsed.body, stringsFor(language), structure);
+  if (slides === 'preview') labelSlidePreview(parsed.body, stringsFor(language));
   return purify.sanitize(parsed.body.innerHTML, DOMPURIFY_DIRECTIVE_CONFIG);
 }
 

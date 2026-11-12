@@ -5,9 +5,9 @@ import { SlideDeckError } from './errors.js';
 import { readDeck } from './deck.js';
 
 /** The note's rendered HTML as a document: a slide note's preview, its deck markup, or (without `slides`) any other note. */
-function render(markdown: string, slides?: 'preview' | 'deck', structure?: string): HTMLElement {
+function render(markdown: string, slides?: 'preview' | 'deck'): HTMLElement {
   const host = document.createElement('div');
-  host.innerHTML = renderNote(markdown, 'slides/deck.md', undefined, undefined, undefined, slides ? { slides, structure } : undefined);
+  host.innerHTML = renderNote(markdown, 'slides/deck.md', undefined, undefined, undefined, slides ? { slides } : undefined);
   return host;
 }
 
@@ -24,16 +24,16 @@ describe('the preview of a type: slide note', () => {
     expect([...build.querySelectorAll('.slide-build-step')].map(step => `${step.tagName}:${step.textContent?.replace(/\s+/g, ' ').trim()}`)).toEqual(['LI:one', 'LI:two', 'TR:1 2', 'TR:3 4', 'P:A paragraph.']);
   });
 
-  it('labels each --- with the slide that ends there and each ::vertical with the page, drawn as a lighter divider', () => {
-    const preview = render('## One\n\ntext\n\n::vertical\n\n## One\n\nsecond page\n\n---\n\n## Two\n\n::vertical\n\n## Three\n\na different heading starts a slide\n', 'preview');
-    expect([...preview.querySelectorAll('hr')].map(rule => [rule.className, rule.getAttribute('data-label')])).toEqual([['slide-page-break', 'Page 1.1'], ['slide-break', 'Slide 1'], ['slide-page-break', 'Slide 2']]);
-    expect(preview.querySelector('.vertical-slide-break')).toBeNull();
+  it('labels each --- with the block that ends there, each ## with the slide and each ### with the page it heads', () => {
+    const preview = render('## One\n\ntext\n\n### Two\n\nsecond page\n\n---\n\n## Three\n', 'preview');
+    expect([...preview.querySelectorAll('hr')].map(rule => [rule.className, rule.getAttribute('data-label')])).toEqual([['slide-break', 'Block 1']]);
+    expect([...preview.querySelectorAll('h2, h3')].map(heading => [heading.className, heading.getAttribute('data-label')])).toEqual([['slide-heading', 'Slide 1'], ['slide-heading', 'Page 1.2'], ['slide-heading', 'Slide 2']]);
   });
 
   it('writes the labels in the language of the page', () => {
     document.documentElement.lang = 'zh-TW';
-    const preview = render('## 一\n\n::vertical\n\n內文\n\n---\n\n## 二\n\n:::summary\n講稿內容\n:::\n\n::block{title="三、主要問題" minutes=5}\n', 'preview');
-    expect([...preview.querySelectorAll('hr')].map(rule => rule.getAttribute('data-label'))).toEqual(['頁 1.1', '投影片 1']);
+    const preview = render('## 一\n\n內文\n\n### 二\n\n---\n\n## 三\n\n:::summary\n講稿內容\n:::\n\n::block{title="三、主要問題" minutes=5}\n', 'preview');
+    expect([...preview.querySelectorAll('hr, h2, h3')].map(element => element.getAttribute('data-label'))).toEqual(['投影片 1', '頁 1.2', '區塊 1', '投影片 2']);
     expect(preview.querySelector('.slide-notes-label')?.textContent).toBe('講稿');
     expect(preview.querySelector('.slide-block-minutes')?.textContent).toBe('約 5 分');
   });
@@ -60,13 +60,14 @@ describe('the preview of a type: slide note', () => {
   });
 
   it('keeps the new markup to classes, data-type and data-label', () => {
-    const preview = render('::block{title="A" minutes=5}\n\n::slide{#x}\n\n## One\n\n:::build\n- a\n:::\n\n:::summary\nnotes\n:::\n\n::vertical\n\nmore\n\n---\n\n::summary\n', 'preview');
+    const preview = render('::block{title="A" minutes=5}\n\n::slide{#x}\n\n## One\n\n:::build\n- a\n:::\n\n:::summary\nnotes\n:::\n\n### Two\n\nmore\n\n---\n\n::summary\n', 'preview');
     const slideElements = preview.querySelectorAll('[class^="slide-"], [class*=" slide-"], hr');
     expect(slideElements.length).toBeGreaterThan(8);
-    for (const element of slideElements) expect(element.getAttributeNames().filter(name => !['class', 'data-type', 'data-label', 'aria-label', 'role'].includes(name))).toEqual([]);
+    // Every heading of a note carries its slug, slide note or not.
+    for (const element of slideElements) expect(element.getAttributeNames().filter(name => !['class', 'data-type', 'data-label', 'aria-label', 'role', ...(/^H[23]$/.test(element.tagName) ? ['data-heading-slug'] : [])].includes(name))).toEqual([]);
   });
 
-  it.each([['a container written as a leaf', '::summary', 'summary is a container directive: write :::summary … :::'], ['a build written as a leaf', '::build', 'build is a container directive: write :::build … :::'], ['a leaf written as a container', ':::vertical', 'vertical is a leaf directive: write ::vertical'], ['a block written as a container', ':::block{title="A"}', 'block is a leaf directive: write ::block'], ['a directive written in a line of text', ':slide', 'slide is a leaf directive: write ::slide'], ['an unknown attribute', '::vertical{align=top}', 'vertical has no attribute "align" (known: none)'], ['an unknown attribute of a block', '::block{title="A" colour=red}', 'block has no attribute "colour" (known: title, short, minutes, kind, id)'], ['a block without a title', '::block{minutes=5}', '::block needs a title: ::block{title="三、主要問題"}'], ['minutes that are no number', '::block{title="A" minutes=soon}', '::block minutes must be a positive number, got "soon"'], ['a slide without an id', '::slide', '::slide needs an id: ::slide{#dilemma}']])('shows an error box for %s', (_what, source, message) => {
+  it.each([['a container written as a leaf', '::summary', 'summary is a container directive: write :::summary … :::'], ['a build written as a leaf', '::build', 'build is a container directive: write :::build … :::'], ['a leaf written as a container', ':::vertical', 'vertical is a leaf directive: write ::vertical'], ['a block written as a container', ':::block{title="A"}', 'block is a leaf directive: write ::block'], ['a directive written in a line of text', ':slide', 'slide is a leaf directive: write ::slide'], ['an unknown attribute', '::vertical{align=top}', 'vertical has no attribute "align" (known: none)'], ['an unknown attribute of a block', '::block{title="A" colour=red}', 'block has no attribute "colour" (known: title, short, minutes, kind, id)'], ['minutes that are no number', '::block{title="A" minutes=soon}', '::block minutes must be a positive number, got "soon"'], ['a slide without an id', '::slide', '::slide needs an id: ::slide{#dilemma}']])('shows an error box for %s', (_what, source, message) => {
     const preview = render(`## A slide\n\n${source}\n\nafter`, 'preview');
     const box = preview.querySelector('.slide-error')!;
     expect(box.getAttribute('role')).toBe('alert');
@@ -150,9 +151,10 @@ describe('the deck of a type: slide note', () => {
   });
 
   it('is refused with the message and the line of a structure contour-deck cannot build', () => {
-    expect(failure('::block{title="A"}\n\n::block{title="B"}\n\n## A slide\n')).toMatchObject({ message: 'a page holds two ::block directives', line: 3 });
+    expect(failure('::block{title="A"}\n\n::block{title="B"}\n\n## A slide\n')).toMatchObject({ message: 'a block holds two ::block directives', line: 3 });
     expect(failure('## A slide\n\n:::info\n::slide{#x}\n:::\n')).toMatchObject({ message: '::slide must stand at the top level of a slide, not inside another element', line: 3 });
-    expect(failure('## A slide\n\n---\n\n::block{title="Last"}\n')).toMatchObject({ message: '::block "Last" has no slide after it', line: undefined });
+    expect(failure('## A slide\n\n---\n\n::block{title="Last"}\n')).toMatchObject({ message: '::block stands in a block with no slide', line: 5 });
+    expect(failure('## A\n\ntext\n\n::slide{#x}\n\n## B\n')).toMatchObject({ message: "::slide{#x} stands between a slide's content and the next ##: write it under the heading of its own slide", line: 5 });
   });
 
   it('is refused when the sanitizer takes a slide id that would shadow a property of the page', () => {
@@ -173,7 +175,7 @@ describe('the deck of a type: slide note', () => {
   });
 });
 
-describe('a slide note read by its headings (slideOptions.structure: headings)', () => {
+describe('a slide note, read by its headings whatever its slideOptions.structure says', () => {
   const NO_VERTICAL = '::vertical has no meaning with structure: "headings": start the next page with a ### heading';
   const failure = (run: () => unknown): SlideDeckError => {
     try {
@@ -186,39 +188,25 @@ describe('a slide note read by its headings (slideOptions.structure: headings)',
   };
 
   it('shows an error box for ::vertical, with what contour-deck says to write, and keeps the rest of the note', () => {
-    const preview = render('## One\n\ntext\n\n::vertical\n\n### Two\n\nmore', 'preview', 'headings');
+    const preview = render('## One\n\ntext\n\n::vertical\n\n### Two\n\nmore', 'preview');
     expect(preview.querySelector('.slide-error .ig-error-message')?.textContent).toBe(NO_VERTICAL);
     expect(preview.querySelector('.slide-error .ig-error-source')?.textContent).toBe('::vertical');
-    expect(preview.querySelector('.slide-page-break')).toBeNull();
+    expect(preview.querySelector('hr')).toBeNull();
     expect([...preview.querySelectorAll('h2, h3')].map(heading => heading.getAttribute('data-label'))).toEqual(['Slide 1', 'Page 1.2']);
   });
 
   it('does not build a deck from a note with ::vertical, and names its line', () => {
-    const error = failure(() => render('## One\n\ntext\n\n::vertical\n\n### Two', 'deck', 'headings'));
+    const error = failure(() => render('## One\n\ntext\n\n::vertical\n\n### Two', 'deck'));
     expect(error.message).toBe(NO_VERTICAL);
     expect(error.line).toBe(5);
   });
 
-  it('keeps ::vertical a page divider in a note that names no structure', () => {
-    const preview = render('## One\n\ntext\n\n::vertical\n\n### Two\n\nmore', 'preview');
-    expect(preview.querySelector('.slide-error')).toBeNull();
-    expect(preview.querySelector('hr.slide-page-break')?.getAttribute('data-label')).toBe('Page 1.1');
-  });
-
   it('takes a ::block without a title, which only sets what it names, and still refuses an empty one', () => {
-    const preview = render('::block{minutes=5}\n\n#### Kicker\n\n## One', 'preview', 'headings');
+    const preview = render('::block{minutes=5}\n\n#### Kicker\n\n## One', 'preview');
     expect(preview.querySelector('.slide-error')).toBeNull();
     expect(preview.querySelector('.slide-block-title')?.textContent).toBe('Block5 min');
     expect(preview.querySelector('.slide-block-name')).toBeNull();
-    expect(render('::block{title="Named"}\n\n## One', 'preview', 'headings').querySelector('.slide-block-name')?.textContent).toBe('Named');
-    expect(render('::block{title=""}\n\n## One', 'preview', 'headings').querySelector('.slide-error .ig-error-message')?.textContent).toBe('::block title is empty: leave it out to title the block by its heading');
-    // The default structure still needs the title.
-    expect(render('::block{minutes=5}\n\n## One', 'preview').querySelector('.slide-error .ig-error-message')?.textContent).toContain('::block needs a title');
-  });
-
-  it('reports a structure contour-deck does not know on every slide directive, and refuses the deck', () => {
-    const message = 'structure must be "slides" or "headings", got "heading"';
-    expect(render(':::summary\nnotes\n:::', 'preview', 'heading').querySelector('.slide-error .ig-error-message')?.textContent).toBe(message);
-    expect(failure(() => readDeck(renderNote('## One', 'slides/deck.md', undefined, undefined, undefined, { slides: 'deck', structure: 'heading' }), 'T', 'heading')).message).toBe(message);
+    expect(render('::block{title="Named"}\n\n## One', 'preview').querySelector('.slide-block-name')?.textContent).toBe('Named');
+    expect(render('::block{title=""}\n\n## One', 'preview').querySelector('.slide-error .ig-error-message')?.textContent).toBe('::block title is empty: leave it out to title the block by its heading');
   });
 });

@@ -29,7 +29,7 @@ import type { NoteEditorSession, NoteEditorSharedProps, NotePanelMode } from './
 import { createCaretStore } from '../lib/pi-agent/caret-store.js';
 import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 import { usePublishPreviewTarget } from '../lib/typst-preview/preview-target.js';
-import { isSlideNote, slideStructureOf } from '../lib/slides/note.js';
+import { isSlideNote } from '../lib/slides/note.js';
 import { SlideDeck, type SlideDeckView } from './slides/SlideDeck.js';
 
 export interface NoteEditorHandle {
@@ -260,13 +260,13 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
             setImagePickerOpen(true);
           }}
           carry={carry}
-          slides={slideStructureOf(session.metadata)}
+          slides={isSlideNote(session.metadata)}
         />
         <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />
       </div>
       {!phone && <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={quickActions} />}
       {docPanel.isEditorLeaderOpen && <NoteEditorLeader docPanel={docPanel} isMarkdown={isMarkdown} />}
-      {deck && <SlideDeck content={session.content} path={note.path} notebookId={note.notebookId} title={session.title} structure={slideStructureOf(session.metadata)} lineNumberOffset={session.baseNote.lineNumberOffset || 0} view={deck.view} opener={deck.opener} onClose={() => setDeck(null)} />}
+      {deck && <SlideDeck content={session.content} path={note.path} notebookId={note.notebookId} title={session.title} lineNumberOffset={session.baseNote.lineNumberOffset || 0} view={deck.view} opener={deck.opener} onClose={() => setDeck(null)} />}
       {imagePickerOpen && <FileManagerDialog notebookId={note.notebookId} writable={!readOnly} mode='pick-image' onInsert={session.locked ? undefined : insertImage} beforeChange={beforeFileChange} onChanged={onFilesChanged} onClose={() => setImagePickerOpen(false)} />}
     </div>
   );

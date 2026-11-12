@@ -7,6 +7,7 @@ import { rehypeDeck } from 'contour-deck/rehype';
 import { fromDom } from 'hast-util-from-dom';
 import { toDom } from 'hast-util-to-dom';
 import { SlideDeckError } from './errors.js';
+import { SLIDE_STRUCTURE } from './note.js';
 
 type HastNodes = ReturnType<typeof fromDom>;
 /** The tree `rehypeDeck` leaves: the deck element, and after it what belongs to no slide. */
@@ -21,8 +22,8 @@ function lineOf(place: unknown): number | undefined {
   return Number.isInteger(line) && line > 0 ? line : undefined;
 }
 
-/** The deck of a slide note's sanitized HTML (`renderNote` with `slides: 'deck'` and the note's `structure`), as hast. Throws a {@link SlideDeckError} where contour-deck refuses it. */
-export function readDeck(html: string, title?: string, structure?: string): DeckTree {
+/** The deck of a slide note's sanitized HTML (`renderNote` with `slides: 'deck'`), as hast. Throws a {@link SlideDeckError} where contour-deck refuses it. */
+export function readDeck(html: string, title?: string): DeckTree {
   const body = new DOMParser().parseFromString(html, 'text/html').body;
   // contour-deck reveals a table's rows one by one when the table is wrapped the way its blog wraps one.
   for (const scroller of body.querySelectorAll('.markdown-table-scroll')) scroller.classList.add('table-scroll');
@@ -31,8 +32,8 @@ export function readDeck(html: string, title?: string, structure?: string): Deck
   // A note's line break is a `<br>` with no space beside it; contour-deck titles a slide without a heading by its text, where the two lines would run together.
   for (const lineBreak of body.querySelectorAll('br')) lineBreak.after('\n');
   const tree: DeckTree = { type: 'root', children: [...(fromDom(body) as { children: HastNodes[]; }).children] };
-  // The structure is the one the note was rendered with; contour-deck refuses a name it does not know.
-  rehypeDeck({ title, structure: structure as never })(tree, {
+  // A slide note is read by its headings, as its directives were checked.
+  rehypeDeck({ title, structure: SLIDE_STRUCTURE })(tree, {
     data: {},
     fail(reason, place) {
       throw new SlideDeckError(reason, lineOf(place));
@@ -42,6 +43,6 @@ export function readDeck(html: string, title?: string, structure?: string): Deck
 }
 
 /** The deck element `createDeck` takes, built from a slide note's sanitized HTML. */
-export function buildDeck(html: string, title?: string, structure?: string): HTMLElement {
-  return toDom(readDeck(html, title, structure).children[0]) as HTMLElement;
+export function buildDeck(html: string, title?: string): HTMLElement {
+  return toDom(readDeck(html, title).children[0]) as HTMLElement;
 }

@@ -3,7 +3,7 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useNoteEditing } from '../lib/note-editing.js';
 import { renderNote } from '../lib/markdown.js';
-import { slideStructureOf } from '../lib/slides/note.js';
+import { isSlideNote } from '../lib/slides/note.js';
 import { youtubeLabels } from '../lib/youtube-embed.js';
 import { InlineNoteSlot, type InlineNoteSlotParts } from './InlineNoteSlot.js';
 import { LoadingStatus } from './LoadingStatus.js';
@@ -52,8 +52,8 @@ export function BookSection({ anchor, slot, level, note, writable, onOpenZoom, o
   const { editorProps } = useNoteEditing();
   const tableLabel = t('preview.scrollableTable');
   /* eslint-disable react/preserve-manual-memoization -- Memoization follows the note content/path and display inputs used by the renderer. */
-  const slides = slideStructureOf(note.metadata);
-  const html = useMemo(() => typeof note.content === 'string' ? renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview', structure: slides } : undefined) : '', [note.content, note.path, note.notebookId, tableLabel, t, slides]);
+  const slides = isSlideNote(note.metadata);
+  const html = useMemo(() => typeof note.content === 'string' ? renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview' } : undefined) : '', [note.content, note.path, note.notebookId, tableLabel, t, slides]);
   /* eslint-enable react/preserve-manual-memoization */
   const reading = typeof note.content === 'string' ? <NoteHtml className='prose-custom screen-markdown' html={html} notebookId={note.notebookId} /> : <LoadingStatus className='screen-summary'>{t('notes.loading')}</LoadingStatus>;
   return <InlineNoteSlot slot={slot} notebookId={note.notebookId} path={note.path} title={note.title} writable={writable && !editorProps({ ...note, content: note.content ?? '' }).readOnly} layout='grow' reading={reading} onOpenZoom={onOpenZoom}>{parts => <SectionFrame anchor={anchor} level={level} parts={parts} onOpenZoom={onOpenZoom} onLiveTitle={onLiveTitle} />}</InlineNoteSlot>;

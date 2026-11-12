@@ -65,8 +65,8 @@ interface Props {
   onInsertImage?: (options?: { annotated?: boolean; }) => void;
   /** Keeps the live editor's caret and undo history across this editor being rebuilt in another frame of the same note. */
   carry?: MutableRefObject<LiveEditorCarry | null>;
-  /** The structure of a `type: slide` note (`slideStructureOf`), none for any other note: the live editor draws its separators, headings and slide directives as a deck reads them. */
-  slides?: string;
+  /** Set for a `type: slide` note: the live editor draws its `---`, its headings and its slide directives as a deck reads them. */
+  slides?: boolean;
 }
 
 /** The formatting toolbar's groups; a format with a KEYMAP entry shows its key in the button's label. */

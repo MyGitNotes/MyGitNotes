@@ -8,10 +8,11 @@
 import { remarkDeck } from 'contour-deck/remark';
 import type { TranslationKey } from '../i18n/en.js';
 import { SlideDeckError } from './errors.js';
+import { SLIDE_STRUCTURE } from './note.js';
 
 /**
- * How a `type: slide` note's slide directives are written: `preview` as a reader sees them (labelled notes, numbered steps, page dividers,
- * an error box for a directive contour-deck refuses), `deck` as the markers `rehypeDeck` builds a deck from, where such a directive throws.
+ * How a `type: slide` note's slide directives are written: `preview` as a reader sees them (labelled notes, numbered steps, an error box
+ * for a directive contour-deck refuses), `deck` as the markers `rehypeDeck` builds a deck from, where such a directive throws.
  */
 export type SlideRendering = 'preview' | 'deck';
 
@@ -65,13 +66,12 @@ interface DirectiveNode {
 }
 
 /**
- * What contour-deck makes of one slide directive in a note of this `structure` (`slideOptions.structure`; none is its default); throws a
- * {@link SlideDeckError} with the message it refuses the directive with, or the structure.
+ * What contour-deck makes of one slide directive in a slide note, read by its headings; throws a {@link SlideDeckError} with the message it
+ * refuses the directive with.
  */
-function slideMarker(name: string, form: SlideDirectiveForm, attributes: Record<string, string>, structure: string | undefined): SlideMarker {
+function slideMarker(name: string, form: SlideDirectiveForm, attributes: Record<string, string>): SlideMarker {
   const node: DirectiveNode = { type: `${form}Directive`, name, attributes, children: [] };
-  // Which structures there are is contour-deck's to say, so the value is not narrowed here.
-  remarkDeck({ structure: structure as never })({ type: 'root', children: [node] }, {
+  remarkDeck({ structure: SLIDE_STRUCTURE })({ type: 'root', children: [node] }, {
     data: {},
     fail(reason) {
       throw new SlideDeckError(reason);
@@ -96,8 +96,6 @@ export interface SlideDirectiveContext {
   strings: Record<TranslationKey, string>;
   /** The 1-based line of the note's text the directive opens on. */
   line: number;
-  /** The note's `slideOptions.structure`, which decides what contour-deck takes: `::vertical` is refused in a note read by its headings. */
-  structure?: string;
 }
 
 /** The directive as its source reads, for an error box; its line breaks are character references, so the box stays one HTML block. */
@@ -109,10 +107,10 @@ function errorBox(message: string, source: string, strings: Record<TranslationKe
  * The HTML of a slide directive: `body` is the rendered content of a container, absent for a leaf. In a preview a directive contour-deck
  * refuses is an error box showing `source`; in a deck it throws, so a deck is never built from a note it would split wrongly.
  */
-export function renderSlideDirective(name: string, form: SlideDirectiveForm, rawAttrs: string | undefined, source: string, { rendering, strings, line, structure }: SlideDirectiveContext, body?: string): string {
+export function renderSlideDirective(name: string, form: SlideDirectiveForm, rawAttrs: string | undefined, source: string, { rendering, strings, line }: SlideDirectiveContext, body?: string): string {
   let marker: SlideMarker;
   try {
-    marker = slideMarker(name, form, parseSlideAttributes(rawAttrs), structure);
+    marker = slideMarker(name, form, parseSlideAttributes(rawAttrs));
   } catch (error) {
     if (!(error instanceof SlideDeckError)) throw error;
     if (rendering === 'deck') throw new SlideDeckError(error.message, line);
@@ -124,11 +122,10 @@ export function renderSlideDirective(name: string, form: SlideDirectiveForm, raw
   }
   if (name === 'summary') return `<aside class="slide-notes" data-type="summary" aria-label="${escapeHtml(strings['slides.notesLabel'])}"><p class="slide-notes-label">${escapeHtml(strings['slides.notesLabel'])}</p><div class="slide-notes-body directive-content">${body ?? ''}</div></aside>`;
   if (name === 'build') return `<div class="slide-build" data-type="build">${body ?? ''}</div>`;
-  if (name === 'vertical') return '<hr class="slide-page-break" data-type="vertical">';
   if (name === 'block') {
     const { dataTitle, dataMinutes } = marker.properties;
     const minutes = dataMinutes === undefined ? '' : `<span class="slide-block-minutes">${escapeHtml(strings['slides.blockMinutes'].replace('{count}', String(dataMinutes)))}</span>`;
-    // A note read by its headings titles a block by its heading, and a `::block` there may name only the minutes or the label.
+    // A block is titled by its heading, and a `::block` may name only the minutes or the label.
     const title = dataTitle === undefined ? '' : `<span class="slide-block-name">${escapeHtml(String(dataTitle))}</span>`;
     return `<div class="slide-block-title" data-type="block"><span class="slide-block-label">${escapeHtml(strings['slides.blockLabel'])}</span>${title}${minutes}</div>`;
   }
