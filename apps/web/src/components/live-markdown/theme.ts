@@ -71,6 +71,9 @@ export const theme = EditorView.theme({
   // A citation drawn as the PDF prints it; clicking it brings its source back. A missing key keeps its source, underlined.
   '.live-md-citation': { cursor: 'text' },
   '.live-md-citation-missing, .live-md-citation-missing span': { textDecoration: 'underline dotted', textDecorationColor: 'var(--color-warning)', textUnderlineOffset: '3px' },
+  // An icon directive drawn as its Lucide icon, sized by the SVG's own width and height; clicking it brings its source back.
+  '.live-md-icon': { display: 'inline-block', lineHeight: '0', verticalAlign: '-0.125em', margin: '0 0.1em', cursor: 'text' },
+  '.live-md-icon svg': { display: 'block' },
   '.live-md-hr': { color: 'var(--color-text)' },
   '.live-md-code': { fontFamily: 'monospace', backgroundColor: 'var(--color-code-bg)', borderRadius: '4px' },
   // Both sides are explicit (not just the extra indent) because .live-md-codeblock is a .cm-line

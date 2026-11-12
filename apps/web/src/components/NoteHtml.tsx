@@ -1,4 +1,6 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { hydratePendingIcons } from '../lib/icons/inline-icon.js';
+import { loadLucideIcons } from '../lib/icons/lucide-registry.js';
 import { useMermaidDiagrams } from '../lib/use-mermaid-diagrams.js';
 import { usePdfFigures } from '../lib/use-pdf-figures.js';
 
@@ -14,5 +16,12 @@ export function NoteHtml({ html, className, notebookId, untrusted = false }: { h
   const surface = useRef<HTMLDivElement>(null);
   useMermaidDiagrams(untrusted ? UNDRAWN : surface, html);
   usePdfFigures(untrusted ? UNDRAWN : surface, html);
+  // Icons named in the note draw once their set has loaded; this surface may have been mounted after the load finished.
+  useEffect(() => {
+    if (!html.includes('lucide-icon-pending')) return;
+    loadLucideIcons().then(() => {
+      if (surface.current) hydratePendingIcons(surface.current);
+    }, () => undefined);
+  }, [html]);
   return <div ref={surface} className={className} data-markdown-view data-source-notebook={notebookId} dangerouslySetInnerHTML={{ __html: html }} />;
 }

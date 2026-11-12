@@ -57,7 +57,7 @@ it('formats from the toolbar it renders into the slot, with the insert actions b
 
   const toolbar = screen.getByRole('toolbar', { name: 'Formatting toolbar' });
   expect(slot).toContainElement(toolbar);
-  for (const name of ['Insert note link', 'Insert table', 'Insert block']) expect(toolbar).toContainElement(screen.getByRole('button', { name }));
+  for (const name of ['Insert note link', 'Insert table', 'Insert icon', 'Insert block']) expect(toolbar).toContainElement(screen.getByRole('button', { name }));
   fireEvent.click(screen.getByRole('button', { name: 'Heading 2' }));
   expect(textarea.value).toBe('## title');
   slot.remove();
@@ -68,7 +68,7 @@ it('groups Insert image with the other insert actions when the editor offers it'
   render(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(MarkdownEditor, { content: 'title', path: 'notes/a.md', mode: 'raw', readOnly: false, onChange: () => {}, ariaLabel: 'Note content', onInsertImage })));
   const image = screen.getByRole('button', { name: 'Insert image' });
   const group = image.closest('.markdown-format-group');
-  expect([...group!.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Insert note link', 'Insert image', 'Annotated image', 'Insert table', 'Insert block', 'Insert infographic', 'Insert argument map']);
+  expect([...group!.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Insert note link', 'Insert image', 'Annotated image', 'Insert table', 'Insert icon', 'Insert block', 'Insert infographic', 'Insert argument map']);
   fireEvent.click(image);
   expect(onInsertImage).toHaveBeenCalledOnce();
   cleanup();

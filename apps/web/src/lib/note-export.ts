@@ -1,5 +1,6 @@
 import type { Translate } from './annotations/pdf-figure.js';
 import { renderPdfPageImages } from './annotations/pdf-print.js';
+import { loadLucideIcons } from './icons/lucide-registry.js';
 import { renderNote } from './markdown.js';
 import { currentAppearance, renderMermaidBlocks } from './mermaid.js';
 // Inlined because the print frame loads none of the app's stylesheets; Vite rewrites its font url()s to the served
@@ -10,6 +11,8 @@ const PRINT_STYLE = `
   body { margin: 0; padding: 0; font: 11pt/1.6 -apple-system, 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif; color: CanvasText; }
   h1, h2, h3, h4 { line-height: 1.3; break-after: avoid; }
   img, svg, video { max-width: 100%; height: auto; }
+  .lucide-icon { display: inline-block; line-height: 0; vertical-align: -0.125em; margin-inline: 0.1em; }
+  .lucide-icon > svg { display: block; }
   pre, blockquote, table, figure { break-inside: avoid; }
   pre { padding: 0.6em 0.8em; background: color-mix(in srgb, currentColor 8%, transparent); border-radius: 4px; white-space: pre-wrap; word-break: break-word; font: 9.5pt/1.5 ui-monospace, Menlo, monospace; }
   code { font-family: ui-monospace, Menlo, monospace; }
@@ -58,6 +61,8 @@ export function downloadTextFile(filename: string, text: string, type: string): 
 
 /** The note's printable body: `renderNote` HTML with its diagrams drawn, on the light variant since paper is white. */
 export async function renderPrintableNote(content: string, notePath: string, errorLabel?: string, notebookId?: string, t?: Translate): Promise<string> {
+  // `renderNote` draws an icon only once the set is loaded, and the print frame runs no script to fill it in later.
+  if (content.includes(':icon')) await loadLucideIcons();
   const printable = new DOMParser().parseFromString(renderNote(content, notePath, undefined, undefined, notebookId), 'text/html');
   // The print frame has no viewport, so lazy images never approach an intersection threshold.
   for (const image of printable.images) image.removeAttribute('loading');

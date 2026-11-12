@@ -349,6 +349,9 @@ importers:
       katex:
         specifier: ^0.19.0
         version: 0.19.0
+      lucide:
+        specifier: 0.441.0
+        version: 0.441.0
       lucide-react:
         specifier: ^0.441.0
         version: 0.441.0(react@18.3.1)
@@ -3596,6 +3599,9 @@ packages:
     resolution: {integrity: sha512-0vfExYtvSDhkC2lqg0zYVW1Uu9GsI4knuV9GP9by5z0Xhc4Zi5RejTxfz9LsjRmCyWVzHCJvxGKZWcRyvQCWVg==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc
+
+  lucide@0.441.0:
+    resolution: {integrity: sha512-ajYJgt7JvoXAYIPZDssKrUmsV/XXU20ibQwxKh8LFd2LDFEtKtML4vHCyYr6TIAJI+r9yr6EiK+LpacfVzgfZQ==}
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -8016,6 +8022,8 @@ snapshots:
   lucide-react@0.441.0(react@18.3.1):
     dependencies:
       react: 18.3.1
+
+  lucide@0.441.0: {}
 
   lz-string@1.5.0: {}
 

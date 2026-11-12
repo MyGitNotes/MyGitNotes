@@ -12,6 +12,7 @@ import { isArgumentMapName } from './argument-maps/parse.js';
 import { ArgumentMapError, renderArgumentMap, renderArgumentMapError } from './argument-maps/render.js';
 import { isAnnotateName } from './annotations/parse.js';
 import { AnnotateError, renderAnnotate, renderAnnotateError } from './annotations/render.js';
+import { renderInlineIcons } from './icons/inline-icon.js';
 
 /** The language a server renders a note in; the browser takes it from the page. */
 export type NoteLanguage = 'en' | 'zh-TW';
@@ -160,14 +161,8 @@ export function transformMdxComponents(content: string, language?: NoteLanguage)
  * Transforms inline directives like `:icon{name="Heart" size="16"}` and `:qrcode{url="..."}`.
  */
 export function transformInlineDirectives(line: string): string {
-  // :icon{name="Heart" size="16"} or :icon[Heart]{size="16"}
-  let result = line.replace(/:icon(?:\[([^\]]*)\])?(?:\{([^}]*)\})?/g, (_, label: string, attrStr: string) => {
-    const attrs = parseDirectiveAttributes(attrStr);
-    const name = attrs.name || label || 'circle';
-    const sizeInput = attrs.size || '1em';
-    const size = /^\d+$/.test(sizeInput) ? `${sizeInput}px` : sizeInput;
-    return `<span class="lucide-icon inline-icon" data-lucide="${escapeHtml(name)}" data-size="${escapeHtml(sizeInput)}" style="display:inline-flex;width:${escapeHtml(size)};height:${escapeHtml(size)};vertical-align:middle;" title="${escapeHtml(name)}"><svg width="${escapeHtml(size)}" height="${escapeHtml(size)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/></svg></span>`;
-  });
+  // :icon{name="Heart" size="16"} or :icon[Heart]{size="16"}, drawn as the real Lucide icon
+  let result = renderInlineIcons(line);
 
   // :qrcode{url="https://..." size="128"}
   result = result.replace(/:qrcode(?:\[([^\]]*)\])?(?:\{([^}]*)\})?/g, (_, label: string, attrStr: string) => {
