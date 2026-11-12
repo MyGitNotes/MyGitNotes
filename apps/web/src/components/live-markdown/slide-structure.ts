@@ -1,7 +1,7 @@
 import { syntaxTree } from '@codemirror/language';
 import { type EditorState, Facet } from '@codemirror/state';
-import { fencedCodeLines } from '../../lib/directives.js';
-import { isSlideDirective, parseDirectiveLine } from '../../lib/slides/directives.js';
+import { fencedCodeLines, parseDirectiveOpen } from '../../lib/directives.js';
+import { isSlideContainer, isSlideDirective, parseDirectiveLine } from '../../lib/slides/directives.js';
 import { readsByHeadings } from '../../lib/slides/note.js';
 import { type HeadingLabel, HeadingStructureReader, type SeparatorLabel, type SlideBreak, SlideStructureReader } from '../../lib/slides/structure.js';
 
@@ -12,14 +12,14 @@ import { type HeadingLabel, HeadingStructureReader, type SeparatorLabel, type Sl
  */
 export const slideNote = Facet.define<string | undefined, string | undefined>({ combine: values => values.find(Boolean) });
 
-/** A line that is a slide directive on its own (`::vertical`, `::block{…}`, `::slide{#id}`, or one written in the wrong form). */
+/** A line that is a slide directive on its own (`::vertical`, `::block{…}`, `::slide{#id}`, or one written in the wrong form, `:::vertical` among them). */
 export interface SlideDirectiveLine {
   from: number;
   to: number;
   text: string;
   name: string;
-  /** `::name` (leaf) or `:name` (text). */
-  form: 'leaf' | 'text';
+  /** `::name` (leaf), `:name` (text), or `:::name` (container), which a leaf of contour-deck refuses. */
+  form: 'leaf' | 'text' | 'container';
   /** `::vertical` as contour-deck takes it: the line is a page separator. Never in a note read by its headings, where contour-deck refuses it. */
   pageBreak: boolean;
 }
@@ -90,7 +90,9 @@ export function editorSlideStructure(state: EditorState, blocks: readonly { from
       breaks.push({ from: line.from, kind: 'slide' });
       continue;
     }
-    const directive = parseDirectiveLine(line.text);
+    // In a slide note `:::vertical`, `:::block` and `:::slide` open no block: the line is the error contour-deck reports.
+    const opened = structure ? parseDirectiveOpen(line.text) : null;
+    const directive = opened && isSlideDirective(opened.name) && !isSlideContainer(opened.name) ? { form: 'container' as const, name: opened.name, rawAttrs: opened.rawAttrs } : parseDirectiveLine(line.text);
     if (directive && isSlideDirective(directive.name)) {
       const pageBreak = !byHeadings && directive.form === 'leaf' && directive.name === 'vertical' && !directive.rawAttrs;
       lines.push({ from: line.from, to: line.to, text: line.text, name: directive.name, form: directive.form, pageBreak });

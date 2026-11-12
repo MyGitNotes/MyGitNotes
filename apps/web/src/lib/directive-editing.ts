@@ -5,6 +5,7 @@ import { type DirectiveTranslate, fencedCodeLines, matchDirectiveClose, parseDir
 import { isInfographicKind } from './infographics/model.js';
 import { isAnnotateName } from './annotations/parse.js';
 import { isArgumentMapName } from './argument-maps/parse.js';
+import { isSlideContainer, isSlideDirective } from './slides/directives.js';
 
 export interface DirectiveTemplate {
   type: string;
@@ -95,7 +96,11 @@ export interface ParsedDirectiveBlock {
   rawText: string;
 }
 
-export function findDirectiveBlocks(text: string): ParsedDirectiveBlock[] {
+/**
+ * The container directive blocks of a text, outside its code blocks. In a slide note (`slides`) `:::vertical`, `:::block` and `:::slide`
+ * open no block, as the renderer reads them: each is a line contour-deck refuses.
+ */
+export function findDirectiveBlocks(text: string, slides = false): ParsedDirectiveBlock[] {
   const blocks: ParsedDirectiveBlock[] = [];
   const lines = text.split('\n');
   let currentOffset = 0;
@@ -125,7 +130,7 @@ export function findDirectiveBlocks(text: string): ParsedDirectiveBlock[] {
     }
 
     const open = parseDirectiveOpen(line);
-    if (open) {
+    if (open && !(slides && isSlideDirective(open.name) && !isSlideContainer(open.name))) {
       stack.push({ from: lineStart, fenceLength: open.fenceLength, type: open.name, label: open.label, attrs: open.attrs, headerLine: line, bodyLines: [] });
       continue;
     }

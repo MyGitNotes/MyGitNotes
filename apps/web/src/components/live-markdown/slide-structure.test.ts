@@ -71,6 +71,16 @@ describe('the live editor on a type: slide note', () => {
     expect(lines[2].dom.querySelector('.slide-error .ig-error-message')?.textContent).toBe('summary is a container directive: write :::summary … :::');
   });
 
+  it('draws :::vertical, :::block and :::slide as the error contour-deck reports, and reads the blocks after them', () => {
+    const doc = '## A\n\n:::vertical\n\n## A\n\n:::summary\nnotes\n:::\n\n:::block{title="B"}\n\n:::slide\n\n:::build\n- a\n- b\n:::\n';
+    const view = editor(doc, true);
+    const drawn = widgets(view);
+    const lines = drawn.filter(({ widget }) => widget instanceof SlideDirectiveLine);
+    expect(lines.map(({ line }) => line)).toEqual([3, 11, 13]);
+    for (const { widget } of lines) expect(widget.toDOM(view).querySelector('.slide-error .ig-error-message')).not.toBeNull();
+    expect(drawn.filter(({ widget }) => widget instanceof LiveMarkdownDirective).map(({ line }) => line)).toEqual([7, 15]);
+  });
+
   it('shows the source of a slide directive line while the cursor is on it', () => {
     const view = editor(DECK, true, DECK.indexOf('::vertical'));
     expect(widgets(view).filter(({ widget }) => widget instanceof SlidePageBreak).map(({ line }) => line)).toEqual([22]);

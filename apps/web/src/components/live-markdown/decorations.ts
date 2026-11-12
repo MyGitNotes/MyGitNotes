@@ -52,10 +52,10 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
     marks.push(Decoration.widget({ widget: new ExternalLink(href, linkLabel, notePath), side: 1 }).range(to));
   };
   const docText = state.doc.toString();
-  const directiveBlocks = findDirectiveBlocks(docText);
-  const collapsedDirectives = directiveBlocks.filter(b => !active(b.from, b.to));
   // A slide note's separators are slides and pages, and its slide directives draw as a deck reads them.
   const slides = state.facet(slideNote);
+  const directiveBlocks = findDirectiveBlocks(docText, Boolean(slides));
+  const collapsedDirectives = directiveBlocks.filter(b => !active(b.from, b.to));
   const slideStructure = editorSlideStructure(state, directiveBlocks);
   const wording: SlideLabelWording = (key, params) => t(key, params);
   const endsLabel = (ends: SeparatorLabel | undefined) => ends ? separatorLabelText(ends, wording) : '';
