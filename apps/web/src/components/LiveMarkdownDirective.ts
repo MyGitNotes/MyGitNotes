@@ -1,6 +1,6 @@
 import { EditorView, WidgetType } from '@codemirror/view';
 import { isolateHistory } from '@codemirror/commands';
-import { DIRECTIVE_TEMPLATES, type DirectiveModel, localizedDirectiveLabel, parseDirectiveModel, serializeDirectiveModel } from '../lib/directive-editing.js';
+import { DIRECTIVE_TEMPLATES, type DirectiveModel, GRID_COLUMN_OPTIONS, gridColumnCount, localizedDirectiveLabel, parseDirectiveModel, serializeDirectiveModel, setGridColumns } from '../lib/directive-editing.js';
 import { localizedHandoutVariants } from '../lib/directives.js';
 import { renderNote } from '../lib/markdown.js';
 import { hydrateMermaid } from '../lib/mermaid.js';
@@ -23,6 +23,28 @@ export class LiveMarkdownDirective extends WidgetType {
   /** `this.t`, falling back to the given zh-TW string when no translator was supplied. */
   private tt(key: TranslationKey, fallback: string, params?: Record<string, string | number>): string {
     return this.t?.(key, params) ?? fallback;
+  }
+
+  /** The column-count options of a grid: the offered counts, and the grid's own count when it is none of them, so no existing grid is silently changed. */
+  private gridColumnSelect(model: DirectiveModel): HTMLSelectElement {
+    const select = document.createElement('select');
+    const current = gridColumnCount(model.attrs);
+    const counts: number[] = [...GRID_COLUMN_OPTIONS];
+    if (!counts.includes(current)) counts.push(current);
+    for (const count of counts.sort((a, b) => a - b)) {
+      const option = document.createElement('option');
+      option.value = String(count);
+      option.textContent = this.tt('directive.grid.columns', `${count} 欄`, { count });
+      if (count === current) option.selected = true;
+      select.append(option);
+    }
+    select.value = String(current);
+    return select;
+  }
+
+  /** `model` with its grid's column count set to `cols`, the cells it lacks added in the note language. */
+  private withGridColumns(model: DirectiveModel, cols: number): DirectiveModel {
+    return setGridColumns(model, cols, n => this.tt('directive.grid.cellN', `第 ${n} 欄內容`, { n }));
   }
 
   /** Draws the mermaid diagrams a directive's body holds, replacing the redraw watch of any earlier body. */
@@ -110,6 +132,17 @@ export class LiveMarkdownDirective extends WidgetType {
           saveChanges(model);
         });
         toolbar.append(variantSelect);
+      }
+
+      // Column count of a grid
+      if (model.type === 'grid') {
+        const gridSelect = this.gridColumnSelect(model);
+        gridSelect.className = 'live-directive-grid-select';
+        gridSelect.title = this.tt('directive.editor.gridColumns', '欄數');
+        gridSelect.setAttribute('aria-label', this.tt('directive.editor.gridColumns', '欄數'));
+        gridSelect.addEventListener('mousedown', event => event.stopPropagation());
+        gridSelect.addEventListener('change', () => saveChanges(this.withGridColumns(model, Number(gridSelect.value))));
+        toolbar.append(gridSelect);
       }
 
       // Title input field on toolbar for fast renaming
@@ -227,6 +260,7 @@ export class LiveMarkdownDirective extends WidgetType {
       let handoutKeeperInput: HTMLInputElement | null = null;
       let handoutVariantSelect: HTMLSelectElement | null = null;
       let cocRoleInput: HTMLInputElement | null = null;
+      let gridColumnsSelect: HTMLSelectElement | null = null;
 
       if (model.type === 'handout') {
         row2 = document.createElement('div');
@@ -282,6 +316,18 @@ export class LiveMarkdownDirective extends WidgetType {
         roleField.append(roleLabel, cocRoleInput);
 
         row2.append(roleField);
+      } else if (model.type === 'grid') {
+        row2 = document.createElement('div');
+        row2.className = 'live-directive-form-row';
+
+        const columnsField = document.createElement('div');
+        columnsField.className = 'live-directive-form-field';
+        const columnsLabel = document.createElement('label');
+        columnsLabel.textContent = this.tt('directive.editor.gridColumns', '欄數');
+        gridColumnsSelect = this.gridColumnSelect(model);
+        columnsField.append(columnsLabel, gridColumnsSelect);
+
+        row2.append(columnsField);
       }
 
       // Body editor
@@ -324,8 +370,7 @@ export class LiveMarkdownDirective extends WidgetType {
         if (handoutVariantSelect) model.attrs.variant = handoutVariantSelect.value;
         if (handoutKeeperInput) model.attrs.keeper = handoutKeeperInput.value;
         if (cocRoleInput) model.attrs.role = cocRoleInput.value;
-
-        saveChanges(model);
+        saveChanges(gridColumnsSelect ? this.withGridColumns(model, Number(gridColumnsSelect.value)) : model);
         renderPreview();
       };
 

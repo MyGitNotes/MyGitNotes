@@ -12,6 +12,8 @@
 
   .live-directive-toolbar select.live-directive-variant-select { flex: 1 1 100px; min-width: 80px; }
 
+  .live-directive-toolbar select.live-directive-grid-select { flex: 0 1 90px; min-width: 70px; }
+
   .live-directive-toolbar input.live-directive-title-input { flex: 2 1 130px; width: auto; min-width: 0; }
 
   .live-directive-toolbar input.live-directive-title-input:focus { width: auto; }

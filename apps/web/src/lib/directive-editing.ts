@@ -12,22 +12,53 @@ export interface DirectiveTemplate {
   defaultSnippet: string;
 }
 
-export const DIRECTIVE_TEMPLATES: DirectiveTemplate[] = [{ type: 'info', label: '資訊 (Info)', defaultSnippet: ':::info\n在此輸入資訊內容\n:::\n' }, { type: 'sidebar', label: '重點區塊 (Sidebar)', defaultSnippet: ':::sidebar[重要提示]\n在此輸入重點內容\n:::\n' }, { type: 'optional', label: '摺疊細節 (Optional)', defaultSnippet: ':::optional[點擊展開詳細內容]\n收合的細節說明...\n:::\n' }, { type: 'comment', label: '旁註 (Comment)', defaultSnippet: ':::comment\n在此輸入補充註記\n:::\n' }, { type: 'handout', label: '文件卡片 (Document)', defaultSnippet: ':::handout{id="DOC-01" title="文件標題" variant="report" keeper="編輯備註"}\n在此輸入文件內容。\n:::\n' }, { type: 'coc-stat', label: '屬性資料卡 (Stats)', defaultSnippet: ':::coc-stat{name="人物名稱" str=50 con=60 siz=65 dex=70 int=75 app=50 pow=60 edu=80 san=60 hp=12 db="0" build=0 move=8}\n在此輸入人物備註。\n:::\n' }, { type: 'parallel-quote', label: '雙語對照 (Quote)', defaultSnippet: ':::parallel-quote{author="哲學家" source="著作名稱" cite="[@citationKey]"}\n:::original\nOriginal quotation text here.\n:::\n:::translation\n在此輸入繁體中文譯文。\n:::\n:::\n' }, { type: 'github-repo', label: 'GitHub 專案卡片', defaultSnippet: ':::github-repo{url="https://github.com/user/repo" title="專案名稱"}\n專案簡介與特色說明\n:::\n' }, { type: 'x-post', label: 'X (Twitter) 卡片', defaultSnippet: ':::x-post{url="https://x.com/user/status/123" title="貼文標題"}\n貼文摘錄或討論重點\n:::\n' }, { type: 'reddit-post', label: 'Reddit 卡片', defaultSnippet: ':::reddit-post{url="https://reddit.com/r/..." title="討論串"}\n討論摘要\n:::\n' }, { type: 'grid', label: '雙欄網格 (Grid)', defaultSnippet: '::::grid{cols="2" gap="1rem"}\n:::cell\n左側內容\n:::\n:::cell\n右側內容\n:::\n::::\n' }];
+export const DIRECTIVE_TEMPLATES: DirectiveTemplate[] = [{ type: 'info', label: '資訊 (Info)', defaultSnippet: ':::info\n在此輸入資訊內容\n:::\n' }, { type: 'sidebar', label: '重點區塊 (Sidebar)', defaultSnippet: ':::sidebar[重要提示]\n在此輸入重點內容\n:::\n' }, { type: 'optional', label: '摺疊細節 (Optional)', defaultSnippet: ':::optional[點擊展開詳細內容]\n收合的細節說明...\n:::\n' }, { type: 'comment', label: '旁註 (Comment)', defaultSnippet: ':::comment\n在此輸入補充註記\n:::\n' }, { type: 'handout', label: '文件卡片 (Document)', defaultSnippet: ':::handout{id="DOC-01" title="文件標題" variant="report" keeper="編輯備註"}\n在此輸入文件內容。\n:::\n' }, { type: 'coc-stat', label: '屬性資料卡 (Stats)', defaultSnippet: ':::coc-stat{name="人物名稱" str=50 con=60 siz=65 dex=70 int=75 app=50 pow=60 edu=80 san=60 hp=12 db="0" build=0 move=8}\n在此輸入人物備註。\n:::\n' }, { type: 'parallel-quote', label: '雙語對照 (Quote)', defaultSnippet: ':::parallel-quote{author="哲學家" source="著作名稱" cite="[@citationKey]"}\n:::original\nOriginal quotation text here.\n:::\n:::translation\n在此輸入繁體中文譯文。\n:::\n:::\n' }, { type: 'github-repo', label: 'GitHub 專案卡片', defaultSnippet: ':::github-repo{url="https://github.com/user/repo" title="專案名稱"}\n專案簡介與特色說明\n:::\n' }, { type: 'x-post', label: 'X (Twitter) 卡片', defaultSnippet: ':::x-post{url="https://x.com/user/status/123" title="貼文標題"}\n貼文摘錄或討論重點\n:::\n' }, { type: 'reddit-post', label: 'Reddit 卡片', defaultSnippet: ':::reddit-post{url="https://reddit.com/r/..." title="討論串"}\n討論摘要\n:::\n' }, { type: 'grid', label: '多欄網格 (Grid)', defaultSnippet: '::::grid{cols="2" gap="1rem"}\n:::cell\n左側內容\n:::\n:::cell\n右側內容\n:::\n::::\n' }];
 
 // The Chinese instructional placeholders each defaultSnippet carries, keyed to their i18n
 // translations. English-locale editors get the inserted snippet in English; the source
 // DIRECTIVE_TEMPLATES above (and any note content already written with it) is untouched.
 const DEFAULT_SNIPPET_PLACEHOLDERS: Partial<Record<string, [string, TranslationKey][]>> = { info: [['在此輸入資訊內容', 'directive.info.body']], sidebar: [['重要提示', 'directive.sidebar.label'], ['在此輸入重點內容', 'directive.sidebar.body']], optional: [['點擊展開詳細內容', 'directive.optional.label'], ['收合的細節說明...', 'directive.optional.body']], comment: [['在此輸入補充註記', 'directive.comment.body']], handout: [['文件標題', 'directive.handout.title'], ['編輯備註', 'directive.handout.keeper'], ['在此輸入文件內容。', 'directive.handout.body']], 'coc-stat': [['人物名稱', 'directive.cocStat.name'], ['在此輸入人物備註。', 'directive.cocStat.body']], 'parallel-quote': [['哲學家', 'directive.parallelQuote.author'], ['著作名稱', 'directive.parallelQuote.source'], ['在此輸入繁體中文譯文。', 'directive.parallelQuote.translationBody']], 'github-repo': [['專案名稱', 'directive.githubRepo.title'], ['專案簡介與特色說明', 'directive.githubRepo.body']], 'x-post': [['貼文標題', 'directive.xPost.title'], ['貼文摘錄或討論重點', 'directive.xPost.body']], 'reddit-post': [['討論串', 'directive.redditPost.title'], ['討論摘要', 'directive.redditPost.body']], grid: [['左側內容', 'directive.grid.cellLeft'], ['右側內容', 'directive.grid.cellRight']] };
 
-/** The markdown to insert for a new directive of `type`, with its instructional placeholder text in the given locale. */
-export function localizedDirectiveSnippet(type: string, t?: DirectiveTranslate): string {
+/** The column counts the editor offers for a grid; an existing grid may hold any other count and keeps it. */
+export const GRID_COLUMN_OPTIONS = [2, 3, 4] as const;
+const DEFAULT_GRID_COLUMNS = 2;
+
+/** The number of columns a grid's `cols` attribute asks for; a missing or unusable value counts as the default two. */
+export function gridColumnCount(attrs: Record<string, string>): number {
+  const cols = Number.parseInt(attrs.cols ?? '', 10);
+  return Number.isInteger(cols) && cols >= 1 ? cols : DEFAULT_GRID_COLUMNS;
+}
+
+/** The markdown of an empty grid cell holding the instructional text for column `n`. */
+function gridCell(text: string): string {
+  return `:::cell\n${text}\n:::`;
+}
+
+/** The markdown to insert for a new directive of `type`, with its instructional placeholder text in the given locale; `cols` is the column count of a grid. */
+export function localizedDirectiveSnippet(type: string, t?: DirectiveTranslate, options: { cols?: number; } = {}): string {
   const tpl = DIRECTIVE_TEMPLATES.find(d => d.type === type) ?? DIRECTIVE_TEMPLATES[0];
-  if (!t) return tpl.defaultSnippet;
   let snippet = tpl.defaultSnippet;
+  if (tpl.type === 'grid' && options.cols !== undefined && options.cols !== DEFAULT_GRID_COLUMNS) {
+    const cells = Array.from({ length: options.cols }, (_, index) => gridCell(t ? t('directive.grid.cellN', { n: index + 1 }) : `第 ${index + 1} 欄內容`));
+    return `::::grid{cols="${options.cols}" gap="1rem"}\n${cells.join('\n')}\n::::\n`;
+  }
+  if (!t) return snippet;
   for (const [chinese, key] of DEFAULT_SNIPPET_PLACEHOLDERS[tpl.type] ?? []) {
     snippet = snippet.replaceAll(chinese, t(key));
   }
   return snippet;
+}
+
+/**
+ * `model`, a grid, asking for `cols` columns. A grid with fewer cells than columns would leave a column empty
+ * and the writer with no hint how to fill it, so the missing cells are appended, each holding `placeholder(n)`;
+ * a cell is never removed, as it holds the writer's text, and the extra ones simply wrap onto further rows.
+ */
+export function setGridColumns(model: DirectiveModel, cols: number, placeholder: (n: number) => string): DirectiveModel {
+  const present = findDirectiveBlocks(model.body).filter(block => block.type === 'cell').length;
+  const added = Array.from({ length: Math.max(0, cols - present) }, (_, index) => gridCell(placeholder(present + index + 1)));
+  const body = [model.body, ...added].filter(part => part !== '').join('\n');
+  return { ...model, attrs: { ...model.attrs, cols: String(cols) }, body };
 }
 
 /**

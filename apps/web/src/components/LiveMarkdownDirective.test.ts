@@ -141,6 +141,38 @@ describe('LiveMarkdownDirective widget', () => {
     expect(variantSelect?.value).toBe('newspaper');
   });
 
+  it('lets the writer choose the column count of a grid from its toolbar, adding the cells the new count lacks', () => {
+    const text = '::::grid{cols="2" gap="1rem"}\n:::cell\nA\n:::\n:::cell\nB\n:::\n::::';
+    const directive = new LiveMarkdownDirective(text, 'note.md', 7, false, 'grid', undefined, enT);
+    const mockView = { dispatch: vi.fn(), requestMeasure: vi.fn(), focus: vi.fn() } as unknown as EditorView;
+
+    const dom = directive.toDOM(mockView);
+    const columns = dom.querySelector<HTMLSelectElement>('.live-directive-grid-select')!;
+    expect(columns).not.toBeNull();
+    expect(columns.value).toBe('2');
+    expect(Array.from(columns.children, option => option.textContent)).toEqual(['2 columns', '3 columns', '4 columns']);
+
+    columns.value = '3';
+    columns.dispatchEvent(new Event('change'));
+
+    const insert = (mockView.dispatch as ReturnType<typeof vi.fn>).mock.calls[0][0].changes.insert as string;
+    expect(insert).toContain('::::grid{cols="3" gap="1rem"}');
+    expect(insert).toContain('Column 3 content');
+    expect(insert.match(/^:::cell$/gm)).toHaveLength(3);
+  });
+
+  it('keeps the column count of a grid that holds a count the menu does not offer', () => {
+    const directive = new LiveMarkdownDirective('::::grid{cols="5"}\n:::cell\nA\n:::\n::::', 'note.md', 0, false, 'grid', undefined, enT);
+    const columns = directive.toDOM({ dispatch: vi.fn(), requestMeasure: vi.fn(), focus: vi.fn() } as unknown as EditorView).querySelector<HTMLSelectElement>('.live-directive-grid-select')!;
+    expect(columns.value).toBe('5');
+    expect(Array.from(columns.children, option => option.textContent)).toContain('5 columns');
+  });
+
+  it('offers no column count on other blocks', () => {
+    const directive = new LiveMarkdownDirective(':::info\nx\n:::', 'note.md', 0, false, 'info');
+    expect(directive.toDOM({ dispatch: vi.fn(), requestMeasure: vi.fn(), focus: vi.fn() } as unknown as EditorView).querySelector('.live-directive-grid-select')).toBeNull();
+  });
+
   it('dispatches text change when type is changed in selector', () => {
     const text = ':::info\n內容文字\n:::';
     const directive = new LiveMarkdownDirective(text, 'note.md', 5, false, 'info');

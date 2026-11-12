@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { blockInsertion, DIRECTIVE_TEMPLATES, findDirectiveBlocks, localizedDirectiveLabel, localizedDirectiveSnippet, parseDirectiveModel, updateDirectiveType, updateDirectiveVariant } from './directive-editing.js';
+import { blockInsertion, DIRECTIVE_TEMPLATES, findDirectiveBlocks, GRID_COLUMN_OPTIONS, gridColumnCount, localizedDirectiveLabel, localizedDirectiveSnippet, parseDirectiveModel, serializeDirectiveModel, setGridColumns, updateDirectiveType, updateDirectiveVariant } from './directive-editing.js';
 import { localizedHandoutVariants, parseDirectiveAttributes, parseDirectiveTitle, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
 import { en, type TranslationKey } from './i18n/en.js';
 
-const enT = (key: TranslationKey): string => en[key] ?? key;
+const enT = (key: TranslationKey, params?: Record<string, string | number>): string => {
+  let text = en[key] ?? key;
+  for (const [name, value] of Object.entries(params ?? {})) text = text.replaceAll(`{${name}}`, String(value));
+  return text;
+};
 
 /** `doc` with `|` marking the cursor, or `[` `]` a selection, after inserting `B`; `^` marks the resulting cursor. */
 function inserted(marked: string, block = ':::info\nB\n:::') {
@@ -63,6 +67,57 @@ describe('directive templates', () => {
   it('labels the type select and handout variant select in English under the English locale', () => {
     expect(localizedDirectiveLabel('info', enT)).toBe('Info');
     expect(localizedHandoutVariants(enT).report).toBe('Document');
+  });
+});
+
+describe('grid directive columns', () => {
+  const cells = (text: string) => findDirectiveBlocks(parseDirectiveModel(text).body).filter(block => block.type === 'cell').length;
+
+  it('is no longer labelled as a two-column grid, in either locale', () => {
+    expect(localizedDirectiveLabel('grid')).toBe('多欄網格 (Grid)');
+    expect(localizedDirectiveLabel('grid', enT)).toBe('Multi-column grid');
+    expect(DIRECTIVE_TEMPLATES.find(template => template.type === 'grid')?.label).not.toContain('雙欄');
+  });
+
+  it('offers two to four columns and inserts a grid with that many cells', () => {
+    expect(GRID_COLUMN_OPTIONS).toEqual([2, 3, 4]);
+    for (const cols of GRID_COLUMN_OPTIONS) {
+      const snippet = localizedDirectiveSnippet('grid', undefined, { cols });
+      expect(findDirectiveBlocks(snippet)[0].attrs.cols).toBe(String(cols));
+      expect(cells(snippet)).toBe(cols);
+    }
+  });
+
+  it('keeps the two-column starter unchanged and names the extra cells in the note language', () => {
+    expect(localizedDirectiveSnippet('grid')).toBe(DIRECTIVE_TEMPLATES.find(template => template.type === 'grid')!.defaultSnippet);
+    const english = localizedDirectiveSnippet('grid', enT, { cols: 3 });
+    expect(english).toContain('Column 1 content');
+    expect(english).toContain('Column 3 content');
+    expect(localizedDirectiveSnippet('grid', enT)).toContain('Left content');
+    expect(english).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+
+  it('reads the column count of an existing grid, tolerating missing and odd values', () => {
+    expect(gridColumnCount({ cols: '3' })).toBe(3);
+    expect(gridColumnCount({})).toBe(2);
+    expect(gridColumnCount({ cols: 'x' })).toBe(2);
+    expect(gridColumnCount({ cols: '0' })).toBe(2);
+  });
+
+  it('changes the column count of an existing grid, adding the cells it lacks and never removing one', () => {
+    const grid = parseDirectiveModel(localizedDirectiveSnippet('grid'));
+    const wider = setGridColumns(grid, 4, n => `第 ${n} 欄`);
+    expect(wider.attrs.cols).toBe('4');
+    expect(wider.attrs.gap).toBe('1rem');
+    expect(wider.fenceLength).toBe(4);
+    const text = serializeDirectiveModel(wider);
+    expect(cells(text)).toBe(4);
+    expect(text).toContain('第 3 欄');
+    expect(text).toContain('第 4 欄');
+    expect(text).toContain('左側內容');
+    const narrower = serializeDirectiveModel(setGridColumns(parseDirectiveModel(text), 2, n => `第 ${n} 欄`));
+    expect(narrower).toContain('cols="2"');
+    expect(cells(narrower)).toBe(4);
   });
 });
 

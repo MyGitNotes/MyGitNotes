@@ -3,13 +3,13 @@ import { bookmarkOriginalRange, normalizeBookmarkBody } from '@mygitnotes/core/b
 import React, { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Bold, ChartColumn, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, ListTree, type LucideIcon, MessageSquarePlus, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
+import { Bold, ChartColumn, ChevronRight, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, ListTree, type LucideIcon, MessageSquarePlus, Plus, Quote, SeparatorHorizontal, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
 import type { LiveEditorCarry, LiveMarkdownHandle } from './LiveMarkdownEditor.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
 import { noteCompletionAt, useNoteCandidates } from '../lib/note-completion.js';
 import { noteLinkHref, noteMarkdownLink } from '@mygitnotes/core/workspace-links';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
-import { blockInsertion, DIRECTIVE_TEMPLATES, localizedDirectiveSnippet } from '../lib/directive-editing.js';
+import { blockInsertion, DIRECTIVE_TEMPLATES, GRID_COLUMN_OPTIONS, localizedDirectiveSnippet } from '../lib/directive-editing.js';
 import { wrapImage } from '../lib/annotations/edit.js';
 import { INFOGRAPHIC_MENU, infographicTemplate } from '../lib/infographics/templates.js';
 import type { InfographicKind } from '../lib/infographics/model.js';
@@ -273,7 +273,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       source.current?.setSelectionRange(edit.cursor, edit.cursor);
     });
   };
-  const insertDirective = (type = 'info') => insertBlockSource(localizedDirectiveSnippet(type, t));
+  const insertDirective = (type = 'info', cols?: number) => insertBlockSource(localizedDirectiveSnippet(type, t, { cols }));
   const insertInfographic = (kind: InfographicKind) => insertBlockSource(infographicTemplate(kind, t), true);
   const insertArgumentMap = () => insertBlockSource(t('argumentMap.template'));
 
@@ -403,17 +403,43 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
                   directiveInserted.current = false;
                 }}
               >
-                {DIRECTIVE_TEMPLATES.map(tpl => (
-                  <DropdownMenu.Item
-                    key={tpl.type}
-                    onSelect={() => {
-                      directiveInserted.current = true;
-                      insertDirective(tpl.type);
-                    }}
-                  >
-                    {t(`directive.${tpl.type}` as TranslationKey)}
-                  </DropdownMenu.Item>
-                ))}
+                {DIRECTIVE_TEMPLATES.map(tpl =>
+                  tpl.type === 'grid'
+                    ? (
+                      <DropdownMenu.Sub key={tpl.type}>
+                        <DropdownMenu.SubTrigger className='markdown-insert-submenu-trigger'>
+                          {t(`directive.${tpl.type}` as TranslationKey)}
+                          <ChevronRight aria-hidden='true' />
+                        </DropdownMenu.SubTrigger>
+                        <DropdownMenu.Portal>
+                          <DropdownMenu.SubContent className='markdown-insert-menu' sideOffset={4} collisionPadding={8}>
+                            {GRID_COLUMN_OPTIONS.map(cols => (
+                              <DropdownMenu.Item
+                                key={cols}
+                                onSelect={() => {
+                                  directiveInserted.current = true;
+                                  insertDirective(tpl.type, cols);
+                                }}
+                              >
+                                {t('directive.grid.columns', { count: cols })}
+                              </DropdownMenu.Item>
+                            ))}
+                          </DropdownMenu.SubContent>
+                        </DropdownMenu.Portal>
+                      </DropdownMenu.Sub>
+                    )
+                    : (
+                      <DropdownMenu.Item
+                        key={tpl.type}
+                        onSelect={() => {
+                          directiveInserted.current = true;
+                          insertDirective(tpl.type);
+                        }}
+                      >
+                        {t(`directive.${tpl.type}` as TranslationKey)}
+                      </DropdownMenu.Item>
+                    )
+                )}
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
