@@ -505,4 +505,10 @@ describe('fenced code lines', () => {
     const isCode = markedCode(text);
     for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
   });
+  it('reads a line of 32,000 quote markers in linear time', () => {
+    const fenced = fencedCodeLines(), started = performance.now();
+    fenced(`${'>'.repeat(32000)} \`\`\``);
+    for (let i = 0; i < 5; i++) fenced(`${'>'.repeat(32000)} x`);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
 });

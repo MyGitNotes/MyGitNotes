@@ -59,19 +59,23 @@ export function fencedCodeLines(): (line: string) => boolean {
   // indented less. Columns count a tab to the next multiple of four, as Markdown does. `depth` is the number of quotes the fence opened
   // in; a line with fewer quote markers ends them, and the fence with them, and any further marker on a line inside is code.
   let open: { mark: string; length: number; column: number; depth: number; } | null = null;
-  const width = (text: string) => {
-    let column = 0;
+  // The column `text` ends at when it starts at column `from`.
+  const width = (text: string, from = 0) => {
+    let column = from;
     for (const char of text) column = char === '\t' ? column - (column % 4) + 4 : column + 1;
     return column;
   };
   // Up to `most` quote markers at the line's start: how many, where the text past them starts, and the columns they take. A marker takes
   // one column of the space or tab after it; the rest of a tab's columns, counted on the whole line, indent the text.
   const quotes = (line: string, most: number) => {
-    let depth = 0, at = 0, columns = 0;
-    for (let marker; depth < most && (marker = /^ {0,3}>/.exec(line.slice(at))); depth++) {
+    // `end` is the column `at` stands at, kept along with it, so a line of many markers is read once.
+    let depth = 0, at = 0, columns = 0, end = 0;
+    for (let marker; depth < most && (marker = /^ {0,3}>/.exec(line.slice(at, at + 4))); depth++) {
+      end = width(marker[0], end);
       at += marker[0].length;
-      columns = width(line.slice(0, at));
+      columns = end;
       if (line[at] === ' ' || line[at] === '\t') {
+        end = width(line[at], end);
         at++;
         columns++;
       }
