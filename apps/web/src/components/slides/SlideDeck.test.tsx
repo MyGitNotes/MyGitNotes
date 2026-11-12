@@ -107,6 +107,8 @@ describe('a deck played over a note whose outline panel is open', () => {
     expect(screen.getByRole('navigation', { name: 'Outline', hidden: true })).toBeInTheDocument();
     fireEvent.keyDown(app, { key: 'Escape' });
     await waitFor(() => expect(document.querySelector('.ct-app')).toBeNull());
+    // Focus goes back to the button that opened the deck, though the click left it unfocused.
+    expect(play).toHaveFocus();
   });
 });
 

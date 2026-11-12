@@ -178,8 +178,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   };
 
   // A slide note plays as a deck over the window, from the text as it is now; the toolbar offers it for a Markdown note only.
-  const [deckView, setDeckView] = useState<SlideDeckView | null>(null);
-  const slideDeck = isMarkdown && isSlideNote(session.metadata) ? setDeckView : undefined;
+  const [deck, setDeck] = useState<{ view: SlideDeckView; opener?: HTMLElement; } | null>(null);
+  const slideDeck = isMarkdown && isSlideNote(session.metadata) ? (view: SlideDeckView, opener?: HTMLElement) => setDeck({ view, opener }) : undefined;
 
   // Vim's `:w` does what the footer's Commit does, or the toolbar's Save where the note saves by hand; with nothing to
   // write it succeeds, so `:wq` still closes. `:q` closes a zoomed note the way its back button does.
@@ -266,7 +266,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
       </div>
       {!phone && <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={quickActions} />}
       {docPanel.isEditorLeaderOpen && <NoteEditorLeader docPanel={docPanel} isMarkdown={isMarkdown} />}
-      {deckView && <SlideDeck content={session.content} path={note.path} notebookId={note.notebookId} title={session.title} structure={slideStructureOf(session.metadata)} lineNumberOffset={session.baseNote.lineNumberOffset || 0} view={deckView} onClose={() => setDeckView(null)} />}
+      {deck && <SlideDeck content={session.content} path={note.path} notebookId={note.notebookId} title={session.title} structure={slideStructureOf(session.metadata)} lineNumberOffset={session.baseNote.lineNumberOffset || 0} view={deck.view} opener={deck.opener} onClose={() => setDeck(null)} />}
       {imagePickerOpen && <FileManagerDialog notebookId={note.notebookId} writable={!readOnly} mode='pick-image' onInsert={session.locked ? undefined : insertImage} beforeChange={beforeFileChange} onChanged={onFilesChanged} onClose={() => setImagePickerOpen(false)} />}
     </div>
   );

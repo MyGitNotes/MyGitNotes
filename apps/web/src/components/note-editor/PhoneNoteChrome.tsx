@@ -32,7 +32,7 @@ export interface PhoneNoteChromeProps {
   toggleFormatToolbar?: () => void;
   onAddToOutline?: () => void;
   /** Present for a slide note: plays it as a deck, or opens its speaker notes. */
-  onPlaySlides?: (view: 'deck' | 'notes') => void;
+  onPlaySlides?: (view: 'deck' | 'notes', opener?: HTMLElement) => void;
   onMove?: () => void;
   onRename?: (title: string) => Promise<void> | void;
   statuses: string[];

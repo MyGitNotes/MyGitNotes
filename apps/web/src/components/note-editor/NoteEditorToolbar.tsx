@@ -35,7 +35,8 @@ interface NoteEditorToolbarProps {
   onClose?: () => void;
   onAddToOutline?: () => void;
   /** Present for a slide note: plays it as a deck, or opens its speaker notes. */
-  onPlaySlides?: (view: 'deck' | 'notes') => void;
+  /** `opener` is the button pressed, which takes the focus back when the deck closes. */
+  onPlaySlides?: (view: 'deck' | 'notes', opener?: HTMLElement) => void;
   /** Moves the note to another folder of its notebook; a new note starts at the root and is filed from here. */
   onMove?: () => void;
   /** Renames the note to the typed title, its file name following; absent where the note cannot be renamed. */
@@ -86,10 +87,10 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
       {!zoom && phoneEditing && <PhoneEditToggle {...phoneEditing} />}
       {onPlaySlides && (
         <div role='group' className='note-controls-group' aria-label={t('slides.playTitle')}>
-          <button type='button' aria-label={t('slides.play')} title={t('slides.playTitle')} onClick={() => onPlaySlides('deck')} className='ui-icon-button toolbar-icon-button editor-slides-play-action'>
+          <button type='button' aria-label={t('slides.play')} title={t('slides.playTitle')} onClick={event => onPlaySlides('deck', event.currentTarget)} className='ui-icon-button toolbar-icon-button editor-slides-play-action'>
             <Play aria-hidden='true' />
           </button>
-          <button type='button' aria-label={t('slides.notesView')} title={t('slides.notesViewTitle')} onClick={() => onPlaySlides('notes')} className='ui-icon-button toolbar-icon-button editor-slides-notes-action'>
+          <button type='button' aria-label={t('slides.notesView')} title={t('slides.notesViewTitle')} onClick={event => onPlaySlides('notes', event.currentTarget)} className='ui-icon-button toolbar-icon-button editor-slides-notes-action'>
             <ScrollText aria-hidden='true' />
           </button>
         </div>

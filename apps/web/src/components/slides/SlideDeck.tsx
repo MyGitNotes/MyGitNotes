@@ -25,6 +25,8 @@ export interface SlideDeckProps {
   lineNumberOffset?: number;
   /** `deck` plays the slides, starting on the outline; `notes` opens the speaker notes as a scrolling script. */
   view: SlideDeckView;
+  /** The control that opened the deck, which takes the focus back when it closes; without one, whatever had the focus does. */
+  opener?: HTMLElement | null;
   onClose: () => void;
 }
 
@@ -38,13 +40,13 @@ type Status = { state: 'loading'; } | { state: 'open'; } | { state: 'failed'; me
  * The deck is a modal dialog: the app behind it is inert, Tab stays in it, and the note's own key handlers, which stand aside for an open
  * dialog, leave its keys to contour-deck.
  */
-export function SlideDeck({ content, path, notebookId, title, structure, lineNumberOffset = 0, view, onClose }: SlideDeckProps) {
+export function SlideDeck({ content, path, notebookId, title, structure, lineNumberOffset = 0, view, opener, onClose }: SlideDeckProps) {
   const { t, language } = useTranslation();
   const dialog = useRef<HTMLDialogElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>({ state: 'loading' });
   // The deck plays the note as it was when it opened, and leaves through the latest handler.
-  const opened = useRef({ content, path, notebookId, title, structure, lineNumberOffset, view, t, language });
+  const opened = useRef({ content, path, notebookId, title, structure, lineNumberOffset, view, opener, t, language });
   const close = useRef(onClose);
   useEffect(() => {
     close.current = onClose;
@@ -54,7 +56,7 @@ export function SlideDeck({ content, path, notebookId, title, structure, lineNum
   useEffect(() => {
     const source = opened.current;
     // Focus goes back to whatever opened the deck.
-    const returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const returnTo = source.opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const modal = dialog.current!;
     modal.showModal();
     // The app's chords (quick open, help, search) would open their panels under the deck; contour-deck reads no chord, so none goes past it.
