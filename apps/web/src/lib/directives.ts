@@ -55,13 +55,17 @@ export function parseDirectiveOpen(line: string): { fenceLength: number; name: s
  * fences included). A directive written inside a code block is code, as it is to Markdown.
  */
 export function fencedCodeLines(): (line: string) => boolean {
-  let open: { mark: string; length: number; } | null = null;
+  // `column` is the content column of the list item a fence opened on, past any quote markers; the item, and the fence, end at a line
+  // indented less.
+  let open: { mark: string; length: number; column: number; } | null = null;
+  const quoted = (line: string) => line.replace(/^(?: {0,3}> ?)*/, '');
   return line => {
+    if (open && open.column > 0 && line.trim() && /^ */.exec(quoted(line))![0].length < open.column) open = null;
     if (!open) {
       // A fence may open on a list item's marker line (`- ```js`); its content and closing fence are then indented under the item.
-      const fence = /^\s*(?:>\s*)*(?:(?:[-*+]|\d{1,9}[.)])\s+)*(`{3,}|~{3,})(.*)$/.exec(line);
+      const fence = /^(\s*(?:>\s*)*)((?:(?:[-*+]|\d{1,9}[.)])\s+)*)(`{3,}|~{3,})(.*)$/.exec(line);
       // A backtick fence's info string holds no backtick; such a line is inline code.
-      if (fence && !(fence[1][0] === '`' && fence[2].includes('`'))) open = { mark: fence[1][0], length: fence[1].length };
+      if (fence && !(fence[3][0] === '`' && fence[4].includes('`'))) open = { mark: fence[3][0], length: fence[3].length, column: fence[2] ? quoted(line).indexOf(fence[3]) : 0 };
       return open !== null;
     }
     const fence = /^\s*(?:>\s*)*(`{3,}|~{3,})(.*)$/.exec(line);

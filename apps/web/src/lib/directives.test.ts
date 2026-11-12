@@ -398,6 +398,17 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       }
     });
 
+    it('ends a code fence opened on a list item where the item ends, as Markdown does', () => {
+      // The next item ends the first, and its unclosed fence with it: the block after them is a block.
+      const ended = '- ```js\n  code\n- next\n\n:::info\nhello\n:::\n';
+      expect(findDirectiveBlocks(ended).map(block => block.rawText)).toEqual([':::info\nhello\n:::']);
+      expect(transformDirectives(ended, md => `<p>${md.trim()}</p>`)).toContain('class="custom-directive info-directive"');
+      // A fence at the margin ends the item, then opens a fence of its own, which holds the rest of the note.
+      const reopened = '- ```js\n  code\n```\n\n:::info\nhello\n:::\n';
+      expect(findDirectiveBlocks(reopened)).toEqual([]);
+      expect(transformDirectives(reopened, md => `<p>${md.trim()}</p>`)).not.toContain('custom-directive');
+    });
+
     it('finds no block inside a fenced code block, and lets no fence line of one close a block', () => {
       const text = 'intro\n\n```md\n:::info\nan example\n:::\n```\n\n:::info\n~~~\n:::\n~~~\nbody\n:::\n';
       const blocks = findDirectiveBlocks(text);
