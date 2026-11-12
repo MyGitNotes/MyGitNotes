@@ -28,6 +28,20 @@ The numbering follows contour-deck 0.2.2. A `---` always starts a slide. What fo
 
 In the live editor a `:::summary` or `:::build` block of a slide note has no format select and no title field, only Edit content, since it has no other format to change to. The source of a line returns while the caret is on it.
 
+### In a slide note read by its headings
+
+A slide note whose frontmatter has `slideOptions.structure: headings` is read by contour-deck's headings mode (contour-deck 0.3.0): the outline of the deck is the outline of the Markdown.
+
+| Markdown | Drawn as |
+| --- | --- |
+| `---` (at the top level) | The divider between blocks, labelled with the block that ends there: `Block 2` (`區塊 2`). The end of the note carries the last block's number. |
+| `##` (at the top level) | The heading, labelled in the live editor with the slide it starts. Content before a block's first `##` is the block's first slide (a title slide or a divider). |
+| `###` (at the top level) | The heading, labelled in the live editor with the page it starts within its slide. |
+| `::vertical` | An error box with contour-deck's message: start the next page with a `###` heading. The deck refuses the note. |
+| `::block{…}` | The block's title bar. Every attribute is optional: a block is titled by its first `#` or `####` heading unless `::block` names a title. |
+
+A block, a slide and a page are what contour-deck's `rehypeDeck` builds from the same note with `structure: "headings"`. A heading inside a quote, a list or a container is content. A `structure` contour-deck does not know (`heading`) is refused with its message, so a typo does not fall back to the separators silently. `:::build`, `:::summary` and `::slide` read as in any slide note. A note without `slideOptions.structure`, or with `structure: slides`, reads as before.
+
 ### In any other note
 
 Today's rendering stays: `---` is a page (`Page 1`), `::vertical` a gradient rule, `:::summary` a plain box, and a slide directive in the wrong form is not reported. Three things change, so that slide Markdown pasted into an ordinary note no longer shows as a generic box or as raw text: `:::build` shows its content as written (no `BUILD` box, no step numbers), and `::block` and `::slide` show nothing. In the live editor those two lines read as quiet chips of their source.
@@ -54,6 +68,10 @@ The owner's answers of 2026-11-12:
 5. **Pro's public pages are a separate task.** The preview markup uses classes only, with no inline style and no data attribute but `data-type` and `data-label`, so a page under a stricter sanitizer can style the same markup.
 6. **The separators stay as contour-deck 0.2.2 reads them.** A heading-based structure (`---` a block, `##` a slide, `###` a page) is an opt-in feature of contour-deck 0.3.0 and a follow-up here, behind `slideOptions.structure: headings`.
 
+The owner's answer of 2026-11-12 to Q7, how the heading-based structure is offered: "B. 標題式：--- 區塊、## 投影片、### 頁（可選模式，先改 contour-deck）".
+
+12. **The heading-based structure is an opt-in mode, written in contour-deck first.** contour-deck 0.3.0 reads it (`structure: "headings"` for `remarkDeck` and `rehypeDeck`); a note asks for it with `slideOptions.structure: headings`, and the note's structure goes to `remarkDeck`, where each directive is validated, and to `rehypeDeck`, which builds the deck. The default stays the separators of decision 6.
+
 Decisions taken while building it:
 
 7. **contour-deck validates its own directives.** Each slide directive is handed to `remarkDeck` as the node remark-directive would have parsed (`containerDirective`, `leafDirective` or `textDirective`, with its attributes). What comes back is the marker element, or the message of the refusal, which the error box and the refusal screen show unchanged. `contour-deck/remark` is therefore part of the note renderer (about 2 KB); the core, the stylesheet, the rehype plugin and the hast utilities load on Play.
@@ -67,13 +85,13 @@ Decisions taken while building it:
 - `deck-parity.test.ts`: contour-deck's three fixture decks and two written here (`####` kicker blocks, `:::build` lists and tables, `::vertical` stacks, `:::summary`, `::block`, `::slide`, directives inside code) are built by a blog's chain (unified, remark-parse, remark-gfm, remark-directive, `remarkDeck`, remark-rehype, `rehypeDeck`) and by the MyGitNotes chain. The counts of blocks, slides, pages, steps and notes, the block titles, labels, minutes and kinds, the slide ids, the slide titles that come from a heading, and the steps and notes of every page must be equal.
 - `structure.test.ts` and `slide-structure.test.ts`: the labels of the preview and of the editor give the pages per slide `rehypeDeck` builds, on the same decks, and the preview marks as many steps.
 - `slide-preview.test.ts`: every directive in a slide note and in another note, each error box, and the refusals of the deck with their lines.
+- Headings mode: `deck-parity.test.ts` builds `fixtures/headings.md` with the blog chain given `structure: "headings"` and with the MyGitNotes chain, with the same counts, block titles and slide titles; `structure.test.ts` and `slide-structure.test.ts` hold the block, slide and page labels to that deck, and `slide-preview.test.ts` the `::vertical` error box and refusal.
 - `SlideDeck.test.tsx`: Play and Notes for slide notes only, and the refusal screen.
 
 When contour-deck is upgraded, these run first.
 
 ## Out of scope
 
-- The heading-based structure (`slideOptions.structure: headings`).
 - contour-deck's phone remote, presenter window, laser pointer and drawing.
 - Deep links to a slide (`?view=deck&at=…`).
 - Pro's public pages: their styles for the new markup, and playing there.
