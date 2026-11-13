@@ -533,6 +533,22 @@ describe('fenced code lines', () => {
     expect(transformDirectives(note, md => `<p>${md.trim()}</p>`)).toContain('custom-directive');
   });
 
+  it.each([['a comment', '<!--\n```\nP1\n-->\nP2'], ['a comment across a blank line', '<!--\n```\n\nP1\n-->\n\nP2'], ['a pre block across a blank line', '<pre>\n```\n\nP1\n</pre>\nP2'], ['a script block', '<script>\n```\nP1\n</script>\nP2'], ['a processing instruction', '<?\n```\nP1\n?>\nP2'], ['an unclosed div', '<div>\n```\nP1\n\nP2'], ['a div right under a paragraph', 'text\n<div>\n```\nP1\n\nP2'], ['a tag alone on its line', '<span>\n```\nP1\n\nP2'], ['a quoted comment', '> <!--\n> ```\n> P1\n> -->\n\nP2'], ['a comment in a list item', '- a\n\n  <!--\n  ```\n  P1\n  -->\n\nP2']])('a fence line in %s is HTML, and the lines after it are not code, as Markdown reads them', (_name, text) => {
+    const isCode = markedCode(text);
+    for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
+  });
+
+  it.each([['a comment closed on its line', '<!-- note -->\n```\nP1\n```\nP2'], ['a tag alone on its line under a paragraph', 'text\n<span>\n```\nP1\n```\nP2'], ['a block after a blank line ends a div', '<div>\n\n```\nP1\n```\n\nP2'], ['a comment that holds a line starting with a quote marker', '<!--\n> q\n<pre>\n-->\n```\nP1\n```\nP2']])('a fence after %s still opens code, as Markdown reads it', (_name, text) => {
+    const isCode = markedCode(text);
+    for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
+  });
+
+  it('keeps the directives after a code block commented out with an HTML comment', () => {
+    const note = 'Intro\n\n<!--\n```js\nold();\n-->\n\n:::note\nhi\n:::\n';
+    expect(findDirectiveBlocks(note).map(block => block.rawText)).toEqual([':::note\nhi\n:::']);
+    expect(transformDirectives(note, md => `<p>${md.trim()}</p>`)).toContain('custom-directive');
+  });
+
   it('keeps a fence after a lazy line in its list item, so a blank line and an unindented line end it, as Markdown does', () => {
     const text = '- a\nlazy\n  ```\n  P1\n\nP2', isCode = markedCode(text);
     for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);

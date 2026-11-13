@@ -50,6 +50,28 @@ export function parseDirectiveOpen(line: string): { fenceLength: number; name: s
   return match ? { fenceLength: match[2].length, name: match[3], label: match[4], attrs: parseDirectiveAttributes(match[5]), rawAttrs: match[5] } : null;
 }
 
+// The block-level tags whose line opens an HTML block that a blank line ends, and that may interrupt paragraph text (marked's list).
+const BLOCK_TAGS = 'address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul';
+const ATTRIBUTE = String.raw`\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*(?:[^\s"'=<>\x60]+|'[^']*'|"[^"]*"))?`;
+
+/**
+ * The HTML block a line opens, the seven kinds Markdown has, read from the line's text past its indentation: `end` finds the text that
+ * closes it (null when a blank line does), `closed` says the opening line already holds that text, and `interrupts` says it may open
+ * right under paragraph text. Null when the line opens none.
+ */
+function htmlBlock(text: string): { end: RegExp | null; closed: boolean; interrupts: boolean; } | null {
+  const line = text.replace(/^ {0,3}/, '');
+  if (!line.startsWith('<')) return null;
+  // `first` finds the closing text on the opening line past the opener, when it differs from `end`.
+  const ending = (opener: RegExp, end: (match: RegExpExecArray) => RegExp, interrupts: boolean, first?: RegExp) => {
+    const match = opener.exec(line);
+    return match ? { end: end(match), closed: (first ?? end(match)).test(line.slice(match[0].length)), interrupts } : null;
+  };
+  // A script, pre, style or textarea block ends at the closing tag of its own name, as marked reads it; `<!-->` and `<!--->` are whole
+  // comments.
+  return ending(/^<(script|pre|style|textarea)(?=[\s>]|$)/i, match => new RegExp(`</${match[1]}>`, 'i'), true) ?? ending(/^<!--/, () => /-->/, true, /^-?>|-->/) ?? ending(/^<\?/, () => /\?>/, false) ?? ending(/^<![a-zA-Z]/, () => />/, false) ?? ending(/^<!\[CDATA\[/, () => /\]\]>/, false) ?? (new RegExp(`^</?(?:${BLOCK_TAGS})(?: |/?>|$)`, 'i').test(line) ? { end: null, closed: false, interrupts: true } : null) ?? (new RegExp(`^(?:<(?!script|pre|style|textarea)[a-zA-Z][\\w-]*(?:${ATTRIBUTE})*\\s*/?>|</(?!script|pre|style|textarea)[a-zA-Z][\\w-]*\\s*>)[ \\t]*$`, 'i').test(line) ? { end: null, closed: false, interrupts: false } : null);
+}
+
 /**
  * Follows fenced code blocks down a text's lines: the returned function says, for each line in turn, whether it belongs to one (its
  * fences included). A directive written inside a code block is code, as it is to Markdown.
@@ -59,6 +81,11 @@ export function fencedCodeLines(): (line: string) => boolean {
   // indented less. Columns count a tab to the next multiple of four, as Markdown does. `depth` is the number of quotes the fence opened
   // in; a line with fewer quote markers ends them, and the fence with them, and any further marker on a line inside is code.
   let open: { mark: string; length: number; column: number; depth: number; } | null = null;
+  // An HTML block the lines are in: `end` finds its closing text on a line, or is null when a blank line ends it. Its lines are HTML, so
+  // a fence line in one opens no code block; `column` and `depth` end it with its list item or quote, as for a fence.
+  // `sealed` says its last line was blank or looked like a fence, a heading or a break: a list item's HTML block, as its paragraphs,
+  // takes a less indented line of text that follows a line of its own, unless that line was such a one (marked's list reading).
+  let html: { end: RegExp | null; column: number; depth: number; sealed: boolean; } | null = null;
   // The column `text` ends at when it starts at column `from`.
   const width = (text: string, from = 0) => {
     let column = from;
@@ -103,6 +130,21 @@ export function fencedCodeLines(): (line: string) => boolean {
         return true;
       }
     }
+    if (html) {
+      const quote = quotes(line, html.depth), inner = line.slice(quote.at);
+      const margin = indent(line, quote, quote.at + /^[ \t]*/.exec(inner)![0].length);
+      const outdented = html.column > 0 && inner.trim() && margin < html.column;
+      // A less indented line that starts a block of its own ends the list item, as it would end the item's paragraph.
+      const starter = /^ {0,3}(?:`{3,}|~{3,}|#{1,6}(?:[ \t]|$)|<[a-zA-Z/!?]|(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)|([-*_])[ \t]*(?:\1[ \t]*){2,}$)/;
+      if (quote.depth < html.depth || (outdented && (html.sealed || starter.test(inner)))) html = null;
+      else {
+        html.sealed = !inner.trim() || /^[ \t]*(?:`{3,}|~{3,}|#{1,6}(?:[ \t]|$)|([-*_])[ \t]*(?:\1[ \t]*){2,}$)/.test(inner);
+        // In a list item a line of text after the block's last line stays in the item, as after a paragraph (marked's list reading).
+        paragraph = html.column > 0 && !html.sealed;
+        if (html.end ? html.end.test(inner) : !inner.trim()) html = null;
+        return false;
+      }
+    }
     const quote = quotes(line, Infinity), quoted = line.slice(quote.at);
     const margin = indent(line, quote, quote.at + /^[ \t]*/.exec(quoted)![0].length);
     // The content columns of the list items the line is in, innermost last; a line indented less than an item's content ends the item.
@@ -118,9 +160,20 @@ export function fencedCodeLines(): (line: string) => boolean {
     if (quoted.trim() && !lazy) { while (items.columns.length && margin < items.columns[items.columns.length - 1]) items.columns.pop(); }
     const content = items.columns[items.columns.length - 1] ?? 0;
     const starts = item && !(paragraph && !listed && ((item[1] !== undefined && Number(item[1]) !== 1) || !quoted.slice(item[0].length).trim()));
+    const underParagraph = paragraph;
     // Indented code under no paragraph, a heading and a blank line are no paragraph text.
     paragraph = Boolean(quoted.trim()) && !/^ {0,3}#{1,6}(?:[ \t]|$)/.test(quoted) && !rule && (paragraph || margin - content < 4);
     if (item && starts) items.columns.push(item[2].length > 4 || !item[2] ? indent(line, quote, quote.at + item[0].length - item[2].length) + 1 : indent(line, quote, quote.at + item[0].length));
+    // An HTML block opens on a line, or on a list item's marker line, indented less than four columns past the content; under paragraph
+    // text only the kinds Markdown lets interrupt a paragraph open one, and only unindented, as marked reads them.
+    const prefix = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*/.exec(quoted)![0], onItem = /[-*+.)]/.test(prefix);
+    const block = (onItem ? starts : margin - content < 4) ? htmlBlock(quoted.slice(prefix.length)) : null;
+    if (block && (onItem || !underParagraph || (block.interrupts && margin === content))) {
+      const column = onItem ? indent(line, quote, quote.at + prefix.length) : content;
+      if (!block.closed) html = { end: block.end, column, depth: quote.depth, sealed: false };
+      paragraph = column > 0;
+      return false;
+    }
     // A fence may open on a list item's marker line (`- ```js`); its content and closing fence are then indented under the item.
     const fence = /^[ \t]*((?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*)(`{3,}|~{3,})(.*)$/.exec(quoted);
     // A fence is indented at most three columns past the content of the list item it is in; one indented further is indented code, or
