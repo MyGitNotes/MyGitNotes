@@ -543,6 +543,11 @@ describe('fenced code lines', () => {
     for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
   });
 
+  it.each([['an uppercase div under a paragraph', 'text\n<DIV>\n```\nP1\n\nP2\n```\nP3'], ['an uppercase pre under a paragraph', 'text\n<PRE>\n```\nP1\n\nP2\n```\nP3'], ['a mixed-case details under a paragraph', 'text\n<Details>\n```\nP1\n```\nP2'], ['a mixed-case script under a paragraph', 'text\n<Script>\n```\nP1\n```\nP2'], ['a tag with a tab before its attribute', '<span\tclass="a">\n```\nP1\n```\nP2'], ['a tag with a tab before its end', '<span\t>\n```\nP1\n```\nP2'], ['a tag name with an underscore', '<my_tag>\n```\nP1\n```\nP2']])('%s is text, not HTML, so the fence after it opens code, as Markdown reads it', (_name, text) => {
+    const isCode = markedCode(text);
+    for (const [probe, code] of ourCode(text)) expect([probe, code]).toEqual([probe, isCode(probe)]);
+  });
+
   it('keeps the directives after a code block commented out with an HTML comment', () => {
     const note = 'Intro\n\n<!--\n```js\nold();\n-->\n\n:::note\nhi\n:::\n';
     expect(findDirectiveBlocks(note).map(block => block.rawText)).toEqual([':::note\nhi\n:::']);

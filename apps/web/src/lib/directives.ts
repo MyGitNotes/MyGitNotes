@@ -52,7 +52,13 @@ export function parseDirectiveOpen(line: string): { fenceLength: number; name: s
 
 // The block-level tags whose line opens an HTML block that a blank line ends, and that may interrupt paragraph text (marked's list).
 const BLOCK_TAGS = 'address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul';
-const ATTRIBUTE = String.raw`\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*(?:[^\s"'=<>\x60]+|'[^']*'|"[^"]*"))?`;
+// marked's attribute: spaces before it and around its `=`, never a tab.
+const ATTRIBUTE = String.raw` +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>\x60]+)?`;
+const BLOCK_TAG = new RegExp(`^</?(?:${BLOCK_TAGS})(?: |/?>|$)`, 'i');
+// A tag alone on its line: a name of letters, digits and dashes, as marked reads it.
+const LONE_TAG = new RegExp(`^(?:<(?!script|pre|style|textarea)[a-zA-Z][a-zA-Z0-9-]*(?:${ATTRIBUTE})*? */?>|</(?!script|pre|style|textarea)[a-zA-Z][a-zA-Z0-9-]*\\s*>)[ \\t]*$`, 'i');
+// The openers marked lets interrupt paragraph text, in lower case only: its paragraph rule, unlike its HTML rule, ignores no case.
+const INTERRUPTING = new RegExp(`^(?:</?(?:${BLOCK_TAGS})(?: |/?>|$)|<(?:script|pre|style|textarea|!--))`);
 
 /**
  * The HTML block a line opens, the seven kinds Markdown has, read from the line's text past its indentation: `end` finds the text that
@@ -62,14 +68,15 @@ const ATTRIBUTE = String.raw`\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*(?:[^\s"'=<>\x60]+|'
 function htmlBlock(text: string): { end: RegExp | null; closed: boolean; interrupts: boolean; } | null {
   const line = text.replace(/^ {0,3}/, '');
   if (!line.startsWith('<')) return null;
+  const interrupts = INTERRUPTING.test(line);
   // `first` finds the closing text on the opening line past the opener, when it differs from `end`.
-  const ending = (opener: RegExp, end: (match: RegExpExecArray) => RegExp, interrupts: boolean, first?: RegExp) => {
+  const ending = (opener: RegExp, end: (match: RegExpExecArray) => RegExp, first?: RegExp) => {
     const match = opener.exec(line);
     return match ? { end: end(match), closed: (first ?? end(match)).test(line.slice(match[0].length)), interrupts } : null;
   };
   // A script, pre, style or textarea block ends at the closing tag of its own name, as marked reads it; `<!-->` and `<!--->` are whole
   // comments.
-  return ending(/^<(script|pre|style|textarea)(?=[\s>]|$)/i, match => new RegExp(`</${match[1]}>`, 'i'), true) ?? ending(/^<!--/, () => /-->/, true, /^-?>|-->/) ?? ending(/^<\?/, () => /\?>/, false) ?? ending(/^<![a-zA-Z]/, () => />/, false) ?? ending(/^<!\[CDATA\[/, () => /\]\]>/, false) ?? (new RegExp(`^</?(?:${BLOCK_TAGS})(?: |/?>|$)`, 'i').test(line) ? { end: null, closed: false, interrupts: true } : null) ?? (new RegExp(`^(?:<(?!script|pre|style|textarea)[a-zA-Z][\\w-]*(?:${ATTRIBUTE})*\\s*/?>|</(?!script|pre|style|textarea)[a-zA-Z][\\w-]*\\s*>)[ \\t]*$`, 'i').test(line) ? { end: null, closed: false, interrupts: false } : null);
+  return ending(/^<(script|pre|style|textarea)(?=[\s>]|$)/i, match => new RegExp(`</${match[1]}>`, 'i')) ?? ending(/^<!--/, () => /-->/, /^-?>|-->/) ?? ending(/^<\?/, () => /\?>/) ?? ending(/^<![a-zA-Z]/, () => />/) ?? ending(/^<!\[CDATA\[/, () => /\]\]>/) ?? (BLOCK_TAG.test(line) || LONE_TAG.test(line) ? { end: null, closed: false, interrupts } : null);
 }
 
 /**
