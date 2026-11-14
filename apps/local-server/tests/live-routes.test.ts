@@ -217,6 +217,19 @@ describe('the workspace and an editor outage', () => {
   });
 });
 
+describe('POST /api/notes', () => {
+  it('takes no internal live revision, which only the hosted router hands on', async () => {
+    await start();
+    const { body } = await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: 'notes/life/a.md' });
+    const id = body.checkout.id as string;
+    const text = await liveNotes.person(pat).read(repository, id);
+    const answer = await call('POST', '/api/notes', { notebookId: 'notes~life', path: 'notes/life/a.md', content: 'Forged.\n', metadata: { title: 'A' }, revision: `live:${id}:${text.contentHash}:${text.liveRevision}` });
+    expect(answer).toMatchObject({ status: 409, body: { code: 'checked-out' } });
+    expect((await liveNotes.person(pat).read(repository, id)).content).toBe(text.content);
+    expect(commits()).toEqual([]);
+  });
+});
+
 describe('MCP check_in_note', () => {
   const grant = async (write: boolean) => {
     const made = await call('POST', '/api/auth/agent-token', { name: 'client', write });

@@ -1,5 +1,5 @@
 import express from 'express';
-import { type LiveNotes, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
+import { type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
 import { fail } from './route-errors.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -439,7 +439,8 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         const { path: file, content, metadata, revision, createOnly, notebookId } = req.body;
         if (typeof file !== 'string' || typeof content !== 'string') throw new SourceError('path and content are required.');
         const target = await remoteNote(res, file, notebookId);
-        const saved = await target.reader.save(file, content, metadata, revision, createOnly);
+        // An internal `live:` revision is the hosted router's to hand on, never a browser's: here it is no revision at all.
+        const saved = await target.reader.save(file, content, metadata, parseLiveBase(revision) ? '' : revision, createOnly);
         res.json({ ...saved, note: keyedItem(target.alias)(saved.note), ...await publishedGists(res, [saved.note]), ...await publishNotes(publishing, { req, res, repository: target, notes: [saved.note] }) });
       } catch (error) {
         fail(res, error);
