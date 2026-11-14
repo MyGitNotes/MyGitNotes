@@ -156,7 +156,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
       '/r2-assets/*',
       createR2AssetHandler(assetStorage, async (res, notePath) => {
         const { handle, config } = await noteRepository(res, notePath);
-        if (!['note', 'outline'].includes(classifyResource(notePath, config).type)) throw new Error('Path is not a configured note.');
+        if (!['note', 'outline', 'template'].includes(classifyResource(notePath, config).type)) throw new Error('Path is not a configured note.');
         return { content: fs.readFileSync(resolveSafePath(asLocal(handle).root, notePath), 'utf8'), repository: handle };
       }),
     );
@@ -276,11 +276,20 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         fail(res, error);
       }
     });
+    app.get('/api/templates', async (req, res) => {
+      try {
+        const { reader, alias, localId } = await remoteNotebook(res, req.query.notebookId);
+        res.json({ templates: (await reader.templates(localId)).map(keyedItem(alias)) });
+      } catch (error) {
+        fail(res, error);
+      }
+    });
     app.get('/api/templates/render', async (req, res) => {
       try {
-        const { notebookId, templateId, title } = req.query;
+        const { notebookId, templateId, title, date, time } = req.query;
         const { reader, localId } = await remoteNotebook(res, notebookId);
-        res.json(await reader.renderTemplate(localId, String(templateId || ''), String(title || '')));
+        // The page sends its reader's own date and time; a caller that sends none gets the server's clock.
+        res.json(await reader.renderTemplate(localId, String(templateId || ''), String(title || ''), { date: typeof date === 'string' ? date : undefined, time: typeof time === 'string' ? time : undefined }));
       } catch (error) {
         fail(res, error);
       }
