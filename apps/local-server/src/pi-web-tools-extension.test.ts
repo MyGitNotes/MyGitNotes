@@ -61,7 +61,7 @@ afterEach(async () => {
 
 describe('web tools extension', () => {
   it('offers the note tools and the two agent-system tools', () => {
-    expect([...load().tools.keys()]).toEqual(['mygitnotes_read_note', 'mygitnotes_write_note', 'mygitnotes_edit_note', 'mygitnotes_delete_note', 'mygitnotes_agent_system', 'mygitnotes_read_agent_file', 'mygitnotes_list_changes']);
+    expect([...load().tools.keys()]).toEqual(['mygitnotes_read_note', 'mygitnotes_write_note', 'mygitnotes_edit_note', 'mygitnotes_delete_note', 'mygitnotes_agent_system', 'mygitnotes_read_agent_file', 'mygitnotes_list_changes', 'mygitnotes_list_templates']);
   });
 
   it("names the session's workspace in agent-system calls, whatever the agent passes, and in no other call", async () => {

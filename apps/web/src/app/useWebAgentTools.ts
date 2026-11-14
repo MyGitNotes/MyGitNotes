@@ -3,7 +3,9 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { isNoteFile } from '@mygitnotes/core/note-file';
 import { useCallback } from 'react';
 import YAML from 'yaml';
-import { fetchAgentResources, readAgentResource } from '../lib/api.js';
+import { localTemplateClock, noteFromTemplate } from '@mygitnotes/core/note-template';
+import { fetchAgentResources, fetchNoteTemplates, readAgentResource } from '../lib/api.js';
+import { overlayDraftTemplates } from '../lib/note-templates.js';
 import { getLocalDraft } from '../lib/storage.js';
 import { noteExternalEdit } from '../lib/external-note-edits.js';
 import { workingDiff, type WorkingNote } from '../lib/working-notes.js';
@@ -149,7 +151,37 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       return { repository: workspace.repository, directory: workspace.folder, notebookId: undefined };
     };
 
+    /** A notebook's templates as the person sees them: the repository's, with their working changes of template files. */
+    const templatesOf = async (notebookId: string) => {
+      const notebook = (config?.notebooks ?? []).find(candidate => candidate.id === notebookId);
+      if (!notebook) throw new Error(`Unknown notebook: ${notebookId}`);
+      return { notebook, templates: overlayDraftTemplates(await fetchNoteTemplates(notebookId), notebook, activeWorkingNotes) };
+    };
+    /** Stages a new note made from a template of its notebook, filled by name; an existing note at the path is refused. */
+    const stageFromTemplate = async () => {
+      const id = text(args.template, 'template');
+      const given = args.path === undefined ? undefined : text(args.path, 'path');
+      // The notebook is the named one; a path alone names the notebook that holds it.
+      const notebookId = named ?? (given === undefined ? undefined : locate().notebookId);
+      if (!notebookId) throw new Error('Name the notebook of the template as notebookId, or a path inside it.');
+      const { notebook, templates } = await templatesOf(notebookId);
+      const template = templates.find(candidate => candidate.id === id);
+      if (!template) throw new Error(`Notebook ${notebookId} has no template '${id}'. Its templates: ${templates.map(candidate => candidate.id).join(', ') || 'none'}.`);
+      const { note: file } = await current(notebookId, template.file);
+      if (!file) throw new Error(`The template file ${template.file} could not be read.`);
+      const metadata = args.metadata === undefined ? undefined : args.metadata;
+      if (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))) throw new Error('metadata must be an object.');
+      const made = noteFromTemplate(notebook, file, { path: given, title: args.title === undefined ? undefined : text(args.title, 'title'), values: args.values, content: args.content === undefined ? undefined : text(args.content, 'content'), metadata: metadata as Record<string, unknown> | undefined, clock: localTemplateClock() });
+      if (!isNoteFile(made.path) || !made.path.startsWith(`${notebook.root}/`) || made.path.slice(notebook.root.length + 1).split('/').some(part => !part || part.startsWith('.'))) throw new Error(`${made.path} is not a note path of notebook ${notebookId}.`);
+      if ((await current(notebookId, made.path)).note) throw new Error(`A note already exists at ${made.path}.`);
+      return { ...await stage(notebookId, made.path, made.content, made.metadata), template: template.id, unfilled: made.unfilled };
+    };
+
     switch (tool) {
+      case 'list_templates': {
+        const notebooks = named ? [named] : (config?.notebooks ?? []).map(notebook => notebook.id);
+        return { templates: (await Promise.all(notebooks.map(async id => (await templatesOf(id)).templates))).flat() };
+      }
       case 'agent_system': {
         const { repository, directory, notebookId } = agentTarget();
         const listing = await fetchAgentResources(repository);
@@ -177,6 +209,8 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
         return describe(note, draft ? 'working' : 'committed');
       }
       case 'write_note': {
+        if (args.template !== undefined) return stageFromTemplate();
+        if (args.values !== undefined) throw new Error('values fill a template: name one as template.');
         const { path, notebookId } = locate();
         const metadata = args.metadata === undefined ? undefined : args.metadata;
         if (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))) throw new Error('metadata must be an object.');
