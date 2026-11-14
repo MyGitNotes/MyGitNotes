@@ -174,3 +174,11 @@ it('keeps a read-only board from changing status on drop even when focusMode all
   fireEvent.drop(target, { dataTransfer });
   expect(onUpdateNoteStatus).not.toHaveBeenCalled();
 });
+
+it("lists the notebook's metadata sort field on the board and asks for the columns in that order", async () => {
+  render(createElement(KanbanView, { query: { notebookId: 'life' }, statuses: ['inbox'], onOpenNote: () => {}, onUpdateNoteStatus: () => {}, onDeleteNote: () => {}, onNewNoteWithStatus: () => {}, sortField: 'metadata.date', sortOrder: 'desc', onSortChange: () => {}, metadataSortFields: ['metadata.date'] }), { wrapper });
+  await waitFor(() => expect(screen.getByText('notes/life/a.md')).toBeInTheDocument());
+  expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('date (descending)');
+  expect(screen.getByRole('combobox', { name: /^Sort column/ })).toHaveTextContent('date (descending)');
+  expect(requests.some(url => url.includes('status=inbox') && url.includes('sort=metadata.date'))).toBe(true);
+});

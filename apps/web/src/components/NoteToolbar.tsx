@@ -1,11 +1,12 @@
 import './note-toolbar.css';
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowDownAZ, ArrowDownZA, CalendarArrowDown, CalendarArrowUp, ChevronDown, ClockArrowDown, ClockArrowUp, Eye, EyeOff, FileText, Folder, FolderTree, GalleryHorizontalEnd, Kanban, LayoutTemplate, List, ListOrdered, ListTree, Plus, Search, X } from 'lucide-react';
+import { ArrowDownAZ, ArrowDownWideNarrow, ArrowDownZA, ArrowUpWideNarrow, CalendarArrowDown, CalendarArrowUp, ChevronDown, ClockArrowDown, ClockArrowUp, Eye, EyeOff, FileText, Folder, FolderTree, GalleryHorizontalEnd, Kanban, LayoutTemplate, List, ListOrdered, ListTree, Plus, Search, X } from 'lucide-react';
 import { WorkspaceSidebarToggle } from './WorkspaceChrome.js';
 import { Select } from './Select.js';
 import { SelectButtonGroup, SelectButtonPrimary, SelectButtonTrigger } from './SelectButton.js';
 import type { SortField, SortOrder } from '../lib/note-sort.js';
+import { metadataSortOptions } from '../lib/note-sort-options.js';
 import { ViewMode } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
 
@@ -17,6 +18,8 @@ interface NoteToolbarProps {
   sortField: SortField;
   sortOrder: SortOrder;
   onSortChange: (field: SortField, order: SortOrder) => void;
+  /** Frontmatter fields (`metadata.<key>`) the sort menu offers besides the built-in ones, such as the notebook's default_sort field. */
+  metadataSortFields?: readonly string[];
   /** Present while the list spans subfolders, where it can be grouped by folder. */
   groupByFolder?: { value: boolean; onChange: (value: boolean) => void; };
   readOnly: boolean;
@@ -50,18 +53,18 @@ interface NoteToolbarProps {
 }
 
 /** The orders the notes list offers, as the sort menu lists them. */
-export const noteSortOptions = (t: ReturnType<typeof useTranslation>['t']) => [{ value: 'updated:desc', label: t('sort.updatedDesc'), Icon: ClockArrowDown }, { value: 'updated:asc', label: t('sort.updatedAsc'), Icon: ClockArrowUp }, { value: 'created:desc', label: t('sort.createdDesc'), Icon: CalendarArrowDown }, { value: 'created:asc', label: t('sort.createdAsc'), Icon: CalendarArrowUp }, { value: 'title:asc', label: t('sort.titleAsc'), Icon: ArrowDownAZ }, { value: 'title:desc', label: t('sort.titleDesc'), Icon: ArrowDownZA }, { value: 'status:asc', label: t('sort.status'), Icon: ListOrdered }];
+export const noteSortOptions = (t: ReturnType<typeof useTranslation>['t'], metadataSortFields: readonly string[] = []) => [{ value: 'updated:desc', label: t('sort.updatedDesc'), Icon: ClockArrowDown }, { value: 'updated:asc', label: t('sort.updatedAsc'), Icon: ClockArrowUp }, { value: 'created:desc', label: t('sort.createdDesc'), Icon: CalendarArrowDown }, { value: 'created:asc', label: t('sort.createdAsc'), Icon: CalendarArrowUp }, { value: 'title:asc', label: t('sort.titleAsc'), Icon: ArrowDownAZ }, { value: 'title:desc', label: t('sort.titleDesc'), Icon: ArrowDownZA }, { value: 'status:asc', label: t('sort.status'), Icon: ListOrdered }, ...metadataSortOptions(t, metadataSortFields).map(option => ({ ...option, Icon: option.value.endsWith(':desc') ? ArrowDownWideNarrow : ArrowUpWideNarrow }))];
 
 export interface NoteSearchHandle {
   focus: () => void;
 }
 
-export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, sortField, sortOrder, onSortChange, groupByFolder, readOnly, viewMode, setViewMode, onNewNote, onNewCompilation, onNewOutline, templates = [], onNewFromTemplate, onManageTemplates, query, onQueryChange, filtersOpen, onToggleFilters, focusControls, onImportLegacy, searchRef, browseCollapsed = false, utilities, onRevealSearch }: NoteToolbarProps) {
+export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, sortField, sortOrder, onSortChange, metadataSortFields, groupByFolder, readOnly, viewMode, setViewMode, onNewNote, onNewCompilation, onNewOutline, templates = [], onNewFromTemplate, onManageTemplates, query, onQueryChange, filtersOpen, onToggleFilters, focusControls, onImportLegacy, searchRef, browseCollapsed = false, utilities, onRevealSearch }: NoteToolbarProps) {
   const { t } = useTranslation();
   // Below 768px the field is hidden behind a button and expands over the toolbar.
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
-  const sortOptions = noteSortOptions(t);
+  const sortOptions = noteSortOptions(t, metadataSortFields);
   const currentSort = sortOptions.find(option => option.value === `${sortField}:${sortOrder}`) ?? sortOptions[0];
   useImperativeHandle(searchRef, () => ({
     focus: () => {

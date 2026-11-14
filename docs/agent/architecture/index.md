@@ -85,6 +85,31 @@ The web build is an installable app (`apps/web/public/site.webmanifest`: `id`, `
 
 The worker file is the one file that must never be answered with the app page. The local server and `vercel.json` answer a missing `/sw.js` and a missing `/assets/*` with 404. To retire the worker (stop offline support, or move off this host), ship a `sw.js` that unregisters itself instead of removing the file: `self.addEventListener('install', () => self.skipWaiting()); self.addEventListener('activate', () => self.registration.unregister().then(() => self.clients.matchAll()).then(clients => clients.forEach(client => client.navigate(client.url))));`, and delete the page's `registerServiceWorker()` call in a later release, once installed copies have updated. Deleting `sw.js` outright leaves every installed app on its last cached build, because the update check finds a 404 and keeps the old worker.
 
+## Notebook default sort
+
+A manifest notebook accepts an optional `default_sort: { field, order }` next to `default_view`, for
+example `default_sort: { field: metadata.date, order: desc }`. `field` is `updated`, `created`, `title`,
+`status`, or `metadata.<key>` for a frontmatter key of letters, digits, `_` and `-`; `order` is `asc` or
+`desc` and defaults to `desc`. Anything else (a non-mapping, an unknown field or key, an unknown order)
+fails config validation with a `ConfigValidationError` naming the notebook, and the validated config keeps
+the value so a manifest save writes it back.
+
+`sortNotes` in core (`packages/core/src/note-sort.ts`) orders by `metadata.<key>` for every list: the web
+list, flat, card and Kanban views and `GET /api/notes/query` (`sort=metadata.<key>`) share it. A value that
+is a `Date` or an ISO date or timestamp string (`2026-11-14`, `2026-11-14T09:30:00+08:00`) compares as a
+point in time, any other string, number, boolean or list (joined with `, `) as natural, case-insensitive text
+as titles do, and a date sorts before text where one list holds both. A note without the key, or with a blank
+or non-scalar value, sorts last in both orders. Ties, including notes that all lack the key, fall back to
+`updated` newest first, then title. The MCP `list_notes` order is not affected.
+
+The web app resolves a notebook's sort (`useNoteSort(notebookKey, notebook)`, `resolveNoteSort`) in this order:
+a `sortField`/`sortOrder` in the URL, the sort the person chose for that notebook (saved per notebook key in
+`github-notes:sort:<notebookKey>`), the notebook's `default_sort`, the browser-wide sort saved before notebooks
+had their own (`github-notes:sort-field`, `github-notes:sort-order`, now only read), then `updated` newest first.
+Choosing a sort saves it for the current notebook only, and switching notebooks drops the URL sort. The sort menus
+(toolbar, phone filter sheet, mobile list sort, Kanban board and columns) list `metadata.<key>` in both orders,
+labelled by its key, when the notebook's `default_sort` or the sort in force names one.
+
 ## Notebook statuses and visibility
 
 Each manifest notebook accepts an optional ordered `statuses` array, for example

@@ -1105,6 +1105,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'sort.titleAsc': '標題 (A 到 Z)',
   'sort.titleDesc': '標題 (Z 到 A)',
   'sort.status': '狀態 (工作流程順序)',
+  'sort.metadataDesc': '{key} (由大到小)',
+  'sort.metadataAsc': '{key} (由小到大)',
   'sort.manual': '手動',
 
   // Kanban

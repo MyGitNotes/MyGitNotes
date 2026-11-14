@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Clock, GripVertical, Kanban as KanbanIcon, Plus,
 import type { NoteListItem, NoteQuery } from '@mygitnotes/core/note-query';
 import { noteRefKey, sameNote } from '@mygitnotes/core/note-query';
 import { noteUpdatedTime, SortField, SortOrder } from '../lib/note-sort.js';
+import { metadataSortOptions } from '../lib/note-sort-options.js';
 import { Select } from './Select.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useAltWheelHorizontalScroll } from '../lib/use-alt-wheel-horizontal-scroll.js';
@@ -37,6 +38,8 @@ interface KanbanViewProps {
   sortField?: SortField;
   sortOrder?: SortOrder;
   onSortChange?: (field: SortField, order?: SortOrder) => void;
+  /** Frontmatter fields (`metadata.<key>`) the board and column sort menus offer besides the built-in ones. */
+  metadataSortFields?: readonly string[];
   /** Present while a Focus is displayed: cards get a zoom button and can be dragged into a pane. */
   focusMode?: NoteBrowseFocusMode;
   /** `noteRefKey`s of the notes selected for bulk actions; a checkbox only appears on cards while this is non-empty. */
@@ -69,6 +72,7 @@ interface BoardContext {
   focusMode?: NoteBrowseFocusMode;
   selectedKeys?: Set<string>;
   onToggleSelect?: (note: NoteListItem) => void;
+  metadataSortFields?: readonly string[];
 }
 
 function useColumnDrag(board: BoardContext, columnId: string) {
@@ -203,7 +207,7 @@ function KanbanColumn({ col, index, board, query, hiddenNote, sort, onSort }: { 
               const [field, order] = val.split(':') as [SortField, SortOrder];
               onSort({ field, order });
             }}
-            options={columnSortOptionValues.map(option => ({ value: option.value, label: t(option.label) }))}
+            options={[...columnSortOptionValues.map(option => ({ value: option.value, label: t(option.label) })), ...metadataSortOptions(t, board.metadataSortFields ?? [])]}
             className='min-h-7 px-1.5 py-1 text-[11px] font-medium'
           />
           {!board.readOnly && (
@@ -269,7 +273,7 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
   );
 }
 
-export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leading, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, sortField = 'updated', sortOrder = 'desc', onSortChange, focusMode, selectedKeys, onToggleSelect }) => {
+export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leading, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, sortField = 'updated', sortOrder = 'desc', onSortChange, metadataSortFields, focusMode, selectedKeys, onToggleSelect }) => {
   const { t } = useTranslation();
   const dotClass = useStatusDotClass();
   const labelOf = useStatusLabel();
@@ -288,9 +292,9 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leadi
   const effectiveBoardSortField = sortField === 'status' ? 'updated' : sortField;
   const boardSortKey = `${effectiveBoardSortField}:${sortOrder}`;
 
-  const boardSortOptions = [{ value: 'updated:desc', label: t('sort.updatedDesc') }, { value: 'updated:asc', label: t('sort.updatedAsc') }, { value: 'created:desc', label: t('sort.createdDesc') }, { value: 'created:asc', label: t('sort.createdAsc') }, { value: 'title:asc', label: t('sort.titleAsc') }, { value: 'title:desc', label: t('sort.titleDesc') }];
+  const boardSortOptions = [{ value: 'updated:desc', label: t('sort.updatedDesc') }, { value: 'updated:asc', label: t('sort.updatedAsc') }, { value: 'created:desc', label: t('sort.createdDesc') }, { value: 'created:asc', label: t('sort.createdAsc') }, { value: 'title:asc', label: t('sort.titleAsc') }, { value: 'title:desc', label: t('sort.titleDesc') }, ...metadataSortOptions(t, metadataSortFields ?? [])];
 
-  const board: BoardContext = { columns, readOnly, canDelete, confirmDelete, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, dragged, setDragged, dragOverColumnId, setDragOverColumnId, focusMode, selectedKeys, onToggleSelect, onTotal: (columnId, total) => setTotals(previous => (previous[columnId] === total ? previous : { ...previous, [columnId]: total })) };
+  const board: BoardContext = { metadataSortFields, columns, readOnly, canDelete, confirmDelete, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, dragged, setDragged, dragOverColumnId, setDragOverColumnId, focusMode, selectedKeys, onToggleSelect, onTotal: (columnId, total) => setTotals(previous => (previous[columnId] === total ? previous : { ...previous, [columnId]: total })) };
   // Only the columns on the board count, so a status that disappeared leaves no stale total.
   const boardTotal = [...columns.map(col => col.id), ''].reduce((sum, id) => sum + (totals[id] || 0), 0);
 

@@ -1,14 +1,24 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import type { NotebookConfig } from '../lib/types.js';
 import { readFilterQuery } from '../lib/filter-query.js';
-import { getSavedSort, saveSort, SortField, SortOrder } from '../lib/note-sort.js';
+import { getNotebookSort, getStoredGlobalSort, metadataSortKey, resolveNoteSort, saveNotebookSort, type SortConfig, type SortField, type SortOrder } from '../lib/note-sort.js';
 
-export function useNoteSort() {
+/**
+ * The notes sort of the notebook with key `notebookKey`: a sort in the URL, else what the person chose for that
+ * notebook, else the notebook's `default_sort`, else the browser-wide sort saved before notebooks had their own,
+ * else the default order. A choice is saved for its notebook and written to the URL.
+ */
+export function useNoteSort(notebookKey: string, notebook?: Pick<NotebookConfig, 'default_sort'>) {
   const location = useLocation(), navigate = useNavigate();
   const route = readFilterQuery(location.search);
-  const [savedField, setSortField] = useState<SortField>(() => getSavedSort().field);
-  const [savedOrder, setSortOrder] = useState<SortOrder>(() => getSavedSort().order);
-  const sortField = route.sortField ?? savedField, sortOrder = route.sortOrder ?? savedOrder;
+  const [chosen, setChosen] = useState<Record<string, SortConfig>>({});
+  const [saved] = useState(getStoredGlobalSort);
+  const explicit = useMemo(() => chosen[notebookKey] ?? getNotebookSort(notebookKey), [chosen, notebookKey]);
+  const resolved = resolveNoteSort({ explicit, defaultSort: notebook?.default_sort, saved });
+  const sortField = route.sortField ?? resolved.field, sortOrder = route.sortOrder ?? resolved.order;
+  // The frontmatter fields the sort menu offers: the notebook's default and any other one in force.
+  const metadataSortFields = [notebook?.default_sort?.field, sortField].filter((field, index, all): field is SortField => field !== undefined && metadataSortKey(field) !== undefined && all.indexOf(field) === index);
 
   const handleSortChange = (field: SortField, order?: SortOrder) => {
     let newOrder: SortOrder;
@@ -19,14 +29,13 @@ export function useNoteSort() {
     } else {
       newOrder = field === 'title' || field === 'status' ? 'asc' : 'desc';
     }
-    setSortField(field);
-    setSortOrder(newOrder);
-    saveSort(field, newOrder);
+    setChosen(previous => ({ ...previous, [notebookKey]: { field, order: newOrder } }));
+    saveNotebookSort(notebookKey, field, newOrder);
     const query = new URLSearchParams(location.search);
     query.set('sortField', field);
     query.set('sortOrder', newOrder);
     navigate({ pathname: location.pathname, search: query.toString() });
   };
 
-  return { sortField, sortOrder, handleSortChange };
+  return { sortField, sortOrder, handleSortChange, metadataSortFields };
 }
