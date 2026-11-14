@@ -40,18 +40,8 @@ export function gitlabRepository(initial: Record<string, RepositoryFile>, option
   /** Requests and cache reads in the order they happened. */
   const log: string[] = [];
   let head = '', counter = 0;
-  const behaviour = {
-    access: true,
-    paging: 'keyset' as 'keyset' | 'keyset-by-id' | 'numbered' | 'bare',
-    crlf: false,
-    compare: 'ok' as 'ok' | 'fails' | 'timeout' | 'drops-one',
-    beforeCommit: undefined as (() => void) | undefined,
-    fail: undefined as ((kind: string) => number | undefined) | undefined,
-    /** A slow answer: a request of a kind this returns a promise for is answered once it resolves. */
-    wait: undefined as ((kind: string) => Promise<void> | undefined) | undefined,
-    /** A fault on the way: changes a page of a tree listing, its entries or its headers, before it is sent. */
-    page: undefined as ((page: TreePage) => void) | undefined,
-  };
+  /** What a test switches on. `wait` holds back the answer to a request of a kind it returns a promise for until that resolves; `page` is a fault on the way, changing a page of a tree listing, its entries or its headers, before it is sent. */
+  const behaviour = { access: true, paging: 'keyset' as 'keyset' | 'keyset-by-id' | 'numbered' | 'bare', crlf: false, compare: 'ok' as 'ok' | 'fails' | 'timeout' | 'drops-one', beforeCommit: undefined as (() => void) | undefined, fail: undefined as ((kind: string) => number | undefined) | undefined, wait: undefined as ((kind: string) => Promise<void> | undefined) | undefined, page: undefined as ((page: TreePage) => void) | undefined };
 
   const write = (tree: Tree, file: string, value: RepositoryFile, sha: string, keepMode = false) => {
     const { content, mode } = typeof value === 'string' ? { content: value, mode: keepMode ? tree.get(file)?.mode ?? '100644' : '100644' } : value;

@@ -232,7 +232,7 @@ describe('GitLab listing of a large repository', () => {
     expect(repository.take()).toEqual({ project: 1, branch: 1, tree: pages });
   });
 
-  it('refuses a listing sealed for one project or branch that the store presents as another\'s', async () => {
+  it('refuses a listing sealed for one project or branch that the store presents as that of another', async () => {
     const cache = sealedCache();
     const one = gitlabRepository(documentationTree(1), { project: 'group/one' });
     const other = gitlabRepository({ ...documentationTree(1), 'only-here.md': '# In the other project\n' }, { project: 'group/other' });
