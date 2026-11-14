@@ -1,7 +1,9 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { AlertTriangle, Check, Copy, Download, FileText, Printer } from 'lucide-react';
+import { r2ReferenceKeys } from '@mygitnotes/core/r2-references';
+import { AlertTriangle, Check, Copy, Download, FileArchive, FileText, Printer } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
-import { downloadTextFile, printNoteAsPdf } from '../lib/note-export.js';
+import { noteArchive } from '../lib/note-archive.js';
+import { downloadBlob, downloadTextFile, printNoteAsPdf } from '../lib/note-export.js';
 
 interface Props {
   path: string;
@@ -17,7 +19,16 @@ interface Props {
 
 type ExportNote = Pick<Props, 'path' | 'notebookId' | 'title' | 'content' | 'onCopy'>;
 
-/** The ways to take a note's content out of the editor, as menu items: copy it, download it as Markdown, print it as PDF. */
+/** Saves the note and the private R2 objects it references as one ZIP; an object that cannot be fetched is listed inside it. */
+async function downloadWithAssets(path: string, content: string): Promise<void> {
+  const archive = await noteArchive({ path, content });
+  downloadBlob(archive.filename, new Blob([archive.bytes], { type: 'application/zip' }));
+}
+
+/**
+ * The ways to take a note's content out of the editor, as menu items: copy it, download it as Markdown, download it with
+ * the private R2 objects it references (offered only when it references any), print it as PDF.
+ */
 export function NoteExportItems({ path, notebookId, title, content, onCopy }: ExportNote) {
   const { t } = useTranslation();
   const filename = path.split('/').pop() || 'note.md';
@@ -31,6 +42,12 @@ export function NoteExportItems({ path, notebookId, title, content, onCopy }: Ex
         <FileText size={14} aria-hidden='true' />
         <span>{t('editor.exportMarkdown')}</span>
       </DropdownMenu.Item>
+      {r2ReferenceKeys(content).length > 0 && (
+        <DropdownMenu.Item onSelect={() => void downloadWithAssets(path, content)}>
+          <FileArchive size={14} aria-hidden='true' />
+          <span>{t('editor.exportWithAssets')}</span>
+        </DropdownMenu.Item>
+      )}
       <DropdownMenu.Item onSelect={() => void printNoteAsPdf(title || filename, content, path, t('mermaid.error'), notebookId, t)}>
         <Printer size={14} aria-hidden='true' />
         <span>{t('editor.exportPdf')}</span>
