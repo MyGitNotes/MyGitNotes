@@ -386,3 +386,35 @@ A note an agent creates from a template through MCP fills `{{date}}` and `{{time
 ## Optional: private R2 assets
 
 Store large files in a private Cloudflare R2 bucket and reference them in notes as `r2:<object-key>`. Set `MYGITNOTES_R2_ACCOUNT_ID`, `MYGITNOTES_R2_ACCESS_KEY_ID`, `MYGITNOTES_R2_SECRET_ACCESS_KEY`, and `MYGITNOTES_R2_BUCKET` in the deployment environment. Browser uploads also require a bucket CORS rule allowing PUT, GET, and HEAD from `APP_URL`. A read-only R2 token supports previews; Files-page management needs Object Read & Write. The MCP asset tools follow the same setting: with R2 configured `add_asset` uploads to the bucket and answers with the `r2:<object-key>` reference instead of committing the binary, `list_assets` reports bucket objects beside repository files, and `delete_asset` accepts that reference. A bucket-bound upload is not held to the 3 MiB repository limit; over hosted `/mcp` its ceiling is the 64 MiB request body, and the Files page uploads straight to the bucket with no ceiling. See [Cloudflare R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/) and [R2 object access](https://developers.cloudflare.com/r2/api/s3/api/).
+
+### Private R2 assets in a local checkout
+
+A local workspace (`pnpm dev`, or a local Docker setup) keeps the private objects its notes reference in a cache folder and shows them from there, so a note's images also show offline. The store may be Cloudflare R2 or any S3-compatible bucket named by `MYGITNOTES_R2_ENDPOINT`.
+
+The first time a note shows an `r2:` object, the local server reads it once and stores it; later views are answered from disk without a request to the bucket. A first view caches an object of up to 64 MiB; a larger one is redirected to the bucket as before. To fetch everything ahead of time, any size included, run the download command:
+
+```bash
+pnpm r2-download                                  # every note of every notebook
+pnpm r2-download --notebook research              # one notebook (repeatable)
+pnpm r2-download --note notes/research/paper.md   # one note (repeatable)
+pnpm r2-download --note notes/research/paper.md --out ~/Desktop/paper-files   # also copy the objects to a folder, by key
+pnpm r2-download --refresh                        # read every referenced object again
+```
+
+Only the keys a note's own text references are downloaded, an object already in the cache is not read again, and the command exits 1 and names each object it could not get. `--out` writes `<folder>/<object-key>` and nothing outside that folder.
+
+The command and the local server read objects from one of two places, set in the checkout's `.env`:
+
+- **Bucket keys.** The same `MYGITNOTES_R2_*` variables as a deployment. Read-only keys are enough.
+- **A hosted deployment, without bucket keys.** Set `MYGITNOTES_R2_REMOTE_URL` to the deployment's address (`https://notes.example.com`) and `MYGITNOTES_R2_REMOTE_TOKEN` to an agent token: in the hosted app open Settings → MCP Access Control, create a read-only grant, and copy the part after `/mcp/` of the connector URL it shows. The deployment answers short-lived download URLs only for the keys its own copy of the note references, so push a note before downloading the objects it newly references. The token is sent only to that deployment (which must be `https`), never to the bucket, and is not written to the cache or to any log. The deployment must run a version that has the `download_assets` MCP tool.
+
+Bucket keys win when both are set.
+
+The cache is `.cache/r2-assets` in the checkout, which Git, `.vercelignore` and `.dockerignore` leave out; `MYGITNOTES_R2_CACHE_DIR` names another folder (in a container, a mounted volume, so the cache outlives the container). Each object is a file named by the SHA-256 of its key, with its key, size and entity tag in a `.json` file beside it. The cache has no size limit and holds the objects of one bucket: delete the folder to free the space, or when the checkout is pointed at another bucket. A cached object is not checked against the bucket again, which suits objects that are uploaded once and never replaced, as the app's own uploads are; after replacing an object under the same key, run `pnpm r2-download --refresh`. When the folder cannot be written, the local server logs the reason once and redirects to the bucket as it did before the cache.
+
+A cached object is served under the same rule as a bucket one: only to a request for a note that references its key.
+
+### Downloading a note with its images
+
+- **Web.** A note that references `r2:` objects has **Download with images (.zip)** in its Export menu. The archive holds the note, with those references pointing at `assets/<object-key>` beside it, and the objects. An object that could not be fetched keeps its `r2:` reference and is listed in `missing-assets.txt`. The archive is built in the browser and holds at most 1 GiB; on a hosted deployment the browser reads each object from the bucket, which needs the bucket CORS rule above to allow GET from `APP_URL`.
+- **MCP.** `download_assets` with a note `path`. Over hosted `/mcp` it answers a 5-minute URL for each object the note references, at most 50 per call, also to a read-only grant. Through the local stdio server it stores the objects in the cache above and answers each file's path.
