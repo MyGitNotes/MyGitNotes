@@ -335,8 +335,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       contour-deck:
-        specifier: 0.5.2
-        version: 0.5.2
+        specifier: 0.6.0
+        version: 0.6.0
       dompurify:
         specifier: ^3.4.17
         version: 3.4.17
@@ -2623,8 +2623,8 @@ packages:
     resolution: {integrity: sha512-GW4qUsfFo59d0HbUibDlWv5wPz+vAAcaTWbKIuKCf0JkC7wWkSyf8f13IpXn5JkeMlB2P8iTSSIjwXljorg2vA==}
     engines: {node: '>=22'}
 
-  contour-deck@0.5.2:
-    resolution: {integrity: sha512-V0gbPM1W06OGJ34WIpQ96kK4hvorxBs+q6uodDdrUpxSNh0fg7c56zoCm75paqCtgNhnLCcYUEPNIcIqp6QB9A==}
+  contour-deck@0.6.0:
+    resolution: {integrity: sha512-a39ogsY66PTSvhtrOSf4ev2q2zY9NoPEzHW9fHW/k7lV0+ChNKuu2SDnoy8e5NF06BaWE48VqEkppyxypF/WmA==}
     engines: {node: '>=22.12'}
 
   conventional-changelog-angular@8.3.1:
@@ -7246,7 +7246,7 @@ snapshots:
 
   content-type@3.1.1: {}
 
-  contour-deck@0.5.2: {}
+  contour-deck@0.6.0: {}
 
   conventional-changelog-angular@8.3.1:
     dependencies:
