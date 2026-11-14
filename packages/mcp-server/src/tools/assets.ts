@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { assetPath, type AssetScope, assetSubPath, bucketR2Source, classifyResource, decodeAsset, deleteR2Object, downloadNoteR2Objects, hostedR2SourceFromEnv, inAssetScope, isAssetPath, isNotebookR2Key, listR2Objects, loadWorkspaceConfig, parseR2Reference, putR2Object, R2_MAX_OBJECT_BYTES, r2Cache, r2CacheRoot, r2NotebookPrefix, r2ObjectExists, r2Reference, r2ReferenceKeys, r2SettingsFromEnv, resolveSafePath, scanNotebookMarkdownNotes } from '@mygitnotes/core';
+import { assetPath, type AssetScope, assetSubPath, bucketR2Source, classifyResource, decodeAsset, deleteR2Object, downloadNoteR2Objects, hostedR2SourceFromEnv, inAssetScope, isAssetPath, isNotebookR2Key, listR2Objects, loadWorkspaceConfig, parseR2Reference, putR2Object, R2_MAX_OBJECT_BYTES, R2_VIEW_CACHE_BYTES, r2Cache, r2CacheRoot, r2NotebookPrefix, r2ObjectExists, r2Reference, r2ReferenceKeys, r2SettingsFromEnv, resolveSafePath, scanNotebookMarkdownNotes } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import { assertNoteResource, assertSafeRepoPath, assertUserWorkspaceBranch } from '../guards.js';
 import type { ToolContext } from './context.js';
@@ -160,7 +160,11 @@ export async function handleDeleteAsset(ctx: ToolContext, args: { path: string; 
   if (!config) return { error: 'Workspace not configured' };
 
   const removed = await deleteR2Asset(ctx.assets ?? envToolAssets(), args.path, config.notebooks.map(nb => nb.id), async () => localNotes(ctx, config.notebooks), args.force);
-  if (removed) return removed;
+  if (removed) {
+    // The cached copy goes with the object, so a re-upload under the same name is not answered with the old bytes.
+    r2Cache(r2CacheRoot(ctx.productRoot ?? ctx.repoRoot)).remove(removed.key);
+    return removed;
+  }
 
   assertSafeRepoPath(ctx.repoRoot, args.path);
   if (!config.notebooks.some((nb) => isAssetPath(args.path, nb))) {
@@ -181,7 +185,7 @@ export async function handleDeleteAsset(ctx: ToolContext, args: { path: string; 
 /**
  * "Download with images" on a local workspace: reads the private objects the note references into the checkout's
  * R2 cache, which lies outside the repository, and answers each file's path. An object the cache holds is not read
- * again unless `refresh` asks. Objects come from the call's bucket, or without one from the hosted deployment the
+ * again unless `refresh` asks; an object over 64 MiB is left out and named in `missing` (`pnpm r2-download` caches any size). Objects come from the call's bucket, or without one from the hosted deployment the
  * environment names; a storage that has no bucket for the call is never replaced by the environment's bucket keys.
  */
 export async function handleDownloadAssets(ctx: ToolContext, args: { path: string; refresh?: boolean; }) {
@@ -192,7 +196,7 @@ export async function handleDownloadAssets(ctx: ToolContext, args: { path: strin
   if (!['note', 'outline', 'template'].includes(classifyResource(args.path, config).type)) throw new Error('Path is not a configured note.');
   const scope = await (ctx.assets ?? envToolAssets()).scope();
   const cache = r2Cache(r2CacheRoot(ctx.productRoot ?? ctx.repoRoot));
-  const report = await downloadNoteR2Objects({ note: { path: args.path, content: fs.readFileSync(file, 'utf8') }, source: scope ? bucketR2Source(scope) : hostedR2SourceFromEnv(), cache, refresh: args.refresh === true });
+  const report = await downloadNoteR2Objects({ note: { path: args.path, content: fs.readFileSync(file, 'utf8') }, source: scope ? bucketR2Source(scope) : hostedR2SourceFromEnv(), cache, refresh: args.refresh === true, maxObjectBytes: R2_VIEW_CACHE_BYTES });
   const assets = report.keys.flatMap(key => {
     const cached = cache.find(key);
     return cached ? [{ key, reference: `r2:${key}`, file: cached.file, size: cached.size, downloaded: report.downloaded.includes(key) }] : [];

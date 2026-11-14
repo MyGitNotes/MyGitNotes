@@ -140,7 +140,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   app.use('/api/workspace/members', createWorkspaceMembersRouter(configSource, assetStorage, identity, { repositoryChoice: visitorChoice, onChange: async (settings, request) => piAgent?.membershipChanged?.(visibleMembers(settings).map(member => member.ref.id), request), ...(services.defer ? { defer: services.defer } : {}) }));
   app.use(['/api', '/raw-assets', '/r2-assets'], requestWorkspace(identity, configSource, cache, services.editionSources));
   app.use(createFileManagerRouter());
-  app.use(createR2ManagerRouter(assetStorage));
+  app.use(createR2ManagerRouter(assetStorage, local ? r2Cache(r2CacheRoot(base)) : undefined));
   app.use('/api/study', createStudyRouter());
   app.use('/api/focus-page', createWorkspaceDocumentRouter(FOCUS_DOCUMENT));
   app.use('/api/outline-import', createOutlineImportRouter());

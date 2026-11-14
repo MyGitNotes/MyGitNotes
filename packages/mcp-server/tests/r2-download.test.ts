@@ -25,7 +25,7 @@ async function startBucket(objects: Record<string, string>) {
     res.writeHead(200, { etag: '"e1"' }).end(objects[key]);
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-  return { gets, server, endpoint: `http://127.0.0.1:${(server.address() as { port: number; }).port}` };
+  return { gets, objects, server, endpoint: `http://127.0.0.1:${(server.address() as { port: number; }).port}` };
 }
 
 let repo: string, product: string, bucket: Awaited<ReturnType<typeof startBucket>>;
@@ -77,6 +77,14 @@ describe('download_assets on a local workspace', () => {
     const result = await download({ path: 'notes/example/welcome.md' });
     expect(result.assets.map(asset => asset.key)).toEqual(['example/images/photo.png', 'example/scan.pdf']);
     expect(result.missing).toEqual([{ key: 'example/gone.png', reason: 'the object store answered 404' }]);
+  });
+
+  it('leaves out an object over the per-object limit instead of caching it, and keeps the rest', async () => {
+    bucket.objects['example/scan.pdf'] = 'x'.repeat(64 * 1024 * 1024 + 1);
+    const result = await download({ path: 'notes/example/welcome.md' });
+    expect(result.assets.map(asset => asset.key)).toEqual(['example/images/photo.png']);
+    expect(result.missing).toEqual([{ key: 'example/scan.pdf', reason: expect.stringMatching(/larger than 67108864 bytes/) }]);
+    expect(fs.readdirSync(result.cache).filter(name => !name.endsWith('.json'))).toHaveLength(1);
   });
 
   it('refuses a path that is not a note of the workspace', async () => {

@@ -1,7 +1,7 @@
 import { type Request, type Response, Router } from 'express';
 import fs from 'node:fs';
 import { getCurrentBranch } from '@mygitnotes/git';
-import { copyR2Object, deleteR2Object, isValidR2Key, listR2Objects, managedNotebook, type NotebookConfig, notebookKey, presignR2Object, presignR2Upload, putEmptyR2Object, r2ObjectExists, r2ReferenceKeys, resolveSafePath, rewriteR2References, SourceError, withinPath } from '@mygitnotes/core';
+import { copyR2Object, deleteR2Object, isValidR2Key, listR2Objects, managedNotebook, type NotebookConfig, notebookKey, presignR2Object, presignR2Upload, putEmptyR2Object, type R2Cache, r2ObjectExists, r2ReferenceKeys, resolveSafePath, rewriteR2References, SourceError, withinPath } from '@mygitnotes/core';
 import { type AssetScope, type AssetStorage, inAssetScope, resolveAssetScope } from './asset-storage.js';
 import { eachRepository, notebookRepository, type RepositoryHandle, requestMembers } from './request-workspace.js';
 import { localFileCatalog } from './file-manager.js';
@@ -56,9 +56,9 @@ interface ReferencingNote {
  * Manages every object in the requester's asset scope (the whole configured bucket, by default); notes may
  * reference any key, so the manager is not confined to a notebook prefix. A key outside the scope answers
  * 404. Routes require write access to the named notebook's repository, and a move requires it for every
- * repository whose notes it rewrites.
+ * repository whose notes it rewrites. A local workspace passes its R2 `cache`, from which a deleted or moved object is forgotten.
  */
-export function createR2ManagerRouter(storage: AssetStorage): Router {
+export function createR2ManagerRouter(storage: AssetStorage, cache?: R2Cache): Router {
   const router = Router();
   const open = async (id: string, alias: string, handle: RepositoryHandle, config: { notebooks: NotebookConfig[]; }): Promise<RepositoryNotes> => {
     if (handle.kind === 'local') {
@@ -282,6 +282,9 @@ export function createR2ManagerRouter(storage: AssetStorage): Router {
       }
       for (const from of objects) {
         await deleteR2Object(settings, from);
+        // The old key and any stale copy under the destination name are forgotten, so neither is answered with old bytes.
+        cache?.remove(from);
+        cache?.remove(moves[from]);
         if (moved) await moved(from, moves[from], bytes.get(from)!);
         else await record(from, -bytes.get(from)!);
       }
@@ -297,6 +300,7 @@ export function createR2ManagerRouter(storage: AssetStorage): Router {
       const objects = await affected(scope, bucketKey(scope, req.body.key), req.body.directory === true);
       for (const object of objects) {
         await deleteR2Object(settings, object.key);
+        cache?.remove(object.key);
         await record(object.key, -object.size);
       }
       res.json({ deleted: objects.map(object => object.key) });

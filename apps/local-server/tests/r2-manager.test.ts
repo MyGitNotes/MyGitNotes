@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
-import { assetHash, deriveAlias, GitHubSource, notebookKey, r2SettingsFromEnv, type RemoteChange, SourceError } from '@mygitnotes/core';
+import { assetHash, deriveAlias, GitHubSource, notebookKey, r2Cache, r2CacheRoot, r2SettingsFromEnv, type RemoteChange, SourceError } from '@mygitnotes/core';
 import { type AppServices, createApp } from '../src/app.js';
 import type { AssetScope, AssetStorage } from '../src/asset-storage.js';
 
@@ -191,6 +191,18 @@ describe('R2 management on a local workspace', () => {
     expect(fs.readFileSync(path.join(root, 'notes/ex/rules.md'), 'utf8')).toBe('# Rules\n\n![Core](<r2:ex/archive/2026/Core Rules.pdf>)\n[map](r2:ex/archive/2026/map.webp) [keep](r2:ex/keep.pdf)\n');
     expect(fs.readFileSync(path.join(root, 'notes/other/cross.md'), 'utf8')).toBe('![x](r2:ex/archive/2026/map.webp)\n');
     expect(fs.readFileSync(path.join(root, 'notes/ex/plain.md'), 'utf8')).toBe('# Plain\n');
+  });
+
+  it('forgets the cached copy of an object when it is deleted or moved, so a re-upload under the same name is read again', async () => {
+    await startLocal();
+    const cache = r2Cache(r2CacheRoot(root));
+    for (const key of ['ex/keep.pdf', 'ex/old/map.webp', 'ex/moved.pdf', 'other/secret.pdf']) await cache.store(key, new TextEncoder().encode(`old ${key}`));
+    expect((await call('POST', '/api/r2/delete', { notebookId: nb('ex'), key: 'ex/keep.pdf' })).status).toBe(200);
+    expect(cache.find('ex/keep.pdf')).toBeNull();
+    // A move forgets the old key and any stale copy under the destination name.
+    expect((await call('POST', '/api/r2/move', { notebookId: nb('ex'), key: 'ex/old/map.webp', destination: 'ex/moved.pdf' })).status).toBe(200);
+    expect([cache.find('ex/old/map.webp'), cache.find('ex/moved.pdf')]).toEqual([null, null]);
+    expect(cache.find('other/secret.pdf')).not.toBeNull();
   });
 
   it('refuses a move onto an existing key without touching objects or notes', async () => {

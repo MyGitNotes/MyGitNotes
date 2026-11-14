@@ -1,6 +1,6 @@
 import express from 'express';
 import path from 'node:path';
-import { bucketR2Source, type CachedR2Object, fetchR2ObjectToCache, presignR2Object, type R2Cache, R2CacheWriteError, type R2ObjectSource, R2ObjectTooLargeError, r2PreviewType, r2ReferenceKeys, SourceError } from '@mygitnotes/core';
+import { bucketR2Source, type CachedR2Object, fetchR2ObjectToCache, presignR2Object, R2_VIEW_CACHE_BYTES, type R2Cache, R2CacheWriteError, type R2ObjectSource, R2ObjectTooLargeError, r2PreviewType, r2ReferenceKeys, SourceError } from '@mygitnotes/core';
 import { type AssetStorage, inAssetScope, resolveAssetScope } from './asset-storage.js';
 import type { RepositoryHandle } from './request-workspace.js';
 
@@ -34,9 +34,6 @@ export function createR2AssetHandler(storage: AssetStorage, readNote: NoteReader
   };
 }
 
-/** The largest object a first view reads into the cache; a larger one is redirected to the bucket, and `pnpm r2-download` caches any size. */
-const VIEW_CACHE_BYTES = 64 * 1024 * 1024;
-
 export interface LocalR2AssetOptions {
   /** Where objects are read from when the asset storage has no bucket for the request: a hosted deployment, or none. Asked on each miss. */
   remote?: () => R2ObjectSource | null;
@@ -52,7 +49,7 @@ export interface LocalR2AssetOptions {
  * answers it; without either it is not found. An object too large to cache on a view, and any object while the
  * cache folder cannot be written, is redirected to its short-lived URL, as before the cache.
  */
-export function createLocalR2AssetHandler(storage: AssetStorage, readNote: NoteReader, cache: R2Cache, { remote, maxObjectBytes = VIEW_CACHE_BYTES }: LocalR2AssetOptions = {}): express.RequestHandler {
+export function createLocalR2AssetHandler(storage: AssetStorage, readNote: NoteReader, cache: R2Cache, { remote, maxObjectBytes = R2_VIEW_CACHE_BYTES }: LocalR2AssetOptions = {}): express.RequestHandler {
   /** Reads in flight by key, so views that arrive together read the bucket once. */
   const reading = new Map<string, Promise<CachedR2Object>>();
   /** Keys found too large on an earlier view, so the next one redirects without reading the bucket to learn the size. */

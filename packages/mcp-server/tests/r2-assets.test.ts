@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer } from 'node:http';
-import { openRemoteRepository, r2SettingsFromEnv, RemoteSource, scanNotebookNotes, WORKSPACE_CONFIG_FILENAME } from '@mygitnotes/core';
+import { openRemoteRepository, r2Cache, r2CacheRoot, r2SettingsFromEnv, RemoteSource, scanNotebookNotes, WORKSPACE_CONFIG_FILENAME } from '@mygitnotes/core';
 import { gitlabFixture } from '../../core/tests/fixtures/gitlab.js';
 import { runGit, stageAndCommit } from '@mygitnotes/git';
 import { handleAddAsset, handleDeleteAsset, handleListAssets, type ToolAssets } from '../src/tools/index.js';
@@ -152,6 +152,17 @@ describe('managing R2 assets over MCP', () => {
     note('no picture here');
     expect(await handleDeleteAsset({ repoRoot: repo }, { path: 'r2:example/images/photo.png' })).toMatchObject({ success: true, storage: 'r2', key: 'example/images/photo.png' });
     expect(bucket.objects.has('example/images/photo.png')).toBe(false);
+  });
+
+  it('forgets the local cached copy of a deleted object, so a re-upload under the same name is read again', async () => {
+    await handleAddAsset({ repoRoot: repo }, upload);
+    note('no picture here');
+    const cache = r2Cache(r2CacheRoot(repo));
+    await cache.store('example/images/photo.png', new TextEncoder().encode('old bytes'));
+    await cache.store('example/images/other.png', new TextEncoder().encode('other'));
+    await handleDeleteAsset({ repoRoot: repo }, { path: 'r2:example/images/photo.png' });
+    expect(cache.find('example/images/photo.png')).toBeNull();
+    expect(cache.find('example/images/other.png')).not.toBeNull();
   });
 
   it('blocks local deletion for an outline-only reference without broadening ordinary note browsing', async () => {
