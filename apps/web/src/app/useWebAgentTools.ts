@@ -3,9 +3,9 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { isNoteFile } from '@mygitnotes/core/note-file';
 import { useCallback } from 'react';
 import YAML from 'yaml';
-import { localTemplateClock, noteFromTemplate } from '@mygitnotes/core/note-template';
+import { type ListedNoteTemplate, listTemplates, localTemplateClock, noteFromTemplate, templateLastUse } from '@mygitnotes/core/note-template';
 import { fetchAgentResources, fetchNoteTemplates, readAgentResource } from '../lib/api.js';
-import { overlayDraftTemplates } from '../lib/note-templates.js';
+import { noteDrafts, overlayDraftTemplates } from '../lib/note-templates.js';
 import { getLocalDraft } from '../lib/storage.js';
 import { noteExternalEdit } from '../lib/external-note-edits.js';
 import { workingDiff, type WorkingNote } from '../lib/working-notes.js';
@@ -151,12 +151,20 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       return { repository: workspace.repository, directory: workspace.folder, notebookId: undefined };
     };
 
-    /** A notebook's templates as the person sees them: the repository's, with their working changes of template files. */
-    const templatesOf = async (notebookId: string) => {
+    /**
+     * A notebook's templates as the person sees them: the repository's, with their working changes of template files, each
+     * with its last use. A working change of a note that carries a template's id is a use of it too; one this page made and
+     * has not committed has no date yet but the present.
+     */
+    const templatesOf = async (notebookId: string): Promise<{ notebook: NonNullable<typeof config>['notebooks'][number]; templates: ListedNoteTemplate[]; }> => {
       const notebook = (config?.notebooks ?? []).find(candidate => candidate.id === notebookId);
       if (!notebook) throw new Error(`Unknown notebook: ${notebookId}`);
-      return { notebook, templates: overlayDraftTemplates(await fetchNoteTemplates(notebookId), notebook, activeWorkingNotes) };
+      const now = new Date().toISOString();
+      const drafted = templateLastUse(Object.values(noteDrafts(activeWorkingNotes)).filter(entry => !entry.deleted && entry.note.notebookId === notebookId).map(entry => ({ metadata: entry.base ? entry.note.metadata : { created: now, ...entry.note.metadata } })));
+      const newest = (committed: string | null, working: string | undefined) => working !== undefined && (committed === null || working > committed) ? working : committed;
+      return { notebook, templates: overlayDraftTemplates(await fetchNoteTemplates(notebookId), notebook, activeWorkingNotes).map(template => ({ ...template, lastUsed: newest(template.lastUsed ?? null, drafted[template.id]) })) };
     };
+    const noTemplate = (notebookId: string, id: string, templates: { id: string; }[]) => new Error(`Notebook ${notebookId} has no template '${id}'. Its templates: ${templates.map(candidate => candidate.id).join(', ') || 'none'}.`);
     /** Stages a new note made from a template of its notebook, filled by name; an existing note at the path is refused. */
     const stageFromTemplate = async () => {
       const id = text(args.template, 'template');
@@ -166,12 +174,12 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       if (!notebookId) throw new Error('Name the notebook of the template as notebookId, or a path inside it.');
       const { notebook, templates } = await templatesOf(notebookId);
       const template = templates.find(candidate => candidate.id === id);
-      if (!template) throw new Error(`Notebook ${notebookId} has no template '${id}'. Its templates: ${templates.map(candidate => candidate.id).join(', ') || 'none'}.`);
+      if (!template) throw noTemplate(notebookId, id, templates);
       const { note: file } = await current(notebookId, template.file);
       if (!file) throw new Error(`The template file ${template.file} could not be read.`);
       const metadata = args.metadata === undefined ? undefined : args.metadata;
       if (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))) throw new Error('metadata must be an object.');
-      const made = noteFromTemplate(notebook, file, { path: given, title: args.title === undefined ? undefined : text(args.title, 'title'), values: args.values, content: args.content === undefined ? undefined : text(args.content, 'content'), metadata: metadata as Record<string, unknown> | undefined, clock: localTemplateClock() });
+      const made = noteFromTemplate(notebook, file, { templateId: template.id, path: given, title: args.title === undefined ? undefined : text(args.title, 'title'), values: args.values, content: args.content === undefined ? undefined : text(args.content, 'content'), metadata: metadata as Record<string, unknown> | undefined, clock: localTemplateClock() });
       if (!isNoteFile(made.path) || !made.path.startsWith(`${notebook.root}/`) || made.path.slice(notebook.root.length + 1).split('/').some(part => !part || part.startsWith('.'))) throw new Error(`${made.path} is not a note path of notebook ${notebookId}.`);
       if ((await current(notebookId, made.path)).note) throw new Error(`A note already exists at ${made.path}.`);
       return { ...await stage(notebookId, made.path, made.content, made.metadata), template: template.id, unfilled: made.unfilled };
@@ -179,8 +187,19 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
 
     switch (tool) {
       case 'list_templates': {
+        if (args.templateId !== undefined) {
+          const id = text(args.templateId, 'templateId');
+          if (!named) throw new Error("templateId needs notebookId: a template id is its notebook's.");
+          const { templates } = await templatesOf(named);
+          const template = templates.find(candidate => candidate.id === id);
+          if (!template) throw noTemplate(named, id, templates);
+          const { note: file } = await current(named, template.file);
+          if (!file) throw new Error(`The template file ${template.file} could not be read.`);
+          // The file as the person sees it: its frontmatter, then its body.
+          return { templates: [{ ...template, content: Object.keys(file.metadata).length ? `---\n${YAML.stringify(file.metadata)}---\n${file.content}` : file.content }], total: 1, truncated: false };
+        }
         const notebooks = named ? [named] : (config?.notebooks ?? []).map(notebook => notebook.id);
-        return { templates: (await Promise.all(notebooks.map(async id => (await templatesOf(id)).templates))).flat() };
+        return listTemplates((await Promise.all(notebooks.map(async id => (await templatesOf(id)).templates))).flat(), { query: args.query, limit: args.limit });
       }
       case 'agent_system': {
         const { repository, directory, notebookId } = agentTarget();

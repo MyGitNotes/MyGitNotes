@@ -152,6 +152,11 @@ describe('GitLab HTTP and MCP integration', () => {
     const mcp = (method: string, params?: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }) });
     const listing = await fetch(grant.url, mcp('tools/list')).then(r => r.json());
     expect(listing.result.tools.some((t: any) => t.name === 'write')).toBe(false);
+    // Every connector is told the product's rule about note templates, and offered list_templates without the legacy render_template.
+    expect(listing.result.tools.map((t: any) => t.name)).toContain('list_templates');
+    expect(listing.result.tools.map((t: any) => t.name)).not.toContain('render_template');
+    const hello = await fetch(grant.url, mcp('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0.0' } })).then(r => r.json());
+    expect(hello.result.instructions).toMatch(/list_templates.*ask the user/s);
     expect((await fetch(grant.url, mcp('tools/call', { name: 'read', arguments: { path: 'notes/ex/a.md' } })).then(r => r.json())).result.isError).not.toBe(true);
     expect((await fetch(grant.url, mcp('tools/call', { name: 'write', arguments: { path: 'notes/ex/a.md', content: 'bad', revision: fixture.head } })).then(r => r.json())).result.isError).toBe(true);
     await fetch(`${base}/api/auth/logout`, post({}));

@@ -4,7 +4,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { type RemoteCache, type RemoteSource, siteIdentity, SourceError, type WorkspaceConfigSource, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError } from '@mygitnotes/core';
-import { callWorkspaceRemoteTool, isMutationTool, remoteTools, type ToolAssets } from '@mygitnotes/mcp-server';
+import { callWorkspaceRemoteTool, isMutationTool, remoteTools, TEMPLATE_GUIDANCE, type ToolAssets } from '@mygitnotes/mcp-server';
 import { type AssetStorage, resolveAssetScope } from './asset-storage.js';
 import { CredentialRejected, grantPerson } from './auth.js';
 import type { IdentityService } from './identity.js';
@@ -108,7 +108,7 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
         if (!status || status < 400 || status >= 500) throw error;
         return res.status(status).json({ error: status === 413 ? 'The request body is too large.' : 'The request body is not valid JSON.' });
       }
-      const server = new Server({ name: 'mygitnotes', version: buildInfo.version }, { capabilities: { tools: {} }, instructions: 'Operate on the configured note repository. Use ls or glob to locate paths, read or find to inspect complete files, then pass the returned revision to a write operation. Before creating or editing notes, read the agent system of the notebook or note with get_system_prompt and list_skills; invoke_skill loads a skill, and read, write, append, edit and rm also work on skill files. Each successful mutation creates one atomic remote commit with a program-generated message. Respect read-only grants. Use Settings to revoke persistent connector URLs.' });
+      const server = new Server({ name: 'mygitnotes', version: buildInfo.version }, { capabilities: { tools: {} }, instructions: `Operate on the configured note repository. Use ls or glob to locate paths, read or find to inspect complete files, then pass the returned revision to a write operation. Before creating or editing notes, read the agent system of the notebook or note with get_system_prompt and list_skills; invoke_skill loads a skill, and read, write, append, edit and rm also work on skill files. ${TEMPLATE_GUIDANCE} Each successful mutation creates one atomic remote commit with a program-generated message. Respect read-only grants. Use Settings to revoke persistent connector URLs.` });
       server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: remoteTools.filter(t => grant.write || !isMutationTool(t.name)) }));
       server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
         try {

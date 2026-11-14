@@ -117,7 +117,10 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       // A template that is still a working change of this page has no file the workspace could read, so it is filled in here.
       const templateFile = remote && opts.templateId ? templates?.find(candidate => candidate.id === opts.templateId)?.file : undefined;
       const templateDraft = templateFile ? readDraft(notebook.id, templateFile) : undefined;
-      const template = kind !== 'note' || !opts.templateId ? undefined : isBuiltinTemplate(opts.templateId) ? renderBuiltinNoteTemplate(opts.templateId, title, t) : templateDraft && !templateDraft.deleted ? fillNoteTemplate(templateDraft.note, { title, ...clock, defaults: false }) : await renderNoteTemplate({ notebookId: notebook.id, templateId: opts.templateId, title, ...clock });
+      const filled = kind !== 'note' || !opts.templateId ? undefined : isBuiltinTemplate(opts.templateId) ? renderBuiltinNoteTemplate(opts.templateId, title, t) : templateDraft && !templateDraft.deleted ? fillNoteTemplate(templateDraft.note, { title, ...clock, defaults: false }) : await renderNoteTemplate({ notebookId: notebook.id, templateId: opts.templateId, title, ...clock });
+      // A note made from a notebook's template records its id as `template`, which dates the template's last use; a built-in
+      // template is the app's own text and leaves no id.
+      const template = filled && opts.templateId && !isBuiltinTemplate(opts.templateId) ? { ...filled, metadata: { ...filled.metadata, template: opts.templateId } } : filled;
       // The template's own status and tags are the note's unless the caller chose them.
       const templateTags = Array.isArray(template?.metadata.tags) ? template.metadata.tags.map(String) : [];
       const status = opts.status || (typeof template?.metadata.status === 'string' && template.metadata.status) || newNoteStatuses[0];

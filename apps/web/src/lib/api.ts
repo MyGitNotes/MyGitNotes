@@ -5,7 +5,7 @@ import type { RepositoryId } from '@mygitnotes/core/repository';
 import type { WorkspaceAnswer } from './workspace-repositories.js';
 import { demoScopeOfNotebook, hasDemoScopes } from './demo-storage.js';
 import { localCommittedEntry } from './local-commits.js';
-import type { NoteTemplateInfo } from '@mygitnotes/core/note-template';
+import type { ListedNoteTemplate } from '@mygitnotes/core/note-template';
 
 const API_BASE = '/api';
 /** The outcome of pushing one committed note to the Gist its `gist` frontmatter names. */
@@ -81,8 +81,8 @@ export async function renderNoteTemplate(params: { notebookId: string; templateI
   return res.json();
 }
 
-/** A notebook's templates as its repository holds them: the manifest's, then the files of its `.templates/` folder. */
-export async function fetchNoteTemplates(notebookId: string): Promise<NoteTemplateInfo[]> {
+/** A notebook's templates as its repository holds them: the manifest's, then the files of its `.templates/` folder, each with its last use. */
+export async function fetchNoteTemplates(notebookId: string): Promise<ListedNoteTemplate[]> {
   const res = await fetch(`${API_BASE}/templates?notebookId=${encodeURIComponent(notebookId)}`);
   if (!res.ok) throw await responseError(res, 'Failed to load templates');
   return (await res.json()).templates;

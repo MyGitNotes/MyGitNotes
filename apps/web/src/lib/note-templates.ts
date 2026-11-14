@@ -1,9 +1,10 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
-import { describeNoteTemplate, type NoteTemplateInfo, templateFileId } from '@mygitnotes/core/note-template';
+import { describeNoteTemplate, type NoteTemplateInfo as TemplateDescription, templateFileId } from '@mygitnotes/core/note-template';
 import type { NotebookConfig } from './types.js';
 import type { WorkingNotes } from './working-notes.js';
 
-export type { NoteTemplateInfo };
+/** A template as the workspace lists it; `lastUsed` dates the last note created from it, where the list carries it. */
+export type NoteTemplateInfo = TemplateDescription & { lastUsed?: string | null; };
 
 type TemplateNotebook = Pick<NotebookConfig, 'id' | 'root' | 'templates'>;
 
@@ -33,14 +34,14 @@ export function noteDrafts(drafts: WorkingNotes): WorkingNotes {
 /**
  * A notebook's templates as this page sees them: the server's list with the page's working changes applied. A remote
  * workspace keeps a new, edited or deleted template as a working change until it is committed, so the server's list
- * alone would miss it.
+ * alone would miss it. A template keeps the last use the server dated it with: that is its notes', not its file's.
  */
 export function overlayDraftTemplates(templates: NoteTemplateInfo[], notebook: TemplateNotebook, drafts: WorkingNotes): NoteTemplateInfo[] {
   const draftOf = (file: string) => drafts[noteRefKey({ notebookId: notebook.id, path: file })];
   const relative = (file: string) => file.slice(notebook.root.length + 1);
   const listed = templates.filter(template => !draftOf(template.file)?.deleted).map(template => {
     const draft = draftOf(template.file);
-    return draft ? describeNoteTemplate(notebook, { id: template.id, source: template.source, file: relative(template.file), ...(template.source === 'manifest' ? { title: template.name } : {}) }, draft.note) : template;
+    return draft ? { ...describeNoteTemplate(notebook, { id: template.id, source: template.source, file: relative(template.file), ...(template.source === 'manifest' ? { title: template.name } : {}) }, draft.note), ...(template.lastUsed === undefined ? {} : { lastUsed: template.lastUsed }) } : template;
   });
   const taken = new Set(listed.map(template => template.id)), known = new Set(templates.map(template => template.file));
   const created: NoteTemplateInfo[] = [];

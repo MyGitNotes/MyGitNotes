@@ -5,7 +5,7 @@ import webTools, { formatAgentSystem } from './pi-web-tools-extension.mjs';
 // Pi supplies typebox to its extensions; the schemas are not what these tests look at.
 vi.mock('typebox', () => {
   const schema = (value?: unknown) => ({ schema: value });
-  return { Type: { Object: schema, String: schema, Optional: schema, Record: schema, Unknown: schema } };
+  return { Type: { Object: schema, String: schema, Integer: schema, Optional: schema, Record: schema, Unknown: schema } };
 });
 
 interface Call {
@@ -62,6 +62,13 @@ afterEach(async () => {
 describe('web tools extension', () => {
   it('offers the note tools and the two agent-system tools', () => {
     expect([...load().tools.keys()]).toEqual(['mygitnotes_read_note', 'mygitnotes_write_note', 'mygitnotes_edit_note', 'mygitnotes_delete_note', 'mygitnotes_agent_system', 'mygitnotes_read_agent_file', 'mygitnotes_list_changes', 'mygitnotes_list_templates']);
+  });
+
+  it('lets the agent narrow, cut and read the template list, and tells it to check for a fitting template before it creates a note', () => {
+    const tools = load().tools as unknown as Map<string, { description: string; parameters: { schema: Record<string, unknown>; }; }>;
+    const list = tools.get('mygitnotes_list_templates')!, write = tools.get('mygitnotes_write_note')!;
+    expect(Object.keys(list.parameters.schema)).toEqual(expect.arrayContaining(['query', 'templateId', 'limit', 'notebookId']));
+    for (const tool of [list, write]) expect(tool.description).toMatch(/mygitnotes_list_templates.*ask the person/s);
   });
 
   it("names the session's workspace in agent-system calls, whatever the agent passes, and in no other call", async () => {

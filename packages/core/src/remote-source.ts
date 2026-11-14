@@ -10,7 +10,7 @@ import { parseNoteContent } from './frontmatter.js';
 import { isCompilationPath } from './compilation.js';
 import { isOutlinePath } from './outline.js';
 import { isNoteFile, NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.js';
-import { describeNoteTemplate, formatTemplateDate, formatTemplateTime, isTemplateFile, notebookTemplateEntries, type NoteTemplateEntry, type NoteTemplateInfo, type RenderedNoteTemplate, renderNoteTemplate, templateFileId, TEMPLATES_FOLDER, templateValues } from './templates.js';
+import { describeNoteTemplate, formatTemplateDate, formatTemplateTime, isTemplateFile, type ListedNoteTemplate, notebookTemplateEntries, type NoteTemplateEntry, type NoteTemplateInfo, type RenderedNoteTemplate, renderNoteTemplate, templateFileId, templateLastUse, TEMPLATES_FOLDER, templateValues } from './templates.js';
 import { isNotebookContent, parseFolderConfig, sortFolders } from './folders.js';
 import { FolderItem, NotebookConfig, NoteItem, NoteMetadata, WorkspaceConfig } from './types.js';
 import { SourceError } from './github-api.js';
@@ -27,6 +27,8 @@ import { CASE_COLLISION_ERROR, differsOnlyInCase } from './case-collision.js';
 export { SourceError } from './github-api.js';
 const CACHEABLE_FILE = /\.(md|markdown|mdx|txt|ya?ml)$/i;
 const INDEX_VERSION = 'v3';
+/** The shape of a cached template list; a change of `NoteTemplateInfo` or of how a template is described raises it. */
+const TEMPLATES_VERSION = 'v1';
 /** Blobs kept in memory for one request. */
 const LOADED_MAX_BYTES = 64 * 1024 * 1024;
 export interface RemoteEntry {
@@ -394,7 +396,36 @@ export abstract class RemoteSource {
   private async readTemplate(nb: NotebookConfig, entry: NoteTemplateEntry) {
     const raw = (await this.readFile(`${nb.root}/${entry.file}`)).toString('utf8');
     const { metadata, content } = parseNoteContent(raw, path.posix.basename(entry.file));
-    return { metadata, content };
+    return { metadata, content, raw };
+  }
+
+  /**
+   * The parsed template list of one notebook. It is cached by the content of its template files, never by time: the key
+   * holds the `.templates` tree and the blobs of the manifest's template files, so an edited template is a new key and a
+   * commit that leaves them alone reads no file.
+   */
+  private async notebookTemplates(nb: NotebookConfig): Promise<NoteTemplateInfo[]> {
+    const listed = await this.templateEntries(nb);
+    if (!listed.length) return [];
+    const { entries } = await this.getSnapshot();
+    const blob = (file: string) => entries.find(entry => entry.path === `${nb.root}/${file}` && entry.type === 'blob' && entry.mode !== '120000')?.sha ?? null;
+    // A snapshot that lists no tree for the folder is keyed by the folder's files themselves.
+    const folder = entries.find(entry => entry.type === 'tree' && entry.path === `${nb.root}/${TEMPLATES_FOLDER}`)?.sha ?? listed.filter(entry => entry.source === 'file').map(entry => [entry.file, blob(entry.file)]);
+    const key = this.cache ? `mgn:templates:${TEMPLATES_VERSION}:${this.cacheRepository()}:${hashJson([nb.id, nb.root, folder, (nb.templates || []).map(template => [template.id, template.title, template.file, blob(template.file)])])}` : '';
+    const hit = this.cache ? (await this.cache.get([key]))[0] : null;
+    if (hit !== null) {
+      try {
+        const cached = JSON.parse(hit) as NoteTemplateInfo[];
+        if (Array.isArray(cached) && cached.every(item => typeof item?.id === 'string' && typeof item?.name === 'string' && typeof item?.file === 'string' && item?.notebookId === nb.id && Array.isArray(item?.placeholders))) return cached;
+      } catch { /* A damaged value is rebuilt. */ }
+    }
+    await this.prefetchFiles(listed.map(entry => `${nb.root}/${entry.file}`));
+    const templates: NoteTemplateInfo[] = [];
+    // A registered template whose file is missing is still listed, as the manifest names it.
+    for (const entry of listed) templates.push(describeNoteTemplate(nb, entry, await this.readTemplate(nb, entry).catch(() => undefined)));
+    const text = JSON.stringify(templates);
+    if (this.cache && Buffer.byteLength(text) <= REMOTE_CACHE_MAX_VALUE) await this.cache.set([[key, text]], REMOTE_CACHE_TTL);
+    return templates;
   }
 
   /** The templates of one notebook, or of every notebook this repository serves, each with its placeholders. */
@@ -402,16 +433,29 @@ export abstract class RemoteSource {
     const config = await this.config();
     if (notebookId && !config.notebooks.some(nb => nb.id === notebookId)) throw new SourceError('Notebook is not configured.', 404);
     const listed: NoteTemplateInfo[] = [];
+    for (const nb of config.notebooks.filter(n => !notebookId || n.id === notebookId)) listed.push(...await this.notebookTemplates(nb));
+    return listed;
+  }
+
+  /**
+   * Those templates as `list_templates` answers them: each with its last use, which the notebook's notes index dates from
+   * the notes stamped with the template's id. The answer is kept with the index's other derived results, so no note is read for it.
+   */
+  async listedTemplates(notebookId?: string): Promise<ListedNoteTemplate[]> {
+    const config = await this.config();
+    if (notebookId && !config.notebooks.some(nb => nb.id === notebookId)) throw new SourceError('Notebook is not configured.', 404);
+    const catalog = this.catalog();
+    const listed: ListedNoteTemplate[] = [];
     for (const nb of config.notebooks.filter(n => !notebookId || n.id === notebookId)) {
-      const entries = await this.templateEntries(nb);
-      await this.prefetchFiles(entries.map(entry => `${nb.root}/${entry.file}`));
-      // A registered template whose file is missing is still listed, as the manifest names it.
-      for (const entry of entries) listed.push(describeNoteTemplate(nb, entry, await this.readTemplate(nb, entry).catch(() => undefined)));
+      const templates = await this.notebookTemplates(nb);
+      if (!templates.length) continue;
+      const used = await catalog.memo('template-use', [nb], async () => templateLastUse(await catalog.index(nb)));
+      listed.push(...templates.map(template => ({ ...template, lastUsed: used[template.id] ?? null })));
     }
     return listed;
   }
 
-  /** One template of a notebook, a manifest-registered one or a `.templates/` file, with its frontmatter and body. */
+  /** One template of a notebook, a manifest-registered one or a `.templates/` file, with its frontmatter, body and the file's own text. */
   async template(notebookId: string, templateId: string) {
     const config = await this.config();
     const nb = config.notebooks.find(n => n.id === notebookId);

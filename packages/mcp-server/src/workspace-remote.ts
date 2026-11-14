@@ -1,4 +1,4 @@
-import { type RemoteSource, type RevisionSet, StaleRevisionError, type WorkspaceRepositories } from '@mygitnotes/core';
+import { mergeTemplateLists, type RemoteSource, type RevisionSet, StaleRevisionError, type TemplateList, type WorkspaceRepositories } from '@mygitnotes/core';
 import { keyedResult, listedNotebooks, notebookArgument } from './notebook-keys.js';
 import { callRemoteTool, isMutationTool } from './remote-tools.js';
 import type { ToolAssets } from './tools/assets.js';
@@ -65,7 +65,9 @@ export async function callWorkspaceRemoteTool(workspace: WorkspaceRepositories<R
   if (broad && name !== 'get_statuses') {
     if (name === 'list_skills' || name === 'list_assets' || name === 'list_folders' || name === 'list_templates') {
       const results = await Promise.all(available.map(async entry => keyedResult(await callRemoteTool(entry.handle.reader, name, args, write, web(entry), assetsFor?.(entry.handle)), entry)));
-      const field = name === 'list_skills' ? 'skills' : name === 'list_assets' ? 'assets' : name === 'list_templates' ? 'templates' : 'folders';
+      // Each repository answered its own matches, cut at the limit; one order and one limit hold across them.
+      if (name === 'list_templates') return { ...mergeTemplateLists(results as unknown as TemplateList[], args.limit), revision: await revisions(available), unavailable };
+      const field = name === 'list_skills' ? 'skills' : name === 'list_assets' ? 'assets' : 'folders';
       return { [field]: results.flatMap(result => result[field] as unknown[]), ...(name === 'list_skills' ? { target: null } : {}), revision: await revisions(available), unavailable };
     }
     if (name === 'find') {

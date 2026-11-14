@@ -1,5 +1,5 @@
 import { Request, Response, Router } from 'express';
-import { formatTemplateDate, formatTemplateTime, keyedItem, listNoteTemplates, loadNoteTemplate, renderNoteTemplate, scanNotebookFolders, SourceError } from '@mygitnotes/core';
+import { formatTemplateDate, formatTemplateTime, keyedItem, listedNoteTemplates, loadNoteTemplate, renderNoteTemplate, scanNotebookFolders, SourceError } from '@mygitnotes/core';
 import { asLocal, eachRepository, notebookRepository } from './request-workspace.js';
 
 export function createLocalFoldersTemplatesRouter(): Router {
@@ -16,7 +16,8 @@ export function createLocalFoldersTemplatesRouter(): Router {
   router.get('/api/templates', async (req: Request, res: Response) => {
     try {
       const { handle, alias, notebook } = await notebookRepository(res, req.query.notebookId);
-      res.json({ templates: listNoteTemplates(asLocal(handle).root, notebook).map(keyedItem(alias)) });
+      // Each template carries its last use, which the page's agent orders its list by.
+      res.json({ templates: listedNoteTemplates(asLocal(handle).root, notebook).map(keyedItem(alias)) });
     } catch (err: unknown) {
       res.status(err instanceof SourceError ? err.status : 400).json({ error: err instanceof Error ? err.message : String(err) });
     }

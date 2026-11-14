@@ -56,6 +56,15 @@ it('lists a notebook’s templates without a manifest change and keeps them out 
   expect(folders.folders.map((folder: { path: string; }) => folder.path)).toEqual(['kept']);
 });
 
+it('dates each template’s last use by the notes that carry its id, as the New note menu stamps them', async () => {
+  const used = async () => Object.fromEntries((await fetch(`${base}/api/templates?notebookId=${nb('example')}`).then(r => r.json())).templates.map((template: { id: string; lastUsed: string | null; }) => [template.id, template.lastUsed]));
+  expect(await used()).toEqual({ registered: null, reading: null });
+  expect((await fetch(`${base}/api/notes`, json({ path: 'notes/example/untitled.md', notebookId: nb('example'), createOnly: true, noCommit: true, content: '# Untitled\n', metadata: { template: 'reading' } }))).status).toBe(200);
+  expect(await used()).toEqual({ registered: null, reading: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) });
+  // The stamped note is an ordinary note: it lists as one, and names no new template.
+  expect((await fetch(`${base}/api/notes?notebookId=${nb('example')}`).then(r => r.json())).notes.map((note: { path: string; }) => note.path)).toEqual(['notes/example/note.md', 'notes/example/untitled.md']);
+});
+
 it('renders a .templates file with the page’s date and time, other placeholders left literal and the template block dropped', async () => {
   const rendered = await fetch(`${base}/api/templates/render?notebookId=${nb('example')}&templateId=reading&title=${encodeURIComponent('My Note')}&date=2026-11-14&time=${encodeURIComponent('09:30')}`).then(r => r.json());
   // The New note menu fills the title, date and time only: a declared default stays unapplied, for the writer.

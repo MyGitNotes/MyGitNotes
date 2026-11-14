@@ -53,8 +53,16 @@ it('renders a configured notebook template through the read-only MCP tool withou
   await client.connect(clientTransport);
   try {
     const { tools } = await client.listTools();
-    const tool = tools.find(t => t.name === 'render_template');
-    expect(tool?.annotations?.readOnlyHint).toBe(true);
+    // render_template is kept for callers that already know it, and no longer offered.
+    expect(tools.map(t => t.name)).not.toContain('render_template');
+    expect(tools.map(t => t.name)).toContain('list_templates');
+    expect(client.getInstructions()).toMatch(/list_templates.*ask the user/s);
+    // The client checks each answer against the tool's declared output: the list, and the one template with its text.
+    const listed = await client.callTool({ name: 'list_templates', arguments: { query: 'read' } });
+    expect(listed.isError).not.toBe(true);
+    expect(listed.structuredContent).toMatchObject({ templates: [{ id: 'reading', name: 'Reading', lastUsed: null }], total: 1, truncated: false });
+    const one = await client.callTool({ name: 'list_templates', arguments: { notebookId: 'ex', templateId: 'reading' } });
+    expect((one.structuredContent as { templates: { content: string; }[]; }).templates[0].content).toContain('status: unread');
     const result = await client.callTool({ name: 'render_template', arguments: { notebookId: 'ex', templateId: 'reading', title: 'Via MCP' } });
     expect(result.isError).not.toBe(true);
     expect(fixture.writes).toBe(0);

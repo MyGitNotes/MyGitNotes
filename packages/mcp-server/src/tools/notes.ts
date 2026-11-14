@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { agentEditMessage, DEFAULT_NOTE_STATUSES, deleteNoteFile, isNotebookContent, keptNoteMetadata, listNoteTemplates, loadNoteTemplate, loadWorkspaceConfig, type NotebookConfig, noteFromTemplate, NoteItem, noteStatusNames, noteSummary, readNoteFile, resolveNoteStatuses, resolveSafePath, scanNotebookNotes, versionFilePath, withNoteEdits, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
+import { agentEditMessage, DEFAULT_NOTE_STATUSES, deleteNoteFile, isNotebookContent, keptNoteMetadata, listedNoteTemplates, listTemplates, loadNoteTemplate, loadWorkspaceConfig, type NotebookConfig, noteFromTemplate, NoteItem, noteStatusNames, noteSummary, readNoteFile, resolveNoteStatuses, resolveSafePath, scanNotebookNotes, versionFilePath, withNoteEdits, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
 import { generateCommitMessage, stageAndCommit } from '@mygitnotes/git';
 import { isNoteFile } from '@mygitnotes/core/note-file';
 import { assertNoteResource, assertUserWorkspaceBranch } from '../guards.js';
@@ -52,12 +52,24 @@ export async function handleReadNote(ctx: ToolContext, args: { path: string; not
   return { note };
 }
 
-/** The templates of one notebook, or of every notebook of the worktree: the manifest's and the `.templates/` files, with their placeholders. */
-export async function handleListTemplates(ctx: ToolContext, args: { notebookId?: string; } = {}) {
+/**
+ * The templates of one notebook, or of every notebook of the worktree: the manifest's and the `.templates/` files, with
+ * their placeholders and last use, narrowed by `query` and cut at `limit`. With `templateId`, the one template of the named
+ * notebook with its file text.
+ */
+export async function handleListTemplates(ctx: ToolContext, args: { notebookId?: string; query?: unknown; templateId?: unknown; limit?: unknown; } = {}) {
   const config = ctx.config ?? loadWorkspaceConfig(ctx.repoRoot);
   if (!config) return { error: 'Workspace not initialized.' };
   if (args.notebookId && !config.notebooks.some((nb) => nb.id === args.notebookId)) throw new Error(`Notebook '${args.notebookId}' is not configured.`);
-  return { templates: config.notebooks.filter((nb) => !args.notebookId || nb.id === args.notebookId).flatMap((nb) => listNoteTemplates(ctx.repoRoot, nb)) };
+  if (args.templateId !== undefined) {
+    const notebook = config.notebooks.find((nb) => nb.id === args.notebookId);
+    if (!notebook) throw new Error("templateId needs notebookId: a template id is its notebook's.");
+    const templates = listedNoteTemplates(ctx.repoRoot, notebook);
+    const template = templates.find((candidate) => candidate.id === String(args.templateId));
+    if (!template) throw new Error(`Notebook '${notebook.id}' has no template '${String(args.templateId)}'. Its templates: ${templates.map((candidate) => candidate.id).join(', ') || 'none'}.`);
+    return { templates: [{ ...template, content: loadNoteTemplate(ctx.repoRoot, notebook, template.id).raw }], total: 1, truncated: false };
+  }
+  return listTemplates(config.notebooks.filter((nb) => !args.notebookId || nb.id === args.notebookId).flatMap((nb) => listedNoteTemplates(ctx.repoRoot, nb)), args);
 }
 
 type SaveNoteArgs = { path?: string; notebookId?: string; template?: string; values?: unknown; content?: string; metadata?: Record<string, unknown>; status?: string; tags?: string[]; title?: string; commitMessage?: string; };
@@ -70,7 +82,7 @@ async function saveNoteFromTemplate(ctx: ToolContext, args: SaveNoteArgs & { tem
   const notebook = args.notebookId ? config.notebooks.find((nb) => nb.id === args.notebookId) : config.notebooks.find((nb) => args.path?.replace(/\\/g, '/').startsWith(`${nb.root}/`));
   if (!notebook) throw new Error(args.notebookId ? `Notebook '${args.notebookId}' is not configured.` : 'Name the notebook of the template as notebookId, or a path inside it.');
   const template = loadNoteTemplate(ctx.repoRoot, notebook, args.template);
-  const made = noteFromTemplate(notebook, template, { path: args.path, title: args.title, values: args.values, content: args.content, metadata: args.metadata });
+  const made = noteFromTemplate(notebook, template, { templateId: template.id, path: args.path, title: args.title, values: args.values, content: args.content, metadata: args.metadata });
   const target = assertNoteResource(ctx.repoRoot, made.path);
   if (!made.path.startsWith(`${notebook.root}/`) || !isNotebookContent(made.path.slice(notebook.root.length + 1), notebook) || !isNoteFile(made.path)) throw new Error(`${made.path} is not a note path of notebook '${notebook.id}'.`);
   if (fs.existsSync(target)) throw new Error(`A note already exists at ${made.path}.`);

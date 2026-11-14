@@ -279,7 +279,8 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
     app.get('/api/templates', async (req, res) => {
       try {
         const { reader, alias, localId } = await remoteNotebook(res, req.query.notebookId);
-        res.json({ templates: (await reader.templates(localId)).map(keyedItem(alias)) });
+        // Each template carries its last use, which the page's agent orders its list by.
+        res.json({ templates: (await reader.listedTemplates(localId)).map(keyedItem(alias)) });
       } catch (error) {
         fail(res, error);
       }

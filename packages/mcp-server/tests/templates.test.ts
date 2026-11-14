@@ -7,13 +7,14 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createRemoteSource, createWorkspaceRepositories, deriveAlias, openRemoteRepository, parseNoteContent, RemoteManifest, type RemoteSource, repositoryRef, type WorkspaceConfigSource } from '@mygitnotes/core';
 import { createMCPServer } from '../src/server.js';
-import { callRemoteTool, remoteTools } from '../src/remote-tools.js';
+import { callRemoteTool, legacyRemoteTools, remoteTools } from '../src/remote-tools.js';
 import { callWorkspaceRemoteTool } from '../src/workspace-remote.js';
 import { gitlabFixture } from '../../core/tests/fixtures/gitlab.js';
 
 const READING = '---\ntemplate:\n  name: Reading\n  description: Notes on a book\n  path: reading/{{book}}.md\n  placeholders:\n    book: The book\n    author:\n      description: Who wrote it\n      default: Unknown\ntags: [reading]\nauthor: "{{author}}"\n---\n# {{title}}\n\n> {{takeaway}}\n';
 const MEETING = '# {{title}}\n\nWith {{who}}.\n';
 const MANIFEST = (version: number) => `schema_version: ${version}\nworkspace:\n  title: Test\n  default_notebook: ex\nnotebooks:\n  - id: ex\n    title: Example\n    root: notes/ex\n    templates:\n      - id: registered\n        title: Registered\n        file: kept/registered.md\n`;
+const STAMPED = (template: string, created: string) => `---\ntemplate: ${template}\ncreated: "${created}"\n---\n# Made\n`;
 const TEMPLATES = { 'notes/ex/.templates/reading.md': READING, 'notes/ex/.templates/meeting.md': MEETING, 'notes/ex/kept/registered.md': '---\nstatus: unread\n---\n# {{title}}\n' };
 
 describe('local MCP templates', () => {
@@ -73,6 +74,10 @@ describe('local MCP templates', () => {
       const result = await client.callTool({ name: 'list_templates', arguments: {} });
       const { templates } = JSON.parse((result.content as { text: string; }[])[0].text);
       expect(templates.map((template: { notebookId: string; id: string; }) => [template.notebookId, template.id])).toEqual([['home~home', 'home-plan'], ['other~other', 'other-plan']]);
+      // One limit and one order hold across the worktrees: the template used last comes first, whichever worktree holds it.
+      fs.writeFileSync(path.join(other, 'notes/shared/made.md'), STAMPED('other-plan', '2026-11-10T08:00:00.000Z'));
+      const cut = JSON.parse(((await client.callTool({ name: 'list_templates', arguments: { limit: 1 } })).content as { text: string; }[])[0].text);
+      expect(cut).toMatchObject({ templates: [{ notebookId: 'other~other', id: 'other-plan', lastUsed: '2026-11-10T08:00:00.000Z' }], total: 2, truncated: true });
     } finally {
       await client.close();
       await server.close();
@@ -83,10 +88,13 @@ describe('local MCP templates', () => {
     const mcp = await open();
     try {
       const { tools } = await mcp.client.listTools();
-      expect(tools.map(tool => tool.name)).toContain('list_templates');
+      const list = tools.find(tool => tool.name === 'list_templates')!;
+      expect(list.inputSchema.properties).toMatchObject({ notebookId: { type: 'string' }, query: { type: 'string' }, templateId: { type: 'string' }, limit: { type: 'integer', maximum: 100 } });
       const save = tools.find(tool => tool.name === 'save_note')!;
       expect(save.inputSchema.properties).toMatchObject({ template: { type: 'string' }, values: { type: 'object' } });
       expect(save.inputSchema.required ?? []).not.toContain('path');
+      // The rule of checking for a fitting template first is the product's: both tools and the server's instructions say it.
+      for (const text of [list.description, save.description, mcp.client.getInstructions()]) expect(text).toMatch(/list_templates.*ask the user/s);
     } finally {
       await mcp.close();
     }
@@ -96,13 +104,48 @@ describe('local MCP templates', () => {
     const mcp = await open();
     try {
       const listed = (await mcp.call('list_templates', {})).data.templates;
-      expect(listed.map((template: { id: string; source: string; name: string; }) => [template.id, template.source, template.name])).toEqual([['registered', 'manifest', 'Registered'], ['meeting', 'file', 'meeting'], ['reading', 'file', 'Reading']]);
-      const reading = listed[2];
+      expect(listed.map((template: { id: string; source: string; name: string; lastUsed: unknown; }) => [template.id, template.source, template.name, template.lastUsed])).toEqual([['meeting', 'file', 'meeting', null], ['reading', 'file', 'Reading', null], ['registered', 'manifest', 'Registered', null]]);
+      const reading = listed[1];
       expect(reading.notebookId).toMatch(/~ex$/);
       expect(reading).toMatchObject({ description: 'Notes on a book', path: 'reading/{{book}}.md', file: 'notes/ex/.templates/reading.md' });
       expect(reading.placeholders).toEqual([{ name: 'title', description: expect.any(String), declared: false, builtin: true }, { name: 'date', description: expect.any(String), declared: false, builtin: true }, { name: 'time', description: expect.any(String), declared: false, builtin: true }, { name: 'book', description: 'The book', declared: true }, { name: 'author', description: 'Who wrote it', default: 'Unknown', declared: true }, { name: 'takeaway', declared: false }]);
       expect((await mcp.call('list_templates', { notebookId: 'ex' })).data.templates).toHaveLength(3);
       expect((await mcp.call('list_notes', {})).data.notes.map((note: { path: string; }) => note.path)).toEqual(['notes/ex/a.md']);
+    } finally {
+      await mcp.close();
+    }
+  });
+
+  it('filters by the words of a query, orders by the last use, cuts at the limit, and answers one template with its file text', async () => {
+    const mcp = await open();
+    try {
+      const ids = async (args: Record<string, unknown>) => (await mcp.call('list_templates', args)).data.templates.map((template: { id: string; }) => template.id);
+      expect(await ids({ query: 'BOOK notes' })).toEqual(['reading']);
+      expect(await ids({ query: 'regist' })).toEqual(['registered']);
+      expect(await ids({ query: 'book meeting' })).toEqual([]);
+
+      // A note created from a template carries its id, which dates the template's last use; only its frontmatter is read.
+      await mcp.call('save_note', { path: 'notes/ex/sync.md', template: 'meeting', values: { who: 'Ann' } });
+      fs.writeFileSync(path.join(mcp.root, 'notes/ex/old.md'), STAMPED('registered', '2020-01-01T00:00:00.000Z'));
+      // A note that merely names a template is no template: the .templates files and the manifest's are the only ones.
+      const listed = (await mcp.call('list_templates', { notebookId: 'ex' })).data;
+      expect(listed.templates.map((template: { id: string; }) => template.id)).toEqual(['meeting', 'registered', 'reading']);
+      expect(listed.templates[0].lastUsed).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(listed.templates.slice(1).map((template: { lastUsed: unknown; }) => template.lastUsed)).toEqual(['2020-01-01T00:00:00.000Z', null]);
+      expect(listed).toMatchObject({ total: 3, truncated: false });
+      expect((await mcp.call('list_templates', { limit: 2 })).data).toMatchObject({ templates: [{ id: 'meeting' }, { id: 'registered' }], total: 3, truncated: true });
+      expect((await mcp.call('list_templates', { limit: 1, query: 're' })).data).toMatchObject({ templates: [{ id: 'registered' }], total: 2, truncated: true });
+
+      const one = (await mcp.call('list_templates', { notebookId: 'ex', templateId: 'reading' })).data;
+      expect(one).toMatchObject({ templates: [{ id: 'reading', name: 'Reading', content: READING, lastUsed: null }], total: 1, truncated: false });
+      expect(one.templates[0].notebookId).toMatch(/~ex$/);
+      expect(listed.templates[0]).not.toHaveProperty('content');
+      expect(await mcp.call('list_templates', { templateId: 'reading' })).toMatchObject({ isError: true, data: { error: expect.stringContaining('notebookId') } });
+      expect(await mcp.call('list_templates', { notebookId: 'ex', templateId: 'nope' })).toMatchObject({ isError: true, data: { error: expect.stringMatching(/no template 'nope'.*registered, meeting, reading/) } });
+
+      // An edited template file is listed as it now reads, at once.
+      fs.writeFileSync(path.join(mcp.root, 'notes/ex/.templates/meeting.md'), '---\ntemplate:\n  name: Stand-up\n---\n# {{title}}\n');
+      expect((await mcp.call('list_templates', { query: 'stand-up' })).data.templates.map((template: { id: string; }) => template.id)).toEqual(['meeting']);
     } finally {
       await mcp.close();
     }
@@ -115,8 +158,8 @@ describe('local MCP templates', () => {
       expect(saved.isError).toBe(false);
       expect(saved.data).toMatchObject({ success: true, path: 'notes/ex/reading/Dune.md', template: 'reading', unfilled: ['takeaway'] });
       const written = parseNoteContent(fs.readFileSync(path.join(mcp.root, 'notes/ex/reading/Dune.md'), 'utf8'));
-      expect(written.metadata).toMatchObject({ title: 'Dune', tags: ['reading'], author: 'Unknown' });
-      expect(written.metadata).not.toHaveProperty('template');
+      // The template block stays behind; the note records the id of the template it came from.
+      expect(written.metadata).toMatchObject({ title: 'Dune', tags: ['reading'], author: 'Unknown', template: 'reading' });
       expect(written.content).toBe('# Dune\n\n> {{takeaway}}\n');
       expect(mcp.git('status', '--short')).toBe('');
       expect(mcp.git('log', '-1', '--format=%B')).toContain('Agent-Edit');
@@ -169,22 +212,45 @@ describe('remote MCP templates', () => {
   const fixture = () => gitlabFixture(undefined, { 'notes/.github-notes.yaml': MANIFEST(1), ...TEMPLATES, 'notes/ex/.other/secret.md': '# Secret\n' });
   const reader = (f: ReturnType<typeof gitlabFixture>) => openRemoteRepository(source, 'fixture-token', f.request).reader;
 
-  it('declares list_templates, save_note with template and values, and render_template with values and unfilled', () => {
+  it('declares list_templates with query, templateId and limit and save_note with template and values, and keeps render_template for old callers only', () => {
     const tool = (name: string) => remoteTools.find(candidate => candidate.name === name)!;
     expect(tool('list_templates').inputSchema.required).toEqual([]);
+    expect(tool('list_templates').inputSchema.properties).toMatchObject({ notebookId: { type: 'string' }, query: { type: 'string' }, templateId: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } });
+    expect(tool('list_templates').outputSchema?.properties).toMatchObject({ total: { type: 'integer' }, truncated: { type: 'boolean' } });
     expect(tool('save_note').inputSchema.required).toEqual(['revision']);
     expect(tool('save_note').inputSchema.properties).toMatchObject({ template: { type: 'string' }, values: { type: 'object' } });
-    expect(tool('render_template').inputSchema.properties).toHaveProperty('values');
-    expect(tool('render_template').outputSchema?.properties).toHaveProperty('unfilled');
+    for (const name of ['list_templates', 'save_note']) expect(tool(name).description).toMatch(/list_templates.*ask the user/s);
+    // render_template is no longer offered: list_templates with templateId shows a template and save_note creates from it.
+    expect(remoteTools.map(candidate => candidate.name)).not.toContain('render_template');
+    const legacy = legacyRemoteTools.find(candidate => candidate.name === 'render_template')!;
+    expect(legacy.inputSchema.properties).toHaveProperty('values');
+    expect(legacy.outputSchema?.properties).toHaveProperty('unfilled');
   });
 
   it('lists templates with placeholders and renders one with values', async () => {
     const f = fixture();
     const listed = (await callRemoteTool(reader(f), 'list_templates', {}, false)).templates as { id: string; source: string; placeholders: { name: string; }[]; }[];
-    expect(listed.map(template => [template.id, template.source])).toEqual([['registered', 'manifest'], ['meeting', 'file'], ['reading', 'file']]);
-    expect(listed[2].placeholders.map(placeholder => placeholder.name)).toEqual(['title', 'date', 'time', 'book', 'author', 'takeaway']);
+    expect(listed.map(template => [template.id, template.source])).toEqual([['meeting', 'file'], ['reading', 'file'], ['registered', 'manifest']]);
+    expect(listed[1].placeholders.map(placeholder => placeholder.name)).toEqual(['title', 'date', 'time', 'book', 'author', 'takeaway']);
     expect(await callRemoteTool(reader(f), 'render_template', { notebookId: 'ex', templateId: 'reading', title: 'Dune', values: { author: 'Frank Herbert' } }, false)).toEqual({ metadata: { tags: ['reading'], author: 'Frank Herbert', title: 'Dune' }, content: '# Dune\n\n> {{takeaway}}\n', unfilled: ['takeaway'] });
     await expect(callRemoteTool(reader(f), 'render_template', { notebookId: 'ex', templateId: 'reading', title: 'Dune', values: { nope: 1 } }, false)).rejects.toThrow(/no placeholder 'nope'/);
+  });
+
+  it('filters by the words of a query, orders by the last use, cuts at the limit, and answers one template with its file text', async () => {
+    const f = gitlabFixture(undefined, { 'notes/.github-notes.yaml': MANIFEST(1), ...TEMPLATES, 'notes/ex/old.md': STAMPED('registered', '2020-01-01T00:00:00.000Z'), 'notes/ex/sync.md': STAMPED('meeting', '2026-11-10T08:00:00.000Z'), 'notes/ex/sync-2.md': STAMPED('meeting', '2026-11-12T08:00:00.000Z') });
+    const list = async (args: Record<string, unknown>) => await callRemoteTool(reader(f), 'list_templates', args, false) as { templates: { id: string; lastUsed: string | null; content?: string; }[]; total: number; truncated: boolean; };
+    const listed = await list({ notebookId: 'ex' });
+    expect(listed.templates.map(template => [template.id, template.lastUsed])).toEqual([['meeting', '2026-11-12T08:00:00.000Z'], ['registered', '2020-01-01T00:00:00.000Z'], ['reading', null]]);
+    expect(listed).toMatchObject({ total: 3, truncated: false });
+    expect(listed.templates[0]).not.toHaveProperty('content');
+    expect((await list({ query: 'BOOK notes' })).templates.map(template => template.id)).toEqual(['reading']);
+    expect((await list({ query: 'book meeting' })).templates).toEqual([]);
+    expect(await list({ limit: 2 })).toMatchObject({ templates: [{ id: 'meeting' }, { id: 'registered' }], total: 3, truncated: true });
+    await expect(list({ limit: 101 })).rejects.toThrow(/limit/);
+
+    expect(await list({ notebookId: 'ex', templateId: 'reading' })).toMatchObject({ templates: [{ id: 'reading', content: READING, lastUsed: null }], total: 1, truncated: false });
+    await expect(list({ templateId: 'reading' })).rejects.toThrow(/notebookId/);
+    await expect(list({ notebookId: 'ex', templateId: 'nope' })).rejects.toMatchObject({ status: 404 });
   });
 
   it('creates a note from a template in one commit and refuses what a template cannot serve', async () => {
@@ -192,8 +258,8 @@ describe('remote MCP templates', () => {
     const saved = await callRemoteTool(reader(f), 'save_note', { notebookId: 'ex', template: 'reading', values: { book: 'Dune' }, revision: f.head }, true);
     expect(saved).toMatchObject({ path: 'notes/ex/reading/Dune.md', template: 'reading', unfilled: ['takeaway'], changedPaths: ['notes/ex/reading/Dune.md'] });
     const written = parseNoteContent(f.files.get('notes/ex/reading/Dune.md')!);
-    expect(written.metadata).toMatchObject({ title: 'Dune', tags: ['reading'], author: 'Unknown' });
-    expect(written.metadata).not.toHaveProperty('template');
+    // The template block stays behind; the note records the id of the template it came from.
+    expect(written.metadata).toMatchObject({ title: 'Dune', tags: ['reading'], author: 'Unknown', template: 'reading' });
     expect(written.content).toBe('# Dune\n\n> {{takeaway}}\n');
     expect(f.writes).toBe(1);
 
@@ -228,7 +294,8 @@ describe('remote MCP templates', () => {
     const f = fixture();
     const workspace = createWorkspaceRepositories<{ reader: RemoteSource; }>({ members: [{ ref: repositoryRef(source), alias: 'qa', default: true, hidden: false }], openRepository: async ({ ref }, scope) => ({ reader: createRemoteSource(ref.source, 'fixture-token', f.request, undefined, scope) }), manifest: (_member, handle) => new RemoteManifest(handle.reader) });
     const listed = await callWorkspaceRemoteTool(workspace, 'list_templates', {}, false);
-    expect((listed.templates as { notebookId: string; id: string; }[]).map(template => [template.notebookId, template.id])).toEqual([['qa~ex', 'registered'], ['qa~ex', 'meeting'], ['qa~ex', 'reading']]);
+    expect((listed.templates as { notebookId: string; id: string; }[]).map(template => [template.notebookId, template.id])).toEqual([['qa~ex', 'meeting'], ['qa~ex', 'reading'], ['qa~ex', 'registered']]);
+    expect(await callWorkspaceRemoteTool(workspace, 'list_templates', { notebookId: 'qa~ex', templateId: 'reading' }, false)).toMatchObject({ templates: [{ notebookId: 'qa~ex', id: 'reading', content: READING }], total: 1 });
     const saved = await callWorkspaceRemoteTool(workspace, 'save_note', { notebookId: 'qa~ex', template: 'reading', values: { book: 'Dune' }, revision: listed.revision }, true);
     expect(saved).toMatchObject({ path: 'notes/ex/reading/Dune.md', unfilled: ['takeaway'] });
     expect(f.files.has('notes/ex/reading/Dune.md')).toBe(true);

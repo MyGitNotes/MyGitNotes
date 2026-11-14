@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { gitlabFixture } from './fixtures/gitlab.js';
 import { openRemoteRepository } from '../src/remote-factory.js';
@@ -6,6 +7,7 @@ import { callNoteShell } from '../src/note-shell.js';
 import { classifyResource } from '../src/classifier.js';
 import { parseNoteContent } from '../src/frontmatter.js';
 import { historyFile } from '../src/note-history.js';
+import { MemoryRemoteCache } from '../src/remote-cache.js';
 
 const READING = '---\ntemplate:\n  name: Reading\n  path: reading/{{book}}.md\n  placeholders:\n    book: The book\ntags: [reading]\n---\n# {{title}}\n\n> {{takeaway}}\n';
 const MANIFEST = 'schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: ex\nnotebooks:\n  - id: ex\n    title: Example\n    root: notes/ex\n    templates:\n      - id: registered\n        title: Registered\n        file: kept/registered.md\n';
@@ -94,6 +96,61 @@ describe('a remote notebook’s template files', () => {
     await expect(callNoteShell(open(f), 'rm', { paths: ['notes/ex/.other/secret.md'], revision: f.head }, true)).rejects.toMatchObject({ status: 403 });
     await expect(callNoteShell(open(f), 'rm', { paths: ['notes/ex/.templates'], recursive: true, revision: f.head }, true)).rejects.toMatchObject({ status: 403 });
     expect(f.files.get(file)).toBe(READING);
+  });
+});
+
+describe('a remote notebook’s template list', () => {
+  const source = { type: 'gitlab' as const, url: 'https://gitlab.example.test/gitlab', repository: 'group/subgroup/project', branch: 'main' };
+  const stamped = (created: string) => `---\ntemplate: reading\ncreated: "${created}"\n---\n# Read\n`;
+  const files = { 'notes/.github-notes.yaml': MANIFEST, 'notes/ex/.templates/reading.md': READING, 'notes/ex/.templates/meeting.md': '# {{title}}\n\nWith {{who}}.\n', 'notes/ex/kept/registered.md': '# {{title}}\n', 'notes/ex/dune.md': stamped('2026-11-01T08:00:00.000Z'), 'notes/ex/emma.md': stamped('2026-11-10T08:00:00.000Z') };
+  /** How many times the files matching `which` were read; the fixture names a blob by the SHA-1 of its text. */
+  const blobReads = (f: ReturnType<typeof gitlabFixture>, which = /\.templates\/|registered\.md$/) => {
+    const ids = new Set([...f.files].filter(([file]) => which.test(file)).map(([, text]) => createHash('sha1').update(text).digest('hex')));
+    return f.calls.filter(call => call.url.includes('/repository/blobs/') && ids.has(decodeURIComponent(call.url.split('/repository/blobs/')[1].split(/[/?]/)[0]))).length;
+  };
+
+  it('is cached by the content of the template files: a second reader reads none of them, a note edit keeps it, and an edited template is seen at once', async () => {
+    const cache = new MemoryRemoteCache();
+    const f = gitlabFixture(undefined, files, { contentTrees: true });
+    const reader = () => openRemoteRepository(source, 'token', f.request, cache).reader;
+    const first = await reader().templates('ex');
+    expect(first.map(template => [template.id, template.name])).toEqual([['registered', 'Registered'], ['meeting', 'meeting'], ['reading', 'Reading']]);
+    const cold = blobReads(f);
+    expect(cold).toBe(3);
+
+    expect(await reader().templates('ex')).toEqual(first);
+    expect(blobReads(f)).toBe(cold);
+    // Another commit of the notebook's notes leaves the template files, and so the cached list, as they were.
+    f.files.set('notes/ex/a.md', '# Alpha, edited\n');
+    f.setHead('c'.repeat(40));
+    expect(await reader().templates('ex')).toEqual(first);
+    expect(blobReads(f)).toBe(cold);
+
+    f.files.set('notes/ex/.templates/reading.md', '---\ntemplate:\n  name: Changed\n---\n# {{title}}\n');
+    f.setHead('d'.repeat(40));
+    expect((await reader().templates('ex')).map(template => template.name)).toEqual(['Registered', 'meeting', 'Changed']);
+    expect(blobReads(f, /reading\.md$/)).toBe(1);
+    // A manifest-registered template lies outside .templates/: its own file's content keys it.
+    f.files.set('notes/ex/kept/registered.md', '---\ntemplate:\n  description: Now described\n---\n# {{title}}\n');
+    f.setHead('e'.repeat(40));
+    expect((await reader().templates('ex'))[0]).toMatchObject({ id: 'registered', description: 'Now described' });
+  });
+
+  it('carries each template’s last use from the notes index, reading no note body for it once the index is cached', async () => {
+    const cache = new MemoryRemoteCache();
+    const f = gitlabFixture(undefined, files, { contentTrees: true });
+    const reader = () => openRemoteRepository(source, 'token', f.request, cache).reader;
+    expect((await reader().listedTemplates('ex')).map(template => [template.id, template.lastUsed])).toEqual([['registered', null], ['meeting', null], ['reading', '2026-11-10T08:00:00.000Z']]);
+    const notes = /^notes\/ex\/[^.]/;
+    const cold = blobReads(f, notes);
+    expect(cold).toBeGreaterThan(0);
+    expect((await reader().listedTemplates('ex')).map(template => template.lastUsed)).toEqual([null, null, '2026-11-10T08:00:00.000Z']);
+    expect(blobReads(f, notes)).toBe(cold);
+    // A note created from a template since then moves its last use.
+    f.files.set('notes/ex/frankenstein.md', stamped('2026-11-12T08:00:00.000Z'));
+    f.setHead('c'.repeat(40));
+    expect((await reader().listedTemplates('ex')).find(template => template.id === 'reading')?.lastUsed).toBe('2026-11-12T08:00:00.000Z');
+    expect((await reader().template('ex', 'reading')).raw).toBe(READING);
   });
 });
 

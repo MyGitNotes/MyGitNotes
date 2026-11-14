@@ -288,6 +288,81 @@ export function describeNoteTemplate(notebook: Pick<NotebookConfig, 'id' | 'root
   return { notebookId: notebook.id, id: entry.id, name: entry.title ?? settings.name ?? entry.id, ...(settings.description ? { description: settings.description } : {}), source: entry.source, file: `${notebook.root}/${entry.file}`, ...(settings.path ? { path: settings.path } : {}), placeholders: templatePlaceholders(parsed) };
 }
 
+/** A template as `list_templates` answers it. */
+export interface ListedNoteTemplate extends NoteTemplateInfo {
+  /** When a note was last created from the template, as an ISO date; null while no note of its notebook is stamped with its id. */
+  lastUsed: string | null;
+  /** The template file's text, frontmatter included, when the one template was asked for by id. */
+  content?: string;
+}
+
+/** How many templates `list_templates` returns unless asked, and the most it returns. */
+export const TEMPLATE_LIST_LIMIT = 20;
+export const TEMPLATE_LIST_MAX = 100;
+
+export interface TemplateList<T extends ListedNoteTemplate = ListedNoteTemplate> {
+  templates: T[];
+  /** The templates that matched, before the limit. */
+  total: number;
+  truncated: boolean;
+}
+
+/** A frontmatter date as milliseconds; YAML reads an unquoted one as a date and a quoted one as text. */
+function dateOf(value: unknown): number | undefined {
+  const time = value instanceof Date ? value.getTime() : typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  return Number.isNaN(time) ? undefined : time;
+}
+
+/**
+ * When each template of a notebook was last used, by template id: the newest `created` (else `updated`) date among the
+ * notes whose frontmatter says `template: <id>`. It reads frontmatter only, so a notes index answers it without a body.
+ */
+export function templateLastUse(notes: Iterable<{ metadata: NoteMetadata; }>): Record<string, string> {
+  const newest = new Map<string, number>();
+  for (const { metadata } of notes) {
+    // In a note `template` is the id it was created from; the block of that name belongs to a template file.
+    const id = scalar(metadata.template);
+    const used = dateOf(metadata.created) ?? dateOf(metadata.updated);
+    if (id === undefined || used === undefined) continue;
+    if (used > (newest.get(id) ?? -Infinity)) newest.set(id, used);
+  }
+  return Object.fromEntries([...newest].map(([id, used]) => [id, new Date(used).toISOString()]));
+}
+
+/** The most recently used first, then the never-used by name. */
+function byLastUse(a: ListedNoteTemplate, b: ListedNoteTemplate): number {
+  if (a.lastUsed !== b.lastUsed) return a.lastUsed === null ? 1 : b.lastUsed === null ? -1 : b.lastUsed.localeCompare(a.lastUsed);
+  return a.name.localeCompare(b.name) || a.notebookId.localeCompare(b.notebookId) || a.id.localeCompare(b.id);
+}
+
+function listLimit(limit: unknown): number {
+  if (limit === undefined || limit === null) return TEMPLATE_LIST_LIMIT;
+  if (typeof limit !== 'number' || !Number.isFinite(limit)) throw new TemplateError(`limit must be a number from 1 to ${TEMPLATE_LIST_MAX}.`);
+  return Math.min(TEMPLATE_LIST_MAX, Math.max(1, Math.floor(limit)));
+}
+
+/**
+ * The templates a caller asked for: the ones whose id, name or description holds every word of `query` (whatever the
+ * case), the most recently used first, cut at `limit`.
+ */
+export function listTemplates<T extends ListedNoteTemplate>(templates: readonly T[], request: { query?: unknown; limit?: unknown; } = {}): TemplateList<T> {
+  if (request.query !== undefined && request.query !== null && typeof request.query !== 'string') throw new TemplateError('query must be text.');
+  const words = (request.query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+  const matched = templates.filter(template => {
+    const text = `${template.id}\n${template.name}\n${template.description ?? ''}`.toLowerCase();
+    return words.every(word => text.includes(word));
+  }).sort(byLastUse);
+  const listed = matched.slice(0, listLimit(request.limit));
+  return { templates: listed, total: matched.length, truncated: listed.length < matched.length };
+}
+
+/** The lists of several repositories, each already filtered and cut at `limit`, as one list in the same order. */
+export function mergeTemplateLists<T extends ListedNoteTemplate>(lists: readonly TemplateList<T>[], limit?: unknown): TemplateList<T> {
+  const templates = lists.flatMap(list => list.templates).sort(byLastUse).slice(0, listLimit(limit));
+  const total = lists.reduce((sum, list) => sum + list.total, 0);
+  return { templates, total, truncated: templates.length < total };
+}
+
 /** The frontmatter and body a new template named `name` starts with. */
 export function starterTemplate(name: string): { metadata: NoteMetadata; content: string; } {
   return { metadata: { template: { name, description: '' } }, content: '# {{title}}\n' };
@@ -302,6 +377,8 @@ export function templateFromNote(note: { title: string; metadata: NoteMetadata; 
 
 /** What a caller asks when it creates a note from a template: the caller's `content` and `metadata` win over the template's. */
 export interface TemplateNoteRequest {
+  /** The template's id, which the note records as `template`. */
+  templateId: string;
   /** The note's repository-relative path; left out, the template's `path` pattern names it. */
   path?: string;
   title?: string;
@@ -327,6 +404,7 @@ export interface TemplateNote {
 /**
  * The note a template makes for a caller that fills it by name, as `save_note` with `template` does. The title is the
  * given one (`title`, else the `title` value), else the file name of the path; a path the pattern cannot fill is refused.
+ * Its frontmatter carries `template: <id>`, which dates the template's last use.
  */
 export function noteFromTemplate(notebook: Pick<NotebookConfig, 'root'>, template: { metadata: NoteMetadata; content: string; }, request: TemplateNoteRequest): TemplateNote {
   const values = templateValues(template, request.values);
@@ -338,7 +416,8 @@ export function noteFromTemplate(notebook: Pick<NotebookConfig, 'root'>, templat
   const path = request.path ?? `${notebook.root}/${patterned}`;
   const title = given ?? path.slice(path.lastIndexOf('/') + 1).replace(NOTE_FILE, '');
   const rendered = renderNoteTemplate(template, { ...clock, title, values });
-  const note = { metadata: { ...rendered.metadata, ...request.metadata }, content: request.content ?? rendered.content };
+  // The note records the template it came from; in a note `template` is this id, never the block of a template file.
+  const note = { metadata: { ...rendered.metadata, ...request.metadata, template: request.templateId }, content: request.content ?? rendered.content };
   // The caller's own body or frontmatter may have replaced the text a placeholder stood in.
   const left = new Set<string>();
   const scan = (text: string) => {
