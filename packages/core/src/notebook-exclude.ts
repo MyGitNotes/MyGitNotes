@@ -8,9 +8,9 @@ export const EXCLUDE_LIMIT = 100;
  * expanded and the same pattern counted once) may hold together. Every path of the notebook is matched against all of
  * them on each list, search and folder walk, at a cost of at most this many character steps per character of the path
  * (`path-glob.ts`). It is what one glob alone may expand to, so a notebook's whole list costs no more than its slowest
- * glob could: at worst about a tenth of a second over a thousand 300-character paths, and two or three times that on a
- * busy machine, which twice the limit would push toward half a second. Lists people write, a few globs of tens of
- * characters, stay far below it.
+ * glob could. The cost grows linearly with the path; measured worst cases are about a tenth of a second over a thousand
+ * 300-character paths for brace-heavy lists, and up to about 0.7 s over a thousand paths 150 folders deep for 200
+ * distinct `**\/X` globs, more on a busy machine. Lists people write, a few globs of tens of characters, stay far below it.
  */
 export const EXCLUDE_EXPANSION_LIMIT = 1024;
 

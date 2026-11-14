@@ -165,8 +165,9 @@ path's. What a backtracking matcher would loop on is not in the dialect: extende
 the product is what is capped), and a list holds at most 100 globs. Every path of a notebook is matched against the
 workspace's globs and its own together, so those are bounded together too: their distinct expanded patterns (the same
 pattern written twice, or reached through two groups, counts once) hold at most 1024 characters, what one glob alone
-may expand to. The slowest list this allows matches a thousand 300-character paths in about a tenth of a second and a
-4,000-character path in about a millisecond.
+may expand to. The cost grows linearly with the path: measured worst cases are about a tenth of a second for a thousand
+300-character paths against a brace-heavy list, and up to about 0.7 s for a thousand paths 150 folders deep against 200
+distinct `**/X` globs (a 51,000-character path about 0.1 s). Lists people write stay far below these.
 
 A glob that is not a string, is blank, begins with `!` or `/`, holds `..`, `.`, an empty segment, a backslash or a
 control character, is outside the dialect or past a limit (an unclosed `[` or `{`, a parenthesis, more than 64
