@@ -1,10 +1,12 @@
 import path from 'node:path';
-import { ClassifiedResource, NotebookConfig, WorkspaceConfig } from './types.js';
+import { ClassifiedResource, NotebookConfig, ResourceType, WorkspaceConfig } from './types.js';
 import { LEGACY_WORKSPACE_CONFIG_FILENAME, WORKSPACE_CONFIG_FILENAME } from './config.js';
 import { workspaceAgentKind } from './workspace-agent.js';
 import { isCompilationPath } from './compilation.js';
 import { isOutlinePath } from './outline.js';
 import { templateFileNotebook } from './note-template.js';
+import { fileKind } from './file-kind.js';
+import { isExcludedPath } from './notebook-exclude.js';
 
 const HIDDEN_PATTERNS = [
   /(?:^|\/)\.[^/]/, // Any dotfile/dotdirectory (.git, .github, etc.)
@@ -18,6 +20,17 @@ const HIDDEN_PATTERNS = [
 
 /** The media a note may reach through a path alias such as `@/assets/...`. */
 const ALIASED_MEDIA_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif', '.ico', '.pdf', '.mp4', '.webm', '.m4a', '.mp3', '.ogg'];
+
+const FILE_RESOURCE_BY_KIND: Partial<Record<ReturnType<typeof fileKind>, ResourceType>> = { text: 'text_file', pdf: 'pdf_file', html: 'html_file' };
+
+/** The resource types of the files of a notebook that are not notes. */
+export const FILE_RESOURCE_TYPES: readonly ResourceType[] = ['text_file', 'pdf_file', 'html_file', 'other_file'];
+
+/**
+ * The resource types the note routes and tools read, write and delete: every other path, an image, an asset, an agent's
+ * file or one the manifest excludes included, is refused as a note, as a remote workspace refuses it.
+ */
+export const NOTE_RESOURCE_TYPES: readonly ResourceType[] = ['note', 'outline', 'compilation', 'template'];
 
 /**
  * Checks if a relative path matches standard hidden / noise criteria.
@@ -81,23 +94,27 @@ export function classifyResource(relPath: string, config?: WorkspaceConfig | nul
           return { path: normalized, type: 'agent_doc', notebookId: nb.id };
         }
 
-        // Compilations inside notebook
-        if (isCompilationPath(normalized)) return { path: normalized, type: 'compilation', notebookId: nb.id };
-
-        if (isOutlinePath(normalized)) return { path: normalized, type: 'outline', notebookId: nb.id };
-
-        // Regular notes inside notebook
         const ext = path.posix.extname(normalized).toLowerCase();
-        if (['.md', '.markdown', '.mdx', '.txt'].includes(ext)) {
-          return { path: normalized, type: 'note', notebookId: nb.id };
+        // A path the manifest excludes holds no notes, compilations or outlines; its files are only files.
+        if (!isExcludedPath(subPath, nb.excluded ?? nb.exclude)) {
+          // Compilations inside notebook
+          if (isCompilationPath(normalized)) return { path: normalized, type: 'compilation', notebookId: nb.id };
+
+          if (isOutlinePath(normalized)) return { path: normalized, type: 'outline', notebookId: nb.id };
+
+          // Regular notes inside notebook
+          if (['.md', '.markdown', '.mdx', '.txt'].includes(ext)) {
+            return { path: normalized, type: 'note', notebookId: nb.id };
+          }
         }
 
-        // Other files within notebook (images/assets or other documents)
+        // Images inside the notebook but outside its assets folder
         if (['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp'].includes(ext)) {
           return { path: normalized, type: 'asset', notebookId: nb.id };
         }
 
-        return { path: normalized, type: 'note', notebookId: nb.id };
+        // Every other file a note can link: read as text, shown as a PDF or a sandboxed page, or downloaded.
+        return { path: normalized, type: FILE_RESOURCE_BY_KIND[fileKind(normalized)] ?? 'other_file', notebookId: nb.id };
       }
 
       // Check if file is an asset under a notebook's pathAliases target (e.g. blog/src/assets/**)

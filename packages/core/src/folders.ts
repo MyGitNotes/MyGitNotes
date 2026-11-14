@@ -4,6 +4,8 @@ import YAML from 'yaml';
 import { FolderItem, FolderMetadata, NotebookConfig } from './types.js';
 import { resolveSafePath } from './path-guard.js';
 import { loadWorkspaceConfig } from './config.js';
+import { isExcludedPath } from './notebook-exclude.js';
+import { isNotebookPath } from './notebook-path.js';
 
 export function parseFolderConfig(raw: string, fallback: string, filename: string): { title: string; order: number; description?: string; } {
   try {
@@ -15,10 +17,15 @@ export function parseFolderConfig(raw: string, fallback: string, filename: strin
   }
 }
 
+/**
+ * Whether `relative`, a path inside `notebook`, may hold notes: it is a notebook path and no `exclude` glob of the
+ * manifest takes it.
+ */
 export function isNotebookContent(relative: string, notebook: NotebookConfig): boolean {
-  const assetDir = (notebook.assets || 'assets').replace(/\\/g, '/').replace(/\/$/, '');
-  return !relative.split('/').some(p => p.startsWith('.') || p.toLowerCase() === 'agents.md' || ['node_modules', 'dist', 'build'].includes(p)) && relative !== assetDir && !relative.startsWith(`${assetDir}/`) && !/(^|\/)docs\/agent(\/|$)/.test(relative);
+  return isNotebookPath(relative, notebook) && !isExcludedPath(relative, notebook.excluded ?? notebook.exclude);
 }
+
+export { isNotebookPath };
 
 export function sortFolders(folders: FolderItem[]): FolderItem[] {
   const sorted: FolderItem[] = [];

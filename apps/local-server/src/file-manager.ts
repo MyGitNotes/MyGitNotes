@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { getCurrentBranch } from '@mygitnotes/git';
-import { assetHash, assetInfo, assetRoot, editableFile, type FileCommand, FileCommandSchema, filePresentation, type FileSnapshot, isCompilationPath, isNotebookContent, managedNotebook, type NotebookConfig, parseFolderConfig, planFileChange, type RemoteChange, type RemoteSnapshot, type RemoteSource, SourceError, stampIsRacy, versionFileChanges, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
+import { assetHash, assetInfo, assetRoot, editableFile, type FileCommand, FileCommandSchema, filePresentation, type FileSnapshot, isCompilationPath, isNotebookContent, managedNotebook, type NotebookConfig, parseFolderConfig, planFileChange, rawFileHeaders, type RemoteChange, type RemoteSnapshot, type RemoteSource, SourceError, stampIsRacy, versionFileChanges, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
 import { defaultRepository, eachRepository, notebookRepository, noteRepository, type RepositoryHandle } from './request-workspace.js';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { regularPath, writeFileAtomicSync } from './workspace-files.js';
@@ -296,9 +296,11 @@ export function createFileManagerRouter(): Router {
       if (!state) throw new SourceError('File unavailable.', 404);
       if (!state.index.files.has(file)) throw new SourceError('File unavailable.', 404);
       bytes ??= await state.read(file);
-      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      // Text goes out as plain text, a PDF as an inline PDF, and a page or any other file under the sandbox (see `rawFileHeaders`).
+      const headers = rawFileHeaders(file);
+      res.setHeader('Content-Security-Policy', headers.contentSecurityPolicy);
       res.removeHeader('X-Frame-Options');
-      res.type(path.extname(file) || 'application/octet-stream');
+      res.type(headers.contentType ?? (path.extname(file) || 'application/octet-stream'));
       if (req.query.download === '1') res.attachment(path.posix.basename(file));
       res.send(bytes);
     } catch (error) {

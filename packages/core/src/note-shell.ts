@@ -1,5 +1,4 @@
 import path from 'node:path';
-import picomatch from 'picomatch';
 import { RemoteEntry, RemoteSource, SourceError } from './remote-source.js';
 import { isNotebookContent, serializeFolderConfig } from './folders.js';
 import { NotebookConfig } from './types.js';
@@ -11,6 +10,7 @@ import type { CommitScope } from './workspace-documents.js';
 import { bookmarkRelocationChange } from './bookmark-relocation.js';
 import { relocateLinks } from './folder-plan.js';
 import { decodeTextFile } from './file-manager.js';
+import { compileGlobs, GLOB_LENGTH_LIMIT, GlobError } from './path-glob.js';
 import YAML from 'yaml';
 
 type Args = Record<string, unknown>;
@@ -26,9 +26,18 @@ function integer(args: Args, key: string, fallback: number, min: number, max: nu
   if (!Number.isInteger(value) || Number(value) < min || Number(value) > max) throw new SourceError(`${key} must be an integer from ${min} to ${max}.`);
   return Number(value);
 }
+/**
+ * A matcher for a glob an agent passed, in the bounded dialect of `path-glob.ts`: `**`, `*`, `?`, `[ab]` and `{a,b}`, with
+ * no extended glob or group, and a wildcard never matching the dot that begins a name.
+ */
 export function matchNoteGlob(pattern: string) {
-  if (!pattern || pattern.length > 256 || pattern.startsWith('/') || pattern.includes('\\') || pattern.split('/').includes('..')) throw new SourceError('Use a repository-relative glob of at most 256 characters.');
-  return picomatch(pattern, { dot: false, strictBrackets: true, nonegate: true });
+  if (!pattern || pattern.length > GLOB_LENGTH_LIMIT || pattern.startsWith('/') || pattern.includes('\\') || pattern.split('/').includes('..')) throw new SourceError(`Use a repository-relative glob of at most ${GLOB_LENGTH_LIMIT} characters.`);
+  try {
+    return compileGlobs([pattern], { dot: false }).matches;
+  } catch (error) {
+    if (error instanceof GlobError) throw new SourceError(`Unsupported glob: ${error.message}.`);
+    throw error;
+  }
 }
 export function textLines(content: string): string[] {
   return content.match(/[^\n]*\n|[^\n]+$/g) || [];

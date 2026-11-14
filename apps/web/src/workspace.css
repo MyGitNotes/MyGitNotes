@@ -31,6 +31,7 @@
 .workspace-dialog-heading h2 { font-size: 17px; font-weight: 600; }
 .workspace-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .workspace-asset-preview img { display: block; max-width: 100%; max-height: 60dvh; object-fit: contain; margin: auto; }
+.workspace-file-text { margin: 0; max-height: 60dvh; overflow: auto; padding: 12px; background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-panel); font-size: 12px; line-height: 1.5; white-space: pre; tab-size: 2; }
 .asset-location { color: var(--color-muted); overflow-wrap: anywhere; font-size: 11px; }
 .workspace-link-error { position: fixed; z-index: 100; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 12px 16px; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-line); border-radius: var(--radius-panel); box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 16px; max-width: calc(100vw - 32px); }
 [data-workspace-link] { cursor: pointer; }

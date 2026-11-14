@@ -1268,6 +1268,7 @@ export const en = {
   'links.missing': 'The linked item or heading was not found.',
   'links.loadFailed': 'Could not load the linked resource.',
   'links.locateAsset': 'Show in library',
+  'links.fileTruncated': 'Showing the first {count} characters. Open the original file for the rest.',
   'common.close': 'Close',
   'common.readOnly': 'Read-only',
   'common.working': 'Working…',

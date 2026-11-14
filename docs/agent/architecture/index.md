@@ -121,6 +121,83 @@ Choosing a sort saves it for the current notebook only, and switching notebooks 
 (toolbar, phone filter sheet, mobile list sort, Kanban board and columns) list `metadata.<key>` in both orders,
 labelled by its key, when the notebook's `default_sort` or the sort in force names one.
 
+## Notes, files and `exclude`
+
+A note is a Markdown or text file (`.md`, `.markdown`, `.mdx`, `.txt`) in a notebook, outside its assets folder, dot
+names, `node_modules`, `dist`, `build`, `AGENTS.md` and `docs/agent`. Every other file of a notebook is a file: it is in
+no note list, search, catalog, graph, agenda or MCP listing, and `classifyResource` names its kind from the extension or a
+well-known name (`fileKind`, `packages/core/src/file-kind.ts`): `text_file` (sql, yml, json, csv, ts, js, py, sh, xml, log,
+Makefile, Dockerfile and the like), `pdf_file`, `html_file`, or `other_file`.
+
+A relative link from a note to such a file opens it where the note shows, in the web app's read-only file viewer
+(`WorkspaceLinks`), which reads the file through `/api/files/read` and shows text as text; a file that is not text, a PDF
+or a page has an *Open original* link to `/api/files/raw`. A link never reaches a path the notebook does not reach: the
+web app refuses dot names, dependency and build folders, agent files and assets before asking, and the file manager keeps
+its own checks. The raw routes (`/raw-assets/<path>?notebook=`, `/api/files/raw`) send a text file as `text/plain;
+charset=utf-8` whatever its extension names, a PDF as `application/pdf` under `default-src 'none'` (the browser's PDF
+viewer refuses a document under the `sandbox` directive, and the bytes are only ever read as a PDF), and a page or any
+other file under `default-src 'none'; sandbox`, so a page runs no script and shares no origin with the app
+(`rawFileHeaders`). Every one of these policies ends in `frame-ancestors 'self'`: the route lifts `X-Frame-Options` so
+the app's viewers can show a file, and only the app's own pages may frame it. Plain text for a file that looks like a
+page, and a PDF outside the sandbox, are safe only while the browser may not guess another type, which the app-wide
+`X-Content-Type-Options: nosniff` forbids; the raw-route tests assert that header on text, PDF and page answers. Local
+and remote (GitHub, GitLab) workspaces share one router (`createFileManagerRouter`), so both follow the same rules and
+checks.
+
+The manifest may list globs of paths that are not notes, for a repository whose Markdown is generated output or
+analysis rather than notes:
+
+```yaml
+exclude:            # every notebook
+  - "**/analysis/**"
+  - "**/*.draft.md"
+notebooks:
+  - id: docs
+    root: docs
+    exclude:        # this notebook, after the workspace's
+      - "reports/**"
+```
+
+Globs are matched, case-sensitively, against the path inside the notebook (no notebook root, `/` separators, no leading
+`./`), in the dialect of `packages/core/src/path-glob.ts`, which the note shell's glob shares: `**` as a whole segment
+crosses folders, `*` and `?` stay inside one name (so `*.md` names top-level files only, `**/*.md` every one), `[ab]`,
+`[a-z]` and `[!a]` match one character, `{a,b}` is either alternative, every other character is itself, and a dot name
+is matched like any other. A path is excluded when a glob matches it or a folder above it, so `**/analysis` takes
+everything under every `analysis` folder. A glob ending in `/` names a folder and is read without it: `drafts/` is
+`drafts`, the folder and everything under it. A glob cannot tell a file from a folder, so `a/**` takes what `a` takes
+and `*/**` takes top-level files too; `*/*` is what lies inside the top-level folders.
+
+The manifest and the file names of a repository are written by whoever can push to it, so matching is bounded
+whatever they hold. No glob becomes a regular expression: a name is matched by a walk that returns only to the last
+`*`, and segments by tracking which of them the path has reached, so a pattern costs at most its length times the
+path's. What a backtracking matcher would loop on is not in the dialect: extended globs (`!(a)`, `*(a)`, `+(a)`,
+`?(a)`, `@(a)`), parentheses, `|`, ranges such as `{1..3}`, escapes, and `**` joined to a name. A glob holds at most
+256 characters, its groups expand to at most 64 alternatives of 1024 characters together (`{a,b}{c,d}` multiplies, so
+the product is what is capped), and a list holds at most 100 globs. Every path of a notebook is matched against the
+workspace's globs and its own together, so those are bounded together too: their distinct expanded patterns (the same
+pattern written twice, or reached through two groups, counts once) hold at most 1024 characters, what one glob alone
+may expand to. The cost grows linearly with the path: measured worst cases are about a tenth of a second for a thousand
+300-character paths against a brace-heavy list, and up to about 0.7 s for a thousand paths 150 folders deep against 200
+distinct `**/X` globs (a 51,000-character path about 0.1 s). Lists people write stay far below these.
+
+A glob that is not a string, is blank, begins with `!` or `/`, holds `..`, `.`, an empty segment, a backslash or a
+control character, is outside the dialect or past a limit (an unclosed `[` or `{`, a parenthesis, more than 64
+alternatives), a list of more than 100, or a workspace list, or a notebook's together with the workspace's, past the
+1024 characters makes the manifest fail with a `ConfigValidationError` naming the list, as for any other invalid field. `exclude` and `notebooks[].exclude` are written back as written; the globs a notebook
+applies (`NotebookConfig.excluded`, workspace first) are derived on read and never saved.
+
+An excluded path is not a note, an outline or a compilation, and its folders are not note folders, but it stays a file of its
+notebook: a link to it opens the file as above, and the file manager lists and reads it. An excluded `.md` is
+`text_file` and shown as plain text; its images stay assets. `isNotebookContent` is false for excluded paths and
+`isNotebookPath` is true, so every listing, scan, folder walk, shell tool and history path that already asks
+`isNotebookContent` follows with no further change. Without `exclude` nothing changes, and `.txt` stays a note.
+
+No note route or note tool takes a file kind (`FILE_RESOURCE_TYPES`), so an excluded path or a `.sql` file is read
+through the file routes only, on every kind of workspace. A remote workspace refuses it in `RemoteSource.note` and
+`save`; a local one in `/api/notes/read`, save, delete and restore (`assertNote`, `local-notes.ts`) and in the local
+MCP server's `read_note`, `save_note` and `delete_note` (`assertNoteResource`), each with `Path is not a configured
+note.` and, over HTTP, status 403. The manifest editor shows `exclude` as written and never the derived `excluded`.
+
 ## Notebook statuses and visibility
 
 Each manifest notebook accepts an optional ordered `statuses` array, for example

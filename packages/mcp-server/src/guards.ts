@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { getCurrentBranch } from '@mygitnotes/git';
-import { isVersionFile, resolveSafePath, workspaceDocument } from '@mygitnotes/core';
+import { classifyResource, isVersionFile, NOTE_RESOURCE_TYPES, resolveSafePath, type WorkspaceConfig, workspaceDocument } from '@mygitnotes/core';
 
 export class MCPGuardError extends Error {
   constructor(message: string) {
@@ -28,13 +28,19 @@ export function assertSafeRepoPath(repoRoot: string, relPath: string): string {
   return resolveSafePath(repoRoot, relPath);
 }
 
-/** Intentional Git document edits use document APIs, never note mutation handlers. */
-export function assertNoteResource(repoRoot: string, relPath: string): string {
+/**
+ * Intentional Git document edits use document APIs, never note mutation handlers. With the manifest, every path that is
+ * not a note, an outline, a compilation or a template (a text file, a PDF, a page, an image, an asset, an agent's file,
+ * and every path the manifest excludes) is refused too, in the words the hosted server uses; without one there are no
+ * notebooks to tell them by.
+ */
+export function assertNoteResource(repoRoot: string, relPath: string, config?: WorkspaceConfig | null): string {
   const absolute = assertSafeRepoPath(repoRoot, relPath);
   let ancestor = absolute;
   while (!fs.existsSync(ancestor)) ancestor = path.dirname(ancestor);
   const real = path.resolve(fs.realpathSync(ancestor), path.relative(ancestor, absolute));
   const relative = path.relative(fs.realpathSync(repoRoot), real).split(path.sep).join('/');
   if (workspaceDocument(relative) || isVersionFile(relative)) throw new MCPGuardError('Workspace metadata is protected.');
+  if (config && !NOTE_RESOURCE_TYPES.includes(classifyResource(relative, config).type)) throw new MCPGuardError('Path is not a configured note.');
   return absolute;
 }

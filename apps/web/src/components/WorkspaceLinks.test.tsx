@@ -13,6 +13,12 @@ vi.mock('react-router-dom', async importOriginal => ({ ...(await importOriginal<
 let client: QueryClient;
 let windowOpen: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
   navigate.mockClear();
   windowOpen = vi.fn();
   vi.stubGlobal('open', windowOpen);
@@ -200,4 +206,77 @@ it('opens the original of an asset of this site named by an absolute URL the sam
 it('still sends no Referer to an original that lives on another site', async () => {
   const original = await originalLink('https://cdn.example/pic.png');
   expect(original.getAttribute('rel')).toBe('noopener noreferrer');
+});
+
+/** A fetch stand-in answering the routes a link to a path reads: no note, no folder of notes, no asset, and the file manager's answer for `files`. */
+function stubFileRoutes(files: Record<string, { content: string | null; } | number>) {
+  const reads: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string, _init?: RequestInit) => {
+      const url = String(input);
+      const respond = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
+      if (url.startsWith('/api/notes/lookup')) return respond({ revisions: {}, notes: [] });
+      if (url.startsWith('/api/notes/query')) return respond({ revisions: {}, notes: [] });
+      if (url.startsWith('/api/assets')) return respond({ assets: [] });
+      if (url.startsWith('/api/files/read')) {
+        const file = new URL(url, 'http://localhost').searchParams.get('path')!;
+        reads.push(file);
+        const answer = files[file];
+        return typeof answer === 'number' || answer === undefined ? respond({ error: 'File unavailable.' }, answer ?? 404) : respond({ path: file, revision: 'r', ...answer });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }),
+  );
+  return reads;
+}
+/* eslint-disable react/no-children-prop -- The component test passes children explicitly as part of the tested props contract. */
+const fileLink = (href: string) => createElement(WorkspaceLinks, { notebooks: [{ id: 'one', title: 'One', root: 'notes' }], folders: [], onOpenNote: () => {}, children: createElement('span', { tabIndex: 0, 'data-testid': 'link', 'data-workspace-link': href, 'data-source-path': 'notes/guide/a.md' }, 'Link') });
+/* eslint-enable react/no-children-prop */
+
+it('opens a link to a text file of the notebook in a read-only viewer with the file as plain text', async () => {
+  const { setNoteQueryScope } = await import('../lib/use-note-queries.js');
+  setNoteQueryScope({ sourceId: 'test:file-links', revisions: {}, repositories: {}, drafts: {} });
+  const reads = stubFileRoutes({ 'notes/db/schema.sql': { content: 'select "<b>one</b>";\n' } });
+  const view = render(fileLink('../db/schema.sql'), { wrapper });
+  await act(async () => fireEvent.click(view.getByTestId('link')));
+  expect(reads).toEqual(['notes/db/schema.sql']);
+  const dialog = await view.findByRole('dialog');
+  expect(dialog).toHaveTextContent('schema.sql');
+  expect(dialog).toHaveTextContent('notes/db/schema.sql');
+  // The text is shown as text, never parsed as markup, and cannot be edited.
+  expect(dialog.querySelector('pre')?.textContent).toBe('select "<b>one</b>";\n');
+  expect(dialog.querySelector('pre b')).toBeNull();
+  expect(dialog.querySelector('textarea, [contenteditable="true"]')).toBeNull();
+  expect(dialog.querySelector('a[href="/api/files/raw?notebookId=one&path=notes%2Fdb%2Fschema.sql"]')).not.toBeNull();
+  expect(windowOpen).not.toHaveBeenCalled();
+  expect(navigate).not.toHaveBeenCalled();
+});
+
+it('offers the original file for a linked file that is not text, and says a missing or protected target is missing', async () => {
+  const { setNoteQueryScope } = await import('../lib/use-note-queries.js');
+  setNoteQueryScope({ sourceId: 'test:file-links', revisions: {}, repositories: {}, drafts: {} });
+  const reads = stubFileRoutes({ 'notes/guide/report.docx': { content: null }, 'notes/guide/gone.sql': 404, 'notes/guide/locked.sql': 403 });
+  const view = render(fileLink('report.docx'), { wrapper });
+  await act(async () => fireEvent.click(view.getByTestId('link')));
+  const dialog = await view.findByRole('dialog');
+  expect(dialog.querySelector('pre')).toBeNull();
+  expect(dialog.querySelector('a[href="/api/files/raw?notebookId=one&path=notes%2Fguide%2Freport.docx"]')).not.toBeNull();
+  cleanup();
+  for (const href of ['gone.sql', 'locked.sql']) {
+    const missing = render(fileLink(href), { wrapper });
+    await act(async () => fireEvent.click(missing.getByTestId('link')));
+    expect(await missing.findByRole('alert')).toHaveTextContent('The linked item or heading was not found.');
+    expect(missing.queryByRole('dialog')).toBeNull();
+    cleanup();
+  }
+  // A protected path is never asked for: dot names, dependency folders, agent files.
+  const before = reads.length;
+  for (const href of ['.private/x.sql', 'node_modules/x/index.js', '../AGENTS.md', 'docs/agent/x.md']) {
+    const protectedLink = render(fileLink(href), { wrapper });
+    await act(async () => fireEvent.click(protectedLink.getByTestId('link')));
+    expect(await protectedLink.findByRole('alert')).toHaveTextContent('The linked item or heading was not found.');
+    cleanup();
+  }
+  expect(reads.length).toBe(before);
 });

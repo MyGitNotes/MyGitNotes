@@ -4,7 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { AssetItem, FolderItem, NotebookConfig } from '../lib/types.js';
-import { fetchAssets } from '../lib/api.js';
+import { ApiError, fetchAssets } from '../lib/api.js';
+import { rawFileUrl, readFile } from '../lib/files-api.js';
+import { isNotebookPath } from '@mygitnotes/core/notebook-path';
 import { noteLookupOptions, notePathsOptions, useNoteQueryScope } from '../lib/use-note-queries.js';
 import { notebookRoute, noteRoute, parseWorkspaceRoute } from '../lib/routes.js';
 import { headingSlug, notebookOfPath, resolveWorkspaceHref } from '../lib/workspace-links.js';
@@ -15,6 +17,9 @@ import { keyedLink, linkAliases, linkedNote, linkScope, useLinkedNotePreload } f
 import { DEMO_BASE, useDemo } from '../lib/demo.js';
 import { newTabRel } from '../lib/same-origin.js';
 import { useNoteYouTubeEmbed } from '../lib/use-note-youtube-embed.js';
+
+/** Characters of a linked text file the viewer shows; the original file holds the rest. */
+const FILE_PREVIEW_LIMIT = 200_000;
 
 type BeforeNavigate = () => Promise<boolean>;
 const Context = createContext({ registerBeforeNavigate: (_handler: BeforeNavigate): () => void => () => {} });
@@ -41,6 +46,8 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
   useLinkedNotePreload(surfaceRef, notebooks);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<{ asset: AssetItem; notebookId: string; } | null>(null);
+  /** A linked file of the notebook that is no note or asset: its text when it is text, null when it is not. */
+  const [filePreview, setFilePreview] = useState<{ name: string; path: string; rawUrl: string; text: string | null; truncated: boolean; } | null>(null);
   const registerBeforeNavigate = useCallback((handler: BeforeNavigate) => {
     before.current.add(handler);
     return () => {
@@ -152,6 +159,17 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
           return;
         }
       }
+      // Any other file inside the notebook opens read-only; the file manager decides what is there to read.
+      if (link.kind === 'path' && notebook && link.path.startsWith(`${notebook.root}/`) && isNotebookPath(link.path.slice(notebook.root.length + 1), notebook)) {
+        try {
+          const { content } = await readFile(notebook.id, link.path);
+          const text = typeof content === 'string' ? content : null;
+          setFilePreview({ name: link.path.split('/').pop() || link.path, path: link.path, rawUrl: rawFileUrl(notebook.id, link.path), text: text === null ? null : text.slice(0, FILE_PREVIEW_LIMIT), truncated: text !== null && text.length > FILE_PREVIEW_LIMIT });
+        } catch (error) {
+          setError(error instanceof ApiError && (error.status === 404 || error.status === 403) ? t('links.missing') : t('links.loadFailed'));
+        }
+        return;
+      }
       setError(t('links.missing'));
     } catch {
       setError(t('links.loadFailed'));
@@ -216,6 +234,16 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
               >
                 {t('links.locateAsset')}
               </Button>
+            </div>
+          </WorkspaceDialog>
+        )}
+        {filePreview && (
+          <WorkspaceDialog title={filePreview.name} onClose={() => setFilePreview(null)} className='workspace-asset-preview workspace-file-preview'>
+            <p className='asset-location'>{filePreview.path}</p>
+            {filePreview.text === null ? <p>{t('assets.openToViewFormat')}</p> : <pre className='workspace-file-text' tabIndex={0}>{filePreview.text}</pre>}
+            {filePreview.truncated && <p className='asset-location'>{t('links.fileTruncated', { count: FILE_PREVIEW_LIMIT })}</p>}
+            <div className='workspace-dialog-actions'>
+              <a href={filePreview.rawUrl} target='_blank' rel={newTabRel(filePreview.rawUrl)} className='ui-button'>{t('assets.openOriginal')}</a>
             </div>
           </WorkspaceDialog>
         )}

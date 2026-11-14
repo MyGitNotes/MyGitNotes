@@ -1,6 +1,6 @@
 import { Request, Response, Router } from 'express';
 import fs from 'node:fs';
-import { agentFileAllowed, classifyResource, historyFile, managedNotebook, resolveAgentFile, resolveSafePath, versionedPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig, workspaceDocument } from '@mygitnotes/core';
+import { agentFileAllowed, classifyResource, FILE_RESOURCE_TYPES, historyFile, managedNotebook, resolveAgentFile, resolveSafePath, versionedPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig, workspaceDocument } from '@mygitnotes/core';
 import { changeFile, commitSelectedFiles, commitStagedFiles, fileDiff, generateCommitMessage, getDiff, getGitStatus, getRecentCommits, listChanges, refreshUpstream, stageAndCommit, SyncError, syncWorkspace } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { newVersion } from './note-history.js';
@@ -20,7 +20,7 @@ export function createLocalGitRouter(): Router {
         return true;
       }
       const resource = classifyResource(file, config);
-      return Boolean(managedNotebook(file, config.notebooks)) || Boolean(workspaceDocument(file)) || resource.type === 'workspace_config' || file.startsWith('notes/') && ['note', 'compilation', 'outline', 'asset', 'agent_instruction', 'agent_doc'].includes(resource.type);
+      return Boolean(managedNotebook(file, config.notebooks)) || Boolean(workspaceDocument(file)) || resource.type === 'workspace_config' || file.startsWith('notes/') && ['note', 'compilation', 'outline', 'asset', 'agent_instruction', 'agent_doc', ...FILE_RESOURCE_TYPES].includes(resource.type);
     } catch {
       return false;
     }

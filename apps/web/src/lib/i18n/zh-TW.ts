@@ -1269,6 +1269,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'links.missing': '找不到連結的項目或標題。',
   'links.loadFailed': '無法載入連結的資源。',
   'links.locateAsset': '在資源庫中顯示',
+  'links.fileTruncated': '僅顯示前 {count} 個字元，其餘請開啟原始檔案。',
   'common.close': '關閉',
   'common.readOnly': '唯讀',
   'common.working': '處理中…',

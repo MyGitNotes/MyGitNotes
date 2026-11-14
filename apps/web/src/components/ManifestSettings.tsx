@@ -20,8 +20,12 @@ export interface ManifestSettingsProps {
   onRefreshWorkspace: () => Promise<void>;
 }
 
-/** The text the editor starts from: the stored manifest by local id, or the file as written when it cannot be read. */
-const manifestText = (repository: WorkspaceRepository | undefined) => repository?.manifestError ? repository.manifestError.text : repository?.config ? YAML.stringify(repository.config) : '';
+/**
+ * The text the editor starts from: the stored manifest by local id, or the file as written when it cannot be read. A
+ * notebook's `excluded` is derived from the `exclude` lists when the manifest is read and is never part of the file, so
+ * it is left out: shown, it would look like a second list to edit, and an edit to it does nothing.
+ */
+const manifestText = (repository: WorkspaceRepository | undefined) => repository?.manifestError ? repository.manifestError.text : repository?.config ? YAML.stringify({ ...repository.config, notebooks: repository.config.notebooks.map(({ excluded: _excluded, ...notebook }) => notebook) }) : '';
 
 /** Settings → Manifest: each repository's own `.mygitnotes.yaml`, edited and committed in that repository. */
 export function ManifestSettings({ repositories, defaultRepository, initialRepository, onManifestRevision, onRefreshWorkspace }: ManifestSettingsProps) {

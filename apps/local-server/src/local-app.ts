@@ -1,4 +1,4 @@
-import { agentFileAllowed, classifyResource, managedNotebook, resolveAgentFile, resolveSafePath, SourceError, versionedPath, type WorkspaceConfig, workspaceDocument } from '@mygitnotes/core';
+import { agentFileAllowed, classifyResource, FILE_RESOURCE_TYPES, managedNotebook, resolveAgentFile, resolveSafePath, SourceError, versionedPath, type WorkspaceConfig, workspaceDocument } from '@mygitnotes/core';
 import express, { Request, Response } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -24,7 +24,7 @@ function validateWorkspacePath(repoRoot: string, reqPath: string, candidate: unk
   const screenAccess = reqPath.startsWith('/api/git/') && (Boolean(workspaceDocument(candidate)) || resource.type === 'workspace_config');
   const fileAccess = reqPath.startsWith('/api/git/') && (managedNotebook(candidate, config.notebooks) || versionedPath(candidate));
   if (agentAccess) resolveAgentFile(repoRoot, candidate, config.notebooks);
-  if (!agentAccess && !screenAccess && !fileAccess && (!['note', 'compilation', 'outline', 'template', 'asset', 'agent_instruction', 'agent_doc'].includes(resource.type) || !resource.notebookId)) {
+  if (!agentAccess && !screenAccess && !fileAccess && (!['note', 'compilation', 'outline', 'template', 'asset', 'agent_instruction', 'agent_doc', ...FILE_RESOURCE_TYPES].includes(resource.type) || !resource.notebookId)) {
     const err = new Error('Path is outside configured workspace resources.') as Error & { status?: number; };
     err.status = 403;
     throw err;

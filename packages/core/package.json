@@ -135,6 +135,14 @@
       "types": "./dist/note-versions.d.ts",
       "import": "./dist/note-versions.js"
     },
+    "./notebook-path": {
+      "types": "./dist/notebook-path.d.ts",
+      "import": "./dist/notebook-path.js"
+    },
+    "./file-kind": {
+      "types": "./dist/file-kind.d.ts",
+      "import": "./dist/file-kind.js"
+    },
     "./note-file": {
       "types": "./dist/note-file.d.ts",
       "import": "./dist/note-file.js"
@@ -152,7 +160,6 @@
     "aws4fetch": "^1.0.20",
     "libsodium-wrappers": "0.8.4",
     "marked": "18.0.13",
-    "picomatch": "^4.0.3",
     "tar-stream": "^3.2.1",
     "ts-fsrs": "5.4.2",
     "yaml": "^2.5.1",
@@ -162,6 +169,7 @@
     "@types/node": "^22.5.4",
     "@types/picomatch": "^4.0.2",
     "@types/tar-stream": "^3.1.4",
+    "picomatch": "^4.0.3",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
   }
