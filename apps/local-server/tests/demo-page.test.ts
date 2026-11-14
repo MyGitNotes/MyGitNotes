@@ -417,6 +417,7 @@ describe('the server’s sources', () => {
   it('read no raw header, so the headers the middleware rewrites are the only copy a route can see', () => {
     const sources = fs.readdirSync(path.join(import.meta.dirname, '../src')).filter(name => name.endsWith('.ts') && !name.endsWith('.test.ts'));
     const reading = sources.filter(name => /rawHeaders|headersDistinct/.test(fs.readFileSync(path.join(import.meta.dirname, '../src', name), 'utf8')));
-    expect(reading).toEqual(['demo-page.ts']);
+    // Only the two modules that rewrite the raw list touch it: the demo middleware and the helper `/mcp` drops a grant's headers with.
+    expect(reading.sort()).toEqual(['demo-page.ts', 'request-headers.ts']);
   });
 });
