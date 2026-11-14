@@ -352,7 +352,7 @@ export function renderQrCode(attrs: Record<string, string>, label: string | unde
   const size = attrs.size || '128';
   const blockClass = tag === 'div' ? ' qrcode-block' : '';
   // Only an address a browser can open is a link; any other string (Wi-Fi settings, plain text) is encoded and shown as it is, so it is no link to a note that is not there.
-  const link = !url ? 'QR Code' : /^(?:https?|ftp|mailto|tel):/i.test(url) ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="qrcode-link"><span class="qrcode-link-text">🔗 ${escapeHtml(url)}</span></a>` : `<span class="qrcode-link-text">${escapeHtml(url)}</span>`;
+  const link = !url ? 'QR Code' : /^(?:https?|mailto):/i.test(url) ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="qrcode-link"><span class="qrcode-link-text">🔗 ${escapeHtml(url)}</span></a>` : `<span class="qrcode-link-text">${escapeHtml(url)}</span>`;
   return `<${tag} class="qrcode-container${blockClass}" data-qrcode="${escapeHtml(url)}" data-size="${escapeHtml(size)}">${link}</${tag}>`;
 }
 

@@ -308,9 +308,10 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
       continue;
     }
     // A `::qrcode{url="…"}` line draws as its code while the caret is elsewhere, unless it is code or in a drawn block.
-    const qrcode = !active(line.from, line.to) && !nonMath.some(range => line.from >= range.from && line.to <= range.to) && !mermaidRanges.some(range => line.from >= range.from && line.to <= range.to) ? leafQrCode(line.text) : null;
+    const leafSpec = leafQrCode(line.text);
+    const qrcode = leafSpec && !active(line.from, line.to) && !nonMath.some(range => line.from >= range.from && line.to <= range.to) && !mermaidRanges.some(range => line.from >= range.from && line.to <= range.to) ? leafSpec : null;
     if (qrcode) {
-      marks.push(Decoration.replace({ widget: new QrCodeWidget(qrcode, line.text, true, line.from), block: true }).range(line.from, line.to));
+      marks.push(Decoration.replace({ widget: new QrCodeWidget(qrcode, line.text, true), block: true }).range(line.from, line.to));
       continue;
     }
     // MDX import statement: low-key display when not active/editing

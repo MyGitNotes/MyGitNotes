@@ -109,4 +109,16 @@ describe('QR codes in the live editor', () => {
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: 'nothing' } });
     expect(view.dom.querySelector('.live-md-qrcode')).toBeNull();
   });
+
+  it('is the same widget (eq) wherever it sits, and the click reads its place from the page', async () => {
+    const view = editor('::qrcode{url="https://a.b/c"}\n\ntext', 'text'.length + 31);
+    const first = view.dom.querySelector('.live-md-qrcode');
+    expect(first).not.toBeNull();
+    const spec = { url: 'https://a.b/c', size: '128' };
+    expect(new QrCodeWidget(spec, '::qrcode{url="https://a.b/c"}', true).eq(new QrCodeWidget({ ...spec }, '::qrcode{url="https://a.b/c"}', true))).toBe(true);
+    view.dispatch({ changes: { from: 0, insert: 'abc\n\n' } });
+    const moved = view.dom.querySelector('.live-md-qrcode')!;
+    moved.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(view.state.selection.main.anchor).toBe(view.state.doc.toString().indexOf('::qrcode'));
+  });
 });

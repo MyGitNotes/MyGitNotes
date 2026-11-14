@@ -25,11 +25,11 @@ export function leafQrCode(line: string): QrCodeSpec | null {
  */
 export class QrCodeWidget extends WidgetType {
   private stop = () => {};
-  constructor(readonly spec: QrCodeSpec, readonly source: string, readonly block: boolean, readonly from: number) {
+  constructor(readonly spec: QrCodeSpec, readonly source: string, readonly block: boolean) {
     super();
   }
   eq(other: QrCodeWidget) {
-    return this.spec.url === other.spec.url && this.spec.size === other.spec.size && this.source === other.source && this.block === other.block && this.from === other.from;
+    return this.spec.url === other.spec.url && this.spec.size === other.spec.size && this.source === other.source && this.block === other.block;
   }
   toDOM(view: EditorView) {
     const dom = document.createElement(this.block ? 'div' : 'span');
@@ -40,7 +40,9 @@ export class QrCodeWidget extends WidgetType {
     dom.addEventListener('click', event => event.preventDefault());
     dom.addEventListener('mousedown', event => {
       event.preventDefault();
-      view.dispatch({ selection: { anchor: this.block ? this.from : this.from + this.source.length - 1 } });
+      // The position is read when clicked, as the widget is kept while edits above move it.
+      const from = view.posAtDOM(dom);
+      view.dispatch({ selection: { anchor: this.block ? from : from + this.source.length - 1 } });
       view.focus();
     });
     return dom;
@@ -72,7 +74,7 @@ export function addInlineQrCodes(marks: Range<Decoration>[], state: EditorState,
     // The caret beside the directive leaves it drawn, so one just written reads as a code; one inside shows the source.
     if (editing && state.selection.ranges.some(range => range.from < to && range.to > from)) continue;
     drawn.push({ from, to });
-    marks.push(Decoration.replace({ widget: new QrCodeWidget(spec, match[0], false, from) }).range(from, to));
+    marks.push(Decoration.replace({ widget: new QrCodeWidget(spec, match[0], false) }).range(from, to));
   }
   if (drawn.length === 0) return;
   for (let i = marks.length - 1; i >= 0; i--) {

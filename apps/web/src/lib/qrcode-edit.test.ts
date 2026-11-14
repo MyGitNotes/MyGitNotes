@@ -137,4 +137,37 @@ describe('the string a directive carries', () => {
   it('throws only the refusal, for the caller that wants it', () => {
     expect(() => turnIntoQrCode('a } b', 2, 3)).toThrow(QrCodeValueError);
   });
+
+  describe('review fixes (R0150)', () => {
+    it('F003: leaves an existing directive alone', () => {
+      for (const marked of ['x :qrcode{url="https://a.b/|c"} y', '::qrcode{url="https://a.b/|c"}', '::qrcode{url="|"}', 'x ⟦:qrcode{url="https://a.b/c"}⟧ y']) {
+        expect(turn(marked).replace(/[|⟦⟧]/g, '')).toBe(marked.replace(/[|⟦⟧]/g, ''));
+      }
+    });
+
+    it('F004: the renderer links only what the link pass keeps', () => {
+      const host = document.createElement('div');
+      host.innerHTML = renderNote(':qrcode{url="tel:+886123"} :qrcode{url="ftp://a.b/c"}', { notePath: 'n.md' } as never);
+      expect(host.querySelectorAll('.qrcode-link').length).toBe(0);
+    });
+
+    it('F005: puts the block after the whole table, list or quote', () => {
+      const run = (doc: string, at: number) => applyEdits(doc, formatMarkdown(doc, at, at, 'qrcode').changes);
+      const table = '| [t](https://a.b) |\n|---|\n| x |\n\nafter';
+      expect(run(table, 5)).toBe('| [t](https://a.b) |\n|---|\n| x |\n\n::qrcode{url="https://a.b"}\n\nafter');
+      const list = '- [t](https://a.b)\n- two\n\nafter';
+      expect(run(list, 5)).toBe('- [t](https://a.b)\n- two\n\n::qrcode{url="https://a.b"}\n\nafter');
+      const quote = '> [t](https://a.b)\n> more\nafter';
+      expect(run(quote, 5)).toBe('> [t](https://a.b)\n> more\n\n::qrcode{url="https://a.b"}\n\nafter');
+    });
+
+    it('F006: a relative target is no address', () => {
+      expect(turn('see [n|](./other.md)')).toBe('see [n](./other.md)\n\n::qrcode{url="|"}');
+    });
+
+    it('F007: keeps the CR of a CRLF line', () => {
+      const doc = 'https://a.b\r\nnext', result = formatMarkdown(doc, 3, 3, 'qrcode');
+      expect(applyEdits(doc, result.changes)).toBe('::qrcode{url="https://a.b"}\r\nnext');
+    });
+  });
 });

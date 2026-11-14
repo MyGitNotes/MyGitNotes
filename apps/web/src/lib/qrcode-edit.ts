@@ -63,7 +63,8 @@ function urlAt(line: string, at: number): UrlTarget | undefined {
       const from = match.index, to = from + match[0].length;
       if (at < from || at > to) continue;
       const raw = match[1].replace(/^<|>$/g, '').trim();
-      if (raw) return { kind: 'link', url: raw, from, to };
+      // A relative path or fragment names nothing a phone could open, so it is no address.
+      if (raw && /^[a-z][a-z0-9+.-]*:/i.test(raw)) return { kind: 'link', url: raw, from, to };
     }
   }
   for (const match of line.matchAll(BARE_URL)) {
@@ -80,16 +81,55 @@ function wholeUrl(text: string): UrlTarget | undefined {
 }
 
 const lineStartOf = (doc: string, pos: number) => pos === 0 ? 0 : doc.lastIndexOf('\n', pos - 1) + 1;
+/** The end of the line at `pos`, before its line break; a CRLF's `\r` is part of the break. */
 const lineEndOf = (doc: string, pos: number) => {
   const end = doc.indexOf('\n', pos);
-  return end === -1 ? doc.length : end;
+  if (end === -1) return doc.length;
+  return end > pos && doc[end - 1] === '\r' ? end - 1 : end;
 };
+const eolAt = (doc: string, lineEnd: number) => doc.startsWith('\r\n', lineEnd) ? '\r\n' : '\n';
+
+const QRCODE_DIRECTIVE = /:{1,2}qrcode(?:\[[^\]\n]*\])?(?:\{[^}\n]*\})?/g;
+/** Whether `from..to` of the line lies in a `:qrcode` or `::qrcode` directive, which is already what the command makes. */
+function insideQrCode(line: string, from: number, to: number): boolean {
+  for (const match of line.matchAll(QRCODE_DIRECTIVE)) if (from >= match.index && to <= match.index + match[0].length) return true;
+  return false;
+}
+
+const LIST_ITEM = /^\s*(?:[-*+]|\d{1,9}[.)])\s/;
+/** Where the structure the line ending at `lineEnd` belongs to (table, quote, list) ends, so that a block lands after it and never inside it. */
+function structureEnd(doc: string, lineEnd: number): number {
+  const lineFrom = lineStartOf(doc, lineEnd);
+  const first = doc.slice(lineFrom, lineEnd);
+  const kind = /^\s*\|/.test(first) ? 'table' : /^\s*>/.test(first) ? 'quote' : LIST_ITEM.test(first) ? 'list' : null;
+  if (!kind) return lineEnd;
+  let end = lineEnd;
+  for (;;) {
+    const nextStart = end + eolAt(doc, end).length;
+    if (end >= doc.length || nextStart > doc.length) return end;
+    const nextEnd = lineEndOf(doc, nextStart), next = doc.slice(nextStart, nextEnd);
+    if (next.trim()) {
+      if (kind === 'table' && !/^\s*\|/.test(next)) return end;
+      if (kind === 'quote' && !/^\s*>/.test(next)) return end;
+      end = nextEnd;
+      continue;
+    }
+    if (kind !== 'list') return end;
+    // A list goes on past a blank line when the next text is an item or is indented under one.
+    const after = nextEnd + eolAt(doc, nextEnd).length;
+    if (nextEnd >= doc.length || after > doc.length) return end;
+    const following = doc.slice(after, lineEndOf(doc, after));
+    if (!following.trim() || !(LIST_ITEM.test(following) || /^(?: {2,}|\t)/.test(following))) return end;
+    end = nextEnd;
+  }
+}
 
 /** The edit that puts `directive` as a block of its own under the line that ends at `lineEnd`, a blank line on either side. */
 function blockAfter(doc: string, lineEnd: number, directive: string): { change: TextEdit; start: number; } {
-  const nextStart = lineEnd + 1;
+  const eol = eolAt(doc, lineEnd), at = structureEnd(doc, lineEnd);
+  const nextStart = at + eol.length;
   const nextText = nextStart > doc.length ? '' : doc.slice(nextStart, lineEndOf(doc, nextStart));
-  return { change: { from: lineEnd, to: lineEnd, insert: `\n\n${directive}${nextText.trim() ? '\n' : ''}` }, start: lineEnd + 2 };
+  return { change: { from: at, to: at, insert: `${eol}${eol}${directive}${nextText.trim() ? eol : ''}` }, start: at + eol.length * 2 };
 }
 
 const SNIPPET = '::qrcode{url=""}';
@@ -111,6 +151,8 @@ export function turnIntoQrCode(doc: string, from: number, to: number): FormatRes
   if (start === end) return atCaret(doc, Math.min(from, to), unchanged);
 
   const selected = doc.slice(start, end);
+  const selFrom = lineStartOf(doc, start);
+  if (!selected.includes('\n') && insideQrCode(doc.slice(selFrom, lineEndOf(doc, end)), start - selFrom, end - selFrom)) return { changes: [], ...unchanged };
   const link = wholeUrl(selected);
   if (link?.kind === 'link') {
     const { change } = blockAfter(doc, lineEndOf(doc, end), qrCodeDirective(link.url, true));
@@ -127,6 +169,7 @@ export function turnIntoQrCode(doc: string, from: number, to: number): FormatRes
 function atCaret(doc: string, pos: number, unchanged: { anchor: number; head: number; }): FormatResult {
   const lineFrom = lineStartOf(doc, pos), lineTo = lineEndOf(doc, pos);
   const line = doc.slice(lineFrom, lineTo);
+  if (insideQrCode(line, pos - lineFrom, pos - lineFrom)) return { changes: [], ...unchanged };
   const target = urlAt(line, pos - lineFrom);
   if (target?.kind === 'link') {
     const { change } = blockAfter(doc, lineTo, qrCodeDirective(target.url, true));
