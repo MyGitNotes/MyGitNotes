@@ -46,6 +46,19 @@ it("opens on the current notebook's repository and saves its manifest there, wit
   await waitFor(() => expect(onManifestRevision).toHaveBeenCalledWith(campaign.id, 'next'));
 });
 
+it('shows the exclude lists as the manifest holds them, without the list each notebook derives from them', async () => {
+  const written: WorkspaceConfig = { ...config('Campaign', 'campaign'), exclude: ['**/analysis/**'], notebooks: [{ id: 'campaign', title: 'campaign', root: 'notes/campaign', exclude: ['reports/**'], excluded: ['**/analysis/**', 'reports/**'] }] };
+  settings({ repositories: [home, { ...campaign, config: written }], initialRepository: campaign.id });
+  showYaml();
+  expect(editorText()).not.toContain('excluded');
+  const shown = YAML.parse(editorText());
+  expect(shown.exclude).toEqual(['**/analysis/**']);
+  expect(shown.notebooks[0]).toEqual({ id: 'campaign', title: 'campaign', root: 'notes/campaign', exclude: ['reports/**'] });
+  fireEvent.click(screen.getByTitle('Save & Commit'));
+  await waitFor(() => expect(updateWorkspaceConfig).toHaveBeenCalledTimes(1));
+  expect(updateWorkspaceConfig.mock.calls[0][1]).not.toContain('excluded');
+});
+
 it('keeps the outcome of a save shown when the saved manifest comes back with its new revision', async () => {
   const view = settings({ initialRepository: campaign.id });
   fireEvent.click(screen.getByTitle('Save & Commit'));
