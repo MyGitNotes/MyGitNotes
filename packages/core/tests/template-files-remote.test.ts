@@ -5,6 +5,7 @@ import { lookupNotes, workspaceCatalog } from '../src/note-catalog.js';
 import { callNoteShell } from '../src/note-shell.js';
 import { classifyResource } from '../src/classifier.js';
 import { parseNoteContent } from '../src/frontmatter.js';
+import { historyFile } from '../src/note-history.js';
 
 const READING = '---\ntemplate:\n  name: Reading\n  path: reading/{{book}}.md\n  placeholders:\n    book: The book\ntags: [reading]\n---\n# {{title}}\n\n> {{takeaway}}\n';
 const MANIFEST = 'schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: ex\nnotebooks:\n  - id: ex\n    title: Example\n    root: notes/ex\n    templates:\n      - id: registered\n        title: Registered\n        file: kept/registered.md\n';
@@ -55,6 +56,10 @@ describe('a remote notebook’s template files', () => {
 
     await expect(open(f).commitNotes([{ path: 'notes/ex/.other/secret.md', content: '# x\n', metadata: {} }], f.head, 'docs: no')).rejects.toMatchObject({ status: 403 });
     await expect(open(f).commitNotes([{ path: 'notes/ex/.templates/nested/deep.md', content: '# x\n', metadata: {} }], f.head, 'docs: no')).rejects.toMatchObject({ status: 403 });
+    // The file manager renames and deletes a template file as it does any file of the notebook.
+    await open(f).commitChanges([{ path: 'notes/ex/.templates/renamed.md', content: '# {{title}}\n' }], f.head, 'move', 'files');
+    await open(f).commitChanges([{ path: 'notes/ex/.templates/renamed.md', sha: null }], f.head, 'delete', 'files');
+    expect(f.files.has('notes/ex/.templates/renamed.md')).toBe(false);
     for (const scope of ['assets', 'skills', 'agents', 'config', 'study', 'versions'] as const) await expect(open(f).commitChanges([{ path: 'notes/ex/.templates/reading.md', content: 'x' }], f.head, 'write', scope)).rejects.toMatchObject({ status: 403 });
     expect(f.files.get('notes/ex/.other/secret.md')).toBe('# Secret\n');
   });
@@ -90,6 +95,14 @@ describe('a remote notebook’s template files', () => {
     await expect(callNoteShell(open(f), 'rm', { paths: ['notes/ex/.templates'], recursive: true, revision: f.head }, true)).rejects.toMatchObject({ status: 403 });
     expect(f.files.get(file)).toBe(READING);
   });
+});
+
+it('gives a template file a history as a note has, and no other dot path one', () => {
+  const notebooks = [{ id: 'ex', title: 'Example', root: 'notes/ex' }];
+  expect(historyFile('notes/ex/.templates/reading.md', notebooks)).toBe(true);
+  expect(historyFile('notes/ex/a.md', notebooks)).toBe(true);
+  expect(historyFile('notes/ex/.templates/nested/deep.md', notebooks)).toBe(false);
+  expect(historyFile('notes/ex/.other/secret.md', notebooks)).toBe(false);
 });
 
 it('classifies a notebook’s .templates/*.md as a template and every other dot path as hidden', () => {

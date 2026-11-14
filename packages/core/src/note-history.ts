@@ -2,14 +2,16 @@ import { skillFile } from './agent-system.js';
 import { agentWorkspaceFile } from './agent-workspace.js';
 import { isNotebookContent } from './folders.js';
 import { isNoteFile } from './note-file.js';
+import { templateFileId } from './note-template.js';
 import { isVersionFile } from './note-versions.js';
 import type { NotebookConfig } from './types.js';
 import { workspaceAgentKind } from './workspace-agent.js';
 import { workspaceDocument } from './workspace-documents.js';
 
 /**
- * Whether a file has a history and versions in the app: a note, outline or compilation inside a notebook, or an
- * agent file (an `AGENTS.md` the system prompt reads, a skill file, or a workspace Agent document).
+ * Whether a file has a history and versions in the app: a note, outline or compilation inside a notebook, one of its
+ * `.templates/` template files, which the note editor edits, or an agent file (an `AGENTS.md` the system prompt reads,
+ * a skill file, or a workspace Agent document).
  */
 export function historyFile(file: string, notebooks: readonly NotebookConfig[]): boolean {
   /* eslint-disable no-control-regex -- Reject control characters in persisted paths, identifiers or filenames. */
@@ -18,5 +20,5 @@ export function historyFile(file: string, notebooks: readonly NotebookConfig[]):
   if (isVersionFile(file) || workspaceDocument(file)) return false;
   if (workspaceAgentKind(file) || agentWorkspaceFile(file, [...notebooks]) || skillFile(file, [...notebooks])) return true;
   const notebook = notebooks.find(nb => file.startsWith(`${nb.root}/`));
-  return Boolean(notebook && isNotebookContent(file.slice(notebook.root.length + 1), notebook) && isNoteFile(file));
+  return Boolean(notebook && (isNotebookContent(file.slice(notebook.root.length + 1), notebook) || templateFileId(file.slice(notebook.root.length + 1)) !== undefined) && isNoteFile(file));
 }
