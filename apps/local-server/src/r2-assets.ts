@@ -61,13 +61,17 @@ export function createLocalR2AssetHandler(storage: AssetStorage, readNote: NoteR
   const send = (res: express.Response, object: CachedR2Object) => {
     const { kind, contentType } = r2PreviewType(object.key);
     const filename = encodeURIComponent(object.key.split('/').pop() || 'file').replace(/'/g, '%27');
-    // The object is answered from this origin, so it gets the sandbox raw assets get.
-    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    // The object is answered from this origin, so it gets the sandbox raw assets get. The preview frame needs the global
+    // frame denial lifted, and the browser's PDF viewer refuses a sandboxed document, so a PDF is framed by this origin without one.
+    res.removeHeader('X-Frame-Options');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', kind === 'pdf' ? "default-src 'none'; frame-ancestors 'self'" : "default-src 'none'; sandbox; frame-ancestors 'self'");
     res.setHeader('Content-Disposition', `${kind === 'file' ? 'attachment' : 'inline'}; filename*=UTF-8''${filename}`);
     res.type(contentType);
     // The cache may lie under a dot folder (`.cache`), which a path without `root` would be refused for.
     res.sendFile(path.basename(object.file), { root: path.dirname(object.file), dotfiles: 'allow' });
   };
+  // The cache is trusted local state, keyed by object key alone: it assumes one bucket per checkout (see docs/agent/security).
   return async (req, res) => {
     res.setHeader('Cache-Control', 'private, no-store');
     const notFound = () => res.status(404).json({ error: 'Asset not found.' });

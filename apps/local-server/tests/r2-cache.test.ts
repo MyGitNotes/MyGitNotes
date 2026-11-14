@@ -64,7 +64,9 @@ describe('a local workspace serves private R2 objects through its cache', () => 
     expect(await first.text()).toBe('map bytes');
     expect(first.headers.get('content-type')).toBe('image/png');
     expect(first.headers.get('cache-control')).toBe('private, no-store');
-    expect(first.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
+    expect(first.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox; frame-ancestors 'self'");
+    expect(first.headers.get('x-frame-options')).toBeNull();
+    expect(first.headers.get('x-content-type-options')).toBe('nosniff');
     expect(first.headers.get('content-disposition')).toBe("inline; filename*=UTF-8''old%20west.png");
     expect(bucket.gets).toEqual([{ key: 'ex/maps/old west.png', authorization: undefined, signed: true }]);
     // The object lies in the checkout's ignored cache folder, under a name that holds no key text.
@@ -74,6 +76,17 @@ describe('a local workspace serves private R2 objects through its cache', () => 
     expect(second.status).toBe(200);
     expect(await second.text()).toBe('map bytes');
     expect(bucket.gets).toHaveLength(1);
+  });
+
+  it('answers a PDF so the inline preview frame can show it: no frame denial and no sandbox, framed by this origin only', async () => {
+    const bucket = await startBucket({ 'ex/core.pdf': 'core bytes' });
+    await start({ ...R2, MYGITNOTES_R2_ENDPOINT: bucket.endpoint });
+    const pdf = await get('/r2-assets/ex/core.pdf?note=notes/ex/rules.md');
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers.get('content-type')).toBe('application/pdf');
+    expect(pdf.headers.get('x-frame-options')).toBeNull();
+    expect(pdf.headers.get('content-security-policy')).toBe("default-src 'none'; frame-ancestors 'self'");
+    expect(pdf.headers.get('x-content-type-options')).toBe('nosniff');
   });
 
   it('reads the bucket once when several first views arrive together', async () => {
