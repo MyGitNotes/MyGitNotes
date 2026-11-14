@@ -7,7 +7,7 @@ import { type RemoteCache, type RemoteSource, siteIdentity, SourceError, type Wo
 import { callWorkspaceRemoteTool, isMutationTool, remoteTools, TEMPLATE_GUIDANCE, type ToolAssets } from '@mygitnotes/mcp-server';
 import { type AssetStorage, resolveAssetScope } from './asset-storage.js';
 import { CredentialRejected, grantPerson } from './auth.js';
-import type { IdentityService } from './identity.js';
+import { type BearerGrant, bearerGrantRecord, type IdentityService } from './identity.js';
 import type { RecordStore, StoredRecord } from './record-store/index.js';
 import type { EditionSources } from './edition-sources.js';
 import { openWorkspace, type RemoteHandle, type RequestWorkspace } from './request-workspace.js';
@@ -31,6 +31,9 @@ async function readBody(req: express.Request, res: express.Response, workspace: 
   }
   await new Promise<void>((resolve, reject) => express.json({ limit })(req, res, error => error ? reject(error) : resolve()));
 }
+
+/** The shape of a grant this server made and stored; a bearer of any other shape is not looked up in the store. */
+const STORED_GRANT = /^[A-Za-z0-9_-]{43}$/;
 
 type ToolAssetsFor = (handle: { reader: RemoteSource; }) => ToolAssets;
 
@@ -61,19 +64,41 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
   router.post(['/', '/:token'], async (req, res) => {
     try {
       if (configSource.mode === 'local') return res.status(503).json({ error: 'Configure a GitHub or GitLab source for remote MCP.' });
-      const urlToken = typeof req.params.token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(req.params.token) ? req.params.token : undefined;
-      const bearer = urlToken || req.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1];
-      const grant = bearer ? await store.get(bearer) : null;
-      // Rejections of an existing grant outlive the runtime logs so its owner can read the reason on the grant list.
-      const remember = (reason: string) => store.recordRejection(bearer!, reason).catch(error => console.warn(`[mcp] rejection record failed: ${(error as Error).message}`));
+      const urlToken = typeof req.params.token === 'string' && STORED_GRANT.test(req.params.token) ? req.params.token : undefined;
+      const presented = urlToken || req.headers.authorization?.match(/^Bearer ([A-Za-z0-9._~+/-]+=*)$/)?.[1];
+      const bearer = presented && STORED_GRANT.test(presented) ? presented : undefined;
+      // Any other bearer is an outside one: only an identity that resolves them is asked, and only from the header.
+      const outside = presented && !bearer && identity.bearerGrant ? presented : undefined;
+      const stored = bearer ? await store.get(bearer) : null;
+      // Rejections of an existing grant outlive the runtime logs so its owner can read the reason on the grant list. An outside bearer is no record's id.
+      const remember = async (reason: string) => {
+        if (bearer) await store.recordRejection(bearer, reason).catch(error => console.warn(`[mcp] rejection record failed: ${(error as Error).message}`));
+      };
       const unauthorized = async (reason: string) => {
         console.warn(`[mcp] unauthorized: ${reason}`);
-        if (grant?.kind === 'agent') await remember(reason);
+        if (stored?.kind === 'agent') await remember(reason);
         res.setHeader('WWW-Authenticate', 'Bearer realm="MyGitNotes MCP"');
         return res.status(401).json({ error: 'Create a MyGitNotes agent token after signing in.' });
       };
+      let resolved: StoredRecord | null = null;
+      if (outside) {
+        let answer: BearerGrant | null;
+        try {
+          answer = await identity.bearerGrant!(req, outside);
+        } catch (error) {
+          // The message of a failed verification may quote the bearer, so only the error's class is logged.
+          const name = error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(error.name) ? ` (${error.name})` : '';
+          return unauthorized(`bearer-error${name}`);
+        }
+        if (!answer) return unauthorized('bearer-refused');
+        resolved = bearerGrantRecord(answer);
+        if (!resolved) return unauthorized('bearer-invalid');
+        // From here the call is the resolved person's: the configuration source, the edition's sources and the asset storage get the request's headers without the bearer.
+        delete req.headers.authorization;
+      }
+      const grant = resolved ?? stored;
       // The grant is verified before the workspace is resolved, and the workspace is the person's the grant names.
-      if (grant?.kind !== 'agent' || grant.audience !== `${process.env.APP_URL}/mcp`) return unauthorized(!bearer ? 'no-token' : !grant ? 'grant-missing' : grant.kind !== 'agent' ? 'grant-kind' : 'grant-audience');
+      if (grant?.kind !== 'agent' || (bearer && grant.audience !== `${process.env.APP_URL}/mcp`)) return unauthorized(!bearer ? 'no-token' : !grant ? 'grant-missing' : grant.kind !== 'agent' ? 'grant-kind' : 'grant-audience');
       const person = await grantPerson(store, grant);
       // A deployment without a usable source answers like one configured for local files.
       const settings = await configSource.settings(grantRequest(req, person)).catch((error: unknown) => {
