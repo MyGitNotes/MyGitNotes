@@ -59,7 +59,7 @@ describe('useNoteSort', () => {
     act(() => result.current.sort.handleSortChange('metadata.date'));
     expect(result.current.sort).toMatchObject({ sortField: 'metadata.date', sortOrder: 'asc' });
   });
-  it("follows the notebook it is given, each with its own choice and default", () => {
+  it('follows the notebook it is given, each with its own choice and default', () => {
     saveNotebookSort('docs~notes', 'status', 'asc');
     const { result, rerender } = setup('docs~meetings', meetings);
     expect(result.current.sort.sortField).toBe('metadata.date');

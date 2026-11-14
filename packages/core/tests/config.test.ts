@@ -292,18 +292,7 @@ describe('Notebook default_sort', () => {
     expect(parseWorkspaceConfig(serializeWorkspaceConfig(config)).notebooks[0].default_sort).toEqual({ field: 'metadata.date', order: 'asc' });
   });
 
-  it.each([
-    ['a string', '    default_sort: updated\n'],
-    ['a list', '    default_sort: [updated]\n'],
-    ['no field', '    default_sort: { order: asc }\n'],
-    ['an unknown field', '    default_sort: { field: modified }\n'],
-    ['an empty metadata key', '    default_sort: { field: "metadata." }\n'],
-    ['a metadata key with a space', '    default_sort: { field: "metadata.meeting date" }\n'],
-    ['a field with another case', '    default_sort: { field: Title }\n'],
-    ['an unknown order', '    default_sort: { field: title, order: up }\n'],
-    ['a non-string order', '    default_sort: { field: title, order: 1 }\n'],
-    ['an unknown key', '    default_sort: { field: title, direction: asc }\n'],
-  ])('rejects %s', (_name, sort) => {
+  it.each([['a string', '    default_sort: updated\n'], ['a list', '    default_sort: [updated]\n'], ['no field', '    default_sort: { order: asc }\n'], ['an unknown field', '    default_sort: { field: modified }\n'], ['an empty metadata key', '    default_sort: { field: "metadata." }\n'], ['a metadata key with a space', '    default_sort: { field: "metadata.meeting date" }\n'], ['a field with another case', '    default_sort: { field: Title }\n'], ['an unknown order', '    default_sort: { field: title, order: up }\n'], ['a non-string order', '    default_sort: { field: title, order: 1 }\n'], ['an unknown key', '    default_sort: { field: title, direction: asc }\n']])('rejects %s', (_name, sort) => {
     expect(() => parseWorkspaceConfig(withSort(sort))).toThrow(ConfigValidationError);
     expect(() => parseWorkspaceConfig(withSort(sort))).toThrow(/default_sort/);
   });
