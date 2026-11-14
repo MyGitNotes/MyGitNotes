@@ -81,6 +81,23 @@ describe('reading checked-out notes', () => {
     expect(await open().note(virtual)).toMatchObject({ title: 'Meeting', live: { pending: true } });
   });
 
+  it('never answers one live note with another\'s text when both were listed with the same hash', async () => {
+    const { files, liveNotes, open, checkout } = fixture();
+    const same = '---\ntitle: Draft\n---\n';
+    files.set('notes/life/a.md', same);
+    files.set('notes/life/c.md', same);
+    const a = await checkout('notes/life/a.md');
+    await checkout('notes/life/c.md');
+    const reader = open();
+    // The request lists the links, as an adapter's short cache may answer, and then someone types in a.md.
+    await reader.liveView!.links();
+    liveNotes.type(repository, a, '---\ntitle: Secret plan A\n---\nonly in A\n', pat);
+    const notes = await reader.notes('life');
+    expect(notes.find(note => note.path === 'notes/life/c.md')).toMatchObject({ title: 'Draft', content: '' });
+    expect((await reader.readFile('notes/life/c.md')).toString()).toBe(same);
+    expect(notes.find(note => note.path === 'notes/life/a.md')?.title).toBe('Secret plan A');
+  });
+
   it('keeps Git text in the index cache, and recomputes a memo when a live hash changes', async () => {
     const { liveNotes, open, checkout } = fixture();
     const cache = recordingCache();

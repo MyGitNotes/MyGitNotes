@@ -68,7 +68,11 @@ const HISTORY_MAX_BYTES = 1024 * 1024;
 const OBJECT_ID = /^[a-f0-9]{40}([a-f0-9]{24})?$/;
 /** Shared-cache keys of live texts, each value the text whose sha256 the key ends with. */
 const LIVE_TEXT_VERSION = 'v1';
-/** Adapter reads of one live text in flight in this process, by cache key, so concurrent misses read it once. */
+/**
+ * Adapter reads of one live link in flight in this process, by repository, link id and listed hash, so concurrent
+ * misses read it once. A read is shared only with requests that listed the same link: two links with equal text never
+ * share one, since either may change after it was listed.
+ */
 const liveReadsInFlight = new Map<string, Promise<{ content: string; contentHash: string; }>>();
 
 /** Hears of every commit this process publishes to a remote repository: its identity, as `RemoteSource.id`, and the changed paths. */
@@ -233,7 +237,7 @@ export abstract class RemoteSource {
     for (let i = 0; i < unread.length; i += 6) {
       await Promise.all(
         unread.slice(i, i + 6).map(async link => {
-          const key = this.liveTextKey(link.checkout.contentHash);
+          const key = `${this.liveTextKey(link.checkout.contentHash)}:${link.checkout.id}`;
           let pending = liveReadsInFlight.get(key);
           if (!pending) {
             pending = this.live!.read(link.checkout.id).then(async text => {
