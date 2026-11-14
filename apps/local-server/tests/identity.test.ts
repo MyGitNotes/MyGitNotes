@@ -39,6 +39,36 @@ describe('the provider identity', () => {
   });
 });
 
+describe('an identity that resolves outside bearers', () => {
+  // Two people sign in with a cookie and call /mcp with a bearer; every call uses the server's one credential.
+  const people = [{ person: { realm: 'edition', userId: 'p1' }, login: 'pat', owner: 'edition:p1' }, { person: { realm: 'edition', userId: 'p2' }, login: 'sam', owner: 'edition:p2' }];
+  identityContract('bearer', () => {
+    const signedOut = new Set<string>();
+    const identity: IdentityService = {
+      router: Router(),
+      async signedIn(req) {
+        const visitor = /(?:^|; )visitor=(\d)/.exec(req.headers.cookie ?? '')?.[1];
+        return visitor && !signedOut.has(visitor) ? people[Number(visitor) - 1] ?? null : null;
+      },
+      token: async (req, res) => await identity.signedIn(req, res) ? 'server-credential' : undefined,
+      grantCredential: async () => undefined,
+      grantToken: async (_grant, person) => person ? 'server-credential' : undefined,
+      bearerGrant: async (_req, bearer) => {
+        const known = people[['outside.one.token', 'outside.two.token'].indexOf(bearer)];
+        return known ? { person: known.person, owner: known.owner, write: true, site: 'github' } : null;
+      },
+      noCredentialMessage: () => 'This deployment holds no credential for the site.',
+      signInOptions: async () => [{ id: 'sso', label: 'Single sign-on', url: '/api/auth/sso' }],
+      configured: async () => true,
+      async signOut(req) {
+        const visitor = /(?:^|; )visitor=(\d)/.exec(req.headers.cookie ?? '')?.[1];
+        if (visitor) signedOut.add(visitor);
+      },
+    };
+    return { identity, site: { type: 'github' }, visitor: async n => ({ visitor: String(n) }), tokenOf: () => 'server-credential', bearerOf: n => n === 1 ? 'outside.one.token' : 'outside.two.token' };
+  });
+});
+
 describe('an identity with a person and no token', () => {
   let server: Server | undefined, base = '';
   afterEach(async () => {

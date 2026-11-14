@@ -11,6 +11,21 @@ export interface SignedIn {
   /** The grant index owner of this person. */
   owner: string | number;
 }
+/**
+ * What an identity resolves an outside bearer to: who an `/mcp` call acts for and how far it reaches. It is a grant
+ * for that one call, kept nowhere.
+ */
+export interface BearerGrant {
+  person: WorkspacePerson;
+  /** The grant index owner of this person, as `SignedIn.owner`. */
+  owner: string | number;
+  /** The person as the author of the commits the call makes; carried on the grant, for a source that sets a commit's author. */
+  author?: { name: string; email: string; };
+  /** Whether the call may write. Only `true` writes; a call without it gets no write tool, as a read-only grant does. */
+  write: boolean;
+  /** The site the grant reaches, as `siteIdentity` writes it. A deployment on another site refuses the call. */
+  site: string;
+}
 /** One way to sign in, as the web app lists it. */
 export interface SignInOption {
   id: string;
@@ -37,12 +52,36 @@ export interface IdentityService {
   grantCredential(req: Request, res: Response, signedIn: SignedIn, site: WorkspaceSite): Promise<string | undefined>;
   /** A grant's provider token on `site` at call time; undefined when its person has none. */
   grantToken(grant: StoredRecord, person: WorkspacePerson | undefined, site: WorkspaceSite): Promise<string | undefined>;
+  /**
+   * Resolves a bearer `/mcp` was sent that is not shaped like one of this server's stored grants (an OIDC access token,
+   * say) to the person it acts for, or to null to refuse it. The identity verifies the bearer itself: its signature,
+   * issuer, audience, expiry and whatever else makes it trustworthy. `/mcp` never keeps or logs the bearer, answers 401
+   * without detail on null or a throw, and still asks `grantToken` for the credential the call uses, so the bearer is
+   * never sent to a provider. Left out, such a bearer is refused as before. Any caller can send any bearer, unverified
+   * and unthrottled, so the identity bounds its own cost (key caching, length and shape checks before any lookup).
+   */
+  bearerGrant?(req: Request, bearer: string): Promise<BearerGrant | null>;
   /** Why a provider repository cannot open for a signed-in person without a credential on `site`. */
   noCredentialMessage(site: WorkspaceSite): string;
   signInOptions(req: Request): Promise<SignInOption[]>;
   /** Whether sign-in is configured (`/api/auth/session`'s `configured`). */
   configured(req: Request): Promise<boolean>;
   signOut(req: Request, res: Response): Promise<void>;
+}
+
+/**
+ * The grant `/mcp` acts on for a resolved bearer, shaped like a stored agent grant without a credential; `grantToken`
+ * is asked with it. Null for an answer that is not a {@link BearerGrant}, which `/mcp` refuses: an identity written
+ * without types must not widen a grant by answering loosely.
+ */
+export function bearerGrantRecord(resolved: BearerGrant): StoredRecord | null {
+  const text = (value: unknown): value is string => typeof value === 'string' && value !== '';
+  const id = (value: unknown): value is string | number => text(value) || (typeof value === 'number' && Number.isFinite(value));
+  if (typeof resolved !== 'object' || resolved === null) return null;
+  const { person, owner, author, write, site } = resolved;
+  if (typeof person !== 'object' || person === null || !text(person.realm) || !id(person.userId) || !id(owner) || typeof write !== 'boolean' || !text(site)) return null;
+  if (author !== undefined && (typeof author !== 'object' || author === null || !text(author.name) || !text(author.email))) return null;
+  return { kind: 'agent', ownerId: owner, person: { realm: person.realm, userId: person.userId }, site, write, ...(author ? { author: { name: author.name, email: author.email } } : {}) };
 }
 
 /** Today's behavior: sign in with the workspace site's GitHub or GitLab, and hold that provider's token. */
