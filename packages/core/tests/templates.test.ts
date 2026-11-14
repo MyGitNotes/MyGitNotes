@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 import { ConfigValidationError, parseWorkspaceConfig } from '../src/config.js';
-import { formatTemplateDate, formatTemplateTime, isTemplateFile, listedNoteTemplates, listNoteTemplates, listTemplates, loadNoteTemplate, localTemplateClock, mergeTemplateLists, noteFromTemplate, type NoteTemplateInfo, renderNoteTemplate, renderTemplatePath, starterTemplate, templateFileId, templateFilePath, templateFromNote, templateLastUse, templateSettings, templateValues } from '../src/templates.js';
+import { formatTemplateDate, formatTemplateTime, isTemplateFile, lastUseOf, listedNoteTemplates, listNoteTemplates, listTemplates, loadNoteTemplate, localTemplateClock, mergeTemplateLists, noteFromTemplate, type NoteTemplateInfo, renderNoteTemplate, renderTemplatePath, starterTemplate, templateFileId, templateFilePath, templateFromNote, templateLastUse, templateSettings, templateValues } from '../src/templates.js';
 import { parseNoteContent } from '../src/frontmatter.js';
 import { scanNotebookNotes } from '../src/note-service.js';
 import type { NotebookConfig } from '../src/types.js';
@@ -267,6 +267,12 @@ describe('placeholders', () => {
     expect(templateFileId('.templates/讀書-筆記.md')).toBe('讀書-筆記');
     expect(templateFileId('.templates/a/b.md')).toBeUndefined();
     expect(templateFileId('x/.templates/b.md')).toBeUndefined();
+    // A backslash would reach a subfolder once the file system resolves it; a control character is no name.
+    expect(templateFileId('.templates/sub\\x.md')).toBeUndefined();
+    expect(templateFileId('.templates/a\u0001b.md')).toBeUndefined();
+    // Spaces between leading dots do not leave a dot file behind.
+    expect(templateFilePath({ root: 'notes/ex' }, '. .git')).toBe('notes/ex/.templates/git.md');
+    expect(templateFilePath({ root: 'notes/ex' }, ' . . x . ')).toBe('notes/ex/.templates/x.md');
   });
 
   it('starts a template with a template block, and copies a note into one without the note file’s own keys', () => {
@@ -310,6 +316,13 @@ describe('the list of templates an agent asks for', () => {
     const merged = mergeTemplateLists([listTemplates(templates.slice(0, 2), { limit: 2 }), listTemplates(templates.slice(2), { limit: 2 })], 2);
     expect(merged).toMatchObject({ total: 4, truncated: true });
     expect(ids(merged)).toEqual(['meeting', 'reading']);
+  });
+
+  it('reads no inherited property as a last use, for a template named after one', () => {
+    const used = templateLastUse([{ metadata: { template: 'reading', created: '2026-11-01' } }]);
+    expect(lastUseOf(used, 'constructor')).toBeNull();
+    expect(lastUseOf(JSON.parse(JSON.stringify(used)), 'toString')).toBeNull();
+    expect(lastUseOf(used, 'reading')).toBe('2026-11-01T00:00:00.000Z');
   });
 
   it('dates a template’s last use by the newest note stamped with its id: the note’s created date, else its updated', () => {
@@ -358,6 +371,18 @@ describe('a worktree’s templates', () => {
     expect(loadNoteTemplate(repoRoot, notebook, 'reading').title).toBe('Changed');
     fs.rmSync(path.join(repoRoot, 'notes/ex/.templates/weekly.md'));
     expect(listNoteTemplates(repoRoot, notebook).map(template => template.id)).toEqual(['registered', 'meeting', 'reading']);
+  });
+
+  it('are none in a symlinked .templates folder, whose files the note routes refuse', () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'gh-notes-template-link-'));
+    try {
+      fs.writeFileSync(path.join(outside, 'linked.md'), '# {{title}}\n');
+      fs.rmSync(path.join(repoRoot, 'notes/ex/.templates'), { recursive: true });
+      fs.symlinkSync(outside, path.join(repoRoot, 'notes/ex/.templates'), 'dir');
+      expect(listNoteTemplates(repoRoot, notebook).map(template => template.id)).toEqual(['registered']);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('carry their last use from the notebook’s notes stamped with their id, and only .templates files are templates', () => {

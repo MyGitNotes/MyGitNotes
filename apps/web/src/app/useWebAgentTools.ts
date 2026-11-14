@@ -3,7 +3,7 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { isNoteFile } from '@mygitnotes/core/note-file';
 import { useCallback } from 'react';
 import YAML from 'yaml';
-import { type ListedNoteTemplate, listTemplates, localTemplateClock, noteFromTemplate, templateLastUse } from '@mygitnotes/core/note-template';
+import { lastUseOf, type ListedNoteTemplate, listTemplates, localTemplateClock, noteFromTemplate, templateLastUse } from '@mygitnotes/core/note-template';
 import { fetchAgentResources, fetchNoteTemplates, readAgentResource } from '../lib/api.js';
 import { noteDrafts, overlayDraftTemplates } from '../lib/note-templates.js';
 import { getLocalDraft } from '../lib/storage.js';
@@ -162,7 +162,7 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       const now = new Date().toISOString();
       const drafted = templateLastUse(Object.values(noteDrafts(activeWorkingNotes)).filter(entry => !entry.deleted && entry.note.notebookId === notebookId).map(entry => ({ metadata: entry.base ? entry.note.metadata : { created: now, ...entry.note.metadata } })));
       const newest = (committed: string | null, working: string | undefined) => working !== undefined && (committed === null || working > committed) ? working : committed;
-      return { notebook, templates: overlayDraftTemplates(await fetchNoteTemplates(notebookId), notebook, activeWorkingNotes).map(template => ({ ...template, lastUsed: newest(template.lastUsed ?? null, drafted[template.id]) })) };
+      return { notebook, templates: overlayDraftTemplates(await fetchNoteTemplates(notebookId), notebook, activeWorkingNotes).map(template => ({ ...template, lastUsed: newest(template.lastUsed ?? null, lastUseOf(drafted, template.id) ?? undefined) })) };
     };
     const noTemplate = (notebookId: string, id: string, templates: { id: string; }[]) => new Error(`Notebook ${notebookId} has no template '${id}'. Its templates: ${templates.map(candidate => candidate.id).join(', ') || 'none'}.`);
     /** Stages a new note made from a template of its notebook, filled by name; an existing note at the path is refused. */

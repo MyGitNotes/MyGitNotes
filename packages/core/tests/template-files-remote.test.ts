@@ -136,6 +136,21 @@ describe('a remote notebook’s template list', () => {
     expect((await reader().templates('ex'))[0]).toMatchObject({ id: 'registered', description: 'Now described' });
   });
 
+  it('keeps no list in the cache when a template file failed to read, so the next call reads it again', async () => {
+    const cache = new MemoryRemoteCache();
+    const f = gitlabFixture(undefined, files, { contentTrees: true });
+    const reading = createHash('sha1').update(READING).digest('hex');
+    let fail = true;
+    const request = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (fail && String(input).includes(`/repository/blobs/${reading}`)) return new Response('unavailable', { status: 500 });
+      return f.request(input, init);
+    }) as typeof fetch;
+    const failing = await openRemoteRepository(source, 'token', request, cache).reader.templates('ex');
+    expect(failing.find(template => template.id === 'reading')?.name).toBe('reading');
+    fail = false;
+    expect((await openRemoteRepository(source, 'token', request, cache).reader.templates('ex')).find(template => template.id === 'reading')).toMatchObject({ name: 'Reading', path: 'reading/{{book}}.md' });
+  });
+
   it('carries each template’s last use from the notes index, reading no note body for it once the index is cached', async () => {
     const cache = new MemoryRemoteCache();
     const f = gitlabFixture(undefined, files, { contentTrees: true });

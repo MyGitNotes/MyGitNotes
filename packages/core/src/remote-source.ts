@@ -10,7 +10,7 @@ import { parseNoteContent } from './frontmatter.js';
 import { isCompilationPath } from './compilation.js';
 import { isOutlinePath } from './outline.js';
 import { isNoteFile, NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.js';
-import { describeNoteTemplate, formatTemplateDate, formatTemplateTime, isTemplateFile, type ListedNoteTemplate, notebookTemplateEntries, type NoteTemplateEntry, type NoteTemplateInfo, type RenderedNoteTemplate, renderNoteTemplate, templateFileId, templateLastUse, TEMPLATES_FOLDER, templateValues } from './templates.js';
+import { describeNoteTemplate, formatTemplateDate, formatTemplateTime, isTemplateFile, lastUseOf, type ListedNoteTemplate, notebookTemplateEntries, type NoteTemplateEntry, type NoteTemplateInfo, type RenderedNoteTemplate, renderNoteTemplate, templateFileId, templateLastUse, TEMPLATES_FOLDER, templateValues } from './templates.js';
 import { isNotebookContent, parseFolderConfig, sortFolders } from './folders.js';
 import { FolderItem, NotebookConfig, NoteItem, NoteMetadata, WorkspaceConfig } from './types.js';
 import { SourceError } from './github-api.js';
@@ -421,10 +421,20 @@ export abstract class RemoteSource {
     }
     await this.prefetchFiles(listed.map(entry => `${nb.root}/${entry.file}`));
     const templates: NoteTemplateInfo[] = [];
-    // A registered template whose file is missing is still listed, as the manifest names it.
-    for (const entry of listed) templates.push(describeNoteTemplate(nb, entry, await this.readTemplate(nb, entry).catch(() => undefined)));
+    // A registered template whose file is missing is described from the manifest alone; any other failed read is not kept, so the next call reads it again.
+    let failed = false;
+    for (const entry of listed) {
+      templates.push(describeNoteTemplate(
+        nb,
+        entry,
+        await this.readTemplate(nb, entry).catch((error: unknown) => {
+          if (!(error instanceof SourceError && error.status === 404)) failed = true;
+          return undefined;
+        }),
+      ));
+    }
     const text = JSON.stringify(templates);
-    if (this.cache && Buffer.byteLength(text) <= REMOTE_CACHE_MAX_VALUE) await this.cache.set([[key, text]], REMOTE_CACHE_TTL);
+    if (this.cache && !failed && Buffer.byteLength(text) <= REMOTE_CACHE_MAX_VALUE) await this.cache.set([[key, text]], REMOTE_CACHE_TTL);
     return templates;
   }
 
@@ -450,7 +460,7 @@ export abstract class RemoteSource {
       const templates = await this.notebookTemplates(nb);
       if (!templates.length) continue;
       const used = await catalog.memo('template-use', [nb], async () => templateLastUse(await catalog.index(nb)));
-      listed.push(...templates.map(template => ({ ...template, lastUsed: used[template.id] ?? null })));
+      listed.push(...templates.map(template => ({ ...template, lastUsed: lastUseOf(used, template.id) })));
     }
     return listed;
   }

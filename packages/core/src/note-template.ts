@@ -8,7 +8,9 @@ import type { NotebookConfig, NoteMetadata } from './types.js';
 
 /** The folder at a notebook's root whose `*.md` files are its templates. */
 export const TEMPLATES_FOLDER = '.templates';
-const TEMPLATE_FILE = /^\.templates\/([^/]+)\.md$/;
+// A backslash or a control character is no part of a template's name: a backslash would reach a subfolder on a path the file system resolves.
+// eslint-disable-next-line no-control-regex -- Control characters are refused, not matched.
+const TEMPLATE_FILE = /^\.templates\/([^/\\\x00-\x1f\x7f]+)\.md$/;
 const PLACEHOLDER_NAME = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 const placeholders = () => /\{\{\s*([A-Za-z_][A-Za-z0-9_-]*)\s*\}\}/g;
 const NOTE_FILE = /\.(md|markdown|mdx|txt)$/i;
@@ -60,7 +62,7 @@ export function templateFileNotebook<N extends Pick<NotebookConfig, 'root'>>(fil
 /** A text made safe as one file name: `/`, `\` and the characters a file system refuses become `-`, and it starts with no dot. */
 export function safeFileName(value: string): string {
   // eslint-disable-next-line no-control-regex -- Control characters cannot be part of a file name.
-  return value.replace(/[/\\:*?"<>|\x00-\x1f\x7f]/g, '-').replace(/\s+/g, ' ').trim().replace(/^\.+/, '').replace(/[. ]+$/, '').trim();
+  return value.replace(/[/\\:*?"<>|\x00-\x1f\x7f]/g, '-').replace(/\s+/g, ' ').trim().replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
 }
 
 /** The repository-relative path of the `.templates/` file a template named `name` is kept in. */
@@ -317,6 +319,11 @@ function dateOf(value: unknown): number | undefined {
  * When each template of a notebook was last used, by template id: the newest `created` (else `updated`) date among the
  * notes whose frontmatter says `template: <id>`. It reads frontmatter only, so a notes index answers it without a body.
  */
+/** A template's last use from {@link templateLastUse}'s answer, which may come back from a cache as a plain object, so an id such as `constructor` reads no inherited property. */
+export function lastUseOf(used: Record<string, string>, id: string): string | null {
+  return Object.hasOwn(used, id) ? used[id]! : null;
+}
+
 export function templateLastUse(notes: Iterable<{ metadata: NoteMetadata; }>): Record<string, string> {
   const newest = new Map<string, number>();
   for (const { metadata } of notes) {

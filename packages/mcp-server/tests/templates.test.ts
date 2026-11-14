@@ -220,6 +220,8 @@ describe('remote MCP templates', () => {
     expect(tool('save_note').inputSchema.required).toEqual(['revision']);
     expect(tool('save_note').inputSchema.properties).toMatchObject({ template: { type: 'string' }, values: { type: 'object' } });
     for (const name of ['list_templates', 'save_note']) expect(tool(name).description).toMatch(/list_templates.*ask the user/s);
+    // A client that creates notes with write still meets the rule.
+    expect(tool('write').description).toMatch(/list_templates/);
     // render_template is no longer offered: list_templates with templateId shows a template and save_note creates from it.
     expect(remoteTools.map(candidate => candidate.name)).not.toContain('render_template');
     const legacy = legacyRemoteTools.find(candidate => candidate.name === 'render_template')!;
@@ -270,6 +272,8 @@ describe('remote MCP templates', () => {
     await expect(callRemoteTool(reader(f), 'save_note', { notebookId: 'ex', template: 'nope', revision: f.head }, true)).rejects.toMatchObject({ status: 404 });
     await expect(callRemoteTool(reader(f), 'save_note', { content: 'x', revision: f.head }, true)).rejects.toThrow(/path is required/);
     await expect(callRemoteTool(reader(f), 'save_note', { notebookId: 'ex', template: 'reading', values: { book: 'Dune' }, revision: f.head }, false)).rejects.toThrow(/read-only/);
+    // A template's note is a note: a path into .templates/ or another dot folder is refused, as the local tool refuses it.
+    for (const path of ['notes/ex/.templates/made.md', 'notes/ex/.other/made.md']) await expect(callRemoteTool(reader(f), 'save_note', { path, template: 'meeting', revision: f.head }, true)).rejects.toThrow(/not a note path/);
     expect(f.writes).toBe(1);
 
     const own = await callRemoteTool(reader(f), 'save_note', { path: 'notes/ex/own.md', template: 'meeting', title: 'Sync', values: { who: 'Ann' }, tags: ['team'], revision: f.head }, true);

@@ -4,7 +4,7 @@ import { NotebookConfig, NoteMetadata } from './types.js';
 import { resolveSafePath } from './path-guard.js';
 import { parseNoteContent } from './frontmatter.js';
 import { isNotebookContent } from './folders.js';
-import { describeNoteTemplate, type ListedNoteTemplate, notebookTemplateEntries, type NoteTemplateEntry, type NoteTemplateInfo, templateFileId, templateLastUse, TEMPLATES_FOLDER } from './note-template.js';
+import { describeNoteTemplate, lastUseOf, type ListedNoteTemplate, notebookTemplateEntries, type NoteTemplateEntry, type NoteTemplateInfo, templateFileId, templateLastUse, TEMPLATES_FOLDER } from './note-template.js';
 import { scanNotebookNotes, stampIsRacy } from './note-service.js';
 
 export * from './note-template.js';
@@ -28,8 +28,15 @@ export function isTemplateFile(relative: string, notebook: NotebookConfig): bool
 
 /** The regular `*.md` files directly in a notebook's `.templates/` folder, relative to the notebook root. */
 function templateFiles(repoRoot: string, notebook: NotebookConfig): string[] {
-  const folder = resolveSafePath(repoRoot, path.posix.join(notebook.root, TEMPLATES_FOLDER));
-  if (!fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory()) return [];
+  let folder: string;
+  try {
+    folder = resolveSafePath(repoRoot, path.posix.join(notebook.root, TEMPLATES_FOLDER));
+  } catch {
+    // A `.templates` link out of the repository holds no templates; the notebook's other templates still list.
+    return [];
+  }
+  // lstat: a symlinked `.templates` folder is no template folder, as the note routes refuse its files.
+  if (!fs.lstatSync(folder, { throwIfNoEntry: false })?.isDirectory()) return [];
   return fs.readdirSync(folder, { withFileTypes: true }).filter(entry => entry.isFile()).map(entry => `${TEMPLATES_FOLDER}/${entry.name}`).filter(file => templateFileId(file) !== undefined);
 }
 
@@ -85,7 +92,7 @@ export function listNoteTemplates(repoRoot: string, notebook: NotebookConfig): N
 /** A notebook's templates as `list_templates` answers them: each with its last use, read from the notebook's scanned notes. */
 export function listedNoteTemplates(repoRoot: string, notebook: NotebookConfig): ListedNoteTemplate[] {
   const used = templateLastUse(scanNotebookNotes(repoRoot, notebook));
-  return listNoteTemplates(repoRoot, notebook).map(template => ({ ...template, lastUsed: used[template.id] ?? null }));
+  return listNoteTemplates(repoRoot, notebook).map(template => ({ ...template, lastUsed: lastUseOf(used, template.id) }));
 }
 
 /** Reads one of a notebook's templates (frontmatter + body) safely from disk: a manifest-registered one, else a `.templates/` file. */
