@@ -78,6 +78,8 @@ Rejected requests log a secret-free reason (`[mcp] unauthorized: …`, `[auth] c
 A rejected request on an existing grant also keeps its reason and time for seven days as `lastRejection` on the Settings grant list (`GET /api/auth/agent-tokens`).
 Legacy session-bound grants retain their original expiry.
 
+An edition's `IdentityService` may also accept a bearer this server did not issue (`bearerGrant`, see [identity service](../../specs/2026-10-19-identity-service/spec.md#outside-bearers)), such as an OIDC access token a trusted service obtained on a person's behalf. A bearer shaped like a stored grant always resolves through the record store. Any other bearer in the `Authorization` header is handed to the identity, which verifies it and names the person, whether the call may write, and the site; the call then runs as that person's grant would, with the credential the identity gives its grants. The bearer is not kept, logged or sent to a provider, and a refusal answers the same 401 as a missing grant. The community edition's identity accepts no such bearer.
+
 Hosted tools include `ls`, `glob`, `read`, `find`, `write`, `append`, `edit`,
 `mkdir`, `cp`, `mv`, and `rm`, plus the existing remote note and folder tools. Shell reads
 and line edits include frontmatter; lines are one-based. `find` performs literal
