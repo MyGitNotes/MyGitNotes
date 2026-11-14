@@ -90,4 +90,12 @@ describe('a note downloaded with its images', () => {
     expect(archive.missing).toEqual([{ key: 'ex/a\\..\\..\\evil.png', reason: 'the key cannot be a file name in an archive' }, { key: 'ex/big.bin', reason: 'the archive is limited to 8 bytes' }]);
     expect(unzip(archive.bytes).map(entry => entry.name)).toEqual(['a.md', 'assets/ex/small.png', 'missing-assets.txt']);
   });
+
+  it('holds an archive to 512 MiB by default, judged by the declared size before a body is read into memory', async () => {
+    const note = { path: 'notes/ex/a.md', content: '![big](r2:ex/big.bin)\n![small](r2:ex/small.png)\n' };
+    const fetcher = (async (input: string | URL | Request) => String(input).includes('big.bin') ? new Response('x', { headers: { 'content-length': String(600 * 1024 ** 2) } }) : new Response('ok')) as typeof fetch;
+    const archive = await noteArchive(note, fetcher);
+    expect(archive.included).toEqual(['ex/small.png']);
+    expect(archive.missing).toEqual([{ key: 'ex/big.bin', reason: `the archive is limited to ${512 * 1024 ** 2} bytes` }]);
+  });
 });

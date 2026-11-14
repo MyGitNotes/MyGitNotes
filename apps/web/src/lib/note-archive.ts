@@ -67,8 +67,8 @@ export function zipStore(files: ZipFile[], date = new Date()): Uint8Array<ArrayB
   return zip;
 }
 
-/** What one archive holds at most: it is built in memory, in the browser. */
-const ARCHIVE_BYTES = 1024 ** 3;
+/** What one archive holds at most: it is built in memory, in the browser, where each object, the assembled ZIP and its Blob are held at once. */
+const ARCHIVE_BYTES = 512 * 1024 ** 2;
 
 export interface NoteArchive {
   /** The archive's file name: the note's, ending in `.zip`. */
