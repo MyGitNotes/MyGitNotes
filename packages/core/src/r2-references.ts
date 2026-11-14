@@ -56,7 +56,7 @@ export function isNotebookR2Key(key: string, notebookId: string): boolean {
   return isValidR2Key(key) && key.startsWith(r2NotebookPrefix(notebookId)) && key.length > r2NotebookPrefix(notebookId).length;
 }
 
-/** Characters that end or break a bare Markdown link destination: `%`, whitespace, control characters, `(`, `)`, `<`, `>`, `\\`, quotes, and `#` and `?` (fragment and query). Everything else, CJK and emoji included, stays readable. */
+/** Characters that end or break a bare Markdown link destination: `%`, whitespace, control characters, `(`, `)`, `<`, `>`, `\`, quotes, and `#` and `?` (fragment and query). Everything else, CJK and emoji included, stays readable. */
 const BARE_UNSAFE = /[%\s\p{Cc}()<>\\"'#?]/gu;
 
 /** Percent-encodes (UTF-8) only what a bare `r2:` destination cannot carry, keeping `/` and readable text. */
