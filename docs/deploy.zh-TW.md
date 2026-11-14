@@ -395,9 +395,11 @@ pnpm r2-download --refresh                        # 重新讀取所有被引用�
 
 快取位於 checkout 的 `.cache/r2-assets`，Git、`.vercelignore` 與 `.dockerignore` 都排除這個資料夾；`MYGITNOTES_R2_CACHE_DIR` 可以指定其他資料夾（在容器中請指向掛載的 volume，快取才不會隨容器消失）。每個物件是一個以 key 的 SHA-256 命名的檔案，旁邊的 `.json` 檔記錄 key、大小與 entity tag。快取沒有大小上限，且只對應一個 bucket：要釋放空間，或 checkout 改指向另一個 bucket 時，刪除這個資料夾。已快取的物件不會再向 bucket 比對；本程式上傳的物件只寫入一次、不會被覆寫，所以這樣做沒有問題。若在同一個 key 下替換了物件，請執行 `pnpm r2-download --refresh`。資料夾無法寫入時，本機伺服器記錄一次原因，並照有快取之前的方式轉址到 bucket。
 
-快取物件與 bucket 物件適用同一條規則：請求必須指名一篇引用該 key 的筆記。
+快取物件與 bucket 物件適用同一條規則：請求必須指名一篇引用該 key 的筆記。快取是受信任的本機狀態，不會再與 bucket 核對：放進 `.cache/r2-assets` 的檔案（例如不顧 `.gitignore` 強制加入、隨複製的儲存庫而來的檔案）會被當成該物件提供，所以把複製來的儲存庫的 `.cache/` 當作它的程式碼看待。快取只以物件 key 為索引，因此假設一個 checkout 只對應一個 bucket。在應用程式的 R2 管理介面刪除或移動物件，或用 MCP `delete_asset` 刪除物件時，也會一併移除它的快取副本。
+
+`MYGITNOTES_R2_REMOTE_URL` 是部署網址；若貼上的是連接器網址（`…/mcp/<token>`），會去掉 `/mcp/<token>` 這一段，token 仍然只從 `MYGITNOTES_R2_REMOTE_TOKEN` 讀取。部署回傳的下載網址只有在 `https`（或指向本機的 `http`）時才會讀取，且不跟隨轉址。
 
 ### 連同圖片下載筆記
 
-- **網頁。** 引用了 `r2:` 物件的筆記，匯出選單會多出**連同圖片下載 (.zip)**。壓縮檔內有筆記與物件，筆記裡的引用改指向同一層的 `assets/<object-key>`。抓不到的物件保留原本的 `r2:` 引用，並列在 `missing-assets.txt`。壓縮檔在瀏覽器中產生，上限 1 GiB；在 hosted 部署上，瀏覽器直接向 bucket 讀取物件，因此上述 bucket CORS 規則必須允許來自 `APP_URL` 的 GET。
+- **網頁。** 引用了 `r2:` 物件的筆記，匯出選單會多出**連同圖片下載 (.zip)**。壓縮檔內有筆記與物件，筆記裡的引用改指向同一層的 `assets/<object-key>`。抓不到的物件保留原本的 `r2:` 引用，並列在 `missing-assets.txt`。壓縮檔在瀏覽器中產生，上限 512 MiB；在 hosted 部署上，瀏覽器直接向 bucket 讀取物件，因此上述 bucket CORS 規則必須允許來自 `APP_URL` 的 GET。
 - **MCP。** `download_assets` 帶筆記的 `path`。經 hosted `/mcp` 呼叫時，每個被筆記引用的物件回傳一個 5 分鐘有效的網址，每次最多 50 個，唯讀授權也能使用。經本機 stdio 伺服器呼叫時，物件存進上述快取，並回傳每個檔案的路徑。
