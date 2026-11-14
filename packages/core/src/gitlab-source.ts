@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { type RemoteChange, type RemoteCommit, type RemoteEntry, type RemoteSnapshot, RemoteSource } from './remote-source.js';
+import type { CommitAuthor } from './commit-author.js';
 import { SourceError } from './github-api.js';
 import { gitListing, inGitOrder } from './git-tree.js';
 import { normalizeGitLabUrl, sourceIdentity } from './source-config.js';
@@ -63,8 +64,8 @@ function nextPageToken(link: string | null, site: string): string | null {
 export class GitLabSource extends RemoteSource {
   readonly url: string;
   private blobs = new Map<string, Promise<Buffer>>();
-  constructor(url: string, repository: string, branch: string, token: string | undefined, private request: typeof fetch, cache: RemoteCache | undefined, scope: RepositoryScope) {
-    super(repository, branch, token, cache, scope);
+  constructor(url: string, repository: string, branch: string, token: string | undefined, private request: typeof fetch, cache: RemoteCache | undefined, scope: RepositoryScope, author?: CommitAuthor) {
+    super(repository, branch, token, cache, scope, author);
     this.url = normalizeGitLabUrl(url);
   }
   get id() {
@@ -386,7 +387,7 @@ export class GitLabSource extends RemoteSource {
     const diff = await this.json(`/repository/commits/${commit}/diff?per_page=100`) as { new_path: string; deleted_file?: boolean; }[];
     return { date: found.authored_date || '', paths: Array.isArray(diff) ? diff.filter(entry => !entry.deleted_file).map(entry => entry.new_path) : [] };
   }
-  protected async publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string): Promise<string> {
+  protected async publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string, author?: CommitAuthor): Promise<string> {
     const actions = [];
     /** What the commit leaves at each path: the object id of the bytes sent, or null where it deletes. */
     const written = new Map<string, string | null>();
@@ -414,7 +415,8 @@ export class GitLabSource extends RemoteSource {
     const branch = await this.json(`/repository/branches/${encodeURIComponent(this.branch)}`);
     if (!branch.can_push) throw new SourceError('Write access on the main workspace branch is required.', 403);
     if (branch.commit?.id !== snapshot.sha) throw new SourceError('The repository changed. Reload before saving.', 409);
-    const commit = await this.json('/repository/commits', { method: 'POST', body: JSON.stringify({ branch: this.branch, commit_message: message, actions, force: false }) });
+    // GitLab records the author it is given and keeps the token's account as the committer.
+    const commit = await this.json('/repository/commits', { method: 'POST', body: JSON.stringify({ branch: this.branch, commit_message: message, actions, force: false, ...(author ? { author_name: author.name, author_email: author.email } : {}) }) });
     if (typeof commit.id !== 'string' || !/^[a-f0-9]{40,64}$/.test(commit.id)) throw new SourceError('GitLab returned no commit revision. Reload to check whether the change was saved.', 502);
     // The commit is published whatever happens to its listing, so the save answers once that has had a few seconds. A
     // listing that comes later is still kept; one that fails or never comes is the next read's to follow.

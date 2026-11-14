@@ -43,6 +43,7 @@ export * from './note-pages.js';
 export * from './study.js';
 export * from './tag-ops.js';
 export * from './note-versions.js';
+export * from './commit-author.js';
 export * from './note-history.js';
 
 export * from './study-stages.js';
