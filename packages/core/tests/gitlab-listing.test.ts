@@ -3,7 +3,7 @@ import { SourceError } from '../src/github-api.js';
 import { openRemoteRepository } from '../src/remote-factory.js';
 import type { RemoteCache } from '../src/remote-cache.js';
 import { gitWorktree } from './fixtures/git-worktree.js';
-import { documentationTree, gitlabRepository, sealedCache } from './fixtures/gitlab-repository.js';
+import { documentationTree, gitlabRepository, sealedCache, type TreePage } from './fixtures/gitlab-repository.js';
 
 type Repository = ReturnType<typeof gitlabRepository>;
 /** One request of a server process: a reader of its own, as the server opens one per request. */
@@ -62,6 +62,34 @@ describe('GitLab listing of a large repository', () => {
     const repository = gitlabRepository(Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`note-${index}.md`, `# ${index}\n`])));
     expect(await listed(repository, repository.process())).toEqual(repository.listing(repository.head));
     expect(repository.take()).toEqual({ project: 1, branch: 1, tree: 2 });
+  });
+
+  const invalid = 'GitLab returned invalid pagination.', incomplete = 'GitLab returned an incomplete repository listing.';
+  /** What the second page of a listing does wrong, given the entries of the first. */
+  const faults: { fault: string; paging: 'keyset' | 'numbered'; second: (page: TreePage, first: unknown[]) => void; message: string; requests: number; }[] = [
+    { fault: 'a page token named a second time', paging: 'keyset', second: page => page.headers.Link = `<${page.url}>; rel="next"`, message: invalid, requests: 2 },
+    { fault: 'an empty page that names a next one', paging: 'keyset', second: page => page.entries = [], message: invalid, requests: 2 },
+    { fault: 'an empty numbered page that names a next one', paging: 'numbered', second: page => page.entries = [], message: invalid, requests: 2 },
+    { fault: 'a next page out of turn', paging: 'numbered', second: page => page.headers['x-next-page'] = '4', message: invalid, requests: 2 },
+    { fault: 'an entry without an object id', paging: 'keyset', second: page => page.entries = [{ ...page.entries[0] as object, id: '' }, ...page.entries.slice(1)], message: incomplete, requests: 2 },
+    // Entries that repeat under page tokens start the pages by number, where they are a fault.
+    { fault: 'a numbered page that repeats the one before', paging: 'numbered', second: (page, first) => page.entries = first, message: incomplete, requests: 4 },
+  ];
+  it.each(faults)('refuses $fault and keeps nothing of the listing', async ({ paging, second, message, requests }) => {
+    const cache = sealedCache();
+    const repository = gitlabRepository(documentationTree()), process = repository.process();
+    repository.behaviour.paging = paging;
+    let first: unknown[] = [];
+    repository.behaviour.page = page => {
+      if (page.number === 1) first = page.entries;
+      if (page.number === 2) second(page, first);
+    };
+    await expect(open(repository, process, cache).getSnapshot()).rejects.toMatchObject({ status: 502, message });
+    expect(repository.take()).toEqual({ project: 1, branch: 1, tree: requests });
+    expect(cache.values.size).toBe(0);
+    // The process held nothing either: without the fault it lists the whole tree.
+    repository.behaviour.page = undefined;
+    expect(await listed(repository, process, cache)).toEqual(repository.listing(repository.head));
   });
 
   it('reads the project and the branch only while the head stays where this process read it', async () => {
@@ -202,6 +230,29 @@ describe('GitLab listing of a large repository', () => {
     await cache.set([[key, sealed]], 60);
     await listed(repository, repository.process(), { ...cache, sign: sealedCache('another secret').sign });
     expect(repository.take()).toEqual({ project: 1, branch: 1, tree: pages });
+  });
+
+  it('refuses a listing sealed for one project or branch that the store presents as another\'s', async () => {
+    const cache = sealedCache();
+    const one = gitlabRepository(documentationTree(1), { project: 'group/one' });
+    const other = gitlabRepository({ ...documentationTree(1), 'only-here.md': '# In the other project\n' }, { project: 'group/other' });
+    const read = async (repository: Repository, branch: string) => (await openRemoteRepository({ type: 'gitlab', url: repository.site, repository: repository.project, branch }, 'token', repository.process(), cache).reader.getSnapshot()).entries;
+    const slot = (...named: string[]) => [...cache.values.keys()].find(key => key.startsWith(LISTING_KEY) && named.every(name => key.includes(`"${name}"`)))!;
+    // The fixture gives every first commit one id, so each slot below holds a listing of the commit its reader's branch names.
+    expect(other.head).toBe(one.head);
+    for (const [repository, branch] of [[one, 'main'], [other, 'main'], [one, 'draft']] as const) await read(repository, branch);
+    const pages = (repository: Repository) => Math.ceil(repository.listing(repository.head).length / 100);
+    // A writer of the store copies what the server sealed for one project's branch into the slot of another project, and of another branch.
+    for (const [repository, branch] of [[other, 'main'], [one, 'draft']] as const) {
+      const key = slot(repository.project, branch), sealed = cache.values.get(key)!;
+      expect(key).not.toBe(slot('group/one', 'main'));
+      await cache.set([[key, cache.values.get(slot('group/one', 'main'))!]], 60);
+      repository.take();
+      expect(await read(repository, branch)).toEqual(repository.listing(repository.head));
+      expect(repository.take(), `${repository.project} ${branch}`).toEqual({ project: 1, branch: 1, tree: pages(repository) });
+      // What the reader listed for itself replaced the copy.
+      expect(cache.values.get(key)).toBe(sealed);
+    }
   });
 
   it('keeps apart in the shared cache two projects that a site path and a project path spell alike', async () => {
