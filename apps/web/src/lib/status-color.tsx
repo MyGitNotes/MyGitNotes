@@ -2,7 +2,8 @@ import { createContext, type ReactNode, useContext } from 'react';
 import { STATUS_CYCLE, type StatusColor, statusColor, statusLabel } from '@mygitnotes/core/note-status';
 import { useThemeChoice } from '../app/useTheme.js';
 import { useTranslation } from './i18n/index.js';
-import { PALETTE_FAMILIES, type PaletteMode, type PaletteVariant, STATUS_PALETTE } from './palettes.js';
+import { type PaletteMode, type PaletteVariant, STATUS_PALETTE } from './palettes.js';
+import { getFamily } from './themes.js';
 import type { NotebookStatus, StatusColorName } from './types.js';
 
 /** The class that paints a `.status-dot`; the first four palette colours are the theme's success, info, warning and danger tokens. */
@@ -69,7 +70,7 @@ function perceptualCoordinates(hex: string): [number, number, number] {
  * with the mode. An inbox wears the primary, so a cycled status must not look like one.
  */
 export function statusAvoidColor(familyId: string): StatusColorName {
-  const family = PALETTE_FAMILIES.find(candidate => candidate.id === familyId) ?? PALETTE_FAMILIES[0];
+  const family = getFamily(familyId);
   const distance = (color: StatusColorName) => MODES.reduce((sum, mode) => sum + colorDistance(family.variants[mode].primary, paletteHex(color, family.variants[mode], mode)), 0);
   return STATUS_CYCLE.reduce((closest, color) => distance(color) < distance(closest) ? color : closest);
 }

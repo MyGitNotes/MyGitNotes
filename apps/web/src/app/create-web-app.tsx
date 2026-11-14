@@ -37,6 +37,10 @@ import { type WebFeature, WebFeaturesProvider } from '../lib/web-features.js';
 import { APP_ROUTE_PATHS } from '../lib/routes.js';
 import { DEMO_BASE, DemoProvider, parseDemoPath } from '../lib/demo.js';
 import { expireDemoData } from '../lib/demo-storage.js';
+import { registerThemes, type ThemeRegistration } from '../lib/themes.js';
+
+export { PALETTE_FAMILIES, type PaletteFamily, type PaletteMode, type PaletteVariant } from '../lib/palettes.js';
+export type { ThemeRegistration } from '../lib/themes.js';
 
 // The workspace (editor, math, study, drag and drop) is its own chunk, fetched as soon as the entry runs: the sign-in
 // gate paints without waiting for it, and a signed-in visitor downloads it while the session probe is in flight.
@@ -65,10 +69,12 @@ try {
 export interface WebAppOptions {
   /** What another edition adds; the community edition passes none. */
   features?: readonly WebFeature[];
+  /** Palette families an edition adds to the built-ins, and the family a visitor with no saved choice gets. */
+  themes?: ThemeRegistration;
 }
 
 /** The whole web app: data, routing and panels, with any edition features registered. */
-export function WebApp({ features = [] }: WebAppOptions) {
+export function WebApp({ features = [] }: Omit<WebAppOptions, 'themes'>) {
   React.useEffect(() => installAnnotationLinking(), []);
   // Note answers are addressed by workspace revision, so they never go stale on their own; a
   // failed query surfaces its error instead of retrying behind the user's back.
@@ -100,8 +106,9 @@ export function WebApp({ features = [] }: WebAppOptions) {
   );
 }
 
-/** Renders the web app into `root`; an edition's entry calls it with its features. */
-export function createWebApp(root: HTMLElement, options: WebAppOptions = {}) {
+/** Renders the web app into `root`; an edition's entry calls it with its features and themes. A `themes.defaultFamily` that names no known family throws before anything renders. */
+export function createWebApp(root: HTMLElement, { themes, ...options }: WebAppOptions = {}) {
+  registerThemes(themes ?? {});
   registerServiceWorker();
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
