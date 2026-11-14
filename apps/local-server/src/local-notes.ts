@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { classifyResource, deleteNoteFile, FILE_RESOURCE_TYPES, isTemplateFile, keyedItem, lookupNotes, noteAgenda, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
+import { classifyResource, deleteNoteFile, isTemplateFile, keyedItem, lookupNotes, NOTE_RESOURCE_TYPES, noteAgenda, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
 import { changeFile, generateCommitMessage, listChanges, stageAndCommit } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { asLocal, eachRepository, type LocalHandle, notebookRepository, noteRepository, requestCatalog } from './request-workspace.js';
@@ -9,12 +9,12 @@ import { moveLocalVersionFiles, restoreLocalVersionFile } from './version-files.
 import { regularPath } from './workspace-files.js';
 
 /**
- * Refuses a file of a notebook that is not a note: a text file, a PDF, a page or any other file, and every path the
- * manifest excludes. Such a file is read through the file routes; no note route reads, writes, deletes or restores it,
- * which is what a remote workspace answers too (`RemoteSource.note`, `save`).
+ * Refuses every path that is not a note, an outline, a compilation or a template: a text file, a PDF, a page, an image,
+ * an asset, an agent's file and every path the manifest excludes. Such a file is read through the file routes; no note
+ * route reads, writes, deletes or restores it, which is what a remote workspace answers too (`RemoteSource.note`, `save`).
  */
 function assertNote(file: string, config: WorkspaceConfig): void {
-  if (FILE_RESOURCE_TYPES.includes(classifyResource(file, config).type)) throw new SourceError('Path is not a configured note.', 403);
+  if (!NOTE_RESOURCE_TYPES.includes(classifyResource(file, config).type)) throw new SourceError('Path is not a configured note.', 403);
 }
 
 export function createLocalNotesRouter(): Router {

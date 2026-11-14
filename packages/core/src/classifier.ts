@@ -27,6 +27,12 @@ const FILE_RESOURCE_BY_KIND: Partial<Record<ReturnType<typeof fileKind>, Resourc
 export const FILE_RESOURCE_TYPES: readonly ResourceType[] = ['text_file', 'pdf_file', 'html_file', 'other_file'];
 
 /**
+ * The resource types the note routes and tools read, write and delete: every other path, an image, an asset, an agent's
+ * file or one the manifest excludes included, is refused as a note, as a remote workspace refuses it.
+ */
+export const NOTE_RESOURCE_TYPES: readonly ResourceType[] = ['note', 'outline', 'compilation', 'template'];
+
+/**
  * Checks if a relative path matches standard hidden / noise criteria.
  */
 export function isHiddenPath(relPath: string): boolean {

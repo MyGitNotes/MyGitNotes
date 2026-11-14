@@ -113,17 +113,28 @@ describe('links to a notebook’s files, on a local workspace', () => {
       return { status: response.status, ...await response.json() };
     };
     const head = () => git('rev-parse', 'HEAD').toString().trim();
+    // What a remote workspace answers: only a note, an outline, a compilation or a template is one, so neither is an image,
+    // a file of the assets folder or an agent's file, excluded or not.
+    const others: Record<string, string | Buffer> = { 'docs/pic.png': Buffer.from([137, 80, 78, 71]), 'docs/analysis/pic.png': Buffer.from([137, 80, 78, 71]), 'docs/assets/x.md': '# Asset\n', 'docs/analysis/AGENTS.md': '# Rules\n', 'docs/guide/docs/agent/x.md': '# Agent\n' };
+    for (const [file, content] of Object.entries(others)) {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.writeFileSync(path.join(root, file), content);
+    }
+    git('add', '.');
+    git('commit', '-m', 'other files');
     const before = head();
-    for (const file of ['docs/analysis/report.md', 'docs/guide/analysis/deep.md', 'docs/db/schema.sql', 'docs/spec.pdf', 'docs/out/index.html', 'docs/bundle.zip']) {
+    for (const file of ['docs/analysis/report.md', 'docs/guide/analysis/deep.md', 'docs/db/schema.sql', 'docs/spec.pdf', 'docs/out/index.html', 'docs/bundle.zip', ...Object.keys(others)]) {
       const content = fs.readFileSync(path.join(root, file));
-      expect([file, await call('GET', `/api/notes/read?path=${encodeURIComponent(file)}`)]).toEqual([file, NOT_A_NOTE]);
-      expect([file, await call('GET', `/api/notes/read?notebookId=${nb('a')}&path=${encodeURIComponent(file)}`)]).toEqual([file, NOT_A_NOTE]);
-      expect([file, await call('POST', '/api/notes', { path: file, content: 'overwritten', metadata: { title: 'x' } })]).toEqual([file, NOT_A_NOTE]);
-      expect([file, await call('POST', '/api/notes', { path: file, content: 'overwritten', noCommit: true })]).toEqual([file, NOT_A_NOTE]);
-      expect([file, await call('POST', '/api/notes/restore', { path: file, content: 'overwritten' })]).toEqual([file, NOT_A_NOTE]);
-      expect([file, await call('POST', '/api/notes/restore', { path: file })]).toEqual([file, NOT_A_NOTE]);
-      expect([file, await call('DELETE', `/api/notes?path=${encodeURIComponent(file)}`)]).toEqual([file, NOT_A_NOTE]);
-      expect([file, await call('DELETE', `/api/notes?noCommit=true&path=${encodeURIComponent(file)}`)]).toEqual([file, NOT_A_NOTE]);
+      // The workspace guard ahead of the note routes already refuses an agent's file, in its own words.
+      const refused = /(^|\/)(AGENTS\.md|docs\/agent\/.*)$/.test(file) ? { status: 403, error: 'Path is outside configured workspace resources.' } : NOT_A_NOTE;
+      expect([file, await call('GET', `/api/notes/read?path=${encodeURIComponent(file)}`)]).toEqual([file, refused]);
+      expect([file, await call('GET', `/api/notes/read?notebookId=${nb('a')}&path=${encodeURIComponent(file)}`)]).toEqual([file, refused]);
+      expect([file, await call('POST', '/api/notes', { path: file, content: 'overwritten', metadata: { title: 'x' } })]).toEqual([file, refused]);
+      expect([file, await call('POST', '/api/notes', { path: file, content: 'overwritten', noCommit: true })]).toEqual([file, refused]);
+      expect([file, await call('POST', '/api/notes/restore', { path: file, content: 'overwritten' })]).toEqual([file, refused]);
+      expect([file, await call('POST', '/api/notes/restore', { path: file })]).toEqual([file, refused]);
+      expect([file, await call('DELETE', `/api/notes?path=${encodeURIComponent(file)}`)]).toEqual([file, refused]);
+      expect([file, await call('DELETE', `/api/notes?noCommit=true&path=${encodeURIComponent(file)}`)]).toEqual([file, refused]);
       expect(fs.readFileSync(path.join(root, file)).equals(content)).toBe(true);
     }
     // A new note cannot be created under an excluded folder either.
@@ -135,6 +146,11 @@ describe('links to a notebook’s files, on a local workspace', () => {
     expect(await call('GET', '/api/notes/read?path=docs/note.md')).toMatchObject({ status: 200, note: { path: 'docs/note.md' } });
     expect(await call('POST', '/api/notes', { path: 'docs/guide/new.md', content: 'new', createOnly: true })).toMatchObject({ status: 200, committed: true });
     expect(await call('DELETE', '/api/notes?path=docs/guide/new.md')).toMatchObject({ status: 200, committed: true });
+    // A text note and a template of the notebook are notes to these routes too.
+    expect(await call('POST', '/api/notes', { path: 'docs/guide/plain.txt', content: 'plain', createOnly: true })).toMatchObject({ status: 200, committed: true });
+    expect(await call('GET', '/api/notes/read?path=docs/guide/plain.txt')).toMatchObject({ status: 200, note: { path: 'docs/guide/plain.txt' } });
+    expect(await call('POST', '/api/notes', { path: 'docs/.templates/meeting.md', content: '# {{title}}\n', createOnly: true })).toMatchObject({ status: 200, committed: true });
+    expect(await call('GET', '/api/notes/read?path=docs/.templates/meeting.md')).toMatchObject({ status: 200 });
   });
 });
 

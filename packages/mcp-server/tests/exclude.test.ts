@@ -21,12 +21,15 @@ it('keeps notes under the manifest exclude globs out of the list, the search, th
   git('config', 'user.name', 'Fixture');
   git('config', 'user.email', 'fixture@example.test');
   const files: Record<string, string> = { '.mygitnotes.yaml': 'schema_version: 4\nworkspace:\n  title: T\n  default_notebook: docs\nexclude:\n  - "**/analysis/**"\nnotebooks:\n  - id: docs\n    title: Docs\n    root: docs\n    exclude:\n      - "*.draft.md"\n', 'docs/keep.md': '# Keep\n\nkeyword\n', 'docs/guide/kept.md': '# Kept\n\nkeyword\n', 'docs/analysis/report.md': '# Report\n\nkeyword\n', 'docs/guide/analysis/deep.md': '# Deep\n\nkeyword\n', 'docs/wip.draft.md': '# Draft\n\nkeyword\n', 'docs/schema.sql': 'keyword\n' };
-  for (const [file, content] of Object.entries(files)) {
-    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-    fs.writeFileSync(path.join(root, file), content);
-  }
-  git('add', '.');
-  git('commit', '-m', 'fixture');
+  const write = (written: Record<string, string>) => {
+    for (const [file, content] of Object.entries(written)) {
+      fs.mkdirSync(path.dirname(path.join(root!, file)), { recursive: true });
+      fs.writeFileSync(path.join(root!, file), content);
+    }
+    git('add', '.');
+    git('commit', '-m', 'fixture');
+  };
+  write(files);
   const server = createMCPServer(root, deploymentConfigSource(root, { MYGITNOTES_SOURCE: 'local', MYGITNOTES_LOCAL_PATH: root }));
   const client = new Client({ name: 'fixture', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -40,11 +43,13 @@ it('keeps notes under the manifest exclude globs out of the list, the search, th
     expect((await call('list_notes', {})).data.notes.map((note: { path: string; }) => note.path).sort()).toEqual(['docs/guide/kept.md', 'docs/keep.md']);
     expect((await call('search_notes', { query: 'keyword' })).data.matches.map((match: { path: string; }) => match.path).sort()).toEqual(['docs/guide/kept.md', 'docs/keep.md']);
     expect((await call('list_folders', {})).data.folders.map((folder: { path: string; }) => folder.path)).toEqual(['guide']);
-    // An excluded path and a plain file are no notes to the note tools either, as on the hosted server; nothing is written.
+    // An excluded path, a plain file, an image, a file of the assets folder and an agent's file are no notes to the note
+    // tools either, as on the hosted server; nothing is written.
     const refused = { isError: true, data: { error: 'Path is not a configured note.' } };
     const head = () => git('rev-parse', 'HEAD').toString().trim();
+    write({ 'docs/pic.png': '\x89PNG', 'docs/analysis/pic.png': '\x89PNG', 'docs/assets/x.md': '# Asset\n', 'docs/analysis/AGENTS.md': '# Rules\n', 'docs/guide/docs/agent/x.md': '# Agent\n' });
     const before = head();
-    for (const file of ['docs/analysis/report.md', 'docs/guide/analysis/deep.md', 'docs/wip.draft.md', 'docs/schema.sql']) {
+    for (const file of ['docs/analysis/report.md', 'docs/guide/analysis/deep.md', 'docs/wip.draft.md', 'docs/schema.sql', 'docs/pic.png', 'docs/analysis/pic.png', 'docs/assets/x.md', 'docs/analysis/AGENTS.md', 'docs/guide/docs/agent/x.md']) {
       const content = fs.readFileSync(path.join(root!, file), 'utf8');
       expect([file, await call('read_note', { path: file })]).toMatchObject([file, refused]);
       expect([file, await call('read_note', { path: file, metadataOnly: true })]).toMatchObject([file, refused]);
