@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { SourceError } from '../src/github-api.js';
 import { openRemoteRepository } from '../src/remote-factory.js';
 import type { RemoteCache } from '../src/remote-cache.js';
@@ -274,6 +274,37 @@ describe('GitLab listing after this process commits', () => {
     repository.take();
     expect(await listed(repository, process)).toEqual(repository.listing(repository.head));
     expect(repository.take()).toEqual({ project: 1, branch: 1, compare: 1, head: 1, root: 1, tree: pages });
+  });
+
+  it('answers a save within seconds when the listing of its commit is slow to come, and the next read follows the commit', async () => {
+    const { repository, process } = await large();
+    let asked = () => {}, answer = () => {}, stalled = false;
+    const arrived = new Promise<void>(resolve => asked = resolve), slow = new Promise<void>(resolve => answer = resolve);
+    // GitLab takes the commit and then does not answer the listing of its top level.
+    repository.behaviour.wait = kind => kind === 'root' && !stalled ? (stalled = true, asked(), slow) : undefined;
+    const base = repository.head;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let saving: Promise<{ revision: string; } | 'still waiting'>;
+    try {
+      saving = open(repository, process).save('notes/ex/a.md', '# Alpha, changed\n', undefined, base);
+      await arrived;
+      await vi.advanceTimersByTimeAsync(5000);
+    } finally {
+      vi.useRealTimers();
+    }
+    try {
+      expect(await Promise.race([saving, new Promise<'still waiting'>(resolve => setTimeout(resolve, 2000, 'still waiting'))])).toMatchObject({ revision: repository.head });
+      expect(repository.head).not.toBe(base);
+      expect(repository.take()).toMatchObject({ commit: 1, root: 1 });
+      expect(await listed(repository, process)).toEqual(repository.listing(repository.head));
+      expect(repository.take()).toEqual({ project: 1, branch: 1, compare: 1, head: 1, root: 1 });
+    } finally {
+      answer();
+    }
+    // The listing that came late changes nothing a reader sees.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(await listed(repository, process)).toEqual(repository.listing(repository.head));
+    expect(repository.take()).toEqual({ project: 1, branch: 1 });
   });
 
   it('keeps no derived listing when the commit landed on a head someone else moved', async () => {

@@ -46,6 +46,8 @@ export function gitlabRepository(initial: Record<string, RepositoryFile>, option
     compare: 'ok' as 'ok' | 'fails' | 'timeout' | 'drops-one',
     beforeCommit: undefined as (() => void) | undefined,
     fail: undefined as ((kind: string) => number | undefined) | undefined,
+    /** A slow answer: a request of a kind this returns a promise for is answered once it resolves. */
+    wait: undefined as ((kind: string) => Promise<void> | undefined) | undefined,
     /** A fault on the way: changes a page of a tree listing, its entries or its headers, before it is sent. */
     page: undefined as ((page: TreePage) => void) | undefined,
   };
@@ -94,6 +96,7 @@ export function gitlabRepository(initial: Record<string, RepositoryFile>, option
     log.push(`gitlab:${kind}`);
     const failure = behaviour.fail?.(kind);
     if (failure) return json({}, failure);
+    await behaviour.wait?.(kind);
     if (!endpoint) {
       return json({ visibility: 'private', default_branch: 'main' });
     }

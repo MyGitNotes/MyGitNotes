@@ -26,6 +26,8 @@ const FOLLOWED_FILES = 200;
 const LISTING_PART = REMOTE_CACHE_MAX_VALUE - 1024;
 /** Room to inflate a cached listing; the 100,000 entries the source accepts take less. */
 const LISTING_MAX_BYTES = 64 * 1024 * 1024;
+/** How long a save waits for the listing of its own commit before it answers without it. */
+const ADOPT_WAIT = 4000;
 
 /** Whether two entries name one object at one path, as one kind and mode. */
 const sameEntry = (a: RemoteEntry, b: RemoteEntry | undefined) => a.path === b?.path && a.sha === b.sha && a.type === b.type && a.mode === b.mode;
@@ -33,6 +35,17 @@ const sameEntry = (a: RemoteEntry, b: RemoteEntry | undefined) => a.path === b?.
 function frozen(entries: RemoteEntry[]): RemoteEntry[] {
   for (const entry of entries) Object.freeze(entry);
   return Object.freeze(entries) as RemoteEntry[];
+}
+
+/** Settles when `work` does or `ms` have passed, whichever comes first, and never rejects. `work` goes on either way. */
+function within(work: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, ms);
+    void work.catch(() => undefined).then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
 }
 
 /** The token of the page a keyset-paginated response names next in its `Link` header; null on the last page. */
@@ -396,8 +409,9 @@ export class GitLabSource extends RemoteSource {
     if (branch.commit?.id !== snapshot.sha) throw new SourceError('The repository changed. Reload before saving.', 409);
     const commit = await this.json('/repository/commits', { method: 'POST', body: JSON.stringify({ branch: this.branch, commit_message: message, actions, force: false }) });
     if (typeof commit.id !== 'string' || !/^[a-f0-9]{40,64}$/.test(commit.id)) throw new SourceError('GitLab returned no commit revision. Reload to check whether the change was saved.', 502);
-    // The commit is published whatever happens to its listing, which the next read then gets for itself.
-    await this.adopt(snapshot, written, commit).catch(() => undefined);
+    // The commit is published whatever happens to its listing, so the save answers once that has had a few seconds. A
+    // listing that comes later is still kept; one that fails or never comes is the next read's to follow.
+    await within(this.adopt(snapshot, written, commit), ADOPT_WAIT);
     return commit.id;
   }
 }
