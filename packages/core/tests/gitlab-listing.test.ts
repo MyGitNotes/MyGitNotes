@@ -103,6 +103,31 @@ describe('GitLab listing of a large repository', () => {
     for (const entries of read) expect(entries).toBe(read[0]);
   });
 
+  it('keeps nowhere a listing whose directories do not hash to the entries listed under them, as one cut short by a page that named no next', async () => {
+    for (const paging of ['keyset', 'numbered'] as const) {
+      const cache = sealedCache();
+      const repository = gitlabRepository(documentationTree()), process = repository.process();
+      const pages = Math.ceil(repository.listing(repository.head).length / 100);
+      repository.behaviour.paging = paging;
+      // The third page says it is the last, though entries remain.
+      repository.behaviour.page = page => {
+        if (!page.recursive || page.number !== 3) return;
+        delete page.headers.Link;
+        if (paging === 'numbered') page.headers['x-next-page'] = '';
+      };
+      // The request that met the fault is answered as it was before listings were kept.
+      expect(await listed(repository, process, cache), paging).toHaveLength(300);
+      expect(repository.take(), paging).toEqual({ project: 1, branch: 1, tree: 3 });
+      expect([...cache.values.keys()].filter(key => key.startsWith(LISTING_KEY)), paging).toEqual([]);
+      repository.behaviour.page = undefined;
+      // Neither the process nor the shared cache kept it: the next request of this process lists again, and what it lists is kept.
+      expect(await listed(repository, process, cache), paging).toEqual(repository.listing(repository.head));
+      expect(repository.take(), paging).toEqual({ project: 1, branch: 1, tree: pages });
+      expect(await listed(repository, repository.process(), cache), paging).toEqual(repository.listing(repository.head));
+      expect(repository.take(), paging).toEqual({ project: 1, branch: 1 });
+    }
+  });
+
   it('serves another process from the shared cache, after that reader read the branch itself', async () => {
     const cache = sealedCache();
     const { repository } = await large(cache);

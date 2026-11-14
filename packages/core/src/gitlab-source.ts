@@ -27,6 +27,14 @@ const LISTING_PART = REMOTE_CACHE_MAX_VALUE - 1024;
 /** Room to inflate a cached listing; the 100,000 entries the source accepts take less. */
 const LISTING_MAX_BYTES = 64 * 1024 * 1024;
 
+/** Whether two entries name one object at one path, as one kind and mode. */
+const sameEntry = (a: RemoteEntry, b: RemoteEntry | undefined) => a.path === b?.path && a.sha === b.sha && a.type === b.type && a.mode === b.mode;
+/** Freezing keeps one request from changing a listing another one reads. */
+function frozen(entries: RemoteEntry[]): RemoteEntry[] {
+  for (const entry of entries) Object.freeze(entry);
+  return Object.freeze(entries) as RemoteEntry[];
+}
+
 /** The token of the page a keyset-paginated response names next in its `Link` header; null on the last page. */
 function nextPageToken(link: string | null, site: string): string | null {
   const next = /<([^>]*)>\s*;\s*rel="?next"?/i.exec(link || '');
@@ -126,7 +134,15 @@ export class GitLabSource extends RemoteSource {
     if (stored?.sha === sha) return this.hold(sha, stored.entries);
     // The shared cache holds what any process read last, which is at least as recent as what this one did.
     const base = stored ?? this.lastHeld();
-    const entries = (base && await this.follow(base, sha)) ?? inGitOrder(await this.list(sha, true));
+    let entries = base && await this.follow(base, sha);
+    if (!entries) {
+      entries = inGitOrder(await this.list(sha, true));
+      // GitLab names no root tree to hash a listing back to, but each directory it lists has to hash to the entries
+      // listed under it. A listing that does not, as when a page named no next one while entries remained, answers the
+      // requests waiting on this read and is kept nowhere. One short by whole top-level entries still passes.
+      const derived = gitListing(entries.filter(entry => entry.type !== 'tree'), sha.length);
+      if (derived?.length !== entries.length || !entries.every((entry, index) => sameEntry(entry, derived[index]))) return frozen(entries);
+    }
     // Held first, so a store that fails leaves the process its listing.
     this.hold(sha, entries);
     await this.store(sha, entries);
@@ -135,9 +151,7 @@ export class GitLabSource extends RemoteSource {
   /** Keeps a listing for the requests of every reader this process serves. */
   private hold(sha: string, entries: RemoteEntry[]): RemoteEntry[] {
     const { held } = this.memory(), key = `${this.listingKey()}:${sha}`;
-    // Freezing keeps one request from changing another's snapshot.
-    for (const entry of entries) Object.freeze(entry);
-    Object.freeze(entries);
+    frozen(entries);
     held.delete(key);
     held.set(key, entries);
     let total = 0;
@@ -252,11 +266,7 @@ export class GitLabSource extends RemoteSource {
     if (!entries) return undefined;
     const top = new Map((await this.list(commit, false)).map(entry => [entry.path, entry]));
     const derived = entries.filter(entry => !entry.path.includes('/'));
-    const same = derived.length === top.size && derived.every(entry => {
-      const listed = top.get(entry.path);
-      return listed?.sha === entry.sha && listed.type === entry.type && listed.mode === entry.mode;
-    });
-    return same ? entries : undefined;
+    return derived.length === top.size && derived.every(entry => sameEntry(entry, top.get(entry.path))) ? entries : undefined;
   }
   /**
    * `base` moved to commit `sha`: the files GitLab's comparison of the two names, each read at `sha`, replace the

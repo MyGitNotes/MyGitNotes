@@ -10,6 +10,14 @@ export type RepositoryFile = string | { content: string; mode: string; };
 export type RepositoryChanges = Record<string, RepositoryFile | null>;
 /** Lists the files of one commit; a test that checks ids against git passes git's own listing here. */
 export type ListFiles = (files: Record<string, { content: string; mode: string; }>) => RemoteEntry[];
+/** One page of a tree listing as it is about to be sent: which page of which listing, its entries, and the headers that name the next page. */
+export interface TreePage {
+  number: number;
+  recursive: boolean;
+  url: string;
+  entries: unknown[];
+  headers: Record<string, string>;
+}
 
 const SITE = 'https://gitlab.example.test';
 const PROJECT = 'group/project';
@@ -31,7 +39,16 @@ export function gitlabRepository(initial: Record<string, RepositoryFile>, option
   /** Requests and cache reads in the order they happened. */
   const log: string[] = [];
   let head = '', counter = 0;
-  const behaviour = { access: true, paging: 'keyset' as 'keyset' | 'keyset-by-id' | 'numbered' | 'bare', crlf: false, compare: 'ok' as 'ok' | 'fails' | 'timeout' | 'drops-one', beforeCommit: undefined as (() => void) | undefined, fail: undefined as ((kind: string) => number | undefined) | undefined };
+  const behaviour = {
+    access: true,
+    paging: 'keyset' as 'keyset' | 'keyset-by-id' | 'numbered' | 'bare',
+    crlf: false,
+    compare: 'ok' as 'ok' | 'fails' | 'timeout' | 'drops-one',
+    beforeCommit: undefined as (() => void) | undefined,
+    fail: undefined as ((kind: string) => number | undefined) | undefined,
+    /** A fault on the way: changes a page of a tree listing, its entries or its headers, before it is sent. */
+    page: undefined as ((page: TreePage) => void) | undefined,
+  };
 
   const write = (tree: Tree, file: string, value: RepositoryFile, sha: string, keepMode = false) => {
     const { content, mode } = typeof value === 'string' ? { content: value, mode: keepMode ? tree.get(file)?.mode ?? '100644' : '100644' } : value;
@@ -89,19 +106,24 @@ export function gitlabRepository(initial: Record<string, RepositoryFile>, option
       // GitLab does not list in git's order; the reverse of it stands for whatever order it uses.
       const entries = listing(ref).filter(entry => recursive || !entry.path.includes('/')).reverse().map(({ path, mode, type, sha }) => ({ id: sha, name: path.slice(path.lastIndexOf('/') + 1), type, path, mode }));
       const size = Number(query.get('per_page') || 20);
+      const send = (number: number, sent: unknown[], headers: Record<string, string>) => {
+        const page: TreePage = { number, recursive, url, entries: sent, headers };
+        behaviour.page?.(page);
+        return json(page.entries, 200, page.headers);
+      };
       if (behaviour.paging.startsWith('keyset') && query.get('pagination') === 'keyset') {
         // The token is opaque to the reader. An earlier GitLab made it the last entry's object id and resumed after the first entry of that id.
         const token = query.get('page_token'), byId = behaviour.paging === 'keyset-by-id';
         const start = !token ? 0 : byId ? entries.findIndex(entry => entry.id === token) + 1 : Number(Buffer.from(token, 'hex').toString());
         const next = new URL(url);
         next.searchParams.set('page_token', byId ? entries[Math.min(start + size, entries.length) - 1].id : Buffer.from(String(start + size)).toString('hex'));
-        return json(entries.slice(start, start + size), 200, start + size < entries.length ? { Link: `<${next}>; rel="next"` } : {});
+        return send(Math.floor(start / size) + 1, entries.slice(start, start + size), start + size < entries.length ? { Link: `<${next}>; rel="next"` } : {});
       }
       // A site without keyset pagination of trees ignores the request for it and pages by number; behind some proxies the paging headers are lost.
       const page = Number(query.get('page') || 1), more = page * size < entries.length;
       const next = new URL(url);
       next.searchParams.set('page', String(page + 1));
-      return json(entries.slice((page - 1) * size, page * size), 200, behaviour.paging === 'bare' ? {} : { 'x-next-page': more ? String(page + 1) : '', ...(more ? { Link: `<${url}>; rel="first", <${next}>; rel="next"` } : {}) });
+      return send(page, entries.slice((page - 1) * size, page * size), behaviour.paging === 'bare' ? {} : { 'x-next-page': more ? String(page + 1) : '', ...(more ? { Link: `<${url}>; rel="first", <${next}>; rel="next"` } : {}) });
     }
     if (endpoint === '/repository/compare') {
       const from = query.get('from')!, to = query.get('to')!;
