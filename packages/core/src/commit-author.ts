@@ -1,5 +1,5 @@
 import { SourceError } from './github-api.js';
-import { appendTrailers, trailerBlock } from './note-versions.js';
+import { appendTrailers } from './note-versions.js';
 
 /** Who a commit names: its author, or a co-author in a `Co-authored-by` trailer. */
 export interface CommitAuthor {
@@ -10,10 +10,13 @@ export interface CommitAuthor {
 /**
  * What a name or email may not hold. Angle brackets delimit the email in a commit's author line and in a trailer, and a
  * line break ends either, so any of them could add an identity, a header or a trailer of the writer's choosing. Control
- * characters and the Unicode line separators go with them.
+ * characters and the Unicode line separators go with them, and so do the bidirectional overrides and isolates and the
+ * byte order mark, which change how a name reads without changing what it is. Joiners stay: some scripts write names with them.
  */
-const UNSAFE = /[<>\p{Cc}\u2028\u2029]/u;
+const UNSAFE = /[<>\p{Cc}\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/u;
 const CO_AUTHOR = 'Co-authored-by';
+/** Longest name and email a commit names, and most co-authors one commit lists. */
+const MAX_NAME = 256, MAX_EMAIL = 320, MAX_CO_AUTHORS = 50;
 
 /**
  * The author a commit may carry, from what an identity or a caller supplied. Undefined when there is none: no value, or
@@ -32,6 +35,7 @@ export function commitAuthor(value: unknown, who = 'The commit author'): CommitA
   };
   const { name, email } = value as { name?: unknown; email?: unknown; };
   const author = { name: part(name), email: part(email) };
+  if (author.name.length > MAX_NAME || author.email.length > MAX_EMAIL) throw refuse();
   return author.name && author.email ? author : undefined;
 }
 
@@ -43,9 +47,11 @@ export function commitAuthor(value: unknown, who = 'The commit author'): CommitA
  */
 export function withCoAuthors(message: string, coAuthors: readonly CommitAuthor[], author?: CommitAuthor): string {
   if (!Array.isArray(coAuthors)) throw new SourceError('Co-authors are a list of names and emails.', 400);
+  if (coAuthors.length > MAX_CO_AUTHORS) throw new SourceError(`A commit names at most ${MAX_CO_AUTHORS} co-authors.`, 400);
   const named = new Set<string>(author ? [author.email.toLowerCase()] : []);
-  for (const line of trailerBlock(message.trimEnd())?.split('\n') ?? []) {
-    const email = new RegExp(`^${CO_AUTHOR}: .*<([^<>]*)>\\s*$`, 'i').exec(line)?.[1];
+  // Any line of the message naming a co-author counts, whatever its line end, spacing or paragraph.
+  for (const line of message.split(/\r?\n/)) {
+    const email = new RegExp(`^${CO_AUTHOR}:\\s*.*<([^<>]*)>\\s*$`, 'i').exec(line)?.[1];
     if (email) named.add(email.trim().toLowerCase());
   }
   const trailers: string[] = [];

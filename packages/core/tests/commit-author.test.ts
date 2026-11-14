@@ -108,6 +108,20 @@ describe('co-authors of a commit', () => {
     const once = withCoAuthors('docs(notes): live edit a.md', [sam, lee], pat);
     expect(withCoAuthors(once, [lee, sam], pat)).toBe(once);
     expect(withCoAuthors(once, [{ name: 'Kim Example', email: 'kim@example.test' }, sam], pat)).toBe(`${once}\nCo-authored-by: Kim Example <kim@example.test>`);
+    // CRLF line ends, a trailer without the space and one outside the last paragraph still name the person.
+    for (const named of ['s\r\n\r\nCo-authored-by: Sam Example <sam@example.test>\r\n', 's\n\nCo-authored-by:Sam Example <sam@example.test>', 's\n\nCo-authored-by: Sam Example <sam@example.test>\n\nbody']) expect(withCoAuthors(named, [sam])).toBe(named);
+  });
+
+  it('are refused past a bounded length or count, and with characters that change how a name reads', () => {
+    expect(() => commitAuthor({ name: 'S'.repeat(257), email: 'sam@example.test' })).toThrow(expect.objectContaining({ status: 400 }));
+    expect(() => commitAuthor({ name: 'Sam', email: `${'s'.repeat(320)}@x` })).toThrow(expect.objectContaining({ status: 400 }));
+    expect(commitAuthor({ name: 'S'.repeat(256), email: 'sam@example.test' })?.name).toHaveLength(256);
+    for (const name of ['Sam\u202eelpmaxE', 'Sam\u2066x\u2069', '\ufeffSam']) expect(() => commitAuthor({ name, email: 'sam@example.test' })).toThrow(expect.objectContaining({ status: 400 }));
+    // Joiners some scripts write names with stay.
+    expect(commitAuthor({ name: 'ര\u200dമ', email: 'r@example.test' })?.name).toBe('ര\u200dമ');
+    const many = Array.from({ length: 51 }, (_, index) => ({ name: `P${index}`, email: `p${index}@example.test` }));
+    expect(() => withCoAuthors('s', many)).toThrow(expect.objectContaining({ status: 400 }));
+    expect(withCoAuthors('s', many.slice(0, 50)).split('\n').length).toBe(52);
   });
 
   it('are refused with a name or email that could start another trailer, and skipped when empty', () => {
