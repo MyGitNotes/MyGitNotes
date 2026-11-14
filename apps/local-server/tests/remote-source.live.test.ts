@@ -81,7 +81,7 @@ describe('reading checked-out notes', () => {
     expect(await open().note(virtual)).toMatchObject({ title: 'Meeting', live: { pending: true } });
   });
 
-  it('never answers one live note with another\'s text when both were listed with the same hash', async () => {
+  it("never answers one live note with another's text when both were listed with the same hash", async () => {
     const { files, liveNotes, open, checkout } = fixture();
     const same = '---\ntitle: Draft\n---\n';
     files.set('notes/life/a.md', same);
@@ -155,7 +155,12 @@ describe('writing around checked-out notes', () => {
   it('commits paths that are not notes while the editor is down, and refuses note writes with a 502', async () => {
     const { files, liveNotes, open } = fixture();
     const person = liveNotes.person.bind(liveNotes);
-    liveNotes.person = context => ({ ...person(context), checkouts: async () => { throw new Error('connection refused'); } });
+    liveNotes.person = context => ({
+      ...person(context),
+      checkouts: async () => {
+        throw new Error('connection refused');
+      },
+    });
     const head = (await open().getSnapshot()).sha;
     await expect(open().commitChanges([{ path: 'notes/life/_dir.yml', content: 'title: Life\n' }], head, 'update')).resolves.toMatchObject({ committed: true });
     expect(files.get('notes/life/_dir.yml')).toBe('title: Life\n');
