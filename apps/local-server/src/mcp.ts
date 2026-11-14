@@ -10,6 +10,7 @@ import { CredentialRejected, grantPerson } from './auth.js';
 import { type BearerGrant, bearerGrantRecord, type IdentityService } from './identity.js';
 import type { RecordStore, StoredRecord } from './record-store/index.js';
 import type { EditionSources } from './edition-sources.js';
+import { dropHeaders } from './request-headers.js';
 import { openWorkspace, type RemoteHandle, type RequestWorkspace } from './request-workspace.js';
 
 /** The JSON-RPC body of an ordinary call; a hosted asset upload carries its file inside the body and may be larger. */
@@ -85,20 +86,22 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
         let answer: BearerGrant | null;
         try {
           answer = await identity.bearerGrant!(req, outside);
+          // Reading the answer runs the identity's code too, so it fails the same way.
+          resolved = answer ? bearerGrantRecord(answer) : null;
         } catch (error) {
           // The message of a failed verification may quote the bearer, so only the error's class is logged.
           const name = error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(error.name) ? ` (${error.name})` : '';
           return unauthorized(`bearer-error${name}`);
         }
         if (!answer) return unauthorized('bearer-refused');
-        resolved = bearerGrantRecord(answer);
         if (!resolved) return unauthorized('bearer-invalid');
-        // From here the call is the resolved person's: the configuration source, the edition's sources and the asset storage get the request's headers without the bearer.
-        delete req.headers.authorization;
       }
       const grant = resolved ?? stored;
       // The grant is verified before the workspace is resolved, and the workspace is the person's the grant names.
       if (grant?.kind !== 'agent' || (bearer && grant.audience !== `${process.env.APP_URL}/mcp`)) return unauthorized(!bearer ? 'no-token' : !grant ? 'grant-missing' : grant.kind !== 'agent' ? 'grant-kind' : 'grant-audience');
+      // From here the call is the grant's person's: the configuration source, the edition's sources and the asset storage
+      // get the request without any bearer, the one used or another sent beside a URL grant.
+      dropHeaders(req, ['authorization']);
       const person = await grantPerson(store, grant);
       // A deployment without a usable source answers like one configured for local files.
       const settings = await configSource.settings(grantRequest(req, person)).catch((error: unknown) => {
@@ -122,7 +125,7 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
         return res.status(401).json({ error: identity.noCredentialMessage(settings.site) });
       }
       // Asset storage finds the caller on the request too: it is the grant's person, never a browser session sent beside the grant.
-      delete req.headers.cookie;
+      dropHeaders(req, ['cookie']);
       if (person) (req as express.Request & WorkspaceRequest).person = person;
       const workspace = openWorkspace(grantSettings(settings, grant), token, cache, { ...(person ? { person } : {}), ...(editionSources ? { editionSources } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
       const assets = toolAssets(assetStorage, req, res);

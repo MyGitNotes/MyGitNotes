@@ -3,10 +3,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer, type Server } from 'node:http';
-import { Router } from 'express';
+import { type Request, Router } from 'express';
 import type { EditionSourceConfig, SourceConfig, WorkspaceConfigSource, WorkspaceRequest } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import type { IdentityService } from '../src/identity.js';
+import { dropHeaders } from '../src/request-headers.js';
 import { memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
 import { createRecordStore, type RecordStore, type StoredRecord } from '../src/record-store/index.js';
 import { workspaceSettings } from './workspace-settings.js';
@@ -253,6 +254,15 @@ describe('a bearer that is not a stored grant', () => {
   });
 });
 
+describe('the headers a grant leaves behind', () => {
+  it('are gone from the parsed headers and the raw list, whatever their case', () => {
+    const req = { headers: { authorization: 'Bearer a.b.c', cookie: 'x=1', accept: '*/*' }, rawHeaders: ['Authorization', 'Bearer a.b.c', 'Accept', '*/*', 'COOKIE', 'x=1', 'authorization', 'Bearer d.e.f'] } as unknown as Request;
+    dropHeaders(req, ['authorization', 'cookie']);
+    expect(req.headers).toEqual({ accept: '*/*' });
+    expect(req.rawHeaders).toEqual(['Accept', '*/*']);
+  });
+});
+
 describe('a bearer shaped like a stored grant, beside an identity that resolves outside bearers', () => {
   const stored = 'g'.repeat(43);
   const keep = (record: object) => store.set(stored, { kind: 'agent', ownerId: 'edition:p1', name: 'Stored', createdAt: Date.now(), site: 'github', person: pat, audience: `${base}/mcp`, write: false, ...record }, null);
@@ -273,6 +283,11 @@ describe('a bearer shaped like a stored grant, beside an identity that resolves 
     expect(byUrl.status).toBe(200);
     expect(((await byUrl.json()).result.tools as { name: string; }[]).map(entry => entry.name)).not.toContain('write');
     expect(bearersAsked).toEqual([]);
+    // The header beside the URL grant is another identity's token: nothing after the grant check sees it.
+    expect(seen.at(-1)!.headers).not.toHaveProperty('authorization');
+    const byHeader = await rpc(stored, 'tools/list');
+    expect(byHeader.status).toBe(200);
+    expect(seen.at(-1)!.headers).not.toHaveProperty('authorization');
   });
 
   it('is still held to its audience', async () => {

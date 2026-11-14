@@ -57,7 +57,8 @@ export interface IdentityService {
    * say) to the person it acts for, or to null to refuse it. The identity verifies the bearer itself: its signature,
    * issuer, audience, expiry and whatever else makes it trustworthy. `/mcp` never keeps or logs the bearer, answers 401
    * without detail on null or a throw, and still asks `grantToken` for the credential the call uses, so the bearer is
-   * never sent to a provider. Left out, such a bearer is refused as before.
+   * never sent to a provider. Left out, such a bearer is refused as before. Any caller can send any bearer, unverified
+   * and unthrottled, so the identity bounds its own cost (key caching, length and shape checks before any lookup).
    */
   bearerGrant?(req: Request, bearer: string): Promise<BearerGrant | null>;
   /** Why a provider repository cannot open for a signed-in person without a credential on `site`. */

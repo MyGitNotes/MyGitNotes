@@ -128,6 +128,11 @@ export function identityContract(name: string, makeFixture: () => IdentityFixtur
         expect(await refused(browser({}).exchange().req, unexpected)).toBeNull();
         expect(await refused((await visit(1)).exchange().req, unexpected)).toBeNull();
       }
+      // Another person's sign-in beside the bearer changes nothing: the bearer alone names who acts.
+      const { req, res } = (await visit(1)).exchange();
+      const first = (await fixture.identity.signedIn(req, res))!;
+      const beside = await fixture.identity.bearerGrant!((await visit(2)).exchange().req, bearer);
+      expect(beside).toMatchObject({ person: first.person, owner: first.owner });
     });
 
     it("gives a bearer's grant its person's token at call time", async ({ skip }) => {
