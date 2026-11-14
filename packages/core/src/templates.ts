@@ -3,6 +3,10 @@ import path from 'node:path';
 import { NotebookConfig, NoteMetadata } from './types.js';
 import { resolveSafePath } from './path-guard.js';
 import { parseNoteContent } from './frontmatter.js';
+import { isNotebookContent } from './folders.js';
+import { describeNoteTemplate, notebookTemplateEntries, type NoteTemplateEntry, type NoteTemplateInfo, templateFileId, TEMPLATES_FOLDER } from './note-template.js';
+
+export * from './note-template.js';
 
 export interface LoadedNoteTemplate {
   id: string;
@@ -11,57 +15,45 @@ export interface LoadedNoteTemplate {
   content: string;
 }
 
-export interface RenderedNoteTemplate {
-  metadata: NoteMetadata;
-  content: string;
+/**
+ * Whether a notebook-relative path is a template file the note routes may read and write: one directly in `.templates/`,
+ * or a manifest-registered one inside ordinary notebook content. No other dot path is ever a template file.
+ */
+export function isTemplateFile(relative: string, notebook: NotebookConfig): boolean {
+  return templateFileId(relative) !== undefined || Boolean(notebook.templates?.some(template => template.file === relative)) && isNotebookContent(relative, notebook);
 }
 
-export interface TemplateVariables {
-  title: string;
-  date: string;
+/** The regular `*.md` files directly in a notebook's `.templates/` folder, relative to the notebook root. */
+function templateFiles(repoRoot: string, notebook: NotebookConfig): string[] {
+  const folder = resolveSafePath(repoRoot, path.posix.join(notebook.root, TEMPLATES_FOLDER));
+  if (!fs.statSync(folder, { throwIfNoEntry: false })?.isDirectory()) return [];
+  return fs.readdirSync(folder, { withFileTypes: true }).filter(entry => entry.isFile()).map(entry => `${TEMPLATES_FOLDER}/${entry.name}`).filter(file => templateFileId(file) !== undefined);
 }
 
-/** Formats a date as `YYYY-MM-DD` for the `{{date}}` template variable. */
-export function formatTemplateDate(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
+function readTemplate(repoRoot: string, notebook: NotebookConfig, entry: NoteTemplateEntry) {
+  const safePath = resolveSafePath(repoRoot, path.posix.join(notebook.root, entry.file));
+  if (!fs.existsSync(safePath)) throw new Error(`Template file not found: ${entry.file}`);
+  const { metadata, content } = parseNoteContent(fs.readFileSync(safePath, 'utf-8'), path.basename(entry.file));
+  return { metadata, content };
 }
 
-function substitute(value: unknown, vars: TemplateVariables): unknown {
-  if (typeof value === 'string') {
-    return value.replace(/\{\{\s*title\s*\}\}/g, () => vars.title).replace(/\{\{\s*date\s*\}\}/g, () => vars.date);
-  }
-  if (Array.isArray(value)) {
-    return value.map(item => substitute(item, vars));
-  }
-  if (value && typeof value === 'object') {
-    const result: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value)) result[key] = substitute(item, vars);
-    return result;
-  }
-  return value;
+/** A notebook's templates, the manifest's first and then its `.templates/` files, each with its placeholders. */
+export function listNoteTemplates(repoRoot: string, notebook: NotebookConfig): NoteTemplateInfo[] {
+  return notebookTemplateEntries(notebook, templateFiles(repoRoot, notebook)).map(entry => {
+    let parsed: { metadata: NoteMetadata; content: string; } | undefined;
+    try {
+      parsed = readTemplate(repoRoot, notebook, entry);
+    } catch { /* A registered template whose file is missing is still listed, as the manifest names it. */ }
+    return describeNoteTemplate(notebook, entry, parsed);
+  });
 }
 
-/** Reads a notebook's configured template file (frontmatter + body) safely from disk. */
+/** Reads one of a notebook's templates (frontmatter + body) safely from disk: a manifest-registered one, else a `.templates/` file. */
 export function loadNoteTemplate(repoRoot: string, notebook: NotebookConfig, templateId: string): LoadedNoteTemplate {
-  const entry = notebook.templates?.find(t => t.id === templateId);
+  const entry = notebookTemplateEntries(notebook, templateFiles(repoRoot, notebook)).find(candidate => candidate.id === templateId);
   if (!entry) {
     throw new Error(`Template '${templateId}' is not configured for notebook '${notebook.id}'`);
   }
-  const safePath = resolveSafePath(repoRoot, path.posix.join(notebook.root, entry.file));
-  if (!fs.existsSync(safePath)) {
-    throw new Error(`Template file not found: ${entry.file}`);
-  }
-  const raw = fs.readFileSync(safePath, 'utf-8');
-  const { metadata, content } = parseNoteContent(raw, path.basename(entry.file));
-  return { id: entry.id, title: entry.title, metadata, content };
-}
-
-/**
- * Substitutes `{{title}}` and `{{date}}` in a template's frontmatter and body.
- * The resulting metadata always carries the given title, matching normal note creation.
- */
-export function renderNoteTemplate(template: { metadata: NoteMetadata; content: string; }, vars: TemplateVariables): RenderedNoteTemplate {
-  const metadata = substitute(template.metadata, vars) as NoteMetadata;
-  const content = substitute(template.content, vars) as string;
-  return { metadata: { ...metadata, title: vars.title }, content };
+  const parsed = readTemplate(repoRoot, notebook, entry);
+  return { id: entry.id, title: describeNoteTemplate(notebook, entry, parsed).name, ...parsed };
 }

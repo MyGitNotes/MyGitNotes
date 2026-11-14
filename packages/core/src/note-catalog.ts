@@ -8,6 +8,7 @@ import { buildNoteGraph } from './note-graph.js';
 import { hashJson } from './remote-cache.js';
 import { type NotebookKey, notebookKey } from './notebook-key.js';
 import { type RepositoryId, type RevisionSet, StaleRevisionError } from './repository.js';
+import { isTemplateFile } from './templates.js';
 import { DEFAULT_NOTE_QUERY, entryKind, isCompilationEntry, NOTE_KIND_FILTERS, type NoteAgenda, type NotebookFacets, noteContentSnippet, noteDirectory, type NoteFacets, type NoteGraph, type NoteKindFilter, type NoteListItem, type NoteLookup, noteMatchesQuery, type NotePaths, type NoteQuery, type NoteQueryPage, noteQueryStatuses, type NoteRef, noteRefKey } from './note-query.js';
 
 /** Read model of the notebooks one repository serves, implemented by remote and local sources. */
@@ -22,6 +23,8 @@ export interface RepositoryCatalog {
   memo<T>(kind: string, notebooks: NotebookConfig[], compute: () => Promise<T>): Promise<T>;
   /** Folders of one notebook in the sidebar's order (`sortFolders`), paths relative to the notebook root. */
   folders(notebook: NotebookConfig): Promise<FolderItem[]>;
+  /** A template file of the notebook as a note with its body, which no index lists; undefined when `path` names none. */
+  template?(notebook: NotebookConfig, path: string): Promise<(NoteListItem & { content: string; }) | undefined>;
 }
 
 /** Read model behind the note query routes, over every repository of a workspace. */
@@ -40,6 +43,8 @@ export interface NoteCatalog {
   memo<T>(kind: string, notebooks: NotebookConfig[], compute: () => Promise<T>): Promise<T>;
   /** Folders of one notebook in the sidebar's order, paths relative to the notebook root. */
   folders(notebook: NotebookConfig): Promise<FolderItem[]>;
+  /** A template file of the notebook as a note with its body, so its editor opens it by path; no index or query lists one. */
+  template(notebook: NotebookConfig, path: string): Promise<(NoteListItem & { content: string; }) | undefined>;
 }
 
 export interface NoteQueryOptions {
@@ -151,6 +156,11 @@ export async function workspaceCatalog(config: WorkspaceConfig, repositories: Ca
         return group.map(note => [noteRefKey(note), bodies.get(note.path) ?? ''] as const);
       }));
       return new Map(parts.flat());
+    },
+    template: async (notebook, path) => {
+      const { repository, local } = notebookOf(notebook.id);
+      const found = await repository.catalog.template?.(local, path);
+      return found && toKey(repository)(found);
     },
     // A result spanning several repositories has no single content key to cache it under. A remembered result names
     // notebooks by key, so the alias joins its kind.
@@ -335,7 +345,17 @@ export async function lookupNotes(catalog: NoteCatalog, notes: unknown, content:
   }
   const found = refs.map(ref => byKey.get(noteRefKey(ref))).filter(Boolean) as NoteListItem[];
   const contents = content ? await catalog.contents(found) : undefined;
-  return { revisions: await catalog.revisions(involved), notes: contents ? found.map(note => ({ ...note, content: contents.get(noteRefKey(note)) ?? '' })) : found };
+  // A template file is in no index: one named by path is read where it lies, so its editor opens it like a note.
+  const templates: NoteListItem[] = [];
+  for (const ref of refs) {
+    const notebook = involved.find(candidate => candidate.id === ref.notebookId);
+    if (byKey.has(noteRefKey(ref)) || !notebook || !ref.path.startsWith(`${notebook.root}/`) || !isTemplateFile(ref.path.slice(notebook.root.length + 1), notebook)) continue;
+    const template = await catalog.template(notebook, ref.path);
+    if (!template) continue;
+    const { content: _body, ...listed } = template;
+    templates.push(content ? template : listed);
+  }
+  return { revisions: await catalog.revisions(involved), notes: [...(contents ? found.map(note => ({ ...note, content: contents.get(noteRefKey(note)) ?? '' })) : found), ...templates] };
 }
 
 export async function noteAgenda(catalog: NoteCatalog, notebookId: string, showHidden: boolean): Promise<NoteAgenda> {

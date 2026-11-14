@@ -4,6 +4,7 @@ import { LEGACY_WORKSPACE_CONFIG_FILENAME, WORKSPACE_CONFIG_FILENAME } from './c
 import { workspaceAgentKind } from './workspace-agent.js';
 import { isCompilationPath } from './compilation.js';
 import { isOutlinePath } from './outline.js';
+import { templateFileNotebook } from './note-template.js';
 
 const HIDDEN_PATTERNS = [
   /(?:^|\/)\.[^/]/, // Any dotfile/dotdirectory (.git, .github, etc.)
@@ -39,6 +40,10 @@ export function classifyResource(relPath: string, config?: WorkspaceConfig | nul
   if (normalized === WORKSPACE_CONFIG_FILENAME || normalized === `notes/${WORKSPACE_CONFIG_FILENAME}` || normalized === LEGACY_WORKSPACE_CONFIG_FILENAME || normalized === `notes/${LEGACY_WORKSPACE_CONFIG_FILENAME}`) {
     return { path: normalized, type: 'workspace_config' };
   }
+
+  // A notebook's `.templates/*.md` files are its note templates, the one dot folder whose files the note routes edit.
+  const templateOwner = config?.notebooks ? templateFileNotebook(normalized, config.notebooks.map(nb => ({ id: nb.id, root: nb.root.replace(/\/$/, '') }))) : undefined;
+  if (templateOwner) return { path: normalized, type: 'template', notebookId: templateOwner.id };
 
   // 2. Hidden noise or dotfiles (except the workspace manifest checked above)
   if (isHiddenPath(normalized)) {

@@ -79,7 +79,7 @@ export interface NoteItem {
   invalid?: string;
 }
 
-export type ResourceType = 'note' | 'compilation' | 'outline' | 'agent_instruction' | 'agent_doc' | 'workspace_config' | 'asset' | 'product_source' | 'hidden';
+export type ResourceType = 'note' | 'compilation' | 'outline' | 'template' | 'agent_instruction' | 'agent_doc' | 'workspace_config' | 'asset' | 'product_source' | 'hidden';
 
 export interface ClassifiedResource {
   path: string;

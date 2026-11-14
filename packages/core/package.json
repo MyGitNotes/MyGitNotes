@@ -138,6 +138,10 @@
     "./note-file": {
       "types": "./dist/note-file.d.ts",
       "import": "./dist/note-file.js"
+    },
+    "./note-template": {
+      "types": "./dist/note-template.d.ts",
+      "import": "./dist/note-template.js"
     }
   },
   "scripts": {

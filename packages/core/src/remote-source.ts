@@ -10,7 +10,7 @@ import { parseNoteContent } from './frontmatter.js';
 import { isCompilationPath } from './compilation.js';
 import { isOutlinePath } from './outline.js';
 import { isNoteFile, NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.js';
-import { formatTemplateDate, renderNoteTemplate } from './templates.js';
+import { describeNoteTemplate, formatTemplateDate, formatTemplateTime, isTemplateFile, notebookTemplateEntries, type NoteTemplateEntry, type NoteTemplateInfo, type RenderedNoteTemplate, renderNoteTemplate, templateFileId, TEMPLATES_FOLDER, templateValues } from './templates.js';
 import { isNotebookContent, parseFolderConfig, sortFolders } from './folders.js';
 import { FolderItem, NotebookConfig, NoteItem, NoteMetadata, WorkspaceConfig } from './types.js';
 import { SourceError } from './github-api.js';
@@ -282,7 +282,8 @@ export abstract class RemoteSource {
 
   async note(file: string): Promise<NoteItem> {
     const config = await this.config();
-    const nb = config.notebooks.find(n => file.startsWith(`${n.root}/`) && isNotebookContent(file.slice(n.root.length + 1), n));
+    // A template file directly in `.templates/` is read like a note, so its editor opens it; no other dot path is.
+    const nb = config.notebooks.find(n => file.startsWith(`${n.root}/`) && (isNotebookContent(file.slice(n.root.length + 1), n) || templateFileId(file.slice(n.root.length + 1)) !== undefined));
     if (!nb || !isNoteFile(file)) throw new SourceError('Path is not a configured note.', 403);
     const raw = (await this.readFile(file)).toString('utf8');
     const { metadata, content, title, lineNumberOffset, extra } = parseNoteFile(raw, file, nb.root);
@@ -312,6 +313,11 @@ export abstract class RemoteSource {
     return {
       folders: async nb => (await (folders ??= this.folders())).filter(folder => folder.notebookId === nb.id),
       revision: async (fresh = false) => (await this.getSnapshot(fresh)).sha,
+      template: async (nb, file) => {
+        const { entries } = await this.getSnapshot();
+        if (!isTemplateFile(file.slice(nb.root.length + 1), nb) || !entries.some(entry => entry.path === file && entry.type === 'blob' && entry.mode !== '120000')) return undefined;
+        return this.note(file);
+      },
       index: nb => {
         let pending = local.get(nb.id);
         if (!pending) {
@@ -379,14 +385,50 @@ export abstract class RemoteSource {
     return items.map(item => ({ ...item, revision: sha }));
   }
 
-  async renderTemplate(notebookId: string, templateId: string, title: string): Promise<{ metadata: NoteMetadata; content: string; }> {
-    const config = await this.config();
-    const nb = config.notebooks.find(n => n.id === notebookId);
-    const entry = nb?.templates?.find(t => t.id === templateId);
-    if (!nb || !entry) throw new SourceError('Template is not configured for this notebook.', 404);
+  /** The notebook's template entries: the manifest's, then the `.templates/` files of this snapshot. */
+  private async templateEntries(nb: NotebookConfig): Promise<NoteTemplateEntry[]> {
+    const { entries } = await this.getSnapshot();
+    const prefix = `${nb.root}/${TEMPLATES_FOLDER}/`;
+    return notebookTemplateEntries(nb, entries.filter(entry => entry.type === 'blob' && entry.mode !== '120000' && entry.path.startsWith(prefix)).map(entry => entry.path.slice(nb.root.length + 1)));
+  }
+  private async readTemplate(nb: NotebookConfig, entry: NoteTemplateEntry) {
     const raw = (await this.readFile(`${nb.root}/${entry.file}`)).toString('utf8');
     const { metadata, content } = parseNoteContent(raw, path.posix.basename(entry.file));
-    return renderNoteTemplate({ metadata, content }, { title, date: formatTemplateDate() });
+    return { metadata, content };
+  }
+
+  /** The templates of one notebook, or of every notebook this repository serves, each with its placeholders. */
+  async templates(notebookId?: string): Promise<NoteTemplateInfo[]> {
+    const config = await this.config();
+    if (notebookId && !config.notebooks.some(nb => nb.id === notebookId)) throw new SourceError('Notebook is not configured.', 404);
+    const listed: NoteTemplateInfo[] = [];
+    for (const nb of config.notebooks.filter(n => !notebookId || n.id === notebookId)) {
+      const entries = await this.templateEntries(nb);
+      await this.prefetchFiles(entries.map(entry => `${nb.root}/${entry.file}`));
+      // A registered template whose file is missing is still listed, as the manifest names it.
+      for (const entry of entries) listed.push(describeNoteTemplate(nb, entry, await this.readTemplate(nb, entry).catch(() => undefined)));
+    }
+    return listed;
+  }
+
+  /** One template of a notebook, a manifest-registered one or a `.templates/` file, with its frontmatter and body. */
+  async template(notebookId: string, templateId: string) {
+    const config = await this.config();
+    const nb = config.notebooks.find(n => n.id === notebookId);
+    const entry = nb && (await this.templateEntries(nb)).find(candidate => candidate.id === templateId);
+    if (!nb || !entry) throw new SourceError('Template is not configured for this notebook.', 404);
+    return { notebook: nb, entry, ...await this.readTemplate(nb, entry) };
+  }
+
+  /** Fills a template for a note titled `title`; `fill` carries the caller's date, time and placeholder values, the clock serving the rest. */
+  async renderTemplate(notebookId: string, templateId: string, title: string, fill: { date?: string; time?: string; values?: unknown; } = {}): Promise<RenderedNoteTemplate> {
+    const template = await this.template(notebookId, templateId);
+    const now = new Date();
+    try {
+      return renderNoteTemplate(template, { title, date: fill.date || formatTemplateDate(now), time: fill.time || formatTemplateTime(now), values: templateValues(template, fill.values) });
+    } catch (error) {
+      throw new SourceError((error as Error).message);
+    }
   }
 
   async notes(notebookId?: string): Promise<NoteItem[]> {
@@ -478,7 +520,7 @@ export abstract class RemoteSource {
     this.assertMutable(snapshot, expected);
     const config = await this.config();
     const nb = config.notebooks.find(n => file.startsWith(`${n.root}/`));
-    if (!nb || !isNotebookContent(file.slice(nb.root.length + 1), nb) || !isNoteFile(file) || file.includes('\\') || file.split('/').some(p => p === '..' || p === '.' || !p)) throw new SourceError('Path is not a configured note.', 403);
+    if (!nb || !(isNotebookContent(file.slice(nb.root.length + 1), nb) || templateFileId(file.slice(nb.root.length + 1)) !== undefined) || !isNoteFile(file) || file.includes('\\') || file.split('/').some(p => p === '..' || p === '.' || !p)) throw new SourceError('Path is not a configured note.', 403);
     if (createOnly && snapshot.entries.some(e => e.path === file)) throw new SourceError('A note already exists at this path.', 409);
     if (createOnly && differsOnlyInCase(snapshot.entries.map(e => e.path), file)) throw new SourceError(CASE_COLLISION_ERROR, 409);
     const existing = snapshot.entries.find(e => e.path === file);
@@ -687,7 +729,9 @@ export abstract class RemoteSource {
       // a note commit touches one only together with its note, so a note tool cannot edit or delete versions on their own.
       const versioned = versionedPath(file);
       const versionFile = Boolean(versioned) && (scope === 'versions' || scope === 'notes' && changed.has(versioned!) || ['files', 'folders', 'skills', 'agents'].includes(scope) && change.content === undefined && change.base64 === undefined);
-      const allowed = documentFile || versionFile || scope !== 'versions' && (scope === 'config' ? MANIFEST_FILES.includes(file) : !['study', 'focus', 'config'].includes(scope) && (scope === 'files' ? Boolean(managedNotebook(file, config.notebooks)) : scope === 'study-transition' ? nb && isNotebookContent(file.slice(nb.root.length + 1), nb) && NOTE_EXTENSIONS.test(file) : scope === 'skills' ? Boolean(skillFile(file, config.notebooks)) : scope === 'agents' ? agentFileAllowed(file, config.notebooks) : nb && (scope === 'assets' ? isAssetPath(file, nb) : isNotebookContent(file.slice(nb.root.length + 1), nb) && (isNoteFile(file) || path.posix.basename(file) === '_dir.yml'))));
+      // A `.templates/` template file is written and removed like a note, the only dot path a note commit reaches.
+      const templateFile = Boolean(nb) && ['notes', 'folders'].includes(scope) && templateFileId(file.slice(nb!.root.length + 1)) !== undefined;
+      const allowed = documentFile || versionFile || scope !== 'versions' && (scope === 'config' ? MANIFEST_FILES.includes(file) : !['study', 'focus', 'config'].includes(scope) && (scope === 'files' ? Boolean(managedNotebook(file, config.notebooks)) : scope === 'study-transition' ? nb && isNotebookContent(file.slice(nb.root.length + 1), nb) && NOTE_EXTENSIONS.test(file) : scope === 'skills' ? Boolean(skillFile(file, config.notebooks)) : scope === 'agents' ? agentFileAllowed(file, config.notebooks) : nb && (scope === 'assets' ? isAssetPath(file, nb) : isNotebookContent(file.slice(nb.root.length + 1), nb) && (isNoteFile(file) || path.posix.basename(file) === '_dir.yml') || templateFile)));
       if (!allowed || file.includes('\\') || file.includes('\0') || file.split('/').some(p => !p || p === '.' || p === '..')) throw new SourceError('Path is not an allowed workspace resource.', 403);
       if (documentFile) {
         validateWorkspaceDocument(document!, change.content);

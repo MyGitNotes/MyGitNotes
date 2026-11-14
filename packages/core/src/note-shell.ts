@@ -4,6 +4,7 @@ import { RemoteEntry, RemoteSource, SourceError } from './remote-source.js';
 import { isNotebookContent, serializeFolderConfig } from './folders.js';
 import { NotebookConfig } from './types.js';
 import { skillFile } from './agent-system.js';
+import { templateFileNotebook } from './note-template.js';
 import { agentWorkspaceFile } from './agent-workspace.js';
 import { agentEditMessage, versionFileChanges } from './note-versions.js';
 import type { CommitScope } from './workspace-documents.js';
@@ -63,10 +64,12 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
   const blobs = snapshot.entries.filter(e => e.type === 'blob' && e.mode !== '120000' && noteFile(e.path, notebooks)).sort((a, b) => a.path.localeCompare(b.path));
   const skills = snapshot.entries.filter(e => e.type === 'blob' && e.mode !== '120000' && skillFile(e.path, notebooks));
   const instructions = snapshot.entries.filter(e => e.type === 'blob' && e.mode !== '120000' && agentWorkspaceFile(e.path, notebooks)?.kind === 'instructions');
+  // A notebook's `.templates/*.md` files are read, written and removed by exact path; listings and globs never show them.
+  const templates = snapshot.entries.filter(e => e.type === 'blob' && e.mode !== '120000' && templateFileNotebook(e.path, notebooks));
   const revision = snapshot.sha;
   const read = async (file: string) => {
     relative(file);
-    if (!blobs.some(e => e.path === file) && !skills.some(e => e.path === file) && !instructions.some(e => e.path === file)) throw new SourceError('File is not a configured note, folder metadata, AGENTS.md or skill file.', 404);
+    if (!blobs.some(e => e.path === file) && !skills.some(e => e.path === file) && !instructions.some(e => e.path === file) && !templates.some(e => e.path === file)) throw new SourceError('File is not a configured note, folder metadata, AGENTS.md, skill file or template.', 404);
     return (await reader.readFile(file)).toString('utf8');
   };
   const selected = (input: string, recursive: boolean, pool = blobs) => {
@@ -156,8 +159,9 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
     const file = relative(string(args, 'path'));
     const skill = Boolean(skillFile(file, notebooks));
     const instruction = agentWorkspaceFile(file, notebooks)?.kind === 'instructions';
-    if (!skill && !instruction && !noteFile(file, notebooks)) throw new SourceError('Target must be a note, folder metadata, AGENTS.md or skill file.', 403);
-    const exists = (skill ? skills : instruction ? instructions : blobs).some(e => e.path === file);
+    const template = Boolean(templateFileNotebook(file, notebooks));
+    if (!skill && !instruction && !template && !noteFile(file, notebooks)) throw new SourceError('Target must be a note, folder metadata, AGENTS.md, skill file or template.', 403);
+    const exists = (skill ? skills : instruction ? instructions : template ? templates : blobs).some(e => e.path === file);
     if (args.createOnly === true && snapshot.entries.some(e => e.path === file)) throw new SourceError('Target already exists.', 409);
     const original = exists ? await read(file) : '';
     let content = string(args, 'content');
@@ -215,7 +219,12 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
     const scopes = new Set<CommitScope>((args.paths as string[]).map(file => /(^|\/)\.agents(\/|$)/.test(file) ? 'skills' : 'notes'));
     if (scopes.size > 1) throw new SourceError('Remove notes and skill files in separate calls.');
     const [scope] = scopes;
-    for (const file of args.paths as string[]) for (const entry of selected(file, args.recursive === true, scope === 'skills' ? skills : blobs)) files.set(entry.path, entry);
+    for (const file of args.paths as string[]) {
+      // A template file is removed by its exact path, with notes; its folder is never removed as a directory.
+      const template = templates.find(entry => entry.path === file);
+      if (template && scope === 'notes') files.set(template.path, template);
+      else for (const entry of selected(file, args.recursive === true, scope === 'skills' ? skills : blobs)) files.set(entry.path, entry);
+    }
     // A removed file's versions go with it.
     return receipt([...[...files.keys()].map(file => ({ path: file, sha: null })), ...versionFileChanges(snapshot.entries, files.keys(), file => file, file => files.has(file))], scope);
   }
