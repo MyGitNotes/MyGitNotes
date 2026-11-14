@@ -143,6 +143,19 @@ other commit that would touch a checked-out note (a move rewriting its links
 included) are refused with `code: "checked-out"` and the paths, committing
 nothing. Read-only grants read live text and write nothing; a note no longer
 checked out ignores its live entry and checks the commit.
+
+`check_in_note { path, notebookId? }` (「立即簽回」, write grants only, so a
+read-only grant does not list it) checks a note in now: its live text is
+committed with every editor named, Git's changes since the checkout merged in or,
+on a conflict, overwritten with a `Live-Overwrote` trailer, and the live note
+closed. It answers `{ path, committed, commit?, released, reason?,
+activeEditors?, filedPath?, revision }`; `path` is where the note now is, and
+`filedPath` is present when a pending note was filed. `reason` says why the note
+stayed open: `active` (people are still editing; the commit was made and
+tonight's check-in closes it), `unfiled` (its path rule needs a value the note
+lacks), `leased` (a check-in runs elsewhere), `changed` or `not-synced`. After a
+check-in that committed, the branch moved: read again before writing. A note
+that is not checked out is refused.
 Note writes (`write`, `append`, `edit`, `save_note`, `update_note_metadata`)
 also return the note `path` and, when `APP_URL` is configured, the note's web page `url`.
 

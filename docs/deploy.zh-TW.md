@@ -366,6 +366,23 @@ pnpm convert-sources --workspace ../hub --yes   # 轉換另一個已對應 workt
 
 兩者都沒設定時，什麼都不會改變。沒有列出的已登入使用者看不到 Agent。Bridge 的環境變數、安全性與疑難排解請看[指南](pi-bridge.zh-TW.md)。
 
+## 選用：外部即時編輯器
+
+版本（edition）可以把外部的即時（共同）編輯器接到遠端儲存庫上；社群版本身不附任何編輯器。接上之後，在 Markdown 筆記按「編輯」會把它簽出到編輯器，之後每晚自動簽回 Git，有人按「立即簽回」時也會立即簽回。簽回會提交即時文字並列出每位編輯者（最早的一位是作者，其他人寫成 `Co-authored-by`），合併期間 Git 上的變更；兩邊改到同一處時以即時文字為準，並在提交訊息中註明。CRLF 換行的筆記在第一次簽回時改成 LF，那一次提交會改寫每一行的行尾。
+
+| 變數 | 意義 |
+| --- | --- |
+| `MYGITNOTES_LIVE_CHECKIN_AT` | 每晚簽回的時間，`HH:mm`，以 `MYGITNOTES_TIMEZONE` 的時區計（預設 `03:00`；沒設時區時為 UTC）。設為 `off` 關閉程序內排程。不是時間的值會讓伺服器啟動失敗。 |
+| `MYGITNOTES_LIVE_SWEEP_SECRET` | 至少 32 字元的隨機密鑰，啟用給外部觸發用的 `POST /api/live/sweep`。沒設時這個路由回 404。 |
+
+長時間執行的伺服器（Docker、Node）會自己在這個時間、以及之後 10、20、30 分鐘（給當時還有人在編輯的筆記）各簽回一次，啟動後一兩分鐘內也會補跑一次，補上停機期間錯過的簽回。Vercel 的函式不會常駐，所以那裡不跑排程：請用 Vercel Cron、Nomad periodic job 或 cron 呼叫簽回路由。路由回 202 後繼續在背景執行；加上 `?wait=1` 會等跑完再回報告。
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" https://notes.example.com/api/live/sweep
+```
+
+多程序部署的每個程序都可以跑排程和這個路由：編輯器的租約讓同一則筆記一次只有一個簽回在跑，重複執行時會發現文字已在 Git 裡，不會再提交第二次。
+
 ## 選用：私有 R2 素材
 
 將大型檔案存放在 Cloudflare 私有 R2 bucket，並在筆記中以 `r2:<object-key>` 引用。於部署環境設定 `MYGITNOTES_R2_ACCOUNT_ID`、`MYGITNOTES_R2_ACCESS_KEY_ID`、`MYGITNOTES_R2_SECRET_ACCESS_KEY` 與 `MYGITNOTES_R2_BUCKET`。其他相容 S3 的服務（SeaweedFS、MinIO 等）用 `MYGITNOTES_R2_ENDPOINT` 指定其網址，以 `<endpoint>/<bucket>/<key>` 的路徑形式存取，這時不需要 account id。`MYGITNOTES_R2_REGION` 設定簽章用的 region，未設時為 R2 要求的 `auto`；許多相容 S3 的服務要求 `us-east-1`。瀏覽器上傳還需要 bucket CORS 允許來自 `APP_URL` 的 PUT、GET 與 HEAD。唯讀 token 可預覽素材；檔案頁管理功能需要 Object Read & Write。參考 [Cloudflare R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/) 與 [R2 object access](https://developers.cloudflare.com/r2/api/s3/api/)。
