@@ -56,6 +56,14 @@ export function isNotebookR2Key(key: string, notebookId: string): boolean {
   return isValidR2Key(key) && key.startsWith(r2NotebookPrefix(notebookId)) && key.length > r2NotebookPrefix(notebookId).length;
 }
 
+/** Characters that end or break a bare Markdown link destination: `%`, whitespace, control characters, `(`, `)`, `<`, `>`, `\\`, quotes, and `#` and `?` (fragment and query). Everything else, CJK and emoji included, stays readable. */
+const BARE_UNSAFE = /[%\s\p{Cc}()<>\\"'#?]/gu;
+
+/** Percent-encodes (UTF-8) only what a bare `r2:` destination cannot carry, keeping `/` and readable text. */
+export function encodeR2Destination(key: string): string {
+  return key.replace(BARE_UNSAFE, c => encodeURIComponent(c).replace(/[()'!*]/g, m => '%' + m.charCodeAt(0).toString(16).toUpperCase()));
+}
+
 /** Replaces each reference whose key `targets` names with `scheme` and the mapped target, encoded as its form requires. */
 function replaceR2References(markdown: string, targets: Record<string, string>, scheme: string): string {
   let next = markdown;
@@ -66,7 +74,7 @@ function replaceR2References(markdown: string, targets: Record<string, string>, 
       const key = reference ? parseR2Reference(reference) : null;
       if (!reference || key === null || !Object.hasOwn(targets, key)) return all;
       const bare = pattern !== HTML_ATTRIBUTE && first === undefined;
-      const target = bare ? targets[key].split('/').map(part => encodeURIComponent(part).replace(/[()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())).join('/') : targets[key].replace(/[<>"']/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+      const target = bare ? encodeR2Destination(targets[key]) : targets[key].replace(/[<>"']/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
       return all.replace(reference, `${scheme}${target}`);
     });
   }
@@ -94,10 +102,10 @@ export function r2PreviewType(key: string): { kind: R2PreviewKind; contentType: 
   return { kind, contentType };
 }
 
-/** Markdown that embeds a previewable object or links any other one, angle-bracketed so spaces survive. */
+/** Markdown that embeds a previewable object or links any other one, in the bare `r2:<dest>` form (no angle brackets, which an external editor's slide filter breaks). */
 export function r2Reference(key: string): string {
   const label = (key.split('/').pop() || key).replace(/[\\[\]]/g, '\\$&');
-  return `${r2PreviewType(key).kind === 'file' ? '' : '!'}[${label}](<r2:${key}>)`;
+  return `${r2PreviewType(key).kind === 'file' ? '' : '!'}[${label}](r2:${encodeR2Destination(key)})`;
 }
 
 /** Same-origin URL that authorizes the reference against its note before redirecting to the object. */

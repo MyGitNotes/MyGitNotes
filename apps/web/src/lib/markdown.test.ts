@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('dompurify', () => ({ default: { sanitize: (html: string) => html } }));
 
+import { r2AssetUrl, r2Reference } from '@mygitnotes/core/r2-references';
 import { renderNote } from './markdown.js';
 import { setWorkspaceNotebooks } from './workspace-links.js';
 
@@ -230,6 +231,13 @@ describe('renderNote YouTube embeds', () => {
 });
 
 describe('renderNote R2 assets', () => {
+  it('resolves bare r2 references to the encoded asset route', () => {
+    for (const key of ['nb/My Rules.pdf', 'nb/a(1).pdf', 'nb/100%.pdf', 'nb/c#x?.pdf', 'nb/規則書.pdf', 'nb/party🎉.pdf']) {
+      const html = renderNote(r2Reference(key), 'notes/demo/n.md');
+      expect(html).toContain(`href="${r2AssetUrl(key, 'notes/demo/n.md')}"`);
+    }
+  });
+
   it('previews an r2 PDF inline through the note-scoped asset route', () => {
     const html = renderNote('<p><img src="r2:trpg/Core%20Rules.pdf" alt="Rules"></p>', 'notes/demo/rules.md');
     expect(html).toContain('class="note-r2-asset note-r2-pdf"');

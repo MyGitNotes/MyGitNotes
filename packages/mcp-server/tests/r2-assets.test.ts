@@ -90,7 +90,7 @@ describe('add_asset with R2 storage configured', () => {
     const before = await head();
     const result = await handleAddAsset({ repoRoot: repo }, upload);
 
-    expect(result).toMatchObject({ success: true, storage: 'r2', filename: 'photo.png', key: 'example/images/photo.png', reference: 'r2:example/images/photo.png', markdownRef: '![photo.png](<r2:example/images/photo.png>)' });
+    expect(result).toMatchObject({ success: true, storage: 'r2', filename: 'photo.png', key: 'example/images/photo.png', reference: 'r2:example/images/photo.png', markdownRef: '![photo.png](r2:example/images/photo.png)' });
     expect(bucket.objects.get('example/images/photo.png')?.toString()).toBe('sample png image data');
     expect(fs.existsSync(path.join(repo, 'notes/example/assets/images/photo.png'))).toBe(false);
     expect(await head()).toBe(before);
@@ -122,7 +122,7 @@ describe('add_asset with R2 storage configured', () => {
     const reader = { config: async () => ({ notebooks: [{ id: 'example', root: 'notes/example' }] }), mutateAsset: () => expect.unreachable('a configured bucket must not commit the binary') } as unknown as RemoteSource;
     const result = await callRemoteTool(reader, 'add_asset', { ...upload, filename: 'scan.pdf' }, true);
 
-    expect(result).toMatchObject({ storage: 'r2', key: 'example/images/scan.pdf', reference: 'r2:example/images/scan.pdf', markdownRef: '![scan.pdf](<r2:example/images/scan.pdf>)' });
+    expect(result).toMatchObject({ storage: 'r2', key: 'example/images/scan.pdf', reference: 'r2:example/images/scan.pdf', markdownRef: '![scan.pdf](r2:example/images/scan.pdf)' });
     expect(bucket.objects.has('example/images/scan.pdf')).toBe(true);
   });
 });
@@ -140,12 +140,12 @@ describe('managing R2 assets over MCP', () => {
     process.env.MYGITNOTES_R2_BUCKET = 'private-assets';
 
     const { assets } = await handleListAssets({ repoRoot: repo }, { notebookId: 'example' }) as { assets: Record<string, unknown>[]; };
-    expect(assets).toEqual([{ storage: 'git', name: 'legacy.png', path: 'notes/example/assets/legacy.png', markdownRef: '![legacy.png](assets/legacy.png)' }, { storage: 'r2', notebookId: 'example', name: 'photo.png', key: 'example/images/photo.png', size: 21, lastModified: '2026-09-20T00:00:00.000Z', reference: 'r2:example/images/photo.png', markdownRef: '![photo.png](<r2:example/images/photo.png>)' }]);
+    expect(assets).toEqual([{ storage: 'git', name: 'legacy.png', path: 'notes/example/assets/legacy.png', markdownRef: '![legacy.png](assets/legacy.png)' }, { storage: 'r2', notebookId: 'example', name: 'photo.png', key: 'example/images/photo.png', size: 21, lastModified: '2026-09-20T00:00:00.000Z', reference: 'r2:example/images/photo.png', markdownRef: '![photo.png](r2:example/images/photo.png)' }]);
   });
 
   it('refuses to delete an object a note still links, and deletes it once nothing does', async () => {
     await handleAddAsset({ repoRoot: repo }, upload);
-    note('![photo.png](<r2:example/images/photo.png>)');
+    note('![photo.png](r2:example/images/photo.png)');
     await expect(handleDeleteAsset({ repoRoot: repo }, { path: 'r2:example/images/photo.png' })).rejects.toThrow(/still referenced by notes\/example\/welcome\.md/);
     expect(bucket.objects.has('example/images/photo.png')).toBe(true);
 
@@ -168,7 +168,7 @@ describe('managing R2 assets over MCP', () => {
   it('blocks local deletion for an outline-only reference without broadening ordinary note browsing', async () => {
     await handleAddAsset({ repoRoot: repo }, upload);
     note('Ordinary note without an asset.');
-    fs.writeFileSync(path.join(repo, 'notes/example/plan.outline.md'), '- Inspect ![photo](<r2:example/images/photo.png>)\n');
+    fs.writeFileSync(path.join(repo, 'notes/example/plan.outline.md'), '- Inspect ![photo](r2:example/images/photo.png)\n');
     expect(scanNotebookNotes(repo, { id: 'example', title: 'Example', root: 'notes/example' }).map(note => note.path)).toEqual(['notes/example/welcome.md']);
     await expect(handleDeleteAsset({ repoRoot: repo }, { path: 'r2:example/images/photo.png' })).rejects.toThrow(/still referenced by notes\/example\/plan\.outline\.md/);
     expect(bucket.objects.has('example/images/photo.png')).toBe(true);
@@ -177,7 +177,7 @@ describe('managing R2 assets over MCP', () => {
 
   it('blocks hosted deletion for an outline-only reference through the actual remote scanner', async () => {
     await handleAddAsset({ repoRoot: repo }, upload);
-    const fixture = gitlabFixture(undefined, { 'notes/.github-notes.yaml': MANIFEST, 'notes/example/plain.md': '# No asset\n', 'notes/example/plan.outline.md': '- Inspect ![photo](<r2:example/images/photo.png>)\n' });
+    const fixture = gitlabFixture(undefined, { 'notes/.github-notes.yaml': MANIFEST, 'notes/example/plain.md': '# No asset\n', 'notes/example/plan.outline.md': '- Inspect ![photo](r2:example/images/photo.png)\n' });
     const reader = openRemoteRepository({ type: 'gitlab', url: 'https://gitlab.example.test/gitlab', repository: 'group/subgroup/project', branch: 'main' }, 'test-token', fixture.request).reader;
     expect((await reader.notes()).map(note => note.path)).toEqual(['notes/example/plain.md']);
     await expect(callRemoteTool(reader, 'delete_asset', { path: 'r2:example/images/photo.png' }, true)).rejects.toThrow(/still referenced by notes\/example\/plan\.outline\.md/);
@@ -188,7 +188,7 @@ describe('managing R2 assets over MCP', () => {
 
   it('deletes a referenced object when the caller forces it', async () => {
     await handleAddAsset({ repoRoot: repo }, upload);
-    note('![photo.png](<r2:example/images/photo.png>)');
+    note('![photo.png](r2:example/images/photo.png)');
     expect(await handleDeleteAsset({ repoRoot: repo }, { path: 'r2:example/images/photo.png', force: true })).toMatchObject({ success: true });
     expect(bucket.objects.has('example/images/photo.png')).toBe(false);
   });
