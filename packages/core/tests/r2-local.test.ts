@@ -214,11 +214,22 @@ describe('where local mode reads objects from', () => {
       const result = pages[calls++];
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { structuredContent: result, content: [] } }), { status: 200 });
     }) as typeof fetch;
-    const urls = await hostedR2Source('https://notes.example', 't', fetcher).urls('notes/ex/rules.md', KEYS);
-    // The plain-http bucket URL of a remote host is refused; the loopback one and the https one are kept.
+    const urls = await hostedR2Source('http://127.0.0.1:8080', 't', fetcher).urls('notes/ex/rules.md', KEYS);
+    // The plain-http bucket URL of a remote host is refused; a loopback deployment's loopback one and the https one are kept.
     expect([...urls].sort()).toEqual([['ex/core.pdf', 'https://bucket.test/core?sig=2'], ['ex/maps/old west.png', 'http://127.0.0.1:9000/map?sig=1']]);
     // Both keys were found on the second page, so the third is never asked for.
     expect(calls).toBe(2);
+  });
+
+  it('keeps no object URL a remote deployment aims at this machine or a private address, but lets a loopback deployment answer loopback URLs', async () => {
+    const aimed = ['http://127.0.0.1:8787/api/x', 'http://localhost:3000/', 'http://[::1]:22/', 'http://2130706433/', 'https://127.0.0.1/', 'https://localhost./x', 'https://192.168.1.1/admin', 'https://10.0.0.5/', 'https://172.16.0.1/', 'https://169.254.169.254/latest', 'https://100.64.0.1/', 'https://0.0.0.0/', 'https://[fd00::1]/', 'https://[fe80::1]/', 'https://[::ffff:10.0.0.1]/', 'https://0x7f000001/', 'https://a.localhost/'];
+    const answer = (urls: string[]) => (async () => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { structuredContent: { assets: urls.map((url, index) => ({ key: `ex/${index}.png`, url })), nextOffset: null }, content: [] } }), { status: 200 })) as typeof fetch;
+    const keys = aimed.map((_url, index) => `ex/${index}.png`);
+    expect([...(await hostedR2Source('https://notes.example', 't', answer(aimed)).urls('n.md', keys))]).toEqual([]);
+    const fine = ['https://bucket.example/a?sig=1', 'https://172.32.0.1/b', 'https://[2001:db8::1]/c'];
+    expect([...(await hostedR2Source('https://notes.example', 't', answer(fine)).urls('n.md', keys)).values()]).toEqual(fine);
+    const local = ['http://127.0.0.1:9000/a', 'http://localhost:9000/b'];
+    expect([...(await hostedR2Source('http://127.0.0.1:8080', 't', answer(local)).urls('n.md', keys)).values()]).toEqual(local);
   });
 
   it('reads an object without following a redirect', async () => {

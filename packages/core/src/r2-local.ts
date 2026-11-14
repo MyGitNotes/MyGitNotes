@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 import { SourceError } from './github-api.js';
 import { resolveSafePath } from './path-guard.js';
@@ -53,9 +54,9 @@ export interface R2Cache {
   readonly root: string;
   /** The cached object of `key`, or null when it is absent, incomplete, or `key` is not a valid key. */
   find(key: string): CachedR2Object | null;
-  /** Stores an object's bytes, replacing an earlier copy only once every byte is on disk; with `maxBytes`, a longer body is refused and nothing is kept. */
   /** Forgets the cached object of `key`, so the next view reads it again; a key that is not cached, or not valid, is ignored. */
   remove(key: string): void;
+  /** Stores an object's bytes, replacing an earlier copy only once every byte is on disk; with `maxBytes`, a longer body is refused and nothing is kept. */
   store(key: string, body: ReadableStream<Uint8Array> | Uint8Array, options?: { etag?: string; maxBytes?: number; }): Promise<CachedR2Object>;
 }
 
@@ -152,17 +153,47 @@ export function bucketR2Source(scope: Pick<AssetScope, 'settings' | 'prefix'>): 
   };
 }
 
-/** Whether a URL the hosted deployment answered may be read: https, or http on this machine. Nothing else, so a hostile answer cannot aim the read at a LAN host. */
-function readableObjectUrl(value: string): boolean {
+/**
+ * Whether a URL the hosted deployment answered may be read. A deployment on this machine may answer any https URL or
+ * http on this machine (a local stand-in bucket). A remote one may answer only https to a host that is not this machine
+ * or a private, link-local, shared or reserved address literal, so a hostile deployment cannot aim the local read at
+ * a local service or a LAN address. A DNS name is not resolved: a name that resolves to a LAN host is not caught here.
+ */
+function readableObjectUrl(value: string, localDeployment: boolean): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname));
+    if (localDeployment) return url.protocol === 'https:' || (url.protocol === 'http:' && isLoopbackHost(url.hostname));
+    return url.protocol === 'https:' && !isLoopbackHost(url.hostname) && !isInternalAddress(url.hostname);
   } catch {
     return false;
   }
 }
 
-const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+const LOOPBACK_NAMES = ['localhost', '127.0.0.1', '[::1]'];
+
+/** This machine by name or address (the URL parser has already turned `2130706433` or `0x7f000001` into `127.0.0.1`). */
+function isLoopbackHost(hostname: string): boolean {
+  const name = hostname.replace(/\.$/, '').toLowerCase();
+  return LOOPBACK_NAMES.includes(name) || name.endsWith('.localhost') || (net.isIPv4(name) && name.startsWith('127.'));
+}
+
+/** An IPv4 or IPv6 literal (as the URL parser writes it) in a loopback, private, link-local, shared, reserved or multicast range. */
+function isInternalAddress(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (net.isIPv4(host)) return internalIPv4(host);
+  if (!net.isIPv6(host)) return false;
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (mapped) {
+    const [high, low] = [parseInt(mapped[1], 16), parseInt(mapped[2], 16)];
+    return internalIPv4(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+  }
+  return host === '::' || host === '::1' || /^f[cd]/.test(host) || /^fe[89ab]/.test(host) || host.startsWith('ff');
+}
+
+function internalIPv4(address: string): boolean {
+  const [a, b] = address.split('.').map(Number);
+  return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b < 128) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b < 32) || (a === 192 && b === 168) || (a === 198 && (b === 18 || b === 19));
+}
 
 /** The JSON a tool answered as text, or undefined when it is not JSON. */
 function parsed(text: unknown): unknown {
@@ -193,7 +224,7 @@ export function hostedR2Source(remoteUrl: string, token: string, fetcher: typeof
   } catch {
     throw new Error('MYGITNOTES_R2_REMOTE_URL must be the https URL of a hosted MyGitNotes deployment.');
   }
-  const loopback = LOOPBACK_HOSTS.includes(remote.hostname);
+  const loopback = isLoopbackHost(remote.hostname);
   if (remote.protocol !== 'https:' && !(remote.protocol === 'http:' && loopback)) throw new Error('MYGITNOTES_R2_REMOTE_URL must be an https URL, so the agent token is never sent in the clear.');
   // The connector URL shown in Settings is `<deployment>/mcp/<token>`; pasted here it names the deployment's `/mcp`, and the token is the separate variable.
   const endpoint = `${remote.origin}${remote.pathname.replace(/\/+$/, '').replace(/\/mcp(\/[^/]+)?$/, '')}/mcp`;
@@ -212,7 +243,7 @@ export function hostedR2Source(remoteUrl: string, token: string, fetcher: typeof
         // A refused call says why (the note is not one the grant reads, the deployment has no bucket); an answer of another shape is an older deployment's.
         if (result?.isError || !Array.isArray(answer?.assets)) throw new Error(typeof answer?.error === 'string' ? answer.error : 'The hosted deployment did not answer download_assets; it may run an older MyGitNotes.');
         for (const asset of answer.assets as { key?: unknown; url?: unknown; }[]) {
-          if (typeof asset.key === 'string' && typeof asset.url === 'string' && wanted.has(asset.key) && readableObjectUrl(asset.url)) found.set(asset.key, asset.url);
+          if (typeof asset.key === 'string' && typeof asset.url === 'string' && wanted.has(asset.key) && readableObjectUrl(asset.url, loopback)) found.set(asset.key, asset.url);
         }
         // Every asked key found: the remaining pages hold nothing more for this call.
         if (found.size === wanted.size) break;

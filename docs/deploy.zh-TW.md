@@ -402,4 +402,4 @@ pnpm r2-download --refresh                        # 重新讀取所有被引用�
 ### 連同圖片下載筆記
 
 - **網頁。** 引用了 `r2:` 物件的筆記，匯出選單會多出**連同圖片下載 (.zip)**。壓縮檔內有筆記與物件，筆記裡的引用改指向同一層的 `assets/<object-key>`。抓不到的物件保留原本的 `r2:` 引用，並列在 `missing-assets.txt`。壓縮檔在瀏覽器中產生，上限 512 MiB；在 hosted 部署上，瀏覽器直接向 bucket 讀取物件，因此上述 bucket CORS 規則必須允許來自 `APP_URL` 的 GET。
-- **MCP。** `download_assets` 帶筆記的 `path`。經 hosted `/mcp` 呼叫時，每個被筆記引用的物件回傳一個 5 分鐘有效的網址，每次最多 50 個，唯讀授權也能使用。經本機 stdio 伺服器呼叫時，物件存進上述快取，並回傳每個檔案的路徑。
+- **MCP。** `download_assets` 帶筆記的 `path`。經 hosted `/mcp` 呼叫時，每個被筆記引用的物件回傳一個 5 分鐘有效的網址，每次最多 50 個，唯讀授權也能使用。經本機 stdio 伺服器呼叫時，物件存進上述快取，每個物件最多 64 MiB（更大的列在 `missing`；`pnpm r2-download` 不限大小），並回傳每個檔案的路徑。
