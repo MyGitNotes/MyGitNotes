@@ -87,15 +87,36 @@ export function ManageTemplatesDialog({ notebookTitle, templates, builtin, loadi
               </div>
               {!readOnly && (
                 <div className='manage-templates-actions'>
-                  <button type='button' className='ui-icon-button' aria-label={t('templates.edit', { name: template.name })} title={t('templates.edit', { name: template.name })} disabled={busy} onClick={() => void run(() => onEdit(template), true)}>
+                  <button
+                    type='button'
+                    className='ui-icon-button'
+                    aria-label={t('templates.edit', { name: template.name })}
+                    title={t('templates.edit', { name: template.name })}
+                    disabled={busy}
+                    onClick={() => void run(() => onEdit(template), true)}
+                  >
                     <Pencil aria-hidden='true' />
                   </button>
                   {template.source === 'file' && fileActions && (
                     <>
-                      <button type='button' className='ui-icon-button' aria-label={t('templates.rename', { name: template.name })} title={t('templates.rename', { name: template.name })} disabled={busy} onClick={() => start({ kind: 'rename', template }, template.id)}>
+                      <button
+                        type='button'
+                        className='ui-icon-button'
+                        aria-label={t('templates.rename', { name: template.name })}
+                        title={t('templates.rename', { name: template.name })}
+                        disabled={busy}
+                        onClick={() => start({ kind: 'rename', template }, template.id)}
+                      >
                         <TextCursorInput aria-hidden='true' />
                       </button>
-                      <button type='button' className='ui-icon-button' aria-label={t('templates.delete', { name: template.name })} title={t('templates.delete', { name: template.name })} disabled={busy} onClick={() => start({ kind: 'delete', template })}>
+                      <button
+                        type='button'
+                        className='ui-icon-button'
+                        aria-label={t('templates.delete', { name: template.name })}
+                        title={t('templates.delete', { name: template.name })}
+                        disabled={busy}
+                        onClick={() => start({ kind: 'delete', template })}
+                      >
                         <Trash2 aria-hidden='true' />
                       </button>
                     </>
@@ -125,7 +146,14 @@ export function ManageTemplatesDialog({ notebookTitle, templates, builtin, loadi
         >
           <label>
             {t(pending.kind === 'create' ? 'templates.newLabel' : 'templates.renameLabel')}
-            <input className='ui-control' aria-label={t(pending.kind === 'create' ? 'templates.newLabel' : 'templates.renameLabel')} value={name} maxLength={100} onChange={event => setName(event.target.value)} autoFocus />
+            <input
+              className='ui-control'
+              aria-label={t(pending.kind === 'create' ? 'templates.newLabel' : 'templates.renameLabel')}
+              value={name}
+              maxLength={100}
+              onChange={event => setName(event.target.value)}
+              autoFocus
+            />
           </label>
           <p className='text-xs text-muted font-mono break-all'>{fileNameOf(name) ? t('templates.file', { file: `.templates/${fileNameOf(name)}` }) : t('templates.nameInvalid')}</p>
           <div className='workspace-dialog-actions'>

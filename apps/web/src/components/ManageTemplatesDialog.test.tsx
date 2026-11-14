@@ -89,9 +89,12 @@ it('edits in zoom (the dialog closes), renames a file template and deletes one a
 });
 
 it('shows why an action was refused and stays open, and offers no rename or delete where files cannot change', async () => {
-  const { onClose } = open({ onCreate: vi.fn(async () => {
-    throw new Error('A template named reading already exists.');
-  }), fileActions: false });
+  const { onClose } = open({
+    onCreate: vi.fn(async () => {
+      throw new Error('A template named reading already exists.');
+    }),
+    fileActions: false,
+  });
   expect(screen.queryByRole('button', { name: 'Rename 讀書筆記' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Delete 讀書筆記' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'New template' }));

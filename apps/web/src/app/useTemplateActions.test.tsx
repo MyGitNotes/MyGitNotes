@@ -15,10 +15,27 @@ function setup(overrides: Partial<Params> = {}, existing: string[] = []) {
   const queryClient = new QueryClient();
   vi.spyOn(queryClient, 'fetchQuery').mockImplementation(async options => ({ notes: existing.filter(path => JSON.stringify((options as { queryKey: unknown; }).queryKey).includes(path)).map(path => ({ path })) }) as never);
   const drafts = new Map<string, WorkingNote>();
-  const params = { config: { notebooks: [{ id: 'qa~ex', root: 'notes/ex', title: 'Example' }] }, remote: false, canWriteNotebook: () => true, readDraft: (_: string, path: string) => drafts.get(path), updateDraft: vi.fn((_: string, path: string, entry: WorkingNote | null) => void (entry ? drafts.set(path, entry) : drafts.delete(path))), stageWorkingNote: vi.fn((note: NoteItem, base: NoteItem | null) => {
-    drafts.set(note.path, { note, base });
-    return note;
-  }), revisionFor: () => 'head', queryClient, queryScope: { sourceId: 's', revisions: {}, repositories: { 'qa~ex': 's' }, drafts: {} }, invalidateNotes: vi.fn(), setGitStatus: vi.fn(), openInZoom: vi.fn(async () => true), deleteNote: vi.fn(async () => {}), relocateFile: vi.fn(async () => {}), t: (key: string, values?: Record<string, string>) => values ? `${key}:${Object.values(values).join(',')}` : key, ...overrides } as unknown as Params;
+  const params = {
+    config: { notebooks: [{ id: 'qa~ex', root: 'notes/ex', title: 'Example' }] },
+    remote: false,
+    canWriteNotebook: () => true,
+    readDraft: (_: string, path: string) => drafts.get(path),
+    updateDraft: vi.fn((_: string, path: string, entry: WorkingNote | null) => void (entry ? drafts.set(path, entry) : drafts.delete(path))),
+    stageWorkingNote: vi.fn((note: NoteItem, base: NoteItem | null) => {
+      drafts.set(note.path, { note, base });
+      return note;
+    }),
+    revisionFor: () => 'head',
+    queryClient,
+    queryScope: { sourceId: 's', revisions: {}, repositories: { 'qa~ex': 's' }, drafts: {} },
+    invalidateNotes: vi.fn(),
+    setGitStatus: vi.fn(),
+    openInZoom: vi.fn(async () => true),
+    deleteNote: vi.fn(async () => {}),
+    relocateFile: vi.fn(async () => {}),
+    t: (key: string, values?: Record<string, string>) => values ? `${key}:${Object.values(values).join(',')}` : key,
+    ...overrides,
+  } as unknown as Params;
   return { params, drafts, actions: renderHook(() => useTemplateActions(params)).result.current };
 }
 const reading: NoteTemplateInfo = { notebookId: 'qa~ex', id: 'reading', name: 'Reading', source: 'file', file: 'notes/ex/.templates/reading.md', placeholders: [] };
