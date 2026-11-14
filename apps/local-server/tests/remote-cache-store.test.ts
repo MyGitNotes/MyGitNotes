@@ -66,7 +66,7 @@ describe('shared cache store', () => {
     expect(await listed()).toEqual(repository.listing(repository.head));
     expect(repository.take()).toEqual({ project: 1, branch: 1, tree: 7 });
     const [key] = [...redis.keys()].filter(stored => stored.startsWith('gh-notes:cache:mgn:gitlab-tree:'));
-    expect(key).toContain(`${repository.site}/${repository.project}@main`);
+    expect(key).toContain(JSON.stringify([repository.site, repository.project, 'main']));
     expect(await listed()).toEqual(repository.listing(repository.head));
     expect(repository.take()).toEqual({ project: 1, branch: 1 });
     // Another writer of the store cannot pass off a listing of its own, and a server with another secret trusts none.

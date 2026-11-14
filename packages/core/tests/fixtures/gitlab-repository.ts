@@ -26,8 +26,9 @@ const PROJECT = 'group/project';
  * A GitLab project as the REST API serves it: commits that never change, object ids as git computes them, the tree
  * listing with keyset or page-number pagination, comparisons, file reads and commits. Every request is counted by kind.
  */
-export function gitlabRepository(initial: Record<string, RepositoryFile>, options: { list?: ListFiles; } = {}) {
-  const prefix = `${SITE}/api/v4/projects/${encodeURIComponent(PROJECT)}`;
+export function gitlabRepository(initial: Record<string, RepositoryFile>, options: { list?: ListFiles; site?: string; project?: string; } = {}) {
+  const { site = SITE, project = PROJECT } = options;
+  const prefix = `${site}/api/v4/projects/${encodeURIComponent(project)}`;
   const blobs = new Map<string, Buffer>();
   const commits = new Map<string, { tree: Tree; parent: string | null; }>();
   const listings = new Map<string, RemoteEntry[]>();
@@ -182,8 +183,8 @@ export function gitlabRepository(initial: Record<string, RepositoryFile>, option
   };
 
   return {
-    site: SITE,
-    project: PROJECT,
+    site,
+    project,
     behaviour,
     log,
     get head() {

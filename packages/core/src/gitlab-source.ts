@@ -14,7 +14,7 @@ interface Listing {
 }
 /** A listing as the shared cache keeps it: path, mode, type and object id. */
 type ListingRow = [string, string, string, string];
-const LISTING_KEY_VERSION = 1;
+const LISTING_KEY_VERSION = 2;
 const OBJECT_ID = /^[a-f0-9]{40}([a-f0-9]{24})?$/;
 /** Listings this process holds and those it is reading, by branch and commit. Keyed like the GitHub runtime by its `fetch`, so test doubles never share one. */
 const processListings = new WeakMap<typeof fetch, { held: Map<string, RemoteEntry[]>; reading: Map<string, Promise<RemoteEntry[]>>; }>();
@@ -108,9 +108,16 @@ export class GitLabSource extends RemoteSource {
     if (!memory) processListings.set(this.request, memory = { held: new Map(), reading: new Map() });
     return memory;
   }
-  /** What caches call this branch's listing. It names the site with the project, since a commit's listing hashes to no key of its own. */
+  /**
+   * What caches call this branch's listing. It names the site with the project, since a commit's listing hashes to no
+   * key of its own, and as a JSON array, so no site, project and branch spell the key of three others.
+   */
   private listingKey() {
-    return `mgn:gitlab-tree:v${LISTING_KEY_VERSION}:${this.url}/${this.cacheRepository()}@${this.branch}`;
+    return `mgn:gitlab-tree:v${LISTING_KEY_VERSION}:${JSON.stringify([this.url, this.cacheRepository(), this.branch])}`;
+  }
+  /** The cache's seal over this branch's key, a commit and the listing stored as its own; undefined when the cache seals nothing. */
+  private seal(sha: string, data: string): string | undefined {
+    return this.cache?.sign?.(JSON.stringify([this.listingKey(), sha, data]));
   }
   /**
    * Every entry of commit `sha`, which this reader's own branch read just named. A commit never changes, so the listing
@@ -210,7 +217,7 @@ export class GitLabSource extends RemoteSource {
       if (next === null) return undefined;
       data += next;
     }
-    const expected = Buffer.from(cache.sign(`${key}\n${sha}\n${data}`) ?? ''), given = Buffer.from(seal);
+    const expected = Buffer.from(this.seal(sha, data) ?? ''), given = Buffer.from(seal);
     if (!expected.length || expected.length !== given.length || !timingSafeEqual(expected, given)) return undefined;
     try {
       const rows = JSON.parse(inflateRawSync(Buffer.from(data, 'base64'), { maxOutputLength: LISTING_MAX_BYTES }).toString()) as ListingRow[];
@@ -224,7 +231,7 @@ export class GitLabSource extends RemoteSource {
     const cache = this.cache, key = this.listingKey();
     if (!cache?.sign) return;
     const data = deflateRawSync(JSON.stringify(entries.map((entry): ListingRow => [entry.path, entry.mode, entry.type, entry.sha]))).toString('base64');
-    const seal = cache.sign(`${key}\n${sha}\n${data}`);
+    const seal = this.seal(sha, data);
     if (!seal) return;
     const parts: string[] = [];
     for (let start = 0; start < data.length; start += LISTING_PART) parts.push(data.slice(start, start + LISTING_PART));

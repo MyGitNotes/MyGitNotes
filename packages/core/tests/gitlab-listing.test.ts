@@ -204,6 +204,19 @@ describe('GitLab listing of a large repository', () => {
     expect(repository.take()).toEqual({ project: 1, branch: 1, tree: pages });
   });
 
+  it('keeps apart in the shared cache two projects that a site path and a project path spell alike', async () => {
+    const cache = sealedCache();
+    const one = gitlabRepository(documentationTree(1), { site: 'https://gitlab.example.test/x', project: 'g/p' });
+    const other = gitlabRepository({ ...documentationTree(1), 'only-here.md': '# In the other project\n' }, { site: 'https://gitlab.example.test', project: 'x/g/p' });
+    // The fixture gives every first commit one id, so a key the two shared would hand one project's listing to the other.
+    expect(other.head).toBe(one.head);
+    await listed(one, one.process(), cache);
+    expect(await listed(other, other.process(), cache)).toEqual(other.listing(other.head));
+    expect(other.take()).toEqual({ project: 1, branch: 1, tree: Math.ceil(other.listing(other.head).length / 100) });
+    expect([...cache.values.keys()].filter(key => key.startsWith(LISTING_KEY))).toHaveLength(2);
+    expect(await listed(one, one.process(), cache)).toEqual(one.listing(one.head));
+  });
+
   it('serves a listing too large for one cache value from its parts', async () => {
     const cache = sealedCache();
     const repository = gitlabRepository(documentationTree(130));
