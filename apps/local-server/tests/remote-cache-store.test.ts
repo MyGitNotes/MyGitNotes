@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRemoteCache, SourceError } from '@mygitnotes/core';
+import { MemoryRemoteCache, openRemoteRepository, SourceError } from '@mygitnotes/core';
 import { createRemoteCache, RedisRemoteCache } from '../src/remote-cache-store.js';
+import { documentationTree, gitlabRepository } from '../../../packages/core/tests/fixtures/gitlab-repository.js';
 
 const restUrl = 'https://cache.example.test';
 beforeEach(() => {
@@ -48,6 +49,35 @@ describe('shared cache store', () => {
       vi.stubEnv('SESSION_SECRET', secret);
       expect(cache.sign('listing')).toBeUndefined();
     }
+  });
+
+  it('serves a GitLab listing to another process from Redis, and only as this server sealed it', async () => {
+    const redis = new Map<string, string>();
+    vi.stubEnv('SESSION_SECRET', 's'.repeat(64));
+    // Redis over REST: MGET in one command, SET in a pipeline.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const body = JSON.parse(String(init!.body)) as string[] | string[][];
+      if (!String(input).endsWith('/pipeline')) return new Response(JSON.stringify({ result: (body as string[]).slice(1).map(key => redis.get(key) ?? null) }), { status: 200 });
+      for (const [, key, value] of body as string[][]) redis.set(key, value);
+      return new Response(JSON.stringify((body as string[][]).map(() => ({ result: 'OK' }))), { status: 200 });
+    });
+    const repository = gitlabRepository(documentationTree(3));
+    const listed = async () => (await openRemoteRepository({ type: 'gitlab', url: repository.site, repository: repository.project, branch: 'main' }, 'token', repository.process(), new RedisRemoteCache()).reader.getSnapshot()).entries;
+    expect(await listed()).toEqual(repository.listing(repository.head));
+    expect(repository.take()).toEqual({ project: 1, branch: 1, tree: 7 });
+    const [key] = [...redis.keys()].filter(stored => stored.startsWith('gh-notes:cache:mgn:gitlab-tree:'));
+    expect(key).toContain(`${repository.site}/${repository.project}@main`);
+    expect(await listed()).toEqual(repository.listing(repository.head));
+    expect(repository.take()).toEqual({ project: 1, branch: 1 });
+    // Another writer of the store cannot pass off a listing of its own, and a server with another secret trusts none.
+    const sealed = redis.get(key)!;
+    redis.set(key, sealed.replace(repository.head, 'f'.repeat(40)));
+    expect(await listed()).toEqual(repository.listing(repository.head));
+    expect(repository.take()).toEqual({ project: 1, branch: 1, tree: 7 });
+    expect(redis.get(key)).toBe(sealed);
+    vi.stubEnv('SESSION_SECRET', 't'.repeat(64));
+    expect(await listed()).toEqual(repository.listing(repository.head));
+    expect(repository.take()).toEqual({ project: 1, branch: 1, tree: 7 });
   });
 
   it('uses the process cache when no store is configured', () => {
