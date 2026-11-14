@@ -200,6 +200,14 @@ describe('checkInLink', () => {
     expect(await liveNotes.person(person(1)).filed(repository, pending.id)).toBe('notes/life/inbox/Meeting.md');
   });
 
+  it('files a pending note beside another note that holds the same text, never into it', async () => {
+    await gitCommit('notes/life/inbox/Meeting.md', '# Meeting\n');
+    const pending = await liveNotes.person(person(1)).createPending(repository, { notebook: 'notes~life', pathRule: 'inbox/{{title}}.md', content: '# Meeting\n' });
+    expect(await run(pending.id)).toMatchObject({ path: 'notes/life/inbox/Meeting-2.md', committed: true, filed: true });
+    expect(files.get('notes/life/inbox/Meeting-2.md')).toBe('# Meeting\n');
+    expect(await liveNotes.person(person(1)).filed(repository, pending.id)).toBe('notes/life/inbox/Meeting-2.md');
+  });
+
   it('commits typing after a lost filing acknowledgement at the path it filed, with no conflict', async () => {
     const pending = await liveNotes.person(person(1)).createPending(repository, { notebook: 'notes~life', pathRule: 'inbox/{{title}}.md', content: '# Meeting\n' });
     vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new Error('connection reset'));

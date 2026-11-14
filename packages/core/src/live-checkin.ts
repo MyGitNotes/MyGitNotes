@@ -320,8 +320,9 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
         if (!occupied(candidate)) break;
         const entry = snapshot.entries.find(item => item.path === candidate && item.type === 'blob');
         if (!entry) continue;
-        if (entry.sha === blobOf(live)) return synced(candidate, snapshot.sha, entry.sha, live, null, false, true);
+        // Only this note's own filing counts: another note that merely holds the same text (an untouched template) is not it.
         if (!await checkedInBy(source, candidate, id, async () => normalizeLiveText((await source.readSnapshotFile(snapshot, candidate)).toString('utf8')))) continue;
+        if (entry.sha === blobOf(live)) return synced(candidate, snapshot.sha, entry.sha, live, null, false, true);
         // The newest commit touching it is this note's own filing, so Git holds what was filed: the typing since commits over it.
         const sha = await commit(candidate, live, checkInMessage(candidate, id, live, { filing: false, ...(agentDay ? { agentDay } : {}) }));
         return synced(candidate, sha, blobOf(live), live, null, true, true);
