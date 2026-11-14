@@ -276,3 +276,24 @@ describe('Workspace manifest filename resolution', () => {
     expect(resolveWorkspaceConfigPath(root)).toBeNull();
   });
 });
+
+describe('Notebook default_sort', () => {
+  const withSort = (sort: string) => `schema_version: 4\nworkspace:\n  title: T\n  default_notebook: meetings\nnotebooks:\n  - id: meetings\n    title: Meetings\n    root: notes/meetings\n${sort}`;
+
+  it('keeps a built-in field or a metadata.<key> field with its order, which defaults to desc', () => {
+    expect(parseWorkspaceConfig(withSort('    default_sort:\n      field: metadata.date\n')).notebooks[0].default_sort).toEqual({ field: 'metadata.date', order: 'desc' });
+    expect(parseWorkspaceConfig(withSort('    default_sort: { field: title, order: asc }\n')).notebooks[0].default_sort).toEqual({ field: 'title', order: 'asc' });
+    expect(parseWorkspaceConfig(withSort('    default_sort: { field: status, order: desc }\n')).notebooks[0].default_sort).toEqual({ field: 'status', order: 'desc' });
+  });
+
+  it('leaves default_sort out where the manifest sets none, and writes it back on save', () => {
+    expect(parseWorkspaceConfig(withSort('')).notebooks[0]).not.toHaveProperty('default_sort');
+    const config = parseWorkspaceConfig(withSort('    default_sort: { field: metadata.date, order: asc }\n'));
+    expect(parseWorkspaceConfig(serializeWorkspaceConfig(config)).notebooks[0].default_sort).toEqual({ field: 'metadata.date', order: 'asc' });
+  });
+
+  it.each([['a string', '    default_sort: updated\n'], ['a list', '    default_sort: [updated]\n'], ['no field', '    default_sort: { order: asc }\n'], ['an unknown field', '    default_sort: { field: modified }\n'], ['an empty metadata key', '    default_sort: { field: "metadata." }\n'], ['a metadata key with a space', '    default_sort: { field: "metadata.meeting date" }\n'], ['a field with another case', '    default_sort: { field: Title }\n'], ['an unknown order', '    default_sort: { field: title, order: up }\n'], ['a non-string order', '    default_sort: { field: title, order: 1 }\n'], ['an unknown key', '    default_sort: { field: title, direction: asc }\n']])('rejects %s', (_name, sort) => {
+    expect(() => parseWorkspaceConfig(withSort(sort))).toThrow(ConfigValidationError);
+    expect(() => parseWorkspaceConfig(withSort(sort))).toThrow(/default_sort/);
+  });
+});

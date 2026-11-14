@@ -1,9 +1,11 @@
 import { createLoader, createParser, createSerializer, parseAsBoolean, parseAsNativeArrayOf, parseAsString, parseAsStringLiteral } from 'nuqs/server';
 import { safeFilterPath } from '@mygitnotes/core/note-filters';
+import { isSortField, type SortField } from '@mygitnotes/core/note-sort';
 
 const tagParser = createParser({ parse: value => value.trim() ? value : null, serialize: value => value });
+const sortFieldParser = createParser<SortField>({ parse: value => isSortField(value) ? value : null, serialize: value => value });
 const pathParser = createParser({ parse: value => safeFilterPath(value) ? value : null, serialize: value => value });
-export const filterParsers = { sortField: parseAsStringLiteral(['updated', 'created', 'title', 'status']), sortOrder: parseAsStringLiteral(['asc', 'desc']), q: parseAsString.withDefault(''), kind: parseAsStringLiteral(['note', 'compilation', 'outline']).withDefault('note'), tag: parseAsNativeArrayOf(tagParser), folders: parseAsNativeArrayOf(pathParser), descendants: parseAsBoolean.withDefault(true), tagMode: parseAsStringLiteral(['any', 'all']).withDefault('any'), status: parseAsString, showHidden: parseAsBoolean.withDefault(false), neighbors: parseAsBoolean.withDefault(false), allNotebooks: parseAsBoolean.withDefault(false), groupByFolder: parseAsBoolean.withDefault(false), view: parseAsStringLiteral(['flat', 'list', 'card', 'kanban', 'graph']).withDefault('flat') };
+export const filterParsers = { sortField: sortFieldParser, sortOrder: parseAsStringLiteral(['asc', 'desc']), q: parseAsString.withDefault(''), kind: parseAsStringLiteral(['note', 'compilation', 'outline']).withDefault('note'), tag: parseAsNativeArrayOf(tagParser), folders: parseAsNativeArrayOf(pathParser), descendants: parseAsBoolean.withDefault(true), tagMode: parseAsStringLiteral(['any', 'all']).withDefault('any'), status: parseAsString, showHidden: parseAsBoolean.withDefault(false), neighbors: parseAsBoolean.withDefault(false), allNotebooks: parseAsBoolean.withDefault(false), groupByFolder: parseAsBoolean.withDefault(false), view: parseAsStringLiteral(['flat', 'list', 'card', 'kanban', 'graph']).withDefault('flat') };
 export const readFilterQuery = createLoader(filterParsers);
 export const writeFilterQuery = createSerializer(filterParsers);
 export type FilterQuery = Awaited<ReturnType<typeof readFilterQuery>>;

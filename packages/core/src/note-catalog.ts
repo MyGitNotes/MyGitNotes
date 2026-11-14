@@ -2,7 +2,7 @@ import type { FolderItem, NotebookConfig, WorkspaceConfig } from './types.js';
 import { SourceError } from './github-api.js';
 import { isNoteHidden } from './note-status.js';
 import { safeFilterPath } from './note-filters.js';
-import { type SortField, sortNotes, type SortOrder } from './note-sort.js';
+import { isSortField, type SortField, sortNotes, type SortOrder } from './note-sort.js';
 import { extractTodoTasks, getNoteMilestone } from './note-agenda.js';
 import { buildNoteGraph } from './note-graph.js';
 import { hashJson } from './remote-cache.js';
@@ -54,7 +54,6 @@ export interface NoteQueryOptions {
   select?: 'paths';
 }
 
-const SORT_FIELDS: SortField[] = ['updated', 'created', 'title', 'status'];
 const SORT_ORDERS: SortOrder[] = ['asc', 'desc'];
 const REVISION = /^[a-f0-9]{40}([a-f0-9]{24})?$/;
 
@@ -208,7 +207,7 @@ export function parseNoteQuery(input: Record<string, unknown>): { query: NoteQue
   const group = single(input.group) ?? null;
   if (group !== null && group !== 'folder') throw new SourceError('Invalid query option.');
   const q = single(input.q) ?? '', select = single(input.select), limitText = single(input.limit), kind = single(input.kind) ?? DEFAULT_NOTE_QUERY.kind;
-  if (!['any', 'all'].includes(tagMode) || !['all', 'title'].includes(match) || !SORT_FIELDS.includes(sort) || !SORT_ORDERS.includes(order) || !NOTE_KIND_FILTERS.includes(kind as NoteKindFilter)) throw new SourceError('Invalid query option.');
+  if (!['any', 'all'].includes(tagMode) || !['all', 'title'].includes(match) || !isSortField(sort) || !SORT_ORDERS.includes(order) || !NOTE_KIND_FILTERS.includes(kind as NoteKindFilter)) throw new SourceError('Invalid query option.');
   if (q.length > 500) throw new SourceError('Search text exceeds 500 characters.');
   if (select !== undefined && select !== 'paths') throw new SourceError('Invalid select option.');
   const limit = limitText === undefined ? 50 : Number(limitText);

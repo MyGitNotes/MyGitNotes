@@ -1,8 +1,9 @@
 import YAML from 'yaml';
 import path from 'node:path';
 import fs from 'node:fs';
-import { NotebookConfig, NotebookMetadataField, NotebookStatus, NoteTemplate, StatusColorName, StatusLabel, WorkspaceConfig } from './types.js';
+import { NotebookConfig, NotebookDefaultSort, NotebookMetadataField, NotebookStatus, NoteTemplate, StatusColorName, StatusLabel, WorkspaceConfig } from './types.js';
 import { STATUS_COLOR_NAMES } from './note-status.js';
+import { isSortField } from './note-sort.js';
 import { normalizePreferences } from './workspace-preferences.js';
 import { NOTEBOOK_ID_PATTERN } from './notebook-key.js';
 
@@ -26,6 +27,18 @@ export class ConfigValidationError extends Error {
     super(message);
     this.name = 'ConfigValidationError';
   }
+}
+
+/** Reads a notebook's `default_sort`: a `field` (built-in, or `metadata.<key>`) and an `order` (`asc` or `desc`, default `desc`). */
+function validateDefaultSort(notebookId: string, raw: unknown): NotebookDefaultSort {
+  const shape = `Notebook '${notebookId}' default_sort must be { field, order } with field updated, created, title, status or metadata.<key> and order asc or desc`;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ConfigValidationError(shape);
+  const sort = raw as Record<string, unknown>;
+  const unknown = Object.keys(sort).find(key => key !== 'field' && key !== 'order');
+  if (unknown !== undefined) throw new ConfigValidationError(`Notebook '${notebookId}' default_sort has an unknown key '${unknown}'`);
+  if (!isSortField(sort.field)) throw new ConfigValidationError(`${shape}: field '${String(sort.field)}'`);
+  if (sort.order !== undefined && sort.order !== 'asc' && sort.order !== 'desc') throw new ConfigValidationError(`${shape}: order '${String(sort.order)}'`);
+  return { field: sort.field, order: sort.order ?? 'desc' };
 }
 
 /**
@@ -169,6 +182,8 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
       validatedStatuses = validateStatuses(item.id as string, item.statuses);
     }
 
+    const validatedDefaultSort = item.default_sort === undefined ? undefined : validateDefaultSort(item.id, item.default_sort);
+
     let validatedTemplates: NoteTemplate[] | undefined;
     if (item.templates !== undefined) {
       if (!Array.isArray(item.templates)) {
@@ -253,7 +268,7 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
       }
     }
 
-    validatedNotebooks.push({ id: item.id, title: item.title, root: normalizedRoot, assets: assetPath, default_view: (item.default_view as 'list' | 'card' | 'kanban' | 'flat') || 'list', ...(validatedStatuses !== undefined ? { statuses: validatedStatuses } : {}), ...(validatedTemplates !== undefined ? { templates: validatedTemplates } : {}), ...(validatedMetadata !== undefined ? { metadata: validatedMetadata } : {}), ...(validatedPathAliases !== undefined ? { pathAliases: validatedPathAliases } : {}) });
+    validatedNotebooks.push({ id: item.id, title: item.title, root: normalizedRoot, assets: assetPath, default_view: (item.default_view as 'list' | 'card' | 'kanban' | 'flat') || 'list', ...(validatedDefaultSort !== undefined ? { default_sort: validatedDefaultSort } : {}), ...(validatedStatuses !== undefined ? { statuses: validatedStatuses } : {}), ...(validatedTemplates !== undefined ? { templates: validatedTemplates } : {}), ...(validatedMetadata !== undefined ? { metadata: validatedMetadata } : {}), ...(validatedPathAliases !== undefined ? { pathAliases: validatedPathAliases } : {}) });
   }
 
   // Ensure default_notebook exists

@@ -8,6 +8,7 @@ import { Select } from './Select.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { noteUpdatedTime, SortField, SortOrder } from '../lib/note-sort.js';
+import { metadataSortOptions } from '../lib/note-sort-options.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { highlightSegments } from '../lib/search-highlight.js';
 import { useDeleteConfirm } from '../lib/use-delete-confirm.js';
@@ -41,6 +42,8 @@ export interface ListViewProps {
   sortField?: SortField;
   sortOrder?: SortOrder;
   onSortChange?: (field: SortField, order?: SortOrder) => void;
+  /** Frontmatter fields (`metadata.<key>`) the mobile sort menu offers besides the built-in ones. */
+  metadataSortFields?: readonly string[];
   showMobileSort?: boolean;
   tagActions?: NoteTagActions;
   /** Present while a Focus is displayed: rows get a zoom button and can be dragged into a pane. */
@@ -133,7 +136,7 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
   );
 });
 
-export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, sortField = 'updated', sortOrder = 'desc', onSortChange, showMobileSort = false, tagActions, focusMode, leading, highlightQuery = '', selectedKeys, onToggleSelect, groupOf, collapsedGroups, onToggleGroup }) => {
+export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, sortField = 'updated', sortOrder = 'desc', onSortChange, metadataSortFields, showMobileSort = false, tagActions, focusMode, leading, highlightQuery = '', selectedKeys, onToggleSelect, groupOf, collapsedGroups, onToggleGroup }) => {
   const { t, language } = useTranslation();
   // Rows retain stable actions while invoking the latest committed callbacks.
   const handlers = useRef({ onOpenNote, onDeleteNote, onUpdateNoteStatus, onMoveNote, focusMode, onToggleSelect });
@@ -187,7 +190,7 @@ export const ListView: React.FC<ListViewProps> = ({ notes, uncommitted = [], has
               const [field, order] = value.split(':') as [SortField, SortOrder];
               onSortChange(field, order);
             }}
-            options={[{ value: 'updated:desc', label: t('sort.updatedDesc') }, { value: 'updated:asc', label: t('sort.updatedAsc') }, { value: 'created:desc', label: t('sort.createdDesc') }, { value: 'created:asc', label: t('sort.createdAsc') }, { value: 'title:asc', label: t('sort.titleAsc') }, { value: 'title:desc', label: t('sort.titleDesc') }, { value: 'status:asc', label: t('sort.status') }]}
+            options={[{ value: 'updated:desc', label: t('sort.updatedDesc') }, { value: 'updated:asc', label: t('sort.updatedAsc') }, { value: 'created:desc', label: t('sort.createdDesc') }, { value: 'created:asc', label: t('sort.createdAsc') }, { value: 'title:asc', label: t('sort.titleAsc') }, { value: 'title:desc', label: t('sort.titleDesc') }, { value: 'status:asc', label: t('sort.status') }, ...metadataSortOptions(t, metadataSortFields ?? [])]}
           />
         </div>
       )}

@@ -161,3 +161,12 @@ it('keeps Manage templates, and nothing that creates, in a read-only notebook’
   expect(await openNewMenu()).toEqual(['管理範本…']);
   expect(screen.queryByRole('button', { name: '新增筆記' })).toBeNull();
 });
+
+it("offers the notebook's metadata sort field in the sort menu, labelled by its key", () => {
+  const { rerender } = render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, sortField: 'metadata.date', sortOrder: 'desc', metadataSortFields: ['metadata.date'] })));
+  expect(screen.getByRole('combobox', { name: '排序: date (由大到小)' })).toBeInTheDocument();
+  rerender(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, sortField: 'metadata.date', sortOrder: 'asc', metadataSortFields: ['metadata.date'] })));
+  expect(screen.getByRole('combobox', { name: '排序: date (由小到大)' })).toBeInTheDocument();
+  rerender(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps })));
+  expect(screen.getByRole('combobox', { name: '排序: 更新時間 (由新到舊)' })).toBeInTheDocument();
+});

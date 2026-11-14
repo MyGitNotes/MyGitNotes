@@ -1,3 +1,5 @@
+import type { SortField, SortOrder } from './note-sort.js';
+
 export type ViewMode = 'list' | 'card' | 'kanban' | 'flat' | 'graph';
 
 export interface NoteTemplate {
@@ -23,12 +25,20 @@ export type StatusLabel = string | Readonly<Record<string, string>>;
 /** One entry of a notebook's `statuses`: the bare name, or the name with the colour its dot wears and the label it shows. */
 export type NotebookStatus = string | { name: string; color?: StatusColorName; label?: StatusLabel; };
 
+/** A built-in sort field or `metadata.<key>` (a frontmatter key), with the order, newest or last first by default. */
+export interface NotebookDefaultSort {
+  field: SortField;
+  order: SortOrder;
+}
+
 export interface NotebookConfig {
   id: string;
   title: string;
   root: string;
   assets?: string;
   default_view?: ViewMode;
+  /** How the notebook's lists are ordered until a person picks another order for it. */
+  default_sort?: NotebookDefaultSort;
   statuses?: NotebookStatus[];
   templates?: NoteTemplate[];
   metadata?: NotebookMetadataField[];

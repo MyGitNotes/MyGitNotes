@@ -68,3 +68,19 @@ it("holds the list's view, order and hidden notes in the filter sheet, above the
   fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
   expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+it("lists the notebook's metadata sort field in the filter sheet's sort menu", () => {
+  const onSortChange = vi.fn();
+  render(createElement(
+    I18nProvider,
+    null,
+    (<PhoneFilterSheet onClose={vi.fn()} sortField='metadata.date' sortOrder='desc' metadataSortFields={['metadata.date']} onSortChange={onSortChange} viewMode='flat' setViewMode={vi.fn()} showHidden={false} hiddenNoteCount={0} onShowHiddenChange={vi.fn()}>
+      <p>filters</p>
+    </PhoneFilterSheet>),
+  ));
+  const sort = within(screen.getByRole('dialog', { name: 'Filter and sort' })).getByRole('combobox', { name: 'Sort' });
+  expect(sort).toHaveTextContent('date (descending)');
+  fireEvent.keyDown(sort, { key: 'ArrowDown' });
+  fireEvent.click(screen.getByRole('option', { name: 'date (ascending)' }));
+  expect(onSortChange).toHaveBeenCalledWith('metadata.date', 'asc');
+});

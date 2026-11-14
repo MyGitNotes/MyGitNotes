@@ -1104,6 +1104,8 @@ export const en = {
   'sort.titleAsc': 'Title (A-Z)',
   'sort.titleDesc': 'Title (Z-A)',
   'sort.status': 'Status (Workflow)',
+  'sort.metadataDesc': '{key} (descending)',
+  'sort.metadataAsc': '{key} (ascending)',
   'sort.manual': 'Manual',
 
   // Kanban

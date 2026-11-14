@@ -157,3 +157,8 @@ it("hides a collapsed folder's notes under its heading and reports clicks on the
   fireEvent.click(headings[0]);
   expect(toggled).toEqual(['a']);
 });
+
+it("lists the notebook's metadata sort field in the mobile sort menu", () => {
+  render(createElement(ListView, { ...baseProps, notes: [noteOf('notes/a.md')], showMobileSort: true, sortField: 'metadata.date', sortOrder: 'asc', onSortChange: vi.fn(), metadataSortFields: ['metadata.date'] }));
+  expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('date (ascending)');
+});

@@ -65,6 +65,8 @@ export interface PhoneFilterSheetProps {
   sortField: SortField;
   sortOrder: SortOrder;
   onSortChange: (field: SortField, order: SortOrder) => void;
+  /** Frontmatter fields (`metadata.<key>`) the sort menu offers besides the built-in ones. */
+  metadataSortFields?: readonly string[];
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
   showHidden: boolean;
@@ -77,9 +79,9 @@ export interface PhoneFilterSheetProps {
 }
 
 /** The list screen's filter sheet: how the notes are shown and ordered, then the filter sections the sidebar offers. */
-export function PhoneFilterSheet({ onClose, sortField, sortOrder, onSortChange, viewMode, setViewMode, showHidden, hiddenNoteCount, onShowHiddenChange, groupByFolder, children }: PhoneFilterSheetProps) {
+export function PhoneFilterSheet({ onClose, sortField, sortOrder, onSortChange, metadataSortFields, viewMode, setViewMode, showHidden, hiddenNoteCount, onShowHiddenChange, groupByFolder, children }: PhoneFilterSheetProps) {
   const { t } = useTranslation();
-  const sortOptions = noteSortOptions(t);
+  const sortOptions = noteSortOptions(t, metadataSortFields);
   return (
     <PhoneSheet title={t('phone.filterTitle')} onClose={onClose} className='phone-filter-sheet'>
       <section className='phone-sheet-section' aria-label={t('phone.display')}>
