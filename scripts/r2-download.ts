@@ -42,6 +42,7 @@ function namedNote(worktrees: Worktree[], file: string) {
  * or without them through a hosted deployment and an agent token (`MYGITNOTES_R2_REMOTE_URL`, `MYGITNOTES_R2_REMOTE_TOKEN`).
  */
 async function r2Download() {
+  if (process.argv.includes('--help')) return console.log(USAGE);
   const checkout = process.cwd();
   loadEnvDefaults(path.join(checkout, '.env'));
   const root = resolveWorkspaceRoot(checkout);

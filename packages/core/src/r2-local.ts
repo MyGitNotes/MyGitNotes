@@ -143,6 +143,16 @@ export function bucketR2Source(scope: Pick<AssetScope, 'settings' | 'prefix'>): 
   };
 }
 
+/** The JSON a tool answered as text, or undefined when it is not JSON. */
+function parsed(text: unknown): unknown {
+  if (typeof text !== 'string') return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
 const HOSTED_PAGE = 50;
 /** How many pages one note is asked for at most; a note with more references than this is read as far as it goes. */
 const HOSTED_PAGES = 40;
@@ -173,8 +183,9 @@ export function hostedR2Source(remoteUrl: string, token: string, fetcher: typeof
         if (!response.ok) throw new Error(`The hosted deployment answered ${response.status}${response.status === 401 ? ': create an agent token in its Settings and set MYGITNOTES_R2_REMOTE_TOKEN' : ''}.`);
         const { result } = await response.json() as { result?: { isError?: boolean; structuredContent?: unknown; content?: { text?: unknown; }[]; }; };
         const text = result?.content?.[0]?.text;
-        const answer = (result?.structuredContent ?? (typeof text === 'string' ? JSON.parse(text) : undefined)) as { error?: unknown; assets?: unknown; nextOffset?: unknown; } | undefined;
-        if (result?.isError || !answer || !Array.isArray(answer.assets)) throw new Error(typeof answer?.error === 'string' ? answer.error : 'The hosted deployment did not answer download_assets; it may run an older MyGitNotes.');
+        const answer = (result?.structuredContent ?? parsed(text)) as { error?: unknown; assets?: unknown; nextOffset?: unknown; } | undefined;
+        // A refused call says why (the note is not one the grant reads, the deployment has no bucket); an answer of another shape is an older deployment's.
+        if (result?.isError || !Array.isArray(answer?.assets)) throw new Error(typeof answer?.error === 'string' ? answer.error : 'The hosted deployment did not answer download_assets; it may run an older MyGitNotes.');
         for (const asset of answer.assets as { key?: unknown; url?: unknown; }[]) {
           if (typeof asset.key === 'string' && typeof asset.url === 'string' && wanted.has(asset.key) && /^https?:\/\//i.test(asset.url)) found.set(asset.key, asset.url);
         }

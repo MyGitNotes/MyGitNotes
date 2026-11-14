@@ -196,6 +196,9 @@ describe('where local mode reads objects from', () => {
     expect(error.message).not.toContain(token);
     const failing = hostedR2Source('https://notes.example', token, (async () => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: 'Path is not a configured note.' }) }] } }), { status: 200 })) as typeof fetch);
     await expect(failing.urls('notes/ex/rules.md', KEYS)).rejects.toThrow('Path is not a configured note.');
+    // An older deployment answers an unknown tool in plain words, not JSON.
+    const older = hostedR2Source('https://notes.example', token, (async () => new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { isError: true, content: [{ type: 'text', text: 'Unknown tool' }] } }), { status: 200 })) as typeof fetch);
+    await expect(older.urls('notes/ex/rules.md', KEYS)).rejects.toThrow(/older MyGitNotes/);
   });
 });
 
