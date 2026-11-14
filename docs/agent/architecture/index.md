@@ -110,6 +110,55 @@ Choosing a sort saves it for the current notebook only, and switching notebooks 
 (toolbar, phone filter sheet, mobile list sort, Kanban board and columns) list `metadata.<key>` in both orders,
 labelled by its key, when the notebook's `default_sort` or the sort in force names one.
 
+## Notes, files and `exclude`
+
+A note is a Markdown or text file (`.md`, `.markdown`, `.mdx`, `.txt`) in a notebook, outside its assets folder, dot
+names, `node_modules`, `dist`, `build`, `AGENTS.md` and `docs/agent`. Every other file of a notebook is a file: it is in
+no note list, search, catalog, graph, agenda or MCP listing, and `classifyResource` names its kind from the extension or a
+well-known name (`fileKind`, `packages/core/src/file-kind.ts`): `text_file` (sql, yml, json, csv, ts, js, py, sh, xml, log,
+Makefile, Dockerfile and the like), `pdf_file`, `html_file`, or `other_file`.
+
+A relative link from a note to such a file opens it where the note shows, in the web app's read-only file viewer
+(`WorkspaceLinks`), which reads the file through `/api/files/read` and shows text as text; a file that is not text, a PDF
+or a page has an *Open original* link to `/api/files/raw`. A link never reaches a path the notebook does not reach: the
+web app refuses dot names, dependency and build folders, agent files and assets before asking, and the file manager keeps
+its own checks. The raw routes (`/raw-assets/<path>?notebook=`, `/api/files/raw`) send a text file as `text/plain;
+charset=utf-8` whatever its extension names, a PDF as `application/pdf` under `default-src 'none'` (the browser's PDF
+viewer refuses a document under the `sandbox` directive, and the bytes are only ever read as a PDF), and a page or any
+other file under `default-src 'none'; sandbox`, so a page runs no script and shares no origin with the app
+(`rawFileHeaders`). Local and remote (GitHub, GitLab) workspaces share one router (`createFileManagerRouter`), so both
+follow the same rules and checks.
+
+The manifest may list globs of paths that are not notes, for a repository whose Markdown is generated output or
+analysis rather than notes:
+
+```yaml
+exclude:            # every notebook
+  - "**/analysis/**"
+  - "**/*.draft.md"
+notebooks:
+  - id: docs
+    root: docs
+    exclude:        # this notebook, after the workspace's
+      - "reports/**"
+```
+
+Globs are matched, case-sensitively, against the path inside the notebook (no notebook root, `/` separators, no leading
+`./`), in the dialect of picomatch (already a Core dependency, as the note shell's glob): `**` crosses folders, `*` and
+`?` stay inside one name (so `*.md` names top-level files only, `**/*.md` every one), `[ab]` and `{a,b}` work as in a
+shell, and a dot name is matched like any other. A path is excluded when a glob matches it or a folder above it, so
+`**/analysis` takes everything under every `analysis` folder. A glob that is not a string, is blank, begins with `!` or
+`/`, holds `..`, an empty segment, a backslash or a control character, exceeds 256 characters, or fails to compile
+(an unclosed `[`, `(` or `{`) makes the manifest fail with a `ConfigValidationError` naming the list, as for any other
+invalid field. `exclude` and `notebooks[].exclude` are written back as written; the globs a notebook applies
+(`NotebookConfig.excluded`, workspace first) are derived on read and never saved.
+
+An excluded path is not a note, an outline or a compilation, and its folders are not note folders, but it stays a file of its
+notebook: a link to it opens the file as above, and the file manager lists and reads it. An excluded `.md` is
+`text_file` and shown as plain text; its images stay assets. `isNotebookContent` is false for excluded paths and
+`isNotebookPath` is true, so every listing, scan, folder walk, shell tool and history path that already asks
+`isNotebookContent` follows with no further change. Without `exclude` nothing changes, and `.txt` stays a note.
+
 ## Notebook statuses and visibility
 
 Each manifest notebook accepts an optional ordered `statuses` array, for example
