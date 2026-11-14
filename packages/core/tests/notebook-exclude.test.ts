@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { ConfigValidationError, parseWorkspaceConfig, serializeWorkspaceConfig } from '../src/config.js';
 import { isNotebookContent, isNotebookPath, scanNotebookFolders } from '../src/folders.js';
-import { EXCLUDE_LIMIT, excludeGlobError, isExcludedPath } from '../src/notebook-exclude.js';
+import { EXCLUDE_EXPANSION_LIMIT, EXCLUDE_LIMIT, excludeGlobError, excludeListError, isExcludedPath } from '../src/notebook-exclude.js';
+import { expandedLength } from '../src/path-glob.js';
 import { scanNotebookEntries, scanNotebookNotes } from '../src/note-service.js';
 import type { NotebookConfig } from '../src/types.js';
 
@@ -105,16 +106,104 @@ describe('matching time', () => {
       expect(isExcludedPath(`${'a'.repeat(100)}.md`, patterns)).toBe(false);
     })).toBeLessThan(200);
   });
-  it('matches a whole list of the slowest globs a manifest may hold against one deep path in under a second', () => {
-    const patterns = Array.from({ length: EXCLUDE_LIMIT }, (_unused, index) => Object.values(worst)[index % 5]);
+  it('matches the slowest globs a notebook may apply together against one deep path in under 200 ms', () => {
+    // The five above expand to more than a notebook may apply, so as many of them as fit.
+    const patterns: string[] = [];
+    for (const glob of Object.values(worst)) if (excludeListError([...patterns, glob]) === undefined) patterns.push(glob);
+    expect(patterns.length).toBeGreaterThan(1);
     isExcludedPath('warm', patterns);
-    expect(timed(() => expect(isExcludedPath(deep, patterns)).toBe(false))).toBeLessThan(1000);
+    expect(timed(() => expect(isExcludedPath(deep, patterns)).toBe(false))).toBeLessThan(200);
   });
   it('refuses a glob whose alternatives multiply past the limit, before expanding it', () => {
     expect(timed(() => expect(excludeGlobError('{a,b}'.repeat(51))).toMatch(/alternatives/))).toBeLessThan(200);
     expect(timed(() => expect(excludeGlobError('{,}'.repeat(85))).toMatch(/alternatives/))).toBeLessThan(200);
     expect(excludeGlobError(`{${'a'.repeat(120)},${'b'.repeat(120)}}{c,d}{e,f}{g,h}`)).toMatch(/alternatives|long/);
     expect(excludeGlobError('{a,b}'.repeat(6))).toBeUndefined();
+  });
+});
+
+describe('what a notebook applies, taken together', () => {
+  // The cheapest of several runs: what is measured is the matching, not what else the machine is doing.
+  const fastest = (run: () => unknown) =>
+    Math.min(...Array.from({ length: 3 }, () => {
+      const started = performance.now();
+      run();
+      return performance.now() - started;
+    }));
+  // A thousand paths of about 305 characters, ten folders deep, of names the globs below walk to the end and then refuse.
+  const paths = Array.from({ length: 1000 }, (_unused, path) => [...Array.from({ length: 10 }, (_folder, folder) => `${'ab'.repeat(14)}${(path * 10 + folder) % 10}`), `ab${path}.md`].join('/'));
+  const long = Array.from({ length: 16 }, () => 'ab'.repeat(127) + 'a').join('/');
+  const alternatives = '**/{*a,*b}{*a,*b}{*a,*b}{*a,*b}{*a,*b}{*a,*b}c';
+  // Fills a workspace list and a notebook list with distinct globs of one shape until the next would not be allowed.
+  const filled = (shape: (index: number) => string) => {
+    const workspace: string[] = [];
+    const notebook: string[] = [];
+    for (let index = 0; workspace.length + notebook.length < 2 * EXCLUDE_LIMIT; index++) {
+      const glob = shape(index);
+      if (excludeListError([...workspace, ...notebook, glob]) !== undefined) break;
+      (workspace.length < EXCLUDE_LIMIT ? workspace : notebook).push(glob);
+    }
+    return { workspace, notebook };
+  };
+  const listed = (globs: string[], indent: string) => globs.length ? `${indent}exclude:\n${globs.map(glob => `${indent}  - '${glob}'\n`).join('')}` : '';
+  const applied = ({ workspace, notebook }: { workspace: string[]; notebook: string[]; }) => parseWorkspaceConfig(manifest(listed(workspace, ''), listed(notebook, '    '))).notebooks[0].excluded!;
+  // The shapes that cost the most per character a notebook may apply: one glob of as many alternatives as it may hold,
+  // and many short globs of stars, of classes and of ? that each walk every name of the path.
+  const worstLists = { 'one glob of 64 alternatives': { workspace: [alternatives], notebook: [] }, 'short globs of a star': filled(index => `**/*a${index}c`), 'short globs of two stars': filled(index => `**/*a*a${index}c`), 'short globs of classes': filled(index => `**/*[ab]*[ab]${index}c`), 'short globs of ? and a star': filled(index => `**/?*a${index}c`) };
+
+  it('counts the characters of the distinct patterns, so a pattern written twice or reached through two groups costs once', () => {
+    expect(expandedLength(['{x,y}/**', 'x/**', 'x/**'])).toBe('x/**'.length + 'y/**'.length);
+    expect(expandedLength([alternatives])).toBe(EXCLUDE_EXPANSION_LIMIT);
+    expect(excludeListError(Array.from({ length: EXCLUDE_LIMIT }, () => alternatives))).toBeUndefined();
+    expect(excludeListError([alternatives, 'x'])).toMatch(/1025 characters together, more than the 1024/);
+    // A folder written with its trailing / is the folder.
+    expect(expandedLength(['drafts'])).toBe(expandedLength(['drafts/'].map(glob => glob.slice(0, -1))));
+    expect(excludeListError([alternatives, 'x/', 'x'])).toMatch(/1025 characters/);
+  });
+
+  it('matches a list of the same slow glob written a hundred times as fast as the glob alone', () => {
+    const copies = Array.from({ length: EXCLUDE_LIMIT }, () => alternatives);
+    isExcludedPath('warm', copies);
+    expect(fastest(() => paths.forEach(path => expect(isExcludedPath(path, copies)).toBe(false)))).toBeLessThan(500);
+  });
+
+  it('refuses a manifest whose workspace and notebook globs expand past the limit together, naming the list', () => {
+    const rejected = (extra: string, notebookExtra = '') => {
+      try {
+        parseWorkspaceConfig(manifest(extra, notebookExtra));
+      } catch (error) {
+        expect(error).toBeInstanceOf(ConfigValidationError);
+        return (error as Error).message;
+      }
+      throw new Error('accepted');
+    };
+    // Each ends in its own character in place of the c, so each expands to 1024 characters as the one above does.
+    const distinct = (count: number, offset = 0) => Array.from({ length: count }, (_unused, index) => `${alternatives.slice(0, -1)}${String.fromCodePoint(0x4e00 + index + offset)}`);
+    // What took 51 s over these paths: a hundred distinct slow globs in each list.
+    expect(rejected(listed(distinct(EXCLUDE_LIMIT), ''), listed(distinct(EXCLUDE_LIMIT, EXCLUDE_LIMIT), '    '))).toMatch(/^Workspace exclude is too large: .* more than the 1024/);
+    expect(rejected('', listed(distinct(2), '    '))).toMatch(/^Notebook 'a' exclude is too large/);
+    // Each list fits alone, but a notebook applies both.
+    const half = ['**/{*a,*b}{*a,*b}{*a,*b}{*a,*b}{*a,*b}c'];
+    expect(expandedLength(half)).toBeLessThanOrEqual(EXCLUDE_EXPANSION_LIMIT / 2);
+    const both = rejected(listed(half, ''), listed([`${half[0]}d`, `${half[0]}e`], '    '));
+    expect(both).toMatch(/^Notebook 'a' exclude, with the workspace exclude, is too large/);
+    // The same glob in both lists is applied once.
+    expect(applied({ workspace: [alternatives], notebook: [alternatives] })).toEqual([alternatives]);
+  });
+
+  it.each(Object.entries(worstLists))('matches the slowest list a manifest allows against a thousand 305-character paths in under 500 ms and a 4,000-character path in under 50 ms: %s', (_name, lists) => {
+    const globs = applied(lists);
+    expect(expandedLength(globs)).toBeGreaterThan(EXCLUDE_EXPANSION_LIMIT - 30);
+    expect(paths[0].length).toBeGreaterThanOrEqual(300);
+    expect(paths[0].length).toBeLessThanOrEqual(310);
+    isExcludedPath('warm', globs);
+    expect(fastest(() => paths.forEach(path => expect(isExcludedPath(path, globs)).toBe(false)))).toBeLessThan(500);
+    expect(long.length).toBeGreaterThan(4000);
+    expect(fastest(() => expect(isExcludedPath(long, globs)).toBe(false))).toBeLessThan(50);
+  });
+
+  it('refuses to match patterns past the limit that reached it without the manifest', () => {
+    expect(() => isExcludedPath('a', [alternatives, 'x'])).toThrow(/longer than 1024 characters together/);
   });
 });
 

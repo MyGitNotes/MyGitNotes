@@ -162,13 +162,16 @@ whatever they hold. No glob becomes a regular expression: a name is matched by a
 path's. What a backtracking matcher would loop on is not in the dialect: extended globs (`!(a)`, `*(a)`, `+(a)`,
 `?(a)`, `@(a)`), parentheses, `|`, ranges such as `{1..3}`, escapes, and `**` joined to a name. A glob holds at most
 256 characters, its groups expand to at most 64 alternatives of 1024 characters together (`{a,b}{c,d}` multiplies, so
-the product is what is capped), and a list holds at most 100 globs. A whole list of the slowest globs these limits
-allow matches a path 200 folders deep in a few milliseconds.
+the product is what is capped), and a list holds at most 100 globs. Every path of a notebook is matched against the
+workspace's globs and its own together, so those are bounded together too: their distinct expanded patterns (the same
+pattern written twice, or reached through two groups, counts once) hold at most 1024 characters, what one glob alone
+may expand to. The slowest list this allows matches a thousand 300-character paths in about a tenth of a second and a
+4,000-character path in about a millisecond.
 
 A glob that is not a string, is blank, begins with `!` or `/`, holds `..`, `.`, an empty segment, a backslash or a
 control character, is outside the dialect or past a limit (an unclosed `[` or `{`, a parenthesis, more than 64
-alternatives), or a list of more than 100 makes the manifest fail with a `ConfigValidationError` naming the list, as
-for any other invalid field. `exclude` and `notebooks[].exclude` are written back as written; the globs a notebook
+alternatives), a list of more than 100, or a workspace list, or a notebook's together with the workspace's, past the
+1024 characters makes the manifest fail with a `ConfigValidationError` naming the list, as for any other invalid field. `exclude` and `notebooks[].exclude` are written back as written; the globs a notebook
 applies (`NotebookConfig.excluded`, workspace first) are derived on read and never saved.
 
 An excluded path is not a note, an outline or a compilation, and its folders are not note folders, but it stays a file of its

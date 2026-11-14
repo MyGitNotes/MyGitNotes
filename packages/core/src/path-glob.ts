@@ -12,7 +12,8 @@
  * and segments against a path by tracking the set of reachable segments, so one pattern costs at most its length times
  * the path's length. Alternatives are the only multiplier, so a glob may expand to at most `GLOB_ALTERNATIVE_LIMIT`
  * patterns of `GLOB_EXPANSION_LIMIT` characters together: a glob then costs at most 1024 character steps per character
- * of the path, whatever it holds.
+ * of the path, whatever it holds. Globs compiled together cost what their distinct patterns hold together, the same
+ * pattern counted once, and a caller that takes many globs from someone else bounds that with `expansionLimit`.
  */
 
 /** Longest glob accepted. */
@@ -43,12 +44,27 @@ export interface PathGlob {
 export interface GlobOptions {
   /** Whether `*`, `?`, `**` and a negated class may match the dot that begins a name. */
   dot: boolean;
+  /** Most characters the distinct patterns of all the globs may hold together; unbounded when left out. */
+  expansionLimit?: number;
 }
 
+/** A `[...]` class: its members as code points, with the ASCII ones also in a table. */
+type ClassToken = { kind: 'class'; negated: boolean; ascii: Uint8Array; singles: Set<number>; ranges: [number, number][]; };
 /** What one position of a segment asks of a name: a run of any characters, or one character. */
-type Token = { kind: 'star'; } | { kind: 'any'; } | { kind: 'char'; char: string; } | { kind: 'class'; negated: boolean; singles: Set<string>; ranges: [number, number][]; };
-/** A segment of a pattern: `**` (any number of names, or with `some` at least one), a literal name, or tokens. */
-type Segment = { kind: 'globstar'; some?: true; } | { kind: 'literal'; name: string; } | { kind: 'tokens'; tokens: Token[]; };
+type Token = { kind: 'star'; } | { kind: 'any'; } | { kind: 'char'; char: string; } | ClassToken;
+/** A name of the path matched, as code points the first time a wildcard walks it, for every pattern after. */
+interface Part {
+  name: string;
+  points?: Int32Array;
+}
+/**
+ * A segment of a pattern: `**` (any number of names, or with `some` at least one), a literal name, or tokens. Tokens are
+ * walked as numbers: a code point is itself, `STAR` is `*`, `ANY` is `?`, and from `CLASS` down each is a class.
+ */
+type Segment = { kind: 'globstar'; some?: true; } | { kind: 'literal'; name: string; } | { kind: 'tokens'; codes: Int32Array; classes: ClassToken[]; };
+const STAR = -1;
+const ANY = -2;
+const CLASS = -3;
 /**
  * One pattern, as it covers a path and as it matches a file, with the two state rows its matching reuses; matching is
  * synchronous, so they are never shared.
@@ -127,11 +143,11 @@ function expand(pattern: string): string[] {
   return patterns;
 }
 
-function classToken(written: string): Token {
+function classToken(written: string): ClassToken {
   let body = Array.from(written.slice(1, -1));
   const negated = body[0] === '!' || body[0] === '^';
   if (negated) body = body.slice(1);
-  const singles = new Set<string>();
+  const singles = new Set<number>();
   const ranges: [number, number][] = [];
   for (let index = 0; index < body.length; index++) {
     if (body[index + 1] === '-' && index + 2 < body.length) {
@@ -140,9 +156,13 @@ function classToken(written: string): Token {
       if (from > to) throw new GlobError(`its range ${body[index]}-${body[index + 2]} runs backwards`);
       ranges.push([from, to]);
       index += 2;
-    } else singles.add(body[index]);
+    } else singles.add(body[index].codePointAt(0)!);
   }
-  return { kind: 'class', negated, singles, ranges };
+  // An ASCII character, what most names are made of, is looked up at once.
+  const ascii = new Uint8Array(128);
+  for (const single of singles) if (single < 128) ascii[single] = 1;
+  for (const [from, to] of ranges) for (let code = from; code <= Math.min(to, 127); code++) ascii[code] = 1;
+  return { kind: 'class', negated, ascii, singles, ranges };
 }
 
 function segmentOf(written: string): Segment {
@@ -167,46 +187,53 @@ function segmentOf(written: string): Segment {
       index += point.length;
     }
   }
-  return tokens.every(token => token.kind === 'char') ? { kind: 'literal', name: written } : { kind: 'tokens', tokens };
+  if (tokens.every(token => token.kind === 'char')) return { kind: 'literal', name: written };
+  const classes: ClassToken[] = [];
+  const codes = Int32Array.from(tokens, token => token.kind === 'star' ? STAR : token.kind === 'any' ? ANY : token.kind === 'char' ? token.char.codePointAt(0)! : CLASS - classes.push(token) + 1);
+  return { kind: 'tokens', codes, classes };
 }
 
-function tokenMatches(token: Token, char: string): boolean {
-  if (token.kind === 'char') return token.char === char;
-  if (token.kind === 'class') {
-    const point = char.codePointAt(0)!;
-    return (token.singles.has(char) || token.ranges.some(([from, to]) => point >= from && point <= to)) !== token.negated;
-  }
-  return token.kind === 'any';
+function classMatches(token: ClassToken, point: number): boolean {
+  if (point < 128) return (token.ascii[point] === 1) !== token.negated;
+  return (token.singles.has(point) || token.ranges.some(([from, to]) => point >= from && point <= to)) !== token.negated;
 }
 
 /**
- * Whether the tokens match the whole of `name`: on a mismatch the walk returns to the last `*` and lets it take one more
- * character. An earlier `*` is never revisited, since the leftmost place the text up to the last one fits leaves the
- * most name for the rest, so the walk costs at most the name's length times the tokens' count.
+ * Whether the tokens match the whole of the name: on a mismatch the walk returns to the last `*` and lets it take one
+ * more character. An earlier `*` is never revisited, since the leftmost place the text up to the last one fits leaves
+ * the most name for the rest, so the walk costs at most the name's length times the tokens' count.
  */
-function nameMatches(tokens: Token[], name: string, dot: boolean): boolean {
+function nameMatches(segment: Extract<Segment, { kind: 'tokens'; }>, part: Part, dot: boolean): boolean {
+  const { codes, classes } = segment;
   // Only a dot written in the pattern, or in a class that lists it, matches the dot that begins a name.
-  if (!dot && name.startsWith('.') && (tokens[0].kind === 'star' || tokens[0].kind === 'any' || (tokens[0].kind === 'class' && tokens[0].negated))) return false;
-  const chars = [...name];
+  if (!dot && part.name.startsWith('.') && (codes[0] === STAR || codes[0] === ANY || (codes[0] <= CLASS && classes[CLASS - codes[0]].negated))) return false;
+  const points = part.points ??= Int32Array.from(part.name, char => char.codePointAt(0)!);
+  const length = points.length;
+  const count = codes.length;
   let token = 0;
   let char = 0;
   let star = -1;
   let mark = 0;
-  while (char < chars.length) {
-    const current = tokens[token];
-    if (current?.kind === 'star') {
-      star = token++;
-      mark = char;
-    } else if (current && tokenMatches(current, chars[char])) {
-      token++;
-      char++;
-    } else if (star >= 0) {
-      token = star + 1;
-      char = ++mark;
-    } else return false;
+  while (char < length) {
+    if (token < count) {
+      const code = codes[token];
+      if (code === STAR) {
+        star = token++;
+        mark = char;
+        continue;
+      }
+      if (code >= 0 ? code === points[char] : code === ANY || classMatches(classes[CLASS - code], points[char])) {
+        token++;
+        char++;
+        continue;
+      }
+    }
+    if (star < 0) return false;
+    token = star + 1;
+    char = ++mark;
   }
-  while (tokens[token]?.kind === 'star') token++;
-  return token === tokens.length;
+  while (token < count && codes[token] === STAR) token++;
+  return token === count;
 }
 
 /**
@@ -214,7 +241,7 @@ function nameMatches(tokens: Token[], name: string, dot: boolean): boolean {
  * have matched the parts read so far; a `**` may match no part at all, so reaching it reaches the segment after it too,
  * unless it must take some. Each segment meets each part at most once.
  */
-function pathMatches(pattern: Pattern, parts: string[], dot: boolean, within: boolean): boolean {
+function pathMatches(pattern: Pattern, parts: Part[], dot: boolean, within: boolean): boolean {
   const segments = within ? pattern.covering : pattern.matching;
   const count = segments.length;
   let { reached, next } = pattern;
@@ -227,13 +254,14 @@ function pathMatches(pattern: Pattern, parts: string[], dot: boolean, within: bo
   };
   reached.fill(0);
   reach(reached, 0);
-  for (const name of parts) {
+  for (const part of parts) {
+    const { name } = part;
     next.fill(0);
     let alive = false;
     for (let index = 0; index < count; index++) {
       if (!reached[index]) continue;
       const segment = segments[index];
-      if (segment.kind === 'globstar' ? dot || !name.startsWith('.') : segment.kind === 'literal' ? segment.name === name : nameMatches(segment.tokens, name, dot)) {
+      if (segment.kind === 'globstar' ? dot || !name.startsWith('.') : segment.kind === 'literal' ? segment.name === name : nameMatches(segment, part, dot)) {
         // A `**` stays to take more names; one that had to take some has now done so and may also end here.
         if (segment.kind === 'globstar') reach(next, index);
         if (segment.kind !== 'globstar' || segment.some) reach(next, index + 1);
@@ -247,8 +275,8 @@ function pathMatches(pattern: Pattern, parts: string[], dot: boolean, within: bo
   return reached[count] === 1;
 }
 
-/** The patterns `glob` stands for; throws a `GlobError` saying what is wrong with it. */
-function parse(glob: string): Pattern[] {
+/** The plain patterns `glob` expands to; throws a `GlobError` saying what is wrong with it. */
+function expandGlob(glob: string): string[] {
   /* eslint-disable no-control-regex -- A control character in a path pattern is never intended. */
   if (!glob.trim()) throw new GlobError('it is empty');
   if (glob.length > GLOB_LENGTH_LIMIT) throw new GlobError(`it is longer than ${GLOB_LENGTH_LIMIT} characters`);
@@ -256,23 +284,42 @@ function parse(glob: string): Pattern[] {
   /* eslint-enable no-control-regex */
   const pattern = glob.startsWith('./') ? glob.slice(2) : glob;
   if (pattern.startsWith('/') || pattern.includes('\\') || pattern.split('/').some(part => part === '' || part === '.' || part === '..')) throw new GlobError('use a relative path with / separators and no empty, . or .. segments');
-  return expand(pattern).map(expanded => {
-    const covering = expanded.split('/').map(segmentOf);
-    // A file is never the folder a trailing `**` stands under, so there the `**` takes at least one name.
-    const matching = covering.at(-1)?.kind === 'globstar' ? [...covering.slice(0, -1), { kind: 'globstar' as const, some: true as const }] : covering;
-    return { covering, matching, reached: new Uint8Array(covering.length + 1), next: new Uint8Array(covering.length + 1) };
-  });
+  return expand(pattern);
+}
+
+function compile(expanded: string): Pattern {
+  const covering = expanded.split('/').map(segmentOf);
+  // A file is never the folder a trailing `**` stands under, so there the `**` takes at least one name.
+  const matching = covering.at(-1)?.kind === 'globstar' ? [...covering.slice(0, -1), { kind: 'globstar' as const, some: true as const }] : covering;
+  return { covering, matching, reached: new Uint8Array(covering.length + 1), next: new Uint8Array(covering.length + 1) };
 }
 
 /**
- * Compiles globs into one matcher that answers for any of them; throws a `GlobError` for a glob outside the dialect. A
- * path is split once however many globs there are.
+ * The distinct plain patterns `globs` expand to, so a pattern written twice, or reached through two groups, is matched
+ * once; throws a `GlobError` for a glob outside the dialect.
+ */
+export function expandGlobs(globs: readonly string[]): string[] {
+  return [...new Set(globs.flatMap(expandGlob))];
+}
+
+/** The characters the distinct patterns of `globs` hold together: what matching a path against all of them costs per character of the path. */
+export function expandedLength(globs: readonly string[]): number {
+  return expandGlobs(globs).reduce((total, pattern) => total + pattern.length, 0);
+}
+
+/**
+ * Compiles globs into one matcher that answers for any of them; throws a `GlobError` for a glob outside the dialect, or
+ * for globs whose patterns hold more than `options.expansionLimit` characters together. A path is split once however
+ * many globs there are, and each of its names is read into code points at most once.
  */
 export function compileGlobs(globs: readonly string[], options: GlobOptions): PathGlob {
-  const patterns = globs.flatMap(parse);
+  const expanded = expandGlobs(globs);
+  const { expansionLimit } = options;
+  if (expansionLimit !== undefined && expanded.reduce((total, pattern) => total + pattern.length, 0) > expansionLimit) throw new GlobError(`they expand to patterns longer than ${expansionLimit} characters together`);
+  const patterns = expanded.map(compile);
   const test = (path: string, within: boolean) => {
     if (!path) return false;
-    const parts = path.split('/');
+    const parts = path.split('/').map((name): Part => ({ name }));
     return patterns.some(pattern => pathMatches(pattern, parts, options.dot, within));
   };
   return { matches: path => test(path, false), covers: path => test(path, true) };
@@ -281,7 +328,7 @@ export function compileGlobs(globs: readonly string[], options: GlobOptions): Pa
 /** What is wrong with `glob`, or undefined when it compiles. */
 export function globError(glob: string): string | undefined {
   try {
-    parse(glob);
+    expandGlob(glob).forEach(compile);
     return undefined;
   } catch (error) {
     if (error instanceof GlobError) return error.message;

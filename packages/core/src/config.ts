@@ -6,7 +6,7 @@ import { STATUS_COLOR_NAMES } from './note-status.js';
 import { isSortField } from './note-sort.js';
 import { normalizePreferences } from './workspace-preferences.js';
 import { NOTEBOOK_ID_PATTERN } from './notebook-key.js';
-import { EXCLUDE_LIMIT, excludeGlobError } from './notebook-exclude.js';
+import { EXCLUDE_LIMIT, excludeGlobError, excludeListError } from './notebook-exclude.js';
 
 export const WORKSPACE_CONFIG_FILENAME = '.mygitnotes.yaml';
 export const LEGACY_WORKSPACE_CONFIG_FILENAME = '.github-notes.yaml';
@@ -58,12 +58,15 @@ export class NotebookSourceError extends ConfigValidationError {
 function validateExclude(owner: string, raw: unknown): string[] {
   if (!Array.isArray(raw)) throw new ConfigValidationError(`${owner} exclude must be a list of globs`);
   if (raw.length > EXCLUDE_LIMIT) throw new ConfigValidationError(`${owner} exclude holds more than ${EXCLUDE_LIMIT} globs`);
-  return raw.map(entry => {
+  const globs = raw.map(entry => {
     if (typeof entry !== 'string') throw new ConfigValidationError(`${owner} exclude must be a list of globs; ${JSON.stringify(entry)} is not a string`);
     const problem = excludeGlobError(entry);
     if (problem !== undefined) throw new ConfigValidationError(`${owner} exclude glob '${entry}' is invalid: ${problem}`);
     return entry;
   });
+  const problem = excludeListError(globs);
+  if (problem !== undefined) throw new ConfigValidationError(`${owner} exclude is too large: ${problem}`);
+  return globs;
 }
 
 /** `files.hide_dotfiles` no longer does anything; a manifest that sets it keeps it, so a save writes it back unchanged. */
@@ -284,6 +287,9 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
 
     const validatedExclude = item.exclude === undefined ? undefined : validateExclude(`Notebook '${item.id}'`, item.exclude);
     const applied = [...new Set([...workspaceExclude ?? [], ...validatedExclude ?? []])];
+    // Every path of the notebook is matched against the workspace's globs and its own, so they are bounded together.
+    const appliedProblem = excludeListError(applied);
+    if (appliedProblem !== undefined) throw new ConfigValidationError(`Notebook '${item.id}' exclude, with the workspace exclude, is too large: ${appliedProblem}`);
 
     validatedNotebooks.push({ id: item.id, title: item.title, root: normalizedRoot, assets: assetPath, default_view: (item.default_view as 'list' | 'card' | 'kanban' | 'flat') || 'list', ...(validatedDefaultSort !== undefined ? { default_sort: validatedDefaultSort } : {}), ...(validatedStatuses !== undefined ? { statuses: validatedStatuses } : {}), ...(validatedTemplates !== undefined ? { templates: validatedTemplates } : {}), ...(validatedMetadata !== undefined ? { metadata: validatedMetadata } : {}), ...(validatedPathAliases !== undefined ? { pathAliases: validatedPathAliases } : {}), ...(validatedExclude !== undefined ? { exclude: validatedExclude } : {}), ...(applied.length ? { excluded: applied } : {}) });
   }
