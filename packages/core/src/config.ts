@@ -6,7 +6,7 @@ import { STATUS_COLOR_NAMES } from './note-status.js';
 import { isSortField } from './note-sort.js';
 import { normalizePreferences } from './workspace-preferences.js';
 import { NOTEBOOK_ID_PATTERN } from './notebook-key.js';
-import { excludeGlobError } from './notebook-exclude.js';
+import { EXCLUDE_LIMIT, excludeGlobError } from './notebook-exclude.js';
 
 export const WORKSPACE_CONFIG_FILENAME = '.mygitnotes.yaml';
 export const LEGACY_WORKSPACE_CONFIG_FILENAME = '.github-notes.yaml';
@@ -57,6 +57,7 @@ export class NotebookSourceError extends ConfigValidationError {
 /** Validates an `exclude` list, written at the workspace or on a notebook; `owner` names where, for the message. */
 function validateExclude(owner: string, raw: unknown): string[] {
   if (!Array.isArray(raw)) throw new ConfigValidationError(`${owner} exclude must be a list of globs`);
+  if (raw.length > EXCLUDE_LIMIT) throw new ConfigValidationError(`${owner} exclude holds more than ${EXCLUDE_LIMIT} globs`);
   return raw.map(entry => {
     if (typeof entry !== 'string') throw new ConfigValidationError(`${owner} exclude must be a list of globs; ${JSON.stringify(entry)} is not a string`);
     const problem = excludeGlobError(entry);

@@ -4,14 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { ConfigValidationError, parseWorkspaceConfig, serializeWorkspaceConfig } from '../src/config.js';
 import { isNotebookContent, isNotebookPath, scanNotebookFolders } from '../src/folders.js';
-import { excludeGlobError, isExcludedPath } from '../src/notebook-exclude.js';
+import { EXCLUDE_LIMIT, excludeGlobError, isExcludedPath } from '../src/notebook-exclude.js';
 import { scanNotebookEntries, scanNotebookNotes } from '../src/note-service.js';
 import type { NotebookConfig } from '../src/types.js';
 
 const manifest = (extra: string, notebookExtra = '') => `schema_version: 4\nworkspace:\n  title: T\n  default_notebook: a\n${extra}notebooks:\n  - id: a\n    title: A\n    root: docs\n${notebookExtra}  - id: b\n    title: B\n    root: other\n`;
 
 describe('exclude glob dialect', () => {
-  it('matches a path, or any folder above it, against a picomatch glob: ** crosses folders, * and ? stay inside one name', () => {
+  it('matches a path, or any folder above it, against an exclude glob: ** crosses folders, * and ? stay inside one name', () => {
     const excluded = (relative: string, ...patterns: string[]) => isExcludedPath(relative, patterns);
     expect(excluded('a/analysis/x.md', '**/analysis/**')).toBe(true);
     expect(excluded('analysis/x.md', '**/analysis/**')).toBe(true);
@@ -39,8 +39,82 @@ describe('exclude glob dialect', () => {
   });
 
   it('names what is wrong with a glob a manifest cannot use', () => {
-    for (const good of ['**/analysis/**', '*.md', 'a/b', 'a?', '{a,b}/**', '[ab]/**', './a/**']) expect([good, excludeGlobError(good)]).toEqual([good, undefined]);
+    for (const good of ['**/analysis/**', '*.md', 'a/b', 'a?', '{a,b}/**', '[ab]/**', './a/**', 'drafts/', '**/drafts/', 'a+b', '[(]x', '[|]x', 'a,b']) expect([good, excludeGlobError(good)]).toEqual([good, undefined]);
     for (const bad of ['', '   ', '!a', '/a', '../a', 'a/../b', 'a\\b', '[abc', '(a', '{a,b', 'a\0b', 'x'.repeat(257), 'a//b']) expect([bad, typeof excludeGlobError(bad)]).toEqual([bad, 'string']);
+    // No extended glob, group or quantifier: each is refused, not read as something else.
+    expect(excludeGlobError('!(keep)')).toMatch(/negated/);
+    for (const bad of ['*(a)', '+(a)', '?(a)', '@(a|b)', 'a/!(keep)/**', '(a+)+b', '(a|b)', 'a)']) expect([bad, excludeGlobError(bad)]).toEqual([bad, expect.stringMatching(/parenthes/i)]);
+    expect(excludeGlobError('a|b')).toMatch(/\{a,b\}/);
+    // A path that names nothing, an unbalanced or empty group, and ** glued to a name are refused too.
+    for (const bad of ['.', './', 'a/./b', 'a//', '/', 'a]', 'a}', '{a}', '{1..3}', '[]', '[z-a]', '[a/b]', '**.md', 'a**', '***', 'a/**b/c']) expect([bad, typeof excludeGlobError(bad)]).toEqual([bad, 'string']);
+    expect(excludeGlobError('**.md')).toMatch(/\*\*\/\*\.md|whole/);
+  });
+
+  it('reads a glob ending in / as the folder it names, so drafts/ takes everything under drafts', () => {
+    const excluded = (relative: string, ...patterns: string[]) => isExcludedPath(relative, patterns);
+    expect(excluded('drafts/x.md', 'drafts/')).toBe(true);
+    expect(excluded('drafts/deep/x.md', 'drafts/')).toBe(true);
+    expect(excluded('drafts', 'drafts/')).toBe(true);
+    expect(excluded('a/drafts/x.md', 'drafts/')).toBe(false);
+    expect(excluded('a/drafts/x.md', '**/drafts/')).toBe(true);
+    expect(excluded('draftsman.md', 'drafts/')).toBe(false);
+    expect(excluded('x/y.md', './x/')).toBe(true);
+  });
+
+  it('reads [!a] and [^a] as any other character, + as itself, and ? as one whole character', () => {
+    const excluded = (relative: string, ...patterns: string[]) => isExcludedPath(relative, patterns);
+    expect(excluded('b.md', '[!a].md')).toBe(true);
+    expect(excluded('a.md', '[!a].md')).toBe(false);
+    expect(excluded('b.md', '[^a].md')).toBe(true);
+    expect(excluded('a+b', 'a+b')).toBe(true);
+    expect(excluded('aab', 'a+b')).toBe(false);
+    expect(excluded('(1).md', '[(]1[)].md')).toBe(true);
+    expect(excluded('\u{1F600}.md', '?.md')).toBe(true);
+    expect(excluded('筆記/草稿.md', '筆記/草?.md')).toBe(true);
+    expect(excluded(']', '[]a]')).toBe(true);
+    expect(excluded('-', '[a-]')).toBe(true);
+    expect(excluded('b/c/d', '{a,b/c}/d')).toBe(true);
+    expect(excluded('cx', '{a,{b,c}}x')).toBe(true);
+    expect(excluded('b', '{,a}b')).toBe(true);
+  });
+});
+
+describe('matching time', () => {
+  const timed = (run: () => unknown) => {
+    const started = performance.now();
+    run();
+    return performance.now() - started;
+  };
+  const deep = `${'a/'.repeat(200)}${'a'.repeat(255)}`;
+  // Each is a glob the manifest accepts; under a backtracking matcher the first took 1.9 s on a 30-character name and
+  // the others did not finish.
+  const worst = { 'stars and letters in one name': `${'*a'.repeat(127)}b`, 'one long run after a star': `*${'a'.repeat(254)}b`, 'folders at any depth, many times': `${'**/a/'.repeat(50)}b`, 'folders and stars together': `${'**/*a*a/'.repeat(28)}b`, 'as many alternatives as a glob may hold': `${'{a,aa}'.repeat(6)}*a*b` };
+  it('keeps the glob that hung a 30-character name under 200 ms', () => {
+    const glob = '*a*a*a*a*a*a*a*a*a*a*a*ab';
+    expect(excludeGlobError(glob)).toBeUndefined();
+    expect(timed(() => expect(isExcludedPath('a'.repeat(30), [glob])).toBe(false))).toBeLessThan(200);
+  });
+  it.each(Object.entries(worst))('matches a 255-character name and a path 200 folders deep in under 200 ms: %s', (_name, glob) => {
+    expect(glob.length).toBeLessThanOrEqual(256);
+    expect(excludeGlobError(glob)).toBeUndefined();
+    const patterns = [glob];
+    isExcludedPath('warm', patterns);
+    expect(timed(() => {
+      expect(isExcludedPath('a'.repeat(255), patterns)).toBe(false);
+      expect(isExcludedPath(deep, patterns)).toBe(false);
+      expect(isExcludedPath(`${'a'.repeat(100)}.md`, patterns)).toBe(false);
+    })).toBeLessThan(200);
+  });
+  it('matches a whole list of the slowest globs a manifest may hold against one deep path in under a second', () => {
+    const patterns = Array.from({ length: EXCLUDE_LIMIT }, (_unused, index) => Object.values(worst)[index % 5]);
+    isExcludedPath('warm', patterns);
+    expect(timed(() => expect(isExcludedPath(deep, patterns)).toBe(false))).toBeLessThan(1000);
+  });
+  it('refuses a glob whose alternatives multiply past the limit, before expanding it', () => {
+    expect(timed(() => expect(excludeGlobError('{a,b}'.repeat(51))).toMatch(/alternatives/))).toBeLessThan(200);
+    expect(timed(() => expect(excludeGlobError('{,}'.repeat(85))).toMatch(/alternatives/))).toBeLessThan(200);
+    expect(excludeGlobError(`{${'a'.repeat(120)},${'b'.repeat(120)}}{c,d}{e,f}{g,h}`)).toMatch(/alternatives|long/);
+    expect(excludeGlobError('{a,b}'.repeat(6))).toBeUndefined();
   });
 });
 
@@ -87,6 +161,12 @@ describe('manifest exclude', () => {
     expect(rejected('exclude:\n  - "../up/**"\n')).toMatch(/relative|\.\./);
     expect(rejected('', '    exclude:\n      - "{a,b"\n')).toMatch(/notebook 'a' exclude.*\{a,b/i);
     expect(rejected('', '    exclude: reports\n')).toMatch(/notebook 'a' exclude must be a list/i);
+    // A list is capped, so a manifest cannot make every path pay for thousands of globs.
+    const list = (count: number) => `exclude:\n${Array.from({ length: count }, (_unused, index) => `  - "d${index}/**"\n`).join('')}`;
+    expect(parseWorkspaceConfig(manifest(list(EXCLUDE_LIMIT))).exclude).toHaveLength(EXCLUDE_LIMIT);
+    expect(rejected(list(EXCLUDE_LIMIT + 1))).toMatch(/workspace exclude holds more than 100 globs/i);
+    expect(rejected('', list(EXCLUDE_LIMIT + 1).replace(/^(?=.)/gm, '    '))).toMatch(/notebook 'a' exclude holds more than 100 globs/i);
+    expect(rejected('exclude:\n  - "keep/!(this)"\n')).toMatch(/workspace exclude.*parenthes/i);
   });
 });
 

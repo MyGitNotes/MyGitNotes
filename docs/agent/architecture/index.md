@@ -126,8 +126,12 @@ its own checks. The raw routes (`/raw-assets/<path>?notebook=`, `/api/files/raw`
 charset=utf-8` whatever its extension names, a PDF as `application/pdf` under `default-src 'none'` (the browser's PDF
 viewer refuses a document under the `sandbox` directive, and the bytes are only ever read as a PDF), and a page or any
 other file under `default-src 'none'; sandbox`, so a page runs no script and shares no origin with the app
-(`rawFileHeaders`). Local and remote (GitHub, GitLab) workspaces share one router (`createFileManagerRouter`), so both
-follow the same rules and checks.
+(`rawFileHeaders`). Every one of these policies ends in `frame-ancestors 'self'`: the route lifts `X-Frame-Options` so
+the app's viewers can show a file, and only the app's own pages may frame it. Plain text for a file that looks like a
+page, and a PDF outside the sandbox, are safe only while the browser may not guess another type, which the app-wide
+`X-Content-Type-Options: nosniff` forbids; the raw-route tests assert that header on text, PDF and page answers. Local
+and remote (GitHub, GitLab) workspaces share one router (`createFileManagerRouter`), so both follow the same rules and
+checks.
 
 The manifest may list globs of paths that are not notes, for a repository whose Markdown is generated output or
 analysis rather than notes:
@@ -144,20 +148,40 @@ notebooks:
 ```
 
 Globs are matched, case-sensitively, against the path inside the notebook (no notebook root, `/` separators, no leading
-`./`), in the dialect of picomatch (already a Core dependency, as the note shell's glob): `**` crosses folders, `*` and
-`?` stay inside one name (so `*.md` names top-level files only, `**/*.md` every one), `[ab]` and `{a,b}` work as in a
-shell, and a dot name is matched like any other. A path is excluded when a glob matches it or a folder above it, so
-`**/analysis` takes everything under every `analysis` folder. A glob that is not a string, is blank, begins with `!` or
-`/`, holds `..`, an empty segment, a backslash or a control character, exceeds 256 characters, or fails to compile
-(an unclosed `[`, `(` or `{`) makes the manifest fail with a `ConfigValidationError` naming the list, as for any other
-invalid field. `exclude` and `notebooks[].exclude` are written back as written; the globs a notebook applies
-(`NotebookConfig.excluded`, workspace first) are derived on read and never saved.
+`./`), in the dialect of `packages/core/src/path-glob.ts`, which the note shell's glob shares: `**` as a whole segment
+crosses folders, `*` and `?` stay inside one name (so `*.md` names top-level files only, `**/*.md` every one), `[ab]`,
+`[a-z]` and `[!a]` match one character, `{a,b}` is either alternative, every other character is itself, and a dot name
+is matched like any other. A path is excluded when a glob matches it or a folder above it, so `**/analysis` takes
+everything under every `analysis` folder. A glob ending in `/` names a folder and is read without it: `drafts/` is
+`drafts`, the folder and everything under it. A glob cannot tell a file from a folder, so `a/**` takes what `a` takes
+and `*/**` takes top-level files too; `*/*` is what lies inside the top-level folders.
+
+The manifest and the file names of a repository are written by whoever can push to it, so matching is bounded
+whatever they hold. No glob becomes a regular expression: a name is matched by a walk that returns only to the last
+`*`, and segments by tracking which of them the path has reached, so a pattern costs at most its length times the
+path's. What a backtracking matcher would loop on is not in the dialect: extended globs (`!(a)`, `*(a)`, `+(a)`,
+`?(a)`, `@(a)`), parentheses, `|`, ranges such as `{1..3}`, escapes, and `**` joined to a name. A glob holds at most
+256 characters, its groups expand to at most 64 alternatives of 1024 characters together (`{a,b}{c,d}` multiplies, so
+the product is what is capped), and a list holds at most 100 globs. A whole list of the slowest globs these limits
+allow matches a path 200 folders deep in a few milliseconds.
+
+A glob that is not a string, is blank, begins with `!` or `/`, holds `..`, `.`, an empty segment, a backslash or a
+control character, is outside the dialect or past a limit (an unclosed `[` or `{`, a parenthesis, more than 64
+alternatives), or a list of more than 100 makes the manifest fail with a `ConfigValidationError` naming the list, as
+for any other invalid field. `exclude` and `notebooks[].exclude` are written back as written; the globs a notebook
+applies (`NotebookConfig.excluded`, workspace first) are derived on read and never saved.
 
 An excluded path is not a note, an outline or a compilation, and its folders are not note folders, but it stays a file of its
 notebook: a link to it opens the file as above, and the file manager lists and reads it. An excluded `.md` is
 `text_file` and shown as plain text; its images stay assets. `isNotebookContent` is false for excluded paths and
 `isNotebookPath` is true, so every listing, scan, folder walk, shell tool and history path that already asks
 `isNotebookContent` follows with no further change. Without `exclude` nothing changes, and `.txt` stays a note.
+
+No note route or note tool takes a file kind (`FILE_RESOURCE_TYPES`), so an excluded path or a `.sql` file is read
+through the file routes only, on every kind of workspace. A remote workspace refuses it in `RemoteSource.note` and
+`save`; a local one in `/api/notes/read`, save, delete and restore (`assertNote`, `local-notes.ts`) and in the local
+MCP server's `read_note`, `save_note` and `delete_note` (`assertNoteResource`), each with `Path is not a configured
+note.` and, over HTTP, status 403. The manifest editor shows `exclude` as written and never the derived `excluded`.
 
 ## Notebook statuses and visibility
 

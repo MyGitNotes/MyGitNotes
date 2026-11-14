@@ -155,6 +155,25 @@ describe('shell-shaped note operations', () => {
     expect(() => replaceNoteLines('a', 3, 3, 'x')).toThrow(/line range/);
     expect(() => matchNoteGlob('../*')).toThrow(/relative glob/);
   });
+  it('matches a glob in bounded time and refuses the forms that could not be', async () => {
+    // Under a backtracking matcher this glob took over half a second on a 30-character name, and the longer ones never ended.
+    const started = performance.now();
+    expect(matchNoteGlob('*a*a*a*a*a*a*a*a*a*a*a*ab')('a'.repeat(30))).toBe(false);
+    expect(matchNoteGlob(`${'*a'.repeat(127)}b`)(`notes/${'a'.repeat(255)}`)).toBe(false);
+    expect(matchNoteGlob(`${'**/*a*a/'.repeat(28)}b`)(`${'a/'.repeat(200)}${'a'.repeat(255)}`)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(200);
+    for (const glob of ['*(a)*(a)*(a)b', '+(a|b)', '!(x)/**', '@(a)', '(a+)+b']) expect(() => matchNoteGlob(glob)).toThrow(/Unsupported glob: .*parenthes/);
+    expect(() => matchNoteGlob('{a,b}'.repeat(7))).toThrow(/Unsupported glob: .*alternatives/);
+    expect(() => matchNoteGlob('x'.repeat(257))).toThrow(/relative glob of at most 256/);
+    const f = fixture();
+    await expect(callNoteShell(f.reader(), 'glob', { pattern: 'notes/ex/*(a).md' }, false)).rejects.toMatchObject({ status: 400, message: expect.stringMatching(/Unsupported glob/) });
+    await expect(callNoteShell(f.reader(), 'find', { query: 'x', pattern: '**/+(a|b).md' }, false)).rejects.toMatchObject({ status: 400 });
+    // The glob it always read is read as before: a wildcard leaves the dot that begins a name alone.
+    expect(matchNoteGlob('notes/ex/**/*.{md,txt}')('notes/ex/s/a.txt')).toBe(true);
+    expect(matchNoteGlob('**/*')('notes/ex/a.md')).toBe(true);
+    expect(matchNoteGlob('**/*')('notes/.hidden/a.md')).toBe(false);
+    expect(matchNoteGlob('notes/**')('notes/ex/a.md')).toBe(true);
+  });
 });
 
 describe('agent system over the note tree', () => {
