@@ -24,7 +24,7 @@ import type { NoteListItem } from './note-query.js';
 import { addVersion, agentEditMessage, type HistoryEntry, isAgentEdit, readVersionFile, serializeVersionFile, versionedPath, versionFilePath, type VersionLabel } from './note-versions.js';
 import { CASE_COLLISION_ERROR, differsOnlyInCase } from './case-collision.js';
 import { type CommitAuthor, commitAuthor, withCoAuthors } from './commit-author.js';
-import { CheckedOutError, LIVE_MAX_BYTES, liveContentHash, LiveStaleError, LiveTooLargeError, normalizeLiveText } from './live-notes.js';
+import { CheckedOutError, LIVE_MAX_BYTES, liveContentHash, LiveNotLiveError, LiveStaleError, LiveTooLargeError, normalizeLiveText, parseLivePendingPath } from './live-notes.js';
 import { editedLiveError, type LiveLink, liveNoteState, type LiveRecord, type LiveRepository, parseLiveBase } from './live-repository.js';
 
 export { SourceError } from './github-api.js';
@@ -145,6 +145,36 @@ export abstract class RemoteSource {
    */
   useLive(view: LiveRepository) {
     this.live = view;
+  }
+  /** The request's view of the repository's live editor, which routes reach the editor through; none when no editor is in use. */
+  get liveView(): LiveRepository | undefined {
+    return this.live;
+  }
+  /**
+   * 「立即簽回」: checks the live note at `file` into Git now and closes it, or says why it stayed open. Any writer may;
+   * the commit is made with the deployment's own credential and authored by the note's editors.
+   */
+  async checkInLive(file: string) {
+    const snapshot = await this.getSnapshot();
+    if (!this.canWrite(snapshot)) throw new SourceError('Write access on the main workspace branch is required.', 403);
+    const link = await this.liveLink(file);
+    if (!link) throw new LiveNotLiveError('This note is not being edited live (編輯中).');
+    const result = await this.live!.checkIn(link.path);
+    // The check-in may have moved the head and closed or filed the note; this request reads both again.
+    this.liveLoaded.delete(link.path);
+    this.liveSeen.delete(link.path);
+    this.snapshot = undefined;
+    return { ...result, revision: (await this.getSnapshot(true)).sha };
+  }
+  /**
+   * Where a pending note's virtual path went once it was checked in: its Git path, or null when the editor does not
+   * know. Undefined for any other path, and for a pending note that is still live.
+   */
+  async liveFiled(file: string): Promise<string | null | undefined> {
+    if (!this.live || typeof file !== 'string') return undefined;
+    const pending = parseLivePendingPath(file, (await this.config()).notebooks);
+    if (!pending || await this.liveLink(file)) return undefined;
+    return this.live.filed(pending.id);
   }
   /** The live link of a path: a checked-out note's or a pending note's virtual path; undefined without one. */
   private async liveLink(file: string): Promise<LiveLink | undefined> {

@@ -1,5 +1,6 @@
-import { CheckedOutError, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, type LiveNotes, livePendingPath, type LivePersonCalls, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
-import { localIdIn } from './notebook-key.js';
+import { checkInLink, type LiveCheckInOptions, type LiveCheckInResult } from './live-checkin.js';
+import { CheckedOutError, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { localIdIn, type NotebookKey } from './notebook-key.js';
 import type { RepositoryId } from './repository.js';
 import type { LiveNoteState, NotebookConfig } from './types.js';
 
@@ -34,6 +35,14 @@ export interface LiveRepository {
   /** Writes a whole text on `baseRevision`, which the editor rebases over typing since; the text is sent in normal form. */
   write(id: string, content: string, baseRevision: string, agent: boolean): Promise<{ liveRevision: string; changed: boolean; }>;
   append(id: string, text: string, agent: boolean): Promise<{ liveRevision: string; }>;
+  /** Checks a note out to the editor on its Git text (sent in normal form), or joins the live note it already has. */
+  checkout(notebook: NotebookKey, path: string, base: { commit: string; blob: string; content: string; }): Promise<{ checkout: LiveCheckout; outcome: 'created' | 'joined' | 'reopened'; }>;
+  /** Creates a pending note, filed at the first check-in by `pathRule` (relative to the notebook root). */
+  createPending(notebook: NotebookKey, pathRule: string, content: string): Promise<LiveCheckout>;
+  /** Where a link that is no longer live was filed: its repository path, or null when unknown. */
+  filed(id: string): Promise<string | null>;
+  /** 「立即簽回」: checks the live note at `path` (a Git path or a pending note's virtual path) in now (spec §5.3, manual). */
+  checkIn(path: string): Promise<LiveCheckInResult>;
 }
 
 export interface LiveRepositoryOptions {
@@ -45,6 +54,8 @@ export interface LiveRepositoryOptions {
   alias: string;
   /** The notebooks the repository serves, with their local ids. */
   notebooks(): Promise<NotebookConfig[]>;
+  /** How a manual check-in runs: its clock, its time zone for a pending note's date, and its wait between release retries. */
+  checkIn?: Omit<LiveCheckInOptions, 'mode'>;
 }
 
 const call = async <T>(run: () => Promise<T>): Promise<T> => {
@@ -65,20 +76,30 @@ const revisionOf = (value: unknown): string => {
  * The view of a repository's live editor for one request; null where the adapter covers no editor for it. The
  * adapter's person calls are asked for only on first use, so a request that reads nothing live makes no adapter call.
  */
-export function liveRepository({ liveNotes, context, repository, alias, notebooks }: LiveRepositoryOptions): LiveRepository | null {
+export function liveRepository({ liveNotes, context, repository, alias, notebooks, checkIn }: LiveRepositoryOptions): LiveRepository | null {
   const editor = liveEditorOf(liveNotes, repository);
   if (!editor) return null;
   let person: LivePersonCalls | undefined;
   const calls = () => person ??= liveNotes.person(context);
+  /** The notebook a link's key names among those the repository serves. */
+  const notebookOf = async () => {
+    const served = await notebooks();
+    return (key: string) => {
+      const local = localIdIn(alias, key);
+      return local === null ? undefined : served.find(entry => entry.id === local);
+    };
+  };
+  /** A row the adapter answered for a call, checked; a bad one is a 502. */
+  const checkedRow = async (row: unknown) => {
+    const checkout = liveCheckoutOf(row, { editor, notebook: await notebookOf() });
+    if (!checkout) throw new LiveUnavailableError();
+    return checkout;
+  };
   let listed: Promise<LiveLink[]> | undefined;
   const links = () => {
     listed ??= (async () => {
-      const [rows, served] = await Promise.all([call(() => calls().checkouts(repository)), notebooks()]);
+      const [rows, notebook] = await Promise.all([call(() => calls().checkouts(repository)), notebookOf()]);
       if (!Array.isArray(rows)) throw new LiveUnavailableError();
-      const notebook = (key: string) => {
-        const local = localIdIn(alias, key);
-        return local === null ? undefined : served.find(entry => entry.id === local);
-      };
       const checked: LiveLink[] = [];
       // One link per path and per id: a second row for either (an adapter fault) is dropped.
       const seen = new Set<string>();
@@ -115,6 +136,36 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
     },
     async append(id, text, agent) {
       return { liveRevision: revisionOf(await call(() => calls().append(repository, id, { text: normalizeLiveText(text), agent }))) };
+    },
+    async checkout(notebook, path, base) {
+      const answer = await call(() => calls().checkout(repository, { notebook, path, base: { ...base, content: normalizeLiveText(base.content) } }));
+      const { checkout: row, outcome } = (answer ?? {}) as { checkout?: unknown; outcome?: unknown; };
+      if (outcome !== 'created' && outcome !== 'joined' && outcome !== 'reopened') throw new LiveUnavailableError();
+      const checkout = await checkedRow(row);
+      if (checkout.path !== path) throw new LiveUnavailableError();
+      listed = undefined;
+      return { checkout, outcome };
+    },
+    async createPending(notebook, pathRule, content) {
+      const checkout = await checkedRow(await call(() => calls().createPending(repository, { notebook, pathRule, content: normalizeLiveText(content) })));
+      if (checkout.path !== null) throw new LiveUnavailableError();
+      listed = undefined;
+      return checkout;
+    },
+    async filed(id) {
+      if (!isLiveId(id)) return null;
+      const answer = await call(() => calls().filed(repository, id));
+      return typeof answer === 'string' && answer.length <= 1024 && !answer.startsWith('/') && !/[\\\p{Cc}]/u.test(answer) && answer.split('/').every(part => part && part !== '.' && part !== '..') ? answer : null;
+    },
+    async checkIn(path) {
+      const link = (await links()).find(entry => entry.path === path);
+      if (!link) throw new LiveNotLiveError();
+      try {
+        return await checkInLink(liveNotes, repository, link.checkout.id, { ...checkIn, mode: 'manual' });
+      } finally {
+        // The link may be closed or filed now; the next read in this request asks again.
+        listed = undefined;
+      }
     },
   };
 }

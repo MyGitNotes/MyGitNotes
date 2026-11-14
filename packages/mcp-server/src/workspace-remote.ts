@@ -78,7 +78,7 @@ function parseWorkspaceRevision(token: string, repository: string, repositoryCou
 const liveTextWrites = new Set(['write', 'edit', 'save_note', 'update_note_metadata']);
 
 const workspaceReads = new Set(['glob', 'find', 'list_notes', 'search_notes', 'list_skills', 'list_assets', 'get_statuses', 'list_folders', 'list_templates']);
-const pathTools = new Set(['read', 'read_note', 'write', 'append', 'edit', 'save_note', 'delete_note', 'mkdir', 'rm', 'cp', 'mv', 'get_folder_metadata', 'update_folder_metadata', 'get_note_metadata', 'update_note_metadata', 'delete_asset', 'download_assets', 'list_folders', 'ls']);
+const pathTools = new Set(['read', 'read_note', 'check_in_note', 'write', 'append', 'edit', 'save_note', 'delete_note', 'mkdir', 'rm', 'cp', 'mv', 'get_folder_metadata', 'update_folder_metadata', 'get_note_metadata', 'update_note_metadata', 'delete_asset', 'download_assets', 'list_folders', 'ls']);
 const optionalWrites = new Set(['delete_note', 'delete_asset', 'update_note_metadata', 'add_asset', 'replace_notes']);
 const mutation = (name: string) => isMutationTool(name) || optionalWrites.has(name);
 
