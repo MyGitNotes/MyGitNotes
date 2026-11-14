@@ -11,6 +11,38 @@ describe('Resource Classifier', () => {
     expect(classifyResource('notes/example/subfolder/idea.txt', sampleConfig).type).toBe('note');
   });
 
+  it('classifies the other files of a notebook by what a viewer can do with them, so only Markdown and text files are notes', () => {
+    const kind = (file: string) => classifyResource(`notes/example/${file}`, sampleConfig);
+    for (const file of ['db/schema.sql', 'deploy.yml', 'a/b/config.yaml', 'data.json', 'table.csv', 'src/main.ts', 'tool.py', 'run.sh', 'Makefile', 'Dockerfile', 'a/LICENSE', 'out/report.xml', 'script.JS']) expect([file, kind(file).type]).toEqual([file, 'text_file']);
+    expect(kind('spec.pdf')).toEqual({ path: 'notes/example/spec.pdf', type: 'pdf_file', notebookId: 'example' });
+    expect(kind('out/index.html').type).toBe('html_file');
+    expect(kind('out/page.HTM').type).toBe('html_file');
+    for (const file of ['archive.zip', 'sheet.xlsx', 'movie.mp4', 'unknown.blob', 'noextension', 'photo.avif']) expect([file, kind(file).type]).toEqual([file, 'other_file']);
+    // Notes and images keep their kinds; the file kinds never cover a note.
+    for (const file of ['a.md', 'a.markdown', 'a.mdx', 'a.txt']) expect([file, kind(file).type]).toEqual([file, 'note']);
+    for (const file of ['a.png', 'a.JPG', 'a.svg', 'a.webp']) expect([file, kind(file).type]).toEqual([file, 'asset']);
+    // Paths that were never reachable stay as they were.
+    expect(kind('.hidden/schema.sql').type).toBe('hidden');
+    expect(kind('node_modules/x/schema.sql').type).toBe('hidden');
+    expect(kind('docs/agent/schema.sql').type).toBe('agent_doc');
+    expect(kind('assets/schema.sql').type).toBe('asset');
+    expect(classifyResource('notes/other/schema.sql', sampleConfig).type).toBe('product_source');
+  });
+
+  it("keeps a notebook's excluded paths out of the notes: Markdown there is a text file, and a compilation is its YAML text", () => {
+    const config: WorkspaceConfig = { ...sampleConfig, notebooks: [{ ...sampleConfig.notebooks[0], excluded: ['**/analysis/**', '*.draft.md'] }] };
+    const kind = (file: string) => classifyResource(`notes/example/${file}`, config).type;
+    expect(kind('a/analysis/report.md')).toBe('text_file');
+    expect(kind('a/analysis/report.txt')).toBe('text_file');
+    expect(kind('a/analysis/plan.outline.md')).toBe('text_file');
+    expect(kind('a/analysis/set.compilation.yml')).toBe('text_file');
+    expect(kind('a/analysis/data.pdf')).toBe('pdf_file');
+    expect(kind('x.draft.md')).toBe('text_file');
+    expect(kind('sub/x.draft.md')).toBe('note');
+    expect(kind('a/keep.md')).toBe('note');
+    expect(kind('a/analysis/chart.png')).toBe('asset');
+  });
+
   it('classifies agent instructions', () => {
     expect(classifyResource('AGENTS.md', sampleConfig).type).toBe('agent_instruction');
     expect(classifyResource('notes/example/AGENTS.md', sampleConfig).type).toBe('agent_instruction');

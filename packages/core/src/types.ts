@@ -43,6 +43,13 @@ export interface NotebookConfig {
   templates?: NoteTemplate[];
   metadata?: NotebookMetadataField[];
   pathAliases?: Record<string, string>;
+  /** Globs, relative to the notebook root, of paths that are not notes (see `notebook-exclude.ts`); the notebook's own, as written. */
+  exclude?: string[];
+  /**
+   * The globs a notebook applies: the workspace's `exclude` followed by the notebook's own. Derived when the manifest is
+   * read and never written back; left out when nothing is excluded.
+   */
+  excluded?: string[];
 }
 
 export type YouTubeDisplayMode = 'thumbnail' | 'medium' | 'theater';
@@ -56,6 +63,8 @@ export interface WorkspaceConfig {
   schema_version: number;
   workspace: { title: string; default_notebook: string; };
   notebooks: NotebookConfig[];
+  /** Globs, relative to each notebook's root, of paths that are not notes in any notebook; see `notebook-exclude.ts` for the dialect. */
+  exclude?: string[];
   /** Obsolete: `hide_dotfiles` is still accepted so older manifests load, and kept when present, but nothing reads it. */
   files?: { hide_dotfiles?: boolean; };
   preferences?: WorkspacePreferences;
@@ -89,7 +98,11 @@ export interface NoteItem {
   invalid?: string;
 }
 
-export type ResourceType = 'note' | 'compilation' | 'outline' | 'template' | 'agent_instruction' | 'agent_doc' | 'workspace_config' | 'asset' | 'product_source' | 'hidden';
+/**
+ * `text_file`, `pdf_file`, `html_file` and `other_file` are the files of a notebook that are not notes: a link to one opens
+ * it as read-only text, as a PDF, as a sandboxed page, or as a download.
+ */
+export type ResourceType = 'note' | 'compilation' | 'outline' | 'template' | 'agent_instruction' | 'agent_doc' | 'workspace_config' | 'asset' | 'text_file' | 'pdf_file' | 'html_file' | 'other_file' | 'product_source' | 'hidden';
 
 export interface ClassifiedResource {
   path: string;

@@ -19,6 +19,8 @@ export * from './source-conversion.js';
 export * from './frontmatter.js';
 export * from './note-timestamps.js';
 export * from './classifier.js';
+export * from './file-kind.js';
+export * from './notebook-exclude.js';
 export * from './path-guard.js';
 export * from './note-service.js';
 export { keptNoteMetadata, replaceFileTags } from './note-file.js';

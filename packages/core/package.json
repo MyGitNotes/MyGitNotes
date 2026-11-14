@@ -135,6 +135,14 @@
       "types": "./dist/note-versions.d.ts",
       "import": "./dist/note-versions.js"
     },
+    "./notebook-path": {
+      "types": "./dist/notebook-path.d.ts",
+      "import": "./dist/notebook-path.js"
+    },
+    "./file-kind": {
+      "types": "./dist/file-kind.d.ts",
+      "import": "./dist/file-kind.js"
+    },
     "./note-file": {
       "types": "./dist/note-file.d.ts",
       "import": "./dist/note-file.js"

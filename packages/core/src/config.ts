@@ -6,6 +6,7 @@ import { STATUS_COLOR_NAMES } from './note-status.js';
 import { isSortField } from './note-sort.js';
 import { normalizePreferences } from './workspace-preferences.js';
 import { NOTEBOOK_ID_PATTERN } from './notebook-key.js';
+import { excludeGlobError } from './notebook-exclude.js';
 
 export const WORKSPACE_CONFIG_FILENAME = '.mygitnotes.yaml';
 export const LEGACY_WORKSPACE_CONFIG_FILENAME = '.github-notes.yaml';
@@ -51,6 +52,17 @@ export class NotebookSourceError extends ConfigValidationError {
     super(`Notebook ${notebookId} uses source, which schema 4 removed. Run pnpm convert-sources in ${repository}.`);
     this.name = 'NotebookSourceError';
   }
+}
+
+/** Validates an `exclude` list, written at the workspace or on a notebook; `owner` names where, for the message. */
+function validateExclude(owner: string, raw: unknown): string[] {
+  if (!Array.isArray(raw)) throw new ConfigValidationError(`${owner} exclude must be a list of globs`);
+  return raw.map(entry => {
+    if (typeof entry !== 'string') throw new ConfigValidationError(`${owner} exclude must be a list of globs; ${JSON.stringify(entry)} is not a string`);
+    const problem = excludeGlobError(entry);
+    if (problem !== undefined) throw new ConfigValidationError(`${owner} exclude glob '${entry}' is invalid: ${problem}`);
+    return entry;
+  });
 }
 
 /** `files.hide_dotfiles` no longer does anything; a manifest that sets it keeps it, so a save writes it back unchanged. */
@@ -128,6 +140,7 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
     throw new ConfigValidationError('notebooks must be a non-empty array');
   }
 
+  const workspaceExclude = raw.exclude === undefined ? undefined : validateExclude('Workspace', raw.exclude);
   const notebookIds = new Set<string>();
   const notebookRoots: string[] = [];
 
@@ -268,7 +281,10 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
       }
     }
 
-    validatedNotebooks.push({ id: item.id, title: item.title, root: normalizedRoot, assets: assetPath, default_view: (item.default_view as 'list' | 'card' | 'kanban' | 'flat') || 'list', ...(validatedDefaultSort !== undefined ? { default_sort: validatedDefaultSort } : {}), ...(validatedStatuses !== undefined ? { statuses: validatedStatuses } : {}), ...(validatedTemplates !== undefined ? { templates: validatedTemplates } : {}), ...(validatedMetadata !== undefined ? { metadata: validatedMetadata } : {}), ...(validatedPathAliases !== undefined ? { pathAliases: validatedPathAliases } : {}) });
+    const validatedExclude = item.exclude === undefined ? undefined : validateExclude(`Notebook '${item.id}'`, item.exclude);
+    const applied = [...new Set([...workspaceExclude ?? [], ...validatedExclude ?? []])];
+
+    validatedNotebooks.push({ id: item.id, title: item.title, root: normalizedRoot, assets: assetPath, default_view: (item.default_view as 'list' | 'card' | 'kanban' | 'flat') || 'list', ...(validatedDefaultSort !== undefined ? { default_sort: validatedDefaultSort } : {}), ...(validatedStatuses !== undefined ? { statuses: validatedStatuses } : {}), ...(validatedTemplates !== undefined ? { templates: validatedTemplates } : {}), ...(validatedMetadata !== undefined ? { metadata: validatedMetadata } : {}), ...(validatedPathAliases !== undefined ? { pathAliases: validatedPathAliases } : {}), ...(validatedExclude !== undefined ? { exclude: validatedExclude } : {}), ...(applied.length ? { excluded: applied } : {}) });
   }
 
   // Ensure default_notebook exists
@@ -276,7 +292,7 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
     throw new ConfigValidationError(`default_notebook '${ws.default_notebook}' does not match any configured notebook ID`);
   }
 
-  return { schema_version: raw.schema_version as number, workspace: { title: ws.title as string, default_notebook: ws.default_notebook as string }, notebooks: validatedNotebooks, ...obsoleteFiles(raw.files), preferences: normalizePreferences(raw.preferences) };
+  return { schema_version: raw.schema_version as number, workspace: { title: ws.title as string, default_notebook: ws.default_notebook as string }, notebooks: validatedNotebooks, ...(workspaceExclude !== undefined ? { exclude: workspaceExclude } : {}), ...obsoleteFiles(raw.files), preferences: normalizePreferences(raw.preferences) };
 }
 
 /**
@@ -291,7 +307,8 @@ export function parseWorkspaceConfig(yamlContent: string): WorkspaceConfig {
  * Serializes a WorkspaceConfig to YAML string.
  */
 export function serializeWorkspaceConfig(config: WorkspaceConfig): string {
-  return YAML.stringify(config);
+  // `excluded` is derived from the manifest's own `exclude` lists when it is read, so it is not written.
+  return YAML.stringify({ ...config, notebooks: config.notebooks.map(({ excluded: _excluded, ...notebook }) => notebook) });
 }
 
 /**
