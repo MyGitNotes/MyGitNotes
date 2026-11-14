@@ -6,6 +6,7 @@ import { type RemoteChange, type RemoteCommit, type RemoteEntry, type RemoteSnap
 import { hashJson, REMOTE_CACHE_MAX_VALUE, REMOTE_CACHE_TTL, type RemoteCache } from './remote-cache.js';
 import { reaching, type RepositoryScope } from './repository.js';
 import { sourceIdentity } from './source-config.js';
+import type { CommitAuthor } from './commit-author.js';
 export { SourceError } from './github-api.js';
 export type { RepositoryInfo } from './remote-source.js';
 export type GitHubEntry = RemoteEntry;
@@ -78,8 +79,8 @@ export function blobBatches(entries: RemoteEntry[]): RemoteEntry[][] {
 export class GitHubSource extends RemoteSource {
   private client: GitHubApi;
   /** `url` names a GitHub Enterprise site; without it the repository is on github.com. */
-  constructor(repository: string, branch: string, token: string | undefined, private request: typeof fetch, cache: RemoteCache | undefined, scope: RepositoryScope, private url?: string) {
-    super(repository, branch, token, cache, scope);
+  constructor(repository: string, branch: string, token: string | undefined, private request: typeof fetch, cache: RemoteCache | undefined, scope: RepositoryScope, private url?: string, author?: CommitAuthor) {
+    super(repository, branch, token, cache, scope, author);
     this.client = new GitHubApi(repository, token, request, url);
   }
   get id() {
@@ -249,14 +250,16 @@ export class GitHubSource extends RemoteSource {
     return { date: found.commit.author?.date || '', paths: (found.files || []).filter(entry => entry.status !== 'removed').map(entry => entry.filename) };
   }
 
-  protected async publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string): Promise<string> {
+  protected async publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string, author?: CommitAuthor): Promise<string> {
     const entries = [];
     for (const change of changes) {
       const value = change.content !== undefined ? { content: change.content } : { sha: change.base64 !== undefined ? (await this.api('/git/blobs', { method: 'POST', body: JSON.stringify({ content: change.base64, encoding: 'base64' }) })).sha : change.sha };
       entries.push({ path: change.path, mode: '100644', type: 'blob', ...value });
     }
     const tree = await this.api('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: snapshot.treeSha, tree: entries }) });
-    const commit = await this.api('/git/commits', { method: 'POST', body: JSON.stringify({ message, tree: tree.sha, parents: [snapshot.sha] }) });
+    // GitHub dates the author it is given now. With no committer in the request it records the author as the committer
+    // too, so only the push, not the commit, names the token's account.
+    const commit = await this.api('/git/commits', { method: 'POST', body: JSON.stringify({ message, tree: tree.sha, parents: [snapshot.sha], ...(author ? { author: { name: author.name, email: author.email } } : {}) }) });
     await this.api(`/git/refs/heads/${encodeURIComponent(this.branch)}`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha, force: false }) });
     return commit.sha as string;
   }

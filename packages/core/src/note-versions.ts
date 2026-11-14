@@ -148,18 +148,29 @@ export function utcDay(now = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
 
+const TRAILER_LINE = /^[A-Za-z][A-Za-z0-9-]*: /;
+
+/** The trailer block a commit message ends with: its last paragraph when that is not the subject and every line is a trailer. */
+export function trailerBlock(message: string): string | undefined {
+  const start = message.lastIndexOf('\n\n');
+  const last = start < 0 ? undefined : message.slice(start + 2);
+  return last && last.split('\n').every(line => TRAILER_LINE.test(line)) ? last : undefined;
+}
+
+/** Adds trailer lines to a commit message: after the trailers it already ends with, or as a new last paragraph. */
+export function appendTrailers(message: string, trailers: string[]): string {
+  if (!trailers.length) return message;
+  const text = message.trimEnd();
+  return `${text}${trailerBlock(text) ? '\n' : '\n\n'}${trailers.join('\n')}`;
+}
+
 /** Marks a commit message as an agent's edit of one file: the subject names the agent and day, and a trailer repeats the day. */
 export function agentEditMessage(message: string, now = new Date()): string {
   const day = utcDay(now);
   const [subject, ...rest] = message.trim().split('\n');
   const body = rest.join('\n').trim();
-  const trailer = `${AGENT_EDIT_TRAILER}: ${day}`;
-  const paragraphs = body ? body.split(/\n{2,}/) : [];
-  const last = paragraphs.at(-1);
-  // Join an existing trailer block instead of starting a second one.
-  if (last && last.split('\n').every(line => /^[A-Za-z][A-Za-z0-9-]*: /.test(line))) paragraphs[paragraphs.length - 1] = `${last}\n${trailer}`;
-  else paragraphs.push(trailer);
-  return `${subject} (Agent, ${day})\n\n${paragraphs.join('\n\n')}`;
+  // The trailer joins an existing trailer block instead of starting a second one.
+  return appendTrailers(`${subject} (Agent, ${day})${body ? `\n\n${body}` : ''}`, [`${AGENT_EDIT_TRAILER}: ${day}`]);
 }
 
 export function isAgentEdit(message: string): boolean {

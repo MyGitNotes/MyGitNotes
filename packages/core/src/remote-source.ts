@@ -23,6 +23,7 @@ import type { RepositoryCatalog } from './note-catalog.js';
 import type { NoteListItem } from './note-query.js';
 import { addVersion, agentEditMessage, type HistoryEntry, isAgentEdit, readVersionFile, serializeVersionFile, versionedPath, versionFilePath, type VersionLabel } from './note-versions.js';
 import { CASE_COLLISION_ERROR, differsOnlyInCase } from './case-collision.js';
+import { type CommitAuthor, commitAuthor, withCoAuthors } from './commit-author.js';
 
 export { SourceError } from './github-api.js';
 const CACHEABLE_FILE = /\.(md|markdown|mdx|txt|ya?ml)$/i;
@@ -97,13 +98,25 @@ export abstract class RemoteSource {
   private loaded = new Map<string, Buffer>();
   private loadedBytes = 0;
   private cacheChecked = new Set<string>();
-  /** `scope` supplies the notebooks this repository serves; the workspace manifest is never read from here. */
-  constructor(public repository: string, public branch: string, protected token: string | undefined, protected cache: RemoteCache | undefined, private readonly scope: RepositoryScope) {}
+  /**
+   * `scope` supplies the notebooks this repository serves; the workspace manifest is never read from here. `commitsAs` is
+   * who the commits this source publishes are authored by, for a deployment whose `token` is not the person's own;
+   * without one a commit's author is the token's account, as the provider has it.
+   */
+  constructor(public repository: string, public branch: string, protected token: string | undefined, protected cache: RemoteCache | undefined, private readonly scope: RepositoryScope, private readonly commitsAs?: CommitAuthor) {}
   /** The repository's identity within a workspace, as `sourceIdentity` spells it. */
   abstract get id(): RepositoryId;
   protected abstract loadSnapshot(): Promise<RemoteSnapshot>;
   protected abstract readBlob(sha: string): Promise<Buffer>;
-  protected abstract publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string): Promise<string>;
+  /** Publishes one commit and returns its id. `author` is the source's, already checked; a provider that cannot set a commit's author leaves it out. */
+  protected abstract publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string, author?: CommitAuthor): Promise<string>;
+  /**
+   * The author of the commits this source publishes. It is checked when a commit is made, before a provider hears of
+   * it, and not when the source opens: a person whose author cannot be written into a commit still reads.
+   */
+  private checkedAuthor(): CommitAuthor | undefined {
+    return commitAuthor(this.commitsAs);
+  }
   protected invalidate() {}
   private announceCommit(paths: string[]) {
     for (const listener of commitListeners) {
@@ -709,9 +722,10 @@ export abstract class RemoteSource {
       if (updated !== original) changes.set(entry.path, { path: entry.path, content: updated });
     }
     if (changes.size > 200) throw new SourceError('Skill rename affects more than 200 files.', 413);
+    const author = this.checkedAuthor();
     let revision: string;
     try {
-      revision = await this.publishChanges([...changes.values()], snapshot, `docs(agents): rename ${location.slug} to ${nextLocation.slug}`);
+      revision = await this.publishChanges([...changes.values()], snapshot, `docs(agents): rename ${location.slug} to ${nextLocation.slug}`, author);
       this.announceCommit([...changes.keys()]);
     } finally {
       this.invalidate();
@@ -767,7 +781,11 @@ export abstract class RemoteSource {
     }
   }
 
-  async commitChanges(changes: { path: string; content?: string; base64?: string; sha?: string | null; }[], expected: string, operation: string, scope: CommitScope = 'notes', requestedMessage?: string, knownSnapshot?: RemoteSnapshot) {
+  /**
+   * One commit of `changes` on `expected`, each path checked against what `scope` may write. The message is
+   * `requestedMessage`, or one made from the operation; `coAuthors` are named after it in `Co-authored-by` trailers.
+   */
+  async commitChanges(changes: { path: string; content?: string; base64?: string; sha?: string | null; }[], expected: string, operation: string, scope: CommitScope = 'notes', requestedMessage?: string, knownSnapshot?: RemoteSnapshot, coAuthors: readonly CommitAuthor[] = []) {
     const snapshot = knownSnapshot || await this.getSnapshot(true);
     this.assertMutable(snapshot, expected);
     if (!changes.length || changes.length > 200) throw new SourceError('A mutation requires between 1 and 200 changed files.');
@@ -816,10 +834,11 @@ export abstract class RemoteSource {
     if (bytes > 5 * 1024 * 1024) throw new SourceError('Mutation exceeds the 5 MiB limit.', 413);
     const changedPaths = changes.map(c => c.path).sort();
     const summary = changedPaths.length === 1 ? path.posix.basename(changedPaths[0]) : `${changedPaths.length} files`;
-    const message = requestedMessage || `docs(${scope}): ${operation.replace(/[^a-z-]/g, '')} ${summary.replace(/[\r\n]/g, ' ')}`;
+    const author = this.checkedAuthor();
+    const message = withCoAuthors(requestedMessage || `docs(${scope}): ${operation.replace(/[^a-z-]/g, '')} ${summary.replace(/[\r\n]/g, ' ')}`, coAuthors, author);
     let revision: string;
     try {
-      revision = await this.publishChanges(changes, snapshot, message);
+      revision = await this.publishChanges(changes, snapshot, message, author);
       this.announceCommit(changedPaths);
     } finally {
       this.invalidate();
