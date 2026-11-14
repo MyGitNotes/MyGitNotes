@@ -261,6 +261,29 @@ describe('the headers a grant leaves behind', () => {
     expect(req.headers).toEqual({ accept: '*/*' });
     expect(req.rawHeaders).toEqual(['Accept', '*/*']);
   });
+
+  it('are gone from headersDistinct of a real request too, read before the drop or after', async () => {
+    const seenHere: unknown[] = [];
+    const probe = createServer((req, res) => {
+      try {
+        if (req.url === '/early') void req.headersDistinct;
+        dropHeaders(req as Request, ['authorization']);
+        seenHere.push({ distinct: req.headersDistinct.authorization, accept: req.headersDistinct.accept });
+      } catch (error) {
+        seenHere.push((error as Error).name);
+      } finally {
+        res.end();
+      }
+    });
+    await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve));
+    const at = `http://127.0.0.1:${(probe.address() as { port: number; }).port}`;
+    try {
+      for (const where of ['/early', '/late']) await fetch(at + where, { headers: { Authorization: 'Bearer a.b.c', Accept: '*/*', Connection: 'close' } });
+    } finally {
+      await new Promise(resolve => probe.close(resolve));
+    }
+    expect(seenHere).toEqual([{ distinct: undefined, accept: ['*/*'] }, { distinct: undefined, accept: ['*/*'] }]);
+  });
 });
 
 describe('a bearer shaped like a stored grant, beside an identity that resolves outside bearers', () => {

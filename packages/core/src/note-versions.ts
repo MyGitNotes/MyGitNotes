@@ -152,9 +152,10 @@ const TRAILER_LINE = /^[A-Za-z][A-Za-z0-9-]*: /;
 
 /** The trailer block a commit message ends with: its last paragraph when that is not the subject and every line is a trailer. */
 export function trailerBlock(message: string): string | undefined {
-  const start = message.lastIndexOf('\n\n');
-  const last = start < 0 ? undefined : message.slice(start + 2);
-  return last && last.split('\n').every(line => TRAILER_LINE.test(line)) ? last : undefined;
+  // A CRLF message ends its paragraphs with a blank line too; the block is read the same way.
+  const start = Math.max(message.lastIndexOf('\n\n'), message.lastIndexOf('\n\r\n'));
+  const last = start < 0 ? undefined : message.slice(start).replace(/^\n\r?\n/, '');
+  return last && last.split(/\r?\n/).every(line => TRAILER_LINE.test(line)) ? last : undefined;
 }
 
 /** Adds trailer lines to a commit message: after the trailers it already ends with, or as a new last paragraph. */

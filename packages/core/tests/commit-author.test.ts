@@ -112,6 +112,18 @@ describe('co-authors of a commit', () => {
     for (const named of ['s\r\n\r\nCo-authored-by: Sam Example <sam@example.test>\r\n', 's\n\nCo-authored-by:Sam Example <sam@example.test>', 's\n\nCo-authored-by: Sam Example <sam@example.test>\n\nbody']) expect(withCoAuthors(named, [sam])).toBe(named);
   });
 
+  it('are found in time linear in the message, and a message without co-authors to add is not read', () => {
+    const long = `s\n\nCo-authored-by:${' '.repeat(100_000)}x`;
+    let started = performance.now();
+    expect(withCoAuthors(long, [sam])).toBe(`${long}\nCo-authored-by: Sam Example <sam@example.test>`);
+    expect(performance.now() - started).toBeLessThan(200);
+    started = performance.now();
+    expect(withCoAuthors(`s\n\nCo-authored-by:${' '.repeat(1_000_000)}`, [])).toMatch(/^s/);
+    expect(performance.now() - started).toBeLessThan(50);
+    // A CRLF message joins its own trailer block.
+    expect(withCoAuthors('s\r\n\r\nAgent-Edit: 2026-11-15\r\n', [sam])).toBe('s\r\n\r\nAgent-Edit: 2026-11-15\nCo-authored-by: Sam Example <sam@example.test>');
+  });
+
   it('are refused past a bounded length or count, and with characters that change how a name reads', () => {
     expect(() => commitAuthor({ name: 'S'.repeat(257), email: 'sam@example.test' })).toThrow(expect.objectContaining({ status: 400 }));
     expect(() => commitAuthor({ name: 'Sam', email: `${'s'.repeat(320)}@x` })).toThrow(expect.objectContaining({ status: 400 }));

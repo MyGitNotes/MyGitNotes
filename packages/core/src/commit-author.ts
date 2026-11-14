@@ -17,6 +17,8 @@ const UNSAFE = /[<>\p{Cc}\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/u;
 const CO_AUTHOR = 'Co-authored-by';
 /** Longest name and email a commit names, and most co-authors one commit lists. */
 const MAX_NAME = 256, MAX_EMAIL = 320, MAX_CO_AUTHORS = 50;
+/** A line naming a co-author; no part can match what another does, so a long line takes linear time. */
+const CO_AUTHOR_LINE = new RegExp(`^${CO_AUTHOR}:[^<>]*<([^<>]*)>\\s*$`, 'i');
 
 /**
  * The author a commit may carry, from what an identity or a caller supplied. Undefined when there is none: no value, or
@@ -48,10 +50,12 @@ export function commitAuthor(value: unknown, who = 'The commit author'): CommitA
 export function withCoAuthors(message: string, coAuthors: readonly CommitAuthor[], author?: CommitAuthor): string {
   if (!Array.isArray(coAuthors)) throw new SourceError('Co-authors are a list of names and emails.', 400);
   if (coAuthors.length > MAX_CO_AUTHORS) throw new SourceError(`A commit names at most ${MAX_CO_AUTHORS} co-authors.`, 400);
+  // Every commit passes here; one with no co-authors to add keeps its message unread.
+  if (!coAuthors.length) return message;
   const named = new Set<string>(author ? [author.email.toLowerCase()] : []);
   // Any line of the message naming a co-author counts, whatever its line end, spacing or paragraph.
   for (const line of message.split(/\r?\n/)) {
-    const email = new RegExp(`^${CO_AUTHOR}:\\s*.*<([^<>]*)>\\s*$`, 'i').exec(line)?.[1];
+    const email = CO_AUTHOR_LINE.exec(line)?.[1];
     if (email) named.add(email.trim().toLowerCase());
   }
   const trailers: string[] = [];
