@@ -140,21 +140,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
   };
   const revision = (link: Link) => link.log ? `e${link.epoch}:${link.log.length - 1}` : `h:${liveContentHash(link.text)}`;
   const text = (link: Link) => ({ content: link.text, liveRevision: revision(link), contentHash: liveContentHash(link.text) });
-  const row = (link: Link): LiveCheckout => ({
-    id: link.id,
-    notebook: link.notebook,
-    path: link.path,
-    ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}),
-    since: iso(link.since),
-    editorUrl: `${editor.origin}/n/${link.id}`,
-    embedUrl: `${editor.origin}/n/${link.id}?embed=1`,
-    contentHash: liveContentHash(link.text),
-    activeEditors: link.active,
-    lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt),
-    syncedAt: link.syncedAt === null ? null : iso(link.syncedAt),
-    base: link.base,
-    conflict: link.conflict,
-  });
+  const row = (link: Link): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), since: iso(link.since), editorUrl: `${editor.origin}/n/${link.id}`, embedUrl: `${editor.origin}/n/${link.id}?embed=1`, contentHash: liveContentHash(link.text), activeEditors: link.active, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
   const live = (repository: RepositoryId) => [...repositoryState(repository).links.values()].filter(link => link.live);
   const editorOf = ({ person, author }: LiveContext, agent: boolean): EditorRef => {
     const name = author?.name || `${person.realm}:${person.userId}`;

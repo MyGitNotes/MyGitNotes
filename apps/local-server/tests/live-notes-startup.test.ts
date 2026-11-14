@@ -36,8 +36,9 @@ describe('starting with live notes', () => {
   });
 
   it('refuses an editor origin it could not frame safely, and an adapter that declares no editor', () => {
-    for (const origin of ['http://live.example.test', 'https://live.example.test/path', 'https://user:pw@live.example.test', 'not a url'])
+    for (const origin of ['http://live.example.test', 'https://live.example.test/path', 'https://user:pw@live.example.test', 'not a url']) {
       expect(start({ liveNotes: liveNotes({ ...editor, origin }) }), origin).toThrow(/live editor/i);
+    }
     expect(start({ liveNotes: liveNotes({ ...editor, messageType: 'a:b' }) })).toThrow(/live editor/i);
     expect(start({ liveNotes: { ...liveNotes(), editors: [] } })).toThrow(/live editor/i);
   });

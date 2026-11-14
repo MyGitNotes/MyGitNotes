@@ -23,7 +23,6 @@ export interface LiveNotesFixture {
 
 const sha256 = (text: string) => createHash('sha256').update(Buffer.from(text.replace(/[\r\0]/g, ''), 'utf8')).digest('hex');
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
-const HEX = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const LEASE_MS = 5 * 60_000;
 
 /**
@@ -235,10 +234,7 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       const lease = await service().lease(fixture.repository, id);
       const detail = await service().detail(fixture.repository, id, lease);
       const editors = [...detail.editors].sort((a, b) => Date.parse(a.firstAt) - Date.parse(b.firstAt) || Number(a.agent) - Number(b.agent));
-      expect(editors).toEqual([
-        { name: expect.any(String), email: fixture.person(1).author!.email, agent: false, firstAt: expect.stringMatching(ISO), lastAt: expect.stringMatching(ISO) },
-        { name: expect.any(String), email: fixture.person(2).author!.email, agent: true, firstAt: expect.stringMatching(ISO), lastAt: expect.stringMatching(ISO) },
-      ]);
+      expect(editors).toEqual([{ name: expect.any(String), email: fixture.person(1).author!.email, agent: false, firstAt: expect.stringMatching(ISO), lastAt: expect.stringMatching(ISO) }, { name: expect.any(String), email: fixture.person(2).author!.email, agent: true, firstAt: expect.stringMatching(ISO), lastAt: expect.stringMatching(ISO) }]);
       for (const editor of editors) expect(Date.parse(editor.firstAt)).toBeLessThanOrEqual(Date.parse(editor.lastAt));
       expect(detail.checkout).toMatchObject<Partial<LiveCheckout>>({ id, contentHash: detail.contentHash });
       await service().mergeIn(fixture.repository, id, lease, { content: '# Editors\nhand\nagent\nmerged\n', baseRevision: detail.liveRevision });

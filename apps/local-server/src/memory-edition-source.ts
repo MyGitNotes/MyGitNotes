@@ -1,14 +1,52 @@
 import { createHash } from 'node:crypto';
-import { type EditionSourceConfig, gitBlobId, type RemoteCache, type RemoteChange, type RemoteEntry, type RemoteSnapshot, RemoteSource, type RepositoryId, type RepositoryScope, RepositoryUnavailableError, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
+import { type CommitAuthor, type EditionSourceConfig, gitBlobId, type RemoteCache, type RemoteChange, type RemoteCommit, type RemoteEntry, type RemoteSnapshot, RemoteSource, type RepositoryId, type RepositoryScope, RepositoryUnavailableError, sourceIdentity, StaleRevisionError, type WorkspacePerson } from '@mygitnotes/core';
 import type { EditionSources } from './edition-sources.js';
 
 /** Files by repository-relative path; the repository's whole content. */
 export type MemoryFiles = Map<string, string>;
 
-/** A `RemoteSource` over a `Map`: the reference for an edition adapter that keeps repositories outside any provider. */
+/** One commit a memory source published, or a state of the files a commit was published on. */
+export interface MemoryCommit {
+  sha: string;
+  parents: string[];
+  date: string;
+  /** The author the source committed as; none for the credential's own account. */
+  author?: CommitAuthor;
+  message: string;
+  /** The paths the commit changed; for a state no commit made, every path it held. */
+  paths: string[];
+  /** The whole content after the commit. */
+  files: ReadonlyMap<string, string>;
+}
+
+/** The commit count and log of each repository, kept with its files so every source over the same files shares them. */
+const histories = new WeakMap<MemoryFiles, { counter: { count: number; }; commits: MemoryCommit[]; }>();
+const historyOf = (files: MemoryFiles) => {
+  let history = histories.get(files);
+  if (!history) histories.set(files, history = { counter: { count: 0 }, commits: [] });
+  return history;
+};
+
+/** The commit counter of a repository's files: sources given the same counter agree on its head. */
+export function memoryCommitCounter(files: MemoryFiles): { count: number; } {
+  return historyOf(files).counter;
+}
+
+/** The commits memory sources published to these files, oldest first, with the states they were published on. */
+export function memoryCommits(files: MemoryFiles): readonly MemoryCommit[] {
+  return historyOf(files).commits;
+}
+
+const blobOf = (content: string) => gitBlobId(Buffer.from(content, 'utf8'), 40);
+
+/**
+ * A `RemoteSource` over a `Map`: the reference for an edition adapter that keeps repositories outside any provider.
+ * Every commit is logged with its author and message (`memoryCommits`), so a file's history and past blobs read back,
+ * and a commit on a head that moved is refused as a provider refuses it.
+ */
 export class MemoryEditionSource extends RemoteSource {
-  constructor(private readonly source: EditionSourceConfig, private readonly files: MemoryFiles, private readonly writable: boolean, private commits: { count: number; }, cache: RemoteCache | undefined, scope: RepositoryScope) {
-    super(source.repository, source.branch, undefined, cache, scope);
+  constructor(private readonly source: EditionSourceConfig, private readonly files: MemoryFiles, private readonly writable: boolean, private commits: { count: number; }, cache: RemoteCache | undefined, scope: RepositoryScope, commitsAs?: CommitAuthor) {
+    super(source.repository, source.branch, undefined, cache, scope, commitsAs);
   }
   get id(): RepositoryId {
     return sourceIdentity(this.source);
@@ -39,13 +77,38 @@ export class MemoryEditionSource extends RemoteSource {
     return { sha, treeSha: sha, entries, info: { private: true, permissions: { push: this.writable }, default_branch: this.source.branch } };
   }
   protected async readBlob(sha: string): Promise<Buffer> {
-    for (const content of this.files.values()) {
-      const bytes = Buffer.from(content, 'utf8');
-      if (gitBlobId(bytes, 40) === sha) return bytes;
-    }
+    for (const content of this.files.values()) if (blobOf(content) === sha) return Buffer.from(content, 'utf8');
+    for (const commit of memoryCommits(this.files)) for (const content of commit.files.values()) if (blobOf(content) === sha) return Buffer.from(content, 'utf8');
     throw new RepositoryUnavailableError('no-access', 'No such file.', 404);
   }
-  protected async publishChanges(changes: RemoteChange[], _snapshot: RemoteSnapshot, _message: string): Promise<string> {
+  /** The files of a commit: a logged one, or the current state when `commit` is the head nothing has logged yet. */
+  private filesAt(commit: string): ReadonlyMap<string, string> | undefined {
+    return memoryCommits(this.files).find(entry => entry.sha === commit)?.files ?? (commit === this.head() ? this.files : undefined);
+  }
+  protected override async historyPage(file: string, head: string, page: number, perPage: number): Promise<{ commits: RemoteCommit[]; more: boolean; }> {
+    const log = memoryCommits(this.files);
+    const touching: RemoteCommit[] = [];
+    for (let entry = log.find(commit => commit.sha === head); entry; entry = log.find(commit => commit.sha === entry!.parents[0])) {
+      if (entry.paths.includes(file)) touching.push({ sha: entry.sha, parents: entry.parents, date: entry.date, author: entry.author?.name ?? 'memory', message: entry.message });
+    }
+    const start = (page - 1) * perPage;
+    return { commits: touching.slice(start, start + perPage), more: touching.length > start + perPage };
+  }
+  protected override async objectAt(commit: string, file: string): Promise<{ sha: string; size: number; } | null> {
+    const content = this.filesAt(commit)?.get(file);
+    return content === undefined ? null : { sha: blobOf(content), size: Buffer.byteLength(content, 'utf8') };
+  }
+  protected override async commitInfo(commit: string): Promise<{ date: string; paths: string[]; } | null> {
+    const entry = memoryCommits(this.files).find(logged => logged.sha === commit);
+    return entry ? { date: entry.date, paths: entry.paths } : null;
+  }
+  protected async publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string, author?: CommitAuthor): Promise<string> {
+    const parent = this.head();
+    // A provider refuses a commit on a head another writer has moved since the snapshot was read.
+    if (snapshot.sha !== parent) throw new StaleRevisionError([this.id]);
+    const log = historyOf(this.files).commits;
+    const date = new Date().toISOString();
+    if (!log.some(entry => entry.sha === parent)) log.push({ sha: parent, parents: [], date, message: 'Memory state', paths: [...this.files.keys()], files: new Map(this.files) });
     for (const change of changes) {
       if (change.sha === null) this.files.delete(change.path);
       else if (change.content !== undefined) this.files.set(change.path, change.content);
@@ -53,7 +116,9 @@ export class MemoryEditionSource extends RemoteSource {
       else if (change.sha) this.files.set(change.path, (await this.readBlob(change.sha)).toString('utf8'));
     }
     this.commits.count += 1;
-    return this.head();
+    const sha = this.head();
+    log.push({ sha, parents: [parent], date, ...(author ? { author } : {}), message, paths: changes.map(change => change.path).sort(), files: new Map(this.files) });
+    return sha;
   }
 }
 
@@ -69,13 +134,11 @@ export interface MemoryEditionOptions {
 
 /** The in-memory reference `EditionSources`. */
 export function memoryEditionSources({ repositories, mayRead = () => true, mayWrite = () => true }: MemoryEditionOptions): EditionSources {
-  const commits = new Map<string, { count: number; }>();
   return {
     open(source, { person }, cache, scope) {
       const files = repositories.get(source.repository);
       if (!person || !files || !mayRead(person, source.repository)) throw new RepositoryUnavailableError('no-access', 'This repository is not available to you.', 403);
-      if (!commits.has(source.repository)) commits.set(source.repository, { count: 0 });
-      return new MemoryEditionSource(source, files, mayWrite(person, source.repository), commits.get(source.repository)!, cache, scope);
+      return new MemoryEditionSource(source, files, mayWrite(person, source.repository), memoryCommitCounter(files), cache, scope);
     },
   };
 }

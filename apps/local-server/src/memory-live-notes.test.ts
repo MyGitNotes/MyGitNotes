@@ -19,16 +19,7 @@ const setup = () => {
 
 liveNotesContract('memory', () => {
   const { clock, liveNotes } = setup();
-  return {
-    liveNotes,
-    repository,
-    notebook: 'notes~life',
-    root: 'notes/life',
-    person,
-    type: (id, text, who) => liveNotes.type(repository, id, text, who),
-    setActive: (id, n) => liveNotes.setActive(repository, id, n),
-    advance: ms => clock.advance(ms),
-  };
+  return { liveNotes, repository, notebook: 'notes~life', root: 'notes/life', person, type: (id, text, who) => liveNotes.type(repository, id, text, who), setActive: (id, n) => liveNotes.setActive(repository, id, n), advance: ms => clock.advance(ms) };
 });
 
 describe('the memory live notes', () => {
@@ -73,7 +64,7 @@ describe('the memory live notes', () => {
     expect(commit).toMatchObject({ sha: receipt.revision, parents: [before.sha], author: { name: 'Person 1', email: 'p1@example.test' }, message: 'docs(notes): live edit a.md', paths: ['notes/life/a.md'] });
     // The text the commit replaced stays readable by its blob and through the file's history.
     expect(await service.readHistoryBlob(gitBlobId(Buffer.from('# A\n'), 40))).toEqual({ blob: gitBlobId(Buffer.from('# A\n'), 40), content: '# A\n' });
-    expect((await service.readFileAt(before.sha, 'notes/life/a.md'))).toMatchObject({ content: '# A\n' });
+    expect(await service.readFileAt(before.sha, 'notes/life/a.md')).toMatchObject({ content: '# A\n' });
     const history = await (await liveNotes.service.open(repository)).fileHistory('notes/life/a.md', 1);
     expect(history.entries.map(entry => entry.commit)).toEqual([receipt.revision, before.sha]);
   });

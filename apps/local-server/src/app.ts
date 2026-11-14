@@ -1,5 +1,5 @@
 import express from 'express';
-import type { RemoteCache } from '@mygitnotes/core';
+import { type LiveNotes, type RemoteCache, validateLiveEditorInfo } from '@mygitnotes/core';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -80,12 +80,33 @@ export interface AppServices {
   identity?: IdentityService;
   /** Repositories the edition keeps itself, opened without a provider credential; left out, edition members are unavailable. */
   editionSources?: EditionSources;
+  /**
+   * An external live editor the edition attaches to remote repositories (docs/specs/2026-11-15-live-notes/spec.md).
+   * Left out, nothing changes. A local workspace cannot use one, and every editor it declares must have an origin the
+   * app may frame; `createApp` throws at start otherwise.
+   */
+  liveNotes?: LiveNotes;
+}
+
+/** Refuses, at start, live notes a deployment cannot use: on a local workspace, or with an editor it must not frame. */
+function checkLiveNotes(liveNotes: LiveNotes | undefined, local: boolean) {
+  if (!liveNotes) return;
+  if (local) throw new Error('A live editor (liveNotes) serves remote repositories; a local workspace cannot use one.');
+  if (!Array.isArray(liveNotes.editors) || !liveNotes.editors.length) throw new Error('The live editor (liveNotes) declares no editor in `editors`.');
+  for (const editor of liveNotes.editors) {
+    try {
+      validateLiveEditorInfo(editor);
+    } catch (error) {
+      throw new Error(`The live editor (liveNotes) cannot be used: ${(error as Error).message}`);
+    }
+  }
 }
 
 export function createApp(base: string, overrides: Partial<AppServices> = {}): express.Express {
   const workspaceChoices = overrides.workspaceChoices === null ? null : overrides.workspaceChoices ?? cookieWorkspaceChoices();
   const configSource = overrides.configSource ?? chosenRepositorySource(base, process.env, workspaceChoices ?? undefined);
   const local = configSource.mode === 'local';
+  checkLiveNotes(overrides.liveNotes, local);
   // The lightweight mode keeps sign-ins in cookies and nothing on the server; local workspaces never use it.
   const lightweight = !local && storageMode() === 'cookie';
   const recordStore = overrides.recordStore ?? (lightweight ? new NoRecordStore() : createRecordStore(base));
