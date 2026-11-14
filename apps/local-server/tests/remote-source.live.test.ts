@@ -135,6 +135,19 @@ describe('writing around checked-out notes', () => {
     expect(files.has('notes/life/moved.md')).toBe(false);
   });
 
+  it('commits paths that are not notes while the editor is down, and refuses note writes with a 502', async () => {
+    const { files, liveNotes, open } = fixture();
+    const person = liveNotes.person.bind(liveNotes);
+    liveNotes.person = context => ({ ...person(context), checkouts: async () => { throw new Error('connection refused'); } });
+    const head = (await open().getSnapshot()).sha;
+    await expect(open().commitChanges([{ path: 'notes/life/_dir.yml', content: 'title: Life\n' }], head, 'update')).resolves.toMatchObject({ committed: true });
+    expect(files.get('notes/life/_dir.yml')).toBe('title: Life\n');
+    await expect(open().commitManifest('.mygitnotes.yaml', `${manifest}# kept\n`, (await open().getSnapshot()).sha)).resolves.toMatchObject({ committed: true });
+    const next = (await open().getSnapshot()).sha;
+    await expect(open().commitChanges([{ path: 'notes/life/c.md', content: '# C2\n' }], next, 'update')).rejects.toMatchObject({ status: 502 });
+    expect(files.get('notes/life/c.md')).toBe('# C\n');
+  });
+
   it('reads and writes Git alone without a live view', async () => {
     const { liveNotes, open, checkout } = fixture();
     const id = await checkout('notes/life/a.md');

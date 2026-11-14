@@ -260,10 +260,11 @@ export abstract class RemoteSource {
   }
   /**
    * Refuses, with the checked-out paths, a Git write that would touch a checked-out note or a pending note's virtual
-   * path. It is a guard before any commit; the merge at check-in resolves a Git change that races a checkout.
+   * path. It is a guard before any commit; the merge at check-in resolves a Git change that races a checkout. Only a
+   * note can be live, so a write that touches none asks the editor nothing and goes ahead while it is down.
    */
   async refuseCheckedOut(paths: readonly string[], refusal?: (touched: string[]) => CheckedOutError) {
-    if (!this.live) return;
+    if (!this.live || !paths.some(file => /\.(md|markdown)$/i.test(file))) return;
     const live = new Set((await this.live.links()).map(link => link.path));
     const touched = [...new Set(paths.filter(file => live.has(file)))].sort();
     if (touched.length) throw refusal?.(touched) ?? new CheckedOutError(touched);
