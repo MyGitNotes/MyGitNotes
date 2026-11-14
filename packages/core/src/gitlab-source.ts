@@ -97,17 +97,20 @@ export class GitLabSource extends RemoteSource {
    */
   private async listing(sha: string): Promise<RemoteEntry[]> {
     const { held, reading } = this.memory(), key = `${this.listingKey()}:${sha}`;
-    const entries = held.get(key);
-    if (entries) {
-      // Refresh its place, so the least recently used listing goes first.
-      held.delete(key);
-      held.set(key, entries);
-      return entries;
-    }
-    try {
+    for (;;) {
+      const entries = held.get(key);
+      if (entries) {
+        // Refresh its place, so the least recently used listing goes first.
+        held.delete(key);
+        held.set(key, entries);
+        return entries;
+      }
       const shared = reading.get(key);
-      if (shared) return await shared;
-    } catch { /* The request that was reading failed on its own credential or connection; this one reads for itself. */ }
+      if (!shared) break;
+      try {
+        return await shared;
+      } catch { /* The request that was reading failed on its own credential or connection. Of those that waited on it, the first to look again reads, and the rest wait on that one. */ }
+    }
     const own = this.readListing(sha).finally(() => {
       if (reading.get(key) === own) reading.delete(key);
     });

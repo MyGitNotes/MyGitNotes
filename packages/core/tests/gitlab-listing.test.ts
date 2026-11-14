@@ -88,6 +88,21 @@ describe('GitLab listing of a large repository', () => {
     expect(repository.take()).toEqual({ project: 2, branch: 2, tree: 70 });
   });
 
+  it('lists once more, not once per waiting request, after the listing they waited on failed', async () => {
+    const repository = gitlabRepository(documentationTree()), process = repository.process();
+    const pages = Math.ceil(repository.listing(repository.head).length / 100);
+    let failed = false;
+    repository.behaviour.fail = kind => kind === 'tree' && !failed ? (failed = true, 502) : undefined;
+    const results = await Promise.allSettled(Array.from({ length: 5 }, () => open(repository, process).getSnapshot()));
+    expect(results.filter(result => result.status === 'rejected')).toEqual([expect.objectContaining({ reason: expect.objectContaining({ status: 502 }) })]);
+    // The failed request and one listing, which the four that waited share.
+    expect(repository.take()).toEqual({ project: 5, branch: 5, tree: 1 + pages });
+    const read = results.flatMap(result => result.status === 'fulfilled' ? [result.value.entries] : []);
+    expect(read).toHaveLength(4);
+    expect(read[0]).toEqual(repository.listing(repository.head));
+    for (const entries of read) expect(entries).toBe(read[0]);
+  });
+
   it('serves another process from the shared cache, after that reader read the branch itself', async () => {
     const cache = sealedCache();
     const { repository } = await large(cache);
