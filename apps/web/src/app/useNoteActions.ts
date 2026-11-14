@@ -31,6 +31,8 @@ export function useNoteActions({ activeTab, editorRegistry, setEditingNote, conf
     if (notebook) {
       const query = new URLSearchParams(location.search);
       query.delete('notebook');
+      // A zoom the app opens carries `returnTo`, so a link's `?zoom` request is not passed on.
+      query.delete('zoom');
       query.set('returnTo', editorRoute.note ? returnTo : location.pathname + location.search + location.hash);
       if (selectedFolder && note.notebookId === selectedNotebookId) query.set('folder', selectedFolder);
       else query.delete('folder');

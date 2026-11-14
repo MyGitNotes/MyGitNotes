@@ -6,10 +6,12 @@ import type { useFocusPanes } from './useFocusPanes.js';
 
 /**
  * The note a page load's URL names as a link to it (typed, pasted, or opened in a new tab): its note route with no
- * `returnTo`. A route the app navigated to itself to zoom a note carries `returnTo`, so a reload of zoom stays zoom.
+ * `returnTo`. A route the app navigated to itself to zoom a note carries `returnTo`, so a reload of zoom stays zoom;
+ * a link that asks for zoom with `?zoom` opens in zoom as well.
  */
 function linkedNoteOf(location: ReturnType<typeof useLocation>, editorRoute: ReturnType<typeof parseWorkspaceRoute>): string | null {
-  return editorRoute.tab === 'notes' && editorRoute.note && !new URLSearchParams(location.search).has('returnTo') ? editorRoute.note : null;
+  const query = new URLSearchParams(location.search);
+  return editorRoute.tab === 'notes' && editorRoute.note && !query.has('returnTo') && !query.has('zoom') ? editorRoute.note : null;
 }
 
 /** Whether the page was loaded on a note's link, which waits to open in the Focus instead of zoom; read before the Focus so it restores the one displayed last. */

@@ -36,6 +36,7 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
     const query = new URLSearchParams(writeFilterQuery(location.search, { ...queryState, folders: selectedFolders, ...patch }));
     query.delete('folder');
     query.delete('returnTo');
+    query.delete('zoom');
     return query;
   };
   const navigateFiltered = async (pathname: string, query: URLSearchParams, replace = false) => {

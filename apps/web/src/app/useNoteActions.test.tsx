@@ -29,3 +29,11 @@ it('keeps the trail when the zoomed note is opened again, so closing it never sh
   await run();
   expect(navigate).toHaveBeenCalledWith(expect.stringContaining('/one.md'), { replace: true, state: trail });
 });
+
+it('drops the ?zoom request of a note opened from a zoom link, since the zoom it opens carries returnTo', async () => {
+  const { navigate, run } = open('/notebooks/life/notes/one.md', '?zoom', null, note('two'));
+  await run();
+  const url = new URL(navigate.mock.calls[0]![0] as string, 'https://workspace.invalid');
+  expect(url.searchParams.has('zoom')).toBe(false);
+  expect(url.searchParams.get('returnTo')).toBe('/notes/life');
+});

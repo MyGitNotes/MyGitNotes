@@ -10,6 +10,10 @@ describe('workspace URLs', () => {
     expect(noteReturnRoute('?returnTo=graph', 'work')).toBe('/graph?notebook=work');
     expect(noteReturnRoute('?folder=projects&view=card', 'work', 'projects')).toBe('/notebooks/work/folders/projects?view=card');
   });
+  it('closes a note opened with ?zoom to its notebook without the zoom request', () => {
+    expect(noteReturnRoute('?zoom', 'work')).toBe('/notebooks/work');
+    expect(noteReturnRoute('?zoom=1&view=card', 'work')).toBe('/notebooks/work?view=card');
+  });
   it('falls back to the notebook for invalid or recursive editor origins', () => {
     for (const returnTo of ['https://example.com', '//example.com', '/missing', '/notebooks/work/notes/note.md', '/graph?returnTo=/screen']) {
       expect(noteReturnRoute('?' + new URLSearchParams({ returnTo }), 'work')).toBe('/notebooks/work');

@@ -133,7 +133,7 @@ Notes 的瀏覽區顯示篩選結果；Focus 顯示時，瀏覽區讓出空間�
 
 **tab**：窗格內對一則筆記或一條河道的參照。同一則筆記在一個窗格裡只有一個 tab，在不同窗格可以各有一個。避免稱為：分頁（已指筆記的線性頁面）。
 
-**zoom**：單一筆記的全螢幕編輯畫面，關閉後回到進入前的畫面。避免稱為：全屏 dialog、編輯器 modal。
+**zoom**：單一筆記的全螢幕編輯畫面，關閉後回到進入前的畫面。直接打開的筆記網址會開進 Focus，網址加上 `?zoom` 則直接進入 zoom，關閉後回到筆記本。避免稱為：全屏 dialog、編輯器 modal。
 
 **瀏覽區**：顯示 Notes 篩選結果的 list、flat、card、kanban 區域。Focus 顯示時，list、flat 停靠左側，card、kanban 停靠在 Focus 上方。避免稱為：筆記欄、notes list pane。
 

@@ -120,6 +120,8 @@ export function noteReturnRoute(search: string, notebook: string, folder: string
   }
   query.delete('returnTo');
   query.delete('folder');
+  // `zoom` asked a note link to open in zoom; the browse view behind it has no use for it.
+  query.delete('zoom');
   return notebookRoute(notebook, folder) + (query.size ? '?' + query.toString() : '');
 }
 

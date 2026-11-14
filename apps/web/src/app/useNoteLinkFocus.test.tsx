@@ -71,4 +71,12 @@ describe('a zoom URL', () => {
     expect(view.result.current).toBe(false);
     expect(openNote).not.toHaveBeenCalled();
   });
+  it('is a note link that asks for zoom with ?zoom, which opens it in zoom instead of the Focus', () => {
+    for (const url of ['/notebooks/life/notes/a.md?zoom', '/notebooks/life/notes/a.md?zoom=1#Part']) {
+      const { view, openNote, navigate } = setup(url);
+      expect(view.result.current).toBe(false);
+      expect(openNote).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalled();
+    }
+  });
 });
