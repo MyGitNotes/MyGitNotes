@@ -27,6 +27,7 @@ async function startBucket() {
         return res.end(`<?xml version="1.0"?><ListBucketResult><IsTruncated>false</IsTruncated>${contents.join('')}</ListBucketResult>`);
       }
       if (req.method === 'HEAD') return res.writeHead(objects.has(key) ? 200 : 404).end();
+      if (req.method === 'GET') return objects.has(key) ? res.end(objects.get(key)) : res.writeHead(404).end();
       if (req.method === 'DELETE') {
         objects.delete(key);
         return res.writeHead(204).end();
@@ -71,9 +72,9 @@ afterEach(async () => {
 });
 
 /** A hosted deployment of owner/private whose agent grant may write, over a stand-in GitHub and bucket. */
-async function startHosted(assetStorage?: AssetStorage) {
+async function startHosted(assetStorage?: AssetStorage, notes: Record<string, string> = {}) {
   bucket = await startBucket();
-  const files: Record<string, string> = { 'notes/.github-notes.yaml': MANIFEST, 'notes/ex/rules.md': NOTE };
+  const files: Record<string, string> = { 'notes/.github-notes.yaml': MANIFEST, 'notes/ex/rules.md': NOTE, ...notes };
   const nativeFetch = globalThis.fetch;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
     if (!String(url).startsWith('https://api.github.com/repos/owner/private')) return nativeFetch(url, init);
@@ -155,6 +156,52 @@ describe('MCP asset tools through an asset storage', () => {
     const uploaded = await callTool('add_asset', { notebookId: 'ex', filename: 'plain.pdf', base64Content: file('plain') });
     expect(uploaded).toMatchObject({ isError: false, result: { key: 'ex/plain.pdf' } });
     expect(bucket.objects.has('ex/plain.pdf')).toBe(true);
+  });
+});
+
+describe('download_assets over hosted MCP', () => {
+  const ALBUM = '# Album\n\n![mine](r2:r/42/ex/keep.pdf)\n![theirs](r2:r/43/ex/theirs.pdf)\n![unscoped](<r2:ex/unscoped.pdf>)\n\n`r2:r/42/ex/docs/a.pdf` is only named in code.\n';
+
+  it("answers a short-lived URL for each key the note references inside the caller's scope, and for no other", async () => {
+    await startHosted(tenantStorage().storage, { 'notes/ex/album.md': ALBUM });
+    const answer = await callTool('download_assets', { path: 'notes/ex/album.md' });
+    expect(answer).toMatchObject({ isError: false, result: { path: 'notes/ex/album.md', total: 1, nextOffset: null } });
+    // The note names another tenant's key and an unscoped one; the bucket holds an unreferenced one. None is answered.
+    expect(answer.result.assets).toEqual([{ key: 'r/42/ex/keep.pdf', reference: 'r2:r/42/ex/keep.pdf', url: expect.any(String), expiresIn: 300, contentType: 'application/pdf' }]);
+    const url = new URL(answer.result.assets[0].url);
+    expect(url.origin + url.pathname).toBe(`${bucket.endpoint}/private-assets/r/42/ex/keep.pdf`);
+    expect(url.searchParams.get('X-Amz-Expires')).toBe('300');
+    expect(url.searchParams.get('X-Amz-Signature')).toBeTruthy();
+    expect(JSON.stringify(answer.result)).not.toContain('r2-secret');
+    // The URL reads the object with no credential of the caller's.
+    expect(await (await fetch(answer.result.assets[0].url)).text()).toBe('r/42/ex/keep.pdf');
+  });
+
+  it('is open to a read-only grant and refuses a path that is not a note the grant reads', async () => {
+    // A file inside the notebook that is not a note names the key too; it opens nothing.
+    await startHosted(tenantStorage().storage, { 'notes/ex/album.md': ALBUM, '.env': '![x](r2:r/42/ex/keep.pdf)', 'notes/ex/.private/draft.md': '![x](r2:r/42/ex/keep.pdf)', 'notes/ex/data.json': '![x](r2:r/42/ex/keep.pdf)' });
+    const readOnly = 'r'.repeat(43);
+    await createRecordStore(root).set(readOnly, { kind: 'agent', session: SESSION, source: 'github:owner/private@main', audience: `${base}/mcp`, write: false }, 8 * 3600);
+    expect((await callTool('download_assets', { path: 'notes/ex/album.md' }, 0, { token: readOnly })).result.assets.map((asset: { key: string; }) => asset.key)).toEqual(['r/42/ex/keep.pdf']);
+    for (const path of ['.env', 'notes/.github-notes.yaml', '../outside.md', 'notes/ex/missing.md', 'notes/ex/.private/draft.md', 'notes/ex/data.json']) expect(await callTool('download_assets', { path })).toMatchObject({ isError: true });
+    expect(await callTool('download_assets', {})).toMatchObject({ isError: true });
+  });
+
+  it('answers at most 50 URLs in one call and pages the rest', async () => {
+    const many = Array.from({ length: 55 }, (_, index) => `![p${index}](r2:r/42/ex/p${index}.png)`).join('\n');
+    await startHosted(tenantStorage().storage, { 'notes/ex/many.md': many });
+    const first = await callTool('download_assets', { path: 'notes/ex/many.md' });
+    expect(first.result).toMatchObject({ total: 55, nextOffset: 20 });
+    expect(first.result.assets).toHaveLength(20);
+    const rest = await callTool('download_assets', { path: 'notes/ex/many.md', offset: 20, limit: 50 });
+    expect(rest.result).toMatchObject({ total: 55, nextOffset: null });
+    expect(rest.result.assets.map((asset: { key: string; }) => asset.key)).toEqual(Array.from({ length: 35 }, (_, index) => `r/42/ex/p${index + 20}.png`));
+    expect(await callTool('download_assets', { path: 'notes/ex/many.md', limit: 51 })).toMatchObject({ isError: true });
+  });
+
+  it('says so when the storage has no bucket for the call', async () => {
+    await startHosted({ resolve: async () => null }, { 'notes/ex/album.md': ALBUM });
+    expect(await callTool('download_assets', { path: 'notes/ex/album.md' })).toMatchObject({ isError: true, result: { error: 'R2 storage is not configured.' } });
   });
 });
 

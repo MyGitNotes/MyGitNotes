@@ -168,16 +168,19 @@ export function hostedR2Source(remoteUrl: string, token: string, fetcher: typeof
   };
 }
 
+/** The hosted deployment `MYGITNOTES_R2_REMOTE_URL` names, read with the agent token `MYGITNOTES_R2_REMOTE_TOKEN`; null unless both are set. */
+export function hostedR2SourceFromEnv(env: NodeJS.ProcessEnv = process.env, fetcher: typeof fetch = fetch): R2ObjectSource | null {
+  const remote = env.MYGITNOTES_R2_REMOTE_URL?.trim(), token = env.MYGITNOTES_R2_REMOTE_TOKEN?.trim();
+  return remote && token ? hostedR2Source(remote, token, fetcher) : null;
+}
+
 /**
  * The source a local checkout reads private objects from: the bucket named by `MYGITNOTES_R2_*` when its keys are
- * set, else the hosted deployment named by `MYGITNOTES_R2_REMOTE_URL` with the agent token `MYGITNOTES_R2_REMOTE_TOKEN`,
- * else none.
+ * set, else the hosted deployment of `hostedR2SourceFromEnv`, else none.
  */
 export function localR2Source(env: NodeJS.ProcessEnv = process.env, fetcher: typeof fetch = fetch): R2ObjectSource | null {
   const settings = r2SettingsFromEnv(env);
-  if (settings) return bucketR2Source({ settings, prefix: '' });
-  const remote = env.MYGITNOTES_R2_REMOTE_URL?.trim(), token = env.MYGITNOTES_R2_REMOTE_TOKEN?.trim();
-  return remote && token ? hostedR2Source(remote, token, fetcher) : null;
+  return settings ? bucketR2Source({ settings, prefix: '' }) : hostedR2SourceFromEnv(env, fetcher);
 }
 
 /** Reads the object behind a presigned URL into the cache, sending no credential; with `maxBytes`, a larger object is refused before or while it is read. */
