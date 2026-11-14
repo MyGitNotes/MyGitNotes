@@ -75,6 +75,7 @@ export interface LiveText {
 }
 export interface LiveEditor {
   name: string;
+  /** The editor's verified email, as `SignedIn.author` gives it; check-in commits are authored by it. */
   email?: string;
   agent: boolean;
   firstAt: string;
