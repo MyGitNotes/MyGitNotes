@@ -3,7 +3,7 @@ import { differsOnlyInCase } from './case-collision.js';
 import { type CommitAuthor, commitAuthor } from './commit-author.js';
 import { parseNoteContent } from './frontmatter.js';
 import { SourceError } from './github-api.js';
-import { isLiveId, isLiveNotePath, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, type LiveEditor, liveEditorOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, type LiveEditor, liveEditorOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { mergeLiveText } from './live-merge.js';
 import { parseNotebookKey } from './notebook-key.js';
 import { appendTrailers, utcDay } from './note-versions.js';
@@ -355,7 +355,7 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
       return synced(file, sha, blobOf(live), live, null, true);
     }
     // Git moved since the checkout: merge its changes in, or let the live text win.
-    const base = row.base ? await source.readHistoryBlob(row.base.blob) : undefined;
+    const base = row.base ? await source.readHistoryBlob(row.base.blob, undefined, LIVE_MAX_BYTES) : undefined;
     if (!base || !('content' in base)) return overwrite();
     const merged = mergeLiveText(normalizeLiveText(base.content), live, git);
     if (merged.conflict) return overwrite();

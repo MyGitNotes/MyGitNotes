@@ -421,10 +421,13 @@ export abstract class RemoteSource {
     const object = await this.objectAt(commit, file);
     return object ? this.readHistoryBlob(object.sha, object.size) : undefined;
   }
-  /** A blob by object id, bounded like every history read; `size` skips the read of a blob known to be too large. */
-  async readHistoryBlob(sha: string, size?: number): Promise<HistoryRead> {
+  /**
+   * A blob by object id, bounded like every history read unless `limit` sets another bound (a live note's merge base
+   * takes the live editor's); `size` skips the read of a blob known to be too large.
+   */
+  async readHistoryBlob(sha: string, size?: number, limit = HISTORY_MAX_BYTES): Promise<HistoryRead> {
     if (!OBJECT_ID.test(sha)) throw new SourceError('Invalid object id.');
-    if (size !== undefined && size > HISTORY_MAX_BYTES) return { blob: sha, notice: 'too-large' };
+    if (size !== undefined && size > limit) return { blob: sha, notice: 'too-large' };
     let bytes: Buffer;
     try {
       bytes = this.loaded.get(sha) ?? await this.readBlob(sha);
@@ -432,7 +435,7 @@ export abstract class RemoteSource {
       if (error instanceof SourceError && error.status === 413) return { blob: sha, notice: 'too-large' };
       throw error;
     }
-    if (bytes.length > HISTORY_MAX_BYTES) return { blob: sha, notice: 'too-large' };
+    if (bytes.length > limit) return { blob: sha, notice: 'too-large' };
     return bytes.includes(0) ? { blob: sha, notice: 'binary' } : { blob: sha, content: bytes.toString('utf8') };
   }
   async commitDetails(commit: string): Promise<{ date: string; paths: string[]; } | null> {

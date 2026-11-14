@@ -84,6 +84,20 @@ describe('checkInLink', () => {
     expect(files.get('notes/life/a.md')).toBe('---\ntitle: A\n---\nONE\ntwo\nTHREE\nfour\nFIVE\n');
   });
 
+  it('merges a note over 1 MiB like any other', async () => {
+    const body = Array.from({ length: 45_000 }, (_, i) => `line ${i} of a long note\n`).join('');
+    expect(Buffer.byteLength(body)).toBeGreaterThan(1024 * 1024);
+    files.set('notes/life/long.md', `# Long\n${body}end\n`);
+    const id = await checkout('notes/life/long.md');
+    liveNotes.type(repository, id, `# Long\n${body}END\n`, person(1));
+    await gitCommit('notes/life/long.md', `# Longer\n${body}end\n`);
+    const result = await run(id);
+    expect(result).toMatchObject({ committed: true, released: true });
+    expect(result.conflict).toBeUndefined();
+    expect(files.get('notes/life/long.md')).toBe(`# Longer\n${body}END\n`);
+    expect(liveNotes.notices).toEqual([]);
+  });
+
   it('lets the live text win a conflict, names what it overwrote and notifies', async () => {
     const id = await checkout('notes/life/a.md');
     liveNotes.type(repository, id, '---\ntitle: A\n---\none\nLIVE\nthree\nfour\nfive\n', person(1));
