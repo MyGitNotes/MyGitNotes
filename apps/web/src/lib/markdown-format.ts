@@ -1,8 +1,9 @@
 /** Markdown formatting commands shared by the live and source editors: each turns a document and a selection into edits. */
+import { QrCodeValueError, turnIntoQrCode } from './qrcode-edit.js';
 
 export type InlineFormat = 'bold' | 'italic' | 'underline' | 'strikethrough' | 'code';
 export type LineFormat = 'heading1' | 'heading2' | 'heading3' | 'bulletList' | 'orderedList' | 'taskList' | 'quote';
-export type BlockFormat = 'codeBlock' | 'link' | 'horizontalRule';
+export type BlockFormat = 'codeBlock' | 'link' | 'horizontalRule' | 'qrcode';
 export type MarkdownFormat = InlineFormat | LineFormat | BlockFormat;
 
 export interface TextEdit {
@@ -16,6 +17,8 @@ export interface FormatResult {
   changes: TextEdit[];
   anchor: number;
   head: number;
+  /** Set when the format could not be applied: no edit was made, and this says why. */
+  refused?: 'qrcode-text';
 }
 
 const INLINE_MARKERS: Record<InlineFormat, [string, string]> = { bold: ['**', '**'], italic: ['*', '*'], underline: ['<u>', '</u>'], strikethrough: ['~~', '~~'], code: ['`', '`'] };
@@ -27,6 +30,7 @@ export function formatMarkdown(doc: string, from: number, to: number, format: Ma
   if (LINE_FORMATS.has(format)) return toggleLines(doc, start, end, format as LineFormat);
   if (format === 'codeBlock') return codeBlock(doc, start, end);
   if (format === 'link') return link(doc, start, end);
+  if (format === 'qrcode') return qrCode(doc, from, to);
   return horizontalRule(doc, end);
 }
 
@@ -157,6 +161,15 @@ function link(doc: string, from: number, to: number): FormatResult {
   // With text, the caret waits for the URL; without, it waits for the text.
   const caret = text ? from + text.length + 3 : from + 1;
   return { changes: [{ from, to, insert }], anchor: caret, head: caret };
+}
+
+function qrCode(doc: string, from: number, to: number): FormatResult {
+  try {
+    return turnIntoQrCode(doc, from, to);
+  } catch (error) {
+    if (error instanceof QrCodeValueError) return { changes: [], anchor: from, head: to, refused: 'qrcode-text' };
+    throw error;
+  }
 }
 
 function horizontalRule(doc: string, pos: number): FormatResult {

@@ -17,10 +17,25 @@ export function qrCodeSize(value: string | undefined): number {
   return Math.min(MAX_QRCODE_SIZE, Math.max(MIN_QRCODE_SIZE, size));
 }
 
+/** The library loads once, with the first code drawn; every later draw waits on the same import, and a failed load is tried again. */
+const importLibrary = () => import('qrcode');
+let library: ReturnType<typeof importLibrary> | undefined;
+const loadLibrary = () =>
+  library ??= importLibrary().catch((error: unknown) => {
+    library = undefined;
+    throw error;
+  });
+
 async function drawQrCode(container: HTMLElement, cancelled: () => boolean, onSettled?: () => void): Promise<void> {
   const url = container.dataset.qrcode ?? '';
   if (!url || container.dataset.qrcodeRendered) return;
-  const { default: QRCode } = await import('qrcode');
+  let QRCode: Awaited<ReturnType<typeof importLibrary>>['default'];
+  try {
+    QRCode = (await loadLibrary()).default;
+  } catch (error) {
+    console.error('Failed to load the QR code library:', error);
+    return;
+  }
   if (cancelled() || container.dataset.qrcodeRendered) return;
   const size = qrCodeSize(container.dataset.size);
   const canvas = document.createElement('canvas');
@@ -32,7 +47,7 @@ async function drawQrCode(container: HTMLElement, cancelled: () => boolean, onSe
     return;
   }
   if (cancelled() || container.dataset.qrcodeRendered) return;
-  // The code sits inside the link, so it opens the address, and the link's text stays for a reader who cannot see the code.
+  // The code sits inside the link, so it opens the address, and the text stays for a reader who cannot see the code.
   canvas.className = 'qrcode-canvas';
   canvas.setAttribute('aria-hidden', 'true');
   canvas.style.width = `${size}px`;

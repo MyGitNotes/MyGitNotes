@@ -75,6 +75,7 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('format.bold', 'editor', MARKDOWN, 'codemirror', ['Mod+B']),
   entry('format.italic', 'editor', MARKDOWN, 'codemirror', ['Mod+I']),
   entry('format.underline', 'editor', MARKDOWN, 'codemirror', ['Mod+U']),
+  entry('format.qrcode', 'editor', MARKDOWN, 'codemirror', ['Mod+Shift+L'], { description: 'command.format.qrcode.describe' }),
   entry('editor.undo', 'editor', EDITORS, 'codemirror', ['Mod+Z']),
   entry('editor.redo', 'editor', EDITORS, 'codemirror', [mac('Mod+Shift+Z'), other('Mod+Y'), other('Mod+Shift+Z')]),
   entry('editor.undoSelection', 'editor', CODE, 'codemirror', ['Mod+U']),

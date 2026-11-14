@@ -33,11 +33,7 @@ function hastBackgrounds(node: DeckNode): { properties: Record<string, unknown>;
 }
 
 describe('::background in the deck of a type: slide note', () => {
-  const NOTES = [
-    '::background{image="https://example.com/board.jpg" dim=0.6 credit="Photo: A. B., CC BY-SA 4.0"}\n\n## One\n\ntext\n',
-    '## One\n\n::background{video="https://example.com/clip.mp4" start=12 end=40 poster="https://example.com/clip.jpg" position="50% 20%"}\n\ntext\n',
-    '## One\n\ntext\n\n::background{youtube="https://youtu.be/dQw4w9WgXcQ" start=30}\n',
-  ];
+  const NOTES = ['::background{image="https://example.com/board.jpg" dim=0.6 credit="Photo: A. B., CC BY-SA 4.0"}\n\n## One\n\ntext\n', '## One\n\n::background{video="https://example.com/clip.mp4" start=12 end=40 poster="https://example.com/clip.jpg" position="50% 20%"}\n\ntext\n', '## One\n\ntext\n\n::background{youtube="https://youtu.be/dQw4w9WgXcQ" start=30}\n'];
 
   it.each(NOTES)('writes what the blog chain writes: the element, its attributes, its still and its credit (%#)', note => {
     const notes = hastBackgrounds(readDeck(html(note, 'deck'), 'T') as DeckNode), blog = hastBackgrounds(blogDeck(note, 'T'));
@@ -64,7 +60,7 @@ describe('::background in the deck of a type: slide note', () => {
     expect(pages).toHaveLength(2);
     expect(pages[0]).toContain('dataCtBackground');
     expect(pages[1]).not.toContain('dataCtBackground');
-    const first = (deck.children[0] as unknown as DeckNode);
+    const first = deck.children[0] as unknown as DeckNode;
     expect(hastBackgrounds(first)).toHaveLength(1);
   });
 
@@ -87,15 +83,7 @@ describe('::background in the deck of a type: slide note', () => {
     expect(page.innerHTML).not.toContain('javascript:');
   });
 
-  it.each([
-    ['two sources', '::background{image="a.jpg" video="b.mp4"}', '::background takes one source, got image and video', 3],
-    ['no source', '::background{dim=0.5}', '::background needs a source: image="…", video="…", or youtube="…"', 3],
-    ['a dim out of range', '::background{image="a.jpg" dim=2}', '::background dim must be a number from 0 to 1, got "2"', 3],
-    ['a poster on an image', '::background{image="a.jpg" poster="b.jpg"}', '::background poster is for video and youtube, not image', 3],
-    ['an unknown attribute', '::background{image="a.jpg" fit=cover}', 'background has no attribute "fit" (known: image, video, youtube, poster, start, end, dim, position, credit)', 3],
-    ['the wrong form', ':::background', 'background is a leaf directive: write ::background', 3],
-    ['a text directive', ':background{image="a.jpg"}', 'background is a leaf directive: write ::background', 3],
-  ])('is refused for %s, with contour-deck\'s message: an error box in the preview, an error with the line in the deck', (_name, source, message, line) => {
+  it.each([['two sources', '::background{image="a.jpg" video="b.mp4"}', '::background takes one source, got image and video', 3], ['no source', '::background{dim=0.5}', '::background needs a source: image="…", video="…", or youtube="…"', 3], ['a dim out of range', '::background{image="a.jpg" dim=2}', '::background dim must be a number from 0 to 1, got "2"', 3], ['a poster on an image', '::background{image="a.jpg" poster="b.jpg"}', '::background poster is for video and youtube, not image', 3], ['an unknown attribute', '::background{image="a.jpg" fit=cover}', 'background has no attribute "fit" (known: image, video, youtube, poster, start, end, dim, position, credit)', 3], ['the wrong form', ':::background', 'background is a leaf directive: write ::background', 3], ['a text directive', ':background{image="a.jpg"}', 'background is a leaf directive: write ::background', 3]])("is refused for %s, with contour-deck's message: an error box in the preview, an error with the line in the deck", (_name, source, message, line) => {
     const note = `## One\n\n${source}\n\nafter`;
     const box = host(note, 'preview').querySelector('.slide-error')!;
     expect(box.querySelector('.ig-error-message')?.textContent).toBe(message);

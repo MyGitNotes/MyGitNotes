@@ -27,6 +27,7 @@ import { SlideDirectiveChip, SlideDirectiveLine } from './slide-widgets.js';
 import { drawsNothingOutsideDeck } from '../../lib/slides/directives.js';
 import { blockLabelText, headingLabelText, type SlideLabelWording } from '../../lib/slides/structure.js';
 import { addInlineIcons } from './inline-icons.js';
+import { addInlineQrCodes, leafQrCode, QrCodeWidget } from './qrcode-widgets.js';
 
 /** Inline/reference destinations interpret character references once; bare/autolinks do not. */
 function decodeDestinationEntities(href: string): string {
@@ -283,6 +284,8 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
 
   // `:icon{name="User"}` reads as the icon while the caret is outside it.
   addInlineIcons(marks, state, [...nonMath, ...mermaidRanges, ...mathRanges, ...collapsedDirectives], focused && !state.readOnly);
+  // `:qrcode{url="…"}` reads as its code too, and a `::qrcode{…}` line below.
+  addInlineQrCodes(marks, state, [...nonMath, ...mermaidRanges, ...mathRanges, ...collapsedDirectives], focused && !state.readOnly);
 
   for (const block of collapsedDirectives) {
     // The infographic kinds, the argument map and the image annotation are classes of their own, with their own widgets.
@@ -302,6 +305,12 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
     if (slideLine) {
       if (!slides) marks.push(Decoration.replace({ widget: new SlideDirectiveChip(slideLine.text, line.from) }).range(line.from, line.to));
       else marks.push(Decoration.replace({ widget: new SlideDirectiveLine(slideLine.text, notePath, line.from, notebookId), block: true }).range(line.from, line.to));
+      continue;
+    }
+    // A `::qrcode{url="…"}` line draws as its code while the caret is elsewhere, unless it is code or in a drawn block.
+    const qrcode = !active(line.from, line.to) && !nonMath.some(range => line.from >= range.from && line.to <= range.to) && !mermaidRanges.some(range => line.from >= range.from && line.to <= range.to) ? leafQrCode(line.text) : null;
+    if (qrcode) {
+      marks.push(Decoration.replace({ widget: new QrCodeWidget(qrcode, line.text, true, line.from), block: true }).range(line.from, line.to));
       continue;
     }
     // MDX import statement: low-key display when not active/editing

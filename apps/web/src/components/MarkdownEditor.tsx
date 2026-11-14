@@ -3,7 +3,7 @@ import { bookmarkOriginalRange, normalizeBookmarkBody } from '@mygitnotes/core/b
 import React, { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Bold, ChartColumn, ChevronRight, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, ListTree, type LucideIcon, MessageSquarePlus, Plus, Quote, SeparatorHorizontal, Shapes, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
+import { Bold, ChartColumn, ChevronRight, Code, Code2, Eye, Heading1, Heading2, Heading3, ImageIcon, IndentDecrease, IndentIncrease, Italic, Link, Link2, List, ListOrdered, ListTodo, ListTree, type LucideIcon, MessageSquarePlus, Plus, QrCode, Quote, SeparatorHorizontal, Shapes, Square, SquareCode, Strikethrough, Table2, Underline } from 'lucide-react';
 import type { LiveEditorCarry, LiveMarkdownHandle } from './LiveMarkdownEditor.js';
 import { type TranslationKey, useTranslation } from '../lib/i18n/index.js';
 import { noteCompletionAt, useNoteCandidates } from '../lib/note-completion.js';
@@ -18,6 +18,7 @@ import './note-completion.css';
 import { copyLinePrompt } from '../lib/line-prompt-copy.js';
 import { attachLineGutterGesture } from '../lib/line-gutter-gesture.js';
 import { LoadingStatus } from './LoadingStatus.js';
+import { listenForFormats } from '../lib/format-request.js';
 import { applyEdits, formatMarkdown, type MarkdownFormat } from '../lib/markdown-format.js';
 import { isOutlinePath } from '@mygitnotes/core/outline';
 import { editOutline, type OutlineCommand } from '../lib/outline-editing.js';
@@ -70,8 +71,8 @@ interface Props {
 }
 
 /** The formatting toolbar's groups; a format with a KEYMAP entry shows its key in the button's label. */
-const FORMAT_GROUPS: { format: MarkdownFormat; icon: LucideIcon; command?: string; }[][] = [[{ format: 'heading1', icon: Heading1 }, { format: 'heading2', icon: Heading2 }, { format: 'heading3', icon: Heading3 }], [{ format: 'bold', icon: Bold, command: 'format.bold' }, { format: 'italic', icon: Italic, command: 'format.italic' }, { format: 'underline', icon: Underline, command: 'format.underline' }, { format: 'strikethrough', icon: Strikethrough }, { format: 'code', icon: Code }], [{ format: 'bulletList', icon: List }, { format: 'orderedList', icon: ListOrdered }, { format: 'taskList', icon: ListTodo }, { format: 'quote', icon: Quote }], [{ format: 'codeBlock', icon: SquareCode }, { format: 'link', icon: Link }, { format: 'horizontalRule', icon: SeparatorHorizontal }]];
-const SHORTCUT_FORMATS: readonly (readonly [string, MarkdownFormat])[] = [['format.bold', 'bold'], ['format.italic', 'italic'], ['format.underline', 'underline']];
+const FORMAT_GROUPS: { format: MarkdownFormat; icon: LucideIcon; command?: string; }[][] = [[{ format: 'heading1', icon: Heading1 }, { format: 'heading2', icon: Heading2 }, { format: 'heading3', icon: Heading3 }], [{ format: 'bold', icon: Bold, command: 'format.bold' }, { format: 'italic', icon: Italic, command: 'format.italic' }, { format: 'underline', icon: Underline, command: 'format.underline' }, { format: 'strikethrough', icon: Strikethrough }, { format: 'code', icon: Code }], [{ format: 'bulletList', icon: List }, { format: 'orderedList', icon: ListOrdered }, { format: 'taskList', icon: ListTodo }, { format: 'quote', icon: Quote }], [{ format: 'codeBlock', icon: SquareCode }, { format: 'link', icon: Link }, { format: 'qrcode', icon: QrCode, command: 'format.qrcode' }, { format: 'horizontalRule', icon: SeparatorHorizontal }]];
+const SHORTCUT_FORMATS: readonly (readonly [string, MarkdownFormat])[] = [['format.bold', 'bold'], ['format.italic', 'italic'], ['format.underline', 'underline'], ['format.qrcode', 'qrcode']];
 const commandKeyLabel = (command: string) => {
   const [keys] = bindingsFor(keymapEntry(command));
   return keys ? formatKeys(keys, keyEnvironment).join(' ') : '';
@@ -112,6 +113,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
   const [sourceGutter, setSourceGutter] = useState<HTMLDivElement | null>(null);
   const [lineCopyFeedback, setLineCopyFeedback] = useState<{ ok: boolean; start: number; end: number; } | null>(null);
   const lineCopyTimer = useRef<ReturnType<typeof setTimeout>>();
+  const root = useRef<HTMLDivElement>(null);
+  const [formatRefused, setFormatRefused] = useState(false);
+  const formatRefusedTimer = useRef<ReturnType<typeof setTimeout>>();
   const isMarkdown = /\.(md|markdown|mdx)$/i.test(path);
   const sourceLineCount = content.split('\n').length;
   const outline = isOutlinePath(path);
@@ -306,6 +310,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       source.current?.setSelectionRange(position + directive.length, position + directive.length);
     });
   };
+  /** Says, for a moment, that the format could not be applied (a string a QR code directive cannot carry). */
+  const refuseFormat = () => {
+    setFormatRefused(true);
+    clearTimeout(formatRefusedTimer.current);
+    formatRefusedTimer.current = setTimeout(() => setFormatRefused(false), 4000);
+  };
   const applyFormat = (format: MarkdownFormat) => {
     if (readOnly) return;
     if (mode === 'live') {
@@ -316,6 +326,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
     if (!target) return;
     const selection = outline ? rawSnapshot() : { anchor: target.selectionStart, head: target.selectionEnd };
     const result = formatMarkdown(content, selection.anchor, selection.head, format);
+    if (result.refused) {
+      refuseFormat();
+      return;
+    }
     changeSource(applyEdits(content, result.changes), result);
     if (outline) return;
     requestAnimationFrame(() => {
@@ -324,6 +338,18 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       updateActiveSourceLine(target);
     });
   };
+  const applyFormatRef = useRef(applyFormat);
+  // eslint-disable-next-line react-hooks/refs -- The wrapper's listener is attached once and must apply with the latest content and mode.
+  applyFormatRef.current = applyFormat;
+  const formattable = isMarkdown && !readOnly;
+  // A command outside the editor (the palette) asks for a format on the editor around the focused text; a key reports a refusal the same way.
+  useEffect(() => {
+    const wrapper = root.current;
+    if (!wrapper) return;
+    return listenForFormats(wrapper, { request: format => (formattable ? (applyFormatRef.current(format), true) : false), refused: refuseFormat });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refuseFormat only sets state and a timer.
+  }, [formattable]);
+  useEffect(() => () => clearTimeout(formatRefusedTimer.current), []);
   const toolbar = isMarkdown && !readOnly && !compact
     ? (
       <div className='markdown-format-toolbar' role='toolbar' aria-label={t('editor.formatToolbar')}>
@@ -593,7 +619,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
   }));
 
   return (
-    <div className='relative flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden' data-markdown-editor>
+    <div ref={root} className='relative flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden' data-markdown-editor>
       {toolbar && (toolbarSlot === undefined ? <div className='markdown-insert-toolbar'>{toolbar}</div> : toolbarSlot && createPortal(toolbar, toolbarSlot))}
       {outline && !readOnly && !compact && <p className='px-3 py-1 text-xs text-muted' data-outline-hint>{t('outline.keys')}</p>}
       {iconPicker && <IconPickerDialog onPick={insertIcon} onClose={() => setIconPicker(false)} />}
@@ -734,6 +760,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
             </div>
           </div>
         )}
+      {formatRefused && <div role='status' data-format-refused className='pointer-events-none absolute bottom-4 left-1/2 z-20 max-w-[90%] -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm' style={{ backgroundColor: 'var(--color-text)', color: 'var(--color-bg)' }}>{t('editor.qrcodeRefused')}</div>}
       {lineCopyFeedback && <div role='status' data-line-copy-feedback data-state={lineCopyFeedback.ok ? 'copied' : 'error'} className='pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm' style={{ backgroundColor: 'var(--color-text)', color: 'var(--color-bg)' }}>{lineCopyFeedback.ok ? t(lineCopyFeedback.start === lineCopyFeedback.end ? 'editor.lineCopied' : 'editor.linesCopied', { start: lineCopyFeedback.start, end: lineCopyFeedback.end }) : t('editor.lineCopyFailed')}</div>}
     </div>
   );

@@ -1,5 +1,6 @@
 import type { Availability, CommandSpec } from '../lib/commands/registry.js';
 import { useRegisterCommands } from '../lib/commands/registry.js';
+import { requestFormat } from '../lib/format-request.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
 import type { WorkspaceTab } from '../lib/routes.js';
 
@@ -31,4 +32,6 @@ export function useAppCommands({ t, setActiveTab, canCreateNote, createNote, foc
     },
   });
   useRegisterCommands(noteEditorOpen ? commands.map(closedNoteOnly) : commands);
+  // The editor's own keys act on the editor that has the caret; from the palette the element focused before it opened says which.
+  useRegisterCommands([{ id: 'format.qrcode', run: ({ previousFocus }) => void (previousFocus && requestFormat(previousFocus, 'qrcode')) }]);
 }

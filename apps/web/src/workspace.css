@@ -643,6 +643,11 @@
 .live-md-h3[data-slide-label]::after { border-style: dashed; font-weight: 400; }
 /* A slide directive on its own line: the preview's drawing of it, or its source as a quiet line when it draws nothing. */
 .live-md-slide-directive { cursor: pointer; }
+
+/* A QR code the live editor draws for `::qrcode` (a block) and `:qrcode` (in the text); a click puts the caret in its source. */
+.live-md-qrcode { cursor: pointer; }
+.live-md-qrcode-inline { display: inline-block; vertical-align: middle; line-height: 0; margin: 0 0.15em; }
+.live-md-qrcode.live-md-directive > .qrcode-container { margin: 0.25rem 0; }
 .live-md-slide-directive > :first-child { margin-top: 0; }
 .live-md-slide-directive > :last-child { margin-bottom: 0; }
 .live-md-slide-quiet { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.78em; color: var(--color-muted); opacity: 0.7; cursor: pointer; }

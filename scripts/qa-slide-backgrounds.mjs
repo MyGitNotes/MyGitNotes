@@ -46,7 +46,9 @@ write('notes/example/assets/bg.png', png(640, 360));
 write('notes/example/assets/poster.png', png(320, 180));
 // A real clip (QA_CLIP=/path/to/clip.mp4) must play; without one the core still adds its video element, then removes it when the file fails to load.
 write('notes/example/assets/clip.mp4', process.env.QA_CLIP ? fs.readFileSync(process.env.QA_CLIP) : Buffer.from('not a video'));
-write('notes/example/deck.md', `---
+write(
+  'notes/example/deck.md',
+  `---
 title: Background QA
 type: slide
 slideOptions:
@@ -80,7 +82,8 @@ A page with a YouTube video behind it.
 ## No background
 
 Scan :qrcode{url="https://example.com/inline" size="140"} here, and :qrcode{size="90"} has no address.
-`);
+`,
+);
 write('notes/example/deckview.compilation.yml', 'version: 1\nid: deckview\ntitle: Deck view\narrangement: lane\nsize: medium\nitems:\n  - id: pin-deck\n    kind: note\n    path: notes/example/deck.md\n');
 commitFixture();
 
@@ -154,20 +157,7 @@ try {
         const still = background?.querySelector('img');
         const stageBox = stage.getBoundingClientRect(), stillBox = still?.getBoundingClientRect();
         const canvas = current.querySelector('canvas.qrcode-canvas');
-        return {
-          title: heading?.textContent,
-          hasBackground: !!background,
-          color: heading ? getComputedStyle(heading).color : null,
-          text: current.querySelector('p') ? getComputedStyle(current.querySelector('p')).color : null,
-          still: still ? { loaded: still.complete && still.naturalWidth > 0, border: getComputedStyle(still).borderTopWidth, radius: getComputedStyle(still).borderTopLeftRadius, fit: getComputedStyle(still).objectFit, cursor: getComputedStyle(still).cursor, coversStage: stillBox.width >= stageBox.width - 2 && stillBox.height >= stageBox.height - 2, role: still.getAttribute('role') } : null,
-          credit: background?.querySelector('[data-ct-credit]')?.textContent ?? null,
-          media: window.__bgm.map(media => `${media.tag} ${media.src.slice(0, 80)} on ${media.page}`),
-          playing: !!current.querySelector('[data-ct-background] > .ct-bgm[data-ct-playing]'),
-          bgAttrs: background ? ['data-video', 'data-youtube', 'data-start', 'style'].map(name => background.getAttribute(name)) : null,
-          canvas: canvas ? { width: canvas.width, link: canvas.closest('a')?.getAttribute('href') } : null,
-          calloutBg: current.querySelector('.custom-directive') ? getComputedStyle(current.querySelector('.custom-directive')).backgroundColor : null,
-          otherMedia: [...stage.querySelectorAll('.ct-bgm')].length,
-        };
+        return { title: heading?.textContent, hasBackground: !!background, color: heading ? getComputedStyle(heading).color : null, text: current.querySelector('p') ? getComputedStyle(current.querySelector('p')).color : null, still: still ? { loaded: still.complete && still.naturalWidth > 0, border: getComputedStyle(still).borderTopWidth, radius: getComputedStyle(still).borderTopLeftRadius, fit: getComputedStyle(still).objectFit, cursor: getComputedStyle(still).cursor, coversStage: stillBox.width >= stageBox.width - 2 && stillBox.height >= stageBox.height - 2, role: still.getAttribute('role') } : null, credit: background?.querySelector('[data-ct-credit]')?.textContent ?? null, media: window.__bgm.map(media => `${media.tag} ${media.src.slice(0, 80)} on ${media.page}`), playing: !!current.querySelector('[data-ct-background] > .ct-bgm[data-ct-playing]'), bgAttrs: background ? ['data-video', 'data-youtube', 'data-start', 'style'].map(name => background.getAttribute(name)) : null, canvas: canvas ? { width: canvas.width, link: canvas.closest('a')?.getAttribute('href') } : null, calloutBg: current.querySelector('.custom-directive') ? getComputedStyle(current.querySelector('.custom-directive')).backgroundColor : null, otherMedia: [...stage.querySelectorAll('.ct-bgm')].length };
       });
       console.log(scheme, 'deck', name, JSON.stringify(state));
       await shot(`${scheme}-deck-${name}`);

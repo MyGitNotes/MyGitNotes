@@ -345,18 +345,19 @@ export function transformMdxComponents(content: string, language?: NoteLanguage)
 
 /**
  * A QR code of an address, as the blog writes `:qrcode{url size}`: the link to the address stays in the HTML and each surface draws the code
- * over it (`hydrateQrCodes`). `label` is the address when `url` is not given. Without an address there is nothing to encode, so only the name shows.
+ * over it (`hydrateQrCodes`); a string that is no address has no link. `label` is the string when `url` is not given. Without an address there is nothing to encode, so only the name shows.
  */
-function renderQrCode(attrs: Record<string, string>, label: string | undefined, tag: 'span' | 'div'): string {
+export function renderQrCode(attrs: Record<string, string>, label: string | undefined, tag: 'span' | 'div'): string {
   const url = attrs.url || label || '';
   const size = attrs.size || '128';
   const blockClass = tag === 'div' ? ' qrcode-block' : '';
-  const link = url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="qrcode-link"><span class="qrcode-link-text">🔗 ${escapeHtml(url)}</span></a>` : 'QR Code';
+  // Only an address a browser can open is a link; any other string (Wi-Fi settings, plain text) is encoded and shown as it is, so it is no link to a note that is not there.
+  const link = !url ? 'QR Code' : /^(?:https?|ftp|mailto|tel):/i.test(url) ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="qrcode-link"><span class="qrcode-link-text">🔗 ${escapeHtml(url)}</span></a>` : `<span class="qrcode-link-text">${escapeHtml(url)}</span>`;
   return `<${tag} class="qrcode-container${blockClass}" data-qrcode="${escapeHtml(url)}" data-size="${escapeHtml(size)}">${link}</${tag}>`;
 }
 
 /** A line that is a `::qrcode{url="…" size="…"}` leaf directive on its own, or `::qrcode[url]`. */
-const QRCODE_LEAF = /^ {0,3}::qrcode(?:\[([^\]]*)\])?(?:\{([^}]*)\})?\s*$/;
+export const QRCODE_LEAF = /^ {0,3}::qrcode(?:\[([^\]]*)\])?(?:\{([^}]*)\})?\s*$/;
 
 /**
  * Transforms inline directives like `:icon{name="Heart" size="16"}` and `:qrcode{url="..."}`.

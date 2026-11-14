@@ -10,6 +10,7 @@ import { useAppCommands } from '../app/useAppCommands.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { KeyboardRoot } from '../lib/keyboard/KeyboardDispatcher.js';
 import { KEYMAP } from '../lib/keyboard/keymap.js';
+import { listenForFormats } from '../lib/format-request.js';
 import { openMermaidEditor } from '../lib/mermaid-editor.js';
 import { FileSourceEditor } from './FileSourceEditor.js';
 import { VIM_CHEATSHEET } from '../lib/keyboard/vim-cheatsheet.js';
@@ -435,4 +436,18 @@ it('Ctrl+/ in the real code-file editor toggles a line comment instead of openin
   expect(event.defaultPrevented).toBe(true);
   expect(content).toBe('// const a = 1;');
   expect(document.querySelector('.keyboard-shortcuts-panel')).toBeNull();
+});
+
+it('lists Turn into QR code with its key, and runs it on the editor that had the focus before the palette opened', async () => {
+  const formats: string[] = [];
+  const Editors = () => createElement('div', { 'data-markdown-editor': true, ref: (element: HTMLElement | null) => element && listenForFormats(element, { request: format => (formats.push(format), true), refused: () => {} }) }, createElement('textarea', { 'aria-label': 'Note content' }));
+  render(createElement(KeyboardRoot, null, createElement(Surface, { noteEditorOpen: true }), createElement(Editors)), { wrapper });
+  document.querySelector<HTMLTextAreaElement>('textarea')!.focus();
+  const input = await openPalette();
+  fireEvent.change(input, { target: { value: '>qr code' } });
+  const option = await waitFor(() => document.querySelector<HTMLElement>('[data-command-id="format.qrcode"]')!);
+  expect(option).toHaveTextContent('Turn into QR code');
+  expect(option).toHaveTextContent('Shift');
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(formats).toEqual(['qrcode']));
 });

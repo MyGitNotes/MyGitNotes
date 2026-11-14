@@ -1,6 +1,7 @@
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 import type { EditorState, Range } from '@codemirror/state';
 import { findInlineIcons, inlineIconHtml } from '../../lib/icons/inline-icon.js';
+import { QrCodeWidget } from './qrcode-widgets.js';
 
 /** An icon directive drawn as the icon it names, in place of its source; the source returns when the caret enters it. */
 export class InlineIconWidget extends WidgetType {
@@ -25,9 +26,9 @@ export class InlineIconWidget extends WidgetType {
   }
 }
 
-/** Makes a drawn icon one unit for the caret and for Backspace/Delete, so deleting beside it removes the whole directive. */
+/** Makes a drawn icon or inline QR code one unit for the caret and for Backspace/Delete, so deleting beside it removes the whole directive. */
 export function inlineIconAtomicRanges(decorations: (view: EditorView) => DecorationSet) {
-  return EditorView.atomicRanges.of(view => decorations(view).update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof InlineIconWidget }));
+  return EditorView.atomicRanges.of(view => decorations(view).update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof InlineIconWidget || (decoration.spec.widget instanceof QrCodeWidget && !decoration.spec.widget.block) }));
 }
 
 /**

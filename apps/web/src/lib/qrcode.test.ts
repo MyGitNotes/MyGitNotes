@@ -3,10 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderNote } from './markdown.js';
 import { hydrateQrCodes, qrCodeSize } from './qrcode.js';
 
-const toCanvas = vi.hoisted(() => vi.fn(async (canvas: HTMLCanvasElement, _text: string, options: { width: number; }) => {
-  canvas.width = options.width;
-  canvas.height = options.width;
-}));
+const toCanvas = vi.hoisted(() =>
+  vi.fn(async (canvas: HTMLCanvasElement, _text: string, options: { width: number; }) => {
+    canvas.width = options.width;
+    canvas.height = options.width;
+  })
+);
 vi.mock('qrcode', () => ({ default: { toCanvas } }));
 
 function host(markdown: string, slides?: 'preview' | 'deck'): HTMLElement {
@@ -32,7 +34,7 @@ describe('the QR codes of a note', () => {
     expect(note.textContent).not.toMatch(/(?<!https):qrcode/);
   });
 
-  it('writes a ::qrcode on a line of its own as a block, the blog\'s leaf form', () => {
+  it("writes a ::qrcode on a line of its own as a block, the blog's leaf form", () => {
     const note = host('before\n\n::qrcode{url="https://example.com/talk" size="220"}\n\nafter');
     const block = note.querySelector<HTMLElement>('div.qrcode-container.qrcode-block')!;
     expect([block.dataset.qrcode, block.dataset.size]).toEqual(['https://example.com/talk', '220']);
@@ -41,7 +43,7 @@ describe('the QR codes of a note', () => {
     expect([...note.querySelectorAll('p')].map(paragraph => paragraph.textContent)).toEqual(['before', 'after']);
   });
 
-  it.each(['preview', 'deck'] as const)('writes both forms in a slide note\'s %s', slides => {
+  it.each(['preview', 'deck'] as const)("writes both forms in a slide note's %s", slides => {
     const note = host('## One\n\n::qrcode{url="https://example.com/a"}\n\ntext :qrcode{url="https://example.com/b"}\n', slides);
     expect([...note.querySelectorAll<HTMLElement>('[data-qrcode]')].map(element => element.dataset.qrcode)).toEqual(['https://example.com/a', 'https://example.com/b']);
   });
@@ -59,9 +61,9 @@ describe('the QR codes of a note', () => {
     expect(containers.map(element => element.textContent)).toEqual(['QR Code', 'QR Code']);
   });
 
-  it('drops a javascript: address from the link, and keeps it out of the code\'s link', () => {
+  it('makes no link of a javascript: address', () => {
     const note = host(':qrcode{url="javascript:alert(1)"}');
-    expect(note.querySelector('a')?.getAttribute('href')).toBeNull();
+    expect(note.querySelector('a')).toBeNull();
   });
 });
 
