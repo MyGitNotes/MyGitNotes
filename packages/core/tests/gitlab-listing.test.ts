@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { SourceError } from '../src/github-api.js';
 import { openRemoteRepository } from '../src/remote-factory.js';
 import type { RemoteCache } from '../src/remote-cache.js';
 import { gitWorktree } from './fixtures/git-worktree.js';
@@ -161,6 +162,26 @@ describe('GitLab listing of a large repository', () => {
       await listed(repository, repository.process(), cache);
       expect(repository.take()).toEqual({ project: 1, branch: 1, tree: pages });
     }
+  });
+
+  it('answers with a listing the shared cache would not take, and holds it in the process', async () => {
+    const sealing = sealedCache();
+    let refused = 0;
+    const cache: RemoteCache = { ...sealing, set: async () => (refused++, Promise.reject(new SourceError('Cache store unavailable.', 503))) };
+    const repository = gitlabRepository(documentationTree()), process = repository.process();
+    const pages = Math.ceil(repository.listing(repository.head).length / 100);
+    expect(await listed(repository, process, cache)).toEqual(repository.listing(repository.head));
+    expect(refused).toBe(1);
+    expect(repository.take()).toEqual({ project: 1, branch: 1, tree: pages });
+    expect(await listed(repository, process, cache)).toEqual(repository.listing(repository.head));
+    expect(repository.take()).toEqual({ project: 1, branch: 1 });
+    // A listing followed from that one is answered and held the same way.
+    repository.push({ 'docs/area-1/section-1/page-1.md': '# Changed elsewhere\n' });
+    expect(await listed(repository, process, cache)).toEqual(repository.listing(repository.head));
+    expect(refused).toBe(2);
+    expect(repository.take()).toEqual({ project: 1, branch: 1, compare: 1, head: 1, root: 1 });
+    expect(await listed(repository, process, cache)).toEqual(repository.listing(repository.head));
+    expect(repository.take()).toEqual({ project: 1, branch: 1 });
   });
 
   it('rejects a cached listing that was changed, or sealed with another secret, and lists again', async () => {

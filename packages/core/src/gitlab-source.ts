@@ -143,9 +143,9 @@ export class GitLabSource extends RemoteSource {
       const derived = gitListing(entries.filter(entry => entry.type !== 'tree'), sha.length);
       if (derived?.length !== entries.length || !entries.every((entry, index) => sameEntry(entry, derived[index]))) return frozen(entries);
     }
-    // Held first, so a store that fails leaves the process its listing.
+    // Held first: a store that will not take the listing leaves the process holding it, and the request its answer.
     this.hold(sha, entries);
-    await this.store(sha, entries);
+    await this.store(sha, entries).catch(() => undefined);
     return entries;
   }
   /** Keeps a listing for the requests of every reader this process serves. */
