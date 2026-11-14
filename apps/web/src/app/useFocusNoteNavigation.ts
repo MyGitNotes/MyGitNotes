@@ -11,12 +11,14 @@ interface Params {
   setFocusNarrowView: ReturnType<typeof useFocusPanes>['setFocusNarrowView'];
   handleOpenNote: ReturnType<typeof useNoteActions>['handleOpenNote'];
   setAddingToFocus: ReturnType<typeof useFocusPanes>['setAddingToFocus'];
+  /** Whether a note is a template file of its notebook, which opens in zoom only and never in a Focus pane. */
+  isTemplate?: (note: Pick<NoteListItem, 'notebookId' | 'path'>) => boolean;
 }
 
-export function useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus }: Params) {
+export function useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus, isTemplate }: Params) {
   /** In a displayed Focus a note of this notebook opens in a pane: the active one, or `source` or beside it per `placement`; false leaves it to zoom. */
   const openInFocus = async (note: NoteListItem, source?: string, placement?: OpenPlacement) => {
-    if (!noteFocus.shown || note.notebookId !== selectedNotebookId) return false;
+    if (!noteFocus.shown || note.notebookId !== selectedNotebookId || isTemplate?.(note)) return false;
     const result = await noteFocus.openNote(note.path, source, placement);
     if (result === 'opened') setFocusNarrowView('focus');
     return result === 'opened' || result === 'blocked';
@@ -33,7 +35,7 @@ export function useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocus
     const note = noteFocus.notes.get(path);
     if (note) void handleOpenNote(note);
   };
-  const addToFocus = (note: NoteItem) => note.notebookId === selectedNotebookId ? () => setAddingToFocus({ tab: { kind: 'note', path: note.path }, label: note.title }) : undefined;
+  const addToFocus = (note: NoteItem) => note.notebookId === selectedNotebookId && !isTemplate?.(note) ? () => setAddingToFocus({ tab: { kind: 'note', path: note.path }, label: note.title }) : undefined;
 
   return { openInFocus, openFromBrowse, openLink, zoomFocusNote, addToFocus };
 }

@@ -52,7 +52,8 @@ it('creates a note from a template, and in the folder a compilation lane draws f
   const input = params();
   const hook = renderHook(useCreateNote, { initialProps: input });
   await act(() => hook.result.current.createNote({ templateId: 'template', folder: 'sub', tag: 'reading' }));
-  expect(api.renderNoteTemplate).toHaveBeenCalledWith({ notebookId: 'a', templateId: 'template', title: 'Untitled' });
+  // The reader's own date and time fill {{date}} and {{time}}.
+  expect(api.renderNoteTemplate).toHaveBeenCalledWith({ notebookId: 'a', templateId: 'template', title: 'Untitled', date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), time: expect.stringMatching(/^\d{2}:\d{2}$/) });
   expect(api.saveNote.mock.calls[0][0]).toMatchObject({ path: 'notes/shared/sub/untitled.md', content: '# Untitled\n\nFrom template.\n', metadata: { kind: 'reading', tags: ['reading'] } });
 });
 
@@ -124,4 +125,28 @@ it('creates a slide note from the built-in Slides template, without asking the w
   expect(api.saveNote.mock.calls[0][0]).toMatchObject({ path: 'notes/shared/untitled.md', content: '# Untitled\n\n---\n' });
   // The heading names the note, as for a blank note; the blog needs both slideOptions to read it by its headings.
   expect(api.saveNote.mock.calls[0][0].metadata).toEqual({ id: 'untitled', type: 'slide', slideOptions: { engine: 'contour', structure: 'headings' }, tags: [], status: 'inbox' });
+});
+
+it('keeps the template’s own tags and status unless the caller chose them', async () => {
+  api.renderNoteTemplate.mockResolvedValue({ content: '# Untitled\n\n> {{takeaway}}\n', metadata: { title: 'Untitled', tags: ['reading'], status: 'unread', author: '{{author}}' }, unfilled: ['takeaway', 'author'] });
+  const input = params();
+  const hook = renderHook(useCreateNote, { initialProps: input });
+  await act(() => hook.result.current.createNote({ templateId: 'reading' }));
+  // Every placeholder but title, date and time stays as written, for the writer to replace.
+  expect(api.saveNote.mock.calls[0][0]).toMatchObject({ path: 'notes/shared/untitled.md', content: '# Untitled\n\n> {{takeaway}}\n', metadata: { tags: ['reading'], status: 'unread', author: '{{author}}' } });
+  await act(() => hook.result.current.createNote({ templateId: 'reading', tag: 'mine', status: 'done' }));
+  expect(api.saveNote.mock.calls[1][0].metadata).toMatchObject({ tags: ['mine'], status: 'done' });
+});
+
+it('fills a template that is still a working change of this page here, without asking the workspace', async () => {
+  const draft = { note: { id: 't', path: 'notes/shared/.templates/reading.md', notebookId: 'a', title: '{{title}}', tags: [], metadata: { template: { name: 'Reading', placeholders: { book: 'The book', author: { default: 'Unknown' } } }, kind: 'reading', author: '{{author}}', created: '2026-01-01T00:00:00.000Z' }, content: '# {{title}}\n\n{{date}} {{time}} {{book}}\n' } as NoteItem, base: null };
+  const input = params({ remote: true, templates: [{ notebookId: 'a', id: 'reading', name: 'Reading', source: 'file', file: 'notes/shared/.templates/reading.md', placeholders: [] }], readDraft: (_: string, path: string) => path === 'notes/shared/.templates/reading.md' ? draft : undefined });
+  const hook = renderHook(useCreateNote, { initialProps: input });
+  await act(() => hook.result.current.createNote({ templateId: 'reading' }));
+  expect(api.renderNoteTemplate).not.toHaveBeenCalled();
+  const staged = vi.mocked(input.stageWorkingNote).mock.calls[0][0];
+  expect(staged.path).toBe('notes/shared/untitled.md');
+  expect(staged.content).toMatch(/^# Untitled\n\n\d{4}-\d{2}-\d{2} \d{2}:\d{2} \{\{book\}\}\n$/);
+  // The template block and the template file's own timestamps stay behind; a declared default is not applied here.
+  expect(staged.metadata).toEqual({ id: 'untitled', kind: 'reading', author: '{{author}}', title: 'Untitled', tags: [], status: 'inbox' });
 });

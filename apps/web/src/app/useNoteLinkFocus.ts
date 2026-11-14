@@ -37,10 +37,12 @@ interface Params {
   /** The browse view behind the note, where the Focus is shown. */
   returnTo: string;
   setFocusNarrowView: ReturnType<typeof useFocusPanes>['setFocusNarrowView'];
+  /** Whether a note is a template file of its notebook, which stays in zoom: it never opens in a Focus pane. */
+  isTemplate?: (note: Pick<NoteItem, 'notebookId' | 'path'>) => boolean;
 }
 
 /** Opens a linked note as a tab of the active Focus and shows that Focus; when the Focus cannot take it, the note stays in zoom as before. */
-export function useOpenNoteLinkInFocus({ link, location, navigate, routedNote, routeError, noteFocus, selectedNotebookId, returnTo, setFocusNarrowView }: Params) {
+export function useOpenNoteLinkInFocus({ link, location, navigate, routedNote, routeError, noteFocus, selectedNotebookId, returnTo, setFocusNarrowView, isTemplate }: Params) {
   const { pending, settle } = link;
   const ready = pending && Boolean(routedNote) && !noteFocus.loading && Boolean(noteFocus.shown && noteFocus.layout);
   /* eslint-disable react-hooks/exhaustive-deps -- The note opens once, when it and the Focus are ready; the Focus callbacks change on every render and must not replay it. */
@@ -51,7 +53,7 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, routedNote, r
     if (!ready || !routedNote) return;
     settle();
     // A note of another notebook has no place in this notebook's Focus, so it stays in zoom.
-    if (routedNote.notebookId !== selectedNotebookId) return;
+    if (routedNote.notebookId !== selectedNotebookId || isTemplate?.(routedNote)) return;
     void noteFocus.openNote(routedNote.path).then(result => {
       if (result !== 'opened') return;
       setFocusNarrowView('focus');

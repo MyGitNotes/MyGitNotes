@@ -168,5 +168,16 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
   /** Renames `note` to `name` at once, as the title typed in the editor asks, without the dialog. */
   const renameNoteTo = (note: MovedNote, name: string) => canWriteNotebook(note.notebookId) ? perform(() => rename(note, name)) : Promise.resolve();
 
-  return { request, busy, moveNote, renameNote, renameNoteTo, moveTo, confirmMove, confirmRename, cancel: () => setRequest(null) };
+  /** Puts the file of `note` at `destination` as it is, its title and text untouched, as a template file is renamed; a refusal is thrown to the caller. */
+  const relocateFile = async (note: MovedNote, destination: string) => {
+    if (!canWriteNotebook(note.notebookId)) throw new Error(t('outline.readOnly'));
+    setBusy(true);
+    try {
+      await relocate(note, destination);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return { request, busy, moveNote, renameNote, renameNoteTo, relocateFile, moveTo, confirmMove, confirmRename, cancel: () => setRequest(null) };
 }

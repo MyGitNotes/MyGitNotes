@@ -5,6 +5,8 @@ import type { QueryClient } from '@tanstack/react-query';
 import { fetchGitStatus, renderNoteTemplate, saveNote } from '../lib/api.js';
 import { buildNewNoteDraft } from '../lib/new-note.js';
 import { isBuiltinTemplate, renderBuiltinNoteTemplate } from '../lib/builtin-templates.js';
+import { localTemplateClock, renderNoteTemplate as fillNoteTemplate } from '@mygitnotes/core/note-template';
+import type { NoteTemplateInfo } from '../lib/note-templates.js';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import { noteLookupOptions, type NoteQueryScope } from '../lib/use-note-queries.js';
 import type { FolderItem, GitStatus, NotebookConfig, NoteItem } from '../lib/types.js';
@@ -23,6 +25,8 @@ interface UseCreateNoteParams {
   remote: boolean;
   canWrite: boolean;
   readDraft: WorkspaceState['readDraft'];
+  /** The selected notebook's templates, which name the file of a template whose working change is filled in on this page. */
+  templates?: NoteTemplateInfo[];
   queryClient: QueryClient;
   queryScope: NoteQueryScope;
   stageWorkingNote: (note: NoteItem, base: NoteItem | null) => NoteItem;
@@ -59,7 +63,7 @@ export function untitledCandidates(directory: string, suffix: string, count = CA
 }
 
 /** Creates a note, outline or templated note at once, with default values, and opens it. */
-export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookId, folders, browsedFolder, foldersLoading, remote, canWrite, readDraft, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, newNoteStatuses, sourceId, t, onCreated, onError }: UseCreateNoteParams) {
+export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookId, folders, browsedFolder, foldersLoading, remote, canWrite, readDraft, templates, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, newNoteStatuses, sourceId, t, onCreated, onError }: UseCreateNoteParams) {
   const [creating, setCreating] = useState(false);
   const generation = useRef(0);
   const submitting = useRef(false);
@@ -106,10 +110,18 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       if (!notePath) throw new Error(t('createNote.tooManyUntitled'));
       const slug = notePath.slice(notePath.lastIndexOf('/') + 1).replace(kind === 'outline' ? OUTLINE_SUFFIX : '.md', '');
       const title = t('createNote.untitled');
-      const status = opts.status || newNoteStatuses[0];
-      const tags = opts.tags || (opts.tag ? [opts.tag] : []);
-      // A built-in template is filled in here; a notebook's own is read from its file by the workspace.
-      const template = kind !== 'note' || !opts.templateId ? undefined : isBuiltinTemplate(opts.templateId) ? renderBuiltinNoteTemplate(opts.templateId, title, t) : await renderNoteTemplate({ notebookId: notebook.id, templateId: opts.templateId, title });
+      // A built-in template is filled in here; a notebook's own is read from its file by the workspace, with this reader's
+      // date and time. Only the title, date and time are filled: every other placeholder stays as written, a declared default
+      // included, for the writer to replace.
+      const clock = localTemplateClock();
+      // A template that is still a working change of this page has no file the workspace could read, so it is filled in here.
+      const templateFile = remote && opts.templateId ? templates?.find(candidate => candidate.id === opts.templateId)?.file : undefined;
+      const templateDraft = templateFile ? readDraft(notebook.id, templateFile) : undefined;
+      const template = kind !== 'note' || !opts.templateId ? undefined : isBuiltinTemplate(opts.templateId) ? renderBuiltinNoteTemplate(opts.templateId, title, t) : templateDraft && !templateDraft.deleted ? fillNoteTemplate(templateDraft.note, { title, ...clock, defaults: false }) : await renderNoteTemplate({ notebookId: notebook.id, templateId: opts.templateId, title, ...clock });
+      // The template's own status and tags are the note's unless the caller chose them.
+      const templateTags = Array.isArray(template?.metadata.tags) ? template.metadata.tags.map(String) : [];
+      const status = opts.status || (typeof template?.metadata.status === 'string' && template.metadata.status) || newNoteStatuses[0];
+      const tags = opts.tags || (opts.tag ? [opts.tag] : templateTags);
       const draft = buildNewNoteDraft({ slug, title, tags, status, template });
       if (opts.initialLink && opts.initialLink.notebookId !== notebook.id) throw new Error(t('outline.changed'));
       const content = kind === 'outline' ? `- ${opts.initialLink ? noteMarkdownLink(notePath, opts.initialLink.path, opts.initialLink.title) : ''}` : draft.content;
