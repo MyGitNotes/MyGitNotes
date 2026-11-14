@@ -119,6 +119,20 @@ describe('a local workspace serves private R2 objects through its cache', () => 
     expect(cacheFiles()).toEqual([]);
   });
 
+  it('redirects to the bucket, as before the cache, when the cache folder cannot be written', async () => {
+    const bucket = await startBucket({ 'ex/maps/old west.png': 'map bytes' });
+    await start({ ...R2, MYGITNOTES_R2_ENDPOINT: bucket.endpoint });
+    // The cache folder is named under a file, so nothing can be created there.
+    vi.stubEnv('MYGITNOTES_R2_CACHE_DIR', path.join(root, 'notes/ex/rules.md/cache'));
+    await new Promise<void>(resolve => servers.pop()!.close(() => resolve()));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    base = await listen(createServer(createApp(root)));
+    const answer = await get(MAP_URL);
+    expect(answer.status).toBe(302);
+    expect(new URL(answer.headers.get('location')!).pathname).toBe('/private-assets/ex/maps/old%20west.png');
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('[r2-assets]'));
+  });
+
   it('reads through a hosted deployment with an agent token when no bucket keys are set, and sends the token to no one else', async () => {
     const bucket = await startBucket({ 'ex/maps/old west.png': 'map bytes' });
     const calls: { authorization?: string; arguments: Record<string, unknown>; }[] = [];

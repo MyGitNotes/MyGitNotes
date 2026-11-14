@@ -1,6 +1,6 @@
 import express from 'express';
 import path from 'node:path';
-import { bucketR2Source, type CachedR2Object, fetchR2ObjectToCache, presignR2Object, type R2Cache, type R2ObjectSource, R2ObjectTooLargeError, r2PreviewType, r2ReferenceKeys, SourceError } from '@mygitnotes/core';
+import { bucketR2Source, type CachedR2Object, fetchR2ObjectToCache, presignR2Object, type R2Cache, R2CacheWriteError, type R2ObjectSource, R2ObjectTooLargeError, r2PreviewType, r2ReferenceKeys, SourceError } from '@mygitnotes/core';
 import { type AssetStorage, inAssetScope, resolveAssetScope } from './asset-storage.js';
 import type { RepositoryHandle } from './request-workspace.js';
 
@@ -49,14 +49,15 @@ export interface LocalR2AssetOptions {
  * `createR2AssetHandler` makes: the requester reads `note`, the note references the key, and the key lies in the asset
  * scope when the request has one; a cached object is held to it too. A cached object is answered from disk without
  * asking the bucket. A miss reads the object once, from the scope's bucket or else from `remote`, into the cache and
- * answers it; without either it is not found. An object too large to cache on a view is redirected to its
- * short-lived URL, as before the cache.
+ * answers it; without either it is not found. An object too large to cache on a view, and any object while the
+ * cache folder cannot be written, is redirected to its short-lived URL, as before the cache.
  */
 export function createLocalR2AssetHandler(storage: AssetStorage, readNote: NoteReader, cache: R2Cache, { remote, maxObjectBytes = VIEW_CACHE_BYTES }: LocalR2AssetOptions = {}): express.RequestHandler {
   /** Reads in flight by key, so views that arrive together read the bucket once. */
   const reading = new Map<string, Promise<CachedR2Object>>();
   /** Keys found too large on an earlier view, so the next one redirects without reading the bucket to learn the size. */
   const tooLarge = new Set<string>();
+  let warned = false;
   const send = (res: express.Response, object: CachedR2Object) => {
     const { kind, contentType } = r2PreviewType(object.key);
     const filename = encodeURIComponent(object.key.split('/').pop() || 'file').replace(/'/g, '%27');
@@ -96,6 +97,12 @@ export function createLocalR2AssetHandler(storage: AssetStorage, readNote: NoteR
       try {
         send(res, await pending);
       } catch (error) {
+        if (error instanceof R2CacheWriteError) {
+          // Without a writable cache the object is still shown, straight from the bucket; the reason is logged once.
+          if (!warned) console.warn(`[r2-assets] ${error.message} Objects are redirected to the bucket and not cached.`);
+          warned = true;
+          return res.redirect(302, url);
+        }
         if (!(error instanceof R2ObjectTooLargeError)) throw error;
         if (tooLarge.size >= 1000) tooLarge.clear();
         tooLarge.add(key);

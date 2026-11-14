@@ -31,6 +31,20 @@ export class R2ObjectTooLargeError extends Error {
   override name = 'R2ObjectTooLargeError';
 }
 
+/** The cache folder could not be written (no permission, no space, a read-only disk); `cause` holds the file system's error. */
+export class R2CacheWriteError extends Error {
+  override name = 'R2CacheWriteError';
+}
+
+/** Runs a file-system step of a cache write, so its failure is told apart from a failure of the body being read. */
+async function onDisk<T>(step: () => T | Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (error) {
+    throw new R2CacheWriteError(`The R2 cache could not be written: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
+}
+
 /**
  * The private objects one local checkout has downloaded, by key. A cache holds the objects of one bucket: clear it
  * (delete its folder) when the checkout is pointed at another one, or to free the space.
@@ -56,11 +70,13 @@ export function r2Cache(root: string): R2Cache {
   /** Writes through a new file beside the target and renames it over, which replaces a link instead of following it. */
   const replace = async (target: string, write: (handle: fs.promises.FileHandle) => Promise<void>) => {
     const temp = `${target}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-    const handle = await fs.promises.open(temp, 'wx', 0o600);
+    const handle = await onDisk(() => fs.promises.open(temp, 'wx', 0o600));
     try {
       await write(handle);
-      await handle.close();
-      fs.renameSync(temp, target);
+      await onDisk(async () => {
+        await handle.close();
+        fs.renameSync(temp, target);
+      });
     } catch (error) {
       await handle.close().catch(() => undefined);
       fs.rmSync(temp, { force: true });
@@ -84,13 +100,13 @@ export function r2Cache(root: string): R2Cache {
     },
     async store(key, body, { etag, maxBytes } = {}) {
       const file = objectFile(key);
-      fs.mkdirSync(base, { recursive: true });
+      await onDisk(() => fs.mkdirSync(base, { recursive: true }));
       let size = 0;
       await replace(file, async handle => {
         const append = async (chunk: Uint8Array) => {
           size += chunk.byteLength;
           if (maxBytes !== undefined && size > maxBytes) throw new R2ObjectTooLargeError(`The object is larger than ${maxBytes} bytes.`);
-          await handle.appendFile(chunk);
+          await onDisk(() => handle.appendFile(chunk));
         };
         if (body instanceof Uint8Array) return append(body);
         const reader = body.getReader();
@@ -102,7 +118,7 @@ export function r2Cache(root: string): R2Cache {
         }
       });
       const cached: CachedR2Object = { key, file, size, ...(etag ? { etag } : {}), fetchedAt: new Date().toISOString() };
-      await replace(`${file}.json`, handle => handle.appendFile(JSON.stringify({ key, size, ...(etag ? { etag } : {}), fetchedAt: cached.fetchedAt })));
+      await replace(`${file}.json`, handle => onDisk(() => handle.appendFile(JSON.stringify({ key, size, ...(etag ? { etag } : {}), fetchedAt: cached.fetchedAt }))));
       return cached;
     },
   };

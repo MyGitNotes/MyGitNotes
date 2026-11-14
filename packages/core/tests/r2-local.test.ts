@@ -79,6 +79,13 @@ describe('the local R2 cache', () => {
     expect(listFiles(cache.root)).toEqual([]);
   });
 
+  it('says so when the cache folder cannot be written, apart from a failure of the body it reads', async () => {
+    fs.writeFileSync(path.join(dir, 'file'), 'not a folder');
+    await expect(r2Cache(path.join(dir, 'file/cache')).store('ex/a.png', new Uint8Array([1]))).rejects.toMatchObject({ name: 'R2CacheWriteError' });
+    const broken = new ReadableStream<Uint8Array>({ pull: controller => controller.error(new TypeError('terminated')) });
+    await expect(r2Cache(path.join(dir, 'cache')).store('ex/a.png', broken)).rejects.toMatchObject({ name: 'TypeError' });
+  });
+
   it('refuses a cache entry that is a symlink out of the cache root', async () => {
     const cache = r2Cache(path.join(dir, 'cache'));
     const stored = await cache.store('ex/a.png', new TextEncoder().encode('image bytes'));
