@@ -1,8 +1,63 @@
+import { timingSafeEqual } from 'node:crypto';
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { type RemoteChange, type RemoteCommit, type RemoteEntry, type RemoteSnapshot, RemoteSource } from './remote-source.js';
 import { SourceError } from './github-api.js';
+import { gitListing, inGitOrder } from './git-tree.js';
 import { normalizeGitLabUrl, sourceIdentity } from './source-config.js';
-import type { RemoteCache } from './remote-cache.js';
+import { gitBlobId, REMOTE_CACHE_MAX_VALUE, REMOTE_CACHE_TTL, type RemoteCache } from './remote-cache.js';
 import { reaching, type RepositoryScope } from './repository.js';
+
+/** The entries of one commit's tree. */
+interface Listing {
+  sha: string;
+  entries: RemoteEntry[];
+}
+/** A listing as the shared cache keeps it: path, mode, type and object id. */
+type ListingRow = [string, string, string, string];
+const LISTING_KEY_VERSION = 2;
+const OBJECT_ID = /^[a-f0-9]{40}([a-f0-9]{24})?$/;
+/** Listings this process holds and those it is reading, by branch and commit. Keyed like the GitHub runtime by its `fetch`, so test doubles never share one. */
+const processListings = new WeakMap<typeof fetch, { held: Map<string, RemoteEntry[]>; reading: Map<string, Promise<RemoteEntry[]>>; }>();
+/** The most entries the held listings count together. A listing derived from another shares its unchanged entries, so the count overstates their memory. */
+const PROCESS_LISTING_ENTRIES = 200_000;
+/** A comparison that changed more files than this is not followed. */
+const FOLLOWED_FILES = 200;
+/** What one cache value holds of a sealed listing, leaving room for its commit and seal. */
+const LISTING_PART = REMOTE_CACHE_MAX_VALUE - 1024;
+/** Room to inflate a cached listing; the 100,000 entries the source accepts take less. */
+const LISTING_MAX_BYTES = 64 * 1024 * 1024;
+/** How long a save waits for the listing of its own commit before it answers without it. */
+const ADOPT_WAIT = 4000;
+
+/** Whether two entries name one object at one path, as one kind and mode. */
+const sameEntry = (a: RemoteEntry, b: RemoteEntry | undefined) => a.path === b?.path && a.sha === b.sha && a.type === b.type && a.mode === b.mode;
+/** Freezing keeps one request from changing a listing another one reads. */
+function frozen(entries: RemoteEntry[]): RemoteEntry[] {
+  for (const entry of entries) Object.freeze(entry);
+  return Object.freeze(entries) as RemoteEntry[];
+}
+
+/** Settles when `work` does or `ms` have passed, whichever comes first, and never rejects. `work` goes on either way. */
+function within(work: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise(resolve => {
+    const timer = setTimeout(resolve, ms);
+    void work.catch(() => undefined).then(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+/** The token of the page a keyset-paginated response names next in its `Link` header; null on the last page. */
+function nextPageToken(link: string | null, site: string): string | null {
+  const next = /<([^>]*)>\s*;\s*rel="?next"?/i.exec(link || '');
+  try {
+    // Only the token is taken, so requests keep going to the configured site, whatever host the header names.
+    return next && new URL(next[1], site).searchParams.get('page_token');
+  } catch {
+    return null;
+  }
+}
 
 /** GitLab API v4 adapter. Reads remain pinned to immutable Git objects. */
 export class GitLabSource extends RemoteSource {
@@ -46,23 +101,250 @@ export class GitLabSource extends RemoteSource {
     const branch = await reaching('missing-branch', () => this.json(`/repository/branches/${encodeURIComponent(this.branch)}`));
     const sha = branch.commit?.id;
     if (typeof sha !== 'string' || !/^[a-f0-9]{40,64}$/.test(sha)) throw new SourceError('GitLab returned an invalid branch revision.', 502);
+    return { sha, treeSha: sha, entries: await this.listing(sha), info: { private: project.visibility !== 'public', default_branch: project.default_branch, permissions: { push: Boolean(this.token && branch.can_push) } } };
+  }
+  private memory() {
+    let memory = processListings.get(this.request);
+    if (!memory) processListings.set(this.request, memory = { held: new Map(), reading: new Map() });
+    return memory;
+  }
+  /**
+   * What caches call this branch's listing. It names the site with the project, since a commit's listing hashes to no
+   * key of its own, and as a JSON array, so no site, project and branch spell the key of three others.
+   */
+  private listingKey() {
+    return `mgn:gitlab-tree:v${LISTING_KEY_VERSION}:${JSON.stringify([this.url, this.cacheRepository(), this.branch])}`;
+  }
+  /** The cache's seal over this branch's key, a commit and the listing stored as its own; undefined when the cache seals nothing. */
+  private seal(sha: string, data: string): string | undefined {
+    return this.cache?.sign?.(JSON.stringify([this.listingKey(), sha, data]));
+  }
+  /**
+   * Every entry of commit `sha`, which this reader's own branch read just named. A commit never changes, so the listing
+   * comes from this process when it holds it, and requests that arrive together for one nobody holds wait for one read.
+   */
+  private async listing(sha: string): Promise<RemoteEntry[]> {
+    const { held, reading } = this.memory(), key = `${this.listingKey()}:${sha}`;
+    for (;;) {
+      const entries = held.get(key);
+      if (entries) {
+        // Refresh its place, so the least recently used listing goes first.
+        held.delete(key);
+        held.set(key, entries);
+        return entries;
+      }
+      const shared = reading.get(key);
+      if (!shared) break;
+      try {
+        return await shared;
+      } catch { /* The request that was reading failed on its own credential or connection. Of those that waited on it, the first to look again reads, and the rest wait on that one. */ }
+    }
+    const own = this.readListing(sha).finally(() => {
+      if (reading.get(key) === own) reading.delete(key);
+    });
+    reading.set(key, own);
+    return own;
+  }
+  /**
+   * A listing this process does not hold: the shared cache's when it is of this commit, else an earlier listing moved
+   * to this commit by GitLab's comparison, else GitLab's own, page by page.
+   */
+  private async readListing(sha: string): Promise<RemoteEntry[]> {
+    const stored = await this.storedListing();
+    if (stored?.sha === sha) return this.hold(sha, stored.entries);
+    // The shared cache holds what any process read last, which is at least as recent as what this one did.
+    const base = stored ?? this.lastHeld();
+    let entries = base && await this.follow(base, sha);
+    if (!entries) {
+      entries = inGitOrder(await this.list(sha, true));
+      // GitLab names no root tree to hash a listing back to, but each directory it lists has to hash to the entries
+      // listed under it. A listing that does not, as when a page named no next one while entries remained, answers the
+      // requests waiting on this read and is kept nowhere. One short by whole top-level entries still passes.
+      const derived = gitListing(entries.filter(entry => entry.type !== 'tree'), sha.length);
+      if (derived?.length !== entries.length || !entries.every((entry, index) => sameEntry(entry, derived[index]))) return frozen(entries);
+    }
+    // Held first: a store that will not take the listing leaves the process holding it, and the request its answer.
+    this.hold(sha, entries);
+    await this.store(sha, entries).catch(() => undefined);
+    return entries;
+  }
+  /** Keeps a listing for the requests of every reader this process serves. */
+  private hold(sha: string, entries: RemoteEntry[]): RemoteEntry[] {
+    const { held } = this.memory(), key = `${this.listingKey()}:${sha}`;
+    frozen(entries);
+    held.delete(key);
+    held.set(key, entries);
+    let total = 0;
+    for (const listing of held.values()) total += listing.length + 1;
+    for (const [oldest, listing] of held) {
+      if (total <= PROCESS_LISTING_ENTRIES || oldest === key) break;
+      held.delete(oldest);
+      total -= listing.length + 1;
+    }
+    return entries;
+  }
+  /** The listing of this branch this process used last, to follow a comparison from. */
+  private lastHeld(): Listing | undefined {
+    const prefix = `${this.listingKey()}:`;
+    let last: Listing | undefined;
+    for (const [key, entries] of this.memory().held) {
+      if (key.startsWith(prefix)) last = { sha: key.slice(prefix.length), entries };
+    }
+    return last;
+  }
+  /**
+   * The shared cache's listing of this branch, whichever commit it is of. GitLab's REST API names no root tree to
+   * hash a listing back to, so the value is trusted only under the cache's seal over its key, commit and content: a
+   * writer of the store can then neither change a listing nor present one as another commit's or another project's.
+   */
+  private async storedListing(): Promise<Listing | undefined> {
+    const cache = this.cache, key = this.listingKey();
+    if (!cache?.sign) return undefined;
+    const [first] = await cache.get([key]);
+    if (first === null) return undefined;
+    let slot: { sha?: unknown; seal?: unknown; parts?: unknown; data?: unknown; };
+    try {
+      slot = JSON.parse(first);
+    } catch {
+      return undefined;
+    }
+    const { sha, seal, parts } = slot || {};
+    let { data } = slot || {};
+    if (typeof sha !== 'string' || !OBJECT_ID.test(sha) || typeof seal !== 'string' || typeof data !== 'string' || typeof parts !== 'number' || !Number.isInteger(parts) || parts < 1 || parts > 64) return undefined;
+    // One value per read keeps each within the store's request size.
+    for (let part = 1; part < parts; part++) {
+      const [next] = await cache.get([`${key}:${part}`]);
+      if (next === null) return undefined;
+      data += next;
+    }
+    const expected = Buffer.from(this.seal(sha, data) ?? ''), given = Buffer.from(seal);
+    if (!expected.length || expected.length !== given.length || !timingSafeEqual(expected, given)) return undefined;
+    try {
+      const rows = JSON.parse(inflateRawSync(Buffer.from(data, 'base64'), { maxOutputLength: LISTING_MAX_BYTES }).toString()) as ListingRow[];
+      return { sha, entries: rows.map(([path, mode, type, id]) => ({ path, mode, type, sha: id })) };
+    } catch {
+      return undefined;
+    }
+  }
+  /** Seals a listing into the shared cache as this branch's latest. One per branch is kept, so the store does not grow with every commit. */
+  private async store(sha: string, entries: RemoteEntry[]) {
+    const cache = this.cache, key = this.listingKey();
+    if (!cache?.sign) return;
+    const data = deflateRawSync(JSON.stringify(entries.map((entry): ListingRow => [entry.path, entry.mode, entry.type, entry.sha]))).toString('base64');
+    const seal = this.seal(sha, data);
+    if (!seal) return;
+    const parts: string[] = [];
+    for (let start = 0; start < data.length; start += LISTING_PART) parts.push(data.slice(start, start + LISTING_PART));
+    // The parts beyond the first are written before the value that names them; a reader of a torn write finds the seal broken and reads for itself.
+    await cache.set([...parts.slice(1).map((part, index): [string, string] => [`${key}:${index + 1}`, part]), [key, JSON.stringify({ sha, seal, parts: parts.length, data: parts[0] })]], REMOTE_CACHE_TTL);
+  }
+  /** The tree of `commit` as GitLab lists it, every level of it or the top one. */
+  private async list(commit: string, recursive: boolean, keyset = true): Promise<RemoteEntry[]> {
     const entries: RemoteEntry[] = [];
-    const seen = new Set<string>();
-    for (let page = 1;; page++) {
-      const response = await this.response(`/repository/tree?ref=${sha}&recursive=true&per_page=100&page=${page}`);
+    const seen = new Set<string>(), asked = new Set<string>();
+    for (let pointer = keyset ? '' : '&page=1', page = 1;; page++) {
+      const response = await this.response(`/repository/tree?ref=${commit}${recursive ? '&recursive=true' : ''}&per_page=100${keyset ? '&pagination=keyset' : ''}${pointer}`);
       const tree = await response.json() as { path: string; type: string; mode: string; id: string; }[];
       if (!Array.isArray(tree)) throw new SourceError('GitLab returned an invalid repository tree.', 502);
       for (const entry of tree) {
+        // A page token that names an entry by its object id resumes after the first entry of that id, so files of one content repeat pages; pages by number do not.
+        if (keyset && seen.has(entry.path)) return this.list(commit, recursive, false);
         if (!entry.path || !entry.id || seen.has(entry.path)) throw new SourceError('GitLab returned an incomplete repository listing.', 502);
         seen.add(entry.path);
         entries.push({ path: entry.path, type: entry.type, mode: entry.mode, sha: entry.id });
       }
       if (entries.length > 100000) throw new SourceError('Repository exceeds the supported file listing size.', 422);
-      const next = response.headers.get('x-next-page');
-      if (next === '' || (next === null && tree.length < 100)) break;
-      if (!tree.length || next !== null && next !== String(page + 1)) throw new SourceError('GitLab returned invalid pagination.', 502);
+      const token = keyset ? nextPageToken(response.headers.get('link'), this.url) : null, numbered = response.headers.get('x-next-page');
+      if (token) pointer = `&page_token=${encodeURIComponent(token)}`;
+      // A site without keyset pagination of trees ignores the request for it and names the next page by number.
+      else if (numbered) pointer = `&page=${numbered}`;
+      // A full first page that names no next one is all there is, or comes through a proxy that drops the paging headers; pages by number, counted by their length, tell which.
+      else if (keyset && page === 1 && numbered === null && tree.length === 100) return this.list(commit, recursive, false);
+      else if (!keyset && numbered === null && tree.length === 100) pointer = `&page=${page + 1}`;
+      else break;
+      if (!tree.length || asked.has(pointer) || numbered && numbered !== String(page + 1)) throw new SourceError('GitLab returned invalid pagination.', 502);
+      asked.add(pointer);
     }
-    return { sha, treeSha: sha, entries, info: { private: project.visibility !== 'public', default_branch: project.default_branch, permissions: { push: Boolean(this.token && branch.can_push) } } };
+    return entries;
+  }
+  /** The object id of the file at `file` in `commit`, from the response headers alone; null when the commit holds no file there. */
+  private async blobAt(commit: string, file: string): Promise<string | null> {
+    try {
+      const id = (await this.response(`/repository/files/${encodeURIComponent(file)}?ref=${commit}`, { method: 'HEAD' })).headers.get('x-gitlab-blob-id');
+      return id && OBJECT_ID.test(id) ? id : null;
+    } catch (error) {
+      if (error instanceof SourceError && error.status === 404) return null;
+      throw error;
+    }
+  }
+  /**
+   * The listing git gives `files`, kept only when its top level is what GitLab lists for `commit`. A directory's id
+   * hashes everything under it, so equal top levels are equal trees.
+   */
+  private async checked(commit: string, files: RemoteEntry[]): Promise<RemoteEntry[] | undefined> {
+    const entries = gitListing(files, commit.length);
+    if (!entries) return undefined;
+    const top = new Map((await this.list(commit, false)).map(entry => [entry.path, entry]));
+    const derived = entries.filter(entry => !entry.path.includes('/'));
+    return derived.length === top.size && derived.every(entry => sameEntry(entry, top.get(entry.path))) ? entries : undefined;
+  }
+  /**
+   * `base` moved to commit `sha`: the files GitLab's comparison of the two names, each read at `sha`, replace the
+   * base's. Undefined when the comparison is unavailable or left a change out, or when listing again takes no more
+   * requests than following would.
+   */
+  private async follow(base: Listing, sha: string): Promise<RemoteEntry[] | undefined> {
+    // Following takes the comparison, a read per changed file and the check; listing takes a request per hundred entries.
+    const budget = Math.min(FOLLOWED_FILES, Math.ceil(base.entries.length / 100) - 2);
+    if (budget < 1) return undefined;
+    try {
+      // `straight` compares the two commits themselves. The default starts from their merge base, which misses what a rewritten branch dropped.
+      const compared = await this.json(`/repository/compare?from=${base.sha}&to=${sha}&straight=true`) as { compare_timeout?: boolean; diffs?: { old_path?: unknown; new_path?: unknown; b_mode?: unknown; deleted_file?: boolean; }[]; };
+      if (compared.compare_timeout || !Array.isArray(compared.diffs)) return undefined;
+      const files = new Map(base.entries.filter(entry => entry.type !== 'tree').map(entry => [entry.path, entry]));
+      /** The mode of each file the comparison says `sha` holds changed. */
+      const changed = new Map<string, string>();
+      for (const diff of compared.diffs) {
+        if (typeof diff.old_path !== 'string' || typeof diff.new_path !== 'string') return undefined;
+        if (diff.deleted_file || diff.old_path !== diff.new_path) files.delete(diff.old_path);
+        if (!diff.deleted_file) changed.set(diff.new_path, String(diff.b_mode));
+      }
+      if (changed.size > budget) return undefined;
+      const pending = [...changed];
+      for (let i = 0; i < pending.length; i += 6) {
+        await Promise.all(
+          pending.slice(i, i + 6).map(async ([path, mode]) => {
+            const blob = await this.blobAt(sha, path);
+            // Anything but a file GitLab can read, a submodule for one, is left out, and the check then refuses the listing.
+            if (blob && /^(100644|100755|120000)$/.test(mode)) files.set(path, { path, mode, type: 'blob', sha: blob });
+            else files.delete(path);
+          }),
+        );
+      }
+      return await this.checked(sha, [...files.values()]);
+    } catch (error) {
+      // Never list again through a cooldown or lost access.
+      if (error instanceof SourceError && [401, 403, 429].includes(error.status)) throw error;
+      return undefined;
+    }
+  }
+  /**
+   * The listing of this reader's own commit, derived without listing: the snapshot's files with the committed ones
+   * replaced. It is kept only when the commit's one parent is the snapshot and GitLab lists the same top level,
+   * because another push may have landed first, and GitLab may store other bytes than it was sent, as a site that
+   * normalizes line endings does. A commit that fails either is followed by comparison on the next read.
+   */
+  private async adopt(snapshot: RemoteSnapshot, written: Map<string, string | null>, commit: { id: string; parent_ids?: unknown; }) {
+    if (!Array.isArray(commit.parent_ids) || commit.parent_ids.length !== 1 || commit.parent_ids[0] !== snapshot.sha) return;
+    const files = new Map(snapshot.entries.filter(entry => entry.type !== 'tree').map(entry => [entry.path, entry]));
+    for (const [path, sha] of written) {
+      if (sha === null) files.delete(path);
+      else files.set(path, { path, mode: files.get(path)?.mode ?? '100644', type: 'blob', sha });
+    }
+    const entries = await this.checked(commit.id, [...files.values()]);
+    if (!entries) return;
+    this.hold(commit.id, entries);
+    await this.store(commit.id, entries);
   }
   protected async readBlob(sha: string): Promise<Buffer> {
     let pending = this.blobs.get(sha);
@@ -106,6 +388,8 @@ export class GitLabSource extends RemoteSource {
   }
   protected async publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string): Promise<string> {
     const actions = [];
+    /** What the commit leaves at each path: the object id of the bytes sent, or null where it deletes. */
+    const written = new Map<string, string | null>();
     let total = 0;
     for (const change of changes) {
       const existing = snapshot.entries.find(entry => entry.path === change.path);
@@ -117,11 +401,13 @@ export class GitLabSource extends RemoteSource {
       }
       if (change.sha === null) {
         actions.push({ action: 'delete', file_path: change.path, last_commit_id: lastCommit });
+        written.set(change.path, null);
         continue;
       }
       const bytes = change.content !== undefined ? Buffer.from(change.content) : change.base64 !== undefined ? Buffer.from(change.base64, 'base64') : await this.readBlob(change.sha!);
       total += bytes.length;
       if (total > 5 * 1024 * 1024) throw new SourceError('Mutation exceeds the 5 MiB limit.', 413);
+      written.set(change.path, gitBlobId(bytes, snapshot.sha.length));
       actions.push({ action: existing ? 'update' : 'create', file_path: change.path, content: bytes.toString('base64'), encoding: 'base64', ...(lastCommit ? { last_commit_id: lastCommit } : {}) });
     }
     // Refresh permissions and the branch after preparing actions; GitLab validates file versions atomically.
@@ -130,6 +416,9 @@ export class GitLabSource extends RemoteSource {
     if (branch.commit?.id !== snapshot.sha) throw new SourceError('The repository changed. Reload before saving.', 409);
     const commit = await this.json('/repository/commits', { method: 'POST', body: JSON.stringify({ branch: this.branch, commit_message: message, actions, force: false }) });
     if (typeof commit.id !== 'string' || !/^[a-f0-9]{40,64}$/.test(commit.id)) throw new SourceError('GitLab returned no commit revision. Reload to check whether the change was saved.', 502);
+    // The commit is published whatever happens to its listing, so the save answers once that has had a few seconds. A
+    // listing that comes later is still kept; one that fails or never comes is the next read's to follow.
+    await within(this.adopt(snapshot, written, commit), ADOPT_WAIT);
     return commit.id;
   }
 }

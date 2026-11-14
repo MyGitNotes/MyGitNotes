@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { gitlabFixture } from './fixtures/gitlab.js';
 import { openRemoteRepository } from '../src/remote-factory.js';
@@ -7,7 +6,7 @@ import { callNoteShell } from '../src/note-shell.js';
 import { classifyResource } from '../src/classifier.js';
 import { parseNoteContent } from '../src/frontmatter.js';
 import { historyFile } from '../src/note-history.js';
-import { MemoryRemoteCache } from '../src/remote-cache.js';
+import { gitBlobId, MemoryRemoteCache } from '../src/remote-cache.js';
 
 const READING = '---\ntemplate:\n  name: Reading\n  path: reading/{{book}}.md\n  placeholders:\n    book: The book\ntags: [reading]\n---\n# {{title}}\n\n> {{takeaway}}\n';
 const MANIFEST = 'schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: ex\nnotebooks:\n  - id: ex\n    title: Example\n    root: notes/ex\n    templates:\n      - id: registered\n        title: Registered\n        file: kept/registered.md\n';
@@ -103,15 +102,15 @@ describe('a remote notebook’s template list', () => {
   const source = { type: 'gitlab' as const, url: 'https://gitlab.example.test/gitlab', repository: 'group/subgroup/project', branch: 'main' };
   const stamped = (created: string) => `---\ntemplate: reading\ncreated: "${created}"\n---\n# Read\n`;
   const files = { 'notes/.github-notes.yaml': MANIFEST, 'notes/ex/.templates/reading.md': READING, 'notes/ex/.templates/meeting.md': '# {{title}}\n\nWith {{who}}.\n', 'notes/ex/kept/registered.md': '# {{title}}\n', 'notes/ex/dune.md': stamped('2026-11-01T08:00:00.000Z'), 'notes/ex/emma.md': stamped('2026-11-10T08:00:00.000Z') };
-  /** How many times the files matching `which` were read; the fixture names a blob by the SHA-1 of its text. */
+  /** How many times the files matching `which` were read; the fixture names a blob as git does. */
   const blobReads = (f: ReturnType<typeof gitlabFixture>, which = /\.templates\/|registered\.md$/) => {
-    const ids = new Set([...f.files].filter(([file]) => which.test(file)).map(([, text]) => createHash('sha1').update(text).digest('hex')));
+    const ids = new Set([...f.files].filter(([file]) => which.test(file)).map(([, text]) => gitBlobId(Buffer.from(text), 40)));
     return f.calls.filter(call => call.url.includes('/repository/blobs/') && ids.has(decodeURIComponent(call.url.split('/repository/blobs/')[1].split(/[/?]/)[0]))).length;
   };
 
   it('is cached by the content of the template files: a second reader reads none of them, a note edit keeps it, and an edited template is seen at once', async () => {
     const cache = new MemoryRemoteCache();
-    const f = gitlabFixture(undefined, files, { contentTrees: true });
+    const f = gitlabFixture(undefined, files);
     const reader = () => openRemoteRepository(source, 'token', f.request, cache).reader;
     const first = await reader().templates('ex');
     expect(first.map(template => [template.id, template.name])).toEqual([['registered', 'Registered'], ['meeting', 'meeting'], ['reading', 'Reading']]);
@@ -138,8 +137,8 @@ describe('a remote notebook’s template list', () => {
 
   it('keeps no list in the cache when a template file failed to read, so the next call reads it again', async () => {
     const cache = new MemoryRemoteCache();
-    const f = gitlabFixture(undefined, files, { contentTrees: true });
-    const reading = createHash('sha1').update(READING).digest('hex');
+    const f = gitlabFixture(undefined, files);
+    const reading = gitBlobId(Buffer.from(READING), 40);
     let fail = true;
     const request = (async (input: string | URL | Request, init?: RequestInit) => {
       if (fail && String(input).includes(`/repository/blobs/${reading}`)) return new Response('unavailable', { status: 500 });
@@ -153,7 +152,7 @@ describe('a remote notebook’s template list', () => {
 
   it('carries each template’s last use from the notes index, reading no note body for it once the index is cached', async () => {
     const cache = new MemoryRemoteCache();
-    const f = gitlabFixture(undefined, files, { contentTrees: true });
+    const f = gitlabFixture(undefined, files);
     const reader = () => openRemoteRepository(source, 'token', f.request, cache).reader;
     expect((await reader().listedTemplates('ex')).map(template => [template.id, template.lastUsed])).toEqual([['registered', null], ['meeting', null], ['reading', '2026-11-10T08:00:00.000Z']]);
     const notes = /^notes\/ex\/[^.]/;

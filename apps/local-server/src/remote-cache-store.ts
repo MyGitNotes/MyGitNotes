@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { MemoryRemoteCache, type RemoteCache, SourceError } from '@mygitnotes/core';
 import { nativeRedisCommand } from './redis-store.js';
 
@@ -51,6 +52,12 @@ export class RedisRemoteCache implements RemoteCache {
     } catch (error) {
       throw error instanceof SourceError ? error : new SourceError('Cache store unavailable.', 503);
     }
+  }
+  /** Seals with a key derived from SESSION_SECRET, which other writers of the store do not hold. Without the secret nothing is sealed. */
+  sign(text: string): string | undefined {
+    const secret = process.env.SESSION_SECRET;
+    if (!secret || secret.length < 32) return undefined;
+    return createHmac('sha256', createHmac('sha256', secret).update('mygitnotes remote cache seal v1').digest()).update(text).digest('hex');
   }
 }
 
