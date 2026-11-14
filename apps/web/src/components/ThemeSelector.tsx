@@ -1,6 +1,5 @@
 import { Monitor, Moon, Sun } from 'lucide-react';
-import { PALETTE_FAMILIES } from '../lib/palettes.js';
-import { resolveMode, ThemeChoice, ThemeMode } from '../lib/themes.js';
+import { listFamilies, resolveMode, ThemeChoice, ThemeMode } from '../lib/themes.js';
 import { useTranslation } from '../lib/i18n/index.js';
 
 const MODES: { mode: ThemeMode; icon: typeof Sun; }[] = [{ mode: 'light', icon: Sun }, { mode: 'dark', icon: Moon }, { mode: 'system', icon: Monitor }];
@@ -26,7 +25,7 @@ export function ThemeSelector({ value, onChange }: { value: ThemeChoice; onChang
         ))}
       </div>
       <div role='radiogroup' aria-label={t('settings.theme')} className='grid grid-cols-2 sm:grid-cols-3 gap-1'>
-        {PALETTE_FAMILIES.map(family => {
+        {listFamilies().map(family => {
           const variant = family.variants[shown];
           const selected = family.id === value.familyId;
           return (

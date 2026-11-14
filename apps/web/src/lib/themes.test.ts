@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
-import { PALETTE_FAMILIES, type PaletteMode } from './palettes.js';
-import { applyTheme, getThemeChoice, resolveThemeChoice, setThemeChoice, statusTokens, subscribeThemeChoice, syncThemeColor, themeTokens } from './themes.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { PALETTE_FAMILIES, type PaletteFamily, type PaletteMode } from './palettes.js';
+import { applyTheme, getFamily, getThemeChoice, listFamilies, registerThemes, resolveThemeChoice, setThemeChoice, statusTokens, subscribeThemeChoice, syncThemeColor, themeTokens } from './themes.js';
 
 const luminance = (hex: string) => {
   const [r, g, b] = hex.slice(1, 7).match(/.{2}/g)!.map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
@@ -130,5 +130,75 @@ describe('palette families', () => {
     applyTheme({ familyId: 'gruvbox', mode: 'dark' });
     expect(document.documentElement.style.getPropertyValue('--color-status-purple')).toBe(statusTokens('dark')['--color-status-purple']);
     expect(JSON.parse(localStorage.getItem('github_notes_theme_tokens')!).tokens['--color-status-teal']).toBe(statusTokens('dark')['--color-status-teal']);
+  });
+});
+
+describe('theme registry', () => {
+  const ocean: PaletteFamily = { ...PALETTE_FAMILIES.find(family => family.id === 'carbon')!, id: 'ocean', name: 'Ocean', license: 'proprietary' };
+  afterEach(() => {
+    registerThemes({});
+    localStorage.clear();
+  });
+
+  it('lists the built-ins, then the registered families', () => {
+    registerThemes({ families: [ocean] });
+    expect(listFamilies().map(family => family.id)).toEqual([...PALETTE_FAMILIES.map(family => family.id), 'ocean']);
+    expect(getFamily('ocean')).toBe(ocean);
+  });
+
+  it('chooses the registered default when nothing is saved', () => {
+    registerThemes({ families: [ocean], defaultFamily: 'ocean' });
+    expect(resolveThemeChoice(null, null)).toEqual({ familyId: 'ocean', mode: 'system' });
+    expect(getThemeChoice().familyId).toBe('ocean');
+  });
+
+  it('can name a built-in as the default', () => {
+    registerThemes({ defaultFamily: 'gruvbox' });
+    expect(resolveThemeChoice(null, 'dark')).toEqual({ familyId: 'gruvbox', mode: 'dark' });
+  });
+
+  it('keeps a saved built-in choice over the edition default', () => {
+    registerThemes({ families: [ocean], defaultFamily: 'ocean' });
+    expect(resolveThemeChoice('gruvbox', 'light')).toEqual({ familyId: 'gruvbox', mode: 'light' });
+  });
+
+  it('keeps a saved registered family', () => {
+    registerThemes({ families: [ocean] });
+    expect(resolveThemeChoice('ocean', 'dark')).toEqual({ familyId: 'ocean', mode: 'dark' });
+  });
+
+  it('sends an unknown or retired saved id to the edition default, keeping the mode', () => {
+    registerThemes({ families: [ocean], defaultFamily: 'ocean' });
+    expect(resolveThemeChoice('no-such-family', 'light')).toEqual({ familyId: 'ocean', mode: 'light' });
+    expect(resolveThemeChoice('github-dark', null)).toEqual({ familyId: 'ocean', mode: 'dark' });
+    expect(getFamily('no-such-family')).toBe(ocean);
+  });
+
+  it('lets a registered id replace the built-in with the same id, in its place', () => {
+    const own: PaletteFamily = { ...ocean, id: 'gruvbox', name: 'House Gruvbox' };
+    registerThemes({ families: [own] });
+    expect(listFamilies()).toHaveLength(PALETTE_FAMILIES.length);
+    expect(getFamily('gruvbox')).toBe(own);
+    expect(listFamilies().findIndex(family => family.id === 'gruvbox')).toBe(PALETTE_FAMILIES.findIndex(family => family.id === 'gruvbox'));
+  });
+
+  it('throws when the default names no known family', () => {
+    expect(() => registerThemes({ families: [ocean], defaultFamily: 'missing' })).toThrow(/missing/);
+    expect(listFamilies()).toHaveLength(PALETTE_FAMILIES.length);
+  });
+
+  it('forgets an earlier registration when it is registered again', () => {
+    registerThemes({ families: [ocean], defaultFamily: 'ocean' });
+    registerThemes({});
+    expect(listFamilies()).toEqual(PALETTE_FAMILIES);
+    expect(resolveThemeChoice(null, null).familyId).toBe('flexoki');
+  });
+
+  it('paints and caches a registered family for the next first paint', () => {
+    registerThemes({ families: [ocean], defaultFamily: 'ocean' });
+    const choice = { ...getThemeChoice(), mode: 'dark' as const };
+    applyTheme(choice);
+    expect(localStorage.getItem('github_notes_theme')).toBe('ocean');
+    expect(JSON.parse(localStorage.getItem('github_notes_theme_tokens')!).tokens['--color-bg']).toBe(themeTokens(ocean.variants.dark)['--color-bg']);
   });
 });

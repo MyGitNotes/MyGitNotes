@@ -7,9 +7,38 @@ export interface ThemeChoice {
   mode: ThemeMode;
 }
 
-/** The first palette family, Flexoki, is the default. */
-const DEFAULT_FAMILY = PALETTE_FAMILIES[0];
-const DEFAULT_FAMILY_ID = DEFAULT_FAMILY.id;
+/** What an edition registers: families that join the built-ins, and which family a visitor with no saved choice gets. */
+export interface ThemeRegistration {
+  /** A family whose id equals a built-in's replaces it in its place; any other is listed after the built-ins. */
+  families?: readonly PaletteFamily[];
+  /** The id of a built-in or registered family; Flexoki when left out. */
+  defaultFamily?: string;
+}
+
+let themeChoice: ThemeChoice | undefined;
+
+/** The first built-in family, Flexoki, is the community default. */
+let families: readonly PaletteFamily[] = PALETTE_FAMILIES;
+let defaultFamily: PaletteFamily = PALETTE_FAMILIES[0];
+
+/**
+ * Fills the registry; call it before the first render. Each call starts over from the built-ins, so `registerThemes({})` resets.
+ * A `defaultFamily` that names no known family throws and leaves the earlier registry in place.
+ */
+export function registerThemes({ families: extra = [], defaultFamily: defaultId }: ThemeRegistration): void {
+  const byId = new Map(PALETTE_FAMILIES.map(family => [family.id, family]));
+  for (const family of extra) byId.set(family.id, family);
+  const merged = [...byId.values()];
+  const chosen = defaultId === undefined ? merged[0] : merged.find(family => family.id === defaultId);
+  if (!chosen) throw new Error(`themes.defaultFamily "${defaultId}" names no known palette family (known: ${merged.map(family => family.id).join(', ')})`);
+  families = merged;
+  defaultFamily = chosen;
+  themeChoice = undefined;
+}
+
+/** The built-in families followed by the registered ones; the settings pickers list these. */
+export const listFamilies = (): readonly PaletteFamily[] => families;
+
 const THEME_FAMILY_KEY = 'github_notes_theme';
 const THEME_MODE_KEY = 'github_notes_theme_mode';
 /** The resolved colours, read by the inline script in index.html so the first paint already wears the theme. */
@@ -19,16 +48,16 @@ const THEME_TOKENS_KEY = 'github_notes_theme_tokens';
 const RETIRED_THEME_MODES: Record<string, PaletteMode> = { 'clean-indigo': 'light', 'warm-sepia': 'light', 'forest-emerald': 'light', 'github-dark': 'dark', 'nord-arctic': 'dark', 'midnight-violet': 'dark' };
 
 export function getFamily(id: string): PaletteFamily {
-  return PALETTE_FAMILIES.find(family => family.id === id) ?? DEFAULT_FAMILY;
+  return families.find(family => family.id === id) ?? defaultFamily;
 }
 
 function isMode(value: string | null): value is ThemeMode {
   return value === 'light' || value === 'dark' || value === 'system';
 }
 
-/** Unknown or retired family ids resolve to Flexoki; the saved mode is kept. */
+/** Unknown or retired family ids resolve to the edition's default family (Flexoki in the community edition); the saved mode is kept. */
 export function resolveThemeChoice(savedFamily: string | null, savedMode: string | null): ThemeChoice {
-  const familyId = PALETTE_FAMILIES.find(family => family.id === savedFamily)?.id ?? DEFAULT_FAMILY_ID;
+  const familyId = families.find(family => family.id === savedFamily)?.id ?? defaultFamily.id;
   const mode = isMode(savedMode) ? savedMode : (savedFamily && RETIRED_THEME_MODES[savedFamily]) || 'system';
   return { familyId, mode };
 }
@@ -37,11 +66,10 @@ function getSavedTheme(): ThemeChoice {
   try {
     return resolveThemeChoice(localStorage.getItem(THEME_FAMILY_KEY), localStorage.getItem(THEME_MODE_KEY));
   } catch {
-    return { familyId: DEFAULT_FAMILY_ID, mode: 'system' };
+    return { familyId: defaultFamily.id, mode: 'system' };
   }
 }
 
-let themeChoice: ThemeChoice | undefined;
 const themeListeners = new Set<() => void>();
 
 /** Current theme choice, shared by the settings dialog and the editor's view panel. */
