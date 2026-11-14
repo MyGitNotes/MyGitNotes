@@ -125,3 +125,39 @@ it('marks a search still in force once the browse region is collapsed, and reope
   fireEvent.click(screen.getByRole('button', { name: /: pnpm$/ }));
   expect(reveal).toHaveBeenCalledOnce();
 });
+
+const openNewMenu = async () => {
+  const trigger = screen.getByRole('button', { name: '新增選單' });
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: 'Enter' });
+  return (await screen.findAllByRole('menuitem')).map(item => item.textContent);
+};
+
+it('lists the notebook’s templates in the New menu, then Manage templates', async () => {
+  const fromTemplate = vi.fn(), manage = vi.fn();
+  const toolbar = (
+    <I18nProvider>
+      <NoteToolbar {...baseProps} templates={[{ id: 'registered', title: 'Registered' }, { id: 'reading', title: '讀書筆記' }, { id: 'builtin:slides', title: '投影片' }]} onNewFromTemplate={fromTemplate} onManageTemplates={manage} />
+    </I18nProvider>
+  );
+  const first = render(toolbar);
+  expect((await openNewMenu()).slice(0, 5)).toEqual(['新增筆記', '新增筆記：Registered', '新增筆記：讀書筆記', '新增筆記：投影片', '管理範本…']);
+  fireEvent.click(screen.getByRole('menuitem', { name: '新增筆記：讀書筆記' }));
+  expect(fromTemplate).toHaveBeenCalledExactlyOnceWith('reading');
+  first.unmount();
+
+  render(toolbar);
+  await openNewMenu();
+  fireEvent.click(screen.getByRole('menuitem', { name: '管理範本…' }));
+  expect(manage).toHaveBeenCalledOnce();
+});
+
+it('keeps Manage templates, and nothing that creates, in a read-only notebook’s New menu', async () => {
+  render(
+    <I18nProvider>
+      <NoteToolbar {...baseProps} readOnly templates={[{ id: 'reading', title: '讀書筆記' }]} onNewFromTemplate={vi.fn()} onManageTemplates={vi.fn()} />
+    </I18nProvider>,
+  );
+  expect(await openNewMenu()).toEqual(['管理範本…']);
+  expect(screen.queryByRole('button', { name: '新增筆記' })).toBeNull();
+});

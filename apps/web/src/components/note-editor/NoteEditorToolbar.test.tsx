@@ -229,3 +229,19 @@ it('offers the assistant toggle in zoom only, leaving a Focus pane to the header
   render(toolbar(undefined, { frame: 'pane' }));
   expect(screen.queryByRole('button', { name: 'Agent' })).toBeNull();
 });
+
+it('labels a template file ahead of its title, and offers Save as template only where the note can become one', async () => {
+  const onSaveAsTemplate = vi.fn();
+  const view = render(toolbar(vi.fn(), { onSaveAsTemplate }));
+  expect(screen.queryByText('Template')).toBeNull();
+  await openMore();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Save as template' }));
+  expect(onSaveAsTemplate).toHaveBeenCalledOnce();
+
+  view.rerender(toolbar(undefined, { template: true }));
+  expect(within(screen.getByRole('group', { name: 'Note properties' })).getByText('Template')).toBeInTheDocument();
+  // A template is not renamed by its title: its file name is its id.
+  expect(screen.queryByRole('button', { name: /Edit title/ })).toBeNull();
+  await openMore();
+  expect(screen.queryByRole('menuitem', { name: 'Save as template' })).toBeNull();
+});

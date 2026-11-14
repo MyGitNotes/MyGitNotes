@@ -35,6 +35,10 @@ export interface NoteEditorSharedProps {
   onFilesChanged?: (result: FileResult) => Promise<void>;
   branch: string;
   draftScope?: string;
+  /** The note is one of its notebook's template files: the editor labels it, and offers none of the actions that file or rename a note. */
+  template?: boolean;
+  /** Copies the note as it is edited now into its notebook's templates and opens the copy; absent for a template and in a read-only notebook. */
+  onSaveAsTemplate?: (note: { title: string; metadata: Record<string, unknown>; content: string; }) => void;
 }
 
 /** What a host that embeds the editor sees of its session, for features it builds on top of the body. */

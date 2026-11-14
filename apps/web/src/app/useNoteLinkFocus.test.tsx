@@ -10,12 +10,12 @@ const at = (url: string) => {
 };
 const note = { notebookId: 'life', path: 'notes/life/a.md', title: 'A', content: '' } as never;
 
-function setup(url: string, { result = 'opened', notebookId = 'life', focusLoading = false, routeError = '' } = {}) {
+function setup(url: string, { result = 'opened', notebookId = 'life', focusLoading = false, routeError = '', template = false } = {}) {
   const openNote = vi.fn(async () => result), navigate = vi.fn(), setFocusNarrowView = vi.fn();
   const initial = at(url);
   const view = renderHook(({ current, loading, error }) => {
     const link = useNoteLinkLoad(current.location, current.route);
-    useOpenNoteLinkInFocus({ link, location: current.location, navigate, routedNote: error ? null : note, routeError: error, noteFocus: { loading, shown: 'current', layout: {}, openNote } as never, selectedNotebookId: notebookId, returnTo: '/notebooks/life', setFocusNarrowView });
+    useOpenNoteLinkInFocus({ link, location: current.location, navigate, routedNote: error ? null : note, routeError: error, noteFocus: { loading, shown: 'current', layout: {}, openNote } as never, selectedNotebookId: notebookId, returnTo: '/notebooks/life', setFocusNarrowView, isTemplate: () => template });
     return link.pending;
   }, { initialProps: { current: initial, loading: focusLoading, error: routeError } });
   return { view, openNote, navigate, setFocusNarrowView };
@@ -79,4 +79,11 @@ describe('a zoom URL', () => {
       expect(navigate).not.toHaveBeenCalled();
     }
   });
+});
+
+it('leaves a template file’s link in zoom: a template never opens in a Focus pane', async () => {
+  const { view, openNote, navigate } = setup('/notebooks/life/notes/.templates/reading.md', { template: true });
+  await waitFor(() => expect(view.result.current).toBe(false));
+  expect(openNote).not.toHaveBeenCalled();
+  expect(navigate).not.toHaveBeenCalled();
 });

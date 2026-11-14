@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { notePageOptions, type NoteQueryScope, useNoteList } from './use-note-queries.js';
 import { overlayDraftRows } from './draft-overlay.js';
+import { noteDrafts } from './note-templates.js';
 import { noteQueryInput } from './use-note-queries.js';
 import { useDebounced } from './use-debounced.js';
 
@@ -32,7 +33,7 @@ const candidateQuery = (query: string, source: string, notebookId?: string) => (
 export async function fetchNoteCandidates(client: QueryClient, scope: NoteQueryScope, query: string, source: string, notebookId?: string): Promise<NoteListItem[]> {
   const input = noteQueryInput(candidateQuery(query, source, notebookId));
   const page = await client.fetchQuery(notePageOptions(scope, input, { limit: NOTE_COMPLETION_LIMIT }));
-  const overlay = overlayDraftRows(page.notes, input, scope.drafts);
+  const overlay = overlayDraftRows(page.notes, input, noteDrafts(scope.drafts));
   return [...overlay.uncommitted, ...overlay.notes].slice(0, NOTE_COMPLETION_LIMIT);
 }
 

@@ -1,5 +1,5 @@
 import { Request, Response, Router } from 'express';
-import { formatTemplateDate, keyedItem, loadNoteTemplate, renderNoteTemplate, scanNotebookFolders, SourceError } from '@mygitnotes/core';
+import { formatTemplateDate, formatTemplateTime, keyedItem, listedNoteTemplates, loadNoteTemplate, renderNoteTemplate, scanNotebookFolders, SourceError } from '@mygitnotes/core';
 import { asLocal, eachRepository, notebookRepository } from './request-workspace.js';
 
 export function createLocalFoldersTemplatesRouter(): Router {
@@ -13,6 +13,16 @@ export function createLocalFoldersTemplatesRouter(): Router {
     }
   });
 
+  router.get('/api/templates', async (req: Request, res: Response) => {
+    try {
+      const { handle, alias, notebook } = await notebookRepository(res, req.query.notebookId);
+      // Each template carries its last use, which the page's agent orders its list by.
+      res.json({ templates: listedNoteTemplates(asLocal(handle).root, notebook).map(keyedItem(alias)) });
+    } catch (err: unknown) {
+      res.status(err instanceof SourceError ? err.status : 400).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
   router.get('/api/templates/render', async (req: Request, res: Response) => {
     try {
       const notebookId = req.query.notebookId as string;
@@ -20,7 +30,10 @@ export function createLocalFoldersTemplatesRouter(): Router {
       const title = (req.query.title as string) || '';
       const { handle, notebook } = await notebookRepository(res, notebookId);
       const template = loadNoteTemplate(asLocal(handle).root, notebook, templateId);
-      const rendered = renderNoteTemplate(template, { title, date: formatTemplateDate() });
+      // The page sends its reader's own date and time; a caller that sends none gets the server's clock. The New note menu
+      // fills these and the title only: every other placeholder stays as written, a declared default included.
+      const now = new Date();
+      const rendered = renderNoteTemplate(template, { title, date: typeof req.query.date === 'string' && req.query.date ? req.query.date : formatTemplateDate(now), time: typeof req.query.time === 'string' && req.query.time ? req.query.time : formatTemplateTime(now), defaults: false });
       res.json(rendered);
     } catch (err: unknown) {
       res.status(err instanceof SourceError ? err.status : 400).json({ error: err instanceof Error ? err.message : String(err) });

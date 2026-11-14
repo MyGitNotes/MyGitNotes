@@ -1,5 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
+import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import '../phone-notes.css';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -35,6 +35,10 @@ export interface PhoneNoteChromeProps {
   onPlaySlides?: (view: 'deck' | 'notes', opener?: HTMLElement) => void;
   onMove?: () => void;
   onRename?: (title: string) => Promise<void> | void;
+  /** The note is a template file: the title bar says so. */
+  template?: boolean;
+  /** Copies the note into its notebook's templates; absent for a template and a read-only note. */
+  onSaveAsTemplate?: () => void;
   statuses: string[];
   availableTags: string[];
   /** Whether the note has a history section to offer. */
@@ -51,7 +55,7 @@ export interface PhoneNoteChromeProps {
 /** A phone's note screen top: back to the list, the title, the status dot, edit or read, the assistant, and the "⋯" sheet that holds everything else. */
 export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
   const { t } = useTranslation();
-  const { frame, session, autoSave, readOnly, statuses, phoneEditing, overlay, hidden } = props;
+  const { frame, session, autoSave, readOnly, statuses, phoneEditing, overlay, hidden, template } = props;
   const { back } = usePhoneNotes();
   const [menuOpen, setMenuOpen] = useState(false);
   // The sheet's rows are gone once one is pressed; what they open returns the focus here.
@@ -71,6 +75,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
               <ArrowLeft aria-hidden='true' />
             </button>
           )}
+        {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
         <div className='phone-note-title' title={title}>{title}</div>
         <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
         {!autoSave && !readOnly && (
@@ -147,7 +152,7 @@ function RenameRow({ title, onRename, onDone }: { title: string; onRename: (titl
 }
 
 /** The "⋯" sheet: the note's status and tags, the tools the rail offered on a larger screen, and the actions that file or export it. */
-function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, statuses, availableTags, hasHistory, quickActions, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
+function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, onSaveAsTemplate, statuses, availableTags, hasHistory, quickActions, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
   const { t } = useTranslation();
   const panel = usePanelContext();
   const { changesCount, deleteNote, back } = usePhoneNotes();
@@ -209,6 +214,7 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         {onRename && !readOnly && <RenameRow title={session.title} onRename={onRename} onDone={onClose} />}
         {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked} onClick={act(onMove)} />}
         {onAddToOutline && <SheetItem icon={<ListTree aria-hidden='true' />} label={t('outline.add')} disabled={session.locked} onClick={act(onAddToOutline)} />}
+        {onSaveAsTemplate && <SheetItem icon={<LayoutTemplate aria-hidden='true' />} label={t('templates.saveAs')} onClick={act(onSaveAsTemplate)} />}
         <SheetItem icon={<Copy aria-hidden='true' />} label={t(session.copyState === 'copied' ? 'editor.noteCopied' : session.copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.exportCopy')} onClick={() => void session.copyNote()} />
         <SheetItem icon={<FileText aria-hidden='true' />} label={t('editor.exportMarkdown')} onClick={act(() => downloadTextFile(filename, session.content, 'text/markdown;charset=utf-8'))} />
         <SheetItem icon={<Printer aria-hidden='true' />} label={t('editor.exportPdf')} onClick={act(() => void printNoteAsPdf(session.title || filename, session.content, note.path, t('mermaid.error'), note.notebookId, t))} />

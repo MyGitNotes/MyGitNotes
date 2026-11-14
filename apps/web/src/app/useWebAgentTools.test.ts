@@ -2,7 +2,7 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { renderHook } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { fetchAgentResources, readAgentResource } from '../lib/api.js';
+import { fetchAgentResources, fetchNoteTemplates, readAgentResource } from '../lib/api.js';
 import { useWebAgentTools } from './useWebAgentTools.js';
 import { readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from '../lib/working-notes.js';
 import { draftScope, draftStore, type WorkspaceRepository } from '../lib/workspace-repositories.js';
@@ -11,7 +11,7 @@ import { saveLocalDraft } from '../lib/storage.js';
 import type { NoteItem } from '../lib/types.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
 
-vi.mock('../lib/api.js', () => ({ fetchAgentResources: vi.fn(), readAgentResource: vi.fn() }));
+vi.mock('../lib/api.js', () => ({ fetchAgentResources: vi.fn(), readAgentResource: vi.fn(), fetchNoteTemplates: vi.fn(async () => []) }));
 
 const repository: WorkspaceRepository = { id: 'github:me/notes@main', alias: 'notes', type: 'github', repository: 'me/notes', branch: 'main', revision: 'a'.repeat(40), write: true, notebooks: ['notes~life'], title: 'notes', defaultNotebook: null, preferences: DEFAULT_WORKSPACE_PREFERENCES, config: null, configRevision: '' };
 const scope = draftScope(repository);
@@ -160,4 +160,78 @@ it('refuses a file that is not an agent file, before asking the server, and repo
   await expect(call('read_agent_file', { path: 'AGENTS.md' })).rejects.toThrow('did not report its agent workspace');
   expect(readAgentResource).not.toHaveBeenCalled();
   await expect(call('read_agent_file', { path: '.agents/skills/gone/SKILL.md', workspace: session })).rejects.toThrow('or it does not exist');
+});
+
+const READING = { template: { name: 'Reading', path: 'reading/{{book}}.md', placeholders: { book: 'The book', author: { description: 'Who wrote it', default: 'Unknown' } } }, tags: ['reading'], author: '{{author}}' };
+const withTemplates = () => {
+  server.set('notes/.templates/reading.md', committed('notes/.templates/reading.md', '# {{title}}\n\n> {{takeaway}}\n', READING));
+  vi.mocked(fetchNoteTemplates).mockResolvedValue([{ notebookId: 'notes~life', id: 'reading', name: 'Reading', source: 'file', file: 'notes/.templates/reading.md', path: 'reading/{{book}}.md', placeholders: [], lastUsed: null }]);
+};
+
+it('lists a notebook’s templates as the person sees them, a template they just drafted included', async () => {
+  withTemplates();
+  const { call } = tools();
+  await call('write_note', { path: 'notes/plan.md', content: 'x' });
+  updateWorkingNote(store, 'notes/.templates/meeting.md', { note: committed('notes/.templates/meeting.md', '# {{title}}\n\nWith {{who}}.\n'), base: null });
+  const listed = await tools().call('list_templates', { notebookId: 'life' }) as { templates: { id: string; placeholders: { name: string; }[]; }[]; };
+  expect(listed.templates.map(template => template.id)).toEqual(['meeting', 'reading']);
+  expect(listed.templates[0].placeholders.map(placeholder => placeholder.name)).toEqual(['title', 'date', 'time', 'who']);
+  expect((await tools().call('list_templates', {}) as { templates: unknown[]; }).templates).toHaveLength(2);
+});
+
+it('filters the templates by a query, orders them by the last use, cuts at the limit, and answers one template with its text', async () => {
+  withTemplates();
+  server.set('notes/.templates/meeting.md', committed('notes/.templates/meeting.md', '# {{title}}\n\nWith {{who}}.\n'));
+  const listedBy = (id: string, fields: Record<string, unknown> = {}) => ({ notebookId: 'notes~life', id, name: id, source: 'file' as const, file: `notes/.templates/${id}.md`, placeholders: [], lastUsed: null, ...fields });
+  vi.mocked(fetchNoteTemplates).mockResolvedValue([listedBy('meeting', { description: 'Minutes of a meeting' }), listedBy('reading', { name: 'Reading', description: 'Notes on a book', path: 'reading/{{book}}.md', lastUsed: '2026-11-01T08:00:00.000Z' }), listedBy('weekly', { name: 'Weekly review', lastUsed: '2026-11-05T08:00:00.000Z' })]);
+  type Listed = { templates: { id: string; lastUsed: string | null; content?: string; }[]; total: number; truncated: boolean; };
+  const { call } = tools();
+  const list = async (args: Record<string, unknown>) => await tools().call('list_templates', args) as Listed;
+  expect((await list({ notebookId: 'life' })).templates.map(template => [template.id, template.lastUsed])).toEqual([['weekly', '2026-11-05T08:00:00.000Z'], ['reading', '2026-11-01T08:00:00.000Z'], ['meeting', null]]);
+  expect(await list({})).toMatchObject({ total: 3, truncated: false });
+  expect(await list({ limit: 1 })).toMatchObject({ templates: [{ id: 'weekly' }], total: 3, truncated: true });
+  expect((await list({ query: 'BOOK notes' })).templates.map(template => template.id)).toEqual(['reading']);
+  expect((await list({ query: 'book meeting' })).templates).toEqual([]);
+
+  // A note this page just made from a template, still a working change, is that template's last use.
+  await call('write_note', { path: 'notes/sync.md', template: 'meeting', values: { who: 'Ann' } });
+  const after = await list({});
+  expect(after.templates.map(template => template.id)).toEqual(['meeting', 'weekly', 'reading']);
+  expect(after.templates[0].lastUsed).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+  const one = await list({ notebookId: 'life', templateId: 'reading' });
+  expect(one).toMatchObject({ templates: [{ id: 'reading', lastUsed: '2026-11-01T08:00:00.000Z' }], total: 1, truncated: false });
+  expect(one.templates[0].content).toMatch(/^---\ntemplate:\n {2}name: Reading\n[\s\S]*---\n# \{\{title\}\}\n\n> \{\{takeaway\}\}\n$/);
+  expect(after.templates[0]).not.toHaveProperty('content');
+  await expect(list({ templateId: 'reading' })).rejects.toThrow(/notebookId/);
+  await expect(list({ notebookId: 'life', templateId: 'nope' })).rejects.toThrow(/no template 'nope'.*meeting, reading, weekly/);
+  await expect(list({ limit: 'many' })).rejects.toThrow(/limit/);
+});
+
+it('stages a new note from a template: path from its pattern, values filled, unfilled reported, an existing note refused', async () => {
+  withTemplates();
+  const { call, stageWorkingNote } = tools();
+  expect(await call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Dune' } })).toEqual({ path: 'notes/reading/Dune.md', notebookId: 'notes~life', source: 'working', created: true, template: 'reading', unfilled: ['takeaway'] });
+  const staged = readWorkingNotes(store)['notes/reading/Dune.md'];
+  expect(staged.base).toBeNull();
+  // The template block stays behind; the note records the id of the template it came from.
+  expect(staged.note).toMatchObject({ content: '# Dune\n\n> {{takeaway}}\n', metadata: { title: 'Dune', tags: ['reading'], author: 'Unknown', template: 'reading' } });
+
+  await expect(call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Dune' } })).rejects.toThrow('A note already exists at notes/reading/Dune.md');
+  await expect(call('write_note', { notebookId: 'life', template: 'reading', values: { boook: 'x' } })).rejects.toThrow(/no placeholder 'boook'/);
+  await expect(call('write_note', { notebookId: 'life', template: 'reading', values: {} })).rejects.toThrow(/needs a value for book/);
+  await expect(call('write_note', { notebookId: 'life', template: 'nope' })).rejects.toThrow(/no template 'nope'.*reading/);
+  await expect(call('write_note', { template: 'reading', values: { book: 'x' } })).rejects.toThrow(/Name the notebook/);
+  await expect(call('write_note', { path: 'notes/x.md', content: 'x', values: { book: 'x' } })).rejects.toThrow(/name one as template/);
+  await expect(call('write_note', { path: 'notes/.hidden/x.md', template: 'reading' })).rejects.toThrow(/not a note path/);
+  expect(stageWorkingNote).toHaveBeenCalledOnce();
+
+  // The caller's own path, title and body win over the template's.
+  expect(await call('write_note', { path: 'notes/own.md', template: 'reading', title: 'Mine', content: 'My body', metadata: { author: 'Me' } })).toMatchObject({ path: 'notes/own.md', created: true, unfilled: [] });
+  expect(readWorkingNotes(store)['notes/own.md'].note).toMatchObject({ content: 'My body', metadata: { title: 'Mine', author: 'Me' } });
+});
+
+it('refuses a templated note in a read-only notebook', async () => {
+  withTemplates();
+  await expect(tools({ writable: false }).call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Dune' } })).rejects.toThrow('read-only');
 });

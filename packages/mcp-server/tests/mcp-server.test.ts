@@ -383,12 +383,12 @@ notebooks:
     expect(listRes.folders.some((f) => f.path === 'projects/backend' && f.order === 10)).toBe(true);
   });
 
-  it('exposes exactly 18 consolidated tools and absorbs redundant endpoints', async () => {
-    expect(localTools.length).toBe(18);
+  it('exposes exactly 19 consolidated tools and absorbs redundant endpoints', async () => {
+    expect(localTools.length).toBe(19);
 
     const toolNames = localTools.map((t) => t.name);
-    // 18 primary tools
-    const expected = ['list_folders', 'get_workspace_config', 'list_notebooks', 'list_notes', 'read_note', 'save_note', 'delete_note', 'read_agent_resource', 'list_assets', 'add_asset', 'delete_asset', 'get_git_status', 'git_commit', 'update_core', 'search_notes', 'replace_notes', 'get_statuses', 'mkdir'];
+    // 19 primary tools
+    const expected = ['list_folders', 'get_workspace_config', 'list_notebooks', 'list_notes', 'list_templates', 'read_note', 'save_note', 'delete_note', 'read_agent_resource', 'list_assets', 'add_asset', 'delete_asset', 'get_git_status', 'git_commit', 'update_core', 'search_notes', 'replace_notes', 'get_statuses', 'mkdir'];
     expect(toolNames.sort()).toEqual(expected.sort());
 
     // Redundant absorbed endpoints are not in the exposed list

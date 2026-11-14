@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 
-export function gitlabFixture(site = 'https://gitlab.example.test/gitlab', extra: Record<string, string> = {}) {
+/**
+ * An in-memory GitLab project behind a `fetch` stand-in. A directory's id is its path unless `contentTrees` is set, which
+ * derives it from the files below it as Git does, so a cache keyed by a tree's id sees an edit.
+ */
+export function gitlabFixture(site = 'https://gitlab.example.test/gitlab', extra: Record<string, string> = {}, options: { contentTrees?: boolean; } = {}) {
   const manifest = 'schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: ex\nnotebooks:\n  - id: ex\n    title: Example\n    root: notes/ex\n';
   const files = new Map<string, string>([['notes/.github-notes.yaml', manifest], ['notes/ex/a.md', '---\ncustom: preserved\ntags: [work]\n---\n# Alpha\n'], ['notes/ex/folder/_dir.yml', 'title: Folder\n'], ['notes/ex/folder/b.md', '# Beta\n'], ['notes/ex/assets/picture.png', 'image bytes'], ['.github-notes-screen.yaml', 'version: 1\nrows: []\n'], ['AGENTS.md', '# Workspace\n']]);
   for (const [file, content] of Object.entries(extra)) files.set(file, content);
@@ -30,7 +34,7 @@ export function gitlabFixture(site = 'https://gitlab.example.test/gitlab', extra
         const parts = path.split('/');
         for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'));
       }
-      entries.push(...[...dirs].map(path => ({ path, id: sha(path), type: 'tree', mode: '040000' })));
+      entries.push(...[...dirs].map(path => ({ path, id: sha(options.contentTrees ? JSON.stringify([...files].filter(([file]) => file.startsWith(`${path}/`))) : path), type: 'tree', mode: '040000' })));
       const page = Number(new URL(url).searchParams.get('page'));
       return json(entries.slice((page - 1) * 100, page * 100), 200, { 'x-next-page': page * 100 < entries.length ? String(page + 1) : '' });
     }

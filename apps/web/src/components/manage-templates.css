@@ -1,0 +1,10 @@
+/* The Manage templates dialog: one row per template, its actions at the end of the row. */
+.manage-templates-list { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.manage-templates-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: var(--radius-control); }
+.manage-templates-item[data-source='builtin'] { border-style: dashed; }
+.manage-templates-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.manage-templates-name { font-weight: 600; }
+.manage-templates-description { color: var(--color-muted); }
+.manage-templates-file { color: var(--color-muted); font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; overflow-wrap: anywhere; }
+.manage-templates-hint { color: var(--color-muted); font-size: 11px; }
+.manage-templates-actions { display: flex; flex: none; gap: 2px; }

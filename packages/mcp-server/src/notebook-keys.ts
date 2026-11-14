@@ -15,7 +15,7 @@ export async function notebookArgument(workspace: Pick<WorkspaceRepositories<unk
 
 /** Fields of a tool result that hold one item, or a list of items, naming their notebook in `notebookId`. */
 const ITEM_FIELDS = ['note', 'folder'];
-const LIST_FIELDS = ['notes', 'matches', 'folders', 'assets', 'notebooks'];
+const LIST_FIELDS = ['notes', 'matches', 'folders', 'assets', 'notebooks', 'templates'];
 
 /**
  * A result of one repository's tool with each notebook it names turned from a local id into a key: the top-level

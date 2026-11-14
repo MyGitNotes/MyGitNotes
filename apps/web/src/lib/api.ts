@@ -5,6 +5,7 @@ import type { RepositoryId } from '@mygitnotes/core/repository';
 import type { WorkspaceAnswer } from './workspace-repositories.js';
 import { demoScopeOfNotebook, hasDemoScopes } from './demo-storage.js';
 import { localCommittedEntry } from './local-commits.js';
+import type { ListedNoteTemplate } from '@mygitnotes/core/note-template';
 
 const API_BASE = '/api';
 /** The outcome of pushing one committed note to the Gist its `gist` frontmatter names. */
@@ -72,11 +73,19 @@ export async function updateWorkspaceConfig(repository: string, configYaml: stri
   return res.json();
 }
 
-export async function renderNoteTemplate(params: { notebookId: string; templateId: string; title: string; }): Promise<{ content: string; metadata: Record<string, unknown>; }> {
-  const url = `${API_BASE}/templates/render?notebookId=${encodeURIComponent(params.notebookId)}&templateId=${encodeURIComponent(params.templateId)}&title=${encodeURIComponent(params.title)}`;
+/** `date` and `time` are the reader's own, which fill `{{date}}` and `{{time}}`; left out, the server's clock does. */
+export async function renderNoteTemplate(params: { notebookId: string; templateId: string; title: string; date?: string; time?: string; }): Promise<{ content: string; metadata: Record<string, unknown>; }> {
+  const url = `${API_BASE}/templates/render?${new URLSearchParams({ notebookId: params.notebookId, templateId: params.templateId, title: params.title, ...(params.date ? { date: params.date } : {}), ...(params.time ? { time: params.time } : {}) })}`;
   const res = await fetch(url);
   if (!res.ok) throw await responseError(res, 'Failed to render template');
   return res.json();
+}
+
+/** A notebook's templates as its repository holds them: the manifest's, then the files of its `.templates/` folder, each with its last use. */
+export async function fetchNoteTemplates(notebookId: string): Promise<ListedNoteTemplate[]> {
+  const res = await fetch(`${API_BASE}/templates?notebookId=${encodeURIComponent(notebookId)}`);
+  if (!res.ok) throw await responseError(res, 'Failed to load templates');
+  return (await res.json()).templates;
 }
 
 export async function readNote(path: string, notebookId?: string): Promise<NoteItem> {

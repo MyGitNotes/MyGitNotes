@@ -1,4 +1,4 @@
-import { type RemoteSource, type RevisionSet, StaleRevisionError, type WorkspaceRepositories } from '@mygitnotes/core';
+import { mergeTemplateLists, type RemoteSource, type RevisionSet, StaleRevisionError, type TemplateList, type WorkspaceRepositories } from '@mygitnotes/core';
 import { keyedResult, listedNotebooks, notebookArgument } from './notebook-keys.js';
 import { callRemoteTool, isMutationTool } from './remote-tools.js';
 import type { ToolAssets } from './tools/assets.js';
@@ -37,7 +37,7 @@ function parseWorkspaceRevision(token: string, repository: string, repositoryCou
   return revisions as RevisionSet;
 }
 
-const workspaceReads = new Set(['glob', 'find', 'list_notes', 'search_notes', 'list_skills', 'list_assets', 'get_statuses', 'list_folders']);
+const workspaceReads = new Set(['glob', 'find', 'list_notes', 'search_notes', 'list_skills', 'list_assets', 'get_statuses', 'list_folders', 'list_templates']);
 const pathTools = new Set(['read', 'read_note', 'write', 'append', 'edit', 'save_note', 'delete_note', 'mkdir', 'rm', 'cp', 'mv', 'get_folder_metadata', 'update_folder_metadata', 'get_note_metadata', 'update_note_metadata', 'delete_asset', 'list_folders', 'ls']);
 const optionalWrites = new Set(['delete_note', 'delete_asset', 'update_note_metadata', 'add_asset', 'replace_notes']);
 const mutation = (name: string) => isMutationTool(name) || optionalWrites.has(name);
@@ -63,8 +63,10 @@ export async function callWorkspaceRemoteTool(workspace: WorkspaceRepositories<R
   }
   const broad = (name === 'ls' && (!args.path || args.path === '.')) || (workspaceReads.has(name) && !args.notebookId && !args.path && repositories.length > 1);
   if (broad && name !== 'get_statuses') {
-    if (name === 'list_skills' || name === 'list_assets' || name === 'list_folders') {
+    if (name === 'list_skills' || name === 'list_assets' || name === 'list_folders' || name === 'list_templates') {
       const results = await Promise.all(available.map(async entry => keyedResult(await callRemoteTool(entry.handle.reader, name, args, write, web(entry), assetsFor?.(entry.handle)), entry)));
+      // Each repository answered its own matches, cut at the limit; one order and one limit hold across them.
+      if (name === 'list_templates') return { ...mergeTemplateLists(results as unknown as TemplateList[], args.limit), revision: await revisions(available), unavailable };
       const field = name === 'list_skills' ? 'skills' : name === 'list_assets' ? 'assets' : 'folders';
       return { [field]: results.flatMap(result => result[field] as unknown[]), ...(name === 'list_skills' ? { target: null } : {}), revision: await revisions(available), unavailable };
     }

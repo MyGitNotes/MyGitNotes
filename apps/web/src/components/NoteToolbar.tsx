@@ -1,7 +1,7 @@
 import './note-toolbar.css';
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowDownAZ, ArrowDownZA, CalendarArrowDown, CalendarArrowUp, ChevronDown, ClockArrowDown, ClockArrowUp, Eye, EyeOff, FileText, Folder, FolderTree, GalleryHorizontalEnd, Kanban, List, ListOrdered, ListTree, Plus, Search, X } from 'lucide-react';
+import { ArrowDownAZ, ArrowDownZA, CalendarArrowDown, CalendarArrowUp, ChevronDown, ClockArrowDown, ClockArrowUp, Eye, EyeOff, FileText, Folder, FolderTree, GalleryHorizontalEnd, Kanban, LayoutTemplate, List, ListOrdered, ListTree, Plus, Search, X } from 'lucide-react';
 import { WorkspaceSidebarToggle } from './WorkspaceChrome.js';
 import { Select } from './Select.js';
 import { SelectButtonGroup, SelectButtonPrimary, SelectButtonTrigger } from './SelectButton.js';
@@ -29,6 +29,8 @@ interface NoteToolbarProps {
   /** The notebook's note templates, each a New menu item that creates a note from it. */
   templates?: { id: string; title: string; }[];
   onNewFromTemplate?: (templateId: string) => void;
+  /** Opens the notebook's Manage templates dialog; a read-only notebook lists its templates there without actions. */
+  onManageTemplates?: () => void;
   /** The note search, the `q` query parameter. */
   query: string;
   onQueryChange: (query: string) => void;
@@ -54,7 +56,7 @@ export interface NoteSearchHandle {
   focus: () => void;
 }
 
-export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, sortField, sortOrder, onSortChange, groupByFolder, readOnly, viewMode, setViewMode, onNewNote, onNewCompilation, onNewOutline, templates = [], onNewFromTemplate, query, onQueryChange, filtersOpen, onToggleFilters, focusControls, onImportLegacy, searchRef, browseCollapsed = false, utilities, onRevealSearch }: NoteToolbarProps) {
+export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, sortField, sortOrder, onSortChange, groupByFolder, readOnly, viewMode, setViewMode, onNewNote, onNewCompilation, onNewOutline, templates = [], onNewFromTemplate, onManageTemplates, query, onQueryChange, filtersOpen, onToggleFilters, focusControls, onImportLegacy, searchRef, browseCollapsed = false, utilities, onRevealSearch }: NoteToolbarProps) {
   const { t } = useTranslation();
   // Below 768px the field is hidden behind a button and expands over the toolbar.
   const [searchOpen, setSearchOpen] = useState(false);
@@ -148,7 +150,7 @@ export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, s
         </div>
       )}
       {/* New Note Button */}
-      {(!readOnly || onImportLegacy) && (
+      {(!readOnly || onImportLegacy || onManageTemplates) && (
         <SelectButtonGroup>
           {!readOnly && (
             <SelectButtonPrimary aria-label={t('header.newNote')} onClick={onNewNote} className='ui-button-primary header-new-note'>
@@ -177,6 +179,12 @@ export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, s
                     {t('header.newFromTemplate', { template: template.title })}
                   </DropdownMenu.Item>
                 ))}
+                {onManageTemplates && (
+                  <DropdownMenu.Item onSelect={onManageTemplates}>
+                    <LayoutTemplate size={14} aria-hidden='true' />
+                    {t('templates.manage')}
+                  </DropdownMenu.Item>
+                )}
                 {!readOnly && onNewOutline && (
                   <DropdownMenu.Item onSelect={onNewOutline}>
                     <ListTree size={14} aria-hidden='true' />

@@ -6,6 +6,7 @@ import { createMCPServer } from './server.js';
 export * from './server.js';
 export * from './tools.js';
 export * from './guards.js';
+export * from './template-guidance.js';
 
 async function main() {
   // Determine repo root from command line arg or current working directory

@@ -5,7 +5,9 @@ import type { NoteAgenda, NotebookFacets, NoteFacets, NoteListItem, NoteQuery, N
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import type { NoteGraphData } from '@mygitnotes/core/note-graph';
 import type { RepositoryId, RevisionSet } from '@mygitnotes/core/repository';
-import { ApiError } from './api.js';
+import { ApiError, fetchNoteTemplates } from './api.js';
+import { noteDrafts, type NoteTemplateInfo, overlayDraftTemplates } from './note-templates.js';
+import type { NotebookConfig } from './types.js';
 import { fetchNoteAgenda, fetchNoteFacets, fetchNoteGraph, fetchNotePaths, fetchNoteQuery, lookupNotes } from './notes-api.js';
 import { draftGraphNotes, overlayDraftAgenda, overlayDraftFacets, overlayDraftLookup, overlayDraftPaths, overlayDraftRows, overlayGraphDrafts, withoutDeletedDrafts } from './draft-overlay.js';
 import { sameValue } from './merge-note.js';
@@ -176,7 +178,7 @@ export function useNoteList(query: Partial<NoteQuery> | null, options: NoteListO
   // nothing must still see nothing.
   const rows = useMemo(() => (input ? result.data?.pages.flatMap(page => page.notes) ?? [] : []), [result.data, input]);
   // Drafts belong to the query that was asked; a disabled list overlays nothing.
-  const overlay = useMemo(() => (input ? overlayDraftRows(rows, input, scope.drafts, { hide: options.hide }) : { notes: [], uncommitted: [], removed: 0 }), [rows, input, scope.drafts, options.hide]);
+  const overlay = useMemo(() => (input ? overlayDraftRows(rows, input, noteDrafts(scope.drafts), { hide: options.hide }) : { notes: [], uncommitted: [], removed: 0 }), [rows, input, scope.drafts, options.hide]);
   const fetchNextPage = result.fetchNextPage, hasNextPage = result.hasNextPage, fetchingNext = result.isFetchingNextPage;
   const loadMore = useCallback(() => {
     if (hasNextPage && !fetchingNext) void fetchNextPage();
@@ -191,7 +193,7 @@ export function useNotePaths(query: Partial<NoteQuery> | null): { notes: NoteRef
   const input = useStable(query ? noteQueryInput(query) : null);
   const options = notePathsOptions(scope, input ?? DEFAULT_NOTE_QUERY);
   const result = useQuery({ ...options, enabled: options.enabled && Boolean(input), placeholderData: keepPreviousData });
-  const notes = useMemo(() => (input ? overlayDraftPaths(result.data?.notes ?? [], input, scope.drafts) : []), [result.data, input, scope.drafts]);
+  const notes = useMemo(() => (input ? overlayDraftPaths(result.data?.notes ?? [], input, noteDrafts(scope.drafts)) : []), [result.data, input, scope.drafts]);
   return { notes, loading: Boolean(input) && result.isPending, error: errorText(result.error) };
 }
 
@@ -201,7 +203,7 @@ export function useNoteFacets(showHidden: boolean): { facets: Record<string, Not
   const result = useQuery({ queryKey: queryKey(scope, scope.revisions, 'facets', {}), queryFn: () => fetchNoteFacets(scope.revisions), enabled: Boolean(scope.sourceId), placeholderData: keepPreviousData });
   const facets = useMemo(() => {
     const data = result.data as NoteFacets | undefined;
-    return data ? overlayDraftFacets(showHidden ? data.withHidden : data.notebooks, scope.drafts, showHidden) : undefined;
+    return data ? overlayDraftFacets(showHidden ? data.withHidden : data.notebooks, noteDrafts(scope.drafts), showHidden) : undefined;
   }, [result.data, scope.drafts, showHidden]);
   return { facets, loading: result.isPending, error: errorText(result.error) };
 }
@@ -230,17 +232,31 @@ export function useNoteLookup(refs: NoteRef[], content: boolean): { notes: NoteL
   return { notes, committed, loading: stable.length > 0 && result.isPending, error: errorText(result.error) };
 }
 
+/** The query of a notebook's templates as its repository holds them; `useNotebookTemplates` adds the page's working changes. */
+export function noteTemplatesOptions(scope: NoteQueryScope, notebookId: string) {
+  return { queryKey: queryKey(scope, scopedRevisions(scope, notebookId), 'templates', { notebookId }), queryFn: () => fetchNoteTemplates(notebookId), enabled: Boolean(scope.sourceId) && Boolean(notebookId) };
+}
+
+/** A notebook's templates: the manifest's, then the files of its `.templates/` folder, with this page's working changes of them applied. */
+export function useNotebookTemplates(notebook: Pick<NotebookConfig, 'id' | 'root' | 'templates'> | undefined): { templates: NoteTemplateInfo[]; loading: boolean; error: string; } {
+  const scope = useNoteQueryScope();
+  const result = useQuery({ ...noteTemplatesOptions(scope, notebook?.id ?? ''), placeholderData: keepPreviousData });
+  const stable = useStable(notebook);
+  const templates = useMemo(() => stable && result.data ? overlayDraftTemplates(result.data, stable, scope.drafts) : [], [stable, result.data, scope.drafts]);
+  return { templates, loading: Boolean(notebook) && result.isPending, error: errorText(result.error) };
+}
+
 export function useNoteAgenda(notebookId: string, showHidden = false): { agenda: NoteAgenda | undefined; loading: boolean; error: string; } {
   const scope = useNoteQueryScope();
   const revisions = scopedRevisions(scope, notebookId);
   const result = useQuery({ queryKey: queryKey(scope, revisions, 'agenda', { notebookId, showHidden }), queryFn: () => fetchNoteAgenda(notebookId, { showHidden, revisions }), enabled: Boolean(scope.sourceId) && Boolean(notebookId), placeholderData: keepPreviousData });
-  const agenda = useMemo(() => result.data ? overlayDraftAgenda(result.data, scope.drafts, { notebookId, showHidden }) : undefined, [result.data, scope.drafts, notebookId, showHidden]);
+  const agenda = useMemo(() => result.data ? overlayDraftAgenda(result.data, noteDrafts(scope.drafts), { notebookId, showHidden }) : undefined, [result.data, scope.drafts, notebookId, showHidden]);
   return { agenda, loading: result.isPending, error: errorText(result.error) };
 }
 
 export function useNoteGraph(enabled = true): { graph: NoteGraphData | undefined; loading: boolean; error: string; } {
   const scope = useNoteQueryScope();
   const result = useQuery({ queryKey: queryKey(scope, scope.revisions, 'graph', {}), queryFn: () => fetchNoteGraph(scope.revisions), enabled: enabled && Boolean(scope.sourceId), placeholderData: keepPreviousData });
-  const graph = useMemo(() => (enabled && result.data ? overlayGraphDrafts(withoutDeletedDrafts({ nodes: result.data.nodes, links: result.data.links }, scope.drafts), draftGraphNotes(scope.drafts), scope.repositories) : undefined), [enabled, result.data, scope.drafts, scope.repositories]);
+  const graph = useMemo(() => (enabled && result.data ? overlayGraphDrafts(withoutDeletedDrafts({ nodes: result.data.nodes, links: result.data.links }, noteDrafts(scope.drafts)), draftGraphNotes(noteDrafts(scope.drafts)), scope.repositories) : undefined), [enabled, result.data, scope.drafts, scope.repositories]);
   return { graph, loading: enabled && result.isPending, error: errorText(result.error) };
 }

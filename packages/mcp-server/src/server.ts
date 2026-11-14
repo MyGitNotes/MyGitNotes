@@ -1,14 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRemoteSource, createWorkspaceRepositories, deploymentConfigSource, localManifest, RemoteManifest, type RemoteSource, RepositoryUnavailableError, sameSite, visibleMembers, WORKSPACE_CONFIG_FILENAME, type WorkspaceConfigSource, type WorkspaceRepositories, type WorkspaceSettings } from '@mygitnotes/core';
+import { createRemoteSource, createWorkspaceRepositories, deploymentConfigSource, localManifest, mergeTemplateLists, RemoteManifest, type RemoteSource, RepositoryUnavailableError, sameSite, type TemplateList, visibleMembers, WORKSPACE_CONFIG_FILENAME, type WorkspaceConfigSource, type WorkspaceRepositories, type WorkspaceSettings } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import { keyedResult, listedNotebooks, notebookArgument } from './notebook-keys.js';
 import { isMutationTool, remoteTools } from './remote-tools.js';
 import { callWorkspaceRemoteTool } from './workspace-remote.js';
 import { localTools } from './local-tools.js';
+import { TEMPLATE_GUIDANCE } from './template-guidance.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { handleAddAsset, handleCheckCoreUpdate, handleDeleteAsset, handleDeleteNote, handleGetFolderMetadata, handleGetGitStatus, handleGetNoteMetadata, handleGetStatuses, handleGetWorkspaceConfig, handleGitCommit, handleListAgentResources, handleListAssets, handleListFolders, handleListNotebooks, handleListNotes, handleMkdir, handleReadAgentResource, handleReadNote, handleReplaceNotes, handleSaveNote, handleSearchNotes, handleUpdateCore, handleUpdateFolderMetadata, handleUpdateNoteMetadata, ToolContext } from './tools/index.js';
+import { handleAddAsset, handleCheckCoreUpdate, handleDeleteAsset, handleDeleteNote, handleGetFolderMetadata, handleGetGitStatus, handleGetNoteMetadata, handleGetStatuses, handleGetWorkspaceConfig, handleGitCommit, handleListAgentResources, handleListAssets, handleListFolders, handleListNotebooks, handleListNotes, handleListTemplates, handleMkdir, handleReadAgentResource, handleReadNote, handleReplaceNotes, handleSaveNote, handleSearchNotes, handleUpdateCore, handleUpdateFolderMetadata, handleUpdateNoteMetadata, ToolContext } from './tools/index.js';
 
 /** A stdio session has no request of its own; adapters that select a workspace per request see no headers. */
 const STDIO_REQUEST = { headers: {} };
@@ -35,7 +36,7 @@ function openRemoteWorkspace(settings: WorkspaceSettings): WorkspaceRepositories
 
 /** `productRoot` is the Core checkout that ships product documents; the workspace comes from `configSource`. */
 export function createMCPServer(productRoot: string, configSource: WorkspaceConfigSource = deploymentConfigSource(productRoot)): Server {
-  const server = new Server({ name: 'mygitnotes-mcp', version: '0.1.0' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'mygitnotes-mcp', version: '0.1.0' }, { capabilities: { tools: {} }, instructions: TEMPLATE_GUIDANCE });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const { site } = await configSource.settings(STDIO_REQUEST);
@@ -86,7 +87,7 @@ export function createMCPServer(productRoot: string, configSource: WorkspaceConf
 
 type ToolHandler = (ctx: ToolContext, args: Record<string, unknown>) => Promise<unknown>;
 
-const localToolHandlers: Record<string, ToolHandler> = { list_folders: (ctx, args) => handleListFolders(ctx, args as { path?: string; notebookId?: string; }), get_workspace_config: (ctx) => handleGetWorkspaceConfig(ctx), list_notebooks: (ctx) => handleListNotebooks(ctx), list_notes: (ctx, args) => handleListNotes(ctx, args), read_note: (ctx, args) => handleReadNote(ctx, args as { path: string; notebookId?: string; metadataOnly?: boolean; }), save_note: (ctx, args) => handleSaveNote(ctx, args as any), delete_note: (ctx, args) => handleDeleteNote(ctx, args as { path: string; commitMessage?: string; }), list_agent_resources: (ctx) => handleListAgentResources(ctx), read_agent_resource: (ctx, args) => handleReadAgentResource(ctx, args as { path?: string; }), list_assets: (ctx, args) => handleListAssets(ctx, args as { notebookId: string; }), add_asset: (ctx, args) => handleAddAsset(ctx, args as any), delete_asset: (ctx, args) => handleDeleteAsset(ctx, args as { path: string; commitMessage?: string; force?: boolean; }), get_git_status: (ctx) => handleGetGitStatus(ctx), git_commit: (ctx, args) => handleGitCommit(ctx, args as { files: string[]; message: string; notebookId?: string; }), check_core_update: (ctx) => handleCheckCoreUpdate(ctx), update_core: (ctx, args) => handleUpdateCore(ctx, args as { autoPush?: boolean; checkOnly?: boolean; }), search_notes: (ctx, args) => handleSearchNotes(ctx, args as any), replace_notes: (ctx, args) => handleReplaceNotes(ctx, args as any), get_statuses: (ctx, args) => handleGetStatuses(ctx, args), get_note_metadata: (ctx, args) => handleGetNoteMetadata(ctx, args as { path: string; }), update_note_metadata: (ctx, args) => handleUpdateNoteMetadata(ctx, args as any), mkdir: (ctx, args) => handleMkdir(ctx, args as any), get_folder_metadata: (ctx, args) => handleGetFolderMetadata(ctx, args as { path: string; }), update_folder_metadata: (ctx, args) => handleUpdateFolderMetadata(ctx, args as any) };
+const localToolHandlers: Record<string, ToolHandler> = { list_folders: (ctx, args) => handleListFolders(ctx, args as { path?: string; notebookId?: string; }), get_workspace_config: (ctx) => handleGetWorkspaceConfig(ctx), list_notebooks: (ctx) => handleListNotebooks(ctx), list_notes: (ctx, args) => handleListNotes(ctx, args), list_templates: (ctx, args) => handleListTemplates(ctx, args as { notebookId?: string; query?: unknown; templateId?: unknown; limit?: unknown; }), read_note: (ctx, args) => handleReadNote(ctx, args as { path: string; notebookId?: string; metadataOnly?: boolean; }), save_note: (ctx, args) => handleSaveNote(ctx, args as any), delete_note: (ctx, args) => handleDeleteNote(ctx, args as { path: string; commitMessage?: string; }), list_agent_resources: (ctx) => handleListAgentResources(ctx), read_agent_resource: (ctx, args) => handleReadAgentResource(ctx, args as { path?: string; }), list_assets: (ctx, args) => handleListAssets(ctx, args as { notebookId: string; }), add_asset: (ctx, args) => handleAddAsset(ctx, args as any), delete_asset: (ctx, args) => handleDeleteAsset(ctx, args as { path: string; commitMessage?: string; force?: boolean; }), get_git_status: (ctx) => handleGetGitStatus(ctx), git_commit: (ctx, args) => handleGitCommit(ctx, args as { files: string[]; message: string; notebookId?: string; }), check_core_update: (ctx) => handleCheckCoreUpdate(ctx), update_core: (ctx, args) => handleUpdateCore(ctx, args as { autoPush?: boolean; checkOnly?: boolean; }), search_notes: (ctx, args) => handleSearchNotes(ctx, args as any), replace_notes: (ctx, args) => handleReplaceNotes(ctx, args as any), get_statuses: (ctx, args) => handleGetStatuses(ctx, args), get_note_metadata: (ctx, args) => handleGetNoteMetadata(ctx, args as { path: string; }), update_note_metadata: (ctx, args) => handleUpdateNoteMetadata(ctx, args as any), mkdir: (ctx, args) => handleMkdir(ctx, args as any), get_folder_metadata: (ctx, args) => handleGetFolderMetadata(ctx, args as { path: string; }), update_folder_metadata: (ctx, args) => handleUpdateFolderMetadata(ctx, args as any) };
 
 /**
  * Tools name notebooks by key (a bare local id resolves as an old URL does); each worktree's handlers see its local ids,
@@ -104,15 +105,17 @@ async function dispatchLocalTool(ctx: ToolContext, name: string, input: Record<s
     const available = all.filter(entry => 'handle' in entry);
     const unavailable = all.filter(entry => 'unavailable' in entry).map(entry => ({ repository: entry.ref.id, message: entry.unavailable.message }));
     if (name === 'get_git_status') return { repositories: await Promise.all(available.map(async entry => ({ repository: entry.ref.id, ...await handleGetGitStatus({ ...ctx, repoRoot: entry.handle.root }) }))), unavailable };
-    if (['list_notes', 'search_notes', 'get_statuses', 'list_folders', 'list_assets'].includes(name) && !args.notebookId && !args.path) {
+    if (['list_notes', 'search_notes', 'get_statuses', 'list_folders', 'list_assets', 'list_templates'].includes(name) && !args.notebookId && !args.path) {
       const results = await Promise.all(available.map(async entry => {
         const scoped = { ...ctx, workspace: undefined, repoRoot: entry.handle.root, config: await workspace.scope(entry.ref.id) };
         if (name === 'list_assets') return Promise.all(scoped.config.notebooks.map(async nb => keyedResult(await handleListAssets(scoped, { notebookId: nb.id }), entry)));
         if (name === 'list_notes') return keyedResult(await handleListNotes(scoped, { ...args, offset: 0, limit: 100000 }), entry);
         return keyedResult(await localToolHandlers[name](scoped, args) as Record<string, unknown>, entry);
       }));
-      const field = name === 'list_notes' ? 'notes' : name === 'search_notes' ? 'matches' : name === 'get_statuses' ? 'notebooks' : name === 'list_assets' ? 'assets' : 'folders';
+      const field = name === 'list_notes' ? 'notes' : name === 'search_notes' ? 'matches' : name === 'get_statuses' ? 'notebooks' : name === 'list_assets' ? 'assets' : name === 'list_templates' ? 'templates' : 'folders';
       const items = results.flatMap(result => name === 'list_assets' ? (result as { assets: unknown[]; }[]).flatMap(item => item.assets) : ((result as Record<string, unknown>)[field] as unknown[] || []));
+      // Each worktree answered its own matches, cut at the limit; one order and one limit hold across them.
+      if (name === 'list_templates') return { ...mergeTemplateLists((results as unknown as TemplateList[]).filter(result => Array.isArray(result.templates)), args.limit), unavailable };
       if (name === 'list_notes') {
         const offset = Number(args.offset || 0);
         const limit = Number(args.limit || 100);

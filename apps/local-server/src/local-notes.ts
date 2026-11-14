@@ -1,11 +1,12 @@
 import { Request, Response, Router } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { deleteNoteFile, keyedItem, lookupNotes, noteAgenda, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, writeNoteFile } from '@mygitnotes/core';
+import { deleteNoteFile, isTemplateFile, keyedItem, lookupNotes, noteAgenda, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, writeNoteFile } from '@mygitnotes/core';
 import { changeFile, generateCommitMessage, listChanges, stageAndCommit } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { asLocal, eachRepository, type LocalHandle, notebookRepository, noteRepository, requestCatalog } from './request-workspace.js';
 import { moveLocalVersionFiles, restoreLocalVersionFile } from './version-files.js';
+import { regularPath } from './workspace-files.js';
 
 export function createLocalNotesRouter(): Router {
   const router = Router();
@@ -21,7 +22,7 @@ export function createLocalNotesRouter(): Router {
       }
       return notes;
     };
-    return { revision: async () => '', index: async notebook => scan(notebook).map(({ content: _content, ...note }) => note), contents: async notes => new Map(notes.map(note => [note.path, scans.get(note.notebookId)?.find(item => item.path === note.path)?.content ?? ''])), memo: (_kind, _notebooks, compute) => compute(), folders: async notebook => scanNotebookFolders(repoRoot, notebook) };
+    return { revision: async () => '', index: async notebook => scan(notebook).map(({ content: _content, ...note }) => note), contents: async notes => new Map(notes.map(note => [note.path, scans.get(note.notebookId)?.find(item => item.path === note.path)?.content ?? ''])), memo: (_kind, _notebooks, compute) => compute(), folders: async notebook => scanNotebookFolders(repoRoot, notebook), template: async (notebook, file) => isTemplateFile(file.slice(notebook.root.length + 1), notebook) && fs.lstatSync(regularPath(repoRoot, file), { throwIfNoEntry: false })?.isFile() ? readNoteFile(repoRoot, file, notebook.id, notebook.root) : undefined };
   }
 
   const catalogOf = (res: Response) => requestCatalog(res, undefined, handle => localCatalog((handle as LocalHandle).root));
