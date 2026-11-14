@@ -37,7 +37,7 @@ function parseWorkspaceRevision(token: string, repository: string, repositoryCou
   return revisions as RevisionSet;
 }
 
-const workspaceReads = new Set(['glob', 'find', 'list_notes', 'search_notes', 'list_skills', 'list_assets', 'get_statuses', 'list_folders']);
+const workspaceReads = new Set(['glob', 'find', 'list_notes', 'search_notes', 'list_skills', 'list_assets', 'get_statuses', 'list_folders', 'list_templates']);
 const pathTools = new Set(['read', 'read_note', 'write', 'append', 'edit', 'save_note', 'delete_note', 'mkdir', 'rm', 'cp', 'mv', 'get_folder_metadata', 'update_folder_metadata', 'get_note_metadata', 'update_note_metadata', 'delete_asset', 'list_folders', 'ls']);
 const optionalWrites = new Set(['delete_note', 'delete_asset', 'update_note_metadata', 'add_asset', 'replace_notes']);
 const mutation = (name: string) => isMutationTool(name) || optionalWrites.has(name);
@@ -63,9 +63,9 @@ export async function callWorkspaceRemoteTool(workspace: WorkspaceRepositories<R
   }
   const broad = (name === 'ls' && (!args.path || args.path === '.')) || (workspaceReads.has(name) && !args.notebookId && !args.path && repositories.length > 1);
   if (broad && name !== 'get_statuses') {
-    if (name === 'list_skills' || name === 'list_assets' || name === 'list_folders') {
+    if (name === 'list_skills' || name === 'list_assets' || name === 'list_folders' || name === 'list_templates') {
       const results = await Promise.all(available.map(async entry => keyedResult(await callRemoteTool(entry.handle.reader, name, args, write, web(entry), assetsFor?.(entry.handle)), entry)));
-      const field = name === 'list_skills' ? 'skills' : name === 'list_assets' ? 'assets' : 'folders';
+      const field = name === 'list_skills' ? 'skills' : name === 'list_assets' ? 'assets' : name === 'list_templates' ? 'templates' : 'folders';
       return { [field]: results.flatMap(result => result[field] as unknown[]), ...(name === 'list_skills' ? { target: null } : {}), revision: await revisions(available), unavailable };
     }
     if (name === 'find') {
