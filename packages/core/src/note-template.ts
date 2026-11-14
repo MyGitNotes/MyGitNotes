@@ -29,14 +29,38 @@ export class TemplateError extends Error {
   }
 }
 
-/** Formats a date as `YYYY-MM-DD` for the `{{date}}` placeholder, from the server's clock in UTC. */
-export function formatTemplateDate(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
+/**
+ * The time zone a server fills `{{date}}` and `{{time}}` in: `MYGITNOTES_TIMEZONE` (an IANA name such as `Asia/Taipei`), else
+ * UTC. A name the runtime does not know is refused, so a misspelt setting does not date notes in UTC unnoticed. The web app
+ * fills them from the reader's own clock instead, so this module reads no `process` in a browser.
+ */
+export function templateTimeZone(env: Record<string, string | undefined> | undefined = (globalThis as { process?: { env?: Record<string, string | undefined>; }; }).process?.env): string {
+  const zone = env?.MYGITNOTES_TIMEZONE?.trim();
+  if (!zone) return 'UTC';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+  } catch {
+    throw new Error(`MYGITNOTES_TIMEZONE '${zone}' is not a time zone name, such as Asia/Taipei.`);
+  }
+  return zone;
 }
 
-/** Formats a time as `HH:mm` for the `{{time}}` placeholder, in UTC as `formatTemplateDate` does. */
-export function formatTemplateTime(now: Date = new Date()): string {
-  return now.toISOString().slice(11, 16);
+/** The parts of `now` in `timeZone`, two digits each but the year. */
+function clockParts(now: Date, timeZone: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now).map(part => [part.type, part.value]));
+  return parts as Record<'year' | 'month' | 'day' | 'hour' | 'minute', string>;
+}
+
+/** Formats a date as `YYYY-MM-DD` for the `{{date}}` placeholder, from the server's clock in its {@link templateTimeZone}. */
+export function formatTemplateDate(now: Date = new Date(), timeZone = templateTimeZone()): string {
+  const { year, month, day } = clockParts(now, timeZone);
+  return `${year}-${month}-${day}`;
+}
+
+/** Formats a time as `HH:mm` for the `{{time}}` placeholder, in the same time zone as `formatTemplateDate`. */
+export function formatTemplateTime(now: Date = new Date(), timeZone = templateTimeZone()): string {
+  const { hour, minute } = clockParts(now, timeZone);
+  return `${hour}:${minute}`;
 }
 
 /** The reader's own date and time, which the web app fills `{{date}}` and `{{time}}` with. */

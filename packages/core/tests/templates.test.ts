@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs';
 import { ConfigValidationError, parseWorkspaceConfig } from '../src/config.js';
-import { formatTemplateDate, formatTemplateTime, isTemplateFile, lastUseOf, listedNoteTemplates, listNoteTemplates, listTemplates, loadNoteTemplate, localTemplateClock, mergeTemplateLists, noteFromTemplate, type NoteTemplateInfo, renderNoteTemplate, renderTemplatePath, starterTemplate, templateFileId, templateFilePath, templateFromNote, templateLastUse, templateSettings, templateValues } from '../src/templates.js';
+import { formatTemplateDate, formatTemplateTime, isTemplateFile, lastUseOf, listedNoteTemplates, listNoteTemplates, listTemplates, loadNoteTemplate, localTemplateClock, mergeTemplateLists, noteFromTemplate, type NoteTemplateInfo, renderNoteTemplate, renderTemplatePath, starterTemplate, templateFileId, templateFilePath, templateFromNote, templateLastUse, templateSettings, templateTimeZone, templateValues } from '../src/templates.js';
 import { parseNoteContent } from '../src/frontmatter.js';
 import { scanNotebookNotes } from '../src/note-service.js';
 import type { NotebookConfig } from '../src/types.js';
@@ -282,6 +282,18 @@ describe('placeholders', () => {
 
   it('formats the clock in UTC for the server and in local time for the page', () => {
     expect(formatTemplateTime(new Date('2026-09-16T12:05:00Z'))).toBe('12:05');
+    // A deployment names its own time zone, so an agent's note made before 08:00 in Taipei is not dated the day before.
+    const early = new Date('2026-11-15T23:30:00Z');
+    expect([formatTemplateDate(early, 'Asia/Taipei'), formatTemplateTime(early, 'Asia/Taipei')]).toEqual(['2026-11-16', '07:30']);
+    expect(templateTimeZone({ MYGITNOTES_TIMEZONE: 'Asia/Taipei' })).toBe('Asia/Taipei');
+    expect(templateTimeZone({})).toBe('UTC');
+    expect(() => templateTimeZone({ MYGITNOTES_TIMEZONE: 'Mars/Olympus' })).toThrow(/MYGITNOTES_TIMEZONE/);
+    vi.stubEnv('MYGITNOTES_TIMEZONE', 'Asia/Taipei');
+    try {
+      expect(noteFromTemplate({ root: 'n' }, { metadata: { template: { path: '{{date}}.md' } }, content: '{{time}}' }, { templateId: 't', now: early }).path).toBe('n/2026-11-16.md');
+    } finally {
+      vi.unstubAllEnvs();
+    }
     expect(localTemplateClock(new Date(2026, 8, 6, 7, 5))).toEqual({ date: '2026-09-06', time: '07:05' });
   });
 });

@@ -379,6 +379,10 @@ On the deployment, set the pairing code the command printed, or its two parts, w
 
 Without `MYGITNOTES_EXTERNAL_PI_PAIRING` or `MYGITNOTES_EXTERNAL_PI_URL` nothing changes. Signed-in people who are not listed see no agent. The browser never receives the secret, only a socket token that expires after ten minutes and belongs to one session; rotate the secret on both sides together. The socket token travels in the `Sec-WebSocket-Protocol` header, so proxies in front of the bridge should not log that header.
 
+## Optional: the time zone of template dates
+
+A note an agent creates from a template through MCP fills `{{date}}` and `{{time}}` from the server's clock, in UTC unless `MYGITNOTES_TIMEZONE` names an IANA time zone, for example `MYGITNOTES_TIMEZONE=Asia/Taipei`. The server refuses to fill a template while the name is not one the runtime knows. The web app fills them from the reader's own clock.
+
 ## Optional: private R2 assets
 
 Store large files in a private Cloudflare R2 bucket and reference them in notes as `r2:<object-key>`. Set `MYGITNOTES_R2_ACCOUNT_ID`, `MYGITNOTES_R2_ACCESS_KEY_ID`, `MYGITNOTES_R2_SECRET_ACCESS_KEY`, and `MYGITNOTES_R2_BUCKET` in the deployment environment. Browser uploads also require a bucket CORS rule allowing PUT, GET, and HEAD from `APP_URL`. A read-only R2 token supports previews; Files-page management needs Object Read & Write. The MCP asset tools follow the same setting: with R2 configured `add_asset` uploads to the bucket and answers with the `r2:<object-key>` reference instead of committing the binary, `list_assets` reports bucket objects beside repository files, and `delete_asset` accepts that reference. A bucket-bound upload is not held to the 3 MiB repository limit; over hosted `/mcp` its ceiling is the 64 MiB request body, and the Files page uploads straight to the bucket with no ceiling. See [Cloudflare R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/) and [R2 object access](https://developers.cloudflare.com/r2/api/s3/api/).
