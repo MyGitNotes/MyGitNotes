@@ -114,18 +114,21 @@ export function fileKind(file: string): FileKind {
 /** Whether a viewer can show the file as plain text. */
 export const isTextFile = (file: string) => fileKind(file) === 'text';
 
-const SANDBOXED = "default-src 'none'; sandbox";
+/** Only the app's own pages may frame a raw file: the route lifts `X-Frame-Options` so its viewers can show one. */
+const FRAMED_BY_APP = "frame-ancestors 'self'";
+const SANDBOXED = `default-src 'none'; sandbox; ${FRAMED_BY_APP}`;
 
 /**
  * How the raw file route sends a file. A text file goes out as plain text, never under the type its extension names (a
  * `.ts` file is video to a type table, a `.sql` file a download). A PDF goes out as a PDF under a policy without `sandbox`,
  * which the browser's PDF viewer refuses; the bytes are only ever read as a PDF. HTML and every other file keep the sandbox
- * and the type their extension names, so a page runs no script and shares no origin with the app.
+ * and the type their extension names, so a page runs no script and shares no origin with the app. Every policy names the
+ * app as the only site that may frame the file, so no other site can show a notebook's PDF or page inside its own.
  */
 export function rawFileHeaders(file: string): { contentType?: string; contentSecurityPolicy: string; } {
   const kind = fileKind(file);
   if (kind === 'text') return { contentType: 'text/plain; charset=utf-8', contentSecurityPolicy: SANDBOXED };
-  if (kind === 'pdf') return { contentType: 'application/pdf', contentSecurityPolicy: "default-src 'none'" };
+  if (kind === 'pdf') return { contentType: 'application/pdf', contentSecurityPolicy: `default-src 'none'; ${FRAMED_BY_APP}` };
   if (kind === 'html') return { contentType: 'text/html; charset=utf-8', contentSecurityPolicy: SANDBOXED };
   return { contentSecurityPolicy: SANDBOXED };
 }

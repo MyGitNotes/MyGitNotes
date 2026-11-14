@@ -17,14 +17,16 @@ describe('file kinds', () => {
 
   it('serves text as plain text, a PDF inline as a PDF, HTML sandboxed, and keeps other files as they were', () => {
     // A script file is never sent under a script, video or markup type: the browser would run or misread it.
-    expect(rawFileHeaders('db/schema.sql')).toEqual({ contentType: 'text/plain; charset=utf-8', contentSecurityPolicy: "default-src 'none'; sandbox" });
+    // Every raw answer may be framed by the app's own pages and no other site.
+    const sandboxed = "default-src 'none'; sandbox; frame-ancestors 'self'";
+    expect(rawFileHeaders('db/schema.sql')).toEqual({ contentType: 'text/plain; charset=utf-8', contentSecurityPolicy: sandboxed });
     expect(rawFileHeaders('src/main.ts').contentType).toBe('text/plain; charset=utf-8');
     expect(rawFileHeaders('a.md').contentType).toBe('text/plain; charset=utf-8');
     expect(rawFileHeaders('a.xml').contentType).toBe('text/plain; charset=utf-8');
     // The browser's PDF viewer refuses a document under the sandbox directive, and the bytes are only ever read as a PDF.
-    expect(rawFileHeaders('spec.pdf')).toEqual({ contentType: 'application/pdf', contentSecurityPolicy: "default-src 'none'" });
-    expect(rawFileHeaders('out/index.html')).toEqual({ contentType: 'text/html; charset=utf-8', contentSecurityPolicy: "default-src 'none'; sandbox" });
-    expect(rawFileHeaders('a.png')).toEqual({ contentSecurityPolicy: "default-src 'none'; sandbox" });
-    expect(rawFileHeaders('a.zip')).toEqual({ contentSecurityPolicy: "default-src 'none'; sandbox" });
+    expect(rawFileHeaders('spec.pdf')).toEqual({ contentType: 'application/pdf', contentSecurityPolicy: "default-src 'none'; frame-ancestors 'self'" });
+    expect(rawFileHeaders('out/index.html')).toEqual({ contentType: 'text/html; charset=utf-8', contentSecurityPolicy: sandboxed });
+    expect(rawFileHeaders('a.png')).toEqual({ contentSecurityPolicy: sandboxed });
+    expect(rawFileHeaders('a.zip')).toEqual({ contentSecurityPolicy: sandboxed });
   });
 });

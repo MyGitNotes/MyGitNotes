@@ -14,7 +14,7 @@ afterEach(() => {
   root = undefined;
 });
 
-it('keeps notes under the manifest exclude globs out of the list, the search and the folders', async () => {
+it('keeps notes under the manifest exclude globs out of the list, the search, the folders and the note tools', async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-exclude-'));
   const git = (...args: string[]) => execFileSync('git', args, { cwd: root });
   git('init', '-b', 'main');
@@ -40,6 +40,25 @@ it('keeps notes under the manifest exclude globs out of the list, the search and
     expect((await call('list_notes', {})).data.notes.map((note: { path: string; }) => note.path).sort()).toEqual(['docs/guide/kept.md', 'docs/keep.md']);
     expect((await call('search_notes', { query: 'keyword' })).data.matches.map((match: { path: string; }) => match.path).sort()).toEqual(['docs/guide/kept.md', 'docs/keep.md']);
     expect((await call('list_folders', {})).data.folders.map((folder: { path: string; }) => folder.path)).toEqual(['guide']);
+    // An excluded path and a plain file are no notes to the note tools either, as on the hosted server; nothing is written.
+    const refused = { isError: true, data: { error: 'Path is not a configured note.' } };
+    const head = () => git('rev-parse', 'HEAD').toString().trim();
+    const before = head();
+    for (const file of ['docs/analysis/report.md', 'docs/guide/analysis/deep.md', 'docs/wip.draft.md', 'docs/schema.sql']) {
+      const content = fs.readFileSync(path.join(root!, file), 'utf8');
+      expect([file, await call('read_note', { path: file })]).toMatchObject([file, refused]);
+      expect([file, await call('read_note', { path: file, metadataOnly: true })]).toMatchObject([file, refused]);
+      expect([file, await call('save_note', { path: file, content: 'overwritten' })]).toMatchObject([file, refused]);
+      expect([file, await call('save_note', { path: file, status: 'done' })]).toMatchObject([file, refused]);
+      expect([file, await call('delete_note', { path: file })]).toMatchObject([file, refused]);
+      expect(fs.readFileSync(path.join(root!, file), 'utf8')).toBe(content);
+    }
+    expect(await call('save_note', { path: 'docs/analysis/new.md', content: 'new' })).toMatchObject(refused);
+    expect(fs.existsSync(path.join(root!, 'docs/analysis/new.md'))).toBe(false);
+    expect(head()).toBe(before);
+    // A note is still read and saved as one.
+    expect((await call('read_note', { path: 'docs/keep.md' })).data.note.path).toBe('docs/keep.md');
+    expect(await call('save_note', { path: 'docs/guide/new.md', content: 'new' })).toMatchObject({ data: { success: true } });
   } finally {
     await client.close();
     await server.close();

@@ -6,6 +6,9 @@ import { isNoteFile } from '@mygitnotes/core/note-file';
 import { assertNoteResource, assertUserWorkspaceBranch } from '../guards.js';
 import type { ToolContext } from './context.js';
 
+/** The absolute path of a note a tool may read or change, judged against the manifest of its repository. */
+const noteResource = (ctx: ToolContext, file: string) => assertNoteResource(ctx.repoRoot, file, ctx.config ?? loadWorkspaceConfig(ctx.repoRoot));
+
 export async function handleGetWorkspaceConfig(ctx: ToolContext) {
   const config = ctx.config ?? loadWorkspaceConfig(ctx.repoRoot);
   if (!config) {
@@ -43,7 +46,7 @@ export async function handleListNotes(ctx: ToolContext, args: { notebookId?: str
 }
 
 export async function handleReadNote(ctx: ToolContext, args: { path: string; notebookId?: string; metadataOnly?: boolean; }) {
-  assertNoteResource(ctx.repoRoot, args.path);
+  noteResource(ctx, args.path);
   if (args.metadataOnly) {
     return handleGetNoteMetadata(ctx, { path: args.path });
   }
@@ -83,7 +86,7 @@ async function saveNoteFromTemplate(ctx: ToolContext, args: SaveNoteArgs & { tem
   if (!notebook) throw new Error(args.notebookId ? `Notebook '${args.notebookId}' is not configured.` : 'Name the notebook of the template as notebookId, or a path inside it.');
   const template = loadNoteTemplate(ctx.repoRoot, notebook, args.template);
   const made = noteFromTemplate(notebook, template, { templateId: template.id, path: args.path, title: args.title, values: args.values, content: args.content, metadata: args.metadata });
-  const target = assertNoteResource(ctx.repoRoot, made.path);
+  const target = noteResource(ctx, made.path);
   if (!made.path.startsWith(`${notebook.root}/`) || !isNotebookContent(made.path.slice(notebook.root.length + 1), notebook) || !isNoteFile(made.path)) throw new Error(`${made.path} is not a note path of notebook '${notebook.id}'.`);
   if (fs.existsSync(target)) throw new Error(`A note already exists at ${made.path}.`);
   const saved = writeNoteFile(ctx.repoRoot, made.path, made.content, withNoteEdits(made.metadata, { status: args.status, tags: args.tags }), notebook.id, notebook.root);
@@ -98,7 +101,7 @@ export async function handleSaveNote(ctx: ToolContext, input: SaveNoteArgs) {
   if (input.values !== undefined) throw new Error('values fill a template: name one as template.');
   if (typeof input.path !== 'string' || !input.path) throw new Error('path is required.');
   const args = { ...input, path: input.path };
-  assertNoteResource(ctx.repoRoot, args.path);
+  noteResource(ctx, args.path);
 
   if (args.content === undefined) {
     return handleUpdateNoteMetadata(ctx, args);
@@ -122,7 +125,7 @@ export async function handleSaveNote(ctx: ToolContext, input: SaveNoteArgs) {
 
 export async function handleDeleteNote(ctx: ToolContext, args: { path: string; commitMessage?: string; }) {
   await assertUserWorkspaceBranch(ctx.repoRoot);
-  assertNoteResource(ctx.repoRoot, args.path);
+  noteResource(ctx, args.path);
 
   deleteNoteFile(ctx.repoRoot, args.path);
   // The note's versions go with it in the same commit.
@@ -167,7 +170,7 @@ function availableStatuses(ctx: ToolContext, nb?: NotebookConfig) {
 }
 
 export async function handleGetNoteMetadata(ctx: ToolContext, args: { path: string; }) {
-  assertNoteResource(ctx.repoRoot, args.path);
+  noteResource(ctx, args.path);
   const config = ctx.config ?? loadWorkspaceConfig(ctx.repoRoot);
   if (!config) return { error: 'Workspace not configured' };
 
@@ -181,7 +184,7 @@ export async function handleGetNoteMetadata(ctx: ToolContext, args: { path: stri
 
 export async function handleUpdateNoteMetadata(ctx: ToolContext, args: { path: string; metadata?: Record<string, unknown>; status?: string; tags?: string[]; title?: string; commitMessage?: string; }) {
   await assertUserWorkspaceBranch(ctx.repoRoot);
-  assertNoteResource(ctx.repoRoot, args.path);
+  noteResource(ctx, args.path);
 
   const config = ctx.config ?? loadWorkspaceConfig(ctx.repoRoot);
   if (!config) return { error: 'Workspace not configured' };

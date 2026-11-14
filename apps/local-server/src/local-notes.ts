@@ -1,12 +1,21 @@
 import { Request, Response, Router } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { deleteNoteFile, isTemplateFile, keyedItem, lookupNotes, noteAgenda, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, writeNoteFile } from '@mygitnotes/core';
+import { classifyResource, deleteNoteFile, FILE_RESOURCE_TYPES, isTemplateFile, keyedItem, lookupNotes, noteAgenda, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
 import { changeFile, generateCommitMessage, listChanges, stageAndCommit } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { asLocal, eachRepository, type LocalHandle, notebookRepository, noteRepository, requestCatalog } from './request-workspace.js';
 import { moveLocalVersionFiles, restoreLocalVersionFile } from './version-files.js';
 import { regularPath } from './workspace-files.js';
+
+/**
+ * Refuses a file of a notebook that is not a note: a text file, a PDF, a page or any other file, and every path the
+ * manifest excludes. Such a file is read through the file routes; no note route reads, writes, deletes or restores it,
+ * which is what a remote workspace answers too (`RemoteSource.note`, `save`).
+ */
+function assertNote(file: string, config: WorkspaceConfig): void {
+  if (FILE_RESOURCE_TYPES.includes(classifyResource(file, config).type)) throw new SourceError('Path is not a configured note.', 403);
+}
 
 export function createLocalNotesRouter(): Router {
   const router = Router();
@@ -87,7 +96,8 @@ export function createLocalNotesRouter(): Router {
       if (!relPath) {
         return res.status(400).json({ error: 'path query parameter is required' });
       }
-      const { handle, alias, notebook } = await noteRepository(res, relPath, req.query.notebookId);
+      const { handle, alias, notebook, config } = await noteRepository(res, relPath, req.query.notebookId);
+      assertNote(relPath, config);
       const note = readNoteFile(asLocal(handle).root, relPath, notebook.id, notebook.root);
       res.json({ note: keyedItem(alias)(note) });
     } catch (err: unknown) {
@@ -103,7 +113,8 @@ export function createLocalNotesRouter(): Router {
       if (!notePath || typeof content !== 'string') {
         return res.status(400).json({ error: 'path and content are required' });
       }
-      const { handle, alias, notebook } = await noteRepository(res, notePath, notebookId);
+      const { handle, alias, notebook, config } = await noteRepository(res, notePath, notebookId);
+      assertNote(notePath, config);
       const repoRoot = asLocal(handle).root;
 
       return await serializeWorkspaceMutation(repoRoot, async () => {
@@ -137,7 +148,9 @@ export function createLocalNotesRouter(): Router {
       if (!notePath) {
         return res.status(400).json({ error: 'path is required' });
       }
-      const repoRoot = asLocal((await noteRepository(res, notePath, req.query.notebookId)).handle).root;
+      const { handle, config } = await noteRepository(res, notePath, req.query.notebookId);
+      assertNote(notePath, config);
+      const repoRoot = asLocal(handle).root;
 
       return await serializeWorkspaceMutation(repoRoot, async () => {
         deleteNoteFile(repoRoot, notePath);
@@ -164,7 +177,8 @@ export function createLocalNotesRouter(): Router {
       if (!notePath) {
         return res.status(400).json({ error: 'path is required' });
       }
-      const { handle, alias, notebook } = await noteRepository(res, notePath, notebookId);
+      const { handle, alias, notebook, config } = await noteRepository(res, notePath, notebookId);
+      assertNote(notePath, config);
       const repoRoot = asLocal(handle).root;
 
       return await serializeWorkspaceMutation(repoRoot, async () => {
