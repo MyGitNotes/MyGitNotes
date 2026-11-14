@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { bucketR2Source, downloadNoteR2Objects, hostedR2Source, localizeR2References, localR2Source, r2Cache, r2CacheRoot, type R2ObjectSource } from '../src/index.js';
+import { bucketR2Source, downloadNoteR2Objects, fetchR2ObjectToCache, hostedR2Source, localizeR2References, localR2Source, r2Cache, r2CacheRoot, type R2ObjectSource } from '../src/index.js';
 
 const NOTE = { path: 'notes/ex/rules.md', content: '# Rules\n\n![Map](<r2:ex/maps/old west.png>)\n[Core](r2:ex/core.pdf)\n\n`r2:ex/in-code.png` and plain r2:ex/plain.png\n' };
 const KEYS = ['ex/maps/old west.png', 'ex/core.pdf'];
@@ -86,6 +86,18 @@ describe('the local R2 cache', () => {
     await expect(r2Cache(path.join(dir, 'cache')).store('ex/a.png', broken)).rejects.toMatchObject({ name: 'TypeError' });
   });
 
+  it('forgets an object, so a later view reads the bucket again, and forgets one that is not there without failing', async () => {
+    const cache = r2Cache(path.join(dir, 'cache'));
+    await cache.store('ex/core.pdf', new TextEncoder().encode('core'));
+    await cache.store('ex/other.png', new TextEncoder().encode('other'));
+    cache.remove('ex/core.pdf');
+    expect(cache.find('ex/core.pdf')).toBeNull();
+    expect(cache.find('ex/other.png')).not.toBeNull();
+    expect(() => cache.remove('ex/core.pdf')).not.toThrow();
+    expect(() => cache.remove('../outside')).not.toThrow();
+    expect(listFiles(cache.root)).toHaveLength(2);
+  });
+
   it('refuses a cache entry that is a symlink out of the cache root', async () => {
     const cache = r2Cache(path.join(dir, 'cache'));
     const stored = await cache.store('ex/a.png', new TextEncoder().encode('image bytes'));
@@ -120,6 +132,16 @@ describe('downloading the objects a note references', () => {
     const refreshed = await downloadNoteR2Objects({ note: NOTE, source: bucket.source, cache, fetcher: bucket.fetcher, refresh: true });
     expect(refreshed.downloaded).toEqual(KEYS);
     expect(bucket.fetched).toHaveLength(4);
+  });
+
+  it('leaves out an object larger than the per-object limit, says so, and keeps the rest', async () => {
+    const bucket = fakeBucket({ 'ex/maps/old west.png': 'map', 'ex/core.pdf': 'core bytes' });
+    const cache = r2Cache(path.join(dir, 'cache'));
+    const report = await downloadNoteR2Objects({ note: NOTE, source: bucket.source, cache, fetcher: bucket.fetcher, maxObjectBytes: 5 });
+    expect(report.downloaded).toEqual(['ex/maps/old west.png']);
+    expect(report.missing).toEqual([{ key: 'ex/core.pdf', reason: expect.stringContaining('larger than 5 bytes') }]);
+    expect(cache.find('ex/core.pdf')).toBeNull();
+    expect(listFiles(cache.root)).toHaveLength(2);
   });
 
   it('reports what it could not get and keeps the rest', async () => {
@@ -183,6 +205,35 @@ describe('where local mode reads objects from', () => {
     expect(calls[0].init.redirect).toBe('error');
     expect(JSON.parse(String(calls[0].init.body)).params).toEqual({ name: 'download_assets', arguments: { path: 'notes/ex/rules.md', offset: 0, limit: 50 } });
     expect(JSON.parse(String(calls[1].init.body)).params.arguments.offset).toBe(2);
+  });
+
+  it('takes object URLs only over https or on this machine, and stops paging once every asked key is found', async () => {
+    const pages = [{ assets: [{ key: 'ex/core.pdf', url: 'http://bucket.test/core?sig=1' }, { key: 'ex/maps/old west.png', url: 'http://127.0.0.1:9000/map?sig=1' }], total: 90, nextOffset: 50 }, { assets: [{ key: 'ex/core.pdf', url: 'https://bucket.test/core?sig=2' }], total: 90, nextOffset: 100 }, { assets: [], total: 90, nextOffset: null }];
+    let calls = 0;
+    const fetcher = (async () => {
+      const result = pages[calls++];
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { structuredContent: result, content: [] } }), { status: 200 });
+    }) as typeof fetch;
+    const urls = await hostedR2Source('https://notes.example', 't', fetcher).urls('notes/ex/rules.md', KEYS);
+    // The plain-http bucket URL of a remote host is refused; the loopback one and the https one are kept.
+    expect([...urls].sort()).toEqual([['ex/core.pdf', 'https://bucket.test/core?sig=2'], ['ex/maps/old west.png', 'http://127.0.0.1:9000/map?sig=1']]);
+    // Both keys were found on the second page, so the third is never asked for.
+    expect(calls).toBe(2);
+  });
+
+  it('reads an object without following a redirect', async () => {
+    const seen: (RequestInit | undefined)[] = [];
+    const fetcher = (async (_url: string | URL | Request, init?: RequestInit) => (seen.push(init), new Response('x', { status: 200 }))) as typeof fetch;
+    await fetchR2ObjectToCache(r2Cache(path.join(dir, 'cache')), 'ex/core.pdf', 'https://bucket.test/core?sig=1', { fetcher });
+    expect(seen[0]?.redirect).toBe('error');
+  });
+
+  it('drops a connector path (/mcp/<token>) pasted into the deployment URL instead of asking /mcp/<token>/mcp', async () => {
+    const urls: string[] = [];
+    const fetcher = (async (input: string | URL | Request) => (urls.push(String(input)), new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { structuredContent: { assets: [], nextOffset: null }, content: [] } }), { status: 200 }))) as typeof fetch;
+    for (const remote of ['https://notes.example/mcp/abc123_-TOKEN', 'https://notes.example/mcp/abc123_-TOKEN/', 'https://notes.example/mcp', 'https://notes.example']) await hostedR2Source(remote, 't', fetcher).urls('n.md', KEYS);
+    await hostedR2Source('https://notes.example/app/mcp/abc123', 't', fetcher).urls('n.md', KEYS);
+    expect(urls).toEqual([...Array(4).fill('https://notes.example/mcp'), 'https://notes.example/app/mcp']);
   });
 
   it('sends the agent token only over https or to this machine, and never repeats it in an error', async () => {

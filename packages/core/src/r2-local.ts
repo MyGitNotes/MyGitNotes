@@ -54,6 +54,8 @@ export interface R2Cache {
   /** The cached object of `key`, or null when it is absent, incomplete, or `key` is not a valid key. */
   find(key: string): CachedR2Object | null;
   /** Stores an object's bytes, replacing an earlier copy only once every byte is on disk; with `maxBytes`, a longer body is refused and nothing is kept. */
+  /** Forgets the cached object of `key`, so the next view reads it again; a key that is not cached, or not valid, is ignored. */
+  remove(key: string): void;
   store(key: string, body: ReadableStream<Uint8Array> | Uint8Array, options?: { etag?: string; maxBytes?: number; }): Promise<CachedR2Object>;
 }
 
@@ -97,6 +99,13 @@ export function r2Cache(root: string): R2Cache {
       } catch {
         return null;
       }
+    },
+    remove(key) {
+      if (!isValidR2Key(key)) return;
+      const file = objectFile(key);
+      // The sidecar goes first, so a half-removed entry is never found.
+      fs.rmSync(`${file}.json`, { force: true });
+      fs.rmSync(file, { force: true });
     },
     async store(key, body, { etag, maxBytes } = {}) {
       const file = objectFile(key);
@@ -143,6 +152,18 @@ export function bucketR2Source(scope: Pick<AssetScope, 'settings' | 'prefix'>): 
   };
 }
 
+/** Whether a URL the hosted deployment answered may be read: https, or http on this machine. Nothing else, so a hostile answer cannot aim the read at a LAN host. */
+function readableObjectUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname));
+  } catch {
+    return false;
+  }
+}
+
+const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
 /** The JSON a tool answered as text, or undefined when it is not JSON. */
 function parsed(text: unknown): unknown {
   if (typeof text !== 'string') return undefined;
@@ -152,6 +173,9 @@ function parsed(text: unknown): unknown {
     return undefined;
   }
 }
+
+/** The largest object a first view of a note caches, and the most `download_assets` reads per object; a larger object is shown straight from the bucket, and `pnpm r2-download` caches any size. */
+export const R2_VIEW_CACHE_BYTES = 64 * 1024 * 1024;
 
 const HOSTED_PAGE = 50;
 /** How many pages one note is asked for at most; a note with more references than this is read as far as it goes. */
@@ -169,9 +193,10 @@ export function hostedR2Source(remoteUrl: string, token: string, fetcher: typeof
   } catch {
     throw new Error('MYGITNOTES_R2_REMOTE_URL must be the https URL of a hosted MyGitNotes deployment.');
   }
-  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(remote.hostname);
+  const loopback = LOOPBACK_HOSTS.includes(remote.hostname);
   if (remote.protocol !== 'https:' && !(remote.protocol === 'http:' && loopback)) throw new Error('MYGITNOTES_R2_REMOTE_URL must be an https URL, so the agent token is never sent in the clear.');
-  const endpoint = `${remote.origin}${remote.pathname.replace(/\/+$/, '').replace(/\/mcp$/, '')}/mcp`;
+  // The connector URL shown in Settings is `<deployment>/mcp/<token>`; pasted here it names the deployment's `/mcp`, and the token is the separate variable.
+  const endpoint = `${remote.origin}${remote.pathname.replace(/\/+$/, '').replace(/\/mcp(\/[^/]+)?$/, '')}/mcp`;
   return {
     async urls(notePath, keys) {
       const wanted = new Set(keys), found = new Map<string, string>();
@@ -187,8 +212,10 @@ export function hostedR2Source(remoteUrl: string, token: string, fetcher: typeof
         // A refused call says why (the note is not one the grant reads, the deployment has no bucket); an answer of another shape is an older deployment's.
         if (result?.isError || !Array.isArray(answer?.assets)) throw new Error(typeof answer?.error === 'string' ? answer.error : 'The hosted deployment did not answer download_assets; it may run an older MyGitNotes.');
         for (const asset of answer.assets as { key?: unknown; url?: unknown; }[]) {
-          if (typeof asset.key === 'string' && typeof asset.url === 'string' && wanted.has(asset.key) && /^https?:\/\//i.test(asset.url)) found.set(asset.key, asset.url);
+          if (typeof asset.key === 'string' && typeof asset.url === 'string' && wanted.has(asset.key) && readableObjectUrl(asset.url)) found.set(asset.key, asset.url);
         }
+        // Every asked key found: the remaining pages hold nothing more for this call.
+        if (found.size === wanted.size) break;
         offset = typeof answer.nextOffset === 'number' && answer.nextOffset > offset ? answer.nextOffset : null;
       }
       return found;
@@ -213,7 +240,8 @@ export function localR2Source(env: NodeJS.ProcessEnv = process.env, fetcher: typ
 
 /** Reads the object behind a presigned URL into the cache, sending no credential; with `maxBytes`, a larger object is refused before or while it is read. */
 export async function fetchR2ObjectToCache(cache: R2Cache, key: string, url: string, { fetcher = fetch, maxBytes }: { fetcher?: typeof fetch; maxBytes?: number; } = {}): Promise<CachedR2Object> {
-  const response = await fetcher(url);
+  // A redirect is refused: an object URL answers the bytes itself, and following one would let a URL aim the read elsewhere.
+  const response = await fetcher(url, { redirect: 'error' });
   if (!response.ok || !response.body) {
     await response.body?.cancel().catch(() => undefined);
     // A missing object stays a 404 for the caller; any other refusal is the store's failure.
@@ -236,6 +264,8 @@ export interface R2DownloadOptions {
   outDir?: string;
   /** Reads every referenced object again, cached or not. */
   refresh?: boolean;
+  /** The largest object read into the cache; a larger one is left out and reported as missing. Unbounded when omitted. */
+  maxObjectBytes?: number;
   fetcher?: typeof fetch;
 }
 
@@ -259,7 +289,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : Str
  * note's own text references are asked for, an object the cache holds is not read again, and a copy is written
  * inside `outDir` or not at all.
  */
-export async function downloadNoteR2Objects({ note, source, cache, outDir, refresh = false, fetcher = fetch }: R2DownloadOptions): Promise<R2DownloadReport> {
+export async function downloadNoteR2Objects({ note, source, cache, outDir, refresh = false, maxObjectBytes, fetcher = fetch }: R2DownloadOptions): Promise<R2DownloadReport> {
   const keys = r2ReferenceKeys(note.content);
   const report: R2DownloadReport = { keys, downloaded: [], cached: [], missing: [], written: [] };
   const needed = refresh ? keys : keys.filter(key => !cache.find(key));
@@ -279,7 +309,7 @@ export async function downloadNoteR2Objects({ note, source, cache, outDir, refre
       continue;
     }
     try {
-      await fetchR2ObjectToCache(cache, key, url, { fetcher });
+      await fetchR2ObjectToCache(cache, key, url, { fetcher, maxBytes: maxObjectBytes });
       report.downloaded.push(key);
     } catch (error) {
       report.missing.push({ key, reason: message(error) });
