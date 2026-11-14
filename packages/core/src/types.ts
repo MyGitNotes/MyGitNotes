@@ -1,4 +1,19 @@
 import type { SortField, SortOrder } from './note-sort.js';
+import type { LiveConflict } from './live-notes.js';
+
+/** A note checked out to the live editor (編輯中), or a pending live note, as reads describe it. */
+export interface LiveNoteState {
+  /** When this checkout began. */
+  since: string;
+  /** Connected, non-idle editors. */
+  activeEditors: number;
+  /** A note created in the editor that has no Git path yet; its path is virtual. */
+  pending?: true;
+  /** What the last check-in overwrote. */
+  conflict?: LiveConflict;
+  /** The editor's own page of the note. */
+  editorUrl: string;
+}
 
 export type ViewMode = 'list' | 'card' | 'kanban' | 'flat' | 'graph';
 
@@ -96,6 +111,8 @@ export interface NoteItem {
   kind?: 'compilation' | 'outline';
   /** Why a compilation cannot open: a syntax, schema, scope or duplicate-id problem. */
   invalid?: string;
+  /** Present while the note is checked out to the live editor: the text above is the live text. */
+  live?: LiveNoteState;
 }
 
 /**

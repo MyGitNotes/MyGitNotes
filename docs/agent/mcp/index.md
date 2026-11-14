@@ -115,6 +115,34 @@ revisions reject the operation. Mutations allow at most 200 files and 5 MiB of
 new text. Directory operations require recursive consent; protected files and
 asset-containing directories reject the complete operation. Moves preserve file
 text, including relative links.
+
+### Notes being edited live (編輯中)
+
+A deployment whose edition attaches a live editor (`AppServices.liveNotes`; see
+[Live editor](../architecture/index.md#live-editor)) serves a checked-out note
+from the editor until it is checked in. For a grant whose person the request
+names, `read`, `read_note`, `find`, `list_notes`, `search_notes` and
+`get_statuses` see the live text, a pending live note is listed at its virtual
+path `<notebook root>/.live/<id>.md`, and `read`, `read_note`,
+`get_note_metadata`, `list_notes` entries and `search_notes` matches carry
+`live: { since, activeEditors, pending?, editorUrl }`. A read of a checked-out
+note returns a `v2.` revision: unpadded base64url of
+`{"r": {<repository>: <sha>}, "l": [[repository, path, id, liveRevision, contentHash], …]}`
+(at most 32 live entries, the oldest dropped, and 8192 characters). Without a
+live entry the token stays `v1.` byte for byte. `write`, `edit`, `save_note` and
+`update_note_metadata` on a note still checked out under the entry's link land in
+the live editor on that read's revision, which the editor rebases over typing
+since; the receipt says `committed: false, pushed: false, live: true` with the
+new `liveRevision`, and `revision` stays the branch head. A Git-only revision on
+a checked-out note is refused with `code: "checked-out"` and its `paths`: read
+it again. `edit` also needs the text it read to be the current one, or it is
+refused as changed in the live editor. `append` always lands live.
+`update_note_metadata` and `save_note` without `content` read the note fresh and
+write on that revision. `mv`, `cp`, `rm`, `delete_note`, `replace_notes` and any
+other commit that would touch a checked-out note (a move rewriting its links
+included) are refused with `code: "checked-out"` and the paths, committing
+nothing. Read-only grants read live text and write nothing; a note no longer
+checked out ignores its live entry and checks the commit.
 Note writes (`write`, `append`, `edit`, `save_note`, `update_note_metadata`)
 also return the note `path` and, when `APP_URL` is configured, the note's web page `url`.
 

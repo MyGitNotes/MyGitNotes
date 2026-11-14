@@ -1,5 +1,5 @@
 import express from 'express';
-import { type LiveNotes, type RemoteCache, validateLiveEditorInfo } from '@mygitnotes/core';
+import { checkedOutFields, type LiveNotes, type RemoteCache, validateLiveEditorInfo } from '@mygitnotes/core';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -152,14 +152,14 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   app.use('/api/auth', refuseDemoPageSignIn, createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity, agentFor: piAgent?.availableTo }));
   app.use('/api', workspaceChoiceRouter({ identity, choices: workspaceChoices ?? undefined }));
   services.routes?.(app, services);
-  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources));
+  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources, services.liveNotes));
   app.get('/api/history/events', serverlessHistoryEvents);
   // Core updates act on the product repository, not on the workspace, so they open no repository of it.
   if (!local) app.use('/api/core', product ? createRemoteCoreUpdateRouter(identity, product) : (_req, res) => res.status(404).json({ error: 'This deployment names no product repository, so it offers no Core update.' }));
   if (piAgent?.tools) app.use('/api/pi', piAgent.tools);
   // The member list opens no repository, so it works while every repository is hidden or unreachable.
   app.use('/api/workspace/members', createWorkspaceMembersRouter(configSource, assetStorage, identity, { repositoryChoice: visitorChoice, onChange: async (settings, request) => piAgent?.membershipChanged?.(visibleMembers(settings).map(member => member.ref.id), request), ...(services.defer ? { defer: services.defer } : {}) }));
-  app.use(['/api', '/raw-assets', '/r2-assets'], requestWorkspace(identity, configSource, cache, services.editionSources));
+  app.use(['/api', '/raw-assets', '/r2-assets'], requestWorkspace(identity, configSource, cache, services.editionSources, services.liveNotes));
   app.use(createFileManagerRouter());
   app.use(createR2ManagerRouter(assetStorage, local ? r2Cache(r2CacheRoot(base)) : undefined));
   app.use('/api/study', createStudyRouter());
@@ -533,5 +533,5 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
 function fail(res: express.Response, error: unknown) {
   const retryAfter = error instanceof SourceError ? error.retryAfter : undefined;
   if (retryAfter) res.setHeader('Retry-After', String(retryAfter));
-  res.status(error instanceof SourceError ? error.status : 500).json({ error: error instanceof Error ? error.message : 'Request failed.', ...(retryAfter ? { retryAfter } : {}), ...(error instanceof StaleRevisionError ? { staleRepositories: error.repositories } : {}) });
+  res.status(error instanceof SourceError ? error.status : 500).json({ error: error instanceof Error ? error.message : 'Request failed.', ...(retryAfter ? { retryAfter } : {}), ...(error instanceof StaleRevisionError ? { staleRepositories: error.repositories } : {}), ...checkedOutFields(error) });
 }

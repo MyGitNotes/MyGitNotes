@@ -194,6 +194,11 @@ export class CheckedOutError extends SourceError {
   }
 }
 
+/** The fields a JSON error answer adds for a {@link CheckedOutError}: its code and the checked-out paths. */
+export function checkedOutFields(error: unknown): { code?: 'checked-out'; paths?: string[]; } {
+  return error instanceof CheckedOutError ? { code: error.code, paths: error.paths } : {};
+}
+
 const LIVE_ERRORS = [LiveStaleError, LiveLeasedError, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, CheckedOutError];
 
 /** An adapter failure as the community reports it: one of the live errors as thrown, anything else a 502 that names no detail. */

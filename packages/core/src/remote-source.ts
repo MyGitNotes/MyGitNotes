@@ -24,6 +24,8 @@ import type { NoteListItem } from './note-query.js';
 import { addVersion, agentEditMessage, type HistoryEntry, isAgentEdit, readVersionFile, serializeVersionFile, versionedPath, versionFilePath, type VersionLabel } from './note-versions.js';
 import { CASE_COLLISION_ERROR, differsOnlyInCase } from './case-collision.js';
 import { type CommitAuthor, commitAuthor, withCoAuthors } from './commit-author.js';
+import { CheckedOutError, LIVE_MAX_BYTES, liveContentHash, LiveStaleError, LiveTooLargeError, normalizeLiveText } from './live-notes.js';
+import { editedLiveError, type LiveLink, liveNoteState, type LiveRecord, type LiveRepository, parseLiveBase } from './live-repository.js';
 
 export { SourceError } from './github-api.js';
 const CACHEABLE_FILE = /\.(md|markdown|mdx|txt|ya?ml)$/i;
@@ -64,6 +66,10 @@ export type HistoryRead = { blob: string; content: string; } | { blob: string; n
 /** History reads show at most this much of a file. */
 const HISTORY_MAX_BYTES = 1024 * 1024;
 const OBJECT_ID = /^[a-f0-9]{40}([a-f0-9]{24})?$/;
+/** Shared-cache keys of live texts, each value the text whose sha256 the key ends with. */
+const LIVE_TEXT_VERSION = 'v1';
+/** Adapter reads of one live text in flight in this process, by cache key, so concurrent misses read it once. */
+const liveReadsInFlight = new Map<string, Promise<{ content: string; contentHash: string; }>>();
 
 /** Hears of every commit this process publishes to a remote repository: its identity, as `RemoteSource.id`, and the changed paths. */
 export type RemoteCommitListener = (repository: RepositoryId, paths: string[]) => void;
@@ -98,6 +104,12 @@ export abstract class RemoteSource {
   private loaded = new Map<string, Buffer>();
   private loadedBytes = 0;
   private cacheChecked = new Set<string>();
+  /** The request's view of the repository's live editor; none for a signed-out request or a repository no editor covers. */
+  private live?: LiveRepository;
+  /** Live texts this request read, by path (real or virtual). */
+  private liveLoaded = new Map<string, { content: string; contentHash: string; }>();
+  /** The revision and hash this request last read or wrote of each live note, by path. */
+  private liveSeen = new Map<string, LiveRecord>();
   /**
    * `scope` supplies the notebooks this repository serves; the workspace manifest is never read from here. `commitsAs` is
    * who the commits this source publishes are authored by, for a deployment whose `token` is not the person's own;
@@ -127,6 +139,135 @@ export abstract class RemoteSource {
       }
     }
   }
+  /**
+   * Hands the request's view of the live editor to this reader: from then on every read of a checked-out note by path
+   * answers its live text, and Git writes that touch one are refused (docs/specs/2026-11-15-live-notes/spec.md §3, §4).
+   */
+  useLive(view: LiveRepository) {
+    this.live = view;
+  }
+  /** The live link of a path: a checked-out note's or a pending note's virtual path; undefined without one. */
+  private async liveLink(file: string): Promise<LiveLink | undefined> {
+    if (!this.live || typeof file !== 'string' || !/\.(md|markdown)$/i.test(file)) return undefined;
+    return (await this.live.links()).find(link => link.path === file);
+  }
+  /** The live link of a checked-out note or pending note at `file`; undefined when it is not live or no editor is in use. */
+  async liveCheckout(file: string) {
+    return (await this.liveLink(file))?.checkout;
+  }
+  /** What this request last read or wrote of the live note at `file`. */
+  liveRecord(file: string): LiveRecord | undefined {
+    return this.liveSeen.get(file);
+  }
+  private liveTextKey(hash: string) {
+    return `mgn:live:${LIVE_TEXT_VERSION}:${this.cacheRepository()}:${hash}`;
+  }
+  /** Keeps live texts in the shared cache, each under its own hash. */
+  private async storeLiveTexts(texts: { content: string; contentHash: string; }[]) {
+    if (!this.cache) return;
+    const values = texts.filter(text => liveContentHash(text.content) === text.contentHash && Buffer.byteLength(text.content) <= REMOTE_CACHE_MAX_VALUE).map(text => [this.liveTextKey(text.contentHash), text.content] as [string, string]);
+    if (values.length) await this.cache.set(values, REMOTE_CACHE_TTL);
+  }
+  /** The live text of a link, fresh from the adapter, kept for this request and in the shared cache. */
+  private async readLiveLink(link: LiveLink) {
+    const text = await this.live!.read(link.checkout.id);
+    this.liveLoaded.set(link.path, text);
+    this.liveSeen.set(link.path, { id: link.checkout.id, liveRevision: text.liveRevision, contentHash: text.contentHash });
+    await this.storeLiveTexts([text]);
+    return text;
+  }
+  /** The live text of a link: as this request already read it, else fresh. */
+  private async liveTextOf(link: LiveLink) {
+    return this.liveLoaded.get(link.path) ?? this.readLiveLink(link);
+  }
+  /** The live note at `file`, read fresh from the adapter; undefined when it is not live. */
+  async readLive(file: string) {
+    const link = await this.liveLink(file);
+    return link ? this.readLiveLink(link) : undefined;
+  }
+  /**
+   * Loads the live texts of links for a bulk read: from the shared cache by each link's hash, checked against it, and
+   * from the adapter only for a text no one has read since it last changed.
+   */
+  private async loadLiveTexts(links: LiveLink[]) {
+    const missing = links.filter(link => !this.liveLoaded.has(link.path));
+    if (!missing.length) return;
+    const hits = this.cache ? await this.cache.get(missing.map(link => this.liveTextKey(link.checkout.contentHash))) : missing.map(() => null);
+    const unread: LiveLink[] = [];
+    missing.forEach((link, i) => {
+      const hit = hits[i];
+      // A live text is trusted only when it hashes to the key this request's own list of links named.
+      if (hit !== null && liveContentHash(hit) === link.checkout.contentHash) this.liveLoaded.set(link.path, { content: hit, contentHash: link.checkout.contentHash });
+      else unread.push(link);
+    });
+    for (let i = 0; i < unread.length; i += 6) {
+      await Promise.all(
+        unread.slice(i, i + 6).map(async link => {
+          const key = this.liveTextKey(link.checkout.contentHash);
+          let pending = liveReadsInFlight.get(key);
+          if (!pending) {
+            pending = this.live!.read(link.checkout.id).then(async text => {
+              await this.storeLiveTexts([text]);
+              return { content: text.content, contentHash: text.contentHash };
+            });
+            liveReadsInFlight.set(key, pending);
+            void pending.then(() => liveReadsInFlight.delete(key), () => liveReadsInFlight.delete(key));
+          }
+          this.liveLoaded.set(link.path, await pending);
+        }),
+      );
+    }
+  }
+  /** Loads the live texts of those of `files` that are live, for a bulk read that then reads each by path. */
+  async prefetchLive(files: string[]) {
+    if (!this.live) return;
+    const wanted = new Set(files);
+    await this.loadLiveTexts((await this.live.links()).filter(link => wanted.has(link.path)));
+  }
+  /** The live links of one notebook. */
+  private async notebookLinks(nb: NotebookConfig): Promise<LiveLink[]> {
+    return this.live ? (await this.live.links()).filter(link => link.notebook.id === nb.id) : [];
+  }
+  /**
+   * Refuses, with the checked-out paths, a Git write that would touch a checked-out note or a pending note's virtual
+   * path. It is a guard before any commit; the merge at check-in resolves a Git change that races a checkout.
+   */
+  async refuseCheckedOut(paths: readonly string[], refusal?: (touched: string[]) => CheckedOutError) {
+    if (!this.live) return;
+    const live = new Set((await this.live.links()).map(link => link.path));
+    const touched = [...new Set(paths.filter(file => live.has(file)))].sort();
+    if (touched.length) throw refusal?.(touched) ?? new CheckedOutError(touched);
+  }
+  /**
+   * Writes a whole note text into the live editor on the base a read returned (`live:` revisions, never shown to a
+   * caller): the editor rebases it over typing since. The receipt says nothing was committed.
+   */
+  async writeLive(file: string, content: string, base: LiveRecord, agent: boolean) {
+    const snapshot = await this.getSnapshot();
+    if (!this.canWrite(snapshot)) throw new SourceError('Write access on the main workspace branch is required.', 403);
+    const link = await this.liveLink(file);
+    // A note released or checked out again since the read: the caller reads it again.
+    if (!link || link.checkout.id !== base.id) throw new LiveStaleError();
+    const text = normalizeLiveText(content);
+    if (Buffer.byteLength(text) > LIVE_MAX_BYTES) throw new LiveTooLargeError();
+    const { liveRevision } = await this.live!.write(link.checkout.id, text, base.liveRevision, agent);
+    // The editor may have rebased the text over typing since, so later reads in this request read it again.
+    this.liveLoaded.delete(link.path);
+    this.liveSeen.set(link.path, { id: link.checkout.id, liveRevision, contentHash: liveContentHash(text) });
+    return { success: true as const, committed: false as const, pushed: false as const, live: true as const, liveRevision, repository: this.repository, branch: this.branch, revision: snapshot.sha, changedPaths: [file] };
+  }
+  /** Appends text to a checked-out note in the live editor; never stale, since nothing is replaced. */
+  async appendLive(file: string, content: string, agent: boolean) {
+    const snapshot = await this.getSnapshot();
+    if (!this.canWrite(snapshot)) throw new SourceError('Write access on the main workspace branch is required.', 403);
+    const link = await this.liveLink(file);
+    if (!link) throw new LiveStaleError();
+    if (Buffer.byteLength(content) > LIVE_MAX_BYTES) throw new LiveTooLargeError();
+    const { liveRevision } = await this.live!.append(link.checkout.id, content, agent);
+    this.liveLoaded.delete(link.path);
+    return { success: true as const, committed: false as const, pushed: false as const, live: true as const, liveRevision, repository: this.repository, branch: this.branch, revision: snapshot.sha, changedPaths: [file] };
+  }
+
   /** Loads cached blobs for the given files; providers extend this with batched platform reads. */
   async prefetchFiles(files: string[]): Promise<void> {
     const { entries } = await this.getSnapshot();
@@ -210,9 +351,13 @@ export abstract class RemoteSource {
   canWrite(snapshot: RemoteSnapshot) {
     return Boolean(this.mayWrite() && snapshot.info.permissions?.push && this.branch === 'main');
   }
-  /** Rejects a mutation without write access or against a revision other than `snapshot`. */
-  private assertMutable(snapshot: RemoteSnapshot, expected: string) {
+  /**
+   * Rejects a mutation without write access, one touching `paths` while any is checked out to the live editor, or one
+   * against a revision other than `snapshot`, in that order.
+   */
+  private async assertMutable(snapshot: RemoteSnapshot, expected: string, paths: readonly string[] = [], refusal?: (touched: string[]) => CheckedOutError) {
     if (!this.canWrite(snapshot)) throw new SourceError('Write access on the main workspace branch is required.', 403);
+    await this.refuseCheckedOut(paths, refusal);
     if (!expected || expected !== snapshot.sha) throw new StaleRevisionError([this.id], 'The repository changed. Reload before saving.');
   }
   /** One page of the commits on the branch head that changed `file`, newest first; a provider lists them by path. */
@@ -265,7 +410,10 @@ export abstract class RemoteSource {
     return this.commitInfo(commit);
   }
 
+  /** A file of the branch head; a checked-out note, or a pending note's virtual path, answers its live text. */
   async readFile(file: string): Promise<Buffer> {
+    const link = await this.liveLink(file);
+    if (link) return Buffer.from((await this.liveTextOf(link)).content, 'utf8');
     return this.readSnapshotFile(await this.getSnapshot(), file);
   }
   /** Read immutable blobs from the exact snapshot used for planning or resolution. */
@@ -295,14 +443,20 @@ export abstract class RemoteSource {
     return this.commitChanges([{ path: file, content }], expected, 'save', 'config', 'chore(workspace): update configuration');
   }
 
+  /** One note; a checked-out note is read fresh from the live editor and carries `live`. */
   async note(file: string): Promise<NoteItem> {
+    return this.noteOf(file, true);
+  }
+  /** One note; with `fresh` false a live text this request already loaded is used, as bulk reads do. */
+  private async noteOf(file: string, fresh: boolean): Promise<NoteItem> {
     const config = await this.config();
-    // A template file directly in `.templates/` is read like a note, so its editor opens it; no other dot path is.
-    const nb = config.notebooks.find(n => file.startsWith(`${n.root}/`) && (isNotebookContent(file.slice(n.root.length + 1), n) || templateFileId(file.slice(n.root.length + 1)) !== undefined));
+    const link = await this.liveLink(file);
+    // A template file directly in `.templates/` is read like a note, so its editor opens it; no other dot path is but a pending live note's.
+    const nb = link?.notebook ?? config.notebooks.find(n => file.startsWith(`${n.root}/`) && (isNotebookContent(file.slice(n.root.length + 1), n) || templateFileId(file.slice(n.root.length + 1)) !== undefined));
     if (!nb || !isNoteFile(file)) throw new SourceError('Path is not a configured note.', 403);
-    const raw = (await this.readFile(file)).toString('utf8');
+    const raw = link ? (fresh ? await this.readLiveLink(link) : await this.liveTextOf(link)).content : (await this.readFile(file)).toString('utf8');
     const { metadata, content, title, lineNumberOffset, extra } = parseNoteFile(raw, file, nb.root);
-    return { id: typeof metadata.id === 'string' ? metadata.id : file, path: file, notebookId: nb.id, title, metadata, content, lineNumberOffset, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), revision: (await this.getSnapshot()).sha, ...extra };
+    return { id: typeof metadata.id === 'string' ? metadata.id : file, path: file, notebookId: nb.id, title, metadata, content, lineNumberOffset, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), revision: (await this.getSnapshot()).sha, ...extra, ...(link ? { live: liveNoteState(link.checkout) } : {}) };
   }
 
   /** Ordinary notes by default; `allKinds` includes outlines and compilations. */
@@ -311,10 +465,11 @@ export abstract class RemoteSource {
     return entries.filter(e => e.type === 'blob' && e.mode !== '120000' && e.path.startsWith(`${nb.root}/`) && isNotebookContent(e.path.slice(nb.root.length + 1), nb) && !templateFiles.has(e.path.slice(nb.root.length + 1)) && (NOTE_EXTENSIONS.test(e.path) && (allKinds || !isOutlinePath(e.path)) || allKinds && isCompilationPath(e.path)));
   }
 
-  /** Note paths of one notebook, taken from the snapshot tree without reading any file. */
+  /** Note paths of one notebook, taken from the snapshot tree without reading any file, and its pending live notes' virtual paths. */
   async notePaths(nb: NotebookConfig): Promise<string[]> {
     const { entries } = await this.getSnapshot();
-    return this.notebookFiles(nb, entries).map(entry => entry.path);
+    const pending = (await this.notebookLinks(nb)).filter(link => link.checkout.path === null).map(link => link.path);
+    return [...this.notebookFiles(nb, entries).map(entry => entry.path), ...pending];
   }
 
   private notebookKey(kind: string, notebooks: NotebookConfig[], entries: RemoteEntry[]) {
@@ -336,13 +491,14 @@ export abstract class RemoteSource {
       index: nb => {
         let pending = local.get(nb.id);
         if (!pending) {
-          pending = this.notebookIndex(nb);
+          pending = this.notebookIndex(nb).then(items => this.liveIndex(nb, items));
           local.set(nb.id, pending);
         }
         return pending;
       },
       contents: async notes => {
         await this.prefetchFiles(notes.map(note => note.path));
+        await this.prefetchLive(notes.map(note => note.path));
         const result = new Map<string, string>();
         for (let i = 0; i < notes.length; i += 6) {
           await Promise.all(notes.slice(i, i + 6).map(async note => result.set(note.path, parseNoteFile((await this.readFile(note.path)).toString('utf8'), note.path).content)));
@@ -352,7 +508,8 @@ export abstract class RemoteSource {
       memo: async <T>(kind: string, notebooks: NotebookConfig[], compute: () => Promise<T>): Promise<T> => {
         const { entries } = await this.getSnapshot();
         if (!this.cache || notebooks.some(nb => !entries.some(entry => entry.type === 'tree' && entry.path === nb.root))) return compute();
-        const key = this.notebookKey(kind, notebooks, entries);
+        // Derived results of notebooks with live notes are kept per state of their live texts, so none mixes two states.
+        const key = this.notebookKey(kind, notebooks, entries) + await this.liveMemoKey(notebooks);
         const [hit] = await this.cache.get([key]);
         if (hit !== null) {
           try {
@@ -367,8 +524,38 @@ export abstract class RemoteSource {
     };
   }
 
+  /** What a memo key adds for the live links of `notebooks`: nothing without any. */
+  private async liveMemoKey(notebooks: NotebookConfig[]): Promise<string> {
+    const links = (await Promise.all(notebooks.map(nb => this.notebookLinks(nb)))).flat();
+    if (!links.length) return '';
+    return `:live:${hashJson(links.map(link => [link.checkout.id, link.path, link.checkout.contentHash]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))))}`;
+  }
+
+  /**
+   * The index of a notebook with its live links laid over it: a checked-out note takes its title, metadata, tags, status
+   * and size from its live text, and a pending note is added at its virtual path. The Git index under it is never changed.
+   */
+  private async liveIndex(nb: NotebookConfig, items: NoteListItem[]): Promise<NoteListItem[]> {
+    const links = await this.notebookLinks(nb);
+    if (!links.length) return items;
+    if (links.length > 500) console.warn(`[live-notes] ${links.length} live links in one notebook; the overlay reads only what a request needs`);
+    const listed = new Set(items.map(item => item.path));
+    const shown = links.filter(link => link.checkout.path === null || listed.has(link.path));
+    await this.loadLiveTexts(shown);
+    const revision = (await this.getSnapshot()).sha;
+    const item = (link: LiveLink): NoteListItem => {
+      const raw = this.liveLoaded.get(link.path)!.content;
+      const { metadata, title, extra } = parseNoteFile(raw, link.path, nb.root);
+      return { id: typeof metadata.id === 'string' ? metadata.id : link.path, path: link.path, notebookId: nb.id, title, metadata, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), ...extra, revision, live: liveNoteState(link.checkout) };
+    };
+    const byPath = new Map(shown.map(link => [link.path, link]));
+    return [...items.map(entry => byPath.has(entry.path) ? item(byPath.get(entry.path)!) : entry), ...shown.filter(link => link.checkout.path === null).map(item)];
+  }
+
+  /** The Git index of a notebook, cached by its tree: it never holds a live text. */
   private async notebookIndex(nb: NotebookConfig): Promise<NoteListItem[]> {
-    const { sha, entries } = await this.getSnapshot();
+    const snapshot = await this.getSnapshot();
+    const { sha, entries } = snapshot;
     if (!entries.some(entry => entry.type === 'tree' && entry.path === nb.root)) return [];
     const key = this.cache ? this.notebookKey('index', [nb], entries) : '';
     const hit = this.cache ? (await this.cache.get([key]))[0] : null;
@@ -387,7 +574,7 @@ export abstract class RemoteSource {
         items.push(
           ...await Promise.all(
             files.slice(i, i + 6).map(async file => {
-              const raw = (await this.readFile(file.path)).toString('utf8');
+              const raw = (await this.readSnapshotFile(snapshot, file.path)).toString('utf8');
               const { metadata, title, extra } = parseNoteFile(raw, file.path, nb.root);
               return { id: typeof metadata.id === 'string' ? metadata.id : file.path, path: file.path, notebookId: nb.id, title, metadata, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), ...extra } satisfies NoteListItem;
             }),
@@ -513,10 +700,13 @@ export abstract class RemoteSource {
     const { entries } = await this.getSnapshot();
     const output: NoteItem[] = [];
     for (const nb of config.notebooks.filter(n => !notebookId || n.id === notebookId)) {
-      const files = this.notebookFiles(nb, entries, includeOutlines).filter(file => NOTE_EXTENSIONS.test(file.path));
-      await this.prefetchFiles(files.map(file => file.path));
+      const links = await this.notebookLinks(nb);
+      // Pending live notes are listed at their virtual paths after the notebook's Git notes.
+      const files = [...this.notebookFiles(nb, entries, includeOutlines).filter(file => NOTE_EXTENSIONS.test(file.path)).map(file => file.path), ...links.filter(link => link.checkout.path === null).map(link => link.path)];
+      await this.prefetchFiles(files);
+      await this.loadLiveTexts(links.filter(link => files.includes(link.path)));
       // The shared transport coalesces cache misses and serializes upstream requests.
-      for (let i = 0; i < files.length; i += 6) output.push(...await Promise.all(files.slice(i, i + 6).map(f => this.note(f.path))));
+      for (let i = 0; i < files.length; i += 6) output.push(...await Promise.all(files.slice(i, i + 6).map(file => this.noteOf(file, false))));
     }
     return output;
   }
@@ -586,23 +776,31 @@ export abstract class RemoteSource {
 
   /** `agent` marks the commit as an agent's edit of this one file. */
   async save(file: string, content: string, metadata: NoteMetadata | undefined, expected: string, createOnly = false, agent = false) {
-    const snapshot = await this.getSnapshot(true);
-    this.assertMutable(snapshot, expected);
+    // A `live:` revision, which only a read of a checked-out note hands out, writes the note's text into the live editor.
+    const base = parseLiveBase(expected);
+    const snapshot = await this.getSnapshot(!base);
+    if (base) {
+      if (!this.canWrite(snapshot)) throw new SourceError('Write access on the main workspace branch is required.', 403);
+    } else await this.assertMutable(snapshot, expected, [file], () => editedLiveError(file));
     const config = await this.config();
-    const nb = config.notebooks.find(n => file.startsWith(`${n.root}/`));
-    if (!nb || !(isNotebookContent(file.slice(nb.root.length + 1), nb) || templateFileId(file.slice(nb.root.length + 1)) !== undefined) || !isNoteFile(file) || file.includes('\\') || file.split('/').some(p => p === '..' || p === '.' || !p)) throw new SourceError('Path is not a configured note.', 403);
+    const link = base ? await this.liveLink(file) : undefined;
+    if (base && !link) throw new LiveStaleError();
+    const nb = link?.notebook ?? config.notebooks.find(n => file.startsWith(`${n.root}/`));
+    if (!nb || !(link || isNotebookContent(file.slice(nb.root.length + 1), nb) || templateFileId(file.slice(nb.root.length + 1)) !== undefined) || !isNoteFile(file) || file.includes('\\') || file.split('/').some(p => p === '..' || p === '.' || !p)) throw new SourceError('Path is not a configured note.', 403);
     if (createOnly && snapshot.entries.some(e => e.path === file)) throw new SourceError('A note already exists at this path.', 409);
     if (createOnly && differsOnlyInCase(snapshot.entries.map(e => e.path), file)) throw new SourceError(CASE_COLLISION_ERROR, 409);
     const existing = snapshot.entries.find(e => e.path === file);
     if (existing && (existing.type !== 'blob' || existing.mode === '120000')) throw new SourceError('Path is not a regular note file.', 403);
     if (file.includes('\0') || (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)))) throw new SourceError('Invalid note path or metadata.');
-    const existingRaw = existing ? await this.readFile(file).then(b => b.toString('utf8')).catch(() => undefined) : undefined;
-    const raw = metadata ? serializeNoteFile(file, metadata, content, !existing, new Date(), existingRaw) : content;
-    if (Buffer.byteLength(raw) > 5 * 1024 * 1024) throw new SourceError('Note exceeds the 5 MiB limit.', 413);
-    const operation = existing ? 'write' : 'create';
-    const receipt = await this.commitChanges([{ path: file, content: raw }], expected, operation, 'notes', agent ? agentEditMessage(`docs(notes): ${operation} ${path.posix.basename(file)}`) : undefined, snapshot);
+    const existingRaw = link ? (await this.liveTextOf(link)).content : existing ? await this.readFile(file).then(b => b.toString('utf8')).catch(() => undefined) : undefined;
+    const serialized = metadata ? serializeNoteFile(file, metadata, content, !existing && !link, new Date(), existingRaw) : content;
+    // The live editor keeps text in normal form, which is what the note then reads.
+    const raw = base ? normalizeLiveText(serialized) : serialized;
+    if (Buffer.byteLength(raw) > 5 * 1024 * 1024) throw base ? new LiveTooLargeError() : new SourceError('Note exceeds the 5 MiB limit.', 413);
+    const operation = existing || link ? 'write' : 'create';
+    const receipt = base ? await this.writeLive(file, raw, base, agent) : await this.commitChanges([{ path: file, content: raw }], expected, operation, 'notes', agent ? agentEditMessage(`docs(notes): ${operation} ${path.posix.basename(file)}`) : undefined, snapshot);
     const { extra, ...parsed } = parseNoteFile(raw, file, nb.root);
-    return { ...receipt, note: { id: typeof parsed.metadata.id === 'string' ? parsed.metadata.id : file, path: file, notebookId: nb.id, ...parsed, ...extra, tags: Array.isArray(parsed.metadata.tags) ? parsed.metadata.tags.map(String) : [], status: typeof parsed.metadata.status === 'string' ? parsed.metadata.status : undefined, size: Buffer.byteLength(raw), revision: receipt.revision } };
+    return { ...receipt, note: { id: typeof parsed.metadata.id === 'string' ? parsed.metadata.id : file, path: file, notebookId: nb.id, ...parsed, ...extra, tags: Array.isArray(parsed.metadata.tags) ? parsed.metadata.tags.map(String) : [], status: typeof parsed.metadata.status === 'string' ? parsed.metadata.status : undefined, size: Buffer.byteLength(raw), revision: receipt.revision, ...(link ? { live: liveNoteState(link.checkout) } : {}) } };
   }
 
   /**
@@ -614,6 +812,8 @@ export abstract class RemoteSource {
     if (!Array.isArray(notes) || !Array.isArray(documents) || !notes.length && !documents.length || notes.length + documents.length > 200) throw new SourceError('Select between 1 and 200 files.');
     if (typeof message !== 'string' || !message.trim() || message.length > 4000) throw new SourceError('A commit message of at most 4000 characters is required.');
     const snapshot = await this.getSnapshot(true);
+    // A browser never writes a live note: a commit naming a checked-out note is refused before any note is read.
+    await this.refuseCheckedOut(notes.map(note => note?.path).filter((file): file is string => typeof file === 'string'));
     const removals = notes.filter((note): note is CommitNoteDeletion => note?.delete === true);
     for (const note of removals) {
       if (typeof note.path !== 'string' || !isNoteFile(note.path)) throw new SourceError('Invalid note change.');
@@ -701,7 +901,7 @@ export abstract class RemoteSource {
     if (nextPath === file) return this.saveAgentResource(file, content, expected);
     const nextLocation = agentSkillLocation(nextPath)!;
     const snapshot = await this.getSnapshot(true);
-    this.assertMutable(snapshot, expected);
+    await this.assertMutable(snapshot, expected);
     if (snapshot.entries.some(entry => entry.path === nextLocation.directory || entry.path.startsWith(`${nextLocation.directory}/`))) throw new SourceError(`A skill named ${nextLocation.slug} already exists.`, 409);
 
     const skillEntries = snapshot.entries.filter(entry => entry.type === 'blob' && (entry.path === location.directory || entry.path.startsWith(`${location.directory}/`)));
@@ -746,7 +946,7 @@ export abstract class RemoteSource {
   async saveWorkspaceDocument(document: WorkspaceDocument, content: string, expected: string) {
     if (document.retired) throw new SourceError('Legacy bookmark authoring is retired. Export or import the saved source into a new outline.', 410);
     const snapshot = await this.getSnapshot(true);
-    this.assertMutable(snapshot, expected);
+    await this.assertMutable(snapshot, expected);
     const current = await this.readDocumentSnapshot(document, snapshot);
     await this.validateDocumentChange(document, current, readWorkspaceDocument(document, content), (await this.config()).notebooks, snapshot);
     return this.commitChanges([{ path: document.file, content }], expected, 'save', document.scopes[0], undefined, snapshot);
@@ -787,7 +987,9 @@ export abstract class RemoteSource {
    */
   async commitChanges(changes: { path: string; content?: string; base64?: string; sha?: string | null; }[], expected: string, operation: string, scope: CommitScope = 'notes', requestedMessage?: string, knownSnapshot?: RemoteSnapshot, coAuthors: readonly CommitAuthor[] = []) {
     const snapshot = knownSnapshot || await this.getSnapshot(true);
-    this.assertMutable(snapshot, expected);
+    // One note's new text refused because it is checked out tells the writer to read it again; any other change names every checked-out path.
+    const single = changes.length === 1 && changes[0]?.content !== undefined ? changes[0].path : undefined;
+    await this.assertMutable(snapshot, expected, Array.isArray(changes) ? changes.map(change => change?.path).filter((file): file is string => typeof file === 'string') : [], single ? () => editedLiveError(single) : undefined);
     if (!changes.length || changes.length > 200) throw new SourceError('A mutation requires between 1 and 200 changed files.');
     if (new Set(changes.map(c => c.path)).size !== changes.length) throw new SourceError('Each file may appear only once in a mutation.');
     const config = await this.config();

@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { parse, stringify } from 'yaml';
-import { compilationRow, emptyStudyWorkspace, keyedItem, parseCompilation, SourceError, STUDY_DOCUMENT, STUDY_FILE, STUDY_MAX_BYTES, StudyWorkspaceSchema } from '@mygitnotes/core';
+import { checkedOutFields, compilationRow, emptyStudyWorkspace, keyedItem, parseCompilation, SourceError, STUDY_DOCUMENT, STUDY_FILE, STUDY_MAX_BYTES, StudyWorkspaceSchema } from '@mygitnotes/core';
 import { applyStageAction, createStudyNote, defaultStudyProgression, findStudyNote, isNotebookContent, parseNoteContent, readNoteFile, reconcileStudyNote, replaceNoteStatus, resolveSafePath, StudyLaneActionSchema, studyLaneStatuses, undoStudyAction } from '@mygitnotes/core';
 import { getCurrentBranch } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
@@ -22,7 +22,7 @@ function decode(raw: string | null) {
   }
 }
 function fail(res: import('express').Response, error: unknown) {
-  res.status(error instanceof SourceError ? error.status : 500).json({ error: error instanceof SourceError ? error.message : 'Study data could not be saved. Your draft is preserved.' });
+  res.status(error instanceof SourceError ? error.status : 500).json({ error: error instanceof SourceError ? error.message : 'Study data could not be saved. Your draft is preserved.', ...checkedOutFields(error) });
 }
 
 export function createStudyRouter(): Router {

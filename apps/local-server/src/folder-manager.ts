@@ -2,7 +2,7 @@ import { Router } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { FolderCommandSchema, type FolderSnapshot, isCompilationPath, isNotebookContent, type NotebookConfig, planFolderChange, type RemoteChange, type RemoteSnapshot, RemoteSource, SourceError, stampIsRacy, versionFileChanges, WORKSPACE_DOCUMENTS } from '@mygitnotes/core';
+import { checkedOutFields, FolderCommandSchema, type FolderSnapshot, isCompilationPath, isNotebookContent, type NotebookConfig, planFolderChange, type RemoteChange, type RemoteSnapshot, RemoteSource, SourceError, stampIsRacy, versionFileChanges, WORKSPACE_DOCUMENTS } from '@mygitnotes/core';
 import { getCurrentBranch } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { notebookRepository } from './request-workspace.js';
@@ -191,5 +191,5 @@ export function createFolderManagerRouter(): Router {
   return router;
 }
 function fail(res: import('express').Response, error: unknown) {
-  res.status(error instanceof SourceError ? error.status : 400).json({ error: error instanceof Error ? error.message : 'Folder operation failed.' });
+  res.status(error instanceof SourceError ? error.status : 400).json({ error: error instanceof Error ? error.message : 'Folder operation failed.', ...checkedOutFields(error) });
 }

@@ -47,6 +47,7 @@ export * from './tag-ops.js';
 export * from './note-versions.js';
 export * from './commit-author.js';
 export * from './live-notes.js';
+export * from './live-repository.js';
 export * from './note-history.js';
 
 export * from './study-stages.js';
