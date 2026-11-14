@@ -1316,6 +1316,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'editor.export': '匯出',
   'editor.exportCopy': '複製',
   'editor.exportMarkdown': '下載 (.md)',
+  'editor.exportWithAssets': '連同圖片下載 (.zip)',
   'editor.exportPdf': '下載 (PDF)',
   'editor.noteCopied': '已複製筆記',
   'editor.noteCopyFailed': '複製失敗',

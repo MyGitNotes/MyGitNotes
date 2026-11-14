@@ -56,24 +56,37 @@ export function isNotebookR2Key(key: string, notebookId: string): boolean {
   return isValidR2Key(key) && key.startsWith(r2NotebookPrefix(notebookId)) && key.length > r2NotebookPrefix(notebookId).length;
 }
 
-/**
- * Rewrites `r2:` references whose key appears in `moves` to the mapped key, covering the same
- * forms as `r2ReferenceKeys`. Angle-bracket and HTML forms keep raw keys; bare forms stay percent-encoded.
- */
-export function rewriteR2References(markdown: string, moves: Record<string, string>): string {
+/** Replaces each reference whose key `targets` names with `scheme` and the mapped target, encoded as its form requires. */
+function replaceR2References(markdown: string, targets: Record<string, string>, scheme: string): string {
   let next = markdown;
   for (const pattern of PATTERNS()) {
     next = next.replace(pattern, (all: string, ...groups: unknown[]) => {
       const [first, second] = groups as (string | undefined)[];
       const reference = first ?? second;
       const key = reference ? parseR2Reference(reference) : null;
-      if (!reference || key === null || !(key in moves)) return all;
+      if (!reference || key === null || !Object.hasOwn(targets, key)) return all;
       const bare = pattern !== HTML_ATTRIBUTE && first === undefined;
-      const target = bare ? moves[key].split('/').map(part => encodeURIComponent(part).replace(/[()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())).join('/') : moves[key].replace(/[<>"']/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
-      return all.replace(reference, `r2:${target}`);
+      const target = bare ? targets[key].split('/').map(part => encodeURIComponent(part).replace(/[()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase())).join('/') : targets[key].replace(/[<>"']/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+      return all.replace(reference, `${scheme}${target}`);
     });
   }
   return next;
+}
+
+/**
+ * Rewrites `r2:` references whose key appears in `moves` to the mapped key, covering the same
+ * forms as `r2ReferenceKeys`. Angle-bracket and HTML forms keep raw keys; bare forms stay percent-encoded.
+ */
+export function rewriteR2References(markdown: string, moves: Record<string, string>): string {
+  return replaceR2References(markdown, moves, 'r2:');
+}
+
+/**
+ * Points `r2:` references at files beside a downloaded copy of the note: each key `paths` names becomes its
+ * relative path, in the same forms as `rewriteR2References`. A reference to any other key stays an `r2:` reference.
+ */
+export function localizeR2References(markdown: string, paths: Record<string, string>): string {
+  return replaceR2References(markdown, paths, '');
 }
 
 export function r2PreviewType(key: string): { kind: R2PreviewKind; contentType: string; } {

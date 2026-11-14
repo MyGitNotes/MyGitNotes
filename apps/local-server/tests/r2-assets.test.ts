@@ -11,7 +11,7 @@ const R2 = { MYGITNOTES_R2_ACCOUNT_ID: 'acc', MYGITNOTES_R2_ACCESS_KEY_ID: 'AK',
 const MANIFEST = 'schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: ex\nnotebooks:\n  - id: ex\n    title: Example\n    root: notes/ex\n';
 const NOTE = '# Rules\n\n![Core](<r2:trpg/Tales from the old west/Core.pdf>)\n';
 const KEY_URL = '/r2-assets/trpg/Tales%20from%20the%20old%20west/Core.pdf';
-let root: string, server: Server, base: string;
+let root: string, server: Server, base: string, bucket: Server | undefined;
 
 async function start(env: Record<string, string>, services: Partial<AppServices> = {}) {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'github-notes-r2-'));
@@ -21,13 +21,21 @@ async function start(env: Record<string, string>, services: Partial<AppServices>
     fs.writeFileSync(path.join(root, 'notes/.github-notes.yaml'), MANIFEST);
     fs.writeFileSync(path.join(root, 'notes/ex/rules.md'), NOTE);
   }
-  for (const [key, value] of Object.entries({ SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', APP_URL: '', VERCEL: '', ...env })) vi.stubEnv(key, value);
+  for (const [key, value] of Object.entries({ SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', APP_URL: '', VERCEL: '', MYGITNOTES_R2_CACHE_DIR: '', MYGITNOTES_R2_REMOTE_URL: '', MYGITNOTES_R2_REMOTE_TOKEN: '', ...env })) vi.stubEnv(key, value);
   server = createServer(createApp(root, services));
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${(server.address() as any).port}`;
 }
 const get = (url: string, headers: Record<string, string> = {}) => fetch(`${base}${url}`, { redirect: 'manual', headers });
+/** A stand-in bucket holding the referenced object: a local workspace reads the object itself, and must never reach a real bucket here. */
+async function localBucket() {
+  bucket = createServer((req, res) => new URL(req.url!, 'http://bucket').pathname === '/private-assets/trpg/Tales%20from%20the%20old%20west/Core.pdf' && req.method === 'GET' ? res.end('core rules') : res.writeHead(404).end());
+  await new Promise<void>(resolve => bucket!.listen(0, '127.0.0.1', resolve));
+  return { ...R2, GITHUB_NOTES_SOURCE: 'local', MYGITNOTES_R2_ENDPOINT: `http://127.0.0.1:${(bucket.address() as { port: number; }).port}` };
+}
 afterEach(async () => {
+  if (bucket) await new Promise<void>(resolve => bucket!.close(() => resolve()));
+  bucket = undefined;
   if (server) await new Promise<void>(resolve => server.close(() => resolve()));
   if (root) fs.rmSync(root, { recursive: true, force: true });
   vi.unstubAllEnvs();
@@ -35,18 +43,16 @@ afterEach(async () => {
 });
 
 describe('R2 asset authorization', () => {
-  it('redirects a local reference to a presigned object only for a note that references the key', async () => {
-    await start({ ...R2, GITHUB_NOTES_SOURCE: 'local' });
+  it('serves a local reference, read through the cache, only for a note that references the key', async () => {
+    await start(await localBucket());
     fs.writeFileSync(path.join(root, 'notes/ex/other.md'), '# Other');
     fs.writeFileSync(path.join(root, '.env'), '![x](<r2:trpg/Tales from the old west/Core.pdf>)');
 
     const allowed = await get(`${KEY_URL}?note=notes/ex/rules.md`);
-    expect(allowed.status).toBe(302);
+    expect(allowed.status).toBe(200);
     expect(allowed.headers.get('cache-control')).toBe('private, no-store');
-    const location = new URL(allowed.headers.get('location')!);
-    expect(location.origin + location.pathname).toBe('https://acc.r2.cloudflarestorage.com/private-assets/trpg/Tales%20from%20the%20old%20west/Core.pdf');
-    expect(location.searchParams.get('X-Amz-Signature')).toBeTruthy();
-    expect(allowed.headers.get('location')).not.toContain('r2-secret');
+    expect(allowed.headers.get('content-type')).toBe('application/pdf');
+    expect(await allowed.text()).toBe('core rules');
 
     expect((await get(`${KEY_URL}?note=notes/ex/other.md`)).status).toBe(404);
     expect((await get(`/r2-assets/trpg/other.pdf?note=notes/ex/rules.md`)).status).toBe(404);
@@ -57,11 +63,12 @@ describe('R2 asset authorization', () => {
 
   it("answers 404 for a referenced key outside the requester's asset scope", async () => {
     const inScope = (prefix: string) => ({ resolve: async () => ({ settings: r2SettingsFromEnv()!, prefix, limits: { maxObjectBytes: 1 } }) });
-    await start({ ...R2, GITHUB_NOTES_SOURCE: 'local' }, { assetStorage: inScope('trpg/') });
-    expect((await get(`${KEY_URL}?note=notes/ex/rules.md`)).status).toBe(302);
+    const local = await localBucket();
+    await start(local, { assetStorage: inScope('trpg/') });
+    expect((await get(`${KEY_URL}?note=notes/ex/rules.md`)).status).toBe(200);
     await new Promise<void>(resolve => server.close(() => resolve()));
     fs.rmSync(root, { recursive: true, force: true });
-    await start({ ...R2, GITHUB_NOTES_SOURCE: 'local' }, { assetStorage: inScope('r/42/') });
+    await start(local, { assetStorage: inScope('r/42/') });
     // The note references the key, but the key belongs to another key space.
     expect((await get(`${KEY_URL}?note=notes/ex/rules.md`)).status).toBe(404);
     await new Promise<void>(resolve => server.close(() => resolve()));
@@ -104,7 +111,11 @@ describe('R2 asset authorization', () => {
     const reader = { Cookie: `gh_notes_session=${session}` };
     const allowed = await get(`${KEY_URL}?note=notes/ex/rules.md`, reader);
     expect(allowed.status).toBe(302);
-    expect(allowed.headers.get('location')).toMatch(/^https:\/\/acc\.r2\.cloudflarestorage\.com\/private-assets\//);
+    expect(allowed.headers.get('cache-control')).toBe('private, no-store');
+    const location = new URL(allowed.headers.get('location')!);
+    expect(location.origin + location.pathname).toBe('https://acc.r2.cloudflarestorage.com/private-assets/trpg/Tales%20from%20the%20old%20west/Core.pdf');
+    expect(location.searchParams.get('X-Amz-Signature')).toBeTruthy();
+    expect(allowed.headers.get('location')).not.toContain('r2-secret');
     expect((await get(`/r2-assets/unreferenced.pdf?note=notes/ex/rules.md`, reader)).status).toBe(404);
   });
 });

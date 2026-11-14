@@ -5,6 +5,7 @@
 **/*.pem
 **/*.key
 **/.github-notes-sessions
+**/.cache
 **/.DS_Store
 notes
 docs

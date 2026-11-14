@@ -13,6 +13,7 @@
     "convert-sources": "tsx scripts/convert-sources.ts",
     "convert-workspace": "node scripts/convert-workspace.mjs",
     "backfill-note-timestamps": "tsx scripts/backfill-note-timestamps.ts",
+    "r2-download": "tsx scripts/r2-download.ts",
     "build": "node apps/check-version.mjs && pnpm --filter \"@mygitnotes/*\" run build",
     "test": "pnpm --filter \"./packages/*\" run build && node scripts/check-vercel-sparse-paths.mjs && vitest run",
     "check:vercel-sparse-paths": "node scripts/check-vercel-sparse-paths.mjs",

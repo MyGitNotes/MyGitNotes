@@ -1315,6 +1315,7 @@ export const en = {
   'editor.export': 'Export',
   'editor.exportCopy': 'Copy',
   'editor.exportMarkdown': 'Download (.md)',
+  'editor.exportWithAssets': 'Download with images (.zip)',
   'editor.exportPdf': 'Download (PDF)',
   'editor.noteCopied': 'Note copied',
   'editor.noteCopyFailed': 'Copy failed',

@@ -61,6 +61,7 @@ export * from './demo.js';
 export * from './workspace-repositories.js';
 export * from './local-manifest.js';
 export * from './repository-manifest.js';
+export * from './r2-local.js';
 export * from './r2-references.js';
 export * from './r2-storage.js';
 export * from './note-sort.js';

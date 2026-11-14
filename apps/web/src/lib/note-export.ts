@@ -49,14 +49,19 @@ const PRINT_STYLE = `
   @page { margin: 18mm; }
 `;
 
-/** Saves text as a file through a temporary link. */
-export function downloadTextFile(filename: string, text: string, type: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type }));
+/** Saves a blob as a file through a temporary link. */
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Saves text as a file through a temporary link. */
+export function downloadTextFile(filename: string, text: string, type: string): void {
+  downloadBlob(filename, new Blob([text], { type }));
 }
 
 /** The note's printable body: `renderNote` HTML with its diagrams drawn, on the light variant since paper is white. */

@@ -369,3 +369,37 @@ pnpm convert-sources --workspace ../hub --yes   # 轉換另一個已對應 workt
 ## 選用：私有 R2 素材
 
 將大型檔案存放在 Cloudflare 私有 R2 bucket，並在筆記中以 `r2:<object-key>` 引用。於部署環境設定 `MYGITNOTES_R2_ACCOUNT_ID`、`MYGITNOTES_R2_ACCESS_KEY_ID`、`MYGITNOTES_R2_SECRET_ACCESS_KEY` 與 `MYGITNOTES_R2_BUCKET`。其他相容 S3 的服務（SeaweedFS、MinIO 等）用 `MYGITNOTES_R2_ENDPOINT` 指定其網址，以 `<endpoint>/<bucket>/<key>` 的路徑形式存取，這時不需要 account id。`MYGITNOTES_R2_REGION` 設定簽章用的 region，未設時為 R2 要求的 `auto`；許多相容 S3 的服務要求 `us-east-1`。瀏覽器上傳還需要 bucket CORS 允許來自 `APP_URL` 的 PUT、GET 與 HEAD。唯讀 token 可預覽素材；檔案頁管理功能需要 Object Read & Write。參考 [Cloudflare R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/) 與 [R2 object access](https://developers.cloudflare.com/r2/api/s3/api/)。
+
+### 本機 checkout 的私有 R2 素材
+
+本機工作區（`pnpm dev` 或本機 Docker）會把筆記引用的私有物件存進快取資料夾，之後從快取顯示，離線時筆記的圖片也看得到。儲存服務可以是 Cloudflare R2，也可以是 `MYGITNOTES_R2_ENDPOINT` 指定的任何 S3 相容 bucket。
+
+筆記第一次顯示某個 `r2:` 物件時，本機伺服器讀取一次並存檔；之後直接從磁碟回應，不再向 bucket 發出請求。第一次顯示時只快取 64 MiB 以內的物件，更大的物件照舊轉址到 bucket。要事先抓好全部物件（不限大小），執行下載指令：
+
+```bash
+pnpm r2-download                                  # 所有筆記本的所有筆記
+pnpm r2-download --notebook research              # 單一筆記本（可重複指定）
+pnpm r2-download --note notes/research/paper.md   # 單一筆記（可重複指定）
+pnpm r2-download --note notes/research/paper.md --out ~/Desktop/paper-files   # 另外把物件依 key 複製到資料夾
+pnpm r2-download --refresh                        # 重新讀取所有被引用的物件
+```
+
+指令只下載筆記內文引用的 key，快取已有的物件不會重讀；有物件抓不到時，指令列出每一個並以結束碼 1 結束。`--out` 寫入 `<資料夾>/<object-key>`，不會寫到該資料夾以外。
+
+指令與本機伺服器從下列兩種來源之一讀取物件，在 checkout 的 `.env` 設定：
+
+- **Bucket 金鑰。** 與部署環境相同的 `MYGITNOTES_R2_*` 變數，唯讀金鑰即可。
+- **Hosted 部署，不需要 bucket 金鑰。** 把 `MYGITNOTES_R2_REMOTE_URL` 設為部署網址（`https://notes.example.com`），`MYGITNOTES_R2_REMOTE_TOKEN` 設為 agent token：在 hosted 網站開啟「設定 → MCP 存取控制」，建立唯讀授權，複製它顯示的 connector URL 中 `/mcp/` 之後的那一段。部署只對它自己那份筆記引用的 key 回傳短效下載網址，所以筆記新引用的物件要先 push 筆記再下載。Token 只送給該部署（必須是 `https`），不會送給 bucket，也不會寫進快取或任何 log。該部署的版本必須已有 `download_assets` MCP 工具。
+
+兩者都設定時使用 bucket 金鑰。
+
+快取位於 checkout 的 `.cache/r2-assets`，Git、`.vercelignore` 與 `.dockerignore` 都排除這個資料夾；`MYGITNOTES_R2_CACHE_DIR` 可以指定其他資料夾（在容器中請指向掛載的 volume，快取才不會隨容器消失）。每個物件是一個以 key 的 SHA-256 命名的檔案，旁邊的 `.json` 檔記錄 key、大小與 entity tag。快取沒有大小上限，且只對應一個 bucket：要釋放空間，或 checkout 改指向另一個 bucket 時，刪除這個資料夾。已快取的物件不會再向 bucket 比對；本程式上傳的物件只寫入一次、不會被覆寫，所以這樣做沒有問題。若在同一個 key 下替換了物件，請執行 `pnpm r2-download --refresh`。資料夾無法寫入時，本機伺服器記錄一次原因，並照有快取之前的方式轉址到 bucket。
+
+快取物件與 bucket 物件適用同一條規則：請求必須指名一篇引用該 key 的筆記。快取是受信任的本機狀態，不會再與 bucket 核對：放進 `.cache/r2-assets` 的檔案（例如不顧 `.gitignore` 強制加入、隨複製的儲存庫而來的檔案）會被當成該物件提供，所以把複製來的儲存庫的 `.cache/` 當作它的程式碼看待。快取只以物件 key 為索引，因此假設一個 checkout 只對應一個 bucket。在應用程式的 R2 管理介面刪除或移動物件，或用 MCP `delete_asset` 刪除物件時，也會一併移除它的快取副本。
+
+`MYGITNOTES_R2_REMOTE_URL` 是部署網址；若貼上的是連接器網址（`…/mcp/<token>`），會去掉 `/mcp/<token>` 這一段，token 仍然只從 `MYGITNOTES_R2_REMOTE_TOKEN` 讀取。部署回傳的下載網址只有在 `https`（或指向本機的 `http`）時才會讀取，且不跟隨轉址。
+
+### 連同圖片下載筆記
+
+- **網頁。** 引用了 `r2:` 物件的筆記，匯出選單會多出**連同圖片下載 (.zip)**。壓縮檔內有筆記與物件，筆記裡的引用改指向同一層的 `assets/<object-key>`。抓不到的物件保留原本的 `r2:` 引用，並列在 `missing-assets.txt`。壓縮檔在瀏覽器中產生，上限 512 MiB；在 hosted 部署上，瀏覽器直接向 bucket 讀取物件，因此上述 bucket CORS 規則必須允許來自 `APP_URL` 的 GET。
+- **MCP。** `download_assets` 帶筆記的 `path`。經 hosted `/mcp` 呼叫時，每個被筆記引用的物件回傳一個 5 分鐘有效的網址，每次最多 50 個，唯讀授權也能使用。經本機 stdio 伺服器呼叫時，物件存進上述快取，每個物件最多 64 MiB（更大的列在 `missing`；`pnpm r2-download` 不限大小），並回傳每個檔案的路徑。
