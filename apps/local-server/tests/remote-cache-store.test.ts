@@ -35,6 +35,21 @@ describe('shared cache store', () => {
     await expect(cache.set([['mgn:blob:v1:owner/repo:abc', 'value']], 60)).rejects.toMatchObject({ status: 503 });
   });
 
+  it('seals with the session secret, and seals nothing without one', () => {
+    const cache = new RedisRemoteCache();
+    vi.stubEnv('SESSION_SECRET', 's'.repeat(64));
+    const seal = cache.sign('listing');
+    expect(seal).toMatch(/^[a-f0-9]{64}$/);
+    expect(cache.sign('listing')).toBe(seal);
+    expect(cache.sign('another listing')).not.toBe(seal);
+    vi.stubEnv('SESSION_SECRET', 't'.repeat(64));
+    expect(cache.sign('listing')).not.toBe(seal);
+    for (const secret of ['', 'short']) {
+      vi.stubEnv('SESSION_SECRET', secret);
+      expect(cache.sign('listing')).toBeUndefined();
+    }
+  });
+
   it('uses the process cache when no store is configured', () => {
     vi.stubEnv('UPSTASH_REDIS_REST_URL', '');
     vi.stubEnv('KV_REST_API_URL', '');

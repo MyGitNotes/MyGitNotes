@@ -4,6 +4,12 @@ import { createHash } from 'node:crypto';
 export interface RemoteCache {
   get(keys: string[]): Promise<(string | null)[]>;
   set(entries: [string, string][], ttlSeconds: number): Promise<void>;
+  /**
+   * A keyed digest of `text` under a secret the store's other writers do not hold, or undefined without such a secret.
+   * A value that does not hash to its own key, such as a provider's listing of a commit, is stored and trusted only
+   * sealed with it; a cache without one keeps such values out of the store.
+   */
+  sign?(text: string): string | undefined;
 }
 
 export const REMOTE_CACHE_TTL = 30 * 24 * 60 * 60;
