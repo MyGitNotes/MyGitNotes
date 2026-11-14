@@ -201,6 +201,12 @@ describe('placeholders', () => {
     expect(rendered.unfilled).toEqual(['takeaway']);
   });
 
+  it('leaves a declared default unapplied when the caller fills the built-in placeholders only', () => {
+    const rendered = renderNoteTemplate(template, { title: 'Dune', date: '2026-11-14', time: '09:30', defaults: false });
+    expect(rendered.metadata.author).toBe('{{author}}');
+    expect(rendered.unfilled).toEqual(['author', 'takeaway']);
+  });
+
   it('drops the template block and the template file’s own id, created and updated', () => {
     const rendered = renderNoteTemplate(parseNoteContent('---\nid: tpl\ncreated: 2026-01-01\nupdated: 2026-01-02\ntemplate:\n  name: X\nkept: yes\n---\nBody\n'), { title: 'T', date: '2026-11-14' });
     expect(rendered.metadata).toEqual({ kept: 'yes', title: 'T' });

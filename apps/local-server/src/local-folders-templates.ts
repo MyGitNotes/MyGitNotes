@@ -29,9 +29,10 @@ export function createLocalFoldersTemplatesRouter(): Router {
       const title = (req.query.title as string) || '';
       const { handle, notebook } = await notebookRepository(res, notebookId);
       const template = loadNoteTemplate(asLocal(handle).root, notebook, templateId);
-      // The page sends its reader's own date and time; a caller that sends none gets the server's clock.
+      // The page sends its reader's own date and time; a caller that sends none gets the server's clock. The New note menu
+      // fills these and the title only: every other placeholder stays as written, a declared default included.
       const now = new Date();
-      const rendered = renderNoteTemplate(template, { title, date: typeof req.query.date === 'string' && req.query.date ? req.query.date : formatTemplateDate(now), time: typeof req.query.time === 'string' && req.query.time ? req.query.time : formatTemplateTime(now) });
+      const rendered = renderNoteTemplate(template, { title, date: typeof req.query.date === 'string' && req.query.date ? req.query.date : formatTemplateDate(now), time: typeof req.query.time === 'string' && req.query.time ? req.query.time : formatTemplateTime(now), defaults: false });
       res.json(rendered);
     } catch (err: unknown) {
       res.status(err instanceof SourceError ? err.status : 400).json({ error: err instanceof Error ? err.message : String(err) });

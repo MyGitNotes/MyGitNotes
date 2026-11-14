@@ -12,7 +12,7 @@ const nb = (id: string) => notebookKey(deriveAlias(root, new Set()), id);
 let server: Server;
 let base: string;
 const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe', encoding: 'utf8' });
-const READING = '---\ntemplate:\n  name: Reading\n  description: Notes on a book\n  placeholders:\n    book: The book\ntags: [reading]\n---\n# {{title}}\n\n{{date}} {{time}} {{book}}\n';
+const READING = '---\ntemplate:\n  name: Reading\n  description: Notes on a book\n  placeholders:\n    book: The book\n    author:\n      description: Who wrote it\n      default: Unknown\ntags: [reading]\nauthor: "{{author}}"\n---\n# {{title}}\n\n{{date}} {{time}} {{book}}\n';
 const json = (body: unknown) => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'github-notes-templates-http-'));
@@ -58,7 +58,8 @@ it('lists a notebook’s templates without a manifest change and keeps them out 
 
 it('renders a .templates file with the page’s date and time, other placeholders left literal and the template block dropped', async () => {
   const rendered = await fetch(`${base}/api/templates/render?notebookId=${nb('example')}&templateId=reading&title=${encodeURIComponent('My Note')}&date=2026-11-14&time=${encodeURIComponent('09:30')}`).then(r => r.json());
-  expect(rendered).toEqual({ metadata: { tags: ['reading'], title: 'My Note' }, content: '# My Note\n\n2026-11-14 09:30 {{book}}\n', unfilled: ['book'] });
+  // The New note menu fills the title, date and time only: a declared default stays unapplied, for the writer.
+  expect(rendered).toEqual({ metadata: { tags: ['reading'], author: '{{author}}', title: 'My Note' }, content: '# My Note\n\n2026-11-14 09:30 {{book}}\n', unfilled: ['author', 'book'] });
   const clock = await fetch(`${base}/api/templates/render?notebookId=${nb('example')}&templateId=reading&title=T`).then(r => r.json());
   expect(clock.content).toMatch(/^# T\n\n\d{4}-\d{2}-\d{2} \d{2}:\d{2} \{\{book\}\}\n$/);
   expect((await fetch(`${base}/api/templates/render?notebookId=${nb('example')}&templateId=deep&title=x`)).status).toBe(400);

@@ -288,8 +288,9 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
       try {
         const { notebookId, templateId, title, date, time } = req.query;
         const { reader, localId } = await remoteNotebook(res, notebookId);
-        // The page sends its reader's own date and time; a caller that sends none gets the server's clock.
-        res.json(await reader.renderTemplate(localId, String(templateId || ''), String(title || ''), { date: typeof date === 'string' ? date : undefined, time: typeof time === 'string' ? time : undefined }));
+        // The page sends its reader's own date and time; a caller that sends none gets the server's clock. The New note menu
+        // fills these and the title only: every other placeholder stays as written, a declared default included.
+        res.json(await reader.renderTemplate(localId, String(templateId || ''), String(title || ''), { date: typeof date === 'string' ? date : undefined, time: typeof time === 'string' ? time : undefined, defaults: false }));
       } catch (error) {
         fail(res, error);
       }

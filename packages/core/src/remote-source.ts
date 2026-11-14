@@ -420,12 +420,15 @@ export abstract class RemoteSource {
     return { notebook: nb, entry, ...await this.readTemplate(nb, entry) };
   }
 
-  /** Fills a template for a note titled `title`; `fill` carries the caller's date, time and placeholder values, the clock serving the rest. */
-  async renderTemplate(notebookId: string, templateId: string, title: string, fill: { date?: string; time?: string; values?: unknown; } = {}): Promise<RenderedNoteTemplate> {
+  /**
+   * Fills a template for a note titled `title`; `fill` carries the caller's date, time and placeholder values, the clock
+   * serving the rest. With `defaults: false` a placeholder without a value stays as written, as the app's New note menu asks.
+   */
+  async renderTemplate(notebookId: string, templateId: string, title: string, fill: { date?: string; time?: string; values?: unknown; defaults?: boolean; } = {}): Promise<RenderedNoteTemplate> {
     const template = await this.template(notebookId, templateId);
     const now = new Date();
     try {
-      return renderNoteTemplate(template, { title, date: fill.date || formatTemplateDate(now), time: fill.time || formatTemplateTime(now), values: templateValues(template, fill.values) });
+      return renderNoteTemplate(template, { title, date: fill.date || formatTemplateDate(now), time: fill.time || formatTemplateTime(now), values: templateValues(template, fill.values), defaults: fill.defaults });
     } catch (error) {
       throw new SourceError((error as Error).message);
     }

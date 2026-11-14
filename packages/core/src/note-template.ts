@@ -151,13 +151,18 @@ export interface TemplateVariables {
   time?: string;
   /** Placeholder values by name; one wins over the built-in and the declared default of its name. */
   values?: Record<string, string>;
+  /**
+   * Whether a placeholder without a value takes its declared default; true unless said otherwise. The app's New note menu
+   * passes false: it fills the title, date and time only, and leaves every other placeholder as written for the writer.
+   */
+  defaults?: boolean;
 }
 
 /** What fills a placeholder: a given value, then the built-in one, then the declared default; undefined leaves the placeholder as it is written. */
 function resolver(template: { metadata: NoteMetadata; }, vars: Omit<TemplateVariables, 'title'> & { title?: string; }): (name: string) => string | undefined {
   const settings = templateSettings(template.metadata);
   const builtins: Record<string, string | undefined> = { title: vars.title, date: vars.date, time: vars.time };
-  return name => vars.values && Object.hasOwn(vars.values, name) ? vars.values[name] : isBuiltin(name) && builtins[name] !== undefined ? builtins[name] : settings.placeholders[name]?.default;
+  return name => vars.values && Object.hasOwn(vars.values, name) ? vars.values[name] : isBuiltin(name) && builtins[name] !== undefined ? builtins[name] : vars.defaults === false ? undefined : settings.placeholders[name]?.default;
 }
 
 function substitute(value: unknown, resolve: (name: string) => string | undefined, unfilled: Set<string>): unknown {
@@ -305,6 +310,8 @@ export interface TemplateNoteRequest {
   metadata?: NoteMetadata;
   /** The clock `{{date}}` and `{{time}}` read when no value names them. */
   now?: Date;
+  /** The date and time to fill in place of that clock's UTC reading, as a page gives its reader's own. */
+  clock?: { date: string; time: string; };
 }
 
 export interface TemplateNote {
@@ -324,7 +331,7 @@ export interface TemplateNote {
 export function noteFromTemplate(notebook: Pick<NotebookConfig, 'root'>, template: { metadata: NoteMetadata; content: string; }, request: TemplateNoteRequest): TemplateNote {
   const values = templateValues(template, request.values);
   const now = request.now ?? new Date();
-  const clock = { date: formatTemplateDate(now), time: formatTemplateTime(now) };
+  const clock = request.clock ?? { date: formatTemplateDate(now), time: formatTemplateTime(now) };
   const given = request.title ?? (Object.hasOwn(values, 'title') ? values.title : undefined);
   const patterned = request.path === undefined ? renderTemplatePath(template, { ...clock, title: given, values }) : undefined;
   if (request.path === undefined && patterned === undefined) throw new TemplateError('path is required: the template declares no path pattern.');
