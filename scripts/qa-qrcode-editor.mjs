@@ -24,29 +24,31 @@ const shot = name => page.screenshot({ path: path.join(shots, `${name}.png`) });
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 const lines = () => page.$$eval('.cm-content .cm-line, .cm-content .live-md-qrcode', nodes => nodes.map(node => node.className.includes('live-md-qrcode') ? `[qr ${node.querySelector('canvas')?.width ?? '-'}]` : node.textContent));
 /** Selects the first occurrence of `text` in the live editor with the DOM selection, as dragging over it would. */
-const select = text => page.evaluate(text => {
-  // Focusing redraws the editor's lines, so the text is looked up after.
-  document.querySelector('.cm-content').focus();
-  const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const at = node.textContent.indexOf(text);
-    if (at < 0) continue;
-    getSelection().setBaseAndExtent(node, at, node, at + text.length);
-    return true;
-  }
-  return false;
-}, text);
-const caretIn = text => page.evaluate(text => {
-  document.querySelector('.cm-content').focus();
-  const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const at = node.textContent.indexOf(text);
-    if (at < 0) continue;
-    getSelection().setBaseAndExtent(node, at + 3, node, at + 3);
-    return true;
-  }
-  return false;
-}, text);
+const select = text =>
+  page.evaluate(text => {
+    // Focusing redraws the editor's lines, so the text is looked up after.
+    document.querySelector('.cm-content').focus();
+    const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const at = node.textContent.indexOf(text);
+      if (at < 0) continue;
+      getSelection().setBaseAndExtent(node, at, node, at + text.length);
+      return true;
+    }
+    return false;
+  }, text);
+const caretIn = text =>
+  page.evaluate(text => {
+    document.querySelector('.cm-content').focus();
+    const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const at = node.textContent.indexOf(text);
+      if (at < 0) continue;
+      getSelection().setBaseAndExtent(node, at + 3, node, at + 3);
+      return true;
+    }
+    return false;
+  }, text);
 const settle = ms => new Promise(resolve => setTimeout(resolve, ms));
 const press = async (...keys) => {
   for (const key of keys.slice(0, -1)) await page.keyboard.down(key);

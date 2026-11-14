@@ -6,7 +6,7 @@ import { unified } from 'unified';
 import { parseDirectiveAttributes, QRCODE_LEAF } from './directives.js';
 import { applyEdits, formatMarkdown } from './markdown-format.js';
 import { renderNote } from './markdown.js';
-import { QrCodeValueError, qrCodeAttribute, qrCodeText, turnIntoQrCode } from './qrcode-edit.js';
+import { qrCodeAttribute, qrCodeText, QrCodeValueError, turnIntoQrCode } from './qrcode-edit.js';
 
 /**
  * Runs the action on a document written with the selection or caret marked: `⟦…⟧` is a selection, `|` a caret. The answer is the document
@@ -84,14 +84,7 @@ describe('the string a directive carries', () => {
     return parseDirectiveAttributes(match[2]).url;
   };
 
-  it.each([
-    ['https://example.com/a?b=1&c=2', 'https://example.com/a?b=1&c=2'],
-    ['https://example.com/say"hi"', 'https://example.com/say%22hi%22'],
-    ['https://example.com/{id}', 'https://example.com/{id%7D'],
-    ['plain text', 'plain text'],
-    ['say "hi" now', 'say "hi" now'],
-    ["it's here", "it's here"],
-  ])('writes %j so that it reads back as %j', (text, expected) => {
+  it.each([['https://example.com/a?b=1&c=2', 'https://example.com/a?b=1&c=2'], ['https://example.com/say"hi"', 'https://example.com/say%22hi%22'], ['https://example.com/{id}', 'https://example.com/{id%7D'], ['plain text', 'plain text'], ['say "hi" now', 'say "hi" now'], ["it's here", "it's here"]])('writes %j so that it reads back as %j', (text, expected) => {
     const directive = `::qrcode{${qrCodeAttribute(text)}}`;
     // MyGitNotes' own readers.
     expect(read(directive)).toBe(expected);
@@ -104,7 +97,7 @@ describe('the string a directive carries', () => {
   });
 
   it('refuses the text a directive has no way to carry, and leaves the document alone', () => {
-    for (const text of ['both " and \' here', 'a } brace', "it's \"x\""]) {
+    for (const text of ['both " and \' here', 'a } brace', 'it\'s "x"']) {
       expect(() => qrCodeAttribute(text), text).toThrow(QrCodeValueError);
       const doc = `x ${text} y`;
       const result = formatMarkdown(doc, 2, 2 + text.length, 'qrcode');

@@ -12,10 +12,12 @@ import { liveDecorations } from './decorations.js';
 import { inlineIconAtomicRanges } from './inline-icons.js';
 import { QrCodeWidget } from './qrcode-widgets.js';
 
-const toCanvas = vi.hoisted(() => vi.fn(async (canvas: HTMLCanvasElement, _text: string, options: { width: number; }) => {
-  canvas.width = options.width;
-  canvas.height = options.width;
-}));
+const toCanvas = vi.hoisted(() =>
+  vi.fn(async (canvas: HTMLCanvasElement, _text: string, options: { width: number; }) => {
+    canvas.width = options.width;
+    canvas.height = options.width;
+  })
+);
 vi.mock('qrcode', () => ({ default: { toCanvas } }));
 
 const t = (key: string) => key;

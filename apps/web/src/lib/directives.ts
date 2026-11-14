@@ -359,12 +359,20 @@ export function renderQrCode(attrs: Record<string, string>, label: string | unde
 /** A line that is a `::qrcode{url="…" size="…"}` leaf directive on its own, or `::qrcode[url]`. */
 export const QRCODE_LEAF = /^ {0,3}::qrcode(?:\[([^\]]*)\])?(?:\{([^}]*)\})?\s*$/;
 
+/** `:en[…]` in text, one level of brackets allowed inside; not `::en` and not one that carries `{attributes}`. */
+const ENGLISH_LINE = /(?<![:\w]):en\[((?:[^[\]\n]|\[[^[\]\n]*\])*)\](?!\{)/g;
+/** A text `:en` with attributes, which contour-deck refuses. */
+const ENGLISH_WITH_ATTRIBUTES = /(?<![:\w]):en(?:\[(?:[^[\]\n]|\[[^[\]\n]*\])*\])?\{([^}\n]*\S[^}\n]*)\}/;
+
 /**
  * Transforms inline directives like `:icon{name="Heart" size="16"}` and `:qrcode{url="..."}`.
  */
 export function transformInlineDirectives(line: string): string {
+  // :en[English], the English line of a bilingual page: contour-deck's span, its inline Markdown left for the Markdown pass. One with
+  // attributes is no `:en`; a slide note reports it (`transformDirectives`), any other note keeps it as written.
+  let result = line.replace(ENGLISH_LINE, '<span class="en" lang="en">$1</span>');
   // :icon{name="Heart" size="16"} or :icon[Heart]{size="16"}, drawn as the real Lucide icon
-  let result = renderInlineIcons(line);
+  result = renderInlineIcons(result);
 
   // :qrcode{url="https://..." size="128"}
   result = result.replace(/:qrcode(?:\[([^\]]*)\])?(?:\{([^}]*)\})?/g, (_, label: string, attrStr: string) => renderQrCode(parseDirectiveAttributes(attrStr), label, 'span'));
@@ -639,7 +647,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
       }
     }
     // `:::vertical`, `:::block` and `:::slide` hold no content: in a slide note the line is the error contour-deck reports, and no block opens.
-    if (open && slides && isSlideDirective(open.name) && !isSlideContainer(open.name)) {
+    if (open && slides && ((isSlideDirective(open.name) && !isSlideContainer(open.name)) || open.name === 'en')) {
       const refused = `\n${slideDirective(slides, open.name, 'container', open.rawAttrs, line.trim(), i)}\n`;
       if (stack.length > 0) stack[stack.length - 1].lines.push(refused);
       else output.push(refused);
@@ -667,6 +675,16 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         } else {
           output.push(renderedHtml);
         }
+        continue;
+      }
+    }
+
+    // `:en` is a text directive: in a slide note the leaf form (`::en[…]`) and any attribute are the errors contour-deck reports.
+    if (slides && stack.length === 0) {
+      const wrong = parseDirectiveLine(line);
+      const attributed = ENGLISH_WITH_ATTRIBUTES.exec(line);
+      if ((wrong?.name === 'en' && wrong.form === 'leaf') || attributed) {
+        output.push(`\n${slideDirective(slides, 'en', wrong?.name === 'en' && wrong.form === 'leaf' ? 'leaf' : 'text', wrong?.name === 'en' ? wrong.rawAttrs : attributed?.[1], line.trim(), i)}\n`);
         continue;
       }
     }

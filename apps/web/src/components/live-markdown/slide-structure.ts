@@ -33,6 +33,11 @@ export interface EditorSlideStructure {
   pages: number[];
 }
 
+/** A line that is one `:en[…]` and nothing else. */
+const ENGLISH_PARAGRAPH = /^ {0,3}:en\[(?:[^[\]]|\[[^[\]]*\])*\]\s*$/;
+const isParagraphStart = (state: EditorState, number: number) => number === 1 || !state.doc.line(number - 1).text.trim() || /^ {0,3}(?:#{1,6}(?:\s|$)|(?:-{3,}|\*{3,}|_{3,})\s*$)/.test(state.doc.line(number - 1).text);
+const isParagraphEnd = (state: EditorState, number: number) => number === state.doc.lines || !state.doc.line(number + 1).text.trim();
+
 /**
  * Reads the note in the editor line by line, the way the renderer's directive pass does: the slide directive lines it holds and, for a
  * slide note, the block that ends at each `---` and the slide and page each heading heads (the numbering itself is
@@ -97,6 +102,11 @@ export function editorSlideStructure(state: EditorState, blocks: readonly { from
     }
     if (!line.text.trim() || comments.has(line.from)) continue;
     const heading = levels.get(line.from);
+    // A paragraph of nothing but `:en[…]` is the heading's English line, no content of the page.
+    if (!heading && line.from > headingEnd && ENGLISH_PARAGRAPH.test(line.text) && isParagraphStart(state, number) && isParagraphEnd(state, number)) {
+      reader.english();
+      continue;
+    }
     if (heading) {
       const index = reader.heading(heading.level);
       if (index !== undefined) headed.push({ from: line.from, level: heading.level as 2 | 3, index });

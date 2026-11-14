@@ -73,6 +73,11 @@ export class HeadingStructureReader {
     this.open();
   }
 
+  /** A paragraph of nothing but `:en[…]`: the heading's English line, which is part of the page and none of its content. */
+  english(): void {
+    this.open();
+  }
+
   /** Anything else a slide shows. */
   content(): void {
     this.open();
@@ -123,6 +128,13 @@ export function buildSteps(build: Element): Element[] {
   return steps;
 }
 
+/** A `<p>` that holds nothing but one `<span class="en" lang="en">`, as contour-deck's `isEnglishParagraph` reads it. */
+function isEnglishParagraph(element: Element): boolean {
+  if (element.tagName !== 'P') return false;
+  const children = [...element.childNodes].filter(node => !(node.nodeType === 3 && !node.textContent?.trim()));
+  return children.length === 1 && children[0].nodeType === 1 && (children[0] as Element).matches('span.en[lang="en"]');
+}
+
 /**
  * The top-level headings and thematic breaks of the rendered preview of a slide note: each `---` with the block that
  * ends there, each `##` and `###` with the slide and page it heads, and the block that ends with the note.
@@ -143,7 +155,8 @@ export function previewHeadings(body: HTMLElement): { rules: { element: Element;
     } else if (level) {
       const index = reader.heading(Number(level[1]));
       if (index !== undefined) headings.push({ element, level: Number(level[1]) as 2 | 3, index });
-    } else if (element.matches('.slide-notes, .slide-background')) reader.notes(); // a background, like notes, is no content of its page
+    } else if (element.matches('.slide-notes, .slide-background')) reader.notes();
+    else if (isEnglishParagraph(element)) reader.english(); // a background, like notes, is no content of its page
     else if (!element.matches('.slide-block-title, .slide-anchor')) reader.content();
   }
   const structure = reader.structure();

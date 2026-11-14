@@ -19,3 +19,8 @@
 .prose-custom .qrcode-canvas { display: block; max-width: 100%; height: auto; border-radius: 4px; }
 
 .prose-custom .qrcode-container[data-qrcode-rendered] .qrcode-link-text { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* `:en[…]`: the English line of a bilingual page, small and muted under the Chinese; contour-deck's stylesheet draws the same in a played deck. */
+.prose-custom span.en[lang='en'] { display: block; margin-top: 0.12em; font-size: 0.62em; font-weight: 400; font-style: normal; line-height: 1.35; letter-spacing: normal; text-transform: none; color: var(--color-muted, color-mix(in srgb, currentColor 62%, transparent)); }
+.prose-custom p > span.en[lang='en']:only-child { font-size: 0.8em; }
+.prose-custom :is(h1, h2, h3, h4) + p:has(> span.en[lang='en']:only-child) { margin-top: -0.35em; }

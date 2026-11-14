@@ -5,7 +5,7 @@ import zlib from 'node:zlib';
 import { SUPPORTED_SCHEMA_VERSION } from '../packages/core/dist/config.js';
 import { collectPageErrors, createQaWorkspace, launchQaBrowser, product, qaRequire, startQaServer } from './lib/qa-harness.mjs';
 
-// A slide note's `::background` (image with a credit, video, YouTube) and `::qrcode` / `:qrcode`: drawn in a compilation card (the note's preview), in the live editor, and in the played deck, in both themes.
+// A slide note's `::background` (image with a credit, video, YouTube) and `::qrcode` / `:qrcode` and the `:en[…]` bilingual lines: drawn in a compilation card (the note's preview), in the live editor, and in the played deck, in both themes.
 const require = qaRequire();
 const { root, write, commitFixture } = createQaWorkspace('github-notes-slide-backgrounds-qa-');
 
@@ -81,6 +81,10 @@ A page with a YouTube video behind it.
 
 ## No background
 
+:en[No picture on this page]
+
+沒有背景 :en[Plain page, *two* lines]
+
 Scan :qrcode{url="https://example.com/inline" size="140"} here, and :qrcode{size="90"} has no address.
 `,
 );
@@ -121,6 +125,10 @@ try {
     assert.ok(preview.imageLoaded && preview.imageSrc.startsWith('/raw-assets/'), 'the still loads from the notebook');
     assert.deepEqual(preview.canvases.map(canvas => [canvas.width, canvas.link, canvas.block]), [[160, 'https://example.com/talk?x=1', true], [140, 'https://example.com/inline', false]]);
     assert.equal(preview.video, 0);
+    const bilingual = await page.evaluate(() => [...document.querySelectorAll('.screen-card span.en[lang="en"]')].map(span => ({ text: span.textContent, size: parseFloat(getComputedStyle(span).fontSize), parent: parseFloat(getComputedStyle(span.parentElement).fontSize), visible: span.getBoundingClientRect().height > 0, block: getComputedStyle(span).display, weight: getComputedStyle(span).fontWeight })));
+    console.log(scheme, 'preview en', JSON.stringify(bilingual));
+    assert.deepEqual(bilingual.map(line => line.text), ['No picture on this page', 'Plain page, two lines']);
+    assert.ok(bilingual.every(line => line.visible && line.size < line.parent && line.block === 'block' && line.weight === '400'), 'the English lines show, smaller than their paragraph');
     assert.deepEqual(preview.inlineEmpty, ['QR Code']);
     await shot(`${scheme}-preview`);
 
@@ -157,7 +165,7 @@ try {
         const still = background?.querySelector('img');
         const stageBox = stage.getBoundingClientRect(), stillBox = still?.getBoundingClientRect();
         const canvas = current.querySelector('canvas.qrcode-canvas');
-        return { title: heading?.textContent, hasBackground: !!background, color: heading ? getComputedStyle(heading).color : null, text: current.querySelector('p') ? getComputedStyle(current.querySelector('p')).color : null, still: still ? { loaded: still.complete && still.naturalWidth > 0, border: getComputedStyle(still).borderTopWidth, radius: getComputedStyle(still).borderTopLeftRadius, fit: getComputedStyle(still).objectFit, cursor: getComputedStyle(still).cursor, coversStage: stillBox.width >= stageBox.width - 2 && stillBox.height >= stageBox.height - 2, role: still.getAttribute('role') } : null, credit: background?.querySelector('[data-ct-credit]')?.textContent ?? null, media: window.__bgm.map(media => `${media.tag} ${media.src.slice(0, 80)} on ${media.page}`), playing: !!current.querySelector('[data-ct-background] > .ct-bgm[data-ct-playing]'), bgAttrs: background ? ['data-video', 'data-youtube', 'data-start', 'style'].map(name => background.getAttribute(name)) : null, canvas: canvas ? { width: canvas.width, link: canvas.closest('a')?.getAttribute('href') } : null, calloutBg: current.querySelector('.custom-directive') ? getComputedStyle(current.querySelector('.custom-directive')).backgroundColor : null, otherMedia: [...stage.querySelectorAll('.ct-bgm')].length };
+        return { title: heading?.textContent, hasBackground: !!background, color: heading ? getComputedStyle(heading).color : null, text: current.querySelector('p') ? getComputedStyle(current.querySelector('p')).color : null, still: still ? { loaded: still.complete && still.naturalWidth > 0, border: getComputedStyle(still).borderTopWidth, radius: getComputedStyle(still).borderTopLeftRadius, fit: getComputedStyle(still).objectFit, cursor: getComputedStyle(still).cursor, coversStage: stillBox.width >= stageBox.width - 2 && stillBox.height >= stageBox.height - 2, role: still.getAttribute('role') } : null, credit: background?.querySelector('[data-ct-credit]')?.textContent ?? null, media: window.__bgm.map(media => `${media.tag} ${media.src.slice(0, 80)} on ${media.page}`), playing: !!current.querySelector('[data-ct-background] > .ct-bgm[data-ct-playing]'), bgAttrs: background ? ['data-video', 'data-youtube', 'data-start', 'style'].map(name => background.getAttribute(name)) : null, canvas: canvas ? { width: canvas.width, link: canvas.closest('a')?.getAttribute('href') } : null, english: [...current.querySelectorAll('span.en[lang="en"]')].map(span => ({ text: span.textContent, size: parseFloat(getComputedStyle(span).fontSize), parent: parseFloat(getComputedStyle(span.parentElement).fontSize), visible: span.getBoundingClientRect().height > 0 })), calloutBg: current.querySelector('.custom-directive') ? getComputedStyle(current.querySelector('.custom-directive')).backgroundColor : null, otherMedia: [...stage.querySelectorAll('.ct-bgm')].length };
       });
       console.log(scheme, 'deck', name, JSON.stringify(state));
       await shot(`${scheme}-deck-${name}`);
@@ -184,6 +192,8 @@ try {
       }
       if (name === 'plain') {
         assert.equal(state.hasBackground, false);
+        assert.deepEqual(state.english.map(line => line.text), ['No picture on this page', 'Plain page, two lines']);
+        assert.ok(state.english.every(line => line.visible && line.size < line.parent), `the English lines show, smaller than their paragraph: ${JSON.stringify(state.english)}`);
         assert.deepEqual(state.canvas, { width: 140, link: 'https://example.com/inline' });
         assert.equal(state.otherMedia, 0);
       }
@@ -193,7 +203,7 @@ try {
     await page.waitForFunction(() => !document.querySelector('.ct-app'), { timeout: 10000 });
   }
   assert.deepEqual(errors, [], 'no page errors');
-  console.log('PASS slide backgrounds and QR codes');
+  console.log('PASS slide backgrounds, QR codes and bilingual lines');
 } finally {
   await browser.close();
   server.close();
