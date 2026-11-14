@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { GitHubApi, SourceError } from './github-api.js';
+import { gitTreeId } from './git-tree.js';
 import { readGitHubArchive } from './github-archive.js';
 import { type RemoteChange, type RemoteCommit, type RemoteEntry, type RemoteSnapshot, RemoteSource, type RepositoryInfo } from './remote-source.js';
 import { hashJson, REMOTE_CACHE_MAX_VALUE, REMOTE_CACHE_TTL, type RemoteCache } from './remote-cache.js';
@@ -46,16 +47,11 @@ export function listingMatchesTree(entries: GitHubEntry[], treeSha: string): boo
     siblings.push(entry);
     if (entry.type === 'tree' && !children.has(entry.path)) children.set(entry.path, []);
   }
-  const name = (entry: GitHubEntry) => entry.path.slice(entry.path.lastIndexOf('/') + 1);
-  const sortKey = (entry: GitHubEntry) => Buffer.from(entry.type === 'tree' ? `${name(entry)}/` : name(entry));
   for (const [directory, rows] of children) {
     const tree = listed.get(directory);
     // Every parent of a listed path must itself be a listed tree.
     if (directory !== '' && tree?.type !== 'tree') return false;
-    const expected = directory === '' ? treeSha : tree!.sha;
-    const body = Buffer.concat(rows.sort((a, b) => Buffer.compare(sortKey(a), sortKey(b))).map(entry => Buffer.concat([Buffer.from(`${entry.type === 'tree' ? '40000' : entry.mode} ${name(entry)}\0`), Buffer.from(entry.sha, 'hex')])));
-    const id = createHash('sha1').update(`tree ${body.length}\0`).update(body).digest('hex');
-    if (id !== expected) return false;
+    if (gitTreeId(rows) !== (directory === '' ? treeSha : tree!.sha)) return false;
   }
   return true;
 }
