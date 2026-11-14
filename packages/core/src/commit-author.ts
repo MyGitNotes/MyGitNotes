@@ -17,8 +17,8 @@ const UNSAFE = /[<>\p{Cc}\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/u;
 const CO_AUTHOR = 'Co-authored-by';
 /** Longest name and email a commit names, and most co-authors one commit lists. */
 const MAX_NAME = 256, MAX_EMAIL = 320, MAX_CO_AUTHORS = 50;
-/** A line naming a co-author; no part can match what another does, so a long line takes linear time. */
-const CO_AUTHOR_LINE = new RegExp(`^${CO_AUTHOR}:[^<>]*<([^<>]*)>\\s*$`, 'i');
+/** A line naming a co-author by the email in its last angle brackets; anchored at the line start, so a long line takes linear time. */
+const CO_AUTHOR_LINE = new RegExp(`^${CO_AUTHOR}:.*<([^<>]*)>\\s*$`, 'i');
 
 /**
  * The author a commit may carry, from what an identity or a caller supplied. Undefined when there is none: no value, or

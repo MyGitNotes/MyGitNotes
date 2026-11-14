@@ -3,12 +3,18 @@ import { SourceError } from './github-api.js';
 import { isValidR2Key, r2PreviewType } from './r2-references.js';
 
 export interface R2Settings {
+  /** The Cloudflare account whose R2 host serves the bucket; unused (and may be empty) when `endpoint` is set. */
   accountId: string;
   accessKeyId: string;
   secretAccessKey: string;
   bucket: string;
+  /** Another S3-compatible service, addressed path-style (`<endpoint>/<bucket>/<key>`). */
   endpoint?: string;
+  /** The region requests are signed for; R2 takes `auto`, which is the default. */
+  region?: string;
 }
+
+const REGION = /^[a-z0-9-]{1,64}$/;
 /** What one request may use of the R2 bucket. */
 export interface AssetScope {
   settings: R2Settings;
@@ -40,13 +46,19 @@ export interface R2Object {
   lastModified: string;
 }
 
-/** Reads R2 settings from deployment environment; returns null when R2 is not configured. */
+/**
+ * Reads R2 settings from deployment environment; returns null when R2 is not configured. An S3-compatible service
+ * named by `MYGITNOTES_R2_ENDPOINT` needs no account id, and `MYGITNOTES_R2_REGION` sets the signing region (`auto`
+ * when unset); a region that is not lower-case letters, digits and hyphens is refused.
+ */
 export function r2SettingsFromEnv(env: NodeJS.ProcessEnv = process.env): R2Settings | null {
-  const accountId = env.MYGITNOTES_R2_ACCOUNT_ID, accessKeyId = env.MYGITNOTES_R2_ACCESS_KEY_ID;
+  const accountId = env.MYGITNOTES_R2_ACCOUNT_ID ?? '', accessKeyId = env.MYGITNOTES_R2_ACCESS_KEY_ID;
   const secretAccessKey = env.MYGITNOTES_R2_SECRET_ACCESS_KEY, bucket = env.MYGITNOTES_R2_BUCKET;
-  if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return null;
   const endpoint = env.MYGITNOTES_R2_ENDPOINT?.replace(/\/+$/, '');
-  return { accountId, accessKeyId, secretAccessKey, bucket, ...(endpoint ? { endpoint } : {}) };
+  if ((!accountId && !endpoint) || !accessKeyId || !secretAccessKey || !bucket) return null;
+  const region = env.MYGITNOTES_R2_REGION?.trim();
+  if (region && !REGION.test(region)) throw new Error(`MYGITNOTES_R2_REGION '${region}' is not a region name, such as us-east-1.`);
+  return { accountId, accessKeyId, secretAccessKey, bucket, ...(endpoint ? { endpoint } : {}), ...(region ? { region } : {}) };
 }
 
 function bucketUrl(settings: R2Settings): string {
@@ -60,7 +72,7 @@ function objectUrl(settings: R2Settings, key: string): URL {
 
 async function presign(settings: R2Settings, url: URL, method: 'GET' | 'PUT', expiresInSeconds: number, headers?: Record<string, string>, allHeaders = false): Promise<string> {
   url.searchParams.set('X-Amz-Expires', String(expiresInSeconds));
-  const signer = new AwsV4Signer({ url: url.toString(), method, headers, accessKeyId: settings.accessKeyId, secretAccessKey: settings.secretAccessKey, service: 's3', region: 'auto', signQuery: true, allHeaders });
+  const signer = new AwsV4Signer({ url: url.toString(), method, headers, accessKeyId: settings.accessKeyId, secretAccessKey: settings.secretAccessKey, service: 's3', region: settings.region || 'auto', signQuery: true, allHeaders });
   return (await signer.sign()).url.toString();
 }
 
@@ -88,7 +100,7 @@ export function presignR2Upload(settings: R2Settings, key: string, expiresInSeco
   return presign(settings, objectUrl(settings, key), 'PUT', expiresInSeconds, { ...R2_CREATE_ONLY_HEADERS, 'Content-Length': String(contentLength) }, true);
 }
 
-const client = (settings: R2Settings) => new AwsClient({ accessKeyId: settings.accessKeyId, secretAccessKey: settings.secretAccessKey, service: 's3', region: 'auto' });
+const client = (settings: R2Settings) => new AwsClient({ accessKeyId: settings.accessKeyId, secretAccessKey: settings.secretAccessKey, service: 's3', region: settings.region || 'auto' });
 
 async function send(settings: R2Settings, url: URL | string, init: RequestInit = {}): Promise<Response> {
   const response = await client(settings).fetch(url.toString(), init);

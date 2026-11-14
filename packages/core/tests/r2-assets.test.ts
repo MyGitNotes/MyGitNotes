@@ -79,4 +79,17 @@ describe('R2 management helpers', () => {
     expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/);
     expect(r2SettingsFromEnv({ MYGITNOTES_R2_ACCOUNT_ID: 'a', MYGITNOTES_R2_ACCESS_KEY_ID: 'b', MYGITNOTES_R2_SECRET_ACCESS_KEY: 'c', MYGITNOTES_R2_BUCKET: 'd', MYGITNOTES_R2_ENDPOINT: 'http://127.0.0.1:9000/' })?.endpoint).toBe('http://127.0.0.1:9000');
   });
+
+  it('signs in the configured region, auto by default, and needs no account id beside an endpoint', async () => {
+    const keys = { MYGITNOTES_R2_ACCESS_KEY_ID: 'AK', MYGITNOTES_R2_SECRET_ACCESS_KEY: 'SK', MYGITNOTES_R2_BUCKET: 'private' };
+    const other = r2SettingsFromEnv({ ...keys, MYGITNOTES_R2_ENDPOINT: 'https://s3.example.test', MYGITNOTES_R2_REGION: 'us-east-1' })!;
+    expect(other).toMatchObject({ endpoint: 'https://s3.example.test', region: 'us-east-1' });
+    const scope = (url: string) => new URL(url).searchParams.get('X-Amz-Credential')!.split('/').slice(2, 4).join('/');
+    expect(scope(await presignR2Object(other, 'ex/a.png'))).toBe('us-east-1/s3');
+    expect(scope(await presignR2Upload(other, 'ex/a.png', 900, 3))).toBe('us-east-1/s3');
+    expect(scope(await presignR2Object(r2SettingsFromEnv({ ...keys, MYGITNOTES_R2_ACCOUNT_ID: 'acc' })!, 'ex/a.png'))).toBe('auto/s3');
+    // Without an endpoint the account id names the R2 host, so it is still required.
+    expect(r2SettingsFromEnv(keys)).toBeNull();
+    for (const region of ['us east', 'eu/1', 'x'.repeat(65)]) expect(() => r2SettingsFromEnv({ ...keys, MYGITNOTES_R2_ACCOUNT_ID: 'acc', MYGITNOTES_R2_REGION: region })).toThrow(/MYGITNOTES_R2_REGION/);
+  });
 });
