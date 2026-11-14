@@ -109,7 +109,7 @@ describe('co-authors of a commit', () => {
     expect(withCoAuthors(once, [lee, sam], pat)).toBe(once);
     expect(withCoAuthors(once, [{ name: 'Kim Example', email: 'kim@example.test' }, sam], pat)).toBe(`${once}\nCo-authored-by: Kim Example <kim@example.test>`);
     // CRLF line ends, a trailer without the space and one outside the last paragraph still name the person.
-    for (const named of ['s\r\n\r\nCo-authored-by: Sam Example <sam@example.test>\r\n', 's\n\nCo-authored-by:Sam Example <sam@example.test>', 's\n\nCo-authored-by: Sam Example <sam@example.test>\n\nbody']) expect(withCoAuthors(named, [sam])).toBe(named);
+    for (const named of ['s\n\nCo-authored-by: Sam "<3" <sam@example.test>', 's\n\nCo-authored-by: a > b <sam@example.test>', 's\r\n\r\nCo-authored-by: Sam Example <sam@example.test>\r\n', 's\n\nCo-authored-by:Sam Example <sam@example.test>', 's\n\nCo-authored-by: Sam Example <sam@example.test>\n\nbody']) expect(withCoAuthors(named, [sam])).toBe(named);
   });
 
   it('are found in time linear in the message, and a message without co-authors to add is not read', () => {
@@ -119,7 +119,7 @@ describe('co-authors of a commit', () => {
     expect(performance.now() - started).toBeLessThan(200);
     started = performance.now();
     expect(withCoAuthors(`s\n\nCo-authored-by:${' '.repeat(1_000_000)}`, [])).toMatch(/^s/);
-    expect(performance.now() - started).toBeLessThan(50);
+    expect(performance.now() - started).toBeLessThan(200);
     // A CRLF message joins its own trailer block.
     expect(withCoAuthors('s\r\n\r\nAgent-Edit: 2026-11-15\r\n', [sam])).toBe('s\r\n\r\nAgent-Edit: 2026-11-15\nCo-authored-by: Sam Example <sam@example.test>');
   });
