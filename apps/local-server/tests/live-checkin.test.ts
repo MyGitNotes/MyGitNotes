@@ -127,6 +127,15 @@ describe('checkInLink', () => {
     expect((await liveNotes.service.checkouts(repository)).map(row => [row.id, row.path])).toEqual([[pending.id, null]]);
   });
 
+  it('leaves a pending note whose title makes the path too long unfiled, and the sweep reports no failure', async () => {
+    const pending = await liveNotes.person(person(1)).createPending(repository, { notebook: 'notes~life', pathRule: 'inbox/{{title}}.md', content: `# ${'會議'.repeat(40)}\n` });
+    const report = await sweepLive(liveNotes, { instant: new Date(clock.now() + 1000), now: clock.now });
+    expect(report.failed).toEqual([]);
+    expect(report.results).toEqual([{ id: pending.id, path: null, committed: false, released: false, reason: 'unfiled' }]);
+    expect(liveNotes.notices).toEqual([expect.objectContaining({ kind: 'unfiled', id: pending.id, message: expect.stringContaining('too long') })]);
+    expect(commits()).toEqual([]);
+  });
+
   it('commits a CRLF note in LF', async () => {
     files.set('notes/life/crlf.md', 'one\r\ntwo\r\n');
     const id = await checkout('notes/life/crlf.md');
@@ -145,6 +154,51 @@ describe('checkInLink', () => {
     clock.advance(5 * 60_000 + 1);
     expect(await run(id)).toMatchObject({ committed: false, released: true });
     expect(commits().length).toBe(1);
+  });
+
+  it('commits typing after a lost acknowledgement over its own check-in, with no conflict', async () => {
+    const id = await checkout('notes/life/a.md');
+    liveNotes.type(repository, id, '---\ntitle: A\n---\none\nTWO\nthree\nfour\nfive\n', person(1));
+    vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new Error('connection reset'));
+    await expect(run(id)).rejects.toThrow('Live editor unavailable.');
+    // Typed at the same lines the lost check-in committed.
+    liveNotes.type(repository, id, '---\ntitle: A\n---\none\nTWO!\nthree\nfour\nfive\n', person(1));
+    clock.advance(5 * 60_000 + 1);
+    const result = await run(id);
+    expect(result).toMatchObject({ committed: true, released: true });
+    expect(result.conflict).toBeUndefined();
+    expect(files.get('notes/life/a.md')).toBe('---\ntitle: A\n---\none\nTWO!\nthree\nfour\nfive\n');
+    expect(commits().at(-1)!.message).not.toContain('Live-Overwrote');
+    expect(liveNotes.notices).toEqual([]);
+  });
+
+  it('files a pending note once when the acknowledgement of its filing is lost, however often', async () => {
+    const pending = await liveNotes.person(person(1)).createPending(repository, { notebook: 'notes~life', pathRule: 'inbox/{{title}}.md', content: '# Meeting\n' });
+    vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new Error('connection reset')).mockRejectedValueOnce(new Error('connection reset'));
+    for (let lost = 0; lost < 2; lost++) {
+      await expect(run(pending.id)).rejects.toThrow('Live editor unavailable.');
+      // The lease of the lost run expires.
+      clock.advance(5 * 60_000 + 1);
+    }
+    expect(await run(pending.id)).toEqual({ id: pending.id, path: 'notes/life/inbox/Meeting.md', committed: false, released: true, filed: true });
+    expect(commits().map(commit => commit.paths)).toEqual([['notes/life/inbox/Meeting.md']]);
+    expect([...files.keys()].filter(file => file.includes('/inbox/'))).toEqual(['notes/life/inbox/Meeting.md']);
+    expect(await liveNotes.person(person(1)).filed(repository, pending.id)).toBe('notes/life/inbox/Meeting.md');
+  });
+
+  it('commits typing after a lost filing acknowledgement at the path it filed, with no conflict', async () => {
+    const pending = await liveNotes.person(person(1)).createPending(repository, { notebook: 'notes~life', pathRule: 'inbox/{{title}}.md', content: '# Meeting\n' });
+    vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new Error('connection reset'));
+    await expect(run(pending.id)).rejects.toThrow('Live editor unavailable.');
+    liveNotes.type(repository, pending.id, '# Meeting\n\nAgreed.\n', person(1));
+    clock.advance(5 * 60_000 + 1);
+    const result = await run(pending.id);
+    expect(result).toMatchObject({ path: 'notes/life/inbox/Meeting.md', committed: true, released: true, filed: true });
+    expect(result.conflict).toBeUndefined();
+    expect(commits().map(commit => commit.paths)).toEqual([['notes/life/inbox/Meeting.md'], ['notes/life/inbox/Meeting.md']]);
+    expect(files.get('notes/life/inbox/Meeting.md')).toBe('# Meeting\n\nAgreed.\n');
+    expect(commits().at(-1)!.message).not.toContain('Live-Overwrote');
+    expect(liveNotes.notices).toEqual([]);
   });
 
   it('makes one commit when two sweeps run at once', async () => {

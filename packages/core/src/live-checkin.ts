@@ -130,13 +130,26 @@ const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Da
 /** Where a pending note is filed, or why it stays pending. */
 export type LiveFiling = { path: string; } | { unfiled: string; };
 
+/** Most UTF-8 bytes in one part of a filed path, so `-99` still fits a file system's 255. */
+const MAX_FILED_PART_BYTES = 200;
+/** Most UTF-8 bytes in a whole filed path. */
+const MAX_FILED_PATH_BYTES = 1024;
+
+interface LiveFilingRequest {
+  rule: string;
+  notebook: NotebookConfig;
+  content: string;
+  since: string;
+  timeZone?: string;
+}
+
 /**
- * The Git path a pending note's rule renders (§5.5): `title` is the note's title, `date`/`time` its frontmatter value
- * when valid, else `since` in `timeZone`, and any other name its frontmatter value; each made safe as one file name. A
- * path that is taken, or names the same file in another case, gets `-2` … `-99` before its extension.
+ * The Git paths a pending note's rule renders (§5.5), in the order a filing tries them: `title` is the note's title,
+ * `date`/`time` its frontmatter value when valid, else `since` in `timeZone`, and any other name its frontmatter value;
+ * each made safe as one file name. After the rendered path come its `-2` … `-99` variants before the extension.
  */
-export function fileLivePath(request: { rule: string; notebook: NotebookConfig; content: string; since: string; timeZone?: string; existing: readonly string[]; }): LiveFiling {
-  const { rule, notebook, content, since, timeZone = 'UTC', existing } = request;
+function livePathCandidates(request: LiveFilingRequest): { candidates: string[]; } | { unfiled: string; } {
+  const { rule, notebook, content, since, timeZone = 'UTC' } = request;
   const { metadata, title } = parseNoteContent(content);
   const at = new Date(since);
   const value = (name: string): string | undefined => {
@@ -155,15 +168,26 @@ export function fileLivePath(request: { rule: string; notebook: NotebookConfig; 
   if (missing.size) return { unfiled: `No value for ${[...missing].join(', ')}.` };
   const relative = /\.(md|markdown)$/i.test(filled) ? filled : `${filled}.md`;
   if (relative.split('/').some(part => !part || part === '.' || part === '..') || relative.includes('\\') || !isLiveNotePath(relative, notebook) || templateFileId(relative) !== undefined || (notebook.templates ?? []).some(template => template.file === relative)) return { unfiled: 'The path rule does not name a note of the notebook.' };
-  const taken = new Set(existing);
-  const occupied = (file: string) => taken.has(file) || differsOnlyInCase(existing, file) || existing.some(entry => entry.startsWith(`${file}/`));
   const extension = /\.(md|markdown)$/i.exec(relative)![0];
   const stem = `${notebook.root}/${relative.slice(0, -extension.length)}`;
-  for (let n = 1; n <= MAX_COLLISION_SUFFIX; n++) {
-    const candidate = n === 1 ? `${stem}${extension}` : `${stem}-${n}${extension}`;
-    if (!occupied(candidate)) return { path: candidate };
-  }
-  return { unfiled: `Every path from ${relative} to its -${MAX_COLLISION_SUFFIX} variant is taken.` };
+  const longest = `${stem}-${MAX_COLLISION_SUFFIX}${extension}`;
+  if (Buffer.byteLength(longest, 'utf8') > MAX_FILED_PATH_BYTES || longest.split('/').some(part => Buffer.byteLength(part, 'utf8') > MAX_FILED_PART_BYTES)) return { unfiled: 'The path its rule renders is too long; shorten the title or the values it names.' };
+  return { candidates: Array.from({ length: MAX_COLLISION_SUFFIX }, (_, i) => i === 0 ? `${stem}${extension}` : `${stem}-${i + 1}${extension}`) };
+}
+
+/** Whether a repository path is taken among `existing`: by itself, by the same name in another case, or as a folder. */
+const occupiedIn = (existing: readonly string[], taken: ReadonlySet<string>) => (file: string) => taken.has(file) || differsOnlyInCase(existing, file) || existing.some(entry => entry.startsWith(`${file}/`));
+
+/**
+ * The Git path a pending note's rule renders (§5.5, see `livePathCandidates`); a path that is taken, or names the same
+ * file in another case, gets `-2` … `-99` before its extension.
+ */
+export function fileLivePath(request: LiveFilingRequest & { existing: readonly string[]; }): LiveFiling {
+  const plan = livePathCandidates(request);
+  if ('unfiled' in plan) return plan;
+  const occupied = occupiedIn(request.existing, new Set(request.existing));
+  const free = plan.candidates.find(candidate => !occupied(candidate));
+  return free ? { path: free } : { unfiled: `Every path from ${plan.candidates[0]} to its -${MAX_COLLISION_SUFFIX} variant is taken.` };
 }
 
 /**
@@ -208,6 +232,22 @@ async function newestTouching(source: RemoteSource, snapshot: RemoteSnapshot, fi
   } catch {
     return snapshot.sha;
   }
+}
+
+/**
+ * Whether Git's text of `file` is a check-in of link `id`: the newest commit that touched it carries the link's
+ * `Live-Link` and a `Live-Content` of `text`. A source without history says no.
+ */
+async function checkedInBy(source: RemoteSource, file: string, id: string, text: () => Promise<string>): Promise<boolean> {
+  let newest;
+  try {
+    newest = (await source.fileHistory(file, 1, 1)).entries[0];
+  } catch (error) {
+    if (error instanceof SourceError && error.status === 501) return false;
+    throw error;
+  }
+  const trailers = newest?.body.split('\n') ?? [];
+  return trailers.includes(`Live-Link: ${id}`) && trailers.includes(`Live-Content: sha256:${liveContentHash(await text())}`);
 }
 
 const releaseOf = (value: unknown): LiveRelease => {
@@ -270,10 +310,26 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
 
     // A pending note is filed at the path its rule renders, at a path no entry takes.
     if (row.path === null) {
-      const filing = fileLivePath({ rule: row.pathRule!, notebook, content: live, since: row.since, timeZone: options.timeZone ?? templateTimeZone(), existing: snapshot.entries.map(entry => entry.path) });
-      if ('unfiled' in filing) return { kind: 'unfiled', notice: { kind: 'unfiled', notebook: row.notebook, path: null, id, message: `A live note could not be filed: ${filing.unfiled} It stays open and is tried again at the next check-in.` }, editors, skipped };
-      const sha = await commit(filing.path, live, checkInMessage(filing.path, id, live, { filing: true, ...(agentDay ? { agentDay } : {}) }));
-      return synced(filing.path, sha, blobOf(live), live, null, true, true);
+      const unfiled = (reason: string): Attempt => ({ kind: 'unfiled', notice: { kind: 'unfiled', notebook: row.notebook, path: null, id, message: `A live note could not be filed: ${reason} It stays open and is tried again at the next check-in.` }, editors, skipped });
+      const plan = livePathCandidates({ rule: row.pathRule!, notebook, content: live, since: row.since, timeZone: options.timeZone ?? templateTimeZone() });
+      if ('unfiled' in plan) return unfiled(plan.unfiled);
+      const existing = snapshot.entries.map(entry => entry.path);
+      const occupied = occupiedIn(existing, new Set(existing));
+      // An earlier run may have filed this note and lost its acknowledgement: that filing is acknowledged, never repeated.
+      for (const candidate of plan.candidates) {
+        if (!occupied(candidate)) break;
+        const entry = snapshot.entries.find(item => item.path === candidate && item.type === 'blob');
+        if (!entry) continue;
+        if (entry.sha === blobOf(live)) return synced(candidate, snapshot.sha, entry.sha, live, null, false, true);
+        if (!await checkedInBy(source, candidate, id, async () => normalizeLiveText((await source.readSnapshotFile(snapshot, candidate)).toString('utf8')))) continue;
+        // The newest commit touching it is this note's own filing, so Git holds what was filed: the typing since commits over it.
+        const sha = await commit(candidate, live, checkInMessage(candidate, id, live, { filing: false, ...(agentDay ? { agentDay } : {}) }));
+        return synced(candidate, sha, blobOf(live), live, null, true, true);
+      }
+      const free = plan.candidates.find(candidate => !occupied(candidate));
+      if (!free) return unfiled(`Every path from ${plan.candidates[0]} to its -${MAX_COLLISION_SUFFIX} variant is taken.`);
+      const sha = await commit(free, live, checkInMessage(free, id, live, { filing: true, ...(agentDay ? { agentDay } : {}) }));
+      return synced(free, sha, blobOf(live), live, null, true, true);
     }
     const file = row.path;
     const entry = snapshot.entries.find(candidate => candidate.path === file && candidate.type === 'blob');
@@ -293,7 +349,8 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
       const conflict: LiveConflict = { kind: 'overwrote', overwritten, commit: sha, at: new Date(now()).toISOString() };
       return synced(file, sha, blobOf(live), live, conflict, true, false, { kind: 'conflict', notebook: row.notebook, path: file, id, commit: sha, overwritten, message: `${file} changed in Git and in the live editor at the same lines; the live text was committed over ${overwritten.slice(0, 12)}.` });
     };
-    if (row.base && entry.sha === row.base.blob) {
+    // Git holds this link's own last check-in, whose acknowledgement was lost: the live text descends from it.
+    if ((row.base && entry.sha === row.base.blob) || await checkedInBy(source, file, id, async () => git)) {
       const sha = await commit(file, live, checkInMessage(file, id, live, { filing: false, ...(agentDay ? { agentDay } : {}) }));
       return synced(file, sha, blobOf(live), live, null, true);
     }
