@@ -7,12 +7,12 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "github-notes-mcp": "./src/index.ts"
+    "github-notes-mcp": "./src/main.ts"
   },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "start": "tsx src/index.ts"
+    "start": "tsx src/main.ts"
   },
   "dependencies": {
     "@mygitnotes/core": "workspace:*",

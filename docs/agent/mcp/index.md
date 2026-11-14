@@ -48,7 +48,7 @@ A notebook's templates are the Markdown files directly in `<notebook root>/.temp
 
 ## Source selection and hosted access
 
-The stdio entry resolves `mygitnotes.server.yaml` (or legacy `github-notes.server.yaml`) from its repository argument.
+The stdio command is `packages/mcp-server/src/main.ts` (bin `github-notes-mcp`, `pnpm --filter @mygitnotes/mcp-server start [repository]`); the package entry `index.ts` only exports, so an edition that imports or bundles `@mygitnotes/mcp-server` starts no server on its own stdin and stdout. The stdio entry resolves `mygitnotes.server.yaml` (or legacy `github-notes.server.yaml`) from its repository argument.
 A local source uses the filesystem tools above; a GitHub or GitLab source exposes
 remote read tools against the configured public repositories. Stdio and hosted
 sessions resolve each notebook against the repository whose own manifest declares it. Path-only
