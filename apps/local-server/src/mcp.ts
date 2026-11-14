@@ -127,7 +127,9 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
       // Asset storage finds the caller on the request too: it is the grant's person, never a browser session sent beside the grant.
       dropHeaders(req, ['cookie']);
       if (person) (req as express.Request & WorkspaceRequest).person = person;
-      const workspace = openWorkspace(grantSettings(settings, grant), token, cache, { ...(person ? { person } : {}), ...(editionSources ? { editionSources } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
+      // The commits the call makes are authored by whom the grant names, where it names anyone: an outside bearer's grant
+      // as the identity answered, a stored one as it was recorded.
+      const workspace = openWorkspace(grantSettings(settings, grant), token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(editionSources ? { editionSources } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
       const assets = toolAssets(assetStorage, req, res);
       try {
         await readBody(req, res, workspace, assets);

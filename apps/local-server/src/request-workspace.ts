@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type express from 'express';
-import { aliasedMedia, type AvailableRepository, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
+import { aliasedMedia, type AvailableRepository, type CommitAuthor, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import type { EditionSources } from './edition-sources.js';
 import { CredentialRejected } from './auth.js';
@@ -33,6 +33,8 @@ export interface OpenOptions {
   fresh?: boolean;
   /** The person the request acts for, whether or not they hold a credential on the site. */
   person?: WorkspacePerson;
+  /** Whom the commits the request makes on the site's provider are authored by (`SignedIn.author`); without one, the credential's account. */
+  author?: CommitAuthor;
   /** Opens edition members; without it an edition member is unavailable. */
   editionSources?: EditionSources;
   /** The request as the configuration source saw it, handed to the edition. */
@@ -45,7 +47,7 @@ export interface OpenOptions {
  * Opens the workspace of one request: each visible member of its settings, from its worktree in a local deployment
  * or through the provider with the request's credential in a remote one, each with its own manifest.
  */
-export function openWorkspace(settings: WorkspaceSettings, token: string | undefined, cache?: RemoteCache, { fresh = false, person, editionSources, request = { headers: {} }, noCredentialMessage }: OpenOptions = {}): RequestWorkspace {
+export function openWorkspace(settings: WorkspaceSettings, token: string | undefined, cache?: RemoteCache, { fresh = false, person, author, editionSources, request = { headers: {} }, noCredentialMessage }: OpenOptions = {}): RequestWorkspace {
   const members = visibleMembers(settings);
   if (settings.site.type === 'local') {
     return createWorkspaceRepositories<RepositoryHandle>({
@@ -86,7 +88,7 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
       if (ref.source.type === 'local' || !sameSite(site, ref.source)) return { reason: 'unsupported-platform', message: `${ref.id} is not on the workspace's platform and site.` };
       // A signed-in person with no credential here reaches nothing on this site, and no provider request says otherwise.
       if (person && !token) return { reason: 'no-credential', message: noCredentialMessage?.(site) ?? 'No credential for this repository.' };
-      const reader = createRemoteSource(ref.source, token, fetch, cache, scope);
+      const reader = createRemoteSource(ref.source, token, fetch, cache, scope, author);
       try {
         await reader.getSnapshot(fresh);
       } catch (error) {
@@ -126,7 +128,7 @@ export function requestWorkspace(auth: IdentityOrSessions, configSource: Workspa
         return res.status(503).json({ error: 'Session service temporarily unavailable. Retry shortly.' });
       }
     }
-    res.locals.workspace = openWorkspace(settings, token, cache, { fresh: req.query.fresh === '1', ...(person ? { person: person.person } : {}), ...(editionSources ? { editionSources } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
+    res.locals.workspace = openWorkspace(settings, token, cache, { fresh: req.query.fresh === '1', ...(person ? { person: person.person } : {}), ...(person?.author ? { author: person.author } : {}), ...(editionSources ? { editionSources } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
     res.locals.token = token;
     res.locals.person = person;
     res.locals.site = settings.site;

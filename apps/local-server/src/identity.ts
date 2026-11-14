@@ -1,4 +1,4 @@
-import type { WorkspacePerson, WorkspaceSite } from '@mygitnotes/core';
+import type { CommitAuthor, WorkspacePerson, WorkspaceSite } from '@mygitnotes/core';
 import type { Request, Response, Router } from 'express';
 import { type AuthServices, authToken, credentialToken, getSession, ownerOf, providerFor, providerRouter, saveCredential, type SessionServices } from './auth.js';
 import type { StoredRecord } from './record-store/index.js';
@@ -10,6 +10,13 @@ export interface SignedIn {
   login: string;
   /** The grant index owner of this person. */
   owner: string | number;
+  /**
+   * The person as the author of the commits their requests make, for an identity whose `token` is a credential the
+   * deployment shares: the provider would otherwise record that credential's account. Left out, as the default
+   * identity leaves it, a commit is authored by the token's account. A name or email with a line break, `<`, `>` or a
+   * control character refuses the person's writes (400), and an empty one counts as none.
+   */
+  author?: CommitAuthor;
 }
 /**
  * What an identity resolves an outside bearer to: who an `/mcp` call acts for and how far it reaches. It is a grant
@@ -19,8 +26,8 @@ export interface BearerGrant {
   person: WorkspacePerson;
   /** The grant index owner of this person, as `SignedIn.owner`. */
   owner: string | number;
-  /** The person as the author of the commits the call makes; carried on the grant, for a source that sets a commit's author. */
-  author?: { name: string; email: string; };
+  /** The person as the author of the commits the call makes, as `SignedIn.author`; carried on the grant to the sources the call opens. */
+  author?: CommitAuthor;
   /** Whether the call may write. Only `true` writes; a call without it gets no write tool, as a read-only grant does. */
   write: boolean;
   /** The site the grant reaches, as `siteIdentity` writes it. A deployment on another site refuses the call. */
