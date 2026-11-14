@@ -38,3 +38,14 @@
 .ct-app :is(.ct-nb, .ct-sn) :is(ul, ol) { margin: 0 0 0.8em; padding-left: 1.4em; list-style: revert; }
 
 .ct-app :is(.ct-nb, .ct-sn) code { padding: 0.1em 0.3em; border-radius: 0.25rem; background: var(--color-code-bg); font-size: 0.9em; }
+
+/* A page with a `::background` reads light on the media under its scrim, in both themes. contour-deck sets its own colour tokens there; the
+   note's content reads the app's, so those are set to the same light colours, and the surfaces a callout, a card or a code block draws on
+   become a dark veil instead of the page colour. */
+.ct-app .ct-stage [data-ct-page]:has(> [data-ct-background]) { --color-text: var(--ct-fg); --color-muted: var(--ct-muted); --color-border: var(--ct-border); --color-surface: color-mix(in srgb, var(--color-scrim) 40%, transparent); --color-code-bg: color-mix(in srgb, var(--color-scrim) 45%, transparent); color: var(--ct-fg); }
+
+/* The app's accent is a dark colour in a light theme; on the picture a link and inline code read in the page's light text, the link underlined as always. */
+.ct-app .ct-stage [data-ct-page]:has(> [data-ct-background]) :is(a, code:not(pre code)) { color: var(--ct-fg); }
+
+/* The still is the backdrop, not a picture of the note: none of the note's picture frame, and nothing to open. */
+.ct-app .ct-stage [data-ct-background] img { border: 0; border-radius: 0; cursor: default; }

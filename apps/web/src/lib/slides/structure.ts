@@ -117,8 +117,8 @@ export function buildSteps(build: Element): Element[] {
     else if (child.tagName === 'TABLE' || child.classList.contains('markdown-table-scroll')) steps.push(...[...child.querySelectorAll('tr')].filter(row => !row.closest('thead')));
     // A build inside a build adds its own steps to the outer one's.
     else if (child.classList.contains('slide-build')) steps.push(...buildSteps(child));
-    // Notes are read to the speaker, never revealed.
-    else if (!child.classList.contains('slide-notes')) steps.push(child);
+    // Notes are read to the speaker, never revealed, and a background is no step of the build.
+    else if (!child.classList.contains('slide-notes') && !child.classList.contains('slide-background')) steps.push(child);
   }
   return steps;
 }
@@ -143,7 +143,7 @@ export function previewHeadings(body: HTMLElement): { rules: { element: Element;
     } else if (level) {
       const index = reader.heading(Number(level[1]));
       if (index !== undefined) headings.push({ element, level: Number(level[1]) as 2 | 3, index });
-    } else if (element.matches('.slide-notes')) reader.notes();
+    } else if (element.matches('.slide-notes, .slide-background')) reader.notes(); // a background, like notes, is no content of its page
     else if (!element.matches('.slide-block-title, .slide-anchor')) reader.content();
   }
   const structure = reader.structure();

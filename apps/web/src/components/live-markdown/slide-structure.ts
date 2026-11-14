@@ -89,9 +89,10 @@ export function editorSlideStructure(state: EditorState, blocks: readonly { from
     const directive = opened && isSlideDirective(opened.name) && !isSlideContainer(opened.name) ? { form: 'container' as const, name: opened.name } : parseDirectiveLine(line.text);
     if (directive && isSlideDirective(directive.name)) {
       lines.push({ from: line.from, to: line.to, text: line.text, name: directive.name, form: directive.form });
-      // `::block` and `::slide` neither start nor end anything; a directive contour-deck refuses, `::vertical` among them, is drawn as an
+      // `::block` and `::slide` neither start nor end anything, and a `::background` is, like notes, no content of its page; a directive contour-deck refuses, `::vertical` among them, is drawn as an
       // error box, which a slide shows.
-      if (!(directive.form === 'leaf' && (directive.name === 'block' || directive.name === 'slide'))) reader.content();
+      if (directive.form === 'leaf' && directive.name === 'background') reader.notes();
+      else if (!(directive.form === 'leaf' && (directive.name === 'block' || directive.name === 'slide'))) reader.content();
       continue;
     }
     if (!line.text.trim() || comments.has(line.from)) continue;

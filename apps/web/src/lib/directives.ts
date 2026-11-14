@@ -12,7 +12,7 @@ import { isArgumentMapName } from './argument-maps/parse.js';
 import { ArgumentMapError, renderArgumentMap, renderArgumentMapError } from './argument-maps/render.js';
 import { isAnnotateName } from './annotations/parse.js';
 import { AnnotateError, renderAnnotate, renderAnnotateError } from './annotations/render.js';
-import { isSlideContainer, isSlideDirective, parseDirectiveLine, renderSlideDirective, type SlideRendering } from './slides/directives.js';
+import { drawsNothingOutsideDeck, isSlideContainer, isSlideDirective, parseDirectiveLine, renderSlideDirective, type SlideRendering } from './slides/directives.js';
 import { renderInlineIcons } from './icons/inline-icon.js';
 
 /** The language a server renders a note in; the browser takes it from the page. */
@@ -344,6 +344,21 @@ export function transformMdxComponents(content: string, language?: NoteLanguage)
 }
 
 /**
+ * A QR code of an address, as the blog writes `:qrcode{url size}`: the link to the address stays in the HTML and each surface draws the code
+ * over it (`hydrateQrCodes`). `label` is the address when `url` is not given. Without an address there is nothing to encode, so only the name shows.
+ */
+function renderQrCode(attrs: Record<string, string>, label: string | undefined, tag: 'span' | 'div'): string {
+  const url = attrs.url || label || '';
+  const size = attrs.size || '128';
+  const blockClass = tag === 'div' ? ' qrcode-block' : '';
+  const link = url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="qrcode-link"><span class="qrcode-link-text">🔗 ${escapeHtml(url)}</span></a>` : 'QR Code';
+  return `<${tag} class="qrcode-container${blockClass}" data-qrcode="${escapeHtml(url)}" data-size="${escapeHtml(size)}">${link}</${tag}>`;
+}
+
+/** A line that is a `::qrcode{url="…" size="…"}` leaf directive on its own, or `::qrcode[url]`. */
+const QRCODE_LEAF = /^ {0,3}::qrcode(?:\[([^\]]*)\])?(?:\{([^}]*)\})?\s*$/;
+
+/**
  * Transforms inline directives like `:icon{name="Heart" size="16"}` and `:qrcode{url="..."}`.
  */
 export function transformInlineDirectives(line: string): string {
@@ -351,12 +366,7 @@ export function transformInlineDirectives(line: string): string {
   let result = renderInlineIcons(line);
 
   // :qrcode{url="https://..." size="128"}
-  result = result.replace(/:qrcode(?:\[([^\]]*)\])?(?:\{([^}]*)\})?/g, (_, label: string, attrStr: string) => {
-    const attrs = parseDirectiveAttributes(attrStr);
-    const url = attrs.url || label || '';
-    const size = attrs.size || '128';
-    return `<span class="qrcode-container" data-qrcode="${escapeHtml(url)}" data-size="${escapeHtml(size)}"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="qrcode-link">🔗 ${escapeHtml(url || 'QR Code')}</a></span>`;
-  });
+  result = result.replace(/:qrcode(?:\[([^\]]*)\])?(?:\{([^}]*)\})?/g, (_, label: string, attrStr: string) => renderQrCode(parseDirectiveAttributes(attrStr), label, 'span'));
 
   return result;
 }
@@ -668,7 +678,15 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         output.push(`\n${slideDirective(slides, leaf.name, leaf.form, leaf.rawAttrs, line.trim(), i)}\n`);
         continue;
       }
-      if (leaf.form === 'leaf' && (leaf.name === 'block' || leaf.name === 'slide')) continue;
+      if (drawsNothingOutsideDeck(leaf.name, leaf.form)) continue;
+    }
+
+    // Leaf directive: ::qrcode{url="…" size="…"}, a code on a line of its own
+    const qrcode = stack.length === 0 ? QRCODE_LEAF.exec(line) : null;
+    if (qrcode) {
+      // Blank lines keep the element apart from the Markdown around it.
+      output.push(`\n${renderQrCode(parseDirectiveAttributes(qrcode[2]), qrcode[1], 'div')}\n`);
+      continue;
     }
 
     // Leaf directive: ::vertical

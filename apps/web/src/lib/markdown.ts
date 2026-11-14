@@ -42,7 +42,7 @@ function newMarked(math: MarkedExtension): Marked {
 
 const md = newMarked(createMarkedMath('html'));
 
-export const DOMPURIFY_DIRECTIVE_CONFIG = { ADD_TAGS: ['iframe', 'details', 'summary', 'aside', 'section', 'article', 'header', 'footer', 'figure', 'figcaption', 'abbr', 'svg', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse', 'cite'], ADD_ATTR: ['allow', 'allowfullscreen', 'loading', 'data-video-id', 'data-start', 'data-youtube-mode', 'data-youtube-mode-option', 'data-youtube-session', 'data-youtube-source-url', 'data-youtube-copy', 'data-copy-label', 'data-copied-label', 'data-copy-failed-label', 'controls', 'preload', 'data-type', 'data-variant', 'data-stat', 'data-cols', 'data-col-span', 'data-direction', 'data-arrow', 'data-icon', 'data-qrcode', 'data-size', 'data-component-name', 'data-lucide', 'data-slide-index', 'data-vertical', 'data-label', 'data-card-type', 'open', 'aria-label', 'aria-hidden', 'style', 'viewBox', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'] };
+export const DOMPURIFY_DIRECTIVE_CONFIG = { ADD_TAGS: ['iframe', 'details', 'summary', 'aside', 'section', 'article', 'header', 'footer', 'figure', 'figcaption', 'abbr', 'svg', 'path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse', 'cite'], ADD_ATTR: ['allow', 'allowfullscreen', 'loading', 'data-video-id', 'data-start', 'data-youtube-mode', 'data-youtube-mode-option', 'data-youtube-session', 'data-youtube-source-url', 'data-youtube-copy', 'data-copy-label', 'data-copied-label', 'data-copy-failed-label', 'controls', 'preload', 'data-type', 'data-variant', 'data-stat', 'data-cols', 'data-col-span', 'data-direction', 'data-arrow', 'data-icon', 'data-qrcode', 'data-size', 'data-ct-background', 'data-ct-credit', 'data-video', 'data-end', 'data-youtube', 'decoding', 'data-component-name', 'data-lucide', 'data-slide-index', 'data-vertical', 'data-label', 'data-card-type', 'open', 'aria-label', 'aria-hidden', 'style', 'viewBox', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin'] };
 
 /** Where a chat reply's links resolve from: the folder Pi runs in, repository-relative and on disk. */
 export interface ChatLinkBase {
@@ -223,6 +223,8 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
   const rawHtml = marked.parse(preprocessed, { gfm: true, breaks: true }) as string;
   // Only a note with an annotation figure pays for the figure checks below.
   const annotated = rawHtml.includes('ann-figure');
+  // So do the checks of a slide's `::background`.
+  const backdrop = rawHtml.includes('data-ct-background') || rawHtml.includes('slide-background');
   const parsed = parser.parseFromString(purify.sanitize(rawHtml, DOMPURIFY_DIRECTIVE_CONFIG), 'text/html');
   for (const table of parsed.querySelectorAll('table')) {
     // An infographic's data table is part of its figure.
@@ -245,6 +247,13 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
       else dropStageImage(image);
       continue;
     }
+    // The still of a slide's `::background` is the page's backdrop, not a picture to open: it is resolved like a figure's image and is no link.
+    if (backdrop && image.closest('[data-ct-background], .slide-background')) {
+      const url = annotationMediaUrl(src, notePath, notebookId);
+      if (url !== undefined) image.setAttribute('src', url);
+      else image.remove();
+      continue;
+    }
     if (r2Key !== null) {
       image.replaceWith(r2Preview(parsed, r2Key, notePath, image.getAttribute('alt') || ''));
       continue;
@@ -258,6 +267,12 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     }
     if (target?.kind === 'path') image.setAttribute('src', `/raw-assets/${target.path.split('/').map(encodeURIComponent).join('/')}${notebookId ? `?notebook=${encodeURIComponent(notebookId)}` : ''}`);
     else if (!target && !/^data:image\//i.test(src)) image.remove();
+  }
+  // A background video is a file of the notebook or an address, loaded by the deck's core on the stage; one that is neither is left out.
+  for (const background of backdrop ? parsed.querySelectorAll<HTMLElement>('[data-ct-background][data-video]') : []) {
+    const url = annotationMediaUrl(background.dataset.video ?? '', notePath, notebookId);
+    if (url !== undefined) background.dataset.video = url;
+    else background.removeAttribute('data-video');
   }
   for (const heading of parsed.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')) heading.dataset.headingSlug = headingSlug(heading.textContent || '');
   for (const p of parsed.querySelectorAll('p')) {

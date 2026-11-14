@@ -8,6 +8,7 @@ import './deck.css';
 import { hydratePdfFigures } from '../annotations/pdf-figure.js';
 import type { I18nContextValue } from '../i18n/index.js';
 import { hydrateMermaid } from '../mermaid.js';
+import { hydrateQrCodes } from '../qrcode.js';
 import { buildDeck } from './deck.js';
 import { EmptyDeckError } from './errors.js';
 
@@ -37,15 +38,17 @@ export function openDeck(host: HTMLElement, { html, title, view, language, t, on
   // A page is drawn with the note's own styles, so a slide's content looks as it does in the preview; the shell around it stays contour-deck's.
   for (const page of root.querySelectorAll('[data-ct-page]')) page.classList.add('prose-custom');
   host.append(root);
-  // The diagrams and PDF figures are drawn on the deck's own elements, as a preview draws them on its.
+  // The diagrams, QR codes and PDF figures are drawn on the deck's own elements, as a preview draws them on its.
   const stopMermaid = hydrateMermaid(root, { errorLabel: t('mermaid.error') });
   const stopPdfFigures = hydratePdfFigures(root, { t });
+  const stopQrCodes = hydrateQrCodes(root);
   // The app has its own router: the deck neither reads nor writes the address.
   const deck = createDeck(root, { url: false, view, labels: language === 'en' ? ENGLISH_LABELS : undefined });
   deck.on('exit', onExit);
   return () => {
     stopMermaid();
     stopPdfFigures();
+    stopQrCodes();
     deck.destroy();
     root.remove();
   };

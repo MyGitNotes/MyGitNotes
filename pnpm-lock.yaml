@@ -335,8 +335,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       contour-deck:
-        specifier: 0.4.0
-        version: 0.4.0
+        specifier: 0.5.2
+        version: 0.5.2
       dompurify:
         specifier: ^3.4.17
         version: 3.4.17
@@ -382,6 +382,9 @@ importers:
       pdfjs-dist:
         specifier: 6.4.299
         version: 6.4.299
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -416,6 +419,9 @@ importers:
       '@types/jsdom':
         specifier: ^30.0.0
         version: 30.0.0
+      '@types/qrcode':
+        specifier: ^1.5.6
+        version: 1.5.6
       '@types/react':
         specifier: ^18.3.5
         version: 18.3.31
@@ -2064,6 +2070,9 @@ packages:
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
 
+  '@types/qrcode@1.5.6':
+    resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
+
   '@types/qs@6.15.1':
     resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
 
@@ -2614,8 +2623,8 @@ packages:
     resolution: {integrity: sha512-GW4qUsfFo59d0HbUibDlWv5wPz+vAAcaTWbKIuKCf0JkC7wWkSyf8f13IpXn5JkeMlB2P8iTSSIjwXljorg2vA==}
     engines: {node: '>=22'}
 
-  contour-deck@0.4.0:
-    resolution: {integrity: sha512-I2Ps32bwLGlQS1HRKv4yGmbRjz2dsKnU3mJnKv2ku/oVHQMkdaY6accgUe9kZwije9Hq9hOIHQFKMyRVFPP1LA==}
+  contour-deck@0.5.2:
+    resolution: {integrity: sha512-V0gbPM1W06OGJ34WIpQ96kK4hvorxBs+q6uodDdrUpxSNh0fg7c56zoCm75paqCtgNhnLCcYUEPNIcIqp6QB9A==}
     engines: {node: '>=22.12'}
 
   conventional-changelog-angular@8.3.1:
@@ -6767,6 +6776,10 @@ snapshots:
 
   '@types/prop-types@15.7.15': {}
 
+  '@types/qrcode@1.5.6':
+    dependencies:
+      '@types/node': 22.20.2
+
   '@types/qs@6.15.1': {}
 
   '@types/range-parser@1.2.7': {}
@@ -7233,7 +7246,7 @@ snapshots:
 
   content-type@3.1.1: {}
 
-  contour-deck@0.4.0: {}
+  contour-deck@0.5.2: {}
 
   conventional-changelog-angular@8.3.1:
     dependencies:

@@ -8,3 +8,14 @@
 .prose-custom .qrcode-container { display: inline-flex; align-items: center; padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px solid var(--color-border); background: color-mix(in srgb, var(--color-text) 3%, var(--color-surface)); font-size: 0.8rem; }
 
 .prose-custom .qrcode-link { text-decoration: none; color: var(--color-text); }
+
+/* A QR code drawn over its link: the code is the link, and the address stays as text for a reader who cannot see the code. A block (`::qrcode`) stands on a line of its own. */
+.prose-custom .qrcode-container[data-qrcode-rendered] { position: relative; display: inline-block; padding: 0; border: 0; border-radius: 0; background: none; line-height: 0; vertical-align: middle; }
+
+.prose-custom .qrcode-container.qrcode-block { display: block; width: fit-content; max-width: 100%; margin: 1rem 0; }
+
+.prose-custom .qrcode-container.qrcode-block:not([data-qrcode-rendered]) { display: flex; }
+
+.prose-custom .qrcode-canvas { display: block; max-width: 100%; height: auto; border-radius: 4px; }
+
+.prose-custom .qrcode-container[data-qrcode-rendered] .qrcode-link-text { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

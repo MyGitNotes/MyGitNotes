@@ -24,6 +24,7 @@ import { CitationChip, citationLibrary } from './citations.js';
 import { mermaidFenceAt } from './mermaid-fence.js';
 import { editorSlideStructure, slideNote } from './slide-structure.js';
 import { SlideDirectiveChip, SlideDirectiveLine } from './slide-widgets.js';
+import { drawsNothingOutsideDeck } from '../../lib/slides/directives.js';
 import { blockLabelText, headingLabelText, type SlideLabelWording } from '../../lib/slides/structure.js';
 import { addInlineIcons } from './inline-icons.js';
 
@@ -59,8 +60,8 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
   const slideStructure = editorSlideStructure(state, directiveBlocks);
   const wording: SlideLabelWording = (key, params) => t(key, params);
   const blockLabel = (block: number | undefined) => block === undefined ? '' : blockLabelText(block, wording);
-  // The slide directive lines a widget stands for while the caret is elsewhere: every one in a slide note, and in any other note the `::block` and `::slide` that draw nothing there.
-  const drawnSlideLines = slideStructure.lines.filter(line => (slides || (line.form === 'leaf' && (line.name === 'block' || line.name === 'slide'))) && !active(line.from, line.to));
+  // The slide directive lines a widget stands for while the caret is elsewhere: every one in a slide note, and in any other note the `::block`, `::slide` and `::background` that draw nothing there.
+  const drawnSlideLines = slideStructure.lines.filter(line => (slides || drawsNothingOutsideDeck(line.name, line.form)) && !active(line.from, line.to));
   // A nested quote line carries one QuoteMark per level; each reveal is taken out of flow to the
   // same spot (see .live-md-quote-mark-reveal), so adjacent marks are merged into one span here —
   // otherwise a depth-2+ line's revealed markers would render on top of each other.

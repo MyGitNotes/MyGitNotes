@@ -5,6 +5,7 @@ import { localizedHandoutVariants } from '../lib/directives.js';
 import { type NoteRenderOptions, renderNote } from '../lib/markdown.js';
 import { isSlideDirective } from '../lib/slides/directives.js';
 import { hydrateMermaid } from '../lib/mermaid.js';
+import { hydrateQrCodes } from '../lib/qrcode.js';
 import type { TranslationKey } from '../lib/i18n/en.js';
 import { DEFAULT_YOUTUBE_LABELS, youtubeLabels } from '../lib/youtube-embed.js';
 
@@ -38,6 +39,7 @@ export class LiveMarkdownDirective extends WidgetType {
   }
 
   private stopMermaid = () => {};
+  private stopQrCodes = () => {};
 
   /** `this.t`, falling back to the given zh-TW string when no translator was supplied. */
   private tt(key: TranslationKey, fallback: string, params?: Record<string, string | number>): string {
@@ -66,14 +68,17 @@ export class LiveMarkdownDirective extends WidgetType {
     return setGridColumns(model, cols, n => this.tt('directive.grid.cellN', `第 ${n} 欄內容`, { n }));
   }
 
-  /** Draws the mermaid diagrams a directive's body holds, replacing the redraw watch of any earlier body. */
+  /** Draws the mermaid diagrams and the QR codes a directive's body holds, replacing the redraw watch of any earlier body. */
   private hydrateDiagrams(view: EditorView, body: HTMLElement) {
     this.stopMermaid();
+    this.stopQrCodes();
     this.stopMermaid = hydrateMermaid(body, { errorLabel: this.t?.('mermaid.error'), onSettled: () => view.requestMeasure() });
+    this.stopQrCodes = hydrateQrCodes(body, { onSettled: () => view.requestMeasure() });
   }
 
   destroy() {
     this.stopMermaid();
+    this.stopQrCodes();
   }
 
   toDOM(view: EditorView) {
@@ -102,6 +107,7 @@ export class LiveMarkdownDirective extends WidgetType {
     // Render Preview Mode (Default)
     const renderPreview = () => {
       this.stopMermaid();
+      this.stopQrCodes();
       root.innerHTML = '';
       root.classList?.remove('live-directive-editing');
 

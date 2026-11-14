@@ -20,7 +20,7 @@ export type SlideRendering = 'preview' | 'deck';
 export type SlideDirectiveForm = 'container' | 'leaf' | 'text';
 
 const CONTAINERS: ReadonlySet<string> = new Set(['summary', 'build']);
-const LEAVES: ReadonlySet<string> = new Set(['vertical', 'block', 'slide']);
+const LEAVES: ReadonlySet<string> = new Set(['vertical', 'block', 'slide', 'background']);
 
 /** Whether contour-deck reads a directive of this name. */
 export function isSlideDirective(name: string): boolean {
@@ -30,6 +30,14 @@ export function isSlideDirective(name: string): boolean {
 /** Whether the slide directive of this name holds content (`:::summary`, `:::build`). */
 export function isSlideContainer(name: string): boolean {
   return CONTAINERS.has(name);
+}
+
+/**
+ * Whether a directive on a line of its own draws nothing in a note that is no deck: the `::block`, `::slide` and `::background` of
+ * contour-deck's page, whose meaning is the deck's, so the line is left out.
+ */
+export function drawsNothingOutsideDeck(name: string, form: SlideDirectiveForm): boolean {
+  return form === 'leaf' && (name === 'block' || name === 'slide' || name === 'background');
 }
 
 /** A line that is a leaf directive (`::name[label]{attrs}`) or, with one colon, a text directive standing alone. */
@@ -51,10 +59,14 @@ export function parseSlideAttributes(raw: string | undefined): Record<string, st
   return attributes;
 }
 
-/** The marker element contour-deck writes for a slide directive: its tag and its hast properties (`dataCtMark`, `dataTitle`, `id`, …). */
+/** A child contour-deck's marker carries (`data.hChildren`): the still and the credit of a `::background`. */
+type HastChild = { type: 'text'; value: string; } | { type: 'element'; tagName: string; properties?: Record<string, unknown>; children?: HastChild[]; };
+
+/** The marker element contour-deck writes for a slide directive: its tag, its hast properties (`dataCtMark`, `dataTitle`, `id`, …) and its children. */
 interface SlideMarker {
   tag: string;
   properties: Record<string, unknown>;
+  children: HastChild[];
 }
 
 interface DirectiveNode {
@@ -62,7 +74,7 @@ interface DirectiveNode {
   name: string;
   attributes: Record<string, string>;
   children: DirectiveNode[];
-  data?: { hName?: string; hProperties?: Record<string, unknown>; };
+  data?: { hName?: string; hProperties?: Record<string, unknown>; hChildren?: HastChild[]; };
 }
 
 /**
@@ -77,7 +89,7 @@ function slideMarker(name: string, form: SlideDirectiveForm, attributes: Record<
       throw new SlideDeckError(reason);
     },
   });
-  return { tag: node.data?.hName ?? 'div', properties: node.data?.hProperties ?? {} };
+  return { tag: node.data?.hName ?? 'div', properties: node.data?.hProperties ?? {}, children: node.data?.hChildren ?? [] };
 }
 
 const escapeHtml = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -87,6 +99,14 @@ function markerAttributes(properties: Record<string, unknown>): string {
   return Object.entries(properties).map(([name, value]) => {
     const attribute = name.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
     return value === true ? ` ${attribute}` : ` ${attribute}="${escapeHtml(String(value))}"`;
+  }).join('');
+}
+
+/** What contour-deck's marker holds, as HTML: the still `<img>` and the `<small data-ct-credit>` of a background. */
+function childrenHtml(children: HastChild[]): string {
+  return children.map(child => {
+    if (child.type === 'text') return escapeHtml(child.value);
+    return `<${child.tagName}${markerAttributes(child.properties ?? {})}>${childrenHtml(child.children ?? [])}</${child.tagName}>`;
   }).join('');
 }
 
@@ -118,8 +138,9 @@ export function renderSlideDirective(name: string, form: SlideDirectiveForm, raw
   }
   if (rendering === 'deck') {
     const attributes = `${markerAttributes(marker.properties)}${body === undefined ? ` data-line="${line}"` : ''}`;
-    return marker.tag === 'hr' ? `<hr${attributes}>` : `<${marker.tag}${attributes}>${body ?? ''}</${marker.tag}>`;
+    return marker.tag === 'hr' ? `<hr${attributes}>` : `<${marker.tag}${attributes}>${body ?? childrenHtml(marker.children)}</${marker.tag}>`;
   }
+  if (name === 'background') return backgroundPreview(marker, strings);
   if (name === 'summary') return `<aside class="slide-notes" data-type="summary" aria-label="${escapeHtml(strings['slides.notesLabel'])}"><p class="slide-notes-label">${escapeHtml(strings['slides.notesLabel'])}</p><div class="slide-notes-body directive-content">${body ?? ''}</div></aside>`;
   if (name === 'build') return `<div class="slide-build" data-type="build">${body ?? ''}</div>`;
   if (name === 'block') {
@@ -131,4 +152,17 @@ export function renderSlideDirective(name: string, form: SlideDirectiveForm, raw
   }
   // `::slide{#id}` names the slide and shows nothing.
   return '<div class="slide-anchor" data-type="slide"></div>';
+}
+
+/**
+ * A page background as a reader of the note sees it, as contour-deck's document does: the still as a picture and the credit under it. A video
+ * plays only on the stage, so a video without a poster shows its kind alone. Its `dim` and `position` belong to the stage and are not drawn.
+ */
+function backgroundPreview(marker: SlideMarker, strings: Record<TranslationKey, string>): string {
+  const { dataVideo, dataYoutube } = marker.properties;
+  const image = marker.children.find((child): child is Extract<HastChild, { type: 'element'; }> => child.type === 'element' && child.tagName === 'img');
+  const credit = marker.children.find((child): child is Extract<HastChild, { type: 'element'; }> => child.type === 'element' && child.tagName === 'small');
+  const kind = dataYoutube !== undefined ? `<span class="slide-background-kind">${escapeHtml(strings['slides.backgroundYoutube'])}</span>` : dataVideo !== undefined ? `<span class="slide-background-kind">${escapeHtml(strings['slides.backgroundVideo'])}</span>` : '';
+  const still = image ? `<img${markerAttributes(image.properties ?? {})}>` : '';
+  return `<figure class="slide-background" data-type="background">${still}<figcaption><span class="slide-background-label">${escapeHtml(strings['slides.backgroundLabel'])}</span>${kind}${credit ? `<small class="slide-background-credit">${childrenHtml(credit.children ?? [])}</small>` : ''}</figcaption></figure>`;
 }
