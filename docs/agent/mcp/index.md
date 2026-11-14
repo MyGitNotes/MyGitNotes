@@ -78,7 +78,7 @@ Rejected requests log a secret-free reason (`[mcp] unauthorized: …`, `[auth] c
 A rejected request on an existing grant also keeps its reason and time for seven days as `lastRejection` on the Settings grant list (`GET /api/auth/agent-tokens`).
 Legacy session-bound grants retain their original expiry.
 
-An edition's `IdentityService` may also accept a bearer this server did not issue (`bearerGrant`, see [identity service](../../specs/2026-10-19-identity-service/spec.md#outside-bearers)), such as an OIDC access token a trusted service obtained on a person's behalf. A bearer shaped like a stored grant always resolves through the record store. Any other bearer in the `Authorization` header is handed to the identity, which verifies it and names the person, whether the call may write, and the site; the call then runs as that person's grant would, with the credential the identity gives its grants. The bearer is not kept, logged or sent to a provider, and a refusal answers the same 401 as a missing grant. The community edition's identity accepts no such bearer.
+An edition's `IdentityService` may also accept a bearer this server did not issue (`bearerGrant`, see [identity service](../../specs/2026-10-19-identity-service/spec.md#outside-bearers)), such as an OIDC access token a trusted service obtained on a person's behalf. A bearer shaped like a stored grant always resolves through the record store. Any other bearer in the `Authorization` header is handed to the identity, which verifies it and names the person, whether the call may write, the site and optionally the author of the call's commits; the call then runs as that person's grant would, with the credential the identity gives its grants. The bearer is not kept, logged or sent to a provider, and a refusal answers the same 401 as a missing grant. The community edition's identity accepts no such bearer.
 
 Hosted tools include `ls`, `glob`, `read`, `find`, `write`, `append`, `edit`,
 `mkdir`, `cp`, `mv`, and `rm`, plus the existing remote note and folder tools. Shell reads
@@ -146,6 +146,14 @@ the caller supplies. The app's history panel shows these commits as agent
 edits. Named versions live in version files under `.mygitnotes/versions`, which
 MCP tools never edit directly; a version file moves and is deleted together with
 its note.
+
+A hosted commit is authored by the account of the credential the grant uses. Where
+an edition's identity gives every person one shared credential, the grant names
+the person (`author`, a name and an email) and the commit is authored by them; a
+name or email that cannot be written into a commit refuses the write. Co-authors
+a caller of `commitChanges` names become `Co-authored-by: Name <email>` trailers
+after the `Agent-Edit` trailer, in the same trailer block. No tool names
+co-authors yet.
 
 Every hosted tool declares input and output schemas, structured content and
 readOnly/destructive/idempotent/openWorld annotations. Read-only grants omit all

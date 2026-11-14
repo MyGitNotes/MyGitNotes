@@ -10,6 +10,7 @@ An edition can sign people in without a provider token. The server asks one seam
 - **C6. Token-free grants.** `/mcp` asks the identity service for the grant's token at each call and accepts none stored on the request. A new grant records what the identity says: its person, its owner, and a credential only when the identity gives one.
 - **C7. Sign-in state carries extra data.** `PendingSignIn.data` passes through the OAuth round trip (`BrowserSessions.beginSignIn` to `finishSignIn`, stored and cookie modes), so a link flow returns knowing its intent and account.
 - **C8. Outside bearers.** An identity may accept a bearer on `/mcp` that this server did not issue, such as an OIDC access token another service obtained on a person's behalf, and say who it acts for (`bearerGrant`). The identity does all the verification; the server only decides which bearers it is asked about and what the answer may reach. The call uses the credential `grantToken` gives, never the bearer. Reason: a service that already holds a person's verified identity can call `/mcp` as that person without a stored grant per person. The default identity has no `bearerGrant`, so it answers such a bearer 401 as before.
+- **C9. Commit author.** An identity may say whom a person's commits are authored by (`SignedIn.author`, `BearerGrant.author`). Reason: where `token` and `grantToken` give every person one credential the deployment shares, the provider would record that credential's account as the author of every commit. The default identity names no author, so its requests to a provider are what they were. See [Commit author](#commit-author).
 
 ## Contract
 
@@ -18,7 +19,7 @@ An edition can sign people in without a provider token. The server asks one seam
 | Member | Meaning |
 | --- | --- |
 | `router` | Sign-in, callbacks and any edition auth routes, mounted at `/api/auth` ahead of `/session`, `/logout` and the grant routes. |
-| `signedIn(req, res)` | `{ person, login, owner }` of the request, or `null`. `owner` keys the person's grant index. |
+| `signedIn(req, res)` | `{ person, login, owner, author? }` of the request, or `null`. `owner` keys the person's grant index. `author` (`{ name, email }`) is whom the person's commits are authored by; see [Commit author](#commit-author). |
 | `token(req, res, site, refreshWithinMs?)` | The person's provider token on `site`, refreshed when near expiry; `undefined` when they have none. Throws `CredentialRejected` only where the identity treats a rejected credential as signed out. |
 | `grantCredential(req, res, signedIn, site)` | What a new grant records beside its person and owner. |
 | `grantToken(grant, person, site)` | A grant's provider token at call time; `undefined` is not an error. |
@@ -44,9 +45,21 @@ An edition can sign people in without a provider token. The server asks one seam
 - `write: false` lists no write tool and refuses every write call, as a read-only grant does.
 - The call then runs as a stored grant's does. `grantToken(record, person, site)` supplies the credential, where `record` is `{ kind: 'agent', ownerId, person, site, write, author? }` with no `credential`. The configuration source gets `WorkspaceRequest.person`. The `Authorization` header and the cookie are removed from the request's headers before the configuration source, the edition's sources and the asset storage see it.
 - The bearer is never stored, never used as a record id (no rejection is remembered for it), never sent to a provider and never logged.
-- `author` is carried on the record for a source that sets a commit's author. Nothing reads it yet.
+- `author` is carried on the record, and the commits the call makes are authored by it. See [Commit author](#commit-author).
 
 What makes a bearer trustworthy is the identity's to check: signature, issuer, audience, expiry, the calling client, and whether a person was present. The server checks none of it.
+
+## Commit author
+
+A commit made through a provider is authored by the account of the token that made it. An identity that gives every person the same token names the author itself:
+
+- **Web requests.** `signedIn` answers `author: { name, email }`, and every commit the request makes on the site's provider carries it: saves, batch commits, file and folder moves, agent documents, Study, the workspace manifest.
+- **`/mcp` calls.** The author is the grant's: the `author` of an outside bearer's `BearerGrant`, or the `author` a stored grant record holds. `POST /api/auth/agent-token` records none, so a stored grant has one only when an edition wrote it there.
+- **Reaching the provider.** `openWorkspace(settings, token, cache, { author })` hands it to `createRemoteSource(source, token, request, cache, scope, author)`, and `RemoteSource` passes it to `publishChanges`. GitLab gets `author_name` and `author_email` on `POST /repository/commits` and keeps the token's account as the committer. GitHub gets `author: { name, email }` on `POST /git/commits`; it dates the author now, and with no `committer` in the request it records the author as the committer too, so on GitHub only the push names the token's account.
+- **No author.** Without one, or with an empty name or email, the request to the provider has no author field and is byte for byte what it was. `providerIdentity` names none.
+- **Unusable text.** A name or email with a line break, `<`, `>` or a control character is refused when a commit is made (`400`, "The commit author's name or email cannot be written into a commit."), before any provider request. Nothing is cleaned up, so a commit never names someone other than whom the identity wrote. Reads are not refused. The identity is the one to give a usable name.
+- **Edition repositories.** `EditionSources.open` is not given the author; an edition's own source decides what its commits record.
+- **Co-authors.** `RemoteSource.commitChanges(changes, expected, operation, scope, requestedMessage, knownSnapshot, coAuthors)` names `coAuthors` (`{ name, email }[]`) in `Co-authored-by: Name <email>` trailers at the end of the message, after the trailers it already ends with (`Agent-Edit`, `Note-Modified`) and in the same block. A person is named once, by email whatever its case; the commit's author and anyone the message already names are left out; an entry with unusable text refuses the commit. No route passes co-authors yet.
 
 ## Default equivalence
 
@@ -59,5 +72,7 @@ A person is present exactly when the provider session is (the session reader alr
 ## Verification
 
 Outside bearers: `tests/mcp-bearer-grant.test.ts` covers each rule above against an identity with `bearerGrant`, and `tests/identity.test.ts` runs the contract against one.
+
+Commit author: `packages/core/tests/commit-author.test.ts` covers the provider requests with and without an author, the refused text and the co-author trailers; `tests/commit-author-http.test.ts` covers a web save, a batch commit and `/mcp` writes by an outside bearer and by a stored grant, all pushed with one credential.
 
 Every existing local-server and web suite passes unchanged. New: the identity contract against `providerIdentity`; an identity with a person and no token gets 200 on the members list, answers `platformAccess: false`, and keeps a grant without a credential; the sign-in options and notice in `lib/web-features.test.tsx`.
