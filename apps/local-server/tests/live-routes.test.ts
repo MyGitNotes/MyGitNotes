@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { Router } from 'express';
 import { type EditionSourceConfig, type LiveContext, type LivePersonCalls, sourceIdentity, type WorkspaceConfigSource } from '@mygitnotes/core';
+import { remoteTools } from '@mygitnotes/mcp-server';
 import { createApp } from '../src/app.js';
 import type { EditionSources } from '../src/edition-sources.js';
 import { type IdentityService } from '../src/identity.js';
@@ -245,5 +246,16 @@ describe('MCP check_in_note', () => {
     const again = await rpc(writer, 'tools/call', { name: 'check_in_note', arguments: { path: 'notes/life/a.md', notebookId: 'notes~life' } });
     expect(again.isError).toBe(true);
     expect(again.content[0].text).toMatch(/not being edited live/);
+  });
+
+  it('lists the tools as before live notes, with no check_in_note or 編輯中, where no live editor is configured', async () => {
+    await start({ liveNotes: undefined });
+    const writer = await grant(true);
+    const { tools } = await rpc(writer, 'tools/list', {});
+    expect(tools).toEqual(JSON.parse(JSON.stringify(remoteTools)));
+    expect(JSON.stringify(tools)).not.toMatch(/check_in_note|編輯中/);
+    const refused = await rpc(writer, 'tools/call', { name: 'check_in_note', arguments: { path: 'notes/life/a.md', notebookId: 'notes~life' } });
+    expect(refused.isError).toBe(true);
+    expect(JSON.parse(refused.content[0].text)).toEqual({ error: 'This operation is unavailable for a remote source.' });
   });
 });

@@ -156,6 +156,12 @@ tonight's check-in closes it), `unfiled` (its path rule needs a value the note
 lacks), `leased` (a check-in runs elsewhere), `changed` or `not-synced`. After a
 check-in that committed, the branch moved: read again before writing. A note
 that is not checked out is refused.
+
+A request with no live editor view (no `liveNotes`, nobody signed in, or no
+member the editor covers) lists the tools exactly as before live notes: no
+`check_in_note`, no 編輯中 sentences, no `live` fields, and receipts with
+`committed: true, pushed: true`; calling `check_in_note` there answers as any
+unknown tool does.
 Note writes (`write`, `append`, `edit`, `save_note`, `update_note_metadata`)
 also return the note `path` and, when `APP_URL` is configured, the note's web page `url`.
 

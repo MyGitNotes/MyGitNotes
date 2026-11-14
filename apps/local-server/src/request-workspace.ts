@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type express from 'express';
-import { aliasedMedia, type AvailableRepository, type CommitAuthor, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, type LiveNotes, liveRepository, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
+import { aliasedMedia, type AvailableRepository, type CommitAuthor, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, type LiveNotes, liveEditorOf, liveRepository, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import type { EditionSources } from './edition-sources.js';
 import { CredentialRejected } from './auth.js';
@@ -114,6 +114,15 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
       return { kind: 'remote', id: ref.id, reader, authenticated: Boolean(token) };
     },
   });
+}
+
+/**
+ * Whether a request opened with these settings gets a live editor view of any repository: someone is signed in and the
+ * editor covers one of its remote members. Without one, the request sees the tools and fields it saw before live notes.
+ */
+export function hasLiveView(settings: WorkspaceSettings, person: WorkspacePerson | undefined, liveNotes: LiveNotes | undefined): boolean {
+  if (!liveNotes || !person || settings.site.type === 'local') return false;
+  return visibleMembers(settings).some(member => member.ref.source.type !== 'local' && liveEditorOf(liveNotes, member.ref.id) !== null);
 }
 
 /** Resolves the request's workspace once and stores it in `res.locals.workspace`. */
