@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { SourceError } from './github-api.js';
 import { resolveSafePath } from './path-guard.js';
 import { isValidR2Key, r2ReferenceKeys } from './r2-references.js';
 import { type AssetScope, inAssetScope, presignR2Object, r2SettingsFromEnv } from './r2-storage.js';
@@ -188,7 +189,8 @@ export async function fetchR2ObjectToCache(cache: R2Cache, key: string, url: str
   const response = await fetcher(url);
   if (!response.ok || !response.body) {
     await response.body?.cancel().catch(() => undefined);
-    throw new Error(`the object store answered ${response.status}`);
+    // A missing object stays a 404 for the caller; any other refusal is the store's failure.
+    throw new SourceError(`the object store answered ${response.status}`, response.status === 404 ? 404 : 502);
   }
   if (maxBytes !== undefined && Number(response.headers.get('content-length')) > maxBytes) {
     await response.body.cancel().catch(() => undefined);

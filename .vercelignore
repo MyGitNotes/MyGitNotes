@@ -5,6 +5,7 @@ notes
 .mygitnotes.yaml
 github-notes.server.yaml
 .github-notes-sessions
+.cache
 node_modules
 **/node_modules
 **/dist

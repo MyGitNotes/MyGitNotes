@@ -3,7 +3,7 @@ import type { RemoteCache } from '@mygitnotes/core';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { agentWorkspaceFile, agentWorkspaces, BOOKMARKS_DOCUMENT, classifyResource, FOCUS_DOCUMENT, keyedItem, lookupNotes, noteAgenda, type NotebookConfig, noteFacets, noteGraph, parseNoteQuery, productRepository, queryNotePaths, queryNotes, RemoteSource, replaceFileTags, repositoryManifestStatus, type RepositoryStatus, resolveSafePath, SourceError, StaleRevisionError, type UnavailableReason, visibleMembers, type WorkspaceConfigSource, type WorkspaceStatus } from '@mygitnotes/core';
+import { agentWorkspaceFile, agentWorkspaces, BOOKMARKS_DOCUMENT, classifyResource, FOCUS_DOCUMENT, hostedR2SourceFromEnv, keyedItem, lookupNotes, noteAgenda, type NotebookConfig, noteFacets, noteGraph, parseNoteQuery, productRepository, queryNotePaths, queryNotes, r2Cache, r2CacheRoot, RemoteSource, replaceFileTags, repositoryManifestStatus, type RepositoryStatus, resolveSafePath, SourceError, StaleRevisionError, type UnavailableReason, visibleMembers, type WorkspaceConfigSource, type WorkspaceStatus } from '@mygitnotes/core';
 import { createRemoteCache } from './remote-cache-store.js';
 import { createRecordStore, NoRecordStore, type RecordStore, storageMode } from './record-store/index.js';
 import { type BrowserSessions, cookieSessions, storedSessions } from './browser-sessions.js';
@@ -23,7 +23,7 @@ import { createWorkspaceDocumentRouter } from './workspace-document.js';
 import { createFolderManagerRouter } from './folder-manager.js';
 import { createNoteHistoryRouter, newVersion, serverlessHistoryEvents } from './note-history.js';
 import { type AssetStorage, envAssetStorage } from './asset-storage.js';
-import { createR2AssetHandler } from './r2-assets.js';
+import { createLocalR2AssetHandler, createR2AssetHandler, type NoteReader } from './r2-assets.js';
 import { createR2ManagerRouter } from './r2-manager.js';
 import { createFileManagerRouter } from './file-manager.js';
 import { createGistRouter, gistSite, gistToken, noteGist, syncGists } from './gists.js';
@@ -152,14 +152,13 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   // A remote deployment mounts it too, for an edition that supplies a hosted agent; the community one supplies none.
   if (piAgent) app.use('/api/pi', piAgent.router);
   if (local) {
-    app.get(
-      '/r2-assets/*',
-      createR2AssetHandler(assetStorage, async (res, notePath) => {
-        const { handle, config } = await noteRepository(res, notePath);
-        if (!['note', 'outline', 'template'].includes(classifyResource(notePath, config).type)) throw new Error('Path is not a configured note.');
-        return { content: fs.readFileSync(resolveSafePath(asLocal(handle).root, notePath), 'utf8'), repository: handle };
-      }),
-    );
+    // A local workspace keeps the private objects it has shown in the checkout's cache and shows them offline from there.
+    const readLocalNote: NoteReader = async (res, notePath) => {
+      const { handle, config } = await noteRepository(res, notePath);
+      if (!['note', 'outline', 'template'].includes(classifyResource(notePath, config).type)) throw new Error('Path is not a configured note.');
+      return { content: fs.readFileSync(resolveSafePath(asLocal(handle).root, notePath), 'utf8'), repository: handle };
+    };
+    app.get('/r2-assets/*', createLocalR2AssetHandler(assetStorage, readLocalNote, r2Cache(r2CacheRoot(base)), { remote: () => hostedR2SourceFromEnv() }));
     app.use(createLocalApp(base));
   } else {
     /** Whether the request carries a signed-in session; each repository still checks its own access. */

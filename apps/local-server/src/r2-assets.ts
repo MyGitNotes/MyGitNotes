@@ -1,5 +1,6 @@
 import express from 'express';
-import { presignR2Object, r2ReferenceKeys, SourceError } from '@mygitnotes/core';
+import path from 'node:path';
+import { bucketR2Source, type CachedR2Object, fetchR2ObjectToCache, presignR2Object, type R2Cache, type R2ObjectSource, R2ObjectTooLargeError, r2PreviewType, r2ReferenceKeys, SourceError } from '@mygitnotes/core';
 import { type AssetStorage, inAssetScope, resolveAssetScope } from './asset-storage.js';
 import type { RepositoryHandle } from './request-workspace.js';
 
@@ -28,6 +29,79 @@ export function createR2AssetHandler(storage: AssetStorage, readNote: NoteReader
       res.redirect(302, await presignR2Object(scope.settings, key));
     } catch (error) {
       // A storage that fails (a lookup in an edition's database) answers 502 here; an async handler's rejection would hang the request.
+      res.status(error instanceof SourceError ? error.status : 502).json({ error: error instanceof Error ? error.message : 'Asset lookup failed.' });
+    }
+  };
+}
+
+/** The largest object a first view reads into the cache; a larger one is redirected to the bucket, and `pnpm r2-download` caches any size. */
+const VIEW_CACHE_BYTES = 64 * 1024 * 1024;
+
+export interface LocalR2AssetOptions {
+  /** Where objects are read from when the asset storage has no bucket for the request: a hosted deployment, or none. Asked on each miss. */
+  remote?: () => R2ObjectSource | null;
+  /** The largest object a first view caches; defaults to 64 MiB. */
+  maxObjectBytes?: number;
+}
+
+/**
+ * Serves a local workspace's private objects through `cache`, so a note shows them offline. The check is the one
+ * `createR2AssetHandler` makes: the requester reads `note`, the note references the key, and the key lies in the asset
+ * scope when the request has one; a cached object is held to it too. A cached object is answered from disk without
+ * asking the bucket. A miss reads the object once, from the scope's bucket or else from `remote`, into the cache and
+ * answers it; without either it is not found. An object too large to cache on a view is redirected to its
+ * short-lived URL, as before the cache.
+ */
+export function createLocalR2AssetHandler(storage: AssetStorage, readNote: NoteReader, cache: R2Cache, { remote, maxObjectBytes = VIEW_CACHE_BYTES }: LocalR2AssetOptions = {}): express.RequestHandler {
+  /** Reads in flight by key, so views that arrive together read the bucket once. */
+  const reading = new Map<string, Promise<CachedR2Object>>();
+  /** Keys found too large on an earlier view, so the next one redirects without reading the bucket to learn the size. */
+  const tooLarge = new Set<string>();
+  const send = (res: express.Response, object: CachedR2Object) => {
+    const { kind, contentType } = r2PreviewType(object.key);
+    const filename = encodeURIComponent(object.key.split('/').pop() || 'file').replace(/'/g, '%27');
+    // The object is answered from this origin, so it gets the sandbox raw assets get.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('Content-Disposition', `${kind === 'file' ? 'attachment' : 'inline'}; filename*=UTF-8''${filename}`);
+    res.type(contentType);
+    // The cache may lie under a dot folder (`.cache`), which a path without `root` would be refused for.
+    res.sendFile(path.basename(object.file), { root: path.dirname(object.file), dotfiles: 'allow' });
+  };
+  return async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const notFound = () => res.status(404).json({ error: 'Asset not found.' });
+    const key = (req.params as Record<string, string>)[0];
+    const notePath = req.query.note;
+    if (!key || typeof notePath !== 'string') return notFound();
+    let note: Awaited<ReturnType<NoteReader>>;
+    try {
+      note = await readNote(res, notePath);
+    } catch {
+      return notFound();
+    }
+    try {
+      const scope = await resolveAssetScope(storage, req, res, note.repository);
+      if (!r2ReferenceKeys(note.content).includes(key) || (scope && !inAssetScope(scope, key))) return notFound();
+      const cached = cache.find(key);
+      if (cached) return send(res, cached);
+      const source = scope ? bucketR2Source(scope) : remote?.() ?? null;
+      const url = source ? (await source.urls(notePath, [key])).get(key) : undefined;
+      if (!url) return notFound();
+      if (tooLarge.has(key)) return res.redirect(302, url);
+      let pending = reading.get(key);
+      if (!pending) {
+        pending = fetchR2ObjectToCache(cache, key, url, { maxBytes: maxObjectBytes }).finally(() => reading.delete(key));
+        reading.set(key, pending);
+      }
+      try {
+        send(res, await pending);
+      } catch (error) {
+        if (!(error instanceof R2ObjectTooLargeError)) throw error;
+        if (tooLarge.size >= 1000) tooLarge.clear();
+        tooLarge.add(key);
+        res.redirect(302, url);
+      }
+    } catch (error) {
       res.status(error instanceof SourceError ? error.status : 502).json({ error: error instanceof Error ? error.message : 'Asset lookup failed.' });
     }
   };
