@@ -38,6 +38,13 @@ export interface LiveSocketLimits {
   beatMs: number;
   /** How long `shutdown` takes at most. */
   shutdownMs: number;
+  /**
+   * How long a socket stays open, by the adapter's clock, before it is closed with `LIVE_RENEW_CODE`: its tab connects
+   * again with a ticket, which takes a session that is still signed in. What it sends past that is not stored, and an
+   * open socket is closed on the next beat, so writes stop at most a ticket's life plus this plus `beatMs` after the
+   * session that got its first ticket ended.
+   */
+  socketMs: number;
 }
 
 export interface LiveSocketOptions {
@@ -113,6 +120,10 @@ class Refusal extends Error {
   }
 }
 
+/** The close of a socket that was open for `socketMs`: the tab connects again, with a fresh ticket, as after any close. */
+export const LIVE_RENEW_CODE = 4000;
+const RENEW_REASON = 'Live ticket renewal';
+
 const TICKET = /^[A-Za-z0-9_-]{32,128}$/;
 const REFUSED = (reason: 'too-large' | 'busy' | 'invalid') => JSON.stringify({ type: 'refused', reason });
 const errorName = (error: unknown) => error instanceof Error ? error.constructor.name : 'error';
@@ -137,6 +148,14 @@ export function liveSocket({ documents, store, clock, process: processName, read
   const sockets = new Map<WebSocket, Set<Seat>>();
   /** The open sockets with no document open or being opened on them. */
   const unseated = new Set<WebSocket>();
+  /** When each open socket is to close for a new ticket, by the adapter's clock. */
+  const renewAt = new Map<WebSocket, number>();
+  /** The socket was open for `socketMs`: closed, so that only a tab with a live session gets in again. */
+  const expired = (socket: WebSocket) => {
+    if (clock() < (renewAt.get(socket) ?? Infinity)) return false;
+    if (socket.readyState === socket.OPEN) socket.close(LIVE_RENEW_CODE, RENEW_REASON);
+    return true;
+  };
   const rooms = new Map<string, Room>();
   /** The last write of each document's presence that is still under way, also once everyone left it. */
   const writes = new Map<string, Promise<void>>();
@@ -195,7 +214,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
 
   const startTimers = () => {
     beat ??= setInterval(() => {
-      for (const socket of sockets.keys()) if (socket.readyState === socket.OPEN) socket.ping();
+      for (const socket of sockets.keys()) if (!expired(socket) && socket.readyState === socket.OPEN) socket.ping();
       // An entry lasts LIVE_PRESENCE_MS after it was written: one nobody changed is written again well before.
       for (const room of rooms.values()) if ([...room.seats].some(seat => seat.connected) && (room.dirty || clock() - room.written >= LIVE_PRESENCE_MS / 3)) void writePresence(room.link);
     }, limits.beatMs).unref();
@@ -316,6 +335,8 @@ export function liveSocket({ documents, store, clock, process: processName, read
       if (!seat) throw new Refusal('permission-denied');
       // Step 1 carries a state vector; step 2 and an update carry what the tab typed.
       if (type !== 1 && type !== 2) return;
+      // Nothing the tab sent was acknowledged: it sends it again over its next socket, which takes a fresh ticket.
+      if (expired(seat.socket)) throw new Refusal('unavailable');
       enter(seat, connection);
       try {
         if (await documents.accept(seat.link, payload, seat.editor)) active(seat);
@@ -385,6 +406,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
     const seats = new Set<Seat>();
     sockets.set(socket, seats);
     unseated.add(socket);
+    renewAt.set(socket, clock() + limits.socketMs);
     // Hocuspocus gets no header of the upgrade: cookies on it are ignored, and the ticket is the only credential.
     const client = hocuspocus.handleConnection(socket, new Request(`http://localhost${LIVE_SOCKET_PATH}`), { socket } satisfies SocketContext);
     socket.on('message', (data, binary) => {
@@ -403,6 +425,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
       for (const seat of seats) if (!seat.connected) seat.leave();
       sockets.delete(socket);
       unseated.delete(socket);
+      renewAt.delete(socket);
       if (!sockets.size) stopTimers();
     });
     if (!stopping) startTimers();
