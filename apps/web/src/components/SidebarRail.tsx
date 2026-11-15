@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { carriesNoteMove } from '../lib/note-drag.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import type { ShownSidebarLink } from '../lib/web-features.js';
+import { SidebarLinks } from './SidebarLinks.js';
 import './sidebar-rail.css';
 
 export type RailSectionId = 'notebooks' | 'status' | 'tags';
@@ -27,9 +29,10 @@ const OWN_OVERLAYS = 'dialog, [role="dialog"], [role="menu"], [role="listbox"], 
 
 /**
  * The filter sidebar folded to a column of icons. One icon per section; pressing it opens that section as a flyout beside the rail, which
- * closes on Escape, on a press outside it, or when the owner sets `open` to null (after something was picked).
+ * closes on Escape, on a press outside it, or when the owner sets `open` to null (after something was picked). An edition's `links` sit at the
+ * rail's foot as named icons.
  */
-export function SidebarRail({ label, sections, open, onOpenChange }: { label: string; sections: RailSection[]; open: RailSectionId | null; onOpenChange: (section: RailSectionId | null) => void; }) {
+export function SidebarRail({ label, sections, open, onOpenChange, links = [] }: { label: string; sections: RailSection[]; open: RailSectionId | null; onOpenChange: (section: RailSectionId | null) => void; links?: readonly ShownSidebarLink[]; }) {
   const { t } = useTranslation();
   const id = useId();
   const rail = useRef<HTMLElement>(null);
@@ -108,6 +111,7 @@ export function SidebarRail({ label, sections, open, onOpenChange }: { label: st
           );
         })}
       </div>
+      {links.length > 0 && <SidebarLinks links={links} variant='rail' />}
       {current && createPortal(
         <div ref={flyout} id={`${id}-${current.id}`} role='dialog' aria-label={current.label} tabIndex={-1} className='sidebar-flyout notes-sidebar' style={position ? { left: position.left, top: position.top, maxHeight: position.maxHeight, width: FLYOUT_WIDTH } : { left: -9999, top: 0, width: FLYOUT_WIDTH }}>
           <header className='sidebar-flyout-header'>

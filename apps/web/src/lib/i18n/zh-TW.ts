@@ -1150,6 +1150,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'sidebar.compilations': '合輯',
   'sidebar.compilationCount': '{count} 個合輯',
   'sidebar.notebooks': '筆記本',
+  'sidebar.links': '連結',
+  'sidebar.linkNewTab': '{label}（在新分頁開啟）',
   'sidebar.status': '狀態',
   'sidebar.statusFilter': '狀態篩選',
   'sidebar.allStatuses': '所有狀態',
