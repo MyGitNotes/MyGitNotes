@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { matchPath, useNavigationType } from 'react-router-dom';
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type Location, matchPath, UNSAFE_NavigationContext, useNavigationType } from 'react-router-dom';
 import type { useLocation, useNavigate } from 'react-router-dom';
 import { focusPanes } from '@mygitnotes/core/focus-page';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
@@ -16,6 +16,19 @@ import type { useFocusPanes } from './useFocusPanes.js';
 function routeNoteOf(location: ReturnType<typeof useLocation>, editorRoute: ReturnType<typeof parseWorkspaceRoute>): string | null {
   const query = new URLSearchParams(location.search);
   return editorRoute.tab === 'notes' && editorRoute.note && !query.has('returnTo') && !query.has('zoom') ? editorRoute.note : null;
+}
+
+/**
+ * Whether the history is still on the entry `key`. The location a render saw falls behind the history once a navigation
+ * is made: until that render's effects ran, and while React Router renders the next location as a transition. An address
+ * computed from it replaces the entry it was computed for only, never a newer one the person made meanwhile.
+ */
+function useCurrentEntry() {
+  const { navigator } = useContext(UNSAFE_NavigationContext);
+  // The navigator of BrowserRouter and MemoryRouter is their history, which tells the entry it is on.
+  const history = navigator as { location?: Location; };
+  if (!history.location) throw new Error('The address of the Focus needs a router whose navigator tells its location (BrowserRouter or MemoryRouter).');
+  return useCallback((key: string) => history.location!.key === key, [history]);
 }
 
 /**
@@ -76,6 +89,7 @@ interface Params {
 export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus, activeNotePath, focusNarrowView, selectedNotebookId, notebookRoot, returnTo, browsing, setFocusNarrowView, isTemplate }: Params) {
   const { pending, inFocus, settle } = link;
   const navigationType = useNavigationType();
+  const isCurrent = useCurrentEntry();
   const phone = usePhone();
   const focusReady = !noteFocus.loading && Boolean(noteFocus.shown && noteFocus.layout && noteFocus.entry);
   /**
@@ -162,6 +176,8 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
     const changed = previous.current.target !== target, moved = previous.current.key !== location.key;
     previous.current = { target, key: location.key };
     if (target === undefined || !(changed || (moved && navigationType !== 'POP')) || target === named) return;
+    // A newer entry is followed once it renders; Back or Forward leaves it as the entry has it.
+    if (!isCurrent(location.key)) return;
     const push = pushNext.current;
     pushNext.current = false;
     void follow(target, push);
@@ -172,8 +188,8 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
   // opening pushes is: Back or Forward to it, or a change of its query, keeps it in the Focus, after a reload too.
   const unmarked = managed && named !== null && target === named && !isFocusNoteState(location.state);
   useEffect(() => {
-    if (unmarked) void navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: FOCUS_NOTE_STATE });
-  }, [unmarked, location, navigate]);
+    if (unmarked && isCurrent(location.key)) void navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: FOCUS_NOTE_STATE });
+  }, [unmarked, location, navigate, isCurrent]);
 
   /** Runs `open` for the note at `path`; when it opens, the note's address is a new history entry. */
   const trackOpen = async (path: string, open: () => Promise<OpenResult>): Promise<OpenResult> => {
