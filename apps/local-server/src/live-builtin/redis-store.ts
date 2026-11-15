@@ -152,6 +152,11 @@ if held and cjson.decode(held)['until'] > tonumber(ARGV[3]) then return 'held' e
 redis.call('SET', KEYS[2], cjson.encode({ token = ARGV[1], ['until'] = tonumber(ARGV[2]) }), 'PX', ARGV[4])
 return 'leased'`;
 
+/** KEYS link, lease. ARGV token, now. */
+const LEASE_HELD = `${HOLDER}
+if holder(ARGV[1], ARGV[2]) then return 1 end
+return 0`;
+
 /** KEYS link, lease. ARGV token, now, seq, contentHash, grace. */
 const LEASE_READ = `${HOLDER}
 local lease = holder(ARGV[1], ARGV[2])
@@ -207,6 +212,15 @@ if at[2] ~= ARGV[3] then return 'changed' end
 erase(ARGV[4], at[4], at[3], at[5], at[6])
 redis.call('DEL', KEYS[1], KEYS[7])
 return 'discarded'`;
+
+/** KEYS link, lease. ARGV token, now, pathRule. */
+const RETARGET = `${HOLDER}
+if not holder(ARGV[1], ARGV[2]) then return 'leased' end
+local path = redis.call('HGET', KEYS[1], 'path')
+redis.call('DEL', KEYS[2])
+if path then return 'not-pending' end
+redis.call('HSET', KEYS[1], 'pathRule', ARGV[3])
+return 'retargeted'`;
 
 /** KEYS link, presence. ARGV process, its entry ('' for none), lifetime. */
 const PRESENCE = `
@@ -378,6 +392,9 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
       if (!isLink(id)) return 'not-live';
       return await script(`lease ${id}`, LEASE, [key.link(id), key.lease(id)], [token, until, now, Math.max(1, Math.ceil(until - now)) + LEASE_GRACE_MS]) as 'leased' | 'held' | 'not-live';
     },
+    async leaseHeld(id, token, now) {
+      return isLink(id) && await script(`leaseHeld ${id}`, LEASE_HELD, [key.link(id), key.lease(id)], [token, now]) === 1;
+    },
     async leaseRead(id, token, seq, contentHash, now) {
       return isLink(id) && await script(`leaseRead ${id}`, LEASE_READ, [key.link(id), key.lease(id)], [token, now, seq, contentHash, LEASE_GRACE_MS]) === 1;
     },
@@ -393,6 +410,10 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
     async discard(id, token, expect, now) {
       if (!isLink(id)) return 'leased';
       return await script(`discard ${id}`, DISCARD, [...lifecycleKeys(id), key.initial(id)], [token, now, expect.seq, P]) as 'discarded' | 'leased' | 'not-pending' | 'changed';
+    },
+    async retarget(id, token, pathRule, now) {
+      if (!isLink(id)) return 'leased';
+      return await script(`retarget ${id}`, RETARGET, [key.link(id), key.lease(id)], [token, now, pathRule]) as 'retargeted' | 'leased' | 'not-pending';
     },
     async presence(id, process, people, now) {
       if (!isLink(id)) return;

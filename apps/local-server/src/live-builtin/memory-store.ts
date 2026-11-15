@@ -114,6 +114,9 @@ export function memoryLiveStore(): LiveStore {
       leases.set(id, { token, until });
       return 'leased';
     },
+    async leaseHeld(id, token, now) {
+      return held(id, token, now) !== null;
+    },
     async leaseRead(id, token, seq, contentHash, now) {
       const grip = held(id, token, now);
       if (!grip) return false;
@@ -157,6 +160,14 @@ export function memoryLiveStore(): LiveStore {
       initial.delete(id);
       erase(id);
       return 'discarded';
+    },
+    async retarget(id, token, pathRule, now) {
+      const grip = held(id, token, now);
+      if (!grip) return 'leased';
+      leases.delete(id);
+      if (grip.link.path !== null) return 'not-pending';
+      grip.link.pathRule = pathRule;
+      return 'retargeted';
     },
     async presence(id, process, people, now) {
       if (!links.get(id)?.live) return;

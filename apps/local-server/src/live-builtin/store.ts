@@ -130,6 +130,8 @@ export interface LiveStore {
   editors(id: string): Promise<StoredEditor[]>;
   /** Takes the link's lease for `token` until `until`; 'held' while another lease has not run out by `now`. */
   lease(id: string, token: string, until: number, now: number): Promise<'leased' | 'held' | 'not-live'>;
+  /** Whether `token` holds the link's lease at `now`; false for a released or unknown link. Asking changes nothing. */
+  leaseHeld(id: string, token: string, now: number): Promise<boolean>;
   /** Records what the lease's last `detail` read: its sequence and hash (for `synced`). False when `token` does not hold the lease. */
   leaseRead(id: string, token: string, seq: number, contentHash: string, now: number): Promise<boolean>;
   /**
@@ -150,6 +152,12 @@ export interface LiveStore {
    * editors, presence, lease, tickets and initial text are all deleted, and `link` answers null for it.
    */
   discard(id: string, token: string, expect: { seq: number; }, now: number): Promise<'discarded' | 'leased' | 'not-pending' | 'changed'>;
+  /**
+   * Sets the path rule a pending link (no path) is filed by, when the lease holds, and ends the lease: its text, editors
+   * and presence stay. 'not-pending', with nothing set, for a link with a path, whose lease ends all the same, so the
+   * call never holds a check-in off. 'leased', with the lease kept, when `token` does not hold it.
+   */
+  retarget(id: string, token: string, pathRule: string, now: number): Promise<'retargeted' | 'leased' | 'not-pending'>;
   /** Replaces what `process` knows of the link's connected people: person key to last activity. None removes its entry. */
   presence(id: string, process: string, people: Record<string, number>, now: number): Promise<void>;
   /** The distinct people, over every process's entry written within {@link LIVE_PRESENCE_MS} of `now`, last active at or after `since`. */
