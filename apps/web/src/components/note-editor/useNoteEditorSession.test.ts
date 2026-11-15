@@ -191,6 +191,47 @@ describe('useNoteEditorSession and a read that cannot reach the server', () => {
     expect(hook.result.current.saveError).toBe('');
   });
 
+  it.each(['commit', 'autosave'])('says the %s that could not reach the server failed, and a failed read afterwards does not replace that until a write succeeds', async kind => {
+    const offline = { current: true };
+    const fetchFailure = () => new TypeError('Failed to fetch');
+    const onReadRemote = vi.fn(async () => {
+      if (offline.current) throw fetchFailure();
+      return note('Old name');
+    });
+    const onSave = vi.fn(async (params: { path: string; content: string; }) => {
+      if (offline.current) throw fetchFailure();
+      return { ...note('Old name'), content: params.content };
+    });
+    const onCommitFile = vi.fn(async () => {
+      if (offline.current) throw fetchFailure();
+    });
+    const base = { readOnly: false, autoSave: kind === 'autosave', draftMode: false, propIsDirty: false, branch: 'main', draftScope: '', onSave: onSave as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote, onRestoreFile: vi.fn(), onCommitFile, remoteBase: undefined, conflictReason: undefined, onMarkConflict: undefined } satisfies Omit<UseNoteEditorSessionParams, 'note'>;
+    const hook = renderHook(() => useNoteEditorSession({ ...base, note: note('Old name') }));
+    await vi.waitFor(() => expect(hook.result.current.saveError).toBe('editor.remoteUnreachable'));
+    act(() => hook.result.current.setContent('# Old name\n\nTyped.\n'));
+    if (kind === 'commit') {
+      await act(async () => {
+        expect(await hook.result.current.commitNote()).toBe(false);
+      });
+    }
+    await vi.waitFor(() => expect(hook.result.current.saveError).toBe('editor.saveUnreachable'), { timeout: 5000 });
+    // Another read, still offline, fails: the write's failure is what the person must see.
+    const reads = onReadRemote.mock.calls.length;
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await vi.waitFor(() => expect(onReadRemote.mock.calls.length).toBeGreaterThan(reads));
+    await act(async () => {
+      await hook.result.current.pullLatest();
+    });
+    expect(hook.result.current.saveError).toBe('editor.saveUnreachable');
+    offline.current = false;
+    await act(async () => {
+      expect(await hook.result.current.commitNote()).toBe(true);
+    });
+    expect(hook.result.current.saveError).toBe('');
+  });
+
   it('keeps the words of a TypeError that is no network failure', async () => {
     const onReadRemote = vi.fn<() => Promise<NoteItem>>().mockRejectedValue(new TypeError("Cannot read properties of undefined (reading 'content')"));
     const hook = writable(onReadRemote, vi.fn());
