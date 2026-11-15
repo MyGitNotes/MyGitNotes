@@ -9,7 +9,7 @@ import { hashJson } from './remote-cache.js';
 import { type NotebookKey, notebookKey } from './notebook-key.js';
 import { type RepositoryId, type RevisionSet, StaleRevisionError } from './repository.js';
 import { isTemplateFile } from './templates.js';
-import { DEFAULT_NOTE_QUERY, entryKind, isCompilationEntry, NOTE_KIND_FILTERS, type NoteAgenda, type NotebookFacets, noteContentSnippet, noteDirectory, type NoteFacets, type NoteGraph, type NoteKindFilter, type NoteListItem, type NoteLookup, noteMatchesQuery, type NotePaths, type NoteQuery, type NoteQueryPage, noteQueryStatuses, type NoteRef, noteRefKey } from './note-query.js';
+import { DEFAULT_NOTE_QUERY, entryKind, isCompilationEntry, LIVE_FILTERS, type LiveFilter, NOTE_KIND_FILTERS, type NoteAgenda, type NotebookFacets, noteContentSnippet, noteDirectory, type NoteFacets, type NoteGraph, type NoteKindFilter, type NoteListItem, type NoteLookup, noteMatchesFilters, noteMatchesQuery, type NotePaths, type NoteQuery, type NoteQueryPage, noteQueryStatuses, type NoteRef, noteRefKey, noteSearchTerms } from './note-query.js';
 
 /** Read model of the notebooks one repository serves, implemented by remote and local sources. */
 export interface RepositoryCatalog {
@@ -210,9 +210,11 @@ export function parseNoteQuery(input: Record<string, unknown>): { query: NoteQue
   if (!['any', 'all'].includes(tagMode) || !['all', 'title'].includes(match) || !isSortField(sort) || !SORT_ORDERS.includes(order) || !NOTE_KIND_FILTERS.includes(kind as NoteKindFilter)) throw new SourceError('Invalid query option.');
   if (q.length > 500) throw new SourceError('Search text exceeds 500 characters.');
   if (select !== undefined && select !== 'paths') throw new SourceError('Invalid select option.');
+  const live = [...new Set(values(input.live))];
+  if (live.some(state => !LIVE_FILTERS.includes(state as LiveFilter))) throw new SourceError('Invalid query option.');
   const limit = limitText === undefined ? 50 : Number(limitText);
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new SourceError('limit must be between 1 and 200.');
-  return { query: { notebookId, folders, descendants: single(input.descendants) !== '0', tags, tagMode: tagMode as NoteQuery['tagMode'], status: single(input.status) || null, withoutStatus: flag(input.noStatus), showHidden: flag(input.showHidden), q, match: match as NoteQuery['match'], exclude, sort, order, kind: kind as NoteKindFilter, group }, options: { limit, cursor: single(input.cursor), content: flag(input.content), select: select as 'paths' | undefined } };
+  return { query: { notebookId, folders, descendants: single(input.descendants) !== '0', tags, tagMode: tagMode as NoteQuery['tagMode'], status: single(input.status) || null, withoutStatus: flag(input.noStatus), showHidden: flag(input.showHidden), q, match: match as NoteQuery['match'], exclude, sort, order, kind: kind as NoteKindFilter, group, live: live as LiveFilter[] }, options: { limit, cursor: single(input.cursor), content: flag(input.content), select: select as 'paths' | undefined } };
 }
 
 async function scopeNotebooks(catalog: NoteCatalog, notebookId: string) {
@@ -228,14 +230,16 @@ async function scope(catalog: NoteCatalog, notebookId: string) {
 
 async function matching(catalog: NoteCatalog, query: NoteQuery) {
   const { config, notes } = await scope(catalog, query.notebookId);
-  let matches = notes.filter(note => noteMatchesQuery(note, { ...query, q: '' }));
-  if (query.q.trim() && query.match === 'all') {
+  let matches = notes.filter(note => noteMatchesFilters(note, query));
+  // The free text, without the search's live tokens, which the filters above already applied.
+  const { text, parts } = noteSearchTerms(query.q);
+  if (text.trim() && query.match === 'all') {
     const contents = await catalog.contents(matches);
     matches = matches.filter(note => noteMatchesQuery({ ...note, content: contents.get(noteRefKey(note)) ?? '' }, query)).map(note => {
-      const matchSnippet = noteContentSnippet(contents.get(noteRefKey(note)) ?? '', query.q);
+      const matchSnippet = noteContentSnippet(contents.get(noteRefKey(note)) ?? '', parts[0] ?? '');
       return matchSnippet ? { ...note, matchSnippet } : note;
     });
-  } else if (query.q.trim()) {
+  } else if (text.trim()) {
     matches = matches.filter(note => noteMatchesQuery(note, query));
   }
   const sorted = sortNotes(matches, query.sort, query.order, noteQueryStatuses(config.notebooks, query.notebookId, notes.map(note => note.status)));

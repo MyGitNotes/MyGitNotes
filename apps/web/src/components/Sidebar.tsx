@@ -5,8 +5,8 @@ import { FolderTree, NoteDropTarget } from './FolderTree.js';
 import type { FolderCommand } from '@mygitnotes/core';
 import type { DraggedNote } from '../lib/note-drag.js';
 import React, { useState } from 'react';
-import { BookOpen, ChevronsDownUp, ChevronsUpDown, CircleDot, Filter, GalleryHorizontalEnd, ListTree, Search, Tag, X } from 'lucide-react';
-import type { NotebookFacets } from '@mygitnotes/core/note-query';
+import { BookOpen, ChevronsDownUp, ChevronsUpDown, CircleDot, FilePen, Filter, GalleryHorizontalEnd, ListTree, Radio, Search, Tag, X } from 'lucide-react';
+import { LIVE_FILTERS, type LiveFilter, type NotebookFacets } from '@mygitnotes/core/note-query';
 import { FolderItem } from '../lib/types.js';
 import { mergeNotebookFacets, queryNotebookIds } from '../lib/note-facets.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -19,6 +19,8 @@ import { NavTree, NavTreeRow } from './NavTree.js';
 import { useSidebarSections } from '../lib/sidebar-sections.js';
 import { TagActions } from './TagActions.js';
 import { type RailSection, type RailSectionId, SidebarRail } from './SidebarRail.js';
+import { SidebarLinks } from './SidebarLinks.js';
+import { useSidebarLinks } from '../lib/web-features.js';
 
 const selectedItemStyle: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, var(--color-text) 8%, transparent)', color: 'var(--color-text)' };
 
@@ -61,6 +63,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   const dotClass = useStatusDotClass();
   const labelOf = useStatusLabel();
   const sections = useSidebarSections();
+  // An edition's links, at the sidebar's foot or the rail's; a phone's filter sheet (`filtersOnly`) shows them itself, below its own sections.
+  const links = useSidebarLinks();
   // The rail's open section is the owner's when it passes one (the list's "+ filter" chip opens it), else the rail's own.
   const [ownRailSection, setOwnRailSection] = useState<RailSectionId | null>(null);
   const railOpen = railSection !== undefined ? railSection : ownRailSection;
@@ -95,6 +99,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
     onChange({ status });
     closeRail();
   };
+  const selectedLive = value.live ?? [];
+  // Either live state or both: they are kept in their fixed order.
+  const onToggleLive = (state: LiveFilter) => onChange({ live: selectedLive.includes(state) ? selectedLive.filter(item => item !== state) : LIVE_FILTERS.filter(item => item === state || selectedLive.includes(item)) });
   const onSelectTag = (tag: string | null) => onChange({ tags: tag === null ? [] : selectedTags.includes(tag) ? selectedTags.filter(item => item !== tag) : [...selectedTags, tag] });
   const [tagQuery, setTagQuery] = useState('');
   const [tagSort, setTagSort] = useState<TagSort>(getSavedTagSort);
@@ -254,6 +261,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
           );
         })}
       </div>
+      {filters.liveAvailable && (
+        <div role='group' aria-label={t('filters.live')} className='sidebar-live-filter mt-3 space-y-1 text-sm'>
+          <p aria-hidden='true' className='px-2 text-xs font-semibold text-muted'>{t('filters.live')}</p>
+          {LIVE_FILTERS.map(state => {
+            const isSelected = selectedLive.includes(state);
+            const Icon = state === 'editing' ? Radio : FilePen;
+            return (
+              <button type='button' key={state} data-live-filter={state} onClick={() => onToggleLive(state)} aria-pressed={isSelected} style={isSelected ? selectedItemStyle : undefined} className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition ${isSelected ? 'font-semibold hover:opacity-90' : 'text-muted hover:bg-fg/5 hover:text-fg'}`}>
+                <Icon aria-hidden='true' className='w-3.5 h-3.5 shrink-0' />
+                <span className='truncate'>{t(state === 'editing' ? 'filters.liveEditing' : 'filters.livePending')}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </>
   );
   const tagsBody = (
@@ -311,12 +333,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
     </>
   );
   if (rail) {
-    const railSections: RailSection[] = [...(onSelectFolder ? [{ id: 'notebooks' as const, label: t('sidebar.notebooks'), icon: <BookOpen />, active: value.folders.length > 0 || Boolean(value.kind && value.kind !== 'note'), summary: filterSummary, body: <>{expandControls}{notebooksBody}</> }] : []), { id: 'status', label: t('sidebar.status'), icon: <CircleDot />, active: selectedStatus !== null, summary: filterSummary, body: statusBody }, ...(allTags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags'), icon: <Tag />, active: selectedTags.length, summary: filterSummary, body: tagsBody }] : [])];
-    return <SidebarRail label={t('focusList.rail')} sections={railSections} open={railOpen} onOpenChange={setRailOpen} />;
+    const railSections: RailSection[] = [...(onSelectFolder ? [{ id: 'notebooks' as const, label: t('sidebar.notebooks'), icon: <BookOpen />, active: value.folders.length > 0 || Boolean(value.kind && value.kind !== 'note'), summary: filterSummary, body: <>{expandControls}{notebooksBody}</> }] : []), { id: 'status', label: t('sidebar.status'), icon: <CircleDot />, active: selectedStatus !== null || selectedLive.length > 0, summary: filterSummary, body: statusBody }, ...(allTags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags'), icon: <Tag />, active: selectedTags.length, summary: filterSummary, body: tagsBody }] : [])];
+    return <SidebarRail label={t('focusList.rail')} sections={railSections} open={railOpen} onOpenChange={setRailOpen} links={links} />;
   }
 
   return (
-    <WorkspaceSidebar label={t('sidebar.statusFilter')} className='notes-sidebar'>
+    <WorkspaceSidebar label={t('sidebar.statusFilter')} className='notes-sidebar' footer={!filtersOnly && links.length > 0 ? <SidebarLinks links={links} variant='sidebar' /> : undefined}>
       <section className='sidebar-search' aria-label={t('filters.title')}>
         {!filtersOnly && <div className='sidebar-search-row'>{expandControls}</div>}
         {filterSummary}

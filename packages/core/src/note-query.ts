@@ -77,9 +77,65 @@ export interface NoteQuery {
   kind: NoteKindFilter;
   /** `folder` orders the notes by their folder first, in the sidebar's folder order, so a list can show one group per folder. */
   group: 'folder' | null;
+  /** Keeps the notes in any of these live states (none: every note); the state comes from the live editor, never from frontmatter. */
+  live: LiveFilter[];
 }
 
-export const DEFAULT_NOTE_QUERY: NoteQuery = { notebookId: 'all', folders: [], descendants: true, tags: [], tagMode: 'any', status: null, withoutStatus: false, showHidden: false, q: '', match: 'all', exclude: [], sort: 'updated', order: 'desc', kind: 'note', group: null };
+export const DEFAULT_NOTE_QUERY: NoteQuery = { notebookId: 'all', folders: [], descendants: true, tags: [], tagMode: 'any', status: null, withoutStatus: false, showHidden: false, q: '', match: 'all', exclude: [], sort: 'updated', order: 'desc', kind: 'note', group: null, live: [] };
+
+/** A note's state in the live editor: `editing` while it is checked out (編輯中), `pending` while it has no Git path yet (未歸檔). */
+export type LiveFilter = 'editing' | 'pending';
+export const LIVE_FILTERS: readonly LiveFilter[] = ['editing', 'pending'];
+export const noteLiveFilter = (note: Pick<NoteListItem, 'live'>): LiveFilter | null => note.live ? note.live.pending ? 'pending' : 'editing' : null;
+
+/** Search tokens that filter by live state: `is:live` keeps any live note, `is:pending` only a pending one. */
+export const NOTE_SEARCH_TOKENS = ['is:live', 'is:pending'] as const;
+export type NoteSearchToken = typeof NOTE_SEARCH_TOKENS[number];
+const searchToken = (word: string): NoteSearchToken | undefined => NOTE_SEARCH_TOKENS.find(token => token === word.toLowerCase());
+
+/**
+ * The tokens of a search, in the order first written, and its free text without them. `parts` are the
+ * stretches of text between tokens, each as typed; a note matches when it holds every part, so a token
+ * never joins its neighbours into one phrase. A search without tokens is one part, kept as typed.
+ * `text` is the parts joined by a space, for display, highlight and snippets.
+ */
+export function noteSearchTerms(q: string): { text: string; parts: string[]; tokens: NoteSearchToken[]; } {
+  const pieces = q.split(/(\s+)/);
+  if (!pieces.some(piece => searchToken(piece))) return { text: q, parts: q.trim() ? [q] : [], tokens: [] };
+  const tokens: NoteSearchToken[] = [], parts: string[] = [];
+  let part = '';
+  for (const piece of pieces) {
+    const token = searchToken(piece);
+    if (!token) {
+      part += piece;
+      continue;
+    }
+    if (!tokens.includes(token)) tokens.push(token);
+    if (part.trim()) parts.push(part.trim());
+    part = '';
+  }
+  if (part.trim()) parts.push(part.trim());
+  return { text: parts.join(' '), parts, tokens };
+}
+
+/** Whether some field holds every part of a search's free text, ignoring case. */
+export function noteTextMatches(fields: readonly string[], parts: readonly string[]): boolean {
+  const lower = fields.map(field => field.toLowerCase());
+  return parts.every(part => lower.some(field => field.includes(part.toLowerCase())));
+}
+
+/** The search without one token, the rest kept in order. */
+export function withoutSearchToken(q: string, token: NoteSearchToken): string {
+  return q.split(/\s+/).filter(word => word && searchToken(word) !== token).join(' ');
+}
+
+/** Whether a note passes the live-state filter and the search's live tokens. */
+export function noteMatchesLive(note: Pick<NoteListItem, 'live'>, live: readonly LiveFilter[] | undefined, tokens: readonly NoteSearchToken[]): boolean {
+  const state = noteLiveFilter(note);
+  if (live?.length && !(state && live.includes(state))) return false;
+  if (tokens.includes('is:live') && !state) return false;
+  return !tokens.includes('is:pending') || state === 'pending';
+}
 
 export interface NoteQueryPage {
   revisions: RevisionSet;
@@ -130,8 +186,8 @@ export type NoteGraph = NoteGraphData & { revisions: RevisionSet; };
 
 export const noteDirectory = (path: string) => path.slice(0, path.lastIndexOf('/'));
 
-/** Same rules as `filterNotes`, plus `exclude` and title-only matching. Content must be present when `q` searches content. */
-export function noteMatchesQuery(note: NoteListItem, query: NoteQuery): boolean {
+/** Every rule of `noteMatchesQuery` but the free text: the search's live tokens still apply, and no content is needed. */
+export function noteMatchesFilters(note: NoteListItem, query: NoteQuery): boolean {
   const kind = query.kind ?? DEFAULT_NOTE_QUERY.kind;
   if (kind !== 'all' && entryKind(note) !== kind) return false;
   if (!query.showHidden && isNoteHidden({ ...note.metadata, status: note.status })) return false;
@@ -146,10 +202,16 @@ export function noteMatchesQuery(note: NoteListItem, query: NoteQuery): boolean 
   if (query.status && note.status !== query.status) return false;
   if (query.withoutStatus && note.status) return false;
   if (query.tags.length && !(query.tagMode === 'all' ? query.tags.every(tag => note.tags.includes(tag)) : query.tags.some(tag => note.tags.includes(tag)))) return false;
-  const q = query.q.toLowerCase();
-  if (!q.trim()) return true;
+  return noteMatchesLive(note, query.live, noteSearchTerms(query.q).tokens);
+}
+
+/** Same rules as `filterNotes`, plus `exclude` and title-only matching. Content must be present when `q` searches content. */
+export function noteMatchesQuery(note: NoteListItem, query: NoteQuery): boolean {
+  if (!noteMatchesFilters(note, query)) return false;
+  const { parts } = noteSearchTerms(query.q);
+  if (!parts.length) return true;
   const fields = query.match === 'title' ? [note.title, note.path, note.notebookId] : [note.title, note.path, note.content ?? '', note.status || '', ...note.tags];
-  return fields.some(text => text.toLowerCase().includes(q));
+  return noteTextMatches(fields, parts);
 }
 
 export const NOTE_SNIPPET_CONTEXT = 60;
@@ -189,6 +251,7 @@ export function noteQuerySearch(query: Partial<NoteQuery>, extra: { revisions?: 
   if (value.sort !== DEFAULT_NOTE_QUERY.sort) params.set('sort', value.sort);
   if (value.order !== DEFAULT_NOTE_QUERY.order) params.set('order', value.order);
   if (value.group) params.set('group', value.group);
+  for (const state of value.live ?? []) params.append('live', state);
   if (extra.revisions && Object.keys(extra.revisions).length) params.set('revisions', JSON.stringify(extra.revisions));
   if (extra.cursor) params.set('cursor', extra.cursor);
   if (extra.limit !== undefined) params.set('limit', String(extra.limit));

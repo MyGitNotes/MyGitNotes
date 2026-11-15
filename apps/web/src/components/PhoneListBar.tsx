@@ -8,6 +8,8 @@ import { ViewMode } from '../lib/types.js';
 import { type NoteSearchHandle, noteSortOptions } from './NoteToolbar.js';
 import { PhoneSheet } from './PhoneSheet.js';
 import { Select } from './Select.js';
+import { SidebarLinks } from './SidebarLinks.js';
+import { useSidebarLinks } from '../lib/web-features.js';
 
 export interface PhoneListBarProps {
   notebooks: NotebookConfig[];
@@ -78,10 +80,11 @@ export interface PhoneFilterSheetProps {
   children: ReactNode;
 }
 
-/** The list screen's filter sheet: how the notes are shown and ordered, then the filter sections the sidebar offers. */
+/** The list screen's filter sheet: how the notes are shown and ordered, then the filter sections the sidebar offers, then an edition's sidebar links. */
 export function PhoneFilterSheet({ onClose, sortField, sortOrder, onSortChange, metadataSortFields, viewMode, setViewMode, showHidden, hiddenNoteCount, onShowHiddenChange, groupByFolder, children }: PhoneFilterSheetProps) {
   const { t } = useTranslation();
   const sortOptions = noteSortOptions(t, metadataSortFields);
+  const links = useSidebarLinks();
   return (
     <PhoneSheet title={t('phone.filterTitle')} onClose={onClose} className='phone-filter-sheet'>
       <section className='phone-sheet-section' aria-label={t('phone.display')}>
@@ -115,6 +118,7 @@ export function PhoneFilterSheet({ onClose, sortField, sortOrder, onSortChange, 
         )}
       </section>
       <section className='phone-sheet-section phone-filter-sections'>{children}</section>
+      {links.length > 0 && <SidebarLinks links={links} variant='sheet' onNavigate={onClose} />}
     </PhoneSheet>
   );
 }

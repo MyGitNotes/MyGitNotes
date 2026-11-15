@@ -52,7 +52,7 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
     } else void setFilterQuery(next, { history: Object.keys(patch).length === 1 && 'q' in patch ? 'replace' : 'push' });
   };
   const clearFilters = () => {
-    const query = currentFilterSearch({ q: '', kind: 'note', tag: [], folders: [], descendants: true, tagMode: 'any', status: null, showHidden: false, neighbors: false });
+    const query = currentFilterSearch({ q: '', kind: 'note', tag: [], folders: [], descendants: true, tagMode: 'any', status: null, live: [], showHidden: false, neighbors: false });
     query.delete('lanes');
     void navigateFiltered(activeTab === 'graph' ? '/graph' : notebookRoute(selectedNotebookId), query);
   };

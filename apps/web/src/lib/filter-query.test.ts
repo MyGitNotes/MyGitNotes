@@ -28,3 +28,15 @@ describe('shared nuqs query contract', () => {
     expect(readFilterQuery('?focus=current&q=hi').q).toBe('hi');
   });
 });
+
+describe('live state filter in the URL', () => {
+  it('round trips the chosen live states as repeated params and drops unknown ones', () => {
+    const search = writeFilterQuery('?keep=yes', { live: ['editing', 'pending'] });
+    expect(new URLSearchParams(search).getAll('live')).toEqual(['editing', 'pending']);
+    expect(readFilterQuery(search).live).toEqual(['editing', 'pending']);
+    expect(readFilterQuery('?live=pending').live).toEqual(['pending']);
+    expect(readFilterQuery('?live=archived&live=editing').live).toEqual(['editing']);
+    expect(readFilterQuery('').live).toEqual([]);
+    expect(writeFilterQuery('?live=editing&keep=yes', { live: [] })).toBe('?keep=yes');
+  });
+});

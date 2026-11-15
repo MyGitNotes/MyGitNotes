@@ -164,7 +164,6 @@
     "aws4fetch": "^1.0.20",
     "libsodium-wrappers": "0.8.4",
     "marked": "18.0.13",
-    "node-diff3": "3.2.1",
     "tar-stream": "^3.2.1",
     "ts-fsrs": "5.4.2",
     "yaml": "^2.5.1",
