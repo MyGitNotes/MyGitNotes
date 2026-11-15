@@ -162,7 +162,7 @@ export async function liveServer(first: BuiltinFixture): Promise<LiveServer> {
       server.live = live;
     },
     async call(method, url, body, who = 'p1') {
-      const response = await fetch(server.base + url, { method, redirect: 'manual', headers: { 'Content-Type': 'application/json', ...(who ? { 'x-person': who } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+      const response = await fetch(server.base + url, { method, redirect: 'manual', headers: { 'Content-Type': 'application/json', ...(who ? { 'x-person': who } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       const text = await response.text();
       return { status: response.status, body: (response.headers.get('content-type') ?? '').includes('application/json') && text ? JSON.parse(text) : null };
     },

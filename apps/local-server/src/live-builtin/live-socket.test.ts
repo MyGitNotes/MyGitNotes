@@ -350,16 +350,15 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       const [whole] = typedElsewhere(['SECRET WORDS ']);
       const [, second] = typedElsewhere(['first ', 'SECRET second ']);
       const [, removal] = typedElsewhere(['SECRET '], 3);
-      const refusals: [string, (tab: LiveTab) => void][] = [
-        ['cut short', tab => tab.sendUpdate(whole.slice(0, whole.length - 1))],
-        ['no update at all', tab => tab.sendUpdate(Uint8Array.from([1, 2, 3, 250, 251, 252, 253, 254, 255]))],
-        ['waiting for typing the server never got', tab => tab.sendUpdate(second)],
-        ['taking out typing the server never got', tab => tab.sendUpdate(removal)],
-        ['a map beside the text', tab => tab.provider.document.getMap('SECRET').set('key', 'value')],
-        ['an embedded object in the text', tab => tab.provider.document.getText('content').insertEmbed(0, { SECRET: 'image' })],
-        ['formatting in the text', tab => tab.provider.document.getText('content').format(0, 1, { SECRET: true })],
-        ['a text of another name', tab => tab.provider.document.getText('SECRET').insert(0, 'words')],
-      ];
+      const refusals = new Map<string, (tab: LiveTab) => void>();
+      refusals.set('cut short', tab => tab.sendUpdate(whole.slice(0, whole.length - 1)));
+      refusals.set('no update at all', tab => tab.sendUpdate(Uint8Array.from([1, 2, 3, 250, 251, 252, 253, 254, 255])));
+      refusals.set('waiting for typing the server never got', tab => tab.sendUpdate(second));
+      refusals.set('taking out typing the server never got', tab => tab.sendUpdate(removal));
+      refusals.set('a map beside the text', tab => void tab.provider.document.getMap('SECRET').set('key', 'value'));
+      refusals.set('an embedded object in the text', tab => tab.provider.document.getText('content').insertEmbed(0, { SECRET: 'image' }));
+      refusals.set('formatting in the text', tab => tab.provider.document.getText('content').format(0, 1, { SECRET: true }));
+      refusals.set('a text of another name', tab => tab.provider.document.getText('SECRET').insert(0, 'words'));
       for (const [what, send] of refusals) {
         const tab = await server.tab(1);
         await tab.synced();
@@ -374,7 +373,7 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       // Nothing of them was stored, shown to anyone, or recorded for anyone; the log says which note, and nothing of what was sent.
       expect(await store.document(id, 1)).toMatchObject({ seq: 1 });
       expect([await stored(store, id), one.text(), two.text()]).toEqual([`${A}typed\n`, `${A}typed\n`, `${A}typed\n`]);
-      expect(warn.mock.calls).toHaveLength(refusals.length);
+      expect(warn.mock.calls).toHaveLength(refusals.size);
       expect(warn.mock.calls.flat().join('\n')).toContain(id);
       expect([...warn.mock.calls, ...error.mock.calls].flat().map(String).join('\n')).not.toContain('SECRET');
       // The same typing, sent whole, is taken; so is typing that builds on another client's which arrives with it.

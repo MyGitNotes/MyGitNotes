@@ -343,7 +343,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
         return;
       }
       enter(seat, connection);
-      for (const [client, state] of [...states]) {
+      for (const [client, state] of states) {
         if (!speaksFor(room, seat, client) || typeof state !== 'object' || state === null || Array.isArray(state) || Buffer.byteLength(JSON.stringify(state), 'utf8') > limits.maxAwarenessBytes) {
           states.delete(client);
           continue;
@@ -356,7 +356,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
           active(seat);
         }
       }
-      for (const client of [...removedClients]) if (room.claims.get(client) !== seat) removedClients.delete(client);
+      for (const client of removedClients) if (room.claims.get(client) !== seat) removedClients.delete(client);
     },
     async onDisconnect({ context }) {
       (context as SocketContext | undefined)?.seat?.leave();
@@ -382,7 +382,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
     socket.on('close', (code, reason) => {
       client.handleClose({ code, reason: reason.toString() });
       // A document still loading has no connection to close: its seat is given up here.
-      for (const seat of [...seats]) if (!seat.connected) seat.leave();
+      for (const seat of seats) if (!seat.connected) seat.leave();
       sockets.delete(socket);
       if (!sockets.size) stopTimers();
     });
@@ -412,26 +412,36 @@ export function liveSocket({ documents, store, clock, process: processName, read
     stopTimers();
     const seats = [...sockets.values()].flatMap(held => [...held]);
     // What sockets sent so far is taken and compacted, within most of the time there is; the rest is for closing them.
-    const flushed = await within((async () => {
-      await Promise.all(seats.map(seat => seat.connection?.waitForPendingMessages()));
-      await documents.shutdown();
-    })(), limits.shutdownMs * 0.8);
+    const flushed = await within(
+      (async () => {
+        await Promise.all(seats.map(seat => seat.connection?.waitForPendingMessages()));
+        await documents.shutdown();
+      })(),
+      limits.shutdownMs * 0.8,
+    );
     if (!flushed) console.error(`[live-builtin] Shutting down took longer than allowed; live notes not compacted: ${[...hocuspocus.documents.keys()].join(', ') || 'none'}. What they acknowledged is in the store's log.`);
     // "Server restarting": the tabs connect again, with a new ticket, to whichever process serves then.
     const open = [...sockets.keys()];
-    const closed = Promise.all(open.map(socket => new Promise<void>(resolve => {
-      socket.once('close', () => resolve());
-      socket.close(1012, 'Server restarting');
-    })));
-    if (!(await within(closed, Math.min(2000, end - Date.now())))) for (const socket of open) socket.terminate();
+    const closed = Promise.all(open.map(socket =>
+      new Promise<void>(resolve => {
+        socket.once('close', () => resolve());
+        socket.close(1012, 'Server restarting');
+      })
+    ));
+    // One that does not answer the close in time is cut off.
+    const answered = await within(closed, Math.min(2000, end - Date.now()));
+    for (const socket of answered ? [] : open) socket.terminate();
     server.close();
     if (!flushed) return;
     // The seats are given up and their people leave the presence; then what arrived meanwhile is compacted, and every document let go.
-    await within((async () => {
-      await Promise.all(seats.map(seat => seat.gone));
-      while (work.size) await Promise.all([...work]);
-      await documents.shutdown();
-    })(), end - Date.now());
+    await within(
+      (async () => {
+        await Promise.all(seats.map(seat => seat.gone));
+        while (work.size) await Promise.all(work);
+        await documents.shutdown();
+      })(),
+      end - Date.now(),
+    );
   };
 
   return {
