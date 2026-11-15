@@ -37,11 +37,22 @@ describe('live state filter', () => {
 
 describe('live search tokens', () => {
   it('takes is:live and is:pending out of the free text, in any case', () => {
-    expect(noteSearchTerms('alpha is:live  beta')).toEqual({ text: 'alpha beta', tokens: ['is:live'] });
+    expect(noteSearchTerms('alpha is:live  beta')).toMatchObject({ text: 'alpha beta', parts: ['alpha', 'beta'], tokens: ['is:live'] });
     expect(noteSearchTerms('IS:PENDING')).toEqual({ text: '', tokens: ['is:pending'] });
     expect(noteSearchTerms('is:pending is:live is:live')).toEqual({ text: '', tokens: ['is:pending', 'is:live'] });
     expect(noteSearchTerms('plain  text')).toEqual({ text: 'plain  text', tokens: [] });
     expect(noteSearchTerms('this:live is:liveish')).toEqual({ text: 'this:live is:liveish', tokens: [] });
+  });
+
+  it('keeps the free text as typed around a token, and does not join its neighbours into a phrase', () => {
+    expect(noteSearchTerms('foo  bar is:live')).toMatchObject({ parts: ['foo  bar'], tokens: ['is:live'] });
+    expect(noteSearchTerms('a is:pending b').parts).toEqual(['a', 'b']);
+    expect(noteSearchTerms('plain  text').parts).toEqual(['plain  text']);
+    const spaced = [note('notes/work/spaced.md', editing, { title: 'foo  bar' }), note('notes/work/apart.md', pending, { title: 'a x b', content: '' })];
+    const hits = (q: string) => spaced.filter(item => noteMatchesQuery(item, query({ q }))).map(item => item.path);
+    expect(hits('foo  bar is:live')).toEqual(['notes/work/spaced.md']);
+    expect(hits('a is:pending b')).toEqual(['notes/work/apart.md']);
+    expect(filterNotes(spaced.map(item => ({ ...item, content: item.content! })), query({ q: 'a is:live b' })).map(item => item.path)).toEqual(['notes/work/apart.md']);
   });
 
   it('removes one token and keeps the rest of the search', () => {
