@@ -5,6 +5,7 @@ import { type Connection, type Extension, OutgoingMessage } from '@hocuspocus/se
 import { LiveNotLiveError, LiveTooLargeError, type RepositoryId } from '@mygitnotes/core';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 import { liveDocumentName, type LiveDocuments, type LiveEpoch, LiveUpdateRefusedError, LiveUpdateWaitingError, RELEASED } from './documents.js';
+import { socketAddress } from './socket-address.js';
 import { type EditorRef, LIVE_PRESENCE_MS, type LiveStore } from './store.js';
 
 /*
@@ -30,6 +31,11 @@ export interface LiveSocketLimits {
    * closed), each of which may hold messages waiting for authentication; an upgrade past it answers 503.
    */
   maxUnseated: number;
+  /**
+   * The sockets without a document one address keeps open (`socketAddress`), within `maxUnseated`: one client that opens
+   * sockets and presents no ticket answers 503 to its own, not to every new tab.
+   */
+  maxUnseatedPerAddress: number;
   /** The largest awareness state of one client, in bytes of JSON; a larger one is dropped. */
   maxAwarenessBytes: number;
   /** How often a document with sockets catches up with the store. */
@@ -137,6 +143,13 @@ export function liveSocket({ documents, store, clock, process: processName, read
   const sockets = new Map<WebSocket, Set<Seat>>();
   /** The open sockets with no document open or being opened on them. */
   const unseated = new Set<WebSocket>();
+  /** Where each open socket's upgrade came from. */
+  const addresses = new Map<WebSocket, string>();
+  const unseatedFrom = (address: string) => {
+    let count = 0;
+    for (const socket of unseated) if (addresses.get(socket) === address) count++;
+    return count;
+  };
   const rooms = new Map<string, Room>();
   /** The last write of each document's presence that is still under way, also once everyone left it. */
   const writes = new Map<string, Promise<void>>();
@@ -381,9 +394,10 @@ export function liveSocket({ documents, store, clock, process: processName, read
   };
   hocuspocus.configuration.extensions.push(hooks);
 
-  const serve = (socket: WebSocket) => {
+  const serve = (socket: WebSocket, address: string) => {
     const seats = new Set<Seat>();
     sockets.set(socket, seats);
+    addresses.set(socket, address);
     unseated.add(socket);
     // Hocuspocus gets no header of the upgrade: cookies on it are ignored, and the ticket is the only credential.
     const client = hocuspocus.handleConnection(socket, new Request(`http://localhost${LIVE_SOCKET_PATH}`), { socket } satisfies SocketContext);
@@ -403,6 +417,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
       for (const seat of seats) if (!seat.connected) seat.leave();
       sockets.delete(socket);
       unseated.delete(socket);
+      addresses.delete(socket);
       if (!sockets.size) stopTimers();
     });
     if (!stopping) startTimers();
@@ -471,8 +486,11 @@ export function liveSocket({ documents, store, clock, process: processName, read
       if (stopping) refuse(socket, '503 Service Unavailable');
       else if (!origin || request.headers.origin !== origin) refuse(socket, '403 Forbidden');
       // `handleUpgrade` serves the socket before it returns, so the count holds every socket it let in.
-      else if (unseated.size >= limits.maxUnseated) refuse(socket, '503 Service Unavailable');
-      else server.handleUpgrade(request, socket, head, serve);
+      else {
+        const address = socketAddress(request);
+        if (unseated.size >= limits.maxUnseated || unseatedFrom(address) >= limits.maxUnseatedPerAddress) refuse(socket, '503 Service Unavailable');
+        else server.handleUpgrade(request, socket, head, ws => serve(ws, address));
+      }
       return true;
     },
     async settle(link) {
