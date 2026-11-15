@@ -1,6 +1,6 @@
 import { createContext, type ReactNode, useContext } from 'react';
 import { STATUS_CYCLE, type StatusColor, statusColor, statusLabel } from '@mygitnotes/core/note-status';
-import { useThemeChoice } from '../app/useTheme.js';
+import { useThemeView } from '../app/useTheme.js';
 import { useTranslation } from './i18n/index.js';
 import { type PaletteMode, type PaletteVariant, STATUS_PALETTE } from './palettes.js';
 import { getFamily } from './themes.js';
@@ -76,7 +76,7 @@ export function statusAvoidColor(familyId: string): StatusColorName {
 }
 
 /** The cycle colour the active theme family asks statuses to skip. */
-export const useStatusAvoidColor = (): StatusColorName => statusAvoidColor(useThemeChoice().familyId);
+export const useStatusAvoidColor = (): StatusColorName => statusAvoidColor(useThemeView().familyId);
 
 const StatusColorContext = createContext<readonly NotebookStatus[]>([]);
 

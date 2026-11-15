@@ -1,4 +1,4 @@
-import { INK, PALETTE_FAMILIES, type PaletteFamily, type PaletteMode, type PaletteVariant, STATUS_PALETTE } from './palettes.js';
+import { EINK_FAMILY, INK, PALETTE_FAMILIES, type PaletteFamily, type PaletteMode, type PaletteVariant, STATUS_PALETTE } from './palettes.js';
 
 export type ThemeMode = PaletteMode | 'system';
 
@@ -15,7 +15,22 @@ export interface ThemeRegistration {
   defaultFamily?: string;
 }
 
+/** What the page shows for the saved choice: the family it wears, and whether a detected e-reader picked that family. */
+export interface ThemeView {
+  choice: ThemeChoice;
+  familyId: string;
+  /** E-ink is shown because an e-reader was detected and the choice is still the untouched default. */
+  auto: boolean;
+}
+
+/** The built-in family an e-reader gets while its visitor has chosen no theme. */
+export const EINK_FAMILY_ID = EINK_FAMILY.id;
+
 let themeChoice: ThemeChoice | undefined;
+/** Whether the person picked a theme in a picker; until then the default choice yields to a detected e-reader. */
+let themeChosen: boolean | undefined;
+let eReaderDetected: boolean | undefined;
+let themeView: ThemeView | undefined;
 
 /** The first built-in family, Flexoki, is the community default. */
 let families: readonly PaletteFamily[] = PALETTE_FAMILIES;
@@ -34,6 +49,9 @@ export function registerThemes({ families: extra = [], defaultFamily: defaultId 
   families = merged;
   defaultFamily = chosen;
   themeChoice = undefined;
+  themeChosen = undefined;
+  eReaderDetected = undefined;
+  themeView = undefined;
 }
 
 /** The built-in families followed by the registered ones; the settings pickers list these. */
@@ -43,6 +61,24 @@ const THEME_FAMILY_KEY = 'github_notes_theme';
 const THEME_MODE_KEY = 'github_notes_theme_mode';
 /** The resolved colours, read by the inline script in index.html so the first paint already wears the theme. */
 const THEME_TOKENS_KEY = 'github_notes_theme_tokens';
+/** Set once the person picks a theme; a saved default family and mode alone may come from a visit that chose nothing. */
+const THEME_CHOSEN_KEY = 'github_notes_theme_chosen';
+/** The last e-reader detection, so the first render of the next visit already knows it. */
+const E_READER_KEY = 'github_notes_e_reader';
+
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFlag(key: string, value: boolean): void {
+  try {
+    localStorage.setItem(key, value ? '1' : '0');
+  } catch { /* The flag lasts for this page only. */ }
+}
 
 /** Retired single-mode themes; a saved retired id still tells us the mode the user chose. */
 const RETIRED_THEME_MODES: Record<string, PaletteMode> = { 'clean-indigo': 'light', 'warm-sepia': 'light', 'forest-emerald': 'light', 'github-dark': 'dark', 'nord-arctic': 'dark', 'midnight-violet': 'dark' };
@@ -80,9 +116,41 @@ export function subscribeThemeChoice(listener: () => void) {
   return () => themeListeners.delete(listener);
 }
 
+function notifyTheme() {
+  themeView = undefined;
+  for (const listener of themeListeners) listener();
+}
+
+/** The person's own choice from a picker; from then on it wins over a detected e-reader, the default choice included. */
 export function setThemeChoice(choice: ThemeChoice) {
   themeChoice = choice;
-  for (const listener of themeListeners) listener();
+  if (!themeChosen) writeFlag(THEME_CHOSEN_KEY, true);
+  themeChosen = true;
+  notifyTheme();
+}
+
+/** Records the e-reader detection made at startup (`detectEReader`), kept for the next visit's first render. */
+export function setEReaderDetected(detected: boolean): void {
+  writeFlag(E_READER_KEY, detected);
+  if (eReaderDetected === detected) return;
+  eReaderDetected = detected;
+  notifyTheme();
+}
+
+/** The family a choice shows: E-ink on a detected e-reader while the choice is the default one nobody picked. */
+function viewOf(choice: ThemeChoice): ThemeView {
+  themeChosen ??= readFlag(THEME_CHOSEN_KEY);
+  eReaderDetected ??= readFlag(E_READER_KEY);
+  const untouched = !themeChosen && choice.familyId === defaultFamily.id && choice.mode === 'system';
+  const auto = eReaderDetected && untouched && families.some(family => family.id === EINK_FAMILY_ID) && defaultFamily.id !== EINK_FAMILY_ID;
+  return { choice, familyId: auto ? EINK_FAMILY_ID : choice.familyId, auto };
+}
+
+/** The current choice and what it shows; the same object until either changes, so React can subscribe to it. */
+export function getThemeView(): ThemeView {
+  const choice = getThemeChoice();
+  if (themeView?.choice !== choice) themeView = viewOf(choice);
+  return themeView;
 }
 
 export function resolveMode(mode: ThemeMode): PaletteMode {
@@ -112,6 +180,17 @@ export function statusTokens(mode: PaletteMode): Record<string, string> {
   return Object.fromEntries(Object.entries(STATUS_PALETTE[mode]).map(([name, value]) => [`--color-status-${name}`, value]));
 }
 
+/** The mode a family is shown in for a light, dark or system choice. */
+function familyMode(family: PaletteFamily, mode: ThemeMode): PaletteMode {
+  return family.fixedMode ?? resolveMode(mode);
+}
+
+/** Every custom property `applyTheme` sets for a family in one mode: the variant's, the status colours and the family's own. */
+export function familyTokens(family: PaletteFamily, mode: PaletteMode): Record<string, string> {
+  const shown = family.fixedMode ?? mode;
+  return { ...themeTokens(family.variants[shown]), ...statusTokens(shown), ...family.tokens };
+}
+
 /**
  * Paints the browser's own chrome (the title bar of an installed app, the status bar of a phone) in the theme's background.
  * index.html ships one tag per colour scheme for the first paint; the person's choice can differ from the system's, so the first
@@ -131,13 +210,16 @@ export function applyTheme(choice: ThemeChoice): void {
     localStorage.setItem(THEME_MODE_KEY, choice.mode);
   } catch { /* Keep the in-page theme. */ }
 
-  const mode = resolveMode(choice.mode);
+  const family = getFamily(viewOf(choice).familyId);
+  const mode = familyMode(family, choice.mode);
   const root = document.documentElement;
-  root.setAttribute('data-theme', choice.familyId);
+  root.setAttribute('data-theme', family.id);
   root.setAttribute('data-theme-mode', mode);
   root.classList.toggle('dark', mode === 'dark');
   root.style.colorScheme = mode;
-  const tokens = { ...themeTokens(getFamily(choice.familyId).variants[mode]), ...statusTokens(mode) };
+  const tokens = familyTokens(family, mode);
+  // A family's own tokens stay on the root until removed; the next family falls back to the ones index.css derives.
+  for (const other of families) for (const name of Object.keys(other.tokens ?? {})) if (!(name in tokens)) root.style.removeProperty(name);
   for (const [name, value] of Object.entries(tokens)) root.style.setProperty(name, value);
   syncThemeColor(tokens['--color-bg']);
   try {

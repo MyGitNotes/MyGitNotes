@@ -4,7 +4,7 @@ import { mergeNotebookStatuses, STATUS_CYCLE, statusColor } from '@mygitnotes/co
 import { PALETTE_FAMILIES } from './palettes.js';
 import { statusAvoidColor } from './status-color.js';
 
-const AVOIDED: Record<string, string> = { flexoki: 'teal', github: 'blue', catppuccin: 'purple', 'rose-pine': 'purple', gruvbox: 'blue', 'tokyo-night': 'green', carbon: 'blue', solarized: 'blue', everforest: 'green' };
+const AVOIDED: Record<string, string> = { flexoki: 'teal', github: 'blue', catppuccin: 'purple', 'rose-pine': 'purple', gruvbox: 'blue', 'tokyo-night': 'green', carbon: 'blue', solarized: 'blue', everforest: 'green', eink: 'blue' };
 
 it('names a cycle colour to skip for every theme family', () => {
   expect(PALETTE_FAMILIES.map(family => family.id).sort()).toEqual(Object.keys(AVOIDED).sort());

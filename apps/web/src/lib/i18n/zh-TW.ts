@@ -1641,6 +1641,10 @@ export const zhTW: Record<TranslationKey, string> = {
   'theme.mode': '外觀',
   'theme.system': '跟隨系統',
   'theme.light': '淺色',
+  'theme.eink': '電子紙（高對比）',
+  'theme.einkAuto': '偵測到電子閱讀器，已使用電子紙主題',
+  'theme.einkAutoBack': '改用一般主題',
+  'theme.fixedMode': '這個主題只有一種樣式，不分淺色與深色。',
 
   // Auth & MCP Access Settings
   'auth.signOut': '登出',

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { PALETTE_FAMILIES, type PaletteFamily, type PaletteMode } from './palettes.js';
-import { applyTheme, getFamily, getThemeChoice, listFamilies, registerThemes, resolveThemeChoice, setThemeChoice, statusTokens, subscribeThemeChoice, syncThemeColor, themeTokens } from './themes.js';
+import { applyTheme, familyTokens, getFamily, getThemeChoice, listFamilies, registerThemes, resolveThemeChoice, setThemeChoice, statusTokens, subscribeThemeChoice, syncThemeColor, themeTokens } from './themes.js';
 
 const luminance = (hex: string) => {
   const [r, g, b] = hex.slice(1, 7).match(/.{2}/g)!.map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
@@ -117,8 +117,10 @@ describe('palette families', () => {
   it('keeps the status colours at 4.5:1 on every family background, surface and sidebar', () => {
     for (const family of PALETTE_FAMILIES) {
       for (const [mode, variant] of Object.entries(family.variants)) {
-        const colors = Object.entries(statusTokens(mode as PaletteMode));
-        expect(colors.map(([name]) => name)).toEqual(['--color-status-purple', '--color-status-teal', '--color-status-pink', '--color-status-gray']);
+        expect(Object.keys(statusTokens(mode as PaletteMode))).toEqual(['--color-status-purple', '--color-status-teal', '--color-status-pink', '--color-status-gray']);
+        // What the family is shown with: its own status tokens win, and a one-mode family shows that mode's.
+        const colors = Object.entries(familyTokens(family, mode as PaletteMode)).filter(([name]) => name.startsWith('--color-status-'));
+        expect(colors).toHaveLength(4);
         for (const ground of [variant.background, variant.surface, variant.sidebar]) {
           for (const [name, color] of colors) expect(contrast(color, ground), `${family.id}/${mode} ${name} on ${ground}`).toBeGreaterThanOrEqual(4.5);
         }

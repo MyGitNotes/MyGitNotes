@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { useTranslation } from '../../lib/i18n/index.js';
 import { checkOutLive, forgetCheckedIn, keepsDirectEditor, type LiveCheckInAnswer, type LiveCheckoutView, type LiveNoteEditing, markCheckedIn, recentlyCheckedIn, requestLiveEdit, takeLiveEditRequest } from '../../lib/live-api.js';
 import type { LiveTheme } from '../../lib/live-message.js';
-import { getThemeChoice, resolveMode, subscribeThemeChoice } from '../../lib/themes.js';
+import { getFamily, getThemeView, resolveMode, subscribeThemeChoice } from '../../lib/themes.js';
 import type { NoteItem } from '../../lib/types.js';
 import { EditorNotice } from '../EditorNotice.js';
 import { Button } from '../Button.js';
@@ -11,7 +11,8 @@ import { LoadingStatus } from '../LoadingStatus.js';
 
 /** The app's light or dark mode now, which the framed editor follows. */
 export function useLiveTheme(): LiveTheme {
-  const choice = useSyncExternalStore(subscribeThemeChoice, getThemeChoice);
+  const { choice, familyId } = useSyncExternalStore(subscribeThemeChoice, getThemeView);
+  const fixed = getFamily(familyId).fixedMode;
   const [system, setSystem] = useState(() => resolveMode('system'));
   useEffect(() => {
     if (choice.mode !== 'system' || typeof window.matchMedia !== 'function') return;
@@ -20,7 +21,7 @@ export function useLiveTheme(): LiveTheme {
     query.addEventListener('change', follow);
     return () => query.removeEventListener('change', follow);
   }, [choice.mode]);
-  return choice.mode === 'system' ? system : resolveMode(choice.mode);
+  return fixed ?? (choice.mode === 'system' ? system : resolveMode(choice.mode));
 }
 
 interface LiveEditState {
