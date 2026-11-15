@@ -158,6 +158,8 @@ export interface LiveStore {
    * call never holds a check-in off. 'leased', with the lease kept, when `token` does not hold it.
    */
   retarget(id: string, token: string, pathRule: string, now: number): Promise<'retargeted' | 'leased' | 'not-pending'>;
+  /** Ends the link's lease when `token` holds it at `now`; anything else changes nothing. */
+  unlease(id: string, token: string, now: number): Promise<void>;
   /** Replaces what `process` knows of the link's connected people: person key to last activity. None removes its entry. */
   presence(id: string, process: string, people: Record<string, number>, now: number): Promise<void>;
   /** The distinct people, over every process's entry written within {@link LIVE_PRESENCE_MS} of `now`, last active at or after `since`. */

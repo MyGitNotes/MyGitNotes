@@ -27,8 +27,8 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('deleting a pending note', () => {
-  const setup = (editingNote: NoteListItem | null = null) => {
-    const params = { canWriteNotebook: () => true, revisionFor: () => 'r1', setNotebookRevision: vi.fn(), updateDraft: vi.fn(), editingNote, setEditingNote: vi.fn(), navigate: vi.fn(), returnTo: '/notebooks/nb', remote: true, setActionError: vi.fn(), readNoteForChange: vi.fn(), invalidateNotes: vi.fn(), gitStatus: null, setGitStatus: vi.fn(), repositoryFor: () => undefined };
+  const setup = (editingNote: NoteListItem | null = null, remote = true) => {
+    const params = { canWriteNotebook: () => true, revisionFor: () => 'r1', setNotebookRevision: vi.fn(), updateDraft: vi.fn(), editingNote, setEditingNote: vi.fn(), navigate: vi.fn(), returnTo: '/notebooks/nb', remote, setActionError: vi.fn(), readNoteForChange: vi.fn(), invalidateNotes: vi.fn(), gitStatus: null, setGitStatus: vi.fn(), repositoryFor: () => undefined };
     const hook = renderHook(() => useDeletionUndo(params as never));
     return { params, remove: (note: NoteListItem) => act(() => hook.result.current.handleDeleteNote(note)) };
   };
@@ -44,11 +44,22 @@ describe('deleting a pending note', () => {
     expect(params.navigate).toHaveBeenCalledWith('/notebooks/nb', { replace: true });
   });
 
-  it('asks before it discards a typed draft, and keeps it when the person says no', async () => {
+  it('takes the armed delete of a remote workspace’s lists as the one confirmation of a typed draft', async () => {
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    fetchMock.mockResolvedValueOnce(json({ error: 'Someone typed in this draft.', code: 'has-edits' }, 409)).mockResolvedValueOnce(json({ discarded: true }));
+    const { params, remove } = setup();
+    await remove(pending);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/live/discard', expect.objectContaining({ body: JSON.stringify({ notebookId: 'nb', path: pending.path, confirm: true }) }));
+    expect(params.invalidateNotes).toHaveBeenCalled();
+  });
+
+  it('asks before it discards a typed draft where the lists do not arm, and keeps it when the person says no', async () => {
     const confirm = vi.fn(() => false);
     vi.stubGlobal('confirm', confirm);
     fetchMock.mockResolvedValue(json({ error: 'Someone typed in this draft.', code: 'has-edits' }, 409));
-    const { params, remove } = setup();
+    const { params, remove } = setup(null, false);
     await remove(pending);
     expect(confirm).toHaveBeenCalledWith('Discard this draft? Its text will not be saved to Git.');
     expect(fetchMock).toHaveBeenCalledTimes(1);

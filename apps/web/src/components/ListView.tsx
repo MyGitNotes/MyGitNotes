@@ -100,7 +100,7 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
                 <HighlightText text={note.title} query={highlightQuery} />
               </span>
               {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
-              <LiveBadge live={note.live} />
+              <LiveBadge live={note.live} title={note.title} />
               {pathMatched && (
                 <span className='note-row-path font-mono'>
                   <HighlightText text={note.path} query={highlightQuery} />

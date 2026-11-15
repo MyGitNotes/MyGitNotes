@@ -54,7 +54,7 @@ interface NoteEditorToolbarProps {
   /** On a phone, where a note opens for reading: whether it is being edited, and the buttons that switch. */
   phoneEditing?: { editing: boolean; onEdit: () => void; onDone: () => void; };
   /** On a phone the toolbar is the note screen's title bar and its "⋯" sheet instead of the rows below. */
-  phoneChrome?: Pick<PhoneNoteChromeProps, 'quickActions' | 'hasHistory' | 'overlay' | 'hidden' | 'liveBadge'>;
+  phoneChrome?: Pick<PhoneNoteChromeProps, 'quickActions' | 'hasHistory' | 'overlay' | 'hidden' | 'liveBadge' | 'liveEditing'>;
 }
 
 /** Switches a phone's note between reading and editing. */
@@ -138,7 +138,7 @@ export function NoteEditorToolbar({ onClose, onRename, template = false, statuse
   const zoom = frame === 'zoom';
   if (phoneChrome) {
     const { frame: phoneFrame, note: phoneNote, session: phoneSession, docPanel: phoneDocPanel, isMarkdown, autoSave, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate } = actions;
-    return <PhoneNoteChrome {...phoneChrome} onPlaySlides={onPlaySlides} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} template={template} onSaveAsTemplate={onSaveAsTemplate} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
+    return <PhoneNoteChrome {...phoneChrome} onPlaySlides={onPlaySlides} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} liveDraft={actions.liveDraft} template={template} onSaveAsTemplate={onSaveAsTemplate} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
   }
   const controls: ReactNode = <NoteActions {...actions} phoneEditing={phoneEditing} />;
   return (

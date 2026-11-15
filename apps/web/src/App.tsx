@@ -326,8 +326,9 @@ export const AppContent: React.FC = () => {
         onRefetch: invalidateNotes,
         openZoom: () => void handleOpenNote(note),
         onCheckedIn: answer => {
-          // The check-in moved the repository's head; a pending note now lives at the path it was filed at.
-          void refreshWorkspace(true);
+          // The check-in moved the repository's head; a pending note now lives at the path it was filed at. The lists are
+          // read again once the workspace has the new revision, not before, when the server would refuse the old one.
+          void refreshWorkspace(true).then(invalidateNotes);
           const notebook = config?.notebooks.find(nb => nb.id === note.notebookId);
           if (answer?.filed && answer.path && notebook && answer.path.startsWith(`${notebook.root}/`)) navigate(noteRoute(notebook.id, answer.path.slice(notebook.root.length + 1)) + location.search, { replace: true });
         },

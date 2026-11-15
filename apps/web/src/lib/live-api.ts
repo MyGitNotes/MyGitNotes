@@ -124,13 +124,19 @@ export const takeLiveEditRequest = (key: string): boolean => requested.delete(ke
  * (a filed pending note under both its paths); a mark older than CHECKED_IN_MS is forgotten.
  */
 const CHECKED_IN_MS = 30_000;
-const checkedIn = new Map<string, number>();
-export const markCheckedIn = (keys: readonly string[], now = Date.now()) => {
-  for (const key of keys) checkedIn.set(key, now);
+/** A mark: when it was set, and for a check-in that committed but left the note open, how many were still editing. */
+interface CheckInMark {
+  at: number;
+  stillOpen?: number;
+}
+const checkedIn = new Map<string, CheckInMark>();
+export const markCheckedIn = (keys: readonly string[], stillOpen?: number, now = Date.now()) => {
+  for (const key of keys) checkedIn.set(key, stillOpen === undefined ? { at: now } : { at: now, stillOpen });
 };
-export const recentlyCheckedIn = (key: string, now = Date.now()): boolean => {
-  const at = checkedIn.get(key);
-  return at !== undefined && now - at < CHECKED_IN_MS;
+/** The note's recent mark, if any: `stillOpen` when the check-in was committed but did not release the note. */
+export const recentCheckIn = (key: string, now = Date.now()): Omit<CheckInMark, 'at'> | undefined => {
+  const mark = checkedIn.get(key);
+  return mark && now - mark.at < CHECKED_IN_MS ? (mark.stillOpen === undefined ? {} : { stillOpen: mark.stillOpen }) : undefined;
 };
 export const forgetCheckedIn = (key: string) => void checkedIn.delete(key);
 

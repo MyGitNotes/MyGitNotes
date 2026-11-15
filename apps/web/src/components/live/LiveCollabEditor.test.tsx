@@ -15,7 +15,7 @@ interface FakeConfig {
   name: string;
   url: string;
   document: Y.Doc;
-  awareness: { clientID: number; };
+  awareness: import('y-protocols/awareness').Awareness;
   token: () => Promise<string>;
   onStatus?: (event: { status: string; }) => void;
   onSynced?: (event: { state: boolean; }) => void;
@@ -23,8 +23,11 @@ interface FakeConfig {
   onAwarenessChange?: (event: { states: { clientId: number; user?: { name?: string; }; }[]; }) => void;
   onStateless?: (event: { payload: string; }) => void;
   onAuthenticationFailed?: (event: { reason: string; }) => void;
+  onAuthenticated?: (event: { scope: string; }) => void;
 }
 const fake = vi.hoisted(() => ({ providers: [] as { configuration: FakeConfig; destroyed: boolean; destroy: () => void; }[], order: [] as string[] }));
+/** Lets the bar's 已儲存 settle: it shows only once nothing was unsaved for a moment. */
+const settle = () => act(() => new Promise(resolve => setTimeout(resolve, 350)));
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
     configuration: FakeConfig;
@@ -36,6 +39,12 @@ vi.mock('@hocuspocus/provider', () => ({
     destroy() {
       this.destroyed = true;
       fake.order.push('destroy');
+    }
+    connect() {
+      fake.order.push('connect');
+    }
+    disconnect() {
+      fake.order.push('disconnect');
     }
   },
 }));
@@ -110,16 +119,73 @@ describe('the bar', () => {
     expect(screen.getByText('Not saved')).toBeInTheDocument();
     expect(checkInButton()).toBeDisabled();
     emit(config => config.onUnsyncedChanges?.({ number: 0 }));
+    await settle();
     emit(config => config.onStatus?.({ status: 'disconnected' }));
     expect(screen.getByText('Offline')).toBeInTheDocument();
     expect(checkInButton()).toBeDisabled();
     emit(config => config.onStatus?.({ status: 'connected' }));
+    // Connected again, the tab is saved only once its document synced again.
+    emit(config => config.onSynced?.({ state: true }));
     expect(checkInButton()).toBeEnabled();
     expect(screen.getByText('1 editing')).toBeInTheDocument();
     emit(config => config.onAwarenessChange?.({ states: [{ clientId: config.document.clientID }, { clientId: 2, user: { name: 'Bo' } }, { clientId: 3, user: { name: 'Bo' } }, { clientId: 4, user: { name: 'Cy' } }] }));
     expect(screen.getByText('3 editing')).toBeInTheDocument();
     // No 「在新分頁開啟」: the note is edited here.
     expect(screen.queryByRole('link', { name: 'Open in a new tab' })).toBeNull();
+  });
+
+  it('announces the tab in awareness on every connect, so the others count it before it moves a cursor', async () => {
+    await open();
+    const { awareness, document } = provider().configuration;
+    // A state at the clock the server last saw is dropped: the first state's clock is 0, a reconnect's is the one before.
+    const clock = () => awareness.meta.get(document.clientID)?.clock ?? 0;
+    const before = clock();
+    emit(config => config.onAuthenticated?.({ scope: 'read-write' }));
+    expect(clock()).toBeGreaterThan(before);
+    expect(awareness.getLocalState()).not.toBeNull();
+    const again = clock();
+    emit(config => config.onAuthenticated?.({ scope: 'read-write' }));
+    expect(clock()).toBeGreaterThan(again);
+  });
+
+  it('says 已儲存 only once nothing was unsaved for a moment, so typing does not flicker it or 立即簽回', async () => {
+    await open();
+    sync();
+    emit(config => config.onUnsyncedChanges?.({ number: 1 }));
+    emit(config => config.onUnsyncedChanges?.({ number: 0 }));
+    expect(screen.queryByText('Saved')).toBeNull();
+    expect(checkInButton()).toBeDisabled();
+    await settle();
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+    expect(checkInButton()).toBeEnabled();
+  });
+
+  it('never says 已儲存 while it reconnects: offline until the socket is back, connecting until the document synced again', async () => {
+    await open();
+    sync();
+    emit(config => config.onStatus?.({ status: 'disconnected' }));
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    emit(config => config.onStatus?.({ status: 'connecting' }));
+    expect(screen.queryByText('Saved')).toBeNull();
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    emit(config => config.onStatus?.({ status: 'connected' }));
+    expect(screen.queryByText('Saved')).toBeNull();
+    expect(screen.getByText('Connecting…')).toBeInTheDocument();
+    expect(checkInButton()).toBeDisabled();
+    emit(config => config.onSynced?.({ state: true }));
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+  });
+
+  it('goes offline the moment the browser does, and reconnects the moment it is back', async () => {
+    await open();
+    sync();
+    fake.order.length = 0;
+    act(() => void window.dispatchEvent(new Event('offline')));
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    expect(checkInButton()).toBeDisabled();
+    expect(fake.order).toEqual(['disconnect']);
+    act(() => void window.dispatchEvent(new Event('online')));
+    expect(fake.order).toEqual(['disconnect', 'connect']);
   });
 
   it('warns before the page is left while changes are not saved', async () => {
@@ -133,6 +199,16 @@ describe('the bar', () => {
     expect(leave()).toBe(false);
     emit(config => config.onUnsyncedChanges?.({ number: 1 }));
     expect(leave()).toBe(true);
+  });
+
+  it('warns before the page is left with text typed offline, which the provider counts as unsaved', async () => {
+    await open();
+    sync();
+    act(() => void window.dispatchEvent(new Event('offline')));
+    emit(config => config.onUnsyncedChanges?.({ number: 1 }));
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
   });
 });
 
@@ -380,7 +456,7 @@ describe('捨棄草稿', () => {
     expect(onDiscarded).toHaveBeenCalled();
   });
 
-  it('asks before discarding a typed draft, and reposts with confirm', async () => {
+  it('asks in the editor, not with the browser’s confirm, before discarding a typed draft, and reposts with confirm', async () => {
     const onDiscarded = vi.fn();
     const confirm = vi.fn(() => true);
     vi.stubGlobal('confirm', confirm);
@@ -391,19 +467,25 @@ describe('捨棄草稿', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
     });
-    expect(confirm).toHaveBeenCalledWith('Discard this draft? Its text will not be saved to Git.');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByText('Discard this draft? Its text will not be saved to Git.')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    });
     expect(fetchMock).toHaveBeenLastCalledWith('/api/live/discard', expect.objectContaining({ body: JSON.stringify({ notebookId: 'notes~life', path: pending.path, confirm: true }) }));
     expect(onDiscarded).toHaveBeenCalled();
   });
 
   it('goes back to the editor when the person keeps a typed draft', async () => {
     const onDiscarded = vi.fn();
-    vi.stubGlobal('confirm', vi.fn(() => false));
     fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ error: 'Someone typed in this draft.', code: 'has-edits' }, 409));
     await open({ checkout: pending, editor: { kind: 'builtin', discard: true }, onDiscarded });
     sync();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
     });
     expect(onDiscarded).not.toHaveBeenCalled();
     expect(fake.providers).toHaveLength(2);

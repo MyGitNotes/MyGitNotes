@@ -184,7 +184,10 @@ export interface NoteLookup {
 }
 export type NoteGraph = NoteGraphData & { revisions: RevisionSet; };
 
-export const noteDirectory = (path: string) => path.slice(0, path.lastIndexOf('/'));
+/** A pending live note's virtual path, `<root>/.live/<id>.md`: its folder is the notebook root, where it is listed and counted. */
+const PENDING_PATH = /^(.+)\/\.live\/[A-Za-z0-9_-]{1,64}\.md$/;
+/** The folder a note is listed in: its path's directory, or for a pending live note the notebook root it sits under. */
+export const noteDirectory = (path: string) => PENDING_PATH.exec(path)?.[1] ?? path.slice(0, path.lastIndexOf('/'));
 
 /** Every rule of `noteMatchesQuery` but the free text: the search's live tokens still apply, and no content is needed. */
 export function noteMatchesFilters(note: NoteListItem, query: NoteQuery): boolean {

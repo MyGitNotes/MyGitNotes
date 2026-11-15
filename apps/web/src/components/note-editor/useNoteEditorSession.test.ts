@@ -150,3 +150,17 @@ describe('useNoteEditorSession when the check of the remote note fails', () => {
     expect(Object.keys(localStorage)).toEqual([]);
   });
 });
+
+describe('useNoteEditorSession and a read that cannot reach the server', () => {
+  it('says so in its own words instead of the browser’s, and clears it once the connection is back', async () => {
+    const onReadRemote = vi.fn<() => Promise<NoteItem>>().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(note('Old name'));
+    const base = { readOnly: true, autoSave: true, draftMode: false, propIsDirty: false, branch: 'main', draftScope: '', onSave: vi.fn() as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote, onRestoreFile: vi.fn(), onCommitFile: undefined, remoteBase: undefined, conflictReason: undefined, onMarkConflict: undefined } satisfies Omit<UseNoteEditorSessionParams, 'note'>;
+    const hook = renderHook(() => useNoteEditorSession({ ...base, note: note('Old name') }));
+    await vi.waitFor(() => expect(hook.result.current.saveError).toBe('editor.remoteUnreachable'));
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await vi.waitFor(() => expect(onReadRemote).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(hook.result.current.saveError).toBe(''));
+  });
+});

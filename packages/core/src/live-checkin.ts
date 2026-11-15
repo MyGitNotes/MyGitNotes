@@ -433,10 +433,10 @@ export async function retargetLink(liveNotes: LiveNotes, repository: RepositoryI
 /**
  * Checks one live link in (§5.3): lease, read, merge, commit, acknowledge, release. A link someone else holds is
  * skipped; a provider refusing the commit because the head moved is retried once within the lease. Errors other than
- * those are thrown, for the caller to report; a notify hook's error is only logged.
+ * those are thrown, for the caller to report; a notify hook's error is only logged. A check-in that leaves the note live
+ * ends its lease where the adapter has `unlease`; elsewhere the lease runs out on its own.
  */
 export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId, id: string, options: LiveCheckInOptions): Promise<LiveCheckInResult> {
-  const now = options.now ?? Date.now;
   const editor = liveEditorOf(liveNotes, repository);
   if (!editor || !isLiveId(id)) throw new LiveNotLiveError();
   const { service } = liveNotes;
@@ -449,6 +449,25 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
     if (known instanceof LiveNotLiveError) return { id, path: null, committed: false, released: false, reason: 'released' };
     throw known;
   }
+  let result: LiveCheckInResult | undefined;
+  try {
+    return result = await checkInLeased(liveNotes, repository, id, options, editor, lease);
+  } finally {
+    // A note the check-in left live gives its lease back where the adapter can, so the next check-in need not wait it out.
+    if (!result?.released && typeof service.unlease === 'function') {
+      try {
+        await service.unlease(repository, id, lease);
+      } catch (error) {
+        console.warn(`[live-notes] unlease of ${id} failed: ${(error as Error)?.name ?? 'error'}`);
+      }
+    }
+  }
+}
+
+/** The check-in of {@link checkInLink} once the link's lease is held. */
+async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id: string, options: LiveCheckInOptions, editor: NonNullable<ReturnType<typeof liveEditorOf>>, lease: LiveLease): Promise<LiveCheckInResult> {
+  const now = options.now ?? Date.now;
+  const { service } = liveNotes;
   const deadline = now() + DEADLINE_MS;
 
   const attempt = async (): Promise<Attempt> => {

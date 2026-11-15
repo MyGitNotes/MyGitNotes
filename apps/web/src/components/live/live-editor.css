@@ -23,3 +23,8 @@
 
 /* A Focus row's title may take two lines; its badge sits by the title's middle, not its top. */
 .focus-row > .live-badge { align-self: center; }
+
+/* The collab editor's leading frontmatter: plain monospace text, without the body's Markdown styling. */
+.live-collab .live-md-frontmatter, .live-collab .live-md-frontmatter * { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; font-weight: 400; font-style: normal; color: var(--color-muted); text-decoration: none; background: none; border: 0; }
+/* A remote cursor's name: the app's font, not y-codemirror's serif; three classes outrank its base theme. */
+.live-collab .cm-editor .cm-ySelectionInfo { font-family: var(--font-body); }

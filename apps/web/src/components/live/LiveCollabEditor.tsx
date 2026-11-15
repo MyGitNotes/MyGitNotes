@@ -13,6 +13,7 @@ import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
 import { discardDraft, keptReason } from './live-drafts.js';
+import { stillOpenText } from './useLiveEdit.js';
 import './live-editor.css';
 
 export interface LiveCollabEditorProps {
@@ -41,6 +42,8 @@ type Phase =
   | { kind: 'open'; }
   | { kind: 'checking'; }
   | { kind: 'discarding'; }
+  /** 「捨棄這份草稿？」 in the editor's own notice, for a draft someone typed in. */
+  | { kind: 'confirm-discard'; question: string; }
   | { kind: 'released'; }
   /** The session ended while this tab held typing the server never acknowledged: its text, offered to copy or download. */
   | { kind: 'lost'; text: string; ending: Ending; }
@@ -52,11 +55,16 @@ type Phase =
 /** The socket as the provider reports it. */
 interface Connection {
   status: 'connecting' | 'connected' | 'disconnected';
+  /** The socket's document synced since it last connected. */
   synced: boolean;
+  /** The document synced once in this session: the editor shows, and a later loss of the socket reads as offline. */
+  everSynced?: boolean;
   unsynced: number;
   people: number;
 }
 const START: Connection = { status: 'connecting', synced: false, unsynced: 0, people: 1 };
+/** How long nothing may be unsaved before the bar says 已儲存: each keystroke is stored within a few milliseconds. */
+const SETTLE_MS = 300;
 
 const REFUSALS: Record<RefusedReason, TranslationKey> = { 'too-large': 'live.tooLargeLive', busy: 'live.busy', other: 'live.socketRefused' };
 
@@ -158,10 +166,14 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         document: doc,
         awareness,
         token,
-        onStatus: ({ status }) => setConnection(current => ({ ...current, status: status as Connection['status'] })),
+        // The server keeps a state only past the clock it last saw of this client: 0 at first, the same after a reconnect.
+        // Setting it again moves the clock, so the others count this tab from its connect, as the server's activeEditors do.
+        onAuthenticated: () => awareness.setLocalState({ ...awareness.getLocalState() }),
+        // A socket that is not connected has no synced document: it syncs again once it reconnects.
+        onStatus: ({ status }) => setConnection(current => ({ ...current, status: status as Connection['status'], synced: status === 'connected' && current.synced })),
         onSynced: ({ state }) => {
           if (!state || stopped) return;
-          setConnection(current => ({ ...current, synced: true }));
+          setConnection(current => ({ ...current, synced: true, everSynced: true }));
           setCollab(current => current ?? { extension: yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }), text: text.toString() });
         },
         onUnsyncedChanges: ({ number }) => setConnection(current => ({ ...current, unsynced: number })),
@@ -183,8 +195,32 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         },
       });
     })();
-    return () => void stop();
+    // The browser knows it is offline long before the socket's timeout does, and back online before its next retry.
+    const offline = () => {
+      if (stopped) return;
+      provider?.disconnect();
+      setConnection(current => ({ ...current, status: 'disconnected', synced: false }));
+    };
+    const online = () => {
+      if (!stopped) void provider?.connect();
+    };
+    window.addEventListener('offline', offline);
+    window.addEventListener('online', online);
+    return () => {
+      window.removeEventListener('offline', offline);
+      window.removeEventListener('online', online);
+      stop();
+    };
   }, [live, session]);
+
+  // 已儲存 waits until nothing was unsaved for SETTLE_MS, so typing does not flicker it, or 立即簽回 with it.
+  const [settled, setSettled] = useState(true);
+  if (connection.unsynced > 0 && settled) setSettled(false);
+  useEffect(() => {
+    if (connection.unsynced > 0 || settled) return;
+    const timer = setTimeout(() => setSettled(true), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [connection.unsynced, settled]);
 
   // Typing the server has not stored yet is lost with the page.
   const unsaved = live && connection.unsynced > 0;
@@ -214,7 +250,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       const answer = await checkInLive(checkout.notebookId, checkout.path);
       if (answer.discarded) setPhase({ kind: 'discarded' });
       else {
-        setPhase(answer.released ? { kind: 'released' } : { kind: 'notice', tone: 'status', message: answer.reason === 'active' && answer.committed ? t('live.stillOpen', { count: answer.activeEditors ?? 1 }) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') }) });
+        setPhase(answer.released ? { kind: 'released' } : { kind: 'notice', tone: 'status', message: answer.reason === 'active' && answer.committed ? stillOpenText(t, answer.activeEditors ?? 1) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') }) });
         if (answer.committed || answer.released) onCheckedIn?.(answer);
       }
     } catch (error) {
@@ -222,11 +258,21 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     }
     onRefetch();
   };
+  /** Answers the editor's 「捨棄這份草稿？」. */
+  const answerDiscard = useRef<(yes: boolean) => void>(() => {});
+  const askDiscard = (question: string) =>
+    new Promise<boolean>(resolve => {
+      answerDiscard.current = yes => {
+        if (yes) setPhase({ kind: 'discarding' });
+        resolve(yes);
+      };
+      setPhase({ kind: 'confirm-discard', question });
+    });
   const discard = async () => {
     stopRef.current();
     flushSync(() => setPhase({ kind: 'discarding' }));
     try {
-      const answer = await discardDraft(checkout.notebookId, checkout.path, t);
+      const answer = await discardDraft(checkout.notebookId, checkout.path, t, askDiscard);
       if (!answer) return reopen();
       if (answer.discarded) {
         onRefetch();
@@ -263,9 +309,10 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     URL.revokeObjectURL(url);
   };
 
-  const offline = connection.status === 'disconnected';
-  const stateKey: TranslationKey = !connection.synced ? 'live.connecting' : offline ? 'live.offline' : connection.unsynced > 0 ? 'live.unsaved' : 'live.saved';
-  const canCheckIn = connection.status === 'connected' && connection.synced && connection.unsynced === 0;
+  // Before the first sync the tab is connecting; afterwards a socket that is not connected is offline, retries included,
+  // and one connected again is connecting until its document synced again.
+  const stateKey: TranslationKey = !connection.everSynced ? 'live.connecting' : connection.status !== 'connected' ? 'live.offline' : !connection.synced ? 'live.connecting' : connection.unsynced > 0 || !settled ? 'live.unsaved' : 'live.saved';
+  const canCheckIn = connection.status === 'connected' && connection.synced && connection.unsynced === 0 && settled;
   const discardable = Boolean(checkout.pending && editor.discard) && (live || phase.kind === 'notice');
   return (
     <div className='live-editor-frame live-collab'>
@@ -289,6 +336,15 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       {phase.kind === 'checking' && <LoadingStatus className='live-editor-notice'>{t('live.checkingIn')}</LoadingStatus>}
       {phase.kind === 'discarding' && <LoadingStatus className='live-editor-notice'>{t('live.discarding')}</LoadingStatus>}
       {phase.kind === 'released' && <p role='status' className='live-editor-notice'>{t('live.checkedIn')}</p>}
+      {phase.kind === 'confirm-discard' && (
+        <div role='alertdialog' aria-label={t('live.discard')} className='live-editor-notice'>
+          <p>{phase.question}</p>
+          <div className='live-editor-notice-actions'>
+            <Button size='small' variant='danger' onClick={() => answerDiscard.current(true)}>{t('live.discard')}</Button>
+            <Button size='small' onClick={() => answerDiscard.current(false)}>{t('live.backToEditor')}</Button>
+          </div>
+        </div>
+      )}
       {phase.kind === 'discarded' && <p role='status' className='live-editor-notice'>{t('live.discardedEmpty')}</p>}
       {phase.kind === 'refused' && <p role='alert' className='live-editor-notice'>{t(REFUSALS[phase.reason])}</p>}
       {phase.kind === 'lost' && (

@@ -163,6 +163,20 @@ describe('checkInLink over the built-in adapter', () => {
     expect((await f.liveNotes.service.checkouts(repository))[0]).toMatchObject({ id, conflict: result.conflict, base: { commit: result.commit } });
   });
 
+  it('ends its lease when the release is refused, so the next 立即簽回 runs at once instead of answering leased', async () => {
+    const f = setup();
+    const id = await checkout(f);
+    await f.liveNotes.setActive(repository, id, 1);
+    await type(f, id, A.replace('two', 'TWO'), 1);
+    expect(await run(f, id)).toMatchObject({ committed: true, released: false, reason: 'active', activeEditors: 1 });
+    f.time.advance(1000);
+    expect(await run(f, id)).toMatchObject({ committed: false, released: false, reason: 'active' });
+    await f.liveNotes.setActive(repository, id, 0);
+    f.time.advance(1000);
+    expect(await run(f, id)).toMatchObject({ released: true });
+    expect(commits(f)).toHaveLength(1);
+  });
+
   it('makes one commit when two check-ins of a note run at once: its lease lets one through', async () => {
     const f = setup();
     const id = await checkout(f);

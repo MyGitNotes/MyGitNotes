@@ -238,6 +238,26 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.link(id)).toMatchObject({ live: false, syncedHash: hash('a') });
     });
 
+    it('ends a lease for its holder only, and leaves the link as it was', async () => {
+      const { id } = await open();
+      await store.append(id, 1, bytes('pat 1'), pat, T0);
+      const before = await store.link(id);
+      const token = await leased(id, T0 + 1);
+      // Another token, or the lease of an unknown link, ends nothing.
+      await store.unlease(id, 'other', T0 + 2);
+      await store.unlease(unknown, token, T0 + 2);
+      expect(await store.leaseHeld(id, token, T0 + 2)).toBe(true);
+      await store.unlease(id, token, T0 + 3);
+      expect(await store.leaseHeld(id, token, T0 + 3)).toBe(false);
+      // The next check-in takes the link at once, and nothing else of it changed.
+      expect(await store.lease(id, 'next', T0 + 4 + LEASE_MS, T0 + 4)).toBe('leased');
+      expect(await store.link(id)).toEqual(before);
+      expect((await store.document(id, 1))!.log).toEqual([bytes('pat 1')]);
+      // A holder that lost its lease to a later one does not end that one.
+      await store.unlease(id, token, T0 + 5);
+      expect(await store.leaseHeld(id, 'next', T0 + 5)).toBe(true);
+    });
+
     it('tells whether a token holds the lease at a time, and changes nothing by asking', async () => {
       const { id } = await open();
       await store.append(id, 1, bytes('pat 1'), pat, T0);

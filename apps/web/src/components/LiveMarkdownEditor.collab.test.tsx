@@ -71,3 +71,17 @@ it('carries no state between views, and the direct mode keeps its history', () =
   const direct = mount('# Direct\n', undefined);
   expect(direct.view().state.field(historyField, false)).toBeDefined();
 });
+
+it('shows the leading YAML block as frontmatter: its lines marked, no heading, rule or shortcode drawn in it, and its text editable', () => {
+  const text = '---\ntitle: Ideas\ncreated: "2026-11-15T17:48:48Z"\n---\n# Body :smile:\n';
+  const { collab, ytext } = collabOf(text);
+  const { view } = mount(text, collab);
+  const lines = [...view().contentDOM.querySelectorAll('.cm-line')];
+  expect(lines.slice(0, 4).every(line => line.classList.contains('live-md-frontmatter'))).toBe(true);
+  expect(lines[4]!.classList.contains('live-md-frontmatter')).toBe(false);
+  // Nothing of the body's decoration reaches it: `title: Ideas` over `---` is no heading, `:48:` no shortcode.
+  for (const line of lines.slice(0, 4)) expect(line.className).not.toMatch(/live-md-h\d|heading|hr/);
+  expect(lines.slice(0, 4).some(line => line.querySelector('.cm-widget, [class*="emoji"], [class*="shortcode"]'))).toBe(false);
+  act(() => view().dispatch({ changes: { from: 4, to: 9, insert: 'name' }, userEvent: 'input' }));
+  expect(ytext.toString()).toBe(text.replace('title', 'name'));
+});

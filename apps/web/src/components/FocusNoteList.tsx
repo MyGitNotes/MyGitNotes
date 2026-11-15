@@ -96,7 +96,7 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
           {isCompilationPath(note.path) && <GalleryHorizontalEnd className='focus-row-kind' aria-hidden='true' />}
           <HighlightText text={note.title} query={highlightQuery} />
         </span>
-        <LiveBadge live={note.live} />
+        <LiveBadge live={note.live} title={note.title} />
       </div>
     );
   };

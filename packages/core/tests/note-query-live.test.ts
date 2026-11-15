@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveNoteState, NotebookConfig, WorkspaceConfig } from '../src/types.js';
-import { DEFAULT_NOTE_QUERY, type NoteListItem, noteMatchesQuery, noteQuerySearch, noteSearchTerms, withoutSearchToken } from '../src/note-query.js';
+import { DEFAULT_NOTE_QUERY, noteDirectory, type NoteListItem, noteMatchesQuery, noteQuerySearch, noteSearchTerms, withoutSearchToken } from '../src/note-query.js';
 import { filterNotes } from '../src/note-filters.js';
 import { type CatalogRepository, parseNoteQuery, queryNotes, workspaceCatalog } from '../src/note-catalog.js';
 
@@ -98,5 +98,16 @@ describe('live search tokens', () => {
     const searched = await queryNotes(catalog, query({ q: 'body is:live' }), { limit: 50 });
     expect(searched.notes.map(item => item.path).sort()).toEqual(['notes/work/.live/new.md', 'notes/work/checked-out.md']);
     expect(searched.notes.every(item => item.matchSnippet && !item.matchSnippet.includes('is:live'))).toBe(true);
+  });
+});
+
+describe('the folder of a pending note', () => {
+  it('is the notebook root, never its `.live` virtual folder, for one-level listings and for the folder counts', () => {
+    expect(noteDirectory('notes/work/.live/new.md')).toBe('notes/work');
+    expect(noteDirectory('notes/work/sub/a.md')).toBe('notes/work/sub');
+    // Only a pending note's virtual path: a file under some other `.live` folder keeps its folder.
+    expect(noteDirectory('notes/work/.live/sub/a.md')).toBe('notes/work/.live/sub');
+    expect(matching({ folders: ['notes/work'], descendants: false })).toEqual(notes.map(item => item.path));
+    expect(matching({ folders: ['notes/work/.live'], descendants: false })).toEqual([]);
   });
 });
