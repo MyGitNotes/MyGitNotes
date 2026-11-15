@@ -50,7 +50,7 @@ describe('isEmptyLiveDraft', () => {
     expect(isEmptyLiveDraft(titled('# 週會\n'), titled('# 週會\n'))).toBe(true);
   });
 
-  it('takes the web\'s untouched new note as empty, in every shipped locale, without an initial text', () => {
+  it("takes the web's untouched new note as empty, in every shipped locale, without an initial text", () => {
     // The web files an untemplated new note as `# <untitled>\n\n<body>\n` (apps/web/src/lib/new-note.ts).
     const zh = titled('# 未命名\n\n在這裡寫下筆記。\n');
     const en = titled('# Untitled\n\nWrite your note here.\n');
@@ -63,7 +63,7 @@ describe('isEmptyLiveDraft', () => {
     expect(isEmptyLiveDraft(titled('Write your note here.\n'))).toBe(true);
   });
 
-  it('takes one real character or a changed heading in the web\'s new note as content', () => {
+  it("takes one real character or a changed heading in the web's new note as content", () => {
     expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。a\n'))).toBe(false);
     expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n字\n'))).toBe(false);
     expect(isEmptyLiveDraft(titled('# 會議\n\n在這裡寫下筆記。\n'))).toBe(false);
@@ -75,7 +75,7 @@ describe('isEmptyLiveDraft', () => {
     expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n在這裡寫下筆記。\n'))).toBe(false);
   });
 
-  it('takes the default lines out as well as an initial text\'s', () => {
+  it("takes the default lines out as well as an initial text's", () => {
     const template = titled('## 待辦\n- \n');
     expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n## 待辦\n- \n'), template)).toBe(true);
     expect(isEmptyLiveDraft(titled('# Untitled\n## 待辦\n- \n'), template)).toBe(true);
