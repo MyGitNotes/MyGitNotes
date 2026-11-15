@@ -263,5 +263,32 @@ describe('LiveProvider', () => {
       provider.destroy();
       websocket.destroy();
     });
+
+    it('is dirty only with local typing the server has not stored, not for a connect\'s own sync step (BG-F003)', async () => {
+      const { websocket, provider, text, connect, finishSync } = await setup();
+      const dirty: boolean[] = [];
+      provider.on('dirty', ({ dirty: value }: { dirty: boolean; }) => dirty.push(value));
+      const first = await connect();
+      // Mid-connect: the step 2 counts as unsynced, but nothing was typed.
+      expect(provider.unsyncedChanges).toBeGreaterThan(0);
+      expect(provider.dirty).toBe(false);
+      finishSync(first);
+      text.insert(0, 'a');
+      expect(provider.dirty).toBe(true);
+      deliver(first, applied());
+      expect(provider.unsyncedChanges).toBe(0);
+      expect(provider.dirty).toBe(false);
+      // Typing through a close stays dirty until the next connect stored its step 2.
+      first.readyState = 3;
+      first.fire('close', { code: 4000, reason: 'Live ticket renewal' });
+      text.insert(1, 'b');
+      const second = await connect();
+      expect(provider.dirty).toBe(true);
+      finishSync(second);
+      expect(provider.dirty).toBe(false);
+      expect(dirty).toEqual([true, false, true, false]);
+      provider.destroy();
+      websocket.destroy();
+    });
   });
 });
