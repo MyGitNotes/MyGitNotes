@@ -477,7 +477,7 @@ describe('捨棄草稿 in the framed editor', () => {
 });
 
 describe('a pending note in the lists, where the adapter can discard and retarget', () => {
-  const filing = listed('notes/life/.live/xyz.md', { since: view.since, activeEditors: 0, pending: true, editorUrl: view.editorUrl, pathRule: 'projects/{{title}}.md' });
+  const filing = { ...listed('notes/life/.live/xyz.md', { since: view.since, activeEditors: 0, pending: true, editorUrl: view.editorUrl, pathRule: 'projects/{{title}}.md' }), title: 'Untitled' };
   const drafts = { discards: () => true, retargets: () => true };
   const inDrafts = (element: ReturnType<typeof createElement>) => createElement(LiveDraftsProvider, { value: drafts }, element);
 
@@ -485,7 +485,7 @@ describe('a pending note in the lists, where the adapter can discard and retarge
     const onDeleteNote = vi.fn(), onMoveNote = vi.fn();
     render(inDrafts(createElement(ListView, { ...listProps, onDeleteNote, onMoveNote, notes: [filing, checkedOut] })));
     const row = (item: NoteListItem) => screen.getByText(item.title).closest('tr')!;
-    expect(within(row(filing)).getByText('Not filed').closest('.live-badge')).toHaveAttribute('title', 'Files to: projects/{{title}}.md');
+    expect(within(row(filing)).getByText('Not filed').closest('.live-badge')).toHaveAttribute('title', 'Files to: projects/Untitled.md (the name follows the title)');
     const remove = within(row(filing)).getByRole('button', { name: 'Delete note' });
     expect(remove).toBeEnabled();
     expect(remove).toHaveAttribute('title', 'Discard draft');
