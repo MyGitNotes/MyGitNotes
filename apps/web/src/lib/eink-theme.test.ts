@@ -74,6 +74,11 @@ describe('e-ink family', () => {
     expect(css).toMatch(/\[data-theme='eink'\][^{]*\{[^}]*backdrop-filter: none !important/);
     expect(fs.readFileSync(path.resolve('apps/web/src/app/create-web-app.tsx'), 'utf8')).toContain("import '../eink.css';");
   });
+
+  it("draws every field's placeholder black, not the browser's or Tailwind's gray", () => {
+    const css = fs.readFileSync(path.resolve('apps/web/src/eink.css'), 'utf8');
+    expect(css).toMatch(/\[data-theme='eink'\] (?:\*)?::placeholder[^{]*\{[^}]*color: var\(--color-text\) !important;[^}]*opacity: 1 !important/);
+  });
 });
 
 describe('automatic e-ink on an e-reader', () => {
