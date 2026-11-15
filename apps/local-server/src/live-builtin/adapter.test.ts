@@ -261,6 +261,29 @@ describe('compaction', () => {
     expect(await f.store.link(made.id)).toMatchObject({ seq: 2, gen: 1 });
   });
 
+  it('compacts a document that stays open, a moment after its last update, with nobody leaving', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, 'one\n');
+    const link = (await f.store.link(made.id))!;
+    // A tab holds the document open and types, as a socket will: nothing lets the document go.
+    const held = await f.documents.open(link);
+    const tab = new Y.Doc();
+    Y.applyUpdate(tab, Y.encodeStateAsUpdate(held.document));
+    const updates: Uint8Array[] = [];
+    tab.on('update', (update: Uint8Array) => void updates.push(update));
+    tab.getText('content').insert(4, 'two\n');
+    await f.documents.accept(link, updates[0], editorOf(1));
+    expect(await f.store.document(made.id, 1)).toMatchObject({ gen: 0, seq: 1, log: [expect.any(Uint8Array)] });
+    await vi.waitFor(async () => expect(await f.store.document(made.id, 1)).toMatchObject({ gen: 1, seq: 1, log: [] }), { timeout: 10_000, interval: 100 });
+    expect(await f.store.link(made.id)).toMatchObject({ contentSeq: 1, contentHash: sha256('one\ntwo\n') });
+    // It is still held, and takes the next update on the compacted state.
+    tab.getText('content').insert(8, 'three\n');
+    await f.documents.accept(link, updates[1], editorOf(1));
+    expect(held.document.getText('content').toString()).toBe('one\ntwo\nthree\n');
+    await held.close();
+    expect((await read(f, made.id)).content).toBe('one\ntwo\nthree\n');
+  }, 20_000);
+
   it('never drops what another process appended: a compaction on a generation that moved changes nothing', async () => {
     const shared = memoryLiveStore();
     let beforeCompact: (() => Promise<void>) | undefined;
