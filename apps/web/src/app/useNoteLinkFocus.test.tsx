@@ -4,7 +4,7 @@ import { type FocusLayout } from '@mygitnotes/core/focus-page';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { focusNoteState, noteReturnRoute, parseWorkspaceRoute } from '../lib/routes.js';
+import { focusNoteState, isFocusNoteState, noteReturnRoute, parseWorkspaceRoute } from '../lib/routes.js';
 import type { OpenResult } from '../lib/use-note-focus.js';
 import { useFocusNoteNavigation } from './useFocusNoteNavigation.js';
 import { useNoteLinkLoad, useOpenNoteLinkInFocus } from './useNoteLinkFocus.js';
@@ -47,6 +47,8 @@ interface Harness {
   /** The state of the history entry. */
   state: unknown;
   zoomed: boolean;
+  /** Whether the note link the page was loaded on still waits for the Focus. */
+  linkPending: boolean;
   focus: ReturnType<typeof useFakeFocus>;
   navigate: ReturnType<typeof useNavigate>;
   browse: (path: string) => Promise<void>;
@@ -66,7 +68,11 @@ function linkIn(pane: string) {
 
 const existing = new Set([at('a.md'), at('b.md'), at('c.md'), at('renamed.md'), at('.templates/reading.md'), LANE]);
 
-function Page({ report, focus: initial, options }: { report: (harness: Harness) => void; focus: FocusState; options: { loading?: boolean; result?: OpenResult; notebookId?: string; narrow?: 'focus' | 'browse'; }; }) {
+/**
+ * `onCommit` runs as each render of the page is committed, before the effects of that render: what the person does in a
+ * handler the browser runs between a render and its effects (React runs the effects of a non-urgent render in a later task).
+ */
+function Page({ report, focus: initial, options }: { report: (harness: Harness) => void; focus: FocusState; options: { loading?: boolean; result?: OpenResult; notebookId?: string; narrow?: 'focus' | 'browse'; onCommit?: (harness: Harness) => void; }; }) {
   const location = useLocation(), navigate = useNavigate();
   const editorRoute = useMemo(() => parseWorkspaceRoute(location.pathname, location.search), [location.pathname, location.search]);
   const link = useNoteLinkLoad(location, editorRoute);
@@ -79,9 +85,10 @@ function Page({ report, focus: initial, options }: { report: (harness: Harness) 
   const [handleOpenNote] = useState(() => vi.fn(async () => true));
   const { trackOpen } = useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus: focus.noteFocus, activeNotePath: focus.activeNotePath, focusNarrowView: narrow, selectedNotebookId: 'life', notebookRoot: ROOT, returnTo, browsing: editorRoute.tab === 'notes', setFocusNarrowView: setNarrow, isTemplate: note => note.path.includes('/.templates/') });
   const { openFromBrowse, openLink } = useFocusNoteNavigation({ noteFocus: focus.noteFocus, selectedNotebookId: 'life', setFocusNarrowView: setNarrow, handleOpenNote: handleOpenNote as never, setAddingToFocus: vi.fn(), isTemplate: note => note.path.includes('/.templates/'), trackOpen });
-  const harness: Harness = { url: location.pathname + location.search + location.hash, state: location.state, zoomed: Boolean(routedNote) && !routeError && !link.inFocus, focus, navigate, browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never), link: (path, pane) => openLink({ notebookId: 'life', path, title: path } as never, undefined, linkIn(pane)), setNarrow, narrow, handleOpenNote };
+  const harness: Harness = { url: location.pathname + location.search + location.hash, state: location.state, zoomed: Boolean(routedNote) && !routeError && !link.inFocus, linkPending: link.pending, focus, navigate, browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never), link: (path, pane) => openLink({ notebookId: 'life', path, title: path } as never, undefined, linkIn(pane)), setNarrow, narrow, handleOpenNote };
   useLayoutEffect(() => {
     report(harness);
+    options.onCommit?.(harness);
   });
   return null;
 }
@@ -130,6 +137,9 @@ describe('a note link loaded as the page', () => {
   it('keeps the note in the Focus when the sort or the Focus shown changes the query of its address', async () => {
     const { api } = open(['/notebooks/life/notes/a.md?q=draft']);
     await waitFor(() => expect(api.current.focus.activeNotePath).toBe(at('a.md')));
+    // The sort and the Focus switcher copy the mark from the entry the page shows, so the mark is shown before they run.
+    await waitFor(() => expect(isFocusNoteState(api.current.state)).toBe(true));
+    expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft');
     // As the sort and the Focus switcher do: the query changes in a new entry that keeps the mark of a Focus address.
     act(() => void api.current.navigate({ pathname: '/notebooks/life/notes/a.md', search: '?q=draft&sortField=title' }, { state: focusNoteState(api.current.state) }));
     await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft&sortField=title'));
@@ -138,6 +148,25 @@ describe('a note link loaded as the page', () => {
     await back(api);
     await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft'));
     expect(api.current.zoomed).toBe(false);
+  });
+  it('never undoes a change of the address the person makes as the Focus shows the note, before the page marked it', async () => {
+    let changed = false;
+    const { api } = open(['/notebooks/life/notes/a.md?q=draft'], empty(), {
+      onCommit: harness => {
+        if (changed || harness.linkPending || harness.focus.activeNotePath !== at('a.md')) return;
+        changed = true;
+        // The sort, clicked as the Focus shows the note, before the page's effects marked its entry.
+        void harness.navigate({ pathname: '/notebooks/life/notes/a.md', search: '?q=draft&sortField=title' }, { state: focusNoteState(harness.state) });
+      },
+    });
+    await waitFor(() => expect(changed).toBe(true));
+    await act(async () => {});
+    expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft&sortField=title');
+    await back(api);
+    await waitFor(() => expect(isFocusNoteState(api.current.state)).toBe(true));
+    expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft');
+    expect(api.current.zoomed).toBe(false);
+    expect(api.current.focus.activeNotePath).toBe(at('a.md'));
   });
   it('waits for the Focus to load before opening', async () => {
     const { api, view } = open(['/notebooks/life/notes/a.md'], empty(), { loading: true });
@@ -194,6 +223,24 @@ describe('the address of the Focus', () => {
     await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/c.md?q=draft'));
     await back(api);
     expect(api.current.url).toBe('/settings');
+  });
+  it('keeps a change of the address the person makes as the tab they switch to is shown, before the page followed it', async () => {
+    let changed = false;
+    const { api } = open(['/settings', '/notebooks/life?q=draft'], showing({ p1: [at('a.md'), at('b.md')] }, 'p1', { p1: at('a.md') }), {
+      onCommit: harness => {
+        if (changed || harness.focus.activeNotePath !== at('b.md')) return;
+        changed = true;
+        // The sort, clicked as the Focus shows the tab, before the page's effects gave the address its note.
+        void harness.navigate({ pathname: '/notebooks/life/notes/a.md', search: '?q=draft&sortField=title' }, { state: focusNoteState(harness.state) });
+      },
+    });
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft'));
+    await act(() => show(api, 'p1', at('b.md')));
+    await waitFor(() => expect(changed).toBe(true));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/b.md?q=draft&sortField=title'));
+    expect(api.current.zoomed).toBe(false);
+    await back(api);
+    expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft');
   });
   it('replaces the entry when the shown note is renamed or its tab closed, and names the notebook once the Focus is empty', async () => {
     const { api } = open(['/notebooks/life'], showing({ p1: [at('a.md'), at('b.md')] }));
