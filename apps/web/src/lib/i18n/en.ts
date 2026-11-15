@@ -1640,6 +1640,10 @@ export const en = {
   'theme.mode': 'Appearance',
   'theme.system': 'System',
   'theme.light': 'Light',
+  'theme.eink': 'E-ink (high contrast)',
+  'theme.einkAuto': 'E-reader detected, so the E-ink theme is in use.',
+  'theme.einkAutoBack': 'Use the standard theme',
+  'theme.fixedMode': 'This theme has one look; light and dark do not apply.',
 
   // Auth & MCP Access Settings
   'auth.signOut': 'Sign out',

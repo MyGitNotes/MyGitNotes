@@ -1,8 +1,9 @@
 import { NOTE_CONTENT_WIDTHS, NOTE_FONT_SIZES, type NoteContentWidth, useNoteViewPreferences, writeNoteViewPreferences } from '../../lib/editor-preferences.js';
 import { useTranslation } from '../../lib/i18n/index.js';
-import { listFamilies, setThemeChoice, type ThemeMode } from '../../lib/themes.js';
-import { useThemeChoice } from '../../app/useTheme.js';
+import { getFamily, listFamilies, setThemeChoice, type ThemeMode } from '../../lib/themes.js';
+import { useThemeView } from '../../app/useTheme.js';
 import { Select } from '../Select.js';
+import { familyLabel } from '../ThemeSelector.js';
 
 const WIDTH_LABELS = { standard: 'editor.widthStandard', wide: 'editor.widthWide', full: 'editor.widthFull' } as const;
 const THEME_MODES: ThemeMode[] = ['light', 'dark', 'system'];
@@ -11,14 +12,15 @@ const THEME_MODES: ThemeMode[] = ['light', 'dark', 'system'];
 export function NoteViewPanel() {
   const { t } = useTranslation();
   const { fontSize, contentWidth } = useNoteViewPreferences();
-  const theme = useThemeChoice();
+  const { choice: theme, familyId: shownFamily, auto } = useThemeView();
+  const fixedMode = getFamily(shownFamily).fixedMode;
   return (
     <section className='note-view-panel note-panel-scroll' aria-label={t('editor.viewSettings')}>
       <fieldset className='note-view-group'>
         <legend>{t('editor.theme')}</legend>
         <div className='note-view-theme'>
-          <Select aria-label={t('settings.theme')} value={theme.familyId} onValueChange={familyId => setThemeChoice({ ...theme, familyId })} options={listFamilies().map(family => ({ value: family.id, label: family.name }))} />
-          <Select aria-label={t('theme.mode')} value={theme.mode} onValueChange={mode => setThemeChoice({ ...theme, mode: mode as ThemeMode })} options={THEME_MODES.map(mode => ({ value: mode, label: t(`theme.${mode}`) }))} />
+          <Select aria-label={t('settings.theme')} value={auto ? shownFamily : theme.familyId} onValueChange={familyId => setThemeChoice({ ...theme, familyId })} options={listFamilies().map(family => ({ value: family.id, label: familyLabel(family, t) }))} />
+          <Select aria-label={t('theme.mode')} disabled={Boolean(fixedMode)} title={fixedMode ? t('theme.fixedMode') : undefined} value={theme.mode} onValueChange={mode => setThemeChoice({ ...theme, mode: mode as ThemeMode })} options={THEME_MODES.map(mode => ({ value: mode, label: t(`theme.${mode}`) }))} />
         </div>
       </fieldset>
       <fieldset className='note-view-group'>
