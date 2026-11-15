@@ -183,13 +183,18 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
   /**
    * Replaces the stored state by exactly what one read returned, and drops the entries of that read from the log. The
    * state is built from the store's own state and entries, never from a document held here, so the stored hash is the
-   * text at that read's sequence. False when another compaction ran since the read: nothing is changed then.
+   * text at that read's sequence. Not `done` when another compaction ran since the read, or the store refused this one:
+   * nothing is changed then, every update is still in the log, and a later compaction takes it.
    */
   const squash = async (id: string, epoch: number, stored: StoredDocument) => {
     const document = storedDocument(stored);
     try {
-      const { text, hash } = textOf(document);
-      return { text, hash, done: await store.compact(id, epoch, stored.gen, stored.log.length, Y.encodeStateAsUpdate(document), hash, stored.seq) };
+      const { hash } = textOf(document);
+      const done = await store.compact(id, epoch, stored.gen, stored.log.length, Y.encodeStateAsUpdate(document), hash, stored.seq).catch(error => {
+        console.warn(`[live-builtin] Compacting live note ${id} failed: ${error instanceof Error ? error.constructor.name : 'error'}. Its updates stay in the log.`);
+        return false;
+      });
+      return { hash, done };
     } finally {
       document.destroy();
     }
@@ -221,20 +226,16 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
     async onStoreDocument({ document, documentName }) {
       const [, id, epoch] = NAME.exec(documentName) ?? [];
       if (!id) return;
-      try {
-        const stored = await store.document(id, Number(epoch));
-        // Released meanwhile: there is nothing of this epoch to keep.
-        if (!stored) return;
-        const state = states.get(document);
-        // What another process appended becomes visible here, before its entries leave the log.
-        if (state) take(document, state, stored);
-        if (!stored.log.length) return;
-        const { done } = await squash(id, Number(epoch), stored);
-        if (done && state) state.gen = stored.gen + 1;
-      } catch (error) {
-        // Nothing is lost: every update is in the store's log already, and a later compaction takes it.
-        console.warn(`[live-builtin] Compacting live note ${id} failed: ${error instanceof Error ? error.name : 'error'}.`);
-      }
+      // A store that cannot be read now is read at the next compaction: nothing is lost meanwhile, every update is in its log.
+      const stored = await store.document(id, Number(epoch)).catch(() => null);
+      // Released meanwhile: there is nothing of this epoch to keep.
+      if (!stored) return;
+      const state = states.get(document);
+      // What another process appended becomes visible here, before its entries leave the log.
+      if (state) take(document, state, stored);
+      if (!stored.log.length) return;
+      const { done } = await squash(id, Number(epoch), stored);
+      if (done && state) state.gen = stored.gen + 1;
     },
   });
 

@@ -300,6 +300,28 @@ describe('compaction', () => {
     expect(storedText(await shared.document(made.id, 1))).toBe('base\none\ntwo\nthree\nfour\n');
   });
 
+  it('leaves the updates in the log when the store refuses a compaction, still serves the text and its hash, and compacts the next time', async () => {
+    const inner = memoryLiveStore();
+    let full = true;
+    const f = builtinFixture({ store: wrapStore(inner, { compact: async (...args) => full ? Promise.reject(new LiveUnavailableError()) : inner.compact(...args) }) });
+    const made = await checkout(f, 'one\n');
+    await type(f, made.id, 'one\nsecret two\n', 1);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await f.liveNotes.setActive(repository, made.id, 0);
+    expect(await inner.document(made.id, 1)).toMatchObject({ gen: 0, seq: 1, log: [expect.any(Uint8Array)] });
+    // Nobody holds the document and its stored hash is behind: listing reads the text, and its compaction is refused too.
+    expect((await row(f, made.id))!.contentHash).toBe(sha256('one\nsecret two\n'));
+    expect((await read(f, made.id)).content).toBe('one\nsecret two\n');
+    const logged = warn.mock.calls.flat().join('\n');
+    expect(logged).toContain(`Compacting live note ${made.id} failed`);
+    expect(logged).not.toContain('secret');
+    expect(await inner.link(made.id)).toMatchObject({ gen: 0, contentSeq: 0, contentHash: sha256('one\n') });
+    full = false;
+    expect((await row(f, made.id))!.contentHash).toBe(sha256('one\nsecret two\n'));
+    expect(await inner.document(made.id, 1)).toMatchObject({ gen: 1, seq: 1, log: [] });
+    expect(await inner.link(made.id)).toMatchObject({ contentSeq: 1, contentHash: sha256('one\nsecret two\n') });
+  });
+
   it('compacts every document it holds at shutdown, and serves them from the store afterwards', async () => {
     const f = builtinFixture();
     const first = await checkout(f, 'one\n'), second = await draft(f, '# Draft\n');
@@ -366,6 +388,19 @@ describe('writes', () => {
     expect(storedText(await inner.document(made.id, 1))).toBe(merged);
     expect((await read(builtinFixture({ store: inner, files: f.files, time: f.time }), made.id)).content).toBe(merged);
     expect((await inner.editors(made.id)).map(editor => editor.key).sort()).toEqual(['agent:p3@example.test', editorOf(1).key, editorOf(2).key]);
+  });
+
+  it('runs the writes of one note one after another: a write made on the same text as the one before is rebased over it, or refused', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, 'one\ntwo\nthree\n');
+    const before = await read(f, made.id);
+    const [first, second, third] = await Promise.allSettled([write(f, made.id, 'ONE\ntwo\nthree\n', before.liveRevision), write(f, made.id, 'uno\ntwo\nthree\n', before.liveRevision), write(f, made.id, 'one\ntwo\nTHREE\n', before.liveRevision)]);
+    expect(first).toEqual({ status: 'fulfilled', value: { changed: true, liveRevision: `t:${sha256('ONE\ntwo\nthree\n')}` } });
+    // The second rewrote the line the first had just rewritten: it is refused, never typed into it.
+    expect(second).toMatchObject({ status: 'rejected', reason: expect.any(LiveStaleError) });
+    expect(third).toEqual({ status: 'fulfilled', value: { changed: true, liveRevision: `t:${sha256('ONE\ntwo\nTHREE\n')}` } });
+    expect((await read(f, made.id)).content).toBe('ONE\ntwo\nTHREE\n');
+    expect(await f.store.link(made.id)).toMatchObject({ seq: 2 });
   });
 
   it('rebases a write by character over the typing since, and refuses one that changed the same characters', async () => {
