@@ -185,6 +185,23 @@ describe('a live note on a phone', () => {
   });
 });
 
+describe('the phone sheet of a pending note being edited live', () => {
+  it('says no word count or 唯讀 of the read view under it, and offers Rename', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+    fetchMock.mockResolvedValue(json({ checkout: { ...view, path: 'notes/life/.live/abc.md', pending: true }, outcome: 'created' }));
+    const pendingNote = { ...note, path: 'notes/life/.live/abc.md', live: { since: view.since, activeEditors: 1, pending: true as const, editorUrl: view.editorUrl } };
+    const onRename = vi.fn();
+    render(createElement(LiveDraftsProvider, { value: { discards: () => true, retargets: () => true } }, noteEditor({ note: pendingNote, live: { editor, onRefetch: vi.fn() }, onMove: vi.fn(), onRename })));
+    await act(async () => {});
+    expect(document.querySelector('iframe')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(screen.queryByRole('status', { name: 'Save status' })).toBeNull();
+    expect(screen.queryByText(/Read-only/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    expect(onRename).toHaveBeenCalledWith(note.title);
+  });
+});
+
 describe('a note checked in from its frame', () => {
   it('still says 已簽回 once the editor remounts for the new revision', async () => {
     const onCheckedIn = vi.fn();
