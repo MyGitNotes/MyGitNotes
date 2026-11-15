@@ -509,6 +509,61 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(warn.mock.calls.flat().join('\n')).not.toContain('kept by the tab');
     });
 
+    it('closes a socket with 4000 once it was open for socketMs, and its tab goes on over a socket of a fresh ticket', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { socketMs: 60_000, beatMs: 40 } });
+      const { store, time } = server.live;
+      const id = await server.checkout();
+      const one = await server.tab(1);
+      await one.saved();
+      time.advance(59_999);
+      await pause(120);
+      expect(one.closes).toEqual([]);
+      // Open past its time, the socket is closed on the next beat, whether or not the tab sends anything.
+      time.advance(1);
+      await until('the socket was closed for a new ticket', () => one.closes.length > 0);
+      expect(one.closes).toEqual([{ code: 4000, reason: 'Live ticket renewal' }]);
+      // The tab connects again with a ticket it asks for, which takes a signed-in writer, and types on.
+      await until('the tab connected again with a fresh ticket', () => one.asked === 2 && one.provider.isSynced);
+      one.type(`${A}after renewal\n`);
+      await one.saved();
+      expect(await stored(store, id)).toBe(`${A}after renewal\n`);
+      // The new socket's time counts from when it opened.
+      await pause(120);
+      expect(one.closes).toHaveLength(1);
+    });
+
+    it('stores nothing a socket sends once it was open for socketMs: the tab gets it in again only with a fresh ticket, which a signed-out person is refused', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { socketMs: 60_000, beatMs: 60_000 } });
+      const { store, time } = server.live;
+      const id = await server.checkout();
+      let signedIn = true;
+      // As the web asks: a ticket POST on every connect, which answers 403 once the session ended, and the tab's token call fails.
+      const ticket = async () => {
+        if (signedIn) return (await server.ticket(2)).ticket;
+        const answer = await server.call('POST', '/api/live/socket-ticket', note, null);
+        throw new Error(`socket-ticket: ${answer.status}`);
+      };
+      const one = await server.tab(1), two = await server.tab(2, { ticket, document: `${id}.1` });
+      await Promise.all([one.saved(), two.saved()]);
+      expect(two.asked).toBe(1);
+      signedIn = false;
+      // Past their time, before any beat: what each sends closes its socket instead of being stored.
+      time.advance(60_000);
+      two.type(`${A}two after sign-out\n`);
+      await until('the second socket was closed for a new ticket', () => two.closes.some(close => close.code === 4000));
+      await until('the signed-out tab got no ticket', () => two.refused.length > 0);
+      expect(two.refused).toEqual([expect.stringContaining('socket-ticket: 403')]);
+      one.type(`${A}one\n`);
+      await until('the first socket was closed for a new ticket', () => one.closes.some(close => close.code === 4000));
+      // The person still signed in loses nothing: the tab sends it again over its new socket.
+      await until('the first tab connected again', () => one.asked === 2);
+      await one.saved();
+      await pause(60);
+      expect(await stored(store, id)).toBe(`${A}one\n`);
+      // The signed-out tab still holds what it typed, for the person to copy.
+      expect(two.text()).toContain('two after sign-out');
+    });
+
     it('tells the tabs of a note that was checked in that it is released, takes nothing more of that epoch, and opens the next only by its own name', async () => {
       const server = await serverOver({ store: makeStore() });
       const { store, time, files, liveNotes } = server.live;
@@ -563,7 +618,8 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
     });
 
     it('counts the people on its sockets by what each last did, and stops counting one whose tabs closed at once', async () => {
-      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40 } });
+      // Its clock runs on for over twenty minutes: the sockets stay open meanwhile.
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40, socketMs: 24 * 3_600_000 } });
       const { store, time, documents, liveNotes } = server.live;
       const id = await server.checkout();
       const one = await server.tab(1), two = await server.tab(2), again = await server.tab(2);
@@ -684,7 +740,8 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       const store = makeStore();
       // The poll is too slow to tell: the refused update is what does.
       const first = await serverOver({ store });
-      const next = await serverOver({ store, files: first.live.files, time: first.live.time });
+      // Its clock runs past a socket's time, which is not what this test is about.
+      const next = await serverOver({ store, files: first.live.files, time: first.live.time, limits: { socketMs: 24 * 3_600_000 } });
       const id = await first.checkout();
       const typist = await next.tab(1), reader = await next.tab(2);
       await Promise.all([typist.synced(), reader.synced()]);

@@ -24,6 +24,7 @@ interface FakeConfig {
   onStateless?: (event: { payload: string; }) => void;
   onAuthenticationFailed?: (event: { reason: string; }) => void;
   onAuthenticated?: (event: { scope: string; }) => void;
+  onClose?: (event: { event: { code: number; reason: string; }; }) => void;
 }
 const fake = vi.hoisted(() => ({ providers: [] as { configuration: FakeConfig; destroyed: boolean; destroy: () => void; }[], order: [] as string[] }));
 /** Lets the bar's 已儲存 settle: it shows only once nothing was unsaved for a moment. */
@@ -425,6 +426,69 @@ describe('a reconnect whose ticket fails', () => {
     });
     expect(fake.providers).toHaveLength(2);
     expect(provider().destroyed).toBe(false);
+  });
+});
+
+describe('a socket the server closed for a new ticket (4000)', () => {
+  /** The server closed the socket after its time: the provider reports it gone, then the close, in one task. */
+  const renew = () =>
+    emit(config => {
+      config.onStatus?.({ status: 'disconnected' });
+      config.onClose?.({ event: { code: 4000, reason: 'Live ticket renewal' } });
+    });
+
+  it('reconnects with a fresh ticket without saying offline or showing an error', async () => {
+    await open();
+    sync();
+    await provider().configuration.token();
+    typeUnsaved('typed across the renewal\n');
+    renew();
+    expect(screen.queryByText('Offline')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('Connecting…')).toBeInTheDocument();
+    emit(config => config.onStatus?.({ status: 'connecting' }));
+    expect(screen.queryByText('Offline')).toBeNull();
+    await expect(provider().configuration.token()).resolves.toBe('t2'.padEnd(32, 'x'));
+    emit(config => {
+      config.onStatus?.({ status: 'connected' });
+      config.onSynced?.({ state: true });
+      config.onUnsyncedChanges?.({ number: 0 });
+    });
+    await settle();
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+    expect(fake.providers).toHaveLength(1);
+    expect(provider().destroyed).toBe(false);
+    // A socket that then drops for any other reason is offline again.
+    emit(config => {
+      config.onStatus?.({ status: 'disconnected' });
+      config.onClose?.({ event: { code: 1006, reason: '' } });
+    });
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+  });
+
+  it('says offline once a retry after it fails too', async () => {
+    await open();
+    sync();
+    renew();
+    emit(config => config.onClose?.({ event: { code: 1006, reason: '' } }));
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+  });
+
+  it('ends in the failed ending, offering unsaved text, when the session ended and the new ticket is refused', async () => {
+    await open();
+    sync('# A\n');
+    await provider().configuration.token();
+    typeUnsaved('typed before signing out\n');
+    renew();
+    fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? json({ error: 'Sign in to edit.' }, 403) : json({}));
+    await act(async () => {
+      await expect(provider().configuration.token()).rejects.toThrow('Sign in to edit.');
+      provider().configuration.onAuthenticationFailed?.({ reason: 'Failed to get token' });
+    });
+    expect(provider().destroyed).toBe(true);
+    expect(screen.getByRole('alert')).toHaveTextContent('Sign in to edit.');
+    expect(screen.getByRole('alert')).toHaveTextContent('were not saved');
+    await offersMine('# A\ntyped before signing out\n');
   });
 });
 

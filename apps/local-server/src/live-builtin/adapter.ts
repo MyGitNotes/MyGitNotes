@@ -78,7 +78,7 @@ export interface BuiltinLiveParts {
 }
 
 const BUILTIN: LiveBuiltinEditorInfo = { kind: 'builtin' };
-const DEFAULT_LIMITS: BuiltinLiveLimits = { maxBytes: LIVE_MAX_BYTES, idleMs: 10 * 60_000, leaseMs: 5 * 60_000, ringTexts: 64, ringBytes: 16 * 1024 * 1024, maxPayload: 8 * 1024 * 1024, maxDocuments: 200, maxConnections: 50, maxUnseated: 100, maxUnseatedPerAddress: 10, maxAwarenessBytes: 4096, pollMs: 5000, beatMs: 15_000, shutdownMs: 15_000 };
+const DEFAULT_LIMITS: BuiltinLiveLimits = { maxBytes: LIVE_MAX_BYTES, idleMs: 10 * 60_000, leaseMs: 5 * 60_000, ringTexts: 64, ringBytes: 16 * 1024 * 1024, maxPayload: 8 * 1024 * 1024, maxDocuments: 200, maxConnections: 50, maxUnseated: 100, maxUnseatedPerAddress: 10, maxAwarenessBytes: 4096, pollMs: 5000, beatMs: 15_000, shutdownMs: 15_000, socketMs: 10 * 60_000 };
 const REVISION = /^t:([0-9a-f]{64})$/;
 const iso = (time: number) => new Date(time).toISOString();
 
