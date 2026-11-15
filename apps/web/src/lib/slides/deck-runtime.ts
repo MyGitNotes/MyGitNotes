@@ -18,33 +18,7 @@ const plural = (count: number, one: string) => `${count} ${one}${count === 1 ? '
  * Every word the deck says in an English app. The set is complete, so a word contour-deck adds fails the type check instead of reaching
  * the reader in whichever set the deck would otherwise pick (a dev server still on an older contour-deck showed its Chinese).
  */
-const ENGLISH_LABELS: LabelSet = {
-  overview: 'Outline',
-  notes: 'Notes',
-  script: 'Script',
-  threeD: '3D',
-  prev: 'Previous step',
-  next: 'Next step',
-  exit: 'Leave the slides',
-  remote: 'Remote',
-  here: 'You are here',
-  appendix: 'Written',
-  opening: 'Opening',
-  closing: 'Thanks',
-  rail: 'Position in the deck',
-  noNotes: '(No notes for this page)',
-  slides: count => plural(count, 'slide'),
-  pages: count => plural(count, 'page'),
-  minutes: count => `about ${count} min`,
-  page: (index, count) => `Page ${index}/${count}`,
-  steps: (shown, count) => `Step ${shown}/${count}`,
-  thumb: (block, slide, title, pages) => `${block}, slide ${slide}: ${title}${pages > 1 ? `, ${pages} pages` : ''}`,
-  railBlock: (block, term) => (term ? `${block} (${term})` : block),
-  wayHead: (short, term) => (term ? `${short} | ${term}` : short),
-  roadmap: 'Roadmap of the talk',
-  railSlide: (block, slide) => `${block}: ${slide}`,
-  entry: (label, title) => `${label}: ${title}`,
-};
+const ENGLISH_LABELS: LabelSet = { overview: 'Outline', notes: 'Notes', script: 'Script', threeD: '3D', prev: 'Previous step', next: 'Next step', exit: 'Leave the slides', remote: 'Remote', here: 'You are here', appendix: 'Written', opening: 'Opening', closing: 'Thanks', rail: 'Position in the deck', noNotes: '(No notes for this page)', slides: count => plural(count, 'slide'), pages: count => plural(count, 'page'), minutes: count => `about ${count} min`, page: (index, count) => `Page ${index}/${count}`, steps: (shown, count) => `Step ${shown}/${count}`, thumb: (block, slide, title, pages) => `${block}, slide ${slide}: ${title}${pages > 1 ? `, ${pages} pages` : ''}`, railBlock: (block, term) => (term ? `${block} (${term})` : block), wayHead: (short, term) => (term ? `${short} | ${term}` : short), roadmap: 'Roadmap of the talk', railSlide: (block, slide) => `${block}: ${slide}`, entry: (label, title) => `${label}: ${title}` };
 
 export interface OpenDeckOptions {
   /** The note's sanitized HTML, rendered with `slides: 'deck'`. */
