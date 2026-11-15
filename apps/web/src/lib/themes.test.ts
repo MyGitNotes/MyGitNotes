@@ -77,8 +77,8 @@ describe('theme choice', () => {
 });
 
 describe('palette families', () => {
-  it('ships nine families with a light and a dark variant', () => {
-    expect(PALETTE_FAMILIES).toHaveLength(9);
+  it('ships nine colour families and e-ink, each with a light and a dark variant', () => {
+    expect(PALETTE_FAMILIES.map(family => family.id)).toEqual(['flexoki', 'github', 'catppuccin', 'rose-pine', 'gruvbox', 'tokyo-night', 'carbon', 'solarized', 'everforest', 'eink']);
     for (const family of PALETTE_FAMILIES) expect(Object.keys(family.variants).sort()).toEqual(['dark', 'light']);
   });
 
