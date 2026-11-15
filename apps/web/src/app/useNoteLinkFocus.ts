@@ -78,8 +78,16 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
   const navigationType = useNavigationType();
   const phone = usePhone();
   const focusReady = !noteFocus.loading && Boolean(noteFocus.shown && noteFocus.layout && noteFocus.entry);
-  /** The history entry whose note the Focus was last brought to; the Focus answers each entry once, so its own changes are never undone. */
+  /**
+   * The history entry whose note the Focus was brought to on this visit of it: the Focus answers an arrival once, so the
+   * person's own changes there are never undone. Every arrival is answered again, a return to an entry answered before too.
+   */
   const [answered, setAnswered] = useState<string | null>(null);
+  const [visited, setVisited] = useState(location.key);
+  if (visited !== location.key) {
+    setVisited(location.key);
+    setAnswered(null);
+  }
   // An entry reached by Back or Forward names the note the Focus showed then.
   const returning = inFocus && !pending && navigationType === 'POP' && answered !== location.key;
   const resolving = pending || returning;
@@ -159,6 +167,13 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
     void follow(target, push);
   }, [target, named, location.key, navigationType]);
   /* eslint-enable react-hooks/exhaustive-deps */
+
+  // A note link the Focus took (the page was loaded on it) is marked as an address the Focus gave, as the entry a note's
+  // opening pushes is: Back or Forward to it, or a change of its query, keeps it in the Focus, after a reload too.
+  const unmarked = managed && named !== null && target === named && !isFocusNoteState(location.state);
+  useEffect(() => {
+    if (unmarked) void navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: FOCUS_NOTE_STATE });
+  }, [unmarked, location, navigate]);
 
   /** Runs `open` for the note at `path`; when it opens, the note's address is a new history entry. */
   const trackOpen = async (path: string, open: () => Promise<OpenResult>): Promise<OpenResult> => {
