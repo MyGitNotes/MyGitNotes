@@ -8,6 +8,7 @@ import { isLiveEditorUrl, liveEmbedUrl, type LiveStatus, liveStatusOf, type Live
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { discardDraft, keptReason } from './live-drafts.js';
+import { stillOpenText } from './useLiveEdit.js';
 import './live-editor.css';
 
 export interface LiveEditorFrameProps {
@@ -121,7 +122,7 @@ export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, o
   };
 
   const users = status?.users ?? checkout.activeEditors;
-  const stillOpen = (answer: LiveCheckInAnswer) => answer.reason === 'active' && answer.committed ? t('live.stillOpen', { count: answer.activeEditors ?? 1 }) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') });
+  const stillOpen = (answer: LiveCheckInAnswer) => answer.reason === 'active' && answer.committed ? stillOpenText(t, answer.activeEditors ?? 1) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') });
   return (
     <div className='live-editor-frame'>
       <div className='live-editor-bar' role='toolbar' aria-label={t('live.toolbar')}>

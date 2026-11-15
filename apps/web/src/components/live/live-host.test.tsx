@@ -305,15 +305,17 @@ describe('every way into a check-in ends on the read view', () => {
     answers({});
     const onRefetch = vi.fn();
     const onReadRemote = vi.fn(async () => checkedInNote);
-    render(noteEditor({ live: { editor, onRefetch, onCheckedIn: vi.fn() }, onReadRemote }));
+    const onCheckedIn = vi.fn();
+    render(noteEditor({ live: { editor, onRefetch, onCheckedIn }, onReadRemote }));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     });
     onRefetch.mockClear();
     await checkIn();
     expectReadView();
-    // The note's and the lists' live state are read again at once, not at the next 60 s refresh.
-    expect(onRefetch).toHaveBeenCalled();
+    // The head moved: the app hears of it at once and reads the lists after its workspace refresh, not at the next 60 s one.
+    expect(onCheckedIn).toHaveBeenCalled();
+    expect(onRefetch).not.toHaveBeenCalled();
   });
 
   it('from a pane whose 編輯 opened zoom', async () => {
@@ -364,7 +366,8 @@ describe('every way into a check-in ends on the read view', () => {
     fetchMock.mockResolvedValue(json({ checkout: view, outcome: 'created' }));
     const onRefetch = vi.fn();
     const onReadRemote = vi.fn(async () => checkedInNote);
-    render(noteEditor({ live: { editor, onRefetch, onCheckedIn: vi.fn() }, onReadRemote }));
+    const onCheckedIn = vi.fn();
+    render(noteEditor({ live: { editor, onRefetch, onCheckedIn }, onReadRemote }));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     });
@@ -373,7 +376,7 @@ describe('every way into a check-in ends on the read view', () => {
       statusMessage(true);
     });
     expectReadView();
-    expect(onRefetch).toHaveBeenCalled();
+    expect(onCheckedIn).toHaveBeenCalled();
   });
 });
 

@@ -2445,6 +2445,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.checkingIn': '正在簽回…還有人在筆記裡時要等幾秒鐘。',
   'live.checkedIn': '已簽回',
   'live.stillOpen': '已存入 Git；仍有 {count} 人在編輯，今晚會再簽回',
+  'live.stillOpenOne': '已存入 Git；仍有 1 人在編輯，今晚會再簽回',
   'live.notCheckedIn': '尚未簽回：{reason}。今晚會再試一次。',
   'live.reason.active': '仍有人在編輯',
   'live.reason.changed': '簽回時筆記又有變動',

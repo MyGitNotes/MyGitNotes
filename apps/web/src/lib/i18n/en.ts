@@ -2444,6 +2444,7 @@ export const en = {
   'live.checkingIn': 'Checking in… this takes a few seconds while others are still in the note.',
   'live.checkedIn': 'Checked in',
   'live.stillOpen': 'Saved to Git; {count} people are still editing, so it will be checked in again tonight.',
+  'live.stillOpenOne': 'Saved to Git; 1 person is still editing, so it will be checked in again tonight.',
   'live.notCheckedIn': 'Not checked in yet: {reason}. It will be tried again tonight.',
   'live.reason.active': 'someone is still editing',
   'live.reason.changed': 'the note changed during the check-in',

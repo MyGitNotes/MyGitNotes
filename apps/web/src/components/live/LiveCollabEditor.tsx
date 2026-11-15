@@ -13,6 +13,7 @@ import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
 import { discardDraft, keptReason } from './live-drafts.js';
+import { stillOpenText } from './useLiveEdit.js';
 import './live-editor.css';
 
 export interface LiveCollabEditorProps {
@@ -217,7 +218,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       const answer = await checkInLive(checkout.notebookId, checkout.path);
       if (answer.discarded) setPhase({ kind: 'discarded' });
       else {
-        setPhase(answer.released ? { kind: 'released' } : { kind: 'notice', tone: 'status', message: answer.reason === 'active' && answer.committed ? t('live.stillOpen', { count: answer.activeEditors ?? 1 }) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') }) });
+        setPhase(answer.released ? { kind: 'released' } : { kind: 'notice', tone: 'status', message: answer.reason === 'active' && answer.committed ? stillOpenText(t, answer.activeEditors ?? 1) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') }) });
         if (answer.committed || answer.released) onCheckedIn?.(answer);
       }
     } catch (error) {
