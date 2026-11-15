@@ -21,3 +21,9 @@ describe('the live editor bar on a phone', () => {
     expect(phoneRules('.live-editor-actions .ui-button.ui-button-small').join(';')).toMatch(/min-height:\s*44px/);
   });
 });
+
+describe('the collab editor', () => {
+  it('names a remote cursor in the app font, not y-codemirror’s serif', () => {
+    expect(css).toMatch(/\.live-collab \.cm-editor \.cm-ySelectionInfo\s*\{[^}]*font-family:\s*var\(--font-body\)/);
+  });
+});
