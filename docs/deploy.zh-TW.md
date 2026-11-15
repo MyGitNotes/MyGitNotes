@@ -422,7 +422,7 @@ process.once('SIGTERM', async () => { await live.shutdown(); server.close(); });
 
   瀏覽器用 HTTP/1.1 開 socket，不必改 ALPN。
 
-  還沒開啟筆記的 socket，伺服器最多保留 100 個，同一個位址最多 10 個，超過就回 503。從主機或私有網路上的 proxy（loopback、10/8、172.16/12、192.168/16、fc00::/7）連進來時，`X-Forwarded-For` 的最後一筆就是用戶端位址；Caddy 預設會設定。沒有這個標頭時，proxy 後面的所有用戶端都算同一個位址。
+  還沒開啟筆記的 socket，伺服器最多保留 100 個，同一個位址最多 10 個，超過就回 503。從主機或私有網路上的 proxy（loopback、10/8、172.16/12、192.168/16、fc00::/7）連進來時，`X-Forwarded-For` 的最後一筆就是用戶端位址；Caddy 預設會設定。沒有這個標頭時，proxy 後面的所有用戶端都算同一個位址。伺服器只信任直接在 app 前面的那一層 proxy，只讀最後一筆；去掉 `:port` 或 `[...]` 後不是 IP 位址的值一律不算，改用連線來源位址。如果那層 proxy 前面還有 CDN，最後一筆會是 CDN 節點的位址：要讓主機上的 proxy 把 CDN 的用戶端 IP 標頭轉成 `X-Forwarded-For`（nginx 用 `real_ip_header` 加上 CDN 網段的 `set_real_ip_from`，再設 `proxy_set_header X-Forwarded-For $remote_addr`）。不要讓其他容器或區網用戶端直接連 app：來自私有位址的標頭會被採信。
 - **記憶體**：每則開著的筆記約需它文字大小的幾倍；50 則 50 KiB 的筆記在數十 MiB 以內。每則筆記的即時文字上限是 5 MiB。
 
 用 `memoryLiveStore()` 取代 `redisLiveStore` 時，即時文字只存在程序裡，每次重啟都會不見，只適合單人試用。

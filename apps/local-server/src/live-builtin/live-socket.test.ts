@@ -564,6 +564,39 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(two.text()).toContain('two after sign-out');
     });
 
+    it('stores no update sent past socketMs that waited behind a slow one while its socket closed (BG-F002)', async () => {
+      const real = makeStore(), slow = gate();
+      let hold = false;
+      const server = await serverOver({
+        store: wrapStore(real, {
+          append: async (...given) => {
+            if (hold) await slow.opened;
+            return real.append(...given);
+          },
+        }),
+        limits: { socketMs: 60_000, beatMs: 60_000 },
+      });
+      const { time } = server.live;
+      const id = await server.checkout();
+      const one = await server.tab(1);
+      await one.saved();
+      hold = true;
+      // Sent in time, and held by the store.
+      one.type(`${A}in time\n`);
+      await pause(100);
+      // Sent past the socket's time: it waits behind the first in the server's queue for the socket.
+      time.advance(60_000);
+      one.type(`${A}in time\nlate\n`);
+      await pause(50);
+      // The socket closes before the first is stored, as when a tab answers the server's close at once.
+      one.offline();
+      await until('the socket closed', () => one.closes.length > 0);
+      await pause(50);
+      slow.open();
+      await pause(200);
+      expect(await stored(real, id)).toBe(`${A}in time\n`);
+    });
+
     it('tells the tabs of a note that was checked in that it is released, takes nothing more of that epoch, and opens the next only by its own name', async () => {
       const server = await serverOver({ store: makeStore() });
       const { store, time, files, liveNotes } = server.live;

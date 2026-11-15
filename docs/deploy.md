@@ -435,7 +435,7 @@ The server needs:
 
   Browsers open the socket over HTTP/1.1, so no ALPN change is needed.
 
-  The server keeps at most 100 sockets open that have no note on them yet, 10 of them from one address, and answers 503 past that. A proxy on the host or the private network (loopback, 10/8, 172.16/12, 192.168/16, fc00::/7) names the client in the last `X-Forwarded-For` entry; Caddy sets it by default. Without it, every client behind the proxy counts as one address.
+  The server keeps at most 100 sockets open that have no note on them yet, 10 of them from one address, and answers 503 past that. A proxy on the host or the private network (loopback, 10/8, 172.16/12, 192.168/16, fc00::/7) names the client in the last `X-Forwarded-For` entry; Caddy sets it by default. Without it, every client behind the proxy counts as one address. Only the proxy directly in front of the app is trusted, and only its last entry is read; an entry that is not an IP address (after dropping a `:port` or `[...]`) counts as none, and the peer is used. With a CDN in front of that proxy, the last entry would be the CDN's edge: have the host proxy turn the CDN's client-IP header into `X-Forwarded-For` (for nginx, `real_ip_header` with `set_real_ip_from` the CDN's ranges, then `proxy_set_header X-Forwarded-For $remote_addr`). Do not let other containers or LAN clients reach the app directly: from a private address the header is believed.
 - **Memory** for a few times the text of each open note: 50 open notes of 50 KiB stay within tens of MiB. Live text is limited to 5 MiB per note.
 
 `memoryLiveStore()` in place of `redisLiveStore` keeps live text in the process: it is lost on every restart, so use it only for a single-user trial.
