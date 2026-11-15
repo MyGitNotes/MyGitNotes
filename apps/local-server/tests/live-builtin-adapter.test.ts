@@ -74,6 +74,19 @@ afterEach(async () => {
   vi.unstubAllEnvs();
 });
 
+describe('the edition surface', () => {
+  it('exports the factory and both stores from the package, and the store kit and the test hooks from its testing entries', async () => {
+    const surface: Record<string, unknown> = await import('../src/edition.js');
+    expect(['builtinLiveNotes', 'memoryLiveStore', 'redisLiveStore'].map(name => typeof surface[name])).toEqual(['function', 'function', 'function']);
+    const { exports: entries } = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { exports: Record<string, string>; };
+    expect(entries['./testing/live-store-contract']).toBe('./src/live-builtin/store-contract.ts');
+    expect(entries['./testing/builtin-live-notes']).toBe('./src/live-builtin/testing.ts');
+    for (const [entry, target] of Object.entries(entries)) expect(fs.existsSync(new URL(`../${target}`, import.meta.url)), entry).toBe(true);
+    const kit: Record<string, unknown> = await import('../src/live-builtin/store-contract.js'), hooks: Record<string, unknown> = await import('../src/live-builtin/testing.js');
+    expect([typeof kit.liveStoreContract, typeof hooks.builtinLiveNotesWithHooks]).toEqual(['function', 'function']);
+  });
+});
+
 describe('the app over the built-in live adapter', () => {
   it('says builtin with discard and retarget, and creates, reads and tickets a pending note by its virtual path', async () => {
     await start();
