@@ -1428,6 +1428,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'editor.localChangesPreserved': '您的本機變更已妥善保留。',
   'editor.dismissNotice': '關閉通知',
   'editor.remoteUnreachable': '連不上伺服器；連線恢復後會重新讀取這則筆記。',
+  'editor.saveUnreachable': '連不上伺服器，這則筆記沒有儲存；連線恢復後請再儲存一次。',
   'editor.remoteConflict': '遠端變更與您的草稿衝突。請重新整理遠端版本以繼續編輯，您的草稿已妥善保留。',
   'editor.remoteNoteMovedOrDeleted': '這則筆記已在遠端被移動或刪除。您的草稿已妥善保留，待筆記復原後重新整理，或開啟其新位置。',
   'editor.remoteChangesMerged': '遠端變更已併入此草稿，儲存前請先檢查。',
