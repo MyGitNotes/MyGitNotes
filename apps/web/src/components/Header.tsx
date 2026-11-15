@@ -24,8 +24,8 @@ interface HeaderProps {
   selectedNotebookId: string;
   onSelectNotebook: (id: string) => void;
   notebookDisabled?: boolean;
-  onCreateNote: () => void;
-  createNoteDisabled?: boolean;
+  /** The phone navigation's New Note button; absent for a read-only notebook, which then shows none. */
+  onCreateNote?: () => void;
   onOpenCommands: () => void;
   navigationDisabled?: boolean;
   /** A phone's Notes page draws its own bars at the top; the header then keeps only the bottom navigation. */
@@ -56,7 +56,7 @@ export function HeaderUtilities({ activeTab, setActiveTab, navigationDisabled = 
   );
 }
 
-export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, createNoteDisabled, onOpenCommands, navigationDisabled = false, navOnly = false }: HeaderProps) {
+export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, onOpenCommands, navigationDisabled = false, navOnly = false }: HeaderProps) {
   const { t } = useTranslation();
   useEffect(() => {
     document.title = `${t(`nav.${activeTab}`)} · MyGitNotes`;
@@ -66,8 +66,8 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
     <nav aria-label='Main navigation' className='header-nav'>
       {items.map(({ id, label, icon: Icon, ...item }, index) => (
         <React.Fragment key={id}>
-          {index === 2 && (
-            <Button variant='primary' type='button' className='mobile-nav-create' aria-label={t('header.newNote')} disabled={createNoteDisabled || navigationDisabled} onClick={onCreateNote}>
+          {index === 2 && onCreateNote && (
+            <Button variant='primary' type='button' className='mobile-nav-create' aria-label={t('header.newNote')} disabled={navigationDisabled} onClick={onCreateNote}>
               <Plus aria-hidden='true' />
               <span>{t('header.newNote')}</span>
             </Button>

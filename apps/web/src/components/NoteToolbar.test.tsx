@@ -46,20 +46,31 @@ it('offers native outline creation in the New menu and hides creation for read-o
   expect(screen.queryByRole('button', { name: '新增選單' })).not.toBeInTheDocument();
 });
 
-it('keeps import/export reachable from the native menu on read-only notebooks without retired Save view', async () => {
+it('renders no New button or menu on a read-only notebook, even where it would offer legacy import or Manage templates', () => {
+  render(
+    <I18nProvider>
+      <NoteToolbar {...baseProps} readOnly onImportLegacy={vi.fn()} templates={[{ id: 'reading', title: '讀書筆記' }]} onNewFromTemplate={vi.fn()} onManageTemplates={vi.fn()} onNewOutline={vi.fn()} />
+    </I18nProvider>,
+  );
+  expect(screen.queryByRole('button', { name: '新增選單' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '新增筆記' })).toBeNull();
+  expect(screen.queryByText('保存目前檢視')).toBeNull();
+});
+
+it('keeps legacy import in a writable notebook’s New menu', async () => {
   const open = vi.fn();
   render(
     <I18nProvider>
-      <NoteToolbar {...baseProps} readOnly onImportLegacy={open} />
+      <NoteToolbar {...baseProps} onImportLegacy={open} />
     </I18nProvider>,
   );
+  expect(screen.getByRole('button', { name: '新增筆記' })).toBeInTheDocument();
   const menu = screen.getByRole('button', { name: '新增選單' });
   menu.focus();
   fireEvent.keyDown(menu, { key: 'Enter' });
   fireEvent.click(await screen.findByRole('menuitem', { name: '匯入舊書籤' }));
   expect(open).toHaveBeenCalledOnce();
   expect(screen.queryByText('保存目前檢視')).toBeNull();
-  expect(screen.queryByRole('button', { name: '新增筆記' })).toBeNull();
 });
 
 it('puts the note search in the toolbar and reports each keystroke as the query', () => {
@@ -150,16 +161,6 @@ it('lists the notebook’s templates in the New menu, then Manage templates', as
   await openNewMenu();
   fireEvent.click(screen.getByRole('menuitem', { name: '管理範本…' }));
   expect(manage).toHaveBeenCalledOnce();
-});
-
-it('keeps Manage templates, and nothing that creates, in a read-only notebook’s New menu', async () => {
-  render(
-    <I18nProvider>
-      <NoteToolbar {...baseProps} readOnly templates={[{ id: 'reading', title: '讀書筆記' }]} onNewFromTemplate={vi.fn()} onManageTemplates={vi.fn()} />
-    </I18nProvider>,
-  );
-  expect(await openNewMenu()).toEqual(['管理範本…']);
-  expect(screen.queryByRole('button', { name: '新增筆記' })).toBeNull();
 });
 
 it("offers the notebook's metadata sort field in the sort menu, labelled by its key", () => {

@@ -32,7 +32,7 @@ interface NoteToolbarProps {
   /** The notebook's note templates, each a New menu item that creates a note from it. */
   templates?: { id: string; title: string; }[];
   onNewFromTemplate?: (templateId: string) => void;
-  /** Opens the notebook's Manage templates dialog; a read-only notebook lists its templates there without actions. */
+  /** Opens the notebook's Manage templates dialog from the New menu, which a read-only notebook does not show. */
   onManageTemplates?: () => void;
   /** The note search, the `q` query parameter. */
   query: string;
@@ -41,6 +41,7 @@ interface NoteToolbarProps {
   onToggleFilters: () => void;
   /** The Focus switcher and Layout menu. */
   focusControls?: ReactNode;
+  /** Opens the legacy bookmark import from the New menu; a read-only notebook reaches it from the recovery notice instead, or from a writable notebook. */
   onImportLegacy?: () => void;
   /** Lets the "Search note text" command reach the field, opening it first on narrow screens. */
   searchRef?: Ref<NoteSearchHandle>;
@@ -152,32 +153,25 @@ export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, s
           ))}
         </div>
       )}
-      {/* New Note Button */}
-      {(!readOnly || onImportLegacy || onManageTemplates) && (
+      {/* New Note Button: a read-only notebook shows neither the button nor its menu, which holds only what creates or imports notes and manages templates. */}
+      {!readOnly && (
         <SelectButtonGroup>
-          {!readOnly && (
-            <SelectButtonPrimary aria-label={t('header.newNote')} onClick={onNewNote} className='ui-button-primary header-new-note'>
-              <Plus aria-hidden='true' />
-              <span>{t('header.newNote')}</span>
-            </SelectButtonPrimary>
-          )}
+          <SelectButtonPrimary aria-label={t('header.newNote')} onClick={onNewNote} className='ui-button-primary header-new-note'>
+            <Plus aria-hidden='true' />
+            <span>{t('header.newNote')}</span>
+          </SelectButtonPrimary>
           <DropdownMenu.Root>
             <SelectButtonTrigger className='ui-button-primary' aria-label={t('header.newMenu')} title={t('header.newMenu')}>
               <ChevronDown aria-hidden='true' />
             </SelectButtonTrigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('header.newMenu')}>
-                {!readOnly && (
-                  <DropdownMenu.Item onSelect={onNewNote}>
-                    <Plus size={14} aria-hidden='true' />
-                    {t('header.newNote')}
-                  </DropdownMenu.Item>
-                )}
-                {!readOnly && onNewFromTemplate && templates.map(template => (
-                  <DropdownMenu.Item
-                    key={template.id}
-                    onSelect={() => onNewFromTemplate(template.id)}
-                  >
+                <DropdownMenu.Item onSelect={onNewNote}>
+                  <Plus size={14} aria-hidden='true' />
+                  {t('header.newNote')}
+                </DropdownMenu.Item>
+                {onNewFromTemplate && templates.map(template => (
+                  <DropdownMenu.Item key={template.id} onSelect={() => onNewFromTemplate(template.id)}>
                     <FileText size={14} aria-hidden='true' />
                     {t('header.newFromTemplate', { template: template.title })}
                   </DropdownMenu.Item>
@@ -188,18 +182,16 @@ export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, s
                     {t('templates.manage')}
                   </DropdownMenu.Item>
                 )}
-                {!readOnly && onNewOutline && (
+                {onNewOutline && (
                   <DropdownMenu.Item onSelect={onNewOutline}>
                     <ListTree size={14} aria-hidden='true' />
                     {t('outline.new')}
                   </DropdownMenu.Item>
                 )}
-                {!readOnly && (
-                  <DropdownMenu.Item onSelect={onNewCompilation}>
-                    <GalleryHorizontalEnd size={14} aria-hidden='true' />
-                    {t('compilation.new')}
-                  </DropdownMenu.Item>
-                )}
+                <DropdownMenu.Item onSelect={onNewCompilation}>
+                  <GalleryHorizontalEnd size={14} aria-hidden='true' />
+                  {t('compilation.new')}
+                </DropdownMenu.Item>
                 {onImportLegacy && <DropdownMenu.Item onSelect={onImportLegacy}>{t('legacyOutline.title')}</DropdownMenu.Item>}
               </DropdownMenu.Content>
             </DropdownMenu.Portal>

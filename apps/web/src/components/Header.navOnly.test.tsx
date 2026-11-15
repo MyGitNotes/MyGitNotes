@@ -12,7 +12,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const header = (navOnly: boolean) => render(createElement(I18nProvider, null, createElement(Header, { workspaceTitle: 'Work', activeTab: 'notes', setActiveTab: vi.fn(), notebooks: [{ id: 'a', title: 'Alpha' }] as never, selectedNotebookId: 'a', onSelectNotebook: vi.fn(), onCreateNote: vi.fn(), onOpenCommands: vi.fn(), navOnly })));
+const header = (navOnly: boolean, readOnly = false) => render(createElement(I18nProvider, null, createElement(Header, { workspaceTitle: 'Work', activeTab: 'notes', setActiveTab: vi.fn(), notebooks: [{ id: 'a', title: 'Alpha' }] as never, selectedNotebookId: 'a', onSelectNotebook: vi.fn(), onCreateNote: readOnly ? undefined : vi.fn(), onOpenCommands: vi.fn(), navOnly })));
 
 it('keeps only the bottom navigation when a phone draws its own bars', () => {
   header(true);
@@ -22,6 +22,13 @@ it('keeps only the bottom navigation when a phone draws its own bars', () => {
   expect(screen.queryByRole('heading', { name: 'Work' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: 'Notebooks' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Quick open' })).toBeNull();
+});
+
+it('leaves the New Note button out of the bottom navigation when the notebook is read-only', () => {
+  header(true, true);
+  const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+  expect(screen.queryByRole('button', { name: 'New Note' })).toBeNull();
+  expect(nav.querySelectorAll('button')).toHaveLength(4);
 });
 
 it('shows the brand, the notebook switcher and the utilities as before', () => {
