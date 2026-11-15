@@ -2460,6 +2460,23 @@ export const en = {
   'live.newTitle': 'New live note',
   'live.newHint': 'The template files the note by these values at its first check-in.',
   'live.create': 'Create',
+  'live.unsaved': 'Not saved',
+  'live.offline': 'Offline',
+  'live.releasedOffline': 'This note was checked in; the changes you made offline were not saved.',
+  'live.copyMine': 'Copy my version',
+  'live.copied': 'Copied',
+  'live.download': 'Download',
+  'live.tooLargeLive': 'This note is over the live editor’s size limit.',
+  'live.busy': 'The live editor is busy; try again later.',
+  'live.socketRefused': 'The live editor refused the connection; close it and try again.',
+  'live.discard': 'Discard draft',
+  'live.discardHint': 'Drop this draft; nothing is saved to Git',
+  'live.discardConfirm': 'Discard this draft? Its text will not be saved to Git.',
+  'live.discarding': 'Discarding the draft…',
+  'live.discardedEmpty': 'The draft was empty and was discarded',
+  'live.notDiscarded': 'The draft was kept: {reason}.',
+  'live.fileTo': 'Files to: {path}',
+  'live.collisionNote': 'If the name is taken at filing, -2 is added.',
 };
 
 export type TranslationKey = keyof typeof en;

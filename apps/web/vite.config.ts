@@ -52,8 +52,9 @@ function recordWebPort(): Plugin {
   };
 }
 
+// `/live/socket` is the built-in live editor's WebSocket and `/live/open` its note links: both are the server's.
 export default defineConfig(async ({ command }) => {
   const apiTarget = `http://127.0.0.1:${command === 'serve' ? await resolveApiPort() : 4321}`;
 
-  return { define: { __PRODUCT_BUILD__: JSON.stringify(readBuildInfo()) }, plugins: [react(), recordWebPort(), pdfAssetsPlugin(), serviceWorkerPlugin()], server: { port: toPort(Number(webPort)) ?? 5173, allowedHosts: ['.ts.net'], proxy: { '/api': { target: apiTarget, changeOrigin: true, ws: true }, '/raw-assets': { target: apiTarget, changeOrigin: true }, '/r2-assets': { target: apiTarget, changeOrigin: true } } } };
+  return { define: { __PRODUCT_BUILD__: JSON.stringify(readBuildInfo()) }, plugins: [react(), recordWebPort(), pdfAssetsPlugin(), serviceWorkerPlugin()], server: { port: toPort(Number(webPort)) ?? 5173, allowedHosts: ['.ts.net'], proxy: { '/api': { target: apiTarget, changeOrigin: true, ws: true }, '/raw-assets': { target: apiTarget, changeOrigin: true }, '/r2-assets': { target: apiTarget, changeOrigin: true }, '^/live/': { target: apiTarget, changeOrigin: true, ws: true } } } };
 });

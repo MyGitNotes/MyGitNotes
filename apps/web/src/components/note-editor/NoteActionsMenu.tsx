@@ -1,5 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { AlertTriangle, Check, FolderInput, LayoutTemplate, ListTree, MoreHorizontal } from 'lucide-react';
+import { AlertTriangle, Check, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, PencilLine } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { NoteExportItems } from '../NoteExportMenu.js';
 
@@ -16,11 +16,16 @@ interface NoteActionsMenuProps {
   onMove?: () => void;
   /** Copies the note into its notebook's `.templates/` folder as a template named after it. */
   onSaveAsTemplate?: () => void;
+  /**
+   * A pending live note (未歸檔), read-only here yet movable where its live editor can retarget it: move is not locked,
+   * and `onRename` opens the dialog that names the file its check-in files it as.
+   */
+  liveDraft?: { onRename?: () => void; };
   className: string;
 }
 
 /** The note editor's "⋯" button: the actions that file the note or take it out of the editor — add it to an outline, move it, export or copy it. */
-export function NoteActionsMenu({ path, notebookId, title, content, copyState, onCopy, locked, onAddToOutline, onMove, onSaveAsTemplate, className }: NoteActionsMenuProps) {
+export function NoteActionsMenu({ path, notebookId, title, content, copyState, onCopy, locked, onAddToOutline, onMove, onSaveAsTemplate, liveDraft, className }: NoteActionsMenuProps) {
   const { t } = useTranslation();
   const label = t(copyState === 'copied' ? 'editor.noteCopied' : copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.moreActions');
   const Icon = copyState === 'copied' ? Check : copyState === 'error' ? AlertTriangle : MoreHorizontal;
@@ -38,9 +43,15 @@ export function NoteActionsMenu({ path, notebookId, title, content, copyState, o
             </DropdownMenu.Item>
           )}
           {onMove && (
-            <DropdownMenu.Item disabled={locked} onSelect={onMove}>
+            <DropdownMenu.Item disabled={locked && !liveDraft} onSelect={onMove}>
               <FolderInput size={14} aria-hidden='true' />
               <span>{t('files.moveNote')}</span>
+            </DropdownMenu.Item>
+          )}
+          {liveDraft?.onRename && (
+            <DropdownMenu.Item onSelect={liveDraft.onRename}>
+              <PencilLine size={14} aria-hidden='true' />
+              <span>{t('files.rename')}</span>
             </DropdownMenu.Item>
           )}
           {onSaveAsTemplate && (
@@ -49,7 +60,7 @@ export function NoteActionsMenu({ path, notebookId, title, content, copyState, o
               <span>{t('templates.saveAs')}</span>
             </DropdownMenu.Item>
           )}
-          {(onAddToOutline || onMove || onSaveAsTemplate) && <DropdownMenu.Separator />}
+          {(onAddToOutline || onMove || onSaveAsTemplate || liveDraft?.onRename) && <DropdownMenu.Separator />}
           <NoteExportItems path={path} notebookId={notebookId} title={title} content={content} onCopy={onCopy} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

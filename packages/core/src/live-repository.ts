@@ -249,9 +249,13 @@ export function editedLiveError(file: string): CheckedOutError {
   return new CheckedOutError([file], `${file} is being edited live (編輯中); read it again and write with the revision that read returns, or check it in with check_in_note first.`);
 }
 
-/** What reads say of a live link; its `editorUrl` is the framed editor's page, or the built-in editor's note page in the app. */
-export function liveNoteState(row: LiveCheckout): LiveNoteState {
-  return { since: row.since, activeEditors: row.activeEditors, ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl! };
+/**
+ * What reads say of a live link; its `editorUrl` is the framed editor's page, or the built-in editor's note page in the
+ * app. A pending note names where its check-in files it (`pathRule`) only where the adapter can move it (`retargets`),
+ * so an adapter without retarget answers as 0.19 did.
+ */
+export function liveNoteState(row: LiveCheckout, retargets = false): LiveNoteState {
+  return { since: row.since, activeEditors: row.activeEditors, ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}) };
 }
 
 /*

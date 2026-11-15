@@ -39,15 +39,36 @@ export interface LiveCheckInAnswer {
   revision: string;
 }
 
+/** What a repository's live editor can do beyond 0.19: discard a pending note (「捨棄草稿」), and move or rename one. */
+export type LiveEditorAbilities = LiveEditorInfo & { discard?: true; retarget?: true; };
+
 /** What a note opened in a repository with a live editor carries to its editor. */
 export interface LiveNoteEditing {
-  editor: LiveEditorInfo;
+  editor: LiveEditorAbilities;
   /** Reads the notes again: the live text changed, or the note was checked in. */
   onRefetch: () => void;
   /** A Focus pane, a graph card or a compilation's section: opens the note in zoom, where its editor is framed. */
   openZoom?: () => void;
   /** The note was checked in (`answer` when this page did it): the repository moved, and a pending note was filed at `answer.path`. */
   onCheckedIn?: (answer?: LiveCheckInAnswer) => void;
+  /** A pending note was discarded, by 「捨棄草稿」 or by a check-in that found it empty: it is gone, and the view leaves it. */
+  onDiscarded?: () => void;
+}
+
+/** A ticket to open a live note's document over the built-in editor's socket: single use, valid 60 s. */
+export interface LiveSocketTicket {
+  ticket: string;
+  /** The Yjs document it opens: `<link id>.<epoch>`. */
+  document: string;
+}
+
+/** What 「捨棄草稿」 answers: the draft is gone, or why it was kept. A typed draft without `confirm` is refused 409 `has-edits`. */
+export type LiveDiscardAnswer = { discarded: true; } | { discarded: false; reason: 'leased' | 'released' | 'active' | 'changed' | 'not-synced'; activeEditors?: number; };
+
+/** What a move or rename of a pending note answers: its row and where its check-in now files it. */
+export interface LiveRetargetAnswer {
+  checkout: LiveCheckoutView & { pathRule: string; };
+  destination: { folder: string; name: string; };
 }
 
 const post = async <T>(url: string, body: unknown, fallback: string): Promise<T> => {
@@ -64,6 +85,21 @@ export const createLiveNote = (params: { notebookId: string; folder: string; tit
 
 /** 「立即簽回」: commits the live text and closes the live note, or says why it stayed open. */
 export const checkInLive = (notebookId: string, path: string) => post<LiveCheckInAnswer>('/api/live/checkin', { notebookId, path }, 'Failed to check the note in');
+
+/** A ticket for the built-in editor's socket, for a note that is live already; 409 `not-live` once it was checked in. */
+export const socketTicket = (notebookId: string, path: string) => post<LiveSocketTicket>('/api/live/socket-ticket', { notebookId, path }, 'Failed to open the live editor');
+
+/** 「捨棄草稿」 of a pending note, by its virtual path; `confirm` drops what someone typed in it. Nothing is committed. */
+export const discardLive = (notebookId: string, path: string, confirm = false) => post<LiveDiscardAnswer>('/api/live/discard', { notebookId, path, ...(confirm ? { confirm: true } : {}) }, 'Failed to discard the draft');
+
+/** Moves (`folder`, relative to the notebook root, '' for the root) or renames (`name`) where a pending note is filed. */
+export const retargetLive = (notebookId: string, path: string, change: { folder?: string; name?: string; }) => post<LiveRetargetAnswer>('/api/live/retarget', { notebookId, path, ...change }, 'Failed to move the draft');
+
+/** Whether a discard was refused because someone typed in the draft, which the person confirms first. */
+export const hasLiveEdits = (error: unknown): boolean => error instanceof ApiError && error.code === 'has-edits';
+
+/** Whether the live editor answered that a note is no longer live: checked in, or never opened. */
+export const isNotLive = (error: unknown): boolean => error instanceof ApiError && error.code === 'not-live';
 
 /** Whether the live editor refused a note it cannot take, which then opens in the direct editor. */
 export const keepsDirectEditor = (error: unknown): boolean => error instanceof ApiError && (error.code === 'too-large' || error.code === 'not-live');

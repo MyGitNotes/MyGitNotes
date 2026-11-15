@@ -43,6 +43,8 @@ interface NoteEditorToolbarProps {
   onRename?: (title: string) => Promise<void> | void;
   /** The note is a template file: the note row says so. */
   template?: boolean;
+  /** A pending live note whose filing can be changed: its menu offers move and rename while the note is read-only. */
+  liveDraft?: { onRename?: () => void; };
   /** Copies the note into its notebook's templates; absent for a template and a read-only note. */
   onSaveAsTemplate?: () => void;
   statuses: string[];
@@ -76,7 +78,7 @@ function togglePanel(docPanel: NoteDocumentPanelState, isMarkdown: boolean) {
 }
 
 /** The editor's actions: refresh and save, the view (mode, line numbers, formatting toolbar), the "⋯" menu, and in zoom the panels. */
-function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, phoneEditing }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onClose' | 'onRename' | 'actionsSlot' | 'template'>) {
+function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, liveDraft, phoneEditing }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onClose' | 'onRename' | 'actionsSlot' | 'template'>) {
   const { t } = useTranslation();
   const zoom = frame === 'zoom';
   return (
@@ -111,7 +113,7 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
           </button>
         )}
         {isMarkdown && <TypstPreviewToggle note={note} className='toolbar-icon-button editor-typst-preview-action' />}
-        <NoteActionsMenu className='ui-icon-button toolbar-icon-button editor-more-action' path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} locked={session.locked} onAddToOutline={onAddToOutline} onMove={onMove} onSaveAsTemplate={onSaveAsTemplate} />
+        <NoteActionsMenu className='ui-icon-button toolbar-icon-button editor-more-action' path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} locked={session.locked} onAddToOutline={onAddToOutline} onMove={onMove} onSaveAsTemplate={onSaveAsTemplate} liveDraft={liveDraft} />
       </div>
       {/* A Focus pane leaves the document panel to its rail and the assistant to the window's own toggle, so several panes do not repeat them. */}
       {zoom && (

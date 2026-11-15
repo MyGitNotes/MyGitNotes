@@ -509,7 +509,7 @@ export abstract class RemoteSource {
     if (!nb || !isNoteFile(file)) throw new SourceError('Path is not a configured note.', 403);
     const raw = link ? (fresh ? await this.readLiveLink(link) : await this.liveTextOf(link)).content : (await this.readFile(file)).toString('utf8');
     const { metadata, content, title, lineNumberOffset, extra } = parseNoteFile(raw, file, nb.root);
-    return { id: typeof metadata.id === 'string' ? metadata.id : file, path: file, notebookId: nb.id, title, metadata, content, lineNumberOffset, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), revision: (await this.getSnapshot()).sha, ...extra, ...(link ? { live: liveNoteState(link.checkout) } : {}) };
+    return { id: typeof metadata.id === 'string' ? metadata.id : file, path: file, notebookId: nb.id, title, metadata, content, lineNumberOffset, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), revision: (await this.getSnapshot()).sha, ...extra, ...(link ? { live: liveNoteState(link.checkout, this.live!.retargets) } : {}) };
   }
 
   /** Ordinary notes by default; `allKinds` includes outlines and compilations. */
@@ -599,7 +599,7 @@ export abstract class RemoteSource {
     const item = (link: LiveLink): NoteListItem => {
       const raw = this.liveLoaded.get(link.path)!.content;
       const { metadata, title, extra } = parseNoteFile(raw, link.path, nb.root);
-      return { id: typeof metadata.id === 'string' ? metadata.id : link.path, path: link.path, notebookId: nb.id, title, metadata, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), ...extra, revision, live: liveNoteState(link.checkout) };
+      return { id: typeof metadata.id === 'string' ? metadata.id : link.path, path: link.path, notebookId: nb.id, title, metadata, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), ...extra, revision, live: liveNoteState(link.checkout, this.live!.retargets) };
     };
     const byPath = new Map(shown.map(link => [link.path, link]));
     return [...items.map(entry => byPath.has(entry.path) ? item(byPath.get(entry.path)!) : entry), ...shown.filter(link => link.checkout.path === null).map(item)];
@@ -853,7 +853,7 @@ export abstract class RemoteSource {
     const operation = existing || link ? 'write' : 'create';
     const receipt = base ? await this.writeLive(file, raw, base, agent) : await this.commitChanges([{ path: file, content: raw }], expected, operation, 'notes', agent ? agentEditMessage(`docs(notes): ${operation} ${path.posix.basename(file)}`) : undefined, snapshot);
     const { extra, ...parsed } = parseNoteFile(raw, file, nb.root);
-    return { ...receipt, note: { id: typeof parsed.metadata.id === 'string' ? parsed.metadata.id : file, path: file, notebookId: nb.id, ...parsed, ...extra, tags: Array.isArray(parsed.metadata.tags) ? parsed.metadata.tags.map(String) : [], status: typeof parsed.metadata.status === 'string' ? parsed.metadata.status : undefined, size: Buffer.byteLength(raw), revision: receipt.revision, ...(link ? { live: liveNoteState(link.checkout) } : {}) } };
+    return { ...receipt, note: { id: typeof parsed.metadata.id === 'string' ? parsed.metadata.id : file, path: file, notebookId: nb.id, ...parsed, ...extra, tags: Array.isArray(parsed.metadata.tags) ? parsed.metadata.tags.map(String) : [], status: typeof parsed.metadata.status === 'string' ? parsed.metadata.status : undefined, size: Buffer.byteLength(raw), revision: receipt.revision, ...(link ? { live: liveNoteState(link.checkout, this.live!.retargets) } : {}) } };
   }
 
   /**

@@ -4,6 +4,7 @@ import { CASE_COLLISION_ERROR } from '@mygitnotes/core/case-collision';
 import type { QueryClient } from '@tanstack/react-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { readNote } from '../lib/api.js';
+import { retargetLive } from '../lib/live-api.js';
 import { type FileResult, mutateFile } from '../lib/files-api.js';
 import { beginNoteMove } from '../lib/moving-notes.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
@@ -36,10 +37,12 @@ interface Params {
   relocateCurrentFocus?: (notebookId: string, move: (path: string) => string) => void;
   setActionError: WorkspaceState['setActionError'];
   t: I18nContextValue['t'];
+  /** Whether the live editor of a notebook's repository can move and rename a pending note (未歸檔); none by default. */
+  retargets?: (notebookId: string) => boolean;
 }
 
 /** The note a move or rename names: a list row is enough, since the note itself is read where it lies. */
-export type MovedNote = Pick<NoteItem, 'notebookId' | 'path' | 'title'>;
+export type MovedNote = Pick<NoteItem, 'notebookId' | 'path' | 'title'> & { live?: NoteItem['live']; };
 
 /** What the Move or Rename dialog acts on. A compilation keeps its name in its own file, so it applies the new name itself. */
 export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rename'; note: MovedNote; applyTitle?: (title: string) => void; };
@@ -47,11 +50,19 @@ export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rena
 const isCompilation = (path: string) => noteSuffix(path) === '.compilation.yml';
 
 /** The Move and Rename actions of an open note, outline or compilation, and the dialogs that choose the folder or name. */
-export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote, focus, queryClient, queryScope, flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus, setActionError, t }: Params) {
+export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote, focus, queryClient, queryScope, flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus, setActionError, t, retargets }: Params) {
   const [request, setRequest] = useState<NoteMoveRequest | null>(null);
   const [busy, setBusy] = useState(false);
-  // A note being edited live (編輯中) or still pending is neither moved nor renamed until it is checked in.
-  const movable = (note: MovedNote) => canWriteNotebook(note.notebookId) && !('live' in note && note.live);
+  // A note being edited live (編輯中) is neither moved nor renamed until it is checked in; a pending one (未歸檔) is, where
+  // its live editor can retarget it: that sets where its check-in files it, and moves no file.
+  const pendingDraft = (note: MovedNote) => Boolean(note.live?.pending && retargets?.(note.notebookId));
+  const movable = (note: MovedNote) => canWriteNotebook(note.notebookId) && (!note.live || pendingDraft(note));
+
+  /** Moves (`folder`) or renames (`name`) where a pending note is filed; nothing is committed, and the lists read it again. */
+  const retarget = async (note: MovedNote, change: { folder?: string; name?: string; }) => {
+    await retargetLive(note.notebookId, note.path, change);
+    await onFilesChanged({ revision: '', selectedPath: note.path, pathMap: {}, deletedPaths: [] }, { background: true });
+  };
   const moveNote = (note: MovedNote) => movable(note) ? () => setRequest({ mode: 'move', note }) : undefined;
   const renameNote = (note: MovedNote, applyTitle?: (title: string) => void) => movable(note) ? () => setRequest({ mode: 'rename', note, applyTitle }) : undefined;
 
@@ -148,12 +159,14 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
   /** Puts `note` in `folder` (relative to its notebook root, null for the root), as a dropped note asks. */
   const moveTo = (note: MovedNote, folder: string | null) =>
     perform(async () => {
+      if (pendingDraft(note) && canWriteNotebook(note.notebookId)) return retarget(note, { folder: folder ?? '' });
       const destination = canWriteNotebook(note.notebookId) ? target(note, folder) : undefined;
       if (destination) await relocate(note, destination);
     });
 
   const confirmMove = (folder: string | null) =>
     run(async ({ note }) => {
+      if (pendingDraft(note)) return retarget(note, { folder: folder ?? '' });
       const destination = target(note, folder);
       if (destination) await relocate(note, destination);
     });
@@ -161,6 +174,8 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
   const rename = async (note: MovedNote, name: string, applyTitle?: (title: string) => void) => {
     const title = name.trim();
     if (!noteStem(title)) throw new Error(t('files.renameInvalid'));
+    // A pending note's rename fixes the file name its check-in files it as; its title is the live text's.
+    if (pendingDraft(note)) return retarget(note, { name: title });
     applyTitle?.(title);
     await relocate(note, renamedPath(note.path, title), title);
   };

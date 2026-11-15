@@ -111,11 +111,17 @@ export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; li
     latest.current.live?.onRefetch();
     latest.current.live?.onCheckedIn?.(answer);
   };
+  /** The pending note was discarded: it is gone, so the editor closes and the app leaves it. */
+  const discarded = () => {
+    setState({});
+    latest.current.live?.onRefetch();
+    latest.current.live?.onDiscarded?.();
+  };
   const conflict = note.live?.conflict;
   const conflictShown = active && conflict && !state.checkout;
   const notices = <>{state.busy && <LoadingStatus className='editor-notice'>{t('live.checkingOut')}</LoadingStatus>}{state.error && <EditorNotice tone='error'>{state.error}</EditorNotice>}{state.direct && <EditorNotice>{state.direct}</EditorNotice>}{state.checkedIn && <EditorNotice tone='success' actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{t('live.checkedIn')}</EditorNotice>}{conflictShown && <EditorNotice>{t('live.conflict', { commit: conflict.overwritten.slice(0, 7) })}</EditorNotice>}</>;
   const hasNotices = Boolean(state.busy || state.error || state.direct || state.checkedIn || conflictShown);
   // While the frame shows, its bar counts the editors; once the note is checked in it is no longer 編輯中.
   const badgeShown = !(zoom && state.checkout) && !state.checkedIn;
-  return { active, checkout: zoom ? state.checkout : undefined, edit, close, checkedIn, notices, hasNotices, badgeShown, refetch: () => latest.current.refetch() };
+  return { active, checkout: zoom ? state.checkout : undefined, edit, close, checkedIn, discarded, notices, hasNotices, badgeShown, refetch: () => latest.current.refetch() };
 }

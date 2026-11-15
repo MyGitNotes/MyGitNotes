@@ -12,6 +12,7 @@ import type { MarkdownEditorMode } from '../MarkdownEditor.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { NoteStatusSelect } from '../NoteStatusSelect.js';
 import { LiveBadge } from '../live/LiveBadge.js';
+import { useLiveLock } from '../live/live-drafts.js';
 import { PhoneSheet } from '../PhoneSheet.js';
 import { PHONE_TOOLS } from './phone-tools.js';
 import { NoteRowTags } from './NoteRowTags.js';
@@ -160,6 +161,10 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
   const { t } = useTranslation();
   const panel = usePanelContext();
   const { changesCount, deleteNote, back } = usePhoneNotes();
+  // A pending live note opens read-only, yet deleting discards it where its live editor can.
+  const liveLock = useLiveLock();
+  const discardable = Boolean(note.live?.pending) && !liveLock(note, 'delete');
+  const draftMovable = Boolean(note.live?.pending) && !liveLock(note, 'move');
   // Deleting asks for a second tap, which lapses if it is not given.
   const [deleteArmed, setDeleteArmed] = useState(false);
   useEffect(() => {
@@ -216,13 +221,13 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         {toggleFormatToolbar && <SheetItem icon={<Type aria-hidden='true' />} label={t('editor.formatToolbar')} pressed={showFormatToolbar} onClick={toggleFormatToolbar} />}
         <div className='phone-sheet-quick'>{quickActions}</div>
         {onRename && !readOnly && <RenameRow title={session.title} onRename={onRename} onDone={onClose} />}
-        {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked} onClick={act(onMove)} />}
+        {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked && !draftMovable} onClick={act(onMove)} />}
         {onAddToOutline && <SheetItem icon={<ListTree aria-hidden='true' />} label={t('outline.add')} disabled={session.locked} onClick={act(onAddToOutline)} />}
         {onSaveAsTemplate && <SheetItem icon={<LayoutTemplate aria-hidden='true' />} label={t('templates.saveAs')} onClick={act(onSaveAsTemplate)} />}
         <SheetItem icon={<Copy aria-hidden='true' />} label={t(session.copyState === 'copied' ? 'editor.noteCopied' : session.copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.exportCopy')} onClick={() => void session.copyNote()} />
         <SheetItem icon={<FileText aria-hidden='true' />} label={t('editor.exportMarkdown')} onClick={act(() => downloadTextFile(filename, session.content, 'text/markdown;charset=utf-8'))} />
         <SheetItem icon={<Printer aria-hidden='true' />} label={t('editor.exportPdf')} onClick={act(() => void printNoteAsPdf(session.title || filename, session.content, note.path, t('mermaid.error'), note.notebookId, t))} />
-        {deleteNote && !readOnly && (
+        {deleteNote && (!readOnly || discardable) && (
           <SheetItem
             icon={<Trash2 aria-hidden='true' />}
             label={t(deleteArmed ? 'notes.confirmDelete' : 'notes.delete')}

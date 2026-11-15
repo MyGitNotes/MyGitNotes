@@ -8,6 +8,7 @@ import type { I18nContextValue } from '../lib/i18n/index.js';
 import type { useTagOperations } from '../lib/use-tag-operations.js';
 import type { WorkspaceState } from './workspace-state.js';
 import { baseName } from '../lib/paths.js';
+import { retargetLive } from '../lib/live-api.js';
 import type { FileChangeScope } from '../lib/file-change-scope.js';
 
 interface Params {
@@ -85,12 +86,20 @@ export function useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNote
     setBulkBusy(true);
     let changed: FileResult | undefined;
     let operationError: Error | undefined;
+    // A pending live note (未歸檔) has no file yet: its move sets where its check-in files it, and the rest move as files.
+    const drafts = selectedNotes.filter(note => note.live?.pending);
+    const moved = selectedNotes.filter(note => !note.live?.pending);
+    let retargeted = false;
     try {
+      for (const draft of drafts) {
+        await retargetLive(notebookId, draft.path, { folder: destinationFolder ?? '' });
+        retargeted = true;
+      }
       const root = notebook.root.replace(/\/$/, '');
       const targetDir = destinationFolder ? `${root}/${destinationFolder}` : root;
-      await beforeFileChange({ notebookId, paths: selectedNotes.flatMap(note => [note.path, `${targetDir}/${baseName(note.path)}`]) });
-      let currentRevision = (await fetchFiles(notebookId)).revision;
-      for (const note of selectedNotes) {
+      if (moved.length) await beforeFileChange({ notebookId, paths: moved.flatMap(note => [note.path, `${targetDir}/${baseName(note.path)}`]) });
+      let currentRevision = moved.length ? (await fetchFiles(notebookId)).revision : '';
+      for (const note of moved) {
         const destination = `${targetDir}/${baseName(note.path)}`;
         if (destination === note.path) continue;
         const result = await mutateFile({ kind: 'move', notebookId, path: note.path, destination }, currentRevision);
@@ -100,6 +109,7 @@ export function useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNote
     } catch (error) {
       operationError = error as Error;
     }
+    if (retargeted) invalidateNotes();
     try {
       if (changed) await onFilesChanged(changed);
     } catch (error) {
