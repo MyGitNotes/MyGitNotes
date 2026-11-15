@@ -211,6 +211,8 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 .editor-notice-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: 8px; }
 .editor-notice-actions button { white-space: nowrap; }
 .editor-notice-error { background: var(--color-danger-soft); color: var(--color-danger); border-color: var(--color-danger); }
+.editor-notice-success { background: var(--color-success-soft); border-color: var(--color-success); }
+.editor-notice-success .editor-notice-message > svg { color: var(--color-success); }
 .note-dialog { position: relative; }
 .note-editor, .note-editor-slot { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .note-editor-host { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }

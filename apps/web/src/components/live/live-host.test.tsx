@@ -13,6 +13,8 @@ import { BulkActionsToolbar } from '../BulkActionsToolbar.js';
 import { moveAsset, responseError, restoreNote } from '../../lib/api.js';
 import { mutateFile } from '../../lib/files-api.js';
 import { LiveNewNoteDialog } from './LiveNewNoteDialog.js';
+import { forgetCheckedIn } from '../../lib/live-api.js';
+import { noteRefKey } from '@mygitnotes/core/note-query';
 
 vi.mock('../MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; readOnly: boolean; }>(({ content, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, readOnly, onChange: () => {} })) }));
 
@@ -29,6 +31,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  // A check-in a test left unread would say 「已簽回」 in the next test's editor of the same note.
+  forgetCheckedIn(noteRefKey(note));
   vi.unstubAllGlobals();
   document.documentElement.lang = '';
 });
@@ -239,5 +243,141 @@ describe('file operations refused for a checked-out note', () => {
     await expect(mutateFile({ type: 'delete', path: 'notes/life/a.md' } as never)).rejects.toMatchObject({ status: 409, code: 'checked-out', message: '編輯中，請先簽回：notes/life/a.md' });
     await expect(moveAsset({ path: 'notes/life/a.png', directory: 'notes/life/img' })).rejects.toMatchObject({ status: 409, message: '編輯中，請先簽回：notes/life/a.md' });
     await expect(restoreNote({ path: 'notes/life/a.md', notebookId: 'notes~life' })).rejects.toMatchObject({ status: 409, message: '編輯中，請先簽回：notes/life/a.md' });
+  });
+});
+
+describe('every way into a check-in ends on the read view', () => {
+  const checkedInNote = { ...note, content: '# Alpha\n\nChecked-in text.\n' };
+  const statusMessage = (released = false, users = 1) => window.dispatchEvent(new MessageEvent('message', { data: { type: 'live-status', users, saved: true, connected: true, released }, origin: editor.origin, source: document.querySelector('iframe')!.contentWindow }));
+  const answers = (answer: Record<string, unknown>) => fetchMock.mockImplementation(async (url: string) => url === '/api/live/checkout' ? json({ checkout: view, outcome: 'created' }) : json({ id: 'abc', path: note.path, committed: true, commit: 'd'.repeat(40), released: true, revision: 'd'.repeat(40), ...answer }));
+  const checkIn = async () => {
+    act(() => statusMessage());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Check in now' }));
+    });
+  };
+  /** No frame, the checked-in text read again, 編輯 offered, and 「已簽回」 as a success notice. */
+  const expectReadView = () => {
+    expect(document.querySelector('iframe')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Check in now' })).toBeNull();
+    expect(screen.getByLabelText('Note content')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Note content')).toHaveValue(checkedInNote.content);
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    const notice = screen.getByText('Checked in').closest('.editor-notice');
+    expect(notice).toHaveClass('editor-notice-success');
+  };
+
+  it('in zoom, without the editor remounting', async () => {
+    answers({});
+    const onRefetch = vi.fn();
+    const onReadRemote = vi.fn(async () => checkedInNote);
+    render(noteEditor({ live: { editor, onRefetch, onCheckedIn: vi.fn() }, onReadRemote }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    onRefetch.mockClear();
+    await checkIn();
+    expectReadView();
+    // The note's and the lists' live state are read again at once, not at the next 60 s refresh.
+    expect(onRefetch).toHaveBeenCalled();
+  });
+
+  it('from a pane whose 編輯 opened zoom', async () => {
+    answers({});
+    const onReadRemote = vi.fn(async () => checkedInNote);
+    const live = { editor, onRefetch: vi.fn(), onCheckedIn: vi.fn(), openZoom: vi.fn() };
+    const view = render(noteEditor({ frame: 'pane', onClose: undefined, live, onReadRemote }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(live.openZoom).toHaveBeenCalled();
+    // The pane lends its editor to zoom: the same editor, now framed as zoom, checks the note out on arrival.
+    await act(async () => {
+      view.rerender(noteEditor({ frame: 'zoom', live, onReadRemote }));
+    });
+    expect(document.querySelector('iframe')).not.toBeNull();
+    await checkIn();
+    expectReadView();
+  });
+
+  it('on a phone, with the header badge gone once the note is checked in', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+    answers({});
+    const onReadRemote = vi.fn(async () => checkedInNote);
+    const liveNote = { ...note, live: { since: view.since, activeEditors: 1, editorUrl: view.editorUrl } };
+    render(noteEditor({ note: liveNote, live: { editor, onRefetch: vi.fn(), onCheckedIn: vi.fn() }, onReadRemote }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    await checkIn();
+    expectReadView();
+    expect(screen.queryByText('Editing · 1')).toBeNull();
+  });
+
+  it('after a check-in that changed nothing', async () => {
+    answers({ committed: false, commit: undefined, revision: 'c'.repeat(40) });
+    const onRefetch = vi.fn();
+    const onReadRemote = vi.fn(async () => checkedInNote);
+    render(noteEditor({ live: { editor, onRefetch, onCheckedIn: vi.fn() }, onReadRemote }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    onRefetch.mockClear();
+    await checkIn();
+    expectReadView();
+    expect(onRefetch).toHaveBeenCalled();
+  });
+
+  it('when someone else checked the note in', async () => {
+    fetchMock.mockResolvedValue(json({ checkout: view, outcome: 'created' }));
+    const onRefetch = vi.fn();
+    const onReadRemote = vi.fn(async () => checkedInNote);
+    render(noteEditor({ live: { editor, onRefetch, onCheckedIn: vi.fn() }, onReadRemote }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    onRefetch.mockClear();
+    await act(async () => {
+      statusMessage(true);
+    });
+    expectReadView();
+    expect(onRefetch).toHaveBeenCalled();
+  });
+});
+
+describe('the phone header while the live editor is framed', () => {
+  it('leaves the editor count to the live bar, so only one count shows', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+    fetchMock.mockResolvedValue(json({ checkout: view, outcome: 'created' }));
+    const liveNote = { ...note, live: { since: view.since, activeEditors: 1, editorUrl: view.editorUrl } };
+    render(noteEditor({ note: liveNote, live: { editor, onRefetch: vi.fn() } }));
+    expect(screen.getByText('Editing · 1')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'live-status', users: 2, saved: true, connected: true, released: false }, origin: editor.origin, source: document.querySelector('iframe')!.contentWindow }));
+    });
+    expect(screen.getByText('2 editing')).toBeInTheDocument();
+    expect(screen.queryByText('Editing · 1')).toBeNull();
+  });
+});
+
+describe('the live New dialog field with a default', () => {
+  it('selects the default when it takes the focus, so typing replaces it', () => {
+    HTMLDialogElement.prototype.showModal = vi.fn(function(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    });
+    try {
+      render(createElement(LiveNewNoteDialog, { template: 'Meeting', prompts: [{ name: 'kind', default: 'Other', description: 'Meeting kind' }], onConfirm: vi.fn(), onCancel: vi.fn() }));
+      const field = screen.getByRole<HTMLInputElement>('textbox', { name: 'Meeting kind' });
+      expect(field).toHaveFocus();
+      expect([field.selectionStart, field.selectionEnd]).toEqual([0, 'Other'.length]);
+    } finally {
+      cleanup();
+      Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal');
+      Reflect.deleteProperty(HTMLDialogElement.prototype, 'close');
+    }
   });
 });

@@ -44,10 +44,11 @@ export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; li
   const zoom = frame === 'zoom';
   const key = noteRefKey(note);
   const [state, setState] = useState<LiveEditState>(() => zoom && live && recentlyCheckedIn(key) ? { checkedIn: true } : {});
-  // The mark is said once: a later visit to the note reads it as usual.
+  // An editor mounted after this page's check-in says it once: a later visit to the note reads it as usual.
+  const [remounted] = useState(() => Boolean(state.checkedIn));
   useEffect(() => {
-    if (state.checkedIn) forgetCheckedIn(key);
-  }, [state.checkedIn, key]);
+    if (remounted) forgetCheckedIn(key);
+  }, [remounted, key]);
   const latest = useRef({ refetch, live, notebookId: note.notebookId, path: note.path });
   useEffect(() => {
     latest.current = { refetch, live, notebookId: note.notebookId, path: note.path };
@@ -55,6 +56,7 @@ export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; li
 
   const checkOut = useCallback(async () => {
     const { notebookId, path } = latest.current;
+    forgetCheckedIn(noteRefKey({ notebookId, path }));
     setState({ busy: true });
     try {
       const { checkout } = await checkOutLive(notebookId, path);
@@ -89,16 +91,31 @@ export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; li
     requestLiveEdit(key);
     live?.openZoom?.();
   };
-  const close = () => setState({});
-  /** The frame checked the note in: the mark outlives this editor, which the workspace refresh replaces, then the app hears of it. */
+  // 「已簽回」 is said until it is closed or the note is edited again.
+  const close = () => {
+    if (state.checkedIn) forgetCheckedIn(key);
+    setState({});
+  };
+  /**
+   * The frame checked the note in, or heard that it was. A released note leaves the frame for the read view here, whether
+   * or not anything remounts this editor (zoom lent by a pane, the phone, a check-in that changed nothing); the mark says
+   * 「已簽回」 again in the editor a workspace refresh mounts instead. The note's and the lists' live state are read again
+   * at once, then the app hears of it.
+   */
   const checkedIn = (answer?: LiveCheckInAnswer) => {
     const { notebookId } = latest.current;
-    if (!answer || answer.released) markCheckedIn([key, ...(answer?.path ? [noteRefKey({ notebookId, path: answer.path })] : [])]);
+    if (!answer || answer.released) {
+      markCheckedIn([key, ...(answer?.path ? [noteRefKey({ notebookId, path: answer.path })] : [])]);
+      setState({ checkedIn: true });
+    }
+    latest.current.live?.onRefetch();
     latest.current.live?.onCheckedIn?.(answer);
   };
   const conflict = note.live?.conflict;
   const conflictShown = active && conflict && !state.checkout;
-  const notices = <>{state.busy && <LoadingStatus className='editor-notice'>{t('live.checkingOut')}</LoadingStatus>}{state.error && <EditorNotice tone='error'>{state.error}</EditorNotice>}{state.direct && <EditorNotice>{state.direct}</EditorNotice>}{state.checkedIn && <EditorNotice actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{t('live.checkedIn')}</EditorNotice>}{conflictShown && <EditorNotice>{t('live.conflict', { commit: conflict.overwritten.slice(0, 7) })}</EditorNotice>}</>;
+  const notices = <>{state.busy && <LoadingStatus className='editor-notice'>{t('live.checkingOut')}</LoadingStatus>}{state.error && <EditorNotice tone='error'>{state.error}</EditorNotice>}{state.direct && <EditorNotice>{state.direct}</EditorNotice>}{state.checkedIn && <EditorNotice tone='success' actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{t('live.checkedIn')}</EditorNotice>}{conflictShown && <EditorNotice>{t('live.conflict', { commit: conflict.overwritten.slice(0, 7) })}</EditorNotice>}</>;
   const hasNotices = Boolean(state.busy || state.error || state.direct || state.checkedIn || conflictShown);
-  return { active, checkout: zoom ? state.checkout : undefined, edit, close, checkedIn, notices, hasNotices, refetch: () => latest.current.refetch() };
+  // While the frame shows, its bar counts the editors; once the note is checked in it is no longer 編輯中.
+  const badgeShown = !(zoom && state.checkout) && !state.checkedIn;
+  return { active, checkout: zoom ? state.checkout : undefined, edit, close, checkedIn, notices, hasNotices, badgeShown, refetch: () => latest.current.refetch() };
 }

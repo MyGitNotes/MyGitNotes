@@ -10,6 +10,8 @@
 .live-editor-iframe { display: block; flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--color-surface); }
 .live-editor-notice { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin: 24px auto; padding: 16px 20px; max-width: 34rem; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); font-size: 14px; }
 .live-editor-notice-actions { display: flex; gap: 8px; }
+/* On a phone the bar's actions are 44px touch targets. */
+@media (max-width: 767px) { .live-editor-actions .ui-button.ui-button-small { min-height: 44px; padding: 0 12px; font-size: 13px; } }
 
 /* 「編輯中 · N 人」 and 「未歸檔」 on note rows and cards. */
 .live-badge { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--color-line-strong); border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary); font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap; }

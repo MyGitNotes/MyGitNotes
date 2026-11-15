@@ -52,7 +52,7 @@ interface NoteEditorToolbarProps {
   /** On a phone, where a note opens for reading: whether it is being edited, and the buttons that switch. */
   phoneEditing?: { editing: boolean; onEdit: () => void; onDone: () => void; };
   /** On a phone the toolbar is the note screen's title bar and its "⋯" sheet instead of the rows below. */
-  phoneChrome?: Pick<PhoneNoteChromeProps, 'quickActions' | 'hasHistory' | 'overlay' | 'hidden'>;
+  phoneChrome?: Pick<PhoneNoteChromeProps, 'quickActions' | 'hasHistory' | 'overlay' | 'hidden' | 'liveBadge'>;
 }
 
 /** Switches a phone's note between reading and editing. */
