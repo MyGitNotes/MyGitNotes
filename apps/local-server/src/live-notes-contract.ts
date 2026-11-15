@@ -300,6 +300,49 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       expect(await row(pending.id)).toBeUndefined();
     });
 
+    it('retargets a pending note to the rule given, placeholders and all, leaves its text and editors, and ends the lease', async () => {
+      const retarget = service().retarget?.bind(service());
+      if (!retarget) return;
+      const pending = await as(1).createPending(fixture.repository, { notebook: fixture.notebook, pathRule: 'inbox/{{title}}.md', content: '# Pending\n' });
+      await fixture.type(pending.id, '# Pending\nwords\n', fixture.person(2));
+      const lease = await service().lease(fixture.repository, pending.id);
+      expect(await retarget(fixture.repository, pending.id, lease, { pathRule: 'moved/{{date}} {{title}}.md' })).toMatchObject({ id: pending.id, notebook: fixture.notebook, path: null, pathRule: 'moved/{{date}} {{title}}.md', base: null, contentHash: sha256('# Pending\nwords\n') });
+      expect(await row(pending.id)).toMatchObject({ path: null, pathRule: 'moved/{{date}} {{title}}.md' });
+      expect((await as(1).read(fixture.repository, pending.id)).content).toBe('# Pending\nwords\n');
+      // The lease ended with the call: a check-in can take the note at once.
+      const next = await service().lease(fixture.repository, pending.id);
+      expect((await service().detail(fixture.repository, pending.id, next)).editors.map(editor => editor.email)).toEqual([fixture.person(2).author!.email]);
+      expect(await retarget(fixture.repository, pending.id, next, { pathRule: 'moved/Fixed.md' })).toMatchObject({ path: null, pathRule: 'moved/Fixed.md' });
+      expect(await row(pending.id)).toMatchObject({ pathRule: 'moved/Fixed.md' });
+    });
+
+    it('retargets a pending note someone has open: its text is not touched, so open editors do not hold it', async () => {
+      const retarget = service().retarget?.bind(service());
+      if (!retarget) return;
+      const pending = await as(1).createPending(fixture.repository, { notebook: fixture.notebook, pathRule: '{{title}}.md', content: '# Open\n' });
+      await fixture.setActive(pending.id, 1);
+      const lease = await service().lease(fixture.repository, pending.id);
+      expect(await retarget(fixture.repository, pending.id, lease, { pathRule: 'elsewhere/{{title}}.md' })).toMatchObject({ path: null, pathRule: 'elsewhere/{{title}}.md', activeEditors: 1 });
+    });
+
+    it('refuses to retarget a note with a path, and a call without the lease, and leaves each as it was', async () => {
+      const retarget = service().retarget?.bind(service());
+      if (!retarget) return;
+      const filed = await checkout('# Filed\n');
+      const filedLease = await service().lease(fixture.repository, filed.id);
+      await expect(retarget(fixture.repository, filed.id, filedLease, { pathRule: 'moved/{{title}}.md' })).rejects.toBeInstanceOf(LiveNotLiveError);
+      expect(await row(filed.id)).toMatchObject({ path: filed.path });
+      expect(await row(filed.id)).not.toHaveProperty('pathRule');
+      // A refused retarget ends its lease too, so it never holds a check-in off.
+      await service().lease(fixture.repository, filed.id);
+      const pending = await as(1).createPending(fixture.repository, { notebook: fixture.notebook, pathRule: '{{title}}.md', content: '# Pending\n' });
+      const lease = await service().lease(fixture.repository, pending.id);
+      await expect(retarget(fixture.repository, pending.id, { token: `${lease.token}x`, until: lease.until }, { pathRule: 'moved/{{title}}.md' })).rejects.toBeInstanceOf(LiveLeasedError);
+      await fixture.advance(LEASE_MS + 1000);
+      await expect(retarget(fixture.repository, pending.id, lease, { pathRule: 'moved/{{title}}.md' })).rejects.toBeInstanceOf(LiveLeasedError);
+      expect(await row(pending.id)).toMatchObject({ path: null, pathRule: '{{title}}.md' });
+    });
+
     it('lists the editors since the last sync for the service, with email and an agent flag, and attributes a merge to nobody', async () => {
       const { id } = await checkout('# Editors\n');
       await fixture.type(id, '# Editors\nhand\n', fixture.person(1));
