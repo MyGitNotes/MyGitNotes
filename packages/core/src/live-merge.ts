@@ -1,7 +1,10 @@
-import { type LineHunk, lineHunks, lineIds, textLines } from './live-text.js';
+import { type LineDiffBudget, type LineHunk, lineHunks, lineIds, textLines } from './live-text.js';
 
 /** A three-way merge of a live note: the merged text, or a conflict the live text wins. */
 export type LiveMerge = { conflict: false; text: string; } | { conflict: true; };
+
+/** The diff steps both line diffs of a merge may take together, a fraction of a second on this machine. */
+const DIFF_BUDGET = 50_000_000;
 
 /** A hunk of one side: 0 for the live text, 1 for Git. */
 type SideHunk = LineHunk & { side: 0 | 1; };
@@ -11,13 +14,19 @@ type SideHunk = LineHunk & { side: 0 | 1; };
  * (docs/specs/2026-11-15-live-notes/spec.md §5.3). Hunks of the two sides that overlap or touch form one region, which is
  * a conflict unless both sides turned it into the same lines; so both sides making the same change is no conflict, and a
  * check-in whose commit landed but was never acknowledged merges cleanly with the Git text that holds it. Every text is
- * in normal form. The line diffs are Myers' (`live-text.ts`), linear in the note's length for a few changed lines.
+ * in normal form. The line diffs are Myers' (`live-text.ts`), linear in the note's length for a few changed lines; when
+ * both diffs together would take more than `DIFF_BUDGET` steps, the merge is a conflict, so the live text wins instead
+ * of the check-in blocking past its deadline.
  */
 export function mergeLiveText(base: string, live: string, git: string): LiveMerge {
   const lines = [textLines(live), textLines(base), textLines(git)] as const;
   const [liveIds, baseIds, gitIds] = lineIds(...lines);
   const sides = [lines[0], lines[2]] as const;
-  const hunks = sortedHunks(lineHunks(baseIds!, liveIds!), lineHunks(baseIds!, gitIds!));
+  const budget: LineDiffBudget = { left: DIFF_BUDGET };
+  const liveHunks = lineHunks(baseIds!, liveIds!, budget);
+  const gitHunks = liveHunks && lineHunks(baseIds!, gitIds!, budget);
+  if (!liveHunks || !gitHunks) return { conflict: true };
+  const hunks = sortedHunks(liveHunks, gitHunks);
   const out: string[] = [];
   let at = 0;
   for (let i = 0; i < hunks.length;) {

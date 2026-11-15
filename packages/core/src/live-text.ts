@@ -33,9 +33,20 @@ export interface LineHunk {
  * inserted between two paragraphs follows the first one's blank line), and hunks left touching become one, so two hunks
  * always have a common line between them.
  */
-export function lineHunks(base: Int32Array, changed: Int32Array): LineHunk[] {
+export function lineHunks(base: Int32Array, changed: Int32Array, budget: LineDiffBudget = { left: Infinity }): LineHunk[] | undefined {
+  const [keptBase, baseAt] = sharedLines(base, changed);
+  const [keptChanged, changedAt] = sharedLines(changed, base);
+  const filtered: number[] = [];
+  if (!commonRuns(keptBase, keptChanged, 0, keptBase.length, 0, keptChanged.length, filtered, budget)) return undefined;
   const runs: number[] = [];
-  commonRuns(base, changed, 0, base.length, 0, changed.length, runs);
+  for (let i = 0; i < filtered.length; i += 3) {
+    for (let j = 0; j < filtered[i + 2]!; j++) {
+      const a = baseAt[filtered[i]! + j]!, b = changedAt[filtered[i + 1]! + j]!;
+      const last = runs.length - 3;
+      if (last >= 0 && runs[last]! + runs[last + 2]! === a && runs[last + 1]! + runs[last + 2]! === b) runs[last + 2]!++;
+      else runs.push(a, b, 1);
+    }
+  }
   const hunks: LineHunk[] = [];
   let a = 0, b = 0;
   for (let i = 0; i <= runs.length; i += 3) {
@@ -48,6 +59,30 @@ export function lineHunks(base: Int32Array, changed: Int32Array): LineHunk[] {
     }
   }
   return slideDown(hunks, base, changed);
+}
+
+/**
+ * The work a diff may still do, counted in diagonal steps and matched lines; a diff that runs out gives up, so a rewrite
+ * of a large note of repeated lines cannot block for minutes.
+ */
+export interface LineDiffBudget {
+  left: number;
+}
+
+/**
+ * The lines of `lines` that also occur in `other`, with their indices. A line that never occurs in the other text cannot
+ * be common, so dropping it before the diff keeps the same longest common lines while a rewrite with new lines becomes
+ * a short diff, as xdiff does.
+ */
+function sharedLines(lines: Int32Array, other: Int32Array): [Int32Array, Int32Array] {
+  let size = 0;
+  for (const id of lines) size = Math.max(size, id + 1);
+  const present = new Uint8Array(size);
+  for (const id of other) if (id < size) present[id] = 1;
+  const at: number[] = [];
+  for (let i = 0; i < lines.length; i++) if (present[lines[i]!]) at.push(i);
+  if (at.length === lines.length) return [lines, Int32Array.from(at)];
+  return [Int32Array.from(at, i => lines[i]!), Int32Array.from(at)];
 }
 
 /** Moves each insert-only or delete-only hunk down past the common lines equal to its own first line. */
@@ -76,8 +111,11 @@ function slideDown(hunks: LineHunk[], base: Int32Array, changed: Int32Array): Li
   return out;
 }
 
-/** Appends `[baseStart, changedStart, length]` for each run of common lines in the given ranges, in order. */
-function commonRuns(a: Int32Array, b: Int32Array, aLo: number, aHi: number, bLo: number, bHi: number, runs: number[]): void {
+/**
+ * Appends `[baseStart, changedStart, length]` for each run of common lines in the given ranges, in order; false when the
+ * budget ran out.
+ */
+function commonRuns(a: Int32Array, b: Int32Array, aLo: number, aHi: number, bLo: number, bHi: number, runs: number[], budget: LineDiffBudget): boolean {
   let prefix = 0;
   while (aLo + prefix < aHi && bLo + prefix < bHi && a[aLo + prefix] === b[bLo + prefix]) prefix++;
   if (prefix) runs.push(aLo, bLo, prefix);
@@ -88,21 +126,23 @@ function commonRuns(a: Int32Array, b: Int32Array, aLo: number, aHi: number, bLo:
   aHi -= suffix;
   bHi -= suffix;
   if (aLo < aHi && bLo < bHi) {
-    const split = middleSnake(a, b, aLo, aHi, bLo, bHi);
+    const split = middleSnake(a, b, aLo, aHi, bLo, bHi, budget);
+    if (split === null) return false;
     if (split) {
-      commonRuns(a, b, aLo, split[0], bLo, split[1], runs);
-      commonRuns(a, b, split[0], aHi, split[1], bHi, runs);
+      if (!commonRuns(a, b, aLo, split[0], bLo, split[1], runs, budget)) return false;
+      if (!commonRuns(a, b, split[0], aHi, split[1], bHi, runs, budget)) return false;
     }
   }
   if (suffix) runs.push(aHi, bHi, suffix);
+  return true;
 }
 
 /**
  * Where a shortest edit script of `a[aLo, aHi)` into `b[bLo, bHi)` crosses its middle, found by running the forward and
- * the reverse search until they overlap; undefined when the ranges have no line in common. The ranges are non-empty and
- * share no first or last line.
+ * the reverse search until they overlap; undefined when the ranges have no line in common, null when the budget ran out.
+ * The ranges are non-empty and share no first or last line.
  */
-function middleSnake(a: Int32Array, b: Int32Array, aLo: number, aHi: number, bLo: number, bHi: number): [number, number] | undefined {
+function middleSnake(a: Int32Array, b: Int32Array, aLo: number, aHi: number, bLo: number, bHi: number, budget: LineDiffBudget): [number, number] | undefined | null {
   const n = aHi - aLo, m = bHi - bLo;
   const maxD = Math.ceil((n + m) / 2);
   const offset = maxD + 1;
@@ -115,6 +155,9 @@ function middleSnake(a: Int32Array, b: Int32Array, aLo: number, aHi: number, bLo
   const front = delta % 2 !== 0;
   let k1start = 0, k1end = 0, k2start = 0, k2end = 0;
   for (let d = 0; d < maxD; d++) {
+    // Each round walks at most 2d + 2 diagonals, and its snakes cover at most n + m lines.
+    budget.left -= 2 * d + 2 + n + m;
+    if (budget.left < 0) return null;
     for (let k1 = -d + k1start; k1 <= d - k1end; k1 += 2) {
       const at = offset + k1;
       let x1 = k1 === -d || (k1 !== d && forward[at - 1]! < forward[at + 1]!) ? forward[at + 1]! : forward[at - 1]! + 1;
