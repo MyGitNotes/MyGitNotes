@@ -456,7 +456,7 @@ describe('捨棄草稿', () => {
     expect(onDiscarded).toHaveBeenCalled();
   });
 
-  it('asks before discarding a typed draft, and reposts with confirm', async () => {
+  it('asks in the editor, not with the browser’s confirm, before discarding a typed draft, and reposts with confirm', async () => {
     const onDiscarded = vi.fn();
     const confirm = vi.fn(() => true);
     vi.stubGlobal('confirm', confirm);
@@ -467,19 +467,25 @@ describe('捨棄草稿', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
     });
-    expect(confirm).toHaveBeenCalledWith('Discard this draft? Its text will not be saved to Git.');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByText('Discard this draft? Its text will not be saved to Git.')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    });
     expect(fetchMock).toHaveBeenLastCalledWith('/api/live/discard', expect.objectContaining({ body: JSON.stringify({ notebookId: 'notes~life', path: pending.path, confirm: true }) }));
     expect(onDiscarded).toHaveBeenCalled();
   });
 
   it('goes back to the editor when the person keeps a typed draft', async () => {
     const onDiscarded = vi.fn();
-    vi.stubGlobal('confirm', vi.fn(() => false));
     fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ error: 'Someone typed in this draft.', code: 'has-edits' }, 409));
     await open({ checkout: pending, editor: { kind: 'builtin', discard: true }, onDiscarded });
     sync();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
     });
     expect(onDiscarded).not.toHaveBeenCalled();
     expect(fake.providers).toHaveLength(2);
