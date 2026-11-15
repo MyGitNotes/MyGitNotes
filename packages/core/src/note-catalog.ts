@@ -232,11 +232,11 @@ async function matching(catalog: NoteCatalog, query: NoteQuery) {
   const { config, notes } = await scope(catalog, query.notebookId);
   let matches = notes.filter(note => noteMatchesFilters(note, query));
   // The free text, without the search's live tokens, which the filters above already applied.
-  const text = noteSearchTerms(query.q).text;
+  const { text, parts } = noteSearchTerms(query.q);
   if (text.trim() && query.match === 'all') {
     const contents = await catalog.contents(matches);
     matches = matches.filter(note => noteMatchesQuery({ ...note, content: contents.get(noteRefKey(note)) ?? '' }, query)).map(note => {
-      const matchSnippet = noteContentSnippet(contents.get(noteRefKey(note)) ?? '', text);
+      const matchSnippet = noteContentSnippet(contents.get(noteRefKey(note)) ?? '', parts[0] ?? '');
       return matchSnippet ? { ...note, matchSnippet } : note;
     });
   } else if (text.trim()) {

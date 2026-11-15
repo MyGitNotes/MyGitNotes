@@ -214,7 +214,8 @@ export function useNotePaths(query: Partial<NoteQuery> | null): { notes: NoteRef
   const scope = useNoteQueryScope();
   const input = useStable(query ? noteQueryInput(query) : null);
   const options = notePathsOptions(scope, input ?? DEFAULT_NOTE_QUERY);
-  const result = useQuery({ ...options, enabled: options.enabled && Boolean(input), placeholderData: keepPreviousData });
+  // A checkout moves no revision, so paths filtered by live state refresh as the list does.
+  const result = useQuery({ ...options, enabled: options.enabled && Boolean(input), placeholderData: keepPreviousData, ...liveRefresh(scope, input?.notebookId && input.notebookId !== 'all' ? [input.notebookId] : undefined) });
   const notes = useMemo(() => (input ? overlayDraftPaths(result.data?.notes ?? [], input, noteDrafts(scope.drafts)) : []), [result.data, input, scope.drafts]);
   return { notes, loading: Boolean(input) && result.isPending, error: errorText(result.error) };
 }

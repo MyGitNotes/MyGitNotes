@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { handleNoteQueryError, invalidateNoteQueries, noteLookupOptions, notePageOptions, notePathsOptions, resetStaleNoteQueries, scopedRevisions, setNoteQueryScope, useNoteList, useStaleNoteQueries } from './use-note-queries.js';
+import { handleNoteQueryError, invalidateNoteQueries, LIVE_REFRESH_MS, noteLookupOptions, notePageOptions, notePathsOptions, resetStaleNoteQueries, scopedRevisions, setNoteQueryScope, useNoteList, useNotePaths, useStaleNoteQueries } from './use-note-queries.js';
 import { ApiError } from './api.js';
 
 const REVISION = 'a'.repeat(40);
@@ -180,5 +180,22 @@ it('ignores a late 409 from a query of a revision this client already left', () 
     expect(stale).toHaveBeenCalledTimes(1);
   } finally {
     vi.useRealTimers();
+  }
+});
+
+function Paths() {
+  const result = useNotePaths({ notebookId: 'life', live: ['editing'] });
+  return createElement('p', { 'data-testid': 'paths' }, result.notes.map(note => note.path).join(','));
+}
+
+it('refreshes the paths of a live repository on focus and on an interval, as the list does', async () => {
+  stubFetch(() => ({ revisions: { 'github:me/notes': REVISION }, total: 1, notes: [{ notebookId: 'life', path: 'notes/life/a.md' }] }));
+  setNoteQueryScope({ sourceId: 'github:me/notes', revisions: { 'github:me/notes': REVISION }, repositories: { life: 'github:me/notes' }, live: ['github:me/notes'], drafts: {} });
+  render(createElement('div', {}, createElement(Paths), createElement(Rows)), { wrapper });
+  await waitFor(() => expect(screen.getByTestId('paths')).toHaveTextContent('notes/life/a.md'));
+  const options = (kind: string) => client.getQueryCache().getAll().find(query => query.queryKey.includes(kind))!.options as { refetchInterval?: number; refetchOnWindowFocus?: unknown; };
+  for (const kind of ['paths', 'query']) {
+    expect(options(kind).refetchInterval).toBe(LIVE_REFRESH_MS);
+    expect(options(kind).refetchOnWindowFocus).toBe('always');
   }
 });
