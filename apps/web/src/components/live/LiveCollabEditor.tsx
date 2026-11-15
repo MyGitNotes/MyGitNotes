@@ -77,6 +77,8 @@ interface Connection {
 const START: Connection = { status: 'connecting', synced: false, unsynced: 0, people: 1 };
 /** How long nothing may be unsaved before the bar says 已儲存: each keystroke is stored within a few milliseconds. */
 const SETTLE_MS = 300;
+/** How long a pending step nobody typed (a connect's own sync step) may last before the bar says 未儲存 rather than connecting. */
+const UNTYPED_PENDING_MS = 1500;
 /** The close of a socket the server kept open for its time (`LIVE_RENEW_CODE` of the server's socket.ts): the provider connects again with a fresh ticket. */
 const RENEW_CODE = 4000;
 
@@ -275,6 +277,20 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     return () => clearTimeout(timer);
   }, [connection.unsynced, settled]);
 
+  // Not yet 已儲存. Typing says 未儲存 at once and until it settled; a pending step nobody typed (a reconnect's sync step)
+  // says so only once it lasts, so a reconnect does not flash 未儲存, and reads as connecting until then.
+  const pending = connection.unsynced > 0 || !settled;
+  const [typed, setTyped] = useState(false);
+  if (connection.dirty && !typed) setTyped(true);
+  if (!pending && !connection.dirty && typed) setTyped(false);
+  const [lasting, setLasting] = useState(false);
+  if (!pending && lasting) setLasting(false);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => setLasting(true), UNTYPED_PENDING_MS);
+    return () => clearTimeout(timer);
+  }, [pending]);
+
   // Typing the server has not stored yet is lost with the page.
   const unsaved = live && !!connection.dirty;
   useEffect(() => {
@@ -376,7 +392,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
 
   // Before the first sync the tab is connecting; afterwards a socket that is not connected is offline, retries included,
   // unless the server closed it for a new ticket, and one connected again is connecting until its document synced again.
-  const stateKey: TranslationKey = connection.unreachable ? 'live.offline' : !connection.everSynced ? 'live.connecting' : connection.status !== 'connected' && !connection.renewing ? 'live.offline' : !connection.synced ? 'live.connecting' : connection.unsynced > 0 || !settled ? 'live.unsaved' : 'live.saved';
+  const stateKey: TranslationKey = connection.unreachable ? 'live.offline' : !connection.everSynced ? 'live.connecting' : connection.status !== 'connected' && !connection.renewing ? 'live.offline' : !connection.synced ? 'live.connecting' : !pending ? 'live.saved' : typed || connection.dirty || lasting ? 'live.unsaved' : 'live.connecting';
   const canCheckIn = connection.status === 'connected' && connection.synced && connection.unsynced === 0 && settled;
   const discardable = Boolean(checkout.pending && editor.discard) && (live || phase.kind === 'notice');
   // Discarding asks the server: a live tab offers it only connected, with its document synced, so its unsaved typing can be offered when the draft stays.
