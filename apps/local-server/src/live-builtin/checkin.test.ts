@@ -140,7 +140,8 @@ describe('checkInLink over the built-in adapter', () => {
     expect(commits(f)[0].message).not.toContain('Person 2');
     expect(await liveText(f, id)).toBe(`${first}late\n`);
     expect((await f.store.editors(id)).map(editor => editor.email)).toEqual(['p2@example.test']);
-    // The next check-in commits their typing in their name, and closes the note.
+    // The next check-in, once the lease of this one ran out, commits their typing in their name and closes the note.
+    f.time.advance(6 * 60_000);
     expect(await run(f, id)).toMatchObject({ committed: true, released: true });
     expect(f.files.get(file)).toBe(`${first}late\n`);
     expect(commits(f)).toHaveLength(2);

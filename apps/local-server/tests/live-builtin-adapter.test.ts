@@ -112,8 +112,9 @@ describe('the app over the built-in live adapter', () => {
     expect((await live.liveNotes.person(person(1)).read(repository, id)).content).toBe(text);
     expect((await readNote('notes/life/a.md')).body.note).toMatchObject({ content: 'Agent body.\ntyped\n', live: { editorUrl: 'http://localhost/notebooks/notes~life/notes/a.md' } });
     expect((await tool(token, 'read', note)).content).toBe(text);
-    // A signed-out reader gets Git's text, which no live write touched.
-    expect((await readNote('notes/life/a.md', null)).body.note.content).toBe('Git body.\n');
+    // A person who may only read sees the live text too, through the read overlay, and gets no ticket to type in it.
+    expect((await readNote('notes/life/a.md', 'p2')).body.note.content).toBe('Agent body.\ntyped\n');
+    expect((await call('POST', '/api/live/socket-ticket', note, 'p2')).status).toBe(403);
     expect(files.get('notes/life/a.md')).toBe(gitA);
     expect(commits()).toEqual([]);
     const done = await call('POST', '/api/live/checkin', note);

@@ -1,5 +1,6 @@
-import type { LiveContext, RepositoryId } from '@mygitnotes/core';
-import { type BuiltinLiveNotes, type BuiltinLiveNotesOptions, type BuiltinLiveParts, createBuiltinLiveNotes } from './adapter.js';
+import { type LiveContext, LiveNotLiveError, LiveUnavailableError, normalizeLiveText, type RepositoryId } from '@mygitnotes/core';
+import { type BuiltinLiveNotes, type BuiltinLiveNotesOptions, type BuiltinLiveParts, createBuiltinLiveNotes, liveEditorRef } from './adapter.js';
+import { textUpdate } from './documents.js';
 
 /**
  * The hooks of the built-in editor that a test drives in place of browsers, as the memory adapter has them: an edition
@@ -16,12 +17,34 @@ export interface BuiltinLiveHooks {
 }
 export type BuiltinLiveNotesWithHooks = BuiltinLiveNotes & BuiltinLiveHooks;
 
-/** The hooks over an adapter's parts. Not built yet: every call fails. */
-export function withLiveHooks(parts: BuiltinLiveParts): BuiltinLiveNotesWithHooks {
-  const refuse = async (): Promise<never> => {
-    throw new Error('The built-in live hooks are not built yet.');
+/** The hooks over an adapter's parts. */
+export function withLiveHooks({ liveNotes, documents, store, clock, process }: BuiltinLiveParts): BuiltinLiveNotesWithHooks {
+  const live = async (repository: RepositoryId, id: string) => {
+    await liveNotes.started.catch(() => Promise.reject(new LiveUnavailableError()));
+    const link = await store.link(id);
+    if (!link?.live || link.repository !== repository) throw new LiveNotLiveError();
+    return link;
   };
-  return Object.assign(parts.liveNotes, { type: refuse, setActive: refuse });
+  const hooks: BuiltinLiveHooks = {
+    async type(repository, id, text, person) {
+      const link = await live(repository, id);
+      const held = await documents.open(link);
+      try {
+        const update = textUpdate(held.document, normalizeLiveText(text));
+        if (update) await documents.accept(link, update, liveEditorRef(person, false));
+      } finally {
+        await held.close();
+      }
+    },
+    async setActive(repository, id, n) {
+      const link = await live(repository, id);
+      const now = clock();
+      // The people of these hooks are their own entry among the processes, beside the sockets' (N4).
+      await store.presence(link.id, `${process}:hooks`, Object.fromEntries(Array.from({ length: n }, (_, i) => [`hooks:${i + 1}`, now])), now);
+      if (n === 0) await documents.unload(link);
+    },
+  };
+  return Object.assign(liveNotes, hooks);
 }
 
 /** `builtinLiveNotes(options)` with the hooks a test drives it by. */
