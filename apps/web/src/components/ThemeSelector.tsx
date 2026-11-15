@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { EINK_FAMILY_ID, getFamily, listFamilies, resolveMode, ThemeChoice, ThemeMode } from '../lib/themes.js';
 import type { PaletteFamily } from '../lib/palettes.js';
@@ -19,6 +20,7 @@ export function ThemeSelector({ value, onChange }: { value: ThemeChoice; onChang
   const shownId = auto ? shownFamily : value.familyId;
   const fixedMode = getFamily(shownId).fixedMode;
   const shown = fixedMode ?? resolveMode(value.mode);
+  const fixedNoteId = useId();
   return (
     <div className='flex flex-col gap-2'>
       {auto && (
@@ -27,7 +29,7 @@ export function ThemeSelector({ value, onChange }: { value: ThemeChoice; onChang
           <Button size='small' onClick={() => onChange(value)}>{t('theme.einkAutoBack')}</Button>
         </div>
       )}
-      <div role='radiogroup' aria-label={t('theme.mode')} title={fixedMode ? t('theme.fixedMode') : undefined} className='inline-flex self-start rounded-md border border-line bg-sidebar p-0.5'>
+      <div role='radiogroup' aria-label={t('theme.mode')} aria-describedby={fixedMode ? fixedNoteId : undefined} className='inline-flex self-start rounded-md border border-line bg-sidebar p-0.5'>
         {MODES.map(({ mode, icon: Icon }) => (
           <button
             key={mode}
@@ -36,13 +38,15 @@ export function ThemeSelector({ value, onChange }: { value: ThemeChoice; onChang
             aria-checked={value.mode === mode}
             disabled={Boolean(fixedMode)}
             onClick={() => onChange({ ...value, mode })}
-            className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-xs ${value.mode === mode ? 'bg-surface text-fg font-semibold shadow-xs' : 'text-muted hover:text-fg'}`}
+            className={`theme-mode-option flex items-center gap-1.5 rounded px-2.5 py-1 text-xs ${value.mode === mode ? 'bg-surface text-fg font-semibold shadow-xs' : 'text-muted hover:text-fg'}`}
           >
             <Icon className='h-3.5 w-3.5' />
             {t(`theme.${mode}`)}
           </button>
         ))}
       </div>
+      {/* Faded buttons alone do not say why they are off; the line does, on screen as well as to a screen reader. */}
+      {fixedMode && <p id={fixedNoteId} data-theme-fixed-note='' className='text-xs text-muted'>{t('theme.fixedMode')}</p>}
       <div role='radiogroup' aria-label={t('settings.theme')} className='grid grid-cols-2 sm:grid-cols-3 gap-1'>
         {listFamilies().map(family => {
           const variant = family.variants[family.fixedMode ?? shown];

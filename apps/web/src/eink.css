@@ -36,6 +36,11 @@ html[data-theme='eink'] { font-size: 112.5%; }
 /* Keyboard focus: a thick black ring on every control. */
 [data-theme='eink'] :focus-visible { outline: 3px solid var(--color-text) !important; }
 
+/* The light and dark choice the theme does not take stays solid and is struck through: faded, it would turn gray. The line under it says why. */
+[data-theme='eink'] .theme-mode-option:disabled { opacity: 1 !important; color: var(--color-text); text-decoration: line-through; }
+/* The counts on the dock's filter chips, softened elsewhere. */
+[data-theme='eink'] .dock-filter-chip-count { opacity: 1; }
+
 /* Selected, pressed and current controls are outlined, since the tints that mark them elsewhere are white here. */
 [data-theme='eink'] :is([aria-pressed='true'], [aria-checked='true'], [aria-selected='true'], [aria-current='page'], [aria-current='true'], [data-selected='true'], [data-state='checked'], [data-state='active'], [data-highlighted], .focus-tab[data-shown], .bg-primary-soft, .bg-primary-soft\/40) { outline: 2px solid var(--color-text); outline-offset: -2px; }
 
