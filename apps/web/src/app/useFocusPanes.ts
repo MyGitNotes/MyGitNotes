@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
+import { FOCUS_NOTE_STATE, parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
 import { useState } from 'react';
 import { useNoteEditorRegistry } from '../lib/note-editing.js';
 import { type FocusTab } from '@mygitnotes/core/focus-page';
@@ -30,18 +30,18 @@ interface Params {
   navigate: ReturnType<typeof useNavigate>;
   editorRoute: ReturnType<typeof parseWorkspaceRoute>;
   resolveBareNotebook: WorkspaceState['resolveBareNotebook'];
-  /** Whether the page was loaded on a note's link, which opens in the Focus displayed last. */
-  openingNoteLink: boolean;
+  /** Whether the URL names a note the Focus shows (or the link the page was loaded on, which opens there): the Focus displayed last is shown with it. */
+  focusNoteRoute: boolean;
 }
 
-export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite, editorRegistry, location, navigate, editorRoute, resolveBareNotebook, openingNoteLink }: Params) {
+export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite, editorRegistry, location, navigate, editorRoute, resolveBareNotebook, focusNoteRoute }: Params) {
   // Focus: the URL names the displayed one; named Focus sync through their workspace document.
   const focusCapacity = usePaneCapacity();
   // A view kept before notebook keys belongs to the notebook its local id stands for, as an old URL's does.
   const localId = parseNotebookKey(selectedNotebookId)?.localId;
   const focusScope = localId && resolveBareNotebook(localId) === selectedNotebookId ? remote ? sourceId : `local:${repoRoot}` : null;
   // A Notes page whose URL names no Focus shows the one it displayed last, decided while rendering so the list never paints first.
-  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && (!editorRoute.note || openingNoteLink), writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
+  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && (!editorRoute.note || focusNoteRoute), writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
   const focusDisplay = noteFocus.layout && noteFocus.entry ? displayedPanes(noteFocus.entry, noteFocus.layout, focusCapacity) : undefined;
   /** On phones the browse region and the Focus take turns filling the screen; a phone starts on the list. */
   const [focusNarrowView, setFocusNarrowView] = useState<'focus' | 'browse'>(() => isPhoneViewport() ? 'browse' : 'focus');
@@ -70,7 +70,8 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
     const query = new URLSearchParams(location.search);
     query.set('focus', key);
     setFocusNarrowView('focus');
-    navigate({ pathname: location.pathname, search: query.toString() });
+    // The address of the Focus's note stays one until the Focus shown next names its own note.
+    navigate({ pathname: location.pathname, search: query.toString() }, { state: focusNoteRoute ? FOCUS_NOTE_STATE : null });
   };
   /** Whether the named Focus is waiting for the user to confirm clearing it. */
   const [confirmingClear, setConfirmingClear] = useState(false);

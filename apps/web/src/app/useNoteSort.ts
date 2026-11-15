@@ -2,14 +2,16 @@ import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { NotebookConfig } from '../lib/types.js';
 import { readFilterQuery } from '../lib/filter-query.js';
+import { FOCUS_NOTE_STATE } from '../lib/routes.js';
 import { getNotebookSort, getStoredGlobalSort, metadataSortKey, resolveNoteSort, saveNotebookSort, type SortConfig, type SortField, type SortOrder } from '../lib/note-sort.js';
 
 /**
  * The notes sort of the notebook with key `notebookKey`: a sort in the URL, else what the person chose for that
  * notebook, else the notebook's `default_sort`, else the browser-wide sort saved before notebooks had their own,
- * else the default order. A choice is saved for its notebook and written to the URL.
+ * else the default order. A choice is saved for its notebook and written to the URL; on a note the Focus shows
+ * (`focusNote`, the page's decision, which holds before the entry's mark renders) the new entry keeps it in the Focus.
  */
-export function useNoteSort(notebookKey: string, notebook?: Pick<NotebookConfig, 'default_sort'>) {
+export function useNoteSort(notebookKey: string, notebook?: Pick<NotebookConfig, 'default_sort'>, focusNote = false) {
   const location = useLocation(), navigate = useNavigate();
   const route = readFilterQuery(location.search);
   const [chosen, setChosen] = useState<Record<string, SortConfig>>({});
@@ -34,7 +36,7 @@ export function useNoteSort(notebookKey: string, notebook?: Pick<NotebookConfig,
     const query = new URLSearchParams(location.search);
     query.set('sortField', field);
     query.set('sortOrder', newOrder);
-    navigate({ pathname: location.pathname, search: query.toString() });
+    navigate({ pathname: location.pathname, search: query.toString() }, { state: focusNote ? FOCUS_NOTE_STATE : null });
   };
 
   return { sortField, sortOrder, handleSortChange, metadataSortFields };

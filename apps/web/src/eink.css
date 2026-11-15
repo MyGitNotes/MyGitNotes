@@ -1,0 +1,48 @@
+/* The E-ink (high contrast) theme, family `eink` in lib/palettes.ts: what its tokens cannot reach. A 16-level grayscale
+   screen loses gray text, tints and hairlines and smears every animation and scroll, so under this theme text is black,
+   lines are thick and solid, a selected or pressed control is outlined instead of tinted, controls that show on hover
+   are always shown, and nothing moves, casts a shadow or blurs. */
+
+/* Larger type: rem-sized text and spacing grow with the root size (16px to 18px). */
+html[data-theme='eink'] { font-size: 112.5%; }
+
+/* No motion, shadow or blur. Animations end at once instead of being removed, so code waiting for `animationend` still runs. */
+[data-theme='eink'] *, [data-theme='eink'] *::before, [data-theme='eink'] *::after, [data-theme='eink'] *::backdrop { transition-duration: 0s !important; transition-delay: 0s !important; animation-duration: 1ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; box-shadow: none !important; text-shadow: none !important; backdrop-filter: none !important; }
+
+/* No translucent scrim behind dialogs and sheets: the dialog's own border sets it apart. */
+[data-theme='eink'] :is(.bg-scrim\/40, .bg-scrim\/60, .bg-scrim\/80, .phone-sheet-backdrop, .changes-overlay, .mermaid-editor-overlay), [data-theme='eink'] .workspace-dialog::backdrop { background: transparent !important; }
+
+/* Text that other themes soften with a mix or an opacity stays black. */
+[data-theme='eink'] :is(.nav-tree-entry, .focus-tab, .prose-custom blockquote, .text-muted\/70) { color: var(--color-text) !important; }
+[data-theme='eink'] :is(.opacity-70, .opacity-40:not([aria-disabled='true']):not(:disabled)) { opacity: 1 !important; }
+/* Placeholders too: Tailwind's base draws them gray, which a grayscale screen washes out. */
+[data-theme='eink'] ::placeholder { color: var(--color-text) !important; opacity: 1 !important; }
+[data-theme='eink'] .prose-custom blockquote { background: none; border-left: 3px solid var(--color-text); }
+[data-theme='eink'] .prose-custom pre { border: 1.5px solid var(--color-text); }
+[data-theme='eink'] .prose-custom hr { border: 0; border-top: 1.5px solid var(--color-text); }
+[data-theme='eink'] .prose-custom hr.vertical-slide-break { height: 2px; background: var(--color-text); }
+
+/* Lines at least 1.5px: the border utilities and the shared controls, panels and dialogs. */
+[data-theme='eink'] .border { border-width: 1.5px; }
+[data-theme='eink'] .border-t { border-top-width: 1.5px; }
+[data-theme='eink'] .border-b { border-bottom-width: 1.5px; }
+[data-theme='eink'] .border-l { border-left-width: 1.5px; }
+[data-theme='eink'] .border-r { border-right-width: 1.5px; }
+[data-theme='eink'] .border-x { border-left-width: 1.5px; border-right-width: 1.5px; }
+[data-theme='eink'] .border-y { border-top-width: 1.5px; border-bottom-width: 1.5px; }
+[data-theme='eink'] .divide-y > :not([hidden]) ~ :not([hidden]) { border-top-width: 1.5px; }
+[data-theme='eink'] :is(.ui-control, .ui-panel, .ui-dialog, .ui-button) { border-width: 1.5px; }
+
+/* Keyboard focus: a thick black ring on every control. */
+[data-theme='eink'] :focus-visible { outline: 3px solid var(--color-text) !important; }
+
+/* The light and dark choice the theme does not take stays solid and is struck through: faded, it would turn gray. The line under it says why. */
+[data-theme='eink'] .theme-mode-option:disabled { opacity: 1 !important; color: var(--color-text); text-decoration: line-through; }
+/* The counts on the dock's filter chips, softened elsewhere. */
+[data-theme='eink'] .dock-filter-chip-count { opacity: 1; }
+
+/* Selected, pressed and current controls are outlined, since the tints that mark them elsewhere are white here. */
+[data-theme='eink'] :is([aria-pressed='true'], [aria-checked='true'], [aria-selected='true'], [aria-current='page'], [aria-current='true'], [data-selected='true'], [data-state='checked'], [data-state='active'], [data-highlighted], .focus-tab[data-shown], .bg-primary-soft, .bg-primary-soft\/40) { outline: 2px solid var(--color-text); outline-offset: -2px; }
+
+/* Controls other themes reveal on hover are always shown, since an e-reader has no hover. */
+[data-theme='eink'] :is(.note-row-actions, .nav-tree-row .folder-manage, .focus-tab-close, .focus-tab-list-close, .status-cell .select-chevron, .live-md-mermaid-edit, .live-md-annotate-image-btn, .kanban-card-delete, .group-hover\:opacity-100, .group-hover\:opacity-60) { opacity: 1 !important; }

@@ -523,7 +523,7 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 
 @media (max-width: 767px) { .note-find-field { height: 44px; } .note-find-field input { font-size: 16px; } .note-find-navigation .ui-icon-button { width: 44px; } .note-metadata { padding: 12px; gap: 12px; } .note-panel-assets { padding: 10px; } }
 
-@media (pointer: coarse), (max-width: 767px) { .ui-control, .ui-button, .ui-icon-button { min-height: 44px; } button, select, input:not([type='checkbox']):not([type='radio']):not([type='file']) { min-height: 44px; } button { min-width: 44px; touch-action: manipulation; } input:not([type='checkbox']):not([type='radio']), select, textarea, .select-trigger { font-size: 16px; } .select-option { min-height: 44px; } [contenteditable='true'] { font-size: 16px; } input[type='checkbox'] { width: 24px; height: 24px; } }
+@media (pointer: coarse), (max-width: 767px) { .ui-control, .ui-button, .ui-icon-button { min-height: 44px; } button, select, input:not([type='checkbox']):not([type='radio']):not([type='file']) { min-height: 44px; } button { min-width: 44px; touch-action: manipulation; } .nav-tree-chevron-spacer { min-width: 44px; } input:not([type='checkbox']):not([type='radio']), select, textarea, .select-trigger { font-size: 16px; } .select-option { min-height: 44px; } [contenteditable='true'] { font-size: 16px; } input[type='checkbox'] { width: 24px; height: 24px; } }
 
 /* Workspace tools share Button, Select, and EditorNotice with the editor. */
 .panel-tool h3 { font-size: 14px; font-weight: 600; }

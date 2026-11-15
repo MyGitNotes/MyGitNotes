@@ -78,11 +78,12 @@ import { PhoneNotesProvider, phoneNotesScreen } from './lib/phone-notes.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
 import { type NoteSearchHandle, NoteToolbar } from './components/NoteToolbar.js';
 import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
-import { PageToolbar, SidebarProvider, useIsDesktop, WorkspaceSidebarPortal, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
+import { PageToolbar, SidebarProvider, WorkspaceSidebarPortal, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
 import { useVisualViewport } from './lib/use-visual-viewport.js';
 import { Sidebar } from './components/Sidebar.js';
 import { FilterChips } from './components/FilterChips.js';
-import type { RailSectionId } from './components/SidebarRail.js';
+import { BrowseSplit } from './components/BrowseSplit.js';
+import { browseLayout, browsePath } from './lib/browse-layout.js';
 import { NoteCollection } from './components/NoteCollection.js';
 import { noteFolderGrouping } from './lib/note-groups.js';
 import { KanbanView } from './components/KanbanView.js';
@@ -147,7 +148,8 @@ export const AppContent: React.FC = () => {
   const editorRoute = useMemo(() => parseWorkspaceRoute(location.pathname, location.search), [location.pathname, location.search]);
 
   const { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, gitStatus, setGitStatus, assets, setAssets, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus: focusPage, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote } = useWorkspaceSync({ routeNotebook: editorRoute.notebook || undefined, onStageNote: note => setEditingNote(current => current && sameNote(current, note) && !sameValue(current, note) ? note : current) });
-  const { sortField, sortOrder, handleSortChange, metadataSortFields } = useNoteSort(selectedNotebookId, config?.notebooks.find(notebook => notebook.id === selectedNotebookId));
+  const noteLink = useNoteLinkLoad(location, editorRoute);
+  const { sortField, sortOrder, handleSortChange, metadataSortFields } = useNoteSort(selectedNotebookId, config?.notebooks.find(notebook => notebook.id === selectedNotebookId), noteLink.inFocus);
   const agentEnabled = useAgentEnabled(remote);
   const refreshDocuments = async () => {
     await Promise.all(documents.map(document => document.refresh()));
@@ -206,8 +208,7 @@ export const AppContent: React.FC = () => {
 
   const { facetsQuery, notebookFacets, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, noteTagActions, searchQuery, viewMode, folderless } = useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route, canManageTags, previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag });
 
-  const noteLink = useNoteLinkLoad(location, editorRoute);
-  const { hasActiveTab, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus, requestClear, confirmingClear, setConfirmingClear } = useFocusPanes({ selectedNotebookId, notebookRepository: repositoryFor(selectedNotebookId)?.id ?? '', focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite: canWriteNotebook(selectedNotebookId), editorRegistry, location, navigate, editorRoute, resolveBareNotebook, openingNoteLink: noteLink.pending });
+  const { hasActiveTab, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus, requestClear, confirmingClear, setConfirmingClear } = useFocusPanes({ selectedNotebookId, notebookRepository: repositoryFor(selectedNotebookId)?.id ?? '', focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite: canWriteNotebook(selectedNotebookId), editorRegistry, location, navigate, editorRoute, resolveBareNotebook, focusNoteRoute: noteLink.inFocus });
 
   const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder, setViewMode, setGroupByFolder } = useWorkspaceNavigation({ location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook });
 
@@ -227,7 +228,7 @@ export const AppContent: React.FC = () => {
 
   useSourceReset({ sourceId, setEditingNote, setDeletedNotes });
 
-  const { routedNote, routedCommitted, routedLoading, routeError } = useRoutedNote({
+  const { routedNote, routedPath, routedCommitted, routedLoading, routeError } = useRoutedNote({
     config,
     editorRoute,
     editorNotebookId,
@@ -242,21 +243,21 @@ export const AppContent: React.FC = () => {
   });
   /** Whether a note is one of its notebook's template files, which is edited in zoom and never opens in a Focus pane. */
   const isTemplate = (note: { notebookId: string; path: string; }) => isTemplatePath(config?.notebooks.find(nb => nb.id === note.notebookId), note.path);
-  // A note's link opens it in the Focus, not zoom.
-  useOpenNoteLinkInFocus({ link: noteLink, location, navigate, routedNote, routeError, noteFocus, selectedNotebookId, returnTo, setFocusNarrowView, isTemplate });
+  // A note's link opens it in the Focus, not zoom, and the address bar names the note the Focus shows.
+  const { trackOpen } = useOpenNoteLinkInFocus({ link: noteLink, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus, activeNotePath, focusNarrowView, selectedNotebookId, notebookRoot: config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root, returnTo, browsing: activeTab === 'notes' && !route.study, setFocusNarrowView, isTemplate });
 
   const { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, highlightQuery, groupable, groupedByFolder } = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
 
-  const { handleOpenNote } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
+  const { handleOpenNote } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, focusNoteRoute: noteLink.inFocus, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
 
-  const { openInFocus, openFromBrowse, openLink, zoomFocusNote, addToFocus } = useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus, isTemplate });
+  const { openInFocus, openFromBrowse, openLink, zoomFocusNote, addToFocus } = useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus, isTemplate, trackOpen });
 
   const { handleSaveNote } = useNoteSaving({ canWriteNotebook, remote, readDraft, readCommittedNote, t, stageWorkingNote, invalidateNotes, setEditingNote, setGitStatus, defaultDraftScope: defaultRepository ? draftScope(defaultRepository) : '' });
 
   const { handleRestoreNoteFile, handleUpdateNoteStatus, handleOpenFolderIndex } = useNoteRestoration({ remote, readDraft, updateDraft, setEditingNote, navigate, returnTo, invalidateNotes, setGitStatus, setActionError, handleSaveNote, readNoteForChange, selectedNotebookId, canWriteNotebook, t, config, queryClient, queryScope, stageWorkingNote, revisionFor, location });
 
   // Multi-select and bulk actions (set status, add/remove tag, move to folder) for the browse views.
-  const { selectedNotes, selectedKeys, toggleSelect, clearSelection } = useNoteSelection({ displayedNotes, viewMode, selectedNotebookId, scopeKey: location.pathname + location.search });
+  const { selectedNotes, selectedKeys, toggleSelect, clearSelection } = useNoteSelection({ displayedNotes, viewMode, selectedNotebookId, scopeKey: noteLink.inFocus ? returnTo : location.pathname + location.search });
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
   const bulkMoveNotebookId = selectedNotes.length > 0 && selectedNotes.every(note => note.notebookId === selectedNotes[0].notebookId) ? selectedNotes[0].notebookId : undefined;
   const bulkMoveNotebook = config?.notebooks.find(nb => nb.id === bulkMoveNotebookId);
@@ -285,7 +286,7 @@ export const AppContent: React.FC = () => {
   // Assets are scoped to whichever notebook the open note (or the selected browse notebook) belongs to.
   const { handleUploadAsset, handleDeleteAsset, handleMoveAsset } = useAssetOperations({ editingNote, selectedNotebookId, remote, setAssets, setGitStatus });
 
-  const { beforeFileChange, openFileManager, onFilesChanged, openFileIndex } = useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, setActionError, navigate, location, returnTo, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex });
+  const { beforeFileChange, openFileManager, onFilesChanged, openFileIndex } = useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, setActionError, navigate, location, returnTo, focusNoteRoute: noteLink.inFocus, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex });
   /** The unsaved copy an editor keeps in this browser for a note path, which a moved note leaves behind, and the conflicted copy, which follows the note. */
   const forgetDrafts = (notebookId: string, path: string, destination: string) => {
     const repository = repositoryFor(notebookId);
@@ -298,8 +299,8 @@ export const AppContent: React.FC = () => {
   const movingNotebook = noteMove.request?.mode === 'move' ? config?.notebooks.find(nb => nb.id === noteMove.request?.note.notebookId) : undefined;
   const { bulkBusy, runBulkStatus, runBulkTag, runBulkMove } = useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNoteStatus: handleUpdateNoteStatus, beforeFileChange, onFilesChanged, repositories, remote, canWrite: canWriteFiles, t, invalidateNotes, setRepositoryRevision, setActionError, tagOperations, config });
 
-  // A linked note waiting to open in the Focus does not show zoom first.
-  const noteEditorOpen = (Boolean(routedNote) || routedLoading) && !routeError && !noteLink.pending;
+  // A note the Focus shows, or a linked note waiting to open there, is not shown in zoom.
+  const noteEditorOpen = (Boolean(routedNote) || routedLoading) && !routeError && !noteLink.inFocus;
 
   // Every editor of a note, in zoom or in a Focus pane, is wired to the same handlers and per-path state.
   const editorProps = (note: NoteItem, committed?: NoteItem): NoteEditorSharedProps => {
@@ -416,16 +417,10 @@ export const AppContent: React.FC = () => {
   const browseFocusMode = noteFocus.layout || phone ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, compactRows: phone || (focusCapacity !== 1 && !focusEmpty), openPath: activeNotePath, readNote: readNoteForChange } : undefined;
   // Either dock collapses and reopens from the toolbar's left end.
   const dockToggle = noteFocus.layout && !focusEmpty && focusCapacity !== 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} /> : undefined;
-  // Beside a Focus the filter sidebar folds to an icon rail (the drawer below the desktop breakpoint stays a drawer), and the filters in force show as chips above the list.
-  const desktop = useIsDesktop();
-  const dockedFocus = activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && !focusEmpty && focusCapacity !== 1;
-  const railed = dockedFocus && desktop;
-  const [railSection, setRailSection] = useState<RailSectionId | null>(null);
-  const [wasRailed, setWasRailed] = useState(railed);
-  if (wasRailed !== railed) {
-    setWasRailed(railed);
-    if (!railed) setRailSection(null);
-  }
+  // Beside a Focus the list's dock holds the folders and filters above the list (the sidebar folds away on a desktop; below it, it stays a drawer),
+  // and the board above a Focus keeps the sidebar; the chips of the filters in force show where the filters themselves are out of sight.
+  const layout = browseLayout({ focusShown: activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && !focusEmpty, capacity: focusCapacity, viewMode });
+  const openFilters = () => phone ? setPhoneFilterOpen(true) : setFiltersOpen(true);
   // An outline or compilation list offers its own kind; every kind starts at the notebook root, moved from its editor.
   const newKind = route.kind === 'outline' || route.kind === 'compilation' ? route.kind : 'note';
   const createNewKind = () => {
@@ -446,7 +441,7 @@ export const AppContent: React.FC = () => {
   const noteGroupOf = useMemo(() => groupedByFolder ? noteFolderGrouping({ notebookRoot: folderRoot ?? '', selectedFolder, folders, notebookId: selectedNotebookId, selectedLabel: indexFolderName }) : undefined, [groupedByFolder, folderRoot, selectedFolder, folders, selectedNotebookId, indexFolderName]);
   const browseRegion = () => (
     <>
-      {dockedFocus && <FilterChips filters={filterProps} sections={railed ? [{ id: 'notebooks', label: t('sidebar.notebooks') }, { id: 'status', label: t('sidebar.status') }, ...(filterProps.tags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags') }] : [])] : []} onAdd={section => railed && section ? setRailSection(section) : setFiltersOpen(true)} />}
+      {layout.chips === 'list' && <FilterChips filters={filterProps} onAdd={openFilters} />}
       <LegacySchemaNotice schemaVersion={config?.schema_version} />
       {actionError && <p role='alert' className='mb-3 text-sm text-danger'>{actionError}</p>}
       {selectedNotes.length > 0 && <BulkActionsToolbar count={selectedNotes.length} statuses={notebookStatuses} availableTags={availableTags} busy={bulkBusy} readOnly={!canWriteFiles} canMove={Boolean(bulkMoveNotebookId)} liveNotes={selectedNotes.filter(isLiveNote).map(note => note.title || note.path)} onSetStatus={status => void runBulkStatus(status)} onAddTag={tag => void runBulkTag('add', tag)} onRemoveTag={tag => void runBulkTag('remove', tag)} onMove={() => setBulkMoveOpen(true)} onClear={clearSelection} />}
@@ -455,7 +450,9 @@ export const AppContent: React.FC = () => {
       {facetsQuery.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.countsFailed', { message: facetsQuery.error })}</p>}
       {indexLookup.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.loadFailed', { message: indexLookup.error })}</p>}
       {listResult.loading && <LoadingStatus className='mb-3 text-sm text-muted'>{t('notes.loading')}</LoadingStatus>}
-      {!folderless && (
+      {/* Beside the folder tree the path line names the folder and its subfolders are in the tree; only the folder's index stays. */}
+      {!folderless && layout.split && viewMode === 'list' && folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}
+      {!folderless && !layout.split && (
         <>
           <Breadcrumbs segments={breadcrumbs} currentFolder={selectedFolder} onSelectFolder={setSelectedFolder} subfolderCount={immediateSubfolders.length} noteCount={listResult.total} />
           <FolderLinks folders={immediateSubfolders} onSelect={setSelectedFolder}>{folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}</FolderLinks>
@@ -544,8 +541,32 @@ export const AppContent: React.FC = () => {
   // A note opened from a zoomed compilation leaves that compilation mounted behind it.
   const behindPath = trailCompilation(location.state, editorRoute.notebook, config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root ?? '');
   const compilationBehind = behindPath ? { notebookId: selectedNotebookId, path: behindPath } : null;
-  /** The filter sidebar; a phone's filter sheet shows only its status and tags. */
-  const renderSidebar = (filtersOnly = false) => (
+  /** The left dock's column beside a Focus: the folders (and filters) above the list, with the path line between them. */
+  const browseSplit = (dock: 'filters' | 'folders') => {
+    const path = browsePath({ kind: route.kind, notebookTitle: selectedNotebook?.title ?? '', breadcrumbs, labels: { outline: t('outline.list'), compilations: t('sidebar.compilations') } });
+    const count = filterProps.count;
+    return (
+      <BrowseSplit
+        label={t('browseSplit.folders')}
+        actions={dock === 'filters' ? <button type='button' className='sidebar-clear-filters browse-split-clear' onClick={filterProps.onClear}>{t('filters.clear')}</button> : undefined}
+        top={renderSidebar(false, dock)}
+        path={
+          <>
+            <span className='browse-split-path-text' title={path}>{path}</span>
+            {count === null ? <LoadingStatus as='span' className='browse-split-count'>{t('notes.countsLoading')}</LoadingStatus> : <span className='browse-split-count'>{t(count === 1 ? 'folder.noteCount' : 'folder.notesCount', { count })}</span>}
+          </>
+        }
+        size={noteFocus.view.dock.split}
+        onSizeChange={split => noteFocus.setDock({ split })}
+        collapsed={noteFocus.view.dock.splitCollapsed}
+        onCollapsedChange={splitCollapsed => noteFocus.setDock({ splitCollapsed })}
+      >
+        {browseRegion()}
+      </BrowseSplit>
+    );
+  };
+  /** The filter sidebar; a phone's filter sheet shows only its status and tags, and the dock beside a Focus its compact top part. */
+  const renderSidebar = (filtersOnly = false, dock?: 'filters' | 'folders') => (
     <Sidebar
       selectedNotebookId={selectedNotebookId}
       folders={folders}
@@ -570,10 +591,8 @@ export const AppContent: React.FC = () => {
       onRenameTag={handleRenameTag}
       onMergeTag={handleMergeTag}
       onDeleteTag={handleDeleteTag}
-      rail={railed}
-      railSection={railSection}
-      onRailSectionChange={setRailSection}
       filtersOnly={filtersOnly}
+      dock={dock}
     />
   );
 
@@ -619,8 +638,7 @@ export const AppContent: React.FC = () => {
                 <div ref={sidebarGestureRef} className='workspace-body relative flex-1 min-h-0 min-w-0 flex overflow-hidden'>
                   <WorkspaceSplitLayout
                     hasSidebar={activeTab !== 'graph' && !route.study}
-                    sidebarCollapsed={browseCollapsed}
-                    sidebarRail={railed}
+                    sidebarCollapsed={browseCollapsed || layout.sidebarFolded}
                     sidebarDomId={activeTab === 'notes' ? 'notebook-panel' : activeTab === 'agent' ? 'agent-sidebar-panel' : activeTab === 'assets' ? 'assets-sidebar-panel' : activeTab === 'settings' ? 'settings-sidebar-panel' : undefined}
                     closeLabel={t('sidebar.closeFilters')}
                     rightPanelWidth={rightPanelWidth}
@@ -696,7 +714,7 @@ export const AppContent: React.FC = () => {
                             ? !phoneNoteScreen && (
                               <>
                                 <PhoneListBar searchRef={noteSearch} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} unavailableNotebooks={repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks)} notebookGroups={notebookGroups} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} />
-                                <FilterChips filters={filterProps} sections={[]} onAdd={() => setPhoneFilterOpen(true)} />
+                                {layout.chips === 'bar' && <FilterChips filters={filterProps} onAdd={openFilters} />}
                               </>
                             )
                             : (
@@ -714,7 +732,7 @@ export const AppContent: React.FC = () => {
                                 collapsed={noteFocus.view.dock.collapsed}
                                 narrow={focusCapacity === 1}
                                 narrowView={phoneNoteScreen ? 'focus' : phone ? 'browse' : focusNarrowView}
-                                browse={browseRegion()}
+                                browse={layout.split ? browseSplit(layout.split) : browseRegion()}
                               >
                                 <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />
                               </BrowseDock>

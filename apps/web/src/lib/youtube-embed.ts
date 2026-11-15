@@ -1,5 +1,6 @@
 import type { YouTubeDisplayMode } from '@mygitnotes/core';
 import { notebookPreferences } from './notebook-preferences.js';
+import { pageOf } from './routes.js';
 
 export const YOUTUBE_MODE_STORAGE_KEY = 'github-notes:youtube-display-mode';
 export const YOUTUBE_MODE_EVENT = 'github-notes:youtube-display-mode-change';
@@ -175,11 +176,12 @@ export function activateYouTubeEmbed(poster: HTMLElement) {
   }
   host.append(createYouTubeIframe(videoId, start, playerLabel));
   embed.dataset.youtubePlaying = 'true';
-  const player = { key, host, route: location.pathname, frame: 0, target: embed, surface };
+  // Switching the Focus's note changes the address but not the page, so a video in another pane plays on.
+  const player = { key, host, route: pageOf(location.pathname, location.search), frame: 0, target: embed, surface };
   activePlayer = player;
   const position = () => {
     if (activePlayer !== player) return;
-    if (location.pathname !== player.route) {
+    if (pageOf(location.pathname, location.search) !== player.route) {
       host.remove();
       activePlayer = null;
       return;

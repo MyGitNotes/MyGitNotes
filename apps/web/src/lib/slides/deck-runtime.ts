@@ -2,7 +2,7 @@
  * Plays a slide note with contour-deck. Everything here loads on the first Play: contour-deck's core, its stylesheet and its rehype
  * plugin, and the two hast utilities `buildDeck` uses. A note that is never played downloads none of it.
  */
-import { createDeck, type Labels } from 'contour-deck';
+import { createDeck, type LabelSet } from 'contour-deck';
 import 'contour-deck/style.css';
 import './deck.css';
 import { hydratePdfFigures } from '../annotations/pdf-figure.js';
@@ -12,8 +12,13 @@ import { hydrateQrCodes } from '../qrcode.js';
 import { buildDeck } from './deck.js';
 import { EmptyDeckError } from './errors.js';
 
-/** contour-deck's interface text in English; its own defaults are Traditional Chinese. */
-const ENGLISH_LABELS: Labels = { overview: 'Outline', notes: 'Notes', script: 'Script', threeD: '3D', prev: 'Previous step', next: 'Next step', exit: 'Leave the slides', remote: 'Remote', here: 'You are here', appendix: 'Written', rail: 'Position in the deck', noNotes: '(No notes for this page)', slides: count => count === 1 ? '1 slide' : `${count} slides`, pages: count => count === 1 ? '1 page' : `${count} pages`, minutes: count => `about ${count} min`, page: (index, count) => `Page ${index}/${count}`, steps: (shown, count) => `Step ${shown}/${count}`, thumb: (block, slide, title, pages) => `${block}, slide ${slide}: ${title}${pages > 1 ? `, ${pages} pages` : ''}` };
+const plural = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`;
+
+/**
+ * Every word the deck says in an English app. The set is complete, so a word contour-deck adds fails the type check instead of reaching
+ * the reader in whichever set the deck would otherwise pick (a dev server still on an older contour-deck showed its Chinese).
+ */
+const ENGLISH_LABELS: LabelSet = { overview: 'Outline', notes: 'Notes', script: 'Script', threeD: '3D', prev: 'Previous step', next: 'Next step', exit: 'Leave the slides', remote: 'Remote', here: 'You are here', appendix: 'Written', opening: 'Opening', closing: 'Thanks', rail: 'Position in the deck', noNotes: '(No notes for this page)', slides: count => plural(count, 'slide'), pages: count => plural(count, 'page'), minutes: count => `about ${count} min`, page: (index, count) => `Page ${index}/${count}`, steps: (shown, count) => `Step ${shown}/${count}`, thumb: (block, slide, title, pages) => `${block}, slide ${slide}: ${title}${pages > 1 ? `, ${pages} pages` : ''}`, railBlock: (block, term) => (term ? `${block} (${term})` : block), wayHead: (short, term) => (term ? `${short} | ${term}` : short), roadmap: 'Roadmap of the talk', railSlide: (block, slide) => `${block}: ${slide}`, entry: (label, title) => `${label}: ${title}` };
 
 export interface OpenDeckOptions {
   /** The note's sanitized HTML, rendered with `slides: 'deck'`. */
@@ -42,8 +47,9 @@ export function openDeck(host: HTMLElement, { html, title, view, language, t, on
   const stopMermaid = hydrateMermaid(root, { errorLabel: t('mermaid.error') });
   const stopPdfFigures = hydratePdfFigures(root, { t });
   const stopQrCodes = hydrateQrCodes(root);
-  // The app has its own router: the deck neither reads nor writes the address.
-  const deck = createDeck(root, { url: false, view, labels: language === 'en' ? ENGLISH_LABELS : undefined });
+  // The app has its own router: the deck neither reads nor writes the address. It speaks the app's language, not whichever `lang` stands
+  // above it.
+  const deck = createDeck(root, { url: false, view, lang: language, labels: language === 'en' ? ENGLISH_LABELS : undefined });
   deck.on('exit', onExit);
   return () => {
     stopMermaid();

@@ -10,7 +10,7 @@ vi.mock('../lib/api.js', () => api);
 afterEach(cleanup);
 type Params = Parameters<typeof useFileNavigation>[0];
 function fixture(overrides: Partial<Params> = {}) {
-  const params: Params = { editorRegistry: { register: vi.fn(() => () => {}), flushEditors: vi.fn().mockResolvedValue(true) }, draftsUnder: vi.fn(() => []), remote: false, readDraft: vi.fn(() => undefined), t: key => key, config: { schema_version: 3, workspace: { title: 'Test', default_notebook: 'a' }, notebooks: [{ id: 'a', root: 'notes/a', title: 'A' }] }, setFileDialog: vi.fn(), refreshWorkspace: vi.fn().mockResolvedValue(undefined), refreshDocuments: vi.fn().mockResolvedValue(undefined), editorRoute: parseWorkspaceRoute('/notebooks/a', ''), editorNotebookId: 'a', setEditingNote: vi.fn(), setActionError: vi.fn(), navigate: vi.fn(), location: { pathname: '/notebooks/a', search: '', hash: '', key: 'test', state: null }, returnTo: '/notebooks/a', setFileEditorRevision: vi.fn(), selectedFolder: 'one/nested', folderRoot: 'notes/a', changeFilters: vi.fn(), handleOpenFolderIndex: vi.fn().mockResolvedValue(undefined), ...overrides };
+  const params: Params = { editorRegistry: { register: vi.fn(() => () => {}), flushEditors: vi.fn().mockResolvedValue(true) }, draftsUnder: vi.fn(() => []), remote: false, readDraft: vi.fn(() => undefined), t: key => key, config: { schema_version: 3, workspace: { title: 'Test', default_notebook: 'a' }, notebooks: [{ id: 'a', root: 'notes/a', title: 'A' }] }, setFileDialog: vi.fn(), refreshWorkspace: vi.fn().mockResolvedValue(undefined), refreshDocuments: vi.fn().mockResolvedValue(undefined), editorRoute: parseWorkspaceRoute('/notebooks/a', ''), editorNotebookId: 'a', setEditingNote: vi.fn(), setActionError: vi.fn(), navigate: vi.fn(), location: { pathname: '/notebooks/a', search: '', hash: '', key: 'test', state: null }, returnTo: '/notebooks/a', focusNoteRoute: false, setFileEditorRevision: vi.fn(), selectedFolder: 'one/nested', folderRoot: 'notes/a', changeFilters: vi.fn(), handleOpenFolderIndex: vi.fn().mockResolvedValue(undefined), ...overrides };
   const { result } = renderHook(() => useFileNavigation(params));
   return { params, model: result.current };
 }
@@ -53,7 +53,7 @@ it('clears deleted folder filters and exits a deleted open note after refreshing
 it('repairs selected folder and open-note routes when preserving contents moves them out', async () => {
   const { params, model } = fixture({ editorRoute: parseWorkspaceRoute('/notebooks/a/notes/one/nested/note.md', '') });
   await model.onFilesChanged({ revision: 'r2', selectedPath: 'notes/a/two', pathMap: { 'notes/a/one/nested': 'notes/a/two', 'notes/a/one/nested/note.md': 'notes/a/two/note.md' }, deletedPaths: ['notes/a/one/nested', 'notes/a/one/nested/note.md'] });
-  expect(params.navigate).toHaveBeenCalledWith('/notebooks/a/notes/two/note.md', { replace: true });
+  expect(params.navigate).toHaveBeenCalledWith('/notebooks/a/notes/two/note.md', { replace: true, state: null });
   expect(params.changeFilters).toHaveBeenCalledWith({ folders: ['notes/a/two'] });
 });
 it('shows a renamed open note at its new path before the workspace is read again, when asked to work in the background', async () => {
@@ -65,7 +65,7 @@ it('shows a renamed open note at its new path before the workspace is read again
   );
   const { params, model } = fixture({ refreshWorkspace, editorRoute: parseWorkspaceRoute('/notebooks/a/notes/one/nested/note.md', '') });
   await model.onFilesChanged({ revision: 'r2', selectedPath: 'notes/a/one/nested/fresh.md', pathMap: { 'notes/a/one/nested/note.md': 'notes/a/one/nested/fresh.md' }, deletedPaths: [] }, { background: true });
-  expect(params.navigate).toHaveBeenCalledWith('/notebooks/a/notes/one/nested/fresh.md', { replace: true });
+  expect(params.navigate).toHaveBeenCalledWith('/notebooks/a/notes/one/nested/fresh.md', { replace: true, state: null });
   expect(params.setFileDialog).toHaveBeenCalledWith(undefined);
   expect(refreshWorkspace).toHaveBeenCalledWith(true);
   expect(params.refreshDocuments).toHaveBeenCalledOnce();
@@ -75,4 +75,10 @@ it('reports a failed background refresh instead of dropping it', async () => {
   const { params, model } = fixture({ refreshWorkspace: vi.fn().mockRejectedValue(new Error('offline')), editorRoute: parseWorkspaceRoute('/notebooks/a/notes/one/nested/note.md', '') });
   await model.onFilesChanged({ revision: 'r2', selectedPath: 'x', pathMap: { 'notes/a/one/nested/note.md': 'notes/a/one/nested/fresh.md' }, deletedPaths: [] }, { background: true });
   await vi.waitFor(() => expect(params.setActionError).toHaveBeenCalledWith('offline'));
+});
+it('keeps a renamed note the Focus shows at an address of the Focus, so it is not taken for zoom, before its entry is marked too', async () => {
+  const location = { pathname: '/notebooks/a/notes/one/nested/note.md', search: '?q=x', hash: '', key: 'test', state: null };
+  const { params, model } = fixture({ location: location as never, focusNoteRoute: true, editorRoute: parseWorkspaceRoute(location.pathname, location.search) });
+  await model.onFilesChanged({ revision: 'r2', selectedPath: 'notes/a/one/nested/fresh.md', pathMap: { 'notes/a/one/nested/note.md': 'notes/a/one/nested/fresh.md' }, deletedPaths: [] });
+  expect(params.navigate).toHaveBeenCalledWith('/notebooks/a/notes/one/nested/fresh.md?q=x', { replace: true, state: { focusNote: true } });
 });

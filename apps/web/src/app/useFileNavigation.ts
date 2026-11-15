@@ -3,7 +3,7 @@ import type { FolderAction } from '../components/FolderActions.js';
 import { type NoteListItem } from '@mygitnotes/core/note-query';
 import type { FilterControls } from '../lib/filter-controls.js';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { noteRoute, parseWorkspaceRoute } from '../lib/routes.js';
+import { FOCUS_NOTE_STATE, noteRoute, parseWorkspaceRoute } from '../lib/routes.js';
 import React from 'react';
 import { readNote } from '../lib/api.js';
 import { useNoteEditorRegistry } from '../lib/note-editing.js';
@@ -30,6 +30,8 @@ interface Params {
   navigate: ReturnType<typeof useNavigate>;
   location: ReturnType<typeof useLocation>;
   returnTo: string;
+  /** Whether the Focus shows the routed note (the page's decision); a renamed note's new address keeps it there. */
+  focusNoteRoute: boolean;
   setFileEditorRevision: React.Dispatch<React.SetStateAction<number>>;
   selectedFolder: string | null;
   folderRoot: string | undefined;
@@ -37,7 +39,7 @@ interface Params {
   handleOpenFolderIndex: ReturnType<typeof useNoteRestoration>['handleOpenFolderIndex'];
 }
 
-export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, setActionError, navigate, location, returnTo, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex }: Params) {
+export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, setActionError, navigate, location, returnTo, focusNoteRoute, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex }: Params) {
   /**
    * Saves the open editors, then refuses a change that would strand drafts: those under the paths it touches. A change
    * without a scope touches no note (an R2 asset move rewrites links, which the commit of any draft merges).
@@ -65,7 +67,8 @@ export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDra
     if (editorRoute.note) {
       if (nb && result.pathMap[previous]) {
         setEditingNote(null);
-        navigate(noteRoute(nb.id, result.pathMap[previous].slice(nb.root.length + 1)) + location.search, { replace: true });
+        // The address of a note the Focus shows stays one at the note's new path.
+        navigate(noteRoute(nb.id, result.pathMap[previous].slice(nb.root.length + 1)) + location.search, { replace: true, state: focusNoteRoute ? FOCUS_NOTE_STATE : null });
         setFileDialog(undefined);
       } else if (nb) {
         try {

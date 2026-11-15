@@ -26,7 +26,7 @@ function controls(value: Partial<NoteFilters> = {}, onChange: FilterControls['on
   return { value: { kind: 'note', notebookId: 'life', folders: [], descendants: true, tags: [], tagMode: 'any', q: '', status: null, showHidden: false, ...value }, neighbors: false, notebooks: [{ id: 'life', title: 'Life', root: 'notes/life', statuses: ['todo', 'done'] }], folders: [], tags: ['work'], statuses: ['todo', 'done'], count: 7, onChange, allNotebooks: false, onAllNotebooksChange: () => {}, onClear: () => {}, ...(liveAvailable === undefined ? {} : { liveAvailable }) };
 }
 
-const sidebar = (filters: FilterControls, extra: { filtersOnly?: boolean; rail?: boolean; } = {}) => render(createElement(I18nProvider, null, createElement(Sidebar, { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: vi.fn(), workspaceTagNames: ['work'], ...extra })));
+const sidebar = (filters: FilterControls, extra: { filtersOnly?: boolean; } = {}) => render(createElement(I18nProvider, null, createElement(Sidebar, { filters, facets, folders: [], selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: vi.fn(), workspaceTagNames: ['work'], ...extra })));
 
 it('offers no live editing filter without a live repository', () => {
   sidebar(controls());

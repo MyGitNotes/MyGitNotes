@@ -38,8 +38,11 @@ export interface FocusViewState {
   entries: Record<string, FocusEntryView | LegacyFocusEntryView>;
   /** Focus key last displayed in this notebook; null means normal browsing. */
   last: string | null;
-  /** Browse region: left dock width (px), top dock height (px), collapsed flag. */
-  dock: { left: number; top: number; collapsed: boolean; };
+  /**
+   * Browse region: left dock width (px), top dock height (px), collapsed flag; and in the left dock, the share (percent) its folders and filters
+   * take above the list (`split`), and whether they are folded to a path line (`splitCollapsed`).
+   */
+  dock: { left: number; top: number; collapsed: boolean; split: number; splitCollapsed: boolean; };
 }
 
 /**
@@ -117,12 +120,16 @@ export function hasStoredFocusView(repositoryId: string, notebookKey: string): b
   }
 }
 
-const OLD_DEFAULT_DOCK_LEFT = 320;
+/** 320 until the note list shrank to two lines, then 240 until the dock took the folders and filters over the list in place of the icon rail. */
+const OLD_DEFAULT_DOCK_LEFTS = [320, 240];
+/** The share of the left dock its folders and filters may take; the divider keeps within it. */
+export const DOCK_SPLIT_MIN = 15;
+export const DOCK_SPLIT_MAX = 85;
 /** The top dock was 280 px until a Kanban board above a Focus showed only 101 px of cards, cutting a card with tags off at its action row. */
 const OLD_DEFAULT_DOCK_TOP = 280;
 
 export function emptyFocusView(): FocusViewState {
-  return { current: emptyFocusLayout(), entries: {}, last: null, dock: { left: 240, top: 340, collapsed: false } };
+  return { current: emptyFocusLayout(), entries: {}, last: null, dock: { left: 288, top: 340, collapsed: false, split: 55, splitCollapsed: false } };
 }
 
 /** Tolerant reader for whatever JSON was stored: never throws, drops or defaults whatever doesn't validate. */
@@ -142,14 +149,16 @@ export function readFocusView(raw: unknown): FocusViewState {
   const last = typeof raw.last === 'string' && FOCUS_KEY_RE.test(raw.last) ? raw.last : null;
   const defaults = emptyFocusView().dock;
   const dockRaw = isRecord(raw.dock) ? raw.dock : {};
-  // 320 was the default width before the note list shrank to two lines; a dock still at it never chose that width, so it takes the new default.
-  const left = typeof dockRaw.left === 'number' && Number.isFinite(dockRaw.left) && dockRaw.left >= 0 && dockRaw.left !== OLD_DEFAULT_DOCK_LEFT ? dockRaw.left : defaults.left;
+  // A dock still at an old default width never chose that width, so it takes the new default.
+  const left = typeof dockRaw.left === 'number' && Number.isFinite(dockRaw.left) && dockRaw.left >= 0 && !OLD_DEFAULT_DOCK_LEFTS.includes(dockRaw.left) ? dockRaw.left : defaults.left;
   // Views stored before the card dock moved to the top keep their height under `bottom`.
   const topRaw = dockRaw.top ?? dockRaw.bottom;
   // Like the old width, a height still at the old default never chose it and takes the new one.
   const top = typeof topRaw === 'number' && Number.isFinite(topRaw) && topRaw >= 0 && topRaw !== OLD_DEFAULT_DOCK_TOP ? topRaw : defaults.top;
   const collapsed = typeof dockRaw.collapsed === 'boolean' ? dockRaw.collapsed : defaults.collapsed;
-  return { current, entries, last, dock: { left, top, collapsed } };
+  const split = typeof dockRaw.split === 'number' && dockRaw.split >= DOCK_SPLIT_MIN && dockRaw.split <= DOCK_SPLIT_MAX ? dockRaw.split : defaults.split;
+  const splitCollapsed = typeof dockRaw.splitCollapsed === 'boolean' ? dockRaw.splitCollapsed : defaults.splitCollapsed;
+  return { current, entries, last, dock: { left, top, collapsed, split, splitCollapsed } };
 }
 
 function splitNodes(node: FocusNode): FocusSplitNode[] {

@@ -44,7 +44,7 @@ function app(features: WebFeature[], children: ReactNode) {
   );
 }
 
-const sidebar = (rail = false) => <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} rail={rail} />;
+const sidebar = (dock?: 'filters' | 'folders') => <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} dock={dock} />;
 const sheet = (onClose = vi.fn()) => (
   <PhoneFilterSheet onClose={onClose} sortField='updated' sortOrder='desc' onSortChange={vi.fn()} viewMode='flat' setViewMode={vi.fn()} showHidden={false} hiddenNoteCount={0} onShowHiddenChange={vi.fn()}>
     <p>filters</p>
@@ -74,13 +74,18 @@ it("shows an edition's links at the bottom of the sidebar and opens a path in th
   expect(screen.getByRole('heading', { name: 'Help page' })).toBeInTheDocument();
 });
 
-it('shows the links as named icons with a tooltip on the rail', () => {
-  app([archive], sidebar(true));
+it('shows the links under the filters in the browse dock beside a Focus, and opens a path in the app', () => {
+  app([archive], sidebar('filters'));
   const group = screen.getByRole('navigation', { name: 'Links' });
-  expect(group.closest('.sidebar-rail')).not.toBeNull();
-  expectLinks(group);
-  expect(within(group).getByRole('link', { name: 'Old notes (opens in a new tab)' })).toHaveAttribute('title', 'Old notes');
-  expect(within(group).getByRole('link', { name: 'Help' })).toHaveAttribute('title', 'Help');
+  expect(group.closest('.browse-dock-filters')).not.toBeNull();
+  expect(document.querySelector('.sidebar-rail')).toBeNull();
+  fireEvent.click(expectLinks(group));
+  expect(screen.getByRole('heading', { name: 'Help page' })).toBeInTheDocument();
+});
+
+it("leaves the links out of the phone list screen's folders, since its filter sheet shows them", () => {
+  app([archive], sidebar('folders'));
+  expect(screen.queryByRole('navigation', { name: 'Links' })).toBeNull();
 });
 
 it("shows the links in a phone's filter sheet, which a path in the app closes", () => {
@@ -99,7 +104,7 @@ it("leaves the links out of the sidebar's filters inside the phone sheet, which 
 it('adds nothing when no feature registers a link, or only unsafe ones', () => {
   const unsafe: WebFeature = { id: 'unsafe', sidebarLinks: () => [{ id: 'x', label: 'X', href: 'javascript:void 0' }, { id: 'y', label: 'Y', href: 'data:text/html,hi' }, { id: 'z', label: 'Z', href: '//evil.example.com' }] };
   for (const features of [[], [{ id: 'plain' }], [unsafe]]) {
-    for (const view of [sidebar(), sidebar(true), sheet()]) {
+    for (const view of [sidebar(), sidebar('filters'), sheet()]) {
       const { unmount } = app(features, view);
       expect(screen.queryByRole('navigation', { name: 'Links' })).toBeNull();
       expect(document.querySelector('.workspace-sidebar-footer')).toBeNull();
