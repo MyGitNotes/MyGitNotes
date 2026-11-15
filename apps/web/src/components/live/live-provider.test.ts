@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import { LiveProvider } from './live-provider.js';
 
 /*
@@ -52,7 +52,7 @@ const read = (message: Uint8Array) => {
 const fakeSocket = () => {
   const handlers = new Map<string, Set<(event: unknown) => void>>();
   const sent: Uint8Array[] = [];
-  const socket = { on: (event: string, handler: (event: unknown) => void) => handlers.set(event, (handlers.get(event) ?? new Set()).add(handler)), off: (event: string, handler: (event: unknown) => void) => handlers.get(event)?.delete(handler), attach: () => {}, detach: () => {}, send: (message: Uint8Array) => sent.push(message), emit: (event: string, payload: unknown = {}) => handlers.get(event)?.forEach(handler => handler(payload)) };
+  const socket = { webSocket: { readyState: 1 }, on: (event: string, handler: (event: unknown) => void) => handlers.set(event, (handlers.get(event) ?? new Set()).add(handler)), off: (event: string, handler: (event: unknown) => void) => handlers.get(event)?.delete(handler), attach: () => {}, detach: () => {}, send: (message: Uint8Array) => sent.push(message), emit: (event: string, payload: unknown = {}) => handlers.get(event)?.forEach(handler => handler(payload)) };
   return { socket, sent };
 };
 
@@ -124,5 +124,127 @@ describe('LiveProvider', () => {
     doc.getText('content').insert(1, 'b');
     expect(sent.map(read).filter(message => message.kind === 'update')).toHaveLength(1);
     provider.destroy();
+  });
+
+  /*
+   * BG-F001: a keystroke typed while the browser socket is CLOSING (the server sent its close frame, the close event
+   * is one round trip away) went to HocuspocusProviderWebsocket's queue, which the next connect flushes at the
+   * server's first message, before the tab's step 2: refused with 1011 when it builds on typing the server refused,
+   * and its acknowledgement zeroed the unsaved count while the step 2 was still unstored. These run the real provider
+   * websocket over a socket the test drives.
+   */
+  describe('over the real provider websocket', () => {
+    const sockets: FakeWebSocket[] = [];
+    class FakeWebSocket {
+      readyState = 0;
+      sent: Uint8Array[] = [];
+      listeners = new Map<string, Set<(event: unknown) => void>>();
+      constructor(public url: string) {
+        sockets.push(this);
+      }
+      addEventListener(name: string, listener: (event: unknown) => void) {
+        this.listeners.set(name, (this.listeners.get(name) ?? new Set()).add(listener));
+      }
+      removeEventListener(name: string, listener: (event: unknown) => void) {
+        this.listeners.get(name)?.delete(listener);
+      }
+      fire(name: string, event: unknown = {}) {
+        this.listeners.get(name)?.forEach(listener => listener(event));
+      }
+      send(message: Uint8Array) {
+        this.sent.push(new Uint8Array(message));
+      }
+      close() {
+        this.readyState = 3;
+      }
+    }
+    const tick = () => new Promise(resolve => setTimeout(resolve, 5));
+    const authenticated = () => new Uint8Array([...name(), 2, 2, ...varBytes(new TextEncoder().encode('read-write'))]);
+    const deliver = (socket: FakeWebSocket, data: Uint8Array) => socket.fire('message', { data: data.buffer });
+    const kinds = (socket: FakeWebSocket) => socket.sent.map(read).map(message => message.kind);
+
+    const setup = async () => {
+      sockets.length = 0;
+      const websocket = new HocuspocusProviderWebsocket({ url: 'ws://live.test', WebSocketPolyfill: FakeWebSocket, delay: 1, initialDelay: 0, minDelay: 1, maxDelay: 1, jitter: false });
+      const doc = new Y.Doc();
+      const text = doc.getText('content');
+      const provider = new LiveProvider({ websocketProvider: websocket, name: NAME, document: doc, token: 'ticket' });
+      provider.attach();
+      const server = new Y.Doc();
+      /** Opens the latest socket and syncs it with the server, storing the tab's step 2. */
+      const connect = async () => {
+        await tick();
+        const socket = sockets.at(-1)!;
+        socket.readyState = 1;
+        socket.fire('open');
+        await tick();
+        deliver(socket, authenticated());
+        deliver(socket, step1(Y.encodeStateVector(server)));
+        return socket;
+      };
+      const finishSync = (socket: FakeWebSocket) => {
+        for (const message of socket.sent.map(read).filter(message => message.kind === 'step2')) Y.applyUpdate(server, message.payload!);
+        deliver(socket, step2(Y.encodeStateAsUpdate(server, Y.encodeStateVector(doc))));
+        deliver(socket, applied());
+      };
+      return { websocket, provider, text, server, connect, finishSync };
+    };
+
+    it('holds typing done while the socket is closing, and sends no update before the next step 2', async () => {
+      const { websocket, provider, text, server, connect, finishSync } = await setup();
+      const first = await connect();
+      finishSync(first);
+      expect(provider.synced).toBe(true);
+      expect(provider.unsyncedChanges).toBe(0);
+
+      // The server closes for a new ticket (4000); the browser marks the socket CLOSING before the close event.
+      first.readyState = 2;
+      text.insert(0, 'closing ');
+      expect(provider.unsyncedChanges).toBeGreaterThan(0);
+      first.readyState = 3;
+      first.fire('close', { code: 4000, reason: 'Live ticket renewal' });
+      text.insert(text.length, 'offline');
+
+      const second = await connect();
+      // Nothing of the typing went out as an update: the step 2 carries all of it.
+      expect(kinds(second)).not.toContain('update');
+      expect(websocket.messageQueue).toHaveLength(0);
+      // An early acknowledgement cannot zero the count while the step 2 is unstored.
+      expect(provider.unsyncedChanges).toBeGreaterThan(0);
+      finishSync(second);
+      expect(server.getText('content').toString()).toBe('closing offline');
+      expect(server.store.pendingStructs).toBeNull();
+      expect(provider.unsyncedChanges).toBe(0);
+      provider.destroy();
+      websocket.destroy();
+    });
+
+    it('keeps steady typing through a 4000 renewal applicable on the server', async () => {
+      const { websocket, provider, text, server, connect, finishSync } = await setup();
+      const first = await connect();
+      finishSync(first);
+      text.insert(0, 'a');
+      // Sent just before the tab saw the close frame, and refused by the server as past the socket's time.
+      expect(kinds(first).filter(kind => kind === 'update')).toHaveLength(1);
+      first.readyState = 2;
+      text.insert(1, 'b');
+      first.readyState = 3;
+      first.fire('close', { code: 4000, reason: 'Live ticket renewal' });
+      const second = await connect();
+      const beforeStep2 = second.sent.map(read);
+      const step2At = beforeStep2.findIndex(message => message.kind === 'step2');
+      expect(step2At).toBeGreaterThanOrEqual(0);
+      expect(beforeStep2.slice(0, step2At).some(message => message.kind === 'update')).toBe(false);
+      // Each update the server sees builds on what it stored: none waits on missing structs.
+      for (const message of beforeStep2.filter(message => message.kind === 'step2' || message.kind === 'update')) Y.applyUpdate(server, message.payload!);
+      expect(server.store.pendingStructs).toBeNull();
+      finishSync(second);
+      text.insert(2, 'c');
+      for (const message of second.sent.map(read).filter(message => message.kind === 'update')) Y.applyUpdate(server, message.payload!);
+      expect(server.getText('content').toString()).toBe('abc');
+      expect(server.store.pendingStructs).toBeNull();
+      provider.destroy();
+      websocket.destroy();
+    });
   });
 });
