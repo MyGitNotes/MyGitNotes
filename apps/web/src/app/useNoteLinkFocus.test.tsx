@@ -192,6 +192,10 @@ describe('the address of the Focus', () => {
     act(() => api.current.focus.close(at('a.md')));
     await waitFor(() => expect(api.current.url).toBe('/notebooks/life/folders/projects?q=draft'));
   });
+  it('drops the ?notebook= the way back from Settings leaves on the notebook route, since the note route names its notebook', async () => {
+    const { api } = open(['/settings', '/notebooks/life?q=draft&notebook=life'], showing({ p1: [at('a.md')] }));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft'));
+  });
 });
 
 describe('Back', () => {
