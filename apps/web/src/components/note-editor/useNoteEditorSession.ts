@@ -160,7 +160,10 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       const reason: TranslationKey = 'editor.remoteNoteMovedOrDeleted';
       setSaveError(reason);
       onMarkConflict?.(reason, { ...note, content: current.current.content, metadata: current.current.metadata }, current.current.baseNote);
-    } else setSaveError((error as Error).message);
+    } else {
+      // The browser's own words for a fetch that reached no server ("Failed to fetch") are said in the app's; the next read clears them.
+      setSaveError(error instanceof TypeError ? 'editor.remoteUnreachable' : (error as Error).message);
+    }
   };
   /** `now` skips the interval: the workspace said files changed, so this note may have. */
   const checkRemote = async (now = false) => {
@@ -175,7 +178,10 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     operation.current = true;
     try {
       const latest = await onReadRemote(note.path);
-      if (mounted.current) applyRemote(latest);
+      if (mounted.current) {
+        applyRemote(latest);
+        setSaveError(shown => shown === 'editor.remoteUnreachable' ? '' : shown);
+      }
     } catch (error) {
       handleRemoteFailure(error);
     } finally {
@@ -193,12 +199,16 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       if (document.visibilityState === 'visible') void checkRemoteRef.current();
     };
     const timer = window.setInterval(check, readOnly ? REMOTE_CHECK_INTERVAL_READONLY_MS : REMOTE_CHECK_INTERVAL_MS);
+    // Back online, the note is read at once rather than at the next interval.
+    const online = () => void checkRemoteRef.current(true);
     window.addEventListener('focus', check);
+    window.addEventListener('online', online);
     document.addEventListener('visibilitychange', check);
     const stopListening = onWorkspaceFilesChanged(() => void checkRemoteRef.current(true));
     return () => {
       stopListening();
       clearInterval(timer);
+      window.removeEventListener('online', online);
       window.removeEventListener('focus', check);
       document.removeEventListener('visibilitychange', check);
     };

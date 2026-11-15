@@ -1426,6 +1426,7 @@ export const en = {
   'editor.downloadPreservedDraft': 'Download preserved draft',
   'editor.localChangesPreserved': 'Your local changes are preserved.',
   'editor.dismissNotice': 'Dismiss notice',
+  'editor.remoteUnreachable': 'The server could not be reached; the note is read again once the connection is back.',
   'editor.remoteConflict': 'Remote changes conflict with your draft. Refresh the remote version to continue editing. Your draft is preserved.',
   'editor.remoteNoteMovedOrDeleted': 'This note was moved or deleted remotely. Your draft is preserved. Refresh after the note is restored, or open its new location.',
   'editor.remoteChangesMerged': 'Remote changes merged into this draft. Review before saving.',
