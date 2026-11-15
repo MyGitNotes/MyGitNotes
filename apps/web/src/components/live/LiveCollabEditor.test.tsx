@@ -191,6 +191,52 @@ describe('the bar', () => {
     expect(screen.getByText('Saved')).toBeInTheDocument();
   });
 
+  it('does not flash 未儲存 on a reconnect with nothing typed, and never says 已儲存 before the connect is acknowledged', async () => {
+    vi.useFakeTimers();
+    try {
+      await open();
+      sync();
+      await act(async () => vi.advanceTimersByTimeAsync(400));
+      expect(screen.getByText('Saved')).toBeInTheDocument();
+      emit(config => config.onStatus?.({ status: 'disconnected' }));
+      emit(config => {
+        config.onStatus?.({ status: 'connected' });
+        config.onSynced?.({ state: true });
+        // The connect's own sync step, which the server has not acknowledged yet: no typing.
+        config.onUnsyncedChanges?.({ number: 1 });
+      });
+      expect(screen.queryByText('Not saved')).toBeNull();
+      expect(screen.queryByText('Saved')).toBeNull();
+      emit(config => config.onUnsyncedChanges?.({ number: 0 }));
+      expect(screen.queryByText('Not saved')).toBeNull();
+      expect(screen.queryByText('Saved')).toBeNull();
+      await act(async () => vi.advanceTimersByTimeAsync(400));
+      expect(screen.getByText('Saved')).toBeInTheDocument();
+      // A step the server leaves unacknowledged says 未儲存 once it lasts.
+      emit(config => config.onUnsyncedChanges?.({ number: 1 }));
+      expect(screen.queryByText('Not saved')).toBeNull();
+      await act(async () => vi.advanceTimersByTimeAsync(2000));
+      expect(screen.getByText('Not saved')).toBeInTheDocument();
+      // Typing says 未儲存 at once.
+      emit(config => config.onUnsyncedChanges?.({ number: 0 }));
+      await act(async () => vi.advanceTimersByTimeAsync(400));
+      emit(config => {
+        config.onUnsyncedChanges?.({ number: 1 });
+        config.onDirty?.({ dirty: true });
+      });
+      expect(screen.getByText('Not saved')).toBeInTheDocument();
+      emit(config => {
+        config.onUnsyncedChanges?.({ number: 0 });
+        config.onDirty?.({ dirty: false });
+      });
+      expect(screen.getByText('Not saved')).toBeInTheDocument();
+      await act(async () => vi.advanceTimersByTimeAsync(400));
+      expect(screen.getByText('Saved')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('goes offline the moment the browser does, and reconnects the moment it is back', async () => {
     await open();
     sync();
@@ -757,8 +803,9 @@ describe('a connect with nothing typed', () => {
     const view = await open({ onClose });
     sync('# A\n');
     midConnect();
-    // Still truthful: not saved until the step 2 is acknowledged.
-    expect(screen.getByText('Not saved')).toBeInTheDocument();
+    // Still truthful: not saved until the step 2 is acknowledged, though nothing typed says 未儲存 only once it lasts.
+    expect(screen.queryByText('Saved')).toBeNull();
+    expect(screen.queryByText('Not saved')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalled();
     view.unmount();
