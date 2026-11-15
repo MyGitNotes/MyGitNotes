@@ -30,7 +30,7 @@ export function LiveNewNoteDialog({ template, prompts, onConfirm, onCancel }: { 
               aria-label={prompt.description ?? prompt.name}
               value={values[prompt.name] ?? ''}
               maxLength={200}
-              data-autofocus={index === 0 || undefined}
+              autoFocus={index === 0}
               onFocus={event => {
                 // A prefilled default is selected, so typing replaces it instead of adding to it.
                 if (event.currentTarget.value === prompt.default) event.currentTarget.select();

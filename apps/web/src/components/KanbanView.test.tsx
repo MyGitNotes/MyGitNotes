@@ -182,3 +182,14 @@ it("lists the notebook's metadata sort field on the board and asks for the colum
   expect(screen.getByRole('combobox', { name: /^Sort column/ })).toHaveTextContent('date (descending)');
   expect(requests.some(url => url.includes('status=inbox') && url.includes('sort=metadata.date'))).toBe(true);
 });
+
+it('marks the delete on a checked-out card disabled, with no hover that reads as enabled', async () => {
+  const live = { ...noteOf('notes/life/live.md', 'inbox'), live: { since: '2026-11-15T00:00:00Z', activeEditors: 1 } };
+  vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ revision: REVISION, total: 1, nextCursor: null, notes: [live] }), { headers: { 'Content-Type': 'application/json' } }) as never);
+  render(createElement(I18nProvider, null, createElement(KanbanView, { query: { notebookId: 'life' }, statuses: ['inbox'], onOpenNote: () => {}, onUpdateNoteStatus: () => {}, onDeleteNote: () => {}, onNewNoteWithStatus: () => {}, canDelete: true })), { wrapper });
+  const remove = await screen.findByRole('button', { name: 'Delete note' });
+  expect(remove).toBeDisabled();
+  expect(remove).toHaveClass('kanban-card-delete');
+  // Hover feedback applies only to an enabled delete.
+  expect(remove.className.split(' ').filter(name => name.startsWith('hover:'))).toEqual([]);
+});

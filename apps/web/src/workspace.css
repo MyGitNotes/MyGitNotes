@@ -627,6 +627,9 @@
 .kanban-leading > .folder-index > svg { width: 14px; height: 14px; }
 .kanban-leading .folder-link-title { font-size: 12px; }
 @media (max-width: 767px) { .kanban-leading > .folder-index { min-height: 44px; } }
+/* A card's delete rests at 0.4 and shows on hover. The global disabled rule pins a disabled button at 0.45, above that
+   rest, so on a checked-out card the disabled delete dims its icon instead, to about 0.2. */
+.kanban-card-delete:disabled > svg { opacity: 0.45; }
 
 /* Word-style pagination & canvas background */
 .live-md-page-break { display: block; position: relative; padding-top: 20px; padding-bottom: 28px; user-select: none; cursor: pointer; }
