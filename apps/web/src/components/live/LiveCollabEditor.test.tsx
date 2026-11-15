@@ -200,6 +200,16 @@ describe('the bar', () => {
     emit(config => config.onUnsyncedChanges?.({ number: 1 }));
     expect(leave()).toBe(true);
   });
+
+  it('warns before the page is left with text typed offline, which the provider counts as unsaved', async () => {
+    await open();
+    sync();
+    act(() => void window.dispatchEvent(new Event('offline')));
+    emit(config => config.onUnsyncedChanges?.({ number: 1 }));
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
 });
 
 describe('立即簽回', () => {
