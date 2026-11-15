@@ -152,4 +152,33 @@ describe('the deck of a slide note', () => {
       document.documentElement.lang = '';
     }
   });
+
+  it('says nothing in Chinese in an English app, on the outline, the 3D outline or a slide', async () => {
+    standInForTheBrowser();
+    document.documentElement.lang = 'zh-TW';
+    // Every word the deck shows or names: its text, and the labels a screen reader or the outline's markers read.
+    const chinese = (app: HTMLElement) => {
+      const words = [app.textContent ?? '', ...[...app.querySelectorAll('*')].flatMap(element => ['aria-label', 'data-label', 'title', 'aria-roledescription'].map(name => element.getAttribute(name) ?? ''))];
+      return words.filter(word => /[　-鿿＀-￯]/.test(word));
+    };
+    try {
+      render(deck('::block{kind=opening}\n\n## Welcome\n\n---\n\n::block{title="Body"}\n\n## One\n\ntext\n\n::notes\nSay hello\n\n## Two\n\nmore\n'));
+      await waitFor(() => expect(document.querySelector('.ct-app')).not.toBeNull(), { timeout: 10_000 });
+      const app = document.querySelector<HTMLElement>('.ct-app')!;
+      // A deck that opens on its opening block stands on its first slide; Escape steps back to the outline.
+      expect(chinese(app)).toEqual([]);
+      if (app.dataset.ctMode !== 'overview') {
+        fireEvent.keyDown(app, { key: 'Escape' });
+        await waitFor(() => expect(app.dataset.ctMode).toBe('overview'));
+      }
+      expect(chinese(app)).toEqual([]);
+      fireEvent.click(app.querySelector<HTMLElement>('[data-ct-act="3d"]')!);
+      expect(chinese(app)).toEqual([]);
+      fireEvent.keyDown(app, { key: 'Enter' });
+      await waitFor(() => expect(app.dataset.ctMode).toBe('stage'));
+      expect(chinese(app)).toEqual([]);
+    } finally {
+      document.documentElement.lang = '';
+    }
+  });
 });
