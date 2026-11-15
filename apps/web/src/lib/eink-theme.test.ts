@@ -79,6 +79,12 @@ describe('e-ink family', () => {
     const css = fs.readFileSync(path.resolve('apps/web/src/eink.css'), 'utf8');
     expect(css).toMatch(/\[data-theme='eink'\] (?:\*)?::placeholder[^{]*\{[^}]*color: var\(--color-text\) !important;[^}]*opacity: 1 !important/);
   });
+
+  it('shows the disabled light and dark choice solid, not faded, and the filter chip counts in full black', () => {
+    const css = fs.readFileSync(path.resolve('apps/web/src/eink.css'), 'utf8');
+    expect(css).toMatch(/\[data-theme='eink'\] \.theme-mode-option:disabled[^{]*\{[^}]*opacity: 1 !important/);
+    expect(css).toMatch(/\[data-theme='eink'\] \.dock-filter-chip-count[^{]*\{[^}]*opacity: 1/);
+  });
 });
 
 describe('automatic e-ink on an e-reader', () => {

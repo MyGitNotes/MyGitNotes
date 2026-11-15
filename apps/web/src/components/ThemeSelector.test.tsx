@@ -70,3 +70,13 @@ it('disables the light and dark choice while e-ink is shown', async () => {
   await mount({ familyId: 'flexoki', mode: 'system' });
   expect(modeButtons().map(button => button.disabled)).toEqual([false, false, false]);
 });
+
+it('says in a line of its own why the light and dark choice is off while e-ink is shown', async () => {
+  await mount({ familyId: EINK_FAMILY_ID, mode: 'system' });
+  const note = container.querySelector<HTMLElement>('[data-theme-fixed-note]');
+  expect(note?.textContent).toBe('This theme has one look; light and dark do not apply.');
+  expect(container.querySelector('[role="radiogroup"]')?.getAttribute('aria-describedby')).toBe(note?.id);
+  await mount({ familyId: 'flexoki', mode: 'system' });
+  expect(container.querySelector('[data-theme-fixed-note]')).toBeNull();
+  expect(container.querySelector('[role="radiogroup"]')?.hasAttribute('aria-describedby')).toBe(false);
+});
