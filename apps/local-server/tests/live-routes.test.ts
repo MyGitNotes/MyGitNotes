@@ -93,6 +93,19 @@ describe('POST /api/live/checkout', () => {
     expect(second.body).toMatchObject({ outcome: 'joined', checkout: { id: first.body.checkout.id } });
   });
 
+  it("answers a pending note's own link by its virtual path, for a writer, until it is filed", async () => {
+    await start();
+    const { checkout } = (await call('POST', '/api/live/new', { notebookId: 'notes~life', title: 'Idea', content: 'Some idea\n' })).body;
+    const opened = await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: checkout.path });
+    expect(opened.status).toBe(200);
+    expect(opened.body).toEqual({ outcome: 'joined', checkout: { ...checkout, activeEditors: expect.any(Number) } });
+    expect((await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: checkout.path }, 'p2')).status).toBe(403);
+    expect((await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: 'notes/life/.live/unknown.md' })).status).toBe(404);
+    liveNotes.type(repository, checkout.id, 'Some idea\nMore.\n', pat);
+    expect((await call('POST', '/api/live/checkin', { notebookId: 'notes~life', path: checkout.path })).body).toMatchObject({ released: true, filed: true });
+    expect((await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: checkout.path })).status).toBe(404);
+  });
+
   it('answers too-large when the editor refuses the note', async () => {
     liveNotes = memoryLiveNotes({ editor, repositories: [{ source: notes, files }], maxBytes: 10 });
     await start();

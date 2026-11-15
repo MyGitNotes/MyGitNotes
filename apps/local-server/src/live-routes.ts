@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { formatTemplateDate, formatTemplateTime, isLiveNotePath, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, type LiveNotes, livePathRule, livePendingPath, LiveTooLargeError, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseNotebookKey, parseNoteContent, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
+import { formatTemplateDate, formatTemplateTime, isLiveNotePath, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, type LiveNotes, livePathRule, livePendingPath, LiveTooLargeError, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
 import { liveDueInstant, liveScheduleSetting } from './live-schedule.js';
 import { asRemote, notebookRepository, noteRepository, requestPerson, workspaceOf } from './request-workspace.js';
 import { fail } from './route-errors.js';
@@ -114,6 +114,12 @@ export function createLiveRouter(): express.Router {
       const { notebookId, path: file } = req.body ?? {};
       const { handle, notebook, key } = await noteRepository(res, file, notebookId);
       const { reader, snapshot, view } = await writerOf(res, handle);
+      // A pending note has no Git text to check out: its virtual path answers the link it already is, while it is pending.
+      if (parseLivePendingPath(file as string, [notebook])) {
+        const pending = await reader.liveCheckout(file as string);
+        if (!pending || pending.path !== null) throw new SourceError('Note not found.', 404);
+        return res.json({ checkout: viewOf(pending, key, notebook), outcome: 'joined' });
+      }
       const relative = (file as string).slice(notebook.root.length + 1);
       // Outlines, template files and compilations keep the direct editor.
       if (!isLiveNotePath(relative, notebook) || (notebook.templates ?? []).some(template => template.file === relative)) throw notLive('This note opens in the direct editor.');
