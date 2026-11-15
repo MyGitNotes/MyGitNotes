@@ -1,5 +1,5 @@
-import { type CSSProperties, type ReactNode, useLayoutEffect, useRef } from 'react';
-import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels';
+import { type CSSProperties, type ReactNode, type RefObject, useLayoutEffect, useRef } from 'react';
+import { Group, Panel, type PanelImperativeHandle, Separator, usePanelRef } from 'react-resizable-panels';
 import { PanelLeftClose, PanelTopClose } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useFoldAnimation } from '../lib/use-fold-animation.js';
@@ -41,6 +41,27 @@ export function BrowseDockToggle({ placement, collapsed, onCollapsedChange }: { 
   );
 }
 
+/** The width (height for the top dock) the person gave the dock, and whether a restore of it is already queued. */
+interface StoredSize {
+  size: number;
+  queued: boolean;
+}
+
+/**
+ * Puts the dock back at its stored pixel size once the current task's other work is done, so the library has handled the change that
+ * prompted it first. Skipped during a drag, which owns the size until it settles.
+ */
+function restoreStoredSize(stored: StoredSize, group: RefObject<HTMLDivElement | null>, panel: RefObject<PanelImperativeHandle | null>): void {
+  if (stored.queued) return;
+  stored.queued = true;
+  queueMicrotask(() => {
+    stored.queued = false;
+    const element = group.current;
+    if (!element?.isConnected || element.querySelector(':scope > [data-separator="active"]')) return;
+    panel.current?.resize(`${stored.size}px`);
+  });
+}
+
 export function BrowseDock({ placement, size, onSizeChange, collapsed, narrow, narrowView, browse, children }: BrowseDockProps): JSX.Element {
   const groupElement = useRef<HTMLDivElement>(null);
   const animating = useFoldAnimation(collapsed);
@@ -53,6 +74,24 @@ export function BrowseDock({ placement, size, onSizeChange, collapsed, narrow, n
   useLayoutEffect(() => {
     browsePanel.current?.resize(`${size}px`);
   }, [browsePanel, size, placement, narrow]);
+
+  // The library keeps the dock as a share of its group and loses the pixel size in two ways. It registers the group a second time in the
+  // commit after the mount, after that mount's effects ran; when the workspace's filter sidebar folded away in one of them, the second
+  // registration keeps the share of the narrower group and takes the wider one as the size it last knew (a stored 288 opened at 350).
+  // And a resize here can land before its observer reports a new group size, which it then scales by the size it knew. So whenever the
+  // group changes size, or its layout changes for any reason but the person's own drag or key press, the dock goes back to the stored
+  // width, once the library's own handling of that change is done.
+  const stored = useRef<StoredSize>({ size, queued: false });
+  useLayoutEffect(() => {
+    stored.current.size = size;
+  }, [size]);
+  useLayoutEffect(() => {
+    const group = groupElement.current;
+    if (narrow || !group) return;
+    const observer = new ResizeObserver(() => restoreStoredSize(stored.current, groupElement, browsePanel));
+    observer.observe(group);
+    return () => observer.disconnect();
+  }, [narrow, placement, browsePanel]);
 
   if (narrow) {
     return <div className='browse-dock' data-placement={placement} data-narrow='true'>{narrowView === 'browse' ? <div className='workspace-scroll browse-dock-scroll'>{browse}</div> : <div className='browse-dock-focus'>{children}</div>}</div>;
@@ -78,7 +117,11 @@ export function BrowseDock({ placement, size, onSizeChange, collapsed, narrow, n
           // Fires once a drag settles and on each key press; the size comes from the layout it reports, since the panel's measured size
           // trails it until the browser lays the panel out again (a key press stored the width from before it).
           const share = layout[`${groupId}-browse`];
-          if (!meta.isUserInteraction || share === undefined || !groupElement.current) return;
+          if (!meta.isUserInteraction) {
+            restoreStoredSize(stored.current, groupElement, browsePanel);
+            return;
+          }
+          if (share === undefined || !groupElement.current) return;
           const panels = [...groupElement.current.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.hasAttribute('data-panel'));
           const extent = panels.reduce((sum, panel) => sum + (orientation === 'horizontal' ? panel.offsetWidth : panel.offsetHeight), 0);
           onSizeChange(Math.round(share * extent / 100));
