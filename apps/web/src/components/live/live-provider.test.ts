@@ -52,7 +52,7 @@ const read = (message: Uint8Array) => {
 const fakeSocket = () => {
   const handlers = new Map<string, Set<(event: unknown) => void>>();
   const sent: Uint8Array[] = [];
-  const socket = { webSocket: { readyState: 1 }, on: (event: string, handler: (event: unknown) => void) => handlers.set(event, (handlers.get(event) ?? new Set()).add(handler)), off: (event: string, handler: (event: unknown) => void) => handlers.get(event)?.delete(handler), attach: () => {}, detach: () => {}, send: (message: Uint8Array) => sent.push(message), emit: (event: string, payload: unknown = {}) => handlers.get(event)?.forEach(handler => handler(payload)) };
+  const socket = { webSocket: { readyState: 1 }, messageQueue: [] as unknown[], on: (event: string, handler: (event: unknown) => void) => handlers.set(event, (handlers.get(event) ?? new Set()).add(handler)), off: (event: string, handler: (event: unknown) => void) => handlers.get(event)?.delete(handler), attach: () => {}, detach: () => {}, send: (message: Uint8Array) => sent.push(message), emit: (event: string, payload: unknown = {}) => handlers.get(event)?.forEach(handler => handler(payload)) };
   return { socket, sent };
 };
 
@@ -243,6 +243,23 @@ describe('LiveProvider', () => {
       for (const message of second.sent.map(read).filter(message => message.kind === 'update')) Y.applyUpdate(server, message.payload!);
       expect(server.getText('content').toString()).toBe('abc');
       expect(server.store.pendingStructs).toBeNull();
+      provider.destroy();
+      websocket.destroy();
+    });
+
+    it('drops an update of its document left in the provider queue when a connect starts its sync', async () => {
+      const { websocket, provider, text, connect, finishSync } = await setup();
+      const first = await connect();
+      finishSync(first);
+      first.readyState = 3;
+      first.fire('close', { code: 4000, reason: 'Live ticket renewal' });
+      text.insert(0, 'x');
+      // An update queued before this connect began its sync.
+      const queue = (websocket as unknown as { messageQueue: unknown[]; }).messageQueue;
+      queue.push(new Uint8Array([...name(), 0, 2, ...varBytes(Y.encodeStateAsUpdate(new Y.Doc()))]));
+      const second = await connect();
+      expect(kinds(second)).not.toContain('update');
+      expect(kinds(second)).toContain('step2');
       provider.destroy();
       websocket.destroy();
     });
