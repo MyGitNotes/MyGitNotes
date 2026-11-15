@@ -3,6 +3,7 @@ import { LIVE_MAX_BYTES, type LiveContext, liveEditorOf, LiveLeasedError, LiveNo
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { liveNotesContract } from '../live-notes-contract.js';
+import { liveEditorRef } from './adapter.js';
 import { builtinLiveNotes } from './index.js';
 import { memoryLiveStore } from './memory-store.js';
 import type { LiveStore } from './store.js';
@@ -58,6 +59,15 @@ const kit = (store: () => LiveStore) => () => {
 liveNotesContract('builtin (memory store)', kit(() => memoryLiveStore()));
 
 describe('the built-in live notes', () => {
+  it('records an editor under a name of at most 256 UTF-16 units, so the check-in engine never drops one', () => {
+    const context = (name: string): LiveContext => ({ person: { realm: 'edition', userId: 'p9' }, author: { name, email: 'p9@example.test' }, request: { headers: {} } });
+    expect(liveEditorRef(context('n'.repeat(300)), false)).toMatchObject({ name: 'n'.repeat(256), key: 'person:p9@example.test' });
+    // A cut never splits a surrogate pair.
+    const emoji = liveEditorRef(context(`${'n'.repeat(255)}😀😀`), false).name;
+    expect(emoji).toBe('n'.repeat(255));
+    expect(liveEditorRef(context('Pat'), true).name).toBe('Pat');
+  });
+
   it('declares one built-in editor for the repositories it covers, with discard, retarget and socket tickets', async () => {
     const { liveNotes } = builtinFixture();
     expect(liveNotes.editors).toEqual([{ kind: 'builtin' }]);

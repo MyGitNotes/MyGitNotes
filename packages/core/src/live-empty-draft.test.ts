@@ -75,11 +75,16 @@ describe('isEmptyLiveDraft', () => {
     expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n在這裡寫下筆記。\n'))).toBe(false);
   });
 
-  it("takes the default lines out as well as an initial text's", () => {
+  it('takes out only the initial text\'s lines when it has one, never the default lines on top', () => {
     const template = titled('## 待辦\n- \n');
-    expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n## 待辦\n- \n'), template)).toBe(true);
-    expect(isEmptyLiveDraft(titled('# Untitled\n## 待辦\n- \n'), template)).toBe(true);
+    expect(isEmptyLiveDraft(titled('## 待辦\n- \n- \n'), template)).toBe(true);
+    expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n## 待辦\n- \n'), template)).toBe(false);
+    expect(isEmptyLiveDraft(titled('# Untitled\n## 待辦\n- \n'), template)).toBe(false);
     expect(isEmptyLiveDraft(titled('# 未命名\n## 待辦\n- 買牛奶\n'), template)).toBe(false);
+    // The web's placeholder as the initial text: typed a second time it is content, not a default line.
+    const placeholder = titled('# 未命名\n\n在這裡寫下筆記。\n');
+    expect(isEmptyLiveDraft(placeholder, placeholder)).toBe(true);
+    expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n在這裡寫下筆記。\n'), placeholder)).toBe(false);
   });
 
   it('lists the default lines it takes out', () => {

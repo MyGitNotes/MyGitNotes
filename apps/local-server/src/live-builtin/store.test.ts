@@ -32,6 +32,17 @@ afterEach(() => {
 liveStoreContract('memory', () => memoryLiveStore());
 
 describe('the memory live store', () => {
+  it('prunes the tickets that expired by the time a new one is put', async () => {
+    const store = memoryLiveStore();
+    const { link } = await checkout(store, 'notes/life/a.md', '# A\n');
+    const ticket = { repository, id: link.id, epoch: 1, document: `${link.id}.1`, editor: pat, display: 'Pat' };
+    await store.putTicket(hash('1'), ticket, T0 + LIVE_TICKET_MS);
+    // Issued at T0 + 2 × LIVE_TICKET_MS, after the first expired: the first is gone, even to a clock read before its end.
+    await store.putTicket(hash('2'), ticket, T0 + 3 * LIVE_TICKET_MS);
+    expect(await store.takeTicket(hash('1'), T0)).toBeNull();
+    expect(await store.takeTicket(hash('2'), T0 + 2 * LIVE_TICKET_MS)).toEqual(ticket);
+  });
+
   it('hands out copies: what a caller does to an answer, or to the bytes it gave, never reaches the store', async () => {
     const store = memoryLiveStore();
     const state = bytes('# A\n'), update = bytes('typed');
