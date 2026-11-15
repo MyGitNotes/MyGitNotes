@@ -2463,6 +2463,7 @@ export const en = {
   'live.unsaved': 'Not saved',
   'live.offline': 'Offline',
   'live.releasedOffline': 'This note was checked in; the changes you made offline were not saved.',
+  'live.unsavedMine': 'Your latest changes were not saved; copy or download your version.',
   'live.copyMine': 'Copy my version',
   'live.copied': 'Copied',
   'live.download': 'Download',
