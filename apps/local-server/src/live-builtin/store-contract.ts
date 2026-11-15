@@ -238,6 +238,27 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.link(id)).toMatchObject({ live: false, syncedHash: hash('a') });
     });
 
+    it('tells whether a token holds the lease at a time, and changes nothing by asking', async () => {
+      const { id } = await open();
+      await store.append(id, 1, bytes('pat 1'), pat, T0);
+      expect(await store.leaseHeld(id, 'first', T0)).toBe(false);
+      expect(await store.lease(id, 'first', T0 + LEASE_MS, T0)).toBe('leased');
+      expect(await store.leaseRead(id, 'first', 1, hash('a'), T0)).toBe(true);
+      expect(await store.leaseHeld(id, 'first', T0 + 1)).toBe(true);
+      expect(await store.leaseHeld(id, 'second', T0 + 1)).toBe(false);
+      expect(await store.leaseHeld(unknown, 'first', T0 + 1)).toBe(false);
+      expect(await store.leaseHeld(id, 'first', T0 + LEASE_MS - 1)).toBe(true);
+      // Run out, it holds nothing; asked again within its time, it still does.
+      expect(await store.leaseHeld(id, 'first', T0 + LEASE_MS)).toBe(false);
+      expect(await store.leaseHeld(id, 'first', T0 + 2)).toBe(true);
+      expect(await store.lease(id, 'second', T0 + 2 + LEASE_MS, T0 + 2)).toBe('held');
+      // What the lease read is kept: its receipt still clears by that sequence.
+      expect(await store.synced(id, 'first', receipt(hash('a')), T0 + 3)).toBe('ok');
+      expect(await store.editors(id)).toEqual([]);
+      expect(await store.release(id, 'first', { seq: 1, contentHash: hash('a') }, T0 + 4)).toBe('released');
+      expect(await store.leaseHeld(id, 'first', T0 + 5)).toBe(false);
+    });
+
     it('clears the editors a receipt covers by sequence, twice without harm, and keeps who typed after its read', async () => {
       const { id } = await open();
       await store.append(id, 1, bytes('pat 1'), pat, T0 + 1);
@@ -387,6 +408,45 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.discard(lone.id, await leased(lone.id, T0 + 8), { seq: 0 }, T0 + 9)).toBe('discarded');
       expect(await store.repositories()).toEqual([repository]);
       expect(await store.links(other)).toEqual([]);
+    });
+
+    it('sets the path rule of a pending link under its lease and ends the lease, retargeted or refused for a filed link', async () => {
+      const link = await pending('# Draft\n');
+      await store.append(link.id, 1, bytes('pat 1'), pat, T0 + 1);
+      await store.presence(link.id, 'process-1', { [pat.key]: T0 + 1 }, T0 + 1);
+      const token = await leased(link.id, T0 + 2);
+      // Another token changes nothing, and the holder keeps the lease.
+      expect(await store.retarget(link.id, 'other', 'moved/{{title}}.md', T0 + 3)).toBe('leased');
+      expect(await store.link(link.id)).toMatchObject({ path: null, pathRule: '{{title}}.md' });
+      expect(await store.leaseHeld(link.id, token, T0 + 3)).toBe(true);
+      expect(await store.retarget(link.id, token, 'moved/{{date}} {{title}}.md', T0 + 4)).toBe('retargeted');
+      // Only the rule changed: the text, who typed, who is there and the text it began with stay.
+      expect(await store.link(link.id)).toEqual({ ...link, pathRule: 'moved/{{date}} {{title}}.md', seq: 1, lastEditAt: T0 + 1 });
+      expect((await store.links(repository)).map(entry => entry.pathRule)).toEqual(['moved/{{date}} {{title}}.md']);
+      expect((await store.document(link.id, 1))!.log).toEqual([bytes('pat 1')]);
+      expect(await editorKeys(link.id)).toEqual([pat.key]);
+      expect(await store.initialText(link.id)).toBe('# Draft\n');
+      expect(await store.activePeople(link.id, T0, T0 + 4)).toBe(1);
+      // The lease ended with the call, so a check-in can take the link at once.
+      expect(await store.leaseHeld(link.id, token, T0 + 4)).toBe(false);
+      expect(await store.retarget(link.id, token, 'again/{{title}}.md', T0 + 5)).toBe('leased');
+      const next = await leased(link.id, T0 + 5);
+      // A lease that ran out retargets nothing.
+      expect(await store.retarget(link.id, next, 'late/{{title}}.md', T0 + 5 + LEASE_MS)).toBe('leased');
+      expect(await store.link(link.id)).toMatchObject({ pathRule: 'moved/{{date}} {{title}}.md' });
+      // Filed, the link keeps its path: the retarget is refused, and its lease ends all the same.
+      const filing = await leased(link.id, T0 + 6 + LEASE_MS);
+      expect(await store.synced(link.id, filing, receipt(hash('a'), 'notes/life/moved/draft.md'), T0 + 7 + LEASE_MS)).toBe('ok');
+      const filed = (await store.link(link.id))!;
+      expect(await store.retarget(link.id, filing, 'elsewhere/{{title}}.md', T0 + 8 + LEASE_MS)).toBe('not-pending');
+      expect(await store.link(link.id)).toEqual(filed);
+      expect(filed).not.toHaveProperty('pathRule');
+      expect(await store.leaseHeld(link.id, filing, T0 + 8 + LEASE_MS)).toBe(false);
+      expect(await store.lease(link.id, 'after', T0 + 9 + 2 * LEASE_MS, T0 + 9 + LEASE_MS)).toBe('leased');
+      // No link, or a released one, has no lease to retarget under.
+      expect(await store.retarget(unknown, 'after', 'nowhere/{{title}}.md', T0)).toBe('leased');
+      expect(await store.release(link.id, 'after', { seq: 1, contentHash: hash('a') }, T0 + 10 + LEASE_MS)).toBe('released');
+      expect(await store.retarget(link.id, 'after', 'released/{{title}}.md', T0 + 11 + LEASE_MS)).toBe('leased');
     });
 
     it('gives a ticket out once, and never after it ran out', async () => {
