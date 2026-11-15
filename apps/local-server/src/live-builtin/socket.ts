@@ -4,7 +4,7 @@ import type { Duplex } from 'node:stream';
 import { type Connection, type Extension, OutgoingMessage } from '@hocuspocus/server';
 import { LiveNotLiveError, LiveTooLargeError, type RepositoryId } from '@mygitnotes/core';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
-import { liveDocumentName, type LiveDocuments, type LiveEpoch, LiveUpdateRefusedError, RELEASED } from './documents.js';
+import { liveDocumentName, type LiveDocuments, type LiveEpoch, LiveUpdateRefusedError, LiveUpdateWaitingError, RELEASED } from './documents.js';
 import { type EditorRef, LIVE_PRESENCE_MS, type LiveStore } from './store.js';
 
 /*
@@ -326,6 +326,13 @@ export function liveSocket({ documents, store, clock, process: processName, read
           console.warn(`[live-builtin] A socket of live note ${seat.link.id} sent an update that is not typing in the note. It was not stored.`);
           connection.sendStateless(REFUSED('invalid'));
           throw new Refusal('invalid');
+        }
+        // Typing on typing that neither the document nor the store has, which the tab holds: it typed on before it sent
+        // what it typed offline. Nothing was acknowledged; the socket closes, and the tab connects again and sends all it holds.
+        if (error instanceof LiveUpdateWaitingError) {
+          console.warn(`[live-builtin] A socket of live note ${seat.link.id} sent typing that builds on typing the server does not have yet. It was not stored; the socket is closed so the tab sends everything again.`);
+          seat.socket.close(1011, 'Live editor out of step');
+          throw new Refusal('unavailable');
         }
         // The store failed: nothing was acknowledged. The socket closes, so the tab connects again and sends what it holds.
         console.warn(`[live-builtin] Storing an update of live note ${seat.link.id} failed: ${errorName(error)}. Its socket is closed.`);
