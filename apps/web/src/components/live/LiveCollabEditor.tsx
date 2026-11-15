@@ -8,6 +8,7 @@ import type { Extension } from '@codemirror/state';
 import type { LiveBuiltinEditorInfo } from '@mygitnotes/core';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import { checkInLive, isNotLive, type LiveCheckInAnswer, type LiveCheckoutView, socketTicket } from '../../lib/live-api.js';
+import { isNetworkFailure } from '../../lib/api.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
@@ -67,6 +68,8 @@ interface Connection {
   /** The server closed the socket for a new ticket (`RENEW_CODE`) and the tab is connecting again: not offline. */
   renewing?: boolean;
   unsynced: number;
+  /** The session's first ticket could not be had for want of a connection: the tab waits offline and asks again once it is back. */
+  unreachable?: boolean;
   /** The tab typed something the server has not stored: what the prompts about unsaved text ask about (`unsynced` also counts a connect's own sync step). */
   dirty?: boolean;
   people: number;
@@ -165,16 +168,24 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     const released = () => end({ kind: 'released' });
     const failed = (message: string) => end({ kind: 'failed', message });
     const { notebookId, path } = latest.current.checkout;
-    void (async () => {
+    /** Set while the first ticket waits for the connection: going online asks for it again. */
+    let retry: (() => void) | null = null;
+    const begin = async () => {
       let first: { ticket: string; document: string; };
       try {
         first = await socketTicket(notebookId, path);
       } catch (error) {
+        if (stopped) return;
         if (isNotLive(error)) released();
-        else failed((error as Error).message);
+        else if (isNetworkFailure(error)) {
+          // No server reached, nothing ended: the tab is offline until the browser is back online.
+          retry = () => void begin();
+          setConnection(current => ({ ...current, status: 'disconnected', unreachable: true }));
+        } else failed((error as Error).message);
         return;
       }
       if (stopped) return;
+      setConnection(current => (current.unreachable ? { ...current, status: 'connecting', unreachable: false } : current));
       let held: string | null = first.ticket;
       /** A fresh ticket for every connect; one that names another epoch's document means the note was checked in and reopened. */
       const token = async () => {
@@ -229,7 +240,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           void socketTicket(notebookId, path).then(next => next.document === first.document ? failed(latest.current.t('live.socketRefused')) : released(), error => isNotLive(error) ? released() : failed((error as Error).message));
         },
       });
-    })();
+    };
+    void begin();
     // The browser knows it is offline long before the socket's timeout does, and back online before its next retry.
     const offline = () => {
       if (stopped) return;
@@ -237,7 +249,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       setConnection(current => ({ ...current, status: 'disconnected', synced: false, renewing: false }));
     };
     const online = () => {
-      if (!stopped) void provider?.connect();
+      if (stopped) return;
+      const again = retry;
+      retry = null;
+      if (again) again();
+      else void provider?.connect();
     };
     window.addEventListener('offline', offline);
     window.addEventListener('online', online);
@@ -292,7 +308,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         if (answer.committed || answer.released) onCheckedIn?.(answer);
       }
     } catch (error) {
-      setPhase({ kind: 'notice', tone: 'alert', message: (error as Error).message });
+      setPhase({ kind: 'notice', tone: 'alert', message: isNetworkFailure(error) ? t('live.checkInUnreachable') : (error as Error).message });
     }
     onRefetch();
   };
@@ -323,7 +339,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       const message = keptReason(answer, t);
       stayed({ kind: 'failed', message }, () => setPhase({ kind: 'notice', tone: 'status', message }));
     } catch (error) {
-      const message = (error as Error).message;
+      const message = isNetworkFailure(error) ? t('live.discardUnreachable') : (error as Error).message;
       stayed({ kind: 'failed', message }, () => setPhase({ kind: 'notice', tone: 'alert', message }));
     }
   };
@@ -360,9 +376,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
 
   // Before the first sync the tab is connecting; afterwards a socket that is not connected is offline, retries included,
   // unless the server closed it for a new ticket, and one connected again is connecting until its document synced again.
-  const stateKey: TranslationKey = !connection.everSynced ? 'live.connecting' : connection.status !== 'connected' && !connection.renewing ? 'live.offline' : !connection.synced ? 'live.connecting' : connection.unsynced > 0 || !settled ? 'live.unsaved' : 'live.saved';
+  const stateKey: TranslationKey = connection.unreachable ? 'live.offline' : !connection.everSynced ? 'live.connecting' : connection.status !== 'connected' && !connection.renewing ? 'live.offline' : !connection.synced ? 'live.connecting' : connection.unsynced > 0 || !settled ? 'live.unsaved' : 'live.saved';
   const canCheckIn = connection.status === 'connected' && connection.synced && connection.unsynced === 0 && settled;
   const discardable = Boolean(checkout.pending && editor.discard) && (live || phase.kind === 'notice');
+  // Discarding asks the server: a live tab offers it only connected, with its document synced, so its unsaved typing can be offered when the draft stays.
+  const discardOffline = live && !(connection.status === 'connected' && connection.synced);
   return (
     <div className='live-editor-frame live-collab'>
       <div className='live-editor-bar' role='toolbar' aria-label={t('live.toolbar')}>
@@ -375,7 +393,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
             <span className='live-editor-state' data-tone={stateKey === 'live.saved' ? 'ok' : stateKey === 'live.offline' ? 'warn' : undefined}>{stateKey === 'live.offline' && <CloudOff size={14} aria-hidden='true' />}{t(stateKey)}</span>
           </>
         )}
-        <div className='live-editor-actions'>{discardable && <Button size='small' variant='danger' title={t('live.discardHint')} onClick={() => void discard()}>{t('live.discard')}</Button>}{live && <Button size='small' variant='primary' title={t('live.checkInHint')} disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>}{phase.kind !== 'lost' && <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>}</div>
+        <div className='live-editor-actions'>{discardable && <Button size='small' variant='danger' title={t(discardOffline ? 'live.discardOffline' : 'live.discardHint')} disabled={discardOffline} onClick={() => void discard()}>{t('live.discard')}</Button>}{live && <Button size='small' variant='primary' title={t('live.checkInHint')} disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>}{phase.kind !== 'lost' && <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>}</div>
       </div>
       {left !== null && (
         <div role='alert' className='live-editor-notice'>

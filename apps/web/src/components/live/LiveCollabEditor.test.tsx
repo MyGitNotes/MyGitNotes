@@ -672,6 +672,8 @@ describe('an ending the person chooses while typing is unsaved', () => {
     typeOffline();
     expect(discardButton()).toBeDisabled();
     expect(discardButton()).toHaveAttribute('title', 'Discarding the draft needs the connection to the server; it is possible again once the editor is back online.');
+    // Nothing typed is left behind for the next test's editor of the same note to offer.
+    emit(config => config.onDirty?.({ dirty: false }));
   });
 
   it('a 「捨棄草稿」 that cannot reach the server says so in the app’s words, and 回到編輯器 goes back to the editor at once', async () => {
