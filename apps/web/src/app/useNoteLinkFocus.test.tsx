@@ -4,7 +4,7 @@ import { type FocusLayout } from '@mygitnotes/core/focus-page';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { noteReturnRoute, parseWorkspaceRoute } from '../lib/routes.js';
+import { focusNoteState, noteReturnRoute, parseWorkspaceRoute } from '../lib/routes.js';
 import type { OpenResult } from '../lib/use-note-focus.js';
 import { useFocusNoteNavigation } from './useFocusNoteNavigation.js';
 import { useNoteLinkLoad, useOpenNoteLinkInFocus } from './useNoteLinkFocus.js';
@@ -44,6 +44,8 @@ function useFakeFocus(initial: FocusState, { loading = false, result }: { loadin
 
 interface Harness {
   url: string;
+  /** The state of the history entry. */
+  state: unknown;
   zoomed: boolean;
   focus: ReturnType<typeof useFakeFocus>;
   navigate: ReturnType<typeof useNavigate>;
@@ -77,7 +79,7 @@ function Page({ report, focus: initial, options }: { report: (harness: Harness) 
   const [handleOpenNote] = useState(() => vi.fn(async () => true));
   const { trackOpen } = useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus: focus.noteFocus, activeNotePath: focus.activeNotePath, focusNarrowView: narrow, selectedNotebookId: 'life', notebookRoot: ROOT, returnTo, browsing: editorRoute.tab === 'notes', setFocusNarrowView: setNarrow, isTemplate: note => note.path.includes('/.templates/') });
   const { openFromBrowse, openLink } = useFocusNoteNavigation({ noteFocus: focus.noteFocus, selectedNotebookId: 'life', setFocusNarrowView: setNarrow, handleOpenNote: handleOpenNote as never, setAddingToFocus: vi.fn(), isTemplate: note => note.path.includes('/.templates/'), trackOpen });
-  const harness: Harness = { url: location.pathname + location.search + location.hash, zoomed: Boolean(routedNote) && !routeError && !link.inFocus, focus, navigate, browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never), link: (path, pane) => openLink({ notebookId: 'life', path, title: path } as never, undefined, linkIn(pane)), setNarrow, narrow, handleOpenNote };
+  const harness: Harness = { url: location.pathname + location.search + location.hash, state: location.state, zoomed: Boolean(routedNote) && !routeError && !link.inFocus, focus, navigate, browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never), link: (path, pane) => openLink({ notebookId: 'life', path, title: path } as never, undefined, linkIn(pane)), setNarrow, narrow, handleOpenNote };
   useLayoutEffect(() => {
     report(harness);
   });
@@ -123,6 +125,18 @@ describe('a note link loaded as the page', () => {
     expect(api.current.focus.state.activePane).toBe('p1');
     expect(api.current.focus.openNote).not.toHaveBeenCalled();
     expect(api.current.url).toBe('/notebooks/life/notes/a.md');
+    expect(api.current.zoomed).toBe(false);
+  });
+  it('keeps the note in the Focus when the sort or the Focus shown changes the query of its address', async () => {
+    const { api } = open(['/notebooks/life/notes/a.md?q=draft']);
+    await waitFor(() => expect(api.current.focus.activeNotePath).toBe(at('a.md')));
+    // As the sort and the Focus switcher do: the query changes in a new entry that keeps the mark of a Focus address.
+    act(() => void api.current.navigate({ pathname: '/notebooks/life/notes/a.md', search: '?q=draft&sortField=title' }, { state: focusNoteState(api.current.state) }));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft&sortField=title'));
+    expect(api.current.zoomed).toBe(false);
+    expect(api.current.focus.activeNotePath).toBe(at('a.md'));
+    await back(api);
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft'));
     expect(api.current.zoomed).toBe(false);
   });
   it('waits for the Focus to load before opening', async () => {
