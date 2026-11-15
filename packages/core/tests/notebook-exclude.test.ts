@@ -124,6 +124,10 @@ describe('matching time', () => {
 
 describe('what a notebook applies, taken together', () => {
   // The cheapest of several runs: what is measured is the matching, not what else the machine is doing.
+  // About 0.1 s and 1 ms on a developer machine; the bounds leave room for a loaded CI runner (0.58 s seen) and still
+  // catch the superlinear matching they guard against, which took 17 to 51 s over these paths.
+  const BULK_BOUND_MS = 2000;
+  const LONG_BOUND_MS = 200;
   const fastest = (run: () => unknown) =>
     Math.min(...Array.from({ length: 3 }, () => {
       const started = performance.now();
@@ -164,7 +168,7 @@ describe('what a notebook applies, taken together', () => {
   it('matches a list of the same slow glob written a hundred times as fast as the glob alone', () => {
     const copies = Array.from({ length: EXCLUDE_LIMIT }, () => alternatives);
     isExcludedPath('warm', copies);
-    expect(fastest(() => paths.forEach(path => expect(isExcludedPath(path, copies)).toBe(false)))).toBeLessThan(500);
+    expect(fastest(() => paths.forEach(path => expect(isExcludedPath(path, copies)).toBe(false)))).toBeLessThan(BULK_BOUND_MS);
   });
 
   it('refuses a manifest whose workspace and notebook globs expand past the limit together, naming the list', () => {
@@ -191,15 +195,15 @@ describe('what a notebook applies, taken together', () => {
     expect(applied({ workspace: [alternatives], notebook: [alternatives] })).toEqual([alternatives]);
   });
 
-  it.each(Object.entries(worstLists))('matches the slowest list a manifest allows against a thousand 305-character paths in under 500 ms and a 4,000-character path in under 50 ms: %s', (_name, lists) => {
+  it.each(Object.entries(worstLists))('matches the slowest list a manifest allows against a thousand 305-character paths and a 4,000-character path in linear time: %s', (_name, lists) => {
     const globs = applied(lists);
     expect(expandedLength(globs)).toBeGreaterThan(EXCLUDE_EXPANSION_LIMIT - 30);
     expect(paths[0].length).toBeGreaterThanOrEqual(300);
     expect(paths[0].length).toBeLessThanOrEqual(310);
     isExcludedPath('warm', globs);
-    expect(fastest(() => paths.forEach(path => expect(isExcludedPath(path, globs)).toBe(false)))).toBeLessThan(500);
+    expect(fastest(() => paths.forEach(path => expect(isExcludedPath(path, globs)).toBe(false)))).toBeLessThan(BULK_BOUND_MS);
     expect(long.length).toBeGreaterThan(4000);
-    expect(fastest(() => expect(isExcludedPath(long, globs)).toBe(false))).toBeLessThan(50);
+    expect(fastest(() => expect(isExcludedPath(long, globs)).toBe(false))).toBeLessThan(LONG_BOUND_MS);
   });
 
   it('refuses to match patterns past the limit that reached it without the manifest', () => {
