@@ -1,0 +1,161 @@
+import type { LiveConflict, NotebookKey, RepositoryId } from '@mygitnotes/core';
+
+/*
+ * What the built-in live editor keeps between check-ins (docs/specs/2026-11-15-builtin-live-editor §3): the links, each
+ * epoch's Yjs document as a compacted state plus a log of the updates since, the editors since the last sync, check-in
+ * leases, presence and socket tickets. The adapter never sends raw commands: every compound step is one atomic call, so
+ * the Redis and the memory store pass one contract (`store-contract.ts`). Every time is the adapter's clock in whole
+ * milliseconds, passed in, so a test that moves the clock on works against Redis too.
+ */
+
+/** How long a socket ticket holds. The Redis store gives a ticket's key this lifetime, whatever `until` says. */
+export const LIVE_TICKET_MS = 60_000;
+/** How long a process's presence entry counts after its last write, so a process that crashed stops counting. */
+export const LIVE_PRESENCE_MS = 90_000;
+
+/** One link: a note checked out to the built-in editor, or a pending note created there. */
+export interface StoredLink {
+  /** 16 random bytes in base64url: 22 characters, global across repositories. */
+  id: string;
+  repository: RepositoryId;
+  notebook: NotebookKey;
+  /** Repository-relative; null while pending. */
+  path: string | null;
+  /** Pending only: the path pattern the first check-in files the note at. */
+  pathRule?: string;
+  /** When this epoch began. */
+  since: number;
+  /** One per check-out or reopen, from 1. The document of an epoch is `<id>.<epoch>`. */
+  epoch: number;
+  /** False once released: the record stays, so the path it was filed at is known and a reopen reuses the id. */
+  live: boolean;
+  base: { commit: string; blob: string; contentHash: string; } | null;
+  syncedAt: number | null;
+  syncedHash: string | null;
+  /** The last append that named an editor; a merge, which names none, leaves it. */
+  lastEditAt: number | null;
+  conflict: LiveConflict | null;
+  /** Bumped by every append, and never reset; editors and leases record it. */
+  seq: number;
+  /** Bumped by every compaction of the current epoch; 0 when the epoch opens. */
+  gen: number;
+  /** The hash of the text at `contentSeq`, as the checkout or the last compaction gave it. */
+  contentHash: string;
+  contentSeq: number;
+}
+
+/** Who an append is recorded for. */
+export interface EditorRef {
+  key: string;
+  name: string;
+  email?: string;
+  agent: boolean;
+}
+/** An editor since the last sync. `lastSeq` is the sequence of their last append. */
+export interface StoredEditor extends EditorRef {
+  firstAt: number;
+  lastAt: number;
+  lastSeq: number;
+}
+
+/** What a created or reopened epoch starts from. */
+export interface LinkInit {
+  notebook: NotebookKey;
+  base: StoredLink['base'];
+  /** The hash of the text the given state holds. */
+  contentHash: string;
+}
+
+/** What a check-in reports once its commit is made, as `LiveServiceCalls.synced` takes it. */
+export interface SyncReceipt {
+  commit: string;
+  blob: string;
+  contentHash: string;
+  path: string;
+  conflict: LiveConflict | null;
+}
+
+/** What a socket ticket opens, and for whom. The store keeps it under the ticket's hash, never under the ticket. */
+export interface StoredTicket {
+  repository: RepositoryId;
+  id: string;
+  epoch: number;
+  /** `<id>.<epoch>`. */
+  document: string;
+  editor: EditorRef;
+  /** The name other people see. */
+  display: string;
+}
+
+/** An epoch's document: the compacted state, and the updates appended since, oldest first. */
+export interface StoredDocument {
+  state: Uint8Array;
+  log: Uint8Array[];
+  gen: number;
+  seq: number;
+}
+
+export interface LiveStore {
+  /** Throws on a configuration that would lose live text (§3.4); warns about one it cannot read. */
+  check(): Promise<void>;
+  /** The repositories with live links. */
+  repositories(): Promise<RepositoryId[]>;
+  /** Live links only, oldest first. */
+  links(repository: RepositoryId): Promise<StoredLink[]>;
+  /** Live or released; null for an id never issued, or discarded. */
+  link(id: string): Promise<StoredLink | null>;
+  /**
+   * One link per repository and path: created (epoch 1), joined (the live link, untouched), or a released link reopened
+   * under its id with epoch + 1, its base and text replaced and its sync, conflict, editors, lease and presence cleared.
+   * `state` seeds a created or reopened epoch and is ignored by a join.
+   */
+  checkout(repository: RepositoryId, init: LinkInit & { path: string; }, state: Uint8Array, now: number): Promise<{ link: StoredLink; outcome: 'created' | 'joined' | 'reopened'; }>;
+  /** A link without a path, at epoch 1. `initialText` is kept until the link is filed or discarded. */
+  createPending(repository: RepositoryId, init: LinkInit & { pathRule: string; initialText?: string; }, state: Uint8Array, now: number): Promise<StoredLink>;
+  /** The text a pending link was created with; null once it is filed or discarded, and when none was given. */
+  initialText(id: string): Promise<string | null>;
+  /** The document of the link's live epoch, read at one instant; null for a released link, another epoch, or a missing state. */
+  document(id: string, epoch: number): Promise<StoredDocument | null>;
+  /**
+   * Appends one Yjs update of the live epoch and records its editor (none for a merge). `seq` is the link's sequence
+   * after it and `length` the log's. 'not-live' for a released or unknown link and for another epoch; nothing is kept then.
+   */
+  append(id: string, epoch: number, update: Uint8Array, editor: EditorRef | null, now: number): Promise<{ seq: number; length: number; } | 'not-live'>;
+  /**
+   * Replaces the state and drops the first `count` log entries, if `gen` is still the live epoch's: only the entries the
+   * caller read and applied go, and one appended since stays. False, with nothing changed, otherwise.
+   */
+  compact(id: string, epoch: number, gen: number, count: number, state: Uint8Array, contentHash: string, contentSeq: number): Promise<boolean>;
+  /** The editors since the last sync, by when each first typed. */
+  editors(id: string): Promise<StoredEditor[]>;
+  /** Takes the link's lease for `token` until `until`; 'held' while another lease has not run out by `now`. */
+  lease(id: string, token: string, until: number, now: number): Promise<'leased' | 'held' | 'not-live'>;
+  /** Records what the lease's last `detail` read: its sequence and hash (for `synced`). False when `token` does not hold the lease. */
+  leaseRead(id: string, token: string, seq: number, contentHash: string, now: number): Promise<boolean>;
+  /**
+   * Records a check-in's receipt, and clears the editors whose last append is at or before the receipt's text: the
+   * sequence `leaseRead` recorded when the receipt's hash is the one that read returned; else the link's sequence when
+   * the receipt's hash is the stored `contentHash` and that is current (`contentSeq === seq`); else nobody. A pending link
+   * gets its path once; 'path-fixed', with nothing recorded, for a receipt that names another path. 'leased' when `token`
+   * does not hold the lease.
+   */
+  synced(id: string, token: string, receipt: SyncReceipt, now: number): Promise<'ok' | 'leased' | 'path-fixed'>;
+  /**
+   * Releases when the lease holds, the link is synced at `contentHash` and its sequence is still `seq`. Deletes the
+   * epoch's document, log, editors, presence, lease and tickets; keeps the link record and its path.
+   */
+  release(id: string, token: string, expect: { seq: number; contentHash: string; }, now: number): Promise<'released' | 'leased' | 'not-synced' | 'changed'>;
+  /**
+   * Drops a pending link (no path) when the lease holds and its sequence is still `seq`: the record, its document, log,
+   * editors, presence, lease, tickets and initial text are all deleted, and `link` answers null for it.
+   */
+  discard(id: string, token: string, expect: { seq: number; }, now: number): Promise<'discarded' | 'leased' | 'not-pending' | 'changed'>;
+  /** Replaces what `process` knows of the link's connected people: person key to last activity. None removes its entry. */
+  presence(id: string, process: string, people: Record<string, number>, now: number): Promise<void>;
+  /** The distinct people, over every process's entry written within {@link LIVE_PRESENCE_MS} of `now`, last active at or after `since`. */
+  activePeople(id: string, since: number, now: number): Promise<number>;
+  /** Keeps a ticket under its hash until `until`. */
+  putTicket(hash: string, ticket: StoredTicket, until: number): Promise<void>;
+  /** Takes a ticket, once; null for an unknown, taken or expired one. */
+  takeTicket(hash: string, now: number): Promise<StoredTicket | null>;
+}
