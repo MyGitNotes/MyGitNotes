@@ -77,16 +77,18 @@ export async function shutdownFixtures(): Promise<void> {
 }
 
 /**
- * Live stores on a throwaway Redis, each under its own random prefix. `begin` (in `beforeAll`) waits for this file's
- * turn on the server; `end` (in `afterAll`) deletes every key the stores made, answers how many are left, and gives the
- * turn back.
+ * Live stores on a throwaway Redis, each under its own random prefix, which `prefix` hands out for a store made
+ * elsewhere (in a child process). `begin` (in `beforeAll`) waits for this file's turn on the server; `end` (in
+ * `afterAll`) deletes every key under the prefixes, answers how many are left, and gives the turn back.
  */
 export function redisTestStores(url: string | undefined) {
   const run = `mgn-test:${randomBytes(8).toString('hex')}`;
   const turn = redisTestTurn(url);
   let prefixes = 0;
+  const prefix = () => `${run}:${++prefixes}`;
   return {
-    store: (): LiveStore => redisLiveStore({ url: url!, prefix: `${run}:${++prefixes}` }),
+    prefix,
+    store: (): LiveStore => redisLiveStore({ url: url!, prefix: prefix() }),
     begin: () => turn.take(),
     async end(): Promise<number> {
       const raw = createClient({ url, socket: { connectTimeout: 10_000, reconnectStrategy: false } });

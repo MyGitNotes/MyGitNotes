@@ -245,13 +245,17 @@ redis.call('DEL', KEYS[1])
 redis.call('SREM', tickets, ARGV[2])
 return ticket`;
 
-type Connection = { client: ReturnType<typeof createClient>; ready: Promise<unknown>; };
+type Connection = { client: ReturnType<typeof createClient>; ready: Promise<unknown>; inFlight: number; };
 const connections = new Map<string, Connection>();
 
 /**
  * One command over the live store's own native connection, one per endpoint, with the session store's timeouts. It
  * throws the client's own error, so the store can tell a refusal by the server from a lost connection: a refusal leaves
  * the connection sound, anything else drops it and a later call reconnects.
+ *
+ * The connection holds the process only while a command is in flight, its connecting included: idle, it is unref'd, so
+ * it never keeps a process that is done from exiting; a command refs it until Redis answers, so a process that awaits
+ * one with nothing else to hold it (a composition awaiting `started` before it listens) is not ended under it.
  */
 async function liveRedisCommand(url: string, command: string[]): Promise<unknown> {
   let connection = connections.get(url);
@@ -259,11 +263,17 @@ async function liveRedisCommand(url: string, command: string[]): Promise<unknown
     if (!connection?.client.isOpen) {
       const client = createClient({ url, socket: { connectTimeout: 10000, reconnectStrategy: false }, commandOptions: { timeout: 10000 }, disableOfflineQueue: true });
       client.on('error', () => console.warn('[live-store] Redis connection unavailable.'));
-      connection = { client, ready: client.connect().then(() => client.unref()) };
+      connection = { client, ready: client.connect(), inFlight: 0 };
       connections.set(url, connection);
     }
-    await connection.ready;
-    return await connection.client.sendCommand(command);
+    const held = connection;
+    if (held.inFlight++ === 0) held.client.ref();
+    try {
+      await held.ready;
+      return await held.client.sendCommand(command);
+    } finally {
+      if (--held.inFlight === 0) held.client.unref();
+    }
   } catch (error) {
     if (!(error instanceof ErrorReply)) {
       if (connections.get(url) === connection) connections.delete(url);
