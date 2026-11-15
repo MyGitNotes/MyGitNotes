@@ -51,6 +51,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   // Translated at render time alongside saveError, so a raw error message doesn't get frozen
   // in whatever language was active when it was caught.
   const [saveErrorParams, setSaveErrorParams] = useState<Record<string, string> | undefined>(undefined);
+  // Set while the shown message is a failed write's (save, autosave, commit): a read neither replaces nor clears it, since a read does not save the note; the next write that succeeds does.
+  const writeFailed = useRef(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [baseNote, setBaseNote] = useState(remoteBase || note);
   const [blocked, setBlocked] = useState(Boolean(conflictReason));
@@ -164,9 +166,22 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     } else {
       // The browser's own words for a fetch that reached no server ("Failed to fetch") are said in the app's. A read's
       // clears with the next read; a save's stays until a save succeeds, since a read does not save the note.
-      const unreachable = isNetworkFailure(error) && during !== 'other';
-      setSaveError(unreachable ? during === 'read' ? 'editor.remoteUnreachable' : 'editor.saveUnreachable' : (error as Error).message);
+      if (during === 'save') showWriteFailure(error);
+      else if (during === 'other') setSaveError((error as Error).message);
+      else if (!writeFailed.current) setSaveError(isNetworkFailure(error) ? 'editor.remoteUnreachable' : (error as Error).message);
     }
+  };
+  /** Shows why a write failed, in the app's words when it reached no server, until a write succeeds. */
+  const showWriteFailure = (error: unknown) => {
+    if (!mounted.current) return;
+    writeFailed.current = true;
+    setSaveError(isNetworkFailure(error) ? 'editor.saveUnreachable' : (error as Error).message);
+  };
+  /** A write succeeded: the failure of an earlier one no longer holds. */
+  const clearWriteFailure = () => {
+    if (!writeFailed.current) return;
+    writeFailed.current = false;
+    if (mounted.current) setSaveError('');
   };
   /** `now` skips the interval: the workspace said files changed, so this note may have. */
   const checkRemote = async (now = false) => {
@@ -232,6 +247,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       clearLocalDraft(draftScope || branch, note.path);
       setRecoveredDraft(null);
       setBlocked(false);
+      writeFailed.current = false;
       setSaveError('');
       setHasUnsavedChanges(false);
       setRemoteNotice('editor.remoteVersionRefreshed');
@@ -390,6 +406,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
           clearLocalDraft(draftScope || branch, note.path);
           absorbTimestamps(saved);
           setHasUnsavedChanges(false);
+          writeFailed.current = false;
           setSaveError('');
         }).catch(error => {
           if (mounted.current) {
@@ -425,8 +442,9 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
           current.current = { ...current.current, baseNote: saved };
           setBaseNote(saved);
           setHasUnsavedChanges(false);
+          clearWriteFailure();
         } catch (err) {
-          setSaveError((err as Error).message);
+          showWriteFailure(err);
         } finally {
           autosaving.current = false;
           setIsSaving(false);
@@ -469,6 +487,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       clearLocalDraft(draftScope || branch, note.path);
       setHasUnsavedChanges(false);
       setRemoteNotice('');
+      clearWriteFailure();
       return true;
     } catch (error) {
       if (error instanceof ApiError && error.status === 409 && onReadRemote) {
@@ -508,9 +527,10 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
         setHasUnsavedChanges(false);
       }
       await onCommitFile(note.path, version);
+      clearWriteFailure();
       return true;
     } catch (error) {
-      if (mounted.current) setSaveError((error as Error).message);
+      showWriteFailure(error);
       if (version) throw error;
       return false;
     } finally {
@@ -528,7 +548,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     operation.current = true;
     setIsSaving(true);
     // A read does not save the note: a failed save's message stays until a save succeeds.
-    setSaveError(shown => shown === 'editor.saveUnreachable' ? shown : '');
+    setSaveError(shown => writeFailed.current ? shown : '');
     try {
       const latest = await onReadRemote(note.path);
       if (mounted.current) applyRemote(latest);
@@ -556,6 +576,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       setRecoveredDraft(null);
       setBlocked(false);
       setHasUnsavedChanges(false);
+      writeFailed.current = false;
     } catch (error) {
       if (mounted.current) setSaveError((error as Error).message);
     } finally {
@@ -586,9 +607,10 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
           current.current = { ...current.current, baseNote: saved };
           setBaseNote(saved);
         }
+        clearWriteFailure();
         return true;
       } catch (error) {
-        setSaveError((error as Error).message);
+        showWriteFailure(error);
         return false;
       }
     };
