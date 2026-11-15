@@ -209,6 +209,33 @@ describe('a note checked in from its frame', () => {
   });
 });
 
+describe('a check-in that committed while others are still editing', () => {
+  it('says so in the read view, past the remount the new revision brings, and leaves the lists to the workspace refresh', async () => {
+    const onCheckedIn = vi.fn();
+    fetchMock.mockImplementation(async (url: string) => url === '/api/live/checkout' ? json({ checkout: view, outcome: 'created' }) : json({ id: 'abc', path: note.path, committed: true, commit: 'c'.repeat(40), released: false, reason: 'active', activeEditors: 1, revision: 'c'.repeat(40) }));
+    const live = { editor, onRefetch: vi.fn(), onCheckedIn };
+    const first = render(noteEditor({ live }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'live-status', users: 2, saved: true, connected: true, released: false }, origin: editor.origin, source: document.querySelector('iframe')!.contentWindow }));
+    });
+    live.onRefetch.mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Check in now' }));
+    });
+    expect(onCheckedIn).toHaveBeenCalledWith(expect.objectContaining({ committed: true, released: false }));
+    // The head moved: the lists read at the old revision would be refused, so the app's workspace refresh reads them.
+    expect(live.onRefetch).not.toHaveBeenCalled();
+    first.unmount();
+    render(noteEditor({ live }));
+    expect(screen.getByText('Saved to Git; 1 person is still editing, so it will be checked in again tonight.')).toBeInTheDocument();
+    expect(screen.queryByText('Checked in')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+});
+
 describe('a read-only note deleted elsewhere, without a live editor', () => {
   it('still says it was moved or deleted', async () => {
     const onReadRemote = vi.fn(async () => {
