@@ -15,4 +15,6 @@ export interface FilterControls {
   allNotebooks: boolean;
   onAllNotebooksChange: (value: boolean) => void;
   onClear: () => void;
+  /** The workspace has a repository with a live editor, so its notes can be filtered by live state (編輯中, 未歸檔). */
+  liveAvailable?: boolean;
 }

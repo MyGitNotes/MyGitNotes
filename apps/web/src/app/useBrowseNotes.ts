@@ -1,10 +1,10 @@
 import { type NoteFilters } from '@mygitnotes/core/note-filters';
-import { type NoteQuery } from '@mygitnotes/core/note-query';
+import { type NoteQuery, noteSearchTerms } from '@mygitnotes/core/note-query';
 import type { FilterControls } from '../lib/filter-controls.js';
 import { isNoteHidden } from '@mygitnotes/core/note-status';
 import { parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
 import { useMemo } from 'react';
-import { useNoteList, useNoteLookup } from '../lib/use-note-queries.js';
+import { useNoteList, useNoteLookup, useNoteQueryScope } from '../lib/use-note-queries.js';
 import { useDebounced } from '../lib/use-debounced.js';
 import type { ViewMode } from '../lib/types.js';
 import { getBreadcrumbs, getImmediateSubfolders } from '../lib/folder-tree.js';
@@ -45,12 +45,15 @@ export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags,
   const graph = activeTab === 'graph';
   const scopeFolders = useMemo(() => graph ? selectedFolders : selectedFolders.slice(0, 1), [graph, selectedFolders]);
   const descendants = graph ? route.descendants : true;
-  const noteFilters = useMemo<NoteFilters>(() => ({ kind: route.kind, notebookId: scopeNotebookId, folders: scopeFolders, tags: selectedTags, descendants, tagMode: route.tagMode, q: searchQuery, status: selectedStatus, showHidden }), [route.kind, scopeNotebookId, scopeFolders, selectedTags, descendants, route.tagMode, searchQuery, selectedStatus, showHidden]);
+  // Live states filter only where the workspace has a live editor; a link that names them elsewhere keeps every note.
+  const liveAvailable = Boolean(useNoteQueryScope().live?.length);
+  const selectedLive = useMemo(() => (liveAvailable ? route.live : []), [liveAvailable, route.live]);
+  const noteFilters = useMemo<NoteFilters>(() => ({ kind: route.kind, notebookId: scopeNotebookId, folders: scopeFolders, tags: selectedTags, descendants, tagMode: route.tagMode, q: searchQuery, status: selectedStatus, showHidden, live: selectedLive }), [route.kind, scopeNotebookId, scopeFolders, selectedTags, descendants, route.tagMode, searchQuery, selectedStatus, showHidden, selectedLive]);
   const kindList = route.kind === 'compilation' || route.kind === 'outline';
   // Typing in the search box must not fire one server query per keystroke.
   const debouncedSearch = useDebounced(searchQuery);
   // A filtered result spans the subtree, so the folder view lists it whole instead of one level; a selected folder alone is not a filter there.
-  const filtered = Boolean(debouncedSearch.trim() || selectedStatus || selectedTags.length > 0 || scopeNotebookId === 'all' || kindList);
+  const filtered = Boolean(debouncedSearch.trim() || selectedStatus || selectedLive.length > 0 || selectedTags.length > 0 || scopeNotebookId === 'all' || kindList);
   // The count line answers for the selected folder too.
   const counted = filtered || scopeFolders.length > 0;
   const notebookRoot = config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root.replace(/\/$/, '') || '';
@@ -65,7 +68,7 @@ export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags,
     return selected && (showHidden || !isNoteHidden({ ...selected.metadata, status: selected.status })) ? selected : undefined;
   }, [indexLookup.notes, indexCandidates, showHidden]);
 
-  const baseQuery = useMemo<Partial<NoteQuery>>(() => ({ kind: route.kind, notebookId: scopeNotebookId, folders: scopeFolders, descendants, tags: selectedTags, tagMode: route.tagMode, status: selectedStatus, showHidden, q: debouncedSearch, sort: sortField, order: sortOrder }), [route.kind, scopeNotebookId, scopeFolders, descendants, selectedTags, route.tagMode, selectedStatus, showHidden, debouncedSearch, sortField, sortOrder]);
+  const baseQuery = useMemo<Partial<NoteQuery>>(() => ({ kind: route.kind, notebookId: scopeNotebookId, folders: scopeFolders, descendants, tags: selectedTags, tagMode: route.tagMode, status: selectedStatus, live: selectedLive, showHidden, q: debouncedSearch, sort: sortField, order: sortOrder }), [route.kind, scopeNotebookId, scopeFolders, descendants, selectedTags, route.tagMode, selectedStatus, selectedLive, showHidden, debouncedSearch, sortField, sortOrder]);
   // Browsing a folder lists that one directory; searching or filtering lists the whole result.
   // A list spanning the subtree can be grouped by folder, in the sidebar's order, so its rows say where each note sits.
   const groupable = viewMode !== 'kanban' && (filtered || kindList || viewMode === 'flat');
@@ -78,7 +81,7 @@ export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags,
   const filterCount = counted ? (viewMode === 'kanban' ? kanbanCount.total : listResult.total) : (facetsQuery.facets ? notebookFacets.total : null);
   const displayedNotes = listResult.notes;
 
-  const filterProps: FilterControls = { value: noteFilters, neighbors: route.neighbors, notebooks: config?.notebooks || [], folders, tags: Object.keys(notebookFacets.tags), statuses: notebookStatuses, count: filterCount, allNotebooks: graph && route.allNotebooks, onAllNotebooksChange: changeAllNotebooks, onChange: changeFilters, onClear: clearFilters };
+  const filterProps: FilterControls = { value: noteFilters, neighbors: route.neighbors, notebooks: config?.notebooks || [], folders, tags: Object.keys(notebookFacets.tags), statuses: notebookStatuses, count: filterCount, allNotebooks: graph && route.allNotebooks, onAllNotebooksChange: changeAllNotebooks, onChange: changeFilters, onClear: clearFilters, liveAvailable };
 
   // Hierarchical Subfolder Discovery for current folder
   const immediateSubfolders = useMemo(() => {
@@ -91,5 +94,8 @@ export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags,
     return getBreadcrumbs(selectedFolder, folders, selectedNotebookId, t('folder.allFolders'));
   }, [selectedFolder, folders, selectedNotebookId, t]);
 
-  return { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, groupable, groupedByFolder };
+  // Rows highlight the free text, not the search's live tokens.
+  const highlightQuery = noteSearchTerms(debouncedSearch).text;
+
+  return { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, highlightQuery, groupable, groupedByFolder };
 }

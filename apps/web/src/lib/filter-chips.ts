@@ -1,5 +1,6 @@
 import type { FilterControls } from './filter-controls.js';
 import type { RailSectionId } from '../components/SidebarRail.js';
+import { noteSearchTerms, withoutSearchToken } from '@mygitnotes/core/note-query';
 
 export interface FilterChip {
   id: string;
@@ -10,9 +11,9 @@ export interface FilterChip {
   remove?: () => void;
 }
 
-type Translate = (key: 'focusList.allNotebooks' | 'outline.list' | 'sidebar.compilations' | 'sidebar.allStatuses', params?: Record<string, string | number>) => string;
+type Translate = (key: 'focusList.allNotebooks' | 'outline.list' | 'sidebar.compilations' | 'sidebar.allStatuses' | 'filters.live' | 'filters.liveEditing' | 'filters.livePending', params?: Record<string, string | number>) => string;
 
-/** The filters that narrow the list, as chips: the notebook or folders, a note kind, a status, each tag, and the search text. */
+/** The filters that narrow the list, as chips: the notebook or folders, a note kind, a status, each live state, each tag, each live search token and the search text. */
 export function filterChips(filters: FilterControls, t: Translate, statusLabel: (status: string) => string = status => status): FilterChip[] {
   const { value } = filters;
   const chips: FilterChip[] = [];
@@ -25,7 +26,12 @@ export function filterChips(filters: FilterControls, t: Translate, statusLabel: 
   }
   if (value.kind === 'outline' || value.kind === 'compilation') chips.push({ id: `kind:${value.kind}`, label: t(value.kind === 'outline' ? 'outline.list' : 'sidebar.compilations'), section: 'notebooks', remove: () => filters.onChange({ kind: 'note' }) });
   if (value.status !== null) chips.push({ id: `status:${value.status}`, label: statusLabel(value.status), section: 'status', remove: () => filters.onChange({ status: null }) });
+  const live = value.live ?? [];
+  for (const state of live) chips.push({ id: `live:${state}`, label: t(state === 'editing' ? 'filters.liveEditing' : 'filters.livePending'), section: 'status', remove: () => filters.onChange({ live: live.filter(item => item !== state) }) });
   for (const tag of value.tags) chips.push({ id: `tag:${tag}`, label: `#${tag}`, section: 'tags', remove: () => filters.onChange({ tags: value.tags.filter(item => item !== tag) }) });
-  if (value.q.trim()) chips.push({ id: 'search', label: `“${value.q.trim()}”`, section: 'notebooks', remove: () => filters.onChange({ q: '' }) });
+  // `is:live` and `is:pending` in the search are filters of their own; the search chip shows and clears only the free text.
+  const { text, tokens } = noteSearchTerms(value.q);
+  for (const token of tokens) chips.push({ id: `search:${token}`, label: t(token === 'is:live' ? 'filters.live' : 'filters.livePending'), section: 'status', remove: () => filters.onChange({ q: withoutSearchToken(value.q, token) }) });
+  if (text.trim()) chips.push({ id: 'search', label: `“${text.trim()}”`, section: 'notebooks', remove: () => filters.onChange({ q: tokens.join(' ') }) });
   return chips;
 }
