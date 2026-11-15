@@ -15,6 +15,8 @@ html[data-theme='eink'] { font-size: 112.5%; }
 /* Text that other themes soften with a mix or an opacity stays black. */
 [data-theme='eink'] :is(.nav-tree-entry, .focus-tab, .prose-custom blockquote, .text-muted\/70) { color: var(--color-text) !important; }
 [data-theme='eink'] :is(.opacity-70, .opacity-40:not([aria-disabled='true']):not(:disabled)) { opacity: 1 !important; }
+/* Placeholders too: Tailwind's base draws them gray, which a grayscale screen washes out. */
+[data-theme='eink'] ::placeholder { color: var(--color-text) !important; opacity: 1 !important; }
 [data-theme='eink'] .prose-custom blockquote { background: none; border-left: 3px solid var(--color-text); }
 [data-theme='eink'] .prose-custom pre { border: 1.5px solid var(--color-text); }
 [data-theme='eink'] .prose-custom hr { border: 0; border-top: 1.5px solid var(--color-text); }
