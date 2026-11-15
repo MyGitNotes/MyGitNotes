@@ -172,7 +172,7 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
             </button>
           )}
           {!board.readOnly && board.canDelete && (
-            <button type='button' onClick={() => requestDelete(noteRefKey(note))} disabled={Boolean(locked)} aria-label={t('notes.delete')} title={locked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : t('notes.delete'))} className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 rounded transition' : 'p-1 hover:text-danger rounded hover:bg-danger-soft transition opacity-40 hover:opacity-100 disabled:hover:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent'}>
+            <button type='button' onClick={() => requestDelete(noteRefKey(note))} disabled={Boolean(locked)} aria-label={t('notes.delete')} title={locked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : t('notes.delete'))} className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 rounded transition' : 'kanban-card-delete p-1 rounded transition opacity-40 enabled:hover:opacity-100 enabled:hover:text-danger enabled:hover:bg-danger-soft'}>
               <Trash2 className='w-3.5 h-3.5' />
             </button>
           )}
