@@ -46,6 +46,7 @@ vi.mock('@hocuspocus/provider', () => ({
     disconnect() {
       fake.order.push('disconnect');
     }
+    on() {}
   },
 }));
 vi.mock('../LiveMarkdownEditor.js', () => ({ LiveMarkdownEditor: forwardRef<unknown, { collab?: { text: string; }; readOnly: boolean; }>(({ collab, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Live note content', value: collab?.text ?? '', readOnly, onChange: () => {} })) }));

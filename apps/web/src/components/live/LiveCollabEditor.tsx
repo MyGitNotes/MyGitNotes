@@ -3,7 +3,6 @@ import { flushSync } from 'react-dom';
 import { CloudOff, Users } from 'lucide-react';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
-import { HocuspocusProvider } from '@hocuspocus/provider';
 import { yCollab } from 'y-codemirror.next';
 import type { Extension } from '@codemirror/state';
 import type { LiveBuiltinEditorInfo } from '@mygitnotes/core';
@@ -13,6 +12,7 @@ import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
 import { discardDraft, keptReason } from './live-drafts.js';
+import { LiveProvider } from './live-provider.js';
 import { stillOpenText } from './useLiveEdit.js';
 import './live-editor.css';
 
@@ -122,7 +122,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
 
   useEffect(() => {
     if (!live) return;
-    let stopped = false, provider: HocuspocusProvider | undefined;
+    let stopped = false, provider: LiveProvider | undefined;
     const doc = new Y.Doc();
     const awareness = new Awareness(doc);
     const text = doc.getText('content');
@@ -180,7 +180,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         released();
         return '';
       };
-      provider = new HocuspocusProvider({
+      provider = new LiveProvider({
         url: socketUrl(),
         name: first.document,
         document: doc,

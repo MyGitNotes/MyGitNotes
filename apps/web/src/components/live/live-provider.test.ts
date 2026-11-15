@@ -52,14 +52,7 @@ const read = (message: Uint8Array) => {
 const fakeSocket = () => {
   const handlers = new Map<string, Set<(event: unknown) => void>>();
   const sent: Uint8Array[] = [];
-  const socket = {
-    on: (event: string, handler: (event: unknown) => void) => handlers.set(event, (handlers.get(event) ?? new Set()).add(handler)),
-    off: (event: string, handler: (event: unknown) => void) => handlers.get(event)?.delete(handler),
-    attach: () => {},
-    detach: () => {},
-    send: (message: Uint8Array) => sent.push(message),
-    emit: (event: string, payload: unknown = {}) => handlers.get(event)?.forEach(handler => handler(payload)),
-  };
+  const socket = { on: (event: string, handler: (event: unknown) => void) => handlers.set(event, (handlers.get(event) ?? new Set()).add(handler)), off: (event: string, handler: (event: unknown) => void) => handlers.get(event)?.delete(handler), attach: () => {}, detach: () => {}, send: (message: Uint8Array) => sent.push(message), emit: (event: string, payload: unknown = {}) => handlers.get(event)?.forEach(handler => handler(payload)) };
   return { socket, sent };
 };
 
