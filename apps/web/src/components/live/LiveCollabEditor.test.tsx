@@ -26,6 +26,8 @@ interface FakeConfig {
   onAuthenticated?: (event: { scope: string; }) => void;
 }
 const fake = vi.hoisted(() => ({ providers: [] as { configuration: FakeConfig; destroyed: boolean; destroy: () => void; }[], order: [] as string[] }));
+/** Lets the bar's 已儲存 settle: it shows only once nothing was unsaved for a moment. */
+const settle = () => act(() => new Promise(resolve => setTimeout(resolve, 350)));
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
     configuration: FakeConfig;
@@ -37,6 +39,12 @@ vi.mock('@hocuspocus/provider', () => ({
     destroy() {
       this.destroyed = true;
       fake.order.push('destroy');
+    }
+    connect() {
+      fake.order.push('connect');
+    }
+    disconnect() {
+      fake.order.push('disconnect');
     }
   },
 }));
@@ -111,10 +119,13 @@ describe('the bar', () => {
     expect(screen.getByText('Not saved')).toBeInTheDocument();
     expect(checkInButton()).toBeDisabled();
     emit(config => config.onUnsyncedChanges?.({ number: 0 }));
+    await settle();
     emit(config => config.onStatus?.({ status: 'disconnected' }));
     expect(screen.getByText('Offline')).toBeInTheDocument();
     expect(checkInButton()).toBeDisabled();
     emit(config => config.onStatus?.({ status: 'connected' }));
+    // Connected again, the tab is saved only once its document synced again.
+    emit(config => config.onSynced?.({ state: true }));
     expect(checkInButton()).toBeEnabled();
     expect(screen.getByText('1 editing')).toBeInTheDocument();
     emit(config => config.onAwarenessChange?.({ states: [{ clientId: config.document.clientID }, { clientId: 2, user: { name: 'Bo' } }, { clientId: 3, user: { name: 'Bo' } }, { clientId: 4, user: { name: 'Cy' } }] }));
@@ -135,6 +146,46 @@ describe('the bar', () => {
     const again = clock();
     emit(config => config.onAuthenticated?.({ scope: 'read-write' }));
     expect(clock()).toBeGreaterThan(again);
+  });
+
+  it('says 已儲存 only once nothing was unsaved for a moment, so typing does not flicker it or 立即簽回', async () => {
+    await open();
+    sync();
+    emit(config => config.onUnsyncedChanges?.({ number: 1 }));
+    emit(config => config.onUnsyncedChanges?.({ number: 0 }));
+    expect(screen.queryByText('Saved')).toBeNull();
+    expect(checkInButton()).toBeDisabled();
+    await settle();
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+    expect(checkInButton()).toBeEnabled();
+  });
+
+  it('never says 已儲存 while it reconnects: offline until the socket is back, connecting until the document synced again', async () => {
+    await open();
+    sync();
+    emit(config => config.onStatus?.({ status: 'disconnected' }));
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    emit(config => config.onStatus?.({ status: 'connecting' }));
+    expect(screen.queryByText('Saved')).toBeNull();
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    emit(config => config.onStatus?.({ status: 'connected' }));
+    expect(screen.queryByText('Saved')).toBeNull();
+    expect(screen.getByText('Connecting…')).toBeInTheDocument();
+    expect(checkInButton()).toBeDisabled();
+    emit(config => config.onSynced?.({ state: true }));
+    expect(screen.getByText('Saved')).toBeInTheDocument();
+  });
+
+  it('goes offline the moment the browser does, and reconnects the moment it is back', async () => {
+    await open();
+    sync();
+    fake.order.length = 0;
+    act(() => void window.dispatchEvent(new Event('offline')));
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    expect(checkInButton()).toBeDisabled();
+    expect(fake.order).toEqual(['disconnect']);
+    act(() => void window.dispatchEvent(new Event('online')));
+    expect(fake.order).toEqual(['disconnect', 'connect']);
   });
 
   it('warns before the page is left while changes are not saved', async () => {
