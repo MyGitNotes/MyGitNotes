@@ -125,7 +125,12 @@ names, `read`, `read_note`, `find`, `list_notes`, `search_notes` and
 `get_statuses` see the live text, a pending live note is listed at its virtual
 path `<notebook root>/.live/<id>.md`, and `read`, `read_note`,
 `get_note_metadata`, `list_notes` entries and `search_notes` matches carry
-`live: { since, activeEditors, pending?, editorUrl }`. A read of a checked-out
+`live: { since, activeEditors, pending?, editorUrl }`. `editorUrl` is the
+editor's page of the note: a framed editor's own page, or for the built-in
+editor the note's page in the app, the `APP_URL` origin plus its note route
+(`liveNotePageUrl`; a pending note's route names its virtual path), which opens
+the note where people type in it. The schema is the same for both kinds of
+editor. A read of a checked-out
 note returns a `v2.` revision: unpadded base64url of
 `{"r": {<repository>: <sha>}, "l": [[repository, path, id, liveRevision, contentHash], …]}`
 (at most 32 live entries, the oldest dropped, and 8192 characters). Without a
@@ -155,7 +160,12 @@ stayed open: `active` (people are still editing; the commit was made and
 tonight's check-in closes it), `unfiled` (its path rule needs a value the note
 lacks), `leased` (a check-in runs elsewhere), `changed` or `not-synced`. After a
 check-in that committed, the branch moved: read again before writing. A note
-that is not checked out is refused.
+that is not checked out is refused. Where the live editor can discard drafts
+(the built-in editor, or an adapter with `discard`), a pending note that is an
+empty draft, its text holding nothing beyond the text it was created with but
+whitespace, punctuation or Markdown marks, is discarded instead of filed: the
+answer carries `discarded: true`, `released: true`, `committed: false` and
+`reason: "empty"`, nothing is committed and the note is gone.
 
 A request with no live editor view (no `liveNotes`, nobody signed in, or no
 member the editor covers) lists the tools exactly as before live notes: no
