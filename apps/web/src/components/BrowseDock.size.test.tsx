@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { createElement } from 'react';
-import { act, cleanup, render } from '@testing-library/react';
+import { createElement, useState } from 'react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterAll, afterEach, beforeEach, expect, it } from 'vitest';
 import { BrowseDock } from './BrowseDock.js';
 
@@ -22,9 +22,17 @@ function widthOf(element: HTMLElement): number {
   const index = panels.indexOf(element);
   return basis[index] ?? free * grow[index]! / total;
 }
+/** Panels and dividers sit side by side from the group's left edge; the library orders them by this. */
+function leftOf(element: HTMLElement): number {
+  const parent = element.parentElement;
+  if (!parent?.hasAttribute('data-group')) return 0;
+  const siblings = [...parent.children] as HTMLElement[];
+  return siblings.slice(0, siblings.indexOf(element)).reduce((sum, sibling) => sum + widthOf(sibling), 0);
+}
 const originalObserver = globalThis.ResizeObserver;
 const originalWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
 const originalHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+const originalLeft = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetLeft');
 beforeEach(() => {
   groupWidth = 1388;
   globalThis.ResizeObserver = class {
@@ -45,6 +53,7 @@ beforeEach(() => {
   } as unknown as typeof ResizeObserver;
   Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get(this: HTMLElement) { return widthOf(this); } });
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 800 });
+  Object.defineProperty(HTMLElement.prototype, 'offsetLeft', { configurable: true, get(this: HTMLElement) { return leftOf(this); } });
 });
 afterEach(() => {
   cleanup();
@@ -54,6 +63,7 @@ afterAll(() => {
   globalThis.ResizeObserver = originalObserver;
   if (originalWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalWidth);
   if (originalHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalHeight);
+  if (originalLeft) Object.defineProperty(HTMLElement.prototype, 'offsetLeft', originalLeft);
 });
 
 /** What a browser reports after layout: every observed element at its current size. */
@@ -113,4 +123,23 @@ it('takes a stored width that arrives as the space beside it grows, before the b
   groupWidth = 1228;
   observe();
   expect(dockWidth()).toBe(288);
+});
+
+it('moves with the keyboard and stores where it stopped', () => {
+  const stored: number[] = [];
+  function Stateful() {
+    const [size, setSize] = useState(288);
+    /* eslint-disable-next-line react/no-children-prop -- The test passes children as part of the props contract. */
+    return createElement(BrowseDock, { placement: 'left', size, onSizeChange: next => { stored.push(next); setSize(next); }, collapsed: false, narrow: false, narrowView: 'focus', browse: createElement('p', null, 'browse'), children: createElement('p', null, 'focus') });
+  }
+  render(createElement(Stateful));
+  observe();
+  const separator = screen.getByRole('separator');
+  act(() => {
+    fireEvent.keyDown(separator, { key: 'ArrowRight' });
+  });
+  observe();
+  const moved = dockWidth();
+  expect(moved).toBeGreaterThan(288);
+  expect(stored.at(-1)).toBe(moved);
 });
