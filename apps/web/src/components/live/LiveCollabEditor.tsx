@@ -53,11 +53,16 @@ type Phase =
 /** The socket as the provider reports it. */
 interface Connection {
   status: 'connecting' | 'connected' | 'disconnected';
+  /** The socket's document synced since it last connected. */
   synced: boolean;
+  /** The document synced once in this session: the editor shows, and a later loss of the socket reads as offline. */
+  everSynced?: boolean;
   unsynced: number;
   people: number;
 }
 const START: Connection = { status: 'connecting', synced: false, unsynced: 0, people: 1 };
+/** How long nothing may be unsaved before the bar says 已儲存: each keystroke is stored within a few milliseconds. */
+const SETTLE_MS = 300;
 
 const REFUSALS: Record<RefusedReason, TranslationKey> = { 'too-large': 'live.tooLargeLive', busy: 'live.busy', other: 'live.socketRefused' };
 
@@ -162,10 +167,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         // The server keeps a state only past the clock it last saw of this client: 0 at first, the same after a reconnect.
         // Setting it again moves the clock, so the others count this tab from its connect, as the server's activeEditors do.
         onAuthenticated: () => awareness.setLocalState({ ...awareness.getLocalState() }),
-        onStatus: ({ status }) => setConnection(current => ({ ...current, status: status as Connection['status'] })),
+        // A socket that is not connected has no synced document: it syncs again once it reconnects.
+        onStatus: ({ status }) => setConnection(current => ({ ...current, status: status as Connection['status'], synced: status === 'connected' && current.synced })),
         onSynced: ({ state }) => {
           if (!state || stopped) return;
-          setConnection(current => ({ ...current, synced: true }));
+          setConnection(current => ({ ...current, synced: true, everSynced: true }));
           setCollab(current => current ?? { extension: yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }), text: text.toString() });
         },
         onUnsyncedChanges: ({ number }) => setConnection(current => ({ ...current, unsynced: number })),
@@ -187,8 +193,32 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         },
       });
     })();
-    return () => void stop();
+    // The browser knows it is offline long before the socket's timeout does, and back online before its next retry.
+    const offline = () => {
+      if (stopped) return;
+      provider?.disconnect();
+      setConnection(current => ({ ...current, status: 'disconnected', synced: false }));
+    };
+    const online = () => {
+      if (!stopped) void provider?.connect();
+    };
+    window.addEventListener('offline', offline);
+    window.addEventListener('online', online);
+    return () => {
+      window.removeEventListener('offline', offline);
+      window.removeEventListener('online', online);
+      stop();
+    };
   }, [live, session]);
+
+  // 已儲存 waits until nothing was unsaved for SETTLE_MS, so typing does not flicker it, or 立即簽回 with it.
+  const [settled, setSettled] = useState(true);
+  if (connection.unsynced > 0 && settled) setSettled(false);
+  useEffect(() => {
+    if (connection.unsynced > 0 || settled) return;
+    const timer = setTimeout(() => setSettled(true), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [connection.unsynced, settled]);
 
   // Typing the server has not stored yet is lost with the page.
   const unsaved = live && connection.unsynced > 0;
@@ -267,9 +297,10 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     URL.revokeObjectURL(url);
   };
 
-  const offline = connection.status === 'disconnected';
-  const stateKey: TranslationKey = !connection.synced ? 'live.connecting' : offline ? 'live.offline' : connection.unsynced > 0 ? 'live.unsaved' : 'live.saved';
-  const canCheckIn = connection.status === 'connected' && connection.synced && connection.unsynced === 0;
+  // Before the first sync the tab is connecting; afterwards a socket that is not connected is offline, retries included,
+  // and one connected again is connecting until its document synced again.
+  const stateKey: TranslationKey = !connection.everSynced ? 'live.connecting' : connection.status !== 'connected' ? 'live.offline' : !connection.synced ? 'live.connecting' : connection.unsynced > 0 || !settled ? 'live.unsaved' : 'live.saved';
+  const canCheckIn = connection.status === 'connected' && connection.synced && connection.unsynced === 0 && settled;
   const discardable = Boolean(checkout.pending && editor.discard) && (live || phase.kind === 'notice');
   return (
     <div className='live-editor-frame live-collab'>
