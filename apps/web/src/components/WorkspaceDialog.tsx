@@ -19,7 +19,9 @@ export function WorkspaceDialog({ title, children, onClose, className = '' }: { 
     const previous = document.activeElement as HTMLElement | null;
     const element = dialog.current;
     element?.showModal();
+    /* eslint-disable react/set-state-in-effect -- The content may mount only after the native dialog is modal, which no render can know beforehand. */
     setOpen(true);
+    /* eslint-enable react/set-state-in-effect */
     return () => {
       // A succeeding native dialog may already have focused its field. Do not
       // steal that focus back to the old trigger during the previous cleanup.

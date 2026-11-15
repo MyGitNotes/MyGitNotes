@@ -15,10 +15,7 @@ import { FocusControls } from './FocusControls.js';
 import type { NoteFocus } from '../lib/use-note-focus.js';
 import { CURRENT_FOCUS } from '../lib/focus-view.js';
 
-vi.mock('../lib/use-note-queries.js', () => ({
-  useNoteFacets: () => ({ facets: {}, loading: false, error: '' }),
-  useNoteList: () => ({ notes: [], loading: false, error: '' }),
-}));
+vi.mock('../lib/use-note-queries.js', () => ({ useNoteFacets: () => ({ facets: {}, loading: false, error: '' }), useNoteList: () => ({ notes: [], loading: false, error: '' }) }));
 
 // A browser's `showModal` focuses the dialog's first focusable element, its ✕, before anything else can, and makes
 // the rest of the page inert, so a menu that closes behind the dialog cannot take focus back to its trigger.
@@ -46,11 +43,12 @@ afterEach(() => {
 const inApp = (element: ReactElement) => render(<I18nProvider>{element}</I18nProvider>);
 
 describe('a WorkspaceDialog gives its first focus to the field its content marks', () => {
-  it.each([
-    ['an autoFocus input', <input key='field' aria-label='Field' autoFocus />],
-    ['an autoFocus select', <select key='field' aria-label='Field' autoFocus><option>a</option></select>],
-    ['an autoFocus button', <button key='field' type='button' aria-label='Field' autoFocus>pick</button>],
-  ])('%s', (_name, field) => {
+  it.each([['an autoFocus input', <input key='field' aria-label='Field' autoFocus />], [
+    'an autoFocus select',
+    <select key='field' aria-label='Field' autoFocus>
+      <option>a</option>
+    </select>,
+  ], ['an autoFocus button', <button key='field' type='button' aria-label='Field' autoFocus>pick</button>]])('%s', (_name, field) => {
     render(
       <WorkspaceDialog title='Dialog' onClose={() => undefined}>
         <button type='button'>Before</button>
