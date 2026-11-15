@@ -20,6 +20,7 @@ interface FakeConfig {
   onStatus?: (event: { status: string; }) => void;
   onSynced?: (event: { state: boolean; }) => void;
   onUnsyncedChanges?: (event: { number: number; }) => void;
+  onDirty?: (event: { dirty: boolean; }) => void;
   onAwarenessChange?: (event: { states: { clientId: number; user?: { name?: string; }; }[]; }) => void;
   onStateless?: (event: { payload: string; }) => void;
   onAuthenticationFailed?: (event: { reason: string; }) => void;
@@ -117,10 +118,16 @@ describe('the bar', () => {
     sync();
     expect(screen.getByText('Saved')).toBeInTheDocument();
     expect(checkInButton()).toBeEnabled();
-    emit(config => config.onUnsyncedChanges?.({ number: 2 }));
+    emit(config => {
+      config.onUnsyncedChanges?.({ number: 2 });
+      config.onDirty?.({ dirty: true });
+    });
     expect(screen.getByText('Not saved')).toBeInTheDocument();
     expect(checkInButton()).toBeDisabled();
-    emit(config => config.onUnsyncedChanges?.({ number: 0 }));
+    emit(config => {
+      config.onUnsyncedChanges?.({ number: 0 });
+      config.onDirty?.({ dirty: false });
+    });
     await settle();
     emit(config => config.onStatus?.({ status: 'disconnected' }));
     expect(screen.getByText('Offline')).toBeInTheDocument();
@@ -153,8 +160,14 @@ describe('the bar', () => {
   it('says 已儲存 only once nothing was unsaved for a moment, so typing does not flicker it or 立即簽回', async () => {
     await open();
     sync();
-    emit(config => config.onUnsyncedChanges?.({ number: 1 }));
-    emit(config => config.onUnsyncedChanges?.({ number: 0 }));
+    emit(config => {
+      config.onUnsyncedChanges?.({ number: 1 });
+      config.onDirty?.({ dirty: true });
+    });
+    emit(config => {
+      config.onUnsyncedChanges?.({ number: 0 });
+      config.onDirty?.({ dirty: false });
+    });
     expect(screen.queryByText('Saved')).toBeNull();
     expect(checkInButton()).toBeDisabled();
     await settle();
@@ -199,7 +212,10 @@ describe('the bar', () => {
       return event.defaultPrevented;
     };
     expect(leave()).toBe(false);
-    emit(config => config.onUnsyncedChanges?.({ number: 1 }));
+    emit(config => {
+      config.onUnsyncedChanges?.({ number: 1 });
+      config.onDirty?.({ dirty: true });
+    });
     expect(leave()).toBe(true);
   });
 
@@ -207,7 +223,10 @@ describe('the bar', () => {
     await open();
     sync();
     act(() => void window.dispatchEvent(new Event('offline')));
-    emit(config => config.onUnsyncedChanges?.({ number: 1 }));
+    emit(config => {
+      config.onUnsyncedChanges?.({ number: 1 });
+      config.onDirty?.({ dirty: true });
+    });
     const event = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
@@ -277,6 +296,7 @@ describe('a released note', () => {
     emit(config => {
       config.document.getText('content').insert(4, 'offline typing\n');
       config.onUnsyncedChanges?.({ number: 1 });
+      config.onDirty?.({ dirty: true });
       config.onStatus?.({ status: 'disconnected' });
     });
     emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'released' }) }));
@@ -327,6 +347,7 @@ const typeUnsaved = (typed: string) =>
   emit(config => {
     config.document.getText('content').insert(config.document.getText('content').length, typed);
     config.onUnsyncedChanges?.({ number: 1 });
+    config.onDirty?.({ dirty: true });
   });
 /** Copy my version puts `text` on the clipboard, and Download saves a file. */
 const offersMine = async (text: string) => {
@@ -455,6 +476,7 @@ describe('a socket the server closed for a new ticket (4000)', () => {
       config.onStatus?.({ status: 'connected' });
       config.onSynced?.({ state: true });
       config.onUnsyncedChanges?.({ number: 0 });
+      config.onDirty?.({ dirty: false });
     });
     await settle();
     expect(screen.getByText('Saved')).toBeInTheDocument();
@@ -567,6 +589,7 @@ describe('an ending the person chooses while typing is unsaved', () => {
     emit(config => {
       config.document.getText('content').insert(4, 'offline typing\n');
       config.onUnsyncedChanges?.({ number: 1 });
+      config.onDirty?.({ dirty: true });
       config.onStatus?.({ status: 'disconnected' });
     });
   const clipboard = () => {
@@ -650,6 +673,48 @@ describe('an ending the person chooses while typing is unsaved', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     cleanup();
     // Offered once: the text is the person's to keep now.
+    await open();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+/*
+ * BG-F003: a connect counts its own sync step as unsynced until the server acknowledged it. That is no typing: the
+ * endings, 關閉 and leaving the note offer or ask about unsaved text only when the tab typed some.
+ */
+describe('a connect with nothing typed', () => {
+  /** The socket opened and sent its step 2, which the server has not acknowledged yet. */
+  const midConnect = () => emit(config => config.onUnsyncedChanges?.({ number: 1 }));
+
+  it('ends without offering unsaved text when the new ticket is refused mid-connect', async () => {
+    await open();
+    sync('# A\n');
+    await provider().configuration.token();
+    midConnect();
+    fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? json({ error: 'Sign in to edit.' }, 403) : json({}));
+    await act(async () => {
+      await expect(provider().configuration.token()).rejects.toThrow('Sign in to edit.');
+      provider().configuration.onAuthenticationFailed?.({ reason: 'Failed to get token' });
+    });
+    expect(provider().destroyed).toBe(true);
+    expect(screen.getByRole('alert')).toHaveTextContent('Sign in to edit.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('were not saved');
+  });
+
+  it('「關閉」 closes at once, and leaving the note keeps nothing to offer', async () => {
+    const onClose = vi.fn();
+    const view = await open({ onClose });
+    sync('# A\n');
+    midConnect();
+    // Still truthful: not saved until the step 2 is acknowledged.
+    expect(screen.getByText('Not saved')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalled();
+    view.unmount();
+    await open();
+    sync('# A\n');
+    midConnect();
+    cleanup();
     await open();
     expect(screen.queryByRole('alert')).toBeNull();
   });
