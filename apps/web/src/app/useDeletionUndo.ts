@@ -75,7 +75,8 @@ export function useDeletionUndo({ canWriteNotebook, revisionFor, setNotebookRevi
   const handleDiscardDraft = async (note: NoteListItem) => {
     setActionError('');
     try {
-      const answer = await discardDraft(note.notebookId, note.path, translateNow);
+      // A remote workspace's lists arm a delete before it runs: that second click is the one confirmation asked.
+      const answer = await discardDraft(note.notebookId, note.path, translateNow, remote ? () => true : undefined);
       if (!answer) return;
       if (!answer.discarded) return setActionError(keptReason(answer, translateNow));
     } catch (error) {

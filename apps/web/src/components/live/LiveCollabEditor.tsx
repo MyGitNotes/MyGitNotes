@@ -42,6 +42,8 @@ type Phase =
   | { kind: 'open'; }
   | { kind: 'checking'; }
   | { kind: 'discarding'; }
+  /** 「捨棄這份草稿？」 in the editor's own notice, for a draft someone typed in. */
+  | { kind: 'confirm-discard'; question: string; }
   | { kind: 'released'; }
   /** The session ended while this tab held typing the server never acknowledged: its text, offered to copy or download. */
   | { kind: 'lost'; text: string; ending: Ending; }
@@ -256,11 +258,20 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     }
     onRefetch();
   };
+  /** Answers the editor's 「捨棄這份草稿？」. */
+  const answerDiscard = useRef<(yes: boolean) => void>(() => {});
+  const askDiscard = (question: string) => new Promise<boolean>(resolve => {
+    answerDiscard.current = yes => {
+      if (yes) setPhase({ kind: 'discarding' });
+      resolve(yes);
+    };
+    setPhase({ kind: 'confirm-discard', question });
+  });
   const discard = async () => {
     stopRef.current();
     flushSync(() => setPhase({ kind: 'discarding' }));
     try {
-      const answer = await discardDraft(checkout.notebookId, checkout.path, t);
+      const answer = await discardDraft(checkout.notebookId, checkout.path, t, askDiscard);
       if (!answer) return reopen();
       if (answer.discarded) {
         onRefetch();
@@ -324,6 +335,15 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       {phase.kind === 'checking' && <LoadingStatus className='live-editor-notice'>{t('live.checkingIn')}</LoadingStatus>}
       {phase.kind === 'discarding' && <LoadingStatus className='live-editor-notice'>{t('live.discarding')}</LoadingStatus>}
       {phase.kind === 'released' && <p role='status' className='live-editor-notice'>{t('live.checkedIn')}</p>}
+      {phase.kind === 'confirm-discard' && (
+        <div role='alertdialog' aria-label={t('live.discard')} className='live-editor-notice'>
+          <p>{phase.question}</p>
+          <div className='live-editor-notice-actions'>
+            <Button size='small' variant='danger' onClick={() => answerDiscard.current(true)}>{t('live.discard')}</Button>
+            <Button size='small' onClick={() => answerDiscard.current(false)}>{t('live.backToEditor')}</Button>
+          </div>
+        </div>
+      )}
       {phase.kind === 'discarded' && <p role='status' className='live-editor-notice'>{t('live.discardedEmpty')}</p>}
       {phase.kind === 'refused' && <p role='alert' className='live-editor-notice'>{t(REFUSALS[phase.reason])}</p>}
       {phase.kind === 'lost' && (

@@ -68,14 +68,15 @@ export const keptReason = (answer: Exclude<LiveDiscardAnswer, { discarded: true;
 
 /**
  * 「捨棄草稿」: discards a pending note at once when nobody typed content in it; otherwise asks 「捨棄這份草稿？內容不會存進
- * Git。」 and, confirmed, asks again with `confirm`. Null when the person kept the draft.
+ * Git。」 (`ask`, the browser's confirm by default; one that already confirmed answers true) and, confirmed, asks again
+ * with `confirm`. Null when the person kept the draft.
  */
-export async function discardDraft(notebookId: string, path: string, t: I18nContextValue['t']): Promise<LiveDiscardAnswer | null> {
+export async function discardDraft(notebookId: string, path: string, t: I18nContextValue['t'], ask: (question: string) => boolean | Promise<boolean> = question => window.confirm(question)): Promise<LiveDiscardAnswer | null> {
   try {
     return await discardLive(notebookId, path);
   } catch (error) {
     if (!hasLiveEdits(error)) throw error;
-    if (!window.confirm(t('live.discardConfirm'))) return null;
+    if (!await ask(t('live.discardConfirm'))) return null;
     return discardLive(notebookId, path, true);
   }
 }
