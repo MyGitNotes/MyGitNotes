@@ -12,8 +12,8 @@ import { hydrateQrCodes } from '../qrcode.js';
 import { buildDeck } from './deck.js';
 import { EmptyDeckError } from './errors.js';
 
-/** contour-deck's interface text in English; its own defaults are Traditional Chinese. */
-const ENGLISH_LABELS: Labels = { overview: 'Outline', notes: 'Notes', script: 'Script', threeD: '3D', prev: 'Previous step', next: 'Next step', exit: 'Leave the slides', remote: 'Remote', here: 'You are here', appendix: 'Written', rail: 'Position in the deck', noNotes: '(No notes for this page)', slides: count => count === 1 ? '1 slide' : `${count} slides`, pages: count => count === 1 ? '1 page' : `${count} pages`, minutes: count => `about ${count} min`, page: (index, count) => `Page ${index}/${count}`, steps: (shown, count) => `Step ${shown}/${count}`, thumb: (block, slide, title, pages) => `${block}, slide ${slide}: ${title}${pages > 1 ? `, ${pages} pages` : ''}` };
+/** The app's English for the words it says otherwise than contour-deck's English set; every other word is contour-deck's. */
+const ENGLISH_LABELS: Partial<Labels> = { prev: 'Previous step', next: 'Next step', exit: 'Leave the slides', appendix: 'Written', rail: 'Position in the deck', noNotes: '(No notes for this page)', minutes: count => `about ${count} min`, steps: (shown, count) => `Step ${shown}/${count}` };
 
 export interface OpenDeckOptions {
   /** The note's sanitized HTML, rendered with `slides: 'deck'`. */
@@ -42,8 +42,9 @@ export function openDeck(host: HTMLElement, { html, title, view, language, t, on
   const stopMermaid = hydrateMermaid(root, { errorLabel: t('mermaid.error') });
   const stopPdfFigures = hydratePdfFigures(root, { t });
   const stopQrCodes = hydrateQrCodes(root);
-  // The app has its own router: the deck neither reads nor writes the address.
-  const deck = createDeck(root, { url: false, view, labels: language === 'en' ? ENGLISH_LABELS : undefined });
+  // The app has its own router: the deck neither reads nor writes the address. It speaks the app's language, not whichever `lang` stands
+  // above it.
+  const deck = createDeck(root, { url: false, view, lang: language, labels: language === 'en' ? ENGLISH_LABELS : undefined });
   deck.on('exit', onExit);
   return () => {
     stopMermaid();
