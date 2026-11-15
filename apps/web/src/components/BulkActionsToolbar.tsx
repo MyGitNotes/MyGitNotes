@@ -15,6 +15,8 @@ interface BulkActionsToolbarProps {
   canMove: boolean;
   /** The notes of the selection being edited live (編輯中), by title: every action is refused until they are checked in. */
   liveNotes?: string[];
+  /** Every live note of the selection is a pending one whose live editor can retarget it: Move still sets where they are filed. */
+  liveMovable?: boolean;
   onSetStatus: (status: string) => void;
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
@@ -26,7 +28,7 @@ interface BulkActionsToolbarProps {
  * so it adds no chrome when the selection is empty. Selecting itself happens on the rows/cards
  * (modifier-click or, once active, their checkbox), matching FolderTree's and the graph's
  * multi-select convention. */
-export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({ count, statuses, availableTags, busy: working, readOnly, canMove, liveNotes = [], onSetStatus, onAddTag, onRemoveTag, onMove, onClear }) => {
+export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({ count, statuses, availableTags, busy: working, readOnly, canMove, liveNotes = [], liveMovable = false, onSetStatus, onAddTag, onRemoveTag, onMove, onClear }) => {
   const { t } = useTranslation();
   const labelOf = useStatusLabel();
   const [tagInput, setTagInput] = useState('');
@@ -68,7 +70,7 @@ export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({ count, s
             <Button type='button' size='small' disabled={busy || !tagInput.trim()} onClick={() => submitTag(onAddTag)}>{t('bulk.addTag')}</Button>
             <Button type='button' size='small' disabled={busy || !tagInput.trim()} onClick={() => submitTag(onRemoveTag)}>{t('bulk.removeTag')}</Button>
           </div>
-          <Button type='button' size='small' disabled={busy || !canMove} title={canMove ? undefined : t('bulk.moveRequiresSingleNotebook')} onClick={onMove}>
+          <Button type='button' size='small' disabled={working || (liveLocked && !liveMovable) || !canMove} title={canMove ? undefined : t('bulk.moveRequiresSingleNotebook')} onClick={onMove}>
             <FolderInput className='w-3.5 h-3.5' />
             {t('bulk.moveToFolder')}
           </Button>

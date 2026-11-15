@@ -4,6 +4,7 @@ import { Clock, Trash2 } from 'lucide-react';
 import { NoteTagActions, NoteTags } from './NoteTags.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
 import { LiveBadge } from './live/LiveBadge.js';
+import { useLiveLock } from './live/live-drafts.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -59,6 +60,7 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
     if (note) onDeleteNote(note);
   });
 
+  const liveLock = useLiveLock();
   const isEmpty = !loading && notes.length === 0 && uncommitted.length === 0 && !hasFolderEntries;
 
   if (isEmpty) {
@@ -71,6 +73,8 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
     const canDrag = !!focusMode?.canDrag(note);
     // A note being edited live (編輯中) or still pending refuses every file operation until it is checked in.
     const locked = note.live ? t('live.checkedOut') : undefined;
+    // A pending note may still be discarded (delete) and moved where its live editor can.
+    const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
     const canMove = !readOnly && !locked && Boolean(onMoveNote) && pointerMovesNotes();
     const selectionActive = !draft && Boolean(selectedKeys?.size);
     const selected = !draft && (selectedKeys?.has(noteRefKey(note)) ?? false);
@@ -101,14 +105,14 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
           </span>
           <div className='flex items-center gap-1 shrink-0' onClick={(e) => e.stopPropagation()}>
             {focusMode && <NoteZoomButton onClick={() => focusMode.onZoomNote(note)} />}
-            {!readOnly && onMoveNote && <NoteMoveButton onClick={() => onMoveNote(note)} reason={locked} />}
+            {!readOnly && onMoveNote && <NoteMoveButton onClick={() => onMoveNote(note)} reason={moveLocked} />}
             {!readOnly && canDelete && (
               <button
                 type='button'
                 onClick={() => requestDelete(noteRefKey(note))}
-                disabled={Boolean(locked)}
+                disabled={Boolean(deleteLocked)}
                 aria-label={t('notes.delete')}
-                title={locked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : t('notes.delete'))}
+                title={deleteLocked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))}
                 className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 transition rounded' : 'p-1 text-muted hover:text-danger transition rounded disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted'}
               >
                 <Trash2 className='w-3.5 h-3.5' />

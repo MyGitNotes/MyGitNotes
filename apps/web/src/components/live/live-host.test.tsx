@@ -18,7 +18,11 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { LiveDraftsProvider } from './live-drafts.js';
 
 // The built-in editor's socket: a provider that never connects, so a test sees the tab ask for its ticket and wait.
-vi.mock('@hocuspocus/provider', () => ({ HocuspocusProvider: class { destroy() {} } }));
+vi.mock('@hocuspocus/provider', () => ({
+  HocuspocusProvider: class {
+    destroy() {}
+  },
+}));
 vi.mock('../MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; readOnly: boolean; }>(({ content, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, readOnly, onChange: () => {} })) }));
 
 const editor = { origin: 'https://live.example.test', messageType: 'live-status', themeParam: 'theme' };

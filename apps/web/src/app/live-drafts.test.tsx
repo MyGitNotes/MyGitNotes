@@ -28,23 +28,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('deleting a pending note', () => {
   const setup = (editingNote: NoteListItem | null = null) => {
-    const params = {
-      canWriteNotebook: () => true,
-      revisionFor: () => 'r1',
-      setNotebookRevision: vi.fn(),
-      updateDraft: vi.fn(),
-      editingNote,
-      setEditingNote: vi.fn(),
-      navigate: vi.fn(),
-      returnTo: '/notebooks/nb',
-      remote: true,
-      setActionError: vi.fn(),
-      readNoteForChange: vi.fn(),
-      invalidateNotes: vi.fn(),
-      gitStatus: null,
-      setGitStatus: vi.fn(),
-      repositoryFor: () => undefined,
-    };
+    const params = { canWriteNotebook: () => true, revisionFor: () => 'r1', setNotebookRevision: vi.fn(), updateDraft: vi.fn(), editingNote, setEditingNote: vi.fn(), navigate: vi.fn(), returnTo: '/notebooks/nb', remote: true, setActionError: vi.fn(), readNoteForChange: vi.fn(), invalidateNotes: vi.fn(), gitStatus: null, setGitStatus: vi.fn(), repositoryFor: () => undefined };
     const hook = renderHook(() => useDeletionUndo(params as never));
     return { params, remove: (note: NoteListItem) => act(() => hook.result.current.handleDeleteNote(note)) };
   };
