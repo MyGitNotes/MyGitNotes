@@ -269,8 +269,8 @@ describe('a released note', () => {
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
     const createObjectURL = vi.fn(() => 'blob:mine');
     Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
-    const onCheckedIn = vi.fn();
-    await open({ onCheckedIn, title: 'Alpha' });
+    const onCheckedIn = vi.fn(), onReleased = vi.fn();
+    await open({ onCheckedIn, onReleased, title: 'Alpha' });
     sync('# A\n');
     emit(config => {
       config.document.getText('content').insert(4, 'offline typing\n');
@@ -281,6 +281,8 @@ describe('a released note', () => {
     expect(provider().destroyed).toBe(true);
     expect(screen.getByRole('alert')).toHaveTextContent('This note was checked in; the changes you made offline were not saved.');
     expect(onCheckedIn).not.toHaveBeenCalled();
+    // The note is no longer live: the lists read its live state again now, not only once the notice is left.
+    expect(onReleased).toHaveBeenCalledOnce();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Copy my version' }));
     });
