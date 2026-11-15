@@ -286,6 +286,24 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(fourth.text()).toBe(A);
     });
 
+    it('answers 503 to a socket past the most that are open without a document, and takes one again once one of them closed', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { maxUnseated: 2 } });
+      await server.checkout();
+      const idle = [server.socket(APP_ORIGIN), server.socket(APP_ORIGIN)];
+      expect(await Promise.all(idle.map(answer))).toEqual(['open', 'open']);
+      // Sockets that present no ticket hold memory each, whoever opens them: past the most, none opens.
+      expect(await answer(server.socket(APP_ORIGIN))).toBe(503);
+      // A tab waits too, and gets in once one of them closed; with its document open, its socket no longer counts.
+      const tab = await server.tab(1);
+      await pause(150);
+      expect(tab.provider.isSynced).toBe(false);
+      idle[0].close();
+      await tab.synced();
+      expect(await answer(server.socket(APP_ORIGIN))).toBe('open');
+      expect(await answer(server.socket(APP_ORIGIN))).toBe(503);
+      expect(tab.asked).toBe(1);
+    });
+
     it("refuses a socket's document past the most this process holds, while a server write still loads its own", async () => {
       const server = await serverOver({ store: makeStore(), files: twoNotes(), limits: { maxDocuments: 1 } });
       const { liveNotes, documents } = server.live;
