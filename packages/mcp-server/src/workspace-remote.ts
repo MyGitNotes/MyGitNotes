@@ -1,4 +1,4 @@
-import { mergeTemplateLists, type RemoteSource, type RevisionSet, StaleRevisionError, type TemplateList, type WorkspaceRepositories } from '@mygitnotes/core';
+import { isLiveContentHash, isLiveId, isLiveRevision, liveBase, mergeTemplateLists, type RemoteSource, type RevisionSet, StaleRevisionError, type TemplateList, type WorkspaceRepositories } from '@mygitnotes/core';
 import { keyedResult, listedNotebooks, notebookArgument } from './notebook-keys.js';
 import { callRemoteTool, isMutationTool } from './remote-tools.js';
 import type { ToolAssets } from './tools/assets.js';
@@ -7,38 +7,78 @@ type RemoteHandle = { reader: RemoteSource; };
 type Args = Record<string, unknown>;
 const bareSha = /^[a-fA-F0-9]{40}(?:[a-fA-F0-9]{24})?$/;
 
-/** v1: base64url of a JSON object mapping repository identities to commit SHAs. */
-export function encodeWorkspaceRevision(revisions: RevisionSet): string {
-  return `v1.${Buffer.from(JSON.stringify(revisions)).toString('base64url')}`;
+/** A live note a token names: its repository and path, and the link id, live revision and content hash a read returned. */
+export type LiveRevisionEntry = [repository: string, path: string, id: string, liveRevision: string, contentHash: string];
+/** The most live entries one token carries, and the longest token; the oldest live entries go first. */
+const LIVE_ENTRIES_MAX = 32;
+const TOKEN_MAX = 8192;
+
+/**
+ * v1: base64url of a JSON object mapping repository identities to commit SHAs, exactly as before live notes. With live
+ * entries, v2: base64url of `{"r": <that object>, "l": [[repository, path, id, liveRevision, contentHash], …]}`.
+ */
+export function encodeWorkspaceRevision(revisions: RevisionSet, live: readonly LiveRevisionEntry[] = []): string {
+  if (!live.length) return `v1.${Buffer.from(JSON.stringify(revisions)).toString('base64url')}`;
+  let entries = live.slice(-LIVE_ENTRIES_MAX);
+  for (;;) {
+    const token = `v2.${Buffer.from(JSON.stringify({ r: revisions, l: entries })).toString('base64url')}`;
+    if (token.length <= TOKEN_MAX || !entries.length) return entries.length ? token : encodeWorkspaceRevision(revisions);
+    entries = entries.slice(1);
+  }
 }
 
 export function decodeWorkspaceRevision(token: string, repository: string, repositoryCount: number): string {
-  return parseWorkspaceRevision(token, repository, repositoryCount)[repository];
+  return parseWorkspaceRevision(token, repository, repositoryCount).r[repository];
 }
 
-function parseWorkspaceRevision(token: string, repository: string, repositoryCount: number): RevisionSet {
+const invalidToken = () => new Error('Invalid workspace revision token.');
+const revisionSet = (value: unknown): RevisionSet => {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.values(value).some(sha => typeof sha !== 'string' || !bareSha.test(sha))) throw invalidToken();
+  return value as RevisionSet;
+};
+const isRepositoryPath = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 1024 && !value.startsWith('/') && !/[\\\p{Cc}]/u.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..');
+const liveEntries = (value: unknown): LiveRevisionEntry[] => {
+  if (!Array.isArray(value) || value.length > LIVE_ENTRIES_MAX) throw invalidToken();
+  return value.map(entry => {
+    if (!Array.isArray(entry) || entry.length !== 5) throw invalidToken();
+    const [repository, file, id, liveRevision, contentHash] = entry as unknown[];
+    if (typeof repository !== 'string' || !repository || repository.length > 512 || !isRepositoryPath(file) || !isLiveId(id) || !isLiveRevision(liveRevision) || !isLiveContentHash(contentHash)) throw invalidToken();
+    return [repository, file as string, id, liveRevision, contentHash];
+  });
+};
+
+function parseWorkspaceRevision(token: string, repository: string, repositoryCount: number): { r: RevisionSet; l: LiveRevisionEntry[]; } {
   if (bareSha.test(token)) {
     if (repositoryCount !== 1) throw new Error('A bare commit SHA is only valid in a single-repository workspace; pass the workspace revision token.');
-    return { [repository]: token };
+    return { r: { [repository]: token }, l: [] };
   }
-  if (!/^v1\.[A-Za-z0-9_-]+$/.test(token)) throw new Error('Invalid workspace revision token.');
-  let revisions: unknown;
+  const version = /^(v[12])\.[A-Za-z0-9_-]+$/.exec(token)?.[1];
+  if (!version) throw invalidToken();
+  let decoded: unknown;
   try {
     const payload = token.slice(3);
     const bytes = Buffer.from(payload, 'base64url');
     if (bytes.toString('base64url') !== payload) throw new Error('Noncanonical base64url');
-    revisions = JSON.parse(bytes.toString('utf8'));
+    decoded = JSON.parse(bytes.toString('utf8'));
   } catch {
-    throw new Error('Invalid workspace revision token.');
+    throw invalidToken();
   }
-  if (!revisions || typeof revisions !== 'object' || Array.isArray(revisions) || Object.values(revisions).some(value => typeof value !== 'string' || !bareSha.test(value))) throw new Error('Invalid workspace revision token.');
-  const sha = (revisions as RevisionSet)[repository];
-  if (!sha) throw new Error(`Workspace revision token has no entry for repository ${repository}.`);
-  return revisions as RevisionSet;
+  let parsed: { r: RevisionSet; l: LiveRevisionEntry[]; };
+  if (version === 'v1') parsed = { r: revisionSet(decoded), l: [] };
+  else {
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded) || Object.keys(decoded).some(key => key !== 'r' && key !== 'l')) throw invalidToken();
+    const { r, l } = decoded as { r?: unknown; l?: unknown; };
+    parsed = { r: revisionSet(r), l: liveEntries(l) };
+  }
+  if (!parsed.r[repository]) throw new Error(`Workspace revision token has no entry for repository ${repository}.`);
+  return parsed;
 }
 
+/** Text writes that take the revision a read of a live note returned; `append` lands live whatever it is given. */
+const liveTextWrites = new Set(['write', 'edit', 'save_note', 'update_note_metadata']);
+
 const workspaceReads = new Set(['glob', 'find', 'list_notes', 'search_notes', 'list_skills', 'list_assets', 'get_statuses', 'list_folders', 'list_templates']);
-const pathTools = new Set(['read', 'read_note', 'write', 'append', 'edit', 'save_note', 'delete_note', 'mkdir', 'rm', 'cp', 'mv', 'get_folder_metadata', 'update_folder_metadata', 'get_note_metadata', 'update_note_metadata', 'delete_asset', 'download_assets', 'list_folders', 'ls']);
+const pathTools = new Set(['read', 'read_note', 'check_in_note', 'write', 'append', 'edit', 'save_note', 'delete_note', 'mkdir', 'rm', 'cp', 'mv', 'get_folder_metadata', 'update_folder_metadata', 'get_note_metadata', 'update_note_metadata', 'delete_asset', 'download_assets', 'list_folders', 'ls']);
 const optionalWrites = new Set(['delete_note', 'delete_asset', 'update_note_metadata', 'add_asset', 'replace_notes']);
 const mutation = (name: string) => isMutationTool(name) || optionalWrites.has(name);
 
@@ -126,9 +166,25 @@ export async function callWorkspaceRemoteTool(workspace: WorkspaceRepositories<R
   if (notebookKey && typeof selectedPath === 'string' && !selectedPath.startsWith('r2:') && !(selected && (selectedPath === selected.root || selectedPath.startsWith(`${selected.root}/`) || selectedPath.startsWith('.agents/skills/') || selectedPath.startsWith(`${selected.root.replace(/\/[^/]+$/, '')}/.agents/skills/`)))) throw new Error('Path does not belong to the selected notebook.');
   // The repository's tools name the notebook by its local id.
   const scoped: Args = { ...args, ...(selected ? { notebookId: selected.id } : {}) };
-  if (typeof scoped.revision === 'string' && scoped.revision.length > 8192) throw new Error('Workspace revision token is too long.');
-  const received = typeof scoped.revision === 'string' ? parseWorkspaceRevision(scoped.revision, entry.ref.id, repositories.length) : {};
-  if (typeof scoped.revision === 'string') scoped.revision = received[entry.ref.id];
+  if (typeof scoped.revision === 'string' && scoped.revision.length > TOKEN_MAX) throw new Error('Workspace revision token is too long.');
+  const token = typeof scoped.revision === 'string' ? parseWorkspaceRevision(scoped.revision, entry.ref.id, repositories.length) : { r: {}, l: [] };
+  const received = token.r;
+  // The live calls are optional: a reader that is not a `RemoteSource` subclass, such as a test double, has none and is never live.
+  const reader = entry.handle.reader;
+  if (typeof scoped.revision === 'string') {
+    scoped.revision = received[entry.ref.id];
+    // A text write to a note still checked out under the link a read named goes to the live editor on that read's
+    // revision; a note no longer checked out ignores its live entry and checks the commit.
+    const held = liveTextWrites.has(name) && typeof args.path === 'string' ? token.l.find(([repository, file]) => repository === entry.ref.id && file === args.path) : undefined;
+    if (held && (await reader.liveCheckout?.(held[1]))?.id === held[2]) scoped.revision = liveBase({ id: held[2], liveRevision: held[3], contentHash: held[4] });
+  }
+  /** The live entries the answer's token carries: those received, with this call's own read or write of its note. */
+  const liveOut = (): LiveRevisionEntry[] => {
+    const file = typeof args.path === 'string' ? args.path : undefined;
+    const record = file === undefined ? undefined : reader.liveRecord?.(file);
+    if (!file || !record) return token.l;
+    return [...token.l.filter(([repository, held]) => !(repository === entry.ref.id && held === file)), [entry.ref.id, file, record.id, record.liveRevision, record.contentHash]];
+  };
   let result: Record<string, unknown>;
   try {
     result = keyedResult(await callRemoteTool(entry.handle.reader, name, scoped, write, web(entry), assetsFor?.(entry.handle)), entry);
@@ -138,12 +194,13 @@ export async function callWorkspaceRemoteTool(workspace: WorkspaceRepositories<R
   }
   if (typeof result.revision === 'string' || mutation(name)) {
     const sha = typeof result.revision === 'string' ? result.revision : (result.commit as { commitHash?: string; } | undefined)?.commitHash;
-    if (sha) result.revision = encodeWorkspaceRevision({ ...received, [entry.ref.id]: sha });
+    if (sha) result.revision = encodeWorkspaceRevision({ ...received, [entry.ref.id]: sha }, liveOut());
   }
-  if (!mutation(name) && typeof result.revision !== 'string') result.revision = encodeWorkspaceRevision({ [entry.ref.id]: (await entry.handle.reader.getSnapshot()).sha });
+  if (!mutation(name) && typeof result.revision !== 'string') result.revision = encodeWorkspaceRevision({ [entry.ref.id]: (await reader.getSnapshot()).sha }, liveOut());
   if (result.note && typeof (result.note as Record<string, unknown>).revision === 'string') {
     const note = result.note as Record<string, unknown>;
-    result.note = { ...note, revision: encodeWorkspaceRevision({ [entry.ref.id]: note.revision as string }) };
+    const record = typeof note.path === 'string' ? reader.liveRecord?.(note.path) : undefined;
+    result.note = { ...note, revision: encodeWorkspaceRevision({ [entry.ref.id]: note.revision as string }, record ? [[entry.ref.id, note.path as string, record.id, record.liveRevision, record.contentHash]] : []) };
   }
   return result;
 }

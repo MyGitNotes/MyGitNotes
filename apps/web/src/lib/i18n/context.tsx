@@ -55,6 +55,17 @@ export const I18nProvider: React.FC<{ children: ReactNode; }> = ({ children }) =
   return <I18nContext.Provider value={{ language, setLanguage, t }}>{children}</I18nContext.Provider>;
 };
 
+/**
+ * Translates outside React, in the language the page shows now (the provider sets `<html lang>`), for text an API
+ * helper builds before any component sees it; English without a document.
+ */
+export function translateNow(key: TranslationKey, params?: Record<string, string | number>): string {
+  const lang = typeof document === 'undefined' ? 'en' : document.documentElement.lang;
+  let text = (lang === 'zh-TW' ? dictionaries['zh-TW'] : dictionaries.en)[key] || en[key] || key;
+  for (const [pKey, pVal] of Object.entries(params ?? {})) text = text.replace(new RegExp(`\\{${pKey}\\}`, 'g'), String(pVal));
+  return text;
+}
+
 export function useTranslation(): I18nContextValue {
   const ctx = useContext(I18nContext);
   if (!ctx) {

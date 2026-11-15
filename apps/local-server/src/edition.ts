@@ -11,6 +11,7 @@ export { type PublishedNote } from './gists.js';
 export { type PublishingRequest, type PublishingService, type PublishSync } from './publishing.js';
 export { type EditionSources } from './edition-sources.js';
 export { type RemoteHandle } from './request-workspace.js';
+export { CheckedOutError, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveDetail, type LiveEditor, type LiveEditorInfo, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, LiveStaleError, type LiveText, LiveTooLargeError, LiveUnavailableError, normalizeLiveText } from '@mygitnotes/core';
 export { createPiAgent, type PiAgent, type PiAgentOptions } from './pi-agent.js';
 export { externalPiAgent, type ExternalPiAgentOptions, externalPiEnvironment } from './pi-external-agent.js';
 export { signBridgeToken, verifyBridgeToken } from './pi-bridge-token.js';

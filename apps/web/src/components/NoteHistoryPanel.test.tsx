@@ -133,3 +133,13 @@ it('outside a demo keeps Commit as a new version off a read-only repository', as
   await screen.findByText('This note has changes that are not in its history yet.');
   expect(screen.queryByRole('button', { name: 'Commit as a new version' })).toBeNull();
 });
+
+it('labels a live check-in that overwrote a Git change, linked to that change', async () => {
+  api.fetchHistory.mockResolvedValue({ path: 'notes/a/plan.md', repository: 'local', more: false, writable: true, entries: [{ commit: commit(2), parents: [commit(1)], date: '2026-11-15T02:00:00Z', author: 'Pat', subject: 'docs(notes): live edit plan', body: `Live-Link: abc\nLive-Content: sha256:${'a'.repeat(64)}\nLive-Overwrote: ${commit(1)}`, path: 'notes/a/plan.md', agent: false }, { commit: commit(1), parents: [], date: '2026-11-15T01:00:00Z', author: 'Sam', subject: 'Edit the plan in Git', body: '', path: 'notes/a/plan.md', agent: false }], versions: [] });
+  render(panel({ target }));
+  const link = await screen.findByRole('button', { name: 'Overwrote 1111111' });
+  fireEvent.click(link);
+  const reader = await screen.findByRole('dialog');
+  await waitFor(() => expect(reader.querySelector('pre.history-text')).toHaveTextContent('# Plan one'));
+  expect(api.fetchHistoryContent).toHaveBeenCalledWith(target, { commit: commit(1), path: 'notes/a/plan.md' });
+});

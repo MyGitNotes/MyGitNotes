@@ -2,6 +2,7 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { mergeNote, NoteDraft, sameValue } from '../../lib/merge-note.js';
 import { ApiError } from '../../lib/api.js';
+import { isLivePendingPath } from '../../lib/live-api.js';
 import { NoteItem } from '../../lib/types.js';
 import { onWorkspaceFilesChanged } from '../../lib/workspace-changes.js';
 import { REMOTE_CHECK_INTERVAL_MS, REMOTE_CHECK_INTERVAL_READONLY_MS } from '../../lib/remote-check-interval.js';
@@ -149,6 +150,9 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     }
     // A note this page just moved is not deleted: the editor of its old path is on its way out.
     if (error instanceof ApiError && error.status === 404 && isNoteMoving(noteRefKey(note))) return;
+    // A pending live note checked in and filed elsewhere is the route's to follow; its read-only editor holds nothing of the reader's to keep.
+    const state = current.current;
+    if (error instanceof ApiError && error.status === 404 && (error.movedTo !== undefined || isLivePendingPath(note.path)) && readOnly && state.content === state.baseNote.content && sameValue(state.metadata, state.baseNote.metadata)) return;
     if (error instanceof ApiError && error.status === 404) {
       preserveConflict();
       current.current.blocked = true;

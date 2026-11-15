@@ -119,6 +119,8 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 @media (max-width: 767px) { .markdown-format-toolbar { padding: 4px 8px; } .markdown-format-toolbar .toolbar-icon-button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; } .markdown-format-toolbar .toolbar-icon-button > svg { width: 20px; height: 20px; } }
 :is(.note-controls, .note-row) .toolbar-icon-button { position: relative; width: 32px; min-width: 32px; height: 32px; min-height: 32px; border-radius: var(--radius-control); }
 :is(.note-controls, .note-row) .toolbar-icon-button > svg { width: 16px; height: 16px; flex: none; }
+/* Off a phone only a live note's 編輯 takes this toggle: it matches the 30px buttons beside it. */
+@media (min-width: 768px) { .ui-button.note-edit-toggle { flex-shrink: 0; min-height: 30px; height: 30px; gap: 6px; padding: 0 10px; } .note-edit-toggle > svg { width: 14px; height: 14px; flex: none; } }
 /* The right-hand toolbar's groups (mode | view | file | panels), set apart by a thin separator in the gap between them. */
 .note-controls-group { position: relative; display: flex; align-items: center; gap: 2px; }
 .note-controls-group + .note-controls-group::before { content: ''; position: absolute; left: -5px; top: 6px; bottom: 6px; width: 1px; background: var(--color-line); }
@@ -209,6 +211,8 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 .editor-notice-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; gap: 8px; }
 .editor-notice-actions button { white-space: nowrap; }
 .editor-notice-error { background: var(--color-danger-soft); color: var(--color-danger); border-color: var(--color-danger); }
+.editor-notice-success { background: var(--color-success-soft); border-color: var(--color-success); }
+.editor-notice-success .editor-notice-message > svg { color: var(--color-success); }
 .note-dialog { position: relative; }
 .note-editor, .note-editor-slot { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .note-editor-host { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }

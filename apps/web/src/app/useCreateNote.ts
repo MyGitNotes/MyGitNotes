@@ -3,13 +3,16 @@ import { OUTLINE_SUFFIX } from '@mygitnotes/core/outline';
 import { noteMarkdownLink } from '@mygitnotes/core/workspace-links';
 import type { QueryClient } from '@tanstack/react-query';
 import { fetchGitStatus, renderNoteTemplate, saveNote } from '../lib/api.js';
-import { buildNewNoteDraft } from '../lib/new-note.js';
+import { buildNewNoteDraft, type LivePathPrompt, livePathPrompts } from '../lib/new-note.js';
+import { createLiveNote } from '../lib/live-api.js';
+import { serializeNoteFile } from '@mygitnotes/core/note-file';
 import { isBuiltinTemplate, renderBuiltinNoteTemplate } from '../lib/builtin-templates.js';
 import { localTemplateClock, renderNoteTemplate as fillNoteTemplate } from '@mygitnotes/core/note-template';
 import type { NoteTemplateInfo } from '../lib/note-templates.js';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import { noteLookupOptions, type NoteQueryScope } from '../lib/use-note-queries.js';
 import type { FolderItem, GitStatus, NotebookConfig, NoteItem } from '../lib/types.js';
+import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { I18nContextValue } from '../lib/i18n/index.js';
 import type { WorkspaceState } from './workspace-state.js';
 
@@ -36,6 +39,11 @@ interface UseCreateNoteParams {
   newNoteStatuses: string[];
   sourceId: string;
   t: I18nContextValue['t'];
+  /**
+   * The selected notebook's repository hands notes to a live editor: a new note is born live (pending) through
+   * `/api/live/new` and opens in the editor; `askLivePathValues` asks for the values its template's path needs, or null.
+   */
+  live?: { askLivePathValues: (template: string, prompts: LivePathPrompt[]) => Promise<Record<string, string> | null>; open: (note: NoteListItem) => void; };
   onCreated: (note: NoteItem) => void;
   onError: (message: string) => void;
 }
@@ -63,7 +71,7 @@ export function untitledCandidates(directory: string, suffix: string, count = CA
 }
 
 /** Creates a note, outline or templated note at once, with default values, and opens it. */
-export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookId, folders, browsedFolder, foldersLoading, remote, canWrite, readDraft, templates, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, newNoteStatuses, sourceId, t, onCreated, onError }: UseCreateNoteParams) {
+export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookId, folders, browsedFolder, foldersLoading, remote, canWrite, readDraft, templates, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, newNoteStatuses, sourceId, t, live, onCreated, onError }: UseCreateNoteParams) {
   const [creating, setCreating] = useState(false);
   const generation = useRef(0);
   const submitting = useRef(false);
@@ -78,6 +86,28 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
     requestScope.current = scopeKey;
     latest.current = { sourceId, selectedNotebookId, canWrite, config, queryScope };
   }, [scopeKey, sourceId, selectedNotebookId, canWrite, config, queryScope]);
+
+  /** A new note of a live repository: pending in the live editor, filed in Git at its first check-in by its path rule. */
+  const createLive = async ({ notebook, folder, title, clock, opts }: { notebook: NotebookConfig; folder: string; title: string; clock: { date: string; time: string; }; opts: NewNoteOptions; }): Promise<NoteListItem | null> => {
+    const notebookTemplate = opts.templateId && !isBuiltinTemplate(opts.templateId) ? templates?.find(candidate => candidate.id === opts.templateId) : undefined;
+    if (opts.templateId && !isBuiltinTemplate(opts.templateId) && !notebookTemplate) throw new Error(t('outline.changed'));
+    let request: Parameters<typeof createLiveNote>[0];
+    if (notebookTemplate) {
+      const prompts = livePathPrompts(notebookTemplate);
+      const values = prompts.length ? await live!.askLivePathValues(notebookTemplate.name, prompts) : {};
+      if (!values) return null;
+      request = { notebookId: notebook.id, folder, title, templateId: notebookTemplate.id, values, clock };
+    } else {
+      const template = opts.templateId ? renderBuiltinNoteTemplate(opts.templateId, title, t) : undefined;
+      const status = opts.status || (typeof template?.metadata.status === 'string' && template.metadata.status) || newNoteStatuses[0];
+      const tags = opts.tags || (opts.tag ? [opts.tag] : Array.isArray(template?.metadata.tags) ? template.metadata.tags.map(String) : []);
+      const draft = buildNewNoteDraft({ slug: UNTITLED_STEM, title, tags, status, body: t('createNote.body'), template });
+      const { id: _id, ...metadata } = withNoteStatus(draft.metadata, draft.status);
+      request = { notebookId: notebook.id, folder, title, content: serializeNoteFile(`${notebook.root}/${UNTITLED_STEM}.md`, metadata, draft.content, true, new Date()), clock };
+    }
+    const { checkout } = await createLiveNote(request);
+    return { id: checkout.id, path: checkout.path, notebookId: notebook.id, title, tags: [], metadata: {}, live: { since: checkout.since, activeEditors: checkout.activeEditors, pending: true, editorUrl: checkout.editorUrl } };
+  };
 
   const pending = useRef<NewNoteOptions | null>(null);
   const createNote = async (options?: string | NewNoteOptions) => {
@@ -114,6 +144,15 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       // date and time. Only the title, date and time are filled: every other placeholder stays as written, a declared default
       // included, for the writer to replace.
       const clock = localTemplateClock();
+      if (live && kind === 'note') {
+        const created = await createLive({ notebook, folder, title, clock, opts });
+        if (created && currentRequest()) {
+          invalidateNotes();
+          // Zoom reads the new note's live text and frames its editor at once.
+          live.open(created);
+        }
+        return;
+      }
       // A template that is still a working change of this page has no file the workspace could read, so it is filled in here.
       const templateFile = remote && opts.templateId ? templates?.find(candidate => candidate.id === opts.templateId)?.file : undefined;
       const templateDraft = templateFile ? readDraft(notebook.id, templateFile) : undefined;
@@ -125,7 +164,7 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       const templateTags = Array.isArray(template?.metadata.tags) ? template.metadata.tags.map(String) : [];
       const status = opts.status || (typeof template?.metadata.status === 'string' && template.metadata.status) || newNoteStatuses[0];
       const tags = opts.tags || (opts.tag ? [opts.tag] : templateTags);
-      const draft = buildNewNoteDraft({ slug, title, tags, status, template });
+      const draft = buildNewNoteDraft({ slug, title, tags, status, body: t('createNote.body'), template });
       if (opts.initialLink && opts.initialLink.notebookId !== notebook.id) throw new Error(t('outline.changed'));
       const content = kind === 'outline' ? `- ${opts.initialLink ? noteMarkdownLink(notePath, opts.initialLink.path, opts.initialLink.title) : ''}` : draft.content;
       // A note takes its title from its heading, so editing the heading renames it; an outline has no heading to read.

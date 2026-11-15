@@ -18,6 +18,8 @@ const scope = draftScope(repository);
 const store = draftStore(repository);
 const committed = (path: string, content: string, metadata: Record<string, unknown> = {}): NoteItem => ({ id: path, path, notebookId: 'notes~life', title: path, content, metadata, tags: [], revision: repository.revision });
 const server = new Map<string, NoteItem>();
+/** A cached lookup answers as it was before the note was checked out; only a fresh read sees the checkout. */
+const cachedWithoutLive = (note: NoteItem | null, fresh?: boolean): NoteItem | null => note?.live && !fresh ? { ...note, live: undefined } : note;
 
 function tools({ writable = true } = {}) {
   const readDraft = (_notebookId: string, path: string) => readWorkingNotes(store)[path];
@@ -29,7 +31,7 @@ function tools({ writable = true } = {}) {
     return note;
   });
   const active = (): WorkingNotes => Object.fromEntries(Object.values(readWorkingNotes(store)).map(entry => [noteRefKey(entry.note), entry]));
-  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: active(), repositoryFor: () => repository, canWriteNotebook: () => writable, revisionFor: () => repository.revision, readDraft, updateDraft, stageWorkingNote, findCommittedNote: async ref => server.get(ref.path) ?? null, resolveBareNotebook: localId => localId === 'life' ? 'notes~life' : null }));
+  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: active(), repositoryFor: () => repository, canWriteNotebook: () => writable, revisionFor: () => repository.revision, readDraft, updateDraft, stageWorkingNote, findCommittedNote: async (ref, options) => cachedWithoutLive(server.get(ref.path) ?? null, options?.fresh), resolveBareNotebook: localId => localId === 'life' ? 'notes~life' : null }));
   return { call: result.current, stageWorkingNote };
 }
 
@@ -234,4 +236,11 @@ it('stages a new note from a template: path from its pattern, values filled, unf
 it('refuses a templated note in a read-only notebook', async () => {
   withTemplates();
   await expect(tools({ writable: false }).call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Dune' } })).rejects.toThrow('read-only');
+});
+
+it('refuses to write, edit or delete a note being edited live (編輯中)', async () => {
+  server.set('notes/live.md', { ...committed('notes/live.md', '# Live\n'), live: { since: '2026-11-15T01:00:00.000Z', activeEditors: 1, editorUrl: 'https://live.example.test/abc' } });
+  const { call, stageWorkingNote } = tools();
+  for (const [tool, args] of [['write_note', { path: 'notes/live.md', content: 'x' }], ['edit_note', { path: 'notes/live.md', oldText: 'Live', newText: 'Gone' }], ['delete_note', { path: 'notes/live.md' }]] as const) await expect(call(tool, args), tool).rejects.toThrow('notes/live.md is being edited live (編輯中)');
+  expect(stageWorkingNote).not.toHaveBeenCalled();
 });

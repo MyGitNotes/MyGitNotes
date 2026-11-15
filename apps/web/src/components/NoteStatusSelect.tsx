@@ -6,7 +6,7 @@ import { useStatusDotClass, useStatusLabel } from '../lib/status-color.js';
  * A note's status as a coloured dot and its name, borderless; the chevron and a tint show on row hover and on focus.
  * `dotOnly` keeps just the dot, which still opens the same menu, for a row too narrow for the name.
  */
-export function NoteStatusSelect({ status = '', statuses, readOnly, onChange, label, dotOnly = false, onOpenChange }: { status?: string; statuses: string[]; readOnly: boolean; onChange: (status: string) => void; label: string; dotOnly?: boolean; onOpenChange?: (open: boolean) => void; }) {
+export function NoteStatusSelect({ status = '', statuses, readOnly, onChange, label, dotOnly = false, onOpenChange, lockedReason }: { status?: string; statuses: string[]; readOnly: boolean; onChange: (status: string) => void; label: string; dotOnly?: boolean; onOpenChange?: (open: boolean) => void; /** Why the status cannot change now (編輯中), shown on the locked control. */ lockedReason?: string; }) {
   const { t } = useTranslation();
   const dotClass = useStatusDotClass();
   const labelOf = useStatusLabel();
@@ -17,7 +17,7 @@ export function NoteStatusSelect({ status = '', statuses, readOnly, onChange, la
     <div className='relative inline-flex items-center shrink-0 min-w-0 note-status-select max-w-[min(12rem,100%)]' onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
       <Select
         aria-label={label}
-        disabled={readOnly}
+        disabled={readOnly || Boolean(lockedReason)}
         value={status}
         onValueChange={onChange}
         onOpenChange={onOpenChange}
@@ -29,7 +29,7 @@ export function NoteStatusSelect({ status = '', statuses, readOnly, onChange, la
           </span>
         }
         className={`status-cell cursor-pointer disabled:cursor-default ${status ? '' : 'status-cell-empty'}${dotOnly ? ' status-cell-dot' : ''}`}
-        title={label}
+        title={lockedReason ?? label}
       />
     </div>
   );

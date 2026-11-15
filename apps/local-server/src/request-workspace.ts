@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type express from 'express';
-import { aliasedMedia, type AvailableRepository, type CommitAuthor, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
+import { aliasedMedia, type AvailableRepository, type CommitAuthor, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, liveEditorOf, type LiveNotes, liveRepository, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import type { EditionSources } from './edition-sources.js';
 import { CredentialRejected } from './auth.js';
@@ -41,13 +41,18 @@ export interface OpenOptions {
   request?: WorkspaceRequest;
   /** Why a provider member cannot open for a person with no credential on the site. */
   noCredentialMessage?: (site: WorkspaceSite) => string;
+  /**
+   * An edition's live editor: a remote repository it covers, opened for a signed-in person, reads its checked-out notes
+   * from the editor and refuses Git writes to them. A signed-out request gets no view and makes no adapter call.
+   */
+  liveNotes?: LiveNotes;
 }
 
 /**
  * Opens the workspace of one request: each visible member of its settings, from its worktree in a local deployment
  * or through the provider with the request's credential in a remote one, each with its own manifest.
  */
-export function openWorkspace(settings: WorkspaceSettings, token: string | undefined, cache?: RemoteCache, { fresh = false, person, author, editionSources, request = { headers: {} }, noCredentialMessage }: OpenOptions = {}): RequestWorkspace {
+export function openWorkspace(settings: WorkspaceSettings, token: string | undefined, cache?: RemoteCache, { fresh = false, person, author, editionSources, request = { headers: {} }, noCredentialMessage, liveNotes }: OpenOptions = {}): RequestWorkspace {
   const members = visibleMembers(settings);
   if (settings.site.type === 'local') {
     return createWorkspaceRepositories<RepositoryHandle>({
@@ -66,6 +71,12 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
     });
   }
   const { site } = settings;
+  /** Hands an opened reader the request's view of the live editor of its repository, when one covers it and someone is signed in. */
+  const attachLive = (reader: RemoteSource, member: WorkspaceMember, scope: () => Promise<WorkspaceConfig>) => {
+    if (!liveNotes || !person) return;
+    const view = liveRepository({ liveNotes, context: { person, ...(author ? { author } : {}), request }, repository: member.ref.id, alias: member.alias, notebooks: async () => (await scope()).notebooks });
+    if (view) reader.useLive(view);
+  };
   return createWorkspaceRepositories<RepositoryHandle>({
     members,
     manifest: (member, handle) => settings.manifest(member, () => new RemoteManifest((handle as RemoteHandle).reader)),
@@ -79,6 +90,7 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
         try {
           const reader = editionSources.open(ref.source, { person, request }, cache, scope);
           await reader.getSnapshot(fresh);
+          attachLive(reader, member, scope);
           return { kind: 'remote', id: ref.id, reader, authenticated: Boolean(person) };
         } catch (error) {
           if (error instanceof RepositoryUnavailableError) return { reason: error.reason, message: error.message };
@@ -98,13 +110,23 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
         if (error instanceof RepositoryUnavailableError && !signInFirst) return { reason: error.reason, message: error.message };
         throw error;
       }
+      attachLive(reader, member, scope);
       return { kind: 'remote', id: ref.id, reader, authenticated: Boolean(token) };
     },
   });
 }
 
+/**
+ * Whether a request opened with these settings gets a live editor view of any repository: someone is signed in and the
+ * editor covers one of its remote members. Without one, the request sees the tools and fields it saw before live notes.
+ */
+export function hasLiveView(settings: WorkspaceSettings, person: WorkspacePerson | undefined, liveNotes: LiveNotes | undefined): boolean {
+  if (!liveNotes || !person || settings.site.type === 'local') return false;
+  return visibleMembers(settings).some(member => member.ref.source.type !== 'local' && liveEditorOf(liveNotes, member.ref.id) !== null);
+}
+
 /** Resolves the request's workspace once and stores it in `res.locals.workspace`. */
-export function requestWorkspace(auth: IdentityOrSessions, configSource: WorkspaceConfigSource, cache?: RemoteCache, editionSources?: EditionSources): express.RequestHandler {
+export function requestWorkspace(auth: IdentityOrSessions, configSource: WorkspaceConfigSource, cache?: RemoteCache, editionSources?: EditionSources, liveNotes?: LiveNotes): express.RequestHandler {
   const identity = identityOf(auth, configSource);
   return async (req, res, next) => {
     // Recorded before the members are read, so an event stream opened from them knows when a change came meanwhile.
@@ -128,7 +150,7 @@ export function requestWorkspace(auth: IdentityOrSessions, configSource: Workspa
         return res.status(503).json({ error: 'Session service temporarily unavailable. Retry shortly.' });
       }
     }
-    res.locals.workspace = openWorkspace(settings, token, cache, { fresh: req.query.fresh === '1', ...(person ? { person: person.person } : {}), ...(person?.author ? { author: person.author } : {}), ...(editionSources ? { editionSources } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
+    res.locals.workspace = openWorkspace(settings, token, cache, { fresh: req.query.fresh === '1', ...(person ? { person: person.person } : {}), ...(person?.author ? { author: person.author } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
     res.locals.token = token;
     res.locals.person = person;
     res.locals.site = settings.site;

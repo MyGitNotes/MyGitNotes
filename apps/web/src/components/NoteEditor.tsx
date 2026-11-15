@@ -31,6 +31,10 @@ import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 import { usePublishPreviewTarget } from '../lib/typst-preview/preview-target.js';
 import { isSlideNote } from '../lib/slides/note.js';
 import { SlideDeck, type SlideDeckView } from './slides/SlideDeck.js';
+import { Pencil } from 'lucide-react';
+import { Button } from './Button.js';
+import { LiveEditorFrame } from './live/LiveEditorFrame.js';
+import { useLiveEdit, useLiveTheme } from './live/useLiveEdit.js';
 
 export interface NoteEditorHandle {
   /** Inserts `text` at `at`, or at the caret; no-op while the session is locked. */
@@ -69,8 +73,12 @@ function footerActions({ frame, readOnly, session, refresh, canCommit }: { frame
 }
 
 /** A note's editing session: content, frontmatter, drafts, autosave, conflicts, crash recovery and the document panel. */
-export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate }, ref) => {
+export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly: givenReadOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate, live }, ref) => {
   const isMarkdown = /\.(md|markdown|mdx)$/i.test(note.path);
+  // A note of a repository with a live editor is read here and edited there; `refresh` is declared below and read only after render.
+  const liveEdit = useLiveEdit({ note, live, frame, refetch: () => void refresh?.() });
+  const liveTheme = useLiveTheme();
+  const readOnly = givenReadOnly || liveEdit.active;
   const { setHasOpenNote } = usePanelContext();
   // The workspace rail hides only behind zoom; a pane editor shares the page with it. It hides before the
   // first paint, so zoom opens at its final width instead of widening once the rail has gone.
@@ -185,20 +193,31 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // write it succeeds, so `:wq` still closes. `:q` closes a zoomed note the way its back button does.
   const canCommitNow = Boolean(footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) }).onCommit);
   const vimRoot = useVimCommands({ write: async () => canCommitNow ? session.commitNote() : !autoSave && !readOnly && session.hasUnsavedChanges ? session.handleExplicitSave() : true, quit: frame === 'zoom' && onClose ? session.close : undefined });
-  // A phone's note screen: the title bar rides over the text and slides away while it scrolls down, unless a notice or the formatting toolbar sits above the text and needs the room the bar would cover.
+  // A phone's note screen: the title bar rides over the text and slides away while it scrolls down, unless a notice, the formatting toolbar or the framed live editor's bar sits above the text and needs the room the bar would cover.
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
   const rootRef = useCallback((node: HTMLElement | null) => {
     vimRoot(node);
     setRootElement(node);
   }, [vimRoot]);
   const formatToolbarShown = showFormatToolbar && !reading;
-  const barOverlay = phone && !hasEditorNotices(session) && !formatToolbarShown;
+  const barOverlay = phone && !hasEditorNotices(session) && !formatToolbarShown && !liveEdit.checkout && !liveEdit.hasNotices;
   const barHidden = usePhoneBarHidden(rootElement, barOverlay);
+
+  // A compilation's section and a graph card show the note as it reads; their 編輯 opens zoom.
+  const liveEditButton = liveEdit.edit && (
+    <div className='note-live-edit'>
+      <Button size='small' onClick={liveEdit.edit} title={t('live.toolbar')}>
+        <Pencil size={13} aria-hidden='true' />
+        {t('editor.startEditing')}
+      </Button>
+    </div>
+  );
 
   if (frame === 'inline') {
     return (
       <div className='note-editor' data-frame={frame} data-source-notebook={note.notebookId}>
         <NoteEditorNotices session={session} notePath={note.path} />
+        {liveEditButton}
         {awaitingRecovery && (
           <p role='status'>
             {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
@@ -213,6 +232,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     return (
       <div className='note-editor' data-frame={frame} data-source-notebook={note.notebookId}>
         <NoteEditorNotices session={session} notePath={note.path} />
+        {liveEditButton}
         {addToOutline && (
           <button type='button' className='ui-icon-button' title={t('outline.add')} aria-label={t('outline.add')} onClick={addToOutline}>
             <ListTree aria-hidden='true' />
@@ -234,37 +254,41 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   return (
     <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
-      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : undefined} onRefresh={refresh} onClose={onClose} onMove={readOnly || template ? undefined : onMove} onRename={readOnly || template ? undefined : onRename} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden } : undefined} />
+      <div className='editor-notices'>{liveEdit.notices}</div>
+      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : liveEdit.edit ? { editing: false, onEdit: liveEdit.edit, onDone: liveEdit.edit } : undefined} onRefresh={refresh} onClose={onClose} onMove={readOnly || template ? undefined : onMove} onRename={readOnly || template ? undefined : onRename} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown } : undefined} />
       {awaitingRecovery && (
         <p role='status'>
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
         </p>
       )}
-      {formatToolbarShown && <div ref={setToolbarSlot} className='note-format-toolbar' />}
-      <div className='note-editor-body'>
-        <MarkdownEditor
-          ref={editorRef}
-          content={session.content}
-          path={note.path}
-          notebookId={note.notebookId}
-          mode={editorMode}
-          readOnly={session.locked || reading}
-          onChange={session.setContent}
-          onCaret={trackCaret}
-          toolbarSlot={showFormatToolbar ? toolbarSlot : null}
-          ariaLabel='Note content'
-          showLineNumbers={lineNumbersShown}
-          lineNumberOffset={session.baseNote.lineNumberOffset}
-          onInsertImage={session.locked ? undefined : options => {
-            setPickAnnotated(Boolean(options?.annotated));
-            setImagePickerOpen(true);
-          }}
-          carry={carry}
-          slides={isSlideNote(session.metadata)}
-        />
-        <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />
-      </div>
-      {!phone && <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={quickActions} />}
+      {live && liveEdit.checkout && <LiveEditorFrame checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} />}
+      {formatToolbarShown && !liveEdit.checkout && <div ref={setToolbarSlot} className='note-format-toolbar' />}
+      {!liveEdit.checkout && (
+        <div className='note-editor-body'>
+          <MarkdownEditor
+            ref={editorRef}
+            content={session.content}
+            path={note.path}
+            notebookId={note.notebookId}
+            mode={editorMode}
+            readOnly={session.locked || reading}
+            onChange={session.setContent}
+            onCaret={trackCaret}
+            toolbarSlot={showFormatToolbar ? toolbarSlot : null}
+            ariaLabel='Note content'
+            showLineNumbers={lineNumbersShown}
+            lineNumberOffset={session.baseNote.lineNumberOffset}
+            onInsertImage={session.locked ? undefined : options => {
+              setPickAnnotated(Boolean(options?.annotated));
+              setImagePickerOpen(true);
+            }}
+            carry={carry}
+            slides={isSlideNote(session.metadata)}
+          />
+          <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />
+        </div>
+      )}
+      {!phone && !liveEdit.checkout && <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={quickActions} />}
       {docPanel.isEditorLeaderOpen && <NoteEditorLeader docPanel={docPanel} isMarkdown={isMarkdown} />}
       {deck && <SlideDeck content={session.content} path={note.path} notebookId={note.notebookId} title={session.title} lineNumberOffset={session.baseNote.lineNumberOffset || 0} view={deck.view} opener={deck.opener} onClose={() => setDeck(null)} />}
       {imagePickerOpen && <FileManagerDialog notebookId={note.notebookId} writable={!readOnly} mode='pick-image' onInsert={session.locked ? undefined : insertImage} beforeChange={beforeFileChange} onChanged={onFilesChanged} onClose={() => setImagePickerOpen(false)} />}

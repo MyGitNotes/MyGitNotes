@@ -1,4 +1,4 @@
-import { ApiError } from './api.js';
+import { responseError } from './api.js';
 import type { FileCommand } from '@mygitnotes/core';
 export interface FileEntry {
   path: string;
@@ -32,9 +32,10 @@ export interface FileResult {
 }
 const query = (notebookId: string, path?: string) => new URLSearchParams({ notebookId, ...(path ? { path } : {}) }).toString();
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init), data = await response.json();
-  if (!response.ok) throw new ApiError(data.error || 'File operation failed.', response.status);
-  return data;
+  const response = await fetch(url, init);
+  // A refusal reads as the other routes' do: 「編輯中，請先簽回」 for a checked-out note, with the paths it names.
+  if (!response.ok) throw await responseError(response, 'File operation failed.');
+  return response.json();
 }
 export const fetchFiles = (notebookId: string) => request<FileListing>('/api/files?' + query(notebookId));
 export const readFile = (notebookId: string, path: string) => request<FileRead>('/api/files/read?' + query(notebookId, path));

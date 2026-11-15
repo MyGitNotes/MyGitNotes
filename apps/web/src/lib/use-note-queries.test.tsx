@@ -158,3 +158,27 @@ it('keys every query by the repositories loaded, so an answer requested before a
   expect(notePathsOptions(before, { notebookId: 'all' }).queryKey).not.toEqual(notePathsOptions(after, { notebookId: 'all' }).queryKey);
   expect(noteLookupOptions(before, [{ notebookId: 'kb~kb', path: 'notes/kb/a.md' }], true).queryKey).not.toEqual(noteLookupOptions(after, [{ notebookId: 'kb~kb', path: 'notes/kb/a.md' }], true).queryKey);
 });
+
+it('ignores a late 409 from a query of a revision this client already left', () => {
+  const start = Date.now() + 120_000;
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    vi.setSystemTime(start);
+    const stale = vi.fn();
+    function Probe() {
+      useStaleNoteQueries(stale);
+      return null;
+    }
+    render(createElement(Probe), { wrapper });
+    // A check-in moved the head and the workspace refreshed; a lookup sent at the old head answers afterwards.
+    setNoteQueryScope({ sourceId: 'github:me/notes', revisions: { 'github:me/notes': 'b'.repeat(40) }, repositories: {}, drafts: {} });
+    const conflict = new ApiError('The repository changed. Reload to continue from the latest revision.', 409, undefined, ['github:me/notes']);
+    handleNoteQueryError(conflict, { queryKey: ['notes', 'github:me/notes', [['github:me/notes', REVISION]], 'lookup', {}], state: { data: undefined } });
+    expect(stale).not.toHaveBeenCalled();
+    // A query of the head this client reads still reports it.
+    handleNoteQueryError(conflict, { queryKey: ['notes', 'github:me/notes', [['github:me/notes', 'b'.repeat(40)]], 'lookup', {}], state: { data: undefined } });
+    expect(stale).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});

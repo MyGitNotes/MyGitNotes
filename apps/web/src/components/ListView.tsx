@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, FileText, GalleryHorizontalEnd, Trash2
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { NoteTagActions, NoteTags } from './NoteTags.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
+import { LiveBadge } from './live/LiveBadge.js';
 import { Select } from './Select.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
@@ -75,8 +76,10 @@ interface NoteRowActions {
 const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelete, isPendingDelete, actions, dates, tagActions, showZoom, canDrag, canMove, draft = false, highlightQuery = '', selected, selectionActive }: { note: NoteListItem; draft?: boolean; tagActions?: NoteTagActions; statuses: string[]; readOnly: boolean; canDelete: boolean; isPendingDelete: boolean; actions: NoteRowActions; dates: { short: Intl.DateTimeFormat; full: Intl.DateTimeFormat; }; showZoom?: boolean; canDrag?: boolean; canMove?: boolean; highlightQuery?: string; selected: boolean; selectionActive: boolean; }) {
   const { t } = useTranslation();
   // A draft row lifts no more than a draft card does (CardView), so on touch it only opens.
+  // A note being edited live (編輯中) or still pending refuses every file operation until it is checked in.
+  const locked = note.live ? t('live.checkedOut') : undefined;
   const touchSelection = useNoteTouchSelection(actions.toggleSelect, canMove && !draft);
-  const dragsToMove = Boolean(canMove) && pointerMovesNotes();
+  const dragsToMove = Boolean(canMove) && !locked && pointerMovesNotes();
   const updated = noteUpdatedTime(note);
   const formattedDate = updated ? dates.short.format(updated) : '—';
   // The path is the title's tooltip; while a search matches it, it also shows after the title with the match marked, so a row found by its path says why.
@@ -93,6 +96,7 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
                 <HighlightText text={note.title} query={highlightQuery} />
               </span>
               {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
+              <LiveBadge live={note.live} />
               {pathMatched && (
                 <span className='note-row-path font-mono'>
                   <HighlightText text={note.path} query={highlightQuery} />
@@ -109,7 +113,7 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
       </td>
       {/* In-Table Selectable Status */}
       <td className='py-2 px-3'>
-        <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} label={t('notes.statusFor', { title: note.title })} onChange={(status) => actions.status(note, status)} />
+        <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => actions.status(note, status)} />
       </td>
       <td className='py-2 px-3'>{note.tags.length > 0 ? <NoteTags tags={note.tags} oneLine tagActions={tagActions} /> : <span className='text-xs text-muted'>—</span>}</td>
       <td className='py-2 px-3 text-xs text-muted whitespace-nowrap tabular-nums'>
@@ -119,13 +123,15 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
       <td className='py-2 px-3 text-right'>
         <div className='note-row-actions flex items-center justify-end' data-confirming={isPendingDelete || undefined} onClick={(e) => e.stopPropagation()}>
           {showZoom && <NoteZoomButton onClick={() => actions.zoom(note)} iconClassName='w-4 h-4' />}
-          {!readOnly && <NoteMoveButton onClick={() => actions.move(note)} />}
+          {!readOnly && <NoteMoveButton onClick={() => actions.move(note)} reason={locked} />}
           {!readOnly && canDelete && (
             <button
               type='button'
               onClick={() => actions.remove(note)}
-              title={isPendingDelete ? t('notes.confirmDelete') : t('notes.delete')}
-              className={isPendingDelete ? 'p-1.5 text-on-danger bg-danger hover:bg-danger/90 rounded-lg transition' : 'p-1.5 text-muted hover:text-danger hover:bg-danger-soft rounded-lg transition'}
+              disabled={Boolean(locked)}
+              aria-label={t('notes.delete')}
+              title={locked ?? (isPendingDelete ? t('notes.confirmDelete') : t('notes.delete'))}
+              className={isPendingDelete ? 'p-1.5 text-on-danger bg-danger hover:bg-danger/90 rounded-lg transition' : 'p-1.5 text-muted hover:text-danger hover:bg-danger-soft rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted'}
             >
               <Trash2 className='w-4 h-4' />
             </button>

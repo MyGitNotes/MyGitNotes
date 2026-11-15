@@ -11,14 +11,17 @@
     "./pi-bridge-main": "./src/pi-bridge-main.ts",
     "./testing/asset-storage-contract": "./src/asset-storage-contract.ts",
     "./testing/identity-contract": "./src/identity-contract.ts",
+    "./testing/live-notes-contract": "./src/live-notes-contract.ts",
     "./testing/membership-store-contract": "./src/membership-store-contract.ts",
     "./testing/memory-edition-source": "./src/memory-edition-source.ts",
+    "./testing/memory-live-notes": "./src/memory-live-notes.ts",
     "./testing/memory-account-source": "./src/memory-account-source.ts",
     "./testing/record-store-contract": "./src/record-store/contract.ts",
     "./testing/workspace-choices-contract": "./src/workspace-choices-contract.ts"
   },
   "scripts": {
     "build": "tsc && node ../write-build-info.mjs",
+    "typecheck:dev": "tsc -p tsconfig.dev.json",
     "dev": "tsx src/index.ts --local",
     "start": "tsx src/index.ts"
   },

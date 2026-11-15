@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import path from 'node:path';
-import { BookmarkError, NewerVersionError, parseNoteContent, readWorkspaceDocument, SourceError, type WorkspaceConfig, type WorkspaceDocument, writeWorkspaceDocument } from '@mygitnotes/core';
+import { BookmarkError, checkedOutFields, NewerVersionError, parseNoteContent, readWorkspaceDocument, SourceError, type WorkspaceConfig, type WorkspaceDocument, writeWorkspaceDocument } from '@mygitnotes/core';
 import { getCurrentBranch } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { keyedDocument, repositoryOrDefault as documentRepository, storedDocument } from './request-workspace.js';
@@ -24,7 +24,7 @@ export function createWorkspaceDocumentRouter(document: WorkspaceDocument): Rout
   }
   function fail(res: import('express').Response, error: unknown) {
     const status = error instanceof BookmarkError ? error.code === 'duplicate-target' ? 409 : 400 : error instanceof SourceError ? error.status : 500;
-    res.status(status).json({ error: error instanceof SourceError || error instanceof BookmarkError ? error.message : `${label} configuration could not be saved. Your draft is preserved.`, ...(error && typeof error === 'object' && 'code' in error ? { code: error.code, ...('existingId' in error ? { existingId: error.existingId } : {}) } : {}) });
+    res.status(status).json({ error: error instanceof SourceError || error instanceof BookmarkError ? error.message : `${label} configuration could not be saved. Your draft is preserved.`, ...(error && typeof error === 'object' && 'code' in error ? { code: error.code, ...('existingId' in error ? { existingId: error.existingId } : {}) } : {}), ...checkedOutFields(error) });
   }
   const router = Router();
   router.get('/', async (req, res) => {

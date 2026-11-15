@@ -12,6 +12,8 @@ import { relocateLinks } from './folder-plan.js';
 import { decodeTextFile } from './file-manager.js';
 import { compileGlobs, GLOB_LENGTH_LIMIT, GlobError } from './path-glob.js';
 import YAML from 'yaml';
+import { LiveStaleError } from './live-notes.js';
+import { editedLiveError, parseLiveBase } from './live-repository.js';
 
 type Args = Record<string, unknown>;
 const mutating = new Set(['write', 'append', 'edit', 'mkdir', 'cp', 'mv', 'rm', 'update_folder_metadata']);
@@ -65,7 +67,28 @@ function noteFile(file: string, notebooks: NotebookConfig[]) {
   return Boolean(inNotebook(file, notebooks) && (/\.(md|markdown|mdx|txt)$/i.test(file) || path.posix.basename(file) === '_dir.yml'));
 }
 
-/** Shell-shaped operations over the configured note tree and its skill files, pinned to one commit. */
+/**
+ * A text write to a note checked out to the live editor (spec §4.1): `append` always lands; `write` and `edit` need the
+ * revision a read of the live note returned, and `edit` also needs the text it read to be the current one, since its
+ * line numbers would otherwise be wrong. A Git revision is refused: the note is edited live.
+ */
+async function writeLiveNote(reader: RemoteSource, operation: 'write' | 'append' | 'edit', file: string, args: Args) {
+  const content = string(args, 'content');
+  if (args.createOnly === true) throw new SourceError('Target already exists.', 409);
+  if (operation === 'append') return reader.appendLive(file, content, true);
+  const base = parseLiveBase(args.revision);
+  if (!base) throw editedLiveError(file);
+  const current = (await reader.readLive(file))!;
+  if (operation === 'edit' && base.contentHash !== current.contentHash) throw new LiveStaleError();
+  const next = operation === 'edit' ? replaceNoteLines(current.content, integer(args, 'startLine', 1, 1, 1000000), integer(args, 'endLine', 1, 0, 1000000), content) : content;
+  if (next === current.content) throw new SourceError('No content change to commit.');
+  return reader.writeLive(file, next, base, true);
+}
+
+/**
+ * Shell-shaped operations over the configured note tree and its skill files, pinned to one commit. The live calls on the
+ * reader are made optionally: a reader that is not a `RemoteSource` subclass, such as a test double, is never live.
+ */
 export async function callNoteShell(reader: RemoteSource, operation: string, args: Args, write: boolean): Promise<Record<string, unknown>> {
   if (mutating.has(operation) && !write) throw new SourceError('This agent grant is read-only.', 403);
   const [config, snapshot] = await Promise.all([reader.config(), reader.getSnapshot()]);
@@ -78,7 +101,8 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
   const revision = snapshot.sha;
   const read = async (file: string) => {
     relative(file);
-    if (!blobs.some(e => e.path === file) && !skills.some(e => e.path === file) && !instructions.some(e => e.path === file) && !templates.some(e => e.path === file)) throw new SourceError('File is not a configured note, folder metadata, AGENTS.md, skill file or template.', 404);
+    // A pending live note has no Git path, only the virtual one reads know it by.
+    if (!blobs.some(e => e.path === file) && !skills.some(e => e.path === file) && !instructions.some(e => e.path === file) && !templates.some(e => e.path === file) && !await reader.liveCheckout?.(file)) throw new SourceError('File is not a configured note, folder metadata, AGENTS.md, skill file or template.', 404);
     return (await reader.readFile(file)).toString('utf8');
   };
   const selected = (input: string, recursive: boolean, pool = blobs) => {
@@ -145,6 +169,7 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
     const sensitive = args.caseSensitive === true;
     const needle = sensitive ? query : query.toLowerCase();
     await reader.prefetchFiles(files.slice(fileOffset, fileOffset + maxFiles).map(file => file.path));
+    await reader.prefetchLive?.(files.slice(fileOffset, fileOffset + maxFiles).map(file => file.path));
     const matches: { path: string; line: number; text: string; }[] = [];
     let scannedFiles = 0;
     let truncated = false;
@@ -166,6 +191,7 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
   }
   if (operation === 'write' || operation === 'append' || operation === 'edit') {
     const file = relative(string(args, 'path'));
+    if (await reader.liveCheckout?.(file)) return writeLiveNote(reader, operation, file, args);
     const skill = Boolean(skillFile(file, notebooks));
     const instruction = agentWorkspaceFile(file, notebooks)?.kind === 'instructions';
     const template = Boolean(templateFileNotebook(file, notebooks));
@@ -241,6 +267,8 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
     const from = directoryPath(string(args, 'source'));
     let to = directoryPath(string(args, 'destination'));
     const files = selected(from, args.recursive === true);
+    // A copy of a checked-out note would copy its stale Git text; a move would leave its live note behind.
+    await reader.refuseCheckedOut?.(files.map(entry => entry.path));
     if (snapshot.entries.some(e => e.path === to && e.type === 'tree')) to = to + '/' + path.posix.basename(from);
     if (to === from || to.startsWith(from + '/') || from.startsWith(to + '/')) throw new SourceError('Source and destination must be separate paths.');
     const changes: { path: string; sha?: string | null; content?: string; }[] = [];

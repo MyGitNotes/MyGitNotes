@@ -14,6 +14,9 @@ export function WorkspaceDialog({ title, children, onClose, className = '' }: { 
     const previous = document.activeElement as HTMLElement | null;
     const element = dialog.current;
     element?.showModal();
+    // React's `autoFocus` focuses a field before the dialog is open, where it cannot take focus, and `showModal` then
+    // focuses ✕; a field marked `data-autofocus` takes it instead.
+    element?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
     return () => {
       // A succeeding native dialog may already have focused its field. Do not
       // steal that focus back to the old trigger during the previous cleanup.

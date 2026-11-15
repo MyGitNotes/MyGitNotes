@@ -1,4 +1,5 @@
 import { SourceError } from './github-api.js';
+import type { LiveEditorInfo } from './live-notes.js';
 import type { NotebookKey } from './notebook-key.js';
 import { type SourceConfig, sourceIdentity } from './source-config.js';
 import type { WorkspaceConfig } from './types.js';
@@ -94,6 +95,11 @@ export interface RepositoryStatus {
   manifest?: 'derived';
   /** Why this repository's own manifest cannot be loaded, with its text so Settings can fix it; the repository is then unavailable. */
   manifestError?: { message: string; text: string; };
+  /**
+   * The live editor its Markdown notes open in, for a signed-in reader where the deployment attaches one; null where
+   * none covers the repository or nobody is signed in. Absent without a live editor in the deployment.
+   */
+  live?: LiveEditorInfo | null;
 }
 /** The answer of `GET /api/workspace`. */
 export interface WorkspaceStatus {

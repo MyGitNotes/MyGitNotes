@@ -1,6 +1,6 @@
 import { isOutlinePath } from './outline.js';
 import type { RevisionSet } from './repository.js';
-import type { NotebookConfig, NoteItem } from './types.js';
+import type { LiveNoteState, NotebookConfig, NoteItem } from './types.js';
 import type { SortField, SortOrder } from './note-sort.js';
 import type { TodoTask } from './note-agenda.js';
 import type { NoteGraphData } from './note-graph.js';
@@ -17,7 +17,7 @@ export function noteDescription(note: { metadata: Record<string, unknown>; conte
 
 /** A listing entry: identity, frontmatter and a bounded description in place of the body. */
 export function noteSummary(note: NoteItem) {
-  return { id: note.id, path: note.path, notebookId: note.notebookId, title: note.title, description: noteDescription(note), status: note.status ?? null, tags: note.tags, metadata: note.metadata, size: note.size };
+  return { id: note.id, path: note.path, notebookId: note.notebookId, title: note.title, description: noteDescription(note), status: note.status ?? null, tags: note.tags, metadata: note.metadata, size: note.size, ...(note.live ? { live: note.live } : {}) };
 }
 
 /** A note's identity across repositories: its notebook and its repository-relative path. */
@@ -48,6 +48,8 @@ export interface NoteListItem {
   kind?: 'compilation' | 'outline';
   /** Why a compilation cannot open. */
   invalid?: string;
+  /** Present while the note is checked out to the live editor: title, tags, status and size are the live text's. */
+  live?: LiveNoteState;
 }
 
 /** What a query returns: ordinary notes (the default), a specialized kind, or all kinds. */

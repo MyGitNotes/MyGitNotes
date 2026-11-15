@@ -1,9 +1,10 @@
 import express from 'express';
-import type { RemoteCache } from '@mygitnotes/core';
+import { type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
+import { fail } from './route-errors.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { agentWorkspaceFile, agentWorkspaces, BOOKMARKS_DOCUMENT, classifyResource, FOCUS_DOCUMENT, hostedR2SourceFromEnv, keyedItem, lookupNotes, noteAgenda, type NotebookConfig, noteFacets, noteGraph, parseNoteQuery, productRepository, queryNotePaths, queryNotes, r2Cache, r2CacheRoot, RemoteSource, replaceFileTags, repositoryManifestStatus, type RepositoryStatus, resolveSafePath, SourceError, StaleRevisionError, type UnavailableReason, visibleMembers, type WorkspaceConfigSource, type WorkspaceStatus } from '@mygitnotes/core';
+import { agentWorkspaceFile, agentWorkspaces, BOOKMARKS_DOCUMENT, classifyResource, FOCUS_DOCUMENT, hostedR2SourceFromEnv, keyedItem, lookupNotes, noteAgenda, type NotebookConfig, noteFacets, noteGraph, parseNoteQuery, productRepository, queryNotePaths, queryNotes, r2Cache, r2CacheRoot, RemoteSource, replaceFileTags, repositoryManifestStatus, type RepositoryStatus, resolveSafePath, SourceError, type UnavailableReason, visibleMembers, type WorkspaceConfigSource, type WorkspaceStatus } from '@mygitnotes/core';
 import { createRemoteCache } from './remote-cache-store.js';
 import { createRecordStore, NoRecordStore, type RecordStore, storageMode } from './record-store/index.js';
 import { type BrowserSessions, cookieSessions, storedSessions } from './browser-sessions.js';
@@ -31,6 +32,8 @@ import { isLoopbackHttpOrigin, type PiAgent } from './pi-agent.js';
 import { externalPiAgent, externalPiEnvironment } from './pi-external-agent.js';
 import { type PublishingService, publishNotes } from './publishing.js';
 import { createWorkspaceMembersRouter } from './workspace-members.js';
+import { createLiveRouter, createLiveSweepRouter } from './live-routes.js';
+import { liveScheduleSetting, startLiveSchedule } from './live-schedule.js';
 
 export function applicationRoot() {
   let dir = path.dirname(fileURLToPath(import.meta.url));
@@ -80,12 +83,35 @@ export interface AppServices {
   identity?: IdentityService;
   /** Repositories the edition keeps itself, opened without a provider credential; left out, edition members are unavailable. */
   editionSources?: EditionSources;
+  /**
+   * An external live editor the edition attaches to remote repositories (docs/specs/2026-11-15-live-notes/spec.md).
+   * Left out, nothing changes. A local workspace cannot use one, and every editor it declares must have an origin the
+   * app may frame; `createApp` throws at start otherwise.
+   */
+  liveNotes?: LiveNotes;
+}
+
+/** Refuses, at start, live notes a deployment cannot use: on a local workspace, or with an editor it must not frame. */
+function checkLiveNotes(liveNotes: LiveNotes | undefined, local: boolean) {
+  if (!liveNotes) return;
+  if (local) throw new Error('A live editor (liveNotes) serves remote repositories; a local workspace cannot use one.');
+  if (!Array.isArray(liveNotes.editors) || !liveNotes.editors.length) throw new Error('The live editor (liveNotes) declares no editor in `editors`.');
+  for (const editor of liveNotes.editors) {
+    try {
+      validateLiveEditorInfo(editor);
+    } catch (error) {
+      throw new Error(`The live editor (liveNotes) cannot be used: ${(error as Error).message}`);
+    }
+  }
 }
 
 export function createApp(base: string, overrides: Partial<AppServices> = {}): express.Express {
   const workspaceChoices = overrides.workspaceChoices === null ? null : overrides.workspaceChoices ?? cookieWorkspaceChoices();
   const configSource = overrides.configSource ?? chosenRepositorySource(base, process.env, workspaceChoices ?? undefined);
   const local = configSource.mode === 'local';
+  checkLiveNotes(overrides.liveNotes, local);
+  // Read at start, so a time that is none, or an unknown time zone, stops the deployment instead of the first check-in.
+  const liveSchedule = overrides.liveNotes ? liveScheduleSetting() : null;
   // The lightweight mode keeps sign-ins in cookies and nothing on the server; local workspaces never use it.
   const lightweight = !local && storageMode() === 'cookie';
   const recordStore = overrides.recordStore ?? (lightweight ? new NoRecordStore() : createRecordStore(base));
@@ -102,6 +128,17 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   // person's repositories through its membership store.
   const visitorChoice = choosesRepository() && Boolean(workspaceChoices);
   if (product && choosesRepository()) throw new Error("A product repository (MYGITNOTES_PRODUCT_REPOSITORY or product_repository) offers Core updates, which a deployment where each visitor chooses a repository does not give its visitors. Remove it, or name the deployment's repository with MYGITNOTES_REPOSITORY.");
+  // A long-running server checks live notes in every night itself; on Vercel an external cron calls /api/live/sweep.
+  if (overrides.liveNotes && liveSchedule && !process.env.VERCEL) {
+    const live = overrides.liveNotes;
+    startLiveSchedule({
+      setting: liveSchedule,
+      sweep: async instant => {
+        const report = await sweepLive(live, { instant, timeZone: liveSchedule.timeZone });
+        if (report.due) console.info(`[live-notes] nightly check-in: ${report.results.filter(result => result.committed).length} committed, ${report.failed.length} failed of ${report.due} due`);
+      },
+    });
+  }
   const app = express();
   app.disable('x-powered-by');
   // First, so no reader of the request's headers sees the credentials of a demo page; a deployment without a demo is unchanged.
@@ -131,14 +168,17 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   app.use('/api/auth', refuseDemoPageSignIn, createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity, agentFor: piAgent?.availableTo }));
   app.use('/api', workspaceChoiceRouter({ identity, choices: workspaceChoices ?? undefined }));
   services.routes?.(app, services);
-  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources));
+  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources, services.liveNotes));
+  const { liveNotes } = services;
+  // The sweep trigger opens no workspace and holds no session: it is mounted before the workspace routes.
+  if (liveNotes) app.use(createLiveSweepRouter({ liveNotes, ...(services.defer ? { defer: services.defer } : {}) }));
   app.get('/api/history/events', serverlessHistoryEvents);
   // Core updates act on the product repository, not on the workspace, so they open no repository of it.
   if (!local) app.use('/api/core', product ? createRemoteCoreUpdateRouter(identity, product) : (_req, res) => res.status(404).json({ error: 'This deployment names no product repository, so it offers no Core update.' }));
   if (piAgent?.tools) app.use('/api/pi', piAgent.tools);
   // The member list opens no repository, so it works while every repository is hidden or unreachable.
   app.use('/api/workspace/members', createWorkspaceMembersRouter(configSource, assetStorage, identity, { repositoryChoice: visitorChoice, onChange: async (settings, request) => piAgent?.membershipChanged?.(visibleMembers(settings).map(member => member.ref.id), request), ...(services.defer ? { defer: services.defer } : {}) }));
-  app.use(['/api', '/raw-assets', '/r2-assets'], requestWorkspace(identity, configSource, cache, services.editionSources));
+  app.use(['/api', '/raw-assets', '/r2-assets', ...(liveNotes ? ['/live'] : [])], requestWorkspace(identity, configSource, cache, services.editionSources, liveNotes));
   app.use(createFileManagerRouter());
   app.use(createR2ManagerRouter(assetStorage, local ? r2Cache(r2CacheRoot(base)) : undefined));
   app.use('/api/study', createStudyRouter());
@@ -178,6 +218,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
       return { ...asRemote(handle), alias };
     };
     const remoteRepositories = async (res: express.Response) => (await eachRepository(res)).map(({ handle, alias }) => ({ ...asRemote(handle), alias }));
+    if (liveNotes) app.use(createLiveRouter());
     app.use(createGistRouter());
     /** Pushes committed notes that name a Gist to it; notes that name none cost nothing. */
     const publishedGists = async (res: express.Response, notes: { path: string; content: string; metadata: Record<string, unknown>; }[]) => {
@@ -199,7 +240,9 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
           const handle = ('handle' in entry ? entry.handle : await workspace.handleOf(entry.ref.id)) as RemoteHandle | undefined;
           if (!handle) return { ...base, ...manifest, branch: entry.ref.source.type === 'local' ? '' : entry.ref.source.branch, revision: '', write: false, ...('unavailable' in entry ? { unavailable: entry.unavailable } : {}) };
           const snapshot = await handle.reader.getSnapshot();
-          return { ...base, ...manifest, branch: handle.reader.branch, revision: snapshot.sha, write: handle.authenticated && handle.reader.canWrite(snapshot), ...('unavailable' in entry ? { unavailable: entry.unavailable } : {}) };
+          // The editor configuration is static: naming it asks the adapter nothing, so this answer stands while the editor is down.
+          const live = liveNotes ? { live: handle.reader.liveView?.editor ?? null } : {};
+          return { ...base, ...manifest, branch: handle.reader.branch, revision: snapshot.sha, write: handle.authenticated && handle.reader.canWrite(snapshot), ...live, ...('unavailable' in entry ? { unavailable: entry.unavailable } : {}) };
         }));
         const body: WorkspaceStatus = { keyedConfig, local: false, defaultRepository: workspace.default?.ref.id ?? null, repositories, coreUpdate: Boolean(product), ...(visitorChoice ? { repositoryChoice: true } : {}) };
         res.json(body);
@@ -298,6 +341,9 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
     app.get('/api/notes/read', async (req, res) => {
       try {
         const { reader, alias } = await remoteNote(res, req.query.path, req.query.notebookId);
+        // A pending live note's virtual path, once checked in, says where the note was filed.
+        const movedTo = await reader.liveFiled(String(req.query.path));
+        if (movedTo !== undefined) return res.status(404).json({ error: 'This live note was checked in and filed.', movedTo });
         res.json({ note: keyedItem(alias)(await reader.note(String(req.query.path))) });
       } catch (error) {
         fail(res, error);
@@ -393,7 +439,8 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         const { path: file, content, metadata, revision, createOnly, notebookId } = req.body;
         if (typeof file !== 'string' || typeof content !== 'string') throw new SourceError('path and content are required.');
         const target = await remoteNote(res, file, notebookId);
-        const saved = await target.reader.save(file, content, metadata, revision, createOnly);
+        // An internal `live:` revision is the hosted router's to hand on, never a browser's: here it is no revision at all.
+        const saved = await target.reader.save(file, content, metadata, parseLiveBase(revision) ? '' : revision, createOnly);
         res.json({ ...saved, note: keyedItem(target.alias)(saved.note), ...await publishedGists(res, [saved.note]), ...await publishNotes(publishing, { req, res, repository: target, notes: [saved.note] }) });
       } catch (error) {
         fail(res, error);
@@ -507,10 +554,4 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
     res.sendFile(path.join(web, 'index.html'));
   });
   return app;
-}
-
-function fail(res: express.Response, error: unknown) {
-  const retryAfter = error instanceof SourceError ? error.retryAfter : undefined;
-  if (retryAfter) res.setHeader('Retry-After', String(retryAfter));
-  res.status(error instanceof SourceError ? error.status : 500).json({ error: error instanceof Error ? error.message : 'Request failed.', ...(retryAfter ? { retryAfter } : {}), ...(error instanceof StaleRevisionError ? { staleRepositories: error.repositories } : {}) });
 }

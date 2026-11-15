@@ -3,15 +3,15 @@ import express, { Router } from 'express';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { type RemoteCache, type RemoteSource, siteIdentity, SourceError, type WorkspaceConfigSource, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError } from '@mygitnotes/core';
-import { callWorkspaceRemoteTool, isMutationTool, remoteTools, TEMPLATE_GUIDANCE, type ToolAssets } from '@mygitnotes/mcp-server';
+import { checkedOutFields, type LiveNotes, type RemoteCache, type RemoteSource, siteIdentity, SourceError, type WorkspaceConfigSource, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError } from '@mygitnotes/core';
+import { callWorkspaceRemoteTool, isMutationTool, liveRemoteTools, remoteTools, TEMPLATE_GUIDANCE, type ToolAssets } from '@mygitnotes/mcp-server';
 import { type AssetStorage, resolveAssetScope } from './asset-storage.js';
 import { CredentialRejected, grantPerson } from './auth.js';
 import { type BearerGrant, bearerGrantRecord, type IdentityService } from './identity.js';
 import type { RecordStore, StoredRecord } from './record-store/index.js';
 import type { EditionSources } from './edition-sources.js';
 import { dropHeaders } from './request-headers.js';
-import { openWorkspace, type RemoteHandle, type RequestWorkspace } from './request-workspace.js';
+import { hasLiveView, openWorkspace, type RemoteHandle, type RequestWorkspace } from './request-workspace.js';
 
 /** The JSON-RPC body of an ordinary call; a hosted asset upload carries its file inside the body and may be larger. */
 const CALL_BODY_BYTES = 8 * 1024 * 1024;
@@ -60,7 +60,7 @@ function grantSettings(settings: WorkspaceSettings, grant: StoredRecord): Worksp
   return { ...settings, members: settings.members.filter(member => member.ref.id === grant.source && !member.hidden).map(member => ({ ...member, default: true })) };
 }
 
-export function createRemoteMCP(store: RecordStore, identity: IdentityService, configSource: WorkspaceConfigSource, assetStorage: AssetStorage, cache?: RemoteCache, editionSources?: EditionSources): Router {
+export function createRemoteMCP(store: RecordStore, identity: IdentityService, configSource: WorkspaceConfigSource, assetStorage: AssetStorage, cache?: RemoteCache, editionSources?: EditionSources, liveNotes?: LiveNotes): Router {
   const router = Router();
   router.post(['/', '/:token'], async (req, res) => {
     try {
@@ -129,7 +129,9 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
       if (person) (req as express.Request & WorkspaceRequest).person = person;
       // The commits the call makes are authored by whom the grant names, where it names anyone: an outside bearer's grant
       // as the identity answered, a stored one as it was recorded.
-      const workspace = openWorkspace(grantSettings(settings, grant), token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(editionSources ? { editionSources } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
+      const granted = grantSettings(settings, grant);
+      const tools = hasLiveView(granted, person, liveNotes) ? liveRemoteTools : remoteTools;
+      const workspace = openWorkspace(granted, token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
       const assets = toolAssets(assetStorage, req, res);
       try {
         await readBody(req, res, workspace, assets);
@@ -139,13 +141,13 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
         return res.status(status).json({ error: status === 413 ? 'The request body is too large.' : 'The request body is not valid JSON.' });
       }
       const server = new Server({ name: 'mygitnotes', version: buildInfo.version }, { capabilities: { tools: {} }, instructions: `Operate on the configured note repository. Use ls or glob to locate paths, read or find to inspect complete files, then pass the returned revision to a write operation. Before creating or editing notes, read the agent system of the notebook or note with get_system_prompt and list_skills; invoke_skill loads a skill, and read, write, append, edit and rm also work on skill files. ${TEMPLATE_GUIDANCE} Each successful mutation creates one atomic remote commit with a program-generated message. Respect read-only grants. Use Settings to revoke persistent connector URLs.` });
-      server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: remoteTools.filter(t => grant.write || !isMutationTool(t.name)) }));
+      server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: tools.filter(t => grant.write || !isMutationTool(t.name)) }));
       server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
         try {
           const result = await callWorkspaceRemoteTool(workspace as import('@mygitnotes/core').WorkspaceRepositories<RemoteHandle>, params.name, params.arguments || {}, grant.write, process.env.APP_URL, assets);
           return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] };
         } catch (error) {
-          return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: (error as Error).message }) }] };
+          return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: (error as Error).message, ...checkedOutFields(error) }) }] };
         }
       });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });

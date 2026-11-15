@@ -215,7 +215,7 @@ function stubFileRoutes(files: Record<string, { content: string | null; } | numb
     'fetch',
     vi.fn(async (input: string, _init?: RequestInit) => {
       const url = String(input);
-      const respond = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
+      const respond = (body: unknown, status = 200) => ({ ok: status < 400, status, headers: new Headers(), json: async () => body });
       if (url.startsWith('/api/notes/lookup')) return respond({ revisions: {}, notes: [] });
       if (url.startsWith('/api/notes/query')) return respond({ revisions: {}, notes: [] });
       if (url.startsWith('/api/assets')) return respond({ assets: [] });

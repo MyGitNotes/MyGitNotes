@@ -1,0 +1,25 @@
+/* The framed live editor: its bar over the frame, which takes the rest of the note's space. */
+.live-editor-frame { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.live-editor-bar { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 16px; border-bottom: 1px solid var(--color-line); background: color-mix(in srgb, var(--color-sidebar) 60%, transparent); font-size: 12px; }
+.live-editor-state { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted); white-space: nowrap; }
+.live-editor-state[data-tone='ok'] { color: var(--color-success); }
+.live-editor-state[data-tone='warn'] { color: var(--color-warning); }
+.live-editor-users { color: var(--color-text); font-weight: 600; }
+.live-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.live-editor-actions a { display: inline-flex; align-items: center; gap: 4px; }
+.live-editor-iframe { display: block; flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--color-surface); }
+.live-editor-notice { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin: 24px auto; padding: 16px 20px; max-width: 34rem; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); font-size: 14px; }
+.live-editor-notice-actions { display: flex; gap: 8px; }
+/* On a phone the bar's actions are 44px touch targets. */
+@media (max-width: 767px) { .live-editor-actions .ui-button.ui-button-small { min-height: 44px; padding: 0 12px; font-size: 13px; } }
+
+/* 「編輯中 · N 人」 and 「未歸檔」 on note rows and cards. */
+.live-badge { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--color-line-strong); border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary); font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap; }
+.live-badge[data-pending] { background: var(--color-warning-soft); color: var(--color-warning); }
+.live-badge > svg { width: 11px; height: 11px; }
+
+/* A compilation's section or a graph card offers 編輯, which opens the note in zoom. */
+.note-live-edit { display: flex; justify-content: flex-end; padding: 4px 8px 0; }
+
+/* A Focus row's title may take two lines; its badge sits by the title's middle, not its top. */
+.focus-row > .live-badge { align-self: center; }

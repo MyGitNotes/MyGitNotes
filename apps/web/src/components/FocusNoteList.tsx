@@ -14,6 +14,7 @@ import { NoteGroupHeading } from './NoteGroupHeading.js';
 import { NoteHoverCard } from './NoteHoverCard.js';
 import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
+import { LiveBadge } from './live/LiveBadge.js';
 import { NotesEmptyState } from './NotesEmptyState.js';
 import type { ListViewProps } from './ListView.js';
 import './focus-list.css';
@@ -39,7 +40,7 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
     return <NotesEmptyState readOnly={readOnly} kind={newKind} onNewNote={onNewNote} />;
   }
 
-  const canMove = !readOnly && Boolean(onMoveNote) && pointerMovesNotes();
+  const movable = !readOnly && Boolean(onMoveNote) && pointerMovesNotes();
   const selectionActive = Boolean(selectedKeys?.size);
 
   /** Arrow keys move between rows; Enter or Space opens the one focused. */
@@ -61,6 +62,8 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
   const renderRow = (note: NoteListItem, draft = false) => {
     const key = noteRefKey(note);
     const canDrag = !!focusMode?.canDrag(note);
+    // A note being edited live (編輯中) keeps its folder and status until it is checked in.
+    const canMove = movable && !note.live;
     const selected = !draft && (selectedKeys?.has(key) ?? false);
     const open = focusMode?.openPath === note.path;
     const hovered = hover.target?.note && noteRefKey(hover.target.note) === key;
@@ -88,11 +91,12 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
         }}
       >
         {selectionActive && !draft && <NoteSelectBox title={note.title} checked={selected} onToggle={() => onToggleSelect?.(note)} className='focus-row-check' />}
-        <NoteStatusSelect dotOnly statuses={statuses} status={note.status} readOnly={readOnly || draft} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateNoteStatus(note, status)} />
+        <NoteStatusSelect dotOnly statuses={statuses} status={note.status} readOnly={readOnly || draft} lockedReason={note.live ? t('live.checkedOut') : undefined} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateNoteStatus(note, status)} />
         <span className='focus-row-title' style={{ ['--title-lines' as string]: TITLE_LINES }}>
           {isCompilationPath(note.path) && <GalleryHorizontalEnd className='focus-row-kind' aria-hidden='true' />}
           <HighlightText text={note.title} query={highlightQuery} />
         </span>
+        <LiveBadge live={note.live} />
       </div>
     );
   };

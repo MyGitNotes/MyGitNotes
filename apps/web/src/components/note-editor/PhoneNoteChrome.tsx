@@ -11,6 +11,7 @@ import type { NoteItem } from '../../lib/types.js';
 import type { MarkdownEditorMode } from '../MarkdownEditor.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { NoteStatusSelect } from '../NoteStatusSelect.js';
+import { LiveBadge } from '../live/LiveBadge.js';
 import { PhoneSheet } from '../PhoneSheet.js';
 import { PHONE_TOOLS } from './phone-tools.js';
 import { NoteRowTags } from './NoteRowTags.js';
@@ -50,12 +51,14 @@ export interface PhoneNoteChromeProps {
   /** The bar rides over the text and slides away while the text scrolls down; false keeps it in the page flow, above a notice or the formatting toolbar. */
   overlay: boolean;
   hidden: boolean;
+  /** Whether the title bar shows the note's 編輯中 badge: not while the framed live editor's bar counts the editors, nor once the note is checked in. */
+  liveBadge?: boolean;
 }
 
 /** A phone's note screen top: back to the list, the title, the status dot, edit or read, the assistant, and the "⋯" sheet that holds everything else. */
 export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
   const { t } = useTranslation();
-  const { frame, session, autoSave, readOnly, statuses, phoneEditing, overlay, hidden, template } = props;
+  const { frame, session, autoSave, readOnly, statuses, phoneEditing, overlay, hidden, template, liveBadge = true } = props;
   const { back } = usePhoneNotes();
   const [menuOpen, setMenuOpen] = useState(false);
   // The sheet's rows are gone once one is pressed; what they open returns the focus here.
@@ -77,6 +80,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
           )}
         {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
         <div className='phone-note-title' title={title}>{title}</div>
+        {liveBadge && <LiveBadge live={props.note.live} />}
         <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
         {!autoSave && !readOnly && (
           <button type='button' className='ui-icon-button' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave}>

@@ -47,6 +47,11 @@ const CURRENT = 'current';
 
 type VersionDialogMode = { mode: 'new'; } | { mode: 'mark'; entry: HistoryEntry; } | { mode: 'edit'; version: NoteVersion; };
 
+/** The commit a live check-in overwrote (its `Live-Overwrote` trailer), or undefined. */
+export function liveOverwrote(body: string): string | undefined {
+  return /^Live-Overwrote:\s*([0-9a-f]{7,64})\s*$/im.exec(body)?.[1];
+}
+
 /** Commit subjects as people read them: without a conventional prefix or the agent mark the badge already shows. */
 export function plainSubject(subject: string): string {
   return subject.replace(/^[a-z]+(\([^)]*\))?!?:\s*/i, '').replace(/\s*\(Agent, \d{4}-\d{2}-\d{2}\)$/, '') || subject;
@@ -321,6 +326,10 @@ export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, curre
       <ul>
         {entries.map((entry, index) => {
           const marks = placed.get(entry.commit) ?? [];
+          const overwrote = liveOverwrote(entry.body);
+          // A check-in whose live text won over a Git change names that change, and opens it when this history lists it.
+          const overwroteKey = overwrote && [...history.points.keys()].find(key => key === `c:${overwrote}` || (key.startsWith('c:') && key.slice(2).startsWith(overwrote)));
+          const overwroteLabel = overwrote && t('live.overwrote', { commit: overwrote.slice(0, 7) });
           return row(
             `c:${entry.commit}`,
             <>
@@ -335,20 +344,33 @@ export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, curre
                   </span>
                 )}
                 {marks.map(version => <span key={version.sequence} className='history-badge history-badge-version'>{label(version).text}</span>)}
+                {overwroteLabel && !overwroteKey && <span className='history-badge' title={overwrote}>{overwroteLabel}</span>}
                 <span>{dates.format(new Date(entry.date))}</span>
                 {entry.author && <span>{entry.author}</span>}
               </small>
             </>,
-            canWrite && !marks.length && (
-              <Button
-                size='icon'
-                aria-label={t('history.markVersion')}
-                title={t('history.markVersion')}
-                onClick={() => setDialog({ mode: 'mark', entry })}
-              >
-                <Tag aria-hidden='true' />
-              </Button>
-            ),
+            <>
+              {overwroteKey && overwroteLabel && (
+                <Button
+                  size='small'
+                  className='history-badge'
+                  title={overwrote}
+                  onClick={() => setOpened(overwroteKey)}
+                >
+                  {overwroteLabel}
+                </Button>
+              )}
+              {canWrite && !marks.length && (
+                <Button
+                  size='icon'
+                  aria-label={t('history.markVersion')}
+                  title={t('history.markVersion')}
+                  onClick={() => setDialog({ mode: 'mark', entry })}
+                >
+                  <Tag aria-hidden='true' />
+                </Button>
+              )}
+            </>,
           );
         })}
       </ul>

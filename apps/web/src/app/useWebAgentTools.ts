@@ -89,6 +89,10 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       const typing = repository && getLocalDraft(draftScope(repository), path);
       if (typing && !(draft && typing.content === draft.note.content)) throw new Error(`The person is editing ${path}; ask them to finish first.`);
     };
+    /** Refuses a note being edited live (編輯中): its text is the live editor's until it is checked in. A checkout moves no revision, so this reads the note afresh. */
+    const assertNotLive = async (notebookId: string, path: string) => {
+      if ((await findCommittedNote({ notebookId, path }, { fresh: true }))?.live) throw new Error(`${path} is being edited live (編輯中); ask the person to check it in (「立即簽回」) first.`);
+    };
     const assertWritable = (notebookId: string) => {
       if (!canWriteNotebook(notebookId)) throw new Error('This notebook is read-only for the person.');
     };
@@ -106,6 +110,7 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       assertWritable(notebookId);
       const draft = readDraft(notebookId, path);
       assertNotEditing(notebookId, path, draft);
+      await assertNotLive(notebookId, path);
       // A deleted note written again is a change of the committed note it deleted.
       const base = draft ? draft.base : await findCommittedNote({ notebookId, path });
       const original = draft && !draft.deleted ? draft.note : base;
@@ -250,6 +255,7 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
         const draft = readDraft(notebookId, path);
         assertNotEditing(notebookId, path, draft);
         if (draft?.deleted) throw new Error(`${path} is already deleted; it waits in the person's trash.`);
+        await assertNotLive(notebookId, path);
         // A note that exists only as a working change has nothing to keep: its change goes.
         if (draft && !draft.base) {
           updateDraft(notebookId, path, null);

@@ -1,7 +1,7 @@
 import { type Request, type Response, Router } from 'express';
 import fs from 'node:fs';
 import { getCurrentBranch } from '@mygitnotes/git';
-import { copyR2Object, deleteR2Object, isValidR2Key, listR2Objects, managedNotebook, type NotebookConfig, notebookKey, presignR2Object, presignR2Upload, putEmptyR2Object, type R2Cache, r2ObjectExists, r2ReferenceKeys, resolveSafePath, rewriteR2References, SourceError, withinPath } from '@mygitnotes/core';
+import { checkedOutFields, copyR2Object, deleteR2Object, isValidR2Key, listR2Objects, managedNotebook, type NotebookConfig, notebookKey, presignR2Object, presignR2Upload, putEmptyR2Object, type R2Cache, r2ObjectExists, r2ReferenceKeys, resolveSafePath, rewriteR2References, SourceError, withinPath } from '@mygitnotes/core';
 import { type AssetScope, type AssetStorage, inAssetScope, resolveAssetScope } from './asset-storage.js';
 import { eachRepository, notebookRepository, type RepositoryHandle, requestMembers } from './request-workspace.js';
 import { localFileCatalog } from './file-manager.js';
@@ -167,7 +167,7 @@ export function createR2ManagerRouter(storage: AssetStorage, cache?: R2Cache): R
     } catch (error) {
       const retryAfter = error instanceof SourceError ? error.retryAfter : undefined;
       if (retryAfter) res.setHeader('Retry-After', String(retryAfter));
-      res.status(error instanceof SourceError ? error.status : 502).json({ error: error instanceof Error ? error.message : 'R2 operation failed.', ...(retryAfter ? { retryAfter } : {}), ...(error instanceof HiddenUncheckedError ? { code: 'hidden-unchecked', ...uncheckedAnswer(error.unchecked) } : {}) });
+      res.status(error instanceof SourceError ? error.status : 502).json({ error: error instanceof Error ? error.message : 'R2 operation failed.', ...(retryAfter ? { retryAfter } : {}), ...(error instanceof HiddenUncheckedError ? { code: 'hidden-unchecked', ...uncheckedAnswer(error.unchecked) } : {}), ...checkedOutFields(error) });
     }
   };
 

@@ -379,6 +379,23 @@ On the deployment, set the pairing code the command printed, or its two parts, w
 
 Without `MYGITNOTES_EXTERNAL_PI_PAIRING` or `MYGITNOTES_EXTERNAL_PI_URL` nothing changes. Signed-in people who are not listed see no agent. The browser never receives the secret, only a socket token that expires after ten minutes and belongs to one session; rotate the secret on both sides together. The socket token travels in the `Sec-WebSocket-Protocol` header, so proxies in front of the bridge should not log that header.
 
+## Optional: an external live editor
+
+An edition may attach an external live (co-)editor to remote repositories; the community edition ships none. With one, pressing Edit on a Markdown note checks it out to the editor, and the note is checked back into Git every night and whenever someone presses 「立即簽回」. Check-in commits the live text with every editor named (the earliest as author, the others as `Co-authored-by`), merges Git changes made meanwhile, and on a conflict lets the live text win and says so in the commit. A note with CRLF line ends becomes LF at its first check-in, in one commit that rewrites every line end.
+
+| Variable | Meaning |
+| --- | --- |
+| `MYGITNOTES_LIVE_CHECKIN_AT` | When the nightly check-in runs, `HH:mm` in `MYGITNOTES_TIMEZONE` (default `03:00`; UTC without a time zone). `off` turns the in-process schedule off. A value that is no time stops the server at start. |
+| `MYGITNOTES_LIVE_SWEEP_SECRET` | A random secret of at least 32 characters that enables `POST /api/live/sweep` for an external trigger. Without it the route answers 404. |
+
+A long-running server (Docker, Node) sweeps by itself at that time and 10, 20 and 30 minutes later, for notes someone was still editing, and once a minute or two after it starts, which catches up after downtime. Vercel functions do not stay up, so there the schedule does not run: call the sweep route from Vercel Cron, a Nomad periodic job or cron. The route answers 202 and works on after answering; `?wait=1` waits and answers the report.
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" https://notes.example.com/api/live/sweep
+```
+
+Every process of a multi-process deployment may run the schedule and the route: the editor's lease lets one check-in run per note at a time, and a repeat finds the text already in Git and makes no second commit.
+
 ## Optional: the time zone of template dates
 
 A note an agent creates from a template through MCP fills `{{date}}` and `{{time}}` from the server's clock, in UTC unless `MYGITNOTES_TIMEZONE` names an IANA time zone, for example `MYGITNOTES_TIMEZONE=Asia/Taipei`. The server refuses to fill a template while the name is not one the runtime knows. The web app fills them from the reader's own clock.

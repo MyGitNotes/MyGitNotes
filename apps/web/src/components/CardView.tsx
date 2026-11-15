@@ -3,6 +3,7 @@ import React from 'react';
 import { Clock, Trash2 } from 'lucide-react';
 import { NoteTagActions, NoteTags } from './NoteTags.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
+import { LiveBadge } from './live/LiveBadge.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -68,7 +69,9 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
     const updated = noteUpdatedTime(note);
     const formattedDate = updated ? new Date(updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
     const canDrag = !!focusMode?.canDrag(note);
-    const canMove = !readOnly && Boolean(onMoveNote) && pointerMovesNotes();
+    // A note being edited live (編輯中) or still pending refuses every file operation until it is checked in.
+    const locked = note.live ? t('live.checkedOut') : undefined;
+    const canMove = !readOnly && !locked && Boolean(onMoveNote) && pointerMovesNotes();
     const selectionActive = !draft && Boolean(selectedKeys?.size);
     const selected = !draft && (selectedKeys?.has(noteRefKey(note)) ?? false);
 
@@ -81,8 +84,9 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
               <HighlightText text={note.title} query={highlightQuery} />
             </span>
             {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
+            <LiveBadge live={note.live} />
           </h3>
-          <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} label={t('notes.statusFor', { title: note.title })} onChange={(status) => onUpdateNoteStatus(note, status)} />
+          <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => onUpdateNoteStatus(note, status)} />
         </div>
         {note.matchSnippet && (
           <p className='text-xs text-muted line-clamp-2 leading-relaxed'>
@@ -97,13 +101,15 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
           </span>
           <div className='flex items-center gap-1 shrink-0' onClick={(e) => e.stopPropagation()}>
             {focusMode && <NoteZoomButton onClick={() => focusMode.onZoomNote(note)} />}
-            {!readOnly && onMoveNote && <NoteMoveButton onClick={() => onMoveNote(note)} />}
+            {!readOnly && onMoveNote && <NoteMoveButton onClick={() => onMoveNote(note)} reason={locked} />}
             {!readOnly && canDelete && (
               <button
                 type='button'
                 onClick={() => requestDelete(noteRefKey(note))}
-                title={pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : t('notes.delete')}
-                className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 transition rounded' : 'p-1 text-muted hover:text-danger transition rounded'}
+                disabled={Boolean(locked)}
+                aria-label={t('notes.delete')}
+                title={locked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : t('notes.delete'))}
+                className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 transition rounded' : 'p-1 text-muted hover:text-danger transition rounded disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted'}
               >
                 <Trash2 className='w-3.5 h-3.5' />
               </button>
