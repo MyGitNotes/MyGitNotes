@@ -24,4 +24,14 @@ describe('socketAddress', () => {
     expect(socketAddress(request('127.0.0.1', ' , '))).toBe('127.0.0.1');
     expect(socketAddress(request(undefined))).toBe('unknown');
   });
+
+  it('takes an entry written as address:port by its address, and falls back to the peer for one that is no address (BG-F004)', () => {
+    expect(socketAddress(request('127.0.0.1', '203.0.113.5:52114'))).toBe('203.0.113.5');
+    expect(socketAddress(request('127.0.0.1', '[2001:db8::1]:443'))).toBe('2001:db8::1');
+    expect(socketAddress(request('127.0.0.1', '[2001:db8::1]'))).toBe('2001:db8::1');
+    expect(socketAddress(request('127.0.0.1', '198.51.100.1, unknown'))).toBe('127.0.0.1');
+    expect(socketAddress(request('10.0.0.2', 'not-an-address'))).toBe('10.0.0.2');
+    expect(socketAddress(request('10.0.0.2', '203.0.113.5:x'))).toBe('10.0.0.2');
+    expect(socketAddress(request('10.0.0.2', '::ffff:203.0.113.7'))).toBe('203.0.113.7');
+  });
 });
