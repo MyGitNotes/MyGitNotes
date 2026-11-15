@@ -68,10 +68,10 @@ const configSource: WorkspaceConfigSource = {
 };
 
 /** A socket as a browser on the app's own page opens it: with that page's origin. */
-const socketFrom = (origin: string | undefined) =>
+const socketFrom = (origin: string | undefined, headers?: Record<string, string>) =>
   class extends WebSocket {
     constructor(address: string | URL) {
-      super(address, origin === undefined ? {} : { origin });
+      super(address, { ...(origin === undefined ? {} : { origin }), ...(headers ? { headers } : {}) });
     }
   };
 
@@ -134,8 +134,8 @@ export interface LiveServer {
   checkout(n?: number, file?: string): Promise<string>;
   /** A tab of the n-th person on a live note, connecting. */
   tab(n: number, options?: LiveTabOptions): Promise<LiveTab>;
-  /** A bare socket to the server, from `origin` (none: no Origin header). */
-  socket(origin: string | undefined, pathname?: string): WebSocket;
+  /** A bare socket to the server, from `origin` (none: no Origin header), with `headers` on its upgrade. */
+  socket(origin: string | undefined, pathname?: string, headers?: Record<string, string>): WebSocket;
   close(): Promise<void>;
 }
 
@@ -233,8 +233,8 @@ export async function liveServer(first: BuiltinFixture): Promise<LiveServer> {
       tabs.push(tab);
       return tab;
     },
-    socket(origin, pathname = '/live/socket') {
-      const socket = new (socketFrom(origin))(`ws://127.0.0.1:${new URL(server.base).port}${pathname}`);
+    socket(origin, pathname = '/live/socket', headers) {
+      const socket = new (socketFrom(origin, headers))(`ws://127.0.0.1:${new URL(server.base).port}${pathname}`);
       socket.on('error', () => {});
       sockets.push(socket);
       return socket;
