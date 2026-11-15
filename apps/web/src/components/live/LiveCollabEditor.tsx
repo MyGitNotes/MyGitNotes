@@ -67,6 +67,8 @@ interface Connection {
   /** The server closed the socket for a new ticket (`RENEW_CODE`) and the tab is connecting again: not offline. */
   renewing?: boolean;
   unsynced: number;
+  /** The tab typed something the server has not stored: what the prompts about unsaved text ask about (`unsynced` also counts a connect's own sync step). */
+  dirty?: boolean;
   people: number;
 }
 const START: Connection = { status: 'connecting', synced: false, unsynced: 0, people: 1 };
@@ -146,9 +148,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     /** Ends the session: the tab's document is dropped, and its unsaved text offered when it has any, whatever ended it. */
     const end = (ending: Ending) => {
       if (stopped) return;
-      const unsynced = latest.current.connection.unsynced;
+      const dirty = latest.current.connection.dirty;
       const content = stop();
-      if (unsynced > 0) {
+      if (dirty) {
         // The lists stop saying 編輯中 now, whether the notice is left by its 關閉 or by closing the view.
         if (ending.kind === 'released') latest.current.onReleased?.();
         return setPhase({ kind: 'lost', text: content, ending });
@@ -209,6 +211,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           setCollab(current => current ?? { extension: yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }), text: text.toString() });
         },
         onUnsyncedChanges: ({ number }) => setConnection(current => ({ ...current, unsynced: number })),
+        onDirty: ({ dirty }) => setConnection(current => ({ ...current, dirty })),
         // The server writes each person's name; this tab counts itself once, and every other name once.
         onAwarenessChange: ({ states }) => setConnection(current => ({ ...current, people: 1 + new Set(states.filter(state => state.clientId !== doc.clientID && typeof state.user?.name === 'string').map(state => state.user.name as string)).size })),
         onStateless: ({ payload }) => {
@@ -242,7 +245,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       window.removeEventListener('offline', offline);
       window.removeEventListener('online', online);
       // Unmounted under a running session (the person went to another note or pane): its unsaved text is kept for later.
-      if (!stopped && latest.current.connection.unsynced > 0) leftUnsaved.set(leftKey(notebookId, path), text.toString());
+      if (!stopped && latest.current.connection.dirty) leftUnsaved.set(leftKey(notebookId, path), text.toString());
       stop();
     };
   }, [live, session]);
@@ -257,7 +260,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   }, [connection.unsynced, settled]);
 
   // Typing the server has not stored yet is lost with the page.
-  const unsaved = live && connection.unsynced > 0;
+  const unsaved = live && !!connection.dirty;
   useEffect(() => {
     if (!unsaved) return;
     const warn = (event: BeforeUnloadEvent) => {
@@ -305,9 +308,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     });
   const discard = async () => {
     // The draft is discarded whole, the tab's unsaved typing with it; a draft that stays offers that typing first.
-    const unsynced = connection.unsynced;
+    const dirty = connection.dirty;
     const content = stopRef.current();
-    const stayed = (ending: Ending, fallback: () => void) => (unsynced > 0 ? setPhase({ kind: 'lost', text: content, ending }) : fallback());
+    const stayed = (ending: Ending, fallback: () => void) => (dirty ? setPhase({ kind: 'lost', text: content, ending }) : fallback());
     flushSync(() => setPhase({ kind: 'discarding' }));
     try {
       const answer = await discardDraft(checkout.notebookId, checkout.path, t, askDiscard);
@@ -326,7 +329,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   };
   /** 「關閉」: asks first, in the editor, while typing is unsaved. */
   const close = () => {
-    if (live && connection.unsynced > 0) return setLeaving(true);
+    if (live && connection.dirty) return setLeaving(true);
     closeNow();
   };
   const closeNow = () => {

@@ -16,10 +16,32 @@ import * as Y from 'yjs';
  */
 export class LiveProvider extends HocuspocusProvider {
   #held: Uint8Array[] = [];
+  #dirty = false;
 
-  constructor(...args: ConstructorParameters<typeof HocuspocusProvider>) {
-    super(...args);
+  #onDirty?: (event: { dirty: boolean; }) => void;
+
+  constructor(configuration: ConstructorParameters<typeof HocuspocusProvider>[0] & { onDirty?: (event: { dirty: boolean; }) => void; }) {
+    super(configuration);
+    this.#onDirty = configuration.onDirty;
     this.on('synced', () => this.#release());
+    this.on('unsyncedChanges', ({ number }: { number: number; }) => {
+      if (number === 0) this.#mark(false);
+    });
+  }
+
+  /**
+   * The tab typed something the server has not stored yet (BG-F003). `unsyncedChanges` also counts each connect's own
+   * sync step, which is no typing: prompts about unsaved text read this, and fire `dirty` events when it changes.
+   */
+  get dirty() {
+    return this.#dirty;
+  }
+
+  #mark(dirty: boolean) {
+    if (this.#dirty === dirty) return;
+    this.#dirty = dirty;
+    this.emit('dirty', { dirty });
+    this.#onDirty?.({ dirty });
   }
 
   /** The provider websocket's socket is open: what is sent now goes out now, not from its queue on a later connect. */
@@ -28,6 +50,7 @@ export class LiveProvider extends HocuspocusProvider {
   }
 
   override documentUpdateHandler(update: Uint8Array, origin: unknown) {
+    if (origin !== this) this.#mark(true);
     if (origin === this || (this.synced && this.#open)) return super.documentUpdateHandler(update, origin);
     if (!this.#held.length) this.incrementUnsyncedChanges();
     this.#held.push(update);
