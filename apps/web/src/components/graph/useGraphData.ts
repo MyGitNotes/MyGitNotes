@@ -22,7 +22,7 @@ export function useGraphData({ notebooks, filters, lane, activeLane, rows, laneI
   const activeNotebookId = activeLane?.notebookId;
   const scopeNotebook = activeNotebookId || filterValue?.notebookId || 'all';
 
-  const filterQuery = useMemo<Partial<NoteQuery>>(() => (filterValue ? { notebookId: scopeNotebook, folders: filterValue.folders, descendants: filterValue.descendants, tags: filterValue.tags, tagMode: filterValue.tagMode, status: filterValue.status, showHidden: filterValue.showHidden, q: filterValue.q } : { notebookId: scopeNotebook, showHidden: false }), [filterValue, scopeNotebook]);
+  const filterQuery = useMemo<Partial<NoteQuery>>(() => (filterValue ? { notebookId: scopeNotebook, folders: filterValue.folders, descendants: filterValue.descendants, tags: filterValue.tags, tagMode: filterValue.tagMode, status: filterValue.status, live: filterValue.live ?? [], showHidden: filterValue.showHidden, q: filterValue.q } : { notebookId: scopeNotebook, showHidden: false }), [filterValue, scopeNotebook]);
 
   // Query results carry notebook-qualified references; GraphLayout is converted at the Screen boundary.
   const matchingNotes = useNotePaths(filterQuery);
