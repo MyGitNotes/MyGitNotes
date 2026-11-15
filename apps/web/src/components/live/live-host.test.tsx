@@ -469,7 +469,7 @@ describe('捨棄草稿 in the framed editor', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Check in now' }));
     });
-    expect(screen.getByText('The draft was empty and was discarded')).toBeInTheDocument();
+    expect(screen.getByText('The draft was empty and was discarded.')).toBeInTheDocument();
     expect(screen.queryByText('Checked in')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onDiscarded).toHaveBeenCalled();
