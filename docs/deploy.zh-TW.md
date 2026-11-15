@@ -415,11 +415,14 @@ process.once('SIGTERM', async () => { await live.shutdown(); server.close(); });
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_read_timeout 120s;
   }
   ```
 
   瀏覽器用 HTTP/1.1 開 socket，不必改 ALPN。
+
+  還沒開啟筆記的 socket，伺服器最多保留 100 個，同一個位址最多 10 個，超過就回 503。從主機或私有網路上的 proxy（loopback、10/8、172.16/12、192.168/16、fc00::/7）連進來時，`X-Forwarded-For` 的最後一筆就是用戶端位址；Caddy 預設會設定。沒有這個標頭時，proxy 後面的所有用戶端都算同一個位址。
 - **記憶體**：每則開著的筆記約需它文字大小的幾倍；50 則 50 KiB 的筆記在數十 MiB 以內。每則筆記的即時文字上限是 5 MiB。
 
 用 `memoryLiveStore()` 取代 `redisLiveStore` 時，即時文字只存在程序裡，每次重啟都會不見，只適合單人試用。

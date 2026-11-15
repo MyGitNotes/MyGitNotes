@@ -46,6 +46,7 @@ vi.mock('@hocuspocus/provider', () => ({
     disconnect() {
       fake.order.push('disconnect');
     }
+    on() {}
   },
 }));
 vi.mock('../LiveMarkdownEditor.js', () => ({ LiveMarkdownEditor: forwardRef<unknown, { collab?: { text: string; }; readOnly: boolean; }>(({ collab, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Live note content', value: collab?.text ?? '', readOnly, onChange: () => {} })) }));
@@ -490,5 +491,100 @@ describe('捨棄草稿', () => {
     expect(onDiscarded).not.toHaveBeenCalled();
     expect(fake.providers).toHaveLength(2);
     expect(provider().destroyed).toBe(false);
+  });
+});
+
+describe('an ending the person chooses while typing is unsaved', () => {
+  const pending = { ...checkout, path: 'notes/life/.live/live-1.md', pending: true };
+  /** The tab syncs `# A\n`, then types offline: one change the server never acknowledged. */
+  const typeOffline = () =>
+    emit(config => {
+      config.document.getText('content').insert(4, 'offline typing\n');
+      config.onUnsyncedChanges?.({ number: 1 });
+      config.onStatus?.({ status: 'disconnected' });
+    });
+  const clipboard = () => {
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    return writeText;
+  };
+
+  it('「關閉」 asks in the editor first, offers the text to copy or download, and going back keeps the session', async () => {
+    const writeText = clipboard();
+    const onClose = vi.fn();
+    await open({ onClose });
+    sync('# A\n');
+    typeOffline();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(provider().destroyed).toBe(false);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Your latest changes are not saved yet; copy or download your version before you close.');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy my version' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('# A\noffline typing\n');
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(fake.providers).toHaveLength(1);
+    expect(provider().destroyed).toBe(false);
+    expect(screen.getByLabelText('Live note content')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close anyway' }));
+    expect(provider().destroyed).toBe(true);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('「關閉」 with nothing unsaved closes at once', async () => {
+    const onClose = vi.fn();
+    await open({ onClose });
+    sync('# A\n');
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(provider().destroyed).toBe(true);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('「捨棄草稿」 answered 返回編輯 offers the unsaved text before the editor reopens from the server’s', async () => {
+    const writeText = clipboard();
+    fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ error: 'Someone typed in this draft.', code: 'has-edits' }, 409));
+    await open({ checkout: pending, editor: { kind: 'builtin', discard: true } });
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
+    });
+    expect(fake.providers).toHaveLength(1);
+    expect(screen.getByRole('alert')).toHaveTextContent('Your latest changes were not saved; copy or download your version.');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy my version' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('# A\noffline typing\n');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
+    });
+    expect(fake.providers).toHaveLength(2);
+  });
+
+  it('leaving the note inside the app keeps the unsaved text, which the note’s editor offers when it opens again', async () => {
+    const writeText = clipboard();
+    const view = await open();
+    sync('# A\n');
+    typeOffline();
+    view.unmount();
+    expect(provider().destroyed).toBe(true);
+    await open();
+    expect(screen.getByRole('alert')).toHaveTextContent('When you last left this note, your latest changes were not saved; copy or download your version.');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy my version' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('# A\noffline typing\n');
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    cleanup();
+    // Offered once: the text is the person's to keep now.
+    await open();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

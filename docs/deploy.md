@@ -428,11 +428,14 @@ The server needs:
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_read_timeout 120s;
   }
   ```
 
   Browsers open the socket over HTTP/1.1, so no ALPN change is needed.
+
+  The server keeps at most 100 sockets open that have no note on them yet, 10 of them from one address, and answers 503 past that. A proxy on the host or the private network (loopback, 10/8, 172.16/12, 192.168/16, fc00::/7) names the client in the last `X-Forwarded-For` entry; Caddy sets it by default. Without it, every client behind the proxy counts as one address.
 - **Memory** for a few times the text of each open note: 50 open notes of 50 KiB stay within tens of MiB. Live text is limited to 5 MiB per note.
 
 `memoryLiveStore()` in place of `redisLiveStore` keeps live text in the process: it is lost on every restart, so use it only for a single-user trial.

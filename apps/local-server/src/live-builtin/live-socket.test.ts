@@ -304,6 +304,20 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(tab.asked).toBe(1);
     });
 
+    it('answers 503 to one address past the most it keeps open without a document, while other addresses still get in', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { maxUnseated: 100, maxUnseatedPerAddress: 2 } });
+      await server.checkout();
+      // The test's sockets come from 127.0.0.1, as a reverse proxy on the host does: the address it forwarded counts.
+      const from = (address: string) => server.socket(APP_ORIGIN, undefined, { 'X-Forwarded-For': address });
+      const one = [from('203.0.113.5'), from('198.51.100.1, 203.0.113.5')];
+      expect(await Promise.all(one.map(answer))).toEqual(['open', 'open']);
+      expect(await answer(from('203.0.113.5'))).toBe(503);
+      expect(await answer(from('203.0.113.6'))).toBe('open');
+      expect(await answer(server.socket(APP_ORIGIN))).toBe('open');
+      one[0].close();
+      await until('the closed socket no longer counts', async () => (await answer(from('203.0.113.5'))) === 'open');
+    });
+
     it("refuses a socket's document past the most this process holds, while a server write still loads its own", async () => {
       const server = await serverOver({ store: makeStore(), files: twoNotes(), limits: { maxDocuments: 1 } });
       const { liveNotes, documents } = server.live;

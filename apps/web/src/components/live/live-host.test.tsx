@@ -21,6 +21,7 @@ import { LiveDraftsProvider } from './live-drafts.js';
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
     destroy() {}
+    on() {}
   },
 }));
 vi.mock('../MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; readOnly: boolean; }>(({ content, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, readOnly, onChange: () => {} })) }));
