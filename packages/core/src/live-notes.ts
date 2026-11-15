@@ -137,6 +137,13 @@ export interface LiveServiceCalls {
    * An adapter without it keeps every pending note until a check-in files it, as in 0.19.
    */
   discard?(repository: RepositoryId, id: string, lease: LiveLease, check: { contentHash: string; }): Promise<LiveRelease>;
+  /**
+   * Sets the path rule a pending note (no path) is filed by at its first check-in, and answers its row with that
+   * `pathRule`; nothing is committed and its text is not touched, so open editors do not hold it. A note with a path is
+   * refused with {@link LiveNotLiveError}. The lease ends with the call, whether it retargets or refuses, so it never
+   * holds a check-in off. An adapter without it keeps each pending note's rule as it was created, as in 0.19.
+   */
+  retarget?(repository: RepositoryId, id: string, lease: LiveLease, request: { pathRule: string; }): Promise<LiveCheckout>;
 }
 
 export interface LiveNotice {

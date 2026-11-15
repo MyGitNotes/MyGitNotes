@@ -1,4 +1,5 @@
-import { checkInLink, discardLink, type LiveCheckInOptions, type LiveCheckInResult, type LiveDiscardResult } from './live-checkin.js';
+import { SourceError } from './github-api.js';
+import { checkInLink, discardLink, type LiveCheckInOptions, type LiveCheckInResult, type LiveDiscardResult, type LiveRetarget, retargetLink, retargetLivePathRule } from './live-checkin.js';
 import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { localIdIn, type NotebookKey } from './notebook-key.js';
 import type { RepositoryId } from './repository.js';
@@ -29,6 +30,8 @@ export interface LiveRepository {
   readonly editor: LiveEditorInfo;
   /** Whether the adapter can discard a pending note (§19): its `service.discard`. */
   readonly discards: boolean;
+  /** Whether the adapter can move and rename a pending note (§20.2): its `service.retarget`. */
+  readonly retargets: boolean;
   /** The repository's live links, checked; read from the adapter once per request. */
   checkouts(): Promise<LiveCheckout[]>;
   /** Those links with their notebooks and paths. */
@@ -52,6 +55,13 @@ export interface LiveRepository {
    * pending note that is live.
    */
   discard(path: string, confirm: boolean): Promise<LiveDiscardResult>;
+  /**
+   * Moves or renames the pending note at its virtual `path`: sets the rule its check-in files it by, built from the old
+   * one ({@link retargetLivePathRule}), and answers its row. Nothing is committed. Throws a 400 for a folder or name
+   * that is refused, {@link LiveNotLiveError} where the adapter cannot retarget or `path` is no pending note that is
+   * live, and {@link LiveLeasedError} while a check-in keeps the lease.
+   */
+  retarget(path: string, change: LiveRetarget): Promise<LiveCheckout>;
   /** A ticket for the person to open a link's live document over the built-in editor's socket. */
   socketTicket(id: string): Promise<LiveSocketTicket>;
 }
@@ -153,6 +163,7 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
     repository,
     editor,
     discards: typeof liveNotes.service.discard === 'function',
+    retargets: typeof liveNotes.service.retarget === 'function',
     links,
     checkouts: async () => (await links()).map(link => link.checkout),
     async read(id) {
@@ -204,6 +215,19 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       if (!confirm && link.checkout.lastEditAt !== null && !isEmptyLiveDraft(liveTextOf(await call(() => calls().read(repository, link.checkout.id))).content)) return { id: link.checkout.id, discarded: false, reason: 'has-edits' };
       try {
         return await discardLink(liveNotes, repository, link.checkout.id, { confirm, ...(checkIn?.sleep ? { sleep: checkIn.sleep } : {}) });
+      } finally {
+        listed = undefined;
+      }
+    },
+    async retarget(path, change) {
+      const link = (await links()).find(entry => entry.path === path);
+      if (!link || link.checkout.path !== null || typeof liveNotes.service.retarget !== 'function') throw new LiveNotLiveError();
+      const rule = retargetLivePathRule(link.checkout.pathRule!, change, link.notebook);
+      if ('invalid' in rule) throw new SourceError(rule.invalid, 400);
+      try {
+        const checkout = await checkedRow(await retargetLink(liveNotes, repository, link.checkout.id, { pathRule: rule.pathRule, ...(checkIn?.sleep ? { sleep: checkIn.sleep } : {}) }));
+        if (checkout.id !== link.checkout.id || checkout.path !== null || checkout.pathRule !== rule.pathRule) throw new LiveUnavailableError();
+        return checkout;
       } finally {
         listed = undefined;
       }

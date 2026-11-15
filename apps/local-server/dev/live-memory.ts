@@ -69,7 +69,7 @@ const notes: EditionSourceConfig = { type: 'edition', platform: 'hosted', reposi
 const plain: EditionSourceConfig = { type: 'edition', platform: 'hosted', repository: 'p1/plain', branch: 'main', label: 'Plain' };
 const repository = sourceIdentity(notes);
 const editor = { origin: editorOrigin, messageType: 'dev-live', themeParam: 'theme' };
-const liveNotes = memoryLiveNotes({ editor, repositories: [{ source: notes, files: notesFiles }], maxBytes: 64 * 1024 });
+const liveNotes = memoryLiveNotes({ editor, repositories: [{ source: notes, files: notesFiles }], maxBytes: 64 * 1024, discard: true, retarget: true });
 
 const people: Record<string, { name: string; email: string; }> = { dev: { name: 'Dev', email: 'dev@example.test' }, reader: { name: 'Reader', email: 'reader@example.test' } };
 const personOf = (req: express.Request) => {

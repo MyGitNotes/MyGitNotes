@@ -34,6 +34,8 @@ export interface MemoryLiveNotesOptions {
   leaseMs?: number;
   /** Whether the service implements `discard` (§19 of the built-in editor spec); left out, it does not, as a 0.19 adapter. */
   discard?: boolean;
+  /** Whether the service implements `retarget` (§20.2 of the built-in editor spec); left out, it does not, as a 0.19 adapter. */
+  retarget?: boolean;
 }
 
 /** The memory adapter, with the hooks of its editor that a test drives. */
@@ -132,7 +134,7 @@ const iso = (time: number) => new Date(time).toISOString();
  * session is open and `h:<hash>` otherwise, and a write on an older revision of the open session is rebased over the
  * typing since. Its service opens a memory Git source over the same files that records each commit's author and message.
  */
-export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000, discard = false }: MemoryLiveNotesOptions): MemoryLiveNotes {
+export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000, discard = false, retarget = false }: MemoryLiveNotesOptions): MemoryLiveNotes {
   const covered = new Map(repositories.map(entry => [sourceIdentity(entry.source), entry]));
   const state = new Map<RepositoryId, { links: Map<string, Link>; byPath: Map<string, string>; }>();
   const notices: LiveNotice[] = [];
@@ -322,6 +324,18 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
             repositoryState(repository).links.delete(id);
             for (const [ticket, issued] of tickets) if (issued.repository === repository && issued.id === id) tickets.delete(ticket);
             return { released: true };
+          },
+        }
+        : {}),
+      ...(retarget
+        ? {
+          async retarget(repository: RepositoryId, id: string, lease: LiveLease, request: { pathRule: string; }): Promise<LiveCheckout> {
+            const link = held(repository, id, lease);
+            // The lease ends with the call, retargeted or refused: it never holds a check-in off.
+            link.lease = null;
+            if (link.path !== null) throw new LiveNotLiveError('Only a pending note can be moved or renamed.');
+            link.pathRule = request.pathRule;
+            return row(link);
           },
         }
         : {}),

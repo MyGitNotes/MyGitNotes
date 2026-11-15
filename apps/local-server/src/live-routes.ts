@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { formatTemplateDate, formatTemplateTime, isBuiltinEditor, isLiveNotePath, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, type LiveNotes, livePathRule, livePendingPath, LiveTooLargeError, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
+import { formatTemplateDate, formatTemplateTime, isBuiltinEditor, isLiveNotePath, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, LiveLeasedError, type LiveNotes, LiveNotLiveError, livePathRule, livePathRuleParts, livePendingPath, LiveTooLargeError, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
 import { liveDueInstant, liveScheduleSetting } from './live-schedule.js';
 import { asRemote, notebookRepository, noteRepository, requestPerson, workspaceOf } from './request-workspace.js';
 import { fail } from './route-errors.js';
@@ -51,7 +51,14 @@ class HasEditsError extends SourceError {
     super('Someone typed in this draft. Confirm to discard it; its text is not saved to Git.', 409);
   }
 }
-const liveFail = (res: express.Response, error: unknown) => fail(res, error, error instanceof LiveTooLargeError ? { code: 'too-large' } : error instanceof NotLiveError || error instanceof NotOpenLiveError || error instanceof HasEditsError ? { code: error.code } : {});
+/** A pending note a check-in keeps the lease of past the retries: the web may ask again in a moment. */
+class LeasedError extends SourceError {
+  readonly code = 'leased';
+  constructor() {
+    super('The note is being checked in. Try again in a moment.', 409);
+  }
+}
+const liveFail = (res: express.Response, error: unknown) => fail(res, error, error instanceof LiveTooLargeError ? { code: 'too-large' } : error instanceof NotLiveError || error instanceof NotOpenLiveError || error instanceof HasEditsError || error instanceof LeasedError ? { code: error.code } : {});
 
 /** The sweep secret of an environment: at least 32 characters, else none, and the sweep route answers 404. */
 export function liveSweepSecret(env: Record<string, string | undefined>): string | undefined {
@@ -247,6 +254,38 @@ export function createLiveRouter(): express.Router {
       if (!result.discarded && result.reason === 'has-edits') throw new HasEditsError();
       const { id: _id, ...answer } = result;
       res.json(answer);
+    } catch (error) {
+      liveFail(res, error);
+    }
+  });
+
+  /*
+   * Moving and renaming a pending note (docs/specs/2026-11-15-builtin-live-editor §20.2): sets where its check-in files
+   * it, by its virtual path, for the writers who may check it in, where the adapter can retarget. `folder` replaces the
+   * folder of its rule and keeps the name pattern; `name` fixes the file name. Nothing is committed; a name taken at
+   * the filing still gets -2. Answers the row with its rule and the destination it names.
+   */
+  router.post('/api/live/retarget', async (req, res) => {
+    try {
+      signedIn(res);
+      const { notebookId, path: file, folder, name } = req.body ?? {};
+      const { handle, notebook, key } = await noteRepository(res, file, notebookId);
+      const { reader, view } = await writerOf(res, handle);
+      if (!view.retargets) throw notLive("This repository's live editor cannot move or rename drafts.");
+      if (!parseLivePendingPath(file as string, [notebook])) throw notLive('Only a live note not yet filed can be moved or renamed this way.');
+      if ((folder !== undefined && typeof folder !== 'string') || (name !== undefined && typeof name !== 'string')) throw new SourceError('folder and name must be text.');
+      const pending = await reader.liveCheckout(file as string);
+      if (!pending || pending.path !== null) throw new SourceError('Note not found.', 404);
+      let checkout: LiveCheckout;
+      try {
+        checkout = await view.retarget(file as string, { ...(folder !== undefined ? { folder } : {}), ...(name !== undefined ? { name } : {}) });
+      } catch (error) {
+        // Filed meanwhile by a check-in, or a lease a check-in keeps: the web tells both apart.
+        if (error instanceof LiveNotLiveError) throw notLive('The note was filed meanwhile; move or rename it as a note.');
+        if (error instanceof LiveLeasedError) throw new LeasedError();
+        throw error;
+      }
+      res.json({ checkout: { ...viewOf(checkout, key, notebook), pathRule: checkout.pathRule }, destination: livePathRuleParts(checkout.pathRule!) });
     } catch (error) {
       liveFail(res, error);
     }

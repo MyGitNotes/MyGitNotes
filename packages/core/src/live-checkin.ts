@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { differsOnlyInCase } from './case-collision.js';
 import { type CommitAuthor, commitAuthor } from './commit-author.js';
+import { isNotebookContent } from './folders.js';
 import { parseNoteContent } from './frontmatter.js';
 import { SourceError } from './github-api.js';
 import { isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, type LiveEditor, liveEditorOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
@@ -231,6 +232,50 @@ export function livePathRule(template: { metadata: NoteMetadata; }, values: Read
   });
 }
 
+/** What moving or renaming a pending note changes (§20.2 of the built-in editor spec): its folder, its file name, or both. */
+export interface LiveRetarget {
+  /** The folder relative to the notebook root; '' is the root. */
+  folder?: string;
+  /** A fixed file name; `.md` is added when missing. */
+  name?: string;
+}
+
+/** A pending note's rule split at its last `/`: the folder ('' at the notebook root) and the file-name pattern. */
+export function livePathRuleParts(rule: string): { folder: string; name: string; } {
+  const slash = rule.lastIndexOf('/');
+  return slash < 0 ? { folder: '', name: rule } : { folder: rule.slice(0, slash), name: rule.slice(slash + 1) };
+}
+
+const PLACEHOLDER = new RegExp(PLACEHOLDERS.source);
+const MAX_RULE_LENGTH = 1024;
+const MAX_FOLDER_LENGTH = 512;
+
+/**
+ * The path rule of a moved or renamed pending note, built from its old `rule`: `folder` replaces the folder part and
+ * keeps the name pattern, so the title still names the file; `name` fixes the file name, made safe by `safeFileName`,
+ * with no placeholder. A folder must be notebook content with no dot folder or parent step. A destination that exists
+ * already is not refused: the filing still adds `-2` … `-99`. Answers why a change is refused instead of a rule.
+ */
+export function retargetLivePathRule(rule: string, change: LiveRetarget, notebook: NotebookConfig): { pathRule: string; } | { invalid: string; } {
+  if (change.folder === undefined && change.name === undefined) return { invalid: 'Give a folder, a name, or both.' };
+  const old = livePathRuleParts(rule);
+  const folder = change.folder ?? old.folder;
+  if (change.folder !== undefined && folder !== '' && (folder.length > MAX_FOLDER_LENGTH || /[\\\p{Cc}]/u.test(folder) || folder.split('/').some(part => !part || part.startsWith('.')) || !isNotebookContent(`${folder}/note.md`, notebook))) return { invalid: 'The folder must be a folder of the notebook.' };
+  let name = old.name;
+  if (change.name !== undefined) {
+    const safe = safeFileName(change.name);
+    if (!safe || PLACEHOLDER.test(safe)) return { invalid: 'The name must be a file name, without {{placeholders}}.' };
+    name = /\.(md|markdown)$/i.test(safe) ? safe : `${safe}.md`;
+    const extension = /\.(md|markdown)$/i.exec(name)![0];
+    if (Buffer.byteLength(`${name.slice(0, -extension.length)}-${MAX_COLLISION_SUFFIX}${extension}`, 'utf8') > MAX_FILED_PART_BYTES) return { invalid: 'The name is too long.' };
+  }
+  const pathRule = folder ? `${folder}/${name}` : name;
+  if (pathRule.length > MAX_RULE_LENGTH) return { invalid: 'The path is too long.' };
+  // A fixed name is checked now; one with placeholders when the filing renders it.
+  if (!PLACEHOLDER.test(name) && (!isLiveNotePath(pathRule, notebook) || templateFileId(pathRule) !== undefined || (notebook.templates ?? []).some(template => template.file === pathRule))) return { invalid: 'The name must name a note of the notebook.' };
+  return { pathRule };
+}
+
 /** The local id a link's notebook key names; a bare id names itself. */
 const localPart = (key: string) => parseNotebookKey(key)?.localId ?? key;
 
@@ -352,6 +397,34 @@ export async function discardLink(liveNotes: LiveNotes, repository: RepositoryId
   if (typed && !options.confirm && !isEmptyLiveDraft(normalizeLiveText(text.content), initialTextOf(detail))) return { id, discarded: false, reason: 'has-edits' };
   const answer = await retried({ mode: 'manual', ...(options.sleep ? { sleep: options.sleep } : {}) }, () => discardOf(liveNotes, repository, id, lease, text.contentHash));
   return answer.released ? { id, discarded: true } : { id, discarded: false, reason: answer.reason, ...(answer.activeEditors !== undefined ? { activeEditors: answer.activeEditors } : {}) };
+}
+
+export interface LiveRetargetOptions extends Pick<LiveCheckInOptions, 'sleep'> {
+  /** The new rule, as {@link retargetLivePathRule} builds it. */
+  pathRule: string;
+}
+
+/**
+ * Moves or renames a pending note (§20.2): takes its lease, asked again three times two seconds apart while a check-in
+ * holds it, then has the adapter set `pathRule`. Throws {@link LiveLeasedError} when the lease stays taken and
+ * {@link LiveNotLiveError} for a link that is gone or filed. Answers the adapter's row, for the caller to check.
+ */
+export async function retargetLink(liveNotes: LiveNotes, repository: RepositoryId, id: string, options: LiveRetargetOptions): Promise<unknown> {
+  const editor = liveEditorOf(liveNotes, repository);
+  if (!editor || !isLiveId(id) || typeof liveNotes.service.retarget !== 'function') throw new LiveNotLiveError();
+  const sleep = options.sleep ?? sleeping;
+  let lease: LiveLease | undefined;
+  for (let retry = 0; !lease; retry++) {
+    try {
+      lease = leaseOf(await liveNotes.service.lease(repository, id));
+    } catch (error) {
+      const known = liveAdapterError(error);
+      if (!(known instanceof LiveLeasedError) || retry >= RELEASE_RETRIES) throw known;
+      await sleep(RELEASE_RETRY_MS);
+    }
+  }
+  const held = lease;
+  return adapter(() => liveNotes.service.retarget!(repository, id, held, { pathRule: options.pathRule }));
 }
 
 /**
