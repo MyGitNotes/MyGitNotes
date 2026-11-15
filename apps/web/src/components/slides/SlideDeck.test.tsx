@@ -27,6 +27,20 @@ beforeEach(() => {
   };
 });
 
+/** What contour-deck asks of a browser that jsdom lacks. */
+function standInForTheBrowser() {
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {} }));
+  Element.prototype.getAnimations ??= () => [];
+  Element.prototype.scrollIntoView ??= () => {};
+  Element.prototype.animate ??= () => ({ finished: Promise.resolve(), cancel() {} }) as unknown as Animation;
+  // The outline fits itself to the stage it is drawn on (contour-deck 0.9); jsdom lays out none.
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 const slideNote = { id: 'a', path: 'notes/a/deck.md', notebookId: 'a', title: 'Deck', tags: [], metadata: { title: 'Deck', type: 'slide' }, content: '## One\n\n::summary\n', lineNumberOffset: 4 };
 const editor = (note: typeof slideNote | (Omit<typeof slideNote, 'metadata'> & { metadata: Record<string, unknown>; }), frame: 'pane' | 'zoom' = 'pane') => createElement(PanelProvider, null, createElement(NoteEditor, { note, frame, active: true, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' } as unknown as NoteEditorProps));
 
@@ -76,11 +90,7 @@ describe('a type: slide note in the editor', () => {
 
 describe('a deck played over a note whose outline panel is open', () => {
   it('takes Enter, the arrows and Escape, which the panel behind it does not see', async () => {
-    // What contour-deck asks of a browser that jsdom lacks.
-    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {} }));
-    Element.prototype.getAnimations ??= () => [];
-    Element.prototype.scrollIntoView ??= () => {};
-    Element.prototype.animate ??= () => ({ finished: Promise.resolve(), cancel() {} }) as unknown as Animation;
+    standInForTheBrowser();
     render(editor({ ...slideNote, content: '## One\n\ntext\n\n### More\n\nmore\n\n---\n\n## Two\n\nlast\n' }, 'zoom'));
     // The leader, then / opens the outline.
     fireEvent.keyDown(document.body, { key: 'E', code: 'KeyE', ctrlKey: true, shiftKey: true });
@@ -126,5 +136,20 @@ describe('the deck of a slide note', () => {
     expect(await screen.findByRole('alertdialog', undefined, { timeout: 10_000 })).toHaveTextContent('::block stands in a block with no slide');
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("speaks the app's language, whatever language the page around it names", async () => {
+    standInForTheBrowser();
+    // The app is in English (no provider); the page names another language, which contour-deck would otherwise follow.
+    document.documentElement.lang = 'zh-TW';
+    try {
+      render(deck('::block{kind=opening}\n\n## Welcome\n\n---\n\n## One\n\ntext\n'));
+      await waitFor(() => expect(document.querySelector('.ct-app')).not.toBeNull(), { timeout: 10_000 });
+      // The words MyGitNotes writes, and contour-deck's English for the rest: the outline's entry to the opening.
+      expect(document.querySelector('.ct-app [data-ct-act="exit"]')).toHaveAttribute('aria-label', 'Leave the slides');
+      expect(document.querySelector('.ct-entry')).toHaveAttribute('aria-label', 'Opening: Welcome');
+    } finally {
+      document.documentElement.lang = '';
+    }
   });
 });
