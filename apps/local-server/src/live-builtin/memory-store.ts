@@ -169,6 +169,9 @@ export function memoryLiveStore(): LiveStore {
       grip.link.pathRule = pathRule;
       return 'retargeted';
     },
+    async unlease(id, token, now) {
+      if (held(id, token, now)) leases.delete(id);
+    },
     async presence(id, process, people, now) {
       if (!links.get(id)?.live) return;
       const entries = presence.get(id) ?? new Map<string, { at: number; people: Record<string, number>; }>();

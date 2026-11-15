@@ -2450,7 +2450,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.reason.active': '仍有人在編輯',
   'live.reason.changed': '簽回時筆記又有變動',
   'live.reason.not-synced': '還沒存入 Git',
-  'live.reason.leased': '另一個簽回正在進行',
+  'live.reason.leased': '另一個簽回正在進行或剛結束，請過幾分鐘再試',
   'live.reason.released': '這篇筆記已經簽回',
   'live.reason.unfiled': '無法決定歸檔路徑',
   'live.backToEditor': '回到編輯器',

@@ -304,6 +304,10 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       if (answer === 'not-pending') throw new LiveNotLiveError('Only a pending note can be moved or renamed.');
       return row({ ...link, pathRule: request.pathRule });
     },
+    async unlease(repository, id, lease) {
+      const link = await live(repository, id);
+      await store.unlease(link.id, tokenOf(lease), clock());
+    },
   });
 
   const liveNotes: BuiltinLiveNotes = {

@@ -2449,7 +2449,7 @@ export const en = {
   'live.reason.active': 'someone is still editing',
   'live.reason.changed': 'the note changed during the check-in',
   'live.reason.not-synced': 'it is not saved to Git yet',
-  'live.reason.leased': 'another check-in is running',
+  'live.reason.leased': 'another check-in is running or just ran; try again in a few minutes',
   'live.reason.released': 'the note was already checked in',
   'live.reason.unfiled': 'its path could not be filled in',
   'live.backToEditor': 'Back to the editor',

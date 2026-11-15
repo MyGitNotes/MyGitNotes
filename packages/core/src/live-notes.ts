@@ -144,6 +144,12 @@ export interface LiveServiceCalls {
    * holds a check-in off. An adapter without it keeps each pending note's rule as it was created, as in 0.19.
    */
   retarget?(repository: RepositoryId, id: string, lease: LiveLease, request: { pathRule: string; }): Promise<LiveCheckout>;
+  /**
+   * Ends `lease` while the note stays live: a check-in that did not release the note (refused, unfiled, or failed) calls
+   * it, so the next check-in, such as 「立即簽回」 again, need not wait for the lease to run out. A lease another holder
+   * took meanwhile is left alone. An adapter without it keeps each such lease until it runs out, as in 0.19.
+   */
+  unlease?(repository: RepositoryId, id: string, lease: LiveLease): Promise<void>;
 }
 
 export interface LiveNotice {

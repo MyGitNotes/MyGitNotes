@@ -222,6 +222,11 @@ if path then return 'not-pending' end
 redis.call('HSET', KEYS[1], 'pathRule', ARGV[3])
 return 'retargeted'`;
 
+/** KEYS link, lease. ARGV token, now. */
+const UNLEASE = `${HOLDER}
+if holder(ARGV[1], ARGV[2]) then redis.call('DEL', KEYS[2]) end
+return 'ok'`;
+
 /** KEYS link, presence. ARGV process, its entry ('' for none), lifetime. */
 const PRESENCE = `
 if redis.call('HGET', KEYS[1], 'live') ~= '1' then return 0 end
@@ -414,6 +419,10 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
     async retarget(id, token, pathRule, now) {
       if (!isLink(id)) return 'leased';
       return await script(`retarget ${id}`, RETARGET, [key.link(id), key.lease(id)], [token, now, pathRule]) as 'retargeted' | 'leased' | 'not-pending';
+    },
+    async unlease(id, token, now) {
+      if (!isLink(id)) return;
+      await script(`unlease ${id}`, UNLEASE, [key.link(id), key.lease(id)], [token, now]);
     },
     async presence(id, process, people, now) {
       if (!isLink(id)) return;
