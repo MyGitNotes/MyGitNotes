@@ -75,8 +75,20 @@ const iso = (time: number) => new Date(time).toISOString();
  */
 export function liveEditorRef({ person, author }: LiveContext, agent: boolean): EditorRef {
   const signIn = `${person.realm}:${person.userId}`;
-  return { key: `${agent ? 'agent' : 'person'}:${author?.email ? author.email.toLowerCase() : signIn}`, name: author?.name || signIn, ...(author?.email ? { email: author.email } : {}), agent };
+  return { key: `${agent ? 'agent' : 'person'}:${author?.email ? author.email.toLowerCase() : signIn}`, name: editorName(author?.name || signIn), ...(author?.email ? { email: author.email } : {}), agent };
 }
+
+/** The longest editor name the check-in engine takes, in UTF-16 units; a longer one is cut, never split in a surrogate pair. */
+const EDITOR_NAME_MAX = 256;
+const editorName = (name: string) => {
+  if (name.length <= EDITOR_NAME_MAX) return name;
+  let cut = '';
+  for (const point of name) {
+    if (cut.length + point.length > EDITOR_NAME_MAX) break;
+    cut += point;
+  }
+  return cut;
+};
 
 /** The built-in adapter with its parts; `builtinLiveNotes` hands out the adapter alone. */
 export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): BuiltinLiveParts {
@@ -162,7 +174,8 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
         const link = await live(repository, id);
         const shot = await documents.snapshot(link);
         documents.remember(link, shot);
-        return textOf(shot);
+        const initial = link.path === null ? await store.initialText(link.id) : null;
+        return { ...textOf(shot), ...(initial !== null ? { initialText: initial } : {}) };
       },
       async write(repository, id, change) {
         const written = await rewrite(await live(repository, id), liveEditorRef(context, change.agent === true), change.content, change.baseRevision);

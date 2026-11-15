@@ -75,7 +75,7 @@ describe('isEmptyLiveDraft', () => {
     expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n在這裡寫下筆記。\n'))).toBe(false);
   });
 
-  it('takes out only the initial text\'s lines when it has one, never the default lines on top', () => {
+  it("takes out only the initial text's lines when it has one, never the default lines on top", () => {
     const template = titled('## 待辦\n- \n');
     expect(isEmptyLiveDraft(titled('## 待辦\n- \n- \n'), template)).toBe(true);
     expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n## 待辦\n- \n'), template)).toBe(false);

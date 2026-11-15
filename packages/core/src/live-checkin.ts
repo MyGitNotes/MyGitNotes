@@ -4,7 +4,7 @@ import { type CommitAuthor, commitAuthor } from './commit-author.js';
 import { isNotebookContent } from './folders.js';
 import { parseNoteContent } from './frontmatter.js';
 import { SourceError } from './github-api.js';
-import { isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, type LiveEditor, liveEditorOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, type LiveEditor, liveEditorOf, liveInitialTextOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { mergeLiveText } from './live-merge.js';
 import { parseNotebookKey } from './notebook-key.js';
 import { appendTrailers, utcDay } from './note-versions.js';
@@ -336,16 +336,19 @@ const leaseOf = (value: unknown): LiveLease => {
   return { token, until };
 };
 
-/** The initial text a detail gave a pending note, if a usable one. */
-const initialTextOf = (detail: unknown): string | undefined => {
-  const initial = (detail as { initialText?: unknown; } | null)?.initialText;
-  return typeof initial === 'string' && Buffer.byteLength(initial, 'utf8') <= LIVE_MAX_BYTES ? initial : undefined;
-};
+/**
+ * Whether someone typed in a pending note, by the adapter's raw word: any editor entry, even one {@link editorsOf}
+ * drops, or a last edit. A typed draft is always filed unless empty (§19).
+ */
+function typedDraft(detail: unknown): boolean {
+  const { editors, checkout } = (detail ?? {}) as { editors?: unknown; checkout?: { lastEditAt?: unknown; }; };
+  return (Array.isArray(editors) && editors.length > 0) || (checkout?.lastEditAt !== null && checkout?.lastEditAt !== undefined);
+}
 
 /** Why a pending note is discarded rather than filed: an empty draft, or with `untyped` one nobody typed in; undefined to file it. */
-function draftDiscard(detail: unknown, live: string, editors: readonly LiveEditor[], untyped: boolean): 'empty' | 'untyped' | undefined {
-  if (isEmptyLiveDraft(live, initialTextOf(detail))) return 'empty';
-  return untyped && editors.length === 0 ? 'untyped' : undefined;
+function draftDiscard(detail: unknown, live: string, untyped: boolean): 'empty' | 'untyped' | undefined {
+  if (isEmptyLiveDraft(live, liveInitialTextOf(detail))) return 'empty';
+  return untyped && !typedDraft(detail) ? 'untyped' : undefined;
 }
 
 /**
@@ -393,8 +396,8 @@ export async function discardLink(liveNotes: LiveNotes, repository: RepositoryId
   const checkout = (detail as { checkout?: { id?: unknown; path?: unknown; }; }).checkout;
   if (!checkout || checkout.id !== id) throw new LiveUnavailableError();
   if (checkout.path !== null) throw new LiveNotLiveError('Only a live note not yet filed can be discarded.');
-  const typed = editorsOf((detail as { editors?: unknown; }).editors).length > 0;
-  if (typed && !options.confirm && !isEmptyLiveDraft(normalizeLiveText(text.content), initialTextOf(detail))) return { id, discarded: false, reason: 'has-edits' };
+  const typed = typedDraft(detail);
+  if (typed && !options.confirm && !isEmptyLiveDraft(normalizeLiveText(text.content), liveInitialTextOf(detail))) return { id, discarded: false, reason: 'has-edits' };
   const answer = await retried({ mode: 'manual', ...(options.sleep ? { sleep: options.sleep } : {}) }, () => discardOf(liveNotes, repository, id, lease, text.contentHash));
   return answer.released ? { id, discarded: true } : { id, discarded: false, reason: answer.reason, ...(answer.activeEditors !== undefined ? { activeEditors: answer.activeEditors } : {}) };
 }
@@ -462,7 +465,7 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
     if (!row || row.id !== id) throw new LiveUnavailableError();
     const notebook = notebookOf(row.notebook)!;
     // An empty draft, or in a sweep one nobody typed in, is discarded rather than filed where the adapter can (§19).
-    const discard = row.path === null && typeof service.discard === 'function' ? draftDiscard(detail, live, editors, options.discardUntyped === true) : undefined;
+    const discard = row.path === null && typeof service.discard === 'function' ? draftDiscard(detail, live, options.discardUntyped === true) : undefined;
     if (discard) return { kind: 'discard', reason: discard, contentHash: text.contentHash };
     let agentDay = agent ? utcDay(new Date(now())) : undefined;
     const blobOf = (content: string) => gitBlobId(Buffer.from(content, 'utf8'), snapshot.sha.length);
