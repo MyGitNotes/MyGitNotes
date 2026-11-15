@@ -53,6 +53,18 @@ it('lists versions and saved changes, and opens one to its full text before any 
   expect(api.fetchHistoryContent).toHaveBeenCalledWith(target, { commit: commit(1), path: 'notes/a/plan.md' });
 });
 
+it('opens the version dialog on its name, not on ✕', async () => {
+  // As a browser does, `showModal` focuses the dialog's first focusable element, its ✕.
+  HTMLDialogElement.prototype.showModal = function(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+    this.querySelector('button')?.focus();
+  };
+  render(panel({ target, onCommitVersion: vi.fn() }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Give this change a version number' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Add version number' });
+  expect(within(dialog).getByRole('textbox', { name: 'Version name' })).toHaveFocus();
+});
+
 it('gives a past change a version number from its row, and offers Commit as a new version only for uncommitted changes', async () => {
   api.changeVersion.mockResolvedValue([]);
   const view = render(panel({ target, onCommitVersion: vi.fn() }));
