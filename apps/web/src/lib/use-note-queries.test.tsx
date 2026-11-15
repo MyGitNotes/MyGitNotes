@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import { handleNoteQueryError, invalidateNoteQueries, noteLookupOptions, notePageOptions, notePathsOptions, resetStaleNoteQueries, scopedRevisions, setNoteQueryScope, useNoteList, useNotePaths, useStaleNoteQueries, LIVE_REFRESH_MS } from './use-note-queries.js';
+import { handleNoteQueryError, invalidateNoteQueries, LIVE_REFRESH_MS, noteLookupOptions, notePageOptions, notePathsOptions, resetStaleNoteQueries, scopedRevisions, setNoteQueryScope, useNoteList, useNotePaths, useStaleNoteQueries } from './use-note-queries.js';
 import { ApiError } from './api.js';
 
 const REVISION = 'a'.repeat(40);

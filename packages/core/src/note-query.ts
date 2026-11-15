@@ -93,11 +93,35 @@ export const NOTE_SEARCH_TOKENS = ['is:live', 'is:pending'] as const;
 export type NoteSearchToken = typeof NOTE_SEARCH_TOKENS[number];
 const searchToken = (word: string): NoteSearchToken | undefined => NOTE_SEARCH_TOKENS.find(token => token === word.toLowerCase());
 
-/** The tokens of a search, in the order first written, and its free text without them; a search without tokens keeps its text as typed. */
-export function noteSearchTerms(q: string): { text: string; tokens: NoteSearchToken[]; } {
-  const words = q.split(/\s+/).filter(Boolean);
-  const tokens = [...new Set(words.flatMap(word => searchToken(word) ?? []))];
-  return tokens.length ? { text: words.filter(word => !searchToken(word)).join(' '), tokens } : { text: q, tokens };
+/**
+ * The tokens of a search, in the order first written, and its free text without them. `parts` are the
+ * stretches of text between tokens, each as typed; a note matches when it holds every part, so a token
+ * never joins its neighbours into one phrase. A search without tokens is one part, kept as typed.
+ * `text` is the parts joined by a space, for display, highlight and snippets.
+ */
+export function noteSearchTerms(q: string): { text: string; parts: string[]; tokens: NoteSearchToken[]; } {
+  const pieces = q.split(/(\s+)/);
+  if (!pieces.some(piece => searchToken(piece))) return { text: q, parts: q.trim() ? [q] : [], tokens: [] };
+  const tokens: NoteSearchToken[] = [], parts: string[] = [];
+  let part = '';
+  for (const piece of pieces) {
+    const token = searchToken(piece);
+    if (!token) {
+      part += piece;
+      continue;
+    }
+    if (!tokens.includes(token)) tokens.push(token);
+    if (part.trim()) parts.push(part.trim());
+    part = '';
+  }
+  if (part.trim()) parts.push(part.trim());
+  return { text: parts.join(' '), parts, tokens };
+}
+
+/** Whether some field holds every part of a search's free text, ignoring case. */
+export function noteTextMatches(fields: readonly string[], parts: readonly string[]): boolean {
+  const lower = fields.map(field => field.toLowerCase());
+  return parts.every(part => lower.some(field => field.includes(part.toLowerCase())));
 }
 
 /** The search without one token, the rest kept in order. */
@@ -184,10 +208,10 @@ export function noteMatchesFilters(note: NoteListItem, query: NoteQuery): boolea
 /** Same rules as `filterNotes`, plus `exclude` and title-only matching. Content must be present when `q` searches content. */
 export function noteMatchesQuery(note: NoteListItem, query: NoteQuery): boolean {
   if (!noteMatchesFilters(note, query)) return false;
-  const q = noteSearchTerms(query.q).text.toLowerCase();
-  if (!q.trim()) return true;
+  const { parts } = noteSearchTerms(query.q);
+  if (!parts.length) return true;
   const fields = query.match === 'title' ? [note.title, note.path, note.notebookId] : [note.title, note.path, note.content ?? '', note.status || '', ...note.tags];
-  return fields.some(text => text.toLowerCase().includes(q));
+  return noteTextMatches(fields, parts);
 }
 
 export const NOTE_SNIPPET_CONTEXT = 60;
