@@ -19,6 +19,8 @@ import { NavTree, NavTreeRow } from './NavTree.js';
 import { useSidebarSections } from '../lib/sidebar-sections.js';
 import { TagActions } from './TagActions.js';
 import { type RailSection, type RailSectionId, SidebarRail } from './SidebarRail.js';
+import { SidebarLinks } from './SidebarLinks.js';
+import { useSidebarLinks } from '../lib/web-features.js';
 
 const selectedItemStyle: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, var(--color-text) 8%, transparent)', color: 'var(--color-text)' };
 
@@ -61,6 +63,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   const dotClass = useStatusDotClass();
   const labelOf = useStatusLabel();
   const sections = useSidebarSections();
+  // An edition's links, at the sidebar's foot or the rail's; a phone's filter sheet (`filtersOnly`) shows them itself, below its own sections.
+  const links = useSidebarLinks();
   // The rail's open section is the owner's when it passes one (the list's "+ filter" chip opens it), else the rail's own.
   const [ownRailSection, setOwnRailSection] = useState<RailSectionId | null>(null);
   const railOpen = railSection !== undefined ? railSection : ownRailSection;
@@ -312,11 +316,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   );
   if (rail) {
     const railSections: RailSection[] = [...(onSelectFolder ? [{ id: 'notebooks' as const, label: t('sidebar.notebooks'), icon: <BookOpen />, active: value.folders.length > 0 || Boolean(value.kind && value.kind !== 'note'), summary: filterSummary, body: <>{expandControls}{notebooksBody}</> }] : []), { id: 'status', label: t('sidebar.status'), icon: <CircleDot />, active: selectedStatus !== null, summary: filterSummary, body: statusBody }, ...(allTags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags'), icon: <Tag />, active: selectedTags.length, summary: filterSummary, body: tagsBody }] : [])];
-    return <SidebarRail label={t('focusList.rail')} sections={railSections} open={railOpen} onOpenChange={setRailOpen} />;
+    return <SidebarRail label={t('focusList.rail')} sections={railSections} open={railOpen} onOpenChange={setRailOpen} links={links} />;
   }
 
   return (
-    <WorkspaceSidebar label={t('sidebar.statusFilter')} className='notes-sidebar'>
+    <WorkspaceSidebar label={t('sidebar.statusFilter')} className='notes-sidebar' footer={!filtersOnly && links.length > 0 ? <SidebarLinks links={links} variant='sidebar' /> : undefined}>
       <section className='sidebar-search' aria-label={t('filters.title')}>
         {!filtersOnly && <div className='sidebar-search-row'>{expandControls}</div>}
         {filterSummary}
