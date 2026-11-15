@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createElement, useState } from 'react';
+import { createElement, useEffect, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterAll, afterEach, beforeEach, expect, it } from 'vitest';
 import { BrowseDock } from './BrowseDock.js';
@@ -133,6 +133,43 @@ it('takes a stored width that arrives as the space beside it grows, before the b
   groupWidth = 1228;
   observe();
   expect(dockWidth()).toBe(288);
+});
+
+/*
+ * Seen at 1440 px after a reload with a Focus open: 350 px for a stored 288, 486.9 for a stored 400. On the first render the workspace's
+ * filter sidebar still takes its width; it folds in an effect of that same mount, and the library registers the dock's group a second
+ * time in the commit that follows, after those effects. That second registration keeps the share the dock had of the narrower group and
+ * takes the wider one as the size it last knew, so its own observer sees nothing to correct.
+ */
+for (const stored of [288, 400]) {
+  it(`opens at the stored ${stored} px when the sidebar folds away while the dock mounts`, () => {
+    function SidebarFoldsOnMount() {
+      useEffect(() => {
+        groupWidth = 1388;
+      }, []);
+      return null;
+    }
+    groupWidth = 1141;
+    render(createElement('div', null, dock(stored), createElement(SidebarFoldsOnMount)));
+    observe();
+    expect(dockWidth()).toBe(stored);
+    groupWidth = 1228;
+    observe();
+    expect(dockWidth()).toBe(stored);
+  });
+}
+
+it('keeps a stored width that arrived after it opened when the window is resized', () => {
+  const { rerender } = render(dock(288));
+  observe();
+  rerender(dock(400));
+  observe();
+  groupWidth = 1228;
+  observe();
+  expect(dockWidth()).toBe(400);
+  groupWidth = 1388;
+  observe();
+  expect(dockWidth()).toBe(400);
 });
 
 it('moves with the keyboard and stores where it stopped', () => {
