@@ -54,6 +54,10 @@ export interface PhoneNoteChromeProps {
   hidden: boolean;
   /** Whether the title bar shows the note's 編輯中 badge: not while the framed live editor's bar counts the editors, nor once the note is checked in. */
   liveBadge?: boolean;
+  /** The live editor is open over the read view: the sheet says nothing of the read view's words or save state. */
+  liveEditing?: boolean;
+  /** A pending live note: Rename sets where its check-in files it. */
+  liveDraft?: { onRename?: () => void; };
 }
 
 /** A phone's note screen top: back to the list, the title, the status dot, edit or read, the assistant, and the "⋯" sheet that holds everything else. */
@@ -157,7 +161,7 @@ function RenameRow({ title, onRename, onDone }: { title: string; onRename: (titl
 }
 
 /** The "⋯" sheet: the note's status and tags, the tools the rail offered on a larger screen, and the actions that file or export it. */
-function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, onSaveAsTemplate, statuses, availableTags, hasHistory, quickActions, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
+function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, onSaveAsTemplate, statuses, availableTags, hasHistory, quickActions, liveEditing, liveDraft, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
   const { t } = useTranslation();
   const panel = usePanelContext();
   const { changesCount, deleteNote, back } = usePhoneNotes();
@@ -189,7 +193,7 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
   };
   return (
     <PhoneSheet title={title} onClose={onClose} className='phone-note-sheet'>
-      <p className='phone-sheet-meta' role='status' aria-label={t('phone.saveState')}>{t('editor.words', { count: words })}{' · '}{session.editorStatus}</p>
+      {!liveEditing && <p className='phone-sheet-meta' role='status' aria-label={t('phone.saveState')}>{t('editor.words', { count: words })}{' · '}{session.editorStatus}</p>}
       <section className='phone-sheet-section' aria-label={t('phone.noteActions')}>
         <div className='phone-sheet-field'>
           <span>{t('editor.status')}</span>
@@ -221,6 +225,7 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         {toggleFormatToolbar && <SheetItem icon={<Type aria-hidden='true' />} label={t('editor.formatToolbar')} pressed={showFormatToolbar} onClick={toggleFormatToolbar} />}
         <div className='phone-sheet-quick'>{quickActions}</div>
         {onRename && !readOnly && <RenameRow title={session.title} onRename={onRename} onDone={onClose} />}
+        {liveDraft?.onRename && <SheetItem icon={<Pencil aria-hidden='true' />} label={t('files.rename')} onClick={act(liveDraft.onRename)} />}
         {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked && !draftMovable} onClick={act(onMove)} />}
         {onAddToOutline && <SheetItem icon={<ListTree aria-hidden='true' />} label={t('outline.add')} disabled={session.locked} onClick={act(onAddToOutline)} />}
         {onSaveAsTemplate && <SheetItem icon={<LayoutTemplate aria-hidden='true' />} label={t('templates.saveAs')} onClick={act(onSaveAsTemplate)} />}
