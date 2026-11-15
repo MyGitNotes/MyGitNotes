@@ -35,8 +35,11 @@ export interface LiveCollabEditorProps {
 /** Why the server refused the tab's document; `other` for any reason this tab does not know. */
 type RefusedReason = 'too-large' | 'busy' | 'other';
 
-/** How a session ended under the tab: the note was checked in, the server refused it, or a call failed. */
-type Ending = { kind: 'released'; } | { kind: 'refused'; reason: RefusedReason; } | { kind: 'failed'; message: string; };
+/**
+ * How a session ended under the tab: the note was checked in, the server refused it, a call failed, or the person ended
+ * it (kept a draft they meant to discard) with the note still open.
+ */
+type Ending = { kind: 'released'; } | { kind: 'refused'; reason: RefusedReason; } | { kind: 'failed'; message: string; } | { kind: 'kept'; };
 
 type Phase =
   | { kind: 'open'; }
@@ -73,6 +76,13 @@ const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', 
 /** The socket of the app's own origin, as the page reached it: `wss:` under https. */
 const socketUrl = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/live/socket`;
 
+/**
+ * The text of a tab that left a note inside the app (another note, another pane) while typing in it was unsaved, by
+ * `notebookId` and path: the note's editor offers it once, the next time it opens in this page.
+ */
+const leftUnsaved = new Map<string, string>();
+const leftKey = (notebookId: string, path: string) => `${notebookId}\n${path}`;
+
 /** A file name for the downloaded copy of the tab's text. */
 const downloadName = (title: string | undefined, path: string) => `${(title || path.split('/').pop()?.replace(/\.(md|markdown)$/i, '') || 'note').replace(/[\\/:*?"<>|\p{Cc}]+/gu, ' ').trim() || 'note'}.md`;
 
@@ -93,6 +103,13 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   const [connection, setConnection] = useState<Connection>(START);
   const [collab, setCollab] = useState<{ extension: Extension; text: string; } | null>(null);
   const [copied, setCopied] = useState(false);
+  /** 「關閉」 asked while typing is unsaved: the editor stays open under the question. */
+  const [leaving, setLeaving] = useState(false);
+  /** Unsaved text this note's editor kept when the person last left the note inside the app. */
+  const [left, setLeft] = useState(() => leftUnsaved.get(leftKey(checkout.notebookId, checkout.path)) ?? null);
+  useEffect(() => {
+    leftUnsaved.delete(leftKey(checkout.notebookId, checkout.path));
+  }, [checkout.notebookId, checkout.path]);
   const live = phase.kind === 'open';
   const latest = useRef({ checkout, onRefetch, onCheckedIn, connection, t });
   useEffect(() => {
@@ -100,6 +117,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   });
   /** Ends the running session at once: the provider is destroyed (its socket closes), and its document read first. */
   const stopRef = useRef<() => string>(() => '');
+  /** The running session's text. */
+  const readRef = useRef<() => string>(() => '');
 
   useEffect(() => {
     if (!live) return;
@@ -117,6 +136,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       return content;
     };
     stopRef.current = stop;
+    readRef.current = () => text.toString();
     /** Ends the session: the tab's document is dropped, and its unsaved text offered when it has any, whatever ended it. */
     const end = (ending: Ending) => {
       if (stopped) return;
@@ -209,6 +229,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     return () => {
       window.removeEventListener('offline', offline);
       window.removeEventListener('online', online);
+      // Unmounted under a running session (the person went to another note or pane): its unsaved text is kept for later.
+      if (!stopped && latest.current.connection.unsynced > 0) leftUnsaved.set(leftKey(notebookId, path), text.toString());
       stop();
     };
   }, [live, session]);
@@ -239,6 +261,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     setConnection(START);
     setCollab(null);
     setCopied(false);
+    setLeaving(false);
     setSession(current => current + 1);
     setPhase({ kind: 'open' });
   };
@@ -269,22 +292,33 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       setPhase({ kind: 'confirm-discard', question });
     });
   const discard = async () => {
-    stopRef.current();
+    // The draft is discarded whole, the tab's unsaved typing with it; a draft that stays offers that typing first.
+    const unsynced = connection.unsynced;
+    const content = stopRef.current();
+    const stayed = (ending: Ending, fallback: () => void) => (unsynced > 0 ? setPhase({ kind: 'lost', text: content, ending }) : fallback());
     flushSync(() => setPhase({ kind: 'discarding' }));
     try {
       const answer = await discardDraft(checkout.notebookId, checkout.path, t, askDiscard);
-      if (!answer) return reopen();
+      if (!answer) return stayed({ kind: 'kept' }, reopen);
       if (answer.discarded) {
         onRefetch();
         onDiscarded?.();
         return;
       }
-      setPhase({ kind: 'notice', tone: 'status', message: keptReason(answer, t) });
+      const message = keptReason(answer, t);
+      stayed({ kind: 'failed', message }, () => setPhase({ kind: 'notice', tone: 'status', message }));
     } catch (error) {
-      setPhase({ kind: 'notice', tone: 'alert', message: (error as Error).message });
+      const message = (error as Error).message;
+      stayed({ kind: 'failed', message }, () => setPhase({ kind: 'notice', tone: 'alert', message }));
     }
   };
+  /** 「關閉」: asks first, in the editor, while typing is unsaved. */
   const close = () => {
+    if (live && connection.unsynced > 0) return setLeaving(true);
+    closeNow();
+  };
+  const closeNow = () => {
+    setLeaving(false);
     stopRef.current();
     onRefetch();
     if (phase.kind === 'discarded') (onDiscarded ?? onClose)();
@@ -292,7 +326,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   };
   /** Leaves the lost text: for the read view of the checked-in note, or as 「關閉」 does when the note is still live. */
   const leaveLost = (ending: Ending) => {
-    if (ending.kind !== 'released') return close();
+    if (ending.kind !== 'released') return closeNow();
     onRefetch();
     onCheckedIn?.();
   };
@@ -328,6 +362,27 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         )}
         <div className='live-editor-actions'>{discardable && <Button size='small' variant='danger' title={t('live.discardHint')} onClick={() => void discard()}>{t('live.discard')}</Button>}{live && <Button size='small' variant='primary' title={t('live.checkInHint')} disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>}{phase.kind !== 'lost' && <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>}</div>
       </div>
+      {left !== null && (
+        <div role='alert' className='live-editor-notice'>
+          <p>{t('live.unsavedLeft')}</p>
+          <div className='live-editor-notice-actions'>
+            <Button size='small' variant='primary' onClick={() => void copy(left)}>{t(copied ? 'live.copied' : 'live.copyMine')}</Button>
+            <Button size='small' onClick={() => download(left)}>{t('live.download')}</Button>
+            <Button size='small' onClick={() => setLeft(null)}>{t('live.dismiss')}</Button>
+          </div>
+        </div>
+      )}
+      {live && leaving && (
+        <div role='alertdialog' aria-label={t('common.close')} className='live-editor-notice'>
+          <p>{t('live.leaveUnsaved')}</p>
+          <div className='live-editor-notice-actions'>
+            <Button size='small' variant='primary' onClick={() => void copy(readRef.current())}>{t(copied ? 'live.copied' : 'live.copyMine')}</Button>
+            <Button size='small' onClick={() => download(readRef.current())}>{t('live.download')}</Button>
+            <Button size='small' variant='danger' onClick={closeNow}>{t('live.closeAnyway')}</Button>
+            <Button size='small' onClick={() => setLeaving(false)}>{t('live.backToEditor')}</Button>
+          </div>
+        </div>
+      )}
       {live && collab && (
         <div className='note-editor-body live-collab-body'>
           <LiveMarkdownEditor content={collab.text} collab={collab} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} />
@@ -351,14 +406,14 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         <div role='alert' className='live-editor-notice'>
           {phase.ending.kind === 'released' ? <p>{t('live.releasedOffline')}</p> : (
             <>
-              <p>{phase.ending.kind === 'refused' ? t(REFUSALS[phase.ending.reason]) : phase.ending.message}</p>
+              {phase.ending.kind !== 'kept' && <p>{phase.ending.kind === 'refused' ? t(REFUSALS[phase.ending.reason]) : phase.ending.message}</p>}
               <p>{t('live.unsavedMine')}</p>
             </>
           )}
           <div className='live-editor-notice-actions'>
             <Button size='small' variant='primary' onClick={() => void copy(phase.text)}>{t(copied ? 'live.copied' : 'live.copyMine')}</Button>
             <Button size='small' onClick={() => download(phase.text)}>{t('live.download')}</Button>
-            {phase.ending.kind === 'failed' && <Button size='small' onClick={reopen}>{t('live.backToEditor')}</Button>}
+            {(phase.ending.kind === 'failed' || phase.ending.kind === 'kept') && <Button size='small' onClick={reopen}>{t('live.backToEditor')}</Button>}
             <Button size='small' onClick={() => leaveLost(phase.ending)}>{t('common.close')}</Button>
           </div>
         </div>
