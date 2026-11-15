@@ -1,4 +1,5 @@
 import { NoteMoveButton } from './NoteMoveButton.js';
+import { LiveBadge } from './live/LiveBadge.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Clock, GripVertical, Kanban as KanbanIcon, Plus, Trash2 } from 'lucide-react';
 import type { NoteListItem, NoteQuery } from '@mygitnotes/core/note-query';
@@ -93,7 +94,7 @@ function useColumnDrag(board: BoardContext, columnId: string) {
       const notePath = event.dataTransfer.getData('text/plain');
       const note = board.dragged;
       board.setDragged(null);
-      if (!note || (notePath && notePath !== note.path)) return;
+      if (!note || (notePath && notePath !== note.path) || note.live) return;
       if ((note.status || '') !== columnId) board.onUpdateNoteStatus(note, columnId);
     },
   };
@@ -102,13 +103,15 @@ function useColumnDrag(board: BoardContext, columnId: string) {
 /** A card moves between columns when the board is writable and drags into a Focus pane when the Focus accepts it. */
 function cardDragProps(board: BoardContext, note: NoteListItem) {
   const canDragForFocus = !!board.focusMode?.canDrag(note);
+  // A note being edited live (編輯中) keeps its column until it is checked in; it may still go into a Focus pane.
+  const fixed = board.readOnly || Boolean(note.live);
   return {
-    draggable: !board.readOnly || canDragForFocus,
+    draggable: !fixed || canDragForFocus,
     onDragStart: (event: React.DragEvent<HTMLDivElement>) => {
-      if (board.readOnly && !canDragForFocus) return;
+      if (fixed && !canDragForFocus) return;
       event.dataTransfer.setData('text/plain', note.path);
       if (board.focusMode) event.dataTransfer.setData(NOTE_DRAG_TYPE, note.path);
-      event.dataTransfer.effectAllowed = board.readOnly ? 'copy' : 'move';
+      event.dataTransfer.effectAllowed = fixed ? 'copy' : 'move';
       board.setDragged(note);
     },
     onDragEnd: () => {
@@ -127,12 +130,14 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
   const formattedDate = updated ? new Date(updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
   const selectionActive = Boolean(board.selectedKeys?.size);
   const selected = board.selectedKeys?.has(noteRefKey(note)) ?? false;
+  const locked = note.live ? t('live.checkedOut') : undefined;
   return (
     <div data-notepath={note.path} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} title={selectionActive ? undefined : t('notes.multiSelectHint')} className={`p-3 rounded-lg border transition-all cursor-grab active:cursor-grabbing group shadow-xs ${isBeingDragged ? 'opacity-40 scale-[0.98] border-primary shadow-inner' : 'hover:shadow-sm hover:border-muted'}`} style={{ backgroundColor: 'var(--color-surface)', borderColor: isBeingDragged ? 'var(--color-primary)' : 'var(--color-line)' }}>
       <div className='flex items-start justify-between gap-1 mb-1.5'>
         <div className='flex items-start gap-1.5 min-w-0 flex-1'>
           {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
           <div className='font-medium text-fg text-sm line-clamp-2 transition min-w-0'>{note.title}</div>
+          <LiveBadge live={note.live} />
         </div>
         <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />
       </div>
@@ -147,24 +152,26 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
         </div>
         <div className='flex items-center gap-1'>
           {board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />}
-          {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} />}
+          {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={locked} />}
           {!board.readOnly && index > 0 && (
             <button
               type='button'
               onClick={() => board.onUpdateNoteStatus(note, board.columns[index - 1].id)}
-              title={t('kanban.moveTo', { title: board.columns[index - 1].title })}
-              className='p-1 hover:text-primary rounded hover:bg-fg/5 transition'
+              disabled={Boolean(locked)}
+              aria-label={t('kanban.moveTo', { title: board.columns[index - 1].title })}
+              title={locked ?? t('kanban.moveTo', { title: board.columns[index - 1].title })}
+              className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'
             >
               <ArrowLeft className='w-3.5 h-3.5' />
             </button>
           )}
           {!board.readOnly && index >= 0 && index < board.columns.length - 1 && (
-            <button type='button' onClick={() => board.onUpdateNoteStatus(note, board.columns[index + 1].id)} title={t('kanban.moveTo', { title: board.columns[index + 1].title })} className='p-1 hover:text-primary rounded hover:bg-fg/5 transition'>
+            <button type='button' onClick={() => board.onUpdateNoteStatus(note, board.columns[index + 1].id)} disabled={Boolean(locked)} aria-label={t('kanban.moveTo', { title: board.columns[index + 1].title })} title={locked ?? t('kanban.moveTo', { title: board.columns[index + 1].title })} className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'>
               <ArrowRight className='w-3.5 h-3.5' />
             </button>
           )}
           {!board.readOnly && board.canDelete && (
-            <button type='button' onClick={() => requestDelete(noteRefKey(note))} title={pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : t('notes.delete')} className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 rounded transition' : 'p-1 hover:text-danger rounded hover:bg-danger-soft transition opacity-40 hover:opacity-100'}>
+            <button type='button' onClick={() => requestDelete(noteRefKey(note))} disabled={Boolean(locked)} aria-label={t('notes.delete')} title={locked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : t('notes.delete'))} className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 rounded transition' : 'p-1 hover:text-danger rounded hover:bg-danger-soft transition opacity-40 hover:opacity-100 disabled:hover:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent'}>
               <Trash2 className='w-3.5 h-3.5' />
             </button>
           )}
@@ -262,8 +269,9 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
               <div className='flex items-start gap-1.5 mb-1 min-w-0'>
                 {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
                 <div className='font-medium text-fg text-sm line-clamp-2 min-w-0'>{note.title}</div>
+                <LiveBadge live={note.live} />
               </div>
-              {(board.focusMode || (!board.readOnly && board.onMoveNote)) && <div className='flex justify-end items-center gap-1' onClick={event => event.stopPropagation()}>{board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />} {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} />}</div>}
+              {(board.focusMode || (!board.readOnly && board.onMoveNote)) && <div className='flex justify-end items-center gap-1' onClick={event => event.stopPropagation()}>{board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />} {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={note.live ? t('live.checkedOut') : undefined} />}</div>}
             </div>
           );
         })}

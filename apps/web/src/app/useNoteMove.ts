@@ -50,8 +50,10 @@ const isCompilation = (path: string) => noteSuffix(path) === '.compilation.yml';
 export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote, focus, queryClient, queryScope, flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus, setActionError, t }: Params) {
   const [request, setRequest] = useState<NoteMoveRequest | null>(null);
   const [busy, setBusy] = useState(false);
-  const moveNote = (note: MovedNote) => canWriteNotebook(note.notebookId) ? () => setRequest({ mode: 'move', note }) : undefined;
-  const renameNote = (note: MovedNote, applyTitle?: (title: string) => void) => canWriteNotebook(note.notebookId) ? () => setRequest({ mode: 'rename', note, applyTitle }) : undefined;
+  // A note being edited live (編輯中) or still pending is neither moved nor renamed until it is checked in.
+  const movable = (note: MovedNote) => canWriteNotebook(note.notebookId) && !('live' in note && note.live);
+  const moveNote = (note: MovedNote) => movable(note) ? () => setRequest({ mode: 'move', note }) : undefined;
+  const renameNote = (note: MovedNote, applyTitle?: (title: string) => void) => movable(note) ? () => setRequest({ mode: 'rename', note, applyTitle }) : undefined;
 
   /** The error a refused move shows: a taken destination reads as the dialog's own message. */
   const moveError = (error: unknown, destination: string) => {
@@ -166,7 +168,7 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
   const confirmRename = (name: string) => run(current => rename(current.note, name, current.mode === 'rename' ? current.applyTitle : undefined));
 
   /** Renames `note` to `name` at once, as the title typed in the editor asks, without the dialog. */
-  const renameNoteTo = (note: MovedNote, name: string) => canWriteNotebook(note.notebookId) ? perform(() => rename(note, name)) : Promise.resolve();
+  const renameNoteTo = (note: MovedNote, name: string) => movable(note) ? perform(() => rename(note, name)) : Promise.resolve();
 
   /** Puts the file of `note` at `destination` as it is, its title and text untouched, as a template file is renamed; a refusal is thrown to the caller. */
   const relocateFile = async (note: MovedNote, destination: string) => {

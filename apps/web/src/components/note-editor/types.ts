@@ -2,6 +2,7 @@ import type { FileResult } from '../../lib/files-api.js';
 import type { FileChangeScope } from '../../lib/file-change-scope.js';
 import type { NewVersionRequest } from '../../lib/history-api.js';
 import type { AssetItem, NotebookMetadataField, NoteItem } from '../../lib/types.js';
+import type { LiveNoteEditing } from '../../lib/live-api.js';
 
 // Types the editor's parts share with NoteEditor; kept apart so those parts need not import the editor itself.
 export type NotePanelMode = 'find' | 'outline' | 'frontmatter' | 'view' | 'history';
@@ -39,6 +40,11 @@ export interface NoteEditorSharedProps {
   template?: boolean;
   /** Copies the note as it is edited now into its notebook's templates and opens the copy; absent for a template and in a read-only notebook. */
   onSaveAsTemplate?: (note: { title: string; metadata: Record<string, unknown>; content: string; }) => void;
+  /**
+   * The note's repository hands its Markdown notes to a live editor: the note opens read-only with 編輯, which checks it
+   * out and frames the editor in zoom. Absent for notes the live editor does not take, and where the reader may not write.
+   */
+  live?: LiveNoteEditing;
 }
 
 /** What a host that embeds the editor sees of its session, for features it builds on top of the body. */

@@ -26,12 +26,14 @@ export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, 
   const revisions = useMemo(() => revisionSet(repositories), [repositories]);
   const notebooks = useMemo(() => notebookRepositories(repositories), [repositories]);
   const members = repositories.map(repository => repository.id).join('\n');
+  // Repositories whose notes are edited in a live editor, whose reads go stale without any commit.
+  const live = repositories.filter(repository => repository.live).map(repository => repository.id).join('\n');
   // A demo workspace's local commits are overlaid under the working changes; any other workspace has none.
   const committed = useCommittedLayer(repositories);
   const drafts = useMemo(() => composeCommitted(committed, activeWorkingNotes), [committed, activeWorkingNotes]);
   useLayoutEffect(() => {
-    setNoteQueryScope({ sourceId, revisions, repositories: notebooks, members, drafts, ...(committed === NO_COMMITTED ? {} : { committed }) });
-  }, [sourceId, revisions, notebooks, members, drafts, committed]);
+    setNoteQueryScope({ sourceId, revisions, repositories: notebooks, members, drafts, ...(live ? { live: live.split('\n') } : {}), ...(committed === NO_COMMITTED ? {} : { committed }) });
+  }, [sourceId, revisions, notebooks, members, drafts, committed, live]);
   const queryScope = useNoteQueryScope();
   const invalidateNotes = () => {
     void invalidateNoteQueries(queryClient);

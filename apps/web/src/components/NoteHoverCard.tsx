@@ -108,7 +108,7 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
     <div ref={cardRef} role='group' aria-label={t('focusList.cardLabel', { title: note.title })} className='note-hover-card' style={position ? { left: position.left, top: position.top } : { left: -9999, top: 0 }} {...cardProps}>
       <h3 className='note-hover-title'>{note.title}</h3>
       <div className='note-hover-status'>
-        <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateStatus(note, status)} onOpenChange={onMenuOpenChange} />
+        <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={note.live ? t('live.checkedOut') : undefined} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateStatus(note, status)} onOpenChange={onMenuOpenChange} />
       </div>
       {note.tags.length > 0 && <NoteTags tags={note.tags} className='note-hover-tags' />}
       <dl className='note-hover-fields'>
@@ -127,7 +127,7 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
           </button>
         )}
         {!readOnly && onMove && (
-          <button type='button' className='ui-button ui-button-small' onClick={() => (onMove(note), onDone())}>
+          <button type='button' className='ui-button ui-button-small' disabled={Boolean(note.live)} title={note.live ? t('live.checkedOut') : undefined} onClick={() => (onMove(note), onDone())}>
             <FolderInput aria-hidden='true' />
             {t('files.moveNote')}
           </button>
@@ -136,6 +136,8 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
           <button
             type='button'
             className={`ui-button ui-button-small ${deleteArmed ? 'ui-button-danger' : ''}`}
+            disabled={Boolean(note.live)}
+            title={note.live ? t('live.checkedOut') : undefined}
             onClick={() => onDelete(note) && onDone()}
           >
             <Trash2 aria-hidden='true' />

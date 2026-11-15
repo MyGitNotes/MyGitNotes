@@ -235,3 +235,10 @@ it('refuses a templated note in a read-only notebook', async () => {
   withTemplates();
   await expect(tools({ writable: false }).call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Dune' } })).rejects.toThrow('read-only');
 });
+
+it('refuses to write, edit or delete a note being edited live (編輯中)', async () => {
+  server.set('notes/live.md', { ...committed('notes/live.md', '# Live\n'), live: { since: '2026-11-15T01:00:00.000Z', activeEditors: 1, editorUrl: 'https://live.example.test/abc' } });
+  const { call, stageWorkingNote } = tools();
+  for (const [tool, args] of [['write_note', { path: 'notes/live.md', content: 'x' }], ['edit_note', { path: 'notes/live.md', oldText: 'Live', newText: 'Gone' }], ['delete_note', { path: 'notes/live.md' }]] as const) await expect(call(tool, args), tool).rejects.toThrow('notes/live.md is being edited live (編輯中)');
+  expect(stageWorkingNote).not.toHaveBeenCalled();
+});

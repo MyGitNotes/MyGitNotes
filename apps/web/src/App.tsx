@@ -119,6 +119,9 @@ import { FolderLinks } from './components/FolderLinks.js';
 import { I18nProvider, useTranslation } from './lib/i18n/index.js';
 import { AlertCircle, AlertTriangle, X } from 'lucide-react';
 import { LoadingStatus } from './components/LoadingStatus.js';
+import { isLiveNote, liveEditableKind, type LiveNoteEditing } from './lib/live-api.js';
+import type { LivePathPrompt } from './lib/new-note.js';
+import { LiveNewNoteDialog } from './components/live/LiveNewNoteDialog.js';
 
 const CompilationStudy = React.lazy(() => import('./components/CompilationStudy.js').then(module => ({ default: module.CompilationStudy })));
 const NotebookGraphPage = React.lazy(() => import('./components/NotebookGraphPage.js').then(module => ({ default: module.NotebookGraphPage })));
@@ -224,7 +227,19 @@ export const AppContent: React.FC = () => {
 
   useSourceReset({ sourceId, setEditingNote, setDeletedNotes });
 
-  const { routedNote, routedCommitted, routedLoading, routeError } = useRoutedNote({ config, editorRoute, editorNotebookId, editingNote, loading, sourceId, setEditingNote });
+  const { routedNote, routedCommitted, routedLoading, routeError } = useRoutedNote({
+    config,
+    editorRoute,
+    editorNotebookId,
+    editingNote,
+    loading,
+    sourceId,
+    setEditingNote,
+    onFiled: (notebookId, path) => {
+      const notebook = config?.notebooks.find(nb => nb.id === notebookId);
+      if (notebook && path.startsWith(`${notebook.root}/`)) navigate(noteRoute(notebook.id, path.slice(notebook.root.length + 1)) + location.search, { replace: true });
+    },
+  });
   /** Whether a note is one of its notebook's template files, which is edited in zoom and never opens in a Focus pane. */
   const isTemplate = (note: { notebookId: string; path: string; }) => isTemplatePath(config?.notebooks.find(nb => nb.id === note.notebookId), note.path);
   // A note's link opens it in the Focus, not zoom.
@@ -250,9 +265,13 @@ export const AppContent: React.FC = () => {
   const selectedNotebook = config?.notebooks.find(nb => nb.id === selectedNotebookId);
   const notebookTemplates = useNotebookTemplates(selectedNotebook);
   const [manageTemplatesOpen, setManageTemplatesOpen] = useState(false);
+  // A new note of a live repository whose template's path needs values asks for them first.
+  const [livePathRequest, setLivePathRequest] = useState<{ template: string; prompts: LivePathPrompt[]; answer: (values: Record<string, string> | null) => void; } | null>(null);
+  const selectedRepository = repositoryFor(selectedNotebookId);
+  const liveCreation = selectedRepository?.live && selectedRepository.write ? { askLivePathValues: (template: string, prompts: LivePathPrompt[]) => new Promise<Record<string, string> | null>(answer => setLivePathRequest({ template, prompts, answer })), open: (note: NoteListItem) => void handleOpenNote(note) } : undefined;
 
   // Create New Note dialog: its form state and the handlers that render or persist a new note draft.
-  const { createNote } = useCreateNote({ config, selectedNotebookId, setSelectedNotebookId, folders, browsedFolder: activeTab === 'notes' ? selectedFolder : null, foldersLoading, remote, canWrite, readDraft, templates: notebookTemplates.templates, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, sourceId, newNoteStatuses, t, onCreated: note => void openFromBrowse(note), onError: setActionError });
+  const { createNote } = useCreateNote({ config, selectedNotebookId, setSelectedNotebookId, folders, browsedFolder: activeTab === 'notes' ? selectedFolder : null, foldersLoading, remote, canWrite, readDraft, templates: notebookTemplates.templates, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, sourceId, newNoteStatuses, t, live: liveCreation, onCreated: note => void openFromBrowse(note), onError: setActionError });
 
   const outlineActions = useOutlineActions({ config, repositoryFor, readDraft, remote, sourceId, selectedNotebookId, locationKey: location.key, routedRef: editorRoute.note && editorNotebookId ? { notebookId: editorNotebookId, path: `${config?.notebooks.find(nb => nb.id === editorNotebookId)?.root}/${editorRoute.note}` } : null, prepareLeave: editorRegistry.flushEditors, openNote: handleOpenNote, openNewNote: options => void createNote(options), onError: setActionError });
 
@@ -291,6 +310,20 @@ export const AppContent: React.FC = () => {
     const writable = Boolean(repository?.write);
     const draft = activeWorkingNotes[noteRefKey(note)];
     const repositoryStatus = repository?.id === sourceId ? gitStatus : repository?.gitStatus ?? null;
+    // A repository with a live editor opens its Markdown notes read-only, edited there; outlines and templates keep the direct editor.
+    const live: LiveNoteEditing | undefined = repository?.live && repository.write && liveEditableKind(note.path) && !isTemplate(note)
+      ? {
+        editor: repository.live,
+        onRefetch: invalidateNotes,
+        openZoom: () => void handleOpenNote(note),
+        onCheckedIn: answer => {
+          // The check-in moved the repository's head; a pending note now lives at the path it was filed at.
+          void refreshWorkspace(true);
+          const notebook = config?.notebooks.find(nb => nb.id === note.notebookId);
+          if (answer?.filed && answer.path && notebook && answer.path.startsWith(`${notebook.root}/`)) navigate(noteRoute(notebook.id, answer.path.slice(notebook.root.length + 1)) + location.search, { replace: true });
+        },
+      }
+      : undefined;
     return {
       statuses: noteQueryStatuses(config?.notebooks || [], note.notebookId, Object.keys(facetsQuery.facets?.[note.notebookId]?.statuses || {})),
       metadataFields: config?.notebooks.find(nb => nb.id === note.notebookId)?.metadata,
@@ -324,6 +357,7 @@ export const AppContent: React.FC = () => {
       template: isTemplate(note),
       // Save as template writes a file of the note's own notebook, so it follows that notebook's write access.
       onSaveAsTemplate: editableNote && !isTemplate(note) ? edited => void templateActions.saveAsTemplate({ notebookId: note.notebookId, ...edited }).catch(error => setActionError((error as Error).message)) : undefined,
+      live,
     };
   };
   const closeZoom = () => {
@@ -415,7 +449,7 @@ export const AppContent: React.FC = () => {
       {dockedFocus && <FilterChips filters={filterProps} sections={railed ? [{ id: 'notebooks', label: t('sidebar.notebooks') }, { id: 'status', label: t('sidebar.status') }, ...(filterProps.tags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags') }] : [])] : []} onAdd={section => railed && section ? setRailSection(section) : setFiltersOpen(true)} />}
       <LegacySchemaNotice schemaVersion={config?.schema_version} />
       {actionError && <p role='alert' className='mb-3 text-sm text-danger'>{actionError}</p>}
-      {selectedNotes.length > 0 && <BulkActionsToolbar count={selectedNotes.length} statuses={notebookStatuses} availableTags={availableTags} busy={bulkBusy} readOnly={!canWriteFiles} canMove={Boolean(bulkMoveNotebookId)} onSetStatus={status => void runBulkStatus(status)} onAddTag={tag => void runBulkTag('add', tag)} onRemoveTag={tag => void runBulkTag('remove', tag)} onMove={() => setBulkMoveOpen(true)} onClear={clearSelection} />}
+      {selectedNotes.length > 0 && <BulkActionsToolbar count={selectedNotes.length} statuses={notebookStatuses} availableTags={availableTags} busy={bulkBusy} readOnly={!canWriteFiles} canMove={Boolean(bulkMoveNotebookId)} liveLocked={selectedNotes.some(isLiveNote)} onSetStatus={status => void runBulkStatus(status)} onAddTag={tag => void runBulkTag('add', tag)} onRemoveTag={tag => void runBulkTag('remove', tag)} onMove={() => setBulkMoveOpen(true)} onClear={clearSelection} />}
       {staleNotice && <p role='alert' className='mb-3 text-sm text-warning'>{staleNotice}</p>}
       {listResult.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.loadFailed', { message: listResult.error })}</p>}
       {facetsQuery.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.countsFailed', { message: facetsQuery.error })}</p>}
@@ -778,6 +812,20 @@ export const AppContent: React.FC = () => {
               )}
               {fileDialog && <FileManagerDialog notebookId={fileDialog.notebookId} notebooks={config?.notebooks || []} writable={canWriteFiles} initialPath={fileDialog.path} movePath={fileDialog.movePath} initialOperation={fileDialog.initialOperation} showDocuments={fileDialog.showDocuments} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} onClose={() => setFileDialog(undefined)} />}
               {noteMove.request?.mode === 'move' && movingNotebook && <FolderPickerDialog notebooks={[movingNotebook]} folders={folders} title={t('files.moveNoteTitle', { title: noteMove.request.note.title || noteMove.request.note.path.split('/').pop() || '' })} initial={{ notebookId: movingNotebook.id, folder: noteFolder(noteMove.request.note.path, movingNotebook.root) }} confirmLabel={t('bulk.moveConfirm')} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={({ folder }) => void noteMove.confirmMove(folder)} />}
+              {livePathRequest && (
+                <LiveNewNoteDialog
+                  template={livePathRequest.template}
+                  prompts={livePathRequest.prompts}
+                  onConfirm={values => {
+                    livePathRequest.answer(values);
+                    setLivePathRequest(null);
+                  }}
+                  onCancel={() => {
+                    livePathRequest.answer(null);
+                    setLivePathRequest(null);
+                  }}
+                />
+              )}
               {manageTemplatesOpen && selectedNotebook && <ManageTemplatesDialog notebookTitle={selectedNotebook.title} templates={notebookTemplates.templates} builtin={builtinNoteTemplates(t)} loading={notebookTemplates.loading} error={notebookTemplates.error} readOnly={!canWrite} fileActions={canWriteFiles} onCreate={name => templateActions.createTemplate(selectedNotebook.id, name)} onEdit={templateActions.editTemplate} onRename={templateActions.renameTemplate} onDelete={templateActions.deleteTemplate} onClose={() => setManageTemplatesOpen(false)} />}
               {noteMove.request?.mode === 'rename' && <RenameNoteDialog path={noteMove.request.note.path} title={noteMove.request.note.title} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={title => void noteMove.confirmRename(title)} />}
               {bulkMoveOpen && bulkMoveNotebook && (

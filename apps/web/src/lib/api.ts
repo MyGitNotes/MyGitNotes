@@ -6,6 +6,7 @@ import type { WorkspaceAnswer } from './workspace-repositories.js';
 import { demoScopeOfNotebook, hasDemoScopes } from './demo-storage.js';
 import { localCommittedEntry } from './local-commits.js';
 import type { ListedNoteTemplate } from '@mygitnotes/core/note-template';
+import { translateNow } from './i18n/context.js';
 
 const API_BASE = '/api';
 /** The outcome of pushing one committed note to the Gist its `gist` frontmatter names. */
@@ -30,17 +31,35 @@ export async function commitRemoteNotes(repository: RepositoryId, notes: ({ path
   if (!res.ok) throw await responseError(res, 'Failed to commit notes');
   return res.json();
 }
+/** What else an error answer said: its `code` (`checked-out`, `too-large`, `not-live`), the paths it names, and where a filed live note went. */
+export interface ApiErrorDetails {
+  code?: string;
+  paths?: string[];
+  movedTo?: string;
+}
+
 export class ApiError extends Error {
+  readonly code?: string;
+  readonly paths?: string[];
+  readonly movedTo?: string;
   /** `staleRepositories` names the repositories whose revision a 409 rejected; `reauthorize` means signing in again grants what the request lacked. */
-  constructor(message: string, public status: number, public retryAfter?: number, public staleRepositories?: RepositoryId[], public reauthorize = false) {
+  constructor(message: string, public status: number, public retryAfter?: number, public staleRepositories?: RepositoryId[], public reauthorize = false, details: ApiErrorDetails = {}) {
     super(message);
+    this.code = details.code;
+    this.paths = details.paths;
+    this.movedTo = details.movedTo;
   }
 }
+
+const textList = (value: unknown): string[] | undefined => Array.isArray(value) && value.every(item => typeof item === 'string') ? value : undefined;
 
 export async function responseError(res: Response, fallback: string): Promise<ApiError> {
   const data = await res.json().catch(() => ({}));
   const seconds = Number(res.headers.get('Retry-After') || data.retryAfter);
-  return new ApiError(data.error || fallback, res.status, Number.isFinite(seconds) && seconds > 0 ? seconds : undefined, Array.isArray(data.staleRepositories) ? data.staleRepositories : undefined, data.reauthorize === true);
+  const details: ApiErrorDetails = { ...(typeof data.code === 'string' ? { code: data.code } : {}), ...(textList(data.paths) ? { paths: textList(data.paths) } : {}), ...(typeof data.movedTo === 'string' ? { movedTo: data.movedTo } : {}) };
+  // A write refused because a note is being edited live (編輯中) reads the same wherever it is shown.
+  const message = details.code === 'checked-out' ? translateNow(details.paths?.length ? 'live.checkedOutPaths' : 'live.checkedOut', { paths: details.paths?.join(', ') ?? '' }) : data.error || fallback;
+  return new ApiError(message, res.status, Number.isFinite(seconds) && seconds > 0 ? seconds : undefined, Array.isArray(data.staleRepositories) ? data.staleRepositories : undefined, data.reauthorize === true, details);
 }
 
 /** Publishes a note body as a secret Gist of the signed-in GitHub account. */
@@ -116,17 +135,14 @@ export async function readNotes(repository: RepositoryId, paths: string[], revis
 
 export async function saveNote(params: { path: string; content: string; metadata?: Record<string, unknown>; commitMessage?: string; createOnly?: boolean; revision?: string; noCommit?: boolean; notebookId?: string; }): Promise<{ success: boolean; note: NoteItem; commit?: { commitHash: string; }; committed?: boolean; }> {
   const res = await fetch(`${API_BASE}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new ApiError(err.error || 'Failed to save note', res.status);
-  }
+  if (!res.ok) throw await responseError(res, 'Failed to save note');
   return res.json();
 }
 
 export async function deleteNote(path: string, options?: { noCommit?: boolean; notebookId?: string; }): Promise<{ success: boolean; committed?: boolean; pending?: boolean; }> {
   const url = `${API_BASE}/notes?path=${encodeURIComponent(path)}${options?.noCommit ? '&noCommit=true' : ''}${options?.notebookId ? `&notebookId=${encodeURIComponent(options.notebookId)}` : ''}`;
   const res = await fetch(url, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to delete note');
+  if (!res.ok) throw await responseError(res, 'Failed to delete note');
   return res.json();
 }
 

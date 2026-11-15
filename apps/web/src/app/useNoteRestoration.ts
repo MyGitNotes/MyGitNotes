@@ -67,6 +67,11 @@ export function useNoteRestoration({ remote, readDraft, updateDraft, setEditingN
   // In-table status change without opening note
   const handleUpdateNoteStatus = async (note: NoteListItem, newStatus: string) => {
     setActionError('');
+    // A note being edited live (編輯中) changes its status in the live editor until it is checked in.
+    if (note.live) {
+      setActionError(t('live.checkedOut'));
+      return false;
+    }
     // The row carries no body; the note is read in full before the status is written.
     try {
       await handleSaveNote(await noteStatusChange(readNoteForChange, note, newStatus));

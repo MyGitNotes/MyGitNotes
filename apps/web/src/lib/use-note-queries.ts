@@ -33,6 +33,18 @@ export interface NoteQueryScope {
   drafts: WorkingNotes;
   /** A demo workspace's local commits: the committed notes the editor merges against, in place of the server's. */
   committed?: CommittedLayer;
+  /** Repositories with a live editor: their notes change there without a commit, so their reads refresh on their own. */
+  live?: RepositoryId[];
+}
+
+/** How often a read of a live repository's notes refreshes, and on window focus (spec §8). */
+export const LIVE_REFRESH_MS = 60_000;
+
+/** Refresh options for a query of `notebookIds` (every notebook when undefined): set only where a live repository is read. */
+export function liveRefresh(scope: NoteQueryScope, notebookIds?: readonly string[]): { refetchOnWindowFocus?: 'always'; refetchInterval?: number; } {
+  if (!scope.live?.length) return {};
+  const live = notebookIds === undefined ? true : notebookIds.some(id => scope.live!.includes(scope.repositories[id]));
+  return live ? { refetchOnWindowFocus: 'always', refetchInterval: LIVE_REFRESH_MS } : {};
 }
 
 const EMPTY_DRAFTS: WorkingNotes = {};
@@ -173,7 +185,7 @@ export function useNoteList(query: Partial<NoteQuery> | null, options: NoteListO
   const content = Boolean(options.content);
   const input = useStable(query ? noteQueryInput(query) : null);
   const revisions = scopedRevisions(scope, input?.notebookId);
-  const result = useInfiniteQuery({ queryKey: queryKey(scope, revisions, 'query', { query: input, limit, content }), queryFn: ({ pageParam }) => fetchNoteQuery(input!, { revisions, cursor: pageParam, limit, content }), initialPageParam: undefined as string | undefined, getNextPageParam: (page: NoteQueryPage) => page.nextCursor ?? undefined, enabled: Boolean(input) && Boolean(scope.sourceId), placeholderData: keepPreviousData });
+  const result = useInfiniteQuery({ queryKey: queryKey(scope, revisions, 'query', { query: input, limit, content }), queryFn: ({ pageParam }) => fetchNoteQuery(input!, { revisions, cursor: pageParam, limit, content }), initialPageParam: undefined as string | undefined, getNextPageParam: (page: NoteQueryPage) => page.nextCursor ?? undefined, enabled: Boolean(input) && Boolean(scope.sourceId), placeholderData: keepPreviousData, ...liveRefresh(scope, input?.notebookId && input.notebookId !== 'all' ? [input.notebookId] : undefined) });
   // A disabled query keeps the previous answer as placeholder data; a view that asked for
   // nothing must still see nothing.
   const rows = useMemo(() => (input ? result.data?.pages.flatMap(page => page.notes) ?? [] : []), [result.data, input]);
@@ -224,7 +236,7 @@ export function useNoteLookup(refs: NoteRef[], content: boolean): { notes: NoteL
   const scope = useNoteQueryScope();
   const stable = useStable(refs);
   const options = noteLookupOptions(scope, stable, content);
-  const result = useQuery(options);
+  const result = useQuery({ ...options, ...liveRefresh(scope, stable.map(ref => ref.notebookId)) });
   const served = useMemo(() => result.data?.notes ?? [], [result.data]);
   // In a demo the committed note is the one committed in this browser, where there is one.
   const committed = useMemo(() => withLocalCommitted(served, stable, scope.committed), [served, scope.committed, stable]);

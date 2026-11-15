@@ -149,6 +149,9 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     }
     // A note this page just moved is not deleted: the editor of its old path is on its way out.
     if (error instanceof ApiError && error.status === 404 && isNoteMoving(noteRefKey(note))) return;
+    // A read-only editor holds nothing of the reader's to keep: a note checked in and filed elsewhere, or deleted, is the route's to follow.
+    const state = current.current;
+    if (error instanceof ApiError && error.status === 404 && readOnly && state.content === state.baseNote.content && sameValue(state.metadata, state.baseNote.metadata)) return;
     if (error instanceof ApiError && error.status === 404) {
       preserveConflict();
       current.current.blocked = true;

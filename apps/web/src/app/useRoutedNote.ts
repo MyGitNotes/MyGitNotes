@@ -1,5 +1,6 @@
 import { sameNote } from '@mygitnotes/core/note-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ApiError, readNote } from '../lib/api.js';
 import type { NotebookConfig, NoteItem } from '../lib/types.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { useNoteLookup } from '../lib/use-note-queries.js';
@@ -13,10 +14,15 @@ interface UseRoutedNoteParams {
   loading: boolean;
   sourceId: string;
   setEditingNote: (note: NoteListItem | null) => void;
+  /** A pending live note that was checked in and filed: the note now lives at `path` of the same notebook. */
+  onFiled?: (notebookId: string, path: string) => void;
 }
 
+/** A pending live note's virtual path (`<root>/.live/<id>.md`). */
+const PENDING_PATH = /\/\.live\/[A-Za-z0-9_-]{1,64}\.md$/;
+
 /** Opening a note reads that one note, with its body, instead of holding every note in memory. */
-export function useRoutedNote({ config, editorRoute, editorNotebookId, editingNote, loading, sourceId, setEditingNote }: UseRoutedNoteParams) {
+export function useRoutedNote({ config, editorRoute, editorNotebookId, editingNote, loading, sourceId, setEditingNote, onFiled }: UseRoutedNoteParams) {
   const [routeError, setRouteError] = useState('');
   const routedNotebook = config?.notebooks.find(nb => nb.id === editorNotebookId) || (!editorRoute.notebook ? config?.notebooks[0] : undefined);
   const routedPath = editorRoute.note && routedNotebook ? `${routedNotebook.root}/${editorRoute.note}` : null;
@@ -57,6 +63,23 @@ export function useRoutedNote({ config, editorRoute, editorNotebookId, editingNo
     }
     setRouteError('route.noteNotFound');
   }, [editorRoute, config, loading, editorNotebookId, sourceId, routedNotebook, routedNote, routedLoading, routedLookup.error, setEditingNote]);
+
+  // A pending live note that is gone was most likely checked in: the server says where it was filed, and the note opens there.
+  const missingPending = !loading && Boolean(routedPath && routedNotebook && PENDING_PATH.test(routedPath)) && !routedNote && !routedLoading && !routedLookup.error;
+  const filed = useRef(onFiled);
+  useEffect(() => {
+    filed.current = onFiled;
+  });
+  useEffect(() => {
+    if (!missingPending || !routedPath || !routedNotebook) return;
+    let current = true;
+    readNote(routedPath, routedNotebook.id).catch(error => {
+      if (current && error instanceof ApiError && error.movedTo) filed.current?.(routedNotebook.id, error.movedTo);
+    });
+    return () => {
+      current = false;
+    };
+  }, [missingPending, routedPath, routedNotebook]);
 
   return { routedNotebook, routedPath, routedNote, routedCommitted, routedLoading, routeError };
 }

@@ -1,4 +1,5 @@
 export type { NotebookConfig, NotebookMetadataField, NotebookStatus, StatusColorName, ViewMode, WorkspaceConfig } from '@mygitnotes/core';
+import type { LiveNoteState } from '@mygitnotes/core';
 
 export interface NoteItem {
   revision?: string;
@@ -13,6 +14,8 @@ export interface NoteItem {
   lineNumberOffset?: number;
   mtime?: number;
   size?: number;
+  /** Present while the note is checked out to the live editor (編輯中), or pending: the text is the live text. */
+  live?: LiveNoteState;
 }
 
 export interface AssetItem {
