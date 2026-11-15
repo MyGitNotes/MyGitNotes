@@ -83,12 +83,22 @@ type StaleListener = (message: string, staleRepositories?: RepositoryId[]) => vo
 const staleListeners = new Set<StaleListener>();
 let lastStaleReport = 0;
 
+/** Whether a note query's key names a repository revision other than the one the scope reads now. */
+function leftRevision(queryKey: readonly unknown[]): boolean {
+  const keyed = queryKey[2];
+  if (!Array.isArray(keyed)) return false;
+  const { revisions } = readScope();
+  return keyed.some(entry => Array.isArray(entry) && typeof entry[0] === 'string' && entry[0] in revisions && revisions[entry[0]] !== entry[1]);
+}
+
 export function handleNoteQueryError(error: unknown, query: { queryKey: readonly unknown[]; state: { data?: unknown; }; }): void {
   if (query.queryKey[0] !== NOTE_QUERY_KEY[0]) return;
   const status = error instanceof ApiError ? error.status : 0;
   const loadedPages = (query.state.data as { pages?: unknown[]; } | undefined)?.pages?.length ?? 0;
   // A 400 on a first page is a malformed query, not a stale cursor; restarting it would loop.
   if (status !== 409 && !(status === 400 && loadedPages > 0)) return;
+  // A query asked at a revision this client has already left (the answer came after the refresh it would ask for) says nothing new.
+  if (status === 409 && leftRevision(query.queryKey)) return;
   if (Date.now() - lastStaleReport < 2000) return;
   lastStaleReport = Date.now();
   const message = error instanceof Error ? error.message : '';

@@ -161,7 +161,7 @@ export async function applyTagChange(repository: RepositoryId, entries: { path: 
 
 export async function restoreNote(params: { path: string; content?: string; metadata?: Record<string, unknown>; notebookId?: string; }): Promise<{ success: boolean; note: NoteItem | null; }> {
   const res = await fetch(`${API_BASE}/notes/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) });
-  if (!res.ok) throw new Error('Failed to restore note');
+  if (!res.ok) throw await responseError(res, 'Failed to restore note');
   return res.json();
 }
 
@@ -359,9 +359,8 @@ export async function fetchFolders(): Promise<FolderItem[]> {
 
 export async function moveAsset(params: { path: string; directory: string; revision?: string; }): Promise<{ path: string; }> {
   const res = await fetch(`${API_BASE}/assets`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params) });
-  const data = await res.json();
-  if (!res.ok) throw new ApiError(data.error || 'Failed to move asset', res.status);
-  return data;
+  if (!res.ok) throw await responseError(res, 'Failed to move asset');
+  return res.json();
 }
 
 /** A thesis-toolkit project a note belongs to, as the local server found it (local mode only). */

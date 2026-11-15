@@ -1,11 +1,12 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from '../../lib/i18n/index.js';
-import { checkOutLive, keepsDirectEditor, type LiveCheckoutView, type LiveNoteEditing, requestLiveEdit, takeLiveEditRequest } from '../../lib/live-api.js';
+import { checkOutLive, forgetCheckedIn, keepsDirectEditor, type LiveCheckInAnswer, type LiveCheckoutView, type LiveNoteEditing, markCheckedIn, recentlyCheckedIn, requestLiveEdit, takeLiveEditRequest } from '../../lib/live-api.js';
 import type { LiveTheme } from '../../lib/live-message.js';
 import { getThemeChoice, resolveMode, subscribeThemeChoice } from '../../lib/themes.js';
 import type { NoteItem } from '../../lib/types.js';
 import { EditorNotice } from '../EditorNotice.js';
+import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 
 /** The app's light or dark mode now, which the framed editor follows. */
@@ -28,6 +29,8 @@ interface LiveEditState {
   error?: string;
   /** Why the note opens in the direct editor instead: the live editor refused it. */
   direct?: string;
+  /** This page checked the note in just before this editor mounted: the read view says 「已簽回」 above the new text. */
+  checkedIn?: boolean;
 }
 
 /**
@@ -38,9 +41,13 @@ interface LiveEditState {
  */
 export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; live?: LiveNoteEditing; frame: string; refetch: () => void; }) {
   const { t } = useTranslation();
-  const [state, setState] = useState<LiveEditState>({});
   const zoom = frame === 'zoom';
   const key = noteRefKey(note);
+  const [state, setState] = useState<LiveEditState>(() => zoom && live && recentlyCheckedIn(key) ? { checkedIn: true } : {});
+  // The mark is said once: a later visit to the note reads it as usual.
+  useEffect(() => {
+    if (state.checkedIn) forgetCheckedIn(key);
+  }, [state.checkedIn, key]);
   const latest = useRef({ refetch, live, notebookId: note.notebookId, path: note.path });
   useEffect(() => {
     latest.current = { refetch, live, notebookId: note.notebookId, path: note.path };
@@ -83,7 +90,15 @@ export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; li
     live?.openZoom?.();
   };
   const close = () => setState({});
+  /** The frame checked the note in: the mark outlives this editor, which the workspace refresh replaces, then the app hears of it. */
+  const checkedIn = (answer?: LiveCheckInAnswer) => {
+    const { notebookId } = latest.current;
+    if (!answer || answer.released) markCheckedIn([key, ...(answer?.path ? [noteRefKey({ notebookId, path: answer.path })] : [])]);
+    latest.current.live?.onCheckedIn?.(answer);
+  };
   const conflict = note.live?.conflict;
-  const notices = <>{state.busy && <LoadingStatus className='editor-notice'>{t('live.checkingOut')}</LoadingStatus>}{state.error && <EditorNotice tone='error'>{state.error}</EditorNotice>}{state.direct && <EditorNotice>{state.direct}</EditorNotice>}{active && conflict && !state.checkout && <EditorNotice>{t('live.conflict', { commit: conflict.overwritten.slice(0, 7) })}</EditorNotice>}</>;
-  return { active, checkout: zoom ? state.checkout : undefined, edit, close, notices, refetch: () => latest.current.refetch() };
+  const conflictShown = active && conflict && !state.checkout;
+  const notices = <>{state.busy && <LoadingStatus className='editor-notice'>{t('live.checkingOut')}</LoadingStatus>}{state.error && <EditorNotice tone='error'>{state.error}</EditorNotice>}{state.direct && <EditorNotice>{state.direct}</EditorNotice>}{state.checkedIn && <EditorNotice actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{t('live.checkedIn')}</EditorNotice>}{conflictShown && <EditorNotice>{t('live.conflict', { commit: conflict.overwritten.slice(0, 7) })}</EditorNotice>}</>;
+  const hasNotices = Boolean(state.busy || state.error || state.direct || state.checkedIn || conflictShown);
+  return { active, checkout: zoom ? state.checkout : undefined, edit, close, checkedIn, notices, hasNotices, refetch: () => latest.current.refetch() };
 }

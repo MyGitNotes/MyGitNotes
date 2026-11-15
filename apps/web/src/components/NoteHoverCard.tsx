@@ -10,6 +10,7 @@ import type { HoverCardTarget } from '../lib/use-note-hover-card.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
 import { NoteTags } from './NoteTags.js';
 import './focus-list.css';
+import { LiveBadge } from './live/LiveBadge.js';
 
 const CARD_WIDTH = 320;
 const GAP = 8;
@@ -109,6 +110,7 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
       <h3 className='note-hover-title'>{note.title}</h3>
       <div className='note-hover-status'>
         <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={note.live ? t('live.checkedOut') : undefined} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateStatus(note, status)} onOpenChange={onMenuOpenChange} />
+        <LiveBadge live={note.live} />
       </div>
       {note.tags.length > 0 && <NoteTags tags={note.tags} className='note-hover-tags' />}
       <dl className='note-hover-fields'>

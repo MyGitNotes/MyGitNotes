@@ -10,7 +10,9 @@ import { NoteEditor, type NoteEditorProps } from '../NoteEditor.js';
 import { ListView } from '../ListView.js';
 import { CardView } from '../CardView.js';
 import { BulkActionsToolbar } from '../BulkActionsToolbar.js';
-import { responseError } from '../../lib/api.js';
+import { moveAsset, responseError, restoreNote } from '../../lib/api.js';
+import { mutateFile } from '../../lib/files-api.js';
+import { LiveNewNoteDialog } from './LiveNewNoteDialog.js';
 
 vi.mock('../MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; readOnly: boolean; }>(({ content, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, readOnly, onChange: () => {} })) }));
 
@@ -125,8 +127,8 @@ describe('lists', () => {
   });
 
   it('lock the bulk actions while the selection holds a checked-out note', () => {
-    render(createElement(BulkActionsToolbar, { count: 2, statuses: ['inbox'], availableTags: [], busy: false, readOnly: false, canMove: true, liveLocked: true, onSetStatus: vi.fn(), onAddTag: vi.fn(), onRemoveTag: vi.fn(), onMove: vi.fn(), onClear: vi.fn() }));
-    expect(screen.getByText('Being edited live; check it in first')).toBeInTheDocument();
+    render(createElement(BulkActionsToolbar, { count: 2, statuses: ['inbox'], availableTags: [], busy: false, readOnly: false, canMove: true, liveNotes: ['Alpha'], onSetStatus: vi.fn(), onAddTag: vi.fn(), onRemoveTag: vi.fn(), onMove: vi.fn(), onClear: vi.fn() }));
+    expect(screen.getByText('Being edited live; check it in first: Alpha')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Move/ })).toBeDisabled();
   });
 });
@@ -154,5 +156,88 @@ describe('a live note that was checked in and filed elsewhere', () => {
     expect(onReadRemote).toHaveBeenCalled();
     expect(onMarkConflict).not.toHaveBeenCalled();
     expect(screen.queryByText(/moved or deleted remotely/)).toBeNull();
+  });
+});
+
+describe('a live note on a phone', () => {
+  it('keeps the live bar out from under the note header, so 立即簽回 and the save state stay reachable', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+    fetchMock.mockResolvedValue(json({ checkout: view, outcome: 'created' }));
+    const { container } = render(noteEditor({ live: { editor, onRefetch: vi.fn() } }));
+    expect(container.querySelector('.note-editor')).toHaveAttribute('data-phone-bar', 'overlay');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    expect(document.querySelector('iframe')).not.toBeNull();
+    expect(container.querySelector('.note-editor')).toHaveAttribute('data-phone-bar', 'flow');
+    expect(screen.getByRole('button', { name: 'Check in now' })).toBeInTheDocument();
+  });
+});
+
+describe('a note checked in from its frame', () => {
+  it('still says 已簽回 once the editor remounts for the new revision', async () => {
+    const onCheckedIn = vi.fn();
+    fetchMock.mockImplementation(async (url: string) => url === '/api/live/checkout' ? json({ checkout: view, outcome: 'created' }) : json({ id: 'abc', path: note.path, committed: true, commit: 'c'.repeat(40), released: true, revision: 'c'.repeat(40) }));
+    const live = { editor, onRefetch: vi.fn(), onCheckedIn };
+    const first = render(noteEditor({ live }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'live-status', users: 1, saved: true, connected: true, released: false }, origin: editor.origin, source: document.querySelector('iframe')!.contentWindow }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Check in now' }));
+    });
+    expect(onCheckedIn).toHaveBeenCalledWith(expect.objectContaining({ released: true }));
+    // The workspace refresh replaces the editor (the routed note reloads at the new revision).
+    first.unmount();
+    render(noteEditor({ live }));
+    expect(screen.getByText('Checked in')).toBeInTheDocument();
+    expect(screen.getByLabelText('Note content')).toHaveAttribute('readonly');
+  });
+});
+
+describe('a read-only note deleted elsewhere, without a live editor', () => {
+  it('still says it was moved or deleted', async () => {
+    const onReadRemote = vi.fn(async () => {
+      throw await responseError(json({ error: 'Note not found.' }, 404), 'Failed');
+    });
+    await act(async () => {
+      render(noteEditor({ frame: 'pane', onClose: undefined, readOnly: true, draftMode: true, onReadRemote, onMarkConflict: vi.fn() }));
+    });
+    expect(onReadRemote).toHaveBeenCalled();
+    expect(screen.getByText(/moved or deleted remotely/)).toBeInTheDocument();
+  });
+});
+
+describe('the live New dialog', () => {
+  it('puts the first focus in its first field, not on ✕', () => {
+    HTMLDialogElement.prototype.showModal = vi.fn(function(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+      this.querySelector('button')?.focus();
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    });
+    try {
+      render(createElement(LiveNewNoteDialog, { template: 'Meeting', prompts: [{ name: 'kind', default: 'Other', description: 'Meeting kind' }, { name: 'room', default: 'A' }], onConfirm: vi.fn(), onCancel: vi.fn() }));
+      expect(screen.getByRole('textbox', { name: 'Meeting kind' })).toHaveFocus();
+    } finally {
+      cleanup();
+      Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal');
+      Reflect.deleteProperty(HTMLDialogElement.prototype, 'close');
+    }
+  });
+});
+
+describe('file operations refused for a checked-out note', () => {
+  const refusal = () => json({ error: 'Checked out to the live editor (編輯中): notes/life/a.md. Read the note again, or check it in with check_in_note first.', code: 'checked-out', paths: ['notes/life/a.md'] }, 409);
+  it('read as 編輯中 in the file manager, asset moves and restore', async () => {
+    document.documentElement.lang = 'zh-TW';
+    fetchMock.mockImplementation(async () => refusal());
+    await expect(mutateFile({ type: 'delete', path: 'notes/life/a.md' } as never)).rejects.toMatchObject({ status: 409, code: 'checked-out', message: '編輯中，請先簽回：notes/life/a.md' });
+    await expect(moveAsset({ path: 'notes/life/a.png', directory: 'notes/life/img' })).rejects.toMatchObject({ status: 409, message: '編輯中，請先簽回：notes/life/a.md' });
+    await expect(restoreNote({ path: 'notes/life/a.md', notebookId: 'notes~life' })).rejects.toMatchObject({ status: 409, message: '編輯中，請先簽回：notes/life/a.md' });
   });
 });

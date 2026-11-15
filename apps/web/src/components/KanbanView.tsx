@@ -139,7 +139,8 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
           <div className='font-medium text-fg text-sm line-clamp-2 transition min-w-0'>{note.title}</div>
           <LiveBadge live={note.live} />
         </div>
-        <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />
+        {/* A note being edited live keeps its column, so its card offers no handle to drag it to another. */}
+        {!note.live && <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />}
       </div>
       {note.tags.length > 0 && <NoteTags tags={note.tags} oneLine className='mb-2.5' />}
       {/* Card Actions & Timestamp */}

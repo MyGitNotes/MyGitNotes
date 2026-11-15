@@ -11,6 +11,7 @@ import type { NoteItem } from '../../lib/types.js';
 import type { MarkdownEditorMode } from '../MarkdownEditor.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { NoteStatusSelect } from '../NoteStatusSelect.js';
+import { LiveBadge } from '../live/LiveBadge.js';
 import { PhoneSheet } from '../PhoneSheet.js';
 import { PHONE_TOOLS } from './phone-tools.js';
 import { NoteRowTags } from './NoteRowTags.js';
@@ -77,6 +78,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
           )}
         {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
         <div className='phone-note-title' title={title}>{title}</div>
+        <LiveBadge live={props.note.live} />
         <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
         {!autoSave && !readOnly && (
           <button type='button' className='ui-icon-button' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave}>

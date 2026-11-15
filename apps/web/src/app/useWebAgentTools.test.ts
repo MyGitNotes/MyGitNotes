@@ -18,6 +18,8 @@ const scope = draftScope(repository);
 const store = draftStore(repository);
 const committed = (path: string, content: string, metadata: Record<string, unknown> = {}): NoteItem => ({ id: path, path, notebookId: 'notes~life', title: path, content, metadata, tags: [], revision: repository.revision });
 const server = new Map<string, NoteItem>();
+/** A cached lookup answers as it was before the note was checked out; only a fresh read sees the checkout. */
+const cachedWithoutLive = (note: NoteItem | null, fresh?: boolean): NoteItem | null => note?.live && !fresh ? { ...note, live: undefined } : note;
 
 function tools({ writable = true } = {}) {
   const readDraft = (_notebookId: string, path: string) => readWorkingNotes(store)[path];
@@ -29,7 +31,7 @@ function tools({ writable = true } = {}) {
     return note;
   });
   const active = (): WorkingNotes => Object.fromEntries(Object.values(readWorkingNotes(store)).map(entry => [noteRefKey(entry.note), entry]));
-  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: active(), repositoryFor: () => repository, canWriteNotebook: () => writable, revisionFor: () => repository.revision, readDraft, updateDraft, stageWorkingNote, findCommittedNote: async ref => server.get(ref.path) ?? null, resolveBareNotebook: localId => localId === 'life' ? 'notes~life' : null }));
+  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: active(), repositoryFor: () => repository, canWriteNotebook: () => writable, revisionFor: () => repository.revision, readDraft, updateDraft, stageWorkingNote, findCommittedNote: async (ref, options) => cachedWithoutLive(server.get(ref.path) ?? null, options?.fresh), resolveBareNotebook: localId => localId === 'life' ? 'notes~life' : null }));
   return { call: result.current, stageWorkingNote };
 }
 

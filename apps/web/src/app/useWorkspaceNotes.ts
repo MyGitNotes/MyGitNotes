@@ -45,8 +45,8 @@ export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, 
   // The server answers from each branch head: a rejected revision or cursor means this client is
   // behind, so the workspace is refreshed and the lists reading a stale repository restart from their first page.
   const [staleNotice, setStaleNotice] = useState('');
-  useStaleNoteQueries((message, stale) => {
-    setStaleNotice(message);
+  useStaleNoteQueries((_message, stale) => {
+    setStaleNotice(t('notes.repositoryChanged'));
     void refreshWorkspace(true).then(() => resetStaleNoteQueries(queryClient, stale));
   });
   const revisionKey = JSON.stringify(revisions);
@@ -57,10 +57,12 @@ export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, 
   }
   /** The committed note, ignoring any staged draft, for use as a merge base. */
   /** The committed note at `ref`, or null when the repository has none there. */
-  const findCommittedNote = async (ref: NoteRef): Promise<NoteItem | null> => {
+  /** `fresh` reads a live repository's note past the cache: a checkout (編輯中) changes what it answers without moving its revision. */
+  const findCommittedNote = async (ref: NoteRef, options: { fresh?: boolean; } = {}): Promise<NoteItem | null> => {
     const local = committed[noteRefKey(ref)];
     if (local) return local.deleted ? null : local.note;
-    const result = await queryClient.fetchQuery(noteLookupOptions(queryScope, [ref], true));
+    const live = options.fresh && queryScope.live?.includes(queryScope.repositories[ref.notebookId]);
+    const result = await queryClient.fetchQuery({ ...noteLookupOptions(queryScope, [ref], true), ...(live ? { staleTime: 0 } : {}) });
     const note = result.notes[0];
     return note && typeof note.content === 'string' ? note as NoteItem : null;
   };

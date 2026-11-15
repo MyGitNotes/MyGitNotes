@@ -193,14 +193,14 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // write it succeeds, so `:wq` still closes. `:q` closes a zoomed note the way its back button does.
   const canCommitNow = Boolean(footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) }).onCommit);
   const vimRoot = useVimCommands({ write: async () => canCommitNow ? session.commitNote() : !autoSave && !readOnly && session.hasUnsavedChanges ? session.handleExplicitSave() : true, quit: frame === 'zoom' && onClose ? session.close : undefined });
-  // A phone's note screen: the title bar rides over the text and slides away while it scrolls down, unless a notice or the formatting toolbar sits above the text and needs the room the bar would cover.
+  // A phone's note screen: the title bar rides over the text and slides away while it scrolls down, unless a notice, the formatting toolbar or the framed live editor's bar sits above the text and needs the room the bar would cover.
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
   const rootRef = useCallback((node: HTMLElement | null) => {
     vimRoot(node);
     setRootElement(node);
   }, [vimRoot]);
   const formatToolbarShown = showFormatToolbar && !reading;
-  const barOverlay = phone && !hasEditorNotices(session) && !formatToolbarShown;
+  const barOverlay = phone && !hasEditorNotices(session) && !formatToolbarShown && !liveEdit.checkout && !liveEdit.hasNotices;
   const barHidden = usePhoneBarHidden(rootElement, barOverlay);
 
   // A compilation's section and a graph card show the note as it reads; their 編輯 opens zoom.
@@ -261,7 +261,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
         </p>
       )}
-      {live && liveEdit.checkout && <LiveEditorFrame checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={live.onCheckedIn} />}
+      {live && liveEdit.checkout && <LiveEditorFrame checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} />}
       {formatToolbarShown && !liveEdit.checkout && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       {!liveEdit.checkout && (
         <div className='note-editor-body'>

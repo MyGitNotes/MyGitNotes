@@ -18,3 +18,6 @@
 
 /* A compilation's section or a graph card offers 編輯, which opens the note in zoom. */
 .note-live-edit { display: flex; justify-content: flex-end; padding: 4px 8px 0; }
+
+/* A Focus row's title may take two lines; its badge sits by the title's middle, not its top. */
+.focus-row > .live-badge { align-self: center; }

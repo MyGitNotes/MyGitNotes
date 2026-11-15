@@ -25,7 +25,7 @@ export function LiveNewNoteDialog({ template, prompts, onConfirm, onCancel }: { 
         {prompts.map((prompt, index) => (
           <label key={prompt.name}>
             {prompt.description ?? prompt.name}
-            <input className='ui-control' aria-label={prompt.description ?? prompt.name} value={values[prompt.name] ?? ''} maxLength={200} autoFocus={index === 0} onChange={event => setValues(current => ({ ...current, [prompt.name]: event.target.value }))} />
+            <input className='ui-control' aria-label={prompt.description ?? prompt.name} value={values[prompt.name] ?? ''} maxLength={200} data-autofocus={index === 0 || undefined} onChange={event => setValues(current => ({ ...current, [prompt.name]: event.target.value }))} />
           </label>
         ))}
         <div className='workspace-dialog-actions'>

@@ -78,3 +78,22 @@ export const isLiveNote = (note: { live?: unknown; }): boolean => Boolean(note.l
 const requested = new Set<string>();
 export const requestLiveEdit = (key: string) => void requested.add(key);
 export const takeLiveEditRequest = (key: string): boolean => requested.delete(key);
+
+/*
+ * Notes this page just checked in, so that 「已簽回」 outlives the editor: the check-in moves the repository's head, and
+ * the zoom that showed the frame reloads its note and mounts a new editor, which says it once. Keyed by `noteRefKey`
+ * (a filed pending note under both its paths); a mark older than CHECKED_IN_MS is forgotten.
+ */
+const CHECKED_IN_MS = 30_000;
+const checkedIn = new Map<string, number>();
+export const markCheckedIn = (keys: readonly string[], now = Date.now()) => {
+  for (const key of keys) checkedIn.set(key, now);
+};
+export const recentlyCheckedIn = (key: string, now = Date.now()): boolean => {
+  const at = checkedIn.get(key);
+  return at !== undefined && now - at < CHECKED_IN_MS;
+};
+export const forgetCheckedIn = (key: string) => void checkedIn.delete(key);
+
+/** A pending live note's virtual path (`<root>/.live/<id>.md`), which a check-in files at a Git path. */
+export const isLivePendingPath = (path: string): boolean => /\/\.live\/[A-Za-z0-9_-]{1,64}\.md$/.test(path);
