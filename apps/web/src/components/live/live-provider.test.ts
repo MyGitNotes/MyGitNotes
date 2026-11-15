@@ -208,7 +208,7 @@ describe('LiveProvider', () => {
       const second = await connect();
       // Nothing of the typing went out as an update: the step 2 carries all of it.
       expect(kinds(second)).not.toContain('update');
-      expect(websocket.messageQueue).toHaveLength(0);
+      expect((websocket as unknown as { messageQueue: unknown[]; }).messageQueue).toHaveLength(0);
       // An early acknowledgement cannot zero the count while the step 2 is unstored.
       expect(provider.unsyncedChanges).toBeGreaterThan(0);
       finishSync(second);
@@ -264,7 +264,7 @@ describe('LiveProvider', () => {
       websocket.destroy();
     });
 
-    it('is dirty only with local typing the server has not stored, not for a connect\'s own sync step (BG-F003)', async () => {
+    it("is dirty only with local typing the server has not stored, not for a connect's own sync step (BG-F003)", async () => {
       const { websocket, provider, text, connect, finishSync } = await setup();
       const dirty: boolean[] = [];
       provider.on('dirty', ({ dirty: value }: { dirty: boolean; }) => dirty.push(value));
