@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { FOLD_MS } from '../lib/use-fold-animation.js';
+import { zhTW } from '../lib/i18n/zh-TW.js';
 import { BrowseDock, BrowseDockToggle } from './BrowseDock.js';
 
 if (typeof globalThis.ResizeObserver === 'undefined') {
@@ -103,6 +104,16 @@ it('renders both regions, with no control over them, when docked and expanded', 
   expect(screen.getByText('browse-content')).toBeInTheDocument();
   expect(screen.getByText('focus-content')).toBeInTheDocument();
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
+});
+
+it('names the divider between the browse region and the Focus by what dragging it resizes', () => {
+  /* eslint-disable react/no-children-prop -- The component test passes children explicitly as part of the tested props contract. */
+  const { rerender } = render(createElement(BrowseDock, { ...baseProps, narrow: false, narrowView: 'browse', browse: createElement('div', null, 'browse-content'), children: createElement('div', null, 'focus-content') }));
+  expect(screen.getByRole('separator', { name: 'Resize browse panel width' })).toBeInTheDocument();
+  rerender(createElement(BrowseDock, { ...baseProps, placement: 'top', narrow: false, narrowView: 'browse', browse: createElement('div', null, 'browse-content'), children: createElement('div', null, 'focus-content') }));
+  /* eslint-enable react/no-children-prop */
+  expect(screen.getByRole('separator', { name: 'Resize browse panel height' })).toBeInTheDocument();
+  expect([zhTW['focus.resizeBrowseWidth'], zhTW['focus.resizeBrowseHeight']]).toEqual(['調整瀏覽區的寬度', '調整瀏覽區的高度']);
 });
 
 it('toggle collapses an expanded dock and reopens a collapsed one', () => {
