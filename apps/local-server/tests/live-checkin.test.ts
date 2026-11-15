@@ -84,6 +84,43 @@ describe('checkInLink', () => {
     expect(files.get('notes/life/a.md')).toBe('---\ntitle: A\n---\nONE\ntwo\nTHREE\nfour\nFIVE\n');
   });
 
+  it('names someone who typed between the merge-in and the text it commits', async () => {
+    const id = await checkout('notes/life/a.md');
+    liveNotes.type(repository, id, '---\ntitle: A\n---\none\ntwo\nthree\nfour\nFIVE\n', person(1));
+    await gitCommit('notes/life/a.md', '---\ntitle: A\n---\nONE\ntwo\nthree\nfour\nfive\n');
+    const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service);
+    vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
+      const answer = await mergeIn(...args);
+      clock.advance(1000);
+      liveNotes.type(repository, id, '---\ntitle: A\n---\nONE\ntwo\nthree\nfour\nFIVE\nsix\n', person(2));
+      return answer;
+    });
+    expect(await run(id)).toMatchObject({ committed: true });
+    expect(files.get('notes/life/a.md')).toBe('---\ntitle: A\n---\nONE\ntwo\nthree\nfour\nFIVE\nsix\n');
+    const commit = commits().at(-1)!;
+    expect(commit.author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
+    expect(commit.message).toContain('Co-authored-by: Person 2 <p2@example.test>');
+  });
+
+  it('authors a merged check-in by the first person to type, even when they typed only after the merge-in', async () => {
+    const id = await checkout('notes/life/a.md');
+    await gitCommit('notes/life/a.md', '---\ntitle: A\n---\nONE\ntwo\nthree\nfour\nfive\n');
+    // An agent wrote first, so the live text differs from Git and needs Git's change merged in.
+    const current = await liveNotes.person(person(3)).read(repository, id);
+    await liveNotes.person(person(3)).write(repository, id, { content: current.content.replace('five', 'FIVE'), baseRevision: current.liveRevision, agent: true });
+    const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service);
+    vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
+      const answer = await mergeIn(...args);
+      clock.advance(1000);
+      liveNotes.type(repository, id, '---\ntitle: A\n---\nONE\ntwo\nthree\nfour\nFIVE\nsix\n', person(2));
+      return answer;
+    });
+    expect(await run(id)).toMatchObject({ committed: true });
+    const commit = commits().at(-1)!;
+    expect(commit.author).toEqual({ name: 'Person 2', email: 'p2@example.test' });
+    expect(commit.message).toContain('Co-authored-by: Person 3 <p3@example.test>');
+  });
+
   it('merges a note over 1 MiB like any other', async () => {
     const body = Array.from({ length: 45_000 }, (_, i) => `line ${i} of a long note\n`).join('');
     expect(Buffer.byteLength(body)).toBeGreaterThan(1024 * 1024);
