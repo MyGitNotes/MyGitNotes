@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { LIVE_MAX_BYTES, type LiveContext, liveEditorOf, LiveLeasedError, LiveNotLiveError, liveSocketTicketOf, LiveStaleError, LiveTooLargeError, LiveUnavailableError, validateLiveEditorInfo } from '@mygitnotes/core';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { liveNotesContract } from '../live-notes-contract.js';
 import { builtinLiveNotes } from './index.js';
@@ -643,8 +643,9 @@ describe('socket tickets', () => {
 
 describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
   const redis = redisTestStores(url);
+  beforeAll(() => redis.begin());
   afterAll(async () => {
-    expect(await redis.cleanup()).toBe(0);
+    expect(await redis.end()).toBe(0);
   });
 
   liveNotesContract('builtin (redis)', kit(() => redis.store()));

@@ -4,6 +4,7 @@ import { createClient, ErrorReply } from 'redis';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { memoryLiveStore } from './memory-store.js';
 import { liveStorePrefix, redisLiveStore, redisLiveStoreOver } from './redis-store.js';
+import { redisTestTurn } from './redis-test-turn.js';
 import { liveStoreContract } from './store-contract.js';
 import { LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore } from './store.js';
 
@@ -175,15 +176,22 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     return found;
   };
 
+  // Two tests below change the server's configuration for a moment: no other file's Redis tests may run meanwhile.
+  const turn = redisTestTurn(url);
   beforeAll(async () => {
+    await turn.take();
     raw.on('error', () => {});
     await raw.connect();
   });
   afterAll(async () => {
-    const keys = await keysOf(`${run}:*`);
-    for (let i = 0; i < keys.length; i += 500) await command('DEL', ...keys.slice(i, i + 500));
-    expect(await keysOf(`${run}:*`)).toEqual([]);
-    raw.destroy();
+    try {
+      const keys = await keysOf(`${run}:*`);
+      for (let i = 0; i < keys.length; i += 500) await command('DEL', ...keys.slice(i, i + 500));
+      expect(await keysOf(`${run}:*`)).toEqual([]);
+      raw.destroy();
+    } finally {
+      await turn.give();
+    }
   });
 
   liveStoreContract('redis', () => redisLiveStore({ url: url!, prefix: prefix() }));

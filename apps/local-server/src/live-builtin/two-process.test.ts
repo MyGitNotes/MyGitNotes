@@ -1,5 +1,5 @@
 import { checkInLink, gitBlobId, LiveNotLiveError, normalizeLiveText, parseWorkspaceConfig } from '@mygitnotes/core';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource } from '../memory-edition-source.js';
 import { memoryLiveStore } from './memory-store.js';
 import type { LiveStore } from './store.js';
@@ -136,8 +136,9 @@ twoProcesses('memory store', () => memoryLiveStore());
 
 describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
   const redis = redisTestStores(url);
+  beforeAll(() => redis.begin());
   afterAll(async () => {
-    expect(await redis.cleanup()).toBe(0);
+    expect(await redis.end()).toBe(0);
   });
   twoProcesses('Redis', () => redis.store());
 });

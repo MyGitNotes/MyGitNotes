@@ -7,6 +7,7 @@ import { type MemoryLiveClock, memoryLiveClock } from '../memory-live-notes.js';
 import { type BuiltinLiveLimits, type BuiltinLiveParts, createBuiltinLiveNotes } from './adapter.js';
 import { memoryLiveStore } from './memory-store.js';
 import { redisLiveStore } from './redis-store.js';
+import { redisTestTurn } from './redis-test-turn.js';
 import type { LiveStore, StoredDocument } from './store.js';
 import { type BuiltinLiveNotesWithHooks, withLiveHooks } from './testing.js';
 
@@ -75,13 +76,19 @@ export async function shutdownFixtures(): Promise<void> {
   await Promise.all(made.splice(0).map(liveNotes => liveNotes.shutdown()));
 }
 
-/** Live stores on a throwaway Redis, each under its own random prefix; `cleanup` deletes every key they made. */
+/**
+ * Live stores on a throwaway Redis, each under its own random prefix. `begin` (in `beforeAll`) waits for this file's
+ * turn on the server; `end` (in `afterAll`) deletes every key the stores made, answers how many are left, and gives the
+ * turn back.
+ */
 export function redisTestStores(url: string | undefined) {
   const run = `mgn-test:${randomBytes(8).toString('hex')}`;
+  const turn = redisTestTurn(url);
   let prefixes = 0;
   return {
     store: (): LiveStore => redisLiveStore({ url: url!, prefix: `${run}:${++prefixes}` }),
-    async cleanup(): Promise<number> {
+    begin: () => turn.take(),
+    async end(): Promise<number> {
       const raw = createClient({ url, socket: { connectTimeout: 10_000, reconnectStrategy: false } });
       raw.on('error', () => {});
       await raw.connect();
@@ -101,6 +108,7 @@ export function redisTestStores(url: string | undefined) {
         return (await scan()).length;
       } finally {
         raw.destroy();
+        await turn.give();
       }
     },
   };
