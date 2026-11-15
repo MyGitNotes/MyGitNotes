@@ -21,6 +21,7 @@
   },
   "scripts": {
     "build": "tsc && node ../write-build-info.mjs",
+    "typecheck:dev": "tsc -p tsconfig.dev.json",
     "dev": "tsx src/index.ts --local",
     "start": "tsx src/index.ts"
   },

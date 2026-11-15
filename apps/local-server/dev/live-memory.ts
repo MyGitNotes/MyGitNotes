@@ -10,6 +10,8 @@
  * App: http://127.0.0.1:4390 (MYGITNOTES_LIVE_DEV_PORT); editor: http://127.0.0.1:4391 (MYGITNOTES_LIVE_DEV_EDITOR_PORT).
  * Signed in as `dev` (writes); http://127.0.0.1:4390/dev/as/reader switches to a read-only person, /dev/as/dev back.
  * Repository `p1/notes` has the live editor; `p1/plain` has none. Notes over 64 KiB are too large for the stub editor.
+ * The build's type check stops at `src`; `pnpm --filter @mygitnotes/local-server typecheck:dev` checks this file
+ * (tsconfig.dev.json) against the internal APIs it composes.
  */
 import fs from 'node:fs';
 import os from 'node:os';
