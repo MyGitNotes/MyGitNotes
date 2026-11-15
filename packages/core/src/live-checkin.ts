@@ -83,6 +83,25 @@ function editorsOf(value: unknown): LiveEditor[] {
   });
 }
 
+/**
+ * The editors of two detail reads as one list: an editor in both (by email, else name, and by whether it is an agent)
+ * keeps its earliest `firstAt` and latest `lastAt`.
+ */
+export function unionLiveEditors(first: readonly LiveEditor[], second: readonly LiveEditor[]): LiveEditor[] {
+  const keyOf = (editor: LiveEditor) => `${editor.agent ? 'agent' : 'person'}:${editor.email?.toLowerCase() ?? `name:${editor.name}`}`;
+  const merged = new Map<string, LiveEditor>();
+  for (const editor of [...first, ...second]) {
+    const known = merged.get(keyOf(editor));
+    if (!known) {
+      merged.set(keyOf(editor), { ...editor });
+      continue;
+    }
+    if (Date.parse(editor.firstAt) < Date.parse(known.firstAt)) known.firstAt = editor.firstAt;
+    if (Date.parse(editor.lastAt) > Date.parse(known.lastAt)) known.lastAt = editor.lastAt;
+  }
+  return [...merged.values()];
+}
+
 /** Who a check-in commit names, from the editors since the last sync. */
 export interface LiveAuthorship {
   author?: CommitAuthor;
@@ -291,16 +310,16 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
     const detail = await adapter(() => service.detail(repository, id, lease));
     const text: LiveText = liveTextOf(detail);
     const live = normalizeLiveText(text.content);
-    const editors = editorsOf((detail as { editors?: unknown; }).editors);
-    const { author, coAuthors, skipped, agent } = liveAuthorship(editors);
-    const source = await adapter(() => service.open(repository, author));
+    let editors = editorsOf((detail as { editors?: unknown; }).editors);
+    let { author, coAuthors, skipped, agent } = liveAuthorship(editors);
+    let source = await adapter(() => service.open(repository, author));
     const snapshot = await source.getSnapshot(true);
     const notebooks = (await source.config()).notebooks;
     const notebookOf = (key: string) => notebooks.find(entry => entry.id === localPart(key));
     const row: LiveCheckout | null = liveCheckoutOf((detail as { checkout?: unknown; }).checkout, { editor, notebook: notebookOf });
     if (!row || row.id !== id) throw new LiveUnavailableError();
     const notebook = notebookOf(row.notebook)!;
-    const agentDay = agent ? utcDay(new Date(now())) : undefined;
+    let agentDay = agent ? utcDay(new Date(now())) : undefined;
     const blobOf = (content: string) => gitBlobId(Buffer.from(content, 'utf8'), snapshot.sha.length);
     const commit = async (file: string, content: string, message: string) => {
       if (now() > deadline) throw new SourceError('The check-in ran past its deadline; nothing was committed.', 504);
@@ -364,7 +383,14 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
     if (merged.text !== live) {
       // The live note takes Git's changes before the base moves, or the next check-in would revert them.
       await adapter(() => service.mergeIn(repository, id, lease, { content: merged.text, baseRevision: text.liveRevision }));
-      text2 = normalizeLiveText(liveTextOf(await adapter(() => service.detail(repository, id, lease))).content);
+      const after = await adapter(() => service.detail(repository, id, lease));
+      text2 = normalizeLiveText(liveTextOf(after).content);
+      // Whoever typed between the two reads is in the text committed, and `synced` clears them: they are named too.
+      editors = unionLiveEditors(editors, editorsOf((after as { editors?: unknown; }).editors));
+      const named = liveAuthorship(editors);
+      if (named.author?.email !== author?.email || named.author?.name !== author?.name) source = await adapter(() => service.open(repository, named.author));
+      ({ author, coAuthors, skipped, agent } = named);
+      agentDay = agent ? utcDay(new Date(now())) : undefined;
     }
     if (text2 === git) return synced(file, snapshot.sha, entry.sha, git, null, false);
     const sha = await commit(file, text2, checkInMessage(file, id, text2, { filing: false, ...(agentDay ? { agentDay } : {}) }));
