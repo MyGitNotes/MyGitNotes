@@ -161,11 +161,16 @@ export function liveSocket({ documents, store, clock, process: processName, read
     for (const socket of unseated) if (addresses.get(socket) === address) count++;
     return count;
   };
-  /** When each open socket is to close for a new ticket, by the adapter's clock. */
-  const renewAt = new Map<WebSocket, number>();
+  /**
+   * When each socket is to close for a new ticket, by the adapter's clock. Kept past the socket's close, which a weak
+   * map lets go with the socket: Hocuspocus still runs what the socket sent before it closed, and that is judged by the
+   * clock too (BG-F002).
+   */
+  const renewAt = new WeakMap<WebSocket, number>();
   /** The socket was open for `socketMs`: closed, so that only a tab with a live session gets in again. */
   const expired = (socket: WebSocket) => {
-    if (clock() < (renewAt.get(socket) ?? Infinity)) return false;
+    // Every served socket has a deadline; one without was never served, and takes nothing.
+    if (clock() < (renewAt.get(socket) ?? -Infinity)) return false;
     if (socket.readyState === socket.OPEN) socket.close(LIVE_RENEW_CODE, RENEW_REASON);
     return true;
   };
@@ -440,7 +445,6 @@ export function liveSocket({ documents, store, clock, process: processName, read
       sockets.delete(socket);
       unseated.delete(socket);
       addresses.delete(socket);
-      renewAt.delete(socket);
       if (!sockets.size) stopTimers();
     });
     if (!stopping) startTimers();
