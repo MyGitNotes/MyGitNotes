@@ -437,6 +437,8 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
 export interface LiveSweepOptions {
   /** The scheduled instant: links checked out before it are due. */
   instant: Date;
+  /** How each check-in runs; `scheduled` by default. `manual` retries a release refused for active editors, as 「立即簽回」 does. */
+  mode?: LiveCheckInOptions['mode'];
   now?: () => number;
   timeZone?: string;
   /** Check-ins at a time in this process; 2 by default. */
@@ -486,7 +488,7 @@ export async function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions)
     while (next < due.length) {
       const { repository, id } = due[next++];
       try {
-        report.results.push(await checkInLink(liveNotes, repository, id, { mode: 'scheduled', ...(options.now ? { now: options.now } : {}), ...(options.timeZone ? { timeZone: options.timeZone } : {}), ...(options.sleep ? { sleep: options.sleep } : {}) }));
+        report.results.push(await checkInLink(liveNotes, repository, id, { mode: options.mode ?? 'scheduled', ...(options.now ? { now: options.now } : {}), ...(options.timeZone ? { timeZone: options.timeZone } : {}), ...(options.sleep ? { sleep: options.sleep } : {}) }));
       } catch (error) {
         const reason = reasonOf(error);
         console.warn(`[live-notes] check-in of ${id} failed: ${reason}`);

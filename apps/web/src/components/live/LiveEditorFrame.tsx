@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, ExternalLink, Users } from 'lucide-react';
-import type { LiveEditorInfo } from '@mygitnotes/core';
+import type { LiveFrameEditorInfo } from '@mygitnotes/core';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import { checkInLive, type LiveCheckInAnswer, type LiveCheckoutView } from '../../lib/live-api.js';
 import { isLiveEditorUrl, liveEmbedUrl, type LiveStatus, liveStatusOf, type LiveTheme, liveThemeMessage } from '../../lib/live-message.js';
@@ -11,7 +11,7 @@ import './live-editor.css';
 
 export interface LiveEditorFrameProps {
   checkout: LiveCheckoutView;
-  editor: LiveEditorInfo;
+  editor: LiveFrameEditorInfo;
   /** The app's theme now; the frame opens with it and hears of each change by message. */
   theme: LiveTheme;
   /** Reads the note again: the editor saved a change, released the note, or was closed. */
@@ -39,7 +39,7 @@ export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, o
   const frameRef = useRef<HTMLIFrameElement>(null);
   // The frame keeps the URL it opened with; later theme changes travel by message, so the editor is not reloaded.
   const [openedTheme] = useState(theme);
-  const src = liveEmbedUrl(checkout.embedUrl, editor, openedTheme);
+  const src = liveEmbedUrl(checkout.embedUrl ?? '', editor, openedTheme);
   const [status, setStatus] = useState<LiveStatus | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   const framed = phase.kind === 'open' && src !== null;

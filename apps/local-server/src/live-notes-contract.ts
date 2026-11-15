@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type LiveCheckout, type LiveContext, LiveLeasedError, type LiveNotes, LiveNotLiveError, LiveStaleError, type NotebookKey, type RepositoryId } from '@mygitnotes/core';
+import { isBuiltinEditor, type LiveCheckout, type LiveContext, LiveLeasedError, type LiveNotes, LiveNotLiveError, LiveStaleError, type NotebookKey, type RepositoryId } from '@mygitnotes/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 /** What a {@link LiveNotes} adapter needs to be exercised: one repository it covers, a notebook of it, and the hooks of its editor. */
@@ -124,8 +124,14 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       const listed = (await as(2).checkouts(fixture.repository)).find(entry => entry.id === created.id);
       expect(await service().repositories()).toContain(fixture.repository);
       for (const entry of [created, listed!]) {
-        expect(entry).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), notebook: fixture.notebook, path, since: expect.stringMatching(ISO), editorUrl: expect.any(String), embedUrl: expect.any(String), contentHash: sha256('# Fields\n'), activeEditors: 0, lastEditAt: null, syncedAt: null, base: { commit: base('').commit, blob: base('').blob, contentHash: sha256('# Fields\n') }, conflict: null });
-        for (const url of [entry.editorUrl, entry.embedUrl]) {
+        const fields = { id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), notebook: fixture.notebook, path, since: expect.stringMatching(ISO), contentHash: sha256('# Fields\n'), activeEditors: 0, lastEditAt: null, syncedAt: null, base: { commit: base('').commit, blob: base('').blob, contentHash: sha256('# Fields\n') }, conflict: null };
+        // The built-in editor's notes are edited in the app itself: its rows carry no URL.
+        if (isBuiltinEditor(editor!)) {
+          expect(entry).toEqual(fields);
+          continue;
+        }
+        expect(entry).toEqual({ ...fields, editorUrl: expect.any(String), embedUrl: expect.any(String) });
+        for (const url of [entry.editorUrl!, entry.embedUrl!]) {
           expect(new URL(url).origin).toBe(editor!.origin);
           expect(new URL(url).username + new URL(url).password).toBe('');
         }
@@ -141,6 +147,24 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       expect(reopened.id).toBe(created.id);
       expect(Date.parse(reopened.since)).toBeGreaterThan(Date.parse(created.since));
       expect(reopened).toMatchObject({ syncedAt: null, conflict: null, contentHash: sha256('# Again\n') });
+    });
+
+    it('issues a distinct socket ticket per call for a live link of a built-in editor, and none for a released one', async () => {
+      const editor = fixture.liveNotes.editor(fixture.repository)!;
+      if (!isBuiltinEditor(editor)) return;
+      expect(typeof fixture.liveNotes.socketTicket).toBe('function');
+      const path = notePath();
+      const { id } = await checkout('# Ticket\n', path);
+      const first = await fixture.liveNotes.socketTicket!(fixture.person(1), fixture.repository, id);
+      const second = await fixture.liveNotes.socketTicket!(fixture.person(2), fixture.repository, id);
+      for (const ticket of [first, second]) expect(ticket).toEqual({ ticket: expect.stringMatching(/^[A-Za-z0-9_-]{32,128}$/), document: expect.stringMatching(new RegExp(`^${id}\\.[1-9][0-9]{0,9}$`)) });
+      expect(second.ticket).not.toBe(first.ticket);
+      expect(second.document).toBe(first.document);
+      expect((await checkIn(id)).release).toEqual({ released: true });
+      await expect(fixture.liveNotes.socketTicket!(fixture.person(1), fixture.repository, id)).rejects.toBeInstanceOf(LiveNotLiveError);
+      // A reopened link is a new epoch: its document is another.
+      await checkout('# Again\n', path);
+      expect((await fixture.liveNotes.socketTicket!(fixture.person(1), fixture.repository, id)).document).not.toBe(first.document);
     });
 
     it('leases a link to one holder until the lease expires, and refuses lease-bound calls without it', async () => {

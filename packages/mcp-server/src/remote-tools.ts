@@ -136,7 +136,7 @@ export async function callRemoteTool(reader: RemoteSource, name: string, args: R
     const file = String(args.path);
     const hint = skillFile(file, (await reader.config()).notebooks) ? undefined : await agentSystemHint(reader, file);
     const checkout = name === 'read' ? await reader.liveCheckout?.(file) : undefined;
-    const live = checkout ? liveField({ since: checkout.since, activeEditors: checkout.activeEditors, ...(checkout.path === null ? { pending: true as const } : {}), editorUrl: checkout.editorUrl }) : {};
+    const live = checkout ? liveField({ since: checkout.since, activeEditors: checkout.activeEditors, ...(checkout.path === null ? { pending: true as const } : {}), editorUrl: checkout.editorUrl! }) : {};
     return { ...result, ...live, ...(hint ? { hint } : {}) };
   }
   if (!noteWriteTools.has(name)) return result;

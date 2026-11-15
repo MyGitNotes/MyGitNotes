@@ -11,7 +11,7 @@ export interface LiveNoteState {
   pending?: true;
   /** What the last check-in overwrote. */
   conflict?: LiveConflict;
-  /** The editor's own page of the note. */
+  /** The editor's own page of the note: a framed editor's page, or for the built-in editor the note's page in the app (`APP_URL`). */
   editorUrl: string;
 }
 

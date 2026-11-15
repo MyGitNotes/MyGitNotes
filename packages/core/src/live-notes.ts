@@ -24,8 +24,9 @@ export interface LiveContext {
   request: WorkspaceRequest;
 }
 
-/** How the web app frames one repository's editor. Static configuration. */
-export interface LiveEditorInfo {
+/** How the web app frames one repository's external editor (0.19). Static configuration. `kind` is left out, as 0.19 writes it. */
+export interface LiveFrameEditorInfo {
+  kind?: 'frame';
   /** Origin of every editorUrl and embedUrl: https (http only on a loopback host), with no path. */
   origin: string;
   /** `type` of the status messages the embedded editor posts; the app posts `<messageType>:theme` back. */
@@ -33,6 +34,13 @@ export interface LiveEditorInfo {
   /** Query parameter that takes `light` or `dark` on the embed URL. Left out, none is added. */
   themeParam?: string;
 }
+/** The built-in editor: MyGitNotes' own editor over `/live/socket` on the app's origin. */
+export interface LiveBuiltinEditorInfo {
+  kind: 'builtin';
+}
+/** A repository's live editor: a framed external one, or the built-in one. */
+export type LiveEditorInfo = LiveFrameEditorInfo | LiveBuiltinEditorInfo;
+export const isBuiltinEditor = (info: LiveEditorInfo): info is LiveBuiltinEditorInfo => info.kind === 'builtin';
 
 /** What a check-in overwrote: Git changes that lost to the live text, or a note deleted in Git and written back. */
 export interface LiveConflict {
@@ -56,8 +64,9 @@ export interface LiveCheckout {
   pathRule?: string;
   /** ISO: when this checkout or reopen began. */
   since: string;
-  editorUrl: string;
-  embedUrl: string;
+  /** Present, and on the editor's origin, exactly for a framed editor. */
+  editorUrl?: string;
+  embedUrl?: string;
   /** sha256 hex of the current text in normal form. */
   contentHash: string;
   /** Connected, non-idle editors. */
@@ -145,6 +154,25 @@ export interface LiveNotes {
   person(context: LiveContext): LivePersonCalls;
   service: LiveServiceCalls;
   notify?(notice: LiveNotice): Promise<void>;
+  /** Required when `editors` declares a builtin editor: a ticket for the person to open the link's live document. */
+  socketTicket?(context: LiveContext, repository: RepositoryId, id: string): Promise<LiveSocketTicket>;
+}
+
+/** What opens a link's live document over the built-in editor's socket. */
+export interface LiveSocketTicket {
+  /** Opaque, single use, valid 60 s. */
+  ticket: string;
+  /** The Yjs document to open: `<link id>.<epoch>`. */
+  document: string;
+}
+const SOCKET_TICKET = /^[A-Za-z0-9_-]{32,128}$/;
+const SOCKET_DOCUMENT = /^[A-Za-z0-9_-]{1,64}\.[1-9][0-9]{0,9}$/;
+
+/** A socket ticket an adapter returned, checked and reduced to its fields; null for a bad one. */
+export function liveSocketTicketOf(value: unknown): LiveSocketTicket | null {
+  if (!value || typeof value !== 'object') return null;
+  const { ticket, document } = value as Record<string, unknown>;
+  return typeof ticket === 'string' && SOCKET_TICKET.test(ticket) && typeof document === 'string' && SOCKET_DOCUMENT.test(document) ? { ticket, document } : null;
 }
 
 /** What a live link id may be. */
@@ -238,7 +266,12 @@ const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 export function validateLiveEditorInfo(value: unknown): LiveEditorInfo {
   const refuse = (why: string) => new Error(`Invalid live editor configuration: ${why}`);
   if (!value || typeof value !== 'object') throw refuse('it is not an object.');
-  const { origin, messageType, themeParam } = value as Record<string, unknown>;
+  const { kind, origin, messageType, themeParam } = value as Record<string, unknown>;
+  if (kind === 'builtin') {
+    if (Object.keys(value).some(key => key !== 'kind')) throw refuse('a builtin editor takes no other key than kind.');
+    return { kind: 'builtin' };
+  }
+  if (kind !== undefined && kind !== 'frame') throw refuse("kind must be 'frame' or 'builtin'.");
   if (typeof origin !== 'string') throw refuse('origin is not a string.');
   let url: URL;
   try {
@@ -251,7 +284,7 @@ export function validateLiveEditorInfo(value: unknown): LiveEditorInfo {
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname))) throw refuse('origin must use https (http only on a loopback host).');
   if (typeof messageType !== 'string' || !TOKEN.test(messageType)) throw refuse('messageType must be 1 to 64 letters, digits, _ or -.');
   if (themeParam !== undefined && (typeof themeParam !== 'string' || !TOKEN.test(themeParam))) throw refuse('themeParam must be 1 to 64 letters, digits, _ or -.');
-  return { origin, messageType, ...(themeParam !== undefined ? { themeParam } : {}) };
+  return { ...(kind === 'frame' ? { kind } : {}), origin, messageType, ...(themeParam !== undefined ? { themeParam } : {}) };
 }
 
 /**
@@ -261,7 +294,7 @@ export function validateLiveEditorInfo(value: unknown): LiveEditorInfo {
 export function liveEditorOf(liveNotes: Pick<LiveNotes, 'editors' | 'editor'>, repository: RepositoryId): LiveEditorInfo | null {
   const info = liveNotes.editor(repository);
   if (info === null) return null;
-  const declared = liveNotes.editors.find(editor => editor.origin === info.origin && editor.messageType === info.messageType && editor.themeParam === info.themeParam);
+  const declared = isBuiltinEditor(info) ? liveNotes.editors.find(isBuiltinEditor) : liveNotes.editors.find(editor => !isBuiltinEditor(editor) && editor.origin === info.origin && editor.messageType === info.messageType && editor.themeParam === info.themeParam);
   if (!declared) throw new Error('The live editor of a repository is not one the adapter declared in `editors`.');
   return declared;
 }
@@ -289,7 +322,7 @@ const isTime = (value: unknown): value is string => typeof value === 'string' &&
 const isRelativePath = (value: string) => value.length <= 1024 && !/[\\\p{Cc}]/u.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..');
 
 /** Where a URL an adapter gave may point: the editor's origin, with no credentials. */
-function onOrigin(value: unknown, editor: LiveEditorInfo): value is string {
+function onOrigin(value: unknown, editor: LiveFrameEditorInfo): value is string {
   if (typeof value !== 'string' || value.length > 2048) return false;
   try {
     const url = new URL(value);
@@ -325,7 +358,8 @@ function checkoutProblem(row: Record<string, unknown>, context: LiveRowContext):
     if (typeof pathRule !== 'string' || !isRelativePath(pathRule)) return 'a pending note without a valid path rule';
   } else if (typeof path !== 'string' || !isRelativePath(path) || !path.startsWith(`${notebook.root}/`) || !isLiveNotePath(path.slice(notebook.root.length + 1), notebook)) return 'a path that is not a note of its notebook';
   if (!isTime(since)) return 'an invalid since';
-  if (!onOrigin(editorUrl, context.editor) || !onOrigin(embedUrl, context.editor)) return 'a URL off the editor origin';
+  // A framed editor's rows carry both URLs on its origin; a built-in editor's URLs, if any, are ignored and dropped.
+  if (!isBuiltinEditor(context.editor) && (!onOrigin(editorUrl, context.editor) || !onOrigin(embedUrl, context.editor))) return 'a URL off the editor origin';
   if (!isLiveContentHash(contentHash)) return 'an invalid content hash';
   if (typeof activeEditors !== 'number' || !Number.isInteger(activeEditors) || activeEditors < 0 || activeEditors > 10_000) return 'an invalid editor count';
   if (lastEditAt !== null && !isTime(lastEditAt)) return 'an invalid lastEditAt';
@@ -361,7 +395,7 @@ export function liveCheckoutOf(row: unknown, context: LiveRowContext): LiveCheck
     return null;
   }
   const pending = value.path === null;
-  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), since: value.since as string, editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string, contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
+  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
 }
 
 /**

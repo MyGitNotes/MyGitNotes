@@ -1,5 +1,5 @@
 import express from 'express';
-import { type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
+import { isBuiltinEditor, type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
 import { fail } from './route-errors.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -103,6 +103,26 @@ function checkLiveNotes(liveNotes: LiveNotes | undefined, local: boolean) {
       throw new Error(`The live editor (liveNotes) cannot be used: ${(error as Error).message}`);
     }
   }
+  if (liveNotes.editors.some(isBuiltinEditor)) checkBuiltinLiveEditor(liveNotes);
+}
+
+const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+/**
+ * The built-in editor's own needs: a long-running server for its socket, the app's origin that the socket's Origin
+ * check compares with (docs/specs/2026-11-15-builtin-live-editor §6.2), and the adapter's socket tickets.
+ */
+function checkBuiltinLiveEditor(liveNotes: LiveNotes) {
+  if (process.env.VERCEL) throw new Error('The built-in live editor needs a long-running server with WebSockets; Vercel cannot host it.');
+  const appUrl = process.env.APP_URL;
+  let url: URL | undefined;
+  try {
+    url = appUrl ? new URL(appUrl) : undefined;
+  } catch {
+    url = undefined;
+  }
+  if (!url || url.origin !== appUrl || (url.protocol !== 'https:' && !(url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname)))) throw new Error("The built-in live editor needs APP_URL set to the app's bare origin, such as https://notes.example.com (http only on a loopback host): its socket accepts only that origin.");
+  if (typeof liveNotes.socketTicket !== 'function') throw new Error('The built-in live editor (liveNotes) declares a builtin editor but has no socketTicket.');
 }
 
 export function createApp(base: string, overrides: Partial<AppServices> = {}): express.Express {

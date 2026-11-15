@@ -74,7 +74,7 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
   /** Hands an opened reader the request's view of the live editor of its repository, when one covers it and someone is signed in. */
   const attachLive = (reader: RemoteSource, member: WorkspaceMember, scope: () => Promise<WorkspaceConfig>) => {
     if (!liveNotes || !person) return;
-    const view = liveRepository({ liveNotes, context: { person, ...(author ? { author } : {}), request }, repository: member.ref.id, alias: member.alias, notebooks: async () => (await scope()).notebooks });
+    const view = liveRepository({ liveNotes, context: { person, ...(author ? { author } : {}), request }, repository: member.ref.id, alias: member.alias, notebooks: async () => (await scope()).notebooks, ...(process.env.APP_URL ? { appUrl: process.env.APP_URL } : {}) });
     if (view) reader.useLive(view);
   };
   return createWorkspaceRepositories<RepositoryHandle>({

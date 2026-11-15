@@ -15,7 +15,8 @@ export interface LiveCheckoutView {
   path: string;
   pending: boolean;
   editorUrl: string;
-  embedUrl: string;
+  /** A framed editor only. */
+  embedUrl?: string;
   since: string;
   activeEditors: number;
   conflict: LiveConflict | null;
