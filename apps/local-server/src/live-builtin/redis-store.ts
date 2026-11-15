@@ -34,6 +34,11 @@ const RDB_RECENT_MS = 60 * 60_000;
 const LINK_ID = /^[A-Za-z0-9_-]{22}$/;
 const TICKET_HASH = /^[0-9a-f]{64}$/;
 
+/*
+ * A script that fails halfway keeps what it had written, so each reads and decodes everything it needs before its first
+ * write: a call either answers or leaves the store as it was.
+ */
+
 /** KEYS[1] link, KEYS[2] lease: the lease, when `token` holds the live link at `now`. */
 const HOLDER = `
 local function holder(token, now)
@@ -47,10 +52,9 @@ end`;
 /** KEYS[2] lease, KEYS[3] editors, KEYS[4] presence, KEYS[5] tickets, KEYS[6] repos: deletes what an epoch leaves besides its link record. */
 const ERASE = `
 local function erase(P, id, epoch, rk, repository)
+  local doc, links = P .. ':doc:' .. id .. ':' .. epoch, P .. ':r:' .. rk .. ':links'
   for _, hash in ipairs(redis.call('SMEMBERS', KEYS[5])) do redis.call('DEL', P .. ':ticket:' .. hash) end
-  local doc = P .. ':doc:' .. id .. ':' .. epoch
   redis.call('DEL', doc, doc .. ':log', KEYS[2], KEYS[3], KEYS[4], KEYS[5])
-  local links = P .. ':r:' .. rk .. ':links'
   redis.call('SREM', links, id)
   if redis.call('SCARD', links) == 0 then redis.call('SREM', KEYS[6], repository) end
 end`;
@@ -114,14 +118,16 @@ return {state, redis.call('LRANGE', KEYS[3], 0, -1), at[3], at[4]}`;
 const APPEND = `
 local at = redis.call('HMGET', KEYS[1], 'live', 'epoch')
 if at[1] ~= '1' or at[2] ~= ARGV[1] then return false end
+local editor = nil
+if ARGV[4] ~= '' then
+  local known = redis.call('HGET', KEYS[3], ARGV[4])
+  editor = cjson.decode(known or ARGV[5])
+  if not known then editor.firstAt = tonumber(ARGV[3]) end
+end
 local length = redis.call('RPUSH', KEYS[2], ARGV[2])
 local seq = redis.call('HINCRBY', KEYS[1], 'seq', 1)
-if ARGV[4] ~= '' then
-  local now = tonumber(ARGV[3])
-  local known = redis.call('HGET', KEYS[3], ARGV[4])
-  local editor = cjson.decode(known or ARGV[5])
-  if not known then editor.firstAt = now end
-  editor.lastAt = now
+if editor then
+  editor.lastAt = tonumber(ARGV[3])
   editor.lastSeq = seq
   redis.call('HSET', KEYS[3], ARGV[4], cjson.encode(editor))
   redis.call('HSET', KEYS[1], 'lastEditAt', ARGV[3])
@@ -161,6 +167,16 @@ local lease = holder(ARGV[1], ARGV[2])
 if not lease then return 'leased' end
 local at = redis.call('HMGET', KEYS[1], 'path', 'seq', 'contentHash', 'contentSeq', 'id', 'rk')
 if at[1] and at[1] ~= ARGV[5] then return 'path-fixed' end
+local cut = nil
+if lease.readHash == ARGV[4] then cut = lease.readSeq
+elseif at[3] == ARGV[4] and at[4] == at[2] then cut = tonumber(at[2]) end
+local covered = {}
+if cut then
+  local editors = redis.call('HGETALL', KEYS[3])
+  for i = 1, #editors, 2 do
+    if cjson.decode(editors[i + 1]).lastSeq <= cut then covered[#covered + 1] = editors[i] end
+  end
+end
 if not at[1] then
   redis.call('HSET', KEYS[1], 'path', ARGV[5])
   redis.call('HDEL', KEYS[1], 'pathRule')
@@ -169,15 +185,7 @@ if not at[1] then
 end
 redis.call('HMSET', KEYS[1], 'base', ARGV[3], 'syncedAt', ARGV[2], 'syncedHash', ARGV[4])
 if ARGV[6] == '' then redis.call('HDEL', KEYS[1], 'conflict') else redis.call('HSET', KEYS[1], 'conflict', ARGV[6]) end
-local cut = nil
-if lease.readHash == ARGV[4] then cut = lease.readSeq
-elseif at[3] == ARGV[4] and at[4] == at[2] then cut = tonumber(at[2]) end
-if cut then
-  local editors = redis.call('HGETALL', KEYS[3])
-  for i = 1, #editors, 2 do
-    if cjson.decode(editors[i + 1]).lastSeq <= cut then redis.call('HDEL', KEYS[3], editors[i]) end
-  end
-end
+for _, editor in ipairs(covered) do redis.call('HDEL', KEYS[3], editor) end
 return 'ok'`;
 
 /** KEYS link, lease, editors, presence, tickets, repos. ARGV token, now, seq, contentHash, P. */
@@ -186,8 +194,8 @@ if not holder(ARGV[1], ARGV[2]) then return 'leased' end
 local at = redis.call('HMGET', KEYS[1], 'syncedAt', 'syncedHash', 'seq', 'epoch', 'id', 'rk', 'repository')
 if not at[1] or at[2] ~= ARGV[4] then return 'not-synced' end
 if at[3] ~= ARGV[3] then return 'changed' end
-redis.call('HSET', KEYS[1], 'live', '0')
 erase(ARGV[5], at[5], at[4], at[6], at[7])
+redis.call('HSET', KEYS[1], 'live', '0')
 return 'released'`;
 
 /** KEYS link, lease, editors, presence, tickets, repos, initial. ARGV token, now, seq, P. */
@@ -196,8 +204,8 @@ if not holder(ARGV[1], ARGV[2]) then return 'leased' end
 local at = redis.call('HMGET', KEYS[1], 'path', 'seq', 'epoch', 'id', 'rk', 'repository')
 if at[1] then return 'not-pending' end
 if at[2] ~= ARGV[3] then return 'changed' end
-redis.call('DEL', KEYS[1], KEYS[7])
 erase(ARGV[4], at[4], at[3], at[5], at[6])
+redis.call('DEL', KEYS[1], KEYS[7])
 return 'discarded'`;
 
 /** KEYS link, presence. ARGV process, its entry ('' for none), lifetime. */
@@ -218,8 +226,9 @@ return 1`;
 const TAKE_TICKET = `
 local ticket = redis.call('GET', KEYS[1])
 if not ticket then return false end
+local tickets = ARGV[1] .. ':tickets:' .. cjson.decode(ticket).id
 redis.call('DEL', KEYS[1])
-redis.call('SREM', ARGV[1] .. ':tickets:' .. cjson.decode(ticket).id, ARGV[2])
+redis.call('SREM', tickets, ARGV[2])
 return ticket`;
 
 type Connection = { client: ReturnType<typeof createClient>; ready: Promise<unknown>; };

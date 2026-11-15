@@ -288,6 +288,22 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     expect(await store.append(link.id, 1, bytes('typed'), pat, T0 + 2)).toEqual({ seq: 1, length: 1 });
   });
 
+  it('leaves the store as it was when a script cannot read what the store holds', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const under = prefix();
+    const store = redisLiveStore({ url: url!, prefix: under });
+    const { link } = await checkout(store, 'notes/life/a.md', '# A\n');
+    expect(await store.append(link.id, 1, bytes('typed'), pat, T0 + 1)).toEqual({ seq: 1, length: 1 });
+    expect(await store.lease(link.id, 'lease', T0 + 2 + LEASE_MS, T0 + 2)).toBe('leased');
+    expect(await store.leaseRead(link.id, 'lease', 1, hash('a'), T0 + 2)).toBe(true);
+    // Something else wrote over an editor's record. A script that fails keeps what it had written, so it must fail first.
+    await command('HSET', `${under}:editors:${link.id}`, pat.key, 'not JSON');
+    await expect(store.append(link.id, 1, bytes('more'), pat, T0 + 3)).rejects.toBeInstanceOf(LiveUnavailableError);
+    await expect(store.synced(link.id, 'lease', receipt(hash('a'), 'notes/life/a.md'), T0 + 4)).rejects.toBeInstanceOf(LiveUnavailableError);
+    expect(await store.link(link.id)).toMatchObject({ seq: 1, lastEditAt: T0 + 1, syncedAt: null, syncedHash: null });
+    expect((await store.document(link.id, 1))!.log).toEqual([bytes('typed')]);
+  });
+
   it('refuses to start while the server may evict any key, and starts under volatile-lru and noeviction', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const store = redisLiveStore({ url: url!, prefix: prefix() });
