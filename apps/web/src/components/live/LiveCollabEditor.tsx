@@ -158,6 +158,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         document: doc,
         awareness,
         token,
+        // The server keeps a state only past the clock it last saw of this client: 0 at first, the same after a reconnect.
+        // Setting it again moves the clock, so the others count this tab from its connect, as the server's activeEditors do.
+        onAuthenticated: () => awareness.setLocalState({ ...awareness.getLocalState() }),
         onStatus: ({ status }) => setConnection(current => ({ ...current, status: status as Connection['status'] })),
         onSynced: ({ state }) => {
           if (!state || stopped) return;
