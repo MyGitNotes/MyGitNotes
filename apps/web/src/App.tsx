@@ -207,7 +207,7 @@ export const AppContent: React.FC = () => {
   const { facetsQuery, notebookFacets, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, noteTagActions, searchQuery, viewMode, folderless } = useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route, canManageTags, previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag });
 
   const noteLink = useNoteLinkLoad(location, editorRoute);
-  const { hasActiveTab, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus, requestClear, confirmingClear, setConfirmingClear } = useFocusPanes({ selectedNotebookId, notebookRepository: repositoryFor(selectedNotebookId)?.id ?? '', focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite: canWriteNotebook(selectedNotebookId), editorRegistry, location, navigate, editorRoute, resolveBareNotebook, openingNoteLink: noteLink.pending });
+  const { hasActiveTab, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus, requestClear, confirmingClear, setConfirmingClear } = useFocusPanes({ selectedNotebookId, notebookRepository: repositoryFor(selectedNotebookId)?.id ?? '', focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite: canWriteNotebook(selectedNotebookId), editorRegistry, location, navigate, editorRoute, resolveBareNotebook, focusNoteRoute: noteLink.inFocus });
 
   const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder, setViewMode, setGroupByFolder } = useWorkspaceNavigation({ location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook });
 
@@ -227,7 +227,7 @@ export const AppContent: React.FC = () => {
 
   useSourceReset({ sourceId, setEditingNote, setDeletedNotes });
 
-  const { routedNote, routedCommitted, routedLoading, routeError } = useRoutedNote({
+  const { routedNote, routedPath, routedCommitted, routedLoading, routeError } = useRoutedNote({
     config,
     editorRoute,
     editorNotebookId,
@@ -242,21 +242,21 @@ export const AppContent: React.FC = () => {
   });
   /** Whether a note is one of its notebook's template files, which is edited in zoom and never opens in a Focus pane. */
   const isTemplate = (note: { notebookId: string; path: string; }) => isTemplatePath(config?.notebooks.find(nb => nb.id === note.notebookId), note.path);
-  // A note's link opens it in the Focus, not zoom.
-  useOpenNoteLinkInFocus({ link: noteLink, location, navigate, routedNote, routeError, noteFocus, selectedNotebookId, returnTo, setFocusNarrowView, isTemplate });
+  // A note's link opens it in the Focus, not zoom, and the address bar names the note the Focus shows.
+  const { trackOpen } = useOpenNoteLinkInFocus({ link: noteLink, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus, activeNotePath, focusNarrowView, selectedNotebookId, notebookRoot: config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root, returnTo, browsing: activeTab === 'notes' && !route.study, setFocusNarrowView, isTemplate });
 
   const { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, groupable, groupedByFolder } = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
 
-  const { handleOpenNote } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
+  const { handleOpenNote } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, focusNoteRoute: noteLink.inFocus, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
 
-  const { openInFocus, openFromBrowse, openLink, zoomFocusNote, addToFocus } = useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus, isTemplate });
+  const { openInFocus, openFromBrowse, openLink, zoomFocusNote, addToFocus } = useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus, isTemplate, trackOpen });
 
   const { handleSaveNote } = useNoteSaving({ canWriteNotebook, remote, readDraft, readCommittedNote, t, stageWorkingNote, invalidateNotes, setEditingNote, setGitStatus, defaultDraftScope: defaultRepository ? draftScope(defaultRepository) : '' });
 
   const { handleRestoreNoteFile, handleUpdateNoteStatus, handleOpenFolderIndex } = useNoteRestoration({ remote, readDraft, updateDraft, setEditingNote, navigate, returnTo, invalidateNotes, setGitStatus, setActionError, handleSaveNote, readNoteForChange, selectedNotebookId, canWriteNotebook, t, config, queryClient, queryScope, stageWorkingNote, revisionFor, location });
 
   // Multi-select and bulk actions (set status, add/remove tag, move to folder) for the browse views.
-  const { selectedNotes, selectedKeys, toggleSelect, clearSelection } = useNoteSelection({ displayedNotes, viewMode, selectedNotebookId, scopeKey: location.pathname + location.search });
+  const { selectedNotes, selectedKeys, toggleSelect, clearSelection } = useNoteSelection({ displayedNotes, viewMode, selectedNotebookId, scopeKey: noteLink.inFocus ? returnTo : location.pathname + location.search });
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
   const bulkMoveNotebookId = selectedNotes.length > 0 && selectedNotes.every(note => note.notebookId === selectedNotes[0].notebookId) ? selectedNotes[0].notebookId : undefined;
   const bulkMoveNotebook = config?.notebooks.find(nb => nb.id === bulkMoveNotebookId);
@@ -298,8 +298,8 @@ export const AppContent: React.FC = () => {
   const movingNotebook = noteMove.request?.mode === 'move' ? config?.notebooks.find(nb => nb.id === noteMove.request?.note.notebookId) : undefined;
   const { bulkBusy, runBulkStatus, runBulkTag, runBulkMove } = useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNoteStatus: handleUpdateNoteStatus, beforeFileChange, onFilesChanged, repositories, remote, canWrite: canWriteFiles, t, invalidateNotes, setRepositoryRevision, setActionError, tagOperations, config });
 
-  // A linked note waiting to open in the Focus does not show zoom first.
-  const noteEditorOpen = (Boolean(routedNote) || routedLoading) && !routeError && !noteLink.pending;
+  // A note the Focus shows, or a linked note waiting to open there, is not shown in zoom.
+  const noteEditorOpen = (Boolean(routedNote) || routedLoading) && !routeError && !noteLink.inFocus;
 
   // Every editor of a note, in zoom or in a Focus pane, is wired to the same handlers and per-path state.
   const editorProps = (note: NoteItem, committed?: NoteItem): NoteEditorSharedProps => {

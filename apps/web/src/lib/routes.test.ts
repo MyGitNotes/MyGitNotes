@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compilationStudyRoute, legacyAllNotebooksRoute, notebookRoute, noteReturnRoute, noteRoute, parseWorkspaceRoute, trailCompilation } from './routes.js';
+import { compilationStudyRoute, legacyAllNotebooksRoute, notebookRoute, noteReturnRoute, noteRoute, pageOf, parseWorkspaceRoute, trailCompilation } from './routes.js';
 describe('workspace URLs', () => {
   it('returns editors to their original workspace and preserves filters', () => {
     for (const origin of ['/graph?notebook=example', '/screen?notebook=work', '/notebooks/example/folders/projects?view=graph&tag=demo&q=hello']) {
@@ -108,5 +108,15 @@ describe('trailCompilation', () => {
     expect(trailCompilation(state('/notebooks/b/notes/reading.compilation.yml'), 'a', 'notes/a')).toBeNull();
     expect(trailCompilation(state('/settings'), 'a', 'notes/a')).toBeNull();
     expect(trailCompilation(state('/notebooks/a/notes/../x.compilation.yml'), 'a', 'notes/a')).toBeNull();
+  });
+});
+
+describe('pageOf', () => {
+  it('names the notebook page for the address of a note in the Focus, and zoom or another page as it is', () => {
+    expect(pageOf('/notebooks/life/notes/a.md', '?q=draft')).toBe('/notebooks/life');
+    expect(pageOf('/notebooks/life/notes/b.md', '')).toBe(pageOf('/notebooks/life', '?q=draft'));
+    expect(pageOf('/notebooks/life/notes/a.md', '?returnTo=%2Fnotebooks%2Flife')).toBe('/notebooks/life/notes/a.md');
+    expect(pageOf('/notebooks/life/notes/a.md', '?zoom')).toBe('/notebooks/life/notes/a.md');
+    expect(pageOf('/settings', '')).toBe('/settings');
   });
 });

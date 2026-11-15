@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, render, waitFor } from '@testing-library/react';
 import { type FocusLayout } from '@mygitnotes/core/focus-page';
-import React, { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { noteReturnRoute, parseWorkspaceRoute } from '../lib/routes.js';
@@ -22,16 +22,15 @@ interface FocusState {
 /** A Focus of the `life` notebook: panes of tabs, the note each shows and the active pane, as the page's Focus keeps them. */
 function useFakeFocus(initial: FocusState, { loading = false, result }: { loading?: boolean; result?: OpenResult; }) {
   const [state, setState] = useState(initial);
-  const layout: FocusLayout = Object.keys(state.panes).length === 1
-    ? { root: { kind: 'pane', id: Object.keys(state.panes)[0]!, tabs: state.panes[Object.keys(state.panes)[0]!]!.map(path => ({ kind: 'note', path })) } }
-    : { root: { kind: 'split', id: 's1', orientation: 'horizontal', children: Object.entries(state.panes).map(([id, paths]) => ({ kind: 'pane', id, tabs: paths.map(path => ({ kind: 'note', path })) })) } };
+  const layout: FocusLayout = Object.keys(state.panes).length === 1 ? { root: { kind: 'pane', id: Object.keys(state.panes)[0]!, tabs: state.panes[Object.keys(state.panes)[0]!]!.map(path => ({ kind: 'note', path })) } } : { root: { kind: 'split', id: 's1', orientation: 'horizontal', children: Object.entries(state.panes).map(([id, paths]) => ({ kind: 'pane', id, tabs: paths.map(path => ({ kind: 'note', path })) })) } };
   const entry = { activePane: state.activePane, shown: Object.fromEntries(Object.entries(state.shown).map(([pane, path]) => [pane, path ? `note:${path}` : null])), recent: [], history: {}, ratios: {}, hideToolbar: {} };
-  const openNote = vi.fn(async (path: string): Promise<OpenResult> => {
-    if (result) return result;
-    setState(current => ({ ...current, panes: { ...current.panes, [current.activePane]: current.panes[current.activePane]!.includes(path) ? current.panes[current.activePane]! : [...current.panes[current.activePane]!, path] }, shown: { ...current.shown, [current.activePane]: path } }));
-    return 'opened';
-  });
-  const opened = useRef(openNote);
+  const [openNote] = useState(() =>
+    vi.fn(async (path: string): Promise<OpenResult> => {
+      if (result) return result;
+      setState(current => ({ ...current, panes: { ...current.panes, [current.activePane]: current.panes[current.activePane]!.includes(path) ? current.panes[current.activePane]! : [...current.panes[current.activePane]!, path] }, shown: { ...current.shown, [current.activePane]: path } }));
+      return 'opened';
+    })
+  );
   const show = async (pane: string, key: string) => setState(current => ({ ...current, activePane: pane, shown: { ...current.shown, [pane]: key.slice('note:'.length) } }));
   const close = (path: string) =>
     setState(current => {
@@ -39,8 +38,8 @@ function useFakeFocus(initial: FocusState, { loading = false, result }: { loadin
       return { ...current, panes: { ...current.panes, [current.activePane]: tabs }, shown: { ...current.shown, [current.activePane]: tabs.at(-1) ?? null } };
     });
   const rename = (from: string, to: string) => setState(current => ({ ...current, panes: Object.fromEntries(Object.entries(current.panes).map(([pane, tabs]) => [pane, tabs.map(tab => tab === from ? to : tab)])), shown: Object.fromEntries(Object.entries(current.shown).map(([pane, path]) => [pane, path === from ? to : path])) }));
-  const noteFocus = { loading, shown: 'current', layout, entry, notes: new Map(), openNote: opened.current, show } as never;
-  return { noteFocus, state, openNote: opened.current, close, rename, activeNotePath: state.shown[state.activePane] ?? undefined };
+  const noteFocus = { loading, shown: 'current', layout, entry, notes: new Map(), openNote, show } as never;
+  return { noteFocus, state, openNote, close, rename, activeNotePath: state.shown[state.activePane] ?? undefined };
 }
 
 interface Harness {
@@ -56,7 +55,7 @@ interface Harness {
 
 const existing = new Set([at('a.md'), at('b.md'), at('c.md'), at('renamed.md'), at('.templates/reading.md'), LANE]);
 
-function Page({ api, focus: initial, options }: { api: { current: Harness; }; focus: FocusState; options: { loading?: boolean; result?: OpenResult; notebookId?: string; narrow?: 'focus' | 'browse'; }; }) {
+function Page({ report, focus: initial, options }: { report: (harness: Harness) => void; focus: FocusState; options: { loading?: boolean; result?: OpenResult; notebookId?: string; narrow?: 'focus' | 'browse'; }; }) {
   const location = useLocation(), navigate = useNavigate();
   const editorRoute = useMemo(() => parseWorkspaceRoute(location.pathname, location.search), [location.pathname, location.search]);
   const link = useNoteLinkLoad(location, editorRoute);
@@ -66,19 +65,13 @@ function Page({ api, focus: initial, options }: { api: { current: Harness; }; fo
   const routedPath = editorRoute.note ? at(editorRoute.note) : null;
   const routedNote = routedPath && existing.has(routedPath) ? { notebookId: options.notebookId ?? 'life', path: routedPath, title: routedPath, content: '' } as never : null;
   const routeError = routedPath && !existing.has(routedPath) ? 'route.noteNotFound' : '';
-  const handleOpenNote = useRef(vi.fn(async () => true)).current;
+  const [handleOpenNote] = useState(() => vi.fn(async () => true));
   const { trackOpen } = useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus: focus.noteFocus, activeNotePath: focus.activeNotePath, focusNarrowView: narrow, selectedNotebookId: 'life', notebookRoot: ROOT, returnTo, browsing: editorRoute.tab === 'notes', setFocusNarrowView: setNarrow, isTemplate: note => note.path.includes('/.templates/') });
   const { openFromBrowse } = useFocusNoteNavigation({ noteFocus: focus.noteFocus, selectedNotebookId: 'life', setFocusNarrowView: setNarrow, handleOpenNote: handleOpenNote as never, setAddingToFocus: vi.fn(), isTemplate: note => note.path.includes('/.templates/'), trackOpen });
-  api.current = {
-    url: location.pathname + location.search + location.hash,
-    zoomed: Boolean(routedNote) && !routeError && !link.inFocus,
-    focus,
-    navigate,
-    browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never),
-    setNarrow,
-    narrow,
-    handleOpenNote,
-  };
+  const harness: Harness = { url: location.pathname + location.search + location.hash, zoomed: Boolean(routedNote) && !routeError && !link.inFocus, focus, navigate, browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never), setNarrow, narrow, handleOpenNote };
+  useLayoutEffect(() => {
+    report(harness);
+  });
   return null;
 }
 
@@ -89,7 +82,7 @@ function open(entries: (string | { pathname: string; search?: string; hash?: str
   const api = { current: undefined as unknown as Harness };
   const view = render(
     <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
-      <Page api={api} focus={focus} options={options} />
+      <Page report={harness => api.current = harness} focus={focus} options={options} />
     </MemoryRouter>,
   );
   return { api, view };
@@ -122,7 +115,7 @@ describe('a note link loaded as the page', () => {
     expect(api.current.zoomed).toBe(false);
     view.rerender(
       <MemoryRouter initialEntries={['/notebooks/life/notes/a.md']}>
-        <Page api={api} focus={empty()} options={{}} />
+        <Page report={harness => api.current = harness} focus={empty()} options={{}} />
       </MemoryRouter>,
     );
     await waitFor(() => expect(api.current.focus.activeNotePath).toBe(at('a.md')));
