@@ -1,8 +1,107 @@
-/**
- * Line diffs for live notes, computed with Myers' O(ND) algorithm in linear space (E. W. Myers, "An O(ND) Difference
- * Algorithm and Its Variations", Algorithmica 1, 1986), so a note of many repeated lines, such as the blank lines between
- * paragraphs, diffs in time proportional to its length times the number of lines changed.
+import { DIFF_DELETE, DIFF_EQUAL, makeDiff } from '@sanity/diff-match-patch';
+
+/*
+ * Diffs for live notes. The line diffs are computed with Myers' O(ND) algorithm in linear space (E. W. Myers, "An O(ND)
+ * Difference Algorithm and Its Variations", Algorithmica 1, 1986), so a note of many repeated lines, such as the blank
+ * lines between paragraphs, diffs in time proportional to its length times the number of lines changed. The character
+ * diffs of a live write are diff-match-patch's, which stop at a deadline.
  */
+
+/** One change to a text: `text` replaces its UTF-16 units from `from` up to `to`. */
+export interface TextEdit {
+  from: number;
+  to: number;
+  text: string;
+}
+
+/** How long one character diff may take before it settles for a coarser answer. */
+const TEXT_DIFF_MS = 100;
+
+const isHigh = (unit: number) => unit >= 0xd800 && unit <= 0xdbff;
+const isLow = (unit: number) => unit >= 0xdc00 && unit <= 0xdfff;
+/** Whether cutting `text` at `at` parts a surrogate pair. */
+const partsPair = (text: string, at: number) => at > 0 && at < text.length && isHigh(text.charCodeAt(at - 1)) && isLow(text.charCodeAt(at));
+
+/**
+ * The edits that turn `base` into `changed`: in order, with at least one unchanged unit between two of them, and none
+ * cutting a surrogate pair, so each can be applied alone. They come from a character diff that stops after `timeoutMs`:
+ * a diff that ran out of time answers fewer, larger edits, which still give `changed` exactly.
+ */
+export function textEdits(base: string, changed: string, timeoutMs = TEXT_DIFF_MS): TextEdit[] {
+  const edits: TextEdit[] = [];
+  let at = 0;
+  let open: TextEdit | undefined;
+  for (const [kind, text] of makeDiff(base, changed, { timeout: timeoutMs / 1000 })) {
+    if (!text) continue;
+    if (kind === DIFF_EQUAL) {
+      at += text.length;
+      open = undefined;
+      continue;
+    }
+    if (!open) edits.push(open = { from: at, to: at, text: '' });
+    if (kind === DIFF_DELETE) {
+      at += text.length;
+      open.to = at;
+    } else open.text += text;
+  }
+  // An edit that starts or ends inside a pair takes the whole pair, and edits left touching become one.
+  const whole: TextEdit[] = [];
+  for (const edit of edits) {
+    if (partsPair(base, edit.from)) {
+      edit.from -= 1;
+      edit.text = base[edit.from] + edit.text;
+    }
+    if (partsPair(base, edit.to)) {
+      edit.text += base[edit.to];
+      edit.to += 1;
+    }
+    const last = whole[whole.length - 1];
+    if (last && last.to >= edit.from) {
+      last.text += edit.text;
+      last.to = edit.to;
+    } else whole.push(edit);
+  }
+  return whole;
+}
+
+/**
+ * Rebases `mine`, a text written on `base`, over `theirs`, which `base` became meanwhile: a three-way merge by
+ * character, so two changes in one line merge like typing does. Both sides are diffed against `base`
+ * ({@link textEdits}). An edit both sides made applies once; two insertions at one point apply theirs first, then mine;
+ * edits apart apply both, and an insertion at the edge of a span the other side replaced stays beside the replacement.
+ * Null is a conflict: the sides replaced overlapping spans, or one inserted inside a span the other replaced. A diff
+ * that ran out of time is coarser, so it conflicts more often and never merges wrongly.
+ */
+export function rebaseLiveText(base: string, theirs: string, mine: string, timeoutMs = TEXT_DIFF_MS): string | null {
+  if (theirs === base || theirs === mine) return mine;
+  if (mine === base) return theirs;
+  const theirEdits = textEdits(base, theirs, timeoutMs), myEdits = textEdits(base, mine, timeoutMs);
+  let out = '', at = 0, i = 0, j = 0;
+  const apply = (edit: TextEdit, text = edit.text) => {
+    out += base.slice(at, edit.from) + text;
+    at = edit.to;
+  };
+  while (i < theirEdits.length || j < myEdits.length) {
+    const their = theirEdits[i], my = myEdits[j];
+    if (their && my && their.from === my.from && their.to === my.to) {
+      if (their.text === my.text) apply(their);
+      else if (their.from === their.to) apply(their, their.text + my.text);
+      else return null;
+      i++;
+      j++;
+      continue;
+    }
+    // The edit that comes first in the base; an insertion at the start of a span the other side replaced comes before it.
+    const theirsFirst = !my || (their !== undefined && (their.from < my.from || (their.from === my.from && their.to < my.to)));
+    const first = theirsFirst ? their! : my!, other = theirsFirst ? my : their;
+    // The other side's next edit starts at or after this one: inside its span, the two cannot both apply.
+    if (other && other.from < first.to) return null;
+    apply(first);
+    if (theirsFirst) i++;
+    else j++;
+  }
+  return out + base.slice(at);
+}
 
 /** The lines of a text with their line ends, so a merge keeps the final newline, or its absence, as written. */
 export const textLines = (text: string): string[] => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];

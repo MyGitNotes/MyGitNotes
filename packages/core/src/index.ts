@@ -48,6 +48,7 @@ export * from './note-versions.js';
 export * from './commit-author.js';
 export * from './live-checkin.js';
 export * from './live-merge.js';
+export { rebaseLiveText, type TextEdit, textEdits } from './live-text.js';
 export * from './live-default-draft.js';
 export * from './live-notes.js';
 export * from './live-repository.js';
