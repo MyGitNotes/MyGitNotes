@@ -2480,5 +2480,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.discardedEmpty': '草稿是空的，已捨棄',
   'live.notDiscarded': '草稿沒有捨棄：{reason}。',
   'live.fileTo': '歸檔到：{path}',
+  'live.fileToTitle': '歸檔到：{path}（檔名跟著標題）',
   'live.collisionNote': '歸檔時若同名，會加上 -2。',
 };

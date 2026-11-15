@@ -1,20 +1,20 @@
 import { FilePen, Radio } from 'lucide-react';
 import type { LiveNoteState } from '@mygitnotes/core';
 import { useTranslation } from '../../lib/i18n/index.js';
-import { liveDestination } from './live-drafts.js';
+import { liveDestinationPreview } from './live-drafts.js';
 import './live-editor.css';
 
 /**
  * 「編輯中 · N 人」 (「編輯中」 when nobody is in the editor right now) on a checked-out note, 「未歸檔」 on a pending one,
- * whose tooltip says where its check-in files it (「歸檔到：<folder>/<name>」) when the live editor tells.
+ * whose tooltip says where its check-in files it (「歸檔到：<folder>/<name>」, by its title now) when the live editor tells.
  */
-export function LiveBadge({ live }: { live: LiveNoteState | undefined; }) {
+export function LiveBadge({ live, title }: { live: LiveNoteState | undefined; title?: string; }) {
   const { t } = useTranslation();
   if (!live) return null;
   if (live.pending) {
-    const destination = liveDestination(live);
+    const destination = liveDestinationPreview(live, title);
     return (
-      <span className='live-badge' data-pending='' title={destination ? t('live.fileTo', { path: destination }) : t('live.pendingHint')}>
+      <span className='live-badge' data-pending='' title={destination ? t(destination.followsTitle ? 'live.fileToTitle' : 'live.fileTo', { path: destination.path }) : t('live.pendingHint')}>
         <FilePen aria-hidden='true' />
         {t('live.pending')}
       </span>

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext } from 'react';
 import type { LiveNoteState } from '@mygitnotes/core';
+import { safeFileName } from '@mygitnotes/core/note-template';
 import { type I18nContextValue, type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import { discardLive, hasLiveEdits, type LiveDiscardAnswer } from '../../lib/live-api.js';
 
@@ -41,6 +42,18 @@ export function useLiveLock(): (note: { notebookId: string; live?: LiveNoteState
 
 /** Where a pending note files, as its badge says: 「歸檔到：<folder>/<name>」, the rule's placeholders kept. */
 export const liveDestination = (live: LiveNoteState | undefined): string | undefined => (live?.pending && live.pathRule ? live.pathRule : undefined);
+
+const TITLE = /\{\{\s*title\s*\}\}/g;
+/**
+ * Where a pending note files, as its rule renders with its title now (`{{title}}.md` → `Untitled.md`), and whether the
+ * name follows the title; undefined where the live editor does not tell. Other placeholders are filled at check-in.
+ */
+export const liveDestinationPreview = (live: LiveNoteState | undefined, title: string | undefined): { path: string; followsTitle: boolean; } | undefined => {
+  const rule = liveDestination(live);
+  if (!rule) return undefined;
+  const name = safeFileName(title ?? '');
+  return { path: name ? rule.replace(TITLE, name) : rule, followsTitle: /\{\{\s*title\s*\}\}/.test(rule) };
+};
 
 /** The folder of a pending note's destination, relative to the notebook root; null for the root, as the folder picker takes it. */
 export const liveDestinationFolder = (live: LiveNoteState | undefined): string | null => {

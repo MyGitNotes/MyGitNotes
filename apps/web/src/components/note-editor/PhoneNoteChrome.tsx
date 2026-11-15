@@ -81,7 +81,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
           )}
         {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
         <div className='phone-note-title' title={title}>{title}</div>
-        {liveBadge && <LiveBadge live={props.note.live} />}
+        {liveBadge && <LiveBadge live={props.note.live} title={props.note.title} />}
         <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
         {!autoSave && !readOnly && (
           <button type='button' className='ui-icon-button' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave}>

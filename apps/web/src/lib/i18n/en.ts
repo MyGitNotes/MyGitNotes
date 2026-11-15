@@ -2479,6 +2479,7 @@ export const en = {
   'live.discardedEmpty': 'The draft was empty and was discarded.',
   'live.notDiscarded': 'The draft was kept: {reason}.',
   'live.fileTo': 'Files to: {path}',
+  'live.fileToTitle': 'Files to: {path} (the name follows the title)',
   'live.collisionNote': 'If the name is taken at filing, -2 is added.',
 };
 
