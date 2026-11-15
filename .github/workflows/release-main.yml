@@ -42,6 +42,18 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
+    # A throwaway Redis for the built-in live editor's Redis-backed store, adapter and socket tests, which skip without
+    # MYGITNOTES_TEST_REDIS_URL. The image's defaults (no maxmemory, noeviction) are what the live store requires.
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -50,6 +62,8 @@ jobs:
       # The three shards together run every test file once; vitest splits the sorted file list by --shard.
       # `pnpm test --shard` fails (pnpm rejects the unknown option); `pnpm run` forwards it to vitest.
       - run: pnpm run test --shard=${{ matrix.shard }}/3
+        env:
+          MYGITNOTES_TEST_REDIS_URL: redis://localhost:6379
   release:
     if: contains(fromJSON('["MyGitNotes/MyGitNotes","wayne930242/MyGitNotes"]'), github.repository)
     needs: [static, build, test]
