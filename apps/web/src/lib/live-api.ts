@@ -51,6 +51,8 @@ export interface LiveNoteEditing {
   openZoom?: () => void;
   /** The note was checked in (`answer` when this page did it): the repository moved, and a pending note was filed at `answer.path`. */
   onCheckedIn?: (answer?: LiveCheckInAnswer) => void;
+  /** The note was checked in by someone else while this page's editor still offers its unsaved text: the live state is read again. */
+  onReleased?: () => void;
   /** A pending note was discarded, by 「捨棄草稿」 or by a check-in that found it empty: it is gone, and the view leaves it. */
   onDiscarded?: () => void;
 }

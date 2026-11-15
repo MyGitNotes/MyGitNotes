@@ -26,6 +26,8 @@ export interface LiveCollabEditorProps {
   onClose: () => void;
   /** The note was checked in: by this page (`answer`), or by someone else, which the server tells the tab. */
   onCheckedIn?: (answer?: LiveCheckInAnswer) => void;
+  /** The note stopped being live while the tab still offers its unsaved text: the app reads the live state again now. */
+  onReleased?: () => void;
   /** The pending note was discarded: by 「捨棄草稿」, or by a check-in that found the draft empty. */
   onDiscarded?: () => void;
   /** The note's title, which names a downloaded copy. */
@@ -99,7 +101,7 @@ const downloadName = (title: string | undefined, path: string) => `${(title || p
  * offers its text to copy or download, and its document is never merged into the reopened note. Every other end of a
  * session (a refusal, a ticket that cannot be had) offers unsaved typing the same way.
  */
-export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onDiscarded, title }: LiveCollabEditorProps) {
+export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title }: LiveCollabEditorProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   // Each session is one document and one provider; going back to the editor after a check-in that left it open starts a new one.
@@ -115,9 +117,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     leftUnsaved.delete(leftKey(checkout.notebookId, checkout.path));
   }, [checkout.notebookId, checkout.path]);
   const live = phase.kind === 'open';
-  const latest = useRef({ checkout, onRefetch, onCheckedIn, connection, t });
+  const latest = useRef({ checkout, onRefetch, onCheckedIn, onReleased, connection, t });
   useEffect(() => {
-    latest.current = { checkout, onRefetch, onCheckedIn, connection, t };
+    latest.current = { checkout, onRefetch, onCheckedIn, onReleased, connection, t };
   });
   /** Ends the running session at once: the provider is destroyed (its socket closes), and its document read first. */
   const stopRef = useRef<() => string>(() => '');
@@ -146,7 +148,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       if (stopped) return;
       const unsynced = latest.current.connection.unsynced;
       const content = stop();
-      if (unsynced > 0) return setPhase({ kind: 'lost', text: content, ending });
+      if (unsynced > 0) {
+        // The lists stop saying 編輯中 now, whether the notice is left by its 關閉 or by closing the view.
+        if (ending.kind === 'released') latest.current.onReleased?.();
+        return setPhase({ kind: 'lost', text: content, ending });
+      }
       if (ending.kind === 'refused') return setPhase({ kind: 'refused', reason: ending.reason });
       if (ending.kind === 'failed') return setPhase({ kind: 'notice', message: ending.message, tone: 'alert' });
       setPhase({ kind: 'released' });

@@ -125,6 +125,8 @@ export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; li
     if (answer && !answer.committed) latest.current.live?.onRefetch();
     latest.current.live?.onCheckedIn?.(answer);
   };
+  /** Someone else checked the note in while the editor offers its unsaved text: the app reads the live state again. */
+  const released = () => latest.current.live?.onReleased?.();
   /** The pending note was discarded: it is gone, so the editor closes and the app leaves it. */
   const discarded = () => {
     setState({});
@@ -137,5 +139,5 @@ export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; li
   const hasNotices = Boolean(state.busy || state.error || state.direct || state.checkedIn || state.stillOpen !== undefined || conflictShown);
   // While the frame shows, its bar counts the editors; once the note is checked in it is no longer 編輯中.
   const badgeShown = !(zoom && state.checkout) && !state.checkedIn;
-  return { active, checkout: zoom ? state.checkout : undefined, edit, close, checkedIn, discarded, notices, hasNotices, badgeShown, refetch: () => latest.current.refetch() };
+  return { active, checkout: zoom ? state.checkout : undefined, edit, close, checkedIn, released, discarded, notices, hasNotices, badgeShown, refetch: () => latest.current.refetch() };
 }

@@ -34,7 +34,7 @@ import { citationCompletionSource } from './live-markdown/citation-completion-so
 import { useCitationLibrary } from '../lib/typst-preview/use-citation-library.js';
 import { cardBackgroundLayer, theme } from './live-markdown/theme.js';
 import { attachGutterLineCopy, blockWidgetLineNumbers } from './live-markdown/gutter-line-copy.js';
-import { headingGutter } from './live-markdown/heading-gutter.js';
+import { collabHeadingGutter, headingGutter } from './live-markdown/heading-gutter.js';
 import { caretPlacedIn, restingCaret } from './live-markdown/resting-caret.js';
 import { tableBoundaries } from './live-markdown/table-boundaries.js';
 import { useNoteViewPreferences } from '../lib/editor-preferences.js';
@@ -255,7 +255,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           drawSelection(),
           restingCaret,
           continuous ? [] : cardBackgroundLayer,
-          headingGutter,
+          collab ? collabHeadingGutter : headingGutter,
           lineNumberGutter.current.of(
             showLineNumbers
               ? [lineNumbers({ formatNumber: number => String(number + lineOffset.current) }), blockWidgetLineNumbers(lineOffset), highlightActiveLineGutter()]

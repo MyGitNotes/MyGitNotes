@@ -332,6 +332,8 @@ export const AppContent: React.FC = () => {
           const notebook = config?.notebooks.find(nb => nb.id === note.notebookId);
           if (answer?.filed && answer.path && notebook && answer.path.startsWith(`${notebook.root}/`)) navigate(noteRoute(notebook.id, answer.path.slice(notebook.root.length + 1)) + location.search, { replace: true });
         },
+        // Checked in by someone else while this page still offers its unsaved text: the workspace first, then the lists.
+        onReleased: () => void refreshWorkspace(true).then(invalidateNotes),
         // A discarded pending note is gone: the lists read it again and the view goes back to the notebook.
         onDiscarded: () => {
           invalidateNotes();
