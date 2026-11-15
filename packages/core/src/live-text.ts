@@ -1,0 +1,155 @@
+/**
+ * Line diffs for live notes, computed with Myers' O(ND) algorithm in linear space (E. W. Myers, "An O(ND) Difference
+ * Algorithm and Its Variations", Algorithmica 1, 1986), so a note of many repeated lines, such as the blank lines between
+ * paragraphs, diffs in time proportional to its length times the number of lines changed.
+ */
+
+/** The lines of a text with their line ends, so a merge keeps the final newline, or its absence, as written. */
+export const textLines = (text: string): string[] => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+
+/** Numbers equal lines across all the given line lists alike, so a diff compares numbers instead of strings. */
+export function lineIds(...texts: readonly (readonly string[])[]): Int32Array[] {
+  const ids = new Map<string, number>();
+  return texts.map(lines =>
+    Int32Array.from(lines, line => {
+      let id = ids.get(line);
+      if (id === undefined) ids.set(line, id = ids.size);
+      return id;
+    })
+  );
+}
+
+/** `length` lines of the base at `start` became `changedLength` lines of the changed text at `changedStart`. */
+export interface LineHunk {
+  start: number;
+  length: number;
+  changedStart: number;
+  changedLength: number;
+}
+
+/**
+ * The runs of lines that differ between `base` and `changed`, in order, from a shortest edit script. Each hunk that only
+ * inserts or only deletes is moved as far down as the lines allow, as `node-diff3` placed it (a paragraph and blank line
+ * inserted between two paragraphs follows the first one's blank line), and hunks left touching become one, so two hunks
+ * always have a common line between them.
+ */
+export function lineHunks(base: Int32Array, changed: Int32Array): LineHunk[] {
+  const runs: number[] = [];
+  commonRuns(base, changed, 0, base.length, 0, changed.length, runs);
+  const hunks: LineHunk[] = [];
+  let a = 0, b = 0;
+  for (let i = 0; i <= runs.length; i += 3) {
+    const runA = i < runs.length ? runs[i]! : base.length;
+    const runB = i < runs.length ? runs[i + 1]! : changed.length;
+    if (runA > a || runB > b) hunks.push({ start: a, length: runA - a, changedStart: b, changedLength: runB - b });
+    if (i < runs.length) {
+      a = runA + runs[i + 2]!;
+      b = runB + runs[i + 2]!;
+    }
+  }
+  return slideDown(hunks, base, changed);
+}
+
+/** Moves each insert-only or delete-only hunk down past the common lines equal to its own first line. */
+function slideDown(hunks: LineHunk[], base: Int32Array, changed: Int32Array): LineHunk[] {
+  const out: LineHunk[] = [];
+  for (let i = 0; i < hunks.length; i++) {
+    const hunk = { ...hunks[i]! };
+    const next = hunks[i + 1];
+    const end = next ? next.start : base.length;
+    if (hunk.length === 0 || hunk.changedLength === 0) {
+      const lines = hunk.length === 0 ? changed : base;
+      const length = hunk.length || hunk.changedLength;
+      let at = hunk.length === 0 ? hunk.changedStart : hunk.start;
+      while (hunk.start + hunk.length < end && lines[at] === lines[at + length]) {
+        hunk.start++;
+        hunk.changedStart++;
+        at++;
+      }
+      if (next && hunk.start + hunk.length === end) {
+        hunks[i + 1] = { start: hunk.start, length: hunk.length + next.length, changedStart: hunk.changedStart, changedLength: hunk.changedLength + next.changedLength };
+        continue;
+      }
+    }
+    out.push(hunk);
+  }
+  return out;
+}
+
+/** Appends `[baseStart, changedStart, length]` for each run of common lines in the given ranges, in order. */
+function commonRuns(a: Int32Array, b: Int32Array, aLo: number, aHi: number, bLo: number, bHi: number, runs: number[]): void {
+  let prefix = 0;
+  while (aLo + prefix < aHi && bLo + prefix < bHi && a[aLo + prefix] === b[bLo + prefix]) prefix++;
+  if (prefix) runs.push(aLo, bLo, prefix);
+  aLo += prefix;
+  bLo += prefix;
+  let suffix = 0;
+  while (aHi - suffix > aLo && bHi - suffix > bLo && a[aHi - suffix - 1] === b[bHi - suffix - 1]) suffix++;
+  aHi -= suffix;
+  bHi -= suffix;
+  if (aLo < aHi && bLo < bHi) {
+    const split = middleSnake(a, b, aLo, aHi, bLo, bHi);
+    if (split) {
+      commonRuns(a, b, aLo, split[0], bLo, split[1], runs);
+      commonRuns(a, b, split[0], aHi, split[1], bHi, runs);
+    }
+  }
+  if (suffix) runs.push(aHi, bHi, suffix);
+}
+
+/**
+ * Where a shortest edit script of `a[aLo, aHi)` into `b[bLo, bHi)` crosses its middle, found by running the forward and
+ * the reverse search until they overlap; undefined when the ranges have no line in common. The ranges are non-empty and
+ * share no first or last line.
+ */
+function middleSnake(a: Int32Array, b: Int32Array, aLo: number, aHi: number, bLo: number, bHi: number): [number, number] | undefined {
+  const n = aHi - aLo, m = bHi - bLo;
+  const maxD = Math.ceil((n + m) / 2);
+  const offset = maxD + 1;
+  const size = 2 * maxD + 3;
+  const forward = new Int32Array(size).fill(-1);
+  const reverse = new Int32Array(size).fill(-1);
+  forward[offset + 1] = 0;
+  reverse[offset + 1] = 0;
+  const delta = n - m;
+  const front = delta % 2 !== 0;
+  let k1start = 0, k1end = 0, k2start = 0, k2end = 0;
+  for (let d = 0; d < maxD; d++) {
+    for (let k1 = -d + k1start; k1 <= d - k1end; k1 += 2) {
+      const at = offset + k1;
+      let x1 = k1 === -d || (k1 !== d && forward[at - 1]! < forward[at + 1]!) ? forward[at + 1]! : forward[at - 1]! + 1;
+      let y1 = x1 - k1;
+      while (x1 < n && y1 < m && a[aLo + x1] === b[bLo + y1]) {
+        x1++;
+        y1++;
+      }
+      forward[at] = x1;
+      if (x1 > n) k1end += 2;
+      else if (y1 > m) k1start += 2;
+      else if (front) {
+        const other = offset + delta - k1;
+        if (other >= 0 && other < size && reverse[other] !== -1 && x1 >= n - reverse[other]!) return [aLo + x1, bLo + y1];
+      }
+    }
+    for (let k2 = -d + k2start; k2 <= d - k2end; k2 += 2) {
+      const at = offset + k2;
+      let x2 = k2 === -d || (k2 !== d && reverse[at - 1]! < reverse[at + 1]!) ? reverse[at + 1]! : reverse[at - 1]! + 1;
+      let y2 = x2 - k2;
+      while (x2 < n && y2 < m && a[aHi - x2 - 1] === b[bHi - y2 - 1]) {
+        x2++;
+        y2++;
+      }
+      reverse[at] = x2;
+      if (x2 > n) k2end += 2;
+      else if (y2 > m) k2start += 2;
+      else if (!front) {
+        const other = offset + delta - k2;
+        if (other >= 0 && other < size && forward[other] !== -1) {
+          const x1 = forward[other]!;
+          if (x1 >= n - x2) return [aLo + x1, bLo + x1 - (other - offset)];
+        }
+      }
+    }
+  }
+  return undefined;
+}

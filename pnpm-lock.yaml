@@ -482,9 +482,6 @@ importers:
       marked:
         specifier: 18.0.13
         version: 18.0.13
-      node-diff3:
-        specifier: 3.2.1
-        version: 3.2.1
       tar-stream:
         specifier: ^3.2.1
         version: 3.2.1
