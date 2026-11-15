@@ -396,6 +396,58 @@ curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" https
 
 Every process of a multi-process deployment may run the schedule and the route: the editor's lease lets one check-in run per note at a time, and a repeat finds the text already in Git and makes no second commit.
 
+## Optional: the built-in live editor
+
+The community edition also ships its own live editor. People co-edit a note in MyGitNotes' own editor, see each other's text and named cursors, and the note is checked in as above. Typing travels over a WebSocket on the app's own server, `/live/socket`, and is kept in Redis between check-ins.
+
+Version 0.20.0 has no environment variable that turns it on. The server entry point (what the Docker image runs) does not start it. Check-ins commit with a write credential and name people by a verified email, and a community deployment has neither: people sign in with their own provider token, which does not outlive a request, and the default sign-in gives no verified email. A deployment that has both composes the editor in its own server entry with `builtinLiveNotes` from `@mygitnotes/local-server`. `open` returns the repository with the deployment's own write credential, its commits authored by the given author:
+
+```ts
+import { builtinLiveNotes, createApp, redisLiveStore } from '@mygitnotes/local-server';
+
+const live = builtinLiveNotes({ covers, open, store: redisLiveStore({ url: process.env.REDIS_URL! }) });
+await live.started; // refuses a Redis that may evict live text
+const app = createApp(base, { liveNotes: live /* and the deployment's other services */ });
+const server = app.listen(port, host);
+server.on('upgrade', (req, socket, head) => { if (!live.upgrade(req, socket, head)) socket.destroy(); });
+process.once('SIGTERM', async () => { await live.shutdown(); server.close(); });
+```
+
+The server needs:
+
+- **A long-running Node 22 or later server with WebSockets.** It cannot run on Vercel: `createApp` stops at start when `VERCEL` is set.
+- **`APP_URL` set to the browser-facing origin**, a bare `https` origin such as `https://notes.example.com` (`http` only on a loopback host). The socket accepts only that `Origin`, and the server does not start without it.
+- **One Redis server, not a cluster**, through `REDIS_URL` (`redis://` or `rediss://`; Redis REST is not supported). Set `maxmemory-policy noeviction` (recommended) or a `volatile-*` policy, and `appendonly yes`. Live text carries no expiry, so `volatile-*` never evicts it; under an `allkeys-*` policy the server refuses to start, because Redis could drop typing. When the policy cannot be read (some managed services hide it), the server warns and starts. Without an append-only file it warns that a Redis restart loses typing since the last check-in. The same Redis as sessions is fine; its keys are namespaced by `MYGITNOTES_SESSION_NAMESPACE`.
+- **One app process.** Two during a deploy overlap stay correct and lose nothing, but people on different processes see each other's typing only every few seconds.
+- **A reverse proxy that passes WebSocket upgrades on `/live/socket`**, with no idle timeout under 60 s; the server pings every 30 s. Caddy's `reverse_proxy` does this by default. nginx needs:
+
+  ```nginx
+  location /live/ {
+    proxy_pass http://127.0.0.1:4321;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 120s;
+  }
+  ```
+
+  Browsers open the socket over HTTP/1.1, so no ALPN change is needed.
+
+  The server keeps at most 100 sockets open that have no note on them yet, 10 of them from one address, and answers 503 past that. A proxy on the host or the private network (loopback, 10/8, 172.16/12, 192.168/16, fc00::/7) names the client in the last `X-Forwarded-For` entry; Caddy sets it by default. Without it, every client behind the proxy counts as one address. Only the proxy directly in front of the app is trusted, and only its last entry is read; an entry that is not an IP address (after dropping a `:port` or `[...]`) counts as none, and the peer is used. With a CDN in front of that proxy, the last entry would be the CDN's edge: have the host proxy turn the CDN's client-IP header into `X-Forwarded-For` (for nginx, `real_ip_header` with `set_real_ip_from` the CDN's ranges, then `proxy_set_header X-Forwarded-For $remote_addr`). Do not let other containers or LAN clients reach the app directly: from a private address the header is believed.
+- **Memory** for a few times the text of each open note: 50 open notes of 50 KiB stay within tens of MiB. Live text is limited to 5 MiB per note.
+
+`memoryLiveStore()` in place of `redisLiveStore` keeps live text in the process: it is lost on every restart, so use it only for a single-user trial.
+
+`MYGITNOTES_LIVE_CHECKIN_AT`, `MYGITNOTES_TIMEZONE` and `MYGITNOTES_LIVE_SWEEP_SECRET` work as for an external editor. Before maintenance, or before switching a repository from an external editor to the built-in one, check in every live note now:
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" "https://notes.example.com/api/live/sweep?mode=all&wait=1"
+```
+
+With the built-in editor, a new note left empty is discarded instead of being filed into Git: when someone presses 「立即簽回」 on it, at the nightly check-in, or with 「捨棄草稿」. A note counts as empty when nothing beyond the text it was created with, or the default title and placeholder line, holds a letter, digit, image or embed. A note not yet filed can also be moved or renamed before its first check-in; that changes where it will be filed and commits nothing.
+
 ## Optional: the time zone of template dates
 
 A note an agent creates from a template through MCP fills `{{date}}` and `{{time}}` from the server's clock, in UTC unless `MYGITNOTES_TIMEZONE` names an IANA time zone, for example `MYGITNOTES_TIMEZONE=Asia/Taipei`. The server refuses to fill a template while the name is not one the runtime knows. The web app fills them from the reader's own clock.

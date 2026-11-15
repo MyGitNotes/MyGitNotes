@@ -97,9 +97,11 @@ export interface RepositoryStatus {
   manifestError?: { message: string; text: string; };
   /**
    * The live editor its Markdown notes open in, for a signed-in reader where the deployment attaches one; null where
-   * none covers the repository or nobody is signed in. Absent without a live editor in the deployment.
+   * none covers the repository or nobody is signed in. Absent without a live editor in the deployment. `discard` is
+   * there only where the adapter can discard a pending note (「捨棄草稿」), `retarget` only where it can move and
+   * rename one.
    */
-  live?: LiveEditorInfo | null;
+  live?: (LiveEditorInfo & { discard?: true; retarget?: true; }) | null;
 }
 /** The answer of `GET /api/workspace`. */
 export interface WorkspaceStatus {

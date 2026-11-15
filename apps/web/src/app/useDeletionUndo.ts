@@ -6,6 +6,8 @@ import { pendingDeletedNotes } from '../lib/deleted-notes.js';
 import type { NoteItem } from '../lib/types.js';
 import { type FileResult, mutateFile } from '../lib/files-api.js';
 import type { WorkspaceState } from './workspace-state.js';
+import { translateNow } from '../lib/i18n/index.js';
+import { discardDraft, keptReason } from '../components/live/live-drafts.js';
 
 interface Params {
   canWriteNotebook: WorkspaceState['canWriteNotebook'];
@@ -65,9 +67,33 @@ export function useDeletionUndo({ canWriteNotebook, revisionFor, setNotebookRevi
     }
   };
 
+  /*
+   * A pending live note (未歸檔) is discarded instead (docs/specs/2026-11-15-builtin-live-editor §20.1): at once when nobody
+   * typed content in it, after 「捨棄這份草稿？」 otherwise. Nothing is committed, so there is nothing to undo; the lists
+   * only see the draft gone. The rows offer this only where the live editor can discard.
+   */
+  const handleDiscardDraft = async (note: NoteListItem) => {
+    setActionError('');
+    try {
+      // A remote workspace's lists arm a delete before it runs: that second click is the one confirmation asked.
+      const answer = await discardDraft(note.notebookId, note.path, translateNow, remote ? () => true : undefined);
+      if (!answer) return;
+      if (!answer.discarded) return setActionError(keptReason(answer, translateNow));
+    } catch (error) {
+      setActionError((error as Error).message);
+      return;
+    }
+    invalidateNotes();
+    if (editingNote && sameNote(editingNote, note)) {
+      setEditingNote(null);
+      navigate(returnTo, { replace: true });
+    }
+  };
+
   // Trash action: delete without immediate commit, allowing restore
   const handleDeleteNote = async (note: NoteListItem) => {
     if (!canWriteNotebook(note.notebookId)) return;
+    if (note.live?.pending) return handleDiscardDraft(note);
     if (remote) return handleRemoteDeleteNote(note);
     // 1. Read the full note first; Undo restores it from this buffer.
     let deleted: NoteItem;

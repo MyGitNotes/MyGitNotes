@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { formatTemplateDate, formatTemplateTime, isLiveNotePath, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, type LiveNotes, livePathRule, livePendingPath, LiveTooLargeError, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
+import { formatTemplateDate, formatTemplateTime, isBuiltinEditor, isLiveNotePath, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, LiveLeasedError, type LiveNotes, LiveNotLiveError, livePathRule, livePathRuleParts, livePendingPath, LiveTooLargeError, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
 import { liveDueInstant, liveScheduleSetting } from './live-schedule.js';
 import { asRemote, notebookRepository, noteRepository, requestPerson, workspaceOf } from './request-workspace.js';
 import { fail } from './route-errors.js';
@@ -18,14 +18,16 @@ export interface LiveCheckoutView {
   /** The Git path, or a pending note's virtual path. */
   path: string;
   pending: boolean;
+  /** A framed editor's page of the note, or the built-in editor's note page in the app. */
   editorUrl: string;
-  embedUrl: string;
+  /** A framed editor only. */
+  embedUrl?: string;
   since: string;
   activeEditors: number;
   conflict: LiveCheckout['conflict'];
 }
 
-const viewOf = (checkout: LiveCheckout, key: NotebookKey, notebook: NotebookConfig): LiveCheckoutView => ({ id: checkout.id, notebookId: key, path: checkout.path ?? livePendingPath(notebook.root, checkout.id), pending: checkout.path === null, editorUrl: checkout.editorUrl, embedUrl: checkout.embedUrl, since: checkout.since, activeEditors: checkout.activeEditors, conflict: checkout.conflict });
+const viewOf = (checkout: LiveCheckout, key: NotebookKey, notebook: NotebookConfig): LiveCheckoutView => ({ id: checkout.id, notebookId: key, path: checkout.path ?? livePendingPath(notebook.root, checkout.id), pending: checkout.path === null, editorUrl: checkout.editorUrl!, ...(checkout.embedUrl !== undefined ? { embedUrl: checkout.embedUrl } : {}), since: checkout.since, activeEditors: checkout.activeEditors, conflict: checkout.conflict });
 
 /** A refusal the web tells apart: the note or repository opens in the direct editor instead. */
 class NotLiveError extends SourceError {
@@ -35,7 +37,28 @@ class NotLiveError extends SourceError {
   }
 }
 const notLive = (message: string) => new NotLiveError(message);
-const liveFail = (res: express.Response, error: unknown) => fail(res, error, error instanceof LiveTooLargeError ? { code: 'too-large' } : error instanceof NotLiveError ? { code: error.code } : {});
+/** A note that is not live (yet): the socket opens only on a checked-out note. */
+class NotOpenLiveError extends SourceError {
+  readonly code = 'not-live';
+  constructor() {
+    super('The note is not open in the live editor.', 409);
+  }
+}
+/** A draft someone typed content in, discarded without the person's confirmation: the web asks first. */
+class HasEditsError extends SourceError {
+  readonly code = 'has-edits';
+  constructor() {
+    super('Someone typed in this draft. Confirm to discard it; its text is not saved to Git.', 409);
+  }
+}
+/** A pending note a check-in keeps the lease of past the retries: the web may ask again in a moment. */
+class LeasedError extends SourceError {
+  readonly code = 'leased';
+  constructor() {
+    super('The note is being checked in. Try again in a moment.', 409);
+  }
+}
+const liveFail = (res: express.Response, error: unknown) => fail(res, error, error instanceof LiveTooLargeError ? { code: 'too-large' } : error instanceof NotLiveError || error instanceof NotOpenLiveError || error instanceof HasEditsError || error instanceof LeasedError ? { code: error.code } : {});
 
 /** The sweep secret of an environment: at least 32 characters, else none, and the sweep route answers 404. */
 export function liveSweepSecret(env: Record<string, string | undefined>): string | undefined {
@@ -60,7 +83,9 @@ export interface LiveRoutesOptions {
 /**
  * `POST /api/live/sweep` with `Authorization: Bearer <MYGITNOTES_LIVE_SWEEP_SECRET>`: checks in every link due at the
  * latest check-in instant (every link when the nightly check-in is off). It opens no workspace, so it is mounted before
- * the workspace routes. 202 at once, or the report with `?wait=1`. The secret is never logged.
+ * the workspace routes. 202 at once, or the report with `?wait=1`. The secret is never logged. With `?mode=all` every
+ * live link is due whatever its `since`, and a release refused for active editors is retried as 「立即簽回」 does: an
+ * edition runs it before it switches a framed editor for the built-in one.
  */
 export function createLiveSweepRouter({ liveNotes, defer, env = process.env }: LiveRoutesOptions): express.Router {
   const router = express.Router();
@@ -70,10 +95,13 @@ export function createLiveSweepRouter({ liveNotes, defer, env = process.env }: L
     const header = req.headers.authorization;
     const given = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
     if (!isSweepSecret(given, secret)) return res.status(401).json({ error: 'Unauthorized.' });
+    const all = req.query.mode === 'all';
+    if (req.query.mode !== undefined && !all) return res.status(400).json({ error: 'mode must be all, or left out.' });
     try {
       const setting = liveScheduleSetting(env);
       const now = new Date();
-      const work = sweepLive(liveNotes, { instant: setting ? liveDueInstant(now, setting) : now, timeZone: setting?.timeZone ?? templateTimeZone(env) });
+      const timeZone = setting?.timeZone ?? templateTimeZone(env);
+      const work = sweepLive(liveNotes, all ? { instant: new Date(now.getTime() + 1), timeZone, mode: 'manual' } : { instant: setting ? liveDueInstant(now, setting) : now, timeZone });
       if (req.query.wait === '1') return res.json(await work);
       const logged = work.then(report => console.info(`[live-notes] sweep: ${report.results.filter(result => result.committed).length} committed, ${report.failed.length} failed of ${report.due} due`), error => console.warn(`[live-notes] sweep failed: ${(error as Error)?.name ?? 'error'}`));
       if (defer) defer(logged);
@@ -176,6 +204,25 @@ export function createLiveRouter(): express.Router {
     }
   });
 
+  /*
+   * A ticket to open a live note's document over the built-in editor's socket: for a signed-in writer of a covered
+   * repository whose editor is the built-in one, and a note that is live already (the web checks it out first).
+   */
+  router.post('/api/live/socket-ticket', async (req, res) => {
+    try {
+      signedIn(res);
+      const { notebookId, path: file } = req.body ?? {};
+      const { handle } = await noteRepository(res, file, notebookId);
+      const { reader, view } = await writerOf(res, handle);
+      if (!isBuiltinEditor(view.editor)) throw notLive('This repository has no built-in live editor.');
+      const checkout = await reader.liveCheckout(file as string);
+      if (!checkout) throw new NotOpenLiveError();
+      res.json(await view.socketTicket(checkout.id));
+    } catch (error) {
+      liveFail(res, error);
+    }
+  });
+
   router.post('/api/live/checkin', async (req, res) => {
     try {
       signedIn(res);
@@ -183,6 +230,62 @@ export function createLiveRouter(): express.Router {
       const { handle } = await noteRepository(res, file, notebookId);
       const { reader } = await writerOf(res, handle);
       res.json(await reader.checkInLive(file as string));
+    } catch (error) {
+      liveFail(res, error);
+    }
+  });
+
+  /*
+   * 「捨棄草稿」 (docs/specs/2026-11-15-builtin-live-editor §19): drops a pending note, by its virtual path, without a
+   * commit, for the writers who may check it in, where the adapter can discard. A draft someone typed content in needs
+   * `confirm: true` (409 has-edits without it); an untyped or empty one goes at once.
+   */
+  router.post('/api/live/discard', async (req, res) => {
+    try {
+      signedIn(res);
+      const { notebookId, path: file, confirm } = req.body ?? {};
+      const { handle, notebook } = await noteRepository(res, file, notebookId);
+      const { reader, view } = await writerOf(res, handle);
+      if (!view.discards) throw notLive("This repository's live editor cannot discard drafts.");
+      if (!parseLivePendingPath(file as string, [notebook])) throw notLive('Only a live note not yet filed can be discarded.');
+      const pending = await reader.liveCheckout(file as string);
+      if (!pending || pending.path !== null) throw new SourceError('Note not found.', 404);
+      const result = await reader.discardLive(file as string, confirm === true);
+      if (!result.discarded && result.reason === 'has-edits') throw new HasEditsError();
+      const { id: _id, ...answer } = result;
+      res.json(answer);
+    } catch (error) {
+      liveFail(res, error);
+    }
+  });
+
+  /*
+   * Moving and renaming a pending note (docs/specs/2026-11-15-builtin-live-editor §20.2): sets where its check-in files
+   * it, by its virtual path, for the writers who may check it in, where the adapter can retarget. `folder` replaces the
+   * folder of its rule and keeps the name pattern; `name` fixes the file name. Nothing is committed; a name taken at
+   * the filing still gets -2. Answers the row with its rule and the destination it names.
+   */
+  router.post('/api/live/retarget', async (req, res) => {
+    try {
+      signedIn(res);
+      const { notebookId, path: file, folder, name } = req.body ?? {};
+      const { handle, notebook, key } = await noteRepository(res, file, notebookId);
+      const { reader, view } = await writerOf(res, handle);
+      if (!view.retargets) throw notLive("This repository's live editor cannot move or rename drafts.");
+      if (!parseLivePendingPath(file as string, [notebook])) throw notLive('Only a live note not yet filed can be moved or renamed this way.');
+      if ((folder !== undefined && typeof folder !== 'string') || (name !== undefined && typeof name !== 'string')) throw new SourceError('folder and name must be text.');
+      const pending = await reader.liveCheckout(file as string);
+      if (!pending || pending.path !== null) throw new SourceError('Note not found.', 404);
+      let checkout: LiveCheckout;
+      try {
+        checkout = await view.retarget(file as string, { ...(folder !== undefined ? { folder } : {}), ...(name !== undefined ? { name } : {}) });
+      } catch (error) {
+        // Filed meanwhile by a check-in, or a lease a check-in keeps: the web tells both apart.
+        if (error instanceof LiveNotLiveError) throw notLive('The note was filed meanwhile; move or rename it as a note.');
+        if (error instanceof LiveLeasedError) throw new LeasedError();
+        throw error;
+      }
+      res.json({ checkout: { ...viewOf(checkout, key, notebook), pathRule: checkout.pathRule }, destination: livePathRuleParts(checkout.pathRule!) });
     } catch (error) {
       liveFail(res, error);
     }

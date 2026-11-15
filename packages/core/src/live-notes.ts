@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { CommitAuthor } from './commit-author.js';
 import { isNotebookContent } from './folders.js';
+import { LIVE_DEFAULT_DRAFT_LINES } from './live-default-draft.js';
 import { SourceError } from './github-api.js';
 import type { NotebookKey } from './notebook-key.js';
 import { isOutlinePath } from './outline.js';
@@ -24,8 +25,9 @@ export interface LiveContext {
   request: WorkspaceRequest;
 }
 
-/** How the web app frames one repository's editor. Static configuration. */
-export interface LiveEditorInfo {
+/** How the web app frames one repository's external editor (0.19). Static configuration. `kind` is left out, as 0.19 writes it. */
+export interface LiveFrameEditorInfo {
+  kind?: 'frame';
   /** Origin of every editorUrl and embedUrl: https (http only on a loopback host), with no path. */
   origin: string;
   /** `type` of the status messages the embedded editor posts; the app posts `<messageType>:theme` back. */
@@ -33,6 +35,13 @@ export interface LiveEditorInfo {
   /** Query parameter that takes `light` or `dark` on the embed URL. Left out, none is added. */
   themeParam?: string;
 }
+/** The built-in editor: MyGitNotes' own editor over `/live/socket` on the app's origin. */
+export interface LiveBuiltinEditorInfo {
+  kind: 'builtin';
+}
+/** A repository's live editor: a framed external one, or the built-in one. */
+export type LiveEditorInfo = LiveFrameEditorInfo | LiveBuiltinEditorInfo;
+export const isBuiltinEditor = (info: LiveEditorInfo): info is LiveBuiltinEditorInfo => info.kind === 'builtin';
 
 /** What a check-in overwrote: Git changes that lost to the live text, or a note deleted in Git and written back. */
 export interface LiveConflict {
@@ -56,8 +65,9 @@ export interface LiveCheckout {
   pathRule?: string;
   /** ISO: when this checkout or reopen began. */
   since: string;
-  editorUrl: string;
-  embedUrl: string;
+  /** Present, and on the editor's origin, exactly for a framed editor. */
+  editorUrl?: string;
+  embedUrl?: string;
   /** sha256 hex of the current text in normal form. */
   contentHash: string;
   /** Connected, non-idle editors. */
@@ -86,8 +96,8 @@ export interface LiveEditor {
 export interface LivePersonCalls {
   /** Live links only; the adapter may cache the list up to 10 s. */
   checkouts(repository: RepositoryId): Promise<LiveCheckout[]>;
-  /** Fresh. */
-  read(repository: RepositoryId, id: string): Promise<LiveText>;
+  /** Fresh. A pending note may carry its `initialText`, as in {@link LiveDetail}, for the discard precheck to judge it by. */
+  read(repository: RepositoryId, id: string): Promise<LiveText & { initialText?: string; }>;
   write(repository: RepositoryId, id: string, change: { content: string; baseRevision: string; agent: boolean; }): Promise<{ liveRevision: string; changed: boolean; }>;
   append(repository: RepositoryId, id: string, change: { text: string; agent: boolean; }): Promise<{ liveRevision: string; }>;
   checkout(repository: RepositoryId, request: { notebook: NotebookKey; path: string; base: { commit: string; blob: string; content: string; }; }): Promise<{ checkout: LiveCheckout; outcome: 'created' | 'joined' | 'reopened'; }>;
@@ -104,6 +114,8 @@ export interface LiveLease {
 export interface LiveDetail extends LiveText {
   checkout: LiveCheckout;
   editors: LiveEditor[];
+  /** A pending note: the text its link was created with. Left out, a draft's whole body is judged ({@link isEmptyLiveDraft}). */
+  initialText?: string;
 }
 export type LiveRelease = { released: true; } | { released: false; reason: 'active' | 'changed' | 'not-synced'; activeEditors?: number; };
 
@@ -119,6 +131,25 @@ export interface LiveServiceCalls {
   mergeIn(repository: RepositoryId, id: string, lease: LiveLease, change: { content: string; baseRevision: string; }): Promise<{ liveRevision: string; }>;
   synced(repository: RepositoryId, id: string, lease: LiveLease, receipt: { commit: string; blob: string; contentHash: string; path: string; conflict: LiveConflict | null; }): Promise<void>;
   release(repository: RepositoryId, id: string, lease: LiveLease, check: { contentHash: string; }): Promise<LiveRelease>;
+  /**
+   * Drops a pending note (no path) and its live text without a commit; refused like `release` when someone is editing
+   * (`active`) or the text is not the one checked (`changed`). The link is gone after it: `filed` answers nothing for it.
+   * An adapter without it keeps every pending note until a check-in files it, as in 0.19.
+   */
+  discard?(repository: RepositoryId, id: string, lease: LiveLease, check: { contentHash: string; }): Promise<LiveRelease>;
+  /**
+   * Sets the path rule a pending note (no path) is filed by at its first check-in, and answers its row with that
+   * `pathRule`; nothing is committed and its text is not touched, so open editors do not hold it. A note with a path is
+   * refused with {@link LiveNotLiveError}. The lease ends with the call, whether it retargets or refuses, so it never
+   * holds a check-in off. An adapter without it keeps each pending note's rule as it was created, as in 0.19.
+   */
+  retarget?(repository: RepositoryId, id: string, lease: LiveLease, request: { pathRule: string; }): Promise<LiveCheckout>;
+  /**
+   * Ends `lease` while the note stays live: a check-in that did not release the note (refused, unfiled, or failed) calls
+   * it, so the next check-in, such as 「立即簽回」 again, need not wait for the lease to run out. A lease another holder
+   * took meanwhile is left alone. An adapter without it keeps each such lease until it runs out, as in 0.19.
+   */
+  unlease?(repository: RepositoryId, id: string, lease: LiveLease): Promise<void>;
 }
 
 export interface LiveNotice {
@@ -145,6 +176,57 @@ export interface LiveNotes {
   person(context: LiveContext): LivePersonCalls;
   service: LiveServiceCalls;
   notify?(notice: LiveNotice): Promise<void>;
+  /** Required when `editors` declares a builtin editor: a ticket for the person to open the link's live document. */
+  socketTicket?(context: LiveContext, repository: RepositoryId, id: string): Promise<LiveSocketTicket>;
+}
+
+/** What opens a link's live document over the built-in editor's socket. */
+export interface LiveSocketTicket {
+  /** Opaque, single use, valid 60 s. */
+  ticket: string;
+  /** The Yjs document to open: `<link id>.<epoch>`. */
+  document: string;
+}
+const SOCKET_TICKET = /^[A-Za-z0-9_-]{32,128}$/;
+const SOCKET_DOCUMENT = /^[A-Za-z0-9_-]{1,64}\.[1-9][0-9]{0,9}$/;
+
+/** A socket ticket an adapter returned, checked and reduced to its fields; null for a bad one. */
+export function liveSocketTicketOf(value: unknown): LiveSocketTicket | null {
+  if (!value || typeof value !== 'object') return null;
+  const { ticket, document } = value as Record<string, unknown>;
+  return typeof ticket === 'string' && SOCKET_TICKET.test(ticket) && typeof document === 'string' && SOCKET_DOCUMENT.test(document) ? { ticket, document } : null;
+}
+
+/** The frontmatter block a note opens with, as `parseNoteContent` finds it. */
+const FRONTMATTER_BLOCK = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+/** What makes a line content: a letter, a digit, or an image or embed. */
+const DRAFT_CONTENT = /[\p{L}\p{N}]|!\[|<(img|iframe|video)\b/iu;
+
+/**
+ * Whether a pending note is an empty draft (docs/specs/2026-11-15-builtin-live-editor §19.1): once the lines of its
+ * initial body, or without `initialText` the web's default new-note lines ({@link LIVE_DEFAULT_DRAFT_LINES}), are taken
+ * out of its body, one each, what is left holds no letter, digit, image or embed. Whitespace, punctuation, Markdown
+ * markers and emoji alone are empty; the frontmatter never counts, and lines are compared whole, without the whitespace
+ * around them. The default lines are never taken out on top of an initial text's, so a line typed a second time counts.
+ */
+export function isEmptyLiveDraft(text: string, initialText?: string): boolean {
+  const lines = (value: string) => normalizeLiveText(value).replace(FRONTMATTER_BLOCK, '').split('\n').map(line => line.trim());
+  const initial = new Map<string, number>();
+  for (const line of initialText === undefined ? LIVE_DEFAULT_DRAFT_LINES : lines(initialText)) initial.set(line, (initial.get(line) ?? 0) + 1);
+  return lines(text).every(line => {
+    const left = initial.get(line) ?? 0;
+    if (left > 0) {
+      initial.set(line, left - 1);
+      return true;
+    }
+    return !DRAFT_CONTENT.test(line);
+  });
+}
+
+/** The initial text a detail or read gave a pending note, if a usable one. */
+export function liveInitialTextOf(value: unknown): string | undefined {
+  const initial = (value as { initialText?: unknown; } | null)?.initialText;
+  return typeof initial === 'string' && Buffer.byteLength(initial, 'utf8') <= LIVE_MAX_BYTES ? initial : undefined;
 }
 
 /** What a live link id may be. */
@@ -238,7 +320,12 @@ const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 export function validateLiveEditorInfo(value: unknown): LiveEditorInfo {
   const refuse = (why: string) => new Error(`Invalid live editor configuration: ${why}`);
   if (!value || typeof value !== 'object') throw refuse('it is not an object.');
-  const { origin, messageType, themeParam } = value as Record<string, unknown>;
+  const { kind, origin, messageType, themeParam } = value as Record<string, unknown>;
+  if (kind === 'builtin') {
+    if (Object.keys(value).some(key => key !== 'kind')) throw refuse('a builtin editor takes no other key than kind.');
+    return { kind: 'builtin' };
+  }
+  if (kind !== undefined && kind !== 'frame') throw refuse("kind must be 'frame' or 'builtin'.");
   if (typeof origin !== 'string') throw refuse('origin is not a string.');
   let url: URL;
   try {
@@ -251,7 +338,7 @@ export function validateLiveEditorInfo(value: unknown): LiveEditorInfo {
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname))) throw refuse('origin must use https (http only on a loopback host).');
   if (typeof messageType !== 'string' || !TOKEN.test(messageType)) throw refuse('messageType must be 1 to 64 letters, digits, _ or -.');
   if (themeParam !== undefined && (typeof themeParam !== 'string' || !TOKEN.test(themeParam))) throw refuse('themeParam must be 1 to 64 letters, digits, _ or -.');
-  return { origin, messageType, ...(themeParam !== undefined ? { themeParam } : {}) };
+  return { ...(kind === 'frame' ? { kind } : {}), origin, messageType, ...(themeParam !== undefined ? { themeParam } : {}) };
 }
 
 /**
@@ -261,7 +348,7 @@ export function validateLiveEditorInfo(value: unknown): LiveEditorInfo {
 export function liveEditorOf(liveNotes: Pick<LiveNotes, 'editors' | 'editor'>, repository: RepositoryId): LiveEditorInfo | null {
   const info = liveNotes.editor(repository);
   if (info === null) return null;
-  const declared = liveNotes.editors.find(editor => editor.origin === info.origin && editor.messageType === info.messageType && editor.themeParam === info.themeParam);
+  const declared = isBuiltinEditor(info) ? liveNotes.editors.find(isBuiltinEditor) : liveNotes.editors.find(editor => !isBuiltinEditor(editor) && editor.origin === info.origin && editor.messageType === info.messageType && editor.themeParam === info.themeParam);
   if (!declared) throw new Error('The live editor of a repository is not one the adapter declared in `editors`.');
   return declared;
 }
@@ -289,7 +376,7 @@ const isTime = (value: unknown): value is string => typeof value === 'string' &&
 const isRelativePath = (value: string) => value.length <= 1024 && !/[\\\p{Cc}]/u.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..');
 
 /** Where a URL an adapter gave may point: the editor's origin, with no credentials. */
-function onOrigin(value: unknown, editor: LiveEditorInfo): value is string {
+function onOrigin(value: unknown, editor: LiveFrameEditorInfo): value is string {
   if (typeof value !== 'string' || value.length > 2048) return false;
   try {
     const url = new URL(value);
@@ -325,7 +412,8 @@ function checkoutProblem(row: Record<string, unknown>, context: LiveRowContext):
     if (typeof pathRule !== 'string' || !isRelativePath(pathRule)) return 'a pending note without a valid path rule';
   } else if (typeof path !== 'string' || !isRelativePath(path) || !path.startsWith(`${notebook.root}/`) || !isLiveNotePath(path.slice(notebook.root.length + 1), notebook)) return 'a path that is not a note of its notebook';
   if (!isTime(since)) return 'an invalid since';
-  if (!onOrigin(editorUrl, context.editor) || !onOrigin(embedUrl, context.editor)) return 'a URL off the editor origin';
+  // A framed editor's rows carry both URLs on its origin; a built-in editor's URLs, if any, are ignored and dropped.
+  if (!isBuiltinEditor(context.editor) && (!onOrigin(editorUrl, context.editor) || !onOrigin(embedUrl, context.editor))) return 'a URL off the editor origin';
   if (!isLiveContentHash(contentHash)) return 'an invalid content hash';
   if (typeof activeEditors !== 'number' || !Number.isInteger(activeEditors) || activeEditors < 0 || activeEditors > 10_000) return 'an invalid editor count';
   if (lastEditAt !== null && !isTime(lastEditAt)) return 'an invalid lastEditAt';
@@ -361,7 +449,7 @@ export function liveCheckoutOf(row: unknown, context: LiveRowContext): LiveCheck
     return null;
   }
   const pending = value.path === null;
-  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), since: value.since as string, editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string, contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
+  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
 }
 
 /**

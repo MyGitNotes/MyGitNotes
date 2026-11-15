@@ -12,6 +12,7 @@ import type { MarkdownEditorMode } from '../MarkdownEditor.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { NoteStatusSelect } from '../NoteStatusSelect.js';
 import { LiveBadge } from '../live/LiveBadge.js';
+import { useLiveLock } from '../live/live-drafts.js';
 import { PhoneSheet } from '../PhoneSheet.js';
 import { PHONE_TOOLS } from './phone-tools.js';
 import { NoteRowTags } from './NoteRowTags.js';
@@ -53,6 +54,10 @@ export interface PhoneNoteChromeProps {
   hidden: boolean;
   /** Whether the title bar shows the note's 編輯中 badge: not while the framed live editor's bar counts the editors, nor once the note is checked in. */
   liveBadge?: boolean;
+  /** The live editor is open over the read view: the sheet says nothing of the read view's words or save state. */
+  liveEditing?: boolean;
+  /** A pending live note: Rename sets where its check-in files it. */
+  liveDraft?: { onRename?: () => void; };
 }
 
 /** A phone's note screen top: back to the list, the title, the status dot, edit or read, the assistant, and the "⋯" sheet that holds everything else. */
@@ -80,7 +85,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
           )}
         {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
         <div className='phone-note-title' title={title}>{title}</div>
-        {liveBadge && <LiveBadge live={props.note.live} />}
+        {liveBadge && <LiveBadge live={props.note.live} title={props.note.title} />}
         <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
         {!autoSave && !readOnly && (
           <button type='button' className='ui-icon-button' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave}>
@@ -156,10 +161,14 @@ function RenameRow({ title, onRename, onDone }: { title: string; onRename: (titl
 }
 
 /** The "⋯" sheet: the note's status and tags, the tools the rail offered on a larger screen, and the actions that file or export it. */
-function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, onSaveAsTemplate, statuses, availableTags, hasHistory, quickActions, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
+function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, onSaveAsTemplate, statuses, availableTags, hasHistory, quickActions, liveEditing, liveDraft, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
   const { t } = useTranslation();
   const panel = usePanelContext();
   const { changesCount, deleteNote, back } = usePhoneNotes();
+  // A pending live note opens read-only, yet deleting discards it where its live editor can.
+  const liveLock = useLiveLock();
+  const discardable = Boolean(note.live?.pending) && !liveLock(note, 'delete');
+  const draftMovable = Boolean(note.live?.pending) && !liveLock(note, 'move');
   // Deleting asks for a second tap, which lapses if it is not given.
   const [deleteArmed, setDeleteArmed] = useState(false);
   useEffect(() => {
@@ -184,7 +193,7 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
   };
   return (
     <PhoneSheet title={title} onClose={onClose} className='phone-note-sheet'>
-      <p className='phone-sheet-meta' role='status' aria-label={t('phone.saveState')}>{t('editor.words', { count: words })}{' · '}{session.editorStatus}</p>
+      {!liveEditing && <p className='phone-sheet-meta' role='status' aria-label={t('phone.saveState')}>{t('editor.words', { count: words })}{' · '}{session.editorStatus}</p>}
       <section className='phone-sheet-section' aria-label={t('phone.noteActions')}>
         <div className='phone-sheet-field'>
           <span>{t('editor.status')}</span>
@@ -216,13 +225,14 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         {toggleFormatToolbar && <SheetItem icon={<Type aria-hidden='true' />} label={t('editor.formatToolbar')} pressed={showFormatToolbar} onClick={toggleFormatToolbar} />}
         <div className='phone-sheet-quick'>{quickActions}</div>
         {onRename && !readOnly && <RenameRow title={session.title} onRename={onRename} onDone={onClose} />}
-        {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked} onClick={act(onMove)} />}
+        {liveDraft?.onRename && <SheetItem icon={<Pencil aria-hidden='true' />} label={t('files.rename')} onClick={act(liveDraft.onRename)} />}
+        {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked && !draftMovable} onClick={act(onMove)} />}
         {onAddToOutline && <SheetItem icon={<ListTree aria-hidden='true' />} label={t('outline.add')} disabled={session.locked} onClick={act(onAddToOutline)} />}
         {onSaveAsTemplate && <SheetItem icon={<LayoutTemplate aria-hidden='true' />} label={t('templates.saveAs')} onClick={act(onSaveAsTemplate)} />}
         <SheetItem icon={<Copy aria-hidden='true' />} label={t(session.copyState === 'copied' ? 'editor.noteCopied' : session.copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.exportCopy')} onClick={() => void session.copyNote()} />
         <SheetItem icon={<FileText aria-hidden='true' />} label={t('editor.exportMarkdown')} onClick={act(() => downloadTextFile(filename, session.content, 'text/markdown;charset=utf-8'))} />
         <SheetItem icon={<Printer aria-hidden='true' />} label={t('editor.exportPdf')} onClick={act(() => void printNoteAsPdf(session.title || filename, session.content, note.path, t('mermaid.error'), note.notebookId, t))} />
-        {deleteNote && !readOnly && (
+        {deleteNote && (!readOnly || discardable) && (
           <SheetItem
             icon={<Trash2 aria-hidden='true' />}
             label={t(deleteArmed ? 'notes.confirmDelete' : 'notes.delete')}

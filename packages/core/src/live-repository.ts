@@ -1,8 +1,10 @@
-import { checkInLink, type LiveCheckInOptions, type LiveCheckInResult } from './live-checkin.js';
-import { CheckedOutError, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { SourceError } from './github-api.js';
+import { checkInLink, discardLink, type LiveCheckInOptions, type LiveCheckInResult, type LiveDiscardResult, type LiveRetarget, retargetLink, retargetLivePathRule } from './live-checkin.js';
+import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveInitialTextOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { localIdIn, type NotebookKey } from './notebook-key.js';
 import type { RepositoryId } from './repository.js';
 import type { LiveNoteState, NotebookConfig } from './types.js';
+import { noteWebPath } from './workspace-links.js';
 
 /*
  * One request's view of a repository's live editor (docs/specs/2026-11-15-live-notes/spec.md §2): the person-side
@@ -26,6 +28,10 @@ export interface LiveLink {
 export interface LiveRepository {
   readonly repository: RepositoryId;
   readonly editor: LiveEditorInfo;
+  /** Whether the adapter can discard a pending note (§19): its `service.discard`. */
+  readonly discards: boolean;
+  /** Whether the adapter can move and rename a pending note (§20.2): its `service.retarget`. */
+  readonly retargets: boolean;
   /** The repository's live links, checked; read from the adapter once per request. */
   checkouts(): Promise<LiveCheckout[]>;
   /** Those links with their notebooks and paths. */
@@ -43,6 +49,21 @@ export interface LiveRepository {
   filed(id: string): Promise<string | null>;
   /** 「立即簽回」: checks the live note at `path` (a Git path or a pending note's virtual path) in now (spec §5.3, manual). */
   checkIn(path: string): Promise<LiveCheckInResult>;
+  /**
+   * 「捨棄草稿」: drops the pending note at its virtual `path` without a commit. A draft someone typed content in is kept
+   * (`has-edits`) unless `confirm`. Throws {@link LiveNotLiveError} where the adapter cannot discard or `path` is no
+   * pending note that is live.
+   */
+  discard(path: string, confirm: boolean): Promise<LiveDiscardResult>;
+  /**
+   * Moves or renames the pending note at its virtual `path`: sets the rule its check-in files it by, built from the old
+   * one ({@link retargetLivePathRule}), and answers its row. Nothing is committed. Throws a 400 for a folder or name
+   * that is refused, {@link LiveNotLiveError} where the adapter cannot retarget or `path` is no pending note that is
+   * live, and {@link LiveLeasedError} while a check-in keeps the lease.
+   */
+  retarget(path: string, change: LiveRetarget): Promise<LiveCheckout>;
+  /** A ticket for the person to open a link's live document over the built-in editor's socket. */
+  socketTicket(id: string): Promise<LiveSocketTicket>;
 }
 
 export interface LiveRepositoryOptions {
@@ -56,6 +77,13 @@ export interface LiveRepositoryOptions {
   notebooks(): Promise<NotebookConfig[]>;
   /** How a manual check-in runs: its clock, its time zone for a pending note's date, and its wait between release retries. */
   checkIn?: Omit<LiveCheckInOptions, 'mode'>;
+  /** The app's origin (`APP_URL`): a built-in editor's notes are edited on their own page there. Required for one. */
+  appUrl?: string;
+}
+
+/** The page of a note in the app, where the built-in editor edits it: the `APP_URL` origin and the note's web path. */
+export function liveNotePageUrl(appUrl: string, key: NotebookKey, relative: string): string {
+  return new URL(appUrl).origin + noteWebPath(key, relative);
 }
 
 const call = async <T>(run: () => Promise<T>): Promise<T> => {
@@ -76,9 +104,17 @@ const revisionOf = (value: unknown): string => {
  * The view of a repository's live editor for one request; null where the adapter covers no editor for it. The
  * adapter's person calls are asked for only on first use, so a request that reads nothing live makes no adapter call.
  */
-export function liveRepository({ liveNotes, context, repository, alias, notebooks, checkIn }: LiveRepositoryOptions): LiveRepository | null {
+export function liveRepository({ liveNotes, context, repository, alias, notebooks, checkIn, appUrl }: LiveRepositoryOptions): LiveRepository | null {
   const editor = liveEditorOf(liveNotes, repository);
   if (!editor) return null;
+  const builtin = isBuiltinEditor(editor);
+  if (builtin && !appUrl) throw new Error('The built-in live editor needs APP_URL.');
+  /** A checked row as the community hands it on: a built-in editor's link gets its note page in the app as `editorUrl`. */
+  const withPage = (checkout: LiveCheckout, notebook: NotebookConfig): LiveCheckout => {
+    if (!builtin) return checkout;
+    const relative = (checkout.path ?? livePendingPath(notebook.root, checkout.id)).slice(notebook.root.length + 1);
+    return { ...checkout, editorUrl: liveNotePageUrl(appUrl!, checkout.notebook, relative) };
+  };
   let person: LivePersonCalls | undefined;
   const calls = () => person ??= liveNotes.person(context);
   /** The notebook a link's key names among those the repository serves. */
@@ -91,9 +127,10 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
   };
   /** A row the adapter answered for a call, checked; a bad one is a 502. */
   const checkedRow = async (row: unknown) => {
-    const checkout = liveCheckoutOf(row, { editor, notebook: await notebookOf() });
+    const notebook = await notebookOf();
+    const checkout = liveCheckoutOf(row, { editor, notebook });
     if (!checkout) throw new LiveUnavailableError();
-    return checkout;
+    return withPage(checkout, notebook(checkout.notebook)!);
   };
   let listed: Promise<LiveLink[]> | undefined;
   const links = () => {
@@ -104,9 +141,10 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       // One link per path and per id: a second row for either (an adapter fault) is dropped.
       const seen = new Set<string>();
       for (const row of rows) {
-        const checkout = liveCheckoutOf(row, { editor, notebook });
-        if (!checkout) continue;
-        const owner = notebook(checkout.notebook)!;
+        const valid = liveCheckoutOf(row, { editor, notebook });
+        if (!valid) continue;
+        const owner = notebook(valid.notebook)!;
+        const checkout = withPage(valid, owner);
         const path = checkout.path ?? livePendingPath(owner.root, checkout.id);
         if (seen.has(path) || seen.has(`id:${checkout.id}`)) {
           console.warn(`[live-notes] dropped live link ${checkout.id}: a second link for its path or id`);
@@ -124,6 +162,8 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
   return {
     repository,
     editor,
+    discards: typeof liveNotes.service.discard === 'function',
+    retargets: typeof liveNotes.service.retarget === 'function',
     links,
     checkouts: async () => (await links()).map(link => link.checkout),
     async read(id) {
@@ -167,6 +207,40 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
         listed = undefined;
       }
     },
+    async discard(path, confirm) {
+      const link = (await links()).find(entry => entry.path === path);
+      if (!link || link.checkout.path !== null || typeof liveNotes.service.discard !== 'function') throw new LiveNotLiveError();
+      // Asked without the lease first: a lease taken only to refuse would hold the confirmed request off for minutes.
+      // The service's editors and initial text decide again under the lease.
+      if (!confirm && link.checkout.lastEditAt !== null) {
+        const read = await call(() => calls().read(repository, link.checkout.id));
+        if (!isEmptyLiveDraft(liveTextOf(read).content, liveInitialTextOf(read))) return { id: link.checkout.id, discarded: false, reason: 'has-edits' };
+      }
+      try {
+        return await discardLink(liveNotes, repository, link.checkout.id, { confirm, ...(checkIn?.sleep ? { sleep: checkIn.sleep } : {}) });
+      } finally {
+        listed = undefined;
+      }
+    },
+    async retarget(path, change) {
+      const link = (await links()).find(entry => entry.path === path);
+      if (!link || link.checkout.path !== null || typeof liveNotes.service.retarget !== 'function') throw new LiveNotLiveError();
+      const rule = retargetLivePathRule(link.checkout.pathRule!, change, link.notebook);
+      if ('invalid' in rule) throw new SourceError(rule.invalid, 400);
+      try {
+        const checkout = await checkedRow(await retargetLink(liveNotes, repository, link.checkout.id, { pathRule: rule.pathRule, ...(checkIn?.sleep ? { sleep: checkIn.sleep } : {}) }));
+        if (checkout.id !== link.checkout.id || checkout.path !== null || checkout.pathRule !== rule.pathRule) throw new LiveUnavailableError();
+        return checkout;
+      } finally {
+        listed = undefined;
+      }
+    },
+    async socketTicket(id) {
+      if (!builtin || typeof liveNotes.socketTicket !== 'function' || !isLiveId(id)) throw new LiveUnavailableError();
+      const ticket = liveSocketTicketOf(await call(() => liveNotes.socketTicket!(context, repository, id)));
+      if (!ticket) throw new LiveUnavailableError();
+      return ticket;
+    },
   };
 }
 
@@ -175,9 +249,13 @@ export function editedLiveError(file: string): CheckedOutError {
   return new CheckedOutError([file], `${file} is being edited live (編輯中); read it again and write with the revision that read returns, or check it in with check_in_note first.`);
 }
 
-/** What reads say of a live link. */
-export function liveNoteState(row: LiveCheckout): LiveNoteState {
-  return { since: row.since, activeEditors: row.activeEditors, ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl };
+/**
+ * What reads say of a live link; its `editorUrl` is the framed editor's page, or the built-in editor's note page in the
+ * app. A pending note names where its check-in files it (`pathRule`) only where the adapter can move it (`retargets`),
+ * so an adapter without retarget answers as 0.19 did.
+ */
+export function liveNoteState(row: LiveCheckout, retargets = false): LiveNoteState {
+  return { since: row.since, activeEditors: row.activeEditors, ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}) };
 }
 
 /*

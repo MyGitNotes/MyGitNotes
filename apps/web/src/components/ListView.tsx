@@ -5,6 +5,7 @@ import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { NoteTagActions, NoteTags } from './NoteTags.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
 import { LiveBadge } from './live/LiveBadge.js';
+import { useLiveLock } from './live/live-drafts.js';
 import { Select } from './Select.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
@@ -76,8 +77,11 @@ interface NoteRowActions {
 const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelete, isPendingDelete, actions, dates, tagActions, showZoom, canDrag, canMove, draft = false, highlightQuery = '', selected, selectionActive }: { note: NoteListItem; draft?: boolean; tagActions?: NoteTagActions; statuses: string[]; readOnly: boolean; canDelete: boolean; isPendingDelete: boolean; actions: NoteRowActions; dates: { short: Intl.DateTimeFormat; full: Intl.DateTimeFormat; }; showZoom?: boolean; canDrag?: boolean; canMove?: boolean; highlightQuery?: string; selected: boolean; selectionActive: boolean; }) {
   const { t } = useTranslation();
   // A draft row lifts no more than a draft card does (CardView), so on touch it only opens.
-  // A note being edited live (編輯中) or still pending refuses every file operation until it is checked in.
+  // A note being edited live (編輯中) or still pending refuses every file operation until it is checked in; a pending
+  // note may still be discarded (delete) and moved where its live editor can.
+  const liveLock = useLiveLock();
   const locked = note.live ? t('live.checkedOut') : undefined;
+  const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
   const touchSelection = useNoteTouchSelection(actions.toggleSelect, canMove && !draft);
   const dragsToMove = Boolean(canMove) && !locked && pointerMovesNotes();
   const updated = noteUpdatedTime(note);
@@ -96,7 +100,7 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
                 <HighlightText text={note.title} query={highlightQuery} />
               </span>
               {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
-              <LiveBadge live={note.live} />
+              <LiveBadge live={note.live} title={note.title} />
               {pathMatched && (
                 <span className='note-row-path font-mono'>
                   <HighlightText text={note.path} query={highlightQuery} />
@@ -123,14 +127,14 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
       <td className='py-2 px-3 text-right'>
         <div className='note-row-actions flex items-center justify-end' data-confirming={isPendingDelete || undefined} onClick={(e) => e.stopPropagation()}>
           {showZoom && <NoteZoomButton onClick={() => actions.zoom(note)} iconClassName='w-4 h-4' />}
-          {!readOnly && <NoteMoveButton onClick={() => actions.move(note)} reason={locked} />}
+          {!readOnly && <NoteMoveButton onClick={() => actions.move(note)} reason={moveLocked} />}
           {!readOnly && canDelete && (
             <button
               type='button'
               onClick={() => actions.remove(note)}
-              disabled={Boolean(locked)}
+              disabled={Boolean(deleteLocked)}
               aria-label={t('notes.delete')}
-              title={locked ?? (isPendingDelete ? t('notes.confirmDelete') : t('notes.delete'))}
+              title={deleteLocked ?? (isPendingDelete ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))}
               className={isPendingDelete ? 'p-1.5 text-on-danger bg-danger hover:bg-danger/90 rounded-lg transition' : 'p-1.5 text-muted hover:text-danger hover:bg-danger-soft rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted'}
             >
               <Trash2 className='w-4 h-4' />

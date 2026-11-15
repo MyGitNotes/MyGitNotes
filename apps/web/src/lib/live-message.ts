@@ -1,4 +1,4 @@
-import type { LiveEditorInfo } from '@mygitnotes/core';
+import type { LiveFrameEditorInfo } from '@mygitnotes/core';
 
 /*
  * The messages between the app and a framed live editor (docs/specs/2026-11-15-live-notes/spec.md §8, §9). The editor
@@ -27,7 +27,7 @@ const isUsers = (value: unknown): value is number => typeof value === 'number' &
  * The status in a message event, or null when the event is not one: another origin, another window than `frame`, another
  * type, or a field that is missing or of the wrong shape. `released` may be left out (false); the others are required.
  */
-export function liveStatusOf(event: Pick<MessageEvent, 'origin' | 'source' | 'data'>, editor: Pick<LiveEditorInfo, 'origin' | 'messageType'>, frame: Window | null | undefined): LiveStatus | null {
+export function liveStatusOf(event: Pick<MessageEvent, 'origin' | 'source' | 'data'>, editor: Pick<LiveFrameEditorInfo, 'origin' | 'messageType'>, frame: Window | null | undefined): LiveStatus | null {
   if (!frame || event.source !== frame || event.origin !== editor.origin) return null;
   const data: unknown = event.data;
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
@@ -37,7 +37,7 @@ export function liveStatusOf(event: Pick<MessageEvent, 'origin' | 'source' | 'da
 }
 
 /** The embed URL with the theme parameter, or null when it is not a URL of the editor's origin. */
-export function liveEmbedUrl(embedUrl: string, editor: Pick<LiveEditorInfo, 'origin' | 'themeParam'>, theme: LiveTheme): string | null {
+export function liveEmbedUrl(embedUrl: string, editor: Pick<LiveFrameEditorInfo, 'origin' | 'themeParam'>, theme: LiveTheme): string | null {
   let url: URL;
   try {
     url = new URL(embedUrl);
@@ -50,7 +50,7 @@ export function liveEmbedUrl(embedUrl: string, editor: Pick<LiveEditorInfo, 'ori
 }
 
 /** Whether a URL the editor gave opens on its own origin, which a link may then point at. */
-export const isLiveEditorUrl = (value: string, editor: Pick<LiveEditorInfo, 'origin'>): boolean => liveEmbedUrl(value, { origin: editor.origin }, 'light') !== null;
+export const isLiveEditorUrl = (value: string, editor: Pick<LiveFrameEditorInfo, 'origin'>): boolean => liveEmbedUrl(value, { origin: editor.origin }, 'light') !== null;
 
 /** The message that tells the framed editor the app's theme; it is posted with the editor's origin as target. */
-export const liveThemeMessage = (editor: Pick<LiveEditorInfo, 'messageType'>, theme: LiveTheme) => ({ type: `${editor.messageType}:theme`, theme });
+export const liveThemeMessage = (editor: Pick<LiveFrameEditorInfo, 'messageType'>, theme: LiveTheme) => ({ type: `${editor.messageType}:theme`, theme });

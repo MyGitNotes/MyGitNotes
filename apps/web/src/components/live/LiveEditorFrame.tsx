@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, ExternalLink, Users } from 'lucide-react';
-import type { LiveEditorInfo } from '@mygitnotes/core';
+import type { LiveFrameEditorInfo } from '@mygitnotes/core';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import { checkInLive, type LiveCheckInAnswer, type LiveCheckoutView } from '../../lib/live-api.js';
 import { isLiveEditorUrl, liveEmbedUrl, type LiveStatus, liveStatusOf, type LiveTheme, liveThemeMessage } from '../../lib/live-message.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
+import { discardDraft, keptReason } from './live-drafts.js';
+import { stillOpenText } from './useLiveEdit.js';
 import './live-editor.css';
 
 export interface LiveEditorFrameProps {
   checkout: LiveCheckoutView;
-  editor: LiveEditorInfo;
+  /** The framed editor; `discard` where its adapter can discard a pending note (「捨棄草稿」). */
+  editor: LiveFrameEditorInfo & { discard?: true; };
   /** The app's theme now; the frame opens with it and hears of each change by message. */
   theme: LiveTheme;
   /** Reads the note again: the editor saved a change, released the note, or was closed. */
@@ -20,11 +23,13 @@ export interface LiveEditorFrameProps {
   onClose: () => void;
   /** The note was checked in: by this page (`answer`), or by someone else, which the editor reports as released. */
   onCheckedIn?: (answer?: LiveCheckInAnswer) => void;
+  /** The pending note was discarded: by 「捨棄草稿」, or by a check-in that found the draft empty. */
+  onDiscarded?: () => void;
   /** The note's title, which names the frame for assistive technology. */
   title?: string;
 }
 
-type Phase = { kind: 'open'; } | { kind: 'checking'; } | { kind: 'released'; } | { kind: 'open-after'; answer: LiveCheckInAnswer; } | { kind: 'failed'; message: string; };
+type Phase = { kind: 'open'; } | { kind: 'checking'; } | { kind: 'released'; } | { kind: 'open-after'; answer: LiveCheckInAnswer; } | { kind: 'failed'; message: string; } | { kind: 'discarding'; } | { kind: 'discarded'; } | { kind: 'kept'; message: string; };
 
 const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled' };
 
@@ -34,12 +39,12 @@ const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', 
  * the text is saved and connected, and offers 「在新分頁開啟」, 「立即簽回」 and 「關閉」. Status messages are taken only from
  * the editor origin and this frame's window.
  */
-export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, onCheckedIn, title }: LiveEditorFrameProps) {
+export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, onCheckedIn, onDiscarded, title }: LiveEditorFrameProps) {
   const { t } = useTranslation();
   const frameRef = useRef<HTMLIFrameElement>(null);
   // The frame keeps the URL it opened with; later theme changes travel by message, so the editor is not reloaded.
   const [openedTheme] = useState(theme);
-  const src = liveEmbedUrl(checkout.embedUrl, editor, openedTheme);
+  const src = liveEmbedUrl(checkout.embedUrl ?? '', editor, openedTheme);
   const [status, setStatus] = useState<LiveStatus | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   const framed = phase.kind === 'open' && src !== null;
@@ -78,16 +83,38 @@ export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, o
     setStatus(null);
     try {
       const answer = await checkInLive(checkout.notebookId, checkout.path);
-      setPhase(answer.released ? { kind: 'released' } : { kind: 'open-after', answer });
-      if (answer.committed || answer.released) onCheckedIn?.(answer);
+      // An empty pending draft is discarded instead of filed: it is gone, not checked in.
+      if (answer.discarded) setPhase({ kind: 'discarded' });
+      else {
+        setPhase(answer.released ? { kind: 'released' } : { kind: 'open-after', answer });
+        if (answer.committed || answer.released) onCheckedIn?.(answer);
+      }
     } catch (error) {
       setPhase({ kind: 'failed', message: (error as Error).message });
     }
     onRefetch();
   };
+  // 「捨棄草稿」: the frame goes first, as for 立即簽回, since the open editor counts as one active editor.
+  const discard = async () => {
+    flushSync(() => setPhase({ kind: 'discarding' }));
+    setStatus(null);
+    try {
+      const answer = await discardDraft(checkout.notebookId, checkout.path, t);
+      if (!answer) return reopen();
+      if (answer.discarded) {
+        onRefetch();
+        onDiscarded?.();
+        return;
+      }
+      setPhase({ kind: 'kept', message: keptReason(answer, t) });
+    } catch (error) {
+      setPhase({ kind: 'failed', message: (error as Error).message });
+    }
+  };
   const close = () => {
     onRefetch();
-    onClose();
+    if (phase.kind === 'discarded') (onDiscarded ?? onClose)();
+    else onClose();
   };
   const reopen = () => {
     postedTheme.current = theme;
@@ -95,7 +122,7 @@ export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, o
   };
 
   const users = status?.users ?? checkout.activeEditors;
-  const stillOpen = (answer: LiveCheckInAnswer) => answer.reason === 'active' && answer.committed ? t('live.stillOpen', { count: answer.activeEditors ?? 1 }) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') });
+  const stillOpen = (answer: LiveCheckInAnswer) => answer.reason === 'active' && answer.committed ? stillOpenText(t, answer.activeEditors ?? 1) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') });
   return (
     <div className='live-editor-frame'>
       <div className='live-editor-bar' role='toolbar' aria-label={t('live.toolbar')}>
@@ -115,23 +142,26 @@ export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, o
           </>
         )}
         <div className='live-editor-actions'>
-          {phase.kind !== 'released' && isLiveEditorUrl(checkout.editorUrl, editor) && (
+          {phase.kind !== 'released' && phase.kind !== 'discarded' && isLiveEditorUrl(checkout.editorUrl, editor) && (
             <a className='ui-button ui-button-small' href={checkout.editorUrl} target='_blank' rel='noopener noreferrer'>
               <ExternalLink size={14} aria-hidden='true' />
               {t('live.openInTab')}
             </a>
           )}
+          {checkout.pending && editor.discard && (framed || phase.kind === 'kept' || phase.kind === 'failed') && <Button size='small' variant='danger' title={t('live.discardHint')} onClick={() => void discard()}>{t('live.discard')}</Button>}
           {framed && <Button size='small' variant='primary' title={t('live.checkInHint')} disabled={!status?.saved} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>}
-          <Button size='small' disabled={phase.kind === 'checking'} onClick={close}>{t('common.close')}</Button>
+          <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>
         </div>
       </div>
       {src === null && <p role='alert' className='live-editor-notice'>{t('live.frameRefused')}</p>}
       {framed && <iframe ref={frameRef} className='live-editor-iframe' title={t('live.frameTitle', { title: title ?? checkout.path.split('/').pop() ?? '' })} src={src} referrerPolicy='strict-origin-when-cross-origin' />}
       {phase.kind === 'checking' && <LoadingStatus className='live-editor-notice'>{t('live.checkingIn')}</LoadingStatus>}
+      {phase.kind === 'discarding' && <LoadingStatus className='live-editor-notice'>{t('live.discarding')}</LoadingStatus>}
       {phase.kind === 'released' && <p role='status' className='live-editor-notice'>{t('live.checkedIn')}</p>}
-      {(phase.kind === 'open-after' || phase.kind === 'failed') && src !== null && (
+      {phase.kind === 'discarded' && <p role='status' className='live-editor-notice'>{t('live.discardedEmpty')}</p>}
+      {(phase.kind === 'open-after' || phase.kind === 'failed' || phase.kind === 'kept') && src !== null && (
         <div className='live-editor-notice'>
-          {phase.kind === 'open-after' ? <p role='status'>{stillOpen(phase.answer)}</p> : <p role='alert'>{phase.message}</p>}
+          {phase.kind === 'open-after' ? <p role='status'>{stillOpen(phase.answer)}</p> : phase.kind === 'kept' ? <p role='status'>{phase.message}</p> : <p role='alert'>{phase.message}</p>}
           <div className='live-editor-notice-actions'>
             <Button size='small' onClick={reopen}>{t('live.backToEditor')}</Button>
           </div>

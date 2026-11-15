@@ -11,6 +11,7 @@ import { NoteStatusSelect } from './NoteStatusSelect.js';
 import { NoteTags } from './NoteTags.js';
 import './focus-list.css';
 import { LiveBadge } from './live/LiveBadge.js';
+import { useLiveLock } from './live/live-drafts.js';
 
 const CARD_WIDTH = 320;
 const GAP = 8;
@@ -104,13 +105,16 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
   const created = noteCreatedTime(note);
   const updated = noteUpdatedTime(note);
   const folder = noteDirectory(note.path);
+  // A pending note may still be discarded (delete) and moved where its live editor can.
+  const liveLock = useLiveLock();
+  const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
 
   return createPortal(
     <div ref={cardRef} role='group' aria-label={t('focusList.cardLabel', { title: note.title })} className='note-hover-card' style={position ? { left: position.left, top: position.top } : { left: -9999, top: 0 }} {...cardProps}>
       <h3 className='note-hover-title'>{note.title}</h3>
       <div className='note-hover-status'>
         <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={note.live ? t('live.checkedOut') : undefined} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateStatus(note, status)} onOpenChange={onMenuOpenChange} />
-        <LiveBadge live={note.live} />
+        <LiveBadge live={note.live} title={note.title} />
       </div>
       {note.tags.length > 0 && <NoteTags tags={note.tags} className='note-hover-tags' />}
       <dl className='note-hover-fields'>
@@ -129,7 +133,7 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
           </button>
         )}
         {!readOnly && onMove && (
-          <button type='button' className='ui-button ui-button-small' disabled={Boolean(note.live)} title={note.live ? t('live.checkedOut') : undefined} onClick={() => (onMove(note), onDone())}>
+          <button type='button' className='ui-button ui-button-small' disabled={Boolean(moveLocked)} title={moveLocked} onClick={() => (onMove(note), onDone())}>
             <FolderInput aria-hidden='true' />
             {t('files.moveNote')}
           </button>
@@ -138,8 +142,8 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
           <button
             type='button'
             className={`ui-button ui-button-small ${deleteArmed ? 'ui-button-danger' : ''}`}
-            disabled={Boolean(note.live)}
-            title={note.live ? t('live.checkedOut') : undefined}
+            disabled={Boolean(deleteLocked)}
+            title={deleteLocked ?? (note.live?.pending ? t('live.discard') : undefined)}
             onClick={() => onDelete(note) && onDone()}
           >
             <Trash2 aria-hidden='true' />

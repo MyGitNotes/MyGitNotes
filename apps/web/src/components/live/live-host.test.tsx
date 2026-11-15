@@ -15,7 +15,15 @@ import { mutateFile } from '../../lib/files-api.js';
 import { LiveNewNoteDialog } from './LiveNewNoteDialog.js';
 import { forgetCheckedIn } from '../../lib/live-api.js';
 import { noteRefKey } from '@mygitnotes/core/note-query';
+import { LiveDraftsProvider } from './live-drafts.js';
 
+// The built-in editor's socket: a provider that never connects, so a test sees the tab ask for its ticket and wait.
+vi.mock('@hocuspocus/provider', () => ({
+  HocuspocusProvider: class {
+    destroy() {}
+    on() {}
+  },
+}));
 vi.mock('../MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; readOnly: boolean; }>(({ content, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, readOnly, onChange: () => {} })) }));
 
 const editor = { origin: 'https://live.example.test', messageType: 'live-status', themeParam: 'theme' };
@@ -178,6 +186,23 @@ describe('a live note on a phone', () => {
   });
 });
 
+describe('the phone sheet of a pending note being edited live', () => {
+  it('says no word count or 唯讀 of the read view under it, and offers Rename', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
+    fetchMock.mockResolvedValue(json({ checkout: { ...view, path: 'notes/life/.live/abc.md', pending: true }, outcome: 'created' }));
+    const pendingNote = { ...note, path: 'notes/life/.live/abc.md', live: { since: view.since, activeEditors: 1, pending: true as const, editorUrl: view.editorUrl } };
+    const onRename = vi.fn();
+    render(createElement(LiveDraftsProvider, { value: { discards: () => true, retargets: () => true } }, noteEditor({ note: pendingNote, live: { editor, onRefetch: vi.fn() }, onMove: vi.fn(), onRename })));
+    await act(async () => {});
+    expect(document.querySelector('iframe')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(screen.queryByRole('status', { name: 'Save status' })).toBeNull();
+    expect(screen.queryByText(/Read-only/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    expect(onRename).toHaveBeenCalledWith(note.title);
+  });
+});
+
 describe('a note checked in from its frame', () => {
   it('still says 已簽回 once the editor remounts for the new revision', async () => {
     const onCheckedIn = vi.fn();
@@ -199,6 +224,33 @@ describe('a note checked in from its frame', () => {
     render(noteEditor({ live }));
     expect(screen.getByText('Checked in')).toBeInTheDocument();
     expect(screen.getByLabelText('Note content')).toHaveAttribute('readonly');
+  });
+});
+
+describe('a check-in that committed while others are still editing', () => {
+  it('says so in the read view, past the remount the new revision brings, and leaves the lists to the workspace refresh', async () => {
+    const onCheckedIn = vi.fn();
+    fetchMock.mockImplementation(async (url: string) => url === '/api/live/checkout' ? json({ checkout: view, outcome: 'created' }) : json({ id: 'abc', path: note.path, committed: true, commit: 'c'.repeat(40), released: false, reason: 'active', activeEditors: 1, revision: 'c'.repeat(40) }));
+    const live = { editor, onRefetch: vi.fn(), onCheckedIn };
+    const first = render(noteEditor({ live }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'live-status', users: 2, saved: true, connected: true, released: false }, origin: editor.origin, source: document.querySelector('iframe')!.contentWindow }));
+    });
+    live.onRefetch.mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Check in now' }));
+    });
+    expect(onCheckedIn).toHaveBeenCalledWith(expect.objectContaining({ committed: true, released: false }));
+    // The head moved: the lists read at the old revision would be refused, so the app's workspace refresh reads them.
+    expect(live.onRefetch).not.toHaveBeenCalled();
+    first.unmount();
+    render(noteEditor({ live }));
+    expect(screen.getByText('Saved to Git; 1 person is still editing, so it will be checked in again tonight.')).toBeInTheDocument();
+    expect(screen.queryByText('Checked in')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
   });
 });
 
@@ -271,15 +323,17 @@ describe('every way into a check-in ends on the read view', () => {
     answers({});
     const onRefetch = vi.fn();
     const onReadRemote = vi.fn(async () => checkedInNote);
-    render(noteEditor({ live: { editor, onRefetch, onCheckedIn: vi.fn() }, onReadRemote }));
+    const onCheckedIn = vi.fn();
+    render(noteEditor({ live: { editor, onRefetch, onCheckedIn }, onReadRemote }));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     });
     onRefetch.mockClear();
     await checkIn();
     expectReadView();
-    // The note's and the lists' live state are read again at once, not at the next 60 s refresh.
-    expect(onRefetch).toHaveBeenCalled();
+    // The head moved: the app hears of it at once and reads the lists after its workspace refresh, not at the next 60 s one.
+    expect(onCheckedIn).toHaveBeenCalled();
+    expect(onRefetch).not.toHaveBeenCalled();
   });
 
   it('from a pane whose 編輯 opened zoom', async () => {
@@ -330,7 +384,8 @@ describe('every way into a check-in ends on the read view', () => {
     fetchMock.mockResolvedValue(json({ checkout: view, outcome: 'created' }));
     const onRefetch = vi.fn();
     const onReadRemote = vi.fn(async () => checkedInNote);
-    render(noteEditor({ live: { editor, onRefetch, onCheckedIn: vi.fn() }, onReadRemote }));
+    const onCheckedIn = vi.fn();
+    render(noteEditor({ live: { editor, onRefetch, onCheckedIn }, onReadRemote }));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     });
@@ -339,7 +394,7 @@ describe('every way into a check-in ends on the read view', () => {
       statusMessage(true);
     });
     expectReadView();
-    expect(onRefetch).toHaveBeenCalled();
+    expect(onCheckedIn).toHaveBeenCalled();
   });
 });
 
@@ -379,5 +434,101 @@ describe('the live New dialog field with a default', () => {
       Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal');
       Reflect.deleteProperty(HTMLDialogElement.prototype, 'close');
     }
+  });
+});
+
+describe('the built-in live editor', () => {
+  const builtin = { kind: 'builtin' as const };
+  it('opens in the app, asking for a socket ticket instead of framing a page', async () => {
+    fetchMock.mockImplementation(async (url: string) => url === '/api/live/checkout' ? json({ checkout: { ...view, editorUrl: 'http://localhost/notebooks/notes~life/a.md', embedUrl: undefined }, outcome: 'created' }) : json({ ticket: 't'.repeat(32), document: 'abc.1' }));
+    render(noteEditor({ live: { editor: builtin, onRefetch: vi.fn() } }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/live/socket-ticket', expect.objectContaining({ method: 'POST', body: JSON.stringify({ notebookId: 'notes~life', path: 'notes/life/a.md' }) }));
+    expect(document.querySelector('iframe')).toBeNull();
+    expect(screen.getByRole('toolbar', { name: 'Live editor' })).toBeInTheDocument();
+    expect(screen.getByText('Connecting…')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open in a new tab' })).toBeNull();
+  });
+});
+
+describe('捨棄草稿 in the framed editor', () => {
+  const pendingNote = { ...note, path: 'notes/life/.live/abc.md', live: { since: view.since, activeEditors: 1, pending: true as const, editorUrl: view.editorUrl } };
+  const pendingView = { ...view, path: 'notes/life/.live/abc.md', pending: true };
+  it('is offered only where the adapter can discard, closes the frame first, and leaves for the notebook', async () => {
+    const order: string[] = [];
+    fetchMock.mockImplementation(async (url: string) => {
+      order.push(`${url} frame=${document.querySelector('iframe') ? 'shown' : 'gone'}`);
+      return url === '/api/live/checkout' ? json({ checkout: pendingView, outcome: 'joined' }) : json({ discarded: true });
+    });
+    const first = render(noteEditor({ note: pendingNote, live: { editor, onRefetch: vi.fn() } }));
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Discard draft' })).toBeNull();
+    first.unmount();
+    const onDiscarded = vi.fn();
+    render(noteEditor({ note: pendingNote, live: { editor: { ...editor, discard: true }, onRefetch: vi.fn(), onDiscarded } }));
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    });
+    expect(order.at(-1)).toBe('/api/live/discard frame=gone');
+    expect(onDiscarded).toHaveBeenCalled();
+  });
+
+  it('says an empty draft was discarded when 立即簽回 found it empty', async () => {
+    fetchMock.mockImplementation(async (url: string) => url === '/api/live/checkout' ? json({ checkout: pendingView, outcome: 'joined' }) : json({ id: 'abc', path: null, committed: false, released: true, discarded: true, reason: 'empty', revision: 'c'.repeat(40) }));
+    const onDiscarded = vi.fn();
+    render(noteEditor({ note: pendingNote, live: { editor, onRefetch: vi.fn(), onDiscarded } }));
+    await act(async () => {});
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data: { type: 'live-status', users: 1, saved: true, connected: true, released: false }, origin: editor.origin, source: document.querySelector('iframe')!.contentWindow }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Check in now' }));
+    });
+    expect(screen.getByText('The draft was empty and was discarded.')).toBeInTheDocument();
+    expect(screen.queryByText('Checked in')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onDiscarded).toHaveBeenCalled();
+  });
+});
+
+describe('a pending note in the lists, where the adapter can discard and retarget', () => {
+  const filing = { ...listed('notes/life/.live/xyz.md', { since: view.since, activeEditors: 0, pending: true, editorUrl: view.editorUrl, pathRule: 'projects/{{title}}.md' }), title: 'Untitled' };
+  const drafts = { discards: () => true, retargets: () => true };
+  const inDrafts = (element: ReturnType<typeof createElement>) => createElement(LiveDraftsProvider, { value: drafts }, element);
+
+  it('says where it files, and lets it be deleted (discarded) and moved', () => {
+    const onDeleteNote = vi.fn(), onMoveNote = vi.fn();
+    render(inDrafts(createElement(ListView, { ...listProps, onDeleteNote, onMoveNote, notes: [filing, checkedOut] })));
+    const row = (item: NoteListItem) => screen.getByText(item.title).closest('tr')!;
+    expect(within(row(filing)).getByText('Not filed').closest('.live-badge')).toHaveAttribute('title', 'Files to: projects/Untitled.md (the name follows the title)');
+    const remove = within(row(filing)).getByRole('button', { name: 'Delete note' });
+    expect(remove).toBeEnabled();
+    expect(remove).toHaveAttribute('title', 'Discard draft');
+    fireEvent.click(remove);
+    expect(onDeleteNote).toHaveBeenCalledWith(filing);
+    fireEvent.click(within(row(filing)).getByRole('button', { name: 'Move note' }));
+    expect(onMoveNote).toHaveBeenCalledWith(filing);
+    // Its status is still the live editor's, and a checked-out note stays locked.
+    expect(within(row(filing)).getByRole('combobox')).toBeDisabled();
+    expect(within(row(checkedOut)).getByRole('button', { name: 'Delete note' })).toBeDisabled();
+    expect(within(row(checkedOut)).getByRole('button', { name: 'Move note' })).toBeDisabled();
+  });
+
+  it('keeps delete and move locked where the adapter can do neither', () => {
+    render(createElement(LiveDraftsProvider, { value: { discards: () => false, retargets: () => false } }, createElement(ListView, { ...listProps, notes: [filing] })));
+    const row = screen.getByText(filing.title).closest('tr')!;
+    expect(within(row).getByRole('button', { name: 'Delete note' })).toBeDisabled();
+    expect(within(row).getByRole('button', { name: 'Move note' })).toBeDisabled();
+  });
+
+  it('unlocks the same entries on cards', () => {
+    const onDeleteNote = vi.fn();
+    render(inDrafts(createElement(CardView, { ...listProps, onDeleteNote, notes: [filing] })));
+    const card = screen.getByText(filing.title).closest('.note-card')! as HTMLElement;
+    expect(within(card).getByRole('button', { name: 'Delete note' })).toBeEnabled();
+    expect(within(card).getByRole('button', { name: 'Move note' })).toBeEnabled();
   });
 });

@@ -383,6 +383,58 @@ curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" https
 
 多程序部署的每個程序都可以跑排程和這個路由：編輯器的租約讓同一則筆記一次只有一個簽回在跑，重複執行時會發現文字已在 Git 裡，不會再提交第二次。
 
+## 選用：內建即時編輯器
+
+社群版也附了自己的即時編輯器。多人直接在 MyGitNotes 自己的編輯器裡共同編輯一則筆記，看得到彼此打的字與標上名字的游標，簽回方式與上一節相同。打字經由 App 自己伺服器上的 WebSocket（`/live/socket`）傳送，兩次簽回之間的內容存在 Redis。
+
+0.20.0 沒有可以開啟它的環境變數，伺服器進入點（Docker 映像執行的那個）也不會啟動它。簽回要用寫入憑證提交，並以驗證過的 email 列出編輯者，而社群版部署兩者都沒有：使用者用自己的平台 token 登入，這個 token 不會活過單次請求，預設的登入方式也不提供驗證過的 email。兩者都有的部署，在自己的伺服器進入點用 `@mygitnotes/local-server` 的 `builtinLiveNotes` 組裝。`open` 回傳帶著部署自己寫入憑證的儲存庫，提交的作者是傳入的 author：
+
+```ts
+import { builtinLiveNotes, createApp, redisLiveStore } from '@mygitnotes/local-server';
+
+const live = builtinLiveNotes({ covers, open, store: redisLiveStore({ url: process.env.REDIS_URL! }) });
+await live.started; // 拒絕可能淘汰即時文字的 Redis
+const app = createApp(base, { liveNotes: live /* 以及部署的其他服務 */ });
+const server = app.listen(port, host);
+server.on('upgrade', (req, socket, head) => { if (!live.upgrade(req, socket, head)) socket.destroy(); });
+process.once('SIGTERM', async () => { await live.shutdown(); server.close(); });
+```
+
+伺服器需要：
+
+- **長時間執行、支援 WebSocket 的 Node 22 以上伺服器。** 不能跑在 Vercel：設了 `VERCEL` 時，`createApp` 會在啟動時停下。
+- **`APP_URL` 設為瀏覽器看到的來源**，不帶路徑的 `https` origin，例如 `https://notes.example.com`（只有 loopback 主機可用 `http`）。socket 只接受這個 `Origin`，沒設時伺服器不會啟動。
+- **單一 Redis 伺服器（不是 cluster）**，透過 `REDIS_URL`（`redis://` 或 `rediss://`；不支援 Redis REST）。設定 `maxmemory-policy noeviction`（建議）或 `volatile-*` 策略，並開 `appendonly yes`。即時文字沒有到期時間，所以 `volatile-*` 不會淘汰它；在 `allkeys-*` 策略下伺服器拒絕啟動，因為 Redis 可能丟掉打到一半的字。讀不到策略時（有些代管服務不公開），伺服器發出警告後照常啟動。沒有 append-only file 時，它會警告 Redis 重啟會丟掉上次簽回後打的字。和 session 共用同一個 Redis 沒有問題，它的 key 會依 `MYGITNOTES_SESSION_NAMESPACE` 分開。
+- **只跑一個 App 程序。** 部署交替時短暫有兩個程序仍然正確、不會丟字，但連到不同程序的人要每幾秒才看得到彼此打的字。
+- **reverse proxy 要轉送 `/live/socket` 的 WebSocket upgrade**，閒置逾時不能低於 60 秒；伺服器每 30 秒 ping 一次。Caddy 的 `reverse_proxy` 預設就會轉送。nginx 需要：
+
+  ```nginx
+  location /live/ {
+    proxy_pass http://127.0.0.1:4321;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_read_timeout 120s;
+  }
+  ```
+
+  瀏覽器用 HTTP/1.1 開 socket，不必改 ALPN。
+
+  還沒開啟筆記的 socket，伺服器最多保留 100 個，同一個位址最多 10 個，超過就回 503。從主機或私有網路上的 proxy（loopback、10/8、172.16/12、192.168/16、fc00::/7）連進來時，`X-Forwarded-For` 的最後一筆就是用戶端位址；Caddy 預設會設定。沒有這個標頭時，proxy 後面的所有用戶端都算同一個位址。伺服器只信任直接在 app 前面的那一層 proxy，只讀最後一筆；去掉 `:port` 或 `[...]` 後不是 IP 位址的值一律不算，改用連線來源位址。如果那層 proxy 前面還有 CDN，最後一筆會是 CDN 節點的位址：要讓主機上的 proxy 把 CDN 的用戶端 IP 標頭轉成 `X-Forwarded-For`（nginx 用 `real_ip_header` 加上 CDN 網段的 `set_real_ip_from`，再設 `proxy_set_header X-Forwarded-For $remote_addr`）。不要讓其他容器或區網用戶端直接連 app：來自私有位址的標頭會被採信。
+- **記憶體**：每則開著的筆記約需它文字大小的幾倍；50 則 50 KiB 的筆記在數十 MiB 以內。每則筆記的即時文字上限是 5 MiB。
+
+用 `memoryLiveStore()` 取代 `redisLiveStore` 時，即時文字只存在程序裡，每次重啟都會不見，只適合單人試用。
+
+`MYGITNOTES_LIVE_CHECKIN_AT`、`MYGITNOTES_TIMEZONE` 與 `MYGITNOTES_LIVE_SWEEP_SECRET` 的用法與外部編輯器相同。維護前，或把儲存庫從外部編輯器換成內建編輯器之前，先把所有即時筆記立即簽回：
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" "https://notes.example.com/api/live/sweep?mode=all&wait=1"
+```
+
+用內建編輯器時，留白的新筆記會被捨棄，不會歸檔進 Git：有人對它按「立即簽回」、每晚簽回時，或按「捨棄草稿」時都是如此。扣掉建立時就有的文字（或預設的標題與提示行）之後，如果沒有任何文字、數字、圖片或嵌入，就算留白。還沒歸檔的筆記也可以在第一次簽回前移動或改名；這只改它之後要歸檔的位置，不會提交。
+
 ## 選用：私有 R2 素材
 
 將大型檔案存放在 Cloudflare 私有 R2 bucket，並在筆記中以 `r2:<object-key>` 引用。於部署環境設定 `MYGITNOTES_R2_ACCOUNT_ID`、`MYGITNOTES_R2_ACCESS_KEY_ID`、`MYGITNOTES_R2_SECRET_ACCESS_KEY` 與 `MYGITNOTES_R2_BUCKET`。其他相容 S3 的服務（SeaweedFS、MinIO 等）用 `MYGITNOTES_R2_ENDPOINT` 指定其網址，以 `<endpoint>/<bucket>/<key>` 的路徑形式存取，這時不需要 account id。`MYGITNOTES_R2_REGION` 設定簽章用的 region，未設時為 R2 要求的 `auto`；許多相容 S3 的服務要求 `us-east-1`。瀏覽器上傳還需要 bucket CORS 允許來自 `APP_URL` 的 PUT、GET 與 HEAD。唯讀 token 可預覽素材；檔案頁管理功能需要 Object Read & Write。參考 [Cloudflare R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/) 與 [R2 object access](https://developers.cloudflare.com/r2/api/s3/api/)。

@@ -1,6 +1,7 @@
 import { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useRef } from 'react';
-import { Compartment, EditorState, type Extension, StateEffect, StateField, Transaction } from '@codemirror/state';
-import { type DecorationSet, drawSelection, EditorView, highlightActiveLineGutter, lineNumbers } from '@codemirror/view';
+import { Compartment, EditorState, type Extension, Prec, StateEffect, StateField, Transaction } from '@codemirror/state';
+import { type DecorationSet, drawSelection, EditorView, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view';
+import { yUndoManagerKeymap } from 'y-codemirror.next';
 import { autocompletion } from '@codemirror/autocomplete';
 import { history, historyField, isolateHistory } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -26,13 +27,14 @@ import { cjkEmphasis } from './live-markdown/cjk-emphasis.js';
 import { anchorMermaidSwap } from './live-markdown/mermaid-scroll.js';
 import { inlineIconAtomicRanges } from './live-markdown/inline-icons.js';
 import { liveDecorations } from './live-markdown/decorations.js';
+import { withFrontmatter } from './live-markdown/collab-frontmatter.js';
 import { citationLibrary } from './live-markdown/citations.js';
 import { slideNote } from './live-markdown/slide-structure.js';
 import { citationCompletionSource } from './live-markdown/citation-completion-source.js';
 import { useCitationLibrary } from '../lib/typst-preview/use-citation-library.js';
 import { cardBackgroundLayer, theme } from './live-markdown/theme.js';
 import { attachGutterLineCopy, blockWidgetLineNumbers } from './live-markdown/gutter-line-copy.js';
-import { headingGutter } from './live-markdown/heading-gutter.js';
+import { collabHeadingGutter, headingGutter } from './live-markdown/heading-gutter.js';
 import { caretPlacedIn, restingCaret } from './live-markdown/resting-caret.js';
 import { tableBoundaries } from './live-markdown/table-boundaries.js';
 import { useNoteViewPreferences } from '../lib/editor-preferences.js';
@@ -96,10 +98,18 @@ interface Props {
    * and the slide directives draw as a deck reads them.
    */
   slides?: boolean;
+  /**
+   * The built-in live editor's mode: `extension` is the Yjs binding (`yCollab`), which owns the text and its undo, and
+   * `text` the synced text the view starts from. The view then keeps no CodeMirror history, takes no text from
+   * `content`, and carries nothing to or from another view. Read once, when the view is created.
+   */
+  collab?: { extension: Extension; text: string; };
 }
 const focusChanged = StateEffect.define<boolean>();
 let youtubeEditorSequence = 0;
-export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry, slides }, ref) => {
+export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry: givenCarry, slides, collab }, ref) => {
+  // The shared text is the binding's: a carried state would hold another text and another history.
+  const carry = collab ? undefined : givenCarry;
   const { t } = useTranslation();
   const linkLabel = t('links.open');
   const tableLabel = t('preview.scrollableTable'), pageLabel = t('editor.page');
@@ -210,21 +220,26 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   }), [notePath]);
   /* eslint-disable react-hooks/exhaustive-deps -- CodeMirror owns selection, focus and undo history; content, read-only and gutter changes have separate view updates and must not recreate it. */
   useEffect(() => {
+    // The collab editor holds the whole file: its leading frontmatter is drawn as frontmatter, not as Markdown.
+    const decorate = (state: EditorState, focused: boolean) => {
+      const decorations = liveDecorations(state, focused, notePath, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous);
+      return collab ? withFrontmatter(state, decorations) : decorations;
+    };
     const field = StateField.define<{ decorations: DecorationSet; focused: boolean; }>({
       create(state) {
-        return { decorations: liveDecorations(state, false, notePath, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous), focused: false };
+        return { decorations: decorate(state, false), focused: false };
       },
       update(value, tr) {
         let focused = value.focused;
         for (const effect of tr.effects) if (effect.is(focusChanged)) focused = effect.value;
-        return { focused, decorations: liveDecorations(tr.state, focused, notePath, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous) };
+        return { focused, decorations: decorate(tr.state, focused) };
       },
       provide: field => EditorView.decorations.from(field, value => value.decorations),
     });
     // A view of the same note that went away just before hands over its caret and undo history, unless the text changed since.
     const carried = carry?.current;
     if (carry) carry.current = null;
-    const startState = (config: { extensions: Extension; }) => carried && carried.doc === content ? EditorState.fromJSON(carried.state, config, { history: historyField }) : EditorState.create({ doc: content, ...config });
+    const startState = (config: { extensions: Extension; }) => collab ? EditorState.create({ doc: collab.text, ...config }) : carried && carried.doc === content ? EditorState.fromJSON(carried.state, config, { history: historyField }) : EditorState.create({ doc: content, ...config });
     const view = new EditorView({
       parent: host.current!,
       dispatchTransactions: anchorMermaidSwap,
@@ -232,7 +247,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
         extensions: [
           vimBindings.current.of(getVimMode()),
           markdown({ base: markdownLanguage, extensions: [cjkEmphasis] }),
-          history(),
+          collab ? [collab.extension, Prec.high(keymap.of(yUndoManagerKeymap))] : history(),
           isOutlinePath(notePath) ? [outlineKeymap, outlineDrag({ move: t('outline.move'), before: t('outline.dropBefore'), after: t('outline.dropAfter'), child: t('outline.dropChild') })] : [],
           tableBoundaries,
           formatKeymap,
@@ -240,7 +255,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           drawSelection(),
           restingCaret,
           continuous ? [] : cardBackgroundLayer,
-          headingGutter,
+          collab ? collabHeadingGutter : headingGutter,
           lineNumberGutter.current.of(
             showLineNumbers
               ? [lineNumbers({ formatNumber: number => String(number + lineOffset.current) }), blockWidgetLineNumbers(lineOffset), highlightActiveLineGutter()]
@@ -314,12 +329,15 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
     };
   }, [notePath, notebookId, ariaLabel, linkLabel, tableLabel, pageLabel, continuous, t]);
   /* eslint-enable react-hooks/exhaustive-deps */
+  const collabMode = Boolean(collab);
   useEffect(() => {
     const view = editor.current;
+    // The binding brings every change of a shared text; `content` is only read back from it.
+    if (collabMode) return;
     // Only the changed span is replaced, so an outside edit keeps the scroll position, caret and selection.
     const change = view && textChange(view.state.doc.toString(), content);
     if (view && change) view.dispatch({ changes: change, annotations: Transaction.addToHistory.of(false) });
-  }, [content]);
+  }, [content, collabMode]);
   useEffect(() => {
     editor.current?.dispatch({ effects: permission.current.reconfigure([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]) });
   }, [readOnly]);

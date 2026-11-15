@@ -11,12 +11,14 @@ vi.mock('../lib/files-api.js', () => files);
 const lookup = vi.hoisted(() => ({ notes: [] as NoteItem[] }));
 const api = vi.hoisted(() => ({ readNote: vi.fn() }));
 vi.mock('../lib/api.js', () => api);
+const live = vi.hoisted(() => ({ retargetLive: vi.fn() }));
+vi.mock('../lib/live-api.js', () => live);
 vi.mock('../lib/use-note-queries.js', () => ({ noteLookupOptions: () => ({ queryKey: ['lookup'], queryFn: async () => ({ notes: lookup.notes }) }) }));
 
 const note: NoteItem = { id: 'idea', path: 'notes/idea.md', notebookId: 'nb', title: 'Idea', tags: [], metadata: {}, content: '# Idea' };
 const config = { notebooks: [{ id: 'nb', root: 'notes' }] } as never;
 
-function setup({ draft, focusTabs = [] as string[], remote = true }: { draft?: WorkingNote; focusTabs?: string[]; remote?: boolean; }) {
+function setup({ draft, focusTabs = [] as string[], remote = true, retargets }: { draft?: WorkingNote; focusTabs?: string[]; remote?: boolean; retargets?: boolean; }) {
   const order: string[] = [];
   const drafts = new Map<string, WorkingNote>(draft ? [[draft.note.path, draft]] : []);
   const focus = { page: { version: 2, focuses: [{ id: 'f', notebookId: 'nb', name: 'Focus', root: { kind: 'pane', id: 'p1', tabs: focusTabs.map(path => ({ kind: 'note', path })) } }] }, change: vi.fn() };
@@ -52,6 +54,7 @@ function setup({ draft, focusTabs = [] as string[], remote = true }: { draft?: W
     }),
     setActionError: vi.fn(),
     t: ((key: string) => key) as never,
+    ...(retargets === undefined ? {} : { retargets: () => retargets }),
   };
   const hook = renderHook(() => useNoteMove(params));
   const move = async (folder: string | null) => {
@@ -274,5 +277,52 @@ describe('useNoteMove', () => {
     hook.rerender();
     await renameTo('Plans');
     expect(params.flushEditors).not.toHaveBeenCalled();
+  });
+
+  describe('a pending live note (未歸檔)', () => {
+    const pending: NoteItem = { ...note, path: 'notes/.live/live-1.md', title: 'Draft', live: { since: '2026-11-15T00:00:00.000Z', activeEditors: 0, pending: true, editorUrl: 'http://localhost/x', pathRule: 'inbox/{{title}}.md' } };
+    const checkedOut: NoteItem = { ...note, live: { since: '2026-11-15T00:00:00.000Z', activeEditors: 0, editorUrl: 'http://localhost/x' } };
+
+    it('sets where its check-in files it on a move, without moving a file', async () => {
+      live.retargetLive.mockResolvedValue({ checkout: {}, destination: { folder: 'work', name: '{{title}}.md' } });
+      const { params, hook } = setup({ retargets: true });
+      act(() => hook.result.current.moveNote(pending)?.());
+      expect(hook.result.current.request).toMatchObject({ mode: 'move', note: pending });
+      await act(() => hook.result.current.confirmMove('work'));
+      expect(live.retargetLive).toHaveBeenCalledWith('nb', 'notes/.live/live-1.md', { folder: 'work' });
+      await act(() => hook.result.current.moveTo(pending, null));
+      expect(live.retargetLive).toHaveBeenLastCalledWith('nb', 'notes/.live/live-1.md', { folder: '' });
+      expect(files.mutateFile).not.toHaveBeenCalled();
+      expect(params.onFilesChanged).toHaveBeenCalled();
+      expect(params.setActionError).toHaveBeenLastCalledWith('');
+    });
+
+    it('fixes the file name on a rename and leaves the title', async () => {
+      live.retargetLive.mockResolvedValue({ checkout: {}, destination: { folder: 'inbox', name: 'Plans.md' } });
+      const applyTitle = vi.fn();
+      const { rename, renameTo } = setup({ retargets: true });
+      await rename(' Plans ', pending, applyTitle);
+      expect(live.retargetLive).toHaveBeenCalledWith('nb', 'notes/.live/live-1.md', { name: 'Plans' });
+      expect(applyTitle).not.toHaveBeenCalled();
+      await renameTo('Later', pending);
+      expect(live.retargetLive).toHaveBeenLastCalledWith('nb', 'notes/.live/live-1.md', { name: 'Later' });
+      expect(files.mutateFile).not.toHaveBeenCalled();
+    });
+
+    it('stays unmovable where the adapter cannot retarget, and a checked-out note always does', () => {
+      const without = setup({ retargets: false });
+      expect(without.hook.result.current.moveNote(pending)).toBeUndefined();
+      expect(without.hook.result.current.renameNote(pending)).toBeUndefined();
+      const able = setup({ retargets: true });
+      expect(able.hook.result.current.moveNote(checkedOut)).toBeUndefined();
+    });
+
+    it('shows the refusal of a retarget', async () => {
+      live.retargetLive.mockRejectedValue(new Error('The note is being checked in. Try again in a moment.'));
+      const { params, hook } = setup({ retargets: true });
+      act(() => hook.result.current.moveNote(pending)?.());
+      await act(() => hook.result.current.confirmMove('work'));
+      expect(params.setActionError).toHaveBeenLastCalledWith('The note is being checked in. Try again in a moment.');
+    });
   });
 });

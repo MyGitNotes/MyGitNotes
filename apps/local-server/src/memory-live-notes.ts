@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { type EditionSourceConfig, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, LiveStaleError, LiveTooLargeError, LiveUnavailableError, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity } from '@mygitnotes/core';
+import { type EditionSourceConfig, isBuiltinEditor, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity } from '@mygitnotes/core';
 import { memoryCommitCounter, MemoryEditionSource, type MemoryFiles } from './memory-edition-source.js';
 
 /** The clock the memory adapter reads, which a test moves on. */
@@ -24,6 +24,7 @@ export interface MemoryLiveRepository {
 }
 
 export interface MemoryLiveNotesOptions {
+  /** A framed editor, whose rows carry URLs on its origin, or the built-in one, whose rows carry none and which issues socket tickets. */
   editor: LiveEditorInfo;
   repositories: MemoryLiveRepository[];
   clock?: MemoryLiveClock;
@@ -31,6 +32,10 @@ export interface MemoryLiveNotesOptions {
   maxBytes?: number;
   /** How long a lease holds; 5 minutes by default. */
   leaseMs?: number;
+  /** Whether the service implements `discard` (§19 of the built-in editor spec); left out, it does not, as a 0.19 adapter. */
+  discard?: boolean;
+  /** Whether the service implements `retarget` (§20.2 of the built-in editor spec); left out, it does not, as a 0.19 adapter. */
+  retarget?: boolean;
 }
 
 /** The memory adapter, with the hooks of its editor that a test drives. */
@@ -42,7 +47,15 @@ export interface MemoryLiveNotes extends LiveNotes {
   /** Sets the connected, non-idle editors; a session opens with the first and ends when none is left. */
   setActive(repository: RepositoryId, id: string, n: number): void;
   notify(notice: LiveNotice): Promise<void>;
+  /**
+   * Takes a ticket `socketTicket` issued, once and within 60 s: who it was issued to and for which document; null for
+   * an unknown, used or expired ticket.
+   */
+  redeemTicket(ticket: string): { repository: RepositoryId; id: string; document: string; context: LiveContext; } | null;
 }
+
+/** How long a socket ticket holds. */
+const TICKET_MS = 60_000;
 
 /** One change to a document: `text` replaces `from` to `to`. */
 interface Splice {
@@ -67,8 +80,12 @@ interface Link {
   notebook: NotebookKey;
   path: string | null;
   pathRule?: string;
+  /** A pending note: the text it was created with. */
+  initial?: string;
   since: number;
   text: string;
+  /** The checkout count: one per check-out or reopen; a built-in editor's document is `<id>.<checkouts>`. */
+  checkouts: number;
   /** The session count; a session's revisions are `e<epoch>:<n>`. */
   epoch: number;
   /** The texts of the open session, from the one it opened on; null while no session is open. */
@@ -117,10 +134,11 @@ const iso = (time: number) => new Date(time).toISOString();
  * session is open and `h:<hash>` otherwise, and a write on an older revision of the open session is rebased over the
  * typing since. Its service opens a memory Git source over the same files that records each commit's author and message.
  */
-export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000 }: MemoryLiveNotesOptions): MemoryLiveNotes {
+export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000, discard = false, retarget = false }: MemoryLiveNotesOptions): MemoryLiveNotes {
   const covered = new Map(repositories.map(entry => [sourceIdentity(entry.source), entry]));
   const state = new Map<RepositoryId, { links: Map<string, Link>; byPath: Map<string, string>; }>();
   const notices: LiveNotice[] = [];
+  const tickets = new Map<string, { repository: RepositoryId; id: string; document: string; context: LiveContext; until: number; }>();
   let created = 0;
 
   const repositoryState = (repository: RepositoryId) => {
@@ -140,7 +158,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
   };
   const revision = (link: Link) => link.log ? `e${link.epoch}:${link.log.length - 1}` : `h:${liveContentHash(link.text)}`;
   const text = (link: Link) => ({ content: link.text, liveRevision: revision(link), contentHash: liveContentHash(link.text) });
-  const row = (link: Link): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), since: iso(link.since), editorUrl: `${editor.origin}/n/${link.id}`, embedUrl: `${editor.origin}/n/${link.id}?embed=1`, contentHash: liveContentHash(link.text), activeEditors: link.active, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
+  const row = (link: Link): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), since: iso(link.since), ...(isBuiltinEditor(editor) ? {} : { editorUrl: `${editor.origin}/n/${link.id}`, embedUrl: `${editor.origin}/n/${link.id}?embed=1` }), contentHash: liveContentHash(link.text), activeEditors: link.active, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
   const live = (repository: RepositoryId) => [...repositoryState(repository).links.values()].filter(link => link.live);
   const editorOf = ({ person, author }: LiveContext, agent: boolean): EditorRef => {
     const name = author?.name || `${person.realm}:${person.userId}`;
@@ -189,7 +207,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
     if (!link.lease || link.lease.token !== lease.token || link.lease.until <= clock.now()) throw new LiveLeasedError();
     return link;
   };
-  const newLink = (notebook: NotebookKey, path: string | null, content: string): Link => ({ id: `live-${++created}`, notebook, path, since: clock.now(), text: content, epoch: 0, log: null, active: 0, lastEditAt: null, syncedAt: null, syncedHash: null, base: null, conflict: null, edits: [], live: true, lease: null });
+  const newLink = (notebook: NotebookKey, path: string | null, content: string): Link => ({ id: `live-${++created}`, notebook, path, since: clock.now(), text: content, checkouts: 1, epoch: 0, log: null, active: 0, lastEditAt: null, syncedAt: null, syncedHash: null, base: null, conflict: null, edits: [], live: true, lease: null });
 
   const liveNotes: MemoryLiveNotes = {
     editors: [editor],
@@ -201,7 +219,8 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           return live(repository).map(row);
         },
         async read(repository, id) {
-          return text(linkOf(repository, id));
+          const link = linkOf(repository, id);
+          return { ...text(link), ...(link.path === null && link.initial !== undefined ? { initialText: link.initial } : {}) };
         },
         async write(repository, id, change) {
           const link = linkOf(repository, id);
@@ -219,13 +238,14 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           const known = byPath.has(path) ? links.get(byPath.get(path)!) : undefined;
           if (known?.live) return { checkout: row(known), outcome: 'joined' };
           const link = known ?? newLink(notebook, path, base.content);
+          if (known) link.checkouts += 1;
           Object.assign(link, { notebook, since: clock.now(), text: base.content, log: null, active: 0, lastEditAt: null, syncedAt: null, syncedHash: null, base: { commit: base.commit, blob: base.blob, contentHash: liveContentHash(base.content) }, conflict: null, edits: [], live: true, lease: null });
           links.set(link.id, link);
           byPath.set(path, link.id);
           return { checkout: row(link), outcome: known ? 'reopened' : 'created' };
         },
         async createPending(repository, { notebook, pathRule, content }) {
-          const link = { ...newLink(notebook, null, fits(content)), pathRule };
+          const link = { ...newLink(notebook, null, fits(content)), pathRule, initial: content };
           repositoryState(repository).links.set(link.id, link);
           return row(link);
         },
@@ -261,7 +281,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
       },
       async detail(repository, id, lease) {
         const link = held(repository, id, lease);
-        return { ...text(link), checkout: row(link), editors: editors(link) };
+        return { ...text(link), checkout: row(link), editors: editors(link), ...(link.path === null && link.initial !== undefined ? { initialText: link.initial } : {}) };
       },
       async mergeIn(repository, id, lease, change) {
         const link = held(repository, id, lease);
@@ -274,6 +294,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
         if (link.path === null) {
           link.path = receipt.path;
           delete link.pathRule;
+          delete link.initial;
           repositoryState(repository).byPath.set(receipt.path, link.id);
         }
         link.base = { commit: receipt.commit, blob: receipt.blob, contentHash: receipt.contentHash };
@@ -293,9 +314,53 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
         Object.assign(link, { live: false, lease: null, log: null });
         return { released: true };
       },
+      ...(discard
+        ? {
+          async discard(repository: RepositoryId, id: string, lease: LiveLease, check: { contentHash: string; }): Promise<LiveRelease> {
+            const link = held(repository, id, lease);
+            if (link.path !== null) throw new SourceError('Only a pending note can be discarded.', 409);
+            if (liveContentHash(link.text) !== check.contentHash) return { released: false, reason: 'changed' };
+            if (link.active > 0) return { released: false, reason: 'active', activeEditors: link.active };
+            // The link and its text are gone: nothing names it again, and `filed` knows nothing of it.
+            repositoryState(repository).links.delete(id);
+            for (const [ticket, issued] of tickets) if (issued.repository === repository && issued.id === id) tickets.delete(ticket);
+            return { released: true };
+          },
+        }
+        : {}),
+      ...(retarget
+        ? {
+          async retarget(repository: RepositoryId, id: string, lease: LiveLease, request: { pathRule: string; }): Promise<LiveCheckout> {
+            const link = held(repository, id, lease);
+            // The lease ends with the call, retargeted or refused: it never holds a check-in off.
+            link.lease = null;
+            if (link.path !== null) throw new LiveNotLiveError('Only a pending note can be moved or renamed.');
+            link.pathRule = request.pathRule;
+            return row(link);
+          },
+        }
+        : {}),
     },
     async notify(notice) {
       notices.push(notice);
+    },
+    ...(isBuiltinEditor(editor)
+      ? {
+        async socketTicket(context: LiveContext, repository: RepositoryId, id: string): Promise<LiveSocketTicket> {
+          const link = linkOf(repository, id);
+          const ticket = randomBytes(32).toString('base64url');
+          const document = `${link.id}.${link.checkouts}`;
+          tickets.set(ticket, { repository, id, document, context, until: clock.now() + TICKET_MS });
+          return { ticket, document };
+        },
+      }
+      : {}),
+    redeemTicket(ticket) {
+      const issued = tickets.get(ticket);
+      tickets.delete(ticket);
+      if (!issued || issued.until <= clock.now()) return null;
+      const { until: _until, ...rest } = issued;
+      return rest;
     },
     type(repository, id, next, person) {
       const link = linkOf(repository, id);

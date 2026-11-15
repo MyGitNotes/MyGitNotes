@@ -38,6 +38,13 @@ export interface ApiErrorDetails {
   movedTo?: string;
 }
 
+/**
+ * Whether `error` is a fetch that reached no server: the browser rejects it with a TypeError in its own words (Chrome
+ * "Failed to fetch", Firefox "NetworkError when attempting to fetch resource.", Safari "Load failed"). Any other
+ * TypeError is a bug, not the network.
+ */
+export const isNetworkFailure = (error: unknown): boolean => error instanceof TypeError && /failed to fetch|networkerror|load failed|network request failed/i.test(error.message);
+
 export class ApiError extends Error {
   readonly code?: string;
   readonly paths?: string[];

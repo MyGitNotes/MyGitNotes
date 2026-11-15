@@ -12,6 +12,11 @@
  * Repository `p1/notes` has the live editor; `p1/plain` has none. Notes over 64 KiB are too large for the stub editor.
  * The build's type check stops at `src`; `pnpm --filter @mygitnotes/local-server typecheck:dev` checks this file
  * (tsconfig.dev.json) against the internal APIs it composes.
+ *
+ * With MYGITNOTES_LIVE_DEV_EDITOR=builtin the same app runs the built-in live editor instead (docs/specs/
+ * 2026-11-15-builtin-live-editor §8.4): `builtinLiveNotes` over a memory live store, check-ins committed to the memory
+ * source, the socket on the app's own server, and no stub editor. A second writer, `dev2` (/dev/as/dev2), makes the
+ * two-person check with two browser contexts.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,10 +24,11 @@ import path from 'node:path';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import express, { Router } from 'express';
-import { type EditionSourceConfig, type LiveContext, sourceIdentity, type WorkspaceConfigSource } from '@mygitnotes/core';
+import { type CommitAuthor, type EditionSourceConfig, type LiveContext, parseWorkspaceConfig, sourceIdentity, type WorkspaceConfigSource } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import type { IdentityService } from '../src/identity.js';
-import { memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
+import { memoryCommitCounter, MemoryEditionSource, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
+import { builtinLiveNotes, memoryLiveStore } from '../src/live-builtin/index.js';
 import { memoryLiveNotes } from '../src/memory-live-notes.js';
 import { createRecordStore } from '../src/record-store/index.js';
 import { workspaceSettings } from '../tests/workspace-settings.js';
@@ -69,11 +75,15 @@ const notes: EditionSourceConfig = { type: 'edition', platform: 'hosted', reposi
 const plain: EditionSourceConfig = { type: 'edition', platform: 'hosted', repository: 'p1/plain', branch: 'main', label: 'Plain' };
 const repository = sourceIdentity(notes);
 const editor = { origin: editorOrigin, messageType: 'dev-live', themeParam: 'theme' };
-const liveNotes = memoryLiveNotes({ editor, repositories: [{ source: notes, files: notesFiles }], maxBytes: 64 * 1024 });
+const builtinMode = process.env.MYGITNOTES_LIVE_DEV_EDITOR === 'builtin';
+const framed = builtinMode ? undefined : memoryLiveNotes({ editor, repositories: [{ source: notes, files: notesFiles }], maxBytes: 64 * 1024, discard: true, retarget: true });
+// The built-in editor commits its check-ins to the memory source as the person who typed first.
+const builtin = builtinMode ? builtinLiveNotes({ covers: id => id === repository, open: async (_repository, author?: CommitAuthor) => new MemoryEditionSource(notes, notesFiles, true, memoryCommitCounter(notesFiles), undefined, async () => parseWorkspaceConfig(manifest), author), store: memoryLiveStore() }) : undefined;
+const liveNotes = builtin ?? framed!;
 
-const people: Record<string, { name: string; email: string; }> = { dev: { name: 'Dev', email: 'dev@example.test' }, reader: { name: 'Reader', email: 'reader@example.test' } };
+const people: Record<string, { name: string; email: string; }> = { dev: { name: 'Dev', email: 'dev@example.test' }, dev2: { name: 'Dev Two', email: 'dev2@example.test' }, reader: { name: 'Reader', email: 'reader@example.test' } };
 const personOf = (req: express.Request) => {
-  const match = /(?:^|;\s*)dev-person=(dev|reader)/.exec(req.headers.cookie ?? '');
+  const match = /(?:^|;\s*)dev-person=(dev2|dev|reader)/.exec(req.headers.cookie ?? '');
   return match?.[1] ?? 'dev';
 };
 const identity: IdentityService = {
@@ -101,10 +111,10 @@ const configSource: WorkspaceConfigSource = {
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mygitnotes-live-dev-'));
 Object.assign(process.env, { SESSION_SECRET: process.env.SESSION_SECRET || 's'.repeat(64), APP_URL: appOrigin, MYGITNOTES_SOURCE: 'github', MYGITNOTES_LIVE_CHECKIN_AT: 'off', UPSTASH_REDIS_REST_URL: '', REDIS_URL: '', KV_REST_API_URL: '' });
-const app = createApp(root, { configSource, recordStore: createRecordStore(root), remoteCache: undefined, workspaceChoices: null, identity, editionSources: memoryEditionSources({ repositories: new Map([['p1/notes', notesFiles], ['p1/plain', plainFiles]]), mayWrite: person => person.userId === 'dev' }), liveNotes, webDist });
+const app = createApp(root, { configSource, recordStore: createRecordStore(root), remoteCache: undefined, workspaceChoices: null, identity, editionSources: memoryEditionSources({ repositories: new Map([['p1/notes', notesFiles], ['p1/plain', plainFiles]]), mayWrite: person => person.userId === 'dev' || person.userId === 'dev2' }), liveNotes, webDist });
 const outer = express();
 outer.get('/dev/as/:who', (req, res) => {
-  const who = req.params.who === 'reader' ? 'reader' : 'dev';
+  const who = req.params.who === 'reader' || req.params.who === 'dev2' ? req.params.who : 'dev';
   res.setHeader('Set-Cookie', `dev-person=${who}; Path=/; SameSite=Lax`);
   res.redirect(302, '/');
 });
@@ -118,6 +128,10 @@ const editorApp = express();
 editorApp.use(express.json({ limit: '1mb' }));
 const devPerson: LiveContext = { person: { realm: 'edition', userId: 'dev' }, author: people.dev, request: { headers: {} } };
 const linkOf = async (id: string) => (await liveNotes.service.checkouts(repository)).find(row => row.id === id);
+const stub = () => {
+  if (!framed) throw new Error('The stub editor runs only with the framed editor.');
+  return framed;
+};
 editorApp.get('/n/:id/state', async (req, res) => {
   const row = await linkOf(req.params.id);
   if (!row) return res.json({ released: true, users: 0 });
@@ -125,7 +139,7 @@ editorApp.get('/n/:id/state', async (req, res) => {
 });
 editorApp.post('/n/:id/text', async (req, res) => {
   if (!await linkOf(req.params.id) || typeof req.body?.content !== 'string') return res.status(409).json({ error: 'released' });
-  liveNotes.type(repository, req.params.id, req.body.content, devPerson);
+  stub().type(repository, req.params.id, req.body.content, devPerson);
   res.json({ ok: true });
 });
 const active = new Map<string, number>();
@@ -134,7 +148,7 @@ editorApp.post('/n/:id/active', async (req, res) => {
   if (!row) return res.json({ ok: false });
   const next = Math.max(0, (active.get(row.id) ?? 0) + (req.body?.delta === -1 ? -1 : 1));
   active.set(row.id, next);
-  liveNotes.setActive(repository, row.id, next);
+  stub().setActive(repository, row.id, next);
   res.json({ ok: true });
 });
 editorApp.get('/n/:id', (req, res) => {
@@ -155,13 +169,17 @@ fetch('/n/'+id+'/active',{method:'POST',headers:{'Content-Type':'application/jso
 </script></body></html>`);
 });
 
-const appServer = createServer(outer).listen(appPort, host, () => console.log(`App: ${appOrigin} (signed in as dev; ${appOrigin}/dev/as/reader for a reader)`));
-const editorServer = createServer(editorApp).listen(editorPort, host, () => console.log(`Stub live editor: ${editorOrigin}`));
-const stop = () => {
+// The built-in editor refuses to start over a store that could drop typing; the memory store always passes.
+await builtin?.started;
+const appServer = createServer(outer).listen(appPort, host, () => console.log(`App: ${appOrigin} (${builtin ? 'built-in live editor; ' : ''}signed in as dev; ${appOrigin}/dev/as/${builtin ? 'dev2 for a second writer, /dev/as/' : ''}reader for a reader)`));
+if (builtin) appServer.on('upgrade', (req, socket, head) => void (builtin.upgrade(req, socket, head) || socket.destroy()));
+const editorServer = builtin ? undefined : createServer(editorApp).listen(editorPort, host, () => console.log(`Stub live editor: ${editorOrigin}`));
+const stop = async () => {
+  await builtin?.shutdown();
   appServer.close();
-  editorServer.close();
+  editorServer?.close();
   fs.rmSync(root, { recursive: true, force: true });
   process.exit(0);
 };
-process.on('SIGINT', stop);
-process.on('SIGTERM', stop);
+process.on('SIGINT', () => void stop());
+process.on('SIGTERM', () => void stop());

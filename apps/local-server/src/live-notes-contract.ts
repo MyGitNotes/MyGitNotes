@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type LiveCheckout, type LiveContext, LiveLeasedError, type LiveNotes, LiveNotLiveError, LiveStaleError, type NotebookKey, type RepositoryId } from '@mygitnotes/core';
+import { isBuiltinEditor, type LiveCheckout, type LiveContext, LiveLeasedError, type LiveNotes, LiveNotLiveError, LiveStaleError, type NotebookKey, type RepositoryId } from '@mygitnotes/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 /** What a {@link LiveNotes} adapter needs to be exercised: one repository it covers, a notebook of it, and the hooks of its editor. */
@@ -124,8 +124,14 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       const listed = (await as(2).checkouts(fixture.repository)).find(entry => entry.id === created.id);
       expect(await service().repositories()).toContain(fixture.repository);
       for (const entry of [created, listed!]) {
-        expect(entry).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), notebook: fixture.notebook, path, since: expect.stringMatching(ISO), editorUrl: expect.any(String), embedUrl: expect.any(String), contentHash: sha256('# Fields\n'), activeEditors: 0, lastEditAt: null, syncedAt: null, base: { commit: base('').commit, blob: base('').blob, contentHash: sha256('# Fields\n') }, conflict: null });
-        for (const url of [entry.editorUrl, entry.embedUrl]) {
+        const fields = { id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/), notebook: fixture.notebook, path, since: expect.stringMatching(ISO), contentHash: sha256('# Fields\n'), activeEditors: 0, lastEditAt: null, syncedAt: null, base: { commit: base('').commit, blob: base('').blob, contentHash: sha256('# Fields\n') }, conflict: null };
+        // The built-in editor's notes are edited in the app itself: its rows carry no URL.
+        if (isBuiltinEditor(editor!)) {
+          expect(entry).toEqual(fields);
+          continue;
+        }
+        expect(entry).toEqual({ ...fields, editorUrl: expect.any(String), embedUrl: expect.any(String) });
+        for (const url of [entry.editorUrl!, entry.embedUrl!]) {
           expect(new URL(url).origin).toBe(editor!.origin);
           expect(new URL(url).username + new URL(url).password).toBe('');
         }
@@ -141,6 +147,24 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       expect(reopened.id).toBe(created.id);
       expect(Date.parse(reopened.since)).toBeGreaterThan(Date.parse(created.since));
       expect(reopened).toMatchObject({ syncedAt: null, conflict: null, contentHash: sha256('# Again\n') });
+    });
+
+    it('issues a distinct socket ticket per call for a live link of a built-in editor, and none for a released one', async () => {
+      const editor = fixture.liveNotes.editor(fixture.repository)!;
+      if (!isBuiltinEditor(editor)) return;
+      expect(typeof fixture.liveNotes.socketTicket).toBe('function');
+      const path = notePath();
+      const { id } = await checkout('# Ticket\n', path);
+      const first = await fixture.liveNotes.socketTicket!(fixture.person(1), fixture.repository, id);
+      const second = await fixture.liveNotes.socketTicket!(fixture.person(2), fixture.repository, id);
+      for (const ticket of [first, second]) expect(ticket).toEqual({ ticket: expect.stringMatching(/^[A-Za-z0-9_-]{32,128}$/), document: expect.stringMatching(new RegExp(`^${id}\\.[1-9][0-9]{0,9}$`)) });
+      expect(second.ticket).not.toBe(first.ticket);
+      expect(second.document).toBe(first.document);
+      expect((await checkIn(id)).release).toEqual({ released: true });
+      await expect(fixture.liveNotes.socketTicket!(fixture.person(1), fixture.repository, id)).rejects.toBeInstanceOf(LiveNotLiveError);
+      // A reopened link is a new epoch: its document is another.
+      await checkout('# Again\n', path);
+      expect((await fixture.liveNotes.socketTicket!(fixture.person(1), fixture.repository, id)).document).not.toBe(first.document);
     });
 
     it('leases a link to one holder until the lease expires, and refuses lease-bound calls without it', async () => {
@@ -224,6 +248,99 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       expect((await row(pending.id))?.path).toBe(filed);
       expect(await service().release(fixture.repository, pending.id, lease, { contentHash: detail.contentHash })).toEqual({ released: true });
       expect(await as(2).filed(fixture.repository, pending.id)).toBe(filed);
+    });
+
+    it('discards a pending note nobody typed in: no path, gone from the list, filed nowhere, and keeps its initial text until then', async () => {
+      const discard = service().discard?.bind(service());
+      if (!discard) return;
+      const content = '---\ntitle: Draft\n---\n\nStart here.\n';
+      const pending = await as(1).createPending(fixture.repository, { notebook: fixture.notebook, pathRule: '{{title}}.md', content });
+      const lease = await service().lease(fixture.repository, pending.id);
+      const detail = await service().detail(fixture.repository, pending.id, lease);
+      expect(detail.editors).toEqual([]);
+      if (detail.initialText !== undefined) expect(detail.initialText).toBe(content);
+      expect(await discard(fixture.repository, pending.id, lease, { contentHash: detail.contentHash })).toEqual({ released: true });
+      expect(await row(pending.id)).toBeUndefined();
+      expect(await as(2).filed(fixture.repository, pending.id)).toBeNull();
+      await expect(as(1).read(fixture.repository, pending.id)).rejects.toBeInstanceOf(LiveNotLiveError);
+      await expect(service().lease(fixture.repository, pending.id)).rejects.toBeInstanceOf(LiveNotLiveError);
+    });
+
+    it('keeps the initial text of a pending note while people type in it', async () => {
+      if (!service().discard) return;
+      const content = '---\ntitle: Typed\n---\n';
+      const pending = await as(1).createPending(fixture.repository, { notebook: fixture.notebook, pathRule: '{{title}}.md', content });
+      await fixture.type(pending.id, `${content}\nWords.\n`, fixture.person(2));
+      const lease = await service().lease(fixture.repository, pending.id);
+      const detail = await service().detail(fixture.repository, pending.id, lease);
+      expect(detail.content).toBe(`${content}\nWords.\n`);
+      expect(detail.editors.map(editor => editor.email)).toEqual([fixture.person(2).author!.email]);
+      if (detail.initialText !== undefined) expect(detail.initialText).toBe(content);
+    });
+
+    it('refuses to discard a note with a path, one being edited, and one whose text changed, and keeps each live', async () => {
+      const discard = service().discard?.bind(service());
+      if (!discard) return;
+      const filed = await checkout('# Filed\n');
+      const filedLease = await service().lease(fixture.repository, filed.id);
+      await expect(discard(fixture.repository, filed.id, filedLease, { contentHash: filed.contentHash })).rejects.toThrow();
+      expect((await row(filed.id))?.path).toBe(filed.path);
+      const pending = await as(1).createPending(fixture.repository, { notebook: fixture.notebook, pathRule: '{{title}}.md', content: '# Pending\n' });
+      const lease = await service().lease(fixture.repository, pending.id);
+      const detail = await service().detail(fixture.repository, pending.id, lease);
+      await fixture.setActive(pending.id, 1);
+      expect(await discard(fixture.repository, pending.id, lease, { contentHash: detail.contentHash })).toMatchObject({ released: false, reason: 'active', activeEditors: 1 });
+      await fixture.type(pending.id, '# Pending\nmore\n', fixture.person(2));
+      await fixture.setActive(pending.id, 0);
+      expect(await discard(fixture.repository, pending.id, lease, { contentHash: detail.contentHash })).toMatchObject({ released: false, reason: 'changed' });
+      expect(await row(pending.id)).toMatchObject({ path: null, contentHash: sha256('# Pending\nmore\n') });
+      expect((await as(1).read(fixture.repository, pending.id)).content).toBe('# Pending\nmore\n');
+      await expect(discard(fixture.repository, pending.id, { token: `${lease.token}x`, until: lease.until }, { contentHash: sha256('# Pending\nmore\n') })).rejects.toBeInstanceOf(LiveLeasedError);
+      expect(await discard(fixture.repository, pending.id, lease, { contentHash: sha256('# Pending\nmore\n') })).toEqual({ released: true });
+      expect(await row(pending.id)).toBeUndefined();
+    });
+
+    it('retargets a pending note to the rule given, placeholders and all, leaves its text and editors, and ends the lease', async () => {
+      const retarget = service().retarget?.bind(service());
+      if (!retarget) return;
+      const pending = await as(1).createPending(fixture.repository, { notebook: fixture.notebook, pathRule: 'inbox/{{title}}.md', content: '# Pending\n' });
+      await fixture.type(pending.id, '# Pending\nwords\n', fixture.person(2));
+      const lease = await service().lease(fixture.repository, pending.id);
+      expect(await retarget(fixture.repository, pending.id, lease, { pathRule: 'moved/{{date}} {{title}}.md' })).toMatchObject({ id: pending.id, notebook: fixture.notebook, path: null, pathRule: 'moved/{{date}} {{title}}.md', base: null, contentHash: sha256('# Pending\nwords\n') });
+      expect(await row(pending.id)).toMatchObject({ path: null, pathRule: 'moved/{{date}} {{title}}.md' });
+      expect((await as(1).read(fixture.repository, pending.id)).content).toBe('# Pending\nwords\n');
+      // The lease ended with the call: a check-in can take the note at once.
+      const next = await service().lease(fixture.repository, pending.id);
+      expect((await service().detail(fixture.repository, pending.id, next)).editors.map(editor => editor.email)).toEqual([fixture.person(2).author!.email]);
+      expect(await retarget(fixture.repository, pending.id, next, { pathRule: 'moved/Fixed.md' })).toMatchObject({ path: null, pathRule: 'moved/Fixed.md' });
+      expect(await row(pending.id)).toMatchObject({ pathRule: 'moved/Fixed.md' });
+    });
+
+    it('retargets a pending note someone has open: its text is not touched, so open editors do not hold it', async () => {
+      const retarget = service().retarget?.bind(service());
+      if (!retarget) return;
+      const pending = await as(1).createPending(fixture.repository, { notebook: fixture.notebook, pathRule: '{{title}}.md', content: '# Open\n' });
+      await fixture.setActive(pending.id, 1);
+      const lease = await service().lease(fixture.repository, pending.id);
+      expect(await retarget(fixture.repository, pending.id, lease, { pathRule: 'elsewhere/{{title}}.md' })).toMatchObject({ path: null, pathRule: 'elsewhere/{{title}}.md', activeEditors: 1 });
+    });
+
+    it('refuses to retarget a note with a path, and a call without the lease, and leaves each as it was', async () => {
+      const retarget = service().retarget?.bind(service());
+      if (!retarget) return;
+      const filed = await checkout('# Filed\n');
+      const filedLease = await service().lease(fixture.repository, filed.id);
+      await expect(retarget(fixture.repository, filed.id, filedLease, { pathRule: 'moved/{{title}}.md' })).rejects.toBeInstanceOf(LiveNotLiveError);
+      expect(await row(filed.id)).toMatchObject({ path: filed.path });
+      expect(await row(filed.id)).not.toHaveProperty('pathRule');
+      // A refused retarget ends its lease too, so it never holds a check-in off.
+      await service().lease(fixture.repository, filed.id);
+      const pending = await as(1).createPending(fixture.repository, { notebook: fixture.notebook, pathRule: '{{title}}.md', content: '# Pending\n' });
+      const lease = await service().lease(fixture.repository, pending.id);
+      await expect(retarget(fixture.repository, pending.id, { token: `${lease.token}x`, until: lease.until }, { pathRule: 'moved/{{title}}.md' })).rejects.toBeInstanceOf(LiveLeasedError);
+      await fixture.advance(LEASE_MS + 1000);
+      await expect(retarget(fixture.repository, pending.id, lease, { pathRule: 'moved/{{title}}.md' })).rejects.toBeInstanceOf(LiveLeasedError);
+      expect(await row(pending.id)).toMatchObject({ path: null, pathRule: '{{title}}.md' });
     });
 
     it('lists the editors since the last sync for the service, with email and an agent flag, and attributes a merge to nobody', async () => {

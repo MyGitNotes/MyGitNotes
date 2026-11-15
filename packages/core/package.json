@@ -35,6 +35,10 @@
       "types": "./dist/note-title.d.ts",
       "import": "./dist/note-title.js"
     },
+    "./live-default-draft": {
+      "types": "./dist/live-default-draft.d.ts",
+      "import": "./dist/live-default-draft.js"
+    },
     "./note-status": {
       "types": "./dist/note-status.d.ts",
       "import": "./dist/note-status.js"
@@ -157,6 +161,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@sanity/diff-match-patch": "3.2.1",
     "aws4fetch": "^1.0.20",
     "libsodium-wrappers": "0.8.4",
     "marked": "18.0.13",

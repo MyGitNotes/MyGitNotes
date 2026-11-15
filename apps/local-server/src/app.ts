@@ -1,5 +1,5 @@
 import express from 'express';
-import { type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
+import { isBuiltinEditor, type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
 import { fail } from './route-errors.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -103,6 +103,26 @@ function checkLiveNotes(liveNotes: LiveNotes | undefined, local: boolean) {
       throw new Error(`The live editor (liveNotes) cannot be used: ${(error as Error).message}`);
     }
   }
+  if (liveNotes.editors.some(isBuiltinEditor)) checkBuiltinLiveEditor(liveNotes);
+}
+
+const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+/**
+ * The built-in editor's own needs: a long-running server for its socket, the app's origin that the socket's Origin
+ * check compares with (docs/specs/2026-11-15-builtin-live-editor §6.2), and the adapter's socket tickets.
+ */
+function checkBuiltinLiveEditor(liveNotes: LiveNotes) {
+  if (process.env.VERCEL) throw new Error('The built-in live editor needs a long-running server with WebSockets; Vercel cannot host it.');
+  const appUrl = process.env.APP_URL;
+  let url: URL | undefined;
+  try {
+    url = appUrl ? new URL(appUrl) : undefined;
+  } catch {
+    url = undefined;
+  }
+  if (!url || url.origin !== appUrl || (url.protocol !== 'https:' && !(url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname)))) throw new Error("The built-in live editor needs APP_URL set to the app's bare origin, such as https://notes.example.com (http only on a loopback host): its socket accepts only that origin.");
+  if (typeof liveNotes.socketTicket !== 'function') throw new Error('The built-in live editor (liveNotes) declares a builtin editor but has no socketTicket.');
 }
 
 export function createApp(base: string, overrides: Partial<AppServices> = {}): express.Express {
@@ -241,7 +261,9 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
           if (!handle) return { ...base, ...manifest, branch: entry.ref.source.type === 'local' ? '' : entry.ref.source.branch, revision: '', write: false, ...('unavailable' in entry ? { unavailable: entry.unavailable } : {}) };
           const snapshot = await handle.reader.getSnapshot();
           // The editor configuration is static: naming it asks the adapter nothing, so this answer stands while the editor is down.
-          const live = liveNotes ? { live: handle.reader.liveView?.editor ?? null } : {};
+          const view = handle.reader.liveView;
+          // `discard` and `retarget` are added only for an adapter that has them, so a 0.19 adapter's answer stays as it was.
+          const live = liveNotes ? { live: view ? view.discards || view.retargets ? { ...view.editor, ...(view.discards ? { discard: true as const } : {}), ...(view.retargets ? { retarget: true as const } : {}) } : view.editor : null } : {};
           return { ...base, ...manifest, branch: handle.reader.branch, revision: snapshot.sha, write: handle.authenticated && handle.reader.canWrite(snapshot), ...live, ...('unavailable' in entry ? { unavailable: entry.unavailable } : {}) };
         }));
         const body: WorkspaceStatus = { keyedConfig, local: false, defaultRepository: workspace.default?.ref.id ?? null, repositories, coreUpdate: Boolean(product), ...(visitorChoice ? { repositoryChoice: true } : {}) };

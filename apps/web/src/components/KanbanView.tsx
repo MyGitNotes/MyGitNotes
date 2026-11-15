@@ -1,5 +1,6 @@
 import { NoteMoveButton } from './NoteMoveButton.js';
 import { LiveBadge } from './live/LiveBadge.js';
+import { useLiveLock } from './live/live-drafts.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Clock, GripVertical, Kanban as KanbanIcon, Plus, Trash2 } from 'lucide-react';
 import type { NoteListItem, NoteQuery } from '@mygitnotes/core/note-query';
@@ -131,13 +132,16 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
   const selectionActive = Boolean(board.selectedKeys?.size);
   const selected = board.selectedKeys?.has(noteRefKey(note)) ?? false;
   const locked = note.live ? t('live.checkedOut') : undefined;
+  // A pending note may still be discarded (delete) and moved where its live editor can.
+  const liveLock = useLiveLock();
+  const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
   return (
     <div data-notepath={note.path} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} title={selectionActive ? undefined : t('notes.multiSelectHint')} className={`p-3 rounded-lg border transition-all cursor-grab active:cursor-grabbing group shadow-xs ${isBeingDragged ? 'opacity-40 scale-[0.98] border-primary shadow-inner' : 'hover:shadow-sm hover:border-muted'}`} style={{ backgroundColor: 'var(--color-surface)', borderColor: isBeingDragged ? 'var(--color-primary)' : 'var(--color-line)' }}>
       <div className='flex items-start justify-between gap-1 mb-1.5'>
         <div className='flex items-start gap-1.5 min-w-0 flex-1'>
           {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
           <div className='font-medium text-fg text-sm line-clamp-2 transition min-w-0'>{note.title}</div>
-          <LiveBadge live={note.live} />
+          <LiveBadge live={note.live} title={note.title} />
         </div>
         {/* A note being edited live keeps its column, so its card offers no handle to drag it to another. */}
         {!note.live && <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />}
@@ -153,7 +157,7 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
         </div>
         <div className='flex items-center gap-1'>
           {board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />}
-          {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={locked} />}
+          {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={moveLocked} />}
           {!board.readOnly && index > 0 && (
             <button
               type='button'
@@ -172,7 +176,7 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
             </button>
           )}
           {!board.readOnly && board.canDelete && (
-            <button type='button' onClick={() => requestDelete(noteRefKey(note))} disabled={Boolean(locked)} aria-label={t('notes.delete')} title={locked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : t('notes.delete'))} className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 rounded transition' : 'kanban-card-delete p-1 rounded transition opacity-40 enabled:hover:opacity-100 enabled:hover:text-danger enabled:hover:bg-danger-soft'}>
+            <button type='button' onClick={() => requestDelete(noteRefKey(note))} disabled={Boolean(deleteLocked)} aria-label={t('notes.delete')} title={deleteLocked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))} className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 rounded transition' : 'kanban-card-delete p-1 rounded transition opacity-40 enabled:hover:opacity-100 enabled:hover:text-danger enabled:hover:bg-danger-soft'}>
               <Trash2 className='w-3.5 h-3.5' />
             </button>
           )}
@@ -242,6 +246,7 @@ function KanbanColumn({ col, index, board, query, hiddenNote, sort, onSort }: { 
 function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: BoardContext; query: Partial<NoteQuery>; hiddenNote?: NoteListItem; sort: { field: SortField; order: SortOrder; }; }) {
   const { t } = useTranslation();
   const touchSelection = useNoteTouchSelection(board.onToggleSelect);
+  const liveLock = useLiveLock();
   const hide = hiddenNote && !hiddenNote.status ? hiddenNote.path : undefined;
   const result = useNoteList(query.status ? null : { ...query, withoutStatus: true, sort: sort.field, order: sort.order }, { hide });
   const notes = [...result.uncommitted, ...result.notes];
@@ -270,9 +275,9 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
               <div className='flex items-start gap-1.5 mb-1 min-w-0'>
                 {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
                 <div className='font-medium text-fg text-sm line-clamp-2 min-w-0'>{note.title}</div>
-                <LiveBadge live={note.live} />
+                <LiveBadge live={note.live} title={note.title} />
               </div>
-              {(board.focusMode || (!board.readOnly && board.onMoveNote)) && <div className='flex justify-end items-center gap-1' onClick={event => event.stopPropagation()}>{board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />} {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={note.live ? t('live.checkedOut') : undefined} />}</div>}
+              {(board.focusMode || (!board.readOnly && board.onMoveNote)) && <div className='flex justify-end items-center gap-1' onClick={event => event.stopPropagation()}>{board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />} {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={liveLock(note, 'move')} />}</div>}
             </div>
           );
         })}
