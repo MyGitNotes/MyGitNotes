@@ -30,11 +30,7 @@ function headingLines(state: EditorState, skipFrontmatter: boolean) {
   return RangeSet.of(ranges, true);
 }
 
-const gutterField = (skipFrontmatter: boolean) => StateField.define<RangeSet<GutterMarker>>({
-  create: state => headingLines(state, skipFrontmatter),
-  update: (value, transaction) => syntaxTree(transaction.state) === syntaxTree(transaction.startState) ? value : headingLines(transaction.state, skipFrontmatter),
-  provide: field => gutterLineClass.from(field),
-});
+const gutterField = (skipFrontmatter: boolean) => StateField.define<RangeSet<GutterMarker>>({ create: state => headingLines(state, skipFrontmatter), update: (value, transaction) => syntaxTree(transaction.state) === syntaxTree(transaction.startState) ? value : headingLines(transaction.state, skipFrontmatter), provide: field => gutterLineClass.from(field) });
 
 /** Heading-level classes for the gutter, recomputed whenever the parser's tree changes. */
 export const headingGutter = gutterField(false);
