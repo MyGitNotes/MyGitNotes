@@ -84,11 +84,10 @@ describe('the Redis live store check', () => {
     expect(send.mock.calls.map(([command]) => command.join(' '))).toEqual(['PING', 'INFO memory', 'INFO persistence']);
   });
 
-  it.each([['INFO is refused', new ErrorReply("NOPERM this user has no permissions to run the 'info' command")], ['the policy is not listed', '# Memory\r\nused_memory:1048576\r\n'], ['the policy is one it does not know', memoryInfo('some-new-policy')]])('warns once and starts when %s', async (_why, memory) => {
+  it.each([['INFO is refused', new ErrorReply("NOPERM this user has no permissions to run the 'info' command"), 'unreadable'], ['the policy is not listed', '# Memory\r\nused_memory:1048576\r\n', 'unreadable'], ['the policy is one it does not know', memoryInfo('some-new-policy'), 'some-new-policy']])('warns once and starts when %s', async (_why, memory, named) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await expect(redisLiveStoreOver(infoServer(memory), 'test').check()).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toBe("[live-store] Cannot read Redis's maxmemory-policy. The built-in live editor needs noeviction or a volatile-* policy; under allkeys-* Redis may evict typing.");
+    expect(warn.mock.calls).toEqual([[`[live-store] Cannot tell whether Redis may evict live text (maxmemory-policy ${named}). The built-in live editor needs noeviction or a volatile-* policy.`]]);
   });
 
   it('warns when Redis keeps no append-only file and has not saved lately, and not when it has', async () => {
@@ -127,8 +126,8 @@ describe('the Redis live store', () => {
     const logged = JSON.stringify(warn.mock.calls);
     expect(logged).not.toContain('private-password');
     expect(logged).not.toContain(Buffer.from('typed').toString('base64'));
-    // A refusal by the server itself is named: a full Redis under noeviction must be visible to the operator.
-    expect(logged).toContain('OOM command not allowed');
+    // A refusal by the server itself is named, with the link: a full Redis under noeviction must be visible to the operator.
+    expect(warn.mock.calls).toEqual([[`[live-store] Redis unavailable (link ${'A'.repeat(22)}).`], [`[live-store] Redis refused append ${'A'.repeat(22)}.1: OOM command not allowed when used memory > 'maxmemory'.`]]);
   });
 
   it("keeps its keys under the deployment's record prefix, namespaced as the sessions are", () => {
@@ -206,11 +205,14 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     expect(await store.lease(released.id, 'lease-2', T0 + 4 + LEASE_MS, T0 + 4)).toBe('leased');
     expect(await store.synced(released.id, 'lease-2', receipt(hash('b'), 'notes/life/b.md'), T0 + 5)).toBe('ok');
     expect(await store.release(released.id, 'lease-2', { seq: 0, contentHash: hash('b') }, T0 + 6)).toBe('released');
+    // A lease nothing was read under has its lifetime too.
+    expect(await store.lease(draft.id, 'lease-3', T0 + 4 + LEASE_MS, T0 + 4)).toBe('leased');
     const found = await lifetimes(under);
     expect([...found.keys()].sort()).toEqual(['doc', 'editors', 'initial', 'lease', 'link', 'links', 'log', 'path', 'presence', 'repos', 'ticket', 'tickets']);
     for (const kind of ['repos', 'links', 'path', 'link', 'doc', 'log', 'editors', 'initial']) expect([kind, new Set(found.get(kind))]).toEqual([kind, new Set([-1])]);
     expect(found.get('link')).toHaveLength(3);
     expect(found.get('path')).toHaveLength(2);
+    expect(found.get('lease')).toHaveLength(2);
     const within = (kind: string, most: number) => {
       for (const ttl of found.get(kind)!) {
         expect(ttl, kind).toBeGreaterThan(most - 30_000);
@@ -266,6 +268,24 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     const document = (await store.document(link.id, 1))!;
     expect(Buffer.from(document.state).equals(Buffer.from(state))).toBe(true);
     expect(Buffer.from(document.log[0]).equals(Buffer.from(update))).toBe(true);
+  });
+
+  it('fails an append that a full Redis refuses, keeps nothing of it, and takes the next one once there is room', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const store = redisLiveStore({ url: url!, prefix: prefix() });
+    const { link } = await checkout(store, 'notes/life/a.md', '# A\n');
+    try {
+      // Under noeviction with one byte allowed, every write is over the limit.
+      await command('CONFIG', 'SET', 'maxmemory', '1');
+      await expect(store.append(link.id, 1, bytes('typed'), pat, T0 + 1)).rejects.toBeInstanceOf(LiveUnavailableError);
+    } finally {
+      await command('CONFIG', 'SET', 'maxmemory', '0');
+    }
+    expect(warn.mock.calls.flat().join('\n')).toContain(`[live-store] Redis refused append ${link.id}.1: OOM`);
+    expect(await store.link(link.id)).toMatchObject({ seq: 0, lastEditAt: null });
+    expect((await store.document(link.id, 1))!.log).toEqual([]);
+    expect(await store.editors(link.id)).toEqual([]);
+    expect(await store.append(link.id, 1, bytes('typed'), pat, T0 + 2)).toEqual({ seq: 1, length: 1 });
   });
 
   it('refuses to start while the server may evict any key, and starts under volatile-lru and noeviction', async () => {

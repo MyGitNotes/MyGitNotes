@@ -83,7 +83,12 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
     it('reopens a released link under its id as the next epoch, with the new base and text and nothing of the old epoch', async () => {
       const first = await open(note, '# One\n');
       expect(await store.append(first.id, 1, bytes('typed'), pat, T0 + 10)).toEqual({ seq: 1, length: 1 });
-      expect(await checkIn(first.id, T0 + 20)).toBe('released');
+      // Its check-in overwrote a change in Git, and released it.
+      const conflict: LiveConflict = { kind: 'overwrote', overwritten: 'e'.repeat(40), commit: 'c'.repeat(40), at: new Date(T0 + 20).toISOString() };
+      const token = await leased(first.id, T0 + 20);
+      expect(await store.synced(first.id, token, receipt(hash('a'), note, conflict), T0 + 20)).toBe('ok');
+      expect(await store.release(first.id, token, { seq: 1, contentHash: hash('a') }, T0 + 21)).toBe('released');
+      expect(await store.link(first.id)).toEqual({ ...first, live: false, seq: 1, lastEditAt: T0 + 10, ...synced(hash('a')), syncedAt: T0 + 20, conflict });
       const again = await checkout(note, '# Two\n', T0 + 60_000, 2);
       expect(again.outcome).toBe('reopened');
       expect(again.link).toEqual({ ...first, since: T0 + 60_000, epoch: 2, base: init('# Two\n', 2).base, seq: 1, contentHash: liveContentHash('# Two\n'), contentSeq: 1 });
@@ -168,30 +173,32 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       const { id } = await open();
       await store.append(id, 1, bytes('a'), pat, T0 + 1);
       await store.append(id, 1, bytes('b'), pat, T0 + 2);
+      // Two processes read the document here, at generation 0 with two entries.
       const read = (await store.document(id, 1))!;
       expect(read).toMatchObject({ gen: 0, seq: 2 });
-      // Another process appends between this one's read and its compaction.
+      // An update lands between the read and the first process's compaction.
       await store.append(id, 1, bytes('c'), sam, T0 + 3);
       expect(await store.compact(id, 1, read.gen, read.log.length, bytes('state a b'), hash('1'), read.seq)).toBe(true);
-      const compacted = { state: bytes('state a b'), log: [bytes('c')], gen: 1, seq: 3 };
-      expect(await store.document(id, 1)).toEqual(compacted);
+      expect(await store.document(id, 1)).toEqual({ state: bytes('state a b'), log: [bytes('c')], gen: 1, seq: 3 });
       expect(await store.link(id)).toMatchObject({ gen: 1, seq: 3, contentHash: hash('1'), contentSeq: 2 });
-      // A process that read before that compaction still holds generation 0: it must not trim what it never applied.
+      await store.append(id, 1, bytes('d'), sam, T0 + 4);
+      // The second process still holds generation 0. Trimming its two entries now would drop c and d, which it never applied.
+      const compacted = { state: bytes('state a b'), log: [bytes('c'), bytes('d')], gen: 1, seq: 4 };
       expect(await store.compact(id, 1, read.gen, read.log.length, bytes('stale'), hash('2'), read.seq)).toBe(false);
-      expect(await store.compact(id, 2, 1, 1, bytes('another epoch'), hash('2'), 3)).toBe(false);
-      expect(await store.compact(id, 1, 1, 2, bytes('more than the log holds'), hash('2'), 3)).toBe(false);
+      expect(await store.compact(id, 2, 1, 2, bytes('another epoch'), hash('2'), 4)).toBe(false);
+      expect(await store.compact(id, 1, 1, 3, bytes('more than the log holds'), hash('2'), 4)).toBe(false);
       expect(await store.compact(unknown, 1, 0, 0, bytes('nowhere'), hash('2'), 0)).toBe(false);
       expect(await store.document(id, 1)).toEqual(compacted);
-      expect(await store.link(id)).toMatchObject({ gen: 1, seq: 3, contentHash: hash('1'), contentSeq: 2 });
+      expect(await store.link(id)).toMatchObject({ gen: 1, seq: 4, contentHash: hash('1'), contentSeq: 2 });
       // Compaction is not an edit: the editors and the sequence stay.
       expect(await editorKeys(id)).toEqual([pat.key, sam.key]);
-      expect(await store.compact(id, 1, 1, 1, bytes('state a b c'), hash('3'), 3)).toBe(true);
-      expect(await store.document(id, 1)).toEqual({ state: bytes('state a b c'), log: [], gen: 2, seq: 3 });
+      expect(await store.compact(id, 1, 1, 2, bytes('state a b c d'), hash('3'), 4)).toBe(true);
+      expect(await store.document(id, 1)).toEqual({ state: bytes('state a b c d'), log: [], gen: 2, seq: 4 });
       // With nothing to trim it still replaces the state.
-      expect(await store.compact(id, 1, 2, 0, bytes('state again'), hash('4'), 3)).toBe(true);
-      expect(await store.document(id, 1)).toEqual({ state: bytes('state again'), log: [], gen: 3, seq: 3 });
+      expect(await store.compact(id, 1, 2, 0, bytes('state again'), hash('4'), 4)).toBe(true);
+      expect(await store.document(id, 1)).toEqual({ state: bytes('state again'), log: [], gen: 3, seq: 4 });
       expect(await checkIn(id, T0 + 10)).toBe('released');
-      expect(await store.compact(id, 1, 3, 0, bytes('after release'), hash('5'), 3)).toBe(false);
+      expect(await store.compact(id, 1, 3, 0, bytes('after release'), hash('5'), 4)).toBe(false);
       expect(await store.document(id, 1)).toBeNull();
       expect(await store.link(id)).toMatchObject({ gen: 3, contentHash: hash('4') });
     });
