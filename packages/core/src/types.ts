@@ -13,6 +13,11 @@ export interface LiveNoteState {
   conflict?: LiveConflict;
   /** The editor's own page of the note: a framed editor's page, or for the built-in editor the note's page in the app (`APP_URL`). */
   editorUrl: string;
+  /**
+   * A pending note only, where the live editor can move it: where its check-in files it, relative to the notebook root
+   * (`{{title}}`-style placeholders kept), as 「歸檔到」 says.
+   */
+  pathRule?: string;
 }
 
 export type ViewMode = 'list' | 'card' | 'kanban' | 'flat' | 'graph';

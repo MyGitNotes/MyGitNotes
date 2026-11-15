@@ -168,7 +168,7 @@ describe('POST /api/live/retarget', () => {
     expect(files.get('notes/life/a.md')).toBe('---\ntitle: A\n---\nGit body.\n');
   });
 
-  it("tells the web where a draft files, in its live field, only where the adapter can retarget", async () => {
+  it('tells the web where a draft files, in its live field, only where the adapter can retarget', async () => {
     await start();
     const pending = await draft({ content: 'A thought.\n' });
     await retarget(pending.path, { folder: 'projects' });
