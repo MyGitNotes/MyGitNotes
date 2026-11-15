@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext } from 'react';
 import type { LiveNoteState } from '@mygitnotes/core';
 import { type I18nContextValue, type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
-import { discardLive, type LiveDiscardAnswer, hasLiveEdits } from '../../lib/live-api.js';
+import { discardLive, hasLiveEdits, type LiveDiscardAnswer } from '../../lib/live-api.js';
 
 /*
  * Pending live notes (未歸檔) in the lists and dialogs (docs/specs/2026-11-15-builtin-live-editor §19, §20): where the

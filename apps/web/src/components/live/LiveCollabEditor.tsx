@@ -100,8 +100,6 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       return content;
     };
     stopRef.current = stop;
-    setConnection(START);
-    setCollab(null);
     /** The note was checked in or discarded elsewhere: the tab's document is dropped, its unsaved text offered when it has any. */
     const released = () => {
       if (stopped) return;
@@ -194,7 +192,10 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     return () => window.removeEventListener('beforeunload', warn);
   }, [unsaved]);
 
+  // A new session starts from nothing: no connection yet, and the editor mounts again once its document synced.
   const reopen = () => {
+    setConnection(START);
+    setCollab(null);
     setSession(current => current + 1);
     setPhase({ kind: 'open' });
   };
@@ -267,17 +268,10 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
               <Users size={14} aria-hidden='true' />
               {t('live.editors', { count: connection.people })}
             </span>
-            <span className='live-editor-state' data-tone={stateKey === 'live.saved' ? 'ok' : stateKey === 'live.offline' ? 'warn' : undefined}>
-              {stateKey === 'live.offline' && <CloudOff size={14} aria-hidden='true' />}
-              {t(stateKey)}
-            </span>
+            <span className='live-editor-state' data-tone={stateKey === 'live.saved' ? 'ok' : stateKey === 'live.offline' ? 'warn' : undefined}>{stateKey === 'live.offline' && <CloudOff size={14} aria-hidden='true' />}{t(stateKey)}</span>
           </>
         )}
-        <div className='live-editor-actions'>
-          {discardable && <Button size='small' variant='danger' title={t('live.discardHint')} onClick={() => void discard()}>{t('live.discard')}</Button>}
-          {live && <Button size='small' variant='primary' title={t('live.checkInHint')} disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>}
-          {phase.kind !== 'lost' && <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>}
-        </div>
+        <div className='live-editor-actions'>{discardable && <Button size='small' variant='danger' title={t('live.discardHint')} onClick={() => void discard()}>{t('live.discard')}</Button>}{live && <Button size='small' variant='primary' title={t('live.checkInHint')} disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>}{phase.kind !== 'lost' && <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>}</div>
       </div>
       {live && collab && (
         <div className='note-editor-body live-collab-body'>
