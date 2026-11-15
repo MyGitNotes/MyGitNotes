@@ -592,6 +592,13 @@ describe('an ending the person chooses while typing is unsaved', () => {
       config.onDirty?.({ dirty: true });
       config.onStatus?.({ status: 'disconnected' });
     });
+  /** The tab, still connected, types a change the server has not acknowledged yet. */
+  const typeUnacked = () =>
+    emit(config => {
+      config.document.getText('content').insert(4, 'offline typing\n');
+      config.onUnsyncedChanges?.({ number: 1 });
+      config.onDirty?.({ dirty: true });
+    });
   const clipboard = () => {
     const writeText = vi.fn(async () => {});
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
@@ -637,7 +644,7 @@ describe('an ending the person chooses while typing is unsaved', () => {
     fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ error: 'Someone typed in this draft.', code: 'has-edits' }, 409));
     await open({ checkout: pending, editor: { kind: 'builtin', discard: true } });
     sync('# A\n');
-    typeOffline();
+    typeUnacked();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
     });
@@ -654,6 +661,48 @@ describe('an ending the person chooses while typing is unsaved', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
     });
     expect(fake.providers).toHaveLength(2);
+  });
+
+  it('「捨棄草稿」 is disabled, with its reason, while the tab is offline or its document not synced', async () => {
+    await open({ checkout: pending, editor: { kind: 'builtin', discard: true } });
+    const discardButton = () => screen.getByRole('button', { name: 'Discard draft' });
+    expect(discardButton()).toBeDisabled();
+    sync('# A\n');
+    expect(discardButton()).toBeEnabled();
+    typeOffline();
+    expect(discardButton()).toBeDisabled();
+    expect(discardButton()).toHaveAttribute('title', 'Discarding the draft needs the connection to the server; it is possible again once the editor is back online.');
+  });
+
+  it('a 「捨棄草稿」 that cannot reach the server says so in the app’s words, and 回到編輯器 goes back to the editor at once', async () => {
+    clipboard();
+    const network = { up: true };
+    fetchMock.mockImplementation(async (url: string) => {
+      if (!network.up) throw new TypeError('Failed to fetch');
+      return url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ discarded: true });
+    });
+    await open({ checkout: pending, editor: { kind: 'builtin', discard: true } });
+    sync('# A\n');
+    typeUnacked();
+    network.up = false;
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('The server could not be reached, so the draft was not discarded; try again once you are back online.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Failed to fetch');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
+    });
+    // Still offline: the editor waits for the connection instead of ending again with the browser's words.
+    expect(screen.queryByText('Failed to fetch')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    const providers = fake.providers.length;
+    network.up = true;
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(fake.providers).toHaveLength(providers + 1);
   });
 
   it('leaving the note inside the app keeps the unsaved text, which the note’s editor offers when it opens again', async () => {
