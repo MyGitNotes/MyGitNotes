@@ -1,14 +1,16 @@
 import { checkInLink, gitBlobId, LiveNotLiveError, normalizeLiveText, parseWorkspaceConfig } from '@mygitnotes/core';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource } from '../memory-edition-source.js';
 import { memoryLiveStore } from './memory-store.js';
+import { type LiveServer, liveServer, stubLiveEnv, until } from './socket-fixture.js';
 import type { LiveStore } from './store.js';
 import { type BuiltinFixture, builtinFixture, edition, manifest, notebook, person, redisTestStores, repository, sha256, shutdownFixtures, storedText } from './test-fixture.js';
 
 /*
- * Two app processes over one live store, as during a deploy overlap (docs/specs/2026-11-15-builtin-live-editor §7; slice
- * N3, without sockets): the store is the authority, so each process serves what the other was acknowledged, a check-in
- * from either commits the union, and neither's compaction drops the other's updates.
+ * Two app processes over one live store, as during a deploy overlap (docs/specs/2026-11-15-builtin-live-editor §7): the
+ * store is the authority, so each process serves what the other was acknowledged, a check-in from either commits the
+ * union, and neither's compaction drops the other's updates. People on different processes see each other within the
+ * catch-up poll, not keystroke by keystroke.
  */
 
 const url = process.env.MYGITNOTES_TEST_REDIS_URL;
@@ -32,9 +34,14 @@ const read = (f: BuiltinFixture, id: string) => f.liveNotes.person(person(1)).re
 const liveText = async (f: BuiltinFixture, id: string) => (await read(f, id)).content;
 const checkIn = (f: BuiltinFixture, id: string) => checkInLink(f.liveNotes, repository, id, { mode: 'manual', now: f.time.now, timeZone: 'Asia/Taipei', sleep: async () => {} });
 
+const servers: LiveServer[] = [];
+
+beforeEach(() => stubLiveEnv());
 afterEach(async () => {
+  for (const server of servers.splice(0)) await server.close();
   await shutdownFixtures();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 const twoProcesses = (name: string, makeStore: () => LiveStore) =>
@@ -70,6 +77,34 @@ const twoProcesses = (name: string, makeStore: () => LiveStore) =>
       expect(commits(one)[0].author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
       expect(commits(one)[0].message).toContain('Co-authored-by: Person 2 <p2@example.test>');
       expect(commits(one)[0].message).toContain('Co-authored-by: Person 3 <p3@example.test>');
+    });
+
+    it('with a tab on each, show each tab what the other typed within six seconds, commit both from one, and tell both tabs when the note is released', async () => {
+      const { one, two } = pair(makeStore());
+      const first = await liveServer(one), next = await liveServer(two);
+      servers.push(first, next);
+      const id = await first.checkout();
+      const tabOne = await first.tab(1), tabTwo = await next.tab(2);
+      await Promise.all([tabOne.synced(), tabTwo.synced()]);
+      // Both type at once, each into its own process.
+      tabOne.type(A.replace('two', 'TWO'));
+      tabTwo.type(A.replace('four', 'FOUR'));
+      await Promise.all([tabOne.saved(), tabTwo.saved()]);
+      const both = 'one\nTWO\nthree\nFOUR\n';
+      // Acknowledged means stored: the store has the union before either tab has seen the other.
+      expect(storedText(await one.store.document(id, 1))).toBe(both);
+      await until('each tab shows what the other typed', () => tabOne.text() === both && tabTwo.text() === both, 6000);
+      for (const process of [one, two]) expect((await process.liveNotes.service.checkouts(repository)).map(row => [row.id, row.contentHash, row.activeEditors])).toEqual([[id, sha256(both), 2]]);
+      expect(await checkIn(one, id)).toMatchObject({ committed: true, released: false, reason: 'active', activeEditors: 2 });
+      expect(one.files.get(file)).toBe(both);
+      expect(commits(one)).toHaveLength(1);
+      expect(commits(one)[0].author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
+      expect(commits(one)[0].message).toContain('Co-authored-by: Person 2 <p2@example.test>');
+      // Both went idle with their tabs open: the next check-in, through the other process, releases the note under them.
+      one.time.advance(10 * 60_000 + 1);
+      expect(await checkIn(two, id)).toMatchObject({ committed: false, released: true });
+      await until('both tabs were told the note is released', () => tabOne.told.length > 0 && tabTwo.told.length > 0, 6000);
+      expect([tabOne.told, tabTwo.told]).toEqual([[{ type: 'released' }], [{ type: 'released' }]]);
     });
 
     it('compact in turn without losing what the other appended: the stored state and log hold the union', async () => {

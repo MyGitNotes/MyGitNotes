@@ -60,12 +60,12 @@ const made: BuiltinLiveNotesWithHooks[] = [];
  * A built-in adapter over the one covered repository. Two fixtures given the same `store`, `files` and `time` are two
  * processes of one deployment.
  */
-export function builtinFixture(options: { store?: LiveStore; files?: MemoryFiles; time?: MemoryLiveClock; limits?: Partial<BuiltinLiveLimits>; } = {}): BuiltinFixture {
+export function builtinFixture(options: { store?: LiveStore; files?: MemoryFiles; time?: MemoryLiveClock; limits?: Partial<BuiltinLiveLimits>; appUrl?: string; } = {}): BuiltinFixture {
   const files: MemoryFiles = options.files ?? new Map([['.mygitnotes.yaml', manifest], ['notes/life/a.md', '# A\n']]);
   const time = options.time ?? memoryLiveClock();
   const notices: LiveNotice[] = [];
   const scope = async () => parseWorkspaceConfig(manifest);
-  const parts = createBuiltinLiveNotes({ covers: id => id === repository, open: async (_repository, author?: CommitAuthor) => new MemoryEditionSource(edition, files, true, memoryCommitCounter(files), undefined, scope, author), store: options.store ?? memoryLiveStore(), notify: async notice => void notices.push(notice), clock: time.now, ...(options.limits ? { limits: options.limits } : {}) });
+  const parts = createBuiltinLiveNotes({ covers: id => id === repository, open: async (_repository, author?: CommitAuthor) => new MemoryEditionSource(edition, files, true, memoryCommitCounter(files), undefined, scope, author), store: options.store ?? memoryLiveStore(), notify: async notice => void notices.push(notice), clock: time.now, ...(options.limits ? { limits: options.limits } : {}), ...(options.appUrl !== undefined ? { appUrl: options.appUrl } : {}) });
   const liveNotes = withLiveHooks(parts);
   made.push(liveNotes);
   return { ...parts, liveNotes, files, time, notices };
