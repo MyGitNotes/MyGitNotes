@@ -14,7 +14,7 @@ const state = (overrides: Partial<FocusViewState> = {}): FocusViewState => ({ ..
 
 describe('emptyFocusView', () => {
   it('starts with a single empty pane and default dock sizes', () => {
-    expect(emptyFocusView()).toEqual({ current: { root: leaf('p1') }, entries: {}, last: null, dock: { left: 240, top: 340, collapsed: false } });
+    expect(emptyFocusView()).toEqual({ current: { root: leaf('p1') }, entries: {}, last: null, dock: { left: 288, top: 340, collapsed: false, split: 55, splitCollapsed: false } });
   });
 });
 
@@ -55,22 +55,35 @@ describe('readFocusView', () => {
     expect(readFocusView({}).last).toBeNull();
   });
   it('falls back to each dock default individually', () => {
-    expect(readFocusView({ dock: { left: 'x', top: 200, collapsed: 'yes' } }).dock).toEqual({ left: 240, top: 200, collapsed: false });
-    expect(readFocusView({ dock: { left: -10, top: 200, collapsed: true } }).dock).toEqual({ left: 240, top: 200, collapsed: true });
+    expect(readFocusView({ dock: { left: 'x', top: 200, collapsed: 'yes' } }).dock).toEqual({ left: 288, top: 200, collapsed: false, split: 55, splitCollapsed: false });
+    expect(readFocusView({ dock: { left: -10, top: 200, collapsed: true } }).dock).toEqual({ left: 288, top: 200, collapsed: true, split: 55, splitCollapsed: false });
     expect(readFocusView({}).dock).toEqual(emptyFocusView().dock);
   });
 
-  it('reads a stored dock width of exactly 320, the old default, as the new default and keeps any other width', () => {
-    expect(readFocusView({ dock: { left: 320, top: 200, collapsed: true } }).dock).toEqual({ left: 240, top: 200, collapsed: true });
+  /** The left dock holds the folders and filters over the list since the icon rail went, so the width it starts at grew from 240 to 288. */
+  it('reads a stored dock width of exactly 320 or 240, the old defaults, as the new default and keeps any other width', () => {
+    expect(readFocusView({ dock: { left: 320, top: 200, collapsed: true } }).dock).toMatchObject({ left: 288, top: 200, collapsed: true });
+    expect(readFocusView({ dock: { left: 240 } }).dock.left).toBe(288);
     expect(readFocusView({ dock: { left: 319 } }).dock.left).toBe(319);
     expect(readFocusView({ dock: { left: 321 } }).dock.left).toBe(321);
-    expect(readFocusView({ dock: { left: 240 } }).dock.left).toBe(240);
+    expect(readFocusView({ dock: { left: 241 } }).dock.left).toBe(241);
+    expect(readFocusView({ dock: { left: 288 } }).dock.left).toBe(288);
     expect(readFocusView({ dock: { left: 400 } }).dock.left).toBe(400);
+  });
+
+  it('keeps the share of the left dock its folders and filters take, and whether they are folded to a path line', () => {
+    expect(readFocusView({ dock: { split: 40, splitCollapsed: true } }).dock).toMatchObject({ split: 40, splitCollapsed: true });
+    // A share outside what the divider allows, or not a number, falls back; so does a flag that is not a boolean.
+    expect(readFocusView({ dock: { split: 5, splitCollapsed: 'yes' } }).dock).toMatchObject({ split: 55, splitCollapsed: false });
+    expect(readFocusView({ dock: { split: 95 } }).dock.split).toBe(55);
+    expect(readFocusView({ dock: { split: 'x' } }).dock.split).toBe(55);
+    expect(readFocusView({ dock: { split: 15 } }).dock.split).toBe(15);
+    expect(readFocusView({ dock: { split: 85 } }).dock.split).toBe(85);
   });
 
   /** At 280 the Kanban board above a Focus left its columns 101 px for cards, so a card with tags was cut off at its action row; 340 leaves about 160. */
   it('reads a stored dock height of exactly 280, the old default, as the new default and keeps any other height', () => {
-    expect(readFocusView({ dock: { left: 240, top: 280, collapsed: false } }).dock).toEqual({ left: 240, top: 340, collapsed: false });
+    expect(readFocusView({ dock: { left: 250, top: 280, collapsed: false } }).dock).toMatchObject({ left: 250, top: 340, collapsed: false });
     expect(readFocusView({ dock: { bottom: 280 } }).dock.top).toBe(340);
     expect(readFocusView({ dock: { top: 279 } }).dock.top).toBe(279);
     expect(readFocusView({ dock: { top: 281 } }).dock.top).toBe(281);

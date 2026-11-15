@@ -15,9 +15,8 @@ afterEach(() => {
 });
 
 const controls = (value: Partial<NoteFilters> = {}, extra: Partial<FilterControls> = {}): FilterControls => ({ value: { kind: 'note', notebookId: 'life', folders: [], descendants: true, tags: [], tagMode: 'any', q: '', status: null, showHidden: false, ...value }, neighbors: false, notebooks: [{ id: 'life', title: 'Life', root: 'notes/life/' }], folders: [], tags: [], statuses: [], count: 1, onChange: vi.fn(), allNotebooks: false, onAllNotebooksChange: vi.fn(), onClear: vi.fn(), ...extra });
-const sections = [{ id: 'notebooks' as const, label: 'Notebooks' }, { id: 'status' as const, label: 'Status' }, { id: 'tags' as const, label: 'Tags' }];
-const chips = (filters: FilterControls, onAdd = vi.fn(), given = sections) => {
-  render(createElement(I18nProvider, null, createElement(FilterChips, { filters, sections: given, onAdd })));
+const chips = (filters: FilterControls, onAdd = vi.fn()) => {
+  render(createElement(I18nProvider, null, createElement(FilterChips, { filters, onAdd })));
   return onAdd;
 };
 
@@ -58,17 +57,11 @@ it('offers "Clear all" once more than one filter is on', () => {
   expect(two.onClear).toHaveBeenCalled();
 });
 
-it('opens the sidebar section chosen from "+ Filter", and a chip for the notebook opens the notebooks', async () => {
+it('opens the filters from "+ Filter" and from the chip for the notebook', () => {
   const onAdd = chips(controls());
-  fireEvent.keyDown(screen.getByRole('button', { name: 'Add a filter' }), { key: 'Enter' });
-  fireEvent.click(await screen.findByRole('menuitem', { name: 'Status' }));
-  expect(onAdd).toHaveBeenCalledWith('status');
-  fireEvent.click(screen.getByRole('button', { name: 'Life' }));
-  expect(onAdd).toHaveBeenLastCalledWith('notebooks');
-});
-
-it('opens the sidebar straight away when it has no sections to offer (it is a drawer)', () => {
-  const onAdd = chips(controls(), vi.fn(), []);
   fireEvent.click(screen.getByRole('button', { name: 'Add a filter' }));
-  expect(onAdd).toHaveBeenCalledWith(null);
+  expect(onAdd).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Life' }));
+  expect(onAdd).toHaveBeenCalledTimes(2);
 });
