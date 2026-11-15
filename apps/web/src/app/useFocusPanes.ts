@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { focusNoteState, parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
+import { FOCUS_NOTE_STATE, parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
 import { useState } from 'react';
 import { useNoteEditorRegistry } from '../lib/note-editing.js';
 import { type FocusTab } from '@mygitnotes/core/focus-page';
@@ -71,7 +71,7 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
     query.set('focus', key);
     setFocusNarrowView('focus');
     // The address of the Focus's note stays one until the Focus shown next names its own note.
-    navigate({ pathname: location.pathname, search: query.toString() }, { state: focusNoteState(location.state) });
+    navigate({ pathname: location.pathname, search: query.toString() }, { state: focusNoteRoute ? FOCUS_NOTE_STATE : null });
   };
   /** Whether the named Focus is waiting for the user to confirm clearing it. */
   const [confirmingClear, setConfirmingClear] = useState(false);

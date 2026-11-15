@@ -97,7 +97,7 @@ function Page({ report, focus: initial, options }: { report: (harness: Harness) 
   // `onMarked` runs in the effects that marked the entry, before the marked entry renders (a transition render under load).
   const { navigator } = useContext(UNSAFE_NavigationContext);
   useEffect(() => {
-    if (isFocusNoteState((navigator as { location: Location; }).location.state) && !isFocusNoteState(location.state)) options.onMarked?.(harness);
+    if (isFocusNoteState((navigator as unknown as { location: Location; }).location.state) && !isFocusNoteState(location.state)) options.onMarked?.(harness);
   });
   return null;
 }
@@ -194,7 +194,7 @@ describe('a note link loaded as the page', () => {
     expect(isFocusNoteState(api.current.state)).toBe(true);
     expect(api.current.focus.activeNotePath).toBe(at('a.md'));
   });
-  it('under the browser\'s own history, opens the loaded link in the Focus and marks its entry', async () => {
+  it("under the browser's own history, opens the loaded link in the Focus and marks its entry", async () => {
     window.history.replaceState(null, '', '/notebooks/life/notes/a.md?q=draft');
     const api = { current: undefined as unknown as Harness };
     render(
