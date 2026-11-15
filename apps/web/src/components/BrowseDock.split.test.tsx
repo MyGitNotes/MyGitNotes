@@ -36,7 +36,7 @@ function column({ narrow, dock, collapsed = false, onCollapsedChange = vi.fn(), 
   const controls = filters(value);
   const sidebar = <Sidebar filters={controls} facets={facets} folders={folders} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} dock={dock} />;
   const browse = (
-    <BrowseSplit label='Folders' top={sidebar} path={<span>Life / Projects</span>} size={55} onSizeChange={() => {}} collapsed={collapsed} onCollapsedChange={onCollapsedChange}>
+    <BrowseSplit label='Directory' top={sidebar} path={<span>Life / Projects</span>} size={55} onSizeChange={() => {}} collapsed={collapsed} onCollapsedChange={onCollapsedChange}>
       {dock === 'folders' && <FilterChips filters={controls} onAdd={() => {}} />}
       <ul aria-label='Notes'>
         <li>First note</li>
@@ -54,7 +54,7 @@ function column({ narrow, dock, collapsed = false, onCollapsedChange = vi.fn(), 
 
 it('beside a Focus, the left column holds the folders and filters over the list, with no rail', () => {
   column({ narrow: false, dock: 'filters' });
-  const top = screen.getByRole('region', { name: 'Folders' });
+  const top = screen.getByRole('region', { name: 'Directory' });
   expect(within(top).getByRole('navigation', { name: 'Notebooks' })).toHaveTextContent('Projects');
   expect(within(top).getByRole('group', { name: 'Status' })).toBeInTheDocument();
   expect(within(top).getByRole('group', { name: 'Tags' })).toBeInTheDocument();
@@ -71,7 +71,7 @@ it('beside a Focus, the left column holds the folders and filters over the list,
 it("on a phone's list screen shows the folders over the chips and the list, and ▾ folds them to the path line", () => {
   const onCollapsedChange = vi.fn();
   const { unmount } = column({ narrow: true, dock: 'folders', onCollapsedChange, value: { tags: ['work'] } });
-  const top = screen.getByRole('region', { name: 'Folders' });
+  const top = screen.getByRole('region', { name: 'Directory' });
   expect(within(top).getByRole('navigation', { name: 'Notebooks' })).toHaveTextContent('Projects');
   expect(within(top).queryByRole('group', { name: 'Status' })).toBeNull();
   expect(screen.getByRole('group', { name: 'Active filters' })).toHaveTextContent('#work');
@@ -82,7 +82,7 @@ it("on a phone's list screen shows the folders over the chips and the list, and 
   unmount();
 
   column({ narrow: true, dock: 'folders', collapsed: true });
-  expect(screen.queryByRole('region', { name: 'Folders' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Directory' })).toBeNull();
   expect(screen.getByText('Life / Projects')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Expand folders' })).toBeVisible();
   expect(screen.getByRole('list', { name: 'Notes' })).toBeVisible();

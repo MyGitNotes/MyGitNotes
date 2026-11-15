@@ -1,12 +1,12 @@
 import type { FilterControls } from './filter-controls.js';
-import type { RailSectionId } from '../components/SidebarRail.js';
+import type { SidebarSection } from './sidebar-sections.js';
 import { noteSearchTerms, withoutSearchToken } from '@mygitnotes/core/note-query';
 
 export interface FilterChip {
   id: string;
   label: string;
   /** The sidebar section that sets this filter. */
-  section: RailSectionId;
+  section: SidebarSection;
   /** Clears just this filter; a chip with none is context (the notebook being listed), not a filter to remove. */
   remove?: () => void;
 }

@@ -145,10 +145,10 @@ export interface SignInIntro {
   privacy?: string;
 }
 
-/** A link an edition adds to the notes sidebar, its icon rail and a phone's filter sheet. */
+/** A link an edition adds to the notes sidebar, the browse dock's filters beside a Focus, and a phone's filter sheet. */
 export interface SidebarLink {
   id: string;
-  /** Already in the person's language: the row's text, and the rail icon's name and tooltip. */
+  /** Already in the person's language: the row's text. */
   label: string;
   /**
    * An `http:` or `https:` URL, which opens in a new tab without an opener, or a path of this app (`/…`), which the

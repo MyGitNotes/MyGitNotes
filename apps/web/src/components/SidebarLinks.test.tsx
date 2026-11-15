@@ -104,7 +104,7 @@ it("leaves the links out of the sidebar's filters inside the phone sheet, which 
 it('adds nothing when no feature registers a link, or only unsafe ones', () => {
   const unsafe: WebFeature = { id: 'unsafe', sidebarLinks: () => [{ id: 'x', label: 'X', href: 'javascript:void 0' }, { id: 'y', label: 'Y', href: 'data:text/html,hi' }, { id: 'z', label: 'Z', href: '//evil.example.com' }] };
   for (const features of [[], [{ id: 'plain' }], [unsafe]]) {
-    for (const view of [sidebar(), sidebar(true), sheet()]) {
+    for (const view of [sidebar(), sidebar('filters'), sheet()]) {
       const { unmount } = app(features, view);
       expect(screen.queryByRole('navigation', { name: 'Links' })).toBeNull();
       expect(document.querySelector('.workspace-sidebar-footer')).toBeNull();

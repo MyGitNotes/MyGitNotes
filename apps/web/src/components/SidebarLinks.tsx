@@ -5,11 +5,11 @@ import { useTranslation } from '../lib/i18n/index.js';
 import type { ShownSidebarLink } from '../lib/web-features.js';
 import './sidebar-links.css';
 
-/** Where the links sit: the sidebar's footer, the icon rail, or a phone's filter sheet. */
-export type SidebarLinksVariant = 'sidebar' | 'rail' | 'sheet';
+/** Where the links sit: the sidebar's footer (or under the browse dock's filters), or a phone's filter sheet. */
+export type SidebarLinksVariant = 'sidebar' | 'sheet';
 
-const groupClass: Record<SidebarLinksVariant, string> = { sidebar: 'sidebar-links', rail: 'sidebar-rail-links', sheet: 'phone-sheet-section phone-sheet-list sidebar-sheet-links' };
-const linkClass: Record<SidebarLinksVariant, string> = { sidebar: 'sidebar-link', rail: 'ui-icon-button sidebar-rail-button', sheet: 'phone-sheet-item' };
+const groupClass: Record<SidebarLinksVariant, string> = { sidebar: 'sidebar-links', sheet: 'phone-sheet-section phone-sheet-list sidebar-sheet-links' };
+const linkClass: Record<SidebarLinksVariant, string> = { sidebar: 'sidebar-link', sheet: 'phone-sheet-item' };
 
 /** One anchor: a URL opens in a new tab without an opener; a path goes through the router when there is one (so a base path is kept), else it is a plain link. */
 function SidebarLinkAnchor({ link, className, label, title, onNavigate, children }: { link: ShownSidebarLink; className: string; label?: string; title?: string; onNavigate?: () => void; children: ReactNode; }) {
@@ -19,7 +19,7 @@ function SidebarLinkAnchor({ link, className, label, title, onNavigate, children
   return <a className={className} href={link.href} aria-label={label} title={title} onClick={onNavigate}>{children}</a>;
 }
 
-/** The links editions add to the sidebar (`WebFeature.sidebarLinks`), as a small group of rows or rail icons. Render it only when there are links. */
+/** The links editions add to the sidebar (`WebFeature.sidebarLinks`), as a small group of rows. Render it only when there are links. */
 export function SidebarLinks({ links, variant, onNavigate }: { links: readonly ShownSidebarLink[]; variant: SidebarLinksVariant; /** Called when a path of the app is followed, such as to close the sheet. */ onNavigate?: () => void; }) {
   const { t } = useTranslation();
   return (
@@ -27,13 +27,6 @@ export function SidebarLinks({ links, variant, onNavigate }: { links: readonly S
       {links.map(link => {
         const Icon = link.icon ?? LinkIcon;
         const name = link.external ? t('sidebar.linkNewTab', { label: link.label }) : link.label;
-        if (variant === 'rail') {
-          return (
-            <SidebarLinkAnchor key={link.id} link={link} className={linkClass.rail} label={name} title={link.label} onNavigate={onNavigate}>
-              <Icon aria-hidden='true' />
-            </SidebarLinkAnchor>
-          );
-        }
         return (
           <SidebarLinkAnchor key={link.id} link={link} className={linkClass[variant]} label={link.external ? name : undefined} title={variant === 'sidebar' ? link.label : undefined} onNavigate={onNavigate}>
             <Icon aria-hidden='true' />

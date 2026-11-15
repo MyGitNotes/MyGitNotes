@@ -29,7 +29,7 @@ const controls = (value: Partial<NoteFilters> = {}, onChange: FilterControls['on
 
 function dock(filters = controls(), extra: Record<string, unknown> = {}) {
   const onSelectFolder = vi.fn();
-  const props = { filters, facets, folders, selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder, workspaceTagNames: Object.keys(manyTags), dock: 'filters', ...extra };
+  const props = { filters, facets, folders, selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder, workspaceTagNames: Object.keys(manyTags), dock: 'filters' as 'filters' | 'folders', ...extra };
   const view = render(createElement(I18nProvider, null, createElement(Sidebar, props)));
   return { ...view, onSelectFolder, rerenderWith: (next: FilterControls) => view.rerender(createElement(I18nProvider, null, createElement(Sidebar, { ...props, filters: next }))) };
 }

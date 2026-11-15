@@ -5,7 +5,7 @@ import { FolderTree, NoteDropTarget } from './FolderTree.js';
 import type { FolderCommand } from '@mygitnotes/core';
 import type { DraggedNote } from '../lib/note-drag.js';
 import React, { useState } from 'react';
-import { BookOpen, ChevronsDownUp, ChevronsUpDown, CircleDot, FilePen, Filter, GalleryHorizontalEnd, ListTree, Radio, Search, Tag, X } from 'lucide-react';
+import { BookOpen, ChevronsDownUp, ChevronsUpDown, FilePen, Filter, GalleryHorizontalEnd, ListTree, Radio, Search, Tag, X } from 'lucide-react';
 import { LIVE_FILTERS, type LiveFilter, type NotebookFacets } from '@mygitnotes/core/note-query';
 import { FolderItem } from '../lib/types.js';
 import { mergeNotebookFacets, queryNotebookIds } from '../lib/note-facets.js';
@@ -18,9 +18,11 @@ import { filterAndSortTags, getSavedTagSort, saveTagSort, TagSort } from '../lib
 import { NavTree, NavTreeRow } from './NavTree.js';
 import { useSidebarSections } from '../lib/sidebar-sections.js';
 import { TagActions } from './TagActions.js';
-import { type RailSection, type RailSectionId, SidebarRail } from './SidebarRail.js';
 import { SidebarLinks } from './SidebarLinks.js';
 import { useSidebarLinks } from '../lib/web-features.js';
+
+/** How many of the most used tags the dock lists before "More…". */
+const DOCK_TAGS = 6;
 
 const selectedItemStyle: React.CSSProperties = { backgroundColor: 'color-mix(in srgb, var(--color-text) 8%, transparent)', color: 'var(--color-text)' };
 
@@ -48,31 +50,24 @@ interface SidebarProps {
   onRenameTag?: (from: string, to: string) => Promise<void>;
   onMergeTag?: (from: string, into: string) => Promise<void>;
   onDeleteTag?: (tag: string) => Promise<void>;
-  /** Folds the sidebar to an icon rail: each section opens as a flyout beside it. */
-  rail?: boolean;
-  /** The rail's open section; set by an owner that opens it from elsewhere (the list's "+ filter" chip), else the rail keeps its own. */
-  railSection?: RailSectionId | null;
-  onRailSectionChange?: (section: RailSectionId | null) => void;
+  /**
+   * The top part of the left browse dock beside a Focus (BrowseSplit) instead of the sidebar: the folder tree, then the status and tag chips
+   * and an edition's links (`filters`), or the folder tree alone (`folders`, a phone's list screen, whose filter sheet holds the rest).
+   */
+  dock?: 'filters' | 'folders';
   /** Only the filters that narrow the list (status and tags): a phone's filter sheet, where the drawer already holds the notebook tree. */
   filtersOnly?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, rail = false, filtersOnly = false, railSection, onRailSectionChange }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, filtersOnly = false, dock }) => {
   const { t, language } = useTranslation();
   const { value, statuses, onChange } = filters;
   const dotClass = useStatusDotClass();
   const labelOf = useStatusLabel();
   const sections = useSidebarSections();
-  // An edition's links, at the sidebar's foot or the rail's; a phone's filter sheet (`filtersOnly`) shows them itself, below its own sections.
+  // An edition's links, at the sidebar's foot or under the dock's filters; a phone's filter sheet (`filtersOnly`) shows them itself, below its own sections.
   const links = useSidebarLinks();
-  // The rail's open section is the owner's when it passes one (the list's "+ filter" chip opens it), else the rail's own.
-  const [ownRailSection, setOwnRailSection] = useState<RailSectionId | null>(null);
-  const railOpen = railSection !== undefined ? railSection : ownRailSection;
-  const setRailOpen = (section: RailSectionId | null) => onRailSectionChange ? onRailSectionChange(section) : setOwnRailSection(section);
-  /** Something was picked in a flyout: it has done its job. */
-  const closeRail = () => {
-    if (rail && railOpen) setRailOpen(null);
-  };
+  const [allDockTags, setAllDockTags] = useState(false);
   const { status: selectedStatus, tags: selectedTags } = value;
   const [expandedNotebooks, setExpandedNotebooks] = useState<Set<string>>(() => new Set(selectedNotebookId ? [selectedNotebookId] : []));
   const [expansionSelection, setExpansionSelection] = useState<{ notebookId: string; folders: typeof value.folders; notebooks: typeof filters.notebooks; }>();
@@ -85,20 +80,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
     }
     setExpandedNotebooks(next);
   }
-  const dropNote = onDropNote && ((note: DraggedNote, folder: string | null) => {
-    onDropNote(note, folder);
-    closeRail();
-  });
+  const dropNote = onDropNote && ((note: DraggedNote, folder: string | null) => onDropNote(note, folder));
   const [folderExpandCommand, setFolderExpandCommand] = useState<{ expanded: boolean; }>();
   // Both commands reach the notebook level: expanding opens every notebook, collapsing closes them all.
   const expandAll = (expanded: boolean) => {
     setExpandedNotebooks(expanded ? new Set(filters.notebooks.map(nb => nb.id)) : new Set());
     setFolderExpandCommand({ expanded });
   };
-  const onSelectStatus = (status: string | null) => {
-    onChange({ status });
-    closeRail();
-  };
+  const onSelectStatus = (status: string | null) => onChange({ status });
   const selectedLive = value.live ?? [];
   // Either live state or both: they are kept in their fixed order.
   const onToggleLive = (state: LiveFilter) => onChange({ live: selectedLive.includes(state) ? selectedLive.filter(item => item !== state) : LIVE_FILTERS.filter(item => item === state || selectedLive.includes(item)) });
@@ -176,60 +165,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
                 icon={<BookOpen size={16} />}
                 title={nb.title}
                 selected={isSelected}
-                onSelect={() => {
-                  onSelectFolder?.(null);
-                  closeRail();
-                }}
+                onSelect={() => onSelectFolder?.(null)}
                 suffix={<span className='sidebar-notebook-count' title={count === null ? t('notes.countsLoading') : t('folder.noteCount', { count })}>{count ?? '—'}</span>}
               />
             </NoteDropTarget>
-            <div id={`notebook-folders-${nb.id}`} hidden={!expanded} className='sidebar-notebook-folders'>
-              {hasFolders
-                ? (
-                  <FolderTree
-                    onManageFiles={(path, action) => onManageFiles(nb.id, path, action)}
-                    folders={folders}
-                    notebookId={nb.id}
-                    selected={isCurrentNotebook ? selectedFolder : null}
-                    onSelect={folder => {
-                      onSelectFolder?.(folder);
-                      closeRail();
-                    }}
-                    allFoldersSelected={value.folders.length === 0}
-                    selectedPaths={selectedPaths}
-                    writable={foldersWritable && isCurrentNotebook}
-                    beforeChange={beforeFolderChange}
-                    onChanged={onFoldersChanged}
-                    onDropNote={dropNote}
-                    expandCommand={folderExpandCommand}
-                  />
-                )
-                : foldersLoading
-                ? <LoadingStatus className='sidebar-notebook-empty'>{t('folder.loading')}</LoadingStatus>
-                : <p className='sidebar-notebook-empty'>{t('folder.subfolderCount', { count: 0 })}</p>}
-            </div>
-            <NavTreeRow
-              icon={<ListTree size={16} />}
-              title={t('outline.list')}
-              selected={outlineList && isCurrentNotebook}
-              className='sidebar-compilations-row'
-              onSelect={() => {
-                onChange({ kind: 'outline', folders: [] });
-                closeRail();
-              }}
-              suffix={<span className='sidebar-notebook-count' title={outlineCount === null ? t('notes.countsLoading') : t('outline.count', { count: outlineCount })}>{outlineCount ?? '—'}</span>}
-            />
-            <NavTreeRow
-              icon={<GalleryHorizontalEnd size={16} />}
-              title={t('sidebar.compilations')}
-              selected={compilationSelected}
-              className='sidebar-compilations-row'
-              onSelect={() => {
-                onChange({ kind: 'compilation', folders: [] });
-                closeRail();
-              }}
-              suffix={<span className='sidebar-notebook-count' title={compilationCount === null ? t('notes.countsLoading') : t('sidebar.compilationCount', { count: compilationCount })}>{compilationCount ?? '—'}</span>}
-            />
+            <div id={`notebook-folders-${nb.id}`} hidden={!expanded} className='sidebar-notebook-folders'>{hasFolders ? <FolderTree onManageFiles={(path, action) => onManageFiles(nb.id, path, action)} folders={folders} notebookId={nb.id} selected={isCurrentNotebook ? selectedFolder : null} onSelect={folder => onSelectFolder?.(folder)} allFoldersSelected={value.folders.length === 0} selectedPaths={selectedPaths} writable={foldersWritable && isCurrentNotebook} beforeChange={beforeFolderChange} onChanged={onFoldersChanged} onDropNote={dropNote} expandCommand={folderExpandCommand} /> : foldersLoading ? <LoadingStatus className='sidebar-notebook-empty'>{t('folder.loading')}</LoadingStatus> : <p className='sidebar-notebook-empty'>{t('folder.subfolderCount', { count: 0 })}</p>}</div>
+            <NavTreeRow icon={<ListTree size={16} />} title={t('outline.list')} selected={outlineList && isCurrentNotebook} className='sidebar-compilations-row' onSelect={() => onChange({ kind: 'outline', folders: [] })} suffix={<span className='sidebar-notebook-count' title={outlineCount === null ? t('notes.countsLoading') : t('outline.count', { count: outlineCount })}>{outlineCount ?? '—'}</span>} />
+            <NavTreeRow icon={<GalleryHorizontalEnd size={16} />} title={t('sidebar.compilations')} selected={compilationSelected} className='sidebar-compilations-row' onSelect={() => onChange({ kind: 'compilation', folders: [] })} suffix={<span className='sidebar-notebook-count' title={compilationCount === null ? t('notes.countsLoading') : t('sidebar.compilationCount', { count: compilationCount })}>{compilationCount ?? '—'}</span>} />
           </section>
         );
       })}
@@ -237,7 +179,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   );
   const statusBody = (
     <>
-      <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{!rail && selectedStatus && <button type='button' onClick={() => onSelectStatus(null)} className='text-xs hover:underline capitalize' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
+      <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{selectedStatus && <button type='button' onClick={() => onSelectStatus(null)} className='text-xs hover:underline capitalize' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
       <div className='space-y-1 text-sm'>
         <button type='button' onClick={() => onSelectStatus(null)} aria-pressed={selectedStatus === null} style={selectedStatus === null ? selectedItemStyle : undefined} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition ${selectedStatus === null ? 'font-semibold hover:opacity-90' : 'text-muted hover:bg-fg/5 hover:text-fg'}`}>
           <div className='flex items-center gap-2'>
@@ -280,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   );
   const tagsBody = (
     <>
-      <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{!rail && selectedTags.length > 0 && <button type='button' onClick={() => onSelectTag(null)} className='text-xs hover:underline' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
+      <div className='flex items-center justify-between text-xs font-semibold text-muted uppercase tracking-wider mb-1 px-2 empty:hidden'>{selectedTags.length > 0 && <button type='button' onClick={() => onSelectTag(null)} className='text-xs hover:underline' style={{ color: 'var(--color-muted)' }}>{t('sidebar.clear')}</button>}</div>
       <div className='space-y-2 px-1 mb-2.5'>
         <div className='relative'>
           <Search aria-hidden='true' className='absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted pointer-events-none' />
@@ -332,9 +274,97 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
       </div>
     </>
   );
-  if (rail) {
-    const railSections: RailSection[] = [...(onSelectFolder ? [{ id: 'notebooks' as const, label: t('sidebar.notebooks'), icon: <BookOpen />, active: value.folders.length > 0 || Boolean(value.kind && value.kind !== 'note'), summary: filterSummary, body: <>{expandControls}{notebooksBody}</> }] : []), { id: 'status', label: t('sidebar.status'), icon: <CircleDot />, active: selectedStatus !== null || selectedLive.length > 0, summary: filterSummary, body: statusBody }, ...(allTags.length > 0 ? [{ id: 'tags' as const, label: t('sidebar.tags'), icon: <Tag />, active: selectedTags.length, summary: filterSummary, body: tagsBody }] : [])];
-    return <SidebarRail label={t('focusList.rail')} sections={railSections} open={railOpen} onOpenChange={setRailOpen} links={links} />;
+  if (dock) {
+    // The most used tags fit beside the folders; the rest wait behind "More…". A tag in force always shows.
+    const dockTags = filterAndSortTags(tagCounts, '', 'count-desc', language);
+    const shownTags = allDockTags ? dockTags : [...dockTags.slice(0, DOCK_TAGS), ...dockTags.slice(DOCK_TAGS).filter(tag => selectedTags.includes(tag))];
+    const chip = (pressed: boolean, label: React.ReactNode, count: number | null | undefined, props: React.ButtonHTMLAttributes<HTMLButtonElement> & Record<`data-${string}`, string>) => <button type='button' aria-pressed={pressed} className='dock-filter-chip' {...props}>{label}{count !== undefined && <span className='dock-filter-chip-count'>{count ?? '—'}</span>}</button>;
+    return (
+      <div className='notes-sidebar browse-dock-filters' data-dock={dock}>
+        {facetsError && <p role='alert' className='sidebar-facets-status'>{t('notes.countsFailed', { message: facetsError })}</p>}
+        {onSelectFolder && notebooksBody}
+        {dock === 'filters' && (
+          <>
+            <div role='group' aria-label={t('sidebar.status')} className='dock-filter-group'>
+              <p aria-hidden='true' className='dock-filter-heading'>{t('sidebar.status')}</p>
+              <div className='dock-filter-chips'>
+                {chip(selectedStatus === null, t('sidebar.allStatuses'), facets ? notebookFacets.total : null, { onClick: () => onSelectStatus(null) })}
+                {statuses.map(status => (
+                  <React.Fragment key={status}>
+                    {chip(
+                      selectedStatus === status,
+                      (<>
+                        <span className={`status-dot ${dotClass(status)}`} aria-hidden='true' />
+                        <span className='dock-filter-chip-label'>{labelOf(status)}</span>
+                      </>),
+                      facets ? statusCounts[status] || 0 : null,
+                      { 'data-status-filter': status, onClick: () => onSelectStatus(selectedStatus === status ? null : status) },
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+              {filters.liveAvailable && (
+                <div role='group' aria-label={t('filters.live')} className='dock-filter-chips sidebar-live-filter'>
+                  <p aria-hidden='true' className='dock-filter-subheading'>{t('filters.live')}</p>
+                  {LIVE_FILTERS.map(state => {
+                    const Icon = state === 'editing' ? Radio : FilePen;
+                    return (
+                      <React.Fragment key={state}>
+                        {chip(
+                          selectedLive.includes(state),
+                          (<>
+                            <Icon aria-hidden='true' className='dock-filter-chip-icon' />
+                            <span className='dock-filter-chip-label'>{t(state === 'editing' ? 'filters.liveEditing' : 'filters.livePending')}</span>
+                          </>),
+                          undefined,
+                          { 'data-live-filter': state, onClick: () => onToggleLive(state) },
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {allTags.length > 0 && (
+              <div role='group' aria-label={t('sidebar.tags')} className='dock-filter-group'>
+                <p aria-hidden='true' className='dock-filter-heading'>{t('sidebar.tags')}</p>
+                <div className='dock-filter-chips'>
+                  {shownTags.map(tag => {
+                    const tagChip = chip(
+                      selectedTags.includes(tag),
+                      <span className='dock-filter-chip-label'>
+                        <span aria-hidden='true'>#</span>
+                        {tag}
+                      </span>,
+                      tagCounts[tag],
+                      { 'data-tag-filter': tag, onClick: () => onSelectTag(tag) },
+                    );
+                    return canManageTags && onPreviewTagUsage && onRenameTag && onMergeTag && onDeleteTag
+                      ? (
+                        <span key={tag} className='sidebar-tag-row dock-filter-tag'>
+                          <TagActions tag={tag} allTags={workspaceTagNames} onPreviewUsage={onPreviewTagUsage} onRename={onRenameTag} onMerge={onMergeTag} onDelete={onDeleteTag}>{tagChip}</TagActions>
+                        </span>
+                      )
+                      : <React.Fragment key={tag}>{tagChip}</React.Fragment>;
+                  })}
+                  {dockTags.length > DOCK_TAGS && (
+                    <button
+                      type='button'
+                      className='dock-filter-chip dock-filter-more'
+                      aria-expanded={allDockTags}
+                      onClick={() => setAllDockTags(all => !all)}
+                    >
+                      {t(allDockTags ? 'browseSplit.fewerTags' : 'browseSplit.moreTags')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {links.length > 0 && <SidebarLinks links={links} variant='sidebar' />}
+          </>
+        )}
+      </div>
+    );
   }
 
   return (
