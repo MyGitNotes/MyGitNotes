@@ -27,6 +27,7 @@ import { cjkEmphasis } from './live-markdown/cjk-emphasis.js';
 import { anchorMermaidSwap } from './live-markdown/mermaid-scroll.js';
 import { inlineIconAtomicRanges } from './live-markdown/inline-icons.js';
 import { liveDecorations } from './live-markdown/decorations.js';
+import { withFrontmatter } from './live-markdown/collab-frontmatter.js';
 import { citationLibrary } from './live-markdown/citations.js';
 import { slideNote } from './live-markdown/slide-structure.js';
 import { citationCompletionSource } from './live-markdown/citation-completion-source.js';
@@ -219,14 +220,19 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   }), [notePath]);
   /* eslint-disable react-hooks/exhaustive-deps -- CodeMirror owns selection, focus and undo history; content, read-only and gutter changes have separate view updates and must not recreate it. */
   useEffect(() => {
+    // The collab editor holds the whole file: its leading frontmatter is drawn as frontmatter, not as Markdown.
+    const decorate = (state: EditorState, focused: boolean) => {
+      const decorations = liveDecorations(state, focused, notePath, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous);
+      return collab ? withFrontmatter(state, decorations) : decorations;
+    };
     const field = StateField.define<{ decorations: DecorationSet; focused: boolean; }>({
       create(state) {
-        return { decorations: liveDecorations(state, false, notePath, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous), focused: false };
+        return { decorations: decorate(state, false), focused: false };
       },
       update(value, tr) {
         let focused = value.focused;
         for (const effect of tr.effects) if (effect.is(focusChanged)) focused = effect.value;
-        return { focused, decorations: liveDecorations(tr.state, focused, notePath, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous) };
+        return { focused, decorations: decorate(tr.state, focused) };
       },
       provide: field => EditorView.decorations.from(field, value => value.decorations),
     });
