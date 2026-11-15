@@ -96,8 +96,8 @@ export interface LiveEditor {
 export interface LivePersonCalls {
   /** Live links only; the adapter may cache the list up to 10 s. */
   checkouts(repository: RepositoryId): Promise<LiveCheckout[]>;
-  /** Fresh. */
-  read(repository: RepositoryId, id: string): Promise<LiveText>;
+  /** Fresh. A pending note may carry its `initialText`, as in {@link LiveDetail}, for the discard precheck to judge it by. */
+  read(repository: RepositoryId, id: string): Promise<LiveText & { initialText?: string; }>;
   write(repository: RepositoryId, id: string, change: { content: string; baseRevision: string; agent: boolean; }): Promise<{ liveRevision: string; changed: boolean; }>;
   append(repository: RepositoryId, id: string, change: { text: string; agent: boolean; }): Promise<{ liveRevision: string; }>;
   checkout(repository: RepositoryId, request: { notebook: NotebookKey; path: string; base: { commit: string; blob: string; content: string; }; }): Promise<{ checkout: LiveCheckout; outcome: 'created' | 'joined' | 'reopened'; }>;
@@ -198,15 +198,15 @@ const DRAFT_CONTENT = /[\p{L}\p{N}]|!\[|<(img|iframe|video)\b/iu;
 
 /**
  * Whether a pending note is an empty draft (docs/specs/2026-11-15-builtin-live-editor §19.1): once the lines of its
- * initial body and the web's default new-note lines ({@link LIVE_DEFAULT_DRAFT_LINES}) are taken out of its body, one
- * each, what is left holds no letter, digit, image or embed. Whitespace, punctuation, Markdown markers and emoji alone
- * are empty; the frontmatter never counts, and lines are compared whole, without the whitespace around them. Without
- * `initialText` only the default lines are taken out.
+ * initial body, or without `initialText` the web's default new-note lines ({@link LIVE_DEFAULT_DRAFT_LINES}), are taken
+ * out of its body, one each, what is left holds no letter, digit, image or embed. Whitespace, punctuation, Markdown
+ * markers and emoji alone are empty; the frontmatter never counts, and lines are compared whole, without the whitespace
+ * around them. The default lines are never taken out on top of an initial text's, so a line typed a second time counts.
  */
 export function isEmptyLiveDraft(text: string, initialText?: string): boolean {
   const lines = (value: string) => normalizeLiveText(value).replace(FRONTMATTER_BLOCK, '').split('\n').map(line => line.trim());
   const initial = new Map<string, number>();
-  for (const line of [...LIVE_DEFAULT_DRAFT_LINES, ...(initialText === undefined ? [] : lines(initialText))]) initial.set(line, (initial.get(line) ?? 0) + 1);
+  for (const line of initialText === undefined ? LIVE_DEFAULT_DRAFT_LINES : lines(initialText)) initial.set(line, (initial.get(line) ?? 0) + 1);
   return lines(text).every(line => {
     const left = initial.get(line) ?? 0;
     if (left > 0) {
@@ -215,6 +215,12 @@ export function isEmptyLiveDraft(text: string, initialText?: string): boolean {
     }
     return !DRAFT_CONTENT.test(line);
   });
+}
+
+/** The initial text a detail or read gave a pending note, if a usable one. */
+export function liveInitialTextOf(value: unknown): string | undefined {
+  const initial = (value as { initialText?: unknown; } | null)?.initialText;
+  return typeof initial === 'string' && Buffer.byteLength(initial, 'utf8') <= LIVE_MAX_BYTES ? initial : undefined;
 }
 
 /** What a live link id may be. */

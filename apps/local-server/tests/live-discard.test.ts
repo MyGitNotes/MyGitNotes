@@ -106,6 +106,14 @@ describe('the check-in engine and empty drafts', () => {
     expect(commits()[0].author).toEqual({ name: 'Person 2', email: 'p2@example.test' });
   });
 
+  it('files a typed draft in a sweep even when its only editor has a name the engine cannot take (§19)', async () => {
+    const long = await pending('---\ntitle: Long\n---\n');
+    liveNotes.type(repository, long.id, '---\ntitle: Long\n---\n字\n', { ...pat, person: { realm: 'edition', userId: 'p9' }, author: { name: 'n'.repeat(300), email: 'p9@example.test' } });
+    const report = await sweep();
+    expect(report.failed).toEqual([]);
+    expect(report.results).toEqual([expect.objectContaining({ id: long.id, path: 'notes/life/inbox/Long.md', committed: true, filed: true })]);
+  });
+
   it('makes 「立即簽回」 discard an empty draft whoever typed in it, and file one with content', async () => {
     const template = '---\ntitle: 週會\n---\n# 週會\n\n## 待辦\n- \n';
     const empty = await pending(template);
@@ -252,6 +260,15 @@ describe('POST /api/live/discard and the routes around it', () => {
     const pending = await draft();
     const text = (await liveNotes.person(pat).read(repository, pending.id)).content;
     liveNotes.type(repository, pending.id, `${text}   \n---\n\n`, pat);
+    expect(await call('POST', '/api/live/discard', { notebookId: 'notes~life', path: pending.path })).toEqual({ status: 200, body: { discarded: true } });
+    expect(commits()).toEqual([]);
+  });
+
+  it('discards an empty template draft without confirm: the precheck takes the initial text out (§19.1)', async () => {
+    await start();
+    const pending = await draft({ content: '# 週會\n\n## 待辦\n- \n' });
+    const text = (await liveNotes.person(pat).read(repository, pending.id)).content;
+    liveNotes.type(repository, pending.id, `${text}   \n- \n\n`, pat);
     expect(await call('POST', '/api/live/discard', { notebookId: 'notes~life', path: pending.path })).toEqual({ status: 200, body: { discarded: true } });
     expect(commits()).toEqual([]);
   });

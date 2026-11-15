@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { RepositoryId } from '@mygitnotes/core';
-import { LIVE_PRESENCE_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
+import { LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
 
 interface Lease {
   token: string;
@@ -187,6 +187,9 @@ export function memoryLiveStore(): LiveStore {
       return active.size;
     },
     async putTicket(hash, ticket, until) {
+      // A ticket is put when issued, LIVE_TICKET_MS before its end: those ended by then are gone.
+      const issued = until - LIVE_TICKET_MS;
+      for (const [other, entry] of tickets) if (entry.until <= issued) tickets.delete(other);
       tickets.set(hash, { ticket: structuredClone(ticket), until });
     },
     async takeTicket(hash, now) {

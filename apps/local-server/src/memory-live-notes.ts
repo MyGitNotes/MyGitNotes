@@ -219,7 +219,8 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           return live(repository).map(row);
         },
         async read(repository, id) {
-          return text(linkOf(repository, id));
+          const link = linkOf(repository, id);
+          return { ...text(link), ...(link.path === null && link.initial !== undefined ? { initialText: link.initial } : {}) };
         },
         async write(repository, id, change) {
           const link = linkOf(repository, id);

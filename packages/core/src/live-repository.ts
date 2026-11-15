@@ -1,6 +1,6 @@
 import { SourceError } from './github-api.js';
 import { checkInLink, discardLink, type LiveCheckInOptions, type LiveCheckInResult, type LiveDiscardResult, type LiveRetarget, retargetLink, retargetLivePathRule } from './live-checkin.js';
-import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveInitialTextOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { localIdIn, type NotebookKey } from './notebook-key.js';
 import type { RepositoryId } from './repository.js';
 import type { LiveNoteState, NotebookConfig } from './types.js';
@@ -212,7 +212,10 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       if (!link || link.checkout.path !== null || typeof liveNotes.service.discard !== 'function') throw new LiveNotLiveError();
       // Asked without the lease first: a lease taken only to refuse would hold the confirmed request off for minutes.
       // The service's editors and initial text decide again under the lease.
-      if (!confirm && link.checkout.lastEditAt !== null && !isEmptyLiveDraft(liveTextOf(await call(() => calls().read(repository, link.checkout.id))).content)) return { id: link.checkout.id, discarded: false, reason: 'has-edits' };
+      if (!confirm && link.checkout.lastEditAt !== null) {
+        const read = await call(() => calls().read(repository, link.checkout.id));
+        if (!isEmptyLiveDraft(liveTextOf(read).content, liveInitialTextOf(read))) return { id: link.checkout.id, discarded: false, reason: 'has-edits' };
+      }
       try {
         return await discardLink(liveNotes, repository, link.checkout.id, { confirm, ...(checkIn?.sleep ? { sleep: checkIn.sleep } : {}) });
       } finally {
