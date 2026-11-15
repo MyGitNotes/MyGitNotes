@@ -3,7 +3,7 @@ import { differsOnlyInCase } from './case-collision.js';
 import { type CommitAuthor, commitAuthor } from './commit-author.js';
 import { parseNoteContent } from './frontmatter.js';
 import { SourceError } from './github-api.js';
-import { isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, type LiveEditor, liveEditorOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, type LiveEditor, liveEditorOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { mergeLiveText } from './live-merge.js';
 import { parseNotebookKey } from './notebook-key.js';
 import { appendTrailers, utcDay } from './note-versions.js';
@@ -20,8 +20,11 @@ import type { NotebookConfig, NoteMetadata } from './types.js';
  * repeat finds the live text already in Git and only acknowledges it.
  */
 
-/** Why a check-in left the note open, or did not start. */
-export type LiveCheckInReason = 'leased' | 'released' | 'unfiled' | 'active' | 'changed' | 'not-synced';
+/**
+ * Why a check-in left the note open, or did not start; with `discarded`, why a pending note was discarded instead:
+ * `empty`, an empty draft ({@link isEmptyLiveDraft}), or `untyped`, one nobody typed in (a sweep only).
+ */
+export type LiveCheckInReason = 'leased' | 'released' | 'unfiled' | 'active' | 'changed' | 'not-synced' | 'empty' | 'untyped';
 
 export interface LiveCheckInResult {
   id: string;
@@ -40,6 +43,8 @@ export interface LiveCheckInResult {
   skippedEditors?: string[];
   /** A pending note this run filed at `path`. */
   filed?: true;
+  /** A pending note this run discarded (§19): nothing was committed, and the link is gone. */
+  discarded?: true;
 }
 
 export interface LiveCheckInOptions {
@@ -50,6 +55,8 @@ export interface LiveCheckInOptions {
   /** Where a pending note's `{{date}}` and `{{time}}` fall when its frontmatter gives none; `MYGITNOTES_TIMEZONE` by default. */
   timeZone?: string;
   sleep?: (ms: number) => Promise<void>;
+  /** A sweep's check-in: a pending note nobody typed in is discarded too, not only an empty one, where the adapter can discard. */
+  discardUntyped?: boolean;
 }
 
 /** Each link is checked in within 4 minutes, inside its 5-minute lease; nothing is committed after that. */
@@ -235,7 +242,7 @@ interface SyncReceipt {
   path: string;
   conflict: LiveConflict | null;
 }
-type Attempt = { kind: 'synced'; receipt: SyncReceipt; committed: boolean; filed: boolean; notice?: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; } | { kind: 'unfiled'; notice: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; };
+type Attempt = { kind: 'discard'; reason: 'empty' | 'untyped'; contentHash: string; } | { kind: 'synced'; receipt: SyncReceipt; committed: boolean; filed: boolean; notice?: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; } | { kind: 'unfiled'; notice: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; };
 
 /** The commit message of a check-in: its subject and the live trailers; `commitChanges` adds the co-authors after them. */
 function checkInMessage(file: string, id: string, text: string, { filing, overwrote, agentDay }: { filing: boolean; overwrote?: string; agentDay?: string; }): string {
@@ -284,6 +291,69 @@ const leaseOf = (value: unknown): LiveLease => {
   return { token, until };
 };
 
+/** The initial text a detail gave a pending note, if a usable one. */
+const initialTextOf = (detail: unknown): string | undefined => {
+  const initial = (detail as { initialText?: unknown; } | null)?.initialText;
+  return typeof initial === 'string' && Buffer.byteLength(initial, 'utf8') <= LIVE_MAX_BYTES ? initial : undefined;
+};
+
+/** Why a pending note is discarded rather than filed: an empty draft, or with `untyped` one nobody typed in; undefined to file it. */
+function draftDiscard(detail: unknown, live: string, editors: readonly LiveEditor[], untyped: boolean): 'empty' | 'untyped' | undefined {
+  if (isEmptyLiveDraft(live, initialTextOf(detail))) return 'empty';
+  return untyped && editors.length === 0 ? 'untyped' : undefined;
+}
+
+/**
+ * Asks the adapter for `run` (a release or a discard), and in a manual check-in again while it is refused as active: the
+ * web has just closed its editor, which the adapter may still count as an active editor for a moment.
+ */
+async function retried(options: Pick<LiveCheckInOptions, 'mode' | 'sleep'>, run: () => Promise<LiveRelease>): Promise<LiveRelease> {
+  const sleep = options.sleep ?? sleeping;
+  let answer = await run();
+  for (let retry = 0; options.mode === 'manual' && !answer.released && answer.reason === 'active' && retry < RELEASE_RETRIES; retry++) {
+    await sleep(RELEASE_RETRY_MS);
+    answer = await run();
+  }
+  return answer;
+}
+
+const discardOf = async (liveNotes: LiveNotes, repository: RepositoryId, id: string, lease: LiveLease, contentHash: string) => releaseOf(await adapter(() => liveNotes.service.discard!(repository, id, lease, { contentHash })));
+
+/** What 「捨棄草稿」 answers: the draft is gone, or why it is kept. */
+export type LiveDiscardResult = { id: string; discarded: true; } | { id: string; discarded: false; reason: 'leased' | 'released' | 'has-edits' | 'active' | 'changed' | 'not-synced'; activeEditors?: number; };
+
+export interface LiveDiscardOptions extends Pick<LiveCheckInOptions, 'sleep'> {
+  /** The person confirmed dropping what was typed: without it, a draft someone typed content in is kept (`has-edits`). */
+  confirm: boolean;
+}
+
+/**
+ * 「捨棄草稿」 (§19): drops a pending note without a commit. A draft someone typed in that is not empty needs `confirm`; a
+ * release refused as active is asked again as a manual check-in does. A note with a path is never discarded.
+ */
+export async function discardLink(liveNotes: LiveNotes, repository: RepositoryId, id: string, options: LiveDiscardOptions): Promise<LiveDiscardResult> {
+  const editor = liveEditorOf(liveNotes, repository);
+  if (!editor || !isLiveId(id) || typeof liveNotes.service.discard !== 'function') throw new LiveNotLiveError();
+  let lease: LiveLease;
+  try {
+    lease = leaseOf(await liveNotes.service.lease(repository, id));
+  } catch (error) {
+    const known = liveAdapterError(error);
+    if (known instanceof LiveLeasedError) return { id, discarded: false, reason: 'leased' };
+    if (known instanceof LiveNotLiveError) return { id, discarded: false, reason: 'released' };
+    throw known;
+  }
+  const detail = await adapter(() => liveNotes.service.detail(repository, id, lease));
+  const text = liveTextOf(detail);
+  const checkout = (detail as { checkout?: { id?: unknown; path?: unknown; }; }).checkout;
+  if (!checkout || checkout.id !== id) throw new LiveUnavailableError();
+  if (checkout.path !== null) throw new LiveNotLiveError('Only a live note not yet filed can be discarded.');
+  const typed = editorsOf((detail as { editors?: unknown; }).editors).length > 0;
+  if (typed && !options.confirm && !isEmptyLiveDraft(normalizeLiveText(text.content), initialTextOf(detail))) return { id, discarded: false, reason: 'has-edits' };
+  const answer = await retried({ mode: 'manual', ...(options.sleep ? { sleep: options.sleep } : {}) }, () => discardOf(liveNotes, repository, id, lease, text.contentHash));
+  return answer.released ? { id, discarded: true } : { id, discarded: false, reason: answer.reason, ...(answer.activeEditors !== undefined ? { activeEditors: answer.activeEditors } : {}) };
+}
+
 /**
  * Checks one live link in (§5.3): lease, read, merge, commit, acknowledge, release. A link someone else holds is
  * skipped; a provider refusing the commit because the head moved is retried once within the lease. Errors other than
@@ -291,7 +361,6 @@ const leaseOf = (value: unknown): LiveLease => {
  */
 export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId, id: string, options: LiveCheckInOptions): Promise<LiveCheckInResult> {
   const now = options.now ?? Date.now;
-  const sleep = options.sleep ?? sleeping;
   const editor = liveEditorOf(liveNotes, repository);
   if (!editor || !isLiveId(id)) throw new LiveNotLiveError();
   const { service } = liveNotes;
@@ -319,6 +388,9 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
     const row: LiveCheckout | null = liveCheckoutOf((detail as { checkout?: unknown; }).checkout, { editor, notebook: notebookOf });
     if (!row || row.id !== id) throw new LiveUnavailableError();
     const notebook = notebookOf(row.notebook)!;
+    // An empty draft, or in a sweep one nobody typed in, is discarded rather than filed where the adapter can (§19).
+    const discard = row.path === null && typeof service.discard === 'function' ? draftDiscard(detail, live, editors, options.discardUntyped === true) : undefined;
+    if (discard) return { kind: 'discard', reason: discard, contentHash: text.contentHash };
     let agentDay = agent ? utcDay(new Date(now())) : undefined;
     const blobOf = (content: string) => gitBlobId(Buffer.from(content, 'utf8'), snapshot.sha.length);
     const commit = async (file: string, content: string, message: string) => {
@@ -397,10 +469,10 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
     return synced(file, sha, blobOf(text2), text2, null, true);
   };
 
-  let outcome: Attempt;
+  let tried: Attempt;
   for (let tries = 0;; tries++) {
     try {
-      outcome = await attempt();
+      tried = await attempt();
       break;
     } catch (error) {
       // The head moved between the snapshot and the commit: read everything again, once.
@@ -408,6 +480,12 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
       throw error;
     }
   }
+  if (tried.kind === 'discard') {
+    const { reason, contentHash } = tried;
+    const discarded = await retried(options, () => discardOf(liveNotes, repository, id, lease, contentHash));
+    return discarded.released ? { id, path: null, committed: false, released: true, discarded: true, reason } : { id, path: null, committed: false, released: false, reason: discarded.reason, ...(discarded.activeEditors !== undefined ? { activeEditors: discarded.activeEditors } : {}) };
+  }
+  const outcome = tried;
   const notify = async (notice: Omit<LiveNotice, 'repository' | 'editors'>) => {
     if (!liveNotes.notify) return;
     try {
@@ -424,13 +502,7 @@ export async function checkInLink(liveNotes: LiveNotes, repository: RepositoryId
   const { receipt } = outcome;
   if (outcome.notice) await notify(outcome.notice);
   await adapter(() => service.synced(repository, id, lease, receipt));
-  const release = async () => releaseOf(await adapter(() => service.release(repository, id, lease, { contentHash: receipt.contentHash })));
-  let released = await release();
-  // The web has just closed its frame, which the editor may still count as an active editor for a moment.
-  for (let retry = 0; options.mode === 'manual' && !released.released && released.reason === 'active' && retry < RELEASE_RETRIES; retry++) {
-    await sleep(RELEASE_RETRY_MS);
-    released = await release();
-  }
+  const released = await retried(options, async () => releaseOf(await adapter(() => service.release(repository, id, lease, { contentHash: receipt.contentHash }))));
   return { id, path: receipt.path, committed: outcome.committed, ...(outcome.committed ? { commit: receipt.commit } : {}), released: released.released, ...(released.released ? {} : { reason: released.reason, ...(released.activeEditors !== undefined ? { activeEditors: released.activeEditors } : {}) }), ...(receipt.conflict && outcome.committed ? { conflict: receipt.conflict } : {}), ...skippedEditors, ...(outcome.filed ? { filed: true as const } : {}) };
 }
 
@@ -460,7 +532,8 @@ const reasonOf = (error: unknown) => error instanceof SourceError ? `${error.sta
 
 /**
  * A scheduled check-in of every due link (§5.1): those whose `since` is before `instant`, in each repository the
- * adapter has live links in. A link's failure is logged by id and reason and never stops the others.
+ * adapter has live links in. A link's failure is logged by id and reason and never stops the others. Where the adapter
+ * can discard, a pending note nobody typed in, or an empty one, is discarded instead of filed (§19).
  */
 export async function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions): Promise<LiveSweepReport> {
   const { instant, concurrency = 2, max = 500 } = options;
@@ -488,7 +561,7 @@ export async function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions)
     while (next < due.length) {
       const { repository, id } = due[next++];
       try {
-        report.results.push(await checkInLink(liveNotes, repository, id, { mode: options.mode ?? 'scheduled', ...(options.now ? { now: options.now } : {}), ...(options.timeZone ? { timeZone: options.timeZone } : {}), ...(options.sleep ? { sleep: options.sleep } : {}) }));
+        report.results.push(await checkInLink(liveNotes, repository, id, { mode: options.mode ?? 'scheduled', discardUntyped: true, ...(options.now ? { now: options.now } : {}), ...(options.timeZone ? { timeZone: options.timeZone } : {}), ...(options.sleep ? { sleep: options.sleep } : {}) }));
       } catch (error) {
         const reason = reasonOf(error);
         console.warn(`[live-notes] check-in of ${id} failed: ${reason}`);

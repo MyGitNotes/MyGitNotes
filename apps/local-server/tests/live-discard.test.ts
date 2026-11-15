@@ -276,12 +276,14 @@ describe('POST /api/live/discard and the routes around it', () => {
     const pending = await draft();
     liveNotes.setActive(repository, pending.id, 1);
     const original = liveNotes.service.discard!.bind(liveNotes.service);
-    const discard = vi.spyOn(liveNotes.service, 'discard' as never).mockImplementationOnce((async (...args: Parameters<typeof original>) => {
-      const answer = await original(...args);
-      // The closed frame stops counting before the retry 2 s later.
-      liveNotes.setActive(repository, pending.id, 0);
-      return answer;
-    }) as never);
+    const discard = vi.spyOn(liveNotes.service, 'discard' as never).mockImplementationOnce(
+      (async (...args: Parameters<typeof original>) => {
+        const answer = await original(...args);
+        // The closed frame stops counting before the retry 2 s later.
+        liveNotes.setActive(repository, pending.id, 0);
+        return answer;
+      }) as never,
+    );
     expect(await call('POST', '/api/live/discard', { notebookId: 'notes~life', path: pending.path })).toEqual({ status: 200, body: { discarded: true } });
     expect(discard).toHaveBeenCalledTimes(2);
   });

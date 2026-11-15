@@ -34,6 +34,8 @@ export interface LiveCheckInAnswer {
   conflict?: LiveConflict;
   skippedEditors?: string[];
   filed?: true;
+  /** A pending note that was an empty draft and was discarded, with `reason: 'empty'`: nothing was committed. */
+  discarded?: true;
   revision: string;
 }
 

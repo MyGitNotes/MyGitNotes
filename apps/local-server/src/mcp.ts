@@ -4,7 +4,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { checkedOutFields, type LiveNotes, type RemoteCache, type RemoteSource, siteIdentity, SourceError, type WorkspaceConfigSource, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError } from '@mygitnotes/core';
-import { callWorkspaceRemoteTool, isMutationTool, liveRemoteTools, remoteTools, TEMPLATE_GUIDANCE, type ToolAssets } from '@mygitnotes/mcp-server';
+import { callWorkspaceRemoteTool, isMutationTool, liveDiscardRemoteTools, liveRemoteTools, remoteTools, TEMPLATE_GUIDANCE, type ToolAssets } from '@mygitnotes/mcp-server';
 import { type AssetStorage, resolveAssetScope } from './asset-storage.js';
 import { CredentialRejected, grantPerson } from './auth.js';
 import { type BearerGrant, bearerGrantRecord, type IdentityService } from './identity.js';
@@ -130,7 +130,7 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
       // The commits the call makes are authored by whom the grant names, where it names anyone: an outside bearer's grant
       // as the identity answered, a stored one as it was recorded.
       const granted = grantSettings(settings, grant);
-      const tools = hasLiveView(granted, person, liveNotes) ? liveRemoteTools : remoteTools;
+      const tools = hasLiveView(granted, person, liveNotes) ? typeof liveNotes!.service.discard === 'function' ? liveDiscardRemoteTools : liveRemoteTools : remoteTools;
       const workspace = openWorkspace(granted, token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
       const assets = toolAssets(assetStorage, req, res);
       try {

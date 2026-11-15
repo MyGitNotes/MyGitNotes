@@ -171,6 +171,21 @@ export abstract class RemoteSource {
     return { ...result, revision: (await this.getSnapshot(true)).sha };
   }
   /**
+   * 「捨棄草稿」: drops the pending note at its virtual path `file` without a commit (docs/specs/2026-11-15-builtin-live-editor
+   * §19), or says why it is kept; a draft someone typed content in needs `confirm`. Any writer may.
+   */
+  async discardLive(file: string, confirm: boolean) {
+    if (!this.canWrite(await this.getSnapshot())) throw new SourceError('Write access on the main workspace branch is required.', 403);
+    const link = await this.liveLink(file);
+    if (!link) throw new LiveNotLiveError('This note is not being edited live (編輯中).');
+    try {
+      return await this.live!.discard(link.path, confirm);
+    } finally {
+      this.liveLoaded.delete(link.path);
+      this.liveSeen.delete(link.path);
+    }
+  }
+  /**
    * Where a pending note's virtual path went once it was checked in: its Git path, or null when the editor does not
    * know. Undefined for any other path, and for a pending note that is still live.
    */

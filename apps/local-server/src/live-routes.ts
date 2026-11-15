@@ -44,7 +44,14 @@ class NotOpenLiveError extends SourceError {
     super('The note is not open in the live editor.', 409);
   }
 }
-const liveFail = (res: express.Response, error: unknown) => fail(res, error, error instanceof LiveTooLargeError ? { code: 'too-large' } : error instanceof NotLiveError || error instanceof NotOpenLiveError ? { code: error.code } : {});
+/** A draft someone typed content in, discarded without the person's confirmation: the web asks first. */
+class HasEditsError extends SourceError {
+  readonly code = 'has-edits';
+  constructor() {
+    super('Someone typed in this draft. Confirm to discard it; its text is not saved to Git.', 409);
+  }
+}
+const liveFail = (res: express.Response, error: unknown) => fail(res, error, error instanceof LiveTooLargeError ? { code: 'too-large' } : error instanceof NotLiveError || error instanceof NotOpenLiveError || error instanceof HasEditsError ? { code: error.code } : {});
 
 /** The sweep secret of an environment: at least 32 characters, else none, and the sweep route answers 404. */
 export function liveSweepSecret(env: Record<string, string | undefined>): string | undefined {
@@ -216,6 +223,30 @@ export function createLiveRouter(): express.Router {
       const { handle } = await noteRepository(res, file, notebookId);
       const { reader } = await writerOf(res, handle);
       res.json(await reader.checkInLive(file as string));
+    } catch (error) {
+      liveFail(res, error);
+    }
+  });
+
+  /*
+   * 「捨棄草稿」 (docs/specs/2026-11-15-builtin-live-editor §19): drops a pending note, by its virtual path, without a
+   * commit, for the writers who may check it in, where the adapter can discard. A draft someone typed content in needs
+   * `confirm: true` (409 has-edits without it); an untyped or empty one goes at once.
+   */
+  router.post('/api/live/discard', async (req, res) => {
+    try {
+      signedIn(res);
+      const { notebookId, path: file, confirm } = req.body ?? {};
+      const { handle, notebook } = await noteRepository(res, file, notebookId);
+      const { reader, view } = await writerOf(res, handle);
+      if (!view.discards) throw notLive("This repository's live editor cannot discard drafts.");
+      if (!parseLivePendingPath(file as string, [notebook])) throw notLive('Only a live note not yet filed can be discarded.');
+      const pending = await reader.liveCheckout(file as string);
+      if (!pending || pending.path !== null) throw new SourceError('Note not found.', 404);
+      const result = await reader.discardLive(file as string, confirm === true);
+      if (!result.discarded && result.reason === 'has-edits') throw new HasEditsError();
+      const { id: _id, ...answer } = result;
+      res.json(answer);
     } catch (error) {
       liveFail(res, error);
     }

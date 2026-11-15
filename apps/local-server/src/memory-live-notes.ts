@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { type EditionSourceConfig, isBuiltinEditor, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity } from '@mygitnotes/core';
+import { type EditionSourceConfig, isBuiltinEditor, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity } from '@mygitnotes/core';
 import { memoryCommitCounter, MemoryEditionSource, type MemoryFiles } from './memory-edition-source.js';
 
 /** The clock the memory adapter reads, which a test moves on. */
@@ -32,6 +32,8 @@ export interface MemoryLiveNotesOptions {
   maxBytes?: number;
   /** How long a lease holds; 5 minutes by default. */
   leaseMs?: number;
+  /** Whether the service implements `discard` (§19 of the built-in editor spec); left out, it does not, as a 0.19 adapter. */
+  discard?: boolean;
 }
 
 /** The memory adapter, with the hooks of its editor that a test drives. */
@@ -76,6 +78,8 @@ interface Link {
   notebook: NotebookKey;
   path: string | null;
   pathRule?: string;
+  /** A pending note: the text it was created with. */
+  initial?: string;
   since: number;
   text: string;
   /** The checkout count: one per check-out or reopen; a built-in editor's document is `<id>.<checkouts>`. */
@@ -128,7 +132,7 @@ const iso = (time: number) => new Date(time).toISOString();
  * session is open and `h:<hash>` otherwise, and a write on an older revision of the open session is rebased over the
  * typing since. Its service opens a memory Git source over the same files that records each commit's author and message.
  */
-export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000 }: MemoryLiveNotesOptions): MemoryLiveNotes {
+export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000, discard = false }: MemoryLiveNotesOptions): MemoryLiveNotes {
   const covered = new Map(repositories.map(entry => [sourceIdentity(entry.source), entry]));
   const state = new Map<RepositoryId, { links: Map<string, Link>; byPath: Map<string, string>; }>();
   const notices: LiveNotice[] = [];
@@ -238,7 +242,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           return { checkout: row(link), outcome: known ? 'reopened' : 'created' };
         },
         async createPending(repository, { notebook, pathRule, content }) {
-          const link = { ...newLink(notebook, null, fits(content)), pathRule };
+          const link = { ...newLink(notebook, null, fits(content)), pathRule, initial: content };
           repositoryState(repository).links.set(link.id, link);
           return row(link);
         },
@@ -274,7 +278,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
       },
       async detail(repository, id, lease) {
         const link = held(repository, id, lease);
-        return { ...text(link), checkout: row(link), editors: editors(link) };
+        return { ...text(link), checkout: row(link), editors: editors(link), ...(link.path === null && link.initial !== undefined ? { initialText: link.initial } : {}) };
       },
       async mergeIn(repository, id, lease, change) {
         const link = held(repository, id, lease);
@@ -287,6 +291,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
         if (link.path === null) {
           link.path = receipt.path;
           delete link.pathRule;
+          delete link.initial;
           repositoryState(repository).byPath.set(receipt.path, link.id);
         }
         link.base = { commit: receipt.commit, blob: receipt.blob, contentHash: receipt.contentHash };
@@ -306,6 +311,20 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
         Object.assign(link, { live: false, lease: null, log: null });
         return { released: true };
       },
+      ...(discard
+        ? {
+          async discard(repository: RepositoryId, id: string, lease: LiveLease, check: { contentHash: string; }): Promise<LiveRelease> {
+            const link = held(repository, id, lease);
+            if (link.path !== null) throw new SourceError('Only a pending note can be discarded.', 409);
+            if (liveContentHash(link.text) !== check.contentHash) return { released: false, reason: 'changed' };
+            if (link.active > 0) return { released: false, reason: 'active', activeEditors: link.active };
+            // The link and its text are gone: nothing names it again, and `filed` knows nothing of it.
+            repositoryState(repository).links.delete(id);
+            for (const [ticket, issued] of tickets) if (issued.repository === repository && issued.id === id) tickets.delete(ticket);
+            return { released: true };
+          },
+        }
+        : {}),
     },
     async notify(notice) {
       notices.push(notice);

@@ -1,5 +1,5 @@
-import { checkInLink, type LiveCheckInOptions, type LiveCheckInResult } from './live-checkin.js';
-import { CheckedOutError, isBuiltinEditor, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { checkInLink, discardLink, type LiveCheckInOptions, type LiveCheckInResult, type LiveDiscardResult } from './live-checkin.js';
+import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { localIdIn, type NotebookKey } from './notebook-key.js';
 import type { RepositoryId } from './repository.js';
 import type { LiveNoteState, NotebookConfig } from './types.js';
@@ -27,6 +27,8 @@ export interface LiveLink {
 export interface LiveRepository {
   readonly repository: RepositoryId;
   readonly editor: LiveEditorInfo;
+  /** Whether the adapter can discard a pending note (§19): its `service.discard`. */
+  readonly discards: boolean;
   /** The repository's live links, checked; read from the adapter once per request. */
   checkouts(): Promise<LiveCheckout[]>;
   /** Those links with their notebooks and paths. */
@@ -44,6 +46,12 @@ export interface LiveRepository {
   filed(id: string): Promise<string | null>;
   /** 「立即簽回」: checks the live note at `path` (a Git path or a pending note's virtual path) in now (spec §5.3, manual). */
   checkIn(path: string): Promise<LiveCheckInResult>;
+  /**
+   * 「捨棄草稿」: drops the pending note at its virtual `path` without a commit. A draft someone typed content in is kept
+   * (`has-edits`) unless `confirm`. Throws {@link LiveNotLiveError} where the adapter cannot discard or `path` is no
+   * pending note that is live.
+   */
+  discard(path: string, confirm: boolean): Promise<LiveDiscardResult>;
   /** A ticket for the person to open a link's live document over the built-in editor's socket. */
   socketTicket(id: string): Promise<LiveSocketTicket>;
 }
@@ -144,6 +152,7 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
   return {
     repository,
     editor,
+    discards: typeof liveNotes.service.discard === 'function',
     links,
     checkouts: async () => (await links()).map(link => link.checkout),
     async read(id) {
@@ -184,6 +193,18 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
         return await checkInLink(liveNotes, repository, link.checkout.id, { ...checkIn, mode: 'manual' });
       } finally {
         // The link may be closed or filed now; the next read in this request asks again.
+        listed = undefined;
+      }
+    },
+    async discard(path, confirm) {
+      const link = (await links()).find(entry => entry.path === path);
+      if (!link || link.checkout.path !== null || typeof liveNotes.service.discard !== 'function') throw new LiveNotLiveError();
+      // Asked without the lease first: a lease taken only to refuse would hold the confirmed request off for minutes.
+      // The service's editors and initial text decide again under the lease.
+      if (!confirm && link.checkout.lastEditAt !== null && !isEmptyLiveDraft(liveTextOf(await call(() => calls().read(repository, link.checkout.id))).content)) return { id: link.checkout.id, discarded: false, reason: 'has-edits' };
+      try {
+        return await discardLink(liveNotes, repository, link.checkout.id, { confirm, ...(checkIn?.sleep ? { sleep: checkIn.sleep } : {}) });
+      } finally {
         listed = undefined;
       }
     },

@@ -113,6 +113,8 @@ export interface LiveLease {
 export interface LiveDetail extends LiveText {
   checkout: LiveCheckout;
   editors: LiveEditor[];
+  /** A pending note: the text its link was created with. Left out, a draft's whole body is judged ({@link isEmptyLiveDraft}). */
+  initialText?: string;
 }
 export type LiveRelease = { released: true; } | { released: false; reason: 'active' | 'changed' | 'not-synced'; activeEditors?: number; };
 
@@ -128,6 +130,12 @@ export interface LiveServiceCalls {
   mergeIn(repository: RepositoryId, id: string, lease: LiveLease, change: { content: string; baseRevision: string; }): Promise<{ liveRevision: string; }>;
   synced(repository: RepositoryId, id: string, lease: LiveLease, receipt: { commit: string; blob: string; contentHash: string; path: string; conflict: LiveConflict | null; }): Promise<void>;
   release(repository: RepositoryId, id: string, lease: LiveLease, check: { contentHash: string; }): Promise<LiveRelease>;
+  /**
+   * Drops a pending note (no path) and its live text without a commit; refused like `release` when someone is editing
+   * (`active`) or the text is not the one checked (`changed`). The link is gone after it: `filed` answers nothing for it.
+   * An adapter without it keeps every pending note until a check-in files it, as in 0.19.
+   */
+  discard?(repository: RepositoryId, id: string, lease: LiveLease, check: { contentHash: string; }): Promise<LiveRelease>;
 }
 
 export interface LiveNotice {
@@ -173,6 +181,31 @@ export function liveSocketTicketOf(value: unknown): LiveSocketTicket | null {
   if (!value || typeof value !== 'object') return null;
   const { ticket, document } = value as Record<string, unknown>;
   return typeof ticket === 'string' && SOCKET_TICKET.test(ticket) && typeof document === 'string' && SOCKET_DOCUMENT.test(document) ? { ticket, document } : null;
+}
+
+/** The frontmatter block a note opens with, as `parseNoteContent` finds it. */
+const FRONTMATTER_BLOCK = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
+/** What makes a line content: a letter, a digit, or an image or embed. */
+const DRAFT_CONTENT = /[\p{L}\p{N}]|!\[|<(img|iframe|video)\b/iu;
+
+/**
+ * Whether a pending note is an empty draft (docs/specs/2026-11-15-builtin-live-editor §19.1): once the lines of its
+ * initial body are taken out of its body, one each, what is left holds no letter, digit, image or embed. Whitespace,
+ * punctuation, Markdown markers and emoji alone are empty; the frontmatter never counts, and lines are compared without
+ * the whitespace around them. Without `initialText` the whole body is judged.
+ */
+export function isEmptyLiveDraft(text: string, initialText?: string): boolean {
+  const lines = (value: string) => normalizeLiveText(value).replace(FRONTMATTER_BLOCK, '').split('\n').map(line => line.trim());
+  const initial = new Map<string, number>();
+  for (const line of initialText === undefined ? [] : lines(initialText)) initial.set(line, (initial.get(line) ?? 0) + 1);
+  return lines(text).every(line => {
+    const left = initial.get(line) ?? 0;
+    if (left > 0) {
+      initial.set(line, left - 1);
+      return true;
+    }
+    return !DRAFT_CONTENT.test(line);
+  });
 }
 
 /** What a live link id may be. */

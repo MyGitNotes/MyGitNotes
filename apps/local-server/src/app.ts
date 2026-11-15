@@ -261,7 +261,9 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
           if (!handle) return { ...base, ...manifest, branch: entry.ref.source.type === 'local' ? '' : entry.ref.source.branch, revision: '', write: false, ...('unavailable' in entry ? { unavailable: entry.unavailable } : {}) };
           const snapshot = await handle.reader.getSnapshot();
           // The editor configuration is static: naming it asks the adapter nothing, so this answer stands while the editor is down.
-          const live = liveNotes ? { live: handle.reader.liveView?.editor ?? null } : {};
+          const view = handle.reader.liveView;
+          // `discard` is added only for an adapter that has it, so a 0.19 adapter's answer stays as it was.
+          const live = liveNotes ? { live: view ? view.discards ? { ...view.editor, discard: true as const } : view.editor : null } : {};
           return { ...base, ...manifest, branch: handle.reader.branch, revision: snapshot.sha, write: handle.authenticated && handle.reader.canWrite(snapshot), ...live, ...('unavailable' in entry ? { unavailable: entry.unavailable } : {}) };
         }));
         const body: WorkspaceStatus = { keyedConfig, local: false, defaultRepository: workspace.default?.ref.id ?? null, repositories, coreUpdate: Boolean(product), ...(visitorChoice ? { repositoryChoice: true } : {}) };
