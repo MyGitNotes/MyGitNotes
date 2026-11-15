@@ -2,7 +2,7 @@
  * Plays a slide note with contour-deck. Everything here loads on the first Play: contour-deck's core, its stylesheet and its rehype
  * plugin, and the two hast utilities `buildDeck` uses. A note that is never played downloads none of it.
  */
-import { createDeck, type Labels } from 'contour-deck';
+import { createDeck, type LabelSet } from 'contour-deck';
 import 'contour-deck/style.css';
 import './deck.css';
 import { hydratePdfFigures } from '../annotations/pdf-figure.js';
@@ -12,8 +12,39 @@ import { hydrateQrCodes } from '../qrcode.js';
 import { buildDeck } from './deck.js';
 import { EmptyDeckError } from './errors.js';
 
-/** The app's English for the words it says otherwise than contour-deck's English set; every other word is contour-deck's. */
-const ENGLISH_LABELS: Partial<Labels> = { prev: 'Previous step', next: 'Next step', exit: 'Leave the slides', appendix: 'Written', rail: 'Position in the deck', noNotes: '(No notes for this page)', minutes: count => `about ${count} min`, steps: (shown, count) => `Step ${shown}/${count}` };
+const plural = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`;
+
+/**
+ * Every word the deck says in an English app. The set is complete, so a word contour-deck adds fails the type check instead of reaching
+ * the reader in whichever set the deck would otherwise pick (a dev server still on an older contour-deck showed its Chinese).
+ */
+const ENGLISH_LABELS: LabelSet = {
+  overview: 'Outline',
+  notes: 'Notes',
+  script: 'Script',
+  threeD: '3D',
+  prev: 'Previous step',
+  next: 'Next step',
+  exit: 'Leave the slides',
+  remote: 'Remote',
+  here: 'You are here',
+  appendix: 'Written',
+  opening: 'Opening',
+  closing: 'Thanks',
+  rail: 'Position in the deck',
+  noNotes: '(No notes for this page)',
+  slides: count => plural(count, 'slide'),
+  pages: count => plural(count, 'page'),
+  minutes: count => `about ${count} min`,
+  page: (index, count) => `Page ${index}/${count}`,
+  steps: (shown, count) => `Step ${shown}/${count}`,
+  thumb: (block, slide, title, pages) => `${block}, slide ${slide}: ${title}${pages > 1 ? `, ${pages} pages` : ''}`,
+  railBlock: (block, term) => (term ? `${block} (${term})` : block),
+  wayHead: (short, term) => (term ? `${short} | ${term}` : short),
+  roadmap: 'Roadmap of the talk',
+  railSlide: (block, slide) => `${block}: ${slide}`,
+  entry: (label, title) => `${label}: ${title}`,
+};
 
 export interface OpenDeckOptions {
   /** The note's sanitized HTML, rendered with `slides: 'deck'`. */
