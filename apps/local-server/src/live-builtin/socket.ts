@@ -25,6 +25,11 @@ export interface LiveSocketLimits {
   maxDocuments: number;
   /** The sockets on one document. */
   maxConnections: number;
+  /**
+   * The sockets this process keeps open without a document on them (waiting for their ticket, or after their document
+   * closed), each of which may hold messages waiting for authentication; an upgrade past it answers 503.
+   */
+  maxUnseated: number;
   /** The largest awareness state of one client, in bytes of JSON; a larger one is dropped. */
   maxAwarenessBytes: number;
   /** How often a document with sockets catches up with the store. */
@@ -130,6 +135,8 @@ export function liveSocket({ documents, store, clock, process: processName, read
   const server = new WebSocketServer({ noServer: true, maxPayload: limits.maxPayload });
   /** Every open socket, with the documents open or being opened on it. */
   const sockets = new Map<WebSocket, Set<Seat>>();
+  /** The open sockets with no document open or being opened on them. */
+  const unseated = new Set<WebSocket>();
   const rooms = new Map<string, Room>();
   /** The last write of each document's presence that is still under way, also once everyone left it. */
   const writes = new Map<string, Promise<void>>();
@@ -241,7 +248,9 @@ export function liveSocket({ documents, store, clock, process: processName, read
         if (seat.left) return;
         seat.left = true;
         room.seats.delete(seat);
-        sockets.get(socket)?.delete(seat);
+        const held = sockets.get(socket);
+        held?.delete(seat);
+        if (held && !held.size) unseated.add(socket);
         if (seat.claim !== undefined && room.claims.get(seat.claim) === seat) room.claims.delete(seat.claim);
         if (!room.seats.size && rooms.get(name) === room) rooms.delete(name);
         if (seat.connected) {
@@ -255,6 +264,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
     };
     room.seats.add(seat);
     sockets.get(socket)?.add(seat);
+    unseated.delete(socket);
     return seat;
   };
 
@@ -374,6 +384,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
   const serve = (socket: WebSocket) => {
     const seats = new Set<Seat>();
     sockets.set(socket, seats);
+    unseated.add(socket);
     // Hocuspocus gets no header of the upgrade: cookies on it are ignored, and the ticket is the only credential.
     const client = hocuspocus.handleConnection(socket, new Request(`http://localhost${LIVE_SOCKET_PATH}`), { socket } satisfies SocketContext);
     socket.on('message', (data, binary) => {
@@ -391,6 +402,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
       // A document still loading has no connection to close: its seat is given up here.
       for (const seat of seats) if (!seat.connected) seat.leave();
       sockets.delete(socket);
+      unseated.delete(socket);
       if (!sockets.size) stopTimers();
     });
     if (!stopping) startTimers();
@@ -458,6 +470,8 @@ export function liveSocket({ documents, store, clock, process: processName, read
       const origin = appOrigin();
       if (stopping) refuse(socket, '503 Service Unavailable');
       else if (!origin || request.headers.origin !== origin) refuse(socket, '403 Forbidden');
+      // `handleUpgrade` serves the socket before it returns, so the count holds every socket it let in.
+      else if (unseated.size >= limits.maxUnseated) refuse(socket, '503 Service Unavailable');
       else server.handleUpgrade(request, socket, head, serve);
       return true;
     },
