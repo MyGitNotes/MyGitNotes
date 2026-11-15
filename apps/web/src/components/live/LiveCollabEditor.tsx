@@ -260,13 +260,14 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   };
   /** Answers the editor's 「捨棄這份草稿？」. */
   const answerDiscard = useRef<(yes: boolean) => void>(() => {});
-  const askDiscard = (question: string) => new Promise<boolean>(resolve => {
-    answerDiscard.current = yes => {
-      if (yes) setPhase({ kind: 'discarding' });
-      resolve(yes);
-    };
-    setPhase({ kind: 'confirm-discard', question });
-  });
+  const askDiscard = (question: string) =>
+    new Promise<boolean>(resolve => {
+      answerDiscard.current = yes => {
+        if (yes) setPhase({ kind: 'discarding' });
+        resolve(yes);
+      };
+      setPhase({ kind: 'confirm-discard', question });
+    });
   const discard = async () => {
     stopRef.current();
     flushSync(() => setPhase({ kind: 'discarding' }));
