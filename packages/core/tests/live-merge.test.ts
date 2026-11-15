@@ -61,4 +61,27 @@ describe('mergeLiveText', () => {
     expect(mergeLiveText(base, edit(parts, 3000, 'Live words.\n\n'), edit(parts, 3000, 'Git words.\n\n'))).toEqual({ conflict: true });
     expect(performance.now() - started).toBeLessThan(2000);
   });
+
+  it('merges a 50k-line note one side rewrote in well under two seconds', () => {
+    const lines = Array.from({ length: 50_000 }, (_, i) => `Line ${i} of a long note.\n`);
+    const base = lines.join('');
+    const live = lines.map((_, i) => `Rewritten line ${i} in the live editor.\n`).join('');
+    const git = lines.map((line, i) => i === 25_000 ? 'Changed in Git.\n' : line).join('');
+    const started = performance.now();
+    expect(mergeLiveText(base, live, git)).toEqual({ conflict: true });
+    expect(mergeLiveText(base, live, base)).toEqual({ conflict: false, text: live });
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it('finishes when both sides rewrite a 5 MiB note, with a conflict at worst, in well under two seconds', () => {
+    const lines = Array.from({ length: 160_000 }, (_, i) => `Line ${i} of a long note, typed.\n`);
+    const base = lines.join('');
+    // Repeated lines keep a common line every few changed ones: the costly shape for Myers even after unique lines go.
+    const live = lines.map((line, i) => i % 3 ? `pool ${i % 7}\n` : line).join('');
+    const git = lines.map((line, i) => i % 3 === 1 ? line : `pool ${i % 5}\n`).join('');
+    expect(base.length).toBeGreaterThan(5_000_000);
+    const started = performance.now();
+    mergeLiveText(base, live, git);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
 });
