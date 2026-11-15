@@ -326,7 +326,7 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(await stored(store, id)).toBe(`${clean}third\n`);
     });
 
-    it('stores of what a socket sends only typing in the note: an update that cannot be read, that holds anything else, or that waits for what the server lacks is refused, and the note stays whole', async () => {
+    it('stores of what a socket sends only typing in the note: an update that cannot be read or that holds anything else is refused, one that waits for what the server lacks has its tab send everything again, and the note stays whole', async () => {
       const store = makeStore();
       const server = await serverOver({ store });
       const { files, time } = server.live;
@@ -353,8 +353,6 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       const refusals = new Map<string, (tab: LiveTab) => void>();
       refusals.set('cut short', tab => tab.sendUpdate(whole.slice(0, whole.length - 1)));
       refusals.set('no update at all', tab => tab.sendUpdate(Uint8Array.from([1, 2, 3, 250, 251, 252, 253, 254, 255])));
-      refusals.set('waiting for typing the server never got', tab => tab.sendUpdate(second));
-      refusals.set('taking out typing the server never got', tab => tab.sendUpdate(removal));
       refusals.set('a map beside the text', tab => void tab.provider.document.getMap('SECRET').set('key', 'value'));
       refusals.set('an embedded object in the text', tab => tab.provider.document.getText('content').insertEmbed(0, { SECRET: 'image' }));
       refusals.set('formatting in the text', tab => tab.provider.document.getText('content').format(0, 1, { SECRET: true }));
@@ -370,10 +368,21 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
         expect([tab.closes, tab.asked], what).toEqual([[{ code: 1000, reason: 'invalid' }], 1]);
         tab.destroy();
       }
+      // Typing that builds on typing the server never got may only be ahead of it: its tab is told nothing, its socket closes, and the tab connects again and sends all it holds.
+      const waiting = new Map<string, Uint8Array>([['waiting for typing the server never got', second], ['taking out typing the server never got', removal]]);
+      for (const [what, update] of waiting) {
+        const tab = await server.tab(1);
+        await tab.synced();
+        tab.sendUpdate(update);
+        await until(`the tab's socket was closed: ${what}`, () => tab.closes.some(close => close.code === 1011));
+        await until(`the tab connected again: ${what}`, () => tab.asked === 2 && tab.provider.isSynced);
+        expect(tab.told, what).toEqual([]);
+        tab.destroy();
+      }
       // Nothing of them was stored, shown to anyone, or recorded for anyone; the log says which note, and nothing of what was sent.
       expect(await store.document(id, 1)).toMatchObject({ seq: 1 });
       expect([await stored(store, id), one.text(), two.text()]).toEqual([`${A}typed\n`, `${A}typed\n`, `${A}typed\n`]);
-      expect(warn.mock.calls).toHaveLength(refusals.size);
+      expect(warn.mock.calls).toHaveLength(refusals.size + waiting.size);
       expect(warn.mock.calls.flat().join('\n')).toContain(id);
       expect([...warn.mock.calls, ...error.mock.calls].flat().map(String).join('\n')).not.toContain('SECRET');
       // The same typing, sent whole, is taken; so is typing that builds on another client's which arrives with it.
@@ -596,6 +605,49 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       await until('neither process holds the document', () => first.live.documents.hocuspocus.documents.size === 0 && next.live.documents.hocuspocus.documents.size === 0);
     });
 
+    it("takes typing that builds on what another process stored and this one has not read yet: it catches up from the store, and the tab's socket stays open", async () => {
+      const store = makeStore();
+      // The poll is too slow to catch up: the typing itself must.
+      const first = await serverOver({ store, limits: { pollMs: 60_000 } });
+      const next = await serverOver({ store, files: first.live.files, time: first.live.time, limits: { pollMs: 60_000 } });
+      const id = await first.checkout();
+      let slow: ReturnType<typeof gate> | undefined, asking = false, spare: string | undefined;
+      const one = await next.tab(1, {
+        document: (await next.ticket(1)).document,
+        ticket: async () => {
+          const ticket = spare ?? (await next.ticket(1)).ticket;
+          spare = undefined;
+          asking = true;
+          await slow?.opened;
+          return ticket;
+        },
+      });
+      const two = await first.tab(2);
+      await Promise.all([one.synced(), two.synced()]);
+      one.type(`${A}stored by next\n`);
+      await one.saved();
+      // The first process holds the document for its own tab, one poll behind the store.
+      await pause(100);
+      expect([two.text(), await stored(store, id)]).toEqual([A, `${A}stored by next\n`]);
+      // The next process dies; the first takes its sockets. The tab types again while its ticket is on the way, from a
+      // process that read the store (a ticket the first process issued would have caught it up).
+      spare = (await next.ticket(1)).ticket;
+      next.serve(first.live);
+      slow = gate();
+      asking = false;
+      one.cut();
+      await until('the tab asks for its next ticket', () => asking);
+      one.type(`${A}stored by next\nthen typed\n`);
+      await pause(50);
+      slow.open();
+      const text = `${A}stored by next\nthen typed\n`;
+      await until('both tabs show everything', () => one.text() === text && two.text() === text);
+      await one.saved();
+      expect(await stored(store, id)).toBe(text);
+      // Taken on the first try: nothing refused, and no socket closed to send it again.
+      expect([one.told, one.refused, one.closes.filter(close => close.code !== 1006), one.asked]).toEqual([[], [], [], 2]);
+    });
+
     it('tells everyone on a document that it is released when the store refuses an update of its epoch', async () => {
       const store = makeStore();
       // The poll is too slow to tell: the refused update is what does.
@@ -717,6 +769,42 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect([`${A}offline\nmeanwhile\n`, `${A}meanwhile\noffline\n`]).toContain(one.text());
       expect(await stored(store, id)).toBe(one.text());
       expect(one.asked).toBe(2);
+    });
+
+    it('takes what a tab typed offline and while its next ticket was on the way: none of it is refused, and the tabs and the store agree', async () => {
+      const server = await serverOver({ store: makeStore() });
+      const { store } = server.live;
+      const id = await server.checkout();
+      // The tab asks the app for each ticket, as the web does; a request can take its time.
+      let slow: ReturnType<typeof gate> | undefined, asking = false;
+      const one = await server.tab(1, {
+        document: (await server.ticket(1)).document,
+        ticket: async () => {
+          const { ticket } = await server.ticket(1);
+          asking = true;
+          await slow?.opened;
+          return ticket;
+        },
+      });
+      const two = await server.tab(2);
+      await Promise.all([one.synced(), two.synced()]);
+      one.offline();
+      await until('the first person is offline', async () => (await activeEditors(server.live, id)) === 1);
+      one.type(`${A}offline\n`);
+      slow = gate();
+      asking = false;
+      one.online();
+      // Its socket is open and its ticket on the way: what it types now reaches the server before what it typed offline.
+      await until('the tab asks for its next ticket', () => asking);
+      one.type(`${A}offline\nmore\n`);
+      await pause(50);
+      slow.open();
+      const text = `${A}offline\nmore\n`;
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      await until('both tabs show everything the first one typed', () => one.text() === text && two.text() === text);
+      await one.saved();
+      expect(await stored(store, id)).toBe(text);
+      expect([one.told, one.refused, one.closes.filter(close => close.code === 1000)]).toEqual([[], [], []]);
     });
 
     it('keeps a document that was loaded again just after it was let go', async () => {
