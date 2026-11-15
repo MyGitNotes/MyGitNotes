@@ -6,6 +6,11 @@ import { type BuiltinLiveNotes, type BuiltinLiveNotesOptions, createBuiltinLiveN
  *
  *   const live = builtinLiveNotes({ covers, open, store: redisLiveStore({ url: process.env.REDIS_URL! }) });
  *   const app = createApp(base, { …, liveNotes: live });
+ *   const server = app.listen(port, host);
+ *   server.on('upgrade', (req, socket, head) => { if (!live.upgrade(req, socket, head)) socket.destroy(); });
+ *   process.once('SIGTERM', async () => { await live.shutdown(); server.close(); });
+ *
+ * A server that already handles upgrades asks each handler in turn.
  */
 
 export { type BuiltinLiveLimits, type BuiltinLiveNotes, type BuiltinLiveNotesOptions } from './adapter.js';

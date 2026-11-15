@@ -1,17 +1,20 @@
 import { createHash, randomBytes } from 'node:crypto';
+import type { IncomingMessage } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
 import { liveDocumentName, type LiveDocuments, liveDocuments, type LiveSnapshot, seedLiveState } from './documents.js';
+import { liveSocket, type LiveSocketLimits } from './socket.js';
 import { type EditorRef, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
 
 /*
  * The built-in live editor as a `LiveNotes` (docs/specs/2026-11-15-builtin-live-editor §2, §5): the seam's calls over
  * the live store and the documents of this process. A revision is `t:<sha256 of the text>`, so it survives reloads and
- * needs no session; a write names one as its base and is rebased by character over the typing since. The socket that
- * people type through, and its upgrade and shutdown, are slice N4.
+ * needs no session; a write names one as its base and is rebased by character over the typing since. People type
+ * through the socket of `socket.ts`, which the adapter hands on as `upgrade`.
  */
 
-/** The limits of the built-in editor that the adapter itself keeps (§4.6). */
-export interface BuiltinLiveLimits {
+/** The limits of the built-in editor (§4.6): the adapter's own, and the socket's. */
+export interface BuiltinLiveLimits extends LiveSocketLimits {
   /** The largest live text, in UTF-8 bytes. */
   maxBytes: number;
   /** How long after their last activity a connected person still counts as editing. */
@@ -35,6 +38,8 @@ export interface BuiltinLiveNotesOptions {
   /** `redisLiveStore({ url })`, or `memoryLiveStore()` for a deployment that accepts losing live text on restart. */
   store: LiveStore;
   notify?(notice: LiveNotice): Promise<void>;
+  /** The app's origin, the only one a socket may come from; left out, `APP_URL`. */
+  appUrl?: string;
   /** Tests only: the clock of every time the adapter records, in milliseconds. */
   clock?: () => number;
   limits?: Partial<BuiltinLiveLimits>;
@@ -50,7 +55,15 @@ export interface BuiltinLiveNotes extends LiveNotes {
    * rejection. Until it resolves every call waits, and after a refusal every call fails.
    */
   readonly started: Promise<void>;
-  /** Compacts every document this process holds into the store and lets it go. */
+  /**
+   * For `server.on('upgrade')`: takes the request when its path is `/live/socket` and returns true; false otherwise, and
+   * the caller handles it. A socket opens only from the app's origin, and a document on it only for a socket ticket.
+   */
+  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): boolean;
+  /**
+   * Stops new sockets, compacts every document this process holds into the store, and closes the sockets with 1012, so
+   * their tabs connect again to whichever process serves then. Resolves within 15 s.
+   */
   shutdown(): Promise<void>;
 }
 
@@ -65,7 +78,7 @@ export interface BuiltinLiveParts {
 }
 
 const BUILTIN: LiveBuiltinEditorInfo = { kind: 'builtin' };
-const DEFAULT_LIMITS: BuiltinLiveLimits = { maxBytes: LIVE_MAX_BYTES, idleMs: 10 * 60_000, leaseMs: 5 * 60_000, ringTexts: 64, ringBytes: 16 * 1024 * 1024 };
+const DEFAULT_LIMITS: BuiltinLiveLimits = { maxBytes: LIVE_MAX_BYTES, idleMs: 10 * 60_000, leaseMs: 5 * 60_000, ringTexts: 64, ringBytes: 16 * 1024 * 1024, maxPayload: 8 * 1024 * 1024, maxDocuments: 200, maxConnections: 50, maxAwarenessBytes: 4096, pollMs: 5000, beatMs: 15_000, shutdownMs: 15_000 };
 const REVISION = /^t:([0-9a-f]{64})$/;
 const iso = (time: number) => new Date(time).toISOString();
 
@@ -84,6 +97,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
   const clock = options.clock ?? Date.now;
   const limits = { ...DEFAULT_LIMITS, ...options.limits };
   const documents = liveDocuments({ store, clock, maxBytes: limits.maxBytes, ringTexts: limits.ringTexts, ringBytes: limits.ringBytes });
+  const processName = randomBytes(8).toString('hex');
 
   // The store refuses a configuration that would lose live text (§3.4). `started` is left without a handler, so a
   // refusal nobody awaits stops the process; the calls wait on a handled copy of it.
@@ -116,6 +130,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     if (!link?.live || link.repository !== repository) throw new LiveNotLiveError();
     return link;
   };
+  const socket = liveSocket({ documents, store, clock, process: processName, ready, covers, ...(options.appUrl !== undefined ? { appUrl: options.appUrl } : {}), limits });
   const tokenOf = (lease: LiveLease) => typeof lease?.token === 'string' ? lease.token : '';
   /** The live link, when `lease` holds it now. */
   const leased = async (repository: RepositoryId, id: string, lease: LiveLease): Promise<StoredLink> => {
@@ -123,8 +138,11 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     if (!(await store.leaseHeld(link.id, tokenOf(lease), clock()))) throw new LiveLeasedError();
     return link;
   };
-  /** The distinct people of every process whose last activity is within the idle window. */
-  const active = (link: StoredLink) => store.activePeople(link.id, clock() - limits.idleMs, clock());
+  /** The distinct people of every process whose last activity is within the idle window; what this process's sockets just did counts. */
+  const active = async (link: StoredLink) => {
+    await socket.settle(link);
+    return store.activePeople(link.id, clock() - limits.idleMs, clock());
+  };
   /** A row carries no URL: the note is edited on its own page in the app. */
   const rowOf = (link: StoredLink, contentHash: string, activeEditors: number): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), since: iso(link.since), contentHash, activeEditors, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
   const row = async (link: StoredLink) => rowOf(link, await documents.contentHash(link), await active(link));
@@ -292,7 +310,8 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       return { ticket, document };
     },
     started,
-    shutdown: () => documents.shutdown(),
+    upgrade: (request, upgraded, head) => socket.upgrade(request, upgraded, head),
+    shutdown: () => socket.shutdown(),
   };
-  return { liveNotes, documents, store, clock, process: randomBytes(8).toString('hex') };
+  return { liveNotes, documents, store, clock, process: processName };
 }

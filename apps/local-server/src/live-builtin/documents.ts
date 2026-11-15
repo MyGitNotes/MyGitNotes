@@ -1,5 +1,5 @@
 import { type Document, Hocuspocus, type LocalTransactionOrigin } from '@hocuspocus/server';
-import { liveContentHash, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, type RepositoryId, type TextEdit, textEdits } from '@mygitnotes/core';
+import { liveContentHash, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, type RepositoryId, type TextEdit, textEdits } from '@mygitnotes/core';
 import * as Y from 'yjs';
 import type { EditorRef, LiveStore, StoredDocument, StoredLink } from './store.js';
 
@@ -8,7 +8,7 @@ import type { EditorRef, LiveStore, StoredDocument, StoredLink } from './store.j
  * The store is the authority: an update is appended to it before any document takes it, so a document held here is a
  * copy that can be thrown away, and the state and log of the store always give the text at its sequence. One
  * Hocuspocus instance, used as a library, holds the documents: it loads one from the store when a server write or a
- * socket (slice N4) first needs it, and compacts it into the store a moment after its last change.
+ * socket (`socket.ts`) first needs it, and compacts it into the store a moment after its last change.
  */
 
 /** The text of a live link at one sequence of its store. */
@@ -44,9 +44,11 @@ export interface LiveDocuments {
   /**
    * Takes one Yjs update of a document this process holds, as a socket sends it: appended to the store for `editor`,
    * then applied, so whoever is told it is saved was told the truth. An update the document already holds (a tab
-   * sending it again after a reconnect) is taken without an append.
+   * sending it again after a reconnect) is taken without an append, and answers false. A `\r` or NUL it typed is taken
+   * out again by an update of the server's own, so the text stays in normal form. An update that is not typing in the
+   * note's text is refused with `LiveUpdateRefusedError`, and nothing of it is stored.
    */
-  accept(link: StoredLink, update: Uint8Array, editor: EditorRef): Promise<void>;
+  accept(link: LiveEpoch, update: Uint8Array, editor: EditorRef): Promise<boolean>;
   /** Keeps a text that was handed out, so a write can name it as its base. */
   remember(link: StoredLink, text: { text: string; hash: string; }): void;
   /** A text handed out for the link's epoch, by hash. */
@@ -54,11 +56,18 @@ export interface LiveDocuments {
   /** Forgets the handed-out texts of the repository's links that are not among `live`. */
   forget(repository: RepositoryId, live: readonly StoredLink[]): void;
   /** Everyone left the link's document: it is compacted and let go, with the texts handed out. */
-  unload(link: StoredLink): Promise<void>;
-  /** The link's epoch ended: its document is let go, and nothing of it is stored. */
-  drop(link: StoredLink): Promise<void>;
+  unload(link: LiveEpoch): Promise<void>;
+  /** The link's epoch ended: the sockets on its document are told `released` and closed, it is let go, and nothing of it is stored. */
+  drop(link: LiveEpoch): Promise<void>;
+  /**
+   * Brings every document that sockets hold up to the store (§4.5): what another process appended reaches them, and a
+   * document whose epoch another process ended is dropped. One process finds nothing new.
+   */
+  catchUp(): Promise<void>;
   /** Compacts and lets go every document this process holds. */
   shutdown(): Promise<void>;
+  /** The server the documents live in: the socket hands it connections and hooks into it. */
+  readonly hocuspocus: Hocuspocus;
 }
 
 export interface LiveDocumentsOptions {
@@ -79,8 +88,21 @@ const FROM_STORE: LocalTransactionOrigin = { source: 'local', skipStoreHooks: tr
 const APPENDED: LocalTransactionOrigin = { source: 'local' };
 const NAME = /^([A-Za-z0-9_-]{1,64})\.([1-9][0-9]{0,9})$/;
 
+/** One epoch of a link: what a document, a socket and a ticket are bound to. */
+export type LiveEpoch = Pick<StoredLink, 'id' | 'epoch'>;
+
 /** The name of the document of a link's epoch: `<id>.<epoch>`. A tab of an earlier epoch names another document. */
-export const liveDocumentName = (link: Pick<StoredLink, 'id' | 'epoch'>) => `${link.id}.${link.epoch}`;
+export const liveDocumentName = (link: LiveEpoch) => `${link.id}.${link.epoch}`;
+
+/** What every socket on a document is told when its epoch ended (§6.5). */
+export const RELEASED = JSON.stringify({ type: 'released' });
+
+/** A socket sent an update that is not typing in the note's text; nothing of it was stored. */
+export class LiveUpdateRefusedError extends Error {
+  constructor() {
+    super('The update is not typing in the note.');
+  }
+}
 
 /** The Yjs state an epoch is seeded with: one document that holds `text`. */
 export function seedLiveState(text: string): Uint8Array {
@@ -121,6 +143,64 @@ export function textUpdate(document: Y.Doc, next: string): Uint8Array | null {
   }
 }
 
+/** What a live text never holds (`normalizeLiveText`). */
+const CONTROL = /[\r\0]/;
+
+/** Whether a Yjs update inserts text that holds a `\r` or a NUL. */
+function insertsControl(update: Uint8Array): boolean {
+  return Y.decodeUpdate(update).structs.some(struct => struct instanceof Y.Item && struct.content instanceof Y.ContentString && CONTROL.test(struct.content.str));
+}
+
+/**
+ * Whether a Yjs update is what typing in a tab makes, and the document can take all of it: it reads to its end, holds
+ * only text put into the `content` text or taken out of it, and waits for nothing the document lacks. Only such an
+ * update of a socket is stored. One that cannot be read would keep the note from loading ever again; other content, or
+ * text left waiting for an update that never comes, would grow the stored state past any limit on the text.
+ */
+function isTyping(document: Y.Doc, update: Uint8Array): boolean {
+  let structs, deletes;
+  try {
+    ({ structs, ds: deletes } = Y.decodeUpdate(update));
+  } catch {
+    return false;
+  }
+  /** The next clock of each client, in the document. */
+  const known = Y.decodeStateVector(Y.encodeStateVector(document));
+  /** The same once the update is taken, for the clients it names. */
+  const ends = new Map<number, number>();
+  // Whether everything the update builds on is in the document, or earlier in the update's run of the same client.
+  let whole = true, current: number | undefined;
+  for (const struct of structs) {
+    const { client, clock } = struct.id;
+    if (client !== current) {
+      // Yjs keeps one run of a client and drops the others.
+      if (ends.has(client)) return false;
+      current = client;
+    }
+    if (struct instanceof Y.Item) {
+      const parent: unknown = struct.parent;
+      if (!(struct.content instanceof Y.ContentString || struct.content instanceof Y.ContentDeleted) || struct.parentSub !== null || (parent !== null && parent !== CONTENT)) return false;
+      for (const before of [struct.origin, struct.rightOrigin]) if (before && before.clock >= (known.get(before.client) ?? 0) && !(before.client === client && before.clock < clock)) whole = false;
+    } else if (!(struct instanceof Y.GC)) return false;
+    const end = ends.get(client) ?? known.get(client) ?? 0;
+    if (clock > end) whole = false;
+    ends.set(client, Math.max(end, clock + struct.length));
+  }
+  for (const [client, ranges] of deletes.clients) for (const range of ranges) if (range.clock + range.len > (ends.get(client) ?? known.get(client) ?? 0)) whole = false;
+  if (whole) return true;
+  // Not plain to see, as when a tab brings what tabs of another process typed: a copy of the document takes it, and shows whether anything is left waiting.
+  const copy = new Y.Doc();
+  try {
+    Y.applyUpdate(copy, Y.encodeStateAsUpdate(document));
+    Y.applyUpdate(copy, update);
+    return copy.store.pendingStructs === null && copy.store.pendingDs === null;
+  } catch {
+    return false;
+  } finally {
+    copy.destroy();
+  }
+}
+
 const textOf = (document: Y.Doc) => {
   const text = document.getText(CONTENT).toString();
   return { text, hash: liveContentHash(text) };
@@ -144,6 +224,8 @@ interface Held {
   gen: number;
   /** The document's text, kept until it next changes. */
   text?: { text: string; hash: string; };
+  /** A `\r` or NUL may have reached the text since it was last tidied. */
+  unclean: boolean;
 }
 
 /** The texts handed out for one document, oldest first. */
@@ -218,9 +300,12 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       if (!stored) throw await lost(link);
       Y.applyUpdate(document, stored.state, FROM_STORE);
       for (const update of stored.log) Y.applyUpdate(document, update, FROM_STORE);
-      const state: Held = { seen: stored.seq, top: 0, gen: stored.gen };
+      const state: Held = { seen: stored.seq, top: 0, gen: stored.gen, unclean: CONTROL.test(document.getText(CONTENT).toString()) };
       states.set(document, state);
-      document.on('update', () => void (state.text = undefined));
+      document.on('update', (update: Uint8Array) => {
+        state.text = undefined;
+        if (insertsControl(update)) state.unclean = true;
+      });
     },
     /** A moment after a document's last change, and when it is let go: what this process read of the log is compacted. */
     async onStoreDocument({ document, documentName }) {
@@ -236,6 +321,14 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       if (!stored.log.length) return;
       const { done } = await squash(id, Number(epoch), stored);
       if (done && state) state.gen = stored.gen + 1;
+    },
+    /**
+     * Hocuspocus asks twice to unload a document that was let go at once, the second time a moment later. By then
+     * another document may be held under the name (a tab that reconnected): the late request is refused, or it would
+     * take that one out of the documents while its sockets stay on it.
+     */
+    async beforeUnloadDocument({ instance, document, documentName }) {
+      if (instance.documents.get(documentName) !== document) throw new Error();
     },
   });
 
@@ -288,13 +381,30 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
   };
 
   /** Appends an update to the store, then applies it to the held document: never the other way round. */
-  const put = async (link: StoredLink, document: Document, state: Held, update: Uint8Array, editor: EditorRef | null) => {
+  const put = async (link: LiveEpoch, document: Document, state: Held, update: Uint8Array, editor: EditorRef | null) => {
     const appended = await store.append(link.id, link.epoch, update, editor, clock());
     if (appended === 'not-live') throw new LiveNotLiveError();
     if (document.isDestroyed) return;
     Y.applyUpdate(document, update, APPENDED);
     state.top = Math.max(state.top, appended.seq);
     if (appended.seq === state.seen + 1) state.seen = appended.seq;
+  };
+
+  /**
+   * Takes a `\r` or NUL that reached a held document out again, by one update of the server's own in the store: the
+   * text stays in normal form whatever a socket sends. The update names the editor whose typing it tidies, or nobody.
+   */
+  const tidy = async (link: LiveEpoch, document: Document, state: Held, editor: EditorRef | null) => {
+    if (!state.unclean || document.isDestroyed) return;
+    state.unclean = false;
+    const update = textUpdate(document, normalizeLiveText(document.getText(CONTENT).toString()));
+    if (!update) return;
+    try {
+      await put(link, document, state, update, editor);
+    } catch (error) {
+      state.unclean = true;
+      throw error;
+    }
   };
 
   /** Runs after the document's earlier server writes, whether they landed or not. */
@@ -315,6 +425,17 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
     await (await hocuspocus.openDirectConnection(name)).disconnect();
   };
 
+  const drop = async (link: LiveEpoch) => {
+    const name = liveDocumentName(link);
+    rings.delete(name);
+    const document = hocuspocus.documents.get(name);
+    if (!document) return;
+    // The tabs that hold it are told, and closed: what they hold is an epoch that ended.
+    document.broadcastStateless(RELEASED);
+    hocuspocus.closeConnections(name);
+    await letGo(name);
+  };
+
   return {
     async snapshot(link) {
       const shot = await read(link);
@@ -332,6 +453,7 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       return serial(liveDocumentName(link), async () => {
         const { document, state, close } = await hold(link);
         try {
+          await tidy(link, document, state, null);
           const current = heldText({ document, state });
           // Computed on the text as it is now, with nothing awaited in between: typing that lands before the append merges as Yjs merges concurrent edits.
           const next = change(current.text, current.hash);
@@ -352,7 +474,8 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       const here = held(liveDocumentName(link));
       if (!here) throw new LiveNotLiveError();
       const { document, state } = here;
-      if (Y.snapshotContainsUpdate(Y.snapshot(document), update)) return;
+      if (!isTyping(document, update)) throw new LiveUpdateRefusedError();
+      if (Y.snapshotContainsUpdate(Y.snapshot(document), update)) return false;
       // Only an update that could take the text past the limit is measured, on a copy.
       if (document.getText(CONTENT).length * 3 + update.byteLength > maxBytes) {
         const copy = new Y.Doc();
@@ -365,6 +488,8 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
         }
       }
       await put(link, document, state, update, editor);
+      await tidy(link, document, state, editor);
+      return true;
     },
     remember(link, { text, hash }) {
       const name = liveDocumentName(link);
@@ -393,19 +518,29 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       rings.delete(name);
       await letGo(name);
     },
-    async drop(link) {
-      const name = liveDocumentName(link);
-      rings.delete(name);
-      const document = hocuspocus.documents.get(name);
-      if (!document) return;
-      // Tabs that hold it (N4) are told, and closed: what they hold is an epoch that ended.
-      document.broadcastStateless(JSON.stringify({ type: 'released' }));
-      hocuspocus.closeConnections(name);
-      await letGo(name);
+    drop,
+    async catchUp() {
+      await Promise.all([...hocuspocus.documents].map(async ([name, document]) => {
+        const [, id, epoch] = NAME.exec(name) ?? [];
+        const state = states.get(document);
+        if (!id || !state || !document.connections.size) return;
+        try {
+          const link = await store.link(id);
+          if (!link?.live || link.epoch !== Number(epoch)) return await drop({ id, epoch: Number(epoch) });
+          // Nothing new, and nothing of this process's own beyond a gap another process left.
+          if (link.seq === state.seen && link.gen === state.gen && state.top <= state.seen) return;
+          const stored = await store.document(id, link.epoch);
+          if (stored) take(document, state, stored);
+          else await lost(link);
+        } catch (error) {
+          console.warn(`[live-builtin] Catching live note ${id} up with the store failed: ${error instanceof Error ? error.constructor.name : 'error'}. It is tried again.`);
+        }
+      }));
     },
     async shutdown() {
       await Promise.all(queues.values());
       await Promise.all([...hocuspocus.documents.keys()].map(letGo));
     },
+    hocuspocus,
   };
 }
