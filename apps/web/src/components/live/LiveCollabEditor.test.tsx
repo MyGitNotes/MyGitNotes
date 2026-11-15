@@ -15,7 +15,7 @@ interface FakeConfig {
   name: string;
   url: string;
   document: Y.Doc;
-  awareness: { clientID: number; };
+  awareness: import('y-protocols/awareness').Awareness;
   token: () => Promise<string>;
   onStatus?: (event: { status: string; }) => void;
   onSynced?: (event: { state: boolean; }) => void;
@@ -23,6 +23,7 @@ interface FakeConfig {
   onAwarenessChange?: (event: { states: { clientId: number; user?: { name?: string; }; }[]; }) => void;
   onStateless?: (event: { payload: string; }) => void;
   onAuthenticationFailed?: (event: { reason: string; }) => void;
+  onAuthenticated?: (event: { scope: string; }) => void;
 }
 const fake = vi.hoisted(() => ({ providers: [] as { configuration: FakeConfig; destroyed: boolean; destroy: () => void; }[], order: [] as string[] }));
 vi.mock('@hocuspocus/provider', () => ({
@@ -120,6 +121,20 @@ describe('the bar', () => {
     expect(screen.getByText('3 editing')).toBeInTheDocument();
     // No 「在新分頁開啟」: the note is edited here.
     expect(screen.queryByRole('link', { name: 'Open in a new tab' })).toBeNull();
+  });
+
+  it('announces the tab in awareness on every connect, so the others count it before it moves a cursor', async () => {
+    await open();
+    const { awareness, document } = provider().configuration;
+    // A state at the clock the server last saw is dropped: the first state's clock is 0, a reconnect's is the one before.
+    const clock = () => awareness.meta.get(document.clientID)?.clock ?? 0;
+    const before = clock();
+    emit(config => config.onAuthenticated?.({ scope: 'read-write' }));
+    expect(clock()).toBeGreaterThan(before);
+    expect(awareness.getLocalState()).not.toBeNull();
+    const again = clock();
+    emit(config => config.onAuthenticated?.({ scope: 'read-write' }));
+    expect(clock()).toBeGreaterThan(again);
   });
 
   it('warns before the page is left while changes are not saved', async () => {
