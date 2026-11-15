@@ -1,6 +1,6 @@
 import { type NoteListItem } from '@mygitnotes/core/note-query';
 import type { NoteItem } from '../lib/types.js';
-import type { OpenPlacement } from '../lib/use-note-focus.js';
+import type { OpenPlacement, OpenResult } from '../lib/use-note-focus.js';
 import type { WorkspaceState } from './workspace-state.js';
 import type { useFocusPanes } from './useFocusPanes.js';
 import type { useNoteActions } from './useNoteActions.js';
@@ -13,13 +13,15 @@ interface Params {
   setAddingToFocus: ReturnType<typeof useFocusPanes>['setAddingToFocus'];
   /** Whether a note is a template file of its notebook, which opens in zoom only and never in a Focus pane. */
   isTemplate?: (note: Pick<NoteListItem, 'notebookId' | 'path'>) => boolean;
+  /** Runs an open of the note at a path in the Focus, so the address bar can name it in a new history entry. */
+  trackOpen?: (path: string, open: () => Promise<OpenResult>) => Promise<OpenResult>;
 }
 
-export function useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus, isTemplate }: Params) {
+export function useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus, isTemplate, trackOpen = (_path, open) => open() }: Params) {
   /** In a displayed Focus a note of this notebook opens in a pane: the active one, or `source` or beside it per `placement`; false leaves it to zoom. */
   const openInFocus = async (note: NoteListItem, source?: string, placement?: OpenPlacement) => {
     if (!noteFocus.shown || note.notebookId !== selectedNotebookId || isTemplate?.(note)) return false;
-    const result = await noteFocus.openNote(note.path, source, placement);
+    const result = await trackOpen(note.path, () => noteFocus.openNote(note.path, source, placement));
     if (result === 'opened') setFocusNarrowView('focus');
     return result === 'opened' || result === 'blocked';
   };

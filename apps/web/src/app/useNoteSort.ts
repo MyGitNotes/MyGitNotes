@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { NotebookConfig } from '../lib/types.js';
 import { readFilterQuery } from '../lib/filter-query.js';
+import { focusNoteState } from '../lib/routes.js';
 import { getNotebookSort, getStoredGlobalSort, metadataSortKey, resolveNoteSort, saveNotebookSort, type SortConfig, type SortField, type SortOrder } from '../lib/note-sort.js';
 
 /**
@@ -34,7 +35,7 @@ export function useNoteSort(notebookKey: string, notebook?: Pick<NotebookConfig,
     const query = new URLSearchParams(location.search);
     query.set('sortField', field);
     query.set('sortOrder', newOrder);
-    navigate({ pathname: location.pathname, search: query.toString() });
+    navigate({ pathname: location.pathname, search: query.toString() }, { state: focusNoteState(location.state) });
   };
 
   return { sortField, sortOrder, handleSortChange, metadataSortFields };

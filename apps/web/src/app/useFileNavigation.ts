@@ -3,7 +3,7 @@ import type { FolderAction } from '../components/FolderActions.js';
 import { type NoteListItem } from '@mygitnotes/core/note-query';
 import type { FilterControls } from '../lib/filter-controls.js';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { noteRoute, parseWorkspaceRoute } from '../lib/routes.js';
+import { focusNoteState, noteRoute, parseWorkspaceRoute } from '../lib/routes.js';
 import React from 'react';
 import { readNote } from '../lib/api.js';
 import { useNoteEditorRegistry } from '../lib/note-editing.js';
@@ -65,7 +65,8 @@ export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDra
     if (editorRoute.note) {
       if (nb && result.pathMap[previous]) {
         setEditingNote(null);
-        navigate(noteRoute(nb.id, result.pathMap[previous].slice(nb.root.length + 1)) + location.search, { replace: true });
+        // The address of a note the Focus shows stays one at the note's new path.
+        navigate(noteRoute(nb.id, result.pathMap[previous].slice(nb.root.length + 1)) + location.search, { replace: true, state: focusNoteState(location.state) });
         setFileDialog(undefined);
       } else if (nb) {
         try {

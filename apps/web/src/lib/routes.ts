@@ -125,6 +125,22 @@ export function noteReturnRoute(search: string, notebook: string, folder: string
   return notebookRoute(notebook, folder) + (query.size ? '?' + query.toString() : '');
 }
 
+/** The history state of an entry whose note route is the address of the note the Focus showed, not of zoom. */
+export const FOCUS_NOTE_STATE = { focusNote: true } as const;
+/** Whether a history entry is the address of a note shown in the Focus. */
+export const isFocusNoteState = (state: unknown) => (state as { focusNote?: unknown; } | null)?.focusNote === true;
+/** The state to keep when the URL of a Focus note's address changes (its query, or the note's path in a rename): the mark of a Focus address, else none. */
+export const focusNoteState = (state: unknown) => isFocusNoteState(state) ? FOCUS_NOTE_STATE : null;
+/**
+ * The page a URL shows, for state that lasts while that page does: a note route with no `returnTo` or `zoom` is the
+ * address of a note in the Focus of its notebook's page, so moving between the Focus's notes stays on that page.
+ */
+export function pageOf(pathname: string, search: string): string {
+  const query = new URLSearchParams(search);
+  const entry = matchPath('/notebooks/:notebook/notes/*', pathname.replace(/\/+$/, ''));
+  return entry && !query.has('returnTo') && !query.has('zoom') ? `/notebooks/${entry.params.notebook}` : pathname;
+}
+
 // The notes a reader opened on the way to the current one, kept in history state so `returnTo` stays
 // the browse view behind the editor; a history entry with no trail closes to `returnTo` as before.
 export function noteTrail(state: unknown): string[] {

@@ -10,10 +10,10 @@ vi.mock('../lib/api.js', () => ({ fetchAssets: vi.fn(async () => []) }));
 const config = { notebooks: [{ id: 'life', root: 'notes/life' }] } as never;
 const note = (name: string) => ({ path: `notes/life/${name}.md`, notebookId: 'life' } as NoteListItem);
 
-function open(pathname: string, search: string, state: unknown, target: NoteListItem) {
+function open(pathname: string, search: string, state: unknown, target: NoteListItem, focusNoteRoute = false) {
   const navigate = vi.fn();
   const location = { pathname, search, hash: '', state, key: 'k' } as never;
-  const { result } = renderHook(() => useNoteActions({ activeTab: 'notes', editorRegistry: { flushEditors: async () => true } as never, setEditingNote: () => {}, config, location, editorRoute: parseWorkspaceRoute(pathname, search), returnTo: '/notes/life', selectedFolder: null, selectedNotebookId: 'life', navigate, setAssets: () => {} }));
+  const { result } = renderHook(() => useNoteActions({ activeTab: 'notes', editorRegistry: { flushEditors: async () => true } as never, setEditingNote: () => {}, config, location, editorRoute: parseWorkspaceRoute(pathname, search), focusNoteRoute, returnTo: '/notes/life', selectedFolder: null, selectedNotebookId: 'life', navigate, setAssets: () => {} }));
   return { navigate, run: () => result.current.handleOpenNote(target) };
 }
 
@@ -36,4 +36,12 @@ it('drops the ?zoom request of a note opened from a zoom link, since the zoom it
   const url = new URL(navigate.mock.calls[0]![0] as string, 'https://workspace.invalid');
   expect(url.searchParams.has('zoom')).toBe(false);
   expect(url.searchParams.get('returnTo')).toBe('/notes/life');
+});
+
+it('zooms a note from the address of the Focus as from the notebook page: closing returns to the browse view, where the address follows the Focus again', async () => {
+  const { navigate, run } = open('/notebooks/life/notes/one.md', '?q=draft', { focusNote: true }, note('one'), true);
+  await run();
+  const [target, options] = navigate.mock.calls[0]! as [string, unknown];
+  expect(new URL(target, 'https://workspace.invalid').searchParams.get('returnTo')).toBe('/notes/life');
+  expect(options).toEqual({ replace: false, state: null });
 });
