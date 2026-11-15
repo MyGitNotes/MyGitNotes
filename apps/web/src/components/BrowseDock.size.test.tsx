@@ -76,11 +76,12 @@ afterAll(() => {
   if (originalLeft) Object.defineProperty(HTMLElement.prototype, 'offsetLeft', originalLeft);
 });
 
-/** What a browser reports after layout: every observed element at its current size. */
-function observe() {
-  act(() => {
+/** What a browser reports after layout: every observed element at its current size, each callback followed by its microtasks. */
+async function observe() {
+  await act(async () => {
     for (const { callback, targets, observer } of Array.from(observers)) {
       callback([...targets].map(target => ({ target, borderBoxSize: [{ inlineSize: widthOf(target as HTMLElement), blockSize: 800 }], contentBoxSize: [], devicePixelContentBoxSize: [], contentRect: {} as DOMRectReadOnly })), observer);
+      await Promise.resolve();
     }
   });
 }
@@ -88,22 +89,22 @@ const dockWidth = () => Math.round(widthOf(document.querySelector<HTMLElement>('
 /* eslint-disable-next-line react/no-children-prop -- The test passes children as part of the props contract. */
 const dock = (size: number, onSizeChange: (size: number) => void = () => {}) => createElement(BrowseDock, { placement: 'left', size, onSizeChange, collapsed: false, narrow: false, narrowView: 'focus', browse: createElement('p', null, 'browse'), children: createElement('p', null, 'focus') });
 
-it('opens at the stored width, whatever the window', () => {
+it('opens at the stored width, whatever the window', async () => {
   for (const width of [1388, 1228]) {
     groupWidth = width;
     const { unmount } = render(dock(288));
-    observe();
+    await observe();
     expect(dockWidth()).toBe(288);
     unmount();
   }
 });
 
-it('keeps its width when the space beside it grows, as when the sidebar folds away after the dock opens', () => {
+it('keeps its width when the space beside it grows, as when the sidebar folds away after the dock opens', async () => {
   groupWidth = 1132;
   render(dock(288));
-  observe();
+  await observe();
   groupWidth = 1388;
-  observe();
+  await observe();
   expect(dockWidth()).toBe(288);
 });
 
@@ -113,25 +114,25 @@ it('keeps its width when the space beside it grows, as when the sidebar folds aw
  * proportions it last had, so the stored width that reached the dock after it opened was ignored and the dock kept its first width,
  * scaled to the space it had by then.
  */
-it('takes a stored width that arrives after it opened', () => {
+it('takes a stored width that arrives after it opened', async () => {
   const { rerender } = render(dock(350));
-  observe();
+  await observe();
   expect(dockWidth()).toBe(350);
   rerender(dock(288));
-  observe();
+  await observe();
   expect(dockWidth()).toBe(288);
 });
 
-it('takes a stored width that arrives as the space beside it grows, before the browser reports the new size', () => {
+it('takes a stored width that arrives as the space beside it grows, before the browser reports the new size', async () => {
   groupWidth = 1132;
   const { rerender } = render(dock(350));
-  observe();
+  await observe();
   groupWidth = 1388;
   rerender(dock(288));
-  observe();
+  await observe();
   expect(dockWidth()).toBe(288);
   groupWidth = 1228;
-  observe();
+  await observe();
   expect(dockWidth()).toBe(288);
 });
 
@@ -142,7 +143,7 @@ it('takes a stored width that arrives as the space beside it grows, before the b
  * takes the wider one as the size it last knew, so its own observer sees nothing to correct.
  */
 for (const stored of [288, 400]) {
-  it(`opens at the stored ${stored} px when the sidebar folds away while the dock mounts`, () => {
+  it(`opens at the stored ${stored} px when the sidebar folds away while the dock mounts`, async () => {
     function SidebarFoldsOnMount() {
       useEffect(() => {
         groupWidth = 1388;
@@ -151,28 +152,28 @@ for (const stored of [288, 400]) {
     }
     groupWidth = 1141;
     render(createElement('div', null, dock(stored), createElement(SidebarFoldsOnMount)));
-    observe();
+    await observe();
     expect(dockWidth()).toBe(stored);
     groupWidth = 1228;
-    observe();
+    await observe();
     expect(dockWidth()).toBe(stored);
   });
 }
 
-it('keeps a stored width that arrived after it opened when the window is resized', () => {
+it('keeps a stored width that arrived after it opened when the window is resized', async () => {
   const { rerender } = render(dock(288));
-  observe();
+  await observe();
   rerender(dock(400));
-  observe();
+  await observe();
   groupWidth = 1228;
-  observe();
+  await observe();
   expect(dockWidth()).toBe(400);
   groupWidth = 1388;
-  observe();
+  await observe();
   expect(dockWidth()).toBe(400);
 });
 
-it('moves with the keyboard and stores where it stopped', () => {
+it('moves with the keyboard and stores where it stopped', async () => {
   const stored: number[] = [];
   function Stateful() {
     const [size, setSize] = useState(288);
@@ -182,12 +183,12 @@ it('moves with the keyboard and stores where it stopped', () => {
     });
   }
   render(createElement(Stateful));
-  observe();
+  await observe();
   const separator = screen.getByRole('separator');
   act(() => {
     fireEvent.keyDown(separator, { key: 'ArrowRight' });
   });
-  observe();
+  await observe();
   const moved = dockWidth();
   expect(moved).toBeGreaterThan(288);
   expect(stored.at(-1)).toBe(moved);
