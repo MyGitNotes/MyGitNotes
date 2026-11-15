@@ -48,9 +48,18 @@ interface Harness {
   focus: ReturnType<typeof useFakeFocus>;
   navigate: ReturnType<typeof useNavigate>;
   browse: (path: string) => Promise<void>;
+  /** The person clicks a link to the note at `path` in a note `pane` shows. */
+  link: (path: string, pane: string) => Promise<void>;
   setNarrow: (view: 'focus' | 'browse') => void;
   narrow: 'focus' | 'browse';
   handleOpenNote: ReturnType<typeof vi.fn>;
+}
+
+/** A link in a note the Focus pane `pane` shows. */
+function linkIn(pane: string) {
+  const anchor = document.createElement('a');
+  anchor.dataset.focusPane = pane;
+  return anchor;
 }
 
 const existing = new Set([at('a.md'), at('b.md'), at('c.md'), at('renamed.md'), at('.templates/reading.md'), LANE]);
@@ -67,8 +76,8 @@ function Page({ report, focus: initial, options }: { report: (harness: Harness) 
   const routeError = routedPath && !existing.has(routedPath) ? 'route.noteNotFound' : '';
   const [handleOpenNote] = useState(() => vi.fn(async () => true));
   const { trackOpen } = useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus: focus.noteFocus, activeNotePath: focus.activeNotePath, focusNarrowView: narrow, selectedNotebookId: 'life', notebookRoot: ROOT, returnTo, browsing: editorRoute.tab === 'notes', setFocusNarrowView: setNarrow, isTemplate: note => note.path.includes('/.templates/') });
-  const { openFromBrowse } = useFocusNoteNavigation({ noteFocus: focus.noteFocus, selectedNotebookId: 'life', setFocusNarrowView: setNarrow, handleOpenNote: handleOpenNote as never, setAddingToFocus: vi.fn(), isTemplate: note => note.path.includes('/.templates/'), trackOpen });
-  const harness: Harness = { url: location.pathname + location.search + location.hash, zoomed: Boolean(routedNote) && !routeError && !link.inFocus, focus, navigate, browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never), setNarrow, narrow, handleOpenNote };
+  const { openFromBrowse, openLink } = useFocusNoteNavigation({ noteFocus: focus.noteFocus, selectedNotebookId: 'life', setFocusNarrowView: setNarrow, handleOpenNote: handleOpenNote as never, setAddingToFocus: vi.fn(), isTemplate: note => note.path.includes('/.templates/'), trackOpen });
+  const harness: Harness = { url: location.pathname + location.search + location.hash, zoomed: Boolean(routedNote) && !routeError && !link.inFocus, focus, navigate, browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never), link: (path, pane) => openLink({ notebookId: 'life', path, title: path } as never, undefined, linkIn(pane)), setNarrow, narrow, handleOpenNote };
   useLayoutEffect(() => {
     report(harness);
   });
@@ -88,6 +97,13 @@ function open(entries: (string | { pathname: string; search?: string; hash?: str
   return { api, view };
 }
 const back = (api: { current: Harness; }) => act(() => void api.current.navigate(-1));
+const forward = (api: { current: Harness; }) => act(() => void api.current.navigate(1));
+/** The address names the note `name` and the Focus shows its tab: the active pane's shown note is the one the URL names. */
+const showsNote = async (api: { current: Harness; }, name: string) => {
+  await waitFor(() => expect(api.current.focus.activeNotePath).toBe(at(name)));
+  expect(api.current.url).toBe(`/notebooks/life/notes/${name}`);
+  expect(api.current.zoomed).toBe(false);
+};
 /** The person clicks the tab of `path` in `pane`. */
 const show = (api: { current: Harness; }, pane: string, path: string) => (api.current.focus.noteFocus as { show: (pane: string, key: string) => Promise<void>; }).show(pane, `note:${path}`);
 
@@ -213,6 +229,67 @@ describe('Back', () => {
     expect(api.current.zoomed).toBe(false);
     await back(api);
     expect(api.current.url).toBe('/notebooks/life');
+  });
+  it('returns to the note link the page was loaded on after the dock opened another note, every time', async () => {
+    const { api } = open(['/notebooks/life/notes/a.md']);
+    await showsNote(api, 'a.md');
+    await act(() => api.current.browse(at('b.md')));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/b.md'));
+    await back(api);
+    await showsNote(api, 'a.md');
+    await forward(api);
+    await showsNote(api, 'b.md');
+    await back(api);
+    await showsNote(api, 'a.md');
+    await act(() => api.current.browse(at('c.md')));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/c.md'));
+    await back(api);
+    await showsNote(api, 'a.md');
+    expect(api.current.focus.state.panes.p1).toEqual([at('a.md'), at('b.md'), at('c.md')]);
+    expect(api.current.focus.openNote).toHaveBeenCalledTimes(3);
+  });
+  it('answers a return to an entry it answered before, whether the note was opened from the list, the dock or a link', async () => {
+    const { api } = open(['/notebooks/life']);
+    await act(() => api.current.browse(at('a.md')));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/a.md'));
+    await act(() => api.current.browse(at('b.md')));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/b.md'));
+    await back(api);
+    await showsNote(api, 'a.md');
+    await act(() => api.current.link(at('c.md'), 'p1'));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/c.md'));
+    await back(api);
+    await showsNote(api, 'a.md');
+    await forward(api);
+    await showsNote(api, 'c.md');
+    await back(api);
+    await showsNote(api, 'a.md');
+    await act(() => api.current.browse(at('b.md')));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/b.md'));
+    await back(api);
+    await showsNote(api, 'a.md');
+    await back(api);
+    expect(api.current.url).toBe('/notebooks/life');
+    await forward(api);
+    await showsNote(api, 'a.md');
+    await forward(api);
+    await showsNote(api, 'b.md');
+    expect(api.current.focus.state.panes.p1).toEqual([at('a.md'), at('b.md'), at('c.md')]);
+    expect(api.current.focus.openNote).toHaveBeenCalledTimes(4);
+  });
+  it('after Back, keeps the tab the person switches to and replaces the entry with its note', async () => {
+    const { api } = open(['/notebooks/life']);
+    await act(() => api.current.browse(at('a.md')));
+    await act(() => api.current.browse(at('b.md')));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/b.md'));
+    await back(api);
+    await showsNote(api, 'a.md');
+    await act(() => show(api, 'p1', at('b.md')));
+    await showsNote(api, 'b.md');
+    await back(api);
+    expect(api.current.url).toBe('/notebooks/life');
+    await forward(api);
+    await showsNote(api, 'b.md');
   });
   it('reselects the tab in the pane that holds it', async () => {
     const { api } = open(['/notebooks/life'], showing({ p1: [at('a.md')], p2: [at('b.md')] }, 'p1'));
