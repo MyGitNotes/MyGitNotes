@@ -1,5 +1,5 @@
-import { type CSSProperties, type ReactNode, useRef } from 'react';
-import { Group, Panel, type PanelSize, Separator } from 'react-resizable-panels';
+import { type CSSProperties, type ReactNode, useLayoutEffect, useRef } from 'react';
+import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels';
 import { PanelLeftClose, PanelTopClose } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useFoldAnimation } from '../lib/use-fold-animation.js';
@@ -42,9 +42,17 @@ export function BrowseDockToggle({ placement, collapsed, onCollapsedChange }: { 
 }
 
 export function BrowseDock({ placement, size, onSizeChange, collapsed, narrow, narrowView, browse, children }: BrowseDockProps): JSX.Element {
-  // Reported continuously while dragging; onSizeChange only fires once the drag settles.
-  const lastResizePx = useRef(size);
+  const groupElement = useRef<HTMLDivElement>(null);
   const animating = useFoldAnimation(collapsed);
+  const { t } = useTranslation();
+  const browsePanel = usePanelRef();
+
+  // The library reads defaultSize only when the panel first registers. A size that arrives later (the notebook's stored view can reach
+  // the dock after it opened) re-registers the panel, and the group puts back the proportions it last had: the dock kept its first width,
+  // scaled to the space it had by then. Resizing here makes it follow the stored size.
+  useLayoutEffect(() => {
+    browsePanel.current?.resize(`${size}px`);
+  }, [browsePanel, size, placement, narrow]);
 
   if (narrow) {
     return <div className='browse-dock' data-placement={placement} data-narrow='true'>{narrowView === 'browse' ? <div className='workspace-scroll browse-dock-scroll'>{browse}</div> : <div className='browse-dock-focus'>{children}</div>}</div>;
@@ -65,27 +73,23 @@ export function BrowseDock({ placement, size, onSizeChange, collapsed, narrow, n
         id={groupId}
         orientation={orientation}
         className='browse-dock-group'
-        onLayoutChanged={(_layout, meta) => {
-          if (meta.isUserInteraction) onSizeChange(lastResizePx.current);
+        elementRef={groupElement}
+        onLayoutChanged={(layout, meta) => {
+          // Fires once a drag settles and on each key press; the size comes from the layout it reports, since the panel's measured size
+          // trails it until the browser lays the panel out again (a key press stored the width from before it).
+          const share = layout[`${groupId}-browse`];
+          if (!meta.isUserInteraction || share === undefined || !groupElement.current) return;
+          const panels = [...groupElement.current.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.hasAttribute('data-panel'));
+          const extent = panels.reduce((sum, panel) => sum + (orientation === 'horizontal' ? panel.offsetWidth : panel.offsetHeight), 0);
+          onSizeChange(Math.round(share * extent / 100));
         }}
       >
-        <Panel
-          id={`${groupId}-browse`}
-          defaultSize={`${size}px`}
-          minSize={`${minSize}px`}
-          maxSize={`${Math.round(maxRatio * 100)}%`}
-          groupResizeBehavior='preserve-pixel-size'
-          onResize={(panelSize: PanelSize) => {
-            if (panelSize?.inPixels) lastResizePx.current = Math.round(panelSize.inPixels);
-          }}
-          className='browse-dock-panel'
-          {...(collapsed ? { inert: '' } : {})}
-        >
+        <Panel id={`${groupId}-browse`} panelRef={browsePanel} defaultSize={`${size}px`} minSize={`${minSize}px`} maxSize={`${Math.round(maxRatio * 100)}%`} groupResizeBehavior='preserve-pixel-size' className='browse-dock-panel' {...(collapsed ? { inert: '' } : {})}>
           <div className='browse-dock-panel-content'>
             <div className='workspace-scroll browse-dock-scroll'>{browse}</div>
           </div>
         </Panel>
-        <Separator className='workspace-splitter browse-dock-splitter' disabled={collapsed} />
+        <Separator className='workspace-splitter browse-dock-splitter' disabled={collapsed} aria-label={t(placement === 'left' ? 'focus.resizeBrowseWidth' : 'focus.resizeBrowseHeight')} />
         <Panel id={`${groupId}-focus`} groupResizeBehavior='preserve-relative-size' className='browse-dock-focus-panel'>
           <div className='browse-dock-focus'>{children}</div>
         </Panel>

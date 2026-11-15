@@ -2019,6 +2019,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'focusList.allNotebooks': '所有筆記本',
   'focus.collapseBrowseAndHeader': '收合瀏覽區與導覽列',
   'focus.expandBrowseAndHeader': '展開瀏覽區與導覽列',
+  'focus.resizeBrowseWidth': '調整瀏覽區的寬度',
+  'focus.resizeBrowseHeight': '調整瀏覽區的高度',
   'focus.paneNumber': '窗格 {number}',
   'focus.currentPane': '目前位置',
   'focus.paneTabs': '窗格 {number} 的 tab',

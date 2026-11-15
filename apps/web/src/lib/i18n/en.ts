@@ -2018,6 +2018,8 @@ export const en = {
   'focusList.allNotebooks': 'All notebooks',
   'focus.collapseBrowseAndHeader': 'Collapse browse panel and header',
   'focus.expandBrowseAndHeader': 'Expand browse panel and header',
+  'focus.resizeBrowseWidth': 'Resize browse panel width',
+  'focus.resizeBrowseHeight': 'Resize browse panel height',
   'focus.paneNumber': 'Pane {number}',
   'focus.currentPane': 'Current',
   'focus.paneTabs': 'Tabs in pane {number}',

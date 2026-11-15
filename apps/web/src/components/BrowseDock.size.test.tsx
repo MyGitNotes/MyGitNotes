@@ -51,9 +51,19 @@ beforeEach(() => {
       observers.delete(this.record);
     }
   } as unknown as typeof ResizeObserver;
-  Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get(this: HTMLElement) { return widthOf(this); } });
+  Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+    configurable: true,
+    get(this: HTMLElement) {
+      return widthOf(this);
+    },
+  });
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 800 });
-  Object.defineProperty(HTMLElement.prototype, 'offsetLeft', { configurable: true, get(this: HTMLElement) { return leftOf(this); } });
+  Object.defineProperty(HTMLElement.prototype, 'offsetLeft', {
+    configurable: true,
+    get(this: HTMLElement) {
+      return leftOf(this);
+    },
+  });
 });
 afterEach(() => {
   cleanup();
@@ -69,14 +79,14 @@ afterAll(() => {
 /** What a browser reports after layout: every observed element at its current size. */
 function observe() {
   act(() => {
-    for (const { callback, targets, observer } of [...observers]) {
+    for (const { callback, targets, observer } of Array.from(observers)) {
       callback([...targets].map(target => ({ target, borderBoxSize: [{ inlineSize: widthOf(target as HTMLElement), blockSize: 800 }], contentBoxSize: [], devicePixelContentBoxSize: [], contentRect: {} as DOMRectReadOnly })), observer);
     }
   });
 }
 const dockWidth = () => Math.round(widthOf(document.querySelector<HTMLElement>('.browse-dock-group > [data-panel]')!));
 /* eslint-disable-next-line react/no-children-prop -- The test passes children as part of the props contract. */
-const dock = (size: number) => createElement(BrowseDock, { placement: 'left', size, onSizeChange: () => {}, collapsed: false, narrow: false, narrowView: 'focus', browse: createElement('p', null, 'browse'), children: createElement('p', null, 'focus') });
+const dock = (size: number, onSizeChange: (size: number) => void = () => {}) => createElement(BrowseDock, { placement: 'left', size, onSizeChange, collapsed: false, narrow: false, narrowView: 'focus', browse: createElement('p', null, 'browse'), children: createElement('p', null, 'focus') });
 
 it('opens at the stored width, whatever the window', () => {
   for (const width of [1388, 1228]) {
@@ -129,8 +139,10 @@ it('moves with the keyboard and stores where it stopped', () => {
   const stored: number[] = [];
   function Stateful() {
     const [size, setSize] = useState(288);
-    /* eslint-disable-next-line react/no-children-prop -- The test passes children as part of the props contract. */
-    return createElement(BrowseDock, { placement: 'left', size, onSizeChange: next => { stored.push(next); setSize(next); }, collapsed: false, narrow: false, narrowView: 'focus', browse: createElement('p', null, 'browse'), children: createElement('p', null, 'focus') });
+    return dock(size, next => {
+      stored.push(next);
+      setSize(next);
+    });
   }
   render(createElement(Stateful));
   observe();
