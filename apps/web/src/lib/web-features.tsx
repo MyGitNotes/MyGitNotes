@@ -145,6 +145,25 @@ export interface SignInIntro {
   privacy?: string;
 }
 
+/** A link an edition adds to the notes sidebar, its icon rail and a phone's filter sheet. */
+export interface SidebarLink {
+  id: string;
+  /** Already in the person's language: the row's text, and the rail icon's name and tooltip. */
+  label: string;
+  /**
+   * An `http:` or `https:` URL, which opens in a new tab without an opener, or a path of this app (`/…`), which the
+   * app's router opens in place. Any other link (`javascript:`, `data:`, `//host`, a relative path) is dropped.
+   */
+  href: string;
+  /** Left out, a link icon. */
+  icon?: LucideIcon;
+}
+
+/** A sidebar link whose `href` was accepted: `external` for a URL, else an in-app path. */
+export interface ShownSidebarLink extends SidebarLink {
+  external: boolean;
+}
+
 /**
  * What another edition adds to the web app at build time (see docs/adr/0002-open-core-editions.md).
  * Slots are added here when an edition needs one; without features the app renders as the community edition.
@@ -210,6 +229,12 @@ export interface WebFeature {
    * edition's own translation.
    */
   signInIntro?: () => SignInIntro;
+  /**
+   * Links shown in a small group at the bottom of the notes sidebar, on its icon rail and in a phone's filter sheet,
+   * such as an older list of notes. It is called while those render, as `signInIntro` is, so it may use hooks such as
+   * the edition's own translation. Every feature's links show, in feature order; without any the sidebar is unchanged.
+   */
+  sidebarLinks?: () => readonly SidebarLink[];
 }
 
 const FeaturesContext = createContext<readonly WebFeature[]>([]);
@@ -228,6 +253,27 @@ export function useSignInNotice(): ReactNode | undefined {
 
 export function useSettingsSections(): FeatureSettingsSection[] {
   return useContext(FeaturesContext).flatMap(feature => feature.settingsSections ?? []);
+}
+
+const LINK_BASE = 'http://sidebar-link.invalid';
+
+/** The link with its `href` normalized, or undefined for one that is neither an http(s) URL nor a path of this app. */
+function acceptSidebarLink(link: SidebarLink): ShownSidebarLink | undefined {
+  let url: URL;
+  try {
+    // A path is resolved against a placeholder origin it must keep: the parser drops tabs and newlines as a browser
+    // does, so neither `//host` nor `/\t/host` passes as a path. Anything else must be a whole URL on its own.
+    url = link.href.startsWith('/') ? new URL(link.href, LINK_BASE) : new URL(link.href);
+  } catch {
+    return undefined;
+  }
+  if (link.href.startsWith('/')) return url.origin === LINK_BASE ? { ...link, href: `${url.pathname}${url.search}${url.hash}`, external: false } : undefined;
+  return url.protocol === 'http:' || url.protocol === 'https:' ? { ...link, href: url.href, external: true } : undefined;
+}
+
+/** Every feature's sidebar links whose `href` is safe to follow, in feature order. */
+export function useSidebarLinks(): ShownSidebarLink[] {
+  return useContext(FeaturesContext).flatMap(feature => feature.sidebarLinks?.() ?? []).flatMap(link => acceptSidebarLink(link) ?? []);
 }
 
 export function useAgentWorkspaceSections(): RenderAgentWorkspaceSection[] {

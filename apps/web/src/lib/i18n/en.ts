@@ -1149,6 +1149,8 @@ export const en = {
   'sidebar.compilations': 'Compilations',
   'sidebar.compilationCount': '{count} compilations',
   'sidebar.notebooks': 'Notebooks',
+  'sidebar.links': 'Links',
+  'sidebar.linkNewTab': '{label} (opens in a new tab)',
   'sidebar.status': 'Status',
   'sidebar.statusFilter': 'Status Filter',
   'sidebar.allStatuses': 'All Statuses',
