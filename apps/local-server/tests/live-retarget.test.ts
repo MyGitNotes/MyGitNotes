@@ -168,6 +168,20 @@ describe('POST /api/live/retarget', () => {
     expect(files.get('notes/life/a.md')).toBe('---\ntitle: A\n---\nGit body.\n');
   });
 
+  it("tells the web where a draft files, in its live field, only where the adapter can retarget", async () => {
+    await start();
+    const pending = await draft({ content: 'A thought.\n' });
+    await retarget(pending.path, { folder: 'projects' });
+    const live = async (file: string) => (await call('GET', `/api/notes/read?notebookId=notes~life&path=${encodeURIComponent(file)}`)).body.note.live;
+    expect(await live(pending.path)).toMatchObject({ pending: true, pathRule: 'projects/{{title}}.md' });
+    await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: 'notes/life/a.md' });
+    expect(Object.keys(await live('notes/life/a.md'))).not.toContain('pathRule');
+    // An adapter without retarget answers as 0.19 did.
+    await restart(make({}));
+    const plain = await draft();
+    expect(Object.keys(await live(plain.path)).sort()).toEqual(['activeEditors', 'editorUrl', 'pending', 'since']);
+  });
+
   it('retargets a draft someone has open in the editor', async () => {
     await start();
     const pending = await draft();
