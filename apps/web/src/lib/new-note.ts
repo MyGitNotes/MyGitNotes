@@ -12,11 +12,12 @@ export interface NewNoteDraft {
 /**
  * Builds a new note's initial content, metadata and status. A template supplies the content
  * and any extra metadata fields, but the tags and status the user confirmed in the dialog
- * always win over whatever the re-rendered template would otherwise set.
+ * always win over whatever the re-rendered template would otherwise set. Without a template
+ * the note is its heading and `body`, the reader's own language's prompt to write.
  */
-export function buildNewNoteDraft(params: { slug: string; title: string; tags: string[]; status: string; template?: RenderedNoteTemplate; }): NewNoteDraft {
-  const { slug, title, tags, status, template } = params;
-  if (!template) return { content: `# ${title}\n\nWrite your note here.\n`, metadata: { id: slug, title, tags }, status };
+export function buildNewNoteDraft(params: { slug: string; title: string; tags: string[]; status: string; body: string; template?: RenderedNoteTemplate; }): NewNoteDraft {
+  const { slug, title, tags, status, body, template } = params;
+  if (!template) return { content: `# ${title}\n\n${body}\n`, metadata: { id: slug, title, tags }, status };
   return { content: template.content, metadata: { id: slug, ...template.metadata, tags }, status };
 }
 

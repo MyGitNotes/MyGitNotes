@@ -419,7 +419,8 @@
 .notes-sidebar .space-y-1 > button > span:last-child { font-variant-numeric: tabular-nums; }
 .notes-sidebar .workspace-sidebar-scroll .space-y-1 > button > div { min-width: 0; }
 .notes-sidebar .workspace-sidebar-scroll button svg { flex-shrink: 0; }
-.sidebar-tags button { background: transparent; border-color: var(--workspace-divider) !important; font-size: 11px; }
+/* Tag chips and their menu buttons are flat; a primary action in a tag's rename or merge form keeps its fill. */
+.sidebar-tags button:not(.ui-button-primary) { background: transparent; border-color: var(--workspace-divider) !important; font-size: 11px; }
 .workspace-route { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .workspace-main, .workspace-content { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; padding: 0; overflow: hidden; background: var(--color-surface); }
 .workspace-page-header { flex: none; display: flex; align-items: center; gap: 12px; padding: 6px var(--workspace-padding); border-bottom: 1px solid var(--workspace-divider); }

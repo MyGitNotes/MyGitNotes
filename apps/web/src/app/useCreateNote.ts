@@ -101,7 +101,7 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       const template = opts.templateId ? renderBuiltinNoteTemplate(opts.templateId, title, t) : undefined;
       const status = opts.status || (typeof template?.metadata.status === 'string' && template.metadata.status) || newNoteStatuses[0];
       const tags = opts.tags || (opts.tag ? [opts.tag] : Array.isArray(template?.metadata.tags) ? template.metadata.tags.map(String) : []);
-      const draft = buildNewNoteDraft({ slug: UNTITLED_STEM, title, tags, status, template });
+      const draft = buildNewNoteDraft({ slug: UNTITLED_STEM, title, tags, status, body: t('createNote.body'), template });
       const { id: _id, ...metadata } = withNoteStatus(draft.metadata, draft.status);
       request = { notebookId: notebook.id, folder, title, content: serializeNoteFile(`${notebook.root}/${UNTITLED_STEM}.md`, metadata, draft.content, true, new Date()), clock };
     }
@@ -164,7 +164,7 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       const templateTags = Array.isArray(template?.metadata.tags) ? template.metadata.tags.map(String) : [];
       const status = opts.status || (typeof template?.metadata.status === 'string' && template.metadata.status) || newNoteStatuses[0];
       const tags = opts.tags || (opts.tag ? [opts.tag] : templateTags);
-      const draft = buildNewNoteDraft({ slug, title, tags, status, template });
+      const draft = buildNewNoteDraft({ slug, title, tags, status, body: t('createNote.body'), template });
       if (opts.initialLink && opts.initialLink.notebookId !== notebook.id) throw new Error(t('outline.changed'));
       const content = kind === 'outline' ? `- ${opts.initialLink ? noteMarkdownLink(notePath, opts.initialLink.path, opts.initialLink.title) : ''}` : draft.content;
       // A note takes its title from its heading, so editing the heading renames it; an outline has no heading to read.
