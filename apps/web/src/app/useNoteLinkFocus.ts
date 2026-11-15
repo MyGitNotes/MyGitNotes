@@ -136,6 +136,8 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
     // A folder the notebook route names travels in the query, as zoom's does, so leaving the note returns to it.
     const folder = matchPath('/notebooks/:notebook/folders/*', url.pathname)?.params['*'];
     if (folder) url.searchParams.set('folder', decodeURIComponent(folder));
+    // The note route names its notebook in the path, as zoom's does; a `?notebook=` the notebook route carries (the way back from Settings sets one) is not kept.
+    url.searchParams.delete('notebook');
     return noteRoute(selectedNotebookId, path.slice(notebookRoot.length + 1)) + url.search + location.hash;
   };
   /** Set while the person opens a note, so the address it gets is a new history entry. */
