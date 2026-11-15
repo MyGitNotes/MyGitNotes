@@ -31,14 +31,20 @@ export interface LiveCollabEditorProps {
   title?: string;
 }
 
+/** Why the server refused the tab's document; `other` for any reason this tab does not know. */
+type RefusedReason = 'too-large' | 'busy' | 'other';
+
+/** How a session ended under the tab: the note was checked in, the server refused it, or a call failed. */
+type Ending = { kind: 'released'; } | { kind: 'refused'; reason: RefusedReason; } | { kind: 'failed'; message: string; };
+
 type Phase =
   | { kind: 'open'; }
   | { kind: 'checking'; }
   | { kind: 'discarding'; }
   | { kind: 'released'; }
-  /** Released while this tab held typing the server never acknowledged: its text, offered to copy or download. */
-  | { kind: 'lost'; text: string; }
-  | { kind: 'refused'; reason: 'too-large' | 'busy'; }
+  /** The session ended while this tab held typing the server never acknowledged: its text, offered to copy or download. */
+  | { kind: 'lost'; text: string; ending: Ending; }
+  | { kind: 'refused'; reason: RefusedReason; }
   | { kind: 'discarded'; }
   /** The note stayed open (a check-in that did not release it, a kept draft) or a call failed: the person may go back. */
   | { kind: 'notice'; message: string; tone: 'status' | 'alert'; };
@@ -51,6 +57,8 @@ interface Connection {
   people: number;
 }
 const START: Connection = { status: 'connecting', synced: false, unsynced: 0, people: 1 };
+
+const REFUSALS: Record<RefusedReason, TranslationKey> = { 'too-large': 'live.tooLargeLive', busy: 'live.busy', other: 'live.socketRefused' };
 
 const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled' };
 
@@ -66,7 +74,8 @@ const downloadName = (title: string | undefined, path: string) => `${(title || p
  * ticket; the editor mounts once the document first synced. The bar says who is editing and whether every keystroke is
  * stored (已儲存 only once the server acknowledged it), and offers 「立即簽回」, 「捨棄草稿」 on a pending note, and 「關閉」.
  * A note checked in elsewhere ends the session: a tab with nothing unsaved reads it as checked in, one with unsaved typing
- * offers its text to copy or download, and its document is never merged into the reopened note.
+ * offers its text to copy or download, and its document is never merged into the reopened note. Every other end of a
+ * session (a refusal, a ticket that cannot be had) offers unsaved typing the same way.
  */
 export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onDiscarded, title }: LiveCollabEditorProps) {
   const { t } = useTranslation();
@@ -100,21 +109,21 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       return content;
     };
     stopRef.current = stop;
-    /** The note was checked in or discarded elsewhere: the tab's document is dropped, its unsaved text offered when it has any. */
-    const released = () => {
+    /** Ends the session: the tab's document is dropped, and its unsaved text offered when it has any, whatever ended it. */
+    const end = (ending: Ending) => {
       if (stopped) return;
       const unsynced = latest.current.connection.unsynced;
       const content = stop();
-      if (unsynced > 0) return setPhase({ kind: 'lost', text: content });
+      if (unsynced > 0) return setPhase({ kind: 'lost', text: content, ending });
+      if (ending.kind === 'refused') return setPhase({ kind: 'refused', reason: ending.reason });
+      if (ending.kind === 'failed') return setPhase({ kind: 'notice', message: ending.message, tone: 'alert' });
       setPhase({ kind: 'released' });
       latest.current.onRefetch();
       latest.current.onCheckedIn?.();
     };
-    const failed = (message: string) => {
-      if (stopped) return;
-      stop();
-      setPhase({ kind: 'notice', message, tone: 'alert' });
-    };
+    /** The note was checked in or discarded elsewhere. */
+    const released = () => end({ kind: 'released' });
+    const failed = (message: string) => end({ kind: 'failed', message });
     const { notebookId, path } = latest.current.checkout;
     void (async () => {
       let first: { ticket: string; document: string; };
@@ -166,10 +175,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
             return;
           }
           if (message.type === 'released') released();
-          else if (message.type === 'refused' && !stopped) {
-            stop();
-            setPhase({ kind: 'refused', reason: message.reason === 'too-large' ? 'too-large' : 'busy' });
-          }
+          else if (message.type === 'refused') end({ kind: 'refused', reason: message.reason === 'too-large' || message.reason === 'busy' ? message.reason : 'other' });
         },
         // A refused ticket is not retried: the note was checked in meanwhile, or the server refused this tab.
         onAuthenticationFailed: () => {
@@ -196,6 +202,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   const reopen = () => {
     setConnection(START);
     setCollab(null);
+    setCopied(false);
     setSession(current => current + 1);
     setPhase({ kind: 'open' });
   };
@@ -237,8 +244,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     if (phase.kind === 'discarded') (onDiscarded ?? onClose)();
     else onClose();
   };
-  /** Leaves the lost text for the read view of the checked-in note. */
-  const leaveLost = () => {
+  /** Leaves the lost text: for the read view of the checked-in note, or as 「關閉」 does when the note is still live. */
+  const leaveLost = (ending: Ending) => {
+    if (ending.kind !== 'released') return close();
     onRefetch();
     onCheckedIn?.();
   };
@@ -282,14 +290,20 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       {phase.kind === 'discarding' && <LoadingStatus className='live-editor-notice'>{t('live.discarding')}</LoadingStatus>}
       {phase.kind === 'released' && <p role='status' className='live-editor-notice'>{t('live.checkedIn')}</p>}
       {phase.kind === 'discarded' && <p role='status' className='live-editor-notice'>{t('live.discardedEmpty')}</p>}
-      {phase.kind === 'refused' && <p role='alert' className='live-editor-notice'>{t(phase.reason === 'too-large' ? 'live.tooLargeLive' : 'live.busy')}</p>}
+      {phase.kind === 'refused' && <p role='alert' className='live-editor-notice'>{t(REFUSALS[phase.reason])}</p>}
       {phase.kind === 'lost' && (
         <div role='alert' className='live-editor-notice'>
-          <p>{t('live.releasedOffline')}</p>
+          {phase.ending.kind === 'released' ? <p>{t('live.releasedOffline')}</p> : (
+            <>
+              <p>{phase.ending.kind === 'refused' ? t(REFUSALS[phase.ending.reason]) : phase.ending.message}</p>
+              <p>{t('live.unsavedMine')}</p>
+            </>
+          )}
           <div className='live-editor-notice-actions'>
             <Button size='small' variant='primary' onClick={() => void copy(phase.text)}>{t(copied ? 'live.copied' : 'live.copyMine')}</Button>
             <Button size='small' onClick={() => download(phase.text)}>{t('live.download')}</Button>
-            <Button size='small' onClick={leaveLost}>{t('common.close')}</Button>
+            {phase.ending.kind === 'failed' && <Button size='small' onClick={reopen}>{t('live.backToEditor')}</Button>}
+            <Button size='small' onClick={() => leaveLost(phase.ending)}>{t('common.close')}</Button>
           </div>
         </div>
       )}

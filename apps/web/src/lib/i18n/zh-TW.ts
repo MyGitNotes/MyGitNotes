@@ -2464,6 +2464,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.unsaved': '未儲存',
   'live.offline': '離線',
   'live.releasedOffline': '此筆記已簽回；你離線時的修改沒有存入。',
+  'live.unsavedMine': '你最後的修改沒有存入，可以複製或下載你的版本。',
   'live.copyMine': '複製我的版本',
   'live.copied': '已複製',
   'live.download': '下載',

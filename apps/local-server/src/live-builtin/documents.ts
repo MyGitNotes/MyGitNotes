@@ -46,7 +46,9 @@ export interface LiveDocuments {
    * then applied, so whoever is told it is saved was told the truth. An update the document already holds (a tab
    * sending it again after a reconnect) is taken without an append, and answers false. A `\r` or NUL it typed is taken
    * out again by an update of the server's own, so the text stays in normal form. An update that is not typing in the
-   * note's text is refused with `LiveUpdateRefusedError`, and nothing of it is stored.
+   * note's text is refused with `LiveUpdateRefusedError`, and nothing of it is stored. Typing that builds on what the
+   * document lacks first has the document brought up to the store; when the store lacks it too (it is still on its way
+   * from the tab), `LiveUpdateWaitingError` is thrown, and nothing of it is stored.
    */
   accept(link: LiveEpoch, update: Uint8Array, editor: EditorRef): Promise<boolean>;
   /** Keeps a text that was handed out, so a write can name it as its base. */
@@ -104,6 +106,16 @@ export class LiveUpdateRefusedError extends Error {
   }
 }
 
+/**
+ * A socket sent typing that builds on typing neither the document nor the store has: the tab typed on before it sent
+ * what it typed offline, or before its sync. Nothing of it was stored; the tab sends all of it once it connects again.
+ */
+export class LiveUpdateWaitingError extends Error {
+  constructor() {
+    super('The update builds on typing the server does not have yet.');
+  }
+}
+
 /** The Yjs state an epoch is seeded with: one document that holds `text`. */
 export function seedLiveState(text: string): Uint8Array {
   const document = new Y.Doc();
@@ -152,17 +164,18 @@ function insertsControl(update: Uint8Array): boolean {
 }
 
 /**
- * Whether a Yjs update is what typing in a tab makes, and the document can take all of it: it reads to its end, holds
- * only text put into the `content` text or taken out of it, and waits for nothing the document lacks. Only such an
- * update of a socket is stored. One that cannot be read would keep the note from loading ever again; other content, or
- * text left waiting for an update that never comes, would grow the stored state past any limit on the text.
+ * Whether a Yjs update is what typing in a tab makes (it reads to its end, and holds only text put into the `content`
+ * text or taken out of it), and whether the document can take all of it: `whole` when it waits for nothing the
+ * document lacks, `waiting` when it does. Only whole typing of a socket is stored. One that cannot be read would keep
+ * the note from loading ever again; other content, or text left waiting for an update that never comes, would grow the
+ * stored state past any limit on the text.
  */
-function isTyping(document: Y.Doc, update: Uint8Array): boolean {
+function typing(document: Y.Doc, update: Uint8Array): 'whole' | 'waiting' | 'not-typing' {
   let structs, deletes;
   try {
     ({ structs, ds: deletes } = Y.decodeUpdate(update));
   } catch {
-    return false;
+    return 'not-typing';
   }
   /** The next clock of each client, in the document. */
   const known = Y.decodeStateVector(Y.encodeStateVector(document));
@@ -174,28 +187,28 @@ function isTyping(document: Y.Doc, update: Uint8Array): boolean {
     const { client, clock } = struct.id;
     if (client !== current) {
       // Yjs keeps one run of a client and drops the others.
-      if (ends.has(client)) return false;
+      if (ends.has(client)) return 'not-typing';
       current = client;
     }
     if (struct instanceof Y.Item) {
       const parent: unknown = struct.parent;
-      if (!(struct.content instanceof Y.ContentString || struct.content instanceof Y.ContentDeleted) || struct.parentSub !== null || (parent !== null && parent !== CONTENT)) return false;
+      if (!(struct.content instanceof Y.ContentString || struct.content instanceof Y.ContentDeleted) || struct.parentSub !== null || (parent !== null && parent !== CONTENT)) return 'not-typing';
       for (const before of [struct.origin, struct.rightOrigin]) if (before && before.clock >= (known.get(before.client) ?? 0) && !(before.client === client && before.clock < clock)) whole = false;
-    } else if (!(struct instanceof Y.GC)) return false;
+    } else if (!(struct instanceof Y.GC)) return 'not-typing';
     const end = ends.get(client) ?? known.get(client) ?? 0;
     if (clock > end) whole = false;
     ends.set(client, Math.max(end, clock + struct.length));
   }
   for (const [client, ranges] of deletes.clients) for (const range of ranges) if (range.clock + range.len > (ends.get(client) ?? known.get(client) ?? 0)) whole = false;
-  if (whole) return true;
+  if (whole) return 'whole';
   // Not plain to see, as when a tab brings what tabs of another process typed: a copy of the document takes it, and shows whether anything is left waiting.
   const copy = new Y.Doc();
   try {
     Y.applyUpdate(copy, Y.encodeStateAsUpdate(document));
     Y.applyUpdate(copy, update);
-    return copy.store.pendingStructs === null && copy.store.pendingDs === null;
+    return copy.store.pendingStructs === null && copy.store.pendingDs === null ? 'whole' : 'waiting';
   } catch {
-    return false;
+    return 'not-typing';
   } finally {
     copy.destroy();
   }
@@ -474,7 +487,17 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       const here = held(liveDocumentName(link));
       if (!here) throw new LiveNotLiveError();
       const { document, state } = here;
-      if (!isTyping(document, update)) throw new LiveUpdateRefusedError();
+      let verdict = typing(document, update);
+      if (verdict === 'waiting') {
+        // What it builds on may be what another process appended and this one has not read yet: the store fills it in.
+        const stored = await store.document(link.id, link.epoch);
+        if (!stored) throw await lost(link);
+        take(document, state, stored);
+        // A document let go meanwhile takes nothing: the tab connects again, and finds out why.
+        verdict = document.isDestroyed ? 'waiting' : typing(document, update);
+      }
+      if (verdict === 'not-typing') throw new LiveUpdateRefusedError();
+      if (verdict === 'waiting') throw new LiveUpdateWaitingError();
       if (Y.snapshotContainsUpdate(Y.snapshot(document), update)) return false;
       // Only an update that could take the text past the limit is measured, on a copy.
       if (document.getText(CONTENT).length * 3 + update.byteLength > maxBytes) {

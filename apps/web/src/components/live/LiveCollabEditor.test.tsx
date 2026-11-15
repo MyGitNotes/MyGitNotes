@@ -242,7 +242,58 @@ describe('a released note', () => {
   });
 });
 
+/** The tab typed `typed` after its first sync, and the server has not acknowledged it. */
+const typeUnsaved = (typed: string) =>
+  emit(config => {
+    config.document.getText('content').insert(config.document.getText('content').length, typed);
+    config.onUnsyncedChanges?.({ number: 1 });
+  });
+/** Copy my version puts `text` on the clipboard, and Download saves a file. */
+const offersMine = async (text: string) => {
+  const writeText = vi.fn(async () => {});
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+  Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:mine'), revokeObjectURL: vi.fn() });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Copy my version' }));
+  });
+  expect(writeText).toHaveBeenCalledWith(text);
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  fireEvent.click(screen.getByRole('button', { name: 'Download' }));
+  expect(click).toHaveBeenCalled();
+  click.mockRestore();
+};
+
 describe('a refusal from the server', () => {
+  it('reads a reason it does not know as a failure, not as busy', async () => {
+    for (const reason of ['invalid', 'something-new', undefined]) {
+      const view = await open();
+      sync();
+      emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'refused', reason }) }));
+      expect(provider().destroyed).toBe(true);
+      expect(screen.getByRole('alert')).toHaveTextContent('The live editor refused the connection');
+      expect(screen.getByRole('alert')).not.toHaveTextContent('busy');
+      view.unmount();
+    }
+  });
+
+  it('with unsaved changes, says why and offers the tab’s text to copy or download, whatever the reason', async () => {
+    for (const [reason, text] of [['too-large', 'over the live editor’s size limit'], ['busy', 'The live editor is busy'], ['invalid', 'The live editor refused the connection'], ['something-new', 'The live editor refused the connection']] as const) {
+      const onClose = vi.fn(), onCheckedIn = vi.fn();
+      const view = await open({ onClose, onCheckedIn });
+      sync('# A\n');
+      typeUnsaved(`typed before ${reason}\n`);
+      emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'refused', reason }) }));
+      expect(provider().destroyed).toBe(true);
+      expect(screen.getByRole('alert'), reason).toHaveTextContent(text);
+      expect(screen.getByRole('alert'), reason).toHaveTextContent('were not saved');
+      await offersMine(`# A\ntyped before ${reason}\n`);
+      // The note was not checked in: closing leaves the editor as 「關閉」 does.
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect([onClose.mock.calls.length, onCheckedIn.mock.calls.length], reason).toEqual([1, 0]);
+      view.unmount();
+    }
+  });
+
   it('reads too-large and busy, and leaves the editor', async () => {
     for (const [reason, text] of [['too-large', 'over the live editor’s size limit'], ['busy', 'The live editor is busy']] as const) {
       const view = await open();
@@ -253,6 +304,50 @@ describe('a refusal from the server', () => {
       expect(screen.queryByLabelText('Live note content')).toBeNull();
       view.unmount();
     }
+  });
+});
+
+describe('a reconnect whose ticket fails', () => {
+  const failTickets = () => fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? json({ error: 'The server is restarting.' }, 503) : json({}));
+  /** The provider connects again: its ticket request fails, and it reports the authentication failed. */
+  const reconnect = async () => {
+    await act(async () => {
+      await expect(provider().configuration.token()).rejects.toThrow('The server is restarting.');
+      provider().configuration.onAuthenticationFailed?.({ reason: 'Failed to get token' });
+    });
+  };
+
+  it('with nothing unsaved, says so and offers to go back to the editor', async () => {
+    await open();
+    sync();
+    await provider().configuration.token();
+    failTickets();
+    await reconnect();
+    expect(provider().destroyed).toBe(true);
+    expect(screen.getByRole('alert')).toHaveTextContent('The server is restarting.');
+    expect(screen.queryByRole('button', { name: 'Copy my version' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Back to the editor' })).toBeInTheDocument();
+  });
+
+  it('with unsaved changes, offers the tab’s text to copy or download before going back to the editor', async () => {
+    await open();
+    sync('# A\n');
+    await provider().configuration.token();
+    typeUnsaved('typed during the restart\n');
+    emit(config => config.onStatus?.({ status: 'disconnected' }));
+    failTickets();
+    await reconnect();
+    expect(provider().destroyed).toBe(true);
+    expect(screen.getByRole('alert')).toHaveTextContent('The server is restarting.');
+    expect(screen.getByRole('alert')).toHaveTextContent('were not saved');
+    await offersMine('# A\ntyped during the restart\n');
+    // Back to the editor starts a new session, from the server's text.
+    fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? ticket(++tickets) : json({}));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
+    });
+    expect(fake.providers).toHaveLength(2);
+    expect(provider().destroyed).toBe(false);
   });
 });
 
