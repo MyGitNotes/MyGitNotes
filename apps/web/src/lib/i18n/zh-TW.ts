@@ -1287,6 +1287,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'route.notebookNotFound': '找不到筆記本。',
   'route.folderNotFound': '找不到資料夾。',
   'route.noteNotFound': '找不到筆記，可能已被移動或刪除。',
+  'route.noteOffline': '離線時無法讀取這則筆記；連線恢復後會自動開啟。',
   'route.goToNotes': '返回筆記',
 
   // Create Note Modal

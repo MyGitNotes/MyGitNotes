@@ -32,7 +32,9 @@ export function useRoutedNote({ config, editorRoute, editorNotebookId, editingNo
     const found = routedLookup.notes[0];
     return found && typeof found.content === 'string' ? found as NoteItem : null;
   }, [routedPath, routedNotebook, editingNote, routedLookup.notes]);
-  const routedLoading = Boolean(routedPath) && !routedNote && routedLookup.loading;
+  // A read that waits for the connection is not loading: the note opens once the browser is online and the read runs again.
+  const routedOffline = Boolean(routedPath) && !routedNote && routedLookup.paused;
+  const routedLoading = Boolean(routedPath) && !routedNote && routedLookup.loading && !routedOffline;
 
   useEffect(() => {
     if (loading || !config) return;
@@ -55,15 +57,19 @@ export function useRoutedNote({ config, editorRoute, editorNotebookId, editingNo
       setRouteError(routedLookup.error);
       return;
     }
+    if (routedOffline) {
+      setRouteError('route.noteOffline');
+      return;
+    }
     if (routedNote || routedLoading) {
       setRouteError('');
       return;
     }
     setRouteError('route.noteNotFound');
-  }, [editorRoute, config, loading, editorNotebookId, sourceId, routedNotebook, routedNote, routedLoading, routedLookup.error, setEditingNote]);
+  }, [editorRoute, config, loading, editorNotebookId, sourceId, routedNotebook, routedNote, routedLoading, routedOffline, routedLookup.error, setEditingNote]);
 
   // A pending live note that is gone was most likely checked in: the server says where it was filed, and the note opens there.
-  const missingPending = !loading && Boolean(routedPath && routedNotebook && isLivePendingPath(routedPath)) && !routedNote && !routedLoading && !routedLookup.error;
+  const missingPending = !loading && Boolean(routedPath && routedNotebook && isLivePendingPath(routedPath)) && !routedNote && !routedLoading && !routedOffline && !routedLookup.error;
   const filed = useRef(onFiled);
   useEffect(() => {
     filed.current = onFiled;

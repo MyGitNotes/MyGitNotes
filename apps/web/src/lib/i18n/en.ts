@@ -1286,6 +1286,7 @@ export const en = {
   'route.notebookNotFound': 'Notebook not found.',
   'route.folderNotFound': 'Folder not found.',
   'route.noteNotFound': 'Note not found. It may have been moved or deleted.',
+  'route.noteOffline': 'The note cannot be read while offline; it opens once the connection is back.',
   'route.goToNotes': 'Go to notes',
 
   // Create Note Modal

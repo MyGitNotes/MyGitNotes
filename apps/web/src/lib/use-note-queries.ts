@@ -243,7 +243,8 @@ function withLocalCommitted(served: NoteListItem[], refs: NoteRef[], committed: 
 }
 
 /** `notes` carries staged drafts; `committed` is what the server answered, for use as a merge base. */
-export function useNoteLookup(refs: NoteRef[], content: boolean): { notes: NoteListItem[]; committed: NoteListItem[]; loading: boolean; error: string; } {
+/** `paused`: the read waits for the connection (the query runs again once the browser is online), so `loading` will not end until then. */
+export function useNoteLookup(refs: NoteRef[], content: boolean): { notes: NoteListItem[]; committed: NoteListItem[]; loading: boolean; paused: boolean; error: string; } {
   const scope = useNoteQueryScope();
   const stable = useStable(refs);
   const options = noteLookupOptions(scope, stable, content);
@@ -252,7 +253,7 @@ export function useNoteLookup(refs: NoteRef[], content: boolean): { notes: NoteL
   // In a demo the committed note is the one committed in this browser, where there is one.
   const committed = useMemo(() => withLocalCommitted(served, stable, scope.committed), [served, scope.committed, stable]);
   const notes = useMemo(() => overlayDraftLookup(stable, served, scope.drafts), [stable, served, scope.drafts]);
-  return { notes, committed, loading: stable.length > 0 && result.isPending, error: errorText(result.error) };
+  return { notes, committed, loading: stable.length > 0 && result.isPending, paused: stable.length > 0 && result.isPending && result.fetchStatus === 'paused', error: errorText(result.error) };
 }
 
 /** The query of a notebook's templates as its repository holds them; `useNotebookTemplates` adds the page's working changes. */
