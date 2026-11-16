@@ -255,7 +255,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     const mergeKept = async (entry: UnsyncedLiveText) => {
       setMerging(true);
       try {
-        await mergeLive({ notebookId, path, base: entry.baseText, text: entry.text, mergeId: entry.mergeId });
+        await mergeLive({ notebookId, path, base: entry.baseText, text: entry.text, mergeId: entry.mergeId, typedIn: { document: entry.document, update: entry.update } });
       } catch (error) {
         if (stopped) return;
         if (isNetworkFailure(error)) return waitOnline(entry);
@@ -344,6 +344,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         onSynced: ({ state }) => {
           if (!state || stopped) return;
           synced = true;
+          // Synced with nothing typed, the document holds the server's text alone: the base, though the connect's own step may wait on its acknowledgement.
+          if (!keeping && !dirty) base = text.toString();
           settle();
           setConnection(current => ({ ...current, synced: true, everSynced: true, renewing: false }));
           setCollab(current => current ?? { extension: yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }), text: text.toString() });

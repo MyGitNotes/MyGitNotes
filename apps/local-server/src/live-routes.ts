@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { formatTemplateDate, formatTemplateTime, isBuiltinEditor, isLiveMergeId, isLiveNotePath, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, LiveLeasedError, type LiveNotes, LiveNotLiveError, livePathRule, livePathRuleParts, livePendingPath, type LiveRepository, LiveTooLargeError, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, type RemoteSnapshot, type RemoteSource, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
+import { formatTemplateDate, formatTemplateTime, isBuiltinEditor, isLiveMergeId, isLiveNotePath, isLiveTypedIn, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, LiveLeasedError, type LiveNotes, LiveNotLiveError, livePathRule, livePathRuleParts, livePendingPath, type LiveRepository, LiveTooLargeError, type LiveTypedIn, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, type RemoteSnapshot, type RemoteSource, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
 import { liveDueInstant, liveScheduleSetting } from './live-schedule.js';
 import { asRemote, notebookRepository, noteRepository, requestPerson, workspaceOf } from './request-workspace.js';
 import { fail } from './route-errors.js';
@@ -155,6 +155,16 @@ async function checkOut(file: string, notebook: NotebookConfig, key: NotebookKey
   return view.checkout(key, file, { commit: snapshot.sha, blob: entry.sha, content: normalizeLiveText(content) });
 }
 
+const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+/** A merge's `typedIn` as the web sends it, its update in base64; a 400 for anything else. */
+const typedInOf = (value: unknown): LiveTypedIn => {
+  const given = value as { document?: unknown; update?: unknown; } | null;
+  // An update is at most a few times its text: deletions leave their marks behind.
+  if (typeof given !== 'object' || given === null || typeof given.update !== 'string' || !BASE64.test(given.update) || given.update.length > LIVE_MAX_BYTES * 4) throw new SourceError('typedIn must name a live document and hold its update in base64.');
+  const typed = { document: given.document, update: new Uint8Array(Buffer.from(given.update, 'base64')) };
+  if (!isLiveTypedIn(typed)) throw new SourceError('typedIn must name a live document and hold its update in base64.');
+  return typed;
+};
 const CLOCK_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const isFolder = (value: string) => value === '' || (value.length <= 512 && !/[\\\p{Cc}]/u.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..'));
@@ -185,15 +195,16 @@ export function createLiveRouter(): express.Router {
   router.post('/api/live/merge', async (req, res) => {
     try {
       signedIn(res);
-      const { notebookId, path: file, base, text, mergeId } = req.body ?? {};
+      const { notebookId, path: file, base, text, mergeId, typedIn } = req.body ?? {};
       const { handle, notebook, key } = await noteRepository(res, file, notebookId);
       const writer = await writerOf(res, handle);
       if (!writer.view.merges) throw notLive("This repository's live editor cannot merge a text into a live note.");
       if (typeof base !== 'string' || typeof text !== 'string') throw new SourceError('base and text must be text.');
       if (!isLiveMergeId(mergeId)) throw new SourceError('mergeId must be 8 to 128 letters, digits, _ or -.');
       if (Buffer.byteLength(base, 'utf8') > LIVE_MAX_BYTES || Buffer.byteLength(text, 'utf8') > LIVE_MAX_BYTES) throw new LiveTooLargeError();
+      const typed = typedIn === undefined ? undefined : typedInOf(typedIn);
       const { checkout, outcome } = await checkOut(file as string, notebook, key, writer);
-      const answer = await writer.view.merge(checkout.id, { base, text, mergeId });
+      const answer = await writer.view.merge(checkout.id, { base, text, mergeId, ...(typed ? { typedIn: typed } : {}) });
       if ('conflict' in answer) throw new MergeConflictError(viewOf(checkout, key, notebook));
       res.json({ applied: true, contentHash: answer.contentHash, checkout: viewOf(checkout, key, notebook), outcome });
     } catch (error) {

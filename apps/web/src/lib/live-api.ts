@@ -125,9 +125,18 @@ export interface LiveMergeAnswer {
 /**
  * Merges a text written off the live note into it (collab-first A4): `base` is the text it was written on, and the server
  * checks the note out first when it is not live. A repeated `mergeId` answers as the first did; a conflict takes nothing
- * and answers 409 `merge-conflict`.
+ * and answers 409 `merge-conflict`. Typing a collab editor tab kept names the document it was typed in and the tab's
+ * whole Yjs update of it (`typedIn`), so the server merges it on what that document ended with and takes what it already
+ * stored of it once.
  */
-export const mergeLive = (params: { notebookId: string; path: string; base: string; text: string; mergeId: string; }) => post<LiveMergeAnswer>('/api/live/merge', params, 'Failed to merge the text into the live note');
+export const mergeLive = ({ typedIn, ...params }: { notebookId: string; path: string; base: string; text: string; mergeId: string; typedIn?: { document: string; update: Uint8Array; }; }) => post<LiveMergeAnswer>('/api/live/merge', { ...params, ...(typedIn ? { typedIn: { document: typedIn.document, update: base64(typedIn.update) } } : {}) }, 'Failed to merge the text into the live note');
+
+/** Bytes in base64, a chunk at a time so a large update does not overflow the call stack. */
+const base64 = (bytes: Uint8Array) => {
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return btoa(binary);
+};
 
 /** Whether a merge was refused because the text changed what the live note changed too: nothing was taken. */
 export const isMergeConflict = (error: unknown): boolean => error instanceof ApiError && error.code === 'merge-conflict';

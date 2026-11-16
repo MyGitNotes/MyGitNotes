@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, liveMergeAnswerOf, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
-import { liveDocumentName, type LiveDocuments, liveDocuments, type LiveSnapshot, seedLiveState } from './documents.js';
+import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, liveMergeAnswerOf, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, type LiveTypedIn, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
+import { liveDocumentName, type LiveDocuments, liveDocuments, type LiveSnapshot, seedLiveState, typedInTexts } from './documents.js';
 import { liveSocket, type LiveSocketLimits } from './socket.js';
 import { type EditorRef, LIVE_MERGE_MS, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
 
@@ -198,6 +198,18 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     return written;
   };
 
+  /** The base and text of typing a tab kept of an earlier epoch of `link`, from the document that epoch ended with; null once the store no longer has it. */
+  const typedIn = async (link: StoredLink, { document, update }: LiveTypedIn) => {
+    const at = document.lastIndexOf('.');
+    const epoch = Number(document.slice(at + 1));
+    if (document.slice(0, at) !== link.id || !Number.isSafeInteger(epoch) || epoch < 1 || epoch >= link.epoch) return null;
+    const ended = await store.ended(link.id, epoch, clock());
+    if (!ended) return null;
+    const texts = typedInTexts(ended, update);
+    if (!texts) throw new SourceError('typedIn.update is not a Yjs update of its document.', 400);
+    return { base: fits(normalizeLiveText(texts.base)), text: fits(normalizeLiveText(texts.text)) };
+  };
+
   const person = (context: LiveContext): LivePersonCalls =>
     afterCheck<LivePersonCalls>({
       checkouts: rows,
@@ -248,15 +260,23 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
        */
       async merge(repository, id, request): Promise<LiveMergeAnswer> {
         const link = await live(repository, id);
-        const base = fits(normalizeLiveText(request.base)), mine = fits(normalizeLiveText(request.text));
+        let base = fits(normalizeLiveText(request.base)), mine = fits(normalizeLiveText(request.text));
         const key = mergeKey(context, link.id, request.mergeId);
         // A repeat is answered before anything is computed; the append's own check decides between two that race.
         const known = await store.mergeAnswer(key, clock());
         if (known !== null) return liveMergeAnswerOf(JSON.parse(known));
+        // Typing a tab kept of an epoch that ended: merged on the text that epoch ended with, which holds whatever of it the
+        // server stored; once that is gone, the base the tab names may lack some of it, and two insertions at one point conflict.
+        let uncertainBase = false;
+        if (request.typedIn) {
+          const typed = await typedIn(link, request.typedIn);
+          if (typed) ({ base, text: mine } = typed);
+          else uncertainBase = true;
+        }
         let written;
         try {
           written = await documents.edit(link, liveEditorRef(context, false), current => {
-            const next = rebaseLiveText(base, current, mine);
+            const next = rebaseLiveText(base, current, mine, undefined, { uncertainBase });
             if (next === null) throw new MergeConflict();
             return fits(next);
           }, { key, until: clock() + LIVE_MERGE_MS, answer: hash => JSON.stringify({ applied: true, contentHash: hash }) });

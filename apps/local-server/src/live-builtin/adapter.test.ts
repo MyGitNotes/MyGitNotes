@@ -266,7 +266,7 @@ describe('merging typing a tab kept', () => {
     text.insert(text.length, kept);
     return { document: `${id}.${link.epoch}`, update: Y.encodeStateAsUpdate(tab), text: text.toString() };
   };
-  const merge = (f: BuiltinFixture, id: string, request: { base: string; text: string; mergeId: string; typedIn?: { document: string; update: Uint8Array; }; }) => f.liveNotes.person(person(1)).merge(repository, id, request);
+  const merge = (f: BuiltinFixture, id: string, request: { base: string; text: string; mergeId: string; typedIn?: { document: string; update: Uint8Array; }; }) => f.liveNotes.person(person(1)).merge!(repository, id, request);
 
   it('takes what the server stored of it once, whatever base the tab names, the empty one included', async () => {
     for (const tabBase of ['# A\n', '']) {

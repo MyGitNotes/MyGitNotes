@@ -20,9 +20,11 @@ import { LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type S
  *   P:ticket:<sha256>        string  60 s     JSON StoredTicket with its `until`
  *   P:tickets:<id>           set     60 s, refreshed   the hashes of the link's tickets, so a release or discard deletes them
  *   P:merge:<sha256>         string  24 h     JSON { answer, until }: what a merge answered, for a repeat of it
+ *   P:ended:<id>:<epoch>     hash    24 h     a released epoch's document: `state`, `log` (base64, comma-joined) and `until`
  *
  * `rk` and `pk` are the first 32 hex of the sha256 of the repository id and of the path. Live text carries no TTL, so a
- * volatile-* eviction policy never takes it; `check` refuses a policy that would. Every compound call is one EVAL
+ * volatile-* eviction policy never takes it (an ended document may go early, and a merge of typing kept of it then
+ * conflicts rather than doubling text); `check` refuses a policy that would. Every compound call is one EVAL
  * script, atomic in Redis; the scripts use nothing newer than Redis 2.6 and build some key names themselves, so they
  * need a single Redis, not a cluster. Lifetimes are a backstop in real time: what a lease, a presence entry or a ticket
  * is worth is decided by the time the caller passes.
@@ -206,12 +208,20 @@ if ARGV[6] == '' then redis.call('HDEL', KEYS[1], 'conflict') else redis.call('H
 for _, editor in ipairs(covered) do redis.call('HDEL', KEYS[3], editor) end
 return 'ok'`;
 
-/** KEYS link, lease, editors, presence, tickets, repos. ARGV token, now, seq, contentHash, P. */
+/** KEYS link, lease, editors, presence, tickets, repos. ARGV token, now, seq, contentHash, P, how long the ended document is kept. */
 const RELEASE = `${HOLDER}${ERASE}
 if not holder(ARGV[1], ARGV[2]) then return 'leased' end
 local at = redis.call('HMGET', KEYS[1], 'syncedAt', 'syncedHash', 'seq', 'epoch', 'id', 'rk', 'repository')
 if not at[1] or at[2] ~= ARGV[4] then return 'not-synced' end
 if at[3] ~= ARGV[3] then return 'changed' end
+local doc = ARGV[5] .. ':doc:' .. at[5] .. ':' .. at[4]
+local state, log = redis.call('GET', doc), redis.call('LRANGE', doc .. ':log', 0, -1)
+if state then
+  local ended = ARGV[5] .. ':ended:' .. at[5] .. ':' .. at[4]
+  redis.call('DEL', ended)
+  redis.call('HMSET', ended, 'state', state, 'log', table.concat(log, ','), 'until', string.format('%.0f', tonumber(ARGV[2]) + tonumber(ARGV[6])))
+  redis.call('PEXPIRE', ended, ARGV[6])
+end
 erase(ARGV[5], at[5], at[4], at[6], at[7])
 redis.call('HSET', KEYS[1], 'live', '0')
 return 'released'`;
@@ -337,7 +347,7 @@ export function redisLiveStore({ url, prefix }: { url: string; prefix?: string; 
 /** The Redis live store over any way to send one command and get its reply, which a test fakes. `send` throws on failure. */
 export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>, prefix = liveStorePrefix()): LiveStore {
   const P = prefix;
-  const key = { repos: `${P}:repos`, links: (repository: RepositoryId) => `${P}:r:${digest32(repository)}:links`, path: (repository: RepositoryId, path: string) => `${P}:r:${digest32(repository)}:path:${digest32(path)}`, link: (id: string) => `${P}:link:${id}`, doc: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}`, log: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}:log`, editors: (id: string) => `${P}:editors:${id}`, initial: (id: string) => `${P}:initial:${id}`, lease: (id: string) => `${P}:lease:${id}`, merge: (hash: string) => `${P}:merge:${hash}`, presence: (id: string) => `${P}:presence:${id}`, ticket: (hash: string) => `${P}:ticket:${hash}`, tickets: (id: string) => `${P}:tickets:${id}` };
+  const key = { repos: `${P}:repos`, links: (repository: RepositoryId) => `${P}:r:${digest32(repository)}:links`, path: (repository: RepositoryId, path: string) => `${P}:r:${digest32(repository)}:path:${digest32(path)}`, link: (id: string) => `${P}:link:${id}`, doc: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}`, log: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}:log`, editors: (id: string) => `${P}:editors:${id}`, initial: (id: string) => `${P}:initial:${id}`, lease: (id: string) => `${P}:lease:${id}`, merge: (hash: string) => `${P}:merge:${hash}`, ended: (id: string, epoch: number) => `${P}:ended:${id}:${epoch}`, presence: (id: string) => `${P}:presence:${id}`, ticket: (hash: string) => `${P}:ticket:${hash}`, tickets: (id: string) => `${P}:tickets:${id}` };
   /**
    * One command. A failure is logged by the call and its link id and thrown as an unavailable live editor: a refusal by
    * the server with its first line (a full Redis must be visible), anything else without detail, since a client error
@@ -411,6 +421,12 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
       if (!appended) return 'not-live';
       return appended[0] === 'merged' ? { merged: appended[1] } : { seq: appended[0], length: appended[1] as number };
     },
+    async ended(id, epoch, now) {
+      if (!isLink(id) || !isEpoch(epoch)) return null;
+      const [state, log, until] = await call(`ended ${id}.${epoch}`, ['HMGET', key.ended(id, epoch), 'state', 'log', 'until']) as [string | null, string | null, string | null];
+      if (state === null || Number(until) <= now) return null;
+      return { state: decode(state), log: log ? log.split(',').map(decode) : [] };
+    },
     async mergeAnswer(hash, now) {
       if (!MERGE_KEY.test(hash)) return null;
       const found = await call('mergeAnswer', ['GET', key.merge(hash)]) as string | null;
@@ -444,7 +460,7 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
     },
     async release(id, token, expect, now) {
       if (!isLink(id)) return 'leased';
-      return await script(`release ${id}`, RELEASE, lifecycleKeys(id), [token, now, expect.seq, expect.contentHash, P]) as 'released' | 'leased' | 'not-synced' | 'changed';
+      return await script(`release ${id}`, RELEASE, lifecycleKeys(id), [token, now, expect.seq, expect.contentHash, P, LIVE_MERGE_MS]) as 'released' | 'leased' | 'not-synced' | 'changed';
     },
     async discard(id, token, expect, now) {
       if (!isLink(id)) return 'leased';

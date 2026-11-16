@@ -1,6 +1,6 @@
 import { SourceError } from './github-api.js';
 import { checkInLink, discardLink, type LiveCheckInOptions, type LiveCheckInResult, type LiveDiscardResult, type LiveRetarget, retargetLink, retargetLivePathRule } from './live-checkin.js';
-import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveMergeId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveIdentityOf, liveInitialTextOf, type LiveMergeAnswer, liveMergeAnswerOf, type LiveMergeRequest, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveMergeId, isLiveRevision, isLiveTypedIn, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveIdentityOf, liveInitialTextOf, type LiveMergeAnswer, liveMergeAnswerOf, type LiveMergeRequest, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { localIdIn, type NotebookKey } from './notebook-key.js';
 import type { RepositoryId } from './repository.js';
 import type { LiveNoteState, NotebookConfig } from './types.js';
@@ -252,7 +252,8 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       if (!merge || !isLiveId(id)) throw new LiveNotLiveError();
       if (typeof request.base !== 'string' || typeof request.text !== 'string') throw new SourceError('base and text must be text.', 400);
       if (!isLiveMergeId(request.mergeId)) throw new SourceError('mergeId must be 8 to 128 letters, digits, _ or -.', 400);
-      const answer = liveMergeAnswerOf(await call(() => merge(repository, id, { base: normalizeLiveText(request.base), text: normalizeLiveText(request.text), mergeId: request.mergeId })));
+      if (request.typedIn !== undefined && !isLiveTypedIn(request.typedIn)) throw new SourceError('typedIn must name a live document and hold a Yjs update.', 400);
+      const answer = liveMergeAnswerOf(await call(() => merge(repository, id, { base: normalizeLiveText(request.base), text: normalizeLiveText(request.text), mergeId: request.mergeId, ...(request.typedIn ? { typedIn: { document: request.typedIn.document, update: request.typedIn.update } } : {}) })));
       // The link's text moved: the next read in this request asks again.
       if ('applied' in answer) listed = undefined;
       return answer;

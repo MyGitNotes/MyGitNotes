@@ -238,6 +238,27 @@ function storedDocument(stored: StoredDocument): Y.Doc {
   return document;
 }
 
+/**
+ * The text a released epoch's document ended with, and that text once a tab's whole update of the same document is
+ * applied to it: the base and the text of a merge of typing the tab kept (`LiveMergeRequest.typedIn`). Yjs takes what
+ * the document already holds once, so typing the server stored before the tab heard so is in the base, not the change.
+ * Null for an update that cannot be read.
+ */
+export function typedInTexts(ended: Pick<StoredDocument, 'state' | 'log'>, update: Uint8Array): { base: string; text: string; } | null {
+  const document = storedDocument({ ...ended, gen: 0, seq: 0 });
+  try {
+    const base = document.getText(CONTENT).toString();
+    try {
+      Y.applyUpdate(document, update);
+    } catch {
+      return null;
+    }
+    return { base, text: document.getText(CONTENT).toString() };
+  } finally {
+    document.destroy();
+  }
+}
+
 /** What this process knows of a document it holds. */
 interface Held {
   /** Every update the store numbered up to here is in the document. */

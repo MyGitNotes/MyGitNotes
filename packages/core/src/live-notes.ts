@@ -145,6 +145,23 @@ export interface LiveMergeRequest {
   text: string;
   /** Names this merge for its writer ({@link isLiveMergeId}): asked again under the same id, the first answer is given and nothing is taken twice. */
   mergeId: string;
+  /**
+   * What a built-in editor tab typed `text` in: the Yjs document of an epoch that has ended (`<link id>.<epoch>`), and the
+   * tab's whole update of it. An adapter that still knows the text that document ended with takes it as the base, and
+   * the update applied to it as the text, so typing the server stored before the tab heard so lands once; one that no
+   * longer knows it merges on `base` as an uncertain one (`rebaseLiveText`'s `uncertainBase`).
+   */
+  typedIn?: LiveTypedIn;
+}
+/** See {@link LiveMergeRequest.typedIn}. */
+export interface LiveTypedIn {
+  document: string;
+  update: Uint8Array;
+}
+/** Whether a value is a {@link LiveTypedIn}: a live document's name and a Yjs update. */
+export function isLiveTypedIn(value: unknown): value is LiveTypedIn {
+  const typed = value as LiveTypedIn | null;
+  return typeof typed === 'object' && typed !== null && typeof typed.document === 'string' && LIVE_DOCUMENT_PATTERN.test(typed.document) && typed.update instanceof Uint8Array;
 }
 /** A merge landed, the note then reading the text `contentHash` names; or it changed what the live note changed too, and nothing was taken. */
 export type LiveMergeAnswer = { applied: true; contentHash: string; } | { conflict: true; };
@@ -352,6 +369,8 @@ export function liveMergeAnswerOf(value: unknown): LiveMergeAnswer {
 
 /** What a live link id may be. */
 export const LIVE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+/** A live document's name: `<link id>.<epoch>`. */
+const LIVE_DOCUMENT_PATTERN = /^[A-Za-z0-9_-]{1,64}\.[1-9][0-9]{0,15}$/;
 /** The largest live text, in UTF-8 bytes, as for other writes. */
 export const LIVE_MAX_BYTES = 5 * 1024 * 1024;
 /** The dot folder of a notebook root that holds pending notes' virtual paths. */

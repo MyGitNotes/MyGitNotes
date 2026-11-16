@@ -10,7 +10,7 @@ import type { LiveConflict, NotebookKey, RepositoryId, WorkspacePerson } from '@
 
 /** How long a socket ticket holds. The Redis store gives a ticket's key this lifetime, whatever `until` says. */
 export const LIVE_TICKET_MS = 60_000;
-/** How long the answer of a merge is kept for a repeat of it. */
+/** How long the answer of a merge is kept for a repeat of it, and the document of a released epoch for a merge of typing a tab kept of it. */
 export const LIVE_MERGE_MS = 24 * 60 * 60_000;
 /** How long a process's presence entry counts after its last write, so a process that crashed stops counting. */
 export const LIVE_PRESENCE_MS = 90_000;
@@ -137,6 +137,12 @@ export interface LiveStore {
    * already holds an answer that still counts at `now`, nothing is appended and `{ merged }` gives that answer back.
    */
   append(id: string, epoch: number, update: Uint8Array, editor: EditorRef | null, now: number, merge?: MergeRecord): Promise<{ seq: number; length: number; } | 'not-live' | { merged: string; }>;
+  /**
+   * The document a released epoch ended with, its state and log as they were at the release, for {@link LIVE_MERGE_MS}
+   * after it: a merge of typing a tab kept of that epoch takes it as base. Null before the release, past that time, for
+   * a discarded link, and for an unknown one.
+   */
+  ended(id: string, epoch: number, now: number): Promise<{ state: Uint8Array; log: Uint8Array[]; } | null>;
   /** The answer a merge left under `key` that still counts at `now`; null for none. It outlives the release of its link. */
   mergeAnswer(key: string, now: number): Promise<string | null>;
   /**
@@ -162,7 +168,8 @@ export interface LiveStore {
   synced(id: string, token: string, receipt: SyncReceipt, now: number): Promise<'ok' | 'leased' | 'path-fixed'>;
   /**
    * Releases when the lease holds, the link is synced at `contentHash` and its sequence is still `seq`. Deletes the
-   * epoch's document, log, editors, presence, lease and tickets; keeps the link record and its path.
+   * epoch's editors, presence, lease and tickets, and moves its document and log to {@link LiveStore.ended} until `now`
+   * plus {@link LIVE_MERGE_MS}; keeps the link record and its path.
    */
   release(id: string, token: string, expect: { seq: number; contentHash: string; }, now: number): Promise<'released' | 'leased' | 'not-synced' | 'changed'>;
   /**

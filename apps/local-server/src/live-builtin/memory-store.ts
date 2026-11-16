@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { RepositoryId } from '@mygitnotes/core';
-import { LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
+import { LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
 
 interface Lease {
   token: string;
@@ -28,6 +28,8 @@ export function memoryLiveStore(): LiveStore {
   const tickets = new Map<string, { ticket: StoredTicket; until: number; }>();
   const initial = new Map<string, string>();
   const merges = new Map<string, { answer: string; until: number; }>();
+  /** `<id>.<epoch>` of each released epoch to the document it ended with, until a day after. */
+  const ended = new Map<string, { state: Uint8Array; log: Uint8Array[]; until: number; }>();
 
   const pathKey = (repository: RepositoryId, path: string) => `${repository}\n${path}`;
   const liveLinks = () => [...links.values()].filter(link => link.live);
@@ -103,6 +105,10 @@ export function memoryLiveStore(): LiveStore {
       }
       return { seq: link.seq, length: document.log.length };
     },
+    async ended(id, epoch, now) {
+      const document = ended.get(`${id}.${epoch}`);
+      return document && document.until > now ? { state: new Uint8Array(document.state), log: document.log.map(update => new Uint8Array(update)) } : null;
+    },
     async mergeAnswer(key, now) {
       const known = merges.get(key);
       return known && known.until > now ? known.answer : null;
@@ -159,6 +165,9 @@ export function memoryLiveStore(): LiveStore {
       if (grip.link.syncedAt === null || grip.link.syncedHash !== expect.contentHash) return 'not-synced';
       if (grip.link.seq !== expect.seq) return 'changed';
       grip.link.live = false;
+      for (const [name, document] of ended) if (document.until <= now) ended.delete(name);
+      const document = documents.get(id);
+      if (document) ended.set(`${id}.${grip.link.epoch}`, { ...document, until: now + LIVE_MERGE_MS });
       erase(id);
       return 'released';
     },
