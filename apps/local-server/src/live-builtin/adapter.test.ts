@@ -314,8 +314,12 @@ describe('merging typing a tab kept', () => {
   it('conflicts where someone else replaced the line the tab replaced while it was cut off', async () => {
     const f = builtinFixture();
     const made = await checkout(f, '# A\nThe plan.\n');
-    const tab = await forkedTab(f, made.id);
-    await type(f, made.id, '# A\nTheir plan.\n', 2);
+    const tab = await forkedTab(f, made.id), other = await forkedTab(f, made.id);
+    const link = (await f.store.link(made.id))!;
+    const updates: Uint8Array[] = [];
+    other.text.doc!.on('update', (update: Uint8Array) => void updates.push(update));
+    replace(other.text, 'The plan.', 'Their plan.');
+    for (const update of updates) await f.documents.accept(link, update, editorOf(2));
     replace(tab.text, 'The plan.', 'My plan.');
     await checkIn(f, made.id);
     await checkout(f, '# A\nTheir plan.\n', note, 2);
