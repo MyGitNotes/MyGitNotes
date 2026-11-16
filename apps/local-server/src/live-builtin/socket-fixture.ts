@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { createServer, type RequestListener } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import { HocuspocusProvider, HocuspocusProviderWebsocket, WebSocketStatus } from '@hocuspocus/provider';
 import { OutgoingMessage } from '@hocuspocus/server';
 import { deriveAlias, type EditionSourceConfig, repositoryName, repositoryRef, siteOf, textEdits, type WorkspaceConfigSource, type WorkspaceMember } from '@mygitnotes/core';
 import { Router } from 'express';
@@ -204,7 +204,9 @@ export async function liveServer(first: BuiltinFixture): Promise<LiveServer> {
         synced: () => until(`the tab of person ${n} synced with the server`, () => tab.provider.isSynced),
         saved: () => until(`the server acknowledged what person ${n} typed`, () => tab.provider.isSynced && tab.provider.unsyncedChanges === 0),
         offline: () => websocket.disconnect(),
-        online: () => void websocket.connect(),
+        // The provider's `connect` does nothing while its socket still reads as connected, and `disconnect` only marks it
+        // closed once the close event lands: connecting before then would leave the tab offline for good.
+        online: () => void until(`the tab of person ${n} saw its socket close`, () => websocket.status === WebSocketStatus.Disconnected).then(() => websocket.connect()),
         cut: () => (websocket.webSocket as unknown as WebSocket | null)?.terminate(),
         destroy() {
           tab.provider.destroy();
