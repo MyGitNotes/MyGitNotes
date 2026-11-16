@@ -248,7 +248,7 @@ describe('a check-in that committed while others are still editing', () => {
     expect(live.onRefetch).not.toHaveBeenCalled();
     first.unmount();
     render(noteEditor({ live }));
-    expect(screen.getByText('Saved to Git; 1 person is still editing, so it will be checked in again tonight.')).toBeInTheDocument();
+    expect(screen.getByText('Saved to Git; 1 person is still editing, so it will be checked in once they have left.')).toBeInTheDocument();
     expect(screen.queryByText('Checked in')).toBeNull();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
   });

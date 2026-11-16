@@ -312,6 +312,19 @@ describe('立即簽回', () => {
     expect(fake.providers[1].destroyed).toBe(false);
   });
 
+  // cf16-F008, cf16-F009: not tonight but once people left; and what to do when no credential may commit.
+  it('says why the note stayed open, uncommittable included, in the app’s words', async () => {
+    fetchMock.mockImplementation(async (url: string) => (url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ id: 'live-1', path: checkout.path, committed: false, released: false, reason: 'uncommittable', revision: 'c'.repeat(40) })));
+    await open();
+    sync();
+    await settle();
+    await act(async () => {
+      fireEvent.click(checkInButton());
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Not checked in yet: none of its editors can write to the repository; sign in again, or ask someone with write access to check it in.');
+    expect(screen.getByRole('status')).not.toHaveTextContent('tonight');
+  });
+
   it('says an empty draft was discarded', async () => {
     const onDiscarded = vi.fn();
     fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ id: 'live-1', path: null, committed: false, released: true, discarded: true, reason: 'empty', revision: 'c'.repeat(40) }));

@@ -107,7 +107,7 @@ it('unmounts the frame before it checks the note in, and reports a note that sta
   });
   expect(framedAtPost).toBe(false);
   expect(onCheckedIn).toHaveBeenCalledWith(expect.objectContaining({ committed: true, released: false }));
-  expect(screen.getByRole('status')).toHaveTextContent('Saved to Git; 2 people are still editing, so it will be checked in again tonight.');
+  expect(screen.getByRole('status')).toHaveTextContent('Saved to Git; 2 people are still editing, so it will be checked in once they have left.');
   expect(onRefetch).toHaveBeenCalled();
   // The person may go back to the editor.
   fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
