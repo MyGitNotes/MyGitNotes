@@ -107,6 +107,31 @@ Shell 環境變數仍優先於 `.env`。
 窄窗格與手機上，卡片會由上往下排列。
 合輯也保存學習設定，用來閱讀與複習成員，見[學習與單字卡指南](docs/agent/study.md)。
 
+手動挑選的合輯可以分章。`kind: heading` 項目開始一章，收它之後、下一個章名之前的項目；第一個章名之前的項目各自成章。
+筆記項目也可以加上 `anchor: <標題文字>`，只顯示筆記裡那個標題底下的一段。
+書本的目錄列出各章，章裡的項目縮排一層，分頁模式一章一頁；卡片列把章名顯示成分隔欄。
+「編排目錄」可以調整項目與章的順序、在目前所在的列之後新增章、直接改章名，或移除章名而保留項目。「新增項目」可以把新項目放在指定章的最後，也可以只釘選筆記裡的一個標題。
+編輯只顯示一段的項目時，會在放大檢視開啟整篇筆記並捲到該標題；之後若標題改名，項目會提示找不到，並提供開啟整篇筆記的按鈕。
+動態合輯加上 `group: folder` 就依資料夾分章，章的順序與側欄的資料夾順序相同。
+一份合輯最多 100 個項目與 100 個章名。
+
+```yaml
+version: 1
+id: meeting-notes
+title: 會議紀錄
+arrangement: book
+items:
+  - { id: intro, kind: note, path: handbook/meetings/README.md }
+  - { id: internal, kind: heading, title: 內部會議 }
+  - { id: m1, kind: note, path: handbook/meetings/2026-01-05-weekly.md }
+  - { id: m2, kind: note, path: handbook/meetings/2025-weekly.md, anchor: 2025-08-26 週會 }
+  - { id: external, kind: heading, title: 外部會議 }
+  - { id: m3, kind: folder, path: clients/visits/2026-q1 }
+```
+
+在 App 裡儲存合輯會把檔案改寫成區塊格式，註解不會保留。
+分章功能推出之前的用戶端，會把含章名、`anchor` 或 `group` 的檔案標為無效，除了搬移時改寫路徑之外不會改動檔案；所有用戶端要一起升級。
+
 舊版 Screen 河道已併入合輯。
 schema 2 的工作區執行 `pnpm migrate-workspace` 時，每條河道會轉成一份合輯，Focus 裡的河道分頁改指向新檔。
 

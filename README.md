@@ -110,6 +110,31 @@ A book reads as one continuous scroll or one chapter at a time (Paged, with Prev
 In a narrow pane or on a phone, the cards stack top to bottom.
 A compilation also keeps study settings for reading and reviewing its members; see the [study and flashcard guide](docs/agent/study.md).
 
+A hand-picked compilation can be split into chapters. A `kind: heading` item starts a chapter that holds the items after it, up to the next heading; an item before the first heading is a chapter of its own.
+A note item may also carry `anchor: <heading text>`, and then shows only that heading's section of the note.
+The book lists chapters in its contents with their items one level in and reads one chapter per page in Paged mode; the card row shows a heading as a divider.
+**Arrange contents** reorders items and chapters, adds a chapter after the focused row, renames one in place, and removes a heading while keeping its items. **Add item** can place the new item at the end of a chosen chapter, and can pin one heading of a note.
+Editing an anchored item opens the whole note in zoom at its heading; if the heading is renamed later, the item says so and offers to open the whole note.
+A dynamic compilation gets one chapter per folder with `group: folder`, ordered as the sidebar orders folders.
+At most 100 items and 100 chapter headings fit in one compilation.
+
+```yaml
+version: 1
+id: meeting-notes
+title: Meeting notes
+arrangement: book
+items:
+  - { id: intro, kind: note, path: handbook/meetings/README.md }
+  - { id: internal, kind: heading, title: Internal meetings }
+  - { id: m1, kind: note, path: handbook/meetings/2026-01-05-weekly.md }
+  - { id: m2, kind: note, path: handbook/meetings/2025-weekly.md, anchor: 2025-08-26 Weekly }
+  - { id: external, kind: heading, title: External meetings }
+  - { id: m3, kind: folder, path: clients/visits/2026-q1 }
+```
+
+Saving a compilation from the app rewrites the file in block style and drops its comments.
+Clients released before chapters show a file with headings, anchors or `group` as invalid and leave it alone, apart from rewriting moved paths; upgrade every client together.
+
 The old Screen lanes are now compilations.
 Running `pnpm migrate-workspace` on a schema 2 workspace turns each lane into a compilation and points Focus lane tabs at the new files.
 
