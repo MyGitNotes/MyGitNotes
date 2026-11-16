@@ -342,6 +342,9 @@ export const AppContent: React.FC = () => {
           invalidateNotes();
           closeZoom();
         },
+        // Collab-first (A7): the note's own editor checked it in, so it is moved, renamed or deleted as a note that is not live,
+        // a deletion against the revision the check-in made.
+        fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined })?.(), rename: () => noteMove.renameNote({ ...note, live: undefined })?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
       }
       : undefined;
     return {

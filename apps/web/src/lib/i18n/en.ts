@@ -2504,6 +2504,13 @@ export const en = {
   'live.notDiscarded': 'The draft was kept: {reason}.',
   'live.fileTo': 'Files to: {path}',
   'live.fileToTitle': 'Files to: {path} (the name follows the title)',
+  'live.offlineDraft': 'Offline: changes are kept on this device and merged in once you are back online.',
+  'live.activeMove': '{count} people are editing this note, so it cannot be moved now.',
+  'live.activeMoveOne': '1 other person is editing this note, so it cannot be moved now.',
+  'live.activeRename': '{count} people are editing this note, so it cannot be renamed now.',
+  'live.activeRenameOne': '1 other person is editing this note, so it cannot be renamed now.',
+  'live.activeDelete': '{count} people are editing this note, so it cannot be deleted now.',
+  'live.activeDeleteOne': '1 other person is editing this note, so it cannot be deleted now.',
   'live.collisionNote': 'If the name is taken at filing, -2 is added.',
 };
 

@@ -79,11 +79,14 @@ function footerActions({ frame, readOnly, session, refresh, canCommit }: { frame
 export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly: givenReadOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate, live, openInZoom }, ref) => {
   const isMarkdown = /\.(md|markdown|mdx)$/i.test(note.path);
   // A note of a repository with a live editor is read here and edited there; `refresh` is declared below and read only after render.
-  const liveEdit = useLiveEdit({ note, live, frame, refetch: () => void refresh?.() });
+  const liveEdit = useLiveEdit({ note, live, frame, refetch: () => void refresh?.(), hasDraft: () => Boolean(sessionRef.current?.isDirty) });
   const liveTheme = useLiveTheme();
   // A pending live note is read here, yet where its live editor can retarget it the app hands it move and rename (it is
-  // movable then), which set where its check-in files it.
-  const liveDraft = liveEdit.active && note.live?.pending && !givenReadOnly && onMove ? { onRename: onRename && frame === 'zoom' ? () => void onRename(note.title) : undefined } : undefined;
+  // movable then), which set where its check-in files it. A collab-first note's own editor moves, renames and deletes it
+  // after checking it in (A7).
+  const own = givenReadOnly ? undefined : liveEdit.fileActions;
+  const liveDraft = liveEdit.active && note.live?.pending && !givenReadOnly && onMove ? { onRename: onRename && frame === 'zoom' ? () => void onRename(note.title) : undefined } : own ? { onRename: own.rename && (() => void own.rename!()), onDelete: own.remove } : undefined;
+  const moveNote = own?.move ? () => void own.move!() : givenReadOnly || template ? undefined : onMove;
   const readOnly = givenReadOnly || liveEdit.active;
   const { setHasOpenNote } = usePanelContext();
   // The workspace rail hides only behind zoom; a pane editor shares the page with it. It hides before the
@@ -136,6 +139,11 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   };
 
   const session = useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession });
+  // Read when the browser is back online: a direct editor opened offline gives way to the collab editor only with nothing typed.
+  const sessionRef = useRef(session);
+  useEffect(() => {
+    sessionRef.current = session;
+  });
   const outlines = useOutlineActions();
   const awaitingRecovery = useOutlineInsertion(note, session, editorRef);
   const addToOutline = !template && outlines?.canAdd(note.notebookId) && !session.locked ? () => outlines.add({ ...note, title: session.title, content: session.content }) : undefined;
@@ -273,7 +281,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
       <div className='editor-notices'>{liveEdit.notices}</div>
-      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} editorModes={editorModes} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : liveEdit.edit ? { editing: false, onEdit: liveEdit.edit, onDone: liveEdit.edit } : undefined} onRefresh={refresh} onClose={onClose} onMove={givenReadOnly || template ? undefined : onMove} onRename={readOnly || template ? undefined : onRename} liveDraft={liveDraft} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
+      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} editorModes={editorModes} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : liveEdit.edit ? { editing: false, onEdit: liveEdit.edit, onDone: liveEdit.edit } : undefined} onRefresh={refresh} onClose={onClose} onMove={moveNote} onRename={readOnly || template ? undefined : onRename} liveDraft={liveDraft} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
       {awaitingRecovery && (
         <p role='status'>
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>

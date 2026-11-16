@@ -2505,5 +2505,12 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.notDiscarded': '草稿沒有捨棄：{reason}。',
   'live.fileTo': '歸檔到：{path}',
   'live.fileToTitle': '歸檔到：{path}（檔名跟著標題）',
+  'live.offlineDraft': '離線：修改先存在這台裝置，連線後會自動併入',
+  'live.activeMove': '{count} 人編輯中，無法移動',
+  'live.activeMoveOne': '1 人編輯中，無法移動',
+  'live.activeRename': '{count} 人編輯中，無法重新命名',
+  'live.activeRenameOne': '1 人編輯中，無法重新命名',
+  'live.activeDelete': '{count} 人編輯中，無法刪除',
+  'live.activeDeleteOne': '1 人編輯中，無法刪除',
   'live.collisionNote': '歸檔時若同名，會加上 -2。',
 };

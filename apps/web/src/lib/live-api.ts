@@ -55,6 +55,19 @@ export interface LiveNoteEditing {
   onReleased?: () => void;
   /** A pending note was discarded, by 「捨棄草稿」 or by a check-in that found it empty: it is gone, and the view leaves it. */
   onDiscarded?: () => void;
+  /**
+   * Where the editor is the built-in one, a checked-out note's own editor checks it in before it moves, renames or deletes
+   * it (collab-first A7), then runs the action here: the folder picker, the rename dialog, the deletion. `revision` is the
+   * head the check-in answered; none when the note was no longer live and nothing was checked in.
+   */
+  fileActions?: LiveFileActions;
+}
+
+/** The file actions a collab-first note's own editor runs once its check-in released the note. */
+export interface LiveFileActions {
+  move?: (revision?: string) => void;
+  rename?: (revision?: string) => void;
+  remove?: (revision?: string) => Promise<void> | void;
 }
 
 /** A ticket to open a live note's document over the built-in editor's socket: single use, valid 60 s. */

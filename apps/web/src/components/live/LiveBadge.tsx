@@ -5,8 +5,10 @@ import { liveDestinationPreview } from './live-drafts.js';
 import './live-editor.css';
 
 /**
- * 「編輯中 · N 人」 (「編輯中」 when nobody is in the editor right now) on a checked-out note, 「未歸檔」 on a pending one,
- * whose tooltip says where its check-in files it (「歸檔到：<folder>/<name>」, by its title now) when the live editor tells.
+ * 「編輯中 · N 人」 (「編輯中」 when nobody is in the editor right now but its text differs from Git) on a checked-out note,
+ * none on one only viewed (nobody in it, its text Git's: collab-first checks out every note a writer opens), and 「未歸檔」
+ * on a pending one, whose tooltip says where its check-in files it (「歸檔到：<folder>/<name>」, by its title now) when the
+ * live editor tells.
  */
 export function LiveBadge({ live, title }: { live: LiveNoteState | undefined; title?: string; }) {
   const { t } = useTranslation();
@@ -20,6 +22,7 @@ export function LiveBadge({ live, title }: { live: LiveNoteState | undefined; ti
       </span>
     );
   }
+  if (live.activeEditors === 0 && !live.changed) return null;
   return (
     <span className='live-badge' title={t('live.badgeHint')}>
       <Radio aria-hidden='true' />

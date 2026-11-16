@@ -273,11 +273,11 @@ export function editedLiveError(file: string): CheckedOutError {
 
 /**
  * What reads say of a live link; its `editorUrl` is the framed editor's page, or the built-in editor's note page in the
- * app. A pending note names where its check-in files it (`pathRule`) only where the adapter can move it (`retargets`),
+ * app, and `changed` says its text is not the Git text it was last synced with (a note only viewed is not). A pending note names where its check-in files it (`pathRule`) only where the adapter can move it (`retargets`),
  * so an adapter without retarget answers as 0.19 did.
  */
 export function liveNoteState(row: LiveCheckout, retargets = false): LiveNoteState {
-  return { since: row.since, activeEditors: row.activeEditors, ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}) };
+  return { since: row.since, activeEditors: row.activeEditors, ...(row.base && row.contentHash !== row.base.contentHash ? { changed: true as const } : {}), ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}) };
 }
 
 /*

@@ -106,7 +106,7 @@ describe('a note of a repository with a live editor', () => {
 
 const listed = (path: string, live?: NoteListItem['live']): NoteListItem => ({ id: path, path, notebookId: 'notes~life', title: `Title ${path}`, tags: [], metadata: {}, status: 'inbox', ...(live ? { live } : {}) });
 const checkedOut = listed('notes/life/a.md', { since: view.since, activeEditors: 2, editorUrl: view.editorUrl });
-const quiet = listed('notes/life/b.md', { since: view.since, activeEditors: 0, editorUrl: view.editorUrl });
+const quiet = listed('notes/life/b.md', { since: view.since, activeEditors: 0, changed: true, editorUrl: view.editorUrl });
 const pending = listed('notes/life/.live/xyz.md', { since: view.since, activeEditors: 1, pending: true, editorUrl: view.editorUrl });
 const plain = listed('notes/life/c.md');
 const listProps = { statuses: ['inbox', 'done'], onOpenNote: vi.fn(), onDeleteNote: vi.fn(), onMoveNote: vi.fn(), onUpdateNoteStatus: vi.fn(), onNewNote: vi.fn() };
@@ -441,9 +441,9 @@ describe('the built-in live editor', () => {
   const builtin = { kind: 'builtin' as const };
   it('opens in the app, asking for a socket ticket instead of framing a page', async () => {
     fetchMock.mockImplementation(async (url: string) => url === '/api/live/checkout' ? json({ checkout: { ...view, editorUrl: 'http://localhost/notebooks/notes~life/a.md', embedUrl: undefined }, outcome: 'created' }) : json({ ticket: 't'.repeat(32), document: 'abc.1' }));
-    render(noteEditor({ live: { editor: builtin, onRefetch: vi.fn() } }));
+    // Collab-first: zoom checks the note out on arrival, with no 編輯.
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+      render(noteEditor({ live: { editor: builtin, onRefetch: vi.fn() } }));
     });
     expect(fetchMock).toHaveBeenCalledWith('/api/live/socket-ticket', expect.objectContaining({ method: 'POST', body: JSON.stringify({ notebookId: 'notes~life', path: 'notes/life/a.md' }) }));
     expect(document.querySelector('iframe')).toBeNull();

@@ -3,6 +3,13 @@ import { AlertTriangle, Check, FolderInput, LayoutTemplate, ListTree, MoreHorizo
 import { useTranslation } from '../../lib/i18n/index.js';
 import { NoteExportItems } from '../NoteExportMenu.js';
 
+/** What a live note's editor offers though the note is read-only there; see `liveDraft`. */
+export interface LiveDraftActions {
+  onRename?: () => void;
+  /** A collab-first note's own editor: checks the note in, then deletes it; true once it was deleted. */
+  onDelete?: () => Promise<boolean>;
+}
+
 interface NoteActionsMenuProps {
   path: string;
   notebookId?: string;
@@ -17,10 +24,11 @@ interface NoteActionsMenuProps {
   /** Copies the note into its notebook's `.templates/` folder as a template named after it. */
   onSaveAsTemplate?: () => void;
   /**
-   * A pending live note (未歸檔), read-only here yet movable where its live editor can retarget it: move is not locked,
-   * and `onRename` opens the dialog that names the file its check-in files it as.
+   * A live note read-only here yet movable: a pending one (未歸檔) where its live editor can retarget it, whose `onRename`
+   * opens the dialog that names the file its check-in files it as, or a collab-first note's own editor, whose move and
+   * `onRename` check the note in first. Move is not locked.
    */
-  liveDraft?: { onRename?: () => void; };
+  liveDraft?: LiveDraftActions;
   className: string;
 }
 
