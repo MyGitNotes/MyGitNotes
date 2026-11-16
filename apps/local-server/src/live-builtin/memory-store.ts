@@ -92,7 +92,7 @@ export function memoryLiveStore(): LiveStore {
         editors.set(id, listed);
         const known = listed.get(editor.key);
         if (known) Object.assign(known, { lastAt: now, lastSeq: link.seq });
-        else listed.set(editor.key, { key: editor.key, name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, firstAt: now, lastAt: now, lastSeq: link.seq });
+        else listed.set(editor.key, { key: editor.key, name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, ...(editor.person !== undefined ? { person: { realm: editor.person.realm, userId: editor.person.userId } } : {}), firstAt: now, lastAt: now, lastSeq: link.seq });
       }
       return { seq: link.seq, length: document.log.length };
     },
@@ -105,7 +105,7 @@ export function memoryLiveStore(): LiveStore {
       return true;
     },
     async editors(id) {
-      return [...(editors.get(id)?.values() ?? [])].sort((a, b) => a.firstAt - b.firstAt || (a.key < b.key ? -1 : 1)).map(editor => ({ ...editor }));
+      return [...(editors.get(id)?.values() ?? [])].sort((a, b) => a.firstAt - b.firstAt || (a.key < b.key ? -1 : 1)).map(editor => structuredClone(editor));
     },
     async lease(id, token, until, now) {
       if (!links.get(id)?.live) return 'not-live';

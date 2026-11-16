@@ -131,7 +131,7 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
       // as the identity answered, a stored one as it was recorded.
       const granted = grantSettings(settings, grant);
       const tools = hasLiveView(granted, person, liveNotes) ? typeof liveNotes!.service.discard === 'function' ? liveDiscardRemoteTools : liveRemoteTools : remoteTools;
-      const workspace = openWorkspace(granted, token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
+      const workspace = openWorkspace(granted, token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(grant.live ? { live: grant.live } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
       const assets = toolAssets(assetStorage, req, res);
       try {
         await readBody(req, res, workspace, assets);

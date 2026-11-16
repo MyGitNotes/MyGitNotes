@@ -390,7 +390,7 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
     },
     async append(id, epoch, update, editor, now) {
       if (!isLink(id) || !isEpoch(epoch)) return 'not-live';
-      const identity = editor ? JSON.stringify({ key: editor.key, name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent }) : '';
+      const identity = editor ? JSON.stringify({ key: editor.key, name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, ...(editor.person !== undefined ? { person: { realm: editor.person.realm, userId: editor.person.userId } } : {}) }) : '';
       const appended = await script(`append ${id}.${epoch}`, APPEND, [key.link(id), key.log(id, epoch), key.editors(id)], [epoch, encode(update), now, editor?.key ?? '', identity]) as [number, number] | null;
       return appended ? { seq: appended[0], length: appended[1] } : 'not-live';
     },

@@ -5,7 +5,7 @@ import { createServer, type Server } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { Router } from 'express';
-import { checkInLink, type CommitAuthor, type EditionSourceConfig, gitBlobId, type LiveCheckInOptions, type LiveContext, LiveCredentialError, liveAdapterError, normalizeLiveText, parseWorkspaceConfig, type RemoteSource, SourceError, sourceIdentity, sweepIdleLive, type WorkspaceConfigSource, type WorkspacePerson } from '@mygitnotes/core';
+import { checkInLink, type CommitAuthor, type EditionSourceConfig, gitBlobId, liveAdapterError, type LiveCheckInOptions, type LiveContext, LiveCredentialError, normalizeLiveText, parseWorkspaceConfig, type RemoteSource, SourceError, sourceIdentity, sweepIdleLive, type WorkspaceConfigSource, type WorkspacePerson } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { bearerGrantRecord, type IdentityService } from '../src/identity.js';
 import { type BuiltinFixture, builtinFixture, edition as hosted, manifest as hostedManifest, repository as hostedRepository, shutdownFixtures } from '../src/live-builtin/test-fixture.js';
@@ -314,12 +314,20 @@ describe('the app with an identity that says how live editing shows a person', (
   const pat = { name: 'pat', email: '7+pat@users.noreply.github.com' };
   /** `x-person` names who is signed in. The identity gives `live` and no `author`, as the community's does. */
   const identity: IdentityService = { router: Router(), signedIn: async req => typeof req.headers['x-person'] === 'string' ? { person: { realm: 'edition', userId: req.headers['x-person'] }, login: 'pat', owner: `edition:${req.headers['x-person']}`, live: pat } : null, token: async () => undefined, grantCredential: async () => undefined, grantToken: async () => undefined, noCredentialMessage: () => 'No credential.', signInOptions: async () => [], configured: async () => true, signOut: async () => {} };
-  const configSource: WorkspaceConfigSource = { mode: 'remote', settings: async () => workspaceSettings([hosted]) };
+  const configSource: WorkspaceConfigSource = {
+    mode: 'remote',
+    settings: async () => {
+      // The site is the first source's; the workspace opens only the edition repository.
+      const settings = workspaceSettings([{ type: 'github', repository: 'owner/site', branch: 'main' }, hosted]);
+      return { ...settings, members: [{ ...settings.members[1], default: true }] };
+    },
+  };
   const note = { notebookId: 'notes~life', path: 'notes/life/a.md' };
   let root: string, server: Server, base: string, live: BuiltinFixture, hostedFiles: MemoryFiles;
   const call = async (url: string, body: unknown, as = 'p1') => {
     const response = await fetch(base + url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-person': as }, body: JSON.stringify(body) });
-    return { status: response.status, body: await response.json() };
+    const text = await response.text();
+    return { status: response.status, body: (response.headers.get('content-type') ?? '').includes('application/json') ? JSON.parse(text) : text };
   };
   const made = () => memoryCommits(hostedFiles).filter(commit => commit.message !== 'Memory state');
 
@@ -344,7 +352,8 @@ describe('the app with an identity that says how live editing shows a person', (
     const { id } = (await call('/api/live/checkout', note)).body.checkout;
     const { ticket } = (await call('/api/live/socket-ticket', note)).body;
     expect(await live.store.takeTicket(createHash('sha256').update(ticket, 'utf8').digest('hex'), live.time.now())).toEqual({ repository: hostedRepository, id, epoch: 1, document: `${id}.1`, editor: { key: 'person:7+pat@users.noreply.github.com', name: 'pat', email: pat.email, agent: false, person: { realm: 'edition', userId: 'p1' } }, display: 'pat' });
-    expect((await call('/api/notes', { notebookId: 'notes~life', title: 'New', content: 'x' })).status).toBe(200);
+    const head = (await new MemoryEditionSource(hosted, hostedFiles, true, memoryCommitCounter(hostedFiles), undefined, async () => parseWorkspaceConfig(hostedManifest)).getSnapshot(true)).sha;
+    expect((await call('/api/notes', { notebookId: 'notes~life', path: 'notes/life/new.md', content: 'x', metadata: { title: 'New' }, revision: head })).status).toBe(200);
     expect(made()).toHaveLength(1);
     expect(made()[0].author).toBeUndefined();
   });

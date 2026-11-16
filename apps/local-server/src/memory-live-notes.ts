@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { type EditionSourceConfig, isBuiltinEditor, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity } from '@mygitnotes/core';
+import { type EditionSourceConfig, isBuiltinEditor, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
 import { memoryCommitCounter, MemoryEditionSource, type MemoryFiles } from './memory-edition-source.js';
 
 /** The clock the memory adapter reads, which a test moves on. */
@@ -36,6 +36,12 @@ export interface MemoryLiveNotesOptions {
   discard?: boolean;
   /** Whether the service implements `retarget` (§20.2 of the built-in editor spec); left out, it does not, as a 0.19 adapter. */
   retarget?: boolean;
+  /**
+   * Whether each editor is listed with the person they signed in as, as an adapter whose check-ins commit with the
+   * editors' own credentials lists them; left out, none is, as a 0.20 adapter. Its `service.open` commits to the same
+   * memory files whoever it is asked to open them as.
+   */
+  persons?: boolean;
 }
 
 /** The memory adapter, with the hooks of its editor that a test drives. */
@@ -68,6 +74,7 @@ interface EditorRef {
   name: string;
   email?: string;
   agent: boolean;
+  person?: WorkspacePerson;
 }
 interface Edit {
   /** Null for a merge, which is attributed to nobody. */
@@ -134,7 +141,7 @@ const iso = (time: number) => new Date(time).toISOString();
  * session is open and `h:<hash>` otherwise, and a write on an older revision of the open session is rebased over the
  * typing since. Its service opens a memory Git source over the same files that records each commit's author and message.
  */
-export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000, discard = false, retarget = false }: MemoryLiveNotesOptions): MemoryLiveNotes {
+export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000, discard = false, retarget = false, persons = false }: MemoryLiveNotesOptions): MemoryLiveNotes {
   const covered = new Map(repositories.map(entry => [sourceIdentity(entry.source), entry]));
   const state = new Map<RepositoryId, { links: Map<string, Link>; byPath: Map<string, string>; }>();
   const notices: LiveNotice[] = [];
@@ -160,9 +167,10 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
   const text = (link: Link) => ({ content: link.text, liveRevision: revision(link), contentHash: liveContentHash(link.text) });
   const row = (link: Link): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), since: iso(link.since), ...(isBuiltinEditor(editor) ? {} : { editorUrl: `${editor.origin}/n/${link.id}`, embedUrl: `${editor.origin}/n/${link.id}?embed=1` }), contentHash: liveContentHash(link.text), activeEditors: link.active, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
   const live = (repository: RepositoryId) => [...repositoryState(repository).links.values()].filter(link => link.live);
-  const editorOf = ({ person, author }: LiveContext, agent: boolean): EditorRef => {
-    const name = author?.name || `${person.realm}:${person.userId}`;
-    return { key: `${agent ? 'agent' : 'person'}:${author?.email ?? name}`, name, ...(author?.email ? { email: author.email } : {}), agent };
+  const editorOf = (context: LiveContext, agent: boolean): EditorRef => {
+    const { person } = context, shown = liveIdentityOf(context);
+    const name = shown?.name || `${person.realm}:${person.userId}`;
+    return { key: `${agent ? 'agent' : 'person'}:${shown?.email ?? name}`, name, ...(shown?.email ? { email: shown.email } : {}), agent, ...(persons ? { person } : {}) };
   };
   const openSession = (link: Link) => {
     if (link.log) return;
@@ -198,7 +206,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
       if (!ref) continue;
       const known = listed.get(ref.key);
       if (known) known.lastAt = iso(at);
-      else listed.set(ref.key, { name: ref.name, ...(ref.email ? { email: ref.email } : {}), agent: ref.agent, firstAt: iso(at), lastAt: iso(at) });
+      else listed.set(ref.key, { name: ref.name, ...(ref.email ? { email: ref.email } : {}), agent: ref.agent, firstAt: iso(at), lastAt: iso(at), ...(ref.person ? { person: ref.person } : {}) });
     }
     return [...listed.values()];
   };

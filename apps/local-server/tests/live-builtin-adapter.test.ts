@@ -101,7 +101,7 @@ describe('the app over the built-in live adapter', () => {
     expect((await call('POST', '/api/live/socket-ticket', asked, 'p2')).status).toBe(403);
     const given = await call('POST', '/api/live/socket-ticket', asked);
     expect(given).toEqual({ status: 200, body: { ticket: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), document: `${pending.id}.1` } });
-    expect(await live.store.takeTicket(ticketHash(given.body.ticket), live.time.now())).toEqual({ repository, id: pending.id, epoch: 1, document: `${pending.id}.1`, editor: { key: 'person:pat@example.test', name: 'Pat', email: 'pat@example.test', agent: false }, display: 'Pat' });
+    expect(await live.store.takeTicket(ticketHash(given.body.ticket), live.time.now())).toEqual({ repository, id: pending.id, epoch: 1, document: `${pending.id}.1`, editor: { key: 'person:pat@example.test', name: 'Pat', email: 'pat@example.test', agent: false, person: { realm: 'edition', userId: 'p1' } }, display: 'Pat' });
     // Nobody typed in it yet: nothing was committed, and nothing names an editor.
     expect(commits()).toEqual([]);
     expect(await live.store.link(pending.id)).toMatchObject({ path: null, pathRule: '{{title}}.md', lastEditAt: null, seq: 0 });

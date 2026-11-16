@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
+import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
 import { liveDocumentName, type LiveDocuments, liveDocuments, type LiveSnapshot, seedLiveState } from './documents.js';
 import { liveSocket, type LiveSocketLimits } from './socket.js';
 import { type EditorRef, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
@@ -31,10 +31,14 @@ export interface BuiltinLiveNotesOptions {
   /** Whether the built-in editor covers a repository. */
   covers(repository: RepositoryId): boolean;
   /**
-   * `service.open`: the repository with the deployment's own write credential, its commits authored by `author`
-   * (none: the credential's account). The check-in engine is its only caller.
+   * `service.open`: the repository a check-in commits through, its commits authored by `author` (none: the credential's
+   * account). `as.person` is the editor the engine commits as: an edition that commits with the editors' own
+   * credentials opens the repository with that person's and throws `LiveCredentialError` when they cannot commit there,
+   * so the engine asks as the next editor; one that commits with a credential of its own may ignore it. Without `as`
+   * (a note whose editors were recorded without a person) there is nobody to commit as. The check-in engine is its only
+   * caller.
    */
-  open(repository: RepositoryId, author?: CommitAuthor): Promise<RemoteSource>;
+  open(repository: RepositoryId, author?: CommitAuthor, as?: LiveOpenAs): Promise<RemoteSource>;
   /** `redisLiveStore({ url })`, or `memoryLiveStore()` for a deployment that accepts losing live text on restart. */
   store: LiveStore;
   notify?(notice: LiveNotice): Promise<void>;
@@ -83,12 +87,14 @@ const REVISION = /^t:([0-9a-f]{64})$/;
 const iso = (time: number) => new Date(time).toISOString();
 
 /**
- * Who an edit is recorded for: a person or an agent, by their verified email in lower case, else by their sign-in. The
- * email is the identity's (`LiveContext.author`), never a client's word, and no email is made up where there is none.
+ * Who an edit is recorded for: a person or an agent, by their verified email in lower case, else by their sign-in, with
+ * the person they signed in as, whose own credential a check-in may commit with. The name and email are the identity's
+ * (`LiveContext.live`, else `LiveContext.author`), never a client's word, and no email is made up where there is none.
  */
-export function liveEditorRef({ person, author }: LiveContext, agent: boolean): EditorRef {
+export function liveEditorRef(context: LiveContext, agent: boolean): EditorRef {
+  const { person } = context, shown = liveIdentityOf(context);
   const signIn = `${person.realm}:${person.userId}`;
-  return { key: `${agent ? 'agent' : 'person'}:${author?.email ? author.email.toLowerCase() : signIn}`, name: editorName(author?.name || signIn), ...(author?.email ? { email: author.email } : {}), agent };
+  return { key: `${agent ? 'agent' : 'person'}:${shown?.email ? shown.email.toLowerCase() : signIn}`, name: editorName(shown?.name || signIn), ...(shown?.email ? { email: shown.email } : {}), agent, person: { realm: person.realm, userId: person.userId } };
 }
 
 /** The longest editor name the check-in engine takes, in UTF-16 units; a longer one is cut, never split in a surrogate pair. */
@@ -235,9 +241,9 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       return (await store.repositories()).filter(covers);
     },
     checkouts: rows,
-    async open(repository, author) {
+    async open(repository, author, as) {
       covered(repository);
-      return options.open(repository, author);
+      return options.open(repository, author, as);
     },
     async lease(repository, id) {
       const link = await live(repository, id);
@@ -254,7 +260,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       if (!(await store.leaseRead(link.id, tokenOf(lease), shot.seq, shot.hash, clock()))) throw new LiveLeasedError();
       documents.remember(link, shot);
       const [editors, initial, activeEditors] = await Promise.all([store.editors(link.id), link.path === null ? store.initialText(link.id) : null, active(link)]);
-      return { ...textOf(shot), checkout: rowOf(link, shot.hash, activeEditors), editors: editors.map((editor): LiveEditor => ({ name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, firstAt: iso(editor.firstAt), lastAt: iso(editor.lastAt) })), ...(initial !== null ? { initialText: initial } : {}) };
+      return { ...textOf(shot), checkout: rowOf(link, shot.hash, activeEditors), editors: editors.map((editor): LiveEditor => ({ name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, firstAt: iso(editor.firstAt), lastAt: iso(editor.lastAt), ...(editor.person !== undefined ? { person: editor.person } : {}) })), ...(initial !== null ? { initialText: initial } : {}) };
     },
     async mergeIn(repository, id, lease, change) {
       // A merge is nobody's edit: it names no editor and leaves lastEditAt.

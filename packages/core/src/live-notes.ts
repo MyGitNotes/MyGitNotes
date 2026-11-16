@@ -16,11 +16,23 @@ import type { WorkspacePerson, WorkspaceRequest } from './workspace-config-sourc
  * contract, the checks on every value an adapter returns, and the helpers both sides share.
  */
 
+/**
+ * How live editing shows and credits a person: the name other editors see, and the email a check-in commit names them
+ * by. The email is one the identity verified as theirs, or left out; a person without one is shown by name, may author
+ * a check-in through their own credential, and is nobody's co-author.
+ */
+export interface LiveIdentity {
+  name: string;
+  email?: string;
+}
+
 /** Who a person-side call acts for. */
 export interface LiveContext {
   person: WorkspacePerson;
   /** As SignedIn.author / BearerGrant.author. */
   author?: CommitAuthor;
+  /** As SignedIn.live / BearerGrant.live: how live editing shows and credits the person. Left out, `author` does. */
+  live?: LiveIdentity;
   /** The request as the configuration source saw it (for /mcp: the grant's request, no cookie). */
   request: WorkspaceRequest;
 }
@@ -42,6 +54,9 @@ export interface LiveBuiltinEditorInfo {
 /** A repository's live editor: a framed external one, or the built-in one. */
 export type LiveEditorInfo = LiveFrameEditorInfo | LiveBuiltinEditorInfo;
 export const isBuiltinEditor = (info: LiveEditorInfo): info is LiveBuiltinEditorInfo => info.kind === 'builtin';
+
+/** How live editing shows and credits the person of a context: its `live`, else its `author`. */
+export const liveIdentityOf = (context: Pick<LiveContext, 'author' | 'live'>): LiveIdentity | undefined => context.live ?? context.author;
 
 /** What a check-in overwrote: Git changes that lost to the live text, or a note deleted in Git and written back. */
 export interface LiveConflict {
@@ -90,6 +105,12 @@ export interface LiveEditor {
   agent: boolean;
   firstAt: string;
   lastAt: string;
+  /**
+   * Who the editor signed in as, where the adapter's check-ins commit with the editors' own credentials: the engine
+   * opens the repository as one of them (`service.open`'s `as`). Left out, as a 0.20 adapter leaves it, the
+   * deployment's own credential commits.
+   */
+  person?: WorkspacePerson;
 }
 
 /** What a signed-in person, or a write grant, may ask of the adapter. */
@@ -119,13 +140,24 @@ export interface LiveDetail extends LiveText {
 }
 export type LiveRelease = { released: true; } | { released: false; reason: 'active' | 'changed' | 'not-synced'; activeEditors?: number; };
 
+/** Whom `service.open` opens a repository as. */
+export interface LiveOpenAs {
+  /** The editor whose own credential the check-in commits with; left out, the deployment's own. */
+  person?: WorkspacePerson;
+}
+
 /** What the check-in engine asks of the adapter, with the deployment's own credential. */
 export interface LiveServiceCalls {
   /** Repositories with live links. */
   repositories(): Promise<RepositoryId[]>;
   checkouts(repository: RepositoryId): Promise<LiveCheckout[]>;
-  /** The repository with the deployment's own write credential; its commits are authored by `author` (none: the credential's account). */
-  open(repository: RepositoryId, author?: CommitAuthor): Promise<RemoteSource>;
+  /**
+   * The repository to commit a check-in through; its commits are authored by `author` (none: the credential's
+   * account). With `as.person`, an adapter that lists its editors' persons opens it with that person's own credential,
+   * and throws {@link LiveCredentialError} when they cannot commit there; the engine then asks as the next editor.
+   * Without `as`, and in an adapter that takes none (0.20), it is the deployment's own write credential.
+   */
+  open(repository: RepositoryId, author?: CommitAuthor, as?: LiveOpenAs): Promise<RemoteSource>;
   lease(repository: RepositoryId, id: string): Promise<LiveLease>;
   detail(repository: RepositoryId, id: string, lease: LiveLease): Promise<LiveDetail>;
   mergeIn(repository: RepositoryId, id: string, lease: LiveLease, change: { content: string; baseRevision: string; }): Promise<{ liveRevision: string; }>;
@@ -153,7 +185,8 @@ export interface LiveServiceCalls {
 }
 
 export interface LiveNotice {
-  kind: 'conflict' | 'deleted' | 'unfiled';
+  /** `uncommittable`: no credential the check-in could try may commit the note; it stays live and is tried again. */
+  kind: 'conflict' | 'deleted' | 'unfiled' | 'uncommittable';
   repository: RepositoryId;
   notebook: NotebookKey;
   path: string | null;
@@ -260,6 +293,15 @@ export class LiveTooLargeError extends SourceError {
     super(message, 413);
   }
 }
+/**
+ * The person `service.open` was asked to open a repository as cannot commit there: their credential is missing,
+ * refused, revoked or expired, or it may not write. The check-in tries the next editor; it names no credential detail.
+ */
+export class LiveCredentialError extends SourceError {
+  constructor(message = "This person's credential cannot commit to the repository.") {
+    super(message, 403);
+  }
+}
 /** Any other adapter failure: it names no adapter detail. */
 export class LiveUnavailableError extends SourceError {
   constructor() {
@@ -282,7 +324,7 @@ export function checkedOutFields(error: unknown): { code?: 'checked-out'; paths?
   return error instanceof CheckedOutError ? { code: error.code, paths: error.paths } : {};
 }
 
-const LIVE_ERRORS = [LiveStaleError, LiveLeasedError, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, CheckedOutError];
+const LIVE_ERRORS = [LiveStaleError, LiveLeasedError, LiveNotLiveError, LiveTooLargeError, LiveCredentialError, LiveUnavailableError, CheckedOutError];
 
 /** An adapter failure as the community reports it: one of the live errors as thrown, anything else a 502 that names no detail. */
 export function liveAdapterError(error: unknown): SourceError {
@@ -400,6 +442,18 @@ function baseOf(value: unknown): LiveCheckout['base'] | undefined {
   const { commit, blob, contentHash } = value as Record<string, unknown>;
   if (typeof commit !== 'string' || !GIT_OBJECT_ID.test(commit) || typeof blob !== 'string' || !GIT_OBJECT_ID.test(blob) || !isLiveContentHash(contentHash)) return undefined;
   return { commit, blob, contentHash };
+}
+
+/**
+ * What a check-in that commits nothing reads of a row, checked without the repository's notebooks, which only an
+ * opened repository gives: its notebook key, its path (null while pending) and its base. Null for a row without them.
+ */
+export function liveRowBase(row: unknown): { notebook: NotebookKey; path: string | null; base: LiveCheckout['base']; } | null {
+  if (!row || typeof row !== 'object') return null;
+  const { notebook, path, base } = row as Record<string, unknown>;
+  const known = baseOf(base);
+  if (typeof notebook !== 'string' || !notebook || notebook.length > 512 || (path !== null && (typeof path !== 'string' || !isRelativePath(path))) || known === undefined) return null;
+  return { notebook, path, base: known };
 }
 
 /** Why a row is not a valid checkout; undefined when it is. */

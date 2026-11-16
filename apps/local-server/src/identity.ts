@@ -1,4 +1,4 @@
-import type { CommitAuthor, WorkspacePerson, WorkspaceSite } from '@mygitnotes/core';
+import type { CommitAuthor, LiveIdentity, WorkspacePerson, WorkspaceSite } from '@mygitnotes/core';
 import type { Request, Response, Router } from 'express';
 import { type AuthServices, authToken, credentialToken, getSession, ownerOf, providerFor, providerRouter, saveCredential, type SessionServices } from './auth.js';
 import type { StoredRecord } from './record-store/index.js';
@@ -17,6 +17,13 @@ export interface SignedIn {
    * control character refuses the person's writes (400), and an empty one counts as none.
    */
   author?: CommitAuthor;
+  /**
+   * How live editing shows and credits the person: the name other editors see, and the email a check-in commit names
+   * them by, which must be one the identity verified as theirs (or be left out: such a person is shown, may author a
+   * check-in through their own credential, and is nobody's co-author). Left out, `author` does. It names nobody on the
+   * person's ordinary commits, which follow `author` alone.
+   */
+  live?: LiveIdentity;
 }
 /**
  * What an identity resolves an outside bearer to: who an `/mcp` call acts for and how far it reaches. It is a grant
@@ -28,6 +35,8 @@ export interface BearerGrant {
   owner: string | number;
   /** The person as the author of the commits the call makes, as `SignedIn.author`; carried on the grant to the sources the call opens. */
   author?: CommitAuthor;
+  /** How live editing shows and credits the person, as `SignedIn.live`; carried on the grant to the live editor. */
+  live?: LiveIdentity;
   /** Whether the call may write. Only `true` writes; a call without it gets no write tool, as a read-only grant does. */
   write: boolean;
   /** The site the grant reaches, as `siteIdentity` writes it. A deployment on another site refuses the call. */
@@ -60,6 +69,13 @@ export interface IdentityService {
   /** A grant's provider token on `site` at call time; undefined when its person has none. */
   grantToken(grant: StoredRecord, person: WorkspacePerson | undefined, site: WorkspaceSite): Promise<string | undefined>;
   /**
+   * The person's own provider token on `site` with no request at hand, refreshed when near expiry: what a check-in of a
+   * live note commits with as that person (`LiveServiceCalls.open`'s `as`). Undefined when the identity keeps none for
+   * them; throws `CredentialRejected` for one that is refused, revoked or expired. Left out, the identity keeps no
+   * credential that outlives a request, and a composition cannot commit check-ins with the editors' own.
+   */
+  personToken?(person: WorkspacePerson, site: WorkspaceSite): Promise<string | undefined>;
+  /**
    * Resolves a bearer `/mcp` was sent that is not shaped like one of this server's stored grants (an OIDC access token,
    * say) to the person it acts for, or to null to refuse it. The identity verifies the bearer itself: its signature,
    * issuer, audience, expiry and whatever else makes it trustworthy. `/mcp` never keeps or logs the bearer, answers 401
@@ -85,10 +101,11 @@ export function bearerGrantRecord(resolved: BearerGrant): StoredRecord | null {
   const text = (value: unknown): value is string => typeof value === 'string' && value !== '';
   const id = (value: unknown): value is string | number => text(value) || (typeof value === 'number' && Number.isFinite(value));
   if (typeof resolved !== 'object' || resolved === null) return null;
-  const { person, owner, author, write, site } = resolved;
+  const { person, owner, author, live, write, site } = resolved;
   if (typeof person !== 'object' || person === null || !text(person.realm) || !id(person.userId) || !id(owner) || typeof write !== 'boolean' || !text(site)) return null;
   if (author !== undefined && (typeof author !== 'object' || author === null || !text(author.name) || !text(author.email))) return null;
-  return { kind: 'agent', ownerId: owner, person: { realm: person.realm, userId: person.userId }, site, write, ...(author ? { author: { name: author.name, email: author.email } } : {}) };
+  if (live !== undefined && (typeof live !== 'object' || live === null || !text(live.name) || (live.email !== undefined && !text(live.email)))) return null;
+  return { kind: 'agent', ownerId: owner, person: { realm: person.realm, userId: person.userId }, site, write, ...(author ? { author: { name: author.name, email: author.email } } : {}), ...(live ? { live: { name: live.name, ...(live.email !== undefined ? { email: live.email } : {}) } } : {}) };
 }
 
 /** Today's behavior: sign in with the workspace site's GitHub or GitLab, and hold that provider's token. */

@@ -24,9 +24,9 @@ const note = 'notes/life/a.md';
 /** No link has this id. */
 const unknown = 'A'.repeat(22);
 const base = (content: string, n = 1) => ({ commit: String(n % 10).repeat(40), blob: 'b'.repeat(39) + String(n % 10), content });
-const editorOf = (n: number) => ({ key: `person:p${n}@example.test`, name: `Person ${n}`, email: `p${n}@example.test`, agent: false });
+const editorOf = (n: number) => ({ key: `person:p${n}@example.test`, name: `Person ${n}`, email: `p${n}@example.test`, agent: false, person: { realm: 'edition', userId: `p${n}` } });
 /** The n-th person as a detail lists them, having typed only at the fixture's first instant. */
-const listed = (n: number) => ({ name: `Person ${n}`, email: `p${n}@example.test`, agent: false, firstAt: iso(T0), lastAt: iso(T0) });
+const listed = (n: number) => ({ name: `Person ${n}`, email: `p${n}@example.test`, agent: false, firstAt: iso(T0), lastAt: iso(T0), person: { realm: 'edition', userId: `p${n}` } });
 const ticketHash = (ticket: string) => createHash('sha256').update(ticket, 'utf8').digest('hex');
 
 const checkout = async (f: BuiltinFixture, content = '# A\n', path = note, n = 1) => (await f.liveNotes.person(person(n)).checkout(repository, { notebook, path, base: base(content) })).checkout;

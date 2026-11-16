@@ -1,4 +1,4 @@
-import type { LiveConflict, NotebookKey, RepositoryId } from '@mygitnotes/core';
+import type { LiveConflict, NotebookKey, RepositoryId, WorkspacePerson } from '@mygitnotes/core';
 
 /*
  * What the built-in live editor keeps between check-ins (docs/specs/2026-11-15-builtin-live-editor §3): the links, each
@@ -50,6 +50,8 @@ export interface EditorRef {
   name: string;
   email?: string;
   agent: boolean;
+  /** Who the editor signed in as: a check-in may commit with this person's own credential. An entry recorded by 0.20 has none. */
+  person?: WorkspacePerson;
 }
 /** An editor since the last sync. `lastSeq` is the sequence of their last append. */
 export interface StoredEditor extends EditorRef {

@@ -1,6 +1,6 @@
 import { SourceError } from './github-api.js';
 import { checkInLink, discardLink, type LiveCheckInOptions, type LiveCheckInResult, type LiveDiscardResult, type LiveRetarget, retargetLink, retargetLivePathRule } from './live-checkin.js';
-import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveInitialTextOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveIdentityOf, liveInitialTextOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { localIdIn, type NotebookKey } from './notebook-key.js';
 import type { RepositoryId } from './repository.js';
 import type { LiveNoteState, NotebookConfig } from './types.js';
@@ -201,7 +201,9 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       const link = (await links()).find(entry => entry.path === path);
       if (!link) throw new LiveNotLiveError();
       try {
-        return await checkInLink(liveNotes, repository, link.checkout.id, { ...checkIn, mode: 'manual' });
+        // Whoever asks is the last credential tried, so a writer can check in a note whose editors no longer may.
+        const shown = liveIdentityOf(context);
+        return await checkInLink(liveNotes, repository, link.checkout.id, { ...checkIn, mode: 'manual', requester: { person: context.person, ...(shown ? { author: shown } : {}) } });
       } finally {
         // The link may be closed or filed now; the next read in this request asks again.
         listed = undefined;
