@@ -147,6 +147,19 @@ describe('rebaseLiveText', () => {
     expect(rebaseLiveText('one\ntwo\n', 'ONE\ntwo\n', 'one\ntwo\nthree\n', undefined, uncertain)).toBe('ONE\ntwo\nthree\n');
   });
 
+  it('with an uncertain base, conflicts on an insertion at the edge of a span the other side replaced instead of doubling it (cfx-F003)', () => {
+    const uncertain = { uncertainBase: true };
+    // The server stored X; the tab then replaced the character after it.
+    expect(rebaseLiveText('a c', 'aX c', 'aXZc', undefined, uncertain)).toBeNull();
+    expect(rebaseLiveText('ab', 'aXb', 'aXY', undefined, uncertain)).toBeNull();
+    expect(rebaseLiveText('hello world', 'hello Xworld', 'hello XZorld', undefined, uncertain)).toBeNull();
+    // At the end of the replaced span too, either side.
+    expect(rebaseLiveText('abc', 'aYc', 'abXc', undefined, uncertain)).toBeNull();
+    expect(rebaseLiveText('abc', 'abXc', 'aYc', undefined, uncertain)).toBeNull();
+    // Apart from it, both still apply.
+    expect(rebaseLiveText('abcd', 'aYcd', 'abcXd', undefined, uncertain)).toBe('aYcXd');
+  });
+
   it('keeps an insertion at the edge of a span the other side replaced', () => {
     expect(rebaseLiveText('abcdefgh', 'abgh', 'abXcdefgh')).toBe('abXgh');
     expect(rebaseLiveText('abcdefgh', 'abgh', 'abcdefXgh')).toBe('abXgh');
