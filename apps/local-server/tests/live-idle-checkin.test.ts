@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { type EditionSourceConfig, gitBlobId, type LiveContext, normalizeLiveText, parseWorkspaceConfig, sourceIdentity, sweepIdleLive } from '@mygitnotes/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { checkInLink, createLiveIdleBackoff, type EditionSourceConfig, gitBlobId, type LiveContext, LiveCredentialError, normalizeLiveText, parseWorkspaceConfig, sourceIdentity, sweepIdleLive } from '@mygitnotes/core';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource, type MemoryFiles } from '../src/memory-edition-source.js';
 import { type MemoryLiveClock, memoryLiveClock, type MemoryLiveNotes, memoryLiveNotes } from '../src/memory-live-notes.js';
 
@@ -26,13 +26,19 @@ const checkout = async () => {
   const { checkout: row } = await liveNotes.person(person(1)).checkout(repository, { notebook: 'notes~life', path: file, base: { commit: snapshot.sha, blob: gitBlobId(Buffer.from(A), 40), content: normalizeLiveText(A) } });
   return row.id;
 };
-const sweep = () => sweepIdleLive(liveNotes, { now: clock.now, idleMs: 5 * MINUTE, timeZone: 'Asia/Taipei', sleep: async () => {} });
+const sweep = (backoff?: ReturnType<typeof createLiveIdleBackoff>) => sweepIdleLive(liveNotes, { now: clock.now, idleMs: 5 * MINUTE, timeZone: 'Asia/Taipei', sleep: async () => {}, ...(backoff ? { backoff } : {}) });
+const gitCommit = async (path: string, content: string | null) => {
+  const source = git();
+  const snapshot = await source.getSnapshot(true);
+  await source.commitChanges([content === null ? { path, sha: null } : { path, content }], snapshot.sha, 'write', 'notes', undefined, snapshot);
+};
 
 beforeEach(() => {
   files = new Map([['.mygitnotes.yaml', manifest], [file, A]]);
   clock = memoryLiveClock(Date.parse('2026-11-16T02:00:00.000Z'));
   liveNotes = memoryLiveNotes({ editor, repositories: [{ source: edition, files }], clock, discard: true });
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe('the idle check-in', () => {
   it('checks in a link nobody is active on once 5 minutes passed since its last edit, and not a second before', async () => {
@@ -130,5 +136,51 @@ describe('the idle check-in', () => {
     clock.advance(5 * MINUTE);
     expect(await sweep()).toMatchObject({ due: 1, results: [{ id: pending.id, reason: 'unfiled' }] });
     expect(liveNotes.notices).toHaveLength(2);
+  });
+
+  it('sends the notice of a text whose earlier try failed without one (cf15-F002)', async () => {
+    const pending = await liveNotes.person(person(1)).createPending(repository, { notebook: 'notes~life', pathRule: '{{kind}}/{{title}}.md', content: '# Untitled\n' });
+    liveNotes.type(repository, pending.id, '# Untitled\nWords.\n', person(1));
+    clock.advance(5 * MINUTE);
+    vi.spyOn(liveNotes.service, 'detail').mockRejectedValueOnce(new Error('down'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await sweep()).toMatchObject({ due: 1, results: [], failed: [{ id: pending.id }] });
+    expect(liveNotes.notices).toEqual([]);
+    // Past its lease and the wait, the same text is tried again: nothing was told of it yet, so its notice goes out.
+    clock.advance(6 * MINUTE);
+    expect(await sweep()).toMatchObject({ due: 1, results: [{ id: pending.id, reason: 'unfiled' }] });
+    expect(liveNotes.notices).toEqual([expect.objectContaining({ kind: 'unfiled', id: pending.id })]);
+  });
+
+  it('holds back only a repeated uncommittable or unfiled notice: a deletion found at a later try of the same text is told (cf15-F002)', async () => {
+    liveNotes = memoryLiveNotes({ editor, repositories: [{ source: edition, files }], clock, discard: true, persons: true });
+    const id = await checkout();
+    liveNotes.type(repository, id, `${A}three\n`, person(1));
+    clock.advance(5 * MINUTE);
+    const open = vi.spyOn(liveNotes.service, 'open').mockRejectedValue(new LiveCredentialError());
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await sweep()).toMatchObject({ due: 1, results: [{ id, reason: 'uncommittable' }] });
+    expect(liveNotes.notices.map(notice => notice.kind)).toEqual(['uncommittable']);
+    open.mockRestore();
+    await gitCommit(file, null);
+    clock.advance(6 * MINUTE);
+    expect(await sweep()).toMatchObject({ due: 1, results: [{ id, committed: true, conflict: { kind: 'deleted' } }] });
+    expect(liveNotes.notices.map(notice => notice.kind)).toEqual(['uncommittable', 'deleted']);
+  });
+
+  it('forgets a link it could not check in once the link is gone, whoever checked it in (cf15-F002)', async () => {
+    const backoff = createLiveIdleBackoff();
+    const id = await checkout();
+    liveNotes.type(repository, id, `${A}three\n`, person(1));
+    clock.advance(5 * MINUTE);
+    vi.spyOn(liveNotes.service, 'detail').mockRejectedValueOnce(new Error('down'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await sweep(backoff)).toMatchObject({ failed: [{ id }] });
+    expect([...backoff.links.keys()]).toEqual([id]);
+    // Checked in by hand past its lease: the link is gone, and the next tick drops what it held of it.
+    clock.advance(6 * MINUTE);
+    expect(await checkInLink(liveNotes, repository, id, { mode: 'manual', now: clock.now, sleep: async () => {} })).toMatchObject({ committed: true, released: true });
+    expect(await sweep(backoff)).toMatchObject({ due: 0 });
+    expect(backoff.links.size).toBe(0);
   });
 });
