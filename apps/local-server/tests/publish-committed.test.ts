@@ -145,6 +145,16 @@ describe('a live check-in', () => {
     expect(committed.map(heard => heard.notes.map(note => [note.path, note.content]))).toEqual([[['notes/life/a.md', 'Typed live.\n']]]);
   });
 
+  it('names the editor whose credential made a check-in commit to syncCommitted, and the deployment\'s none', async () => {
+    liveNotes = memoryLiveNotes({ editor, repositories: [{ source: notes, files }], persons: true });
+    await start({ publishing: service() });
+    await edit(typed);
+    expect(await checkIn()).toMatchObject({ status: 200, body: { committed: true } });
+    await settled();
+    expect(committed).toHaveLength(1);
+    expect(committed[0].person).toEqual({ realm: 'edition', userId: 'p1' });
+  });
+
   it('publishes nothing for a check-in that makes no commit', async () => {
     await start({ publishing: service() });
     await edit(published);
@@ -477,6 +487,8 @@ describe('the check-in engine', () => {
     expect(result).toMatchObject({ committed: true, released: true });
     expect(heard).toHaveLength(1);
     expect(heard[0]).toMatchObject({ repository, path: 'notes/life/a.md', content: '# Typed\n', commit: result.commit, author: { name: 'Pat', email: 'pat@example.test' } });
+    // The adapter names no person, so the deployment's credential made the commit and none is named.
+    expect(heard[0].person).toBeUndefined();
     expect((await heard[0].source.readFile('notes/life/a.md')).toString('utf8')).toBe('# Typed\n');
     expect(own).toEqual(heard);
   });
