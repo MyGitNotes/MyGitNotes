@@ -311,7 +311,7 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
       }
     >
       {t('live.mergeConflict')}
-      {offline && <> {t('live.conflictBlocksOffline')}</>}
+      {offline && <>{' '}{t('live.conflictBlocksOffline')}</>}
       {comparing && <pre className='live-merge-diff' aria-label={t('live.mergeDiff')}>{createUnifiedDiff(note.path, note.path, noteFileText(note), mergeConflict.mine)}</pre>}
     </EditorNotice>
   );

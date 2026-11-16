@@ -31,7 +31,6 @@ export interface LiveEditorFrameProps {
 
 type Phase = { kind: 'open'; } | { kind: 'checking'; } | { kind: 'released'; } | { kind: 'open-after'; answer: LiveCheckInAnswer; } | { kind: 'failed'; message: string; } | { kind: 'discarding'; } | { kind: 'discarded'; } | { kind: 'kept'; message: string; };
 
-
 /**
  * The live editor of a checked-out note, framed (spec §8): rendered only for an embed URL of the editor's own origin, with
  * no sandbox (the editor needs its own origin's cookies and storage) and no `allow`. Its bar says who is editing, whether

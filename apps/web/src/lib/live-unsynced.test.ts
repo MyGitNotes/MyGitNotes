@@ -19,9 +19,5 @@ it('moves the typing kept for a note to where it was moved, and leaves other not
   await store.put(entry('notes/life/b.md', 'one', '# B\n'));
   await forgetNoteDrafts('repo:main', 'notes~life', 'notes/life/a.md', 'notes/life/trips/a2.md');
   const kept = (await store.list()).map(item => [item.path, item.text, item.key]).sort();
-  expect(kept).toEqual([
-    ['notes/life/b.md', '# B\n', unsyncedKey('repo:main', 'notes~life', 'notes/life/b.md', 'one')],
-    ['notes/life/trips/a2.md', '# A\none\n', unsyncedKey('repo:main', 'notes~life', 'notes/life/trips/a2.md', 'one')],
-    ['notes/life/trips/a2.md', '# A\ntwo\n', unsyncedKey('repo:main', 'notes~life', 'notes/life/trips/a2.md', 'two')],
-  ]);
+  expect(kept).toEqual([['notes/life/b.md', '# B\n', unsyncedKey('repo:main', 'notes~life', 'notes/life/b.md', 'one')], ['notes/life/trips/a2.md', '# A\none\n', unsyncedKey('repo:main', 'notes~life', 'notes/life/trips/a2.md', 'one')], ['notes/life/trips/a2.md', '# A\ntwo\n', unsyncedKey('repo:main', 'notes~life', 'notes/life/trips/a2.md', 'two')]]);
 });

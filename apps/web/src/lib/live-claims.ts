@@ -41,24 +41,22 @@ export function takeClaim(name: string): Promise<(() => void) | null> {
   // Held in this page from the moment it is asked for, so that two of its own sessions cannot both take it.
   held.add(name);
   return new Promise(resolve => {
-    void api
-      .request(name, { ifAvailable: true }, lock => {
-        if (!lock) {
-          held.delete(name);
-          resolve(null);
-          return undefined;
-        }
-        return new Promise<void>(done => {
-          resolve(() => {
-            held.delete(name);
-            done();
-          });
-        });
-      })
-      .catch(() => {
+    void api.request(name, { ifAvailable: true }, lock => {
+      if (!lock) {
         held.delete(name);
         resolve(null);
+        return undefined;
+      }
+      return new Promise<void>(done => {
+        resolve(() => {
+          held.delete(name);
+          done();
+        });
       });
+    }).catch(() => {
+      held.delete(name);
+      resolve(null);
+    });
   });
 }
 

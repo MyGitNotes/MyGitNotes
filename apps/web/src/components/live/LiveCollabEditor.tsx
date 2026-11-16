@@ -93,7 +93,6 @@ const RENEW_CODE = 4000;
 
 const REFUSALS: Record<RefusedReason, TranslationKey> = { 'too-large': 'live.tooLargeLive', busy: 'live.busy', other: 'live.socketRefused' };
 
-
 /** The socket of the app's own origin, as the page reached it: `wss:` under https. */
 const socketUrl = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/live/socket`;
 

@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, liveMergeAnswerOf, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, type LiveTypedIn, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
+import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, liveMergeAnswerOf, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, type LiveTypedIn, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
 import { liveDocumentName, type LiveDocuments, liveDocuments, type LiveSnapshot, seedLiveState, typedInTexts } from './documents.js';
 import { liveSocket, type LiveSocketLimits } from './socket.js';
 import { type EditorRef, LIVE_MERGE_MS, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
