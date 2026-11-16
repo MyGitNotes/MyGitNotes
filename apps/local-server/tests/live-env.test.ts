@@ -102,6 +102,8 @@ describe('MYGITNOTES_LIVE_EDITOR', () => {
       [{ MYGITNOTES_LIVE_EDITOR: 'yes' }, /MYGITNOTES_LIVE_EDITOR/],
       // Sign-ins kept in cookies leave no stored credential for a check-in to commit with.
       [{ ...native, MYGITNOTES_STORAGE: 'cookie' }, /MYGITNOTES_STORAGE/],
+      // Sign-ins kept in the container's directory are gone after it is recreated (cf14-F008).
+      [{ MYGITNOTES_LIVE_EDITOR: 'builtin', MYGITNOTES_LIVE_REDIS_URL: 'redis://127.0.0.1:1' }, /sign-ins kept in Redis.*REDIS_URL/s],
       // A REST-only Redis cannot hold the live store.
       [{ MYGITNOTES_LIVE_EDITOR: 'builtin', UPSTASH_REDIS_REST_URL: 'https://cache.example.test', UPSTASH_REDIS_REST_TOKEN: 'token' }, /MYGITNOTES_LIVE_REDIS_URL.*redis:\/\//s],
       [{ MYGITNOTES_LIVE_EDITOR: 'builtin' }, /MYGITNOTES_LIVE_REDIS_URL.*redis:\/\//s],
