@@ -2,6 +2,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { noteRefKey } from '@mygitnotes/core/note-query';
+import { takeClaim } from '../lib/live-claims.js';
 import { LIVE_MERGE_CONFLICT } from '../lib/live-handover.js';
 import type { NoteItem } from '../lib/types.js';
 import type { WorkingNote } from '../lib/working-notes.js';
@@ -78,6 +79,21 @@ it('hands one note over for its open editor, sharing a handover already running'
   const result = await act(async () => hook.result.current.handOver(edited.note));
   expect(result).toBe(true);
   expect(merged()).toEqual(['notes/life/a.md']);
+});
+
+// cfx-F005: the open editor waits while another tab hands the draft over, or while the draft changed after it listed it.
+it('answers false for the open editor while another tab holds the handover, or the draft changed since it was listed', async () => {
+  const release = await takeClaim(`mygitnotes-live-handover:edition:hosted:p1/notes@main\nnotes~life\nnotes/life/a.md`);
+  const held = renderHook(useLiveHandover, { initialProps: params({ ready: false }) });
+  try {
+    expect(await act(async () => held.result.current.handOver(edited.note))).toBe(false);
+  } finally {
+    release!();
+  }
+  const newer = { ...edited, note: { ...edited.note, content: '# A\nmore and more\n' } };
+  const changed = renderHook(useLiveHandover, { initialProps: params({ ready: false, readDraft: () => newer }) });
+  expect(await act(async () => changed.result.current.handOver(edited.note))).toBe(false);
+  expect(merged()).toEqual([]);
 });
 
 /*
