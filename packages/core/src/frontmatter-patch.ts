@@ -1,6 +1,10 @@
 import YAML from 'yaml';
 
-const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+/**
+ * A note's leading frontmatter block: `---` on the first line, the YAML, and a closing `---` that ends its line (trailing
+ * spaces or tabs allowed), or the text. A `---` followed by more on its line is no fence, as for other Markdown readers.
+ */
+export const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 
 /**
  * Length of a single-key document's rendered key, e.g. `2` for `a: 1\n` but `6` for a quoted

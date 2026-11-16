@@ -1,7 +1,7 @@
 import YAML from 'yaml';
 import { NoteMetadata } from './types.js';
 import { stampSaveTimestamps } from './note-timestamps.js';
-import { patchFrontmatterField } from './frontmatter-patch.js';
+import { FRONTMATTER_REGEX, patchFrontmatterField } from './frontmatter-patch.js';
 
 export interface ParsedNote {
   metadata: NoteMetadata;
@@ -11,8 +11,6 @@ export interface ParsedNote {
   /** Number added to body-relative line numbers to reach the same line in the saved file. */
   lineNumberOffset: number;
 }
-
-const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 /**
  * Extracts the first H1 heading from Markdown content.
@@ -160,7 +158,7 @@ export function noteFrontmatterSpan(text: string): NoteFrontmatterSpan | null {
  * Applies the keys that differ between `before` (what the caller showed) and `after` onto `raw`,
  * key by key, so every other key, comment, order and the body keep their bytes, and a key
  * someone else changed meanwhile is left as they wrote it. With no block a new one is rendered
- * before the body; an unparsable block is left alone. Nothing is stamped.
+ * before the body, in the body's line endings; an unparsable block is left alone. Nothing is stamped.
  */
 export function patchNoteFrontmatter(raw: string, before: NoteMetadata, after: NoteMetadata): string {
   const span = noteFrontmatterSpan(raw);
@@ -168,8 +166,9 @@ export function patchNoteFrontmatter(raw: string, before: NoteMetadata, after: N
   if (!span) {
     const keys = Object.keys(after).filter(key => after[key] !== undefined);
     if (keys.length === 0) return raw;
-    const yamlStr = stringifyMetadata(Object.fromEntries(keys.map(key => [key, after[key]]))).trimEnd();
-    return raw ? `---\n${yamlStr}\n---\n\n${raw}` : `---\n${yamlStr}\n---\n`;
+    const newline = raw.includes('\r\n') ? '\r\n' : '\n';
+    const yamlStr = stringifyMetadata(Object.fromEntries(keys.map(key => [key, after[key]]))).trimEnd().replace(/\n/g, newline);
+    return `---${newline}${yamlStr}${newline}---${newline}${raw ? newline + raw : ''}`;
   }
   let next = raw;
   for (const key of Object.keys(before)) {
