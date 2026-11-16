@@ -294,7 +294,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       } catch (error) {
         // A conflict becomes the note's conflict draft even when the editor closed meanwhile (a release remounts it): the
         // typing is let go as if merged, and the editor that opens next shows the notice. Anything else stays kept.
-        const staged = isMergeConflict(error) && latest.current.onMergeConflict?.(entry.text) !== false;
+        // Only a handler that says it staged the draft lets the typing go: without one, nothing holds it but this store (cfx-F004).
+        const staged = isMergeConflict(error) && latest.current.onMergeConflict?.(entry.text) === true;
         if (!staged) {
           // A later session takes it again.
           if (stopped) return release();
