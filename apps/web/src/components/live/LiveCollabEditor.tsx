@@ -15,6 +15,9 @@ import { onReachable } from '../../lib/live-reachability.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { LiveMarkdownEditor, type LiveMarkdownHandle } from '../LiveMarkdownEditor.js';
+import type { MarkdownEditorMode } from '../MarkdownEditor.js';
+import { SplitView } from '../SplitView.js';
+import { CollabSourceEditor } from './CollabSourceEditor.js';
 import { discardDraft, keptReason } from './live-drafts.js';
 import { LiveProvider } from './live-provider.js';
 import { readLiveFrontmatter } from './live-frontmatter.js';
@@ -53,6 +56,10 @@ export interface LiveCollabEditorProps {
   /** The note is a slide deck: its editor labels slides as the direct editor does. */
   slides?: boolean;
   showLineNumbers?: boolean;
+  /** Live, Source (the whole text, frontmatter included) or Split (Source beside the body's preview), as the direct editor's modes. */
+  mode?: MarkdownEditorMode;
+  /** The live body, which Split previews. */
+  body?: string;
   /** Beside the editor in its body: the note's document panel. */
   children?: ReactNode;
 }
@@ -144,13 +151,15 @@ const downloadName = (title: string | undefined, path: string) => `${(title || p
  * typed on) when that document ended; offline meanwhile, it shows the kept text read-only. A conflicting merge goes to
  * `onMergeConflict`; a live editor that cannot merge leaves the copy or download.
  */
-export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange, onLive, editorRef, slides, showLineNumbers, children }: LiveCollabEditorProps) {
+export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange, onLive, editorRef, slides, showLineNumbers, mode = 'live', body = '', children }: LiveCollabEditorProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   // Each session is one document and one provider; going back to the editor after a check-in that left it open starts a new one.
   const [session, setSession] = useState(1);
   const [connection, setConnection] = useState<Connection>(START);
-  const [collab, setCollab] = useState<{ extension: Extension; text: string; shared: Y.Text; } | null>(null);
+  const [collab, setCollab] = useState<{ extension: Extension; text: string; shared: Y.Text; awareness: Awareness; undoManager: Y.UndoManager; } | null>(null);
+  /** The Source editor's scroller, which Split keeps in step with its preview. */
+  const sourceScroller = useRef<HTMLElement | null>(null);
   const [copied, setCopied] = useState(false);
   /** 「關閉」 asked while typing is unsaved: the editor stays open under the question. */
   const [leaving, setLeaving] = useState(false);
@@ -436,7 +445,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           if (!keeping && !dirty) base = text.toString();
           settle();
           setConnection(current => ({ ...current, synced: true, everSynced: true, renewing: false }));
-          setCollab(current => current ?? { extension: yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }), text: text.toString(), shared: text });
+          setCollab(current => {
+            if (current) return current;
+            const undoManager = new Y.UndoManager(text);
+            return { extension: yCollab(text, awareness, { undoManager }), text: text.toString(), shared: text, awareness, undoManager };
+          });
         },
         onUnsyncedChanges: ({ number }) => {
           unsynced = number;
@@ -683,7 +696,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       )}
       {live && collab && (
         <div className='note-editor-body live-collab-body'>
-          <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={collab} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} slides={slides} showLineNumbers={showLineNumbers} />
+          {mode === 'live'
+            ? <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={collab} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} slides={slides} showLineNumbers={showLineNumbers} />
+            : mode === 'split'
+            ? <SplitView source={<CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} scroller={sourceScroller} />} sourceScroller={sourceScroller} content={body} path={checkout.path} notebookId={checkout.notebookId} slides={slides} />
+            : <CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} />}
           {children}
         </div>
       )}

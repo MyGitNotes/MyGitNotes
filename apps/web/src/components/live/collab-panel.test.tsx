@@ -202,8 +202,10 @@ describe('the editor modes of a note in the collab editor', () => {
 
   it('turns line numbers on and off in the collab editor', async () => {
     await open();
-    expect(fake.lineNumbers.at(-1)).toBe(true);
+    const before = fake.lineNumbers.at(-1);
     fireEvent.click(screen.getByRole('button', { name: 'Line Numbers' }));
-    expect(fake.lineNumbers.at(-1)).toBe(false);
+    expect(fake.lineNumbers.at(-1)).toBe(!before);
+    fireEvent.click(screen.getByRole('button', { name: 'Line Numbers' }));
+    expect(fake.lineNumbers.at(-1)).toBe(Boolean(before));
   });
 });

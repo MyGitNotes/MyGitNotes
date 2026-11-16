@@ -2480,6 +2480,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.badgeHint': '已簽出到即時編輯器，簽回時存入 Git',
   'live.pending': '未歸檔',
   'live.pendingHint': '在即時編輯器建立，第一次簽回時歸檔到 Git',
+  'live.source': '即時筆記原始碼',
   'live.toolbar': '即時編輯器',
   'live.frameTitle': '即時編輯器：{title}',
   'live.frameRefused': '無法在這裡顯示即時編輯器。',

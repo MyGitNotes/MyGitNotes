@@ -43,7 +43,7 @@ interface SplitViewProps {
   /** The source editor, drawn in the left pane. */
   source: ReactNode;
   /** The source editor's scrolling text area, whose lines are one line height each. */
-  sourceScroller: RefObject<HTMLTextAreaElement | null>;
+  sourceScroller: RefObject<HTMLElement | null>;
   content: string;
   path: string;
   notebookId?: string;

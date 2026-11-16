@@ -2479,6 +2479,7 @@ export const en = {
   'live.badgeHint': 'Checked out to the live editor; it is committed to Git at check-in',
   'live.pending': 'Not filed',
   'live.pendingHint': 'Created in the live editor; its first check-in files it in Git',
+  'live.source': 'Live note source',
   'live.toolbar': 'Live editor',
   'live.frameTitle': 'Live editor: {title}',
   'live.frameRefused': 'The live editor cannot be shown here.',
