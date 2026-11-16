@@ -215,6 +215,8 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     const { link: released } = await checkout(store, 'notes/life/b.md', '# B\n', T0 + 2);
     await store.append(link.id, 1, bytes('typed'), pat, T0 + 3);
     await store.append(draft.id, 1, bytes('typed'), pat, T0 + 3);
+    // Only an epoch that stored typing keeps its ended document (cfx-F002).
+    await store.append(released.id, 1, bytes('typed'), pat, T0 + 3);
     await store.presence(link.id, 'process-1', { [pat.key]: T0 + 3 }, T0 + 3);
     await store.putTicket(hash('1'), { repository, id: link.id, epoch: 1, document: `${link.id}.1`, editor: pat, display: 'Pat' }, T0 + 3 + LIVE_TICKET_MS);
     expect(await store.lease(link.id, 'lease-1', T0 + 4 + LEASE_MS, T0 + 4)).toBe('leased');
@@ -223,7 +225,7 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     expect(await store.compact(link.id, 1, 0, 0, bytes('state'), hash('a'), 1)).toBe(true);
     expect(await store.lease(released.id, 'lease-2', T0 + 4 + LEASE_MS, T0 + 4)).toBe('leased');
     expect(await store.synced(released.id, 'lease-2', receipt(hash('b'), 'notes/life/b.md'), T0 + 5)).toBe('ok');
-    expect(await store.release(released.id, 'lease-2', { seq: 0, contentHash: hash('b') }, T0 + 6)).toBe('released');
+    expect(await store.release(released.id, 'lease-2', { seq: 1, contentHash: hash('b') }, T0 + 6)).toBe('released');
     // A lease nothing was read under has its lifetime too.
     expect(await store.lease(draft.id, 'lease-3', T0 + 4 + LEASE_MS, T0 + 4)).toBe('leased');
     const found = await lifetimes(under);
