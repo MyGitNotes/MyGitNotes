@@ -38,7 +38,7 @@ import { useWorkspaceSync } from './lib/use-workspace-sync.js';
 import { discardDocumentDraft } from './lib/use-workspace-document.js';
 import { documentClientOf } from './lib/workspace-document-clients.js';
 import { WorkspaceLinks } from './components/WorkspaceLinks.js';
-import { type NoteLocation, NoteLocationProvider, readOnlyReason } from './lib/note-location.js';
+import { type NoteLocation, NoteLocationProvider, noteLocation } from './lib/note-location.js';
 import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
 import { useFoldAnimation } from './lib/use-fold-animation.js';
@@ -167,9 +167,7 @@ export const AppContent: React.FC = () => {
     const repository = repositoryFor(note.notebookId);
     const notebook = config?.notebooks.find(nb => nb.id === note.notebookId);
     if (!notebook) return undefined;
-    const name = repository?.repository ?? (repository?.id.startsWith('local:') ? repository.id.slice('local:'.length) : repository?.id ?? '');
-    const readOnly = readOnlyReason(repository);
-    return { notebook: notebook.title, repository: name, branch: repository?.branch ?? '', path: note.path, readOnly, gists: repository?.type === 'github' && !readOnly && !repository.demo };
+    return noteLocation(notebook.title, repository, note.path);
   };
   /** Pending changes across repositories; a path names a file only within its repository, so each repository counts its own. */
   // A remote deletion is a working change held in the trash, which the Changes panel lists and counts apart.

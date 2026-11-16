@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useContext } from 'react';
 import type { NoteRef } from '@mygitnotes/core/note-query';
+import type { RepositoryStatus } from '@mygitnotes/core/repository';
 
 /** Why a note cannot be edited. */
 export type ReadOnlyReason = 'unavailable' | 'core' | 'branch' | 'no-push';
@@ -31,4 +32,11 @@ export function readOnlyReason(repository: { unavailable?: unknown; branch: stri
   if (repository.branch === 'core') return 'core';
   if (repository.branch && repository.branch !== 'main') return 'branch';
   return 'no-push';
+}
+
+/** Where a note of the notebook titled `notebook` lives, given the repository that serves the notebook. */
+export function noteLocation(notebook: string, repository: Pick<RepositoryStatus, 'id' | 'type' | 'repository' | 'branch' | 'write' | 'demo' | 'unavailable'> | undefined, path: string): NoteLocation {
+  const name = repository?.repository ?? (repository?.id.startsWith('local:') ? repository.id.slice('local:'.length) : repository?.id ?? '');
+  const readOnly = readOnlyReason(repository);
+  return { notebook, repository: name, branch: repository?.branch ?? '', path, readOnly, gists: repository?.type === 'github' && !readOnly && !repository.demo };
 }
