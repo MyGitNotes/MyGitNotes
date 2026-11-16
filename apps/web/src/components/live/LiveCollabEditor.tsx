@@ -292,25 +292,24 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       try {
         await mergeLive({ notebookId, path, base: entry.baseText, text: entry.text, mergeId: entry.mergeId, typedIn: { document: entry.document, update: entry.update } });
       } catch (error) {
-        if (stopped) return;
-        if (isNetworkFailure(error)) {
-          // Held until the session tries again, or ends.
-          taken.push({ entry, release });
-          return waitOnline(entry);
-        }
-        if (!isMergeConflict(error)) {
-          // A live editor that cannot merge, or a note that is gone: the text is offered to copy or download, and the entry stays until the person leaves it.
-          taken.push({ entry, release });
-          keptKeys.current = [entry.key];
-          setMerging(false);
-          return setPhase({ kind: 'lost', text: entry.text, ending: isNotLive(error) ? { kind: 'released' } : { kind: 'failed', message: (error as Error).message } });
-        }
-        if (latest.current.onMergeConflict?.(entry.text) === false) {
-          // The note's conflict draft waits for the person: this text is offered to copy or download, and kept until they leave it.
+        // A conflict becomes the note's conflict draft even when the editor closed meanwhile (a release remounts it): the
+        // typing is let go as if merged, and the editor that opens next shows the notice. Anything else stays kept.
+        const staged = isMergeConflict(error) && latest.current.onMergeConflict?.(entry.text) !== false;
+        if (!staged) {
+          // A later session takes it again.
+          if (stopped) return release();
+          if (isNetworkFailure(error)) {
+            // Held until the session tries again, or ends.
+            taken.push({ entry, release });
+            return waitOnline(entry);
+          }
+          // A live editor that cannot merge, a note that is gone, or a conflict draft that already waits for the person: the
+          // text is offered to copy or download, and the entry stays until the person leaves it.
           taken.push({ entry, release });
           keptKeys.current = [entry.key];
           setMerging(false);
-          return setPhase({ kind: 'lost', text: entry.text, ending: { kind: 'failed', message: latest.current.t('live.conflictPending') } });
+          const ending: Ending = isMergeConflict(error) ? { kind: 'failed', message: latest.current.t('live.conflictPending') } : isNotLive(error) ? { kind: 'released' } : { kind: 'failed', message: (error as Error).message };
+          return setPhase({ kind: 'lost', text: entry.text, ending });
         }
       }
       await store.delete(entry.key).catch(() => {});
