@@ -97,9 +97,11 @@ export async function startServer({ argv = process.argv, log = console.log, cloc
   );
 
   let closing: Promise<void> | undefined;
+  const onTerminate = () => void close().catch(error => console.warn(`[local-server] shutdown failed: ${(error as Error)?.name ?? 'error'}`));
   /** The live editor first, so every acknowledged update is compacted and its tabs reconnect elsewhere; then the server. */
   const close = () =>
     closing ??= (async () => {
+      process.off('SIGTERM', onTerminate);
       try {
         await live?.shutdown();
       } finally {
@@ -110,6 +112,6 @@ export async function startServer({ argv = process.argv, log = console.log, cloc
       }
     })();
   // Only a server with a live editor has anything to finish before it goes; any other stops as it always did.
-  if (live) process.once('SIGTERM', () => void close().catch(error => console.warn(`[local-server] shutdown failed: ${(error as Error)?.name ?? 'error'}`)));
+  if (live) process.once('SIGTERM', onTerminate);
   return { server, host, port, ...(live ? { live } : {}), close };
 }
