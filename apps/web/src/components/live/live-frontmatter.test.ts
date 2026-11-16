@@ -9,10 +9,16 @@ function pair(seed: string) {
   const one = new Y.Doc(), two = new Y.Doc();
   one.getText('content').insert(0, seed);
   Y.applyUpdate(two, Y.encodeStateAsUpdate(one));
-  return { one, two, a: one.getText('content'), b: two.getText('content'), sync: () => {
-    Y.applyUpdate(two, Y.encodeStateAsUpdate(one, Y.encodeStateVector(two)));
-    Y.applyUpdate(one, Y.encodeStateAsUpdate(two, Y.encodeStateVector(one)));
-  } };
+  return {
+    one,
+    two,
+    a: one.getText('content'),
+    b: two.getText('content'),
+    sync: () => {
+      Y.applyUpdate(two, Y.encodeStateAsUpdate(one, Y.encodeStateVector(two)));
+      Y.applyUpdate(one, Y.encodeStateAsUpdate(two, Y.encodeStateVector(one)));
+    },
+  };
 }
 
 describe('readLiveFrontmatter', () => {

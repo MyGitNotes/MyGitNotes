@@ -108,8 +108,5 @@ const keepOutOfFrontmatter = (transaction: Transaction): Transaction | Transacti
 
 /** The collab editor's hidden frontmatter: atomic for the caret, protected from local edits. */
 export function collabFrontmatterGuard(decorations: (view: EditorView) => DecorationSet): Extension {
-  return [
-    EditorView.atomicRanges.of(view => decorations(view).update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof HiddenFrontmatter })),
-    EditorState.transactionFilter.of(keepOutOfFrontmatter),
-  ];
+  return [EditorView.atomicRanges.of(view => decorations(view).update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof HiddenFrontmatter })), EditorState.transactionFilter.of(keepOutOfFrontmatter)];
 }

@@ -299,7 +299,9 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           }),
           inlineIconAtomicRanges(view => view.state.field(field).decorations),
           EditorView.atomicRanges.of(view => view.state.field(field).decorations.update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof LiveMarkdownTable })),
-          collab ? collabFrontmatterGuard(view => view.state.field(field).decorations) : [],
+          collab
+            ? collabFrontmatterGuard(view => view.state.field(field).decorations)
+            : [],
           permission.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
           citations.current.of(citationLibrary.of(currentLibrary.current)),
           slideMode.current.of(slideNote.of(Boolean(currentSlides.current))),

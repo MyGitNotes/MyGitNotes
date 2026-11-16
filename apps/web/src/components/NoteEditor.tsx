@@ -156,12 +156,13 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     liveShared.current = { text: shared?.text ?? null, metadata: liveFrontmatter.metadata };
   });
   /** Writes the keys the control changed into the live text; the YAML view writes its text. Nothing while offline (Q2). */
+  const sharedText = shared?.text ?? null;
+  const shownMetadata = liveFrontmatter.metadata;
   const setLiveMetadata = useCallback((next: Record<string, unknown>, yaml?: string) => {
-    const { text, metadata } = liveShared.current;
-    if (!text) return;
-    if (yaml !== undefined) writeLiveYaml(text, yaml);
-    else writeLiveFrontmatter(text, metadata, next as NoteMetadata);
-  }, []);
+    if (!sharedText) return;
+    if (yaml !== undefined) writeLiveYaml(sharedText, yaml);
+    else writeLiveFrontmatter(sharedText, shownMetadata, next as NoteMetadata);
+  }, [sharedText, shownMetadata]);
   const session: NoteEditorSessionState = shared ? { ...directSession, content: liveBody, metadata: liveFrontmatter.metadata, title: liveTitle, locked: liveLocked, setMetadata: setLiveMetadata as NoteEditorSessionState['setMetadata'] } : directSession;
   // Read when the browser is back online: a direct editor opened offline gives way to the collab editor only with nothing typed.
   const sessionRef = useRef(session);
@@ -361,11 +362,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
         </p>
       )}
-      {live && liveEdit.checkout && (live.editor.kind === 'builtin' ? (
-        <LiveCollabEditor checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} showLineNumbers={lineNumbersShown} mode={isMarkdown ? editorMode : 'raw'} body={liveBody}>
-          {shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}
-        </LiveCollabEditor>
-      ) : <LiveEditorFrame checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} />)}
+      {live && liveEdit.checkout && (live.editor.kind === 'builtin' ? <LiveCollabEditor checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} showLineNumbers={lineNumbersShown} mode={isMarkdown ? editorMode : 'raw'} body={liveBody}>{shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}</LiveCollabEditor> : <LiveEditorFrame checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} />)}
       {formatToolbarShown && !liveEdit.checkout && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       {!liveEdit.checkout && (
         <div className='note-editor-body'>

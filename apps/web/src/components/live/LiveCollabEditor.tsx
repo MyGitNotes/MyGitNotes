@@ -548,7 +548,13 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
 
   // A view built again (another mode, another frame) starts from the shared text as it is now: the binding assumes the
   // view's text equals it, and typing in a view built on the first sync's text would land at the wrong places.
-  const liveBinding = useMemo(() => collab && { extension: collab.extension, get text() { return collab.shared.toString(); } }, [collab]);
+  const liveBinding = useMemo(() =>
+    collab && {
+      extension: collab.extension,
+      get text() {
+        return collab.shared.toString();
+      },
+    }, [collab]);
   // The panel writes metadata only while the document is connected and synced (Q2).
   const shared = live && collab ? collab.shared : null;
   const writable = connection.status === 'connected' && connection.synced;
@@ -697,16 +703,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           <KeptText text={kept} path={checkout.path} notebookId={checkout.notebookId} label={t('live.toolbar')} />
         </div>
       )}
-      {live && collab && (
-        <div className='note-editor-body live-collab-body'>
-          {mode === 'live'
-            ? <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={liveBinding ?? undefined} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} slides={slides} showLineNumbers={showLineNumbers} />
-            : mode === 'split'
-            ? <SplitView source={<CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} scroller={sourceScroller} />} sourceScroller={sourceScroller} content={body} path={checkout.path} notebookId={checkout.notebookId} slides={slides} />
-            : <CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} />}
-          {children}
-        </div>
-      )}
+      {live && collab && <div className='note-editor-body live-collab-body'>{mode === 'live' ? <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={liveBinding ?? undefined} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} slides={slides} showLineNumbers={showLineNumbers} /> : mode === 'split' ? <SplitView source={<CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} scroller={sourceScroller} />} sourceScroller={sourceScroller} content={body} path={checkout.path} notebookId={checkout.notebookId} slides={slides} /> : <CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} />}{children}</div>}
       {phase.kind === 'checking' && <LoadingStatus className='live-editor-notice'>{t('live.checkingIn')}</LoadingStatus>}
       {phase.kind === 'discarding' && <LoadingStatus className='live-editor-notice'>{t('live.discarding')}</LoadingStatus>}
       {phase.kind === 'released' && <p role='status' className='live-editor-notice'>{t('live.checkedIn')}</p>}

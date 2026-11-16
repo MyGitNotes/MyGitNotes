@@ -57,12 +57,15 @@ beforeEach(() => {
   fake.handle.goToLine.length = 0;
   fake.handle.reveal.length = 0;
   window.matchMedia = ((query: string) => ({ matches: false, media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false })) as typeof window.matchMedia;
-  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (url === '/api/live/checkout') return json({ checkout: { ...view, pending }, outcome: 'created' });
-    if (url === '/api/live/checkin') return json({ id: 'abc', path: view.path, committed: true, commit: 'c'.repeat(40), released: true, revision: 'r2' });
-    if (url === '/api/live/socket-ticket') return json({ ticket: 't'.padEnd(32, 'x'), document: 'abc.1' });
-    return json({ error: 'unexpected' }, 500);
-  }));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url === '/api/live/checkout') return json({ checkout: { ...view, pending }, outcome: 'created' });
+      if (url === '/api/live/checkin') return json({ id: 'abc', path: view.path, committed: true, commit: 'c'.repeat(40), released: true, revision: 'r2' });
+      if (url === '/api/live/socket-ticket') return json({ ticket: 't'.padEnd(32, 'x'), document: 'abc.1' });
+      return json({ error: 'unexpected' }, 500);
+    }),
+  );
 });
 afterEach(async () => {
   cleanup();

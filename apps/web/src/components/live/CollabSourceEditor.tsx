@@ -63,20 +63,7 @@ export const CollabSourceEditor = forwardRef<LiveMarkdownHandle, CollabSourceEdi
   }), []);
   /* eslint-disable react-hooks/exhaustive-deps -- The view is built once per shared text; line numbers reconfigure it below. */
   useEffect(() => {
-    const created = new EditorView({
-      parent: host.current!,
-      state: EditorState.create({
-        doc: text.toString(),
-        extensions: [
-          yCollab(text, awareness, { undoManager }),
-          Prec.high(keymap.of(yUndoManagerKeymap)),
-          gutter.current.of(showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []),
-          EditorView.lineWrapping,
-          sourceTheme,
-          EditorView.contentAttributes.of({ 'aria-label': ariaLabel, 'role': 'textbox', 'aria-multiline': 'true', 'data-key-scope': 'markdown-editor' }),
-        ],
-      }),
-    });
+    const created = new EditorView({ parent: host.current!, state: EditorState.create({ doc: text.toString(), extensions: [yCollab(text, awareness, { undoManager }), Prec.high(keymap.of(yUndoManagerKeymap)), gutter.current.of(showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []), EditorView.lineWrapping, sourceTheme, EditorView.contentAttributes.of({ 'aria-label': ariaLabel, 'role': 'textbox', 'aria-multiline': 'true', 'data-key-scope': 'markdown-editor' })] }) });
     view.current = created;
     if (scroller) scroller.current = created.scrollDOM;
     return () => {

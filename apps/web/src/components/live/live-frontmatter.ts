@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import YAML from 'yaml';
 import type * as Y from 'yjs';
 import type { NoteMetadata } from '@mygitnotes/core';
@@ -97,14 +97,12 @@ export function writeLiveYaml(text: Y.Text, yaml: string): { ok: true; } | { ok:
 
 /** The live text of a collab session and its frontmatter, following every change of the `Y.Text`. */
 export function useLiveText(text: Y.Text | null): { text: string; frontmatter: LiveFrontmatter; } {
-  const [value, setValue] = useState(() => text?.toString() ?? '');
-  useEffect(() => {
-    if (!text) return setValue('');
-    setValue(text.toString());
-    const changed = () => setValue(text.toString());
+  const subscribe = useCallback((changed: () => void) => {
+    if (!text) return () => {};
     text.observe(changed);
     return () => text.unobserve(changed);
   }, [text]);
+  const value = useSyncExternalStore(subscribe, () => text?.toString() ?? '');
   // Parsed again only when the leading block's text changed, not on every keystroke in the body.
   const head = useMemo(() => leadingBlock(value), [value]);
   const frontmatter = useMemo(() => readLiveFrontmatter(head), [head]);
