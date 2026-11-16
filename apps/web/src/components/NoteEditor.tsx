@@ -79,6 +79,9 @@ function footerActions({ frame, readOnly, session, refresh, canCommit }: { frame
 }
 
 /** A note's editing session: content, frontmatter, drafts, autosave, conflicts, crash recovery and the document panel. */
+/** How long after the last frontmatter change of a live note the lists read it again: its typing reaches the server first. */
+const LIST_REFETCH_MS = 500;
+
 export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly: givenReadOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate, live, openInZoom }, ref) => {
   const isMarkdown = /\.(md|markdown|mdx)$/i.test(note.path);
   // A note of a repository with a live editor is read here and edited there; `refresh` is declared below and read only after render.
@@ -156,6 +159,27 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   useEffect(() => {
     liveShared.current = { text: shared?.text ?? null, metadata: liveFrontmatter.metadata };
   });
+  // The lists and their counts read a live note from the server, which parses its live text: once a frontmatter change,
+  // anyone's, is in, they read it again; typing in the body leaves them be (VQ P1-b).
+  const liveYaml = shared ? liveFrontmatter.yaml : null;
+  const listedYaml = useRef<string | null>(null);
+  const refetchLists = useRef(live?.onRefetch);
+  useEffect(() => {
+    refetchLists.current = live?.onRefetch;
+  });
+  useEffect(() => {
+    if (liveYaml === null) {
+      listedYaml.current = null;
+      return;
+    }
+    if (listedYaml.current === null) listedYaml.current = liveYaml;
+    if (listedYaml.current === liveYaml) return;
+    const timer = setTimeout(() => {
+      listedYaml.current = liveYaml;
+      refetchLists.current?.();
+    }, LIST_REFETCH_MS);
+    return () => clearTimeout(timer);
+  }, [liveYaml]);
   /** Writes the keys the control changed into the live text; the YAML view writes its text over what it showed. Nothing while offline (Q2). */
   const sharedText = shared?.text ?? null;
   const shownMetadata = liveFrontmatter.metadata;
