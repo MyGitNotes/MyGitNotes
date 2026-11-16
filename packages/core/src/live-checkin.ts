@@ -73,7 +73,10 @@ export interface LiveCheckInOptions {
    * author the commit and every editor is a co-author.
    */
   requester?: LiveCommitter;
-  /** Whether to send a notice; every notice is sent when absent. The idle check-in sends each once per link and text. */
+  /**
+   * Whether to send a notice; every notice is sent when absent. The idle check-in sends an uncommittable or unfiled
+   * notice once per link and text, and every other notice each time.
+   */
   shouldNotify?: (notice: Omit<LiveNotice, 'repository' | 'editors'>) => boolean;
 }
 
@@ -816,8 +819,9 @@ export const LIVE_IDLE_BACKOFF_MAX_MS = 30 * 60_000;
 
 /**
  * Per link, for the idle check-in only: when a link that was `uncommittable`, `unfiled` or failed may be tried again,
- * and whether its notice went out, both for its text (`contentHash`) and last edit at the time. A new edit or text
- * starts afresh. The nightly sweep and 「立即簽回」 do not read it (cf14-F002).
+ * and whether its uncommittable or unfiled notice went out, both for its text (`contentHash`) and last edit at the
+ * time. A new edit or text starts afresh, and a link the adapter no longer lists is forgotten. The nightly sweep and
+ * 「立即簽回」 do not read it (cf14-F002, cf15-F002).
  */
 export interface LiveIdleBackoff {
   links: Map<string, { key: string; next: number; wait: number; notified: boolean; }>;
@@ -844,8 +848,13 @@ export async function sweepIdleLive(liveNotes: LiveNotes, options: LiveIdleSweep
   const at = now();
   const keyOf = ({ contentHash, lastEditAt }: Record<string, unknown>) => `${String(contentHash)}\u0000${String(lastEditAt)}`;
   const keys = new Map<string, string>();
+  /** Every link the adapter listed, due or not: what is held of any other is dropped (cf15-F002). */
+  const listed = new Set<string>();
+  /** The links whose uncommittable or unfiled notice went out in this sweep. */
+  const told = new Set<string>();
   const isDue = (row: Record<string, unknown>) => {
     const { id, since, activeEditors, lastEditAt } = row;
+    listed.add(String(id));
     if (activeEditors !== 0) return false;
     const last = lastEditAt === null || lastEditAt === undefined ? since : lastEditAt;
     if (!isTime(last) || at - Date.parse(last) < idleMs) return false;
@@ -855,17 +864,23 @@ export async function sweepIdleLive(liveNotes: LiveNotes, options: LiveIdleSweep
     keys.set(String(id), key);
     return true;
   };
+  // Only the notices of a link stuck on the same text repeat at every try; a conflict or a deletion is always told.
   const shouldNotify = (row: Record<string, unknown>) => ({
-    shouldNotify: () => {
+    shouldNotify: (notice: Omit<LiveNotice, 'repository' | 'editors'>) => {
+      if (notice.kind !== 'uncommittable' && notice.kind !== 'unfiled') return true;
       const held = links.get(String(row.id));
-      return !(held && held.key === keyOf(row) && held.notified);
+      if (held && held.key === keyOf(row) && held.notified) return false;
+      told.add(String(row.id));
+      return true;
     },
   });
   const report = await sweepDue(liveNotes, isDue, { ...options, mode: 'scheduled' }, shouldNotify);
   const stuck = (id: string) => {
     const key = keys.get(id)!, held = links.get(id);
-    const wait = held?.key === key ? Math.min(held.wait * 2, LIVE_IDLE_BACKOFF_MAX_MS) : LIVE_IDLE_BACKOFF_MS;
-    links.set(id, { key, next: at + wait, wait, notified: true });
+    const same = held?.key === key;
+    const wait = same ? Math.min(held!.wait * 2, LIVE_IDLE_BACKOFF_MAX_MS) : LIVE_IDLE_BACKOFF_MS;
+    // Notified only once a notice went out for this text: a try that threw, or found no `notify`, told nobody.
+    links.set(id, { key, next: at + wait, wait, notified: told.has(id) || (same && held!.notified) });
   };
   for (const result of report.results) {
     if (result.reason === 'uncommittable' || result.reason === 'unfiled') stuck(result.id);
@@ -873,5 +888,6 @@ export async function sweepIdleLive(liveNotes: LiveNotes, options: LiveIdleSweep
     else if (result.reason !== 'leased') links.delete(result.id);
   }
   for (const { id } of report.failed) stuck(id);
+  for (const id of [...links.keys()]) if (!listed.has(id)) links.delete(id);
   return report;
 }
