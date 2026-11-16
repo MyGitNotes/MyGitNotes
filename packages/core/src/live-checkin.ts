@@ -888,6 +888,6 @@ export async function sweepIdleLive(liveNotes: LiveNotes, options: LiveIdleSweep
     else if (result.reason !== 'leased') links.delete(result.id);
   }
   for (const { id } of report.failed) stuck(id);
-  for (const id of [...links.keys()]) if (!listed.has(id)) links.delete(id);
+  for (const id of links.keys()) if (!listed.has(id)) links.delete(id);
   return report;
 }

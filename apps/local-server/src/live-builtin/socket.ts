@@ -200,7 +200,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
     return fresh;
   };
   const forgetDeparted = () => {
-    for (const key of [...departed.keys()]) freshDeparted(key);
+    for (const key of departed.keys()) freshDeparted(key);
   };
   /** The last write of each document's presence that is still under way, also once everyone left it. */
   const writes = new Map<string, Promise<void>>();

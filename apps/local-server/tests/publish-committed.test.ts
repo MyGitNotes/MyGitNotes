@@ -126,7 +126,7 @@ describe('a live check-in', () => {
     expect(committed[0].person).toBeUndefined();
   });
 
-  it('publishes after the idle check-in of the schedule, through the app\'s live editor', async () => {
+  it("publishes after the idle check-in of the schedule, through the app's live editor", async () => {
     vi.stubEnv('MYGITNOTES_LIVE_IDLE_CHECKIN', '1m');
     // The adapter's clock runs ten minutes behind, so the note was last typed in long enough ago at the first idle tick.
     liveNotes = memoryLiveNotes({ editor, repositories: [{ source: notes, files }], clock: { now: () => Date.now() - 10 * 60_000, advance: () => {} } });
@@ -145,7 +145,7 @@ describe('a live check-in', () => {
     expect(committed.map(heard => heard.notes.map(note => [note.path, note.content]))).toEqual([[['notes/life/a.md', 'Typed live.\n']]]);
   });
 
-  it('names the editor whose credential made a check-in commit to syncCommitted, and the deployment\'s none', async () => {
+  it("names the editor whose credential made a check-in commit to syncCommitted, and the deployment's none", async () => {
     liveNotes = memoryLiveNotes({ editor, repositories: [{ source: notes, files }], persons: true });
     await start({ publishing: service() });
     await edit(typed);

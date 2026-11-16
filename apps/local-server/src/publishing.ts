@@ -154,7 +154,7 @@ export function commitPublisher({ publishing, defer }: { publishing?: Publishing
     };
     const work: Promise<unknown>[] = [];
     // The Gist keeps its last text until a person commits the note in the app, which updates it as before.
-    if (agentWrite) for (const note of named) console.info(`[publishing] ${where(note.path)}: gist not updated by an agent write; updates on the next app commit`);
+    if (agentWrite) { for (const note of named) console.info(`[publishing] ${where(note.path)}: gist not updated by an agent write; updates on the next app commit`); }
     else for (const note of named) console.info(`[publishing] ${where(note.path)}: the Gist it names was not updated, as Gists sync only on the app's commit routes; the next commit of the note in the app updates it`);
     if (service) work.push(Promise.resolve().then(() => service.syncCommitted!({ repository, notes, ...(person ? { person } : {}), ...(revision ? { revision } : {}) })).then(report).catch(failed('publishing', notes.map(note => note.path))));
     if (!work.length) return undefined;

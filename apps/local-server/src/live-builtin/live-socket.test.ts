@@ -58,7 +58,7 @@ const cursorsHeld = async (server: LiveServer, id: string, tabs: LiveTab[]) => {
   const watcher = await server.tab(2);
   await until('the server holds the cursor of every tab', () => tabs.every(tab => JSON.stringify(seen(watcher, tab)?.cursor) === JSON.stringify(tab.provider.awareness!.getLocalState()?.cursor)));
   watcher.destroy();
-  await until('only the tabs\' person counts', async () => (await activeEditors(server.live, id)) === 1);
+  await until("only the tabs' person counts", async () => (await activeEditors(server.live, id)) === 1);
 };
 /** Sends, over `tab`'s socket, an awareness state (or a removal) for a client id that is not its own. */
 const speakFor = (tab: LiveTab, client: number, state: Record<string, unknown> | null) => {
