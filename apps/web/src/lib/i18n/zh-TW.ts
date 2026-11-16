@@ -745,6 +745,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'book.nextPage': '下一頁',
   'book.pageCount': '{page} / {total}',
   'book.pageCountMore': '{page} / {total}+',
+  // Compilation chapters (章／節), heading-anchored items and dynamic grouping
+  'book.emptyChapter': '這一章還沒有項目',
   'compilation.editNote': '編輯「{title}」',
   'compilation.finishNote': '結束編輯「{title}」',
   'compilation.backTo': '返回合輯',

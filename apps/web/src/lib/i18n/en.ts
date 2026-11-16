@@ -743,6 +743,8 @@ export const en = {
   'book.nextPage': 'Next',
   'book.pageCount': '{page} / {total}',
   'book.pageCountMore': '{page} / {total}+',
+  // Compilation chapters (章／節), heading-anchored items and dynamic grouping
+  'book.emptyChapter': 'No items in this chapter',
   'compilation.editNote': 'Edit {title}',
   'compilation.finishNote': 'Finish editing {title}',
   'compilation.backTo': 'Back to compilations',

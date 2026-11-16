@@ -18,9 +18,10 @@ export function resolvePage(chapters: readonly BookChapter[], id: string | null,
   return found >= 0 ? found : Math.min(Math.max(fallback, 0), chapters.length - 1);
 }
 
-/** The chapter that owns a contents anchor: a chapter's own, or one of a folder's note sections. */
+/** The chapter (the page) that owns a contents anchor: a chapter's own, one of a folder's note sections, or an item under a chapter heading and its folder's notes. */
 export function chapterOfAnchor(chapters: readonly BookChapter[], anchor: string): BookChapter | undefined {
-  return chapters.find(chapter => chapter.anchor === anchor) ?? chapters.find(chapter => anchor.startsWith(`${chapter.anchor}/`));
+  const owns = (chapter: BookChapter) => chapter.anchor === anchor || anchor.startsWith(`${chapter.anchor}/`);
+  return chapters.find(chapter => chapter.anchor === anchor) ?? chapters.find(chapter => owns(chapter) || chapter.members?.some(owns));
 }
 
 /** The page a horizontal drag asks for: dragging left reads on, dragging right goes back; `null` for anything that is not a swipe. */

@@ -31,7 +31,7 @@ export function BookContents({ entries, active, hasMore, loadingMore, onLoadMore
     <nav ref={nav} className='compilation-book-contents' aria-label={t('book.contents')}>
       <ol>
         {entries.map(entry => (
-          <li key={entry.anchor} data-level={entry.level}>
+          <li key={entry.anchor} data-level={entry.level} data-heading={entry.heading || undefined}>
             <button
               type='button'
               aria-current={entry.anchor === active ? 'location' : undefined}

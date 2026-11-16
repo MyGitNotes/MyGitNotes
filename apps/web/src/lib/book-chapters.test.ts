@@ -66,7 +66,7 @@ it('makes a chapter of each heading holding the items up to the next one, after 
   expect(chapters.map(chapter => [chapter.id, chapter.kind, chapter.title, (chapter.members ?? []).map(member => member.id)])).toEqual([['n1', 'note', 'Alpha', []], ['h1', 'heading', 'Internal meetings', ['n2', 'f1']], ['h2', 'heading', 'Empty', []], ['h3', 'heading', 'Videos', ['y1']]]);
   expect(chapters[1].members![0]).toMatchObject({ kind: 'note', missing: true, anchor: 'chapter:n2' });
   expect(chapters[1].missing).toBe(false);
-  expect(new Set([...chapters, ...chapters.flatMap(chapter => chapter.members ?? [])].map(chapter => chapter.anchor)).size).toBe(8);
+  expect(new Set([...chapters, ...chapters.flatMap(chapter => chapter.members ?? [])].map(chapter => chapter.anchor)).size).toBe(chaptered.length);
 });
 
 it('lists a heading at level 0, its items at level 1 and a folder under it with its notes at level 2, while items before the first heading keep levels 0 and 1', () => {

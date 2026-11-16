@@ -16,20 +16,23 @@ export interface BookChapterProps {
   onOpen: (item: CompilationItem, note?: NoteListItem) => void;
   onLiveTitle: (anchor: string, title: string | undefined) => void;
   onEntries: (chapterId: string, entries: BookEntry[], leaving?: boolean) => void;
+  /** 1 for an item under a chapter heading, which sits one heading level down; 0 otherwise. */
+  depth?: 0 | 1;
 }
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
 
 /** A chapter that is not a note section: a heading with the title, then what the item shows. */
-function ChapterFrame({ chapter, onOpen, children }: { chapter: Chapter; onOpen: BookChapterProps['onOpen']; children: ReactNode; }) {
+function ChapterFrame({ chapter, depth, onOpen, children }: { chapter: Chapter; depth: 0 | 1; onOpen: BookChapterProps['onOpen']; children: ReactNode; }) {
   const { t } = useTranslation();
   const { item, title, anchor } = chapter;
+  const Heading = depth ? 'h3' : 'h2';
   return (
-    <section className='compilation-book-section' data-level={2} data-kind={item.kind}>
+    <section className='compilation-book-section' data-level={2 + depth} data-kind={item.kind}>
       <div className='compilation-book-heading-row'>
-        <h2 className='compilation-book-heading' data-book-anchor={anchor} tabIndex={-1}>
+        <Heading className='compilation-book-heading' data-book-anchor={anchor} tabIndex={-1}>
           <button type='button' className='compilation-book-title' title={title} onClick={() => onOpen(item, chapter.note)}>{title}</button>
-        </h2>
+        </Heading>
         {item.kind !== 'note' && (
           <button type='button' className='screen-open ui-icon-button' aria-label={`${t('links.open')}: ${title}`} onClick={() => onOpen(item, chapter.note)}>
             <ExternalLink size={13} />
@@ -55,22 +58,40 @@ function YouTubeChapter({ item, title }: { item: Extract<CompilationItem, { kind
   );
 }
 
-/** One chapter of the book, by kind: a note section, an asset, a video, a folder's note sections, or a missing notice in place. */
-export function BookChapter({ chapter, assets, writable, onOpen, onLiveTitle, onEntries }: BookChapterProps) {
+/** A chapter heading: its title as plain text, nothing to open, then its items one level down, or a notice when it has none. */
+function HeadingChapter({ chapter, ...props }: BookChapterProps) {
+  const { t } = useTranslation();
+  const members = chapter.members ?? [];
+  return (
+    <section className='compilation-book-section compilation-book-chapter' data-level={2} data-kind='heading'>
+      <div className='compilation-book-heading-row'>
+        <h2 className='compilation-book-heading' data-book-anchor={chapter.anchor} tabIndex={-1}>
+          <span className='compilation-book-title' title={chapter.title}>{chapter.title}</span>
+        </h2>
+      </div>
+      <div className='compilation-book-chapter-items'>{members.length ? members.map(member => <BookChapter key={member.id} {...props} chapter={member} depth={1} />) : <p className='screen-summary'>{t('book.emptyChapter')}</p>}</div>
+    </section>
+  );
+}
+
+/** One chapter of the book, by kind: a chapter heading with its items, a note section, an asset, a video, a folder's note sections, or a missing notice in place. */
+export function BookChapter(props: BookChapterProps) {
+  const { chapter, assets, writable, onOpen, onLiveTitle, onEntries, depth = 0 } = props;
   const { t } = useTranslation();
   const { item, note, asset, title, anchor } = chapter;
+  if (item.kind === 'heading') return <HeadingChapter {...props} />;
   if (item.kind === 'note' && note) {
-    return <BookSection anchor={anchor} slot={item.id} level={2} note={note} writable={writable} onOpenZoom={() => onOpen(item, note)} onLiveTitle={onLiveTitle} />;
+    return <BookSection anchor={anchor} slot={item.id} level={depth ? 3 : 2} note={note} writable={writable} onOpenZoom={() => onOpen(item, note)} onLiveTitle={onLiveTitle} />;
   }
   if (item.kind === 'folder' && !chapter.missing) {
     return (
-      <section className='compilation-book-section' data-level={2} data-kind='folder'>
-        <BookFolder item={item} anchor={anchor} title={title} assets={assets} writable={writable} onOpen={onOpen} onLiveTitle={onLiveTitle} onEntries={onEntries} />
+      <section className='compilation-book-section' data-level={2 + depth} data-kind='folder'>
+        <BookFolder item={item} anchor={anchor} title={title} level={depth ? 3 : 2} assets={assets} writable={writable} onOpen={onOpen} onLiveTitle={onLiveTitle} onEntries={onEntries} />
       </section>
     );
   }
   return (
-    <ChapterFrame chapter={chapter} onOpen={onOpen}>
+    <ChapterFrame chapter={chapter} depth={depth} onOpen={onOpen}>
       {item.kind === 'note' && !chapter.missing ? <LoadingStatus className='screen-summary'>{t('notes.loading')}</LoadingStatus> : item.kind === 'asset' && asset
         ? IMAGE.test(asset.name)
           ? (

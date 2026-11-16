@@ -14,8 +14,8 @@ export interface BookSectionProps {
   anchor: string;
   /** The compilation's editing slot id for this section. */
   slot: string;
-  /** 2 for a chapter, 3 for a note listed under a folder chapter. */
-  level: 2 | 3;
+  /** 2 for a chapter, 3 for an item under a chapter heading or a note listed under a folder chapter, 4 for a note of a folder under a chapter heading. */
+  level: 2 | 3 | 4;
   note: NoteListItem;
   /** Whether the compilation can be edited; the note's own repository must allow it too. */
   writable: boolean;
@@ -32,7 +32,7 @@ function SectionFrame({ anchor, level, parts, onOpenZoom, onLiveTitle }: Pick<Bo
     onLiveTitle(anchor, editing ? title : undefined);
     return () => onLiveTitle(anchor, undefined);
   }, [anchor, editing, title, onLiveTitle]);
-  const Heading = level === 2 ? 'h2' : 'h3';
+  const Heading = (['h2', 'h3', 'h4'] as const)[level - 2];
   return (
     <section className='compilation-book-section' data-level={level} {...frameProps}>
       <div className='compilation-book-heading-row'>

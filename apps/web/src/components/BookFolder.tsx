@@ -15,6 +15,8 @@ export interface BookFolderProps {
   item: Extract<CompilationItem, { kind: 'folder'; }>;
   anchor: string;
   title: string;
+  /** The folder's own heading level: 2 for a chapter, 3 under a chapter heading; its notes sit one level down. */
+  level?: 2 | 3;
   assets: CompilationAsset[];
   writable: boolean;
   onOpen: (item: CompilationItem, note?: NoteListItem) => void;
@@ -24,7 +26,7 @@ export interface BookFolderProps {
 }
 
 /** A folder chapter: its notes as sub-sections in title order, a page of 200 at a time, then its assets as a compact list. */
-export function BookFolder({ item, anchor, title, assets, writable, onOpen, onLiveTitle, onEntries }: BookFolderProps) {
+export function BookFolder({ item, anchor, title, level = 2, assets, writable, onOpen, onLiveTitle, onEntries }: BookFolderProps) {
   const { t } = useTranslation();
   const list = useNoteList({ notebookId: item.notebookId, folders: [item.path], descendants: true, sort: 'title', order: 'asc' }, { limit: 200, content: true });
   // While a section edits, its autosaves must not move it, so the folder holds its order like the book does.
@@ -38,12 +40,13 @@ export function BookFolder({ item, anchor, title, assets, writable, onOpen, onLi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.id, signature, onEntries]);
   const memberItem = (note: NoteListItem): CompilationItem => ({ id: item.id, kind: 'note', notebookId: note.notebookId, path: note.path });
+  const Heading = level === 2 ? 'h2' : 'h3';
   return (
     <>
       <div className='compilation-book-heading-row'>
-        <h2 className='compilation-book-heading' data-book-anchor={anchor} tabIndex={-1}>
+        <Heading className='compilation-book-heading' data-book-anchor={anchor} tabIndex={-1}>
           <button type='button' className='compilation-book-title' title={title} onClick={() => onOpen(item)}>{title}</button>
-        </h2>
+        </Heading>
         <button type='button' className='screen-open ui-icon-button' aria-label={`${t('links.open')}: ${title}`} onClick={() => onOpen(item)}>
           <ExternalLink size={13} />
         </button>
@@ -51,7 +54,7 @@ export function BookFolder({ item, anchor, title, assets, writable, onOpen, onLi
       <div className='compilation-book-content'>
         {list.error && <p role='alert' className='screen-missing'>{list.error}</p>}
         {list.loading && <LoadingStatus className='screen-summary'>{t('notes.loading')}</LoadingStatus>}
-        {members.map(note => <BookSection key={note.path} anchor={sectionAnchor(item, note.path)} slot={`${item.id}:${note.path}`} level={3} note={note} writable={writable} onOpenZoom={() => onOpen(memberItem(note), note)} onLiveTitle={onLiveTitle} />)}
+        {members.map(note => <BookSection key={note.path} anchor={sectionAnchor(item, note.path)} slot={`${item.id}:${note.path}`} level={level === 2 ? 3 : 4} note={note} writable={writable} onOpenZoom={() => onOpen(memberItem(note), note)} onLiveTitle={onLiveTitle} />)}
         <NoteListSentinel hasMore={list.hasMore} loading={list.loadingMore} error={list.error} onLoadMore={list.loadMore} />
         {memberAssets.length > 0 && (
           <ul className='compilation-book-assets'>
