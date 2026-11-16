@@ -293,6 +293,55 @@ describe('merging typing a tab kept', () => {
     expect((await read(f, made.id)).content).toBe('# A\nstored and kept\n');
   });
 
+  /** A tab that forked the note's document, so what the server takes after this never reaches it. */
+  const forkedTab = async (f: BuiltinFixture, id: string) => {
+    const link = (await f.store.link(id))!;
+    const held = await f.documents.open(link);
+    const tab = new Y.Doc();
+    Y.applyUpdate(tab, Y.encodeStateAsUpdate(held.document));
+    await held.close();
+    const text = tab.getText('content');
+    const kept = () => ({ document: `${id}.${link.epoch}`, update: Y.encodeStateAsUpdate(tab), text: text.toString() });
+    return { text, kept };
+  };
+  const replace = (text: Y.Text, from: string, to: string) => {
+    const at = text.toString().indexOf(from);
+    text.delete(at, from.length);
+    text.insert(at, to);
+  };
+
+  // Spec A3.1 and S6 (c): two people who replaced the same line, one of them cut off, conflict; Yjs would string both together.
+  it('conflicts where someone else replaced the line the tab replaced while it was cut off', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\nThe plan.\n');
+    const tab = await forkedTab(f, made.id);
+    await type(f, made.id, '# A\nTheir plan.\n', 2);
+    replace(tab.text, 'The plan.', 'My plan.');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\nTheir plan.\n', note, 2);
+    const kept = tab.kept();
+    expect(await merge(f, made.id, { base: '# A\nThe plan.\n', text: kept.text, mergeId: 'kept-merge-same-line', typedIn: { document: kept.document, update: kept.update } })).toEqual({ conflict: true });
+    expect((await read(f, made.id)).content).toBe('# A\nTheir plan.\n');
+  });
+
+  it('merges typing kept apart from what someone else changed meanwhile, what the server stored of it once', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\nOne.\n\nTwo.\n');
+    const tab = await forkedTab(f, made.id);
+    const link = (await f.store.link(made.id))!;
+    const updates: Uint8Array[] = [];
+    tab.text.doc!.on('update', (update: Uint8Array) => void updates.push(update));
+    tab.text.insert(tab.text.toString().indexOf('Two.') + 4, ' stored');
+    await f.documents.accept(link, updates[0], editorOf(1));
+    await type(f, made.id, '# A\nOne, theirs.\n\nTwo. stored\n', 2);
+    tab.text.insert(tab.text.toString().indexOf('stored') + 6, ' and kept');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\nOne, theirs.\n\nTwo. stored\n', note, 2);
+    const kept = tab.kept();
+    for (const mergeId of ['kept-merge-apart', 'kept-merge-apart-again']) expect(await merge(f, made.id, { base: '# A\nOne.\n\nTwo.\n', text: kept.text, mergeId, typedIn: { document: kept.document, update: kept.update } })).toMatchObject({ applied: true });
+    expect((await read(f, made.id)).content).toBe('# A\nOne, theirs.\n\nTwo. stored and kept\n');
+  });
+
   it('conflicts rather than doubling text once it no longer knows the ended document', async () => {
     const f = builtinFixture();
     const made = await checkout(f, '# A\n');
