@@ -40,10 +40,13 @@ export function useLiveHandover(params: LiveHandoverParams) {
   useEffect(() => {
     latest.current = params;
   });
-  const running = useRef(new Map<string, Promise<LiveHandover | null>>());
+  const running = useRef(new Map<string, Promise<LiveHandover | 'pending' | null>>());
 
-  /** Hands one draft over, or joins the handover of it already running; null when there is none to hand over. */
-  const handOverEntry = useCallback((key: string): Promise<LiveHandover | null> => {
+  /**
+   * Hands one draft over, or joins the handover of it already running; null when there is none to hand over, 'pending'
+   * when another tab is handing it over or it changed since it was listed, so it is still to be handed over (cfx-F005).
+   */
+  const handOverEntry = useCallback((key: string): Promise<LiveHandover | 'pending' | null> => {
     const current = running.current.get(key);
     if (current) return current;
     const listed = latest.current.drafts[key];
@@ -52,9 +55,12 @@ export function useLiveHandover(params: LiveHandoverParams) {
     // One tab at a time hands a draft over, and reads it again first: the drafts reach every tab, and every tab hears
     // `online`, so a note made offline would be filed once per tab (cf16-F005). A draft another tab is handing over is left to it.
     const { notebookId, path } = listed.note;
+    // A claim another tab holds answers null: that tab hands the draft over, and it is still pending here.
     const work = withClaim(`mygitnotes-live-handover:${context.scope}\n${notebookId}\n${path}`, async () => {
       const entry = latest.current.readDraft ? latest.current.readDraft(notebookId, path) : listed;
-      if (!entry || !handsOver(entry) || !sameValue(entry, listed)) return null;
+      if (!entry || !handsOver(entry)) return 'none' as const;
+      // Newer than the list this render saw: the next try hands the newer one over.
+      if (!sameValue(entry, listed)) return 'pending' as const;
       const answer = await handOverDraft(entry, context);
       // Settled while the claim is held, so the next tab to take it finds the draft gone or blocked.
       const { updateDraft, stageWorkingNote, invalidateNotes, onCreated } = latest.current;
@@ -64,7 +70,7 @@ export function useLiveHandover(params: LiveHandoverParams) {
         if (answer.kind === 'created') onCreated?.(entry.note, answer.checkout);
       } else if (answer.kind === 'conflict') stageWorkingNote(entry.note, entry.base, LIVE_MERGE_CONFLICT);
       return answer;
-    }).finally(() => running.current.delete(key));
+    }).then(answer => (answer === 'none' ? null : answer ?? 'pending' as const)).finally(() => running.current.delete(key));
     running.current.set(key, work);
     return work;
   }, []);
@@ -84,11 +90,12 @@ export function useLiveHandover(params: LiveHandoverParams) {
 
   /**
    * Hands the draft of `note` over for its open editor: true once the note itself can open in the collab editor (merged,
-   * kept as a conflict draft, or no draft left); false when the draft stays, or became a pending note `onCreated` opens.
+   * kept as a conflict draft, or no draft left); false when the draft stays, is being handed over by another tab or
+   * changed meanwhile, or became a pending note `onCreated` opens.
    */
   const handOver = useCallback(async (note: NoteItem) => {
     const answer = await handOverEntry(noteRefKey(note));
-    return answer === null || answer.kind === 'applied' || answer.kind === 'conflict';
+    return answer === null || (answer !== 'pending' && (answer.kind === 'applied' || answer.kind === 'conflict'));
   }, [handOverEntry]);
 
   return { handOver };
