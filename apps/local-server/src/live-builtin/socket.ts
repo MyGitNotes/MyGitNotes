@@ -51,6 +51,11 @@ export interface LiveSocketLimits {
    * session that got its first ticket ended.
    */
   socketMs: number;
+  /**
+   * How long a document may stay without a seat of this process before `left` is told, in real time: a tab that drops
+   * and connects again within it (a short loss of the network) was never gone.
+   */
+  leaveMs: number;
 }
 
 export interface LiveSocketOptions {
@@ -189,6 +194,8 @@ export function liveSocket({ documents, store, clock, process: processName, read
   /** The socket is past its time: it was, or is being, closed for a new ticket. */
   const renewing = (socket: WebSocket) => clock() >= (renewAt.get(socket) ?? Infinity);
   const rooms = new Map<string, Room>();
+  /** The documents everyone of this process left, until `leaveMs` passed. */
+  const leaving = new Map<string, NodeJS.Timeout>();
   /**
    * The last activity and awareness state of each seat that just left a document, by document and editor key: a seat
    * of that person's that opens within `RETURN_MS` (a renewal's reconnect, a reload) takes on the latest activity of
@@ -341,8 +348,16 @@ export function liveSocket({ documents, store, clock, process: processName, read
           // The last one out: the document is compacted and let go now, once Hocuspocus has done with the connection, unless someone came meanwhile.
           if (!rooms.has(name) && !stopping) {
             background(new Promise<void>(resolve => setImmediate(resolve)).then(() => rooms.has(name) ? undefined : documents.unload(link)));
-            // A socket closed for a new ticket comes straight back: only a seat that really left tells the adapter.
-            if (left && !renewing(socket)) background(written.then(() => rooms.has(name) ? undefined : left(link)));
+            // A socket closed for a new ticket comes straight back: only a seat that stayed away tells the adapter.
+            if (left && !renewing(socket)) {
+              clearTimeout(leaving.get(name));
+              const timer = setTimeout(() => {
+                leaving.delete(name);
+                if (!rooms.has(name) && !stopping) background(written.then(() => rooms.has(name) ? undefined : left(link)));
+              }, limits.leaveMs);
+              timer.unref();
+              leaving.set(name, timer);
+            }
           }
         }
         leave();
@@ -522,6 +537,8 @@ export function liveSocket({ documents, store, clock, process: processName, read
   const stop = async () => {
     const end = Date.now() + limits.shutdownMs;
     stopTimers();
+    for (const timer of leaving.values()) clearTimeout(timer);
+    leaving.clear();
     const seats = [...sockets.values()].flatMap(held => [...held]);
     // What sockets sent so far is taken and compacted, within most of the time there is; the rest is for closing them.
     const flushed = await within(

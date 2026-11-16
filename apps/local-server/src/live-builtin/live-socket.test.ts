@@ -692,7 +692,7 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
     });
 
     it('releases a note nobody typed in, or whose typing was undone, as soon as its last tab leaves, so a move is not refused; one typed in waits for the idle check-in (F006)', async () => {
-      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40, socketMs: 24 * 3_600_000 } });
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40, socketMs: 24 * 3_600_000, leaveMs: 20 } });
       const { store, files } = server.live;
       const listed = async (id: string) => (await server.live.liveNotes.service.checkouts(repository)).some(row => row.id === id);
       const id = await server.checkout();
@@ -725,7 +725,7 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
     });
 
     it('releases nothing when the last tab of an untouched note only renews its socket (F006)', async () => {
-      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40 } });
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40, leaveMs: 0 } });
       const { store, time } = server.live;
       const id = await server.checkout();
       const viewer = await server.tab(1);
