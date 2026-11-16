@@ -11,9 +11,7 @@ import { setNoteQueryScope } from '../lib/use-note-queries.js';
 import { CompilationAddItem } from './CompilationDialogs.js';
 
 // A native select stands in for the Radix one, which jsdom cannot open.
-vi.mock('./Select.js', () => ({
-  Select: ({ value, onValueChange, options, ...rest }: { value: string; onValueChange: (value: string) => void; options: { value: string; label: string; }[]; }) => createElement('select', { ...rest, value, onChange: (event: { target: { value: string; }; }) => onValueChange(event.target.value) }, options.map(option => createElement('option', { key: option.value, value: option.value }, option.label))),
-}));
+vi.mock('./Select.js', () => ({ Select: ({ value, onValueChange, options, ...rest }: { value: string; onValueChange: (value: string) => void; options: { value: string; label: string; }[]; }) => createElement('select', { ...rest, value, onChange: (event: { target: { value: string; }; }) => onValueChange(event.target.value) }, options.map(option => createElement('option', { key: option.value, value: option.value }, option.label))) }));
 
 const REVISION = 'f'.repeat(40);
 let client: QueryClient;
