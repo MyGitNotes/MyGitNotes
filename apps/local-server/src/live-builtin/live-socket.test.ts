@@ -50,6 +50,16 @@ const checkIn = (live: BuiltinFixture, id: string) => checkInLink(live.liveNotes
 const stored = async (store: LiveStore, id: string, epoch = 1) => storedText(await store.document(id, epoch));
 /** What `watcher` knows of the awareness state of `tab`'s client. */
 const seen = (watcher: LiveTab, tab: LiveTab) => watcher.provider.awareness!.getStates().get(tab.provider.document.clientID);
+/**
+ * Waits until the server holds the awareness state each of `tabs` set: a watcher of another person sees it relayed,
+ * which the server does only after it judged the state. The watcher then leaves, and the tabs' person alone counts.
+ */
+const cursorsHeld = async (server: LiveServer, id: string, tabs: LiveTab[]) => {
+  const watcher = await server.tab(2);
+  await until('the server holds the cursor of every tab', () => tabs.every(tab => JSON.stringify(seen(watcher, tab)?.cursor) === JSON.stringify(tab.provider.awareness!.getLocalState()?.cursor)));
+  watcher.destroy();
+  await until('only the tabs\' person counts', async () => (await activeEditors(server.live, id)) === 1);
+};
 /** Sends, over `tab`'s socket, an awareness state (or a removal) for a client id that is not its own. */
 const speakFor = (tab: LiveTab, client: number, state: Record<string, unknown> | null) => {
   const awareness = tab.provider.awareness!;
@@ -539,9 +549,8 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       const one = await server.tab(1);
       await one.synced();
       one.provider.awareness!.setLocalState({ cursor: { anchor: 0, head: 0 } });
-      await until('the tab counts', async () => (await activeEditors(server.live, id)) === 1);
       // Its cursor reached the server before the clock moves on.
-      await pause(150);
+      await cursorsHeld(server, id, [one]);
       // Ten minutes on, the socket is renewed and the tab comes back on a fresh ticket, doing nothing.
       time.advance(10 * 60_000 + 1);
       await until('the socket was closed for a new ticket', () => one.closes.length > 0);
@@ -552,6 +561,27 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       // What it does next counts again.
       one.type(`${A}back\n`);
       await one.saved();
+      expect(await activeEditors(server.live, id)).toBe(1);
+    });
+
+    it('does not count two tabs of one person renewed in the same beat as activity, whichever comes back first (cf15-F001)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40 } });
+      const { time } = server.live;
+      const id = await server.checkout();
+      const one = await server.tab(1), two = await server.tab(1);
+      await Promise.all([one.synced(), two.synced()]);
+      one.provider.awareness!.setLocalState({ cursor: { anchor: 0, head: 0 } });
+      two.provider.awareness!.setLocalState({ cursor: { anchor: 1, head: 1 } });
+      await cursorsHeld(server, id, [one, two]);
+      // Ten minutes on, one beat closes both sockets, and both tabs come back doing nothing.
+      time.advance(10 * 60_000 + 1);
+      await until('both sockets were closed for a new ticket', () => one.closes.length > 0 && two.closes.length > 0);
+      await until('both tabs connected again with a fresh ticket', () => one.asked === 2 && two.asked === 2 && one.provider.isSynced && two.provider.isSynced);
+      await pause(200);
+      expect(await activeEditors(server.live, id)).toBe(0);
+      // What either does next counts again.
+      two.type(`${A}back\n`);
+      await two.saved();
       expect(await activeEditors(server.live, id)).toBe(1);
     });
 
