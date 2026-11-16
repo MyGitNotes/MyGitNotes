@@ -47,6 +47,10 @@
       "types": "./dist/agent-skill-metadata.d.ts",
       "import": "./dist/agent-skill-metadata.js"
     },
+    "./frontmatter": {
+      "types": "./dist/frontmatter.d.ts",
+      "import": "./dist/frontmatter.js"
+    },
     "./frontmatter-patch": {
       "types": "./dist/frontmatter-patch.d.ts",
       "import": "./dist/frontmatter-patch.js"

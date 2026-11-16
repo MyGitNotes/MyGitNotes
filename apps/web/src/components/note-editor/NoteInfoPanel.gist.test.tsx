@@ -46,3 +46,15 @@ it('remembers the Gist it creates for the note in this repository, and forgets i
   await screen.findByRole('button', { name: 'Publish' });
   await waitFor(() => expect(createdGistConfirmations(repository.id, [{ path: note.path, metadata: { gist: 'new456' } }])).toEqual([]));
 });
+
+// In the collab editor live check-ins push no Gist, so the row shows the link and offers no action (collab-frontmatter Q4).
+it('shows the Gist read-only for a note in the collab editor', () => {
+  render(
+    <NoteLocationProvider locate={() => noteLocation('Life', repository, note.path)}>
+      <NoteInfoPanel note={note} content='Body' metadata={{ gist: 'abc123' }} setMetadata={() => {}} locked={false} liveNote />
+    </NoteLocationProvider>,
+  );
+  expect(screen.getByRole('link', { name: 'Open the Gist' })).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'Unpublish' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(/Live check-ins/)).toBeTruthy();
+});

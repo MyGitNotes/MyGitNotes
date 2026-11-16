@@ -1089,3 +1089,28 @@ describe('typing the server has not stored', () => {
     expect(provider().configuration.document.getText('content').toString()).toBe('');
   });
 });
+
+describe('split mode', () => {
+  it('shows the live text in a source editor beside its preview', async () => {
+    await open({ mode: 'split', body: '# Shared heading\n' });
+    emit(config => {
+      config.document.getText('content').insert(0, '---\ntitle: A\n---\n\n# Shared heading\n');
+      config.onStatus?.({ status: 'connected' });
+      config.onSynced?.({ state: true });
+    });
+    expect((await screen.findByRole('textbox', { name: 'Live note source' })).textContent).toContain('title: A');
+    expect(screen.getByRole('heading', { name: 'Shared heading' })).toBeInTheDocument();
+  });
+});
+
+describe('a view built again', () => {
+  it('starts from the shared text as it is now, not the first sync’s', async () => {
+    const view = await open({ mode: 'live' });
+    sync('# A\n');
+    act(() => provider().configuration.document.getText('content').insert(4, 'peer\n'));
+    view.rerender(createElement(LiveCollabEditor, props({ mode: 'raw' })));
+    view.rerender(createElement(LiveCollabEditor, props({ mode: 'live' })));
+    await act(async () => {});
+    expect((screen.getByRole('textbox', { name: 'Live note content' }) as HTMLTextAreaElement).value).toBe('# A\npeer\n');
+  });
+});

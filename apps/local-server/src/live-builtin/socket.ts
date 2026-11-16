@@ -107,6 +107,11 @@ interface Seat {
   /** Its last awareness state without `user`, as JSON: a change of it is activity. */
   cursor: string;
   /**
+   * The tab took its awareness state away, as a closing editor does before its socket closes: its person is not counted
+   * from then until it sends a state again, so a check-in that comes before the socket's close finds them gone (VQ P1-a).
+   */
+  withdrawn: boolean;
+  /**
    * The cursors its person's seats on this document left with in the last `RETURN_MS`, as it opened: its first
    * awareness state is not activity when it is one of them, as a tab that came back re-sends its own.
    */
@@ -250,7 +255,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
     const writing = (writes.get(name) ?? Promise.resolve()).then(async () => {
       const room = rooms.get(name);
       const people: Record<string, number> = {};
-      for (const seat of room?.seats ?? []) if (seat.connected) people[seat.editor.key] = Math.max(people[seat.editor.key] ?? 0, seat.at);
+      for (const seat of room?.seats ?? []) if (seat.connected && !seat.withdrawn) people[seat.editor.key] = Math.max(people[seat.editor.key] ?? 0, seat.at);
       const now = clock();
       if (room) room.written = now;
       try {
@@ -328,6 +333,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
       left: false,
       at: 0,
       cursor: '',
+      withdrawn: false,
       gone,
       leave() {
         if (seat.left) return;
@@ -477,8 +483,17 @@ export function liveSocket({ documents, store, clock, process: processName, read
           if (!seat.returned?.has(cursor)) active(seat);
         }
         seat.returned = undefined;
+        if (seat.withdrawn) {
+          seat.withdrawn = false;
+          void writePresence(seat.link);
+        }
       }
       for (const client of removedClients) if (room.claims.get(client) !== seat) removedClients.delete(client);
+      // Its own state taken away: the person is written out at once, as when the socket closes.
+      if (seat.claim !== undefined && removedClients.has(seat.claim) && !seat.withdrawn) {
+        seat.withdrawn = true;
+        void writePresence(seat.link);
+      }
     },
     async onDisconnect({ context }) {
       (context as SocketContext | undefined)?.seat?.leave();

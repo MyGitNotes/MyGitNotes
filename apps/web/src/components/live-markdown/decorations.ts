@@ -37,7 +37,7 @@ function decodeDestinationEntities(href: string): string {
   });
 }
 
-export function liveDecorations(state: EditorState, focused: boolean, notePath: string, linkLabel: string, tableLabel: string, pageLabel: string, youtubeOwner: string, t: I18nContextValue['t'], notebookId?: string, continuous = false): DecorationSet {
+export function liveDecorations(state: EditorState, focused: boolean, notePath: string, linkLabel: string, tableLabel: string, pageLabel: string, youtubeOwner: string, t: I18nContextValue['t'], notebookId?: string, continuous = false, bodyFrom = 0): DecorationSet {
   const marks: Range<Decoration>[] = [];
   const mermaidRanges: { from: number; to: number; }[] = [];
   // Source the math scan must not read: code keeps its dollars, and tables and directives render their own math.
@@ -132,6 +132,8 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
         }
       }
       // In a slide note every thematic break starts a block, and is labelled with the block that ends there.
+      // The collab editor's frontmatter fences (before `bodyFrom`) are no page breaks.
+      if (from < bodyFrom && name === 'HorizontalRule') return false;
       if (!continuous && name === 'HorizontalRule' && node.node.parent?.name === 'Document' && (slides || state.sliceDoc(from, to).trim() === '---')) {
         const currentPage = pageNumber;
         pageNumber++;

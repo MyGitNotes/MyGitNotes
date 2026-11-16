@@ -1,4 +1,5 @@
 import { BlockType, type EditorView, GutterMarker, lineNumberWidgetMarker } from '@codemirror/view';
+import { HiddenFrontmatter } from './collab-frontmatter.js';
 import { attachLineGutterGesture, type LineSpan } from '../../lib/line-gutter-gesture.js';
 
 interface GutterLineCopyDeps {
@@ -31,9 +32,9 @@ class BlockLineNumber extends GutterMarker {
 
 /** Gives each block widget that replaces document lines a line number, formatted as the gutter formats lines. */
 export function blockWidgetLineNumbers(lineOffset: { current: number; }) {
-  return lineNumberWidgetMarker.of((view, _widget, block) => {
+  return lineNumberWidgetMarker.of((view, widget, block) => {
     // Widgets placed between lines replace none and keep no number, as the page footer does.
-    if (block.type !== BlockType.WidgetRange || block.to <= block.from) return null;
+    if (block.type !== BlockType.WidgetRange || block.to <= block.from || widget instanceof HiddenFrontmatter) return null;
     const first = view.state.doc.lineAt(block.from).number, last = view.state.doc.lineAt(block.to).number;
     return new BlockLineNumber(first, last, String(first + lineOffset.current));
   });

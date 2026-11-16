@@ -1,7 +1,7 @@
 import YAML from 'yaml';
 import { NoteMetadata } from './types.js';
 import { stampSaveTimestamps } from './note-timestamps.js';
-import { patchFrontmatterField } from './frontmatter-patch.js';
+import { FRONTMATTER_REGEX, patchFrontmatterField } from './frontmatter-patch.js';
 
 export interface ParsedNote {
   metadata: NoteMetadata;
@@ -11,8 +11,6 @@ export interface ParsedNote {
   /** Number added to body-relative line numbers to reach the same line in the saved file. */
   lineNumberOffset: number;
 }
-
-const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
 
 /**
  * Extracts the first H1 heading from Markdown content.
@@ -120,6 +118,64 @@ function patchNoteMetadata(raw: string, metadata: NoteMetadata): string | null {
   }
   for (const [key, value] of Object.entries(metadata)) {
     if (!sameValue(oldMetadata[key], value)) next = patchFrontmatterField(next, key, value);
+  }
+  return next;
+}
+
+/** A text's leading frontmatter block, as `parseNoteContent` reads it. */
+export type NoteFrontmatterSpan =
+  /** `end` is just past the closing fence, `bodyStart` past the blank separator line too. */
+  | { yaml: string; end: number; bodyStart: number; metadata: NoteMetadata; }
+  /** A block whose YAML does not parse to a map: `parseNoteContent` reads it as body. */
+  | { invalid: true; yaml: string; end: number; bodyStart: number; };
+
+/**
+ * Where a text's frontmatter is and what it holds, with the same fence, map check and separator
+ * line as `parseNoteContent`; `null` when the text has no block. The collab editor hides
+ * `[0, bodyStart)` and its panel reads `metadata` from it.
+ */
+export function noteFrontmatterSpan(text: string): NoteFrontmatterSpan | null {
+  const match = text.match(FRONTMATTER_REGEX);
+  if (!match) return null;
+  const end = match[0].length;
+  const separator = text.slice(end).match(/^[ \t]*\r?\n/)?.[0] ?? '';
+  const bodyStart = end + separator.length;
+  const yaml = match[1];
+  try {
+    const parsed: unknown = YAML.parse(yaml);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const metadata = parsed as NoteMetadata;
+      if (Array.isArray(metadata.tags)) metadata.tags = metadata.tags.map(String);
+      return { yaml, end, bodyStart, metadata };
+    }
+  } catch {
+    // falls through: invalid
+  }
+  return { invalid: true, yaml, end, bodyStart };
+}
+
+/**
+ * Applies the keys that differ between `before` (what the caller showed) and `after` onto `raw`,
+ * key by key, so every other key, comment, order and the body keep their bytes, and a key
+ * someone else changed meanwhile is left as they wrote it. With no block a new one is rendered
+ * before the body, in the body's line endings; an unparsable block is left alone. Nothing is stamped.
+ */
+export function patchNoteFrontmatter(raw: string, before: NoteMetadata, after: NoteMetadata): string {
+  const span = noteFrontmatterSpan(raw);
+  if (span && 'invalid' in span) return raw;
+  if (!span) {
+    const keys = Object.keys(after).filter(key => after[key] !== undefined);
+    if (keys.length === 0) return raw;
+    const newline = raw.includes('\r\n') ? '\r\n' : '\n';
+    const yamlStr = stringifyMetadata(Object.fromEntries(keys.map(key => [key, after[key]]))).trimEnd().replace(/\n/g, newline);
+    return `---${newline}${yamlStr}${newline}---${newline}${raw ? newline + raw : ''}`;
+  }
+  let next = raw;
+  for (const key of Object.keys(before)) {
+    if (!(key in after) || after[key] === undefined) next = patchFrontmatterField(next, key, undefined);
+  }
+  for (const [key, value] of Object.entries(after)) {
+    if (value !== undefined && !sameValue(before[key], value)) next = patchFrontmatterField(next, key, value);
   }
   return next;
 }

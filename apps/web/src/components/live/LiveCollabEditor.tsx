@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, type Ref, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, Users } from 'lucide-react';
 import * as Y from 'yjs';
@@ -9,14 +9,19 @@ import type { LiveBuiltinEditorInfo } from '@mygitnotes/core';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import { checkInLive, isMergeConflict, isNotLive, type LiveCheckInAnswer, type LiveCheckoutView, mergeLive, newMergeId, socketTicket } from '../../lib/live-api.js';
 import { holdClaim, takeClaim } from '../../lib/live-claims.js';
+import { noteLiveSocketClosing } from '../../lib/live-closing.js';
 import { liveOwnerClaim, relocateUnsynced, unsyncedKey, unsyncedLiveStore, type UnsyncedLiveText, unsyncedOf } from '../../lib/live-unsynced.js';
 import { isNetworkFailure } from '../../lib/api.js';
 import { onReachable } from '../../lib/live-reachability.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
-import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
+import { LiveMarkdownEditor, type LiveMarkdownHandle } from '../LiveMarkdownEditor.js';
+import type { MarkdownEditorMode } from '../MarkdownEditor.js';
+import { SplitView } from '../SplitView.js';
+import { CollabSourceEditor } from './CollabSourceEditor.js';
 import { discardDraft, keptReason } from './live-drafts.js';
 import { LiveProvider } from './live-provider.js';
+import { readLiveFrontmatter } from './live-frontmatter.js';
 import { notCheckedInText, stillOpenText } from './useLiveEdit.js';
 import './live-editor.css';
 
@@ -42,6 +47,28 @@ export interface LiveCollabEditorProps {
   onMergeConflict?: (mine: string) => boolean;
   /** Whether the editor holds typing the server has not stored, or kept typing it has not merged yet: a file action waits for it (cf16-F003). */
   onUnsavedChange?: (unsaved: boolean) => void;
+  /**
+   * The session's shared text once its document synced, and whether metadata may be written now (connected and synced,
+   * collab-frontmatter Q2); null while no document is shown. The note's document panel and row read and write it.
+   */
+  onLive?: (live: LiveSession | null) => void;
+  /** The collab Markdown editor, for the document panel's find and outline. */
+  editorRef?: Ref<LiveMarkdownHandle>;
+  /** The note is a slide deck: its editor labels slides as the direct editor does. */
+  slides?: boolean;
+  showLineNumbers?: boolean;
+  /** Live, Source (the whole text, frontmatter included) or Split (Source beside the body's preview), as the direct editor's modes. */
+  mode?: MarkdownEditorMode;
+  /** The live body, which Split previews. */
+  body?: string;
+  /** Beside the editor in its body: the note's document panel. */
+  children?: ReactNode;
+}
+
+/** A running collab session as the note's panel sees it. */
+export interface LiveSession {
+  text: Y.Text;
+  online: boolean;
 }
 
 /** Why the server refused the tab's document; `other` for any reason this tab does not know. */
@@ -101,6 +128,12 @@ const KEEP_MS = 500;
 /** The origin of a kept update applied to a new session's document: neither the tab's own typing nor the server's. */
 const RESTORED = Symbol('restored');
 
+/** Kept typing shown read-only while offline: the body alone, numbered with its file lines, as the collab editor shows it. */
+function KeptText({ text, path, notebookId, label }: { text: string; path: string; notebookId: string; label: string; }) {
+  const { bodyStart, lineOffset } = readLiveFrontmatter(text);
+  return <LiveMarkdownEditor content={text.slice(bodyStart)} lineNumberOffset={lineOffset} notePath={path} notebookId={notebookId} readOnly onChange={() => {}} ariaLabel={label} />;
+}
+
 /** A file name for the downloaded copy of the tab's text. */
 const downloadName = (title: string | undefined, path: string) => `${(title || path.split('/').pop()?.replace(/\.(md|markdown)$/i, '') || 'note').replace(/[\\/:*?"<>|\p{Cc}]+/gu, ' ').trim() || 'note'}.md`;
 
@@ -119,13 +152,15 @@ const downloadName = (title: string | undefined, path: string) => `${(title || p
  * typed on) when that document ended; offline meanwhile, it shows the kept text read-only. A conflicting merge goes to
  * `onMergeConflict`; a live editor that cannot merge leaves the copy or download.
  */
-export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange }: LiveCollabEditorProps) {
+export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange, onLive, editorRef, slides, showLineNumbers, mode = 'live', body = '', children }: LiveCollabEditorProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   // Each session is one document and one provider; going back to the editor after a check-in that left it open starts a new one.
   const [session, setSession] = useState(1);
   const [connection, setConnection] = useState<Connection>(START);
-  const [collab, setCollab] = useState<{ extension: Extension; text: string; } | null>(null);
+  const [collab, setCollab] = useState<{ extension: Extension; text: string; shared: Y.Text; awareness: Awareness; undoManager: Y.UndoManager; } | null>(null);
+  /** The Source editor's scroller, which Split keeps in step with its preview. */
+  const sourceScroller = useRef<HTMLElement | null>(null);
   const [copied, setCopied] = useState(false);
   /** 「關閉」 asked while typing is unsaved: the editor stays open under the question. */
   const [leaving, setLeaving] = useState(false);
@@ -238,6 +273,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       taken = [];
       clearTimeout(timer);
       stopped = true;
+      // Its socket closes after this returns: a check-in of the note waits for that (VQ P1-a).
+      noteLiveSocketClosing(notebookId, path, provider?.configuration.websocketProvider?.webSocket);
       provider?.destroy();
       awareness.destroy();
       doc.destroy();
@@ -411,7 +448,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           if (!keeping && !dirty) base = text.toString();
           settle();
           setConnection(current => ({ ...current, synced: true, everSynced: true, renewing: false }));
-          setCollab(current => current ?? { extension: yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }), text: text.toString() });
+          setCollab(current => {
+            if (current) return current;
+            const undoManager = new Y.UndoManager(text);
+            return { extension: yCollab(text, awareness, { undoManager }), text: text.toString(), shared: text, awareness, undoManager };
+          });
         },
         onUnsyncedChanges: ({ number }) => {
           unsynced = number;
@@ -507,6 +548,27 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     unsavedChange.current?.(holdsTyping);
   }, [holdsTyping]);
   useEffect(() => () => unsavedChange.current?.(false), []);
+
+  // A view built again (another mode, another frame) starts from the shared text as it is now: the binding assumes the
+  // view's text equals it, and typing in a view built on the first sync's text would land at the wrong places.
+  const liveBinding = useMemo(() =>
+    collab && {
+      extension: collab.extension,
+      get text() {
+        return collab.shared.toString();
+      },
+    }, [collab]);
+  // The panel writes metadata only while the document is connected and synced (Q2).
+  const shared = live && collab ? collab.shared : null;
+  const writable = connection.status === 'connected' && connection.synced;
+  const liveReport = useRef(onLive);
+  useEffect(() => {
+    liveReport.current = onLive;
+  });
+  useEffect(() => {
+    liveReport.current?.(shared ? { text: shared, online: writable } : null);
+  }, [shared, writable]);
+  useEffect(() => () => liveReport.current?.(null), []);
 
   // Typing the server has not stored yet is lost with the page.
   const unsaved = live && !!connection.dirty;
@@ -641,14 +703,10 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       {live && !collab && kept !== null && (
         <div className='note-editor-body live-collab-body'>
           <p role='status' className='live-editor-notice'>{t('live.keptOffline')}</p>
-          <LiveMarkdownEditor content={kept} notePath={checkout.path} notebookId={checkout.notebookId} readOnly onChange={() => {}} ariaLabel={t('live.toolbar')} />
+          <KeptText text={kept} path={checkout.path} notebookId={checkout.notebookId} label={t('live.toolbar')} />
         </div>
       )}
-      {live && collab && (
-        <div className='note-editor-body live-collab-body'>
-          <LiveMarkdownEditor content={collab.text} collab={collab} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} />
-        </div>
-      )}
+      {live && collab && <div className='note-editor-body live-collab-body'>{mode === 'live' ? <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={liveBinding ?? undefined} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} slides={slides} showLineNumbers={showLineNumbers} /> : mode === 'split' ? <SplitView source={<CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} scroller={sourceScroller} />} sourceScroller={sourceScroller} content={body} path={checkout.path} notebookId={checkout.notebookId} slides={slides} /> : <CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} />}{children}</div>}
       {phase.kind === 'checking' && <LoadingStatus className='live-editor-notice'>{t('live.checkingIn')}</LoadingStatus>}
       {phase.kind === 'discarding' && <LoadingStatus className='live-editor-notice'>{t('live.discarding')}</LoadingStatus>}
       {phase.kind === 'released' && <p role='status' className='live-editor-notice'>{t('live.checkedIn')}</p>}

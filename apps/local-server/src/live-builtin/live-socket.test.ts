@@ -772,6 +772,26 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(await server.live.store.link(pending.id)).toBeNull();
     });
 
+    // VQ P1-a: a tab that closed its editor sends its awareness state away before its socket's close, which can come late.
+    it('stops counting a person at once whose tab took its awareness state away, though its socket is still open, and counts them again when it sends one', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40 } });
+      const id = await server.checkout();
+      const one = await server.tab(1), two = await server.tab(2);
+      await Promise.all([one.synced(), two.synced()]);
+      // Each tab speaks for its client id, as the app's editor does once it is let in.
+      for (const tab of [one, two]) tab.provider.awareness!.setLocalState({ cursor: null });
+      await until('both people count', async () => (await activeEditors(server.live, id)) === 2);
+      two.provider.awareness!.setLocalState(null);
+      await until('the second person no longer counts', async () => (await activeEditors(server.live, id)) === 1, 1000);
+      expect(await checkIn(server.live, id)).toMatchObject({ released: false, reason: 'active', activeEditors: 1 });
+      two.provider.awareness!.setLocalState({ cursor: { anchor: 0, head: 0 } });
+      await until('the second person counts again', async () => (await activeEditors(server.live, id)) === 2, 1000);
+      one.provider.awareness!.setLocalState(null);
+      two.provider.awareness!.setLocalState(null);
+      await until('nobody counts', async () => (await activeEditors(server.live, id)) === 0, 1000);
+      expect(await checkIn(server.live, id)).toMatchObject({ released: true });
+    });
+
     it('counts the people on its sockets by what each last did, and stops counting one whose tabs closed at once', async () => {
       // Its clock runs on for over twenty minutes: the sockets stay open meanwhile.
       const server = await serverOver({ store: makeStore(), limits: { beatMs: 40, socketMs: 24 * 3_600_000 } });

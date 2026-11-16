@@ -17,11 +17,20 @@ import { LiveBadge } from './LiveBadge.js';
  * 編輯; moving, renaming or deleting it from its own editor checks it in first.
  */
 
-const fake = vi.hoisted(() => ({ order: [] as string[], config: null as null | { onDirty?: (event: { dirty: boolean; }) => void; } }));
+interface FakeConfig {
+  document: import('yjs').Doc;
+  onDirty?: (event: { dirty: boolean; }) => void;
+  onStatus?: (event: { status: string; }) => void;
+  onSynced?: (event: { state: boolean; }) => void;
+}
+/** `socket`: the browser socket a provider is on, when a test follows its close; none by default. */
+const fake = vi.hoisted(() => ({ order: [] as string[], config: null as null | FakeConfig, socket: null as null | (EventTarget & { readyState: number; }) }));
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
-    constructor(configuration: { onDirty?: (event: { dirty: boolean; }) => void; }) {
+    configuration: FakeConfig & { websocketProvider: { webSocket: EventTarget | null; }; };
+    constructor(configuration: FakeConfig) {
       fake.config = configuration;
+      this.configuration = { ...configuration, websocketProvider: { webSocket: fake.socket } };
     }
     destroy() {
       fake.order.push('destroy');
@@ -32,6 +41,8 @@ vi.mock('@hocuspocus/provider', () => ({
   },
 }));
 vi.mock('../MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; readOnly: boolean; }>(({ content, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, readOnly, onChange: () => {} })) }));
+// The synced collab editor, which only the check-in tests reach.
+vi.mock('../LiveMarkdownEditor.js', () => ({ LiveMarkdownEditor: forwardRef<unknown, { collab?: { text: string; }; }>(({ collab }, _ref) => createElement('textarea', { 'aria-label': 'Live note content', value: collab?.text ?? '', readOnly: true, onChange: () => {} })) }));
 
 const builtin = { kind: 'builtin' as const };
 const frameEditor = { origin: 'https://live.example.test', messageType: 'live-status', themeParam: 'theme' };
@@ -48,6 +59,7 @@ let online = true;
 beforeEach(() => {
   localStorage.clear();
   fake.order.length = 0;
+  fake.socket = null;
   phone = false;
   online = true;
   checkInAnswer = () => json(checkedIn);
@@ -318,6 +330,40 @@ describe('moving, renaming or deleting a note one has open in the collab editor'
     expect(calls('/api/live/checkin')[0]![1]).toEqual(expect.objectContaining({ body: JSON.stringify({ notebookId: 'notes~life', path: 'notes/life/a.md' }) }));
     expect(rename).toHaveBeenCalledWith('r2');
     expect(collabShown()).toBeNull();
+  });
+
+  // VQ P1-a: sent while the editor's socket still closes, the check-in can find this tab still editing the note.
+  it('checks the note in only once the editor’s socket has closed', async () => {
+    const socket = Object.assign(new EventTarget(), { readyState: 1 });
+    fake.socket = socket;
+    const rename = vi.fn();
+    await mount({ note: { ...note, live: liveState }, live: live({ fileActions: { rename } }) });
+    await pick('Rename');
+    expect(fake.order).toContain('destroy');
+    expect(calls('/api/live/checkin')).toHaveLength(0);
+    socket.readyState = 3;
+    await act(async () => void socket.dispatchEvent(new Event('close')));
+    await act(async () => {});
+    expect(calls('/api/live/checkin')).toHaveLength(1);
+    expect(rename).toHaveBeenCalledWith('r2');
+  });
+
+  it('checks the note in from Check in now only once the editor’s socket has closed', async () => {
+    const socket = Object.assign(new EventTarget(), { readyState: 1 });
+    fake.socket = socket;
+    await mount({ note: { ...note, live: liveState }, live: live() });
+    act(() => {
+      fake.config!.document.getText('content').insert(0, '# Alpha\n');
+      fake.config!.onStatus?.({ status: 'connected' });
+      fake.config!.onSynced?.({ state: true });
+    });
+    await act(async () => void fireEvent.click(screen.getByRole('button', { name: 'Check in now' })));
+    expect(fake.order).toContain('destroy');
+    expect(calls('/api/live/checkin')).toHaveLength(0);
+    socket.readyState = 3;
+    await act(async () => void socket.dispatchEvent(new Event('close')));
+    await act(async () => {});
+    expect(calls('/api/live/checkin')).toHaveLength(1);
   });
 
   it('Move does the same, and opens the folder picker once the note is released', async () => {

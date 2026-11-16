@@ -383,7 +383,7 @@ export const AppContent: React.FC = () => {
           }
         },
         ...(liveConflict ? { mergeConflict: { mine: noteFileText(liveConflict.note), discard: () => updateDraft(note.notebookId, note.path, null) } } : {}),
-        fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined })?.(), rename: () => noteMove.renameNote({ ...note, live: undefined })?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
+        fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined })?.(), rename: (_revision, title) => noteMove.renameNote({ ...note, ...(title ? { title } : {}), live: undefined })?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
       }
       : undefined;
     return {

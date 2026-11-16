@@ -2,6 +2,7 @@ import type { LiveCheckInReason, LiveConflict, LiveEditorInfo } from '@mygitnote
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { isOutlinePath } from '@mygitnotes/core/outline';
 import { ApiError, isNetworkFailure, responseError } from './api.js';
+import { liveSocketsClosed } from './live-closing.js';
 import { markReached, markUnreachable } from './live-reachability.js';
 
 /*
@@ -86,7 +87,8 @@ export interface LiveMergeConflict {
 /** The file actions a collab-first note's own editor runs once its check-in released the note. */
 export interface LiveFileActions {
   move?: (revision?: string) => void;
-  rename?: (revision?: string) => void;
+  /** `title`: what the person typed in the note's row or panel, which the rename dialog starts from. */
+  rename?: (revision?: string, title?: string) => void;
   remove?: (revision?: string) => Promise<void> | void;
 }
 
@@ -160,7 +162,11 @@ export const newMergeId = (): string => {
 };
 
 /** 「立即簽回」: commits the live text and closes the live note, or says why it stayed open. */
-export const checkInLive = (notebookId: string, path: string) => post<LiveCheckInAnswer>('/api/live/checkin', { notebookId, path }, 'Failed to check the note in');
+/** Sent once every collab editor of the note this tab closed has its socket closed, so this tab no longer counts as editing it. */
+export const checkInLive = async (notebookId: string, path: string) => {
+  await liveSocketsClosed(notebookId, path);
+  return post<LiveCheckInAnswer>('/api/live/checkin', { notebookId, path }, 'Failed to check the note in');
+};
 
 /** A ticket for the built-in editor's socket, for a note that is live already; 409 `not-live` once it was checked in. */
 export const socketTicket = (notebookId: string, path: string) => post<LiveSocketTicket>('/api/live/socket-ticket', { notebookId, path }, 'Failed to open the live editor');
