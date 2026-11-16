@@ -40,6 +40,19 @@ const theme = async mode => {
   if (!page.url().startsWith(base)) await page.goto(base, { waitUntil: 'domcontentloaded' });
   await page.evaluate(mode => localStorage.setItem('github_notes_theme_mode', mode), mode);
 };
+/** Commits the workspace, retrying while the open app's own git reads (status refreshes) hold the index lock. */
+const commitAll = async message => {
+  for (let attempt = 0;; attempt++) {
+    try {
+      git('add', '-A');
+      git('commit', '-qm', message);
+      return;
+    } catch (error) {
+      if (attempt >= 50 || !String(error.stderr).includes('index.lock')) throw error;
+      await pause(100);
+    }
+  }
+};
 const shot = name => page.screenshot({ path: path.join(shots, `${name}.png`) });
 const openBook = async () => {
   await page.goto(`${base}/notebooks/company/notes/handbook.compilation.yml`, { waitUntil: 'domcontentloaded' });
@@ -137,8 +150,7 @@ try {
   console.log("PASS a rename in another notebook rewrites the compilation's item");
 
   // AC7: studying the book reviews the Training note and writes its status and the study file.
-  git('add', '-A');
-  git('commit', '-qm', 'Edits before study');
+  await commitAll('Edits before study');
   await openBook();
   await page.$eval('button[aria-label="Start studying: Handbook"]', button => button.click());
   await page.waitForSelector('.study-footer', { timeout: 20000 });
@@ -157,8 +169,7 @@ try {
 
   // AC11: the graph arrangement draws the compilation's own notebook and counts the rest without writing the file.
   write(BOOK, read(BOOK).replace('arrangement: book', 'arrangement: graph'));
-  git('add', '-A');
-  git('commit', '-qm', 'Graph arrangement');
+  await commitAll('Graph arrangement');
   const before = read(BOOK);
   await openBook();
   await page.waitForSelector('.graph-notice-outside', { timeout: 20000 });
