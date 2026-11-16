@@ -4,7 +4,7 @@ import { defaultStudyProgression, studyLaneStatuses } from '@mygitnotes/core/stu
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { NotebookConfig } from '../lib/types.js';
 import { useCompilationActions } from '../lib/compilation-actions.js';
-import { compilationRowItems, studyQueueItems, studyRowItems } from '../lib/compilation-content.js';
+import { compilationRowItems, studyQueueItems, studyRowItems, ungrouped } from '../lib/compilation-content.js';
 import { useLaneNotes } from '../lib/compilation-queries.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useCompilation } from '../lib/use-compilation.js';
@@ -28,7 +28,8 @@ export function CompilationStudy({ notebooks, folders, notebookId, path, onOpenN
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
   const [editing, setEditing] = useState(false);
   const row = compilation.page.rows[0];
-  const reviewRow = row && { ...row, progression: row.progression || defaultStudyProgression(studyLaneStatuses(row, notebooks)), study: { ...row.study, filter: row.study?.filter || 'all' as const, dueFirst: true } };
+  // Chapters do not change what a study session reviews or its order.
+  const reviewRow = row && { ...ungrouped(row), progression: row.progression || defaultStudyProgression(studyLaneStatuses(row, notebooks)), study: { ...row.study, filter: row.study?.filter || 'all' as const, dueFirst: true } };
   // A study session orders its whole queue, so the compilation reads every member at once.
   const lane = useLaneNotes(reviewRow, { all: true });
   const items = reviewRow ? studyRowItems(studyQueueItems(compilationRowItems(reviewRow, lane.notes, [], notebooks)), reviewRow, lane.notes, study.study) : [];

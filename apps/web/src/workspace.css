@@ -338,6 +338,7 @@
 .compilation-order-row[data-heading] { background: var(--workspace-selection); }
 .compilation-order-row[data-indent] { margin-inline-start: 20px; }
 .compilation-order-chapter { flex: 1; min-width: 0; min-height: 30px; font-weight: 600; }
+.compilation-order-separator { padding: 8px 4px 4px; border-width: 0 0 2px; border-radius: 0; background: transparent; font-weight: 700; }
 .compilation-order-add { display: inline-flex; align-items: center; gap: 6px; margin: -8px 0 16px; }
 .screen-form label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: var(--color-muted); }
 .screen-form .screen-checkbox { flex-direction: row; align-items: center; gap: 8px; }

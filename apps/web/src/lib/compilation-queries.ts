@@ -10,11 +10,11 @@ function isManual(row: CompilationRow | undefined): boolean {
   return row?.kind === 'dynamic' && row.sort?.field === 'manual';
 }
 
-/** The server query a dynamic lane's membership comes from; its filter mirrors `compilationNotes`. */
+/** The server query a dynamic lane's membership comes from; its filter mirrors `compilationNotes`. With chapters by folder the server pages in chapter order, so a later page never lands before a chapter already shown. */
 export function laneNoteQuery(row: CompilationRow): Partial<NoteQuery> | null {
   if (row.kind !== 'dynamic') return null;
   const source = row.source;
-  return { notebookId: source.notebookId, tags: source.kind === 'tag' ? [source.tag] : [], folders: source.kind === 'folder' ? [source.path] : [], descendants: source.kind === 'folder' ? source.recursive : true, status: row.study?.status || null, showHidden: false, sort: !row.sort || row.sort.field === 'manual' ? 'title' : row.sort.field, order: row.sort?.order || 'asc' };
+  return { notebookId: source.notebookId, tags: source.kind === 'tag' ? [source.tag] : [], folders: source.kind === 'folder' ? [source.path] : [], descendants: source.kind === 'folder' ? source.recursive : true, status: row.study?.status || null, showHidden: false, sort: !row.sort || row.sort.field === 'manual' ? 'title' : row.sort.field, order: row.sort?.order || 'asc', ...(row.group ? { group: row.group } : {}) };
 }
 
 export interface LaneNotes {

@@ -4,6 +4,7 @@ import { resolveNoteStatuses } from '@mygitnotes/core/note-status';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { AssetItem, FolderItem, NotebookConfig } from './types.js';
 import { sortNotes } from './note-sort.js';
+import { noteFolderGrouping } from './note-groups.js';
 
 export function compilationFolderOptions(notebook: NotebookConfig | undefined, folders: FolderItem[], assets: (AssetItem & { notebookId: string; })[]) {
   if (!notebook) return [];
@@ -20,8 +21,55 @@ export function compilationFolderOptions(notebook: NotebookConfig | undefined, f
   return [...options].map(([path, title]) => ({ path, title }));
 }
 
-export function compilationRowItems(row: CompilationRow, notes: NoteListItem[], assets: (AssetItem & { notebookId: string; })[], notebooks: NotebookConfig[] = []): CompilationItem[] {
+/**
+ * The items a compilation shows, in order: a custom compilation's own, chapter headings included; a dynamic
+ * compilation's members in its sort, and with `group: folder` a derived heading before each folder's members.
+ * `folders` names the chapters and orders them as the sidebar does.
+ */
+export function compilationRowItems(row: CompilationRow, notes: NoteListItem[], assets: (AssetItem & { notebookId: string; })[], notebooks: NotebookConfig[] = [], folders: FolderItem[] = []): CompilationItem[] {
   if (row.kind === 'custom') return row.items;
+  const members = dynamicMembers(row, notes, assets, notebooks);
+  return row.group === 'folder' ? folderChapters(row, members, notebooks, folders) : members;
+}
+
+/** The row as a study session reads it: chapters do not change what is reviewed or its order. */
+export const ungrouped = (row: CompilationRow): CompilationRow => row.kind === 'dynamic' && row.group ? { ...row, group: undefined } : row;
+
+/**
+ * Splits sorted members into one chapter per folder, keeping their order within each chapter, so a manual order
+ * counts only against the members of its own chapter. Chapters follow the server's `group=folder` order: the root's
+ * members, then folders in the sidebar's order, then folders it does not list by path; a folder's assets follow its
+ * notes, and folders holding only assets come after the note chapters. The headings live only in the browser.
+ */
+function folderChapters(row: Extract<CompilationRow, { kind: 'dynamic'; }>, members: CompilationItem[], notebooks: NotebookConfig[], folders: FolderItem[]): CompilationItem[] {
+  const source = row.source;
+  const notebook = notebooks.find(candidate => candidate.id === source.notebookId);
+  const root = (notebook?.root ?? '').replace(/\/$/, '');
+  const relative = (path: string) => path === root ? '' : path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
+  const selected = source.kind === 'folder' && relative(source.path) ? relative(source.path) : null;
+  const titles = folders.filter(folder => folder.notebookId === source.notebookId);
+  const selectedLabel = selected ? titles.find(folder => folder.path === selected)?.title ?? selected.split('/').pop()! : notebook?.title ?? source.notebookId;
+  const groupOf = noteFolderGrouping({ notebookRoot: root, selectedFolder: selected, folders: titles, notebookId: source.notebookId, selectedLabel });
+  const rank = new Map(titles.map((folder, index) => [folder.path, index + 1]));
+  const chapters = new Map<string, { label: string; notes: CompilationItem[]; assets: CompilationItem[]; }>();
+  for (const item of members) {
+    if (item.kind !== 'note' && item.kind !== 'asset') continue;
+    const { key, label } = groupOf({ path: item.path } as NoteListItem);
+    const chapter = chapters.get(key) ?? { label, notes: [], assets: [] };
+    chapters.set(key, chapter);
+    (item.kind === 'note' ? chapter.notes : chapter.assets).push(item);
+  }
+  const order = (key: string) => key === '' ? 0 : rank.get(key) ?? Number.MAX_SAFE_INTEGER;
+  const noteless = (key: string) => !chapters.get(key)!.notes.length;
+  const keys = [...chapters.keys()].sort((a, b) => Number(noteless(a)) - Number(noteless(b)) || (noteless(a) ? a.localeCompare(b) : order(a) - order(b) || (order(a) === Number.MAX_SAFE_INTEGER ? a.localeCompare(b) : 0)));
+  return keys.flatMap(key => {
+    const chapter = chapters.get(key)!;
+    return [{ id: `group:${key}`, kind: 'heading' as const, title: chapter.label }, ...chapter.notes, ...chapter.assets];
+  });
+}
+
+/** A dynamic compilation's members in its sort: notes and a folder source's assets. */
+function dynamicMembers(row: Extract<CompilationRow, { kind: 'dynamic'; }>, notes: NoteListItem[], assets: (AssetItem & { notebookId: string; })[], notebooks: NotebookConfig[]): CompilationItem[] {
   const source = row.source;
   const within = (file: string) => file.startsWith(`${source.kind === 'folder' ? source.path : ''}/`) && (source.kind !== 'folder' || source.recursive || !file.slice(source.path.length + 1).includes('/'));
   // Membership is judged again on the loaded rows so a staged draft lands in the right lane.

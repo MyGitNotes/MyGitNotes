@@ -50,11 +50,14 @@ const tag = z.string().trim().min(1).max(200);
 
 export const COMPILATION_ARRANGEMENTS = ['lane', 'book', 'graph'] as const;
 export const COMPILATION_SIZES = ['thumbnail', 'small', 'medium'] as const;
+/** How a dynamic compilation derives its chapters: `folder` makes one chapter per folder that holds members. */
+export const COMPILATION_GROUPS = ['folder'] as const;
 
 /** The stored file; it never repeats the notebook, which the path decides. */
-export const CompilationFileSchema = z.object({ version: z.literal(1), id, title: z.string().trim().min(1).max(100), arrangement: z.enum([...COMPILATION_ARRANGEMENTS, 'stack']).transform(value => value === 'stack' ? 'book' as const : value), size: z.enum(COMPILATION_SIZES).optional(), tags: z.array(tag).max(100).optional(), status: z.string().trim().min(1).max(200).optional(), items: z.array(FileItemSchema).max(COMPILATION_MAX_ITEMS + COMPILATION_MAX_HEADINGS).optional(), source: FileSourceSchema.optional(), sort: SortSchema.optional(), manualOrder: z.array(repoPath).max(COMPILATION_MAX_ORDER).optional(), study: StudySchema.optional(), progression: StudyProgressionSchema.optional(), graph: GraphLayoutSchema.optional() }).strict().superRefine((file, context) => {
+export const CompilationFileSchema = z.object({ version: z.literal(1), id, title: z.string().trim().min(1).max(100), arrangement: z.enum([...COMPILATION_ARRANGEMENTS, 'stack']).transform(value => value === 'stack' ? 'book' as const : value), size: z.enum(COMPILATION_SIZES).optional(), tags: z.array(tag).max(100).optional(), status: z.string().trim().min(1).max(200).optional(), items: z.array(FileItemSchema).max(COMPILATION_MAX_ITEMS + COMPILATION_MAX_HEADINGS).optional(), source: FileSourceSchema.optional(), sort: SortSchema.optional(), group: z.enum(COMPILATION_GROUPS).optional(), manualOrder: z.array(repoPath).max(COMPILATION_MAX_ORDER).optional(), study: StudySchema.optional(), progression: StudyProgressionSchema.optional(), graph: GraphLayoutSchema.optional() }).strict().superRefine((file, context) => {
   if ((file.items === undefined) === (file.source === undefined)) context.addIssue({ code: 'custom', message: 'Give exactly one of items or source', path: ['items'] });
   if (file.sort && !file.source) context.addIssue({ code: 'custom', message: 'sort applies to a source', path: ['sort'] });
+  if (file.group && !file.source) context.addIssue({ code: 'custom', message: 'group applies to a source', path: ['group'] });
   if (file.manualOrder && !file.source) context.addIssue({ code: 'custom', message: 'manualOrder applies to a source', path: ['manualOrder'] });
   if (file.manualOrder && new Set(file.manualOrder).size !== file.manualOrder.length) context.addIssue({ code: 'custom', message: 'manualOrder repeats a path', path: ['manualOrder'] });
   const headings = (file.items ?? []).filter(item => item.kind === 'heading').length;
@@ -134,7 +137,7 @@ interface CompilationRowBase {
 export type CompilationTagSource = { kind: 'tag'; tag: string; notebookId: string; };
 export type CompilationFolderSource = { kind: 'folder'; path: string; recursive: boolean; notebookId: string; };
 export type CompilationSource = CompilationTagSource | CompilationFolderSource;
-export type CompilationRow = (CompilationRowBase & { kind: 'custom'; items: CompilationItem[]; }) | (CompilationRowBase & { kind: 'dynamic'; source: CompilationSource; sort?: CompilationSort; /** Member paths in the order the user set; kept while another sort is chosen. */ manualOrder?: string[]; });
+export type CompilationRow = (CompilationRowBase & { kind: 'custom'; items: CompilationItem[]; }) | (CompilationRowBase & { kind: 'dynamic'; source: CompilationSource; sort?: CompilationSort; /** Member paths in the order the user set; kept while another sort is chosen. */ manualOrder?: string[]; /** One chapter per folder that holds members. */ group?: 'folder'; });
 /** What the browser holds of a notebook's compilations. */
 export interface CompilationPage {
   rows: CompilationRow[];
@@ -180,8 +183,8 @@ export function parseCompilation(raw: string, scope?: readonly string[]): Compil
 }
 
 export function serializeCompilation(file: CompilationFile): string {
-  const { version, id, title, arrangement, size, tags, status, items, source, sort, manualOrder, study, progression, graph } = file;
-  const ordered = { version, id, title, arrangement, ...(size ? { size } : {}), ...(tags?.length ? { tags } : {}), ...(status ? { status } : {}), ...(items ? { items } : {}), ...(source ? { source } : {}), ...(sort ? { sort } : {}), ...(manualOrder?.length ? { manualOrder } : {}), ...(study ? { study } : {}), ...(progression ? { progression } : {}), ...(graph ? { graph } : {}) };
+  const { version, id, title, arrangement, size, tags, status, items, source, sort, group, manualOrder, study, progression, graph } = file;
+  const ordered = { version, id, title, arrangement, ...(size ? { size } : {}), ...(tags?.length ? { tags } : {}), ...(status ? { status } : {}), ...(items ? { items } : {}), ...(source ? { source } : {}), ...(sort ? { sort } : {}), ...(group ? { group } : {}), ...(manualOrder?.length ? { manualOrder } : {}), ...(study ? { study } : {}), ...(progression ? { progression } : {}), ...(graph ? { graph } : {}) };
   return YAML.stringify(ordered, { lineWidth: 0 });
 }
 
@@ -198,7 +201,7 @@ export function compilationRow(file: CompilationFile, owner: { notebookId: strin
     return { ...base, kind: 'custom', items: file.items.map(item => item.kind === 'youtube' || item.kind === 'heading' ? item : { ...item, notebookId: notebookAt(item.path) }) };
   }
   const source = file.source!;
-  return { ...base, kind: 'dynamic', source: source.kind === 'tag' ? { ...source, notebookId: owner.notebookId } : { ...source, notebookId: notebookAt(source.path) }, ...(file.sort ? { sort: file.sort } : {}), ...(file.manualOrder?.length ? { manualOrder: file.manualOrder } : {}) };
+  return { ...base, kind: 'dynamic', source: source.kind === 'tag' ? { ...source, notebookId: owner.notebookId } : { ...source, notebookId: notebookAt(source.path) }, ...(file.sort ? { sort: file.sort } : {}), ...(file.group ? { group: file.group } : {}), ...(file.manualOrder?.length ? { manualOrder: file.manualOrder } : {}) };
 }
 
 /** The stored form of a lane model; the inverse of `compilationRow`. */
@@ -208,7 +211,7 @@ export function compilationFile(row: CompilationRow): CompilationFile {
   const common = { version: 1 as const, id: row.id, title: row.name, arrangement: lane ? 'lane' as const : row.view as 'graph' | 'book', ...(size ? { size } : {}), ...(row.tags?.length ? { tags: row.tags } : {}), ...(row.status ? { status: row.status } : {}), ...(row.study ? { study: row.study } : {}), ...(row.progression ? { progression: row.progression } : {}), ...(row.graph ? { graph: row.graph } : {}) };
   if (row.kind === 'custom') return { ...common, items: row.items.map(item => item.kind === 'youtube' || item.kind === 'heading' ? item : { id: item.id, kind: item.kind, path: item.path }) };
   const source = row.source.kind === 'tag' ? { kind: 'tag' as const, tag: row.source.tag } : { kind: 'folder' as const, path: row.source.path, recursive: row.source.recursive };
-  return { ...common, source, ...(row.sort ? { sort: row.sort } : {}), ...(row.manualOrder?.length ? { manualOrder: row.manualOrder } : {}) };
+  return { ...common, source, ...(row.sort ? { sort: row.sort } : {}), ...(row.group ? { group: row.group } : {}), ...(row.manualOrder?.length ? { manualOrder: row.manualOrder } : {}) };
 }
 
 export interface CompilationFields {
@@ -233,7 +236,7 @@ const fileTitle = (path: string) => path.split('/').pop()!.slice(0, -COMPILATION
 export function compilationFields(raw: string, path: string, scope?: readonly string[]): CompilationFields {
   try {
     const file = parseCompilation(raw, scope);
-    return { title: file.title, tags: file.tags ?? [], status: file.status, metadata: { id: file.id, title: file.title, arrangement: file.arrangement, ...(file.size ? { size: file.size } : {}), ...(file.items ? listedItems(file.items) : { sourceKind: file.source!.kind }), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}) } };
+    return { title: file.title, tags: file.tags ?? [], status: file.status, metadata: { id: file.id, title: file.title, arrangement: file.arrangement, ...(file.size ? { size: file.size } : {}), ...(file.items ? listedItems(file.items) : { sourceKind: file.source!.kind, ...(file.group ? { group: file.group } : {}) }), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}) } };
   } catch (error) {
     let value: unknown;
     try {

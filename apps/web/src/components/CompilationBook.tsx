@@ -12,6 +12,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { useScrollSpy } from '../lib/scroll-spy.js';
 import { useBookPageInput } from '../lib/use-book-page-input.js';
 import type { StudyController } from '../lib/use-study-workspace.js';
+import type { FolderItem } from '../lib/types.js';
 import { BookChapter } from './BookChapter.js';
 import { BookPager } from './BookPager.js';
 import { BookReadingToggle } from './BookReadingToggle.js';
@@ -35,13 +36,13 @@ const headings = (root: HTMLElement | null, anchor: string) => [...(root?.queryS
  * full Markdown and edit in place; assets show a preview, YouTube the player and folders their notes as
  * sub-sections. The body scrolls inside the compilation and the contents follow it.
  */
-export function CompilationBook({ row, notebooks, assets, onOpen, study, facets, extra, ...header }: Omit<CompilationContentProps, 'notes'> & BookHeader & { row: CompilationRow; study: StudyController; facets?: Record<string, NotebookFacets>; extra?: ReactNode; }) {
+export function CompilationBook({ row, notebooks, assets, folders = [], onOpen, study, facets, extra, ...header }: Omit<CompilationContentProps, 'notes'> & BookHeader & { row: CompilationRow; study: StudyController; facets?: Record<string, NotebookFacets>; extra?: ReactNode; /** Names and orders the chapters of a dynamic compilation grouped by folder. */ folders?: FolderItem[]; }) {
   const { t } = useTranslation();
   const laneNotes = useLaneNotes(row, { content: true });
   const ordinaryRow = { ...row, study: { ...row.study, filter: 'all' as const, dueFirst: false } };
   // While a section edits, its autosaves must not move or drop anything: the notes keep the copies they had, the items their order.
   const notes = useHeldNotes(laneNotes.notes);
-  const items = useHeldOrder(studyRowItems(compilationRowItems(row, notes, assets, notebooks), ordinaryRow, notes, study.study));
+  const items = useHeldOrder(studyRowItems(compilationRowItems(row, notes, assets, notebooks, folders), ordinaryRow, notes, study.study));
   const chapters = bookChapters(items, notes, assets, laneNotes.loading, notebooks);
   const [sections, setSections] = useState<ReadonlyMap<string, readonly BookEntry[]>>(new Map());
   const [liveTitles, setLiveTitles] = useState<ReadonlyMap<string, string>>(new Map());

@@ -25,6 +25,8 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
   const notebookId = row?.notebookId || selectedNotebookId;
   const [folder, setFolder] = useState(source?.kind === 'folder' ? source.path : ''), [recursive, setRecursive] = useState(source?.kind === 'folder' ? source.recursive : true);
   const [view, setView] = useState<CompilationRow['view']>(row?.view || 'small');
+  // '' keeps a dynamic compilation in one run; `folder` gives it one chapter per folder.
+  const [group, setGroup] = useState(row?.kind === 'dynamic' ? row.group ?? '' : '');
   const [customProgression, setProgression] = useState<StudyProgression | undefined>(row?.progression);
   const [studyChanged, setStudyChanged] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -56,7 +58,7 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
           }
           const base = { id: row?.id || crypto.randomUUID(), notebookId, path: row?.path ?? '', ...(row?.tags ? { tags: row.tags } : {}), ...(row?.status ? { status: row.status } : {}), name: name.trim() || t(kind === 'custom' ? 'screen.custom' : 'screen.dynamic'), view, ...(row?.graph ? { graph: row.graph } : {}), ...(studyChanged ? { study: { ...row?.study, filter: studyFilter, dueFirst: true } } : row?.study ? { study: row.study } : {}), ...(studyChanged && result.success ? { progression: result.data } : row?.progression ? { progression: row.progression } : {}) };
           const sort = row?.kind === 'dynamic' ? { ...(row.sort ? { sort: row.sort } : {}), ...(row.manualOrder ? { manualOrder: row.manualOrder } : {}) } : {};
-          onApply(kind === 'custom' ? { ...base, kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { ...base, kind: 'dynamic', ...sort, source: kind === 'tag' ? { kind: 'tag', tag: tag.trim(), notebookId } : { kind: 'folder', notebookId: folderNotebookId, path: folder || nb!.root, recursive } });
+          onApply(kind === 'custom' ? { ...base, kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { ...base, kind: 'dynamic', ...sort, ...(group === 'folder' ? { group: 'folder' as const } : {}), source: kind === 'tag' ? { kind: 'tag', tag: tag.trim(), notebookId } : { kind: 'folder', notebookId: folderNotebookId, path: folder || nb!.root, recursive } });
           onClose();
         }}
       >
@@ -90,6 +92,12 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
               {t('screen.recursive')}
             </label>
           </>
+        )}
+        {kind !== 'custom' && (
+          <label>
+            {t('screen.groupChapters')}
+            <Select value={group} disabled={disabled} onValueChange={setGroup} options={[{ value: '', label: t('screen.groupNone') }, { value: 'folder', label: t('screen.groupFolder') }]} />
+          </label>
         )}
         <label>
           {t('screen.view')}

@@ -7,7 +7,7 @@ import { type CompilationItem, type CompilationRow, isFileItem } from '@mygitnot
 import { compilationRowItems } from '../lib/compilation-content.js';
 import { useLaneNotes } from '../lib/compilation-queries.js';
 import { useTranslation } from '../lib/i18n/index.js';
-import type { NotebookConfig } from '../lib/types.js';
+import type { FolderItem, NotebookConfig } from '../lib/types.js';
 import { Button } from './Button.js';
 import { type CompilationAsset, compilationItemTitle } from './CompilationCard.js';
 import { LoadingStatus } from './LoadingStatus.js';
@@ -27,6 +27,8 @@ interface CompilationOrderDialogProps {
   row: CompilationRow;
   notebooks: NotebookConfig[];
   assets: CompilationAsset[];
+  /** Names a dynamic compilation's chapters by folder. */
+  folders?: FolderItem[];
   disabled: boolean;
   /** A dynamic compilation: receives every member path, in the order the user set. */
   onSave: (order: string[]) => void;
@@ -45,7 +47,7 @@ interface OrderEntry {
  * it opens on a snapshot of the current order and saves once. A custom compilation's rows are its items and chapter
  * headings in one flat list; a heading moves alone, its title edits in place, and removing it keeps its items.
  */
-export function CompilationOrderDialog({ row, notebooks, assets, disabled, onSave, onSaveItems, onClose }: CompilationOrderDialogProps) {
+export function CompilationOrderDialog({ row, notebooks, assets, folders = [], disabled, onSave, onSaveItems, onClose }: CompilationOrderDialogProps) {
   const { t } = useTranslation();
   const custom = row.kind === 'custom';
   // Every member, whatever the study filter shows, so the saved order leaves none of them behind.
@@ -59,7 +61,8 @@ export function CompilationOrderDialog({ row, notebooks, assets, disabled, onSav
 
   // The snapshot is taken once, when the members arrive; later refetches do not reset what the user arranged.
   if (entries === null && !lane.loading && !lane.error) {
-    const items = custom ? row.items : compilationRowItems(members, lane.notes, assets, notebooks).filter(isFileItem);
+    // A dynamic compilation grouped by folder shows its chapters as fixed separators.
+    const items = custom ? row.items : compilationRowItems(members, lane.notes, assets, notebooks, folders).filter(item => isFileItem(item) || item.kind === 'heading');
     setEntries(items.map(item => ({ item, title: compilationItemTitle(item, lane.notes, assets) })));
   }
   const title = custom ? t('compilation.arrange') : t('compilation.editOrder');
@@ -100,12 +103,16 @@ export function CompilationOrderDialog({ row, notebooks, assets, disabled, onSav
               if (!current) return current;
               const from = current.findIndex(entry => entry.item.id === active.id);
               const to = current.findIndex(entry => entry.item.id === over.id);
-              return from < 0 || to < 0 ? current : arrayMove(current, from, to);
+              if (from < 0 || to < 0) return current;
+              // A dynamic chapter's members reorder within it only: a drop on a separator or in another chapter is refused.
+              const chapterAt = (index: number) => current.slice(0, index + 1).filter(entry => entry.item.kind === 'heading').length;
+              if (!custom && (current[to].item.kind === 'heading' || chapterAt(from) !== chapterAt(to))) return current;
+              return arrayMove(current, from, to);
             });
           }}
         >
           <SortableContext items={entries.map(entry => entry.item.id)} strategy={verticalListSortingStrategy}>
-            <ol className='compilation-order-list' aria-label={title} onFocus={event => setFocused((event.target as HTMLElement).closest<HTMLElement>('[data-entry]')?.dataset.entry ?? null)}>{shown.map(({ entry, indent, index }) => <OrderRow key={entry.item.id} entry={entry} index={index} indent={indent} autoFocus={entry.item.id === fresh} onRetitle={retitle} onRemove={remove} />)}</ol>
+            <ol className='compilation-order-list' aria-label={title} onFocus={event => setFocused((event.target as HTMLElement).closest<HTMLElement>('[data-entry]')?.dataset.entry ?? null)}>{shown.map(({ entry, indent, index }) => <OrderRow key={entry.item.id} entry={entry} index={index} indent={indent} fixed={!custom && entry.item.kind === 'heading'} autoFocus={entry.item.id === fresh} onRetitle={retitle} onRemove={remove} />)}</ol>
           </SortableContext>
         </DndContext>
       )}
@@ -134,10 +141,17 @@ export function CompilationOrderDialog({ row, notebooks, assets, disabled, onSav
   );
 }
 
-function OrderRow({ entry, index, indent, autoFocus, onRetitle, onRemove }: { entry: OrderEntry; index: number | null; indent: boolean; autoFocus: boolean; onRetitle: (id: string, title: string) => void; onRemove: (id: string) => void; }) {
+function OrderRow({ entry, index, indent, fixed, autoFocus, onRetitle, onRemove }: { entry: OrderEntry; index: number | null; indent: boolean; /** A derived chapter of a dynamic compilation: a separator that neither moves nor takes a drop. */ fixed: boolean; autoFocus: boolean; onRetitle: (id: string, title: string) => void; onRemove: (id: string) => void; }) {
   const { t } = useTranslation();
-  const sort = useSortable({ id: entry.item.id });
+  const sort = useSortable({ id: entry.item.id, disabled: fixed });
   const heading = entry.item.kind === 'heading';
+  if (fixed) {
+    return (
+      <li ref={sort.setNodeRef} className='compilation-order-row compilation-order-separator' data-entry={entry.item.id} data-heading='fixed'>
+        <span className='compilation-order-title'>{entry.title}</span>
+      </li>
+    );
+  }
   /* eslint-disable react/refs -- dnd-kit sortable bindings are callback refs and render state, forwarded to the row and its handle. */
   return (
     <li ref={sort.setNodeRef} className='compilation-order-row' data-entry={entry.item.id} data-heading={heading || undefined} data-indent={indent || undefined} data-dragging={sort.isDragging || undefined} style={{ transform: CSS.Translate.toString(sort.transform), transition: sort.transition }}>

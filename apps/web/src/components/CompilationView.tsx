@@ -137,6 +137,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       row: current,
       notebooks,
       assets,
+      folders,
       onOpen: open,
       disabled,
       readOnly: !compilation.writable,
@@ -181,10 +182,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
                         <Pencil size={14} aria-hidden='true' />
                         <span>{t('screen.editRow')}</span>
                       </DropdownMenu.Item>
-                      <DropdownMenu.Item
-                        disabled={disabled}
-                        onSelect={() => void copy()}
-                      >
+                      <DropdownMenu.Item disabled={disabled} onSelect={() => void copy()}>
                         <Copy size={14} aria-hidden='true' />
                         <span>{t('compilation.copy')}</span>
                       </DropdownMenu.Item>
@@ -292,7 +290,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
         {row && dialog === 'edit' && <CompilationEditRow row={row} disabled={disabled} notebooks={notebooks} assets={assets} folders={folders} selectedNotebookId={notebookId} onClose={() => setDialog(null)} onApply={next => rearrange(row, next)} onRemove={() => setDialog('delete')} />}
         {row?.kind === 'custom' && dialog === 'add' && <CompilationAddItem notebooks={notebooks} assets={assets} folders={folders} rowName={row.name} notebookId={row.notebookId} items={row.items} onClose={() => setDialog(null)} onAdd={items => change({ ...row, items })} />}
         {row?.kind === 'custom' && dialog === 'arrange' && <CompilationOrderDialog row={row} notebooks={notebooks} assets={assets} disabled={disabled} onClose={() => setDialog(null)} onSave={() => {}} onSaveItems={items => change({ ...row, items })} />}
-        {row?.kind === 'dynamic' && dialog === 'order' && <CompilationOrderDialog row={row} notebooks={notebooks} assets={assets} disabled={disabled} onClose={() => setDialog(null)} onSave={order => change({ ...row, sort: { field: 'manual', order: 'asc' }, manualOrder: order })} />}
+        {row?.kind === 'dynamic' && dialog === 'order' && <CompilationOrderDialog row={row} notebooks={notebooks} assets={assets} folders={folders} disabled={disabled} onClose={() => setDialog(null)} onSave={order => change({ ...row, sort: { field: 'manual', order: 'asc' }, manualOrder: order })} />}
         {row && dialog === 'delete' && (
           <WorkspaceDialog title={t('compilation.delete')} onClose={() => setDialog(null)}>
             <p>{t('compilation.deleteHint', { title: row.name })}</p>
