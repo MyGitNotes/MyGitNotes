@@ -39,6 +39,7 @@ import { useEditorModeRoute } from '../app/editor-mode-route.js';
 import { shownEditorMode } from '../lib/editor-mode-url.js';
 import { LiveCollabEditor, type LiveSession } from './live/LiveCollabEditor.js';
 import { replaceLiveText, useLiveText, writeLiveFrontmatter, writeLiveYaml } from './live/live-frontmatter.js';
+import { LiveRestoreDialog } from './live/LiveRestoreDialog.js';
 import { useLiveEdit, useLiveTheme } from './live/useLiveEdit.js';
 
 export interface NoteEditorHandle {
@@ -262,10 +263,14 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   }, [note.path, setSessionContent, setSessionMetadata]);
 
   const liveCurrent = useCallback(() => liveShared.current.text?.toString() ?? '', []);
-  const restoreLive = useCallback((text: string) => {
+  /** The history version waiting for the 「取代即時內容」 answer. */
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const restoreLive = useCallback((text: string) => setRestoring(text), []);
+  const answerRestore = (replace: boolean) => {
     const shared = liveShared.current.text;
-    if (shared && window.confirm(t('history.restoreLiveConfirm'))) replaceLiveText(shared, text);
-  }, [t]);
+    if (replace && shared && restoring !== null) replaceLiveText(shared, restoring);
+    setRestoring(null);
+  };
 
   // The formatting toolbar's Insert image opens the notebook's assets; a chosen image goes in at the caret.
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
@@ -392,6 +397,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
       {!phone && !liveEdit.checkout && <EditorFooter content={session.content} path={note.path} state={session.editorState} status={session.editorStatus} actions={quickActions} />}
       {docPanel.isEditorLeaderOpen && <NoteEditorLeader docPanel={docPanel} isMarkdown={isMarkdown} />}
       {deck && <SlideDeck content={session.content} path={note.path} notebookId={note.notebookId} title={session.title} lineNumberOffset={session.baseNote.lineNumberOffset || 0} view={deck.view} opener={deck.opener} onClose={() => setDeck(null)} />}
+      {restoring !== null && <LiveRestoreDialog onAnswer={answerRestore} />}
       {imagePickerOpen && <FileManagerDialog notebookId={note.notebookId} writable={!readOnly} mode='pick-image' onInsert={session.locked ? undefined : insertImage} beforeChange={beforeFileChange} onChanged={onFilesChanged} onClose={() => setImagePickerOpen(false)} />}
     </div>
   );
