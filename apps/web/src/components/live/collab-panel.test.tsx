@@ -22,6 +22,8 @@ interface FakeConfig {
   onSynced?: (event: { state: boolean; }) => void;
 }
 const fake = vi.hoisted(() => ({ providers: [] as { configuration: FakeConfig; }[], handle: { goToLine: [] as number[], reveal: [] as [number, number][] }, lineNumbers: [] as (boolean | undefined)[] }));
+// The history section as its own tests leave it: a version's Restore hands its text to `onRestore` (NoteHistoryPanel.test).
+vi.mock('../NoteHistoryPanel.js', () => ({ NoteHistoryPanel: ({ onRestore }: { onRestore?: (text: string) => void; }) => createElement('button', { type: 'button', disabled: !onRestore, onClick: () => onRestore?.('# Old\n') }, 'Restore this version') }));
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
     configuration: FakeConfig;
@@ -53,6 +55,12 @@ let pending = false;
 beforeEach(() => {
   pending = false;
   localStorage.clear();
+  HTMLDialogElement.prototype.showModal = function(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
   fake.providers.length = 0;
   fake.handle.goToLine.length = 0;
   fake.handle.reveal.length = 0;
@@ -173,6 +181,117 @@ describe('a note in the collab editor', () => {
     fireEvent.change(title, { target: { value: 'Beta' } });
     fireEvent.keyDown(title, { key: 'Enter' });
     expect(text().toString()).toBe(TEXT.replace('title: Alpha', 'title: Beta'));
+  });
+
+  // VQ P2: the row said 「無狀態」 with no tags, as if the note had none.
+  it('warns in the note row, in place of its status and tags, while the frontmatter does not parse', async () => {
+    await open({}, '---\ntitle: [Alpha\ntags: [one]\n---\nBody\n');
+    expect(within(row()).getByText('Frontmatter cannot be read')).toBeInTheDocument();
+    expect(within(row()).queryByText('No status')).toBeNull();
+    expect(within(row()).queryByRole('button', { name: /status/i })).toBeNull();
+  });
+
+  it('disables every control of the form under the notice while the frontmatter does not parse', async () => {
+    await open({}, '---\ntitle: [Alpha\n---\nBody\n');
+    fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
+    const form = within(panel());
+    for (const control of [form.getByRole('textbox', { name: 'Title' }), form.getByRole('checkbox', { name: 'Hide note' }), form.getByPlaceholderText('Add tag (e.g. project)...'), form.getByPlaceholderText('New field name...')]) expect(control).toBeDisabled();
+  });
+
+  // VQ P1-b: the browse list and its counts read the note from the server, which parses the live text.
+  it('has the lists read the note again once a frontmatter change is in, and not for typing in the body', async () => {
+    const onRefetch = vi.fn();
+    await open({ live: live({ onRefetch }) });
+    onRefetch.mockClear();
+    act(() => text().insert(TEXT.indexOf(']'), ', two'));
+    await act(() => new Promise(resolve => setTimeout(resolve, 700)));
+    expect(onRefetch).toHaveBeenCalledTimes(1);
+    act(() => text().insert(text().length, 'more body\n'));
+    await act(() => new Promise(resolve => setTimeout(resolve, 700)));
+    expect(onRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  // CFR-F002: the view's text is what it opened on; a value someone else set since must not be written back.
+  it('writes a YAML view edit key by key over the live text, keeping a change another person made since the view opened', async () => {
+    await open();
+    fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
+    fireEvent.click(within(panel()).getByRole('button', { name: /YAML/ }));
+    const source = await within(panel()).findByRole('textbox', { name: 'YAML Metadata' });
+    act(() => {
+      const at = text().toString().indexOf('inbox');
+      text().delete(at, 'inbox'.length);
+      text().insert(at, 'done');
+    });
+    const { EditorView } = await import('@codemirror/view');
+    const yaml = EditorView.findFromDOM(source)!;
+    act(() => yaml.dispatch({ changes: { from: yaml.state.doc.toString().indexOf('[one]') + 4, insert: ', two' } }));
+    expect(text().toString()).toBe(TEXT.replace('inbox', 'done').replace('[one]', '[one, two]'));
+  });
+
+  it('writes a YAML view edit that changes no value, such as a comment, as written', async () => {
+    await open();
+    fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
+    fireEvent.click(within(panel()).getByRole('button', { name: /YAML/ }));
+    const source = await within(panel()).findByRole('textbox', { name: 'YAML Metadata' });
+    const { EditorView } = await import('@codemirror/view');
+    const yaml = EditorView.findFromDOM(source)!;
+    act(() => yaml.dispatch({ changes: { from: 0, insert: '# added\n' } }));
+    expect(text().toString()).toBe(TEXT.replace('# kept', '# added\n# kept'));
+  });
+
+  // CFR-F003: an empty block reads as invalid, so the note would show its fences raw.
+  it('takes the block out when the YAML view is cleared, leaving the body', async () => {
+    await open();
+    fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
+    fireEvent.click(within(panel()).getByRole('button', { name: /YAML/ }));
+    const source = await within(panel()).findByRole('textbox', { name: 'YAML Metadata' });
+    const { EditorView } = await import('@codemirror/view');
+    const yaml = EditorView.findFromDOM(source)!;
+    act(() => yaml.dispatch({ changes: { from: 0, to: yaml.state.doc.length } }));
+    expect(text().toString()).toBe('# Alpha\n\n## Second\nneedle\n');
+  });
+
+  // CFR-F004: the row's title went to the direct rename, which a live note refuses without a word.
+  it('runs the check-in-first rename from the note row’s title too', async () => {
+    const rename = vi.fn(), onRename = vi.fn();
+    await open({ live: live({ fileActions: { rename } }), onRename });
+    fireEvent.click(within(row()).getByRole('button', { name: 'Edit title: Alpha' }));
+    const input = within(row()).getByRole('textbox', { name: 'Name' });
+    fireEvent.change(input, { target: { value: 'Beta' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => {});
+    await act(async () => {});
+    expect(rename).toHaveBeenCalledWith('r2', 'Beta');
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it('writes `title:` from the note row’s title for a pending note', async () => {
+    pending = true;
+    const onRename = vi.fn();
+    await open({ onRename });
+    fireEvent.click(within(row()).getByRole('button', { name: 'Edit title: Alpha' }));
+    const input = within(row()).getByRole('textbox', { name: 'Name' });
+    fireEvent.change(input, { target: { value: 'Beta' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => {});
+    expect(text().toString()).toBe(TEXT.replace('title: Alpha', 'title: Beta'));
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  // VQ P2: the browser's own confirm looked unlike the app and is a browser dialog to automation.
+  it('asks in the app’s own dialog before a history version replaces the live text', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await open();
+    fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
+    openTab('History');
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Restore this version' }));
+    const ask = await screen.findByRole('dialog', { name: 'Replace the live text?' });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(text().toString()).toBe(TEXT);
+    expect(within(ask).getByText(/for everyone editing the note/)).toBeInTheDocument();
+    fireEvent.click(within(ask).getByRole('button', { name: 'Replace' }));
+    expect(text().toString()).toBe('# Old\n');
+    expect(screen.queryByRole('dialog', { name: 'Replace the live text?' })).toBeNull();
   });
 
   it('runs the check-in-first rename for a filed note', async () => {

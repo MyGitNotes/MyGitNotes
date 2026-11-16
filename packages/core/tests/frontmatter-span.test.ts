@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { noteFrontmatterSpan, parseNoteContent, patchNoteFrontmatter } from '../src/frontmatter.js';
+import { fillMissingNoteTimestamps, noteFrontmatterSpan, parseNoteContent, patchNoteFrontmatter, replaceNoteStatus, replaceNoteTags } from '../src/frontmatter.js';
+import { patchFrontmatterField } from '../src/frontmatter-patch.js';
 
 describe('noteFrontmatterSpan', () => {
   it('finds the block and its blank separator as parseNoteContent does', () => {
@@ -19,6 +20,27 @@ describe('noteFrontmatterSpan', () => {
   it('returns null without a block', () => {
     expect(noteFrontmatterSpan('# Hi\n')).toBeNull();
     expect(noteFrontmatterSpan('')).toBeNull();
+  });
+
+  // CFR-F001: a closing fence followed by text on its line is no fence, for every reader of the block.
+  it('closes a block only with a fence that ends its line', () => {
+    const typed = '---\ntitle: x\n---a\nBody\n';
+    expect(noteFrontmatterSpan(typed)).toBeNull();
+    expect(parseNoteContent(typed)).toMatchObject({ hasFrontmatter: false, metadata: {}, content: typed });
+    expect(noteFrontmatterSpan('---\ntitle: x\n----\nBody\n')).toBeNull();
+    // The key patch, the status and tag replacers and the timestamp backfill see no block in it either.
+    expect(patchFrontmatterField(typed, 'title', 'y')).toBe(typed);
+    expect(replaceNoteTags(typed, ['a'])).toBe(typed);
+    expect(replaceNoteStatus(typed, 'done')).toBe(`---\nstatus: done\n---\n${typed}`);
+    expect(fillMissingNoteTimestamps(typed, '2026-11-17', undefined).raw).toBe(`---\ncreated: "2026-11-17"\n---\n${typed}`);
+  });
+
+  it('takes trailing spaces of the closing fence into the fence line, and still closes a block at the end of the text', () => {
+    const spaced = '---\ntitle: x\n--- \t\n\nBody\n';
+    expect(noteFrontmatterSpan(spaced)).toEqual({ yaml: 'title: x', end: spaced.indexOf('\n\nBody') + 1, bodyStart: spaced.indexOf('Body'), metadata: { title: 'x' } });
+    expect(parseNoteContent(spaced)).toMatchObject({ hasFrontmatter: true, content: 'Body\n', lineNumberOffset: 4 });
+    expect(noteFrontmatterSpan('---\ntitle: x\n---')).toEqual({ yaml: 'title: x', end: 16, bodyStart: 16, metadata: { title: 'x' } });
+    expect(noteFrontmatterSpan('---\r\ntitle: x\r\n---\r\nBody')).toMatchObject({ bodyStart: '---\r\ntitle: x\r\n---\r\n'.length });
   });
 
   it('marks an unparsable or non-map block invalid', () => {
@@ -73,6 +95,12 @@ describe('patchNoteFrontmatter', () => {
   it('renders a new block when there is none', () => {
     expect(patchNoteFrontmatter('Body\n', {}, { tags: ['a'] })).toBe('---\ntags:\n  - a\n---\n\nBody\n');
     expect(patchNoteFrontmatter('', {}, { status: 'x' })).toBe('---\nstatus: x\n---\n');
+  });
+
+  // CFR-F005: a block put before a CRLF body is written with CRLF, so the file keeps one line ending.
+  it('renders a new block in the line endings of the text it goes before', () => {
+    expect(patchNoteFrontmatter('Body\r\nmore\r\n', {}, { title: 'x' })).toBe('---\r\ntitle: x\r\n---\r\n\r\nBody\r\nmore\r\n');
+    expect(patchNoteFrontmatter('Body\r\n', {}, { tags: ['a'] })).toBe('---\r\ntags:\r\n  - a\r\n---\r\n\r\nBody\r\n');
   });
 
   it('leaves an invalid block alone', () => {

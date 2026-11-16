@@ -123,6 +123,17 @@ it('lets a remote edit inside the block through, and shows the block once it sto
   expect(lines[1]!.classList.contains('live-md-frontmatter')).toBe(true);
 });
 
+// CFR-F001: with the fence's line end missing, the caret would sit on the fence line and typing would land after `---`.
+it('shows a block whose closing fence ends the text with no line end raw, so typing never joins the fence line', () => {
+  const text = '---\ntitle: x\n---';
+  const { collab } = collabOf(text);
+  const { view } = mount(text, collab);
+  const lines = [...view().contentDOM.querySelectorAll('.cm-line')];
+  expect(lines.map(line => line.textContent)).toEqual(['---', 'title: x', '---']);
+  expect(lines.every(line => line.classList.contains('live-md-frontmatter'))).toBe(true);
+  expect(view().contentDOM.querySelector('.live-md-frontmatter-hidden')).toBeNull();
+});
+
 it('counts no page break in the frontmatter: the body starts on page 1', () => {
   const { collab } = collabOf(NOTE);
   const { view } = mount(NOTE, collab);
