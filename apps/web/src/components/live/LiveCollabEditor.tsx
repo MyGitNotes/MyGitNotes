@@ -17,6 +17,7 @@ import { LoadingStatus } from '../LoadingStatus.js';
 import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
 import { discardDraft, keptReason } from './live-drafts.js';
 import { LiveProvider } from './live-provider.js';
+import { readLiveFrontmatter } from './live-frontmatter.js';
 import { notCheckedInText, stillOpenText } from './useLiveEdit.js';
 import './live-editor.css';
 
@@ -100,6 +101,12 @@ const socketUrl = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${lo
 const KEEP_MS = 500;
 /** The origin of a kept update applied to a new session's document: neither the tab's own typing nor the server's. */
 const RESTORED = Symbol('restored');
+
+/** Kept typing shown read-only while offline: the body alone, numbered with its file lines, as the collab editor shows it. */
+function KeptText({ text, path, notebookId, label }: { text: string; path: string; notebookId: string; label: string; }) {
+  const { bodyStart, lineOffset } = readLiveFrontmatter(text);
+  return <LiveMarkdownEditor content={text.slice(bodyStart)} lineNumberOffset={lineOffset} notePath={path} notebookId={notebookId} readOnly onChange={() => {}} ariaLabel={label} />;
+}
 
 /** A file name for the downloaded copy of the tab's text. */
 const downloadName = (title: string | undefined, path: string) => `${(title || path.split('/').pop()?.replace(/\.(md|markdown)$/i, '') || 'note').replace(/[\\/:*?"<>|\p{Cc}]+/gu, ' ').trim() || 'note'}.md`;
@@ -641,7 +648,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       {live && !collab && kept !== null && (
         <div className='note-editor-body live-collab-body'>
           <p role='status' className='live-editor-notice'>{t('live.keptOffline')}</p>
-          <LiveMarkdownEditor content={kept} notePath={checkout.path} notebookId={checkout.notebookId} readOnly onChange={() => {}} ariaLabel={t('live.toolbar')} />
+          <KeptText text={kept} path={checkout.path} notebookId={checkout.notebookId} label={t('live.toolbar')} />
         </div>
       )}
       {live && collab && (
