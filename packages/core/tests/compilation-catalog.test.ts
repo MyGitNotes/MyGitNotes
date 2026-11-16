@@ -24,7 +24,7 @@ async function catalogOf(f: ReturnType<typeof githubFixture>) {
 }
 
 describe('compilations in the remote catalog', () => {
-  const files = { '.github-notes.yaml': manifest, 'notes/ex/a.md': '---\ntags: [clue]\ntitle: Alpha\n---\nBody mentions [b](work/b.md)\n- [ ] ship it 📅 2026-09-20\n', 'notes/ex/reading.compilation.yml': compilation('reading', 'tags: [reading]\nstatus: working\n'), 'notes/ex/deep/plan.compilation.yml': compilation('plan', 'status: archived\n'), 'notes/ex/broken.compilation.yml': 'version: 1\nid: broken\ntitle: Broken\ntags: [x]\narrangement: nope\nitems: []\n', 'notes/ex/outside.compilation.yml': compilation('outside', '', '  - { id: i1, kind: note, path: notes/other/z.md }'), 'notes/other/z.md': '# Z\n', 'notes/other/dup.compilation.yml': compilation('reading', '', '  - { id: i1, kind: note, path: notes/other/z.md }') };
+  const files = { '.github-notes.yaml': manifest, 'notes/ex/a.md': '---\ntags: [clue]\ntitle: Alpha\n---\nBody mentions [b](work/b.md)\n- [ ] ship it 📅 2026-09-20\n', 'notes/ex/reading.compilation.yml': compilation('reading', 'tags: [reading]\nstatus: working\n'), 'notes/ex/deep/plan.compilation.yml': compilation('plan', 'status: archived\n'), 'notes/ex/broken.compilation.yml': 'version: 1\nid: broken\ntitle: Broken\ntags: [x]\narrangement: nope\nitems: []\n', 'notes/ex/outside.compilation.yml': compilation('outside', '', '  - { id: i1, kind: note, path: notes/other/z.md }'), 'notes/ex/nowhere.compilation.yml': compilation('nowhere', '', '  - { id: i1, kind: note, path: gone/x.md }'), 'notes/ex/stray.compilation.yml': 'version: 1\nid: stray\ntitle: Stray\narrangement: lane\nsource: { kind: folder, path: gone }\n', 'notes/other/z.md': '# Z\n', 'notes/other/dup.compilation.yml': compilation('reading', '', '  - { id: i1, kind: note, path: notes/other/z.md }') };
 
   it('lists compilations as entries of kind compilation with their title, tags and status', async () => {
     const catalog = await catalogOf(githubFixture(files));
@@ -38,7 +38,7 @@ describe('compilations in the remote catalog', () => {
   it('keeps notes the default: a query without kind never returns a compilation', async () => {
     const catalog = await catalogOf(githubFixture(files));
     expect((await queryNotes(catalog, query(), options)).notes.map(note => note.path).sort()).toEqual(['notes/ex/a.md', 'notes/ex/work/b.md']);
-    expect((await queryNotePaths(catalog, query({ kind: 'all' }))).notes.map(note => note.path).sort()).toEqual(['notes/ex/a.md', 'notes/ex/broken.compilation.yml', 'notes/ex/outside.compilation.yml', 'notes/ex/reading.compilation.yml', 'notes/ex/work/b.md']);
+    expect((await queryNotePaths(catalog, query({ kind: 'all' }))).notes.map(note => note.path).sort()).toEqual(['notes/ex/a.md', 'notes/ex/broken.compilation.yml', 'notes/ex/nowhere.compilation.yml', 'notes/ex/outside.compilation.yml', 'notes/ex/reading.compilation.yml', 'notes/ex/stray.compilation.yml', 'notes/ex/work/b.md']);
   });
 
   it('narrows compilations by tag, status, folder and search like notes', async () => {
@@ -54,8 +54,8 @@ describe('compilations in the remote catalog', () => {
   it('counts compilations apart from notes in the facets', async () => {
     const facets = (await noteFacets(await catalogOf(githubFixture(files)), false)).notebooks['qa~ex'];
     expect(facets).toMatchObject({ total: 2, tags: { clue: 1 }, directories: { 'notes/ex': 1, 'notes/ex/work': 1 } });
-    expect(facets.compilations).toEqual({ total: 3, statuses: { working: 1, '': 2 }, tags: { reading: 1, x: 1 } });
-    expect((await noteFacets(await catalogOf(githubFixture(files)), true)).notebooks['qa~ex'].compilations.total).toBe(4);
+    expect(facets.compilations).toEqual({ total: 5, statuses: { working: 1, '': 4 }, tags: { reading: 1, x: 1 } });
+    expect((await noteFacets(await catalogOf(githubFixture(files)), true)).notebooks['qa~ex'].compilations.total).toBe(6);
   });
 
   it('leaves the agenda and the graph to notes', async () => {
@@ -76,7 +76,17 @@ describe('compilations in the remote catalog', () => {
     const catalog = await catalogOf(githubFixture(files));
     const page = await queryNotes(catalog, query({ kind: 'compilation' }), options);
     expect(page.notes.find(note => note.path === 'notes/ex/broken.compilation.yml')).toMatchObject({ title: 'Broken', tags: ['x'], invalid: expect.stringContaining('arrangement') });
-    expect(page.notes.find(note => note.path === 'notes/ex/outside.compilation.yml')?.invalid).toContain('outside the notebook notes/ex');
+    expect(page.notes.find(note => note.path === 'notes/ex/stray.compilation.yml')?.invalid).toContain('gone is outside every notebook of the repository');
+  });
+
+  it('opens a compilation pinning notes of another notebook of its repository, and one pinning a path in no notebook', async () => {
+    const catalog = await catalogOf(githubFixture(files));
+    const page = await queryNotes(catalog, query({ kind: 'compilation' }), options);
+    expect(page.notes.find(note => note.path === 'notes/ex/outside.compilation.yml')).toMatchObject({ kind: 'compilation', metadata: { itemCount: 1 } });
+    expect(page.notes.find(note => note.path === 'notes/ex/outside.compilation.yml')?.invalid).toBeUndefined();
+    expect(page.notes.find(note => note.path === 'notes/ex/nowhere.compilation.yml')?.invalid).toBeUndefined();
+    expect((await lookupNotes(catalog, [{ notebookId: 'qa~other', path: 'notes/other/z.md' }, { notebookId: 'qa~ex', path: 'gone/x.md' }], false)).notes.map(note => note.path)).toEqual(['notes/other/z.md']);
+    expect((await githubFixture(files).reader().note('notes/ex/outside.compilation.yml')).invalid).toBeUndefined();
   });
 
   it('reports a duplicate id on both files, across notebooks of one repository', async () => {
@@ -166,5 +176,29 @@ describe('compilations in a local worktree', () => {
     const config = { schema_version: 3, workspace: { title: 'W', default_notebook: 'ex' }, notebooks: [notebook] };
     expect(classifyResource('notes/ex/sub/q.compilation.yml', config)).toEqual({ path: 'notes/ex/sub/q.compilation.yml', type: 'compilation', notebookId: 'ex' });
     expect(classifyResource('elsewhere/q.compilation.yml', config).type).not.toBe('compilation');
+  });
+});
+
+describe('cross-notebook compilations in a local worktree', () => {
+  let root: string;
+  const notebooks: NotebookConfig[] = [{ id: 'ex', title: 'Example', root: 'notes/ex' }, { id: 'other', title: 'Other', root: 'notes/other' }];
+  const scope = notebooks.map(notebook => notebook.root);
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'compilations-cross-'));
+    const write = (file: string, text: string) => {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.writeFileSync(path.join(root, file), text);
+    };
+    write('notes/other/z.md', '# Z\n');
+    write('notes/ex/book.compilation.yml', compilation('book', '', '  - { id: i1, kind: note, path: notes/other/z.md }'));
+    write('notes/ex/stray.compilation.yml', 'version: 1\nid: stray\ntitle: Stray\narrangement: lane\nsource: { kind: folder, path: gone }\n');
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it('scans with the repository notebooks as scope: another notebook is valid, a folder source in none is not', () => {
+    const entries = scanNotebookEntries(root, notebooks[0], scope);
+    expect(entries.find(note => note.path === 'notes/ex/book.compilation.yml')?.invalid).toBeUndefined();
+    expect(entries.find(note => note.path === 'notes/ex/stray.compilation.yml')?.invalid).toContain('outside every notebook');
+    expect(readNoteFile(root, 'notes/ex/book.compilation.yml', 'ex', scope).invalid).toBeUndefined();
   });
 });

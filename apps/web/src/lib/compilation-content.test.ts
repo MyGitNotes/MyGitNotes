@@ -78,3 +78,11 @@ it('orders cards by each move time plus its destination interval across days and
   study = undoStudyAction(study);
   expect(ordered()).toEqual(['pin-0', 'pin-1', 'pin-2']);
 });
+
+it("lists a folder source's assets and sorts by statuses from the source's notebook, not the compilation's", () => {
+  const row: CompilationRow = { id: 'r', path: 'notes/a/manual.compilation.yml', name: 'Manual', view: 'small', notebookId: 'a', kind: 'dynamic', source: { kind: 'folder', notebookId: 'b', path: 'notes/b', recursive: true }, sort: { field: 'status', order: 'asc' } };
+  const members = [{ ...notes[1], title: 'Done', status: 'done' }, { ...notes[1], id: 'x', path: 'notes/b/draft.md', title: 'Draft', status: 'draft' }];
+  const assets = [{ name: 'pic.png', notebookId: 'b', path: 'notes/b/pic.png', mtime: 1, size: 1, rawUrl: '', markdownRef: '' }, { name: 'own.png', notebookId: 'a', path: 'notes/b/own.png', mtime: 1, size: 1, rawUrl: '', markdownRef: '' }];
+  const notebooks = [{ id: 'a', title: 'A', root: 'notes/a', statuses: ['done', 'draft'] }, { id: 'b', title: 'B', root: 'notes/b', statuses: ['draft', 'done'] }];
+  expect(compilationRowItems(row, members, assets, notebooks).map(item => item.kind !== 'youtube' && `${item.notebookId}:${item.path}`)).toEqual(['b:notes/b/draft.md', 'b:notes/b/two.md', 'b:notes/b/pic.png']);
+});

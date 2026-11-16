@@ -524,7 +524,7 @@ export abstract class RemoteSource {
     const nb = link?.notebook ?? config.notebooks.find(n => file.startsWith(`${n.root}/`) && (isNotebookContent(file.slice(n.root.length + 1), n) || templateFileId(file.slice(n.root.length + 1)) !== undefined));
     if (!nb || !isNoteFile(file)) throw new SourceError('Path is not a configured note.', 403);
     const raw = link ? (fresh ? await this.readLiveLink(link) : await this.liveTextOf(link)).content : (await this.readFile(file)).toString('utf8');
-    const { metadata, content, title, lineNumberOffset, extra } = parseNoteFile(raw, file, nb.root);
+    const { metadata, content, title, lineNumberOffset, extra } = parseNoteFile(raw, file, config.notebooks.map(item => item.root));
     return { id: typeof metadata.id === 'string' ? metadata.id : file, path: file, notebookId: nb.id, title, metadata, content, lineNumberOffset, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), revision: (await this.getSnapshot()).sha, ...extra, ...(link ? { live: liveNoteState(link.checkout, this.live!.retargets) } : {}) };
   }
 
@@ -607,6 +607,7 @@ export abstract class RemoteSource {
   private async liveIndex(nb: NotebookConfig, items: NoteListItem[]): Promise<NoteListItem[]> {
     const links = await this.notebookLinks(nb);
     if (!links.length) return items;
+    const scope = (await this.config()).notebooks.map(item => item.root);
     if (links.length > 500) console.warn(`[live-notes] ${links.length} live links in one notebook; the overlay reads only what a request needs`);
     const listed = new Set(items.map(item => item.path));
     const shown = links.filter(link => link.checkout.path === null || listed.has(link.path));
@@ -614,7 +615,7 @@ export abstract class RemoteSource {
     const revision = (await this.getSnapshot()).sha;
     const item = (link: LiveLink): NoteListItem => {
       const raw = this.liveLoaded.get(link.path)!.content;
-      const { metadata, title, extra } = parseNoteFile(raw, link.path, nb.root);
+      const { metadata, title, extra } = parseNoteFile(raw, link.path, scope);
       return { id: typeof metadata.id === 'string' ? metadata.id : link.path, path: link.path, notebookId: nb.id, title, metadata, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), ...extra, revision, live: liveNoteState(link.checkout, this.live!.retargets) };
     };
     const byPath = new Map(shown.map(link => [link.path, link]));
@@ -625,8 +626,10 @@ export abstract class RemoteSource {
   private async notebookIndex(nb: NotebookConfig): Promise<NoteListItem[]> {
     const snapshot = await this.getSnapshot();
     const { sha, entries } = snapshot;
+    // A compilation's validity depends on every notebook root of the repository, so the index key carries them.
+    const scope = (await this.config()).notebooks.map(item => item.root);
     if (!entries.some(entry => entry.type === 'tree' && entry.path === nb.root)) return [];
-    const key = this.cache ? this.notebookKey('index', [nb], entries) : '';
+    const key = this.cache ? `${this.notebookKey('index', [nb], entries)}:${hashJson(scope)}` : '';
     const hit = this.cache ? (await this.cache.get([key]))[0] : null;
     let items: NoteListItem[] | undefined;
     if (hit !== null) {
@@ -644,7 +647,7 @@ export abstract class RemoteSource {
           ...await Promise.all(
             files.slice(i, i + 6).map(async file => {
               const raw = (await this.readSnapshotFile(snapshot, file.path)).toString('utf8');
-              const { metadata, title, extra } = parseNoteFile(raw, file.path, nb.root);
+              const { metadata, title, extra } = parseNoteFile(raw, file.path, scope);
               return { id: typeof metadata.id === 'string' ? metadata.id : file.path, path: file.path, notebookId: nb.id, title, metadata, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), ...extra } satisfies NoteListItem;
             }),
           ),
@@ -868,7 +871,7 @@ export abstract class RemoteSource {
     if (Buffer.byteLength(raw) > 5 * 1024 * 1024) throw base ? new LiveTooLargeError() : new SourceError('Note exceeds the 5 MiB limit.', 413);
     const operation = existing || link ? 'write' : 'create';
     const receipt = base ? await this.writeLive(file, raw, base, agent) : await this.commitChanges([{ path: file, content: raw }], expected, operation, 'notes', agent ? agentEditMessage(`docs(notes): ${operation} ${path.posix.basename(file)}`) : undefined, snapshot);
-    const { extra, ...parsed } = parseNoteFile(raw, file, nb.root);
+    const { extra, ...parsed } = parseNoteFile(raw, file, config.notebooks.map(item => item.root));
     return { ...receipt, note: { id: typeof parsed.metadata.id === 'string' ? parsed.metadata.id : file, path: file, notebookId: nb.id, ...parsed, ...extra, tags: Array.isArray(parsed.metadata.tags) ? parsed.metadata.tags.map(String) : [], status: typeof parsed.metadata.status === 'string' ? parsed.metadata.status : undefined, size: Buffer.byteLength(raw), revision: receipt.revision, ...(link ? { live: liveNoteState(link.checkout, this.live!.retargets) } : {}) } };
   }
 

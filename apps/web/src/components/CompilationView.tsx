@@ -30,6 +30,7 @@ import { CompilationBook } from './CompilationBook.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { ReorderToggle } from './ReorderToggle.js';
 import { useCompilationAssets, useCompilationItemOpen } from './useCompilationItemOpen.js';
+import { compilationNotebookIds } from '../lib/compilation-rows.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 
 const GraphPage = lazy(() => import('./GraphPage.js').then(module => ({ default: module.GraphPage })));
@@ -60,7 +61,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   const outlines = useOutlineActions();
   const compilation = useCompilation({ notebookId, path }, notebooks);
   const study = useStudyWorkspace(actions.repository(notebookId), ignoreSaved);
-  const { assets, error: assetError } = useCompilationAssets(notebooks, notebookId);
+  const { assets, error: assetError } = useCompilationAssets(notebooks, compilationNotebookIds(compilation.page.rows[0] as CompilationRow | undefined, notebookId));
   const facets = useNoteFacets(false);
   const [dialog, setDialog] = useState<'edit' | 'add' | 'delete' | 'order' | null>(null);
   const [reorder, setReorder] = useState(false);

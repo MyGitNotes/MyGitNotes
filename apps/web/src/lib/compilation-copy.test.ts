@@ -12,18 +12,18 @@ describe('planCompilationCopy', () => {
   it('keeps the status of its source', async () => {
     const plan = await planCompilationCopy({ ...row, status: 'doing' }, 'inbox');
     expect(plan.metadata).toMatchObject({ status: 'doing' });
-    expect(parseCompilation(plan.content, 'notes/life').status).toBe('doing');
+    expect(parseCompilation(plan.content, ['notes/life']).status).toBe('doing');
   });
 
   it('gives a source without a status the initial one', async () => {
     const plan = await planCompilationCopy(row, 'inbox');
     expect(plan.metadata).toMatchObject({ status: 'inbox' });
-    expect(parseCompilation(plan.content, 'notes/life').status).toBe('inbox');
+    expect(parseCompilation(plan.content, ['notes/life']).status).toBe('inbox');
   });
 
   it('stays without a status when the notebook has none', async () => {
     const plan = await planCompilationCopy(row);
     expect(plan.metadata).not.toHaveProperty('status');
-    expect(parseCompilation(plan.content, 'notes/life').status).toBeUndefined();
+    expect(parseCompilation(plan.content, ['notes/life']).status).toBeUndefined();
   });
 });

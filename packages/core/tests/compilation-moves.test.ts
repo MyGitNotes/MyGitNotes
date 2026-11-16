@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import YAML from 'yaml';
 import { type FileSnapshot, planFileChange } from '../src/file-manager.js';
 import { type FolderSnapshot, planFolderChange } from '../src/folder-plan.js';
+import { parseCompilation } from '../src/compilation.js';
 
 const compilation = `version: 1
 id: reading
@@ -62,5 +63,21 @@ describe('pinned references follow a file move', () => {
     const snapshot = folderSnapshot();
     snapshot.files.set('notes/a/bad.compilation.yml', 'items: {');
     expect(planFolderChange(snapshot, { kind: 'move', notebookId: 'a', path: 'one', parent: 'two' }).files.get('notes/a/bad.compilation.yml')).toBe('items: {');
+  });
+});
+
+describe('references across notebooks of one repository', () => {
+  const twoNotebooks = [{ id: 'a', title: 'A', root: 'notes/a' }, { id: 'b', title: 'B', root: 'notes/b' }];
+  const book = 'version: 1\nid: manual\ntitle: Manual\narrangement: book\nitems:\n  - { id: z, kind: note, path: notes/b/z.md }\n  - { id: s, kind: folder, path: notes/b/sec }\n';
+  const snapshot = (): FileSnapshot => ({ notebooks: twoNotebooks, directories: ['notes/a', 'notes/b', 'notes/b/sec'], protectedPaths: [], files: new Map([['notes/b/z.md', Buffer.from('# Z\n')], ['notes/b/sec/y.md', Buffer.from('# Y\n')], ['notes/a/manual.compilation.yml', Buffer.from(book)]]) });
+  it('rewrites a compilation of notebook A when a note or folder of notebook B moves', () => {
+    expect(pinned(planFileChange(snapshot(), { kind: 'move', notebookId: 'b', path: 'notes/b/z.md', destination: 'notes/b/renamed.md' }).files.get('notes/a/manual.compilation.yml')!)).toEqual(['notes/b/renamed.md', 'notes/b/sec']);
+    expect(pinned(planFileChange(snapshot(), { kind: 'move', notebookId: 'b', path: 'notes/b/sec', destination: 'notes/b/part' }).files.get('notes/a/manual.compilation.yml')!)).toEqual(['notes/b/z.md', 'notes/b/part']);
+  });
+  it('keeps a compilation valid wherever in the repository it lives, and moves it inside its notebook untouched', () => {
+    // The file manager moves files inside their notebook; a compilation placed in notebook B by hand or by Git stays valid there.
+    expect(() => parseCompilation(book.replace(/notes\/b\//g, 'notes/a/'), twoNotebooks.map(notebook => notebook.root))).not.toThrow();
+    const after = planFileChange(snapshot(), { kind: 'move', notebookId: 'a', path: 'notes/a/manual.compilation.yml', destination: 'notes/a/handbook.compilation.yml' });
+    expect(after.files.get('notes/a/handbook.compilation.yml')!.toString()).toBe(book);
   });
 });

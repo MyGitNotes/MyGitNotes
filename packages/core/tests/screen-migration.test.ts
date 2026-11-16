@@ -75,7 +75,7 @@ describe('migrateWorkspace with a Screen file', () => {
     expect(repository.root).toBe(root);
     expect(repository.touched).toContain('.github-notes-screen.yaml');
     expect(repository.touched).toContain('.mygitnotes.yaml');
-    for (const file of repository.touched.filter(file => file.endsWith('.compilation.yml'))) expect(parseCompilation(read(root, file), file.startsWith('notes/a/') ? 'notes/a' : 'notes/b').id).toBeTruthy();
+    for (const file of repository.touched.filter(file => file.endsWith('.compilation.yml'))) expect(parseCompilation(read(root, file), ['notes/a', 'notes/b']).id).toBeTruthy();
     const focus = readFocusPage(YAML.parse(read(root, '.github-notes-focus.yaml')));
     expect(focusPanes(focus.focuses[0]).flatMap(pane => pane.tabs).every(tab => tab.kind === 'note')).toBe(true);
     expect(migrateWorkspace(root)).toMatchObject({ migrated: false, repositories: [] });

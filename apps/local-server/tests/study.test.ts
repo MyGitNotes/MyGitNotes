@@ -143,12 +143,34 @@ it('rejects stage actions on Core and note symlinks', async () => {
   expect((await act(request)).status).toBe(403);
 });
 
-it('rejects reviewing with a compilation from another notebook', async () => {
-  const raw = await stageFixture();
-  await writeFile(path.join(root, '.github-notes.yaml'), stringify({ schema_version: 1, workspace: { title: 'Test', default_notebook: 'a' }, notebooks: [{ id: 'a', title: 'A', root: 'notes/a' }, { id: 'b', title: 'B', root: 'notes/b' }] }));
+const twoNotebooks = (extra: object = {}) => stringify({ schema_version: 1, workspace: { title: 'Test', default_notebook: 'a' }, notebooks: [{ id: 'a', title: 'A', root: 'notes/a' }, { id: 'b', title: 'B', root: 'notes/b', ...extra }] });
+const otherLane = { version: 1, id: 'lane', title: 'Manual', arrangement: 'book', items: [{ id: 'q', kind: 'note', path: 'notes/a/guide.md' }], progression: { stages: [{ status: 'new', intervalDays: 1 }, { status: 'known', intervalDays: 3 }], easy: 'two' } };
+it("reviews a note through a compilation of another notebook in the same repository, writing the study file and the note's status", async () => {
+  await stageFixture();
+  await writeFile(path.join(root, '.github-notes.yaml'), twoNotebooks());
   await mkdir(path.join(root, 'notes/b'), { recursive: true });
-  await writeFile(path.join(root, 'notes/b/other.compilation.yml'), stringify({ version: 1, id: 'lane', title: 'Other', arrangement: 'lane', size: 'small', source: { kind: 'folder', path: 'notes/b', recursive: true }, progression: { stages: [{ status: 'new', intervalDays: 1 }, { status: 'known', intervalDays: 3 }], easy: 'two' } }));
-  expect((await act(await stageRequest('stage-review', { compilationPath: 'notes/b/other.compilation.yml' }))).status).toBe(403);
+  await writeFile(path.join(root, 'notes/b/manual.compilation.yml'), stringify(otherLane));
+  const response = await act(await stageRequest('stage-review', { compilationPath: 'notes/b/manual.compilation.yml' }));
+  expect(response.status).toBe(200);
+  expect((await response.json()).note.status).toBe('known');
+  expect(readNoteFile(root, source.path, 'a').status).toBe('known');
+  expect(parse(await readFile(path.join(root, STUDY_FILE), 'utf8')).notes[0]).toMatchObject({ notebookId: 'a', path: source.path });
+});
+it('takes default stages from the statuses of the notebook that holds the compilation', async () => {
+  await stageFixture();
+  await writeFile(path.join(root, '.github-notes.yaml'), twoNotebooks({ statuses: ['draft', 'done'] }));
+  await mkdir(path.join(root, 'notes/b'), { recursive: true });
+  const { progression: _progression, ...lane } = otherLane;
+  await writeFile(path.join(root, 'notes/b/manual.compilation.yml'), stringify(lane));
+  const response = await act(await stageRequest('stage-review', { compilationPath: 'notes/b/manual.compilation.yml' }));
+  expect(response.status).toBe(200);
+  expect((await response.json()).note.status).toBe('done');
+});
+it('refuses a compilation that lies in no notebook of the repository', async () => {
+  const raw = await stageFixture();
+  await mkdir(path.join(root, 'elsewhere'), { recursive: true });
+  await writeFile(path.join(root, 'elsewhere/manual.compilation.yml'), stringify(otherLane));
+  expect((await act(await stageRequest('stage-review', { compilationPath: 'elsewhere/manual.compilation.yml' }))).status).toBe(403);
   expect(await readFile(path.join(root, source.path), 'utf8')).toBe(raw);
   expect((await fetch(url).then(response => response.json())).study.events).toEqual([]);
 });

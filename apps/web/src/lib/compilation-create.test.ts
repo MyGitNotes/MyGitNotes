@@ -17,19 +17,19 @@ describe('planNewCompilation', () => {
     const plan = await planNewCompilation({ ...row, tags: ['read'] }, notebook, 'projects');
     expect(plan.path).toBe('notes/life/projects/reading-list.compilation.yml');
     expect(plan.metadata).toMatchObject({ title: 'Reading list', tags: ['read'] });
-    expect(parseCompilation(plan.content, notebook.root)).toMatchObject({ id: 'c1', title: 'Reading list' });
+    expect(parseCompilation(plan.content, [notebook.root])).toMatchObject({ id: 'c1', title: 'Reading list' });
   });
 
   it('starts with the initial status, unless the row names one', async () => {
     lookup.mockResolvedValue({ notes: [] });
     const started = await planNewCompilation(row, notebook, '', row.name, 'inbox');
     expect(started.metadata).toMatchObject({ status: 'inbox' });
-    expect(parseCompilation(started.content, notebook.root).status).toBe('inbox');
+    expect(parseCompilation(started.content, [notebook.root]).status).toBe('inbox');
     const named = await planNewCompilation({ ...row, status: 'doing' }, notebook, '', row.name, 'inbox');
-    expect(parseCompilation(named.content, notebook.root).status).toBe('doing');
+    expect(parseCompilation(named.content, [notebook.root]).status).toBe('doing');
     const none = await planNewCompilation(row, notebook, '');
     expect(none.metadata).not.toHaveProperty('status');
-    expect(parseCompilation(none.content, notebook.root).status).toBeUndefined();
+    expect(parseCompilation(none.content, [notebook.root]).status).toBeUndefined();
   });
 
   it('skips names that exist and gives up when every candidate is taken', async () => {

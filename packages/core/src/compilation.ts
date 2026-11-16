@@ -1,6 +1,6 @@
 import YAML from 'yaml';
 import { z } from 'zod';
-import { NOTEBOOK_KEY_MAX_LENGTH } from './notebook-key.js';
+import { NOTEBOOK_KEY_MAX_LENGTH, parseNotebookKey } from './notebook-key.js';
 import { type StudyProgression, StudyProgressionSchema } from './study-stages.js';
 import { isNoteHidden } from './note-status.js';
 
@@ -108,8 +108,12 @@ export class CompilationError extends Error {
 const within = (file: string, root: string) => file === root || file.startsWith(root + '/');
 const stripSlash = (value: string) => value.replace(/\/+$/, '');
 
-/** Parses a compilation file; with `notebookRoot`, its items and source must lie inside that notebook. Throws `CompilationError` naming the problem. */
-export function parseCompilation(raw: string, notebookRoot?: string): CompilationFile {
+/**
+ * Parses a compilation file. `scope` holds the roots of every notebook in the compilation's repository: items may
+ * name a path in any of them (a path in none renders missing), while a dynamic folder source must lie in one.
+ * Throws `CompilationError` naming the problem.
+ */
+export function parseCompilation(raw: string, scope?: readonly string[]): CompilationFile {
   if (new TextEncoder().encode(raw).length > COMPILATION_MAX_BYTES) throw new CompilationError('Compilation file exceeds 512 KiB');
   let value: unknown;
   try {
@@ -120,11 +124,10 @@ export function parseCompilation(raw: string, notebookRoot?: string): Compilatio
   const parsed = CompilationFileSchema.safeParse(value);
   if (!parsed.success) throw new CompilationError(describeIssues(parsed.error));
   const file = parsed.data;
-  if (notebookRoot !== undefined) {
-    const root = stripSlash(notebookRoot);
-    const paths = [...(file.items ?? []).flatMap(item => item.kind === 'youtube' ? [] : [item.path]), ...(file.source?.kind === 'folder' ? [file.source.path] : []), ...(file.manualOrder ?? [])];
-    const outside = paths.find(path => !within(path, root));
-    if (outside) throw new CompilationError(`${outside} is outside the notebook ${root}`);
+  if (scope !== undefined && file.source?.kind === 'folder') {
+    const roots = scope.map(stripSlash);
+    const folder = file.source.path;
+    if (!roots.some(root => within(folder, root))) throw new CompilationError(`${folder} is outside every notebook of the repository`);
   }
   return file;
 }
@@ -135,15 +138,20 @@ export function serializeCompilation(file: CompilationFile): string {
   return YAML.stringify(ordered, { lineWidth: 0 });
 }
 
-/** The lane model of a stored compilation: arrangement and size fold into `view`, and items carry their notebook. */
-export function compilationRow(file: CompilationFile, owner: { notebookId: string; path: string; }): CompilationRow {
+/**
+ * The lane model of a stored compilation: arrangement and size fold into `view`, and items carry their notebook.
+ * `notebookOf` names the notebook of the compilation's repository that holds a path; a path in none falls back to
+ * the owner's notebook, where its lookup misses and the item renders missing.
+ */
+export function compilationRow(file: CompilationFile, owner: { notebookId: string; path: string; }, notebookOf: (path: string) => string | undefined = () => undefined): CompilationRow {
+  const notebookAt = (path: string) => notebookOf(path) ?? owner.notebookId;
   const view: CompilationView = file.arrangement === 'lane' ? file.size ?? 'small' : file.arrangement;
   const base = { id: file.id, name: file.title, notebookId: owner.notebookId, path: owner.path, view, ...(file.size ? { size: file.size } : {}), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}), ...(file.graph ? { graph: file.graph } : {}), ...(file.progression ? { progression: file.progression } : {}), ...(file.study ? { study: file.study } : {}) };
   if (file.items) {
-    return { ...base, kind: 'custom', items: file.items.map(item => item.kind === 'youtube' ? item : { ...item, notebookId: owner.notebookId }) };
+    return { ...base, kind: 'custom', items: file.items.map(item => item.kind === 'youtube' ? item : { ...item, notebookId: notebookAt(item.path) }) };
   }
   const source = file.source!;
-  return { ...base, kind: 'dynamic', source: source.kind === 'tag' ? { ...source, notebookId: owner.notebookId } : { ...source, notebookId: owner.notebookId }, ...(file.sort ? { sort: file.sort } : {}), ...(file.manualOrder?.length ? { manualOrder: file.manualOrder } : {}) };
+  return { ...base, kind: 'dynamic', source: source.kind === 'tag' ? { ...source, notebookId: owner.notebookId } : { ...source, notebookId: notebookAt(source.path) }, ...(file.sort ? { sort: file.sort } : {}), ...(file.manualOrder?.length ? { manualOrder: file.manualOrder } : {}) };
 }
 
 /** The stored form of a lane model; the inverse of `compilationRow`. */
@@ -169,9 +177,9 @@ export interface CompilationFields {
 const fileTitle = (path: string) => path.split('/').pop()!.slice(0, -COMPILATION_SUFFIX.length);
 
 /** The listing fields of a compilation file, tolerating an invalid one: it still carries a title and what tags and status can be read. */
-export function compilationFields(raw: string, path: string, notebookRoot?: string): CompilationFields {
+export function compilationFields(raw: string, path: string, scope?: readonly string[]): CompilationFields {
   try {
-    const file = parseCompilation(raw, notebookRoot);
+    const file = parseCompilation(raw, scope);
     return { title: file.title, tags: file.tags ?? [], status: file.status, metadata: { id: file.id, title: file.title, arrangement: file.arrangement, ...(file.size ? { size: file.size } : {}), ...(file.items ? { itemCount: file.items.length } : { sourceKind: file.source!.kind }), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}) } };
   } catch (error) {
     let value: unknown;
@@ -278,13 +286,13 @@ interface MemberNote {
   tags: string[];
   metadata: Record<string, unknown>;
 }
-/** Membership is shared by lane cards and graph views; folder shortcuts stay shortcuts. */
+/** Membership is shared by lane cards and graph views; folder shortcuts stay shortcuts. A pinned note matches by its own notebook and path, a dynamic member by the source's notebook. */
 export function compilationNotes<T extends MemberNote>(row: CompilationRow, notes: T[]): T[] {
   return notes.filter(note => {
     if (row.study?.status && note.status !== row.study.status) return false;
-    if (note.notebookId !== row.notebookId) return false;
     if (row.kind === 'custom') return row.items.some(item => item.kind === 'note' && item.path === note.path && item.notebookId === note.notebookId);
     const source = row.source;
+    if (note.notebookId !== source.notebookId) return false;
     if (isNoteHidden({ ...note.metadata, status: note.status })) return false;
     if (source.kind === 'tag') return note.tags.includes(source.tag);
     return note.path.startsWith(source.path + '/') && (source.recursive || !note.path.slice(source.path.length + 1).includes('/'));
@@ -294,11 +302,15 @@ export function compilationNotePaths<T extends MemberNote>(row: CompilationRow, 
   return compilationNotes(row, notes).map(note => note.path);
 }
 
-export function moveCompilationItem(page: CompilationPage, itemId: string, targetRowId: string, index: number): CompilationPage {
+/** The repository a notebook key names; a bare local id stands for itself. */
+const repositoryOf = (notebookId: string) => parseNotebookKey(notebookId)?.alias ?? notebookId;
+
+/** Moves a pinned item between custom compilations of one repository, whichever of its notebooks they live in. */
+export function moveCompilationItem(page: CompilationPage, itemId: string, targetRowId: string, index: number, sameRepository: (a: string, b: string) => boolean = (a, b) => repositoryOf(a) === repositoryOf(b)): CompilationPage {
   const source = page.rows.find(row => row.kind === 'custom' && row.items.some(item => item.id === itemId));
   const target = page.rows.find(row => row.id === targetRowId);
   if (source?.kind !== 'custom' || target?.kind !== 'custom') throw new Error('Only custom compilations accept moved items');
-  if (source.notebookId !== target.notebookId) throw new Error('Items stay inside their notebook');
+  if (!sameRepository(source.notebookId, target.notebookId)) throw new Error('Items stay inside their repository');
   const item = source.items.find(item => item.id === itemId)!;
   if (source.id !== target.id && target.items.length >= COMPILATION_MAX_ITEMS) throw new Error('Compilation has too many pinned items');
   const rows = page.rows.map(row => {

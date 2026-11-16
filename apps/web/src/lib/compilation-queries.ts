@@ -14,7 +14,7 @@ function isManual(row: CompilationRow | undefined): boolean {
 export function laneNoteQuery(row: CompilationRow): Partial<NoteQuery> | null {
   if (row.kind !== 'dynamic') return null;
   const source = row.source;
-  return { notebookId: row.notebookId, tags: source.kind === 'tag' ? [source.tag] : [], folders: source.kind === 'folder' ? [source.path] : [], descendants: source.kind === 'folder' ? source.recursive : true, status: row.study?.status || null, showHidden: false, sort: !row.sort || row.sort.field === 'manual' ? 'title' : row.sort.field, order: row.sort?.order || 'asc' };
+  return { notebookId: source.notebookId, tags: source.kind === 'tag' ? [source.tag] : [], folders: source.kind === 'folder' ? [source.path] : [], descendants: source.kind === 'folder' ? source.recursive : true, status: row.study?.status || null, showHidden: false, sort: !row.sort || row.sort.field === 'manual' ? 'title' : row.sort.field, order: row.sort?.order || 'asc' };
 }
 
 export interface LaneNotes {
@@ -45,7 +45,7 @@ export function useLaneNotes(row: CompilationRow | undefined, requested: { conte
   return { notes: [...paged.uncommitted, ...paged.notes], loading: paged.loading, error: paged.error, hasMore: paged.hasMore, loadingMore: paged.loadingMore, loadMore: paged.loadMore };
 }
 
-/** The note paths each lane holds, for views that draw several lanes at once (the graph); a lane stays inside one notebook, where a path names one note. */
+/** The note paths each lane holds, for views that draw several lanes at once (the graph). A lane stays inside one repository, where a path names one note; the graph pairs each path with its notebook (`laneGraphMembers`). */
 export function useLanePaths(rows: CompilationRow[]): { paths: Map<string, string[]>; loading: boolean; error: string; } {
   const scope = useNoteQueryScope();
   const dynamic = rows.filter(row => row.kind === 'dynamic');

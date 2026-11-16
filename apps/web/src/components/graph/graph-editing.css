@@ -54,3 +54,4 @@
 .graph-card-position.is-closing { pointer-events: none; }
 .graph-card-position.is-closing .graph-note-card { animation: graph-note-exit 180ms ease-in forwards; }
 @media (prefers-reduced-motion: reduce) { .graph-note-card, .graph-card-position.is-closing .graph-note-card { animation: none; } }
+.graph-notice-outside { top: auto; bottom: 12px; color: var(--color-muted); }

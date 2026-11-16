@@ -89,7 +89,7 @@ async function saveNoteFromTemplate(ctx: ToolContext, args: SaveNoteArgs & { tem
   const target = noteResource(ctx, made.path);
   if (!made.path.startsWith(`${notebook.root}/`) || !isNotebookContent(made.path.slice(notebook.root.length + 1), notebook) || !isNoteFile(made.path)) throw new Error(`${made.path} is not a note path of notebook '${notebook.id}'.`);
   if (fs.existsSync(target)) throw new Error(`A note already exists at ${made.path}.`);
-  const saved = writeNoteFile(ctx.repoRoot, made.path, made.content, withNoteEdits(made.metadata, { status: args.status, tags: args.tags }), notebook.id, notebook.root);
+  const saved = writeNoteFile(ctx.repoRoot, made.path, made.content, withNoteEdits(made.metadata, { status: args.status, tags: args.tags }), notebook.id, config.notebooks.map((nb) => nb.root));
   const message = agentEditMessage(args.commitMessage || await generateCommitMessage({ filePath: made.path, diff: made.content }));
   const commitResult = await stageAndCommit(ctx.repoRoot, [made.path], message);
   return { success: true, path: made.path, note: saved, template: template.id, unfilled: made.unfilled, commit: commitResult };

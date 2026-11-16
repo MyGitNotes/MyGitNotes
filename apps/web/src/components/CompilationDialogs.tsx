@@ -9,6 +9,8 @@ import type { CompilationContentProps } from './CompilationCard.js';
 import type { FolderItem } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { compilationFolderOptions } from '../lib/compilation-content.js';
+import { repositoryNotebooks } from '../lib/compilation-rows.js';
+import { useCompilationAssets } from './useCompilationItemOpen.js';
 import { useNoteFacets, useNoteList } from '../lib/use-note-queries.js';
 import { useDebounced } from '../lib/use-debounced.js';
 import { LoadingStatus } from './LoadingStatus.js';
@@ -30,7 +32,11 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
   const [stageError, setStageError] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const nb = notebooks.find(nb => nb.id === notebookId);
-  const draftRow: CompilationRow = kind === 'custom' ? { id: row?.id || 'draft', name: name || 'draft', view, notebookId, path: row?.path ?? '', kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { id: row?.id || 'draft', name: name || 'draft', view, notebookId, path: row?.path ?? '', kind: 'dynamic', source: kind === 'tag' ? { kind: 'tag', tag, notebookId } : { kind: 'folder', notebookId, path: folder || nb?.root || '', recursive } };
+  // A folder source may lie in another notebook of the repository; it keeps that notebook while its path is unchanged.
+  const folderNotebookId = source?.kind === 'folder' && folder === source.path ? source.notebookId : notebookId;
+  const folderOptions = compilationFolderOptions(nb, folders, assets).map(folder => ({ value: folder.path, label: folder.title }));
+  if (source?.kind === 'folder' && !folderOptions.some(option => option.value === source.path)) folderOptions.push({ value: source.path, label: source.path });
+  const draftRow: CompilationRow = kind === 'custom' ? { id: row?.id || 'draft', name: name || 'draft', view, notebookId, path: row?.path ?? '', kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { id: row?.id || 'draft', name: name || 'draft', view, notebookId, path: row?.path ?? '', kind: 'dynamic', source: kind === 'tag' ? { kind: 'tag', tag, notebookId } : { kind: 'folder', notebookId: folderNotebookId, path: folder || nb?.root || '', recursive } };
   const progression = customProgression || defaultStudyProgression(studyLaneStatuses(draftRow, notebooks)) || { stages: [], easy: 'two' as const };
   const facets = useNoteFacets(true);
   const tags = Object.keys(facets.facets?.[notebookId]?.tags || {}).sort();
@@ -50,7 +56,7 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
           }
           const base = { id: row?.id || crypto.randomUUID(), notebookId, path: row?.path ?? '', ...(row?.tags ? { tags: row.tags } : {}), ...(row?.status ? { status: row.status } : {}), name: name.trim() || t(kind === 'custom' ? 'screen.custom' : 'screen.dynamic'), view, ...(row?.graph ? { graph: row.graph } : {}), ...(studyChanged ? { study: { ...row?.study, filter: studyFilter, dueFirst: true } } : row?.study ? { study: row.study } : {}), ...(studyChanged && result.success ? { progression: result.data } : row?.progression ? { progression: row.progression } : {}) };
           const sort = row?.kind === 'dynamic' ? { ...(row.sort ? { sort: row.sort } : {}), ...(row.manualOrder ? { manualOrder: row.manualOrder } : {}) } : {};
-          onApply(kind === 'custom' ? { ...base, kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { ...base, kind: 'dynamic', ...sort, source: kind === 'tag' ? { kind: 'tag', tag: tag.trim(), notebookId } : { kind: 'folder', notebookId, path: folder || nb!.root, recursive } });
+          onApply(kind === 'custom' ? { ...base, kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { ...base, kind: 'dynamic', ...sort, source: kind === 'tag' ? { kind: 'tag', tag: tag.trim(), notebookId } : { kind: 'folder', notebookId: folderNotebookId, path: folder || nb!.root, recursive } });
           onClose();
         }}
       >
@@ -77,7 +83,7 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
           <>
             <label>
               {t('folder.folders')}
-              <Select value={folder || nb?.root || ''} onValueChange={setFolder} options={compilationFolderOptions(nb, folders, assets).map(folder => ({ value: folder.path, label: folder.title }))} />
+              <Select value={folder || nb?.root || ''} onValueChange={setFolder} options={folderOptions} />
             </label>
             <label className='screen-checkbox'>
               <input type='checkbox' checked={recursive} onChange={e => setRecursive(e.target.checked)} />
@@ -163,11 +169,17 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
   const { t } = useTranslation();
   const [kind, setKind] = useState('note');
   const [query, setQuery] = useState(''), [youtube, setYoutube] = useState(''), [title, setTitle] = useState('');
-  const nb = notebooks.find(nb => nb.id === notebookId);
-  // Notes are searched on the server; assets and folders are already loaded with the page.
+  // An item may come from any notebook of the compilation's repository; the file stores its repository path only.
+  const choices = repositoryNotebooks(notebooks, notebookId);
+  const [selected, setSelected] = useState(notebookId);
+  const nb = notebooks.find(nb => nb.id === selected);
+  // Notes are searched on the server; assets and folders are loaded with the page, and another notebook's assets on demand.
   const settledQuery = useDebounced(query);
-  const noteMatches = useNoteList(kind === 'note' ? { notebookId, q: settledQuery, match: 'title', showHidden: true, sort: 'title', order: 'asc' } : null);
-  const options = kind === 'note' ? noteMatches.notes.map(note => ({ path: note.path, title: note.title })) : kind === 'asset' ? assets.filter(asset => asset.notebookId === notebookId).map(asset => ({ path: asset.path, title: asset.name })) : compilationFolderOptions(nb, folders, assets);
+  const noteMatches = useNoteList(kind === 'note' ? { notebookId: selected, q: settledQuery, match: 'title', showHidden: true, sort: 'title', order: 'asc' } : null);
+  const loaded = selected === notebookId || assets.some(asset => asset.notebookId === selected);
+  const extra = useCompilationAssets(notebooks, kind !== 'note' && kind !== 'youtube' && !loaded ? [selected] : []);
+  const shown = loaded ? assets : extra.assets;
+  const options = kind === 'note' ? noteMatches.notes.map(note => ({ path: note.path, title: note.title })) : kind === 'asset' ? shown.filter(asset => asset.notebookId === selected).map(asset => ({ path: asset.path, title: asset.name })) : compilationFolderOptions(nb, folders, shown);
   const video = parseYouTubeUrl(youtube);
   return (
     <WorkspaceDialog title={`${t('screen.addItem')} · ${rowName}`} onClose={onClose}>
@@ -176,6 +188,12 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
           {t('screen.itemType')}
           <Select value={kind} onValueChange={setKind} options={[{ value: 'note', label: t('nav.notes') }, { value: 'folder', label: t('folder.folders') }, { value: 'asset', label: t('nav.assets') }, { value: 'youtube', label: 'YouTube' }]} />
         </label>
+        {kind !== 'youtube' && choices.length > 1 && (
+          <label>
+            {t('screen.itemNotebook')}
+            <Select value={selected} onValueChange={setSelected} options={choices.map(choice => ({ value: choice.id, label: choice.title }))} />
+          </label>
+        )}
         {kind === 'youtube'
           ? (
             <>
@@ -214,7 +232,7 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
                     className='screen-item-option'
                     key={option.path}
                     onClick={() => {
-                      onAdd({ id: crypto.randomUUID(), kind: kind as 'note' | 'asset' | 'folder', notebookId, path: option.path });
+                      onAdd({ id: crypto.randomUUID(), kind: kind as 'note' | 'asset' | 'folder', notebookId: selected, path: option.path });
                       onClose();
                     }}
                   >

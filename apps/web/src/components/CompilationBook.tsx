@@ -42,7 +42,7 @@ export function CompilationBook({ row, notebooks, assets, onOpen, study, facets,
   // While a section edits, its autosaves must not move or drop anything: the notes keep the copies they had, the items their order.
   const notes = useHeldNotes(laneNotes.notes);
   const items = useHeldOrder(studyRowItems(compilationRowItems(row, notes, assets, notebooks), ordinaryRow, notes, study.study));
-  const chapters = bookChapters(items, notes, assets, laneNotes.loading);
+  const chapters = bookChapters(items, notes, assets, laneNotes.loading, notebooks);
   const [sections, setSections] = useState<ReadonlyMap<string, readonly BookEntry[]>>(new Map());
   const [liveTitles, setLiveTitles] = useState<ReadonlyMap<string, string>>(new Map());
   const entries = bookEntries(chapters, sections, liveTitles);

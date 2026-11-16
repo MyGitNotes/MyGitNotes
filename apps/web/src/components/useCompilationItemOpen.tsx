@@ -50,17 +50,20 @@ export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; a
   return { open, preview: previewNode };
 }
 
-export function useCompilationAssets(notebooks: NotebookConfig[], notebookId: string): { assets: CompilationAsset[]; error: boolean; loading: boolean; retry: () => void; } {
+/** The assets of every notebook a compilation reads from (`compilationNotebookIds`). */
+export function useCompilationAssets(notebooks: NotebookConfig[], notebookIds: readonly string[]): { assets: CompilationAsset[]; error: boolean; loading: boolean; retry: () => void; } {
   const [assets, setAssets] = useState<CompilationAsset[]>([]);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const scope = notebookIds.join('\n');
   useEffect(() => {
     let active = true;
     /* eslint-disable react/set-state-in-effect -- The notebook-scoped asset request sets loading before it starts and settles after all sources; preserve cancellation and partial-result fallback. */
     setLoading(true);
     /* eslint-enable react/set-state-in-effect */
-    const scoped = notebooks.filter(nb => nb.id === notebookId);
+    const wanted = new Set(scope.split('\n'));
+    const scoped = notebooks.filter(nb => wanted.has(nb.id));
     void Promise.allSettled(scoped.map(async nb => (await fetchAssets(nb.id)).map(asset => ({ ...asset, notebookId: nb.id })))).then(results => {
       if (!active) return;
       setAssets(previous => results.flatMap((result, index) => result.status === 'fulfilled' ? result.value : previous.filter(asset => asset.notebookId === scoped[index].id)));
@@ -70,6 +73,6 @@ export function useCompilationAssets(notebooks: NotebookConfig[], notebookId: st
     return () => {
       active = false;
     };
-  }, [notebooks, notebookId, attempt]);
+  }, [notebooks, scope, attempt]);
   return { assets, error, loading, retry: () => setAttempt(value => value + 1) };
 }

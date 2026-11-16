@@ -21,20 +21,20 @@ export function createLocalNotesRouter(): Router {
   const router = Router();
 
   /** Per-request read model over the working tree; local reads are not cached. */
-  function localCatalog(repoRoot: string): RepositoryCatalog {
+  function localCatalog(repoRoot: string, scope: readonly string[]): RepositoryCatalog {
     const scans = new Map<string, NoteItem[]>();
     const scan = (notebook: Parameters<typeof scanNotebookEntries>[1]) => {
       let notes = scans.get(notebook.id);
       if (!notes) {
-        notes = scanNotebookEntries(repoRoot, notebook);
+        notes = scanNotebookEntries(repoRoot, notebook, scope);
         scans.set(notebook.id, notes);
       }
       return notes;
     };
-    return { revision: async () => '', index: async notebook => scan(notebook).map(({ content: _content, ...note }) => note), contents: async notes => new Map(notes.map(note => [note.path, scans.get(note.notebookId)?.find(item => item.path === note.path)?.content ?? ''])), memo: (_kind, _notebooks, compute) => compute(), folders: async notebook => scanNotebookFolders(repoRoot, notebook), template: async (notebook, file) => isTemplateFile(file.slice(notebook.root.length + 1), notebook) && fs.lstatSync(regularPath(repoRoot, file), { throwIfNoEntry: false })?.isFile() ? readNoteFile(repoRoot, file, notebook.id, notebook.root) : undefined };
+    return { revision: async () => '', index: async notebook => scan(notebook).map(({ content: _content, ...note }) => note), contents: async notes => new Map(notes.map(note => [note.path, scans.get(note.notebookId)?.find(item => item.path === note.path)?.content ?? ''])), memo: (_kind, _notebooks, compute) => compute(), folders: async notebook => scanNotebookFolders(repoRoot, notebook), template: async (notebook, file) => isTemplateFile(file.slice(notebook.root.length + 1), notebook) && fs.lstatSync(regularPath(repoRoot, file), { throwIfNoEntry: false })?.isFile() ? readNoteFile(repoRoot, file, notebook.id, scope) : undefined };
   }
 
-  const catalogOf = (res: Response) => requestCatalog(res, undefined, handle => localCatalog((handle as LocalHandle).root));
+  const catalogOf = (res: Response) => requestCatalog(res, undefined, (handle, notebooks) => localCatalog((handle as LocalHandle).root, notebooks.map(notebook => notebook.root)));
 
   function queryError(res: Response, error: unknown) {
     res.status(error instanceof SourceError ? error.status : 500).json({ error: error instanceof Error ? error.message : String(error), ...(error instanceof StaleRevisionError ? { staleRepositories: error.repositories } : {}) });
@@ -98,7 +98,7 @@ export function createLocalNotesRouter(): Router {
       }
       const { handle, alias, notebook, config } = await noteRepository(res, relPath, req.query.notebookId);
       assertNote(relPath, config);
-      const note = readNoteFile(asLocal(handle).root, relPath, notebook.id, notebook.root);
+      const note = readNoteFile(asLocal(handle).root, relPath, notebook.id, config.notebooks.map(item => item.root));
       res.json({ note: keyedItem(alias)(note) });
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return res.status(404).json({ error: 'Note not found.' });
@@ -119,7 +119,7 @@ export function createLocalNotesRouter(): Router {
 
       return await serializeWorkspaceMutation(repoRoot, async () => {
         if (req.body.createOnly && fs.existsSync(resolveSafePath(repoRoot, notePath))) return res.status(409).json({ error: 'A note already exists at this path.' });
-        const saved = keyedItem(alias)(writeNoteFile(repoRoot, notePath, content, metadata, notebook.id, notebook.root));
+        const saved = keyedItem(alias)(writeNoteFile(repoRoot, notePath, content, metadata, notebook.id, config.notebooks.map(item => item.root)));
 
         // If noCommit is requested or commit is false, write file and leave working tree dirty
         if (req.body.noCommit === true || req.body.commit === false) {
@@ -183,7 +183,7 @@ export function createLocalNotesRouter(): Router {
 
       return await serializeWorkspaceMutation(repoRoot, async () => {
         if (typeof content === 'string') {
-          const restored = keyedItem(alias)(writeNoteFile(repoRoot, notePath, content, metadata, notebook.id, notebook.root));
+          const restored = keyedItem(alias)(writeNoteFile(repoRoot, notePath, content, metadata, notebook.id, config.notebooks.map(item => item.root)));
           await restoreLocalVersionFile(repoRoot, notePath);
           return res.json({ success: true, note: restored });
         }
@@ -193,7 +193,7 @@ export function createLocalNotesRouter(): Router {
         const restored = await changeFile(repoRoot, notePath, 'restore', req.body.revision || change.revision);
         await restoreLocalVersionFile(repoRoot, notePath);
         if (!change.tracked) return res.json({ success: true, note: null, ...restored });
-        const restoredNote = keyedItem(alias)(readNoteFile(repoRoot, notePath, notebook.id, notebook.root));
+        const restoredNote = keyedItem(alias)(readNoteFile(repoRoot, notePath, notebook.id, config.notebooks.map(item => item.root)));
         res.json({ success: true, note: restoredNote });
       });
     } catch (err: unknown) {

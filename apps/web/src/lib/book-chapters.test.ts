@@ -52,3 +52,9 @@ it("names the contents entry of the slot a section edits in: a chapter by its id
   // Only a folder has note sections: a note chapter's id followed by a path names nothing.
   expect(slotAnchor('n1:notes/nb/a.md', chapters)).toBeNull();
 });
+
+it('marks a folder outside its notebook missing, as an ancestor of the root would list the whole notebook (AC3)', () => {
+  const notebooks = [{ id: 'nb', root: 'notes/nb' }];
+  const folders: CompilationItem[] = [{ id: 'in', kind: 'folder', notebookId: 'nb', path: 'notes/nb/sub' }, { id: 'root', kind: 'folder', notebookId: 'nb', path: 'notes/nb' }, { id: 'up', kind: 'folder', notebookId: 'nb', path: 'notes' }, { id: 'gone', kind: 'folder', notebookId: 'nb', path: 'notes/removed/sub' }];
+  expect(bookChapters(folders, [], [], false, notebooks).filter(chapter => chapter.missing).map(chapter => chapter.id)).toEqual(['up', 'gone']);
+});
