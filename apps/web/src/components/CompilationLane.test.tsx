@@ -343,3 +343,11 @@ it("ends the card's slot only on keys typed inside the card, not on keys of its 
   expect(card('item-2')).toHaveAttribute('data-editing');
   expect(flushEditors).not.toHaveBeenCalled();
 });
+
+it('shows a folder outside its notebook as missing, never the notebook it falls back to (AC3)', async () => {
+  const outside: CompilationRow = { ...two, items: [itemA, { id: 'up', kind: 'folder', notebookId: 'nb1', path: 'notes' }] };
+  render(lane({ row: outside }), { wrapper });
+  await screen.findByText('Body of A');
+  expect(within(card('up')).getByText('This item may have moved or been deleted.')).toBeInTheDocument();
+  expect(within(card('up')).queryByText('Note B')).toBeNull();
+});

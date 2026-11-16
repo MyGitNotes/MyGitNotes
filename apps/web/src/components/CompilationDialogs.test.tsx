@@ -8,7 +8,7 @@ import type { CompilationItem, CompilationRow } from '@mygitnotes/core/compilati
 import type { NotebookConfig } from '../lib/types.js';
 import { compilationText } from '../lib/compilation-rows.js';
 import { setNoteQueryScope } from '../lib/use-note-queries.js';
-import { CompilationAddItem } from './CompilationDialogs.js';
+import { CompilationAddItem, CompilationEditRow } from './CompilationDialogs.js';
 
 // A native select stands in for the Radix one, which jsdom cannot open.
 vi.mock('./Select.js', () => ({ Select: ({ value, onValueChange, options, ...rest }: { value: string; onValueChange: (value: string) => void; options: { value: string; label: string; }[]; }) => createElement('select', { ...rest, value, onChange: (event: { target: { value: string; }; }) => onValueChange(event.target.value) }, options.map(option => createElement('option', { key: option.value, value: option.value }, option.label))) }));
@@ -71,4 +71,13 @@ it("lists the chosen notebook's folders", () => {
   expect(screen.queryByText('notes/b/guide')).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole('combobox', { name: 'Notebook' }), { target: { value: 'r~b' } });
   expect(screen.getByText('notes/b/guide')).toBeInTheDocument();
+});
+
+it("keeps a folder source's own notebook when its compilation is edited, and shows its path (F002)", () => {
+  const row: CompilationRow = { id: 'row', name: 'Manual', view: 'small', notebookId: 'r~a', path: 'notes/a/m.compilation.yml', kind: 'dynamic', source: { kind: 'folder', notebookId: 'r~b', path: 'notes/b/sub', recursive: true } };
+  const onApply = vi.fn();
+  render(createElement(CompilationEditRow, { row, notebooks, assets: [], folders: [], selectedNotebookId: 'r~a', onApply, onRemove: () => {}, onClose: () => {} }), { wrapper });
+  expect(screen.getByRole('option', { name: 'notes/b/sub' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply.mock.calls[0][0].source).toEqual({ kind: 'folder', notebookId: 'r~b', path: 'notes/b/sub', recursive: true });
 });
