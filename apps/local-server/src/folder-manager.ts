@@ -2,7 +2,7 @@ import { Router } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { checkedOutFields, FolderCommandSchema, type FolderSnapshot, isCompilationPath, isNotebookContent, type NotebookConfig, planFolderChange, type RemoteChange, type RemoteSnapshot, RemoteSource, SourceError, stampIsRacy, versionFileChanges, WORKSPACE_DOCUMENTS } from '@mygitnotes/core';
+import { checkedOutFields, type FolderCommand, FolderCommandSchema, type FolderSnapshot, isCompilationPath, isNotebookContent, mayLinkToMove, MOVE_RETAINED_BYTES, moveRetainedError, type NotebookConfig, planFolderChange, type RemoteChange, type RemoteSnapshot, RemoteSource, snapshotFileBatches, SourceError, stampIsRacy, versionFileChanges, WORKSPACE_DOCUMENTS } from '@mygitnotes/core';
 import { getCurrentBranch } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { notebookRepository } from './request-workspace.js';
@@ -39,8 +39,28 @@ function walkFolders(root: string, notebooks: NotebookConfig[], visitor: { direc
   }
   for (const file of documents) if (fs.existsSync(path.join(root, file))) visitor.file(file, regularPath(root, file));
 }
-export function localFolderSnapshot(root: string, notebooks: NotebookConfig[]): FolderSnapshot {
+/**
+ * Whether a folder change from `source` (empty for a new folder) needs `file`'s text: what moves with the source,
+ * folder metadata, compilations and workspace documents, and only the notes that can link to the source
+ * (`mayLinkToMove`, the planner's own test). Any other file is planned as an empty placeholder: the plan leaves it
+ * unchanged, and its path still counts for collisions.
+ */
+function folderRetainer(source: string) {
+  let total = 0;
+  return (file: string, text: string) => {
+    if (!(source && (file === source || file.startsWith(source + '/')) || path.posix.basename(file) === '_dir.yml' || isCompilationPath(file) || documents.includes(file) || /\.(md|markdown)$/i.test(file) && mayLinkToMove(text, source))) return '';
+    total += Buffer.byteLength(text);
+    if (total > MOVE_RETAINED_BYTES) throw moveRetainedError();
+    return text;
+  };
+}
+/** The folder in a notebook's workspace path that `command` moves or removes; empty for a new folder. */
+export function folderSource(command: FolderCommand, notebook: NotebookConfig) {
+  return command.kind === 'create' ? '' : `${notebook.root.replace(/\/$/, '')}/${command.path}`;
+}
+export function localFolderSnapshot(root: string, notebooks: NotebookConfig[], source?: string): FolderSnapshot {
   const snapshot: FolderSnapshot = { notebooks, directories: [], protectedPaths: [], files: new Map() };
+  const keep = source === undefined ? undefined : folderRetainer(source);
   let bytes = 0;
   walkFolders(root, notebooks, {
     directory: directory => snapshot.directories.push(directory),
@@ -49,9 +69,12 @@ export function localFolderSnapshot(root: string, notebooks: NotebookConfig[]): 
       // lstat rejects a file that became a symlink after the listing.
       const stat = fs.lstatSync(full);
       if (!stat.isFile() || stat.size > 5 * 1024 * 1024) throw new SourceError('Unsupported or oversized notebook file.', 413);
+      // A file is read alone and dropped unless the change needs it, so only what is kept counts against the bound.
+      const text = fs.readFileSync(full, 'utf8');
+      if (keep) return void snapshot.files.set(file, keep(file, text));
       bytes += stat.size;
       if (bytes > 32 * 1024 * 1024) throw new SourceError('Folder operations currently support up to 32 MiB of notebook text.', 413);
-      snapshot.files.set(file, fs.readFileSync(full, 'utf8'));
+      snapshot.files.set(file, text);
     },
   });
   return snapshot;
@@ -118,13 +141,12 @@ export function applyLocalFolderPlan(root: string, before: FolderSnapshot, after
   }
 }
 
-async function remoteSnapshot(reader: RemoteSource): Promise<{ snapshot: FolderSnapshot; state: RemoteSnapshot; }> {
+async function remoteSnapshot(reader: RemoteSource, source: string): Promise<{ snapshot: FolderSnapshot; state: RemoteSnapshot; }> {
   const state = await reader.getSnapshot(true);
   const { entries } = state;
   const config = await reader.config();
   const snapshot: FolderSnapshot = { notebooks: config.notebooks, directories: [], protectedPaths: [], files: new Map() };
   const readable: string[] = [];
-  let bytes = 0;
   for (const entry of entries) {
     const nb = config.notebooks.find(nb => entry.path === nb.root || entry.path.startsWith(nb.root + '/'));
     const isDocument = documents.includes(entry.path);
@@ -132,14 +154,12 @@ async function remoteSnapshot(reader: RemoteSource): Promise<{ snapshot: FolderS
     const allowed = isDocument || nb && (entry.path === nb.root || isNotebookContent(entry.path.slice(nb.root.length + 1), nb));
     if (!allowed || entry.mode === '120000' || !['blob', 'tree'].includes(entry.type) || entry.type === 'blob' && !isDocument && !isText(entry.path)) snapshot.protectedPaths.push(entry.path);
     else if (entry.type === 'tree') snapshot.directories.push(entry.path);
-    else {
-      readable.push(entry.path);
-      bytes += entry.size || 0;
-    }
+    else readable.push(entry.path);
   }
-  if (bytes > 32 * 1024 * 1024) throw new SourceError('Folder operations currently support up to 32 MiB of notebook text.', 413);
-  await reader.prefetchFiles(readable);
-  for (const file of readable) snapshot.files.set(file, (await reader.readSnapshotFile(state, file)).toString('utf8'));
+  // Batched reads keep a move to a few round trips; each batch keeps only what the change needs.
+  const keep = folderRetainer(source);
+  for (const file of readable) snapshot.files.set(file, '');
+  for await (const [file, bytes] of snapshotFileBatches(reader, state, readable)) snapshot.files.set(file, keep(file, bytes.toString('utf8')));
   return { snapshot, state };
 }
 
@@ -169,7 +189,7 @@ export function createFolderManagerRouter(): Router {
         return await serializeWorkspaceMutation(root, async () => {
           if (await getCurrentBranch(root) !== 'main') throw new SourceError('Folder changes require the main workspace branch.', 403);
           if (!localFolderRevisionHolds(root, config.notebooks, req.body.revision)) throw new SourceError('The workspace changed. Reload the folders and try again.', 409);
-          const before = localFolderSnapshot(root, config.notebooks);
+          const before = localFolderSnapshot(root, config.notebooks, folderSource(command.data, notebook));
           const after = planFolderChange(before, command.data);
           applyLocalFolderPlan(root, before, after);
           moveLocalVersionFiles(root, Object.keys(after.pathMap), file => after.pathMap[file] ?? file, () => false);
@@ -178,7 +198,7 @@ export function createFolderManagerRouter(): Router {
       }
       if (!handle.authenticated) throw new SourceError('Sign in with write access to manage folders.', 403);
       const { reader } = handle;
-      const { snapshot: before, state: current } = await remoteSnapshot(reader);
+      const { snapshot: before, state: current } = await remoteSnapshot(reader, folderSource(command.data, notebook));
       if (current.sha !== req.body.revision) throw new SourceError('The workspace changed. Reload the folders and try again.', 409);
       const after = planFolderChange(before, command.data);
       const changes: RemoteChange[] = [...changesFor(before, after), ...versionFileChanges(current.entries, Object.keys(after.pathMap), file => after.pathMap[file] ?? file, () => false)];

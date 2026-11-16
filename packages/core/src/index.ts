@@ -29,6 +29,7 @@ export * from './source-config.js';
 export { GITHUB_COM, type GitHubSite, githubSite, normalizeGitHubUrl } from './github-site.js';
 export * from './folders.js';
 export * from './folder-plan.js';
+export { mayLinkToMove, MOVE_RETAINED_BYTES, moveRetainedError, snapshotFileBatches } from './move-retention.js';
 export * from './file-manager.js';
 export * from './case-collision.js';
 export * from './github-source.js';

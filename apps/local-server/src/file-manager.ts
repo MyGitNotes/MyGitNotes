@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { getCurrentBranch } from '@mygitnotes/git';
-import { assetHash, assetInfo, assetRoot, checkedOutFields, editableFile, type FileCommand, FileCommandSchema, filePresentation, type FileSnapshot, isCompilationPath, isNotebookContent, managedNotebook, type NotebookConfig, parseFolderConfig, planFileChange, rawFileHeaders, type RemoteChange, type RemoteSnapshot, type RemoteSource, SourceError, stampIsRacy, versionFileChanges, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
+import { assetHash, assetInfo, assetRoot, checkedOutFields, decodeTextFile, editableFile, type FileCommand, FileCommandSchema, filePresentation, type FileSnapshot, isCompilationPath, isNotebookContent, managedNotebook, mayLinkToMove, MOVE_RETAINED_BYTES, moveRetainedError, type NotebookConfig, parseFolderConfig, planFileChange, rawFileHeaders, type RemoteChange, type RemoteSnapshot, type RemoteSource, snapshotFileBatches, SourceError, stampIsRacy, versionFileChanges, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
 import { defaultRepository, eachRepository, notebookRepository, noteRepository, type RepositoryHandle } from './request-workspace.js';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { regularPath, writeFileAtomicSync } from './workspace-files.js';
@@ -86,23 +86,38 @@ function needsContent(file: string, command?: FileCommand) {
   if (!command) return true;
   // Keep original bytes for rollback if unlink/rmdir fails partway through deletion.
   if (command.kind === 'delete-directory') return withinPath(file, command.path);
-  if (command.kind === 'move' || command.kind === 'remove-directory') return withinPath(file, command.path) || /\.(md|markdown)$/i.test(file) || isCompilationPath(file) || auxiliary.includes(file);
+  if (moves(command)) return withinPath(file, command.path) || /\.(md|markdown)$/i.test(file) || isCompilationPath(file) || auxiliary.includes(file);
   return file === command.path || command.kind === 'metadata' && file === command.path + '/_dir.yml';
+}
+const moves = (command?: FileCommand): command is Extract<FileCommand, { kind: 'move' | 'remove-directory'; }> => command?.kind === 'move' || command?.kind === 'remove-directory';
+/**
+ * Whether the planner needs `file`'s bytes once read: a move keeps what moves, compilations and workspace documents,
+ * and only the notes that can link to the moved path (`mayLinkToMove`, the test the planner itself applies); every
+ * other note stays an empty placeholder, as untouched files are, so it still counts for collisions.
+ */
+function retained(file: string, bytes: Buffer, command?: FileCommand) {
+  if (!moves(command) || withinPath(file, command.path) || !/\.(md|markdown)$/i.test(file)) return true;
+  const raw = decodeTextFile(bytes);
+  return raw !== undefined && mayLinkToMove(raw, command.path);
+}
+/** Keeps what `retained` asks for within `MOVE_RETAINED_BYTES` of a move, read one file at a time. */
+function retainer(command?: FileCommand) {
+  let total = 0;
+  return (file: string, bytes: Buffer) => {
+    if (!retained(file, bytes, command)) return Buffer.alloc(0);
+    total += bytes.length;
+    if (total > MOVE_RETAINED_BYTES) throw moves(command) ? moveRetainedError() : new SourceError('File operations support 32 MiB per workspace snapshot.', 413);
+    return bytes;
+  };
 }
 export function localFileSnapshot(root: string, notebooks: NotebookConfig[], command?: FileCommand): FileSnapshot {
   const catalog = localFileCatalog(root, notebooks);
-  let total = 0;
+  const keep = retainer(command);
   const files = new Map<string, Buffer>();
-  for (const [file, entry] of catalog.files) {
+  for (const file of catalog.files.keys()) {
     // Untouched entries retain their paths for collision checks. Only affected
     // files and reference-bearing documents need content for the planner.
-    if (!needsContent(file, command)) {
-      files.set(file, Buffer.alloc(0));
-      continue;
-    }
-    total += entry.size;
-    if (total > 32 * 1024 * 1024) throw new SourceError('File operations support 32 MiB per workspace snapshot.', 413);
-    files.set(file, localRead(root, file));
+    files.set(file, needsContent(file, command) ? keep(file, localRead(root, file)) : Buffer.alloc(0));
   }
   return { ...catalog, files };
 }
@@ -119,23 +134,11 @@ async function remoteFiles(reader: RemoteSource, command: FileCommand): Promise<
     else if (entry.type === 'tree') snapshot.directories.push(entry.path);
     else readable.push(entry.path);
   }
-  // A move reads every note for the links it rewrites, so the reads are batched first instead of one round trip each;
-  // the tree's sizes refuse an oversized snapshot before anything is downloaded.
-  const needed = readable.filter(file => needsContent(file, command));
-  const sizes = new Map(state.entries.map(entry => [entry.path, entry.size || 0]));
-  if (needed.reduce((sum, file) => sum + (sizes.get(file) ?? 0), 0) > 32 * 1024 * 1024) throw new SourceError('File operations support 32 MiB per workspace snapshot.', 413);
-  await reader.prefetchFiles(needed);
-  let total = 0;
-  for (const file of readable) {
-    if (!needsContent(file, command)) {
-      snapshot.files.set(file, Buffer.alloc(0));
-      continue;
-    }
-    const bytes = await reader.readSnapshotFile(state, file);
-    total += bytes.length;
-    if (total > 32 * 1024 * 1024) throw new SourceError('File operations support 32 MiB per workspace snapshot.', 413);
-    snapshot.files.set(file, bytes);
-  }
+  // A move reads every note for the links it rewrites, so the reads are batched instead of one round trip each, and
+  // each batch keeps only the notes that can link to the moved path.
+  const keep = retainer(command);
+  for (const file of readable) snapshot.files.set(file, Buffer.alloc(0));
+  for await (const [file, bytes] of snapshotFileBatches(reader, state, readable.filter(file => needsContent(file, command)))) snapshot.files.set(file, keep(file, bytes));
   return { snapshot, state };
 }
 export function changedFiles(before: FileSnapshot, after: FileSnapshot) {

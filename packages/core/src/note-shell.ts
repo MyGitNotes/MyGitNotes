@@ -8,7 +8,8 @@ import { agentWorkspaceFile } from './agent-workspace.js';
 import { agentEditMessage, versionFileChanges } from './note-versions.js';
 import type { CommitScope } from './workspace-documents.js';
 import { bookmarkRelocationChange } from './bookmark-relocation.js';
-import { relocateLinks } from './folder-plan.js';
+import { relocateMovedLinks } from './folder-plan.js';
+import { MOVE_RETAINED_BYTES, moveRetainedError, snapshotFileBatches } from './move-retention.js';
 import { decodeTextFile } from './file-manager.js';
 import { compileGlobs, GLOB_LENGTH_LIMIT, GlobError } from './path-glob.js';
 import YAML from 'yaml';
@@ -291,18 +292,19 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
       const relocate = (file: string) => file === from || file.startsWith(from + '/') ? to + file.slice(from.length) : file;
       const destinations = new Set(files.map(entry => relocate(entry.path)));
       const merged = new Map(changes.map(change => [change.path, change]));
+      // Notes are read a batch at a time and only the rewritten ones are kept, so the workspace's size does not matter.
+      // An overwritten destination's old body must not replace the moved source.
+      const notes = blobs.filter(entry => /\.(md|markdown)$/i.test(entry.path) && !destinations.has(entry.path)).map(entry => entry.path);
       let bytes = 0;
-      for (const entry of blobs) {
-        // An overwritten destination's old body must not replace the moved source.
-        if (!/\.(md|markdown)$/i.test(entry.path) || destinations.has(entry.path)) continue;
-        const content = await reader.readSnapshotFile(snapshot, entry.path);
-        bytes += content.length;
-        if (bytes > 32 * 1024 * 1024) throw new SourceError('File operations support 32 MiB per workspace snapshot.', 413);
+      for await (const [file, content] of snapshotFileBatches(reader, snapshot, notes)) {
         const raw = decodeTextFile(content);
         if (raw === undefined) continue;
-        const target = relocate(entry.path);
-        const rewritten = relocateLinks(raw, entry.path, target, relocate);
-        if (rewritten !== raw) merged.set(target, { path: target, content: rewritten });
+        const target = relocate(file);
+        const rewritten = relocateMovedLinks(raw, file, target, relocate, from);
+        if (rewritten === raw) continue;
+        bytes += Buffer.byteLength(rewritten);
+        if (bytes > MOVE_RETAINED_BYTES) throw moveRetainedError();
+        merged.set(target, { path: target, content: rewritten });
       }
       for (const change of versionFileChanges(snapshot.entries, files.map(entry => entry.path), relocate, () => false)) merged.set(change.path, change);
       const owner = inNotebook(from, notebooks);
