@@ -17,9 +17,12 @@ import { LiveBadge } from './LiveBadge.js';
  * 編輯; moving, renaming or deleting it from its own editor checks it in first.
  */
 
-const fake = vi.hoisted(() => ({ order: [] as string[] }));
+const fake = vi.hoisted(() => ({ order: [] as string[], config: null as null | { onDirty?: (event: { dirty: boolean; }) => void; } }));
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
+    constructor(configuration: { onDirty?: (event: { dirty: boolean; }) => void; }) {
+      fake.config = configuration;
+    }
     destroy() {
       fake.order.push('destroy');
     }
@@ -304,6 +307,21 @@ describe('moving, renaming or deleting a note one has open in the collab editor'
     expect(screen.getByText('1 other person is editing this note, so it cannot be moved now.')).toBeInTheDocument();
     expect(collabShown()).toBeInTheDocument();
     expect(move).not.toHaveBeenCalled();
+  });
+
+  // cf16-F003: the editor's own typing would be left out of the commit and kept under the old path.
+  it('refuses while the editor holds typing the server has not stored, says why, and keeps the editor open', async () => {
+    const rename = vi.fn(), move = vi.fn();
+    await mount({ note: { ...note, live: liveState }, live: live({ fileActions: { rename, move } }), onMove: vi.fn() });
+    expect(collabShown()).toBeInTheDocument();
+    act(() => fake.config!.onDirty?.({ dirty: true }));
+    await pick('Rename');
+    await pick('Move note');
+    expect([rename, move].map(action => action.mock.calls.length)).toEqual([0, 0]);
+    expect(calls('/api/live/checkin')).toHaveLength(0);
+    expect(fake.order).not.toContain('destroy');
+    expect(screen.getByText('Some changes are not saved yet. Wait until the editor says Saved, then move, rename or delete the note.')).toBeInTheDocument();
+    expect(collabShown()).toBeInTheDocument();
   });
 
   it('acts at once on a note that is no longer live', async () => {
