@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { useWorkingNoteCommit } from './useWorkingNoteCommit.js';
-import { deletionEntry, readWorkingNotes, updateWorkingNote } from '../lib/working-notes.js';
+import { clearCommittedNotes, deletionEntry, readWorkingNotes, updateWorkingNote, type WorkingNotes } from '../lib/working-notes.js';
+import { useGistConfirm } from '../components/GistConfirmDialog.js';
+import { I18nProvider } from '../lib/i18n/index.js';
 import { draftStore, repositoryOf, type WorkspaceRepository } from '../lib/workspace-repositories.js';
 import type { FileChange, NoteItem } from '../lib/types.js';
 import { documentDraftKey } from '../lib/use-workspace-document.js';
 import { focusDocumentClient } from '../lib/use-focus-page.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
+import { rememberCreatedGist } from '../lib/created-gists.js';
 
 const home: WorkspaceRepository = { id: 'github:me/notes@main', alias: 'notes', type: 'github', repository: 'me/notes', branch: 'main', revision: 'a'.repeat(40), write: true, notebooks: ['notes~life'], title: 'notes', defaultNotebook: null, preferences: DEFAULT_WORKSPACE_PREFERENCES, config: null, configRevision: '' };
 const other: WorkspaceRepository = { id: 'github:me/campaign@main', alias: 'campaign', type: 'github', repository: 'me/campaign', branch: 'main', revision: 'b'.repeat(40), write: true, notebooks: ['campaign~trpg'], title: 'campaign', defaultNotebook: null, preferences: DEFAULT_WORKSPACE_PREFERENCES, config: null, configRevision: '' };
@@ -16,34 +19,52 @@ const note = (path: string, notebookId: string, content: string, revision: strin
 const base = note('notes/life/a.md', 'notes~life', '# A', home.revision);
 const change = (path: string, repository: WorkspaceRepository): FileChange => ({ path, repository: repository.id, kind: 'modified', tracked: true, revision: '', staged: false, unstaged: true });
 
-let commits: any[];
+let commits: any[], syncs: any[];
+/** Notes the fake server holds after its commits, by path, and each repository's head after them. */
+let served: Map<string, NoteItem>, heads: Map<string, string>;
+/** What the fake server adds to each commit answer, such as the Gists it did not push. */
+let commitExtra: (body: any) => Record<string, unknown> = () => ({});
 function stubServer(failFor?: string) {
   commits = [];
+  syncs = [];
+  served = new Map();
+  heads = new Map();
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-      if (url === '/api/workspace?fresh=1') return new Response(JSON.stringify({ keyedConfig: null, local: false, defaultRepository: home.id, repositories, coreUpdate: false }));
-      if (url === '/api/notes/read-batch') return new Response(JSON.stringify({ notes: body.paths.map((path: string) => ({ ...base, path })) }));
+      if (url === '/api/workspace?fresh=1') return new Response(JSON.stringify({ keyedConfig: null, local: false, defaultRepository: home.id, repositories: repositories.map(repository => ({ ...repository, revision: heads.get(repository.id) ?? repository.revision })), coreUpdate: false }));
+      if (url === '/api/notes/read-batch') return new Response(JSON.stringify({ notes: body.paths.map((path: string) => served.get(path) ?? { ...base, path }) }));
       if (url === '/api/notes/commit') {
         commits.push(body);
         if (body.repository === failFor) return new Response(JSON.stringify({ error: 'The repository changed.', staleRepositories: [failFor] }), { status: 409 });
-        return new Response(JSON.stringify({ revision: `${body.repository}-next`, commit: { commitHash: 'x' } }));
+        const revision = `${body.repository}-next`;
+        heads.set(body.repository, revision);
+        for (const item of body.notes) if (!item.delete) served.set(item.path, { ...note(item.path, body.repository === home.id ? 'notes~life' : 'campaign~trpg', item.content, revision), metadata: item.metadata });
+        return new Response(JSON.stringify({ revision: `${body.repository}-next`, commit: { commitHash: 'x' }, ...commitExtra(body) }));
+      }
+      if (url === '/api/gists/sync') {
+        syncs.push(body);
+        return new Response(JSON.stringify({ gists: body.notes }));
       }
       throw new Error(`Unexpected request ${url}`);
     }),
   );
 }
 
-function commitHook() {
-  const stageWorkingNote = (draft: NoteItem, draftBase: NoteItem | null, blocked?: string, deleted?: boolean) => {
-    updateWorkingNote(draftStore(repositoryOf(repositories, draft.notebookId)!), draft.path, { note: draft, base: draftBase, ...(blocked ? { blocked } : {}), ...(deleted ? { deleted: true as const } : {}) });
-    return draft;
-  };
-  const clearCommittedDrafts = vi.fn();
+const stageWorkingNote = (draft: NoteItem, draftBase: NoteItem | null, blocked?: string, deleted?: boolean) => {
+  updateWorkingNote(draftStore(repositoryOf(repositories, draft.notebookId)!), draft.path, { note: draft, base: draftBase, ...(blocked ? { blocked } : {}), ...(deleted ? { deleted: true as const } : {}) });
+  return draft;
+};
+/** Clears committed drafts as the app does; the default mock leaves them, which most tests do not mind. */
+const clearDrafts = (repository: WorkspaceRepository, sent: WorkingNotes) => void clearCommittedNotes(draftStore(repository), sent);
+
+function commitHook(confirmGists?: (entries: { path: string; gist: string; }[]) => Promise<boolean>, { clear = false } = {}) {
+  const clearCommittedDrafts = clear ? vi.fn(clearDrafts) : vi.fn();
   const setRepositoryRevision = vi.fn();
-  const { result } = renderHook(() => useWorkingNoteCommit({ documents: [], sourceId: home.id, t: ((key: string, params?: Record<string, string>) => `${key} ${JSON.stringify(params ?? {})}`) as never, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError: vi.fn() }));
-  return { ...result.current, clearCommittedDrafts, setRepositoryRevision };
+  const setActionError = vi.fn();
+  const { result } = renderHook(() => useWorkingNoteCommit({ documents: [], sourceId: home.id, t: ((key: string, params?: Record<string, string>) => `${key} ${JSON.stringify(params ?? {})}`) as never, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError, ...(confirmGists ? { confirmGists } : {}) }));
+  return { ...result.current, clearCommittedDrafts, setRepositoryRevision, setActionError };
 }
 
 beforeEach(() => {
@@ -51,7 +72,10 @@ beforeEach(() => {
   updateWorkingNote(draftStore(home), base.path, { note: { ...base, content: '# A edited' }, base });
   updateWorkingNote(draftStore(other), 'trpg/b.md', { note: note('trpg/b.md', 'campaign~trpg', '# B', other.revision), base: null });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  commitExtra = () => ({});
+});
 
 it('commits the drafts of each repository as one commit on that repository', async () => {
   stubServer();
@@ -121,6 +145,136 @@ it('blocks a deletion of a note that changed remotely since, keeping it in the t
   await expect(commitWorkingNotes([change(base.path, home)], 'docs: remove a')).rejects.toThrow(/changed remotely after it was deleted/);
   expect(commits).toEqual([]);
   expect(readWorkingNotes(draftStore(home))[base.path]).toMatchObject({ deleted: true, blocked: expect.stringContaining('Restore it from the trash') });
+});
+
+/*
+ * A Gist not bound to a note is pushed only once the person confirms it (todo #31). A Gist this browser created for the note is its own confirmation.
+ */
+it('sends the Gist this app created for a note as its confirmation, and asks nothing', async () => {
+  stubServer();
+  rememberCreatedGist(home.id, base.path, 'new456');
+  updateWorkingNote(draftStore(home), base.path, { note: { ...base, content: '# A edited', metadata: { gist: 'new456' } }, base });
+  updateWorkingNote(draftStore(home), 'notes/life/c.md', { note: note('notes/life/c.md', 'notes~life', '# C', home.revision), base: null });
+  const confirm = vi.fn(async () => true);
+  const { commitWorkingNotes } = commitHook(confirm);
+  await commitWorkingNotes([change(base.path, home), change('notes/life/c.md', home)], 'docs: update');
+  expect(commits[0].confirmedGists).toEqual([{ path: base.path, gist: 'new456' }]);
+  expect(confirm).not.toHaveBeenCalled();
+  expect(syncs).toEqual([]);
+});
+
+it('confirms no Gist the note no longer names, nor one created for another repository', async () => {
+  stubServer();
+  rememberCreatedGist(home.id, base.path, 'old789');
+  rememberCreatedGist(other.id, base.path, 'new456');
+  updateWorkingNote(draftStore(home), base.path, { note: { ...base, content: '# A edited', metadata: { gist: 'new456' } }, base });
+  const { commitWorkingNotes } = commitHook(vi.fn(async () => false));
+  await commitWorkingNotes([change(base.path, home)], 'docs: update');
+  expect(commits[0].confirmedGists).toBeUndefined();
+});
+
+it('asks about the Gists a commit did not push and sends the ones the person confirms, naming that commit', async () => {
+  stubServer();
+  commitExtra = body => ({ gistsNeedConfirm: [{ path: base.path, gist: 'victim' }], gists: [], revision: `${body.repository}-next` });
+  const confirm = vi.fn(async () => true);
+  const { commitWorkingNotes } = commitHook(confirm);
+  await commitWorkingNotes([change(base.path, home)], 'docs: update');
+  expect(confirm).toHaveBeenCalledWith([{ path: base.path, gist: 'victim' }]);
+  expect(syncs).toEqual([{ repository: home.id, revision: `${home.id}-next`, notes: [{ path: base.path, gist: 'victim' }] }]);
+});
+
+/** The draft of the planted note: its text and a `gist` an agent named. */
+const planted = () => updateWorkingNote(draftStore(home), base.path, { note: { ...base, content: '# A edited', metadata: { title: 'A', gist: 'victim' } }, base });
+/** The server lists the planted note as unpublished on the first commit that names its Gist, and on no later one. */
+const listPlanted = () => {
+  commitExtra = body => body.notes.some((item: any) => item.metadata?.gist === 'victim') ? { gistsNeedConfirm: [{ path: base.path, gist: 'victim' }] } : {};
+};
+/** The draft a declined Gist leaves: the committed note without its `gist`, over the committed note. */
+const declinedDraft = () => ({ note: expect.objectContaining({ path: base.path, content: '# A edited', metadata: { title: 'A' } }), base: expect.objectContaining({ revision: `${home.id}-next`, metadata: { title: 'A', gist: 'victim' } }) });
+
+it('stages a draft without the Gist link when the person does not publish, whose commit pushes nothing', async () => {
+  stubServer();
+  planted();
+  listPlanted();
+  const confirm = vi.fn(async () => false);
+  const { commitWorkingNotes } = commitHook(confirm, { clear: true });
+  await commitWorkingNotes([change(base.path, home)], 'docs: update');
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(syncs).toEqual([]);
+  expect(readWorkingNotes(draftStore(home))[base.path]).toEqual(declinedDraft());
+  // The person commits that draft like any change: the note no longer names the Gist, so nothing is asked or pushed.
+  await commitWorkingNotes([change(base.path, home)], 'docs: drop the Gist link');
+  expect(commits[1]).toMatchObject({ revision: `${home.id}-next`, notes: [{ path: base.path, metadata: { title: 'A' } }] });
+  expect(commits[1].notes[0].metadata).not.toHaveProperty('gist');
+  expect(commits[1].confirmedGists).toBeUndefined();
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(syncs).toEqual([]);
+});
+
+it('stages the same draft without an asker, and says the notes were not published', async () => {
+  stubServer();
+  planted();
+  listPlanted();
+  const { commitWorkingNotes, setActionError } = commitHook(undefined, { clear: true });
+  await commitWorkingNotes([change(base.path, home)], 'docs: update');
+  expect(readWorkingNotes(draftStore(home))[base.path]).toEqual(declinedDraft());
+  expect(setActionError).toHaveBeenCalledWith(expect.stringContaining('editor.gistNotConfirmed'));
+  expect(syncs).toEqual([]);
+});
+
+it('asks about the repositories that committed when a later repository fails, before naming the failure', async () => {
+  stubServer(other.id);
+  planted();
+  listPlanted();
+  const confirm = vi.fn(async () => false);
+  const { commitWorkingNotes } = commitHook(confirm, { clear: true });
+  await expect(commitWorkingNotes([change(base.path, home), change('trpg/b.md', other)], 'docs: update')).rejects.toThrow(/changes\.partialCommit/);
+  expect(confirm).toHaveBeenCalledWith([{ path: base.path, gist: 'victim' }]);
+  expect(readWorkingNotes(draftStore(home))[base.path]).toEqual(declinedDraft());
+});
+
+it('publishes for the repositories that committed when a later repository fails, if the person confirms', async () => {
+  stubServer(other.id);
+  planted();
+  listPlanted();
+  const { commitWorkingNotes } = commitHook(vi.fn(async () => true), { clear: true });
+  await expect(commitWorkingNotes([change(base.path, home), change('trpg/b.md', other)], 'docs: update')).rejects.toThrow(/changes\.partialCommit/);
+  expect(syncs).toEqual([{ repository: home.id, revision: `${home.id}-next`, notes: [{ path: base.path, gist: 'victim' }] }]);
+  expect(readWorkingNotes(draftStore(home))[base.path]).toBeUndefined();
+});
+
+it('counts closing the dialog with Escape as not publishing', async () => {
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+  stubServer();
+  planted();
+  listPlanted();
+  const committed: Promise<void>[] = [];
+  function Harness({ onCommit }: { onCommit: (done: Promise<void>) => void; }) {
+    const { confirmGists, gistConfirmDialog } = useGistConfirm();
+    const { commitWorkingNotes } = useWorkingNoteCommit({ documents: [], sourceId: home.id, t: ((key: string) => key) as never, stageWorkingNote, clearCommittedDrafts: clearDrafts, setRepositoryRevision: vi.fn(), setActionError: vi.fn(), confirmGists });
+    return (
+      <>
+        <button type='button' onClick={() => onCommit(commitWorkingNotes([change(base.path, home)], 'docs: update'))}>commit</button>
+        {gistConfirmDialog}
+      </>
+    );
+  }
+  render(
+    <I18nProvider>
+      <Harness onCommit={done => committed.push(done)} />
+    </I18nProvider>,
+  );
+  fireEvent.click(screen.getByText('commit'));
+  fireEvent(await screen.findByRole('dialog'), new Event('cancel', { cancelable: true }));
+  await committed[0];
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(syncs).toEqual([]);
+  expect(readWorkingNotes(draftStore(home))[base.path]).toEqual(declinedDraft());
 });
 
 /*

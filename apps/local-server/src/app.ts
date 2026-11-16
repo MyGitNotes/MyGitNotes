@@ -27,7 +27,7 @@ import { type AssetStorage, envAssetStorage } from './asset-storage.js';
 import { createLocalR2AssetHandler, createR2AssetHandler, type NoteReader } from './r2-assets.js';
 import { createR2ManagerRouter } from './r2-manager.js';
 import { createFileManagerRouter } from './file-manager.js';
-import { createGistRouter, gistSite, gistToken, noteGist, syncGists } from './gists.js';
+import { createGistRouter, gistConfirmations, gistSite, gistToken, noteGist, publishCommittedGists, repositoryMarkers } from './gists.js';
 import { isLoopbackHttpOrigin, type PiAgent } from './pi-agent.js';
 import { externalPiAgent, externalPiEnvironment } from './pi-external-agent.js';
 import { commitPublisher, publishChanges, type PublishingService, publishNotes } from './publishing.js';
@@ -269,10 +269,14 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
     const remoteRepositories = async (res: express.Response) => (await eachRepository(res)).map(({ handle, alias }) => ({ ...asRemote(handle), alias }));
     if (liveNotes) app.use(createLiveRouter());
     app.use(createGistRouter());
-    /** Pushes committed notes that name a Gist to it; notes that name none cost nothing. */
-    const publishedGists = async (res: express.Response, notes: { path: string; content: string; metadata: Record<string, unknown>; }[]) => {
+    /**
+     * Pushes committed notes of `repository` that name a Gist to it, each only when the person meant it
+     * (`publishCommittedGists`): `confirmed` is the request's `confirmedGists`, else the Gist must carry the note's
+     * marker. Notes that name none cost nothing.
+     */
+    const publishedGists = async (res: express.Response, repository: string, notes: { path: string; content: string; metadata: Record<string, unknown>; }[], confirmed: unknown) => {
       const token = gistToken(res);
-      return token && notes.some(note => noteGist(note.metadata)) ? { gists: await syncGists(token, notes, gistSite(res)) } : {};
+      return token && notes.some(note => noteGist(note.metadata)) ? await publishCommittedGists(token, await repositoryMarkers(res, repository), notes, gistConfirmations(confirmed), gistSite(res)) : {};
     };
     app.get('/api/workspace', async (_req, res) => {
       try {
@@ -473,13 +477,13 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
       try {
         // An anonymous request is refused before its body is read.
         if (!signedIn(res)) throw new SourceError('Sign in with write permission to commit notes.', 403);
-        const { repository, notes, revision, message, documents, version } = req.body;
+        const { repository, notes, revision, message, documents, version, confirmedGists } = req.body;
         const { handle, alias } = await namedRepository(res, repository);
         const target = asRemote(handle);
         if (!target.authenticated) throw new SourceError('Sign in with write permission to commit notes.', 403);
         const receipt = await target.reader.commitNotes(notes, revision, message, storedDocumentDrafts(alias, documents), newVersion(version));
         // A deleted note publishes nothing.
-        res.json({ ...receipt, ...await publishedGists(res, notes.filter((note: { delete?: boolean; }) => note?.delete !== true)), ...await publishNotes(publishing, { req, res, repository: target, notes }) });
+        res.json({ ...receipt, ...await publishedGists(res, target.id, notes.filter((note: { delete?: boolean; }) => note?.delete !== true), confirmedGists), ...await publishNotes(publishing, { req, res, repository: target, notes }) });
       } catch (error) {
         fail(res, error);
       }
@@ -487,12 +491,12 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
     app.post('/api/notes', async (req, res) => {
       try {
         if (!signedIn(res)) throw new SourceError('Sign in with write permission to edit notes.', 403);
-        const { path: file, content, metadata, revision, createOnly, notebookId } = req.body;
+        const { path: file, content, metadata, revision, createOnly, notebookId, confirmedGists } = req.body;
         if (typeof file !== 'string' || typeof content !== 'string') throw new SourceError('path and content are required.');
         const target = await remoteNote(res, file, notebookId);
         // An internal `live:` revision is the hosted router's to hand on, never a browser's: here it is no revision at all.
         const saved = await target.reader.save(file, content, metadata, parseLiveBase(revision) ? '' : revision, createOnly);
-        res.json({ ...saved, note: keyedItem(target.alias)(saved.note), ...await publishedGists(res, [saved.note]), ...await publishNotes(publishing, { req, res, repository: target, notes: [saved.note] }) });
+        res.json({ ...saved, note: keyedItem(target.alias)(saved.note), ...await publishedGists(res, target.id, [saved.note], confirmedGists), ...await publishNotes(publishing, { req, res, repository: target, notes: [saved.note] }) });
       } catch (error) {
         fail(res, error);
       }

@@ -124,7 +124,8 @@ describe('a deployment whose repository is on GitHub Enterprise Server', () => {
     expect(outbound.find(call => call.method === 'POST' && call.url.endsWith('/gists'))).toMatchObject({ url: `${site}/api/v3/gists`, authorization: 'Bearer ghe-user-token' });
     const workspace = await fetch(`${base}/api/workspace`, { headers: { Cookie: cookie } }).then(r => r.json());
     const note = (await fetch(`${base}/api/notes`, { headers: { Cookie: cookie } }).then(r => r.json())).notes.find((entry: { title: string; }) => entry.title === 'Alpha');
-    const edit = post(cookie, { repository: workspace.defaultRepository, notes: [{ ...note, content: '# Alpha again', metadata: { ...note.metadata, gist: 'abc123' } }], revision: fixture.head(), message: 'docs: edit note' });
+    // The browser confirms the Gist it created for the note, which the note did not name before this commit.
+    const edit = post(cookie, { repository: workspace.defaultRepository, notes: [{ ...note, content: '# Alpha again', metadata: { ...note.metadata, gist: 'abc123' } }], revision: fixture.head(), message: 'docs: edit note', confirmedGists: [{ path: note.path, gist: 'abc123' }] });
     const saved = await fetch(`${base}/api/notes/commit`, edit).then(r => r.json());
     expect(saved.gists).toEqual([{ path: note.path, gist: 'abc123' }]);
     expect(outbound.filter(call => call.url.includes('/gists/abc123')).map(call => [call.method, call.url])).toEqual([['GET', `${site}/api/v3/gists/abc123`], ['PATCH', `${site}/api/v3/gists/abc123`]]);

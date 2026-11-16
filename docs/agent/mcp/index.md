@@ -216,8 +216,12 @@ Every MCP edit of one file — `write`, `append` and `edit` on a note, `AGENTS.m
 or skill file, `save_note` and `update_note_metadata` — is committed as an agent edit: the commit
 subject ends with `(Agent, YYYY-MM-DD)` and the message carries an
 `Agent-Edit: YYYY-MM-DD` trailer, both with the UTC day, whatever commit message
-the caller supplies. The app's history panel shows these commits as agent
-edits. Named versions live in version files under `.mygitnotes/versions`, which
+the caller supplies. The hosted `cp`, `mv` and `replace_notes`, which commit
+note text too, are marked the same way. The app's history panel shows these commits as agent
+edits. No MCP tool pushes a Gist or changes one's binding: the `gist:` id an
+agent writes into a note is pushed by the app's commit routes only to a Gist
+bound to that note, or after the person confirms it (see the security notes).
+Named versions live in version files under `.mygitnotes/versions`, which
 MCP tools never edit directly; a version file moves and is deleted together with
 its note.
 

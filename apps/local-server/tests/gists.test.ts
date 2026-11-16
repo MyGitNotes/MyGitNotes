@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer, type Server } from 'node:http';
+import { gitBlobId } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { createRecordStore } from '../src/record-store/index.js';
-import { gistPageAllowed } from '../src/gists.js';
+import { gistMarker, gistPageAllowed } from '../src/gists.js';
 
 const manifest = 'schema_version: 1\nworkspace:\n  title: Hosted\n  default_notebook: life\nnotebooks:\n  - id: life\n    title: Life\n    root: notes/life\n';
 const files: Record<string, string> = { '.mygitnotes.yaml': manifest, 'notes/life/shared.md': '---\ntitle: Shared\ngist: abc123\n---\n\nOld body\n', 'notes/life/private.md': '# Private\n' };
@@ -57,10 +58,15 @@ beforeEach(async () => {
     const match = /^https:\/\/api\.github\.com\/repos\/owner\/home(.*)$/.exec(String(url));
     if (!match) return nativeFetch(url, init);
     const endpoint = match[1];
+    const blob = (file: string) => gitBlobId(Buffer.from(files[file]), 40);
     if (endpoint === '') return json({ private: true, default_branch: 'main', permissions: { push: true } });
     if (endpoint.startsWith('/commits/')) return json({ sha: 'a'.repeat(40), commit: { tree: { sha: 'tree' } } });
-    if (endpoint.startsWith('/git/trees/')) return json({ truncated: false, tree: Object.keys(files).map(file => ({ path: file, sha: `blob:${file}`, type: 'blob', mode: '100644', size: 10 })) });
-    if (endpoint.startsWith('/git/blobs/')) return json({ encoding: 'base64', content: Buffer.from(files[decodeURIComponent(endpoint.slice('/git/blobs/blob:'.length))] ?? '').toString('base64') });
+    if (endpoint.startsWith('/contents/')) {
+      const file = decodeURIComponent(endpoint.slice('/contents/'.length).split('?')[0]);
+      return file in files ? json({ type: 'file', sha: blob(file), size: Buffer.byteLength(files[file]) }) : json({ message: 'Not Found' }, 404);
+    }
+    if (endpoint.startsWith('/git/trees/')) return json({ truncated: false, tree: Object.keys(files).map(file => ({ path: file, sha: blob(file), type: 'blob', mode: '100644', size: Buffer.byteLength(files[file]) })) });
+    if (endpoint.startsWith('/git/blobs/')) return json({ encoding: 'base64', content: Buffer.from(files[Object.keys(files).find(file => blob(file) === endpoint.slice('/git/blobs/'.length))!] ?? '').toString('base64') });
     if (endpoint === '/git/trees') return json({ sha: 'new-tree' });
     if (endpoint === '/git/commits') return json({ sha: 'd'.repeat(40) });
     if (endpoint.startsWith('/git/refs/')) return json({ object: { sha: 'd'.repeat(40) } });
@@ -79,7 +85,11 @@ afterEach(async () => {
 
 const headers = { Cookie: `gh_notes_session=${session}`, 'Content-Type': 'application/json' };
 const call = (method: string, url: string, body?: object, requestHeaders: Record<string, string> = headers) => fetch(`${base}${url}`, { method, headers: requestHeaders, body: body && JSON.stringify(body) }).then(async response => ({ status: response.status, body: await response.json() }));
-const commit = (notes: object[]) => call('POST', '/api/notes/commit', { repository: 'github:owner/home@main', revision: 'a'.repeat(40), message: 'docs: update', notes });
+const commit = (notes: object[], extra: object = {}) => call('POST', '/api/notes/commit', { repository: 'github:owner/home@main', revision: 'a'.repeat(40), message: 'docs: update', notes, ...extra });
+/** The marker that binds a Gist to the shared note, as the app writes it when it creates or confirms the Gist. */
+const SHARED_MARKER = gistMarker({ type: 'github', repository: 'owner/home', branch: 'main' }, 'notes/life/shared.md');
+/** The person confirms the shared note's Gist on this commit, as the browser that created it does. */
+const confirmShared = { confirmedGists: [{ path: 'notes/life/shared.md', gist: 'abc123' }] };
 
 it('publishes a note body as a secret Gist of the signed-in account', async () => {
   const { status, body } = await call('POST', '/api/gists', { path: 'notes/life/private.md', content: '# Private\n', metadata: { title: 'Private' } });
@@ -109,10 +119,11 @@ it('unpublishes by deleting the Gist, and treats a Gist already gone as deleted'
 });
 
 it('updates the Gist a committed note names with its latest body, renaming its file', async () => {
+  gists.get('abc123')!.description = `Shared ${SHARED_MARKER}`;
   const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { title: 'Shared again', gist: 'abc123' } }, { path: 'notes/life/private.md', content: '# Private changed\n', metadata: {} }]);
   expect(status).toBe(200);
   expect(body.gists).toEqual([{ path: 'notes/life/shared.md', gist: 'abc123' }]);
-  expect(gists.get('abc123')).toEqual({ description: 'Shared again', public: false, files: { 'shared.md': { content: 'New body\n' } } });
+  expect(gists.get('abc123')).toEqual({ description: `Shared again ${SHARED_MARKER}`, public: false, files: { 'shared.md': { content: 'New body\n' } } });
 });
 
 it('does not call Gists when no committed note names one', async () => {
@@ -124,7 +135,7 @@ it('does not call Gists when no committed note names one', async () => {
 
 it('keeps the commit and reports the note when its Gist cannot be updated', async () => {
   gists.clear();
-  const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { gist: 'abc123' } }]);
+  const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { gist: 'abc123' } }], confirmShared);
   expect(status).toBe(200);
   expect(body.commit.commitHash).toBe('d'.repeat(40));
   expect(body.gists).toEqual([{ path: 'notes/life/shared.md', gist: 'abc123', error: expect.stringContaining('404') }]);
@@ -132,9 +143,22 @@ it('keeps the commit and reports the note when its Gist cannot be updated', asyn
 
 it('reports a Gist update the grant is not allowed to make as needing a new sign-in', async () => {
   scopes = 'repo, workflow';
-  const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { gist: 'abc123' } }]);
+  const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { gist: 'abc123' } }], confirmShared);
   expect(status).toBe(200);
   expect(body.gists).toEqual([{ path: 'notes/life/shared.md', gist: 'abc123', error: expect.any(String), reauthorize: true }]);
+});
+
+// The marker binds a Gist to a note of a repository as every device names it, whatever branch or local id it is opened by.
+it('marks a Gist with a hash of its repository and note path that every device computes alike and that hides the path', () => {
+  const home = { type: 'github' as const, repository: 'owner/home', branch: 'main' };
+  const marker = gistMarker(home, 'notes/life/shared.md');
+  expect(marker).toMatch(/^\[mgn:[0-9a-f]{8,}\]$/);
+  expect(gistMarker({ ...home, branch: 'drafts' }, 'notes/life/shared.md')).toBe(marker);
+  expect(gistMarker({ ...home, repository: 'Owner/Home' }, 'notes/life/shared.md')).toBe(marker);
+  expect(gistMarker({ ...home, url: 'https://github.com' }, 'notes/life/shared.md')).toBe(marker);
+  expect(gistMarker(home, 'notes/life/private.md')).not.toBe(marker);
+  expect(gistMarker({ ...home, repository: 'owner/other' }, 'notes/life/shared.md')).not.toBe(marker);
+  expect(gistMarker({ ...home, url: 'https://ghe.example.com' }, 'notes/life/shared.md')).not.toBe(marker);
 });
 
 it('opens only a Gist page of the workspace site', () => {

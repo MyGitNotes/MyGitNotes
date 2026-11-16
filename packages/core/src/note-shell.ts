@@ -123,6 +123,14 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
     const expected = string(args, 'revision');
     return reader.commitChanges(changes, expected, operation, scope, message, snapshot);
   };
+  /**
+   * The program's message for a commit that writes note text, marked as an agent edit, as every note text an agent
+   * commits, so history shows the commit as an agent's.
+   */
+  const agentMessage = (changes: { path: string; }[], scope: CommitScope) => {
+    const paths = changes.map(change => change.path).sort();
+    return agentEditMessage(`docs(${scope}): ${operation} ${paths.length === 1 ? path.posix.basename(paths[0]) : `${paths.length} files`}`);
+  };
   if (operation === 'ls') {
     const input = string(args, 'path', '.');
     const dir = input === '.' ? input : directoryPath(input);
@@ -302,9 +310,9 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
         const change = await bookmarkRelocationChange(reader, snapshot, owner, relocate);
         if (change) merged.set(change.path, change);
       }
-      return receipt([...merged.values()], 'folders');
+      return receipt([...merged.values()], 'folders', agentMessage([...merged.values()], 'folders'));
     }
-    return receipt(changes, 'notes');
+    return receipt(changes, 'notes', agentMessage(changes, 'notes'));
   }
   throw new SourceError('Unknown note operation.');
 }
