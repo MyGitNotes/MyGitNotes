@@ -1998,6 +1998,7 @@ export const en = {
   'graph.addToLane': 'Add selection to compilation',
   'graph.removeFromLane': 'Remove selection from compilation',
   'graph.openLaneGraph': 'Open compilation in Graph — select, edit, add or remove notes',
+  'graph.outsideNotebook': '{count} items in other notebooks are not shown in the graph',
   'graph.canvasHelp': 'Graph canvas. Select nodes and press Enter to expand or collapse.',
   'graph.expandEnter': 'Expand note (Enter)',
   'graph.minimizeLane': 'Minimize compilation panel',

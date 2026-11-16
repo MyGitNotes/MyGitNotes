@@ -1,5 +1,6 @@
 import { compilationFile, type CompilationRow, compilationRow, parseCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
+import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import type { NotebookConfig } from './types.js';
 
 /** A compilation entry as the browser reads it: its row when the file opens, else why it does not. */
@@ -13,16 +14,30 @@ export interface ParsedCompilation {
   error?: string;
 }
 
+/** The repository a notebook key names; bare local ids, as a single-repository workspace may hold, share one. */
+const repositoryOf = (notebookId: string) => parseNotebookKey(notebookId)?.alias ?? '';
+
+/** Every notebook a row reads from: its own, its items' and its source's. */
+export function compilationNotebookIds(row: CompilationRow | undefined, fallback: string): string[] {
+  if (!row) return [fallback];
+  const ids = row.kind === 'custom' ? row.items.flatMap(item => item.kind === 'youtube' ? [] : [item.notebookId]) : [row.source.notebookId];
+  return [...new Set([row.notebookId, ...ids])];
+}
+
 /** Parses the YAML of a compilation entry listed or looked up with its content. */
 export function parseCompilationNote(note: Pick<NoteListItem, 'path' | 'notebookId' | 'title' | 'content' | 'invalid'>, notebooks: readonly NotebookConfig[]): ParsedCompilation {
   const base = { path: note.path, notebookId: note.notebookId, title: note.title, content: note.content ?? '' };
   const notebook = notebooks.find(candidate => candidate.id === note.notebookId);
   if (!notebook) return { ...base, error: `Notebook ${note.notebookId} is not configured.` };
-  // A file the catalog marks invalid (a duplicate id, a path outside its notebook) opens to the error, even though its text is readable.
+  // A file the catalog marks invalid (a duplicate id, a folder source outside every notebook) opens to the error, even though its text is readable.
   if (note.invalid) return { ...base, error: note.invalid };
   if (typeof note.content !== 'string') return { ...base, error: note.invalid };
+  // Items may lie in any notebook of the compilation's repository, never in another repository's, whatever its roots.
+  const repository = repositoryOf(note.notebookId);
+  const scope = notebooks.filter(candidate => repositoryOf(candidate.id) === repository);
+  const notebookOf = (path: string) => scope.find(candidate => path === candidate.root || path.startsWith(`${candidate.root}/`))?.id;
   try {
-    return { ...base, row: compilationRow(parseCompilation(note.content, [notebook.root]), { notebookId: note.notebookId, path: note.path }) };
+    return { ...base, row: compilationRow(parseCompilation(note.content, scope.map(candidate => candidate.root)), { notebookId: note.notebookId, path: note.path }, notebookOf) };
   } catch (error) {
     return { ...base, error: error instanceof Error ? error.message : String(error) };
   }

@@ -14,6 +14,7 @@ import { CompilationEditRow } from './CompilationDialogs.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { StudyLane } from './StudyLane.js';
 import { useCompilationAssets } from './useCompilationItemOpen.js';
+import { compilationNotebookIds } from '../lib/compilation-rows.js';
 import type { FolderItem } from '../lib/types.js';
 import './study.css';
 
@@ -23,7 +24,7 @@ export function CompilationStudy({ notebooks, folders, notebookId, path, onOpenN
   const actions = useCompilationActions();
   const compilation = useCompilation({ notebookId, path }, notebooks);
   const study = useStudyWorkspace(actions.repository(notebookId), onStudySaved);
-  const { assets } = useCompilationAssets(notebooks, notebookId);
+  const { assets } = useCompilationAssets(notebooks, compilationNotebookIds(compilation.page.rows[0], notebookId));
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
   const [editing, setEditing] = useState(false);
   const row = compilation.page.rows[0];

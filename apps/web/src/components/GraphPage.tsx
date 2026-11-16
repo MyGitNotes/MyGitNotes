@@ -10,7 +10,7 @@ import { LoadingStatus } from './LoadingStatus.js';
 export type { GraphPageProps } from './graph/types.js';
 export function GraphPage(props: GraphPageProps) {
   const model = useGraphController(props);
-  const { lane, t, container, graphSource, matchingPaths, visiblePaths, lanePaths, matching, graphData, resetView, laneViewport, minimap, graphLoading, visibleSelected, onDoubleClickCapture, onKeyDown, onWheelCapture, onPointerDownCapture } = model;
+  const { outsideNotebook, lane, t, container, graphSource, matchingPaths, visiblePaths, lanePaths, matching, graphData, resetView, laneViewport, minimap, graphLoading, visibleSelected, onDoubleClickCapture, onKeyDown, onWheelCapture, onPointerDownCapture } = model;
   return (
     <div ref={container} style={lane ? { height: laneViewport.height } : undefined} data-selected-count={visibleSelected.length} tabIndex={0} aria-label={t('graph.canvasHelp')} className={`graph-page-container graph-editing-surface ${lane ? 'graph-in-lane' : ''}`} onDoubleClickCapture={onDoubleClickCapture} onKeyDown={onKeyDown} onWheelCapture={onWheelCapture} onPointerDownCapture={onPointerDownCapture}>
       <GraphPanels model={model} />
@@ -18,6 +18,7 @@ export function GraphPage(props: GraphPageProps) {
       <GraphCards model={model} />
       <GraphGestureLayer model={model} />
       {(graphSource.error || matchingPaths.error || visiblePaths.error || lanePaths.error) && <div role='alert' className='graph-notice'>{graphSource.error || matchingPaths.error || visiblePaths.error || lanePaths.error}</div>}
+      {lane && outsideNotebook > 0 && <p role='status' className='graph-notice graph-notice-outside'>{t('graph.outsideNotebook', { count: outsideNotebook })}</p>}
       {graphLoading && <LoadingStatus className='graph-empty'>{t('notes.loading')}</LoadingStatus>}
       {!graphLoading && !graphData.nodes.length && <p className='graph-empty' role='status'>{t('filters.graphEmpty')}</p>}
       <div className='graph-minimap-panel'>

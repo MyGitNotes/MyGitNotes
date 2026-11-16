@@ -15,6 +15,19 @@ import { themeColor } from '../../lib/theme-color.js';
 import type { MutableRefObject } from 'react';
 import type { GraphPageProps, LayoutNode } from './types.js';
 import type { useGraphNoteSessions } from './useGraphNoteSessions.js';
+/**
+ * The graph node ids a lane draws and how many of its items it leaves out: the graph shows one notebook, the
+ * compilation's own, so pinned items and a folder source in another notebook of the repository are counted instead.
+ */
+export function laneGraphMembers(row: CompilationRow, paths: readonly string[]): { ids: string[]; outside: number; } {
+  if (row.kind === 'dynamic') {
+    const notebookId = row.source.notebookId;
+    return notebookId === row.notebookId ? { ids: paths.map(path => noteRefKey({ notebookId, path })), outside: 0 } : { ids: [], outside: paths.length };
+  }
+  const own = new Set(row.items.flatMap(item => item.kind === 'note' && item.notebookId === row.notebookId ? [item.path] : []));
+  return { ids: paths.filter(path => own.has(path)).map(path => noteRefKey({ notebookId: row.notebookId, path })), outside: row.items.filter(item => item.kind !== 'youtube' && item.notebookId !== row.notebookId).length };
+}
+
 export function useGraphData({ notebooks, filters, lane, activeLane, rows, laneIds, laneKey, showOutside, sessions, only, layout, showOrphans, positions, appearance }: Pick<GraphPageProps, 'notebooks' | 'filters' | 'lane'> & { activeLane?: CompilationRow; rows: CompilationRow[]; laneIds: string[]; laneKey: string; showOutside: boolean; sessions: ReturnType<typeof useGraphNoteSessions>['sessions']; only: string[] | null; layout: GraphPlacement; showOrphans: boolean; positions: MutableRefObject<Map<string, LayoutNode>>; appearance: GraphAppearance; }) {
   const graphSource = useNoteGraph();
   const { repositories } = useNoteQueryScope();
@@ -33,7 +46,8 @@ export function useGraphData({ notebooks, filters, lane, activeLane, rows, laneI
   const shownLanes = useMemo(() => [...rows.filter(row => laneIds.includes(row.id)), ...(lane ? [lane] : [])], [rows, laneKey, lane]);
   /* eslint-enable react-hooks/exhaustive-deps */
   const lanePaths = useLanePaths(shownLanes);
-  const laneNodeIds = new Map(shownLanes.map(row => [row.id, (lanePaths.paths.get(row.id) || []).map(path => noteRefKey({ notebookId: row.notebookId, path }))]));
+  const laneNodeIds = new Map(shownLanes.map(row => [row.id, laneGraphMembers(row, lanePaths.paths.get(row.id) || []).ids]));
+  const outsideNotebook = activeLane ? laneGraphMembers(activeLane, lanePaths.paths.get(activeLane.id) || []).outside : 0;
   const editingDrafts = useMemo(() =>
     [...sessions].flatMap(([path, session]) => {
       const node = graphSource.graph?.nodes.find(node => node.id === path);
@@ -83,5 +97,5 @@ export function useGraphData({ notebooks, filters, lane, activeLane, rows, laneI
   const colors = useMemo(() => graphColorGroups(graphData.nodes, notebooks, appearance), [graphData, notebooks, appearance]);
   const nodeColor = useCallback((node: NoteGraphNode) => themeColor(colors.find(group => group.key === graphColorGroup(node, notebooks, appearance.mode).key)?.color || 'var(--color-muted)'), [colors, notebooks, appearance]);
 
-  return { graphSource, scopeNotebook, filterQuery, matchingPaths, visiblePaths, shownLanes, lanePaths, editingDrafts, graph, matching, laneMembers, expanded, graphData, colors, nodeColor };
+  return { outsideNotebook, graphSource, scopeNotebook, filterQuery, matchingPaths, visiblePaths, shownLanes, lanePaths, editingDrafts, graph, matching, laneMembers, expanded, graphData, colors, nodeColor };
 }

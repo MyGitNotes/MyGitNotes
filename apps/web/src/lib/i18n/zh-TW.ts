@@ -1999,6 +1999,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'graph.addToLane': '將所選加入合輯',
   'graph.removeFromLane': '將所選移出合輯',
   'graph.openLaneGraph': '在關聯圖開啟合輯：選擇、編輯、新增或移除筆記',
+  'graph.outsideNotebook': '另有 {count} 個項目在其他筆記本，關聯圖不顯示',
   'graph.canvasHelp': '關聯圖畫布：選取節點後按 Enter 展開或收合。',
   'graph.expandEnter': '展開筆記（Enter）',
   'graph.minimizeLane': '縮起合輯面板',
