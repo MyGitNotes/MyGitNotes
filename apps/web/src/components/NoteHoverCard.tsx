@@ -113,7 +113,7 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
     <div ref={cardRef} role='group' aria-label={t('focusList.cardLabel', { title: note.title })} className='note-hover-card' style={position ? { left: position.left, top: position.top } : { left: -9999, top: 0 }} {...cardProps}>
       <h3 className='note-hover-title'>{note.title}</h3>
       <div className='note-hover-status'>
-        <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={note.live ? t('live.checkedOut') : undefined} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateStatus(note, status)} onOpenChange={onMenuOpenChange} />
+        <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={liveLock(note, 'other')} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateStatus(note, status)} onOpenChange={onMenuOpenChange} />
         <LiveBadge live={note.live} title={note.title} />
       </div>
       {note.tags.length > 0 && <NoteTags tags={note.tags} className='note-hover-tags' />}

@@ -33,9 +33,11 @@ interface Params {
   stageWorkingNote: WorkspaceState['stageWorkingNote'];
   revisionFor: WorkspaceState['revisionFor'];
   location: ReturnType<typeof useLocation>;
+  /** Whether a note being edited live (編輯中) keeps its status until it is checked in. */
+  liveLocked?: (note: NoteListItem) => boolean;
 }
 
-export function useNoteRestoration({ remote, readDraft, updateDraft, setEditingNote, navigate, returnTo, invalidateNotes, setGitStatus, setActionError, handleSaveNote, readNoteForChange, selectedNotebookId, canWriteNotebook, t, config, queryClient, queryScope, stageWorkingNote, revisionFor, location }: Params) {
+export function useNoteRestoration({ remote, readDraft, updateDraft, setEditingNote, navigate, returnTo, invalidateNotes, setGitStatus, setActionError, handleSaveNote, readNoteForChange, selectedNotebookId, canWriteNotebook, t, config, queryClient, queryScope, stageWorkingNote, revisionFor, location, liveLocked = note => Boolean(note.live) }: Params) {
   // Restore single note file uncommitted changes from Git HEAD
   const handleRestoreNoteFile = async (notePath: string, notebookId: string): Promise<NoteItem | null> => {
     try {
@@ -69,7 +71,7 @@ export function useNoteRestoration({ remote, readDraft, updateDraft, setEditingN
   const handleUpdateNoteStatus = async (note: NoteListItem, newStatus: string) => {
     setActionError('');
     // A note being edited live (編輯中) changes its status in the live editor until it is checked in.
-    if (note.live) {
+    if (liveLocked(note)) {
       setActionError(t('live.checkedOut'));
       return false;
     }

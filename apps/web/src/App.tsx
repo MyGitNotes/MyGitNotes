@@ -122,7 +122,7 @@ import { FolderLinks } from './components/FolderLinks.js';
 import { I18nProvider, useTranslation } from './lib/i18n/index.js';
 import { AlertCircle, AlertTriangle, X } from 'lucide-react';
 import { LoadingStatus } from './components/LoadingStatus.js';
-import { isLiveNote, liveEditableKind, type LiveNoteEditing } from './lib/live-api.js';
+import { liveEditableKind, type LiveNoteEditing } from './lib/live-api.js';
 import { LIVE_MERGE_CONFLICT, noteFileText } from './lib/live-handover.js';
 import { parseNoteFile } from '@mygitnotes/core/note-file';
 import { useLiveHandover } from './app/useLiveHandover.js';
@@ -234,7 +234,7 @@ export const AppContent: React.FC = () => {
       const repository = repositoryFor(notebookId);
       return repository?.write ? repository.live : undefined;
     };
-    return { discards: notebookId => Boolean(live(notebookId)?.discard), retargets: notebookId => Boolean(live(notebookId)?.retarget) };
+    return { discards: notebookId => Boolean(live(notebookId)?.discard), retargets: notebookId => Boolean(live(notebookId)?.retarget), releasesUntouched: notebookId => live(notebookId)?.kind === 'builtin' };
   }, [repositoryFor]);
   const { deletedNotes, setDeletedNotes, undoToast, setUndoToast, handleDeleteNote, handleRestoreNote } = useDeletionUndo({ canWriteNotebook, revisionFor, setNotebookRevision, updateDraft, editingNote, setEditingNote, navigate, returnTo, remote, setActionError, readNoteForChange, invalidateNotes, gitStatus, setGitStatus, repositoryFor });
 
@@ -266,7 +266,7 @@ export const AppContent: React.FC = () => {
 
   const { handleSaveNote } = useNoteSaving({ canWriteNotebook, remote, readDraft, readCommittedNote, t, stageWorkingNote, invalidateNotes, setEditingNote, setGitStatus, defaultDraftScope: defaultRepository ? draftScope(defaultRepository) : '' });
 
-  const { handleRestoreNoteFile, handleUpdateNoteStatus, handleOpenFolderIndex } = useNoteRestoration({ remote, readDraft, updateDraft, setEditingNote, navigate, returnTo, invalidateNotes, setGitStatus, setActionError, handleSaveNote, readNoteForChange, selectedNotebookId, canWriteNotebook, t, config, queryClient, queryScope, stageWorkingNote, revisionFor, location });
+  const { handleRestoreNoteFile, handleUpdateNoteStatus, handleOpenFolderIndex } = useNoteRestoration({ remote, readDraft, updateDraft, setEditingNote, navigate, returnTo, invalidateNotes, setGitStatus, setActionError, handleSaveNote, readNoteForChange, selectedNotebookId, canWriteNotebook, t, config, queryClient, queryScope, stageWorkingNote, revisionFor, location, liveLocked: note => liveActionLocked(note, 'other', liveDrafts) });
 
   // Multi-select and bulk actions (set status, add/remove tag, move to folder) for the browse views.
   const { selectedNotes, selectedKeys, toggleSelect, clearSelection } = useNoteSelection({ displayedNotes, viewMode, selectedNotebookId, scopeKey: noteLink.inFocus ? returnTo : location.pathname + location.search });
@@ -306,7 +306,7 @@ export const AppContent: React.FC = () => {
     clearLocalDraft(scope, path);
     moveLocalDraft(`${scope}:conflict`, path, destination);
   };
-  const noteMove = useNoteMove({ config, remote, canWriteNotebook: canChangeFiles, readDraft, updateDraft, stageWorkingNote, saveNote: handleSaveNote, focus: focusPage, queryClient, queryScope, flushEditors: editorRegistry.flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus: noteFocus.relocatePaths, setActionError, t, retargets: liveDrafts.retargets });
+  const noteMove = useNoteMove({ config, remote, canWriteNotebook: canChangeFiles, readDraft, updateDraft, stageWorkingNote, saveNote: handleSaveNote, focus: focusPage, queryClient, queryScope, flushEditors: editorRegistry.flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus: noteFocus.relocatePaths, setActionError, t, retargets: liveDrafts.retargets, releasesUntouched: liveDrafts.releasesUntouched });
   // Offline handover (collab-first A3.2): once online, drafts of notes the built-in live editor covers go to their live notes.
   const liveHandover = useLiveHandover({
     ready: Boolean(remote && sourceId && config),
@@ -499,7 +499,7 @@ export const AppContent: React.FC = () => {
       {layout.chips === 'list' && <FilterChips filters={filterProps} onAdd={openFilters} />}
       <LegacySchemaNotice schemaVersion={config?.schema_version} />
       {actionError && <p role='alert' className='mb-3 text-sm text-danger'>{actionError}</p>}
-      {selectedNotes.length > 0 && <BulkActionsToolbar count={selectedNotes.length} statuses={notebookStatuses} availableTags={availableTags} busy={bulkBusy} readOnly={!canWriteFiles} canMove={Boolean(bulkMoveNotebookId)} liveNotes={selectedNotes.filter(isLiveNote).map(note => note.title || note.path)} liveMovable={selectedNotes.every(note => !liveActionLocked(note, 'move', liveDrafts))} onSetStatus={status => void runBulkStatus(status)} onAddTag={tag => void runBulkTag('add', tag)} onRemoveTag={tag => void runBulkTag('remove', tag)} onMove={() => setBulkMoveOpen(true)} onClear={clearSelection} />}
+      {selectedNotes.length > 0 && <BulkActionsToolbar count={selectedNotes.length} statuses={notebookStatuses} availableTags={availableTags} busy={bulkBusy} readOnly={!canWriteFiles} canMove={Boolean(bulkMoveNotebookId)} liveNotes={selectedNotes.filter(note => liveActionLocked(note, 'other', liveDrafts)).map(note => note.title || note.path)} liveMovable={selectedNotes.every(note => !liveActionLocked(note, 'move', liveDrafts))} onSetStatus={status => void runBulkStatus(status)} onAddTag={tag => void runBulkTag('add', tag)} onRemoveTag={tag => void runBulkTag('remove', tag)} onMove={() => setBulkMoveOpen(true)} onClear={clearSelection} />}
       {staleNotice && <p role='alert' className='mb-3 text-sm text-warning'>{staleNotice}</p>}
       {listResult.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.loadFailed', { message: listResult.error })}</p>}
       {facetsQuery.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.countsFailed', { message: facetsQuery.error })}</p>}

@@ -155,7 +155,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     if (!link?.live || link.repository !== repository) throw new LiveNotLiveError();
     return link;
   };
-  const socket = liveSocket({ documents, store, clock, process: processName, ready, covers, ...(options.appUrl !== undefined ? { appUrl: options.appUrl } : {}), limits });
+  const socket = liveSocket({ documents, store, clock, process: processName, ready, covers, ...(options.appUrl !== undefined ? { appUrl: options.appUrl } : {}), limits, left: link => releaseUntouched(link) });
   const tokenOf = (lease: LiveLease) => typeof lease?.token === 'string' ? lease.token : '';
   /** The live link, when `lease` holds it now. */
   const leased = async (repository: RepositoryId, id: string, lease: LiveLease): Promise<StoredLink> => {
@@ -370,6 +370,38 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       await store.unlease(link.id, tokenOf(lease), clock());
     },
   });
+
+  /**
+   * Releases a note its last editor just left when nobody typed in it, or what they typed was undone: its text is the
+   * one it was checked out (or last synced) with, so nothing is committed, and nothing locks it any longer (owner
+   * decision on cf16-F006). A note someone typed in is left to the idle check-in; one someone is still in, or that is
+   * being checked in, stays. A failure only leaves the note to the idle check-in.
+   */
+  const releaseUntouched = async ({ id, epoch }: { id: string; epoch: number; }) => {
+    try {
+      const link = await store.link(id);
+      if (!link?.live || link.epoch !== epoch || link.path === null || !link.base || !covers(link.repository)) return;
+      const { repository, path, base } = link;
+      if ((await documents.snapshot(link)).hash !== base.contentHash || (await active(link)) > 0) return;
+      let lease: LiveLease;
+      try {
+        lease = await service.lease(repository, id);
+      } catch (error) {
+        if (error instanceof LiveLeasedError || error instanceof LiveNotLiveError) return;
+        throw error;
+      }
+      try {
+        const detail = await service.detail(repository, id, lease);
+        if (detail.contentHash !== base.contentHash || detail.checkout.activeEditors > 0) return;
+        await service.synced(repository, id, lease, { commit: base.commit, blob: base.blob, contentHash: detail.contentHash, path, conflict: link.conflict });
+        await service.release(repository, id, lease, { contentHash: detail.contentHash });
+      } finally {
+        await service.unlease(repository, id, lease).catch(() => {});
+      }
+    } catch (error) {
+      console.warn(`[live-builtin] Releasing live note ${id} once everyone left failed: ${(error as Error)?.name ?? 'error'}.`);
+    }
+  };
 
   const liveNotes: BuiltinLiveNotes = {
     editors: [BUILTIN],

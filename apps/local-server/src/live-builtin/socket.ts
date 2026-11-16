@@ -65,6 +65,11 @@ export interface LiveSocketOptions {
   /** The app's origin; left out, `APP_URL` as each socket opens. */
   appUrl?: string;
   limits: LiveSocketLimits;
+  /**
+   * The last seat of this process left the document, its presence written: not when its socket closed for a new ticket,
+   * nor at shutdown, when the tab comes back.
+   */
+  left?(link: LiveEpoch & { repository: RepositoryId; }): Promise<void>;
 }
 
 export interface LiveSocket {
@@ -154,7 +159,7 @@ function liveColour(key: string): string {
 
 const bytesOf = (data: RawData): Uint8Array => Array.isArray(data) ? Buffer.concat(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
 
-export function liveSocket({ documents, store, clock, process: processName, ready, covers, appUrl, limits }: LiveSocketOptions): LiveSocket {
+export function liveSocket({ documents, store, clock, process: processName, ready, covers, appUrl, limits, left }: LiveSocketOptions): LiveSocket {
   const { hocuspocus } = documents;
   const server = new WebSocketServer({ noServer: true, maxPayload: limits.maxPayload });
   /** Every open socket, with the documents open or being opened on it. */
@@ -181,6 +186,8 @@ export function liveSocket({ documents, store, clock, process: processName, read
     if (socket.readyState === socket.OPEN) socket.close(LIVE_RENEW_CODE, RENEW_REASON);
     return true;
   };
+  /** The socket is past its time: it was, or is being, closed for a new ticket. */
+  const renewing = (socket: WebSocket) => clock() >= (renewAt.get(socket) ?? Infinity);
   const rooms = new Map<string, Room>();
   /**
    * The last activity and awareness state of each seat that just left a document, by document and editor key: a seat
@@ -330,9 +337,13 @@ export function liveSocket({ documents, store, clock, process: processName, read
           if (kept.length > DEPARTED_PER_KEY) kept.splice(kept.indexOf(kept.reduce((least, entry) => entry.at < least.at ? entry : least)), 1);
           departed.set(departedKey(seat), kept);
           // Written at once, so a note someone just left can be checked in and released.
-          void writePresence(link);
+          const written = writePresence(link);
           // The last one out: the document is compacted and let go now, once Hocuspocus has done with the connection, unless someone came meanwhile.
-          if (!rooms.has(name) && !stopping) background(new Promise<void>(resolve => setImmediate(resolve)).then(() => rooms.has(name) ? undefined : documents.unload(link)));
+          if (!rooms.has(name) && !stopping) {
+            background(new Promise<void>(resolve => setImmediate(resolve)).then(() => rooms.has(name) ? undefined : documents.unload(link)));
+            // A socket closed for a new ticket comes straight back: only a seat that really left tells the adapter.
+            if (left && !renewing(socket)) background(written.then(() => rooms.has(name) ? undefined : left(link)));
+          }
         }
         leave();
       },

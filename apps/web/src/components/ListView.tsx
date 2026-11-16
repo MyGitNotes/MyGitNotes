@@ -80,7 +80,7 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
   // A note being edited live (編輯中) or still pending refuses every file operation until it is checked in; a pending
   // note may still be discarded (delete) and moved where its live editor can.
   const liveLock = useLiveLock();
-  const locked = note.live ? t('live.checkedOut') : undefined;
+  const locked = liveLock(note, 'other');
   const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
   const touchSelection = useNoteTouchSelection(actions.toggleSelect, canMove && !draft);
   const dragsToMove = Boolean(canMove) && !locked && pointerMovesNotes();
