@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { CommitAuthor } from './commit-author.js';
 import { isNotebookContent } from './folders.js';
+// The frontmatter block a note opens with, as `parseNoteContent` finds it.
+import { FRONTMATTER_REGEX } from './frontmatter-patch.js';
 import { LIVE_DEFAULT_DRAFT_LINES } from './live-default-draft.js';
 import { SourceError } from './github-api.js';
 import type { NotebookKey } from './notebook-key.js';
@@ -322,8 +324,6 @@ export function liveSocketTicketOf(value: unknown): LiveSocketTicket | null {
   return typeof ticket === 'string' && SOCKET_TICKET.test(ticket) && typeof document === 'string' && SOCKET_DOCUMENT.test(document) ? { ticket, document } : null;
 }
 
-/** The frontmatter block a note opens with, as `parseNoteContent` finds it. */
-const FRONTMATTER_BLOCK = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 /** What makes a line content: a letter, a digit, or an image or embed. */
 const DRAFT_CONTENT = /[\p{L}\p{N}]|!\[|<(img|iframe|video)\b/iu;
 
@@ -335,7 +335,7 @@ const DRAFT_CONTENT = /[\p{L}\p{N}]|!\[|<(img|iframe|video)\b/iu;
  * around them. The default lines are never taken out on top of an initial text's, so a line typed a second time counts.
  */
 export function isEmptyLiveDraft(text: string, initialText?: string): boolean {
-  const lines = (value: string) => normalizeLiveText(value).replace(FRONTMATTER_BLOCK, '').split('\n').map(line => line.trim());
+  const lines = (value: string) => normalizeLiveText(value).replace(FRONTMATTER_REGEX, '').split('\n').map(line => line.trim());
   const initial = new Map<string, number>();
   for (const line of initialText === undefined ? LIVE_DEFAULT_DRAFT_LINES : lines(initialText)) initial.set(line, (initial.get(line) ?? 0) + 1);
   return lines(text).every(line => {
