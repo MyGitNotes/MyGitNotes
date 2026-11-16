@@ -93,14 +93,14 @@ function yamlMap(yaml: string): NoteMetadata | null {
 const sameYaml = (a: string, b: string) => a.replace(/\r\n/g, '\n').trimEnd() === b.replace(/\r\n/g, '\n').trimEnd();
 
 /**
- * Writes the YAML view's text as the note's frontmatter, only when it parses to a map. `shown` is the text the view showed
- * before this edit. While the live block is still that text, the new text is written as typed, comments and order
- * included; once someone else changed the block since, only the keys this edit changed are patched into the current text
- * (CFR-F002), so their change stays. A block left with no key is taken out, separator line included, instead of being
+ * Writes the YAML view's text as the note's frontmatter, only when it parses to a map. `shown` is the text the view last
+ * wrote or opened on; without it the text is written whole. While the live block is still that text, the new text is
+ * written as typed, comments and order included; once someone else changed the block since, only the keys this edit
+ * changed are patched into the current text (CFR-F002), so their change stays. A block left with no key is taken out, separator line included, instead of being
  * written empty, which would not parse (CFR-F003). An invalid block is replaced by the text; a new block takes the body's
  * line endings (CFR-F005).
  */
-export function writeLiveYaml(text: Y.Text, yaml: string, shown: string = yaml): { ok: true; } | { ok: false; error: string; } {
+export function writeLiveYaml(text: Y.Text, yaml: string, shown?: string): { ok: true; } | { ok: false; error: string; } {
   const next = yamlMap(yaml);
   if (!next) {
     try {
@@ -119,7 +119,7 @@ export function writeLiveYaml(text: Y.Text, yaml: string, shown: string = yaml):
     if (!empty) replaceLiveText(text, current ? `${fenced}${newline}${current}` : fenced);
     return { ok: true };
   }
-  if ('invalid' in span || sameYaml(span.yaml, shown)) {
+  if ('invalid' in span || shown === undefined || sameYaml(span.yaml, shown)) {
     replaceLiveText(text, empty ? current.slice(span.bodyStart) : fenced + current.slice(span.end));
     return { ok: true };
   }
