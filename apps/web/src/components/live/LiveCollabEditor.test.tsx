@@ -3,7 +3,7 @@ import { createElement, forwardRef } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 import type { LiveCheckoutView } from '../../lib/live-api.js';
 
 /*
@@ -875,7 +875,11 @@ describe('typing the server has not stored', () => {
       provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
     });
     await act(async () => {});
-    expect(mergeBody()).toEqual({ notebookId: 'notes~life', path: 'notes/life/a.md', base: '# A\n', text: '# A\noffline typing\n', mergeId: expect.stringMatching(/^[A-Za-z0-9_-]{8,128}$/) });
+    expect(mergeBody()).toEqual({ notebookId: 'notes~life', path: 'notes/life/a.md', base: '# A\n', text: '# A\noffline typing\n', mergeId: expect.stringMatching(/^[A-Za-z0-9_-]{8,128}$/), typedIn: { document: 'live-1.1', update: expect.any(String) } });
+    // The tab's whole document goes with it: the server takes as base what the ended document held, so typing it stored lands once (cf16-F001).
+    const typed = new Y.Doc();
+    Y.applyUpdate(typed, Uint8Array.from(atob(mergeBody().typedIn.update), char => char.charCodeAt(0)));
+    expect(typed.getText('content').toString()).toBe('# A\noffline typing\n');
     expect(screen.queryByRole('alert')).toBeNull();
     expect(onMergeConflict).not.toHaveBeenCalled();
     expect(fake.providers).toHaveLength(2);
@@ -883,6 +887,24 @@ describe('typing the server has not stored', () => {
     expect(provider().configuration.name).toBe('live-1.2');
     // The merged text arrives with the new document: the old one is never merged across epochs.
     expect(provider().configuration.document.getText('content').toString()).toBe('');
+  });
+
+  it('takes the text of its first sync as the merge base, also when that sync waited on the connect’s own step', async () => {
+    server({ documents: ['live-1.1', 'live-1.2'] });
+    await open();
+    emit(config => {
+      config.document.getText('content').insert(0, '# A\n');
+      config.onStatus?.({ status: 'connected' });
+      // The connect's own step 2 is counted before the document synced, and its acknowledgement never comes.
+      config.onUnsyncedChanges?.({ number: 1 });
+      config.onSynced?.({ state: true });
+    });
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    expect(mergeBody()).toMatchObject({ base: '# A\n', text: '# A\noffline typing\n' });
   });
 
   it('keeps a conflicting merge as a conflict draft and opens the editor on the current note', async () => {

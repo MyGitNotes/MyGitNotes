@@ -12,6 +12,7 @@ import { type BuiltinFixture, builtinFixture, shutdownFixtures } from '../src/li
 import { memoryCommits, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
 import { type MemoryLiveNotes, memoryLiveNotes } from '../src/memory-live-notes.js';
 import { createRecordStore, type RecordStore } from '../src/record-store/index.js';
+import * as Y from 'yjs';
 import { workspaceSettings } from './workspace-settings.js';
 
 /*
@@ -191,6 +192,29 @@ describe('POST /api/live/merge over the built-in editor', () => {
     expect(await second.liveNotes.person(person(1)).merge!(repository, id, { base: gitA, text: gitA.replace('one', 'ONE'), mergeId: 'draft-0001' })).toEqual({ applied: true, contentHash: sha256(merged) });
     expect((await live.store.link(id))!.seq).toBe(seq);
     expect((await live.liveNotes.person(person(1)).read(repository, id)).content).toBe(merged);
+  });
+
+  it('takes the document a tab typed in and its update, in base64, so what the server stored of its typing lands once; refuses a malformed one', async () => {
+    const { id } = (await call('POST', '/api/live/checkout', note)).body.checkout;
+    const link = (await live.store.link(id))!;
+    const held = await live.documents.open(link);
+    const tab = new Y.Doc();
+    Y.applyUpdate(tab, Y.encodeStateAsUpdate(held.document));
+    const updates: Uint8Array[] = [];
+    tab.on('update', (update: Uint8Array) => void updates.push(update));
+    const text = tab.getText('content');
+    // The server takes the tab's typing, and the acknowledgement never reaches the tab, which types on offline.
+    text.insert(text.length, 'stored ');
+    await live.documents.accept(link, updates[0], { key: 'person:p1@example.test', name: 'Person 1', email: 'p1@example.test', agent: false });
+    await held.close();
+    text.insert(text.length, 'kept\n');
+    expect(await call('POST', '/api/live/checkin', note)).toMatchObject({ status: 200, body: { committed: true, released: true } });
+    expect(files.get(file)).toBe(`${gitA}stored `);
+    const typedIn = { document: `${id}.1`, update: Buffer.from(Y.encodeStateAsUpdate(tab)).toString('base64') };
+    for (const bad of [{ document: 7, update: typedIn.update }, { document: typedIn.document, update: 'not base64!' }, { document: 'x', update: typedIn.update }, 'x']) expect((await merge({ base: '', text: text.toString(), mergeId: 'kept-bad-0001', typedIn: bad })).status, JSON.stringify(bad)).toBe(400);
+    // The tab's first acknowledgement never came either: the base it names is empty.
+    expect(await merge({ base: '', text: text.toString(), mergeId: 'kept-0001', typedIn })).toMatchObject({ status: 200, body: { applied: true, outcome: 'reopened' } });
+    expect((await live.liveNotes.person(person(1)).read(repository, id)).content).toBe(`${gitA}stored kept\n`);
   });
 
   it('answers a conflict with nothing appended, and forgets a merge answer after 24 hours', async () => {

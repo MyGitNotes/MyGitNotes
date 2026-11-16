@@ -451,6 +451,27 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await checkout(note, '# Again\n', T0 + 12, 2)).toMatchObject({ outcome: 'reopened', link: { id, epoch: 2, path: note } });
     });
 
+    it('keeps the document an epoch ended with for a day after its release, for typing a tab kept to be merged once, and nothing of a discarded link', async () => {
+      const { id } = await open(note, '# A\n', T0);
+      expect(await store.ended(id, 1, T0)).toBeNull();
+      await store.append(id, 1, bytes('pat 1'), pat, T0 + 1);
+      expect(await checkIn(id, T0 + 10)).toBe('released');
+      expect(await store.document(id, 1)).toBeNull();
+      expect(await store.ended(id, 1, T0 + 11)).toEqual({ state: bytes('# A\n'), log: [bytes('pat 1')] });
+      // The reopened epoch has its own document; the ended one is still there, and only for its own epoch.
+      expect((await checkout(note, 'again', T0 + 20, 2)).outcome).toBe('reopened');
+      expect(await store.ended(id, 1, T0 + 21)).toEqual({ state: bytes('# A\n'), log: [bytes('pat 1')] });
+      expect(await store.ended(id, 2, T0 + 21)).toBeNull();
+      expect(await store.ended(unknown, 1, T0 + 21)).toBeNull();
+      // A day after the release it is gone.
+      expect(await store.ended(id, 1, T0 + 10 + LIVE_MERGE_MS - 1)).not.toBeNull();
+      expect(await store.ended(id, 1, T0 + 10 + LIVE_MERGE_MS)).toBeNull();
+      const draft = await pending('# Draft\n', T0 + 30);
+      const token = await leased(draft.id, T0 + 31);
+      expect(await store.discard(draft.id, token, { seq: 0 }, T0 + 32)).toBe('discarded');
+      expect(await store.ended(draft.id, 1, T0 + 33)).toBeNull();
+    });
+
     it('discards a pending link whose sequence did not move, with everything it had, and never a filed one', async () => {
       const filed = await open();
       const filedToken = await leased(filed.id, T0);

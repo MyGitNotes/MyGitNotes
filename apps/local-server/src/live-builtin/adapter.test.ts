@@ -246,6 +246,65 @@ describe('durable before acknowledged', () => {
   });
 });
 
+/*
+ * cf16-F001: typing a tab kept after its note was released is merged on what the ended document held, so what of it the
+ * server already stored (an update whose acknowledgement never came back) lands once.
+ */
+describe('merging typing a tab kept', () => {
+  /** A tab holds the note's document, types `stored`, which the server takes without the tab hearing so, then types `kept` offline. */
+  const tabTyping = async (f: BuiltinFixture, id: string, stored: string, kept: string) => {
+    const link = (await f.store.link(id))!;
+    const held = await f.documents.open(link);
+    const tab = new Y.Doc();
+    Y.applyUpdate(tab, Y.encodeStateAsUpdate(held.document));
+    const updates: Uint8Array[] = [];
+    tab.on('update', (update: Uint8Array) => void updates.push(update));
+    const text = tab.getText('content');
+    text.insert(text.length, stored);
+    await f.documents.accept(link, updates[0], editorOf(1));
+    await held.close();
+    text.insert(text.length, kept);
+    return { document: `${id}.${link.epoch}`, update: Y.encodeStateAsUpdate(tab), text: text.toString() };
+  };
+  const merge = (f: BuiltinFixture, id: string, request: { base: string; text: string; mergeId: string; typedIn?: { document: string; update: Uint8Array; }; }) => f.liveNotes.person(person(1)).merge(repository, id, request);
+
+  it('takes what the server stored of it once, whatever base the tab names, the empty one included', async () => {
+    for (const tabBase of ['# A\n', '']) {
+      const f = builtinFixture();
+      const made = await checkout(f, '# A\n');
+      const tab = await tabTyping(f, made.id, 'stored ', 'and kept\n');
+      expect((await checkIn(f, made.id)).release).toEqual({ released: true });
+      await checkout(f, '# A\nstored ', note, 2);
+      await type(f, made.id, 'Z\n# A\nstored ', 2);
+      expect(await merge(f, made.id, { base: tabBase, text: tab.text, mergeId: `kept-${tabBase.length}-merge`, typedIn: { document: tab.document, update: tab.update } })).toMatchObject({ applied: true });
+      expect((await read(f, made.id)).content).toBe('Z\n# A\nstored and kept\n');
+    }
+  });
+
+  it('takes a repeat of the same kept typing once, under a new merge id too', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\n');
+    const tab = await tabTyping(f, made.id, 'stored ', 'and kept\n');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\nstored ', note, 2);
+    const typedIn = { document: tab.document, update: tab.update };
+    await merge(f, made.id, { base: '# A\n', text: tab.text, mergeId: 'kept-merge-one', typedIn });
+    await merge(f, made.id, { base: '# A\n', text: tab.text, mergeId: 'kept-merge-two', typedIn });
+    expect((await read(f, made.id)).content).toBe('# A\nstored and kept\n');
+  });
+
+  it('conflicts rather than doubling text once it no longer knows the ended document', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\n');
+    const tab = await tabTyping(f, made.id, 'stored ', 'and kept\n');
+    await checkIn(f, made.id);
+    f.time.advance(24 * 60 * 60_000 + 1);
+    await checkout(f, '# A\nstored ', note, 2);
+    expect(await merge(f, made.id, { base: '# A\n', text: tab.text, mergeId: 'kept-merge-late', typedIn: { document: tab.document, update: tab.update } })).toEqual({ conflict: true });
+    expect((await read(f, made.id)).content).toBe('# A\nstored ');
+  });
+});
+
 describe('compaction', () => {
   it("compacts what it read once everyone left: the state holds the text, the log is empty and the stored hash is the text's", async () => {
     const f = builtinFixture();
