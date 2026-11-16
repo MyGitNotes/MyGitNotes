@@ -4,6 +4,7 @@ import { noteRoute, noteTrail, parseWorkspaceRoute, WorkspaceTab } from '../lib/
 import React from 'react';
 import { fetchAssets } from '../lib/api.js';
 import { type EditorMode, searchWithEditorMode } from '../lib/editor-mode-url.js';
+import { LIVE_EDIT_PARAM, searchWithoutLiveEdit } from '../lib/live-edit-url.js';
 import { useNoteEditorRegistry } from '../lib/note-editing.js';
 import type { WorkspaceState } from './workspace-state.js';
 
@@ -35,9 +36,12 @@ export function useNoteActions({ activeTab, editorRegistry, setEditingNote, conf
     if (notebook) {
       const query = new URLSearchParams(location.search);
       query.delete('notebook');
-      // A zoom the app opens carries `returnTo`, so a link's `?zoom` request is not passed on.
+      // A zoom the app opens carries `returnTo`, so a link's `?zoom` request is not passed on; its `?edit` request was
+      // the address's own, which neither the zoom nor the way back repeats.
       query.delete('zoom');
-      query.set('returnTo', editorRoute.note ? returnTo : location.pathname + location.search + location.hash);
+      query.delete(LIVE_EDIT_PARAM);
+      const here = location.pathname + searchWithoutLiveEdit(location.search) + location.hash;
+      query.set('returnTo', editorRoute.note ? returnTo : here);
       if (selectedFolder && note.notebookId === selectedNotebookId) query.set('folder', selectedFolder);
       else query.delete('folder');
       // `returnTo` stays the browse view behind the editor, so a note reached from another note
@@ -47,7 +51,7 @@ export function useNoteActions({ activeTab, editorRegistry, setEditingNote, conf
       // Zoom opened over the Focus closes back to it, as from the notebook page; its address follows the Focus again there.
       const zoomed = Boolean(editorRoute.note) && !focusNoteRoute;
       const reopened = zoomed && location.pathname === path;
-      const trail = reopened ? noteTrail(location.state) : zoomed ? [...noteTrail(location.state), location.pathname + location.search + location.hash] : [];
+      const trail = reopened ? noteTrail(location.state) : zoomed ? [...noteTrail(location.state), here] : [];
       navigate(path + (mode ? searchWithEditorMode(query.toString(), mode) : '?' + query.toString()) + (anchor ? '#' + encodeURIComponent(anchor) : ''), { replace: reopened, state: trail.length ? { noteTrail: trail } : null });
     }
     const targetNotebook = note.notebookId || selectedNotebookId;

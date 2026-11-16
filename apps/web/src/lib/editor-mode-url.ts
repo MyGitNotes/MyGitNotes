@@ -15,7 +15,7 @@ export function editorModeOf(search: string): EditorMode {
 }
 
 /** The decoded name of one `name=value` part of a query. */
-function partName(part: string): string {
+export function queryPartName(part: string): string {
   const name = part.split('=', 1)[0]!.replace(/\+/g, ' ');
   try {
     return decodeURIComponent(name);
@@ -32,8 +32,8 @@ function partName(part: string): string {
 export function searchWithEditorMode(search: string, mode: EditorMode): string {
   const parts = search.replace(/^\?/, '').split('&').filter(Boolean);
   const named = `${EDITOR_MODE_PARAM}=${URL_NAMES[mode]}`;
-  const at = parts.findIndex(part => partName(part) === EDITOR_MODE_PARAM);
-  const kept = parts.filter(part => partName(part) !== EDITOR_MODE_PARAM);
+  const at = parts.findIndex(part => queryPartName(part) === EDITOR_MODE_PARAM);
+  const kept = parts.filter(part => queryPartName(part) !== EDITOR_MODE_PARAM);
   if (mode !== 'live') kept.splice(at === -1 ? kept.length : at, 0, named);
   return kept.length ? `?${kept.join('&')}` : '';
 }

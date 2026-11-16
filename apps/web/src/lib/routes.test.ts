@@ -14,7 +14,7 @@ describe('workspace URLs', () => {
     expect(noteReturnRoute('?zoom', 'work')).toBe('/notebooks/work');
     expect(noteReturnRoute('?zoom=1&view=card', 'work')).toBe('/notebooks/work?view=card');
   });
-  it('leaves a note address\'s ?edit request out of the browse view behind it, so no other note inherits it', () => {
+  it("leaves a note address's ?edit request out of the browse view behind it, so no other note inherits it", () => {
     expect(noteReturnRoute('?edit', 'work')).toBe('/notebooks/work');
     expect(noteReturnRoute('?edit=1&view=card&live=editing', 'work')).toBe('/notebooks/work?view=card&live=editing');
   });

@@ -381,7 +381,7 @@ Without `MYGITNOTES_EXTERNAL_PI_PAIRING` or `MYGITNOTES_EXTERNAL_PI_URL` nothing
 
 ## Optional: an external live editor
 
-An edition may attach an external live (co-)editor to remote repositories; the community edition ships none. With one, pressing Edit on a Markdown note checks it out to the editor, and the note is checked back into Git every night and whenever someone presses 「立即簽回」. Check-in commits the live text with every editor named (the earliest as author, the others as `Co-authored-by`), merges Git changes made meanwhile, and on a conflict lets the live text win and says so in the commit. A note with CRLF line ends becomes LF at its first check-in, in one commit that rewrites every line end.
+An edition may attach an external live (co-)editor to remote repositories; the community edition ships none. With one, pressing Edit on a Markdown note checks it out to the editor (so does opening the note's address with `?edit` added, such as `<note address>?edit`, for someone who may write it), and the note is checked back into Git every night and whenever someone presses 「立即簽回」. Check-in commits the live text with every editor named (the earliest as author, the others as `Co-authored-by`), merges Git changes made meanwhile, and on a conflict lets the live text win and says so in the commit. A note with CRLF line ends becomes LF at its first check-in, in one commit that rewrites every line end.
 
 | Variable | Meaning |
 | --- | --- |

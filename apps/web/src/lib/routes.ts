@@ -1,4 +1,5 @@
 import { readFilterQuery } from './filter-query.js';
+import { LIVE_EDIT_PARAM } from './live-edit-url.js';
 import { noteWebPath } from '@mygitnotes/core/workspace-links';
 import { isBareNotebookId } from '@mygitnotes/core/notebook-key';
 import { matchPath } from 'react-router-dom';
@@ -120,8 +121,9 @@ export function noteReturnRoute(search: string, notebook: string, folder: string
   }
   query.delete('returnTo');
   query.delete('folder');
-  // `zoom` asked a note link to open in zoom; the browse view behind it has no use for it.
+  // `zoom` asked a note link to open in zoom, and `edit` to edit its note live; the browse view behind it has no use for either.
   query.delete('zoom');
+  query.delete(LIVE_EDIT_PARAM);
   return notebookRoute(notebook, folder) + (query.size ? '?' + query.toString() : '');
 }
 

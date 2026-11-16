@@ -1,5 +1,6 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useLiveEditLink } from '../../app/live-edit-link.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { checkOutLive, forgetCheckedIn, keepsDirectEditor, type LiveCheckInAnswer, type LiveCheckoutView, type LiveNoteEditing, markCheckedIn, recentCheckIn, requestLiveEdit, takeLiveEditRequest } from '../../lib/live-api.js';
 import type { LiveTheme } from '../../lib/live-message.js';
@@ -76,8 +77,10 @@ export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; li
     }
   }, [t]);
 
-  // Zoom checks out a note a pane asked to edit, and frames a pending note at once, each once per arrival.
+  // Zoom checks out a note a pane or the address (`?edit`) asked to edit, and frames a pending note at once, each once per arrival.
   const pending = Boolean(note.live?.pending);
+  const link = useLiveEditLink();
+  const claim = link?.claim;
   const arrived = useRef(false);
   useEffect(() => {
     if (!live || !zoom) {
@@ -86,10 +89,23 @@ export function useLiveEdit({ note, live, frame, refetch }: { note: NoteItem; li
     }
     if (arrived.current) return;
     arrived.current = true;
+    // Both requests are taken, so that neither is left for a later arrival.
+    const linked = claim?.(key) ?? false;
+    const asked = takeLiveEditRequest(key);
     /* eslint-disable react/set-state-in-effect -- Arriving in zoom starts a checkout request; its busy state is that request's. */
-    if (takeLiveEditRequest(key) || pending) void checkOut();
+    if (asked || linked || pending) void checkOut();
     /* eslint-enable react/set-state-in-effect */
-  }, [live, zoom, key, pending, checkOut]);
+  }, [live, zoom, key, pending, checkOut, claim]);
+  // The address asks to edit the note this editor shows once it shows it: zoom checks it out, a Focus pane opens zoom as 編輯 does.
+  const linkTarget = link?.target;
+  useEffect(() => {
+    if (!live || linkTarget !== key || !(zoom || (frame === 'pane' && live.openZoom)) || !claim?.(key)) return;
+    /* eslint-disable react/set-state-in-effect -- The address's request starts a checkout request; its busy state is that request's. */
+    if (zoom) return void checkOut();
+    /* eslint-enable react/set-state-in-effect */
+    requestLiveEdit(key);
+    live.openZoom!();
+  }, [live, zoom, frame, key, linkTarget, claim, checkOut]);
 
   // Only zoom frames the editor; a note zoom hands back to its pane shows the read view there.
   if (!zoom && state.checkout) setState({});

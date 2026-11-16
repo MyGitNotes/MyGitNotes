@@ -1,5 +1,6 @@
 import { type NoteListItem, type NoteRef } from '@mygitnotes/core/note-query';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { LIVE_EDIT_PARAM } from '../lib/live-edit-url.js';
 import { noteRoute } from '../lib/routes.js';
 import React from 'react';
 import { fetchGitStatus, readNote, restoreNote, saveNote } from '../lib/api.js';
@@ -98,6 +99,8 @@ export function useNoteRestoration({ remote, readDraft, updateDraft, setEditingN
     setEditingNote(note);
     const query = new URLSearchParams(location.search);
     query.delete('notebook');
+    // The `?edit` request of a note address is that note's, not the folder index's.
+    query.delete(LIVE_EDIT_PARAM);
     query.set('folder', folder);
     navigate(noteRoute(notebook.id, `${folder}/index.md`) + '?' + query.toString());
     if (!remote) void fetchGitStatus().then(result => setGitStatus(result.status)).catch(error => setActionError(error.message));

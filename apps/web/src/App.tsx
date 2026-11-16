@@ -25,6 +25,7 @@ import { useNoteActions } from './app/useNoteActions.js';
 import { useFocusNoteNavigation } from './app/useFocusNoteNavigation.js';
 import { useNoteLinkLoad, useOpenNoteLinkInFocus } from './app/useNoteLinkFocus.js';
 import { EditorModeRouteProvider } from './app/editor-mode-route.js';
+import { LiveEditLinkProvider, liveEditLinkTarget } from './app/live-edit-link.js';
 import { useNoteSaving } from './app/useNoteSaving.js';
 import { useDeletionUndo } from './app/useDeletionUndo.js';
 import { useNoteRestoration } from './app/useNoteRestoration.js';
@@ -309,6 +310,8 @@ export const AppContent: React.FC = () => {
 
   // A note the Focus shows, or a linked note waiting to open there, is not shown in zoom.
   const noteEditorOpen = (Boolean(routedNote) || routedLoading) && !routeError && !noteLink.inFocus;
+  // The note a `?edit` address asks to edit live, once zoom or the Focus's active pane shows it.
+  const liveEditTarget = liveEditLinkTarget({ search: location.search, state: location.state, routedNote, zoomOpen: noteEditorOpen, inFocus: noteLink.inFocus, focusPending: noteLink.pending, activeNotePath });
 
   // Every editor of a note, in zoom or in a Focus pane, is wired to the same handlers and per-path state.
   const editorProps = (note: NoteItem, committed?: NoteItem): NoteEditorSharedProps => {
@@ -985,7 +988,9 @@ export const AppContent: React.FC = () => {
           {/* The Typst preview and its citations run on this machine, so only a local workspace has them. */}
           <TypstPreviewProvider enabled={!remote && !loading}>
             <PhoneNotesProvider value={phoneNotesValue}>
-              <EditorModeRouteProvider>{content}</EditorModeRouteProvider>
+              <EditorModeRouteProvider>
+                <LiveEditLinkProvider target={liveEditTarget}>{content}</LiveEditLinkProvider>
+              </EditorModeRouteProvider>
             </PhoneNotesProvider>
           </TypstPreviewProvider>
         </StatusColorProvider>

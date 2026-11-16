@@ -56,31 +56,38 @@ type Frame = 'zoom' | 'pane' | 'inline';
  * writer of a repository with a live editor; a reader, or a deployment without one, gets none. `openZoom` lends the
  * editor to zoom, as zoom does with a note a pane shows.
  */
-function Page({ frame: initial, shown = note, live = true, report }: { frame: Frame; shown?: NoteItem; live?: boolean; report: (probe: Probe) => void; }) {
+function Page({ frame: initial, shown = note, live = true, report, zoomOpened }: { frame: Frame; shown?: NoteItem; live?: boolean; report: (probe: Probe) => void; zoomOpened: () => void; }) {
   const location = useLocation();
   const { navigator } = useContext(UNSAFE_NavigationContext);
   const [frame, setFrame] = useState<Frame>(initial);
-  const [openZoom] = useState(() => vi.fn(() => setFrame('zoom')));
-  opened.current = openZoom;
+  const [openZoom] = useState(() => () => {
+    zoomOpened();
+    setFrame('zoom');
+  });
   useLayoutEffect(() => report({ url: location.pathname + location.search + location.hash, state: location.state, index: (navigator as unknown as { index: number; }).index }));
   const target = liveEditLinkTarget({ search: location.search, state: location.state, routedNote: note, zoomOpen: initial === 'zoom', inFocus: initial !== 'zoom', focusPending: false, activeNotePath: note.path });
   const editing: LiveNoteEditing | undefined = live ? { editor, onRefetch: () => {}, openZoom } : undefined;
   const props = { note: shown, frame, active: true, statuses: ['inbox', 'done'], autoSave: true, onSave: async () => shown, onRestoreFile: async () => null, onCommitFile: async () => {}, branch: 'main', draftScope: 'src:main', onClose: frame === 'zoom' ? () => {} : undefined, live: editing } as NoteEditorProps;
-  return <LiveEditLinkProvider target={target}><PanelProvider><NoteEditor {...props} /></PanelProvider></LiveEditLinkProvider>;
+  return (
+    <LiveEditLinkProvider target={target}>
+      <PanelProvider>
+        <NoteEditor {...props} />
+      </PanelProvider>
+    </LiveEditLinkProvider>
+  );
 }
 
-const opened = { current: undefined as ReturnType<typeof vi.fn> | undefined };
-
-async function open(entry: { pathname: string; search?: string; hash?: string; state?: unknown; }, page: Omit<Parameters<typeof Page>[0], 'report'>) {
+async function open(entry: { pathname: string; search?: string; hash?: string; state?: unknown; }, page: Omit<Parameters<typeof Page>[0], 'report' | 'zoomOpened'>) {
   const probe = { current: undefined as unknown as Probe };
+  const opened = vi.fn();
   await act(async () => {
     render(
       <MemoryRouter initialEntries={['/notebooks/notes~life', entry]} initialIndex={1}>
-        <Page {...page} report={value => void (probe.current = value)} />
+        <Page {...page} report={value => void (probe.current = value)} zoomOpened={opened} />
       </MemoryRouter>,
     );
   });
-  return { probe };
+  return { probe, opened };
 }
 
 describe('a note address with ?edit', () => {
@@ -109,8 +116,8 @@ describe('a note address with ?edit', () => {
   });
 
   it('opens zoom from a Focus pane, as Edit does there, and checks the note out on arrival', async () => {
-    const { probe } = await open({ pathname: NOTE, search: '?edit&mode=split', state: FOCUS_NOTE_STATE }, { frame: 'pane' });
-    expect(opened.current).toHaveBeenCalledTimes(1);
+    const { probe, opened } = await open({ pathname: NOTE, search: '?edit&mode=split', state: FOCUS_NOTE_STATE }, { frame: 'pane' });
+    expect(opened).toHaveBeenCalledTimes(1);
     // The pane's entry leaves edit before zoom opens over it, so Back returns to it without asking again.
     expect(probe.current.url).toBe(`${NOTE}?mode=split`);
     expect(probe.current.state).toEqual(FOCUS_NOTE_STATE);
@@ -119,8 +126,8 @@ describe('a note address with ?edit', () => {
   });
 
   it('waits until the Focus marked the address as its own before acting in a pane', async () => {
-    const { probe } = await open({ pathname: NOTE, search: '?edit' }, { frame: 'pane' });
-    expect(opened.current).not.toHaveBeenCalled();
+    const { probe, opened } = await open({ pathname: NOTE, search: '?edit' }, { frame: 'pane' });
+    expect(opened).not.toHaveBeenCalled();
     expect(checkouts()).toHaveLength(0);
     expect(probe.current.url).toBe(`${NOTE}?edit`);
   });
@@ -137,12 +144,12 @@ describe('a note address with ?edit', () => {
   });
 
   it('is left to the routed note: the editor of another note, or a compilation section of this one, takes nothing', async () => {
-    const { probe } = await open({ pathname: NOTE, search: '?edit', state: FOCUS_NOTE_STATE }, { frame: 'pane', shown: other });
-    expect(opened.current).not.toHaveBeenCalled();
+    const { probe, opened } = await open({ pathname: NOTE, search: '?edit', state: FOCUS_NOTE_STATE }, { frame: 'pane', shown: other });
+    expect(opened).not.toHaveBeenCalled();
     expect(probe.current.url).toBe(`${NOTE}?edit`);
     cleanup();
     const inline = await open({ pathname: NOTE, search: '?edit', state: FOCUS_NOTE_STATE }, { frame: 'inline' });
-    expect(opened.current).not.toHaveBeenCalled();
+    expect(inline.opened).not.toHaveBeenCalled();
     expect(checkouts()).toHaveLength(0);
     expect(inline.probe.current.url).toBe(`${NOTE}?edit`);
   });
