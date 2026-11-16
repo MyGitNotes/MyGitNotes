@@ -1,14 +1,18 @@
 /*
  * Typing a built-in live editor tab has not stored on the server yet (docs/specs/2026-11-16-collab-first-self-host
  * A3.1), kept in this browser so that a reload, a crash or leaving the note loses none of it: the tab's Yjs update for
- * the document it was typed in, its text, and the text it was typed on (the merge base). One entry per note; IndexedDB
- * where the browser has it, else a store that lasts as long as the page.
+ * the document it was typed in, its text, and the text it was typed on (the merge base). One entry per editor session
+ * (cf16-F004): two tabs, or zoom over a Focus pane, never overwrite each other, and a session takes another's entry only
+ * once that session ended ({@link liveOwnerClaim}). IndexedDB where the browser has it, else a store that lasts as long
+ * as the page.
  */
 
 /** One note's unsynced live typing, as this browser keeps it. */
 export interface UnsyncedLiveText {
-  /** {@link unsyncedKey} of its scope, notebook and path. */
+  /** {@link unsyncedKey} of its scope, notebook, path and owner. */
   key: string;
+  /** The editor session that keeps it: random per session, held as a claim while the session runs. */
+  owner: string;
   /** The repository's draft scope, so the offline screen shows only the session's own. */
   scope: string;
   notebookId: string;
@@ -34,11 +38,27 @@ export interface UnsyncedLiveStore {
   list(): Promise<UnsyncedLiveText[]>;
 }
 
-export const unsyncedKey = (scope: string, notebookId: string, path: string) => `${scope}\n${notebookId}\n${path}`;
+/** Where one session keeps a note's typing. */
+export const unsyncedKey = (scope: string, notebookId: string, path: string, owner: string) => `${scope}\n${notebookId}\n${path}\n${owner}`;
+/** The claim a session holds while it runs: its entries are no other session's to take. */
+export const liveOwnerClaim = (owner: string) => `mygitnotes-live-owner:${owner}`;
+/** The entries every session kept for one note, oldest first. */
+export const unsyncedOf = async (store: UnsyncedLiveStore, scope: string, notebookId: string, path: string) => (await store.list()).filter(entry => entry.scope === scope && entry.notebookId === notebookId && entry.path === path).sort((a, b) => a.savedAt - b.savedAt);
+/**
+ * Moves what sessions kept for a note to its new path after a move or rename, or drops it after a deletion (`to` null),
+ * so no typing is left under a path no note has. The sessions that kept it ended: a file action waits until its editor
+ * stored everything.
+ */
+export async function relocateUnsynced(store: UnsyncedLiveStore, scope: string, notebookId: string, path: string, to: string | null): Promise<void> {
+  for (const entry of await unsyncedOf(store, scope, notebookId, path)) {
+    if (to !== null) await store.put({ ...entry, path: to, key: unsyncedKey(scope, notebookId, to, entry.owner) });
+    await store.delete(entry.key);
+  }
+}
 
 const isEntry = (value: unknown): value is UnsyncedLiveText => {
   const entry = value as UnsyncedLiveText | null;
-  return Boolean(entry) && typeof entry!.key === 'string' && typeof entry!.document === 'string' && entry!.update instanceof Uint8Array && typeof entry!.text === 'string' && typeof entry!.baseText === 'string' && typeof entry!.mergeId === 'string';
+  return Boolean(entry) && typeof entry!.key === 'string' && typeof entry!.document === 'string' && entry!.update instanceof Uint8Array && typeof entry!.text === 'string' && typeof entry!.baseText === 'string' && typeof entry!.mergeId === 'string' && typeof entry!.owner === 'string' && typeof entry!.scope === 'string' && typeof entry!.notebookId === 'string' && typeof entry!.path === 'string';
 };
 
 /** A store that lasts as long as the page: where the browser has no IndexedDB, or it refuses to open. */

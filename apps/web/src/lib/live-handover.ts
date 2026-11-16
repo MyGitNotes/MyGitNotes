@@ -61,8 +61,36 @@ async function mergeTexts(note: NoteItem, base: NoteItem, now: Date): Promise<{ 
   return { base: fileText(base, now), text: fileText(note, now) };
 }
 
-/** The pending note made for a draft whose merge has not landed yet, by scope, notebook and path: a retry merges into it. */
-const created = new Map<string, LiveCheckoutView>();
+/**
+ * The pending note made for a draft whose merge has not landed yet, by scope, notebook and path: a retry merges into it,
+ * from any tab of this browser (localStorage, else this page).
+ */
+const CREATED = 'mygitnotes-live-created';
+const page = new Map<string, LiveCheckoutView>();
+const created = {
+  read(): Record<string, LiveCheckoutView> {
+    try {
+      return JSON.parse(localStorage.getItem(CREATED) ?? '{}') as Record<string, LiveCheckoutView>;
+    } catch {
+      return Object.fromEntries(page);
+    }
+  },
+  get(key: string): LiveCheckoutView | undefined {
+    return this.read()[key] ?? page.get(key);
+  },
+  write(key: string, checkout: LiveCheckoutView | null) {
+    if (checkout) page.set(key, checkout);
+    else page.delete(key);
+    try {
+      const all = this.read();
+      if (checkout) all[key] = checkout;
+      else delete all[key];
+      localStorage.setItem(CREATED, JSON.stringify(all));
+    } catch {
+      // Kept for this page only.
+    }
+  },
+};
 
 const titleOf = (note: NoteItem) => note.title?.trim() || (typeof note.metadata.title === 'string' ? note.metadata.title.trim() : '') || note.path.slice(note.path.lastIndexOf('/') + 1).replace(/\.(md|markdown)$/i, '');
 
@@ -86,10 +114,10 @@ export async function handOverDraft(entry: WorkingNote, { scope, notebookRoot }:
       const directory = note.path.slice(0, note.path.lastIndexOf('/'));
       const folder = directory === root ? '' : directory.startsWith(`${root}/`) ? directory.slice(root.length + 1) : '';
       checkout = (await createLiveNote({ notebookId: note.notebookId, folder, title, content: skeleton })).checkout;
-      created.set(key, checkout);
+      created.write(key, checkout);
     }
     await mergeLive({ notebookId: note.notebookId, path: checkout.path, base: skeleton, text: serializeNoteFile(note.path, note.metadata, note.content, true, now), mergeId });
-    created.delete(key);
+    created.write(key, null);
     return { kind: 'created', checkout };
   } catch (error) {
     return isMergeConflict(error) ? { kind: 'conflict' } : { kind: 'failed', error };

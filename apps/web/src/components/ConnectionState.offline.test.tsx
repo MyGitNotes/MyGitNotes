@@ -97,7 +97,7 @@ it('lists no title of the person’s notes in the demo, and counts only the demo
 it('shows the live typing this session kept unsynced, by title with its text, and only the session’s own', async () => {
   const { unsyncedLiveStore, unsyncedKey } = await import('../lib/live-unsynced.js');
   const store = unsyncedLiveStore();
-  const entry = (scope: string, title: string, text: string) => ({ key: unsyncedKey(scope, 'notes~life', `notes/life/${title}.md`), scope, notebookId: 'notes~life', path: `notes/life/${title}.md`, title, document: 'abc.1', update: new Uint8Array([0, 0]), text, baseText: '', mergeId: 'merge-0001', savedAt: 1 });
+  const entry = (scope: string, title: string, text: string) => ({ key: unsyncedKey(scope, 'notes~life', `notes/life/${title}.md`, 'owner-0001'), owner: 'owner-0001', scope, notebookId: 'notes~life', path: `notes/life/${title}.md`, title, document: 'abc.1', update: new Uint8Array([0, 0]), text, baseText: '', mergeId: 'merge-0001', savedAt: 1 });
   await store.put(entry('repo-1:main', 'Plan', '# Plan\nTyped offline.\n'));
   await store.put(entry('repo-9:main', 'Theirs', '# Theirs\nNot mine.\n'));
   localStorage.setItem('gh_notes_opened_scopes', JSON.stringify(['repo-1:main']));

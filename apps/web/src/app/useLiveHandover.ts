@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { handOverDraft, LIVE_MERGE_CONFLICT, type LiveHandover } from '../lib/live-handover.js';
+import { withClaim } from '../lib/live-claims.js';
+import { sameValue } from '../lib/merge-note.js';
 import type { LiveCheckoutView } from '../lib/live-api.js';
 import type { NoteItem } from '../lib/types.js';
 import type { WorkingNote } from '../lib/working-notes.js';
@@ -13,6 +15,8 @@ export interface LiveHandoverParams {
   /** Where a note's drafts go to the live editor: its repository's draft scope and notebook root, or null when the note is not covered. */
   covered: (note: NoteItem) => { scope: string; notebookRoot: string; } | null;
   updateDraft: (notebookId: string, path: string, entry: WorkingNote | null) => void;
+  /** The note's draft as the browser holds it now, which another tab may have handed over or changed meanwhile. */
+  readDraft?: (notebookId: string, path: string) => WorkingNote | undefined;
   stageWorkingNote: (note: NoteItem, base: NoteItem | null, blocked?: string) => NoteItem;
   invalidateNotes: () => void;
   /** A note made offline became a pending live note. */
@@ -41,10 +45,17 @@ export function useLiveHandover(params: LiveHandoverParams) {
   const handOverEntry = useCallback((key: string): Promise<LiveHandover | null> => {
     const current = running.current.get(key);
     if (current) return current;
-    const entry = latest.current.drafts[key];
-    const context = entry && handsOver(entry) ? latest.current.covered(entry.note) : null;
-    if (!entry || !context) return Promise.resolve(null);
-    const work = handOverDraft(entry, context).then(answer => {
+    const listed = latest.current.drafts[key];
+    const context = listed && handsOver(listed) ? latest.current.covered(listed.note) : null;
+    if (!listed || !context) return Promise.resolve(null);
+    // One tab at a time hands a draft over, and reads it again first: the drafts reach every tab, and every tab hears
+    // `online`, so a note made offline would be filed once per tab (cf16-F005). A draft another tab is handing over is left to it.
+    const { notebookId, path } = listed.note;
+    const work = withClaim(`mygitnotes-live-handover:${context.scope}\n${notebookId}\n${path}`, async () => {
+      const entry = latest.current.readDraft ? latest.current.readDraft(notebookId, path) : listed;
+      if (!entry || !handsOver(entry) || !sameValue(entry, listed)) return null;
+      const answer = await handOverDraft(entry, context);
+      // Settled while the claim is held, so the next tab to take it finds the draft gone or blocked.
       const { updateDraft, stageWorkingNote, invalidateNotes, onCreated } = latest.current;
       if (answer.kind === 'applied' || answer.kind === 'created') {
         updateDraft(entry.note.notebookId, entry.note.path, null);

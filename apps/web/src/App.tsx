@@ -317,6 +317,7 @@ export const AppContent: React.FC = () => {
       return repository?.live?.kind === 'builtin' && repository.write && notebook && liveEditableKind(draftNote.path) && !isTemplate(draftNote) ? { scope: draftScope(repository), notebookRoot: notebook.root } : null;
     },
     updateDraft,
+    readDraft,
     stageWorkingNote,
     invalidateNotes,
     // A note made offline is a pending live note now: an editor showing its draft opens it there.

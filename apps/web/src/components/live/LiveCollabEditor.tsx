@@ -8,7 +8,8 @@ import type { Extension } from '@codemirror/state';
 import type { LiveBuiltinEditorInfo } from '@mygitnotes/core';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import { checkInLive, isMergeConflict, isNotLive, type LiveCheckInAnswer, type LiveCheckoutView, mergeLive, newMergeId, socketTicket } from '../../lib/live-api.js';
-import { unsyncedKey, unsyncedLiveStore, type UnsyncedLiveText } from '../../lib/live-unsynced.js';
+import { holdClaim, takeClaim } from '../../lib/live-claims.js';
+import { liveOwnerClaim, relocateUnsynced, unsyncedKey, unsyncedLiveStore, type UnsyncedLiveText, unsyncedOf } from '../../lib/live-unsynced.js';
 import { isNetworkFailure } from '../../lib/api.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
@@ -137,7 +138,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     latest.current = { checkout, onRefetch, onCheckedIn, onReleased, onMergeConflict, connection, t, title };
   });
   /** Kept typing a session that just ended hands to the next one, which merges it into the note. */
-  const carried = useRef<UnsyncedLiveText | null>(null);
+  const carried = useRef<{ entry: UnsyncedLiveText; release: () => void; } | null>(null);
+  /** Where the typing this session would leave is kept: its own entry, or the one whose text it offers to copy. */
+  const keptKeys = useRef<string[]>([]);
   // A new session starts from nothing: no connection yet, and the editor mounts again once its document synced.
   const reopen = () => {
     setConnection(START);
@@ -162,22 +165,44 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     const text = doc.getText('content');
     const { notebookId, path } = latest.current.checkout;
     const store = unsyncedLiveStore();
-    const key = unsyncedKey(scope, notebookId, path);
+    // The session keeps its typing under an owner of its own, held while it runs, so no other tab or editor of the note
+    // overwrites it or takes it (cf16-F004).
+    const owner = newMergeId();
+    const key = unsyncedKey(scope, notebookId, path, owner);
+    const releaseOwner = holdClaim(liveOwnerClaim(owner));
+    keptKeys.current = [key];
+    /** What sessions that ended kept of the note, taken by this one until it merged them or holds them as its own. */
+    let taken: { entry: UnsyncedLiveText; release: () => void; }[] = [];
+    const letGo = (items: typeof taken) => {
+      for (const item of items) item.release();
+    };
+    /** Takes every entry of the note whose session ended: a closed or crashed tab's, or an editor's that unmounted. */
+    const adopt = async () => {
+      letGo(taken);
+      taken = [];
+      for (const entry of await unsyncedOf(store, scope, notebookId, path).catch(() => [])) {
+        if (entry.owner === owner) continue;
+        const release = await takeClaim(liveOwnerClaim(entry.owner));
+        if (release) taken.push({ entry, release });
+      }
+    };
     /** The socket as the provider last reported it, which `online` reads: a connect does nothing while it counts itself connected. */
     let status: Connection['status'] = 'connecting', synced = false, unsynced = 0, dirty = false;
     /** The document the session opened, and the text at its last full sync, which a merge of kept typing takes as its base. */
     let opened = '', base = '';
     /** Whether the store holds this session's typing, and the merge id it is kept under. */
     let keeping = false, mergeId = newMergeId();
+    /** The session's typing and owner went to the next session, which merges them. */
+    let handedOver = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const keptEntry = (): UnsyncedLiveText => ({ key, scope, notebookId, path, ...(latest.current.title ? { title: latest.current.title } : {}), document: opened, update: Y.encodeStateAsUpdate(doc), text: text.toString(), baseText: base, mergeId, savedAt: Date.now() });
+    const keptEntry = (): UnsyncedLiveText => ({ key, owner, scope, notebookId, path, ...(latest.current.title ? { title: latest.current.title } : {}), document: opened, update: Y.encodeStateAsUpdate(doc), text: text.toString(), baseText: base, mergeId, savedAt: Date.now() });
     /** Keeps the typing the server has not stored in the browser. */
-    const keep = () => {
+    const keep = (): Promise<void> => {
       clearTimeout(timer);
       timer = undefined;
-      if (stopped || !opened || !dirty) return;
+      if (stopped || !opened || !dirty) return Promise.resolve();
       keeping = true;
-      void store.put(keptEntry()).catch(() => {});
+      return store.put(keptEntry()).catch(() => {});
     };
     /** Everything is stored on the server: the text is the next merge's base, and the browser keeps nothing. */
     const settle = () => {
@@ -200,7 +225,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     const stop = () => {
       const content = text.toString();
       if (stopped) return content;
-      if (dirty) keep();
+      // The owner is let go only once its last typing is kept, so a session that takes it finds all of it; the session the
+      // typing was carried to holds it instead.
+      void (dirty ? keep() : Promise.resolve()).finally(() => (handedOver ? undefined : releaseOwner()));
+      letGo(taken);
+      taken = [];
       clearTimeout(timer);
       stopped = true;
       provider?.destroy();
@@ -216,8 +245,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       const unsaved = latest.current.connection.dirty;
       if (unsaved && ending.kind === 'released' && opened) {
         // The next session merges it into the note, which its merge checks out again; the lists read the live state again now.
-        carried.current = keptEntry();
-        keep();
+        carried.current = { entry: keptEntry(), release: releaseOwner };
+        handedOver = true;
         stop();
         latest.current.onReleased?.();
         return reopen();
@@ -252,21 +281,28 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
      * Merges typing a session kept into the note, whose document it was typed in ended: on the text it was typed on, so
      * that it lands as an edit. Merged or kept as a conflict draft, the session opens the note as it is now.
      */
-    const mergeKept = async (entry: UnsyncedLiveText) => {
+    const mergeKept = async (entry: UnsyncedLiveText, release: () => void) => {
       setMerging(true);
       try {
         await mergeLive({ notebookId, path, base: entry.baseText, text: entry.text, mergeId: entry.mergeId, typedIn: { document: entry.document, update: entry.update } });
       } catch (error) {
         if (stopped) return;
-        if (isNetworkFailure(error)) return waitOnline(entry);
+        if (isNetworkFailure(error)) {
+          // Held until the session tries again, or ends.
+          taken.push({ entry, release });
+          return waitOnline(entry);
+        }
         if (!isMergeConflict(error)) {
-          // A live editor that cannot merge, or a note that is gone: the text is offered to copy or download.
+          // A live editor that cannot merge, or a note that is gone: the text is offered to copy or download, and the entry stays until the person leaves it.
+          taken.push({ entry, release });
+          keptKeys.current = [entry.key];
           setMerging(false);
           return setPhase({ kind: 'lost', text: entry.text, ending: isNotLive(error) ? { kind: 'released' } : { kind: 'failed', message: (error as Error).message } });
         }
         latest.current.onMergeConflict?.(entry.text);
       }
-      await store.delete(key).catch(() => {});
+      await store.delete(entry.key).catch(() => {});
+      release();
       if (stopped) return;
       setMerging(false);
       setKept(null);
@@ -277,29 +313,43 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       // Typing the last session kept when its note was released is merged at once: its document ended.
       const ended = carried.current;
       carried.current = null;
-      if (ended) return void mergeKept(ended);
-      const stored = await store.get(key).catch(() => undefined);
-      if (stopped) return;
+      if (ended) return void mergeKept(ended.entry, ended.release);
+      // What sessions that ended kept of the note: one at a time merged when its document ended, all synced when it is this one.
+      await adopt();
+      if (stopped) return letGo(taken.splice(0));
+      /** Merges the first entry of a document that ended, letting go of the rest, which the next round takes again. */
+      const mergeFirst = (entries: typeof taken) => {
+        const [next, ...rest] = entries;
+        taken = taken.filter(item => item !== next && !rest.includes(item));
+        letGo(rest);
+        void mergeKept(next!.entry, next!.release);
+      };
       let first: { ticket: string; document: string; };
       try {
         first = await socketTicket(notebookId, path);
       } catch (error) {
         if (stopped) return;
-        if (isNotLive(error)) return stored ? void mergeKept(stored) : released();
+        if (isNotLive(error)) return taken.length ? mergeFirst(taken) : released();
         // No server reached, nothing ended: the tab is offline until the browser is back online.
-        if (isNetworkFailure(error)) return waitOnline(stored);
+        if (isNetworkFailure(error)) return waitOnline(taken[taken.length - 1]?.entry);
         return failed((error as Error).message);
       }
       if (stopped) return;
       // Kept typing of a document that ended is merged into the note; of the same document, Yjs syncs what the server lacks.
-      if (stored && stored.document !== first.document) return void mergeKept(stored);
-      if (stored) {
-        Y.applyUpdate(doc, stored.update, RESTORED);
-        base = stored.baseText;
-        mergeId = stored.mergeId;
-        keeping = true;
-      }
+      const endedEntries = taken.filter(item => item.entry.document !== first.document);
+      if (endedEntries.length) return mergeFirst(endedEntries);
+      const same = taken.splice(0);
       opened = first.document;
+      if (same.length) {
+        for (const { entry } of same) Y.applyUpdate(doc, entry.update, RESTORED);
+        if (!keeping) base = same[0]!.entry.baseText;
+        keeping = true;
+        // Kept as this session's own before the others go, so none of it is ever out of the store.
+        await store.put(keptEntry()).catch(() => {});
+        for (const { entry } of same) await store.delete(entry.key).catch(() => {});
+        letGo(same);
+        if (stopped) return;
+      }
       setKept(null);
       setConnection(current => (current.unreachable ? { ...current, status: 'connecting', unreachable: false } : current));
       let held: string | null = first.ticket;
@@ -481,7 +531,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       const answer = await discardDraft(checkout.notebookId, checkout.path, t, askDiscard);
       if (!answer) return stayed({ kind: 'kept' }, reopen);
       if (answer.discarded) {
-        forgetKept();
+        // The draft is gone, and with it whatever any editor of it kept.
+        void relocateUnsynced(unsyncedLiveStore(), scope, checkout.notebookId, checkout.path, null).catch(() => {});
         onRefetch();
         onDiscarded?.();
         return;
@@ -506,7 +557,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     else onClose();
   };
   /** The typing this browser keeps for the note: the person took it from the notice, or the draft is gone. */
-  const forgetKept = () => void unsyncedLiveStore().delete(unsyncedKey(scope, checkout.notebookId, checkout.path)).catch(() => {});
+  const forgetKept = () => {
+    for (const kept of keptKeys.current) void unsyncedLiveStore().delete(kept).catch(() => {});
+  };
   /** Leaves the lost text: for the read view of the checked-in note, or as 「關閉」 does when the note is still live. */
   const leaveLost = (ending: Ending) => {
     forgetKept();
