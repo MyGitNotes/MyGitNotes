@@ -8,6 +8,7 @@ import type { CompilationItem, CompilationRow } from '@mygitnotes/core/compilati
 import type { NotebookConfig } from '../lib/types.js';
 import { compilationText } from '../lib/compilation-rows.js';
 import { setNoteQueryScope } from '../lib/use-note-queries.js';
+import { zhTW } from '../lib/i18n/zh-TW.js';
 import { CompilationAddItem, CompilationEditRow } from './CompilationDialogs.js';
 
 // A native select stands in for the Radix one, which jsdom cannot open.
@@ -136,6 +137,23 @@ it("pins a note whole by default, or one heading's section picked from the note'
   fireEvent.change(picker, { target: { value: options[3].value } });
   fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
   expect(onAdd.mock.calls[0][0]).toEqual([expect.objectContaining({ kind: 'note', path: 'notes/a/x.md', anchor: 'Tuesday' })]);
+});
+
+it('shows the error when the chosen note cannot be read, instead of pinning it whole (REV-F005)', async () => {
+  const listed = fetch;
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => (typeof init?.body === 'string' && init.body.includes('"content":true') ? new Response(JSON.stringify({ error: 'Lookup broke' }), { status: 500, headers: { 'Content-Type': 'application/json' } }) : listed(input, init))));
+  const onAdd = vi.fn<(items: CompilationItem[]) => void>();
+  const onClose = vi.fn();
+  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [], items: [], onAdd, onClose }), { wrapper });
+  fireEvent.click(await screen.findByText('X of r~a'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Lookup broke');
+  expect(onAdd).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+it('builds the heading option labels from one template per language, with full-width parentheses and no full stop inside in zh-TW (REV-F004)', () => {
+  expect(zhTW['screen.headingDuplicateOption']).toBe('{label}（與前面的標題同名，只能釘選第一個）');
+  expect(zhTW['screen.headingMissingOption']).toBe('{label}（筆記裡已經沒有這個標題）');
 });
 
 it('pins a note without headings at once, as before', async () => {

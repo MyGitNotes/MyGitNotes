@@ -51,6 +51,9 @@ describe('note sections', () => {
     expect(noteSection(weekly, '2025-09-02 週會')).toEqual({ heading: '2025-09-02 週會', depth: 2, body: 'Second meeting.\n\n```md\n## 2025-09-09 週會\n```' });
     expect(noteSection(weekly, 'Appendix')?.body).toBe('End.');
   });
+  it('keeps the underline of a setext heading whose text starts with # out of the body (REV-F002)', () => {
+    expect(noteSection('#tag\n====\nbody A\n\n# Next\nx', '#tag')?.body).toBe('body A');
+  });
   it('matches a CJK anchor by its text and by its slug', () => {
     expect(noteSection(weekly, '2025-08-26-週會')?.heading).toBe('2025-08-26 週會');
     expect(noteSection(weekly, '## 2025-08-26 週會')?.heading).toBe('2025-08-26 週會');

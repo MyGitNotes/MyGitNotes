@@ -790,6 +790,18 @@ it("lists a folder's notes two levels down under a chapter heading, in the body 
   await waitFor(() => expect(levels()).toEqual([['Part one', '0'], ['sub', '1'], ['Note A', '2']]));
 });
 
+it("keeps a chaptered folder's notes in the contents when the book remounts with them cached and when an item is added while it is open (REV-F001)", async () => {
+  const folder: CompilationRow = { ...row, items: [{ id: 'part', kind: 'heading', title: 'Part one' }, { id: 'folder-1', kind: 'folder', notebookId: 'nb1', path: 'notes/nb1/sub' }] };
+  const first = render(book({ row: folder }), { wrapper });
+  await waitFor(() => expect(levels()).toEqual([['Part one', '0'], ['sub', '1'], ['Note A', '2']]));
+  first.unmount();
+  const view = render(book({ row: folder }), { wrapper });
+  await waitFor(() => expect(within(chapters()[0]).getByRole('heading', { level: 4, name: 'Note A' })).toBeInTheDocument());
+  await waitFor(() => expect(levels()).toEqual([['Part one', '0'], ['sub', '1'], ['Note A', '2']]));
+  view.rerender(book({ row: { ...folder, items: [...folder.items, { id: 'item-3', kind: 'youtube', videoId: 'dQw4w9WgXcQ', start: 0, title: 'A talk' }] } }));
+  await waitFor(() => expect(levels()).toEqual([['Part one', '0'], ['sub', '1'], ['Note A', '2'], ['A talk', '1']]));
+});
+
 it('pages a chapter heading with all its items as one page, and turns to the page of an item chosen in the contents', async () => {
   writeBookReadingMode('paged');
   render(book({ row: chapteredRow }), { wrapper });
