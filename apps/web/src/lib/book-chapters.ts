@@ -1,6 +1,8 @@
 import type { CompilationItem } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { type CompilationAsset, compilationItemTitle } from '../components/CompilationCard.js';
+import type { NotebookConfig } from './types.js';
+import { outsideNotebook } from './compilation-rows.js';
 
 export interface BookChapter {
   /** The compilation item's id. */
@@ -31,14 +33,15 @@ export const sectionAnchor = (item: CompilationItem, path: string) => `${chapter
 
 /**
  * The book's chapters: the compilation's members in the order lane cards would show them. A note that has
- * not been found is only missing once the notes have loaded.
+ * not been found is only missing once the notes have loaded; a file or folder outside its notebook's root is missing
+ * at once, given `notebooks`.
  */
-export function bookChapters(items: readonly CompilationItem[], notes: readonly NoteListItem[], assets: readonly CompilationAsset[], loading = false): BookChapter[] {
+export function bookChapters(items: readonly CompilationItem[], notes: readonly NoteListItem[], assets: readonly CompilationAsset[], loading = false, notebooks: readonly Pick<NotebookConfig, 'id' | 'root'>[] = []): BookChapter[] {
   const noteList = [...notes], assetList = [...assets];
   return items.map(item => {
     const note = item.kind === 'note' ? noteList.find(candidate => candidate.path === item.path && candidate.notebookId === item.notebookId) : undefined;
     const asset = item.kind === 'asset' ? assetList.find(candidate => candidate.path === item.path && candidate.notebookId === item.notebookId) : undefined;
-    const missing = item.kind === 'note' ? !note && !loading : item.kind === 'asset' ? !asset : false;
+    const missing = outsideNotebook(item, notebooks) || (item.kind === 'note' ? !note && !loading : item.kind === 'asset' && !asset);
     return { id: item.id, anchor: chapterAnchor(item), kind: item.kind, title: compilationItemTitle(item, noteList, assetList), missing, item, ...(note ? { note } : {}), ...(asset ? { asset } : {}) };
   });
 }

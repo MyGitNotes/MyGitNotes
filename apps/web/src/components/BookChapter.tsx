@@ -62,7 +62,7 @@ export function BookChapter({ chapter, assets, writable, onOpen, onLiveTitle, on
   if (item.kind === 'note' && note) {
     return <BookSection anchor={anchor} slot={item.id} level={2} note={note} writable={writable} onOpenZoom={() => onOpen(item, note)} onLiveTitle={onLiveTitle} />;
   }
-  if (item.kind === 'folder') {
+  if (item.kind === 'folder' && !chapter.missing) {
     return (
       <section className='compilation-book-section' data-level={2} data-kind='folder'>
         <BookFolder item={item} anchor={anchor} title={title} assets={assets} writable={writable} onOpen={onOpen} onLiveTitle={onLiveTitle} onEntries={onEntries} />

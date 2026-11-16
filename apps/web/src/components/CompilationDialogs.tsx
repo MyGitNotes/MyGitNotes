@@ -32,7 +32,11 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
   const [stageError, setStageError] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const nb = notebooks.find(nb => nb.id === notebookId);
-  const draftRow: CompilationRow = kind === 'custom' ? { id: row?.id || 'draft', name: name || 'draft', view, notebookId, path: row?.path ?? '', kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { id: row?.id || 'draft', name: name || 'draft', view, notebookId, path: row?.path ?? '', kind: 'dynamic', source: kind === 'tag' ? { kind: 'tag', tag, notebookId } : { kind: 'folder', notebookId, path: folder || nb?.root || '', recursive } };
+  // A folder source may lie in another notebook of the repository; it keeps that notebook while its path is unchanged.
+  const folderNotebookId = source?.kind === 'folder' && folder === source.path ? source.notebookId : notebookId;
+  const folderOptions = compilationFolderOptions(nb, folders, assets).map(folder => ({ value: folder.path, label: folder.title }));
+  if (source?.kind === 'folder' && !folderOptions.some(option => option.value === source.path)) folderOptions.push({ value: source.path, label: source.path });
+  const draftRow: CompilationRow = kind === 'custom' ? { id: row?.id || 'draft', name: name || 'draft', view, notebookId, path: row?.path ?? '', kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { id: row?.id || 'draft', name: name || 'draft', view, notebookId, path: row?.path ?? '', kind: 'dynamic', source: kind === 'tag' ? { kind: 'tag', tag, notebookId } : { kind: 'folder', notebookId: folderNotebookId, path: folder || nb?.root || '', recursive } };
   const progression = customProgression || defaultStudyProgression(studyLaneStatuses(draftRow, notebooks)) || { stages: [], easy: 'two' as const };
   const facets = useNoteFacets(true);
   const tags = Object.keys(facets.facets?.[notebookId]?.tags || {}).sort();
@@ -52,7 +56,7 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
           }
           const base = { id: row?.id || crypto.randomUUID(), notebookId, path: row?.path ?? '', ...(row?.tags ? { tags: row.tags } : {}), ...(row?.status ? { status: row.status } : {}), name: name.trim() || t(kind === 'custom' ? 'screen.custom' : 'screen.dynamic'), view, ...(row?.graph ? { graph: row.graph } : {}), ...(studyChanged ? { study: { ...row?.study, filter: studyFilter, dueFirst: true } } : row?.study ? { study: row.study } : {}), ...(studyChanged && result.success ? { progression: result.data } : row?.progression ? { progression: row.progression } : {}) };
           const sort = row?.kind === 'dynamic' ? { ...(row.sort ? { sort: row.sort } : {}), ...(row.manualOrder ? { manualOrder: row.manualOrder } : {}) } : {};
-          onApply(kind === 'custom' ? { ...base, kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { ...base, kind: 'dynamic', ...sort, source: kind === 'tag' ? { kind: 'tag', tag: tag.trim(), notebookId } : { kind: 'folder', notebookId, path: folder || nb!.root, recursive } });
+          onApply(kind === 'custom' ? { ...base, kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { ...base, kind: 'dynamic', ...sort, source: kind === 'tag' ? { kind: 'tag', tag: tag.trim(), notebookId } : { kind: 'folder', notebookId: folderNotebookId, path: folder || nb!.root, recursive } });
           onClose();
         }}
       >
@@ -79,7 +83,7 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
           <>
             <label>
               {t('folder.folders')}
-              <Select value={folder || nb?.root || ''} onValueChange={setFolder} options={compilationFolderOptions(nb, folders, assets).map(folder => ({ value: folder.path, label: folder.title }))} />
+              <Select value={folder || nb?.root || ''} onValueChange={setFolder} options={folderOptions} />
             </label>
             <label className='screen-checkbox'>
               <input type='checkbox' checked={recursive} onChange={e => setRecursive(e.target.checked)} />

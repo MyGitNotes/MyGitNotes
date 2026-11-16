@@ -4,6 +4,7 @@ import type { CompilationItem, CompilationRow } from '@mygitnotes/core/compilati
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { AssetItem, NotebookConfig } from '../lib/types.js';
 import { noteSummary } from '../lib/compilation-content.js';
+import { outsideNotebook } from '../lib/compilation-rows.js';
 import { renderNote } from '../lib/markdown.js';
 import { isSlideNote } from '../lib/slides/note.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -44,8 +45,10 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
   const html = useMemo(() => note?.content && view !== 'thumbnail' ? renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview' } : undefined) : '', [note?.content, note?.path, note?.notebookId, view, tableLabel, t, slides]);
   /* eslint-enable react/preserve-manual-memoization */
   const icon = item.kind === 'note' ? <FileText /> : item.kind === 'folder' ? <Folder /> : item.kind === 'asset' ? <ImageIcon /> : <Youtube />;
+  // A folder outside its notebook's root is missing, not queried: it would list nothing, or the whole notebook.
+  const outside = outsideNotebook(item, content.notebooks);
   // A pinned folder lists its visible notes straight from the server, a page at a time.
-  const folderNotes = useNoteList(item.kind === 'folder' ? { notebookId: item.notebookId, folders: [item.path], descendants: true, sort: 'title', order: 'asc' } : null, { limit: 200 });
+  const folderNotes = useNoteList(item.kind === 'folder' && !outside ? { notebookId: item.notebookId, folders: [item.path], descendants: true, sort: 'title', order: 'asc' } : null, { limit: 200 });
   const members = item.kind === 'folder' ? [...folderNotes.uncommitted, ...folderNotes.notes] : [];
   const memberAssets = item.kind === 'folder' ? content.assets.filter(asset => asset.notebookId === item.notebookId && asset.path.startsWith(`${item.path}/`)) : [];
   const reading = note ? typeof note.content !== 'string' ? <LoadingStatus className='screen-summary'>{t('notes.loading')}</LoadingStatus> : view === 'thumbnail' ? <p className='screen-summary'>{noteSummary(note.content)}</p> : <NoteHtml className='prose-custom screen-markdown' html={html} notebookId={note.notebookId} /> : null;
@@ -71,7 +74,7 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
           )}
         </header>
         <div className={slot ? 'screen-card-content screen-card-note' : 'screen-card-content'} tabIndex={0} aria-label={slot?.title ?? title}>
-          {slot ? slot.body : item.kind === 'folder'
+          {slot ? slot.body : item.kind === 'folder' && !outside
             ? (
               <div className='screen-folder-list'>
                 {folderNotes.error && <p role='alert' className='screen-missing'>{folderNotes.error}</p>}

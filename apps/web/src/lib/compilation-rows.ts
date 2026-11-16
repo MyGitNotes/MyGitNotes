@@ -24,6 +24,17 @@ export function repositoryNotebooks<T extends Pick<NotebookConfig, 'id'>>(notebo
   return [...scope.filter(candidate => candidate.id === notebookId), ...scope.filter(candidate => candidate.id !== notebookId)];
 }
 
+/**
+ * Whether a file or folder item lies outside the root of the notebook it was given: a path in no notebook falls
+ * back to the owner's, and a folder there, or one above a root, would list nothing or the whole notebook.
+ * An unknown notebook is left to the lookup.
+ */
+export function outsideNotebook(item: { kind: string; notebookId?: string; path?: string; }, notebooks: readonly Pick<NotebookConfig, 'id' | 'root'>[]): boolean {
+  if (item.kind === 'youtube' || item.path === undefined) return false;
+  const root = notebooks.find(candidate => candidate.id === item.notebookId)?.root;
+  return root !== undefined && item.path !== root && !item.path.startsWith(`${root}/`);
+}
+
 /** Every notebook a row reads from: its own, its items' and its source's. */
 export function compilationNotebookIds(row: CompilationRow | undefined, fallback: string): string[] {
   if (!row) return [fallback];
