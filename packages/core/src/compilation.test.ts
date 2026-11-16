@@ -30,10 +30,10 @@ const owner = { notebookId: 'one', path: 'notes/one/reading.compilation.yml' };
 
 describe('compilation file', () => {
   it('parses a custom and a dynamic compilation and ties items to the notebook', () => {
-    const file = parseCompilation(custom, 'notes/one');
+    const file = parseCompilation(custom, ['notes/one']);
     expect(file).toMatchObject({ id: 'reading-queue', title: 'Reading queue', arrangement: 'lane', size: 'medium', tags: ['reading'], status: 'working' });
     expect(compilationRow(file, owner)).toMatchObject({ kind: 'custom', view: 'medium', notebookId: 'one', path: owner.path, items: [{ id: 'a1', kind: 'note', notebookId: 'one', path: 'notes/one/a.md' }, { id: 'v1', kind: 'youtube', videoId: 'dQw4w9WgXcQ' }, { id: 'f1', kind: 'folder', notebookId: 'one' }] });
-    const row = compilationRow(parseCompilation(dynamic, 'notes/one'), owner);
+    const row = compilationRow(parseCompilation(dynamic, ['notes/one']), owner);
     expect(row).toMatchObject({ kind: 'dynamic', view: 'book', source: { kind: 'tag', tag: 'clue', notebookId: 'one' }, sort: { field: 'updated', order: 'desc' } });
   });
   it('defaults a lane without a size to small and folder sources to recursive', () => {
@@ -42,24 +42,24 @@ describe('compilation file', () => {
   });
   it('round-trips through the lane model without changing the file', () => {
     for (const raw of [custom, dynamic]) {
-      const file = parseCompilation(raw, 'notes/one');
+      const file = parseCompilation(raw, ['notes/one']);
       expect(compilationFile(compilationRow(file, owner))).toEqual(file);
-      expect(parseCompilation(serializeCompilation(file), 'notes/one')).toEqual(file);
+      expect(parseCompilation(serializeCompilation(file), ['notes/one'])).toEqual(file);
     }
     const graph = parseCompilation('version: 1\nid: g\ntitle: G\narrangement: graph\nitems: []\ngraph: { nodes: [{ path: notes/one/a.md, x: 1, y: 2, expanded: true }] }\n');
     expect(compilationFile(compilationRow(graph, owner))).toEqual(graph);
   });
   it('keeps the lane size while the compilation is a book, so switching back restores it', () => {
-    const row = compilationRow(parseCompilation(custom, 'notes/one'), owner);
+    const row = compilationRow(parseCompilation(custom, ['notes/one']), owner);
     const booked = compilationFile({ ...row, view: 'book' });
     expect(booked).toMatchObject({ arrangement: 'book', size: 'medium' });
     expect(compilationRow(booked, owner).view).toBe('book');
     expect(compilationFile({ ...compilationRow(booked, owner), view: 'medium' })).toMatchObject({ arrangement: 'lane', size: 'medium' });
   });
   it('reads the legacy stack token as a book and writes it as book', () => {
-    const file = parseCompilation(legacyStack, 'notes/one');
+    const file = parseCompilation(legacyStack, ['notes/one']);
     expect(file.arrangement).toBe('book');
-    expect(parseCompilation(book, 'notes/one')).toEqual(file);
+    expect(parseCompilation(book, ['notes/one'])).toEqual(file);
     expect(compilationRow(file, owner).view).toBe('book');
     expect(YAML.parse(serializeCompilation(file)).arrangement).toBe('book');
     expect(serializeCompilation(file)).not.toContain('stack');
@@ -67,7 +67,7 @@ describe('compilation file', () => {
     expect(() => parseCompilation(legacyStack.replace('arrangement: stack', 'arrangement: carousel'))).toThrow('arrangement');
   });
   it('writes a legacy stack file as book when the compilation itself is copied, and the version stays 1', () => {
-    const copy = copyCompilation(parseCompilation(legacyStack, 'notes/one'), []);
+    const copy = copyCompilation(parseCompilation(legacyStack, ['notes/one']), []);
     expect(YAML.parse(serializeCompilation(copy))).toMatchObject({ version: 1, arrangement: 'book' });
   });
   it('rejects a file that does not hold exactly one of items and source, or sorts pinned items', () => {
@@ -77,19 +77,19 @@ describe('compilation file', () => {
   });
   it('keeps a manual order on a dynamic compilation through the lane model and the file', () => {
     const raw = `version: 1\nid: m\ntitle: M\narrangement: lane\nsize: small\nsource: { kind: folder, path: notes/one/sub }\nsort: { field: manual, order: asc }\nmanualOrder: [notes/one/sub/b.md, notes/one/sub/a.md]\n`;
-    const file = parseCompilation(raw, 'notes/one');
+    const file = parseCompilation(raw, ['notes/one']);
     const row = compilationRow(file, owner);
     expect(row).toMatchObject({ kind: 'dynamic', sort: { field: 'manual' }, manualOrder: ['notes/one/sub/b.md', 'notes/one/sub/a.md'] });
     expect(compilationFile(row)).toEqual(file);
-    expect(parseCompilation(serializeCompilation(file), 'notes/one')).toEqual(file);
+    expect(parseCompilation(serializeCompilation(file), ['notes/one'])).toEqual(file);
     // Another sort keeps the order, so choosing manual again restores it.
     if (row.kind !== 'dynamic') throw new Error('expected a dynamic row');
     expect(compilationFile({ ...row, sort: { field: 'title', order: 'asc' } })).toMatchObject({ sort: { field: 'title' }, manualOrder: ['notes/one/sub/b.md', 'notes/one/sub/a.md'] });
   });
-  it('rejects a manual order on pinned items, a repeated path, or a path outside the notebook', () => {
+  it('rejects a manual order on pinned items or a repeated path, and lets it name any path', () => {
     expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nitems: []\nmanualOrder: [notes/one/a.md]\n')).toThrow(/manualOrder/);
     expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nsource: { kind: tag, tag: t }\nmanualOrder: [notes/one/a.md, notes/one/a.md]\n')).toThrow(/repeats/);
-    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nsource: { kind: tag, tag: t }\nmanualOrder: [notes/two/a.md]\n', 'notes/one')).toThrow(/outside/);
+    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nsource: { kind: tag, tag: t }\nmanualOrder: [notes/two/a.md]\n', ['notes/one'])).not.toThrow();
   });
   it('names the problem of an invalid file instead of dropping it', () => {
     expect(() => parseCompilation('version: 1\nid: bad id\ntitle: X\narrangement: lane\nitems: []\n')).toThrow('id:');
@@ -101,11 +101,24 @@ describe('compilation file', () => {
     expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nitems:\n  - { id: a, kind: note, path: notes/one/a.md }\n  - { id: a, kind: note, path: notes/one/b.md }\n')).toThrow('Duplicate item id');
     expect(() => parseCompilation(`version: 1\nid: x\ntitle: X\narrangement: lane\nitems: [${Array.from({ length: 101 }, (_, n) => `{ id: i${n}, kind: note, path: notes/one/a.md }`).join(', ')}]\n`)).toThrow();
   });
-  it('keeps items and the source inside the notebook, except YouTube', () => {
-    expect(() => parseCompilation(custom, 'notes/two')).toThrow('outside the notebook notes/two');
-    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nsource: { kind: folder, path: notes/other }\n', 'notes/one')).toThrow('outside the notebook');
-    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nitems:\n  - { id: v, kind: youtube, videoId: dQw4w9WgXcQ }\n', 'notes/one')).not.toThrow();
-    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nitems:\n  - { id: a, kind: note, path: notes/one2/a.md }\n', 'notes/one')).toThrow('outside the notebook');
+  it('lets items name any notebook of the repository and keeps a folder source inside one of its notebooks', () => {
+    const roots = ['notes/one', 'notes/two'];
+    expect(() => parseCompilation(custom.replace('notes/one/a.md', 'notes/two/a.md'), roots)).not.toThrow();
+    // An item in no notebook still parses; it renders missing.
+    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nitems:\n  - { id: a, kind: note, path: elsewhere/a.md }\n', roots)).not.toThrow();
+    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nsource: { kind: folder, path: notes/two/sub }\n', roots)).not.toThrow();
+    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nsource: { kind: folder, path: notes/other }\n', roots)).toThrow('notes/other is outside every notebook of the repository');
+    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: lane\nsource: { kind: folder, path: notes/one2 }\n', roots)).toThrow('outside every notebook');
+  });
+  it('gives each item the notebook that holds its path, falling back to the owner for a path in none', () => {
+    const notebookOf = (path: string) => path.startsWith('notes/two/') ? 'two' : path.startsWith('notes/one/') ? 'one' : undefined;
+    const file = parseCompilation('version: 1\nid: x\ntitle: X\narrangement: book\nitems:\n  - { id: a, kind: note, path: notes/two/a.md }\n  - { id: f, kind: folder, path: notes/two/sub }\n  - { id: m, kind: note, path: gone/m.md }\n', ['notes/one', 'notes/two']);
+    const row = compilationRow(file, owner, notebookOf);
+    expect(row).toMatchObject({ notebookId: 'one', items: [{ id: 'a', notebookId: 'two' }, { id: 'f', notebookId: 'two' }, { id: 'm', notebookId: 'one' }] });
+    expect(compilationFile(row)).toEqual(file);
+    const dynamicRow = compilationRow(parseCompilation('version: 1\nid: d\ntitle: D\narrangement: lane\nsource: { kind: folder, path: notes/two/sub }\n'), owner, notebookOf);
+    expect(dynamicRow).toMatchObject({ notebookId: 'one', source: { kind: 'folder', notebookId: 'two' } });
+    expect(compilationRow(parseCompilation(dynamic), owner, notebookOf)).toMatchObject({ source: { kind: 'tag', notebookId: 'one' } });
   });
   it('recognises the file name pattern anywhere under a notebook', () => {
     expect(isCompilationPath('notes/one/deep/er/x.compilation.yml')).toBe(true);
@@ -116,7 +129,7 @@ describe('compilation file', () => {
 
 describe('compilation listing fields', () => {
   it('lists title, tags, status and a bounded summary', () => {
-    const fields = compilationFields(custom, owner.path, 'notes/one');
+    const fields = compilationFields(custom, owner.path, ['notes/one']);
     expect(fields).toMatchObject({ title: 'Reading queue', tags: ['reading'], status: 'working', metadata: { id: 'reading-queue', arrangement: 'lane', size: 'medium', itemCount: 3 } });
     expect(fields.invalid).toBeUndefined();
     expect(compilationFields(dynamic, owner.path).metadata).toMatchObject({ arrangement: 'book', sourceKind: 'tag' });
@@ -131,7 +144,8 @@ describe('compilation listing fields', () => {
     expect(compilationFields('{{{', 'notes/one/broken.compilation.yml').invalid).toContain('Invalid YAML');
   });
   it('reports scope problems as invalid', () => {
-    expect(compilationFields(custom, owner.path, 'notes/two').invalid).toContain('outside the notebook');
+    expect(compilationFields(custom, owner.path, ['notes/two']).invalid).toBeUndefined();
+    expect(compilationFields('version: 1\nid: x\ntitle: X\narrangement: lane\nsource: { kind: folder, path: notes/one/sub }\n', owner.path, ['notes/two']).invalid).toContain('outside every notebook');
   });
 });
 
@@ -141,7 +155,7 @@ describe('tag and status edits', () => {
     const next = applyCompilationMetadata(commented, { tags: ['reading', 'new'], status: 'done' });
     expect(next).toContain('# my reading list');
     expect(YAML.parse(next)).toMatchObject({ tags: ['reading', 'new'], status: 'done' });
-    expect(parseCompilation(next, 'notes/one').items).toHaveLength(3);
+    expect(parseCompilation(next, ['notes/one']).items).toHaveLength(3);
   });
   it('removes tags and status when the caller has none, and leaves an unchanged file byte for byte', () => {
     const next = applyCompilationMetadata(custom, { tags: [], status: undefined });
@@ -177,7 +191,7 @@ describe('reference rewrite', () => {
 });
 
 describe('copy', () => {
-  const file = parseCompilation(custom, 'notes/one');
+  const file = parseCompilation(custom, ['notes/one']);
   it('titles the copy, gives it a new identity and fresh item ids', () => {
     let n = 0;
     const copy = copyCompilation(file, [file.id], () => `new-${++n}`);
@@ -185,7 +199,7 @@ describe('copy', () => {
     expect(copy.items!.map(item => item.id)).toEqual(['new-1', 'new-2', 'new-3']);
     expect(copy.items!.map(item => item.kind)).toEqual(file.items!.map(item => item.kind));
     expect(file.items![0].id).toBe('a1');
-    expect(parseCompilation(serializeCompilation(copy), 'notes/one')).toEqual(copy);
+    expect(parseCompilation(serializeCompilation(copy), ['notes/one'])).toEqual(copy);
   });
   it('picks an unused id, bounds the title and copies a dynamic compilation without items', () => {
     expect(copyCompilation(file, [file.id, 'reading-queue-copy']).id).toBe('reading-queue-copy-2');
@@ -223,7 +237,21 @@ describe('membership and item moves', () => {
     expect(moved.rows[1]).toMatchObject({ items: [{ id: 'n1' }, { id: 'n0' }] });
     expect(page.rows[0]).toMatchObject({ items: [{ id: 'n0' }] });
     expect(() => moveCompilationItem({ rows: [...rows(), compilationRow(parseCompilation(dynamic), { notebookId: 'one', path: 'notes/one/d.compilation.yml' })] }, 'n0', 'clues', 0)).toThrow('Only custom');
-    expect(() => moveCompilationItem({ rows: [rows()[0], { ...rows()[1], notebookId: 'other' }] }, 'n0', 'two', 0)).toThrow('Items stay inside their notebook');
+    expect(() => moveCompilationItem({ rows: [rows()[0], { ...rows()[1], notebookId: 'other' }] }, 'n0', 'two', 0)).toThrow('Items stay inside their repository');
+  });
+  it('moves an item between compilations of different notebooks of one repository, never across repositories', () => {
+    const keyed = (notebookId: string) => rows().map(row => ({ ...row, notebookId }));
+    const page = { rows: [keyed('qa~one')[0], keyed('qa~two')[1]] };
+    expect(moveCompilationItem(page, 'n0', 'two', 0).rows[1]).toMatchObject({ items: [{ id: 'n0' }, { id: 'n1' }] });
+    expect(() => moveCompilationItem({ rows: [keyed('qa~one')[0], keyed('other~one')[1]] }, 'n0', 'two', 0)).toThrow('Items stay inside their repository');
+  });
+  it('keeps a pinned note of another notebook and takes a dynamic folder source from its own notebook', () => {
+    const notebookOf = (path: string) => path.startsWith('notes/two/') ? 'two' : 'one';
+    const notes = [{ notebookId: 'two', path: 'notes/two/z.md', tags: [], metadata: {} }, { notebookId: 'one', path: 'notes/two/z.md', tags: [], metadata: {} }, { notebookId: 'two', path: 'notes/two/sub/y.md', tags: [], metadata: {} }];
+    const pinnedRow = compilationRow({ version: 1, id: 'p', title: 'P', arrangement: 'book', items: [{ id: 'z', kind: 'note', path: 'notes/two/z.md' }] }, owner, notebookOf);
+    expect(compilationNotes(pinnedRow, notes)).toEqual([notes[0]]);
+    const folderRow = compilationRow(parseCompilation('version: 1\nid: d\ntitle: D\narrangement: lane\nsource: { kind: folder, path: notes/two }\n'), owner, notebookOf);
+    expect(compilationNotes(folderRow, notes)).toEqual([notes[0], notes[2]]);
   });
   it('judges membership by pinned notes, tag or folder, hiding archived notes from dynamic ones', () => {
     const note = (path: string, extra: object = {}) => ({ notebookId: 'one', path, tags: [] as string[], metadata: {}, ...extra });
