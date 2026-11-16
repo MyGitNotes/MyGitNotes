@@ -160,3 +160,13 @@ it('merges a draft of a note that is live now into the live note, and commits th
     repositories[0] = home;
   }
 });
+
+// cf16-F012: a live note's conflict draft in a commit is named in the app's words, not by its raw reason.
+it('names a conflict draft of a live note in the app’s words when it is in a commit', async () => {
+  stubServer();
+  updateWorkingNote(draftStore(home), base.path, { note: { ...base, content: '# A mine' }, base, blocked: 'live-merge-conflict' });
+  const { commitWorkingNotes } = commitHook();
+  const error = await commitWorkingNotes([change(base.path, home)], 'docs: update').catch((thrown: Error) => thrown);
+  expect((error as Error).message).toBe(`${base.path}: live.mergeConflict {}`);
+  expect(commits).toEqual([]);
+});
