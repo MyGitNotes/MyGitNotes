@@ -1,5 +1,5 @@
 import { type Document, Hocuspocus, type LocalTransactionOrigin } from '@hocuspocus/server';
-import { liveContentHash, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, type RepositoryId, type TextEdit, textEdits } from '@mygitnotes/core';
+import { liveContentHash, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RepositoryId, type TextEdit, textEdits } from '@mygitnotes/core';
 import * as Y from 'yjs';
 import type { EditorRef, LiveStore, MergeRecord, StoredDocument, StoredLink } from './store.js';
 
@@ -238,24 +238,90 @@ function storedDocument(stored: StoredDocument): Y.Doc {
   return document;
 }
 
+/** The UTF-16 units of each client's live string items in a document's text, by clock, for reading a unit by its id. */
+function liveUnits(text: Y.Text): (client: number, clock: number) => string | undefined {
+  const runs = new Map<number, { clock: number; str: string; }[]>();
+  for (let item = text._start; item; item = item.right) {
+    if (item.deleted || !(item.content instanceof Y.ContentString)) continue;
+    const list = runs.get(item.id.client) ?? [];
+    list.push({ clock: item.id.clock, str: item.content.str });
+    runs.set(item.id.client, list);
+  }
+  for (const list of runs.values()) list.sort((a, b) => a.clock - b.clock);
+  return (client, clock) => {
+    const list = runs.get(client);
+    if (!list) return undefined;
+    let low = 0, high = list.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1, run = list[middle];
+      if (clock < run.clock) high = middle - 1;
+      else if (clock >= run.clock + run.str.length) low = middle + 1;
+      else return run.str[clock - run.clock];
+    }
+    return undefined;
+  };
+}
+
 /**
- * The text a released epoch's document ended with, and that text once a tab's whole update of the same document is
- * applied to it: the base and the text of a merge of typing the tab kept (`LiveMergeRequest.typedIn`). Yjs takes what
- * the document already holds once, so typing the server stored before the tab heard so is in the base, not the change.
+ * How a tab's typing kept of a released epoch merges (`LiveMergeRequest.typedIn`), from the document that epoch ended with
+ * (`ended`) and the tab's whole Yjs update of it: `base` is the text the document ended with and `text` the tab's typing on
+ * it; Yjs takes what the document already holds once, so typing the server stored before the tab heard so is in the base,
+ * not the change (cf16-F001).
+ *
+ * Where the ended document holds changes the tab never had (someone else typed while it was cut off), Yjs would string two
+ * replacements of one line together, so the tab's text is instead merged by character (A4) on what both had: the units
+ * both documents know that not both deleted. Two insertions at one point then conflict, since the span between them may
+ * have been replaced on both sides (spec A3.1, S6 (c)).
  * Null for an update that cannot be read.
  */
-export function typedInTexts(ended: Pick<StoredDocument, 'state' | 'log'>, update: Uint8Array): { base: string; text: string; } | null {
-  const document = storedDocument({ ...ended, gen: 0, seq: 0 });
+export function typedInTexts(ended: Pick<StoredDocument, 'state' | 'log'>, update: Uint8Array): { base: string; text: string; } | { conflict: true; } | null {
+  const server = storedDocument({ ...ended, gen: 0, seq: 0 });
+  const tab = new Y.Doc();
   try {
-    const base = document.getText(CONTENT).toString();
     try {
-      Y.applyUpdate(document, update);
+      Y.applyUpdate(tab, update);
     } catch {
       return null;
     }
-    return { base, text: document.getText(CONTENT).toString() };
+    const serverText = server.getText(CONTENT), tabText = tab.getText(CONTENT);
+    const base = serverText.toString(), mine = tabText.toString();
+    const serverKnows = Y.decodeStateVector(Y.encodeStateVector(server)), tabKnows = Y.decodeStateVector(Y.encodeStateVector(tab));
+    const serverDeleted = Y.createDeleteSetFromStructStore(server.store), tabDeleted = Y.createDeleteSetFromStructStore(tab.store);
+    const knownTo = (vector: Map<number, number>, client: number, clock: number) => clock < (vector.get(client) ?? 0);
+    // Changes the tab never had: units the server made it never heard of, or deleted where the tab still has them.
+    let unseen = [...serverKnows].some(([client, clock]) => clock > (tabKnows.get(client) ?? 0));
+    for (let item = serverText._start; item && !unseen; item = item.right) {
+      if (!item.deleted) continue;
+      for (let unit = 0; unit < item.length && !unseen; unit++) {
+        const id = Y.createID(item.id.client, item.id.clock + unit);
+        unseen = knownTo(tabKnows, id.client, id.clock) && !Y.isDeleted(tabDeleted, id);
+      }
+    }
+    if (!unseen) {
+      try {
+        Y.applyUpdate(server, update);
+      } catch {
+        return null;
+      }
+      return { base, text: serverText.toString() };
+    }
+    // What both had, in the tab's order: each unit both know that not both deleted, read from whichever still holds it.
+    const serverUnit = liveUnits(serverText);
+    let ancestor = '';
+    for (let item = tabText._start; item; item = item.right) {
+      const str = !item.deleted && item.content instanceof Y.ContentString ? item.content.str : null;
+      for (let unit = 0; unit < item.length; unit++) {
+        const id = Y.createID(item.id.client, item.id.clock + unit);
+        if (!knownTo(serverKnows, id.client, id.clock)) continue;
+        if (str !== null) ancestor += str[unit];
+        else if (!Y.isDeleted(serverDeleted, id)) ancestor += serverUnit(id.client, id.clock) ?? '';
+      }
+    }
+    const text = rebaseLiveText(ancestor, base, mine, undefined, { uncertainBase: true });
+    return text === null ? { conflict: true } : { base, text };
   } finally {
-    document.destroy();
+    server.destroy();
+    tab.destroy();
   }
 }
 

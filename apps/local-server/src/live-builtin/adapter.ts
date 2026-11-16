@@ -207,6 +207,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     if (!ended) return null;
     const texts = typedInTexts(ended, update);
     if (!texts) throw new SourceError('typedIn.update is not a Yjs update of its document.', 400);
+    if ('conflict' in texts) return texts;
     return { base: fits(normalizeLiveText(texts.base)), text: fits(normalizeLiveText(texts.text)) };
   };
 
@@ -270,6 +271,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
         let uncertainBase = false;
         if (request.typedIn) {
           const typed = await typedIn(link, request.typedIn);
+          if (typed && 'conflict' in typed) return { conflict: true };
           if (typed) ({ base, text: mine } = typed);
           else uncertainBase = true;
         }
