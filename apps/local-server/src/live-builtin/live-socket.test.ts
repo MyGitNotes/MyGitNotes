@@ -532,6 +532,27 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(one.closes).toHaveLength(1);
     });
 
+    it('does not count a renewal as activity: with the default limits, an idle open tab stops counting ten minutes after its last move, across a 4000 renewal (cf14-F001)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40 } });
+      const { time } = server.live;
+      const id = await server.checkout();
+      const one = await server.tab(1);
+      await one.synced();
+      one.provider.awareness!.setLocalState({ cursor: { anchor: 0, head: 0 } });
+      await until('the tab counts', async () => (await activeEditors(server.live, id)) === 1);
+      // Ten minutes on, the socket is renewed and the tab comes back on a fresh ticket, doing nothing.
+      time.advance(10 * 60_000 + 1);
+      await until('the socket was closed for a new ticket', () => one.closes.length > 0);
+      expect(one.closes).toEqual([{ code: 4000, reason: 'Live ticket renewal' }]);
+      await until('the tab connected again with a fresh ticket', () => one.asked === 2 && one.provider.isSynced);
+      await pause(200);
+      expect(await activeEditors(server.live, id)).toBe(0);
+      // What it does next counts again.
+      one.type(`${A}back\n`);
+      await one.saved();
+      expect(await activeEditors(server.live, id)).toBe(1);
+    });
+
     it('stores nothing a socket sends once it was open for socketMs: the tab gets it in again only with a fresh ticket, which a signed-out person is refused', async () => {
       const server = await serverOver({ store: makeStore(), limits: { socketMs: 60_000, beatMs: 60_000 } });
       const { store, time } = server.live;
@@ -891,6 +912,18 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect([`${A}offline\nmeanwhile\n`, `${A}meanwhile\noffline\n`]).toContain(one.text());
       expect(await stored(store, id)).toBe(one.text());
       expect(one.asked).toBe(2);
+    });
+
+    it('connects a tab again that is put back online before its own socket finished closing', async () => {
+      const server = await serverOver({ store: makeStore() });
+      const id = await server.checkout();
+      const one = await server.tab(1);
+      await one.synced();
+      // The tab's own close event has not landed yet when it is asked to connect again.
+      one.offline();
+      one.online();
+      await until('the tab connected again', () => one.asked === 2 && one.provider.isSynced);
+      expect(await activeEditors(server.live, id)).toBe(1);
     });
 
     it('takes what a tab typed offline and while its next ticket was on the way: none of it is refused, and the tabs and the store agree', async () => {
