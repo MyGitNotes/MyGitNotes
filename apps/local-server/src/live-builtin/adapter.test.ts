@@ -372,7 +372,36 @@ describe('merging typing a tab kept', () => {
     expect((await read(f, made.id)).content).toBe('# A\nstored ');
   });
 
-  it('refuses with 400, at once, kept typing of an epoch whose ended document claims a deleted run past any live text', async () => {
+  // cfx2-F001: server rewrites add units a document never sheds; past the bound, the person's typing still goes in and kept typing still merges.
+  it('takes typing, and merges what a tab kept, after a hundred-odd whole rewrites of a 200 KB note', async () => {
+    const f = builtinFixture();
+    const lines = (n: number) => Array.from({ length: 2000 }, (_, line) => `${n} ${line} ${'x'.repeat(92)}`).join('\n') + '\n';
+    const made = await checkout(f, lines(0));
+    const link = (await f.store.link(made.id))!;
+    const tab = await forkedTab(f, made.id);
+    const held = await f.documents.open(link);
+    for (let n = 1; n <= 110; n++) await f.documents.edit(link, editorOf(3), () => lines(n));
+    const units = [...Y.decodeStateVector(Y.encodeStateVector(held.document)).values()].reduce((sum, clock) => sum + clock, 0);
+    expect(units).toBeGreaterThan(4 * LIVE_MAX_BYTES);
+    // A tab that is up to date types one character.
+    const live = new Y.Doc();
+    Y.applyUpdate(live, Y.encodeStateAsUpdate(held.document));
+    const updates: Uint8Array[] = [];
+    live.on('update', (update: Uint8Array) => void updates.push(update));
+    live.getText('content').insert(0, 'Z');
+    await expect(f.documents.accept(link, updates[0], editorOf(1))).resolves.toBe(true);
+    live.destroy();
+    await held.close();
+    // The forked tab typed offline; its epoch ended past the bound, and its typing still merges.
+    tab.text.insert(tab.text.length, 'kept\n');
+    await checkIn(f, made.id);
+    await checkout(f, `Z${lines(110)}`, note, 2);
+    const kept = tab.kept();
+    expect(await merge(f, made.id, { base: lines(0), text: kept.text, mergeId: 'kept-merge-rewritten', typedIn: { document: kept.document, update: kept.update } })).toMatchObject({ applied: true });
+    expect((await read(f, made.id)).content).toBe(`Z${lines(110)}kept\n`);
+  }, 60_000);
+
+  it('merges, at once and without walking it, kept typing of an epoch whose ended document claims a deleted run past any live text', async () => {
     const f = builtinFixture();
     const made = await checkout(f, '# A\n');
     // Planted straight in the store, as a process from before the bound might have; an honest tab then holds it too.
@@ -383,8 +412,9 @@ describe('merging typing a tab kept', () => {
     await checkout(f, '# A\n', note, 2);
     const kept = tab.kept();
     const started = Date.now();
-    await expect(merge(f, made.id, { base: '# A\n', text: kept.text, mergeId: 'kept-merge-planted', typedIn: { document: kept.document, update: kept.update } })).rejects.toMatchObject({ status: 400 });
+    expect(await merge(f, made.id, { base: '# A\n', text: kept.text, mergeId: 'kept-merge-planted', typedIn: { document: kept.document, update: kept.update } })).toMatchObject({ applied: true });
     expect(Date.now() - started).toBeLessThan(250);
+    expect((await read(f, made.id)).content).toBe('# A\nkept\n');
   });
 });
 
