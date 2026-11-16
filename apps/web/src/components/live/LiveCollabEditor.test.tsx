@@ -919,6 +919,20 @@ describe('typing the server has not stored', () => {
     expect((await unsyncedLiveStore().list()).map(entry => entry.text)).toEqual(['# A\noffline typing\n']);
   });
 
+  // cfx-F004: without a handler to stage it, a conflicting merge is not staged anywhere, so the typing is kept, never deleted as if saved.
+  it('keeps a conflicting merge, and offers it to copy or download, when nothing stages conflict drafts', async () => {
+    server({ documents: ['live-1.1', 'live-1.2'], merge: () => json({ error: 'The text changed the same lines as the live note did since. Nothing was merged.', code: 'merge-conflict', checkout }, 409) });
+    await open();
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: 'Copy my version' })).toBeInTheDocument();
+    expect((await unsyncedLiveStore().list()).map(entry => entry.text)).toEqual(['# A\noffline typing\n']);
+  });
+
   it('takes the text of its first sync as the merge base, also when that sync waited on the connect’s own step', async () => {
     server({ documents: ['live-1.1', 'live-1.2'] });
     await open();
@@ -938,7 +952,7 @@ describe('typing the server has not stored', () => {
   });
 
   it('keeps a conflicting merge as a conflict draft and opens the editor on the current note', async () => {
-    const onMergeConflict = vi.fn();
+    const onMergeConflict = vi.fn(() => true);
     server({ documents: ['live-1.1', 'live-1.2'], merge: () => json({ error: 'The text changed the same lines as the live note did since. Nothing was merged.', code: 'merge-conflict', checkout }, 409) });
     await open({ onMergeConflict });
     sync('# A\n');
