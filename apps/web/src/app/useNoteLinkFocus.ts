@@ -164,9 +164,9 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
   };
   /** Set while the person opens a note, so the address it gets is a new history entry. */
   const pushNext = useRef(false);
-  const latest = useRef({ named, managed, urlFor });
+  const latest = useRef({ named, managed, urlFor, pending });
   useLayoutEffect(() => {
-    latest.current = { named, managed, urlFor };
+    latest.current = { named, managed, urlFor, pending };
   });
   const follow = (path: string | null, push: boolean) => navigate(urlFor(path), { replace: !push, state: path ? FOCUS_NOTE_STATE : null });
 
@@ -191,8 +191,13 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
     if (unmarked && isCurrent(location.key)) void navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: FOCUS_NOTE_STATE });
   }, [unmarked, location, navigate, isCurrent]);
 
-  /** Runs `open` for the note at `path`; when it opens, the note's address is a new history entry. */
+  /**
+   * Runs `open` for the note at `path`; when it opens, the note's address is a new history entry. While the note link the
+   * page was loaded on still opens, the note it names wins: a click elsewhere then is most likely a stray one, so it opens
+   * nothing and leaves the history alone (reported as blocked, so it does not fall back to zoom either).
+   */
   const trackOpen = async (path: string, open: () => Promise<OpenResult>): Promise<OpenResult> => {
+    if (latest.current.pending) return 'blocked';
     pushNext.current = true;
     let result: OpenResult = 'blocked';
     try {
