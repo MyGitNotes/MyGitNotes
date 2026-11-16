@@ -229,6 +229,15 @@ describe('a writer’s note of a repository with the built-in editor', () => {
     expect(discard).toHaveBeenCalled();
   });
 
+  // cf16-F002: typing in the direct editor would be written over the conflict draft, the note's one draft slot.
+  it('holds the direct editor read-only offline while the note has a conflict draft, and says to deal with it first', async () => {
+    online = false;
+    await mount({ live: live({ mergeConflict: { mine: '# Alpha\nMine.\n', discard: vi.fn() } }) });
+    expect(calls('/api/live/checkout')).toHaveLength(0);
+    expect(screen.getByLabelText('Note content')).toHaveAttribute('readonly');
+    expect(screen.getByText(/Deal with the conflict draft first/)).toBeInTheDocument();
+  });
+
   it('opens in the direct editor the same way when the checkout cannot reach the server', async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url === '/api/live/checkout') throw new TypeError('Failed to fetch');

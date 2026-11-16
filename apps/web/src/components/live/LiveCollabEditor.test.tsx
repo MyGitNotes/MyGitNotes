@@ -889,6 +889,23 @@ describe('typing the server has not stored', () => {
     expect(provider().configuration.document.getText('content').toString()).toBe('');
   });
 
+  // cf16-F002: a note has one conflict draft, which waits for the person; a second conflict never takes its place.
+  it('offers a conflicting merge to copy or download, and keeps it, when the note already has a conflict draft', async () => {
+    const onMergeConflict = vi.fn(() => false);
+    server({ documents: ['live-1.1', 'live-1.2'], merge: () => json({ error: 'The text changed the same lines as the live note did since. Nothing was merged.', code: 'merge-conflict', checkout }, 409) });
+    await open({ onMergeConflict });
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    expect(onMergeConflict).toHaveBeenCalledWith('# A\noffline typing\n');
+    expect(screen.getByRole('alert')).toHaveTextContent('An earlier conflict draft of this note is waiting');
+    expect(screen.getByRole('button', { name: 'Copy my version' })).toBeInTheDocument();
+    expect((await unsyncedLiveStore().list()).map(entry => entry.text)).toEqual(['# A\noffline typing\n']);
+  });
+
   it('takes the text of its first sync as the merge base, also when that sync waited on the connect’s own step', async () => {
     server({ documents: ['live-1.1', 'live-1.2'] });
     await open();
