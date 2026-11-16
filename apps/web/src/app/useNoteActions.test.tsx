@@ -45,3 +45,15 @@ it('zooms a note from the address of the Focus as from the notebook page: closin
   expect(new URL(target, 'https://workspace.invalid').searchParams.get('returnTo')).toBe('/notes/life');
   expect(options).toEqual({ replace: false, state: null });
 });
+
+it('drops the ?edit request of a note address from the zoom it opens and from where that zoom returns', async () => {
+  const { navigate, run } = open('/notebooks/life/notes/one.md', '?q=draft&edit&mode=split', { focusNote: true }, note('one'), true);
+  await run();
+  const url = new URL(navigate.mock.calls[0]![0] as string, 'https://workspace.invalid');
+  expect(url.searchParams.has('edit')).toBe(false);
+  expect(url.searchParams.get('mode')).toBe('split');
+  expect(url.searchParams.get('q')).toBe('draft');
+  const zoomedFrom = open('/notebooks/life/notes/one.md', '?zoom&edit', null, note('two'));
+  await zoomedFrom.run();
+  expect(zoomedFrom.navigate).toHaveBeenCalledWith(expect.not.stringContaining('edit'), { replace: false, state: { noteTrail: ['/notebooks/life/notes/one.md?zoom'] } });
+});

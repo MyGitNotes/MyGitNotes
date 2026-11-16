@@ -14,6 +14,10 @@ describe('workspace URLs', () => {
     expect(noteReturnRoute('?zoom', 'work')).toBe('/notebooks/work');
     expect(noteReturnRoute('?zoom=1&view=card', 'work')).toBe('/notebooks/work?view=card');
   });
+  it('leaves a note address\'s ?edit request out of the browse view behind it, so no other note inherits it', () => {
+    expect(noteReturnRoute('?edit', 'work')).toBe('/notebooks/work');
+    expect(noteReturnRoute('?edit=1&view=card&live=editing', 'work')).toBe('/notebooks/work?view=card&live=editing');
+  });
   it('falls back to the notebook for invalid or recursive editor origins', () => {
     for (const returnTo of ['https://example.com', '//example.com', '/missing', '/notebooks/work/notes/note.md', '/graph?returnTo=/screen']) {
       expect(noteReturnRoute('?' + new URLSearchParams({ returnTo }), 'work')).toBe('/notebooks/work');
