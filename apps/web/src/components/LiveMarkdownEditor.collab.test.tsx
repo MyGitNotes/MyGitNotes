@@ -72,8 +72,8 @@ it('carries no state between views, and the direct mode keeps its history', () =
   expect(direct.view().state.field(historyField, false)).toBeDefined();
 });
 
-it('shows the leading YAML block as frontmatter: its lines marked, no heading, rule or shortcode drawn in it, and its text editable', () => {
-  const text = '---\ntitle: Ideas\ncreated: "2026-11-15T17:48:48Z"\n---\n# Body :smile:\n';
+it('shows an unparsable leading YAML block raw: its lines marked, no heading, rule or shortcode drawn in it, and its text editable', () => {
+  const text = '---\ntitle: [Ideas\ncreated: "2026-11-15T17:48:48Z"\n---\n# Body :smile:\n';
   const { collab, ytext } = collabOf(text);
   const { view } = mount(text, collab);
   const lines = [...view().contentDOM.querySelectorAll('.cm-line')];
@@ -84,4 +84,41 @@ it('shows the leading YAML block as frontmatter: its lines marked, no heading, r
   expect(lines.slice(0, 4).some(line => line.querySelector('.cm-widget, [class*="emoji"], [class*="shortcode"]'))).toBe(false);
   act(() => view().dispatch({ changes: { from: 4, to: 9, insert: 'name' }, userEvent: 'input' }));
   expect(ytext.toString()).toBe(text.replace('title', 'name'));
+});
+
+const NOTE = '---\ntitle: Ideas\ntags: [a]\n---\n\n# Body\ntext\n';
+const BODY = NOTE.indexOf('# Body');
+
+it('hides a parsable frontmatter block and its separator, numbering the body with its file lines', () => {
+  const { collab } = collabOf(NOTE);
+  const { view } = mount(NOTE, collab);
+  const lines = [...view().contentDOM.querySelectorAll('.cm-line')].map(line => line.textContent);
+  expect(lines).not.toContain('title: Ideas');
+  expect(lines[0]).toContain('Body');
+  const numbers = [...view().dom.querySelectorAll('.cm-lineNumbers .cm-gutterElement')].map(element => element.textContent).filter(Boolean);
+  expect(numbers).toContain('6');
+  expect(numbers).not.toContain('1');
+});
+
+it('keeps local edits out of the hidden block: select-all and delete, typing at 0, paste over it, Vim-style whole-doc delete', () => {
+  const { collab, ytext } = collabOf(NOTE);
+  const { view } = mount(NOTE, collab);
+  act(() => view().dispatch({ changes: { from: 0, to: view().state.doc.length }, userEvent: 'delete' }));
+  expect(ytext.toString()).toBe(NOTE.slice(0, BODY));
+  act(() => view().dispatch({ changes: { from: 0, insert: 'x' }, userEvent: 'input' }));
+  expect(ytext.toString()).toBe(NOTE.slice(0, BODY) + 'x');
+  act(() => view().dispatch({ changes: { from: 2, to: BODY + 1, insert: 'pasted' }, userEvent: 'input.paste' }));
+  expect(ytext.toString()).toBe(NOTE.slice(0, BODY) + 'pasted');
+  expect(view().state.selection.main.head).toBeGreaterThanOrEqual(BODY);
+});
+
+it('lets a remote edit inside the block through, and shows the block once it stops parsing', () => {
+  const { collab, ytext } = collabOf(NOTE);
+  const { view } = mount(NOTE, collab);
+  act(() => ytext.insert(NOTE.indexOf('[a]') + 2, ', b'));
+  expect(view().state.doc.toString()).toContain('tags: [a, b]');
+  act(() => ytext.insert(NOTE.indexOf('Ideas'), '['));
+  const lines = [...view().contentDOM.querySelectorAll('.cm-line')];
+  expect(lines[1]!.textContent).toBe('title: [Ideas');
+  expect(lines[1]!.classList.contains('live-md-frontmatter')).toBe(true);
 });
