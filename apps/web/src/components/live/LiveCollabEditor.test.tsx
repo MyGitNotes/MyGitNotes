@@ -1089,3 +1089,16 @@ describe('typing the server has not stored', () => {
     expect(provider().configuration.document.getText('content').toString()).toBe('');
   });
 });
+
+describe('split mode', () => {
+  it('shows the live text in a source editor beside its preview', async () => {
+    await open({ mode: 'split', body: '# Shared heading\n' });
+    emit(config => {
+      config.document.getText('content').insert(0, '---\ntitle: A\n---\n\n# Shared heading\n');
+      config.onStatus?.({ status: 'connected' });
+      config.onSynced?.({ state: true });
+    });
+    expect((await screen.findByRole('textbox', { name: 'Live note source' })).textContent).toContain('title: A');
+    expect(screen.getByRole('heading', { name: 'Shared heading' })).toBeInTheDocument();
+  });
+});

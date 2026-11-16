@@ -21,7 +21,7 @@ interface FakeConfig {
   onStatus?: (event: { status: string; }) => void;
   onSynced?: (event: { state: boolean; }) => void;
 }
-const fake = vi.hoisted(() => ({ providers: [] as { configuration: FakeConfig; }[], handle: { goToLine: [] as number[], reveal: [] as [number, number][] } }));
+const fake = vi.hoisted(() => ({ providers: [] as { configuration: FakeConfig; }[], handle: { goToLine: [] as number[], reveal: [] as [number, number][] }, lineNumbers: [] as (boolean | undefined)[] }));
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
     configuration: FakeConfig;
@@ -37,7 +37,8 @@ vi.mock('@hocuspocus/provider', () => ({
 }));
 vi.mock('../MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; readOnly: boolean; }>(({ content, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, readOnly, onChange: () => {} })) }));
 vi.mock('../LiveMarkdownEditor.js', () => ({
-  LiveMarkdownEditor: forwardRef<unknown, { collab?: { text: string; }; content?: string; }>(({ collab, content }, ref) => {
+  LiveMarkdownEditor: forwardRef<unknown, { collab?: { text: string; }; content?: string; showLineNumbers?: boolean; }>(({ collab, content, showLineNumbers }, ref) => {
+    fake.lineNumbers.push(showLineNumbers);
     useImperativeHandle(ref, () => ({ goToLine: (line: number) => fake.handle.goToLine.push(line), revealRange: (from: number, to: number) => fake.handle.reveal.push([from, to]), getCurrentLine: () => 1, getSelection: () => null, ready: () => true, focus: () => {}, insert: () => {}, insertBlock: () => {}, format: () => {}, outline: () => {} }));
     return createElement('textarea', { 'aria-label': 'Live note content', value: collab?.text ?? content ?? '', readOnly: true, onChange: () => {} });
   }),
@@ -178,5 +179,31 @@ describe('a note in the collab editor', () => {
     await act(async () => {});
     await act(async () => {});
     expect(rename).toHaveBeenCalledWith('r2', 'Beta');
+  });
+});
+
+describe('the editor modes of a note in the collab editor', () => {
+  const button = (name: RegExp) => screen.getAllByRole('button', { name }).find(element => element.closest('.note-mode-group, .note-editor-toolbar, [role="toolbar"]')) ?? screen.getAllByRole('button', { name })[0]!;
+
+  it('shows Source as the raw live text, frontmatter included, edits it, and goes back to Live', async () => {
+    await open();
+    fireEvent.click(button(/^Source/));
+    const source = await screen.findByRole('textbox', { name: 'Live note source' });
+    expect(source.textContent).toContain('title: Alpha');
+    expect(screen.queryByRole('textbox', { name: 'Live note content' })).toBeNull();
+    const { EditorView } = await import('@codemirror/view');
+    const view = EditorView.findFromDOM(source)!;
+    act(() => view.dispatch({ changes: { from: 0, to: 3, insert: '---' } }));
+    act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: 'more\n' }, userEvent: 'input' }));
+    expect(text().toString()).toBe(TEXT + 'more\n');
+    fireEvent.click(button(/^Live Preview/));
+    expect(screen.getByRole('textbox', { name: 'Live note content' })).toBeInTheDocument();
+  });
+
+  it('turns line numbers on and off in the collab editor', async () => {
+    await open();
+    expect(fake.lineNumbers.at(-1)).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Line Numbers' }));
+    expect(fake.lineNumbers.at(-1)).toBe(false);
   });
 });
