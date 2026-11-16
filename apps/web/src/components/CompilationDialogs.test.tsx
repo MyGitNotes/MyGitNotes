@@ -32,7 +32,7 @@ beforeEach(() => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const text = `${String(input)} ${typeof init?.body === 'string' ? init.body : ''}`;
+      const text = decodeURIComponent(`${String(input)} ${typeof init?.body === 'string' ? init.body : ''}`);
       requested.push(text);
       const notes = text.includes('r~b') ? [noteOf('r~b', 'notes/b')] : text.includes('/assets') ? [] : [noteOf('r~a', 'notes/a')];
       return new Response(JSON.stringify(text.includes('/assets') ? { assets: [] } : { revision: REVISION, total: notes.length, notes }), { headers: { 'Content-Type': 'application/json' } });

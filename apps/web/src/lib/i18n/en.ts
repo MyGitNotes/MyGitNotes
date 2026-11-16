@@ -716,6 +716,7 @@ export const en = {
   'screen.removeRow': 'Remove compilation',
   'screen.apply': 'Apply',
   'screen.addItem': 'Add item',
+  'screen.itemNotebook': 'Notebook',
   'screen.itemType': 'Item type',
   'screen.videoTitle': 'Video title (optional)',
   'screen.invalidVideo': 'Enter a valid YouTube video URL.',

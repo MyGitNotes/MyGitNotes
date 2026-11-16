@@ -718,6 +718,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'screen.removeRow': '移除合輯',
   'screen.apply': '套用',
   'screen.addItem': '加入項目',
+  'screen.itemNotebook': '筆記本',
   'screen.itemType': '項目類型',
   'screen.videoTitle': '影片名稱（選填）',
   'screen.invalidVideo': '請輸入有效的 YouTube 影片網址。',

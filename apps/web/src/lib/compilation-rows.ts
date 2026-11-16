@@ -17,6 +17,13 @@ export interface ParsedCompilation {
 /** The repository a notebook key names; bare local ids, as a single-repository workspace may hold, share one. */
 const repositoryOf = (notebookId: string) => parseNotebookKey(notebookId)?.alias ?? '';
 
+/** The notebooks of the repository `notebookId` belongs to, that one first: where a compilation's items may come from. */
+export function repositoryNotebooks<T extends Pick<NotebookConfig, 'id'>>(notebooks: readonly T[], notebookId: string): T[] {
+  const repository = repositoryOf(notebookId);
+  const scope = notebooks.filter(candidate => repositoryOf(candidate.id) === repository);
+  return [...scope.filter(candidate => candidate.id === notebookId), ...scope.filter(candidate => candidate.id !== notebookId)];
+}
+
 /** Every notebook a row reads from: its own, its items' and its source's. */
 export function compilationNotebookIds(row: CompilationRow | undefined, fallback: string): string[] {
   if (!row) return [fallback];
