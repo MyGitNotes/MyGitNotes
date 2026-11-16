@@ -943,6 +943,33 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       await held.close();
       expect(await stored(store, id)).toBe(`${A}back\n`);
     });
+
+    it('lands a merge while two tabs type: every tab and the store end with the typing of both and the merged text, once', async () => {
+      const text = 'one\ntwo\nthree\n';
+      const server = await serverOver({ store: makeStore(), files: new Map([['.mygitnotes.yaml', manifest], [notePath, text]]) });
+      const id = await server.checkout();
+      const [one, two] = [await server.tab(1), await server.tab(2)];
+      await Promise.all([one.synced(), two.synced()]);
+      const request = { notebookId: 'notes~life', path: notePath, base: text, text: `${text}merged offline\n`, mergeId: 'socket-merge-1' };
+      one.type(one.text().replace('one', 'one typed'));
+      // The merge is asked for while both type, on the text Git holds.
+      const merging = server.call('POST', '/api/live/merge', request, 'p1');
+      two.type(two.text().replace('two', 'two typed'));
+      const answer = await merging;
+      expect(answer).toMatchObject({ status: 200, body: { applied: true, outcome: 'joined', checkout: { id } } });
+      await Promise.all([one.saved(), two.saved()]);
+      const full = 'one typed\ntwo typed\nthree\nmerged offline\n';
+      await until('both tabs show the typing of both and the merge', () => one.text() === full && two.text() === full);
+      expect(await stored(server.live.store, id)).toBe(full);
+      // The request again while they type on: the first answer, and no second copy anywhere.
+      one.type(one.text().replace('three', 'three typed'));
+      expect((await server.call('POST', '/api/live/merge', request, 'p1')).body).toMatchObject({ applied: true, contentHash: answer.body.contentHash });
+      await one.saved();
+      const after = full.replace('three', 'three typed');
+      await until('both tabs show one copy of the merge', () => one.text() === after && two.text() === after);
+      expect(await stored(server.live.store, id)).toBe(after);
+      expect((await server.live.store.editors(id)).map(editor => editor.key).sort()).toEqual(['person:p1@example.test', 'person:p2@example.test']);
+    });
   });
 
 sockets('memory store', () => memoryLiveStore());

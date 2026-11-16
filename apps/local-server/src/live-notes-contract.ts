@@ -25,6 +25,8 @@ export interface LiveNotesFixture {
    * adapter that commits with the deployment's credential does.
    */
   ownCredentials?: boolean;
+  /** Whether the adapter must have `merge`. Left out, the merge cases run when it has the call and are passed over when it has none. */
+  merges?: boolean;
 }
 
 const sha256 = (text: string) => createHash('sha256').update(Buffer.from(text.replace(/[\r\0]/g, ''), 'utf8')).digest('hex');
@@ -366,6 +368,84 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       const after = await service().detail(fixture.repository, id, lease);
       expect(after.content).toBe('# Editors\nhand\nagent\nmerged\n');
       expect(after.editors.map(editor => editor.email).sort()).toEqual(editors.map(editor => editor.email).sort());
+    });
+
+    /*
+     * An adapter with `merge` (docs/specs/2026-11-16-collab-first-self-host A4) takes a text written on a base the
+     * writer names, such as a draft made offline, into the live note as a three-way merge. One without it is passed over.
+     */
+    const merging = (n: number) => {
+      const calls = as(n);
+      if (!calls.merge && fixture.merges) throw new Error('The adapter has no merge.');
+      return calls.merge?.bind(calls);
+    };
+    let merges = 0;
+    const mergeId = () => `kit-merge-${Date.now().toString(36)}-${++merges}`;
+
+    it('merges a text written on an older base into the live note while people type, keeps their typing, and credits the writer', async () => {
+      const merge = merging(1);
+      if (!merge) return;
+      const base = 'one\ntwo\nthree\n';
+      const { id } = await checkout(base);
+      await fixture.setActive(id, 2);
+      await fixture.type(id, 'one\ntwo\nthree\nfour\n', fixture.person(2));
+      const answer = await merge(fixture.repository, id, { base, text: 'ONE\ntwo\nthree\n', mergeId: mergeId() });
+      expect(answer).toEqual({ applied: true, contentHash: sha256('ONE\ntwo\nthree\nfour\n') });
+      expect(await as(2).read(fixture.repository, id)).toMatchObject({ content: 'ONE\ntwo\nthree\nfour\n', contentHash: sha256('ONE\ntwo\nthree\nfour\n') });
+      // They type on: the merge is one more edit among theirs.
+      await fixture.type(id, 'ONE\ntwo\nthree\nfour\nfive\n', fixture.person(2));
+      expect((await as(1).read(fixture.repository, id)).content).toBe('ONE\ntwo\nthree\nfour\nfive\n');
+      const lease = await service().lease(fixture.repository, id);
+      const detail = await service().detail(fixture.repository, id, lease);
+      expect(detail.editors.map(editor => editor.email).sort()).toEqual([fixture.person(1).author!.email, fixture.person(2).author!.email].sort());
+      expect(detail.editors.every(editor => editor.agent === false)).toBe(true);
+      expect(Date.parse((await row(id))!.lastEditAt!)).not.toBeNaN();
+    });
+
+    it('answers a conflict for a merge that changed what the live note changed too, and changes nothing', async () => {
+      const merge = merging(1);
+      if (!merge) return;
+      const base = 'one\ntwo\nthree\n';
+      const { id } = await checkout(base);
+      await fixture.type(id, 'one\nxxx\nthree\n', fixture.person(2));
+      const before = await as(1).read(fixture.repository, id);
+      expect(await merge(fixture.repository, id, { base, text: 'one\nyyy\nthree\n', mergeId: mergeId() })).toEqual({ conflict: true });
+      expect(await as(1).read(fixture.repository, id)).toEqual(before);
+      const lease = await service().lease(fixture.repository, id);
+      expect((await service().detail(fixture.repository, id, lease)).editors.map(editor => editor.email)).toEqual([fixture.person(2).author!.email]);
+    });
+
+    it('answers a repeated merge with its first answer and adds no second copy, while the same id of another person is their own merge', async () => {
+      const merge = merging(1);
+      if (!merge) return;
+      const base = 'a\nb\n';
+      const { id } = await checkout(base);
+      const request = { base, text: 'a\nb\nmerged\n', mergeId: mergeId() };
+      const first = await merge(fixture.repository, id, request);
+      expect(first).toEqual({ applied: true, contentHash: sha256('a\nb\nmerged\n') });
+      await fixture.type(id, 'a\nb\nmerged\nmore\n', fixture.person(2));
+      // The request again, as a client that never saw the answer sends it: the note has moved on, and takes nothing twice.
+      expect(await merge(fixture.repository, id, request)).toEqual(first);
+      expect(await Promise.all([merge(fixture.repository, id, request), merge(fixture.repository, id, request)])).toEqual([first, first]);
+      expect((await as(1).read(fixture.repository, id)).content).toBe('a\nb\nmerged\nmore\n');
+      // An id is one person's: someone else's merge under the same id is not answered with this one.
+      const theirs = await merging(2)!(fixture.repository, id, { base: 'a\nb\nmerged\nmore\n', text: 'a\nb\nmerged\nmore\ntheirs\n', mergeId: request.mergeId });
+      expect(theirs).toEqual({ applied: true, contentHash: sha256('a\nb\nmerged\nmore\ntheirs\n') });
+      expect((await as(1).read(fixture.repository, id)).content).toBe('a\nb\nmerged\nmore\ntheirs\n');
+    });
+
+    it('applies a merge that changes nothing without an edit, takes the text of a note nobody else touched, and refuses a released note', async () => {
+      const merge = merging(1);
+      if (!merge) return;
+      const base = '# Same\n';
+      const { id } = await checkout(base);
+      expect(await merge(fixture.repository, id, { base, text: base, mergeId: mergeId() })).toEqual({ applied: true, contentHash: sha256(base) });
+      expect((await row(id))?.lastEditAt).toBeNull();
+      // Written in CRLF on the same base: the live note takes it in normal form.
+      expect(await merge(fixture.repository, id, { base: '# Same\r\n', text: '# Same\r\nmine\r\n', mergeId: mergeId() })).toEqual({ applied: true, contentHash: sha256('# Same\nmine\n') });
+      expect((await as(2).read(fixture.repository, id)).content).toBe('# Same\nmine\n');
+      await checkIn(id);
+      await expect(merge(fixture.repository, id, { base, text: '# Same\nlate\n', mergeId: mergeId() })).rejects.toBeInstanceOf(LiveNotLiveError);
     });
 
     /*

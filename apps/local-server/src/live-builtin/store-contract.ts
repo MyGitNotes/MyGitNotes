@@ -1,6 +1,6 @@
 import { type LiveConflict, liveContentHash, type RepositoryId } from '@mygitnotes/core';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { type EditorRef, type LinkInit, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredTicket, type SyncReceipt } from './store.js';
+import { type EditorRef, type LinkInit, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredTicket, type SyncReceipt } from './store.js';
 
 const T0 = Date.parse('2026-11-15T00:00:00.000Z');
 const LEASE_MS = 5 * 60_000;
@@ -150,6 +150,50 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(editors[1]).not.toHaveProperty('person');
       await store.putTicket(hash('1'), { ...ticket(id, 1), editor: signedIn }, T0 + 4000 + LIVE_TICKET_MS);
       expect((await store.takeTicket(hash('1'), T0 + 5000))?.editor).toEqual(signedIn);
+    });
+
+    it('keeps the answer of a merge with its append, and answers it to a repeat without appending again', async () => {
+      const { id } = await open();
+      const key = hash('1'), answer = JSON.stringify({ applied: true, contentHash: hash('a') });
+      expect(await store.mergeAnswer(key, T0)).toBeNull();
+      expect(await store.append(id, 1, bytes('merged'), pat, T0 + 1000, { key, answer, until: T0 + 1000 + LIVE_MERGE_MS })).toEqual({ seq: 1, length: 1 });
+      expect(await store.mergeAnswer(key, T0 + 2000)).toBe(answer);
+      // The same merge again, whatever it would now answer: the first answer, and nothing appended.
+      expect(await store.append(id, 1, bytes('merged again'), sam, T0 + 3000, { key, answer: JSON.stringify({ applied: true, contentHash: hash('b') }), until: T0 + 3000 + LIVE_MERGE_MS })).toEqual({ merged: answer });
+      expect(await store.document(id, 1)).toMatchObject({ log: [bytes('merged')], seq: 1 });
+      expect((await store.editors(id)).map(editor => editor.key)).toEqual([pat.key]);
+      expect((await store.link(id))?.lastEditAt).toBe(T0 + 1000);
+      // Another merge is its own, and an append that names none never reads a merge.
+      expect(await store.append(id, 1, bytes('other'), sam, T0 + 4000, { key: hash('2'), answer: 'other', until: T0 + 4000 + LIVE_MERGE_MS })).toEqual({ seq: 2, length: 2 });
+      expect(await store.append(id, 1, bytes('typed'), sam, T0 + 5000)).toEqual({ seq: 3, length: 3 });
+      expect(await store.mergeAnswer(hash('2'), T0 + 5000)).toBe('other');
+      expect(await store.mergeAnswer(hash('3'), T0 + 5000)).toBeNull();
+      expect(await store.mergeAnswer('not-a-hash', T0 + 5000)).toBeNull();
+    });
+
+    it('forgets a merge answer once its time is up, by the time the caller passes, and then appends the merge again', async () => {
+      const { id } = await open();
+      const key = hash('1'), until = T0 + LIVE_MERGE_MS;
+      await store.append(id, 1, bytes('merged'), pat, T0, { key, answer: 'first', until });
+      expect(await store.mergeAnswer(key, until - 1)).toBe('first');
+      expect(await store.mergeAnswer(key, until)).toBeNull();
+      expect(await store.append(id, 1, bytes('merged late'), pat, until, { key, answer: 'second', until: until + LIVE_MERGE_MS })).toEqual({ seq: 2, length: 2 });
+      expect(await store.mergeAnswer(key, until + 1)).toBe('second');
+    });
+
+    it('keeps no merge answer for an append it refused, and a merge answer outlives the release of its link', async () => {
+      const { id } = await open();
+      const key = hash('1');
+      expect(await store.append(id, 2, bytes('next epoch'), pat, T0 + 1, { key, answer: 'refused', until: T0 + LIVE_MERGE_MS })).toBe('not-live');
+      expect(await store.append(unknown, 1, bytes('nowhere'), pat, T0 + 1, { key, answer: 'refused', until: T0 + LIVE_MERGE_MS })).toBe('not-live');
+      expect(await store.mergeAnswer(key, T0 + 2)).toBeNull();
+      await store.append(id, 1, bytes('merged'), pat, T0 + 3, { key, answer: 'kept', until: T0 + LIVE_MERGE_MS });
+      await checkIn(id, T0 + 10);
+      // A repeat that arrives after the note was checked in still finds its answer, as does one in the reopened note.
+      expect(await store.mergeAnswer(key, T0 + 20)).toBe('kept');
+      expect((await checkout(note, 'again', T0 + 30, 2)).outcome).toBe('reopened');
+      expect(await store.append(id, 2, bytes('merged again'), pat, T0 + 40, { key, answer: 'again', until: T0 + LIVE_MERGE_MS })).toEqual({ merged: 'kept' });
+      expect((await store.document(id, 2))?.log).toEqual([]);
     });
 
     it('numbers concurrent appends one by one and keeps every one', async () => {

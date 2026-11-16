@@ -53,7 +53,7 @@ afterEach(async () => {
 
 const kit = (store: () => LiveStore) => () => {
   const { time, liveNotes } = builtinFixture({ store: store() });
-  return { ownCredentials: true, liveNotes, repository, notebook, root: 'notes/life', person, type: (id: string, text: string, who: LiveContext) => liveNotes.type(repository, id, text, who), setActive: (id: string, n: number) => liveNotes.setActive(repository, id, n), advance: (ms: number) => time.advance(ms) };
+  return { ownCredentials: true, merges: true, liveNotes, repository, notebook, root: 'notes/life', person, type: (id: string, text: string, who: LiveContext) => liveNotes.type(repository, id, text, who), setActive: (id: string, n: number) => liveNotes.setActive(repository, id, n), advance: (ms: number) => time.advance(ms) };
 };
 
 liveNotesContract('builtin (memory store)', kit(() => memoryLiveStore()));
