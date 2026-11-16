@@ -10,6 +10,8 @@ export interface NoteLocation {
   notebook: string;
   /** The platform repository, or the worktree path of a local repository. */
   repository: string;
+  /** The id of the repository that serves the note, which keys what this browser keeps of it. */
+  repositoryId: string;
   branch: string;
   path: string;
   readOnly?: ReadOnlyReason;
@@ -41,5 +43,5 @@ export function noteLocation(notebook: string, repository: Pick<RepositoryStatus
   const name = repository?.repository ?? (repository?.id.startsWith('local:') ? repository.id.slice('local:'.length) : repository?.id ?? '');
   const readOnly = readOnlyReason(repository);
   const publishable = Boolean(repository) && !readOnly && !repository?.demo;
-  return { notebook, repository: name, branch: repository?.branch ?? '', path, readOnly, gists: publishable && repository?.type === 'github', publishable };
+  return { notebook, repository: name, repositoryId: repository?.id ?? '', branch: repository?.branch ?? '', path, readOnly, gists: publishable && repository?.type === 'github', publishable };
 }

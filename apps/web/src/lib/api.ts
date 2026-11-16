@@ -25,11 +25,28 @@ export interface GistSync {
   reauthorize?: boolean;
 }
 
-/** Commits drafts of one repository as one commit on it; `gists` reports the published notes it pushed to their Gists, and `published` what an edition's publishing service did with them. */
-export async function commitRemoteNotes(repository: RepositoryId, notes: ({ path: string; content: string; metadata: Record<string, unknown>; createOnly?: boolean; } | { path: string; delete: true; })[], revision: string, message: string, documents: { path: string; page: unknown; base: unknown; }[] = [], version?: NewVersionRequest): Promise<{ revision: string; commit: { commitHash: string; }; gists?: GistSync[]; published?: PublishSync[]; }> {
-  const res = await fetch(`${API_BASE}/notes/commit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repository, notes, revision, message, documents, version }) });
+/** A note and the Gist the person agreed to publish it to. */
+export interface GistConfirmation {
+  path: string;
+  gist: string;
+}
+
+/**
+ * Commits drafts of one repository as one commit on it; `gists` reports the published notes it pushed to their Gists,
+ * `gistsNeedConfirm` the ones it pushed nothing for until the person confirms them, and `published` what an edition's
+ * publishing service did with them. `confirmedGists` names the Gists the person already confirmed, by note.
+ */
+export async function commitRemoteNotes(repository: RepositoryId, notes: ({ path: string; content: string; metadata: Record<string, unknown>; createOnly?: boolean; } | { path: string; delete: true; })[], revision: string, message: string, documents: { path: string; page: unknown; base: unknown; }[] = [], version?: NewVersionRequest, confirmedGists: GistConfirmation[] = []): Promise<{ revision: string; commit: { commitHash: string; }; gists?: GistSync[]; gistsNeedConfirm?: GistConfirmation[]; published?: PublishSync[]; }> {
+  const res = await fetch(`${API_BASE}/notes/commit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repository, notes, revision, message, documents, version, ...(confirmedGists.length ? { confirmedGists } : {}) }) });
   if (!res.ok) throw await responseError(res, 'Failed to commit notes');
   return res.json();
+}
+
+/** Pushes the notes the person confirmed after the commit `revision` to their Gists, each as that commit holds it. */
+export async function syncConfirmedGists(repository: RepositoryId, revision: string, notes: GistConfirmation[]): Promise<GistSync[]> {
+  const res = await fetch(`${API_BASE}/gists/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repository, revision, notes }) });
+  if (!res.ok) throw await responseError(res, 'Failed to update the Gists');
+  return ((await res.json()) as { gists: GistSync[]; }).gists;
 }
 /** What else an error answer said: its `code` (`checked-out`, `too-large`, `not-live`), the paths it names, and where a filed live note went. */
 export interface ApiErrorDetails {

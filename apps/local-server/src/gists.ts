@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { type Response, Router } from 'express';
-import { githubSite, SourceError } from '@mygitnotes/core';
-import { requestSite, requestToken } from './request-workspace.js';
+import { githubSite, isNoteFile, parseNoteContent, type RemoteSource, SourceError } from '@mygitnotes/core';
+import { asRemote, namedRepository, requestSite, requestToken } from './request-workspace.js';
 
 /** A Gist request refused because the sign-in grant lacks the `gist` scope; signing in again grants it. */
 export class GistAuthorizationError extends SourceError {
@@ -76,6 +76,75 @@ async function updateGist(token: string, id: string, note: PublishedNote, url?: 
   await gistRequest(token, `/${id}`, { method: 'PATCH', body: JSON.stringify({ description: gistDescription(note), files: { [existing || file.filename]: file } }) }, url);
 }
 
+/** A note and the Gist a person agreed to publish it to. */
+export interface GistConfirmation {
+  path: string;
+  gist: string;
+}
+
+/** The confirmations a commit request carries (`confirmedGists`), as `path` and Gist id pairs; a malformed entry confirms nothing. */
+export function gistConfirmations(value: unknown): Set<string> {
+  const confirmed = new Set<string>();
+  if (!Array.isArray(value)) return confirmed;
+  for (const entry of value.slice(0, 200)) {
+    if (entry && typeof entry.path === 'string' && typeof entry.gist === 'string' && GIST_ID.test(entry.gist)) confirmed.add(`${entry.path}\0${entry.gist}`);
+  }
+  return confirmed;
+}
+
+/**
+ * Whether a commit may push `note` to `gist` without asking: the note's text in the commit's `parent` already named
+ * that Gist, and an agent did not make the note's newest commit there. The second costs one history read. A read that
+ * fails counts as no, so the note is listed to confirm instead.
+ */
+export async function gistKept(reader: RemoteSource, parent: string, note: PublishedNote, gist: string): Promise<boolean> {
+  try {
+    const before = await reader.readFileAt(parent, note.path);
+    if (!before || !('content' in before) || before.content === undefined || noteGist(parseNoteContent(before.content).metadata) !== gist) return false;
+    const [newest] = (await reader.fileHistory(note.path, 1, 1, parent)).entries;
+    return Boolean(newest) && !newest.agent;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pushes the committed notes that name a Gist, each only when the person meant it: the request confirms that Gist for
+ * that note, or {@link gistKept} holds for the commit's `parent`. The frontmatter is repository content an agent can
+ * write, so any other note is pushed nothing and answered in `gistsNeedConfirm`; the commit stands either way.
+ */
+export async function publishCommittedGists(token: string, reader: RemoteSource, parent: string, notes: PublishedNote[], confirmed: Set<string>, url?: string): Promise<{ gists?: GistSync[]; gistsNeedConfirm?: GistConfirmation[]; }> {
+  const ready: PublishedNote[] = [], unconfirmed: GistConfirmation[] = [];
+  for (const note of notes) {
+    const gist = noteGist(note.metadata);
+    if (!gist) continue;
+    if (confirmed.has(`${note.path}\0${gist}`) || await gistKept(reader, parent, note, gist)) ready.push(note);
+    else unconfirmed.push({ path: note.path, gist });
+  }
+  return { ...(ready.length ? { gists: await syncGists(token, ready, url) } : {}), ...(unconfirmed.length ? { gistsNeedConfirm: unconfirmed } : {}) };
+}
+
+/**
+ * Pushes notes a person confirmed after their commit: each note as `revision` holds it, to the Gist it names there,
+ * which must be the confirmed one. A note that commit does not hold, or that names another Gist, is reported and pushed nothing.
+ */
+export async function syncConfirmedGists(token: string, reader: RemoteSource, revision: string, confirmations: GistConfirmation[], url?: string): Promise<GistSync[]> {
+  const results: GistSync[] = [];
+  for (const { path: file, gist } of confirmations) {
+    try {
+      const read = await reader.readFileAt(revision, file);
+      if (!read || !('content' in read) || read.content === undefined) throw new SourceError('The note is not readable in that commit.', 404);
+      const { metadata, content } = parseNoteContent(read.content);
+      if (noteGist(metadata) !== gist) throw new SourceError('The note names another Gist in that commit.', 409);
+      await updateGist(token, gist, { path: file, content, metadata }, url);
+      results.push({ path: file, gist });
+    } catch (error) {
+      results.push({ path: file, gist, error: error instanceof Error ? error.message : 'Gist update failed.', ...(error instanceof GistAuthorizationError ? { reauthorize: true } : {}) });
+    }
+  }
+  return results;
+}
+
 /** Pushes each note that names a Gist to that Gist, one at a time; a failure is reported for its note and never undoes the commit. */
 export async function syncGists(token: string, notes: PublishedNote[], url?: string): Promise<GistSync[]> {
   const results: GistSync[] = [];
@@ -130,6 +199,19 @@ export function createGistRouter(): Router {
       const { path: file, content, metadata } = req.body ?? {};
       if (typeof file !== 'string' || !file || typeof content !== 'string') throw new SourceError('path and content are required.');
       res.json(await createGist(token(res), { path: file, content, metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {} }, gistSite(res)));
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+  // Pushes notes the person confirmed after a commit answered them in `gistsNeedConfirm`, from that commit.
+  router.post('/api/gists/sync', async (req, res) => {
+    try {
+      const { repository, revision, notes } = req.body ?? {};
+      if (typeof revision !== 'string' || !/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(revision)) throw new SourceError('revision must name a commit.');
+      if (!Array.isArray(notes) || !notes.length || notes.length > 200 || notes.some(note => typeof note?.path !== 'string' || !isNoteFile(note.path) || typeof note.gist !== 'string' || !GIST_ID.test(note.gist))) throw new SourceError('notes must list 1 to 200 notes, each with its path and Gist id.');
+      const credential = token(res);
+      const { reader } = asRemote((await namedRepository(res, repository)).handle);
+      res.json({ gists: await syncConfirmedGists(credential, reader, revision, notes.map(note => ({ path: note.path as string, gist: note.gist as string })), gistSite(res)) });
     } catch (error) {
       fail(res, error);
     }

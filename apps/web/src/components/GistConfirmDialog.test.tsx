@@ -29,7 +29,11 @@ function Harness({ onAnswer }: { onAnswer: (publish: boolean) => void; }) {
 
 const open = () => {
   const onAnswer = vi.fn();
-  render(<I18nProvider><Harness onAnswer={onAnswer} /></I18nProvider>);
+  render(
+    <I18nProvider>
+      <Harness onAnswer={onAnswer} />
+    </I18nProvider>,
+  );
   expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(screen.getByText('commit'));
   return onAnswer;

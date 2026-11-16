@@ -115,7 +115,7 @@ export interface PublishedCommit {
   person?: WorkspacePerson;
   /**
    * An `/mcp` write made the commit. Its note text, the `gist:` mark included, is the agent's, so it never aims the
-   * person's token at a Gist; the Gist follows on the owner's next commit of the note in the app.
+   * person's token at a Gist; the owner's next commit of the note in the app asks before it pushes the note.
    */
   agentWrite?: boolean;
   /** The commit's revision ({@link CommittedNotes.revision}). */
@@ -153,8 +153,8 @@ export function commitPublisher({ publishing, defer }: { publishing?: Publishing
       for (const result of results) if (result.error) console.warn(`[publishing] ${where(result.path)}: ${result.error}`);
     };
     const work: Promise<unknown>[] = [];
-    // The Gist keeps its last text until a person commits the note in the app, which updates it as before.
-    if (agentWrite) { for (const note of named) console.info(`[publishing] ${where(note.path)}: gist not updated by an agent write; updates on the next app commit`); }
+    // The Gist keeps its last text until a person commits the note in the app and confirms the Gist, as an agent made the note's newest commit.
+    if (agentWrite) { for (const note of named) console.info(`[publishing] ${where(note.path)}: gist not updated by an agent write; the next app commit asks the owner first`); }
     else for (const note of named) console.info(`[publishing] ${where(note.path)}: the Gist it names was not updated, as Gists sync only on the app's commit routes; the next commit of the note in the app updates it`);
     if (service) work.push(Promise.resolve().then(() => service.syncCommitted!({ repository, notes, ...(person ? { person } : {}), ...(revision ? { revision } : {}) })).then(report).catch(failed('publishing', notes.map(note => note.path))));
     if (!work.length) return undefined;

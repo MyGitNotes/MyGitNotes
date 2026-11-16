@@ -26,11 +26,14 @@ function Panel() {
 
 // The commit confirms the Gist this browser created for the note, kept outside the draft an agent tool can change.
 it('remembers the Gist it creates for the note in this repository, and forgets it when unpublished', async () => {
-  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === '/api/gists' && init?.method === 'POST') return new Response(JSON.stringify({ id: 'new456', url: 'https://gist.github.com/new456' }));
-    if (url === '/api/gists/new456' && init?.method === 'DELETE') return new Response(JSON.stringify({ success: true }));
-    throw new Error(`Unexpected request ${url}`);
-  }));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/gists' && init?.method === 'POST') return new Response(JSON.stringify({ id: 'new456', url: 'https://gist.github.com/new456' }));
+      if (url === '/api/gists/new456' && init?.method === 'DELETE') return new Response(JSON.stringify({ success: true }));
+      throw new Error(`Unexpected request ${url}`);
+    }),
+  );
   render(<Panel />);
   fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
   await screen.findByRole('button', { name: 'Unpublish' });

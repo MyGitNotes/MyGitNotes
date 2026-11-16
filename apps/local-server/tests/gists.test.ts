@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createServer, type Server } from 'node:http';
+import { gitBlobId } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { createRecordStore } from '../src/record-store/index.js';
 import { gistPageAllowed } from '../src/gists.js';
@@ -57,10 +58,17 @@ beforeEach(async () => {
     const match = /^https:\/\/api\.github\.com\/repos\/owner\/home(.*)$/.exec(String(url));
     if (!match) return nativeFetch(url, init);
     const endpoint = match[1];
+    const blob = (file: string) => gitBlobId(Buffer.from(files[file]), 40);
     if (endpoint === '') return json({ private: true, default_branch: 'main', permissions: { push: true } });
+    // Each note's newest commit is a person's, so a note that already named its Gist is pushed without asking.
+    if (endpoint.startsWith('/commits?')) return json([{ sha: 'a'.repeat(40), parents: [], commit: { message: 'docs: write the notes', author: { name: 'Owner', date: '2026-11-16T00:00:00Z' } } }]);
     if (endpoint.startsWith('/commits/')) return json({ sha: 'a'.repeat(40), commit: { tree: { sha: 'tree' } } });
-    if (endpoint.startsWith('/git/trees/')) return json({ truncated: false, tree: Object.keys(files).map(file => ({ path: file, sha: `blob:${file}`, type: 'blob', mode: '100644', size: 10 })) });
-    if (endpoint.startsWith('/git/blobs/')) return json({ encoding: 'base64', content: Buffer.from(files[decodeURIComponent(endpoint.slice('/git/blobs/blob:'.length))] ?? '').toString('base64') });
+    if (endpoint.startsWith('/contents/')) {
+      const file = decodeURIComponent(endpoint.slice('/contents/'.length).split('?')[0]);
+      return file in files ? json({ type: 'file', sha: blob(file), size: Buffer.byteLength(files[file]) }) : json({ message: 'Not Found' }, 404);
+    }
+    if (endpoint.startsWith('/git/trees/')) return json({ truncated: false, tree: Object.keys(files).map(file => ({ path: file, sha: blob(file), type: 'blob', mode: '100644', size: Buffer.byteLength(files[file]) })) });
+    if (endpoint.startsWith('/git/blobs/')) return json({ encoding: 'base64', content: Buffer.from(files[Object.keys(files).find(file => blob(file) === endpoint.slice('/git/blobs/'.length))!] ?? '').toString('base64') });
     if (endpoint === '/git/trees') return json({ sha: 'new-tree' });
     if (endpoint === '/git/commits') return json({ sha: 'd'.repeat(40) });
     if (endpoint.startsWith('/git/refs/')) return json({ object: { sha: 'd'.repeat(40) } });

@@ -116,6 +116,7 @@ import { useAgentEnabled } from './lib/web-features.js';
 import { DerivedManifestNotice, RepositorySwitch, WorkspaceGate } from './components/WorkspaceSetup.js';
 import { useLeaveWarning } from './lib/use-leave-warning.js';
 import { CommitModal } from './components/CommitModal.js';
+import { useGistConfirm } from './components/GistConfirmDialog.js';
 import { Breadcrumbs } from './components/Breadcrumbs.js';
 import { FolderIndex } from './components/FolderIndex.js';
 import { FolderLinks } from './components/FolderLinks.js';
@@ -290,7 +291,8 @@ export const AppContent: React.FC = () => {
 
   // The agent's note tools edit this page's working changes; only a remote workspace has them, as local Pi edits its files.
   const webAgentTools = useWebAgentTools({ config, activeWorkingNotes, repositoryFor, canWriteNotebook, revisionFor, readDraft, updateDraft, stageWorkingNote, findCommittedNote, resolveBareNotebook });
-  const { commitWorkingNotes } = useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError });
+  const { confirmGists, gistConfirmDialog } = useGistConfirm();
+  const { commitWorkingNotes } = useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError, confirmGists });
   const { commitNoteFile } = useQuickNoteCommit({ remote, repositoryFor, refreshWorkspace, commitWorkingNotes, activeWorkingNotes, t, statusLabel: status => statusLabel(status, statusEntries, language) });
   const legacyRecovery = useLegacyBookmarkRecovery(repositories.map(repository => repository.id));
   const [legacyImportOpen, setLegacyImportOpen] = useState(false);
@@ -995,6 +997,7 @@ export const AppContent: React.FC = () => {
                 />
                 {/* Create New Note Modal */}
               </div>
+              {gistConfirmDialog}
               <ImageLightbox />
               {outlineActions.dialog && <AddToOutlineDialog key={outlineActions.dialog.id} source={outlineActions.dialog.source} busy={outlineActions.busy} error={outlineActions.error} onChoose={outlineActions.choose} onClose={outlineActions.cancel} />}
               {legacyImportOpen && (
