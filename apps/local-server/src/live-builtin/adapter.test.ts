@@ -7,7 +7,7 @@ import { liveEditorRef } from './adapter.js';
 import { builtinLiveNotes } from './index.js';
 import { memoryLiveStore } from './memory-store.js';
 import type { LiveStore } from './store.js';
-import { type BuiltinFixture, builtinFixture, gate, notebook, person, redisTestStores, repository, settle, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
+import { type BuiltinFixture, builtinFixture, gate, notebook, person, hugeDeletedUpdate, redisTestStores, repository, settle, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
 
 /*
  * The built-in live editor's adapter and documents (docs/specs/2026-11-15-builtin-live-editor §2, §4, §5, §19, §20;
@@ -355,6 +355,36 @@ describe('merging typing a tab kept', () => {
     await checkout(f, '# A\nstored ', note, 2);
     expect(await merge(f, made.id, { base: '# A\n', text: tab.text, mergeId: 'kept-merge-late', typedIn: { document: tab.document, update: tab.update } })).toEqual({ conflict: true });
     expect((await read(f, made.id)).content).toBe('# A\nstored ');
+  });
+
+  // cfx-F001: a deleted run is stored as its length alone, so a few bytes can name any length; walking it unit by unit would hold the process.
+  it('refuses with 400, at once, kept typing whose update claims a deleted run past any live text', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\n');
+    const tab = await tabTyping(f, made.id, 'stored ', 'kept\n');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\nstored ', note, 2);
+    const update = hugeDeletedUpdate(3e8);
+    expect(update.byteLength).toBeLessThan(64);
+    const started = Date.now();
+    await expect(merge(f, made.id, { base: '# A\n', text: 'x', mergeId: 'kept-merge-huge', typedIn: { document: tab.document, update } })).rejects.toMatchObject({ status: 400 });
+    expect(Date.now() - started).toBeLessThan(250);
+    expect((await read(f, made.id)).content).toBe('# A\nstored ');
+  });
+
+  it('refuses with 400, at once, kept typing of an epoch whose ended document claims a deleted run past any live text', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\n');
+    // Planted straight in the store, as a process from before the bound might have; an honest tab then holds it too.
+    await f.store.append(made.id, 1, hugeDeletedUpdate(3e8), editorOf(2), f.time.now());
+    const tab = await forkedTab(f, made.id);
+    tab.text.insert(tab.text.length, 'kept\n');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\n', note, 2);
+    const kept = tab.kept();
+    const started = Date.now();
+    await expect(merge(f, made.id, { base: '# A\n', text: kept.text, mergeId: 'kept-merge-planted', typedIn: { document: kept.document, update: kept.update } })).rejects.toMatchObject({ status: 400 });
+    expect(Date.now() - started).toBeLessThan(250);
   });
 });
 

@@ -8,7 +8,7 @@ import { textUpdate } from './documents.js';
 import { memoryLiveStore } from './memory-store.js';
 import { APP_ORIGIN, type LiveServer, liveServer, type LiveTab, notePath, pause, stubLiveEnv, until } from './socket-fixture.js';
 import type { LiveStore } from './store.js';
-import { type BuiltinFixture, builtinFixture, gate, manifest, person, redisTestStores, repository, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
+import { type BuiltinFixture, builtinFixture, gate, hugeDeletedUpdate, manifest, person, redisTestStores, repository, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
 
 /*
  * The socket of the built-in live editor (docs/specs/2026-11-15-builtin-live-editor §6, §4.3, §4.5, §4.6, §5.5; slice
@@ -279,6 +279,23 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       one.type(`${fits}好`);
       await one.saved();
       expect(await stored(store, id)).toBe(`${fits}好`);
+    });
+
+    // cfx-F001: a deleted run is stored as its length alone; one that claims more than any live text is refused, so no later merge walks it.
+    it('refuses typing that claims a deleted run past any live text: the tab is told too-large, and none of it is stored', async () => {
+      const server = await serverOver({ store: makeStore() });
+      const { store } = server.live;
+      const id = await server.checkout();
+      const one = await server.tab(1), two = await server.tab(2);
+      await Promise.all([one.synced(), two.synced()]);
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      two.sendUpdate(hugeDeletedUpdate(3e8));
+      await until('the tab was told', () => two.told.length > 0);
+      expect(two.told).toEqual([{ type: 'refused', reason: 'too-large' }]);
+      expect(await store.document(id, 1)).toMatchObject({ seq: 0, log: [] });
+      one.type(`${A}on\n`);
+      await one.saved();
+      expect(await stored(store, id)).toBe(`${A}on\n`);
     });
 
     it('refuses the socket past the most one document takes, and takes one again when someone left', async () => {

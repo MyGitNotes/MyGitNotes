@@ -115,3 +115,23 @@ export function redisTestStores(url: string | undefined) {
     },
   };
 }
+
+/**
+ * A Yjs update of a few dozen bytes that claims a deleted run of `length` units in the note's text, by a client of its
+ * own: a deleted run is stored as its length alone, so a crafted one can name any length (cfx-F001).
+ */
+export function hugeDeletedUpdate(length: number, client = 987_654_321): Uint8Array {
+  const document = new Y.Doc();
+  try {
+    document.clientID = client;
+    const text = document.getText('content');
+    text.insert(0, 'a');
+    text.delete(0, 1);
+    const item = text._start!;
+    (item.content as Y.ContentDeleted).len = length;
+    item.length = length;
+    return Y.encodeStateAsUpdate(document);
+  } finally {
+    document.destroy();
+  }
+}
