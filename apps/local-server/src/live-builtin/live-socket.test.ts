@@ -778,6 +778,8 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       const id = await server.checkout();
       const one = await server.tab(1), two = await server.tab(2);
       await Promise.all([one.synced(), two.synced()]);
+      // Each tab speaks for its client id, as the app's editor does once it is let in.
+      for (const tab of [one, two]) tab.provider.awareness!.setLocalState({ cursor: null });
       await until('both people count', async () => (await activeEditors(server.live, id)) === 2);
       two.provider.awareness!.setLocalState(null);
       await until('the second person no longer counts', async () => (await activeEditors(server.live, id)) === 1, 1000);
