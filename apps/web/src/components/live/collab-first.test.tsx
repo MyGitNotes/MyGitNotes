@@ -248,6 +248,38 @@ describe('a writer’s note of a repository with the built-in editor', () => {
     expect(screen.getByText('Offline: changes are kept on this device and merged in once you are back online.')).toBeInTheDocument();
   });
 
+  // cf16-F007: a request can fail while the browser counts itself online (a weak signal, a captive portal), and no `online` follows.
+  it('leaves the direct editor once a later checkout gets through, without any online event: retried on a timer and when the page shows again', async () => {
+    let reachable = false;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (!reachable) throw new TypeError('Failed to fetch');
+      if (url === '/api/live/checkout') return json({ checkout: view, outcome: 'joined' });
+      if (url === '/api/live/socket-ticket') return json({ ticket: 't'.padEnd(32, 'x'), document: 'abc.1' });
+      return json({ error: 'unexpected' }, 500);
+    });
+    vi.useFakeTimers();
+    try {
+      await mount({ live: live() });
+      expect(screen.getByText('Offline: changes are kept on this device and merged in once you are back online.')).toBeInTheDocument();
+      expect(calls('/api/live/checkout')).toHaveLength(1);
+      // Still out of reach: the next try fails too, and the editor stays.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(calls('/api/live/checkout')).toHaveLength(2);
+      expect(collabShown()).toBeNull();
+      reachable = true;
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(calls('/api/live/checkout')).toHaveLength(3);
+      expect(collabShown()).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('gives a reader the read view, and a framed editor keeps Edit as in 0.19', async () => {
     await mount({ readOnly: true });
     expect(fetchMock).not.toHaveBeenCalled();

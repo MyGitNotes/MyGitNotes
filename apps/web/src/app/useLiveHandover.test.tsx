@@ -97,3 +97,20 @@ it('files a note made offline once when two tabs sweep it together', async () =>
   await act(() => new Promise(resolve => setTimeout(resolve, 50)));
   expect(fetchMock.mock.calls.filter(([url]) => url === '/api/live/new')).toHaveLength(1);
 });
+
+// cf16-F007: no `online` event comes when a request failed while the browser counted itself online.
+it('hands the drafts over again once a later live request gets through, without any online event', async () => {
+  let reachable = false;
+  fetchMock.mockImplementation(async () => {
+    if (!reachable) throw new TypeError('Failed to fetch');
+    return json({ applied: true, contentHash: 'h'.repeat(64), checkout: view, outcome: 'joined' });
+  });
+  const input = params();
+  renderHook(useLiveHandover, { initialProps: input });
+  await vi.waitFor(() => expect(merged()).toEqual(['notes/life/a.md']));
+  expect(input.updateDraft).not.toHaveBeenCalled();
+  reachable = true;
+  const { checkOutLive } = await import('../lib/live-api.js');
+  await act(async () => void await checkOutLive('notes~life', 'notes/life/other.md'));
+  await vi.waitFor(() => expect(input.updateDraft).toHaveBeenCalledWith('notes~life', 'notes/life/a.md', null));
+});
