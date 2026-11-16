@@ -6,7 +6,7 @@ import { isOutlinePath } from '@mygitnotes/core/outline';
 import { parseR2Reference, r2AssetUrl, r2PreviewType } from '@mygitnotes/core/r2-references';
 import { newTabRel } from './same-origin.js';
 import { headingSlug, resolveWorkspaceHref } from './workspace-links.js';
-import { escapeHtml, type NoteLanguage, stringsFor, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
+import { directiveBlockSpans, escapeHtml, type NoteLanguage, stringsFor, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
 import type { SlideRendering } from './slides/directives.js';
 import { labelSlidePreview } from './slides/structure.js';
 import { isMermaidInfo, MERMAID_BLOCK_SELECTOR } from './mermaid.js';
@@ -180,6 +180,55 @@ export interface NoteRenderOptions {
    * `SlideDeckError` for such a directive. Without it a note keeps the general rendering.
    */
   slides?: SlideRendering;
+  /**
+   * Marks each top-level block of the rendered note with `data-source-line`, the 1-based line of `content` it starts on, for split
+   * view's scroll sync. A list, table, code block or directive block is one block; nothing inside a directive block is marked.
+   */
+  sourceLines?: boolean;
+}
+
+/** The attribute of the empty element a marked source puts before each block; rendering moves its line onto the block. */
+const SOURCE_MARKER = 'data-source-marker';
+
+/**
+ * `content` with an empty `<div>` before each top-level block, carrying the line the block starts on, and the line of `content`
+ * each line of the result stands for. The blocks are marked's top-level tokens, minus those inside a directive block, plus each
+ * directive block written at the start of a line; a marker and the blank line after it are an HTML block of their own, which
+ * may interrupt a paragraph, so the text around them reads as before.
+ */
+function markSourceLines(content: string, marked: Marked, slides: boolean): { text: string; lineOf: (index: number) => number; } {
+  const lines = content.split('\n');
+  const spans = directiveBlockSpans(content, slides);
+  const inside = new Set<number>();
+  const starts = new Set<number>();
+  for (const { start, end } of spans) {
+    for (let line = start + 1; line <= end; line++) inside.add(line);
+    if (/^:{3,}/.test(lines[start])) starts.add(start);
+  }
+  let line = 0;
+  for (const token of marked.lexer(content, { gfm: true, breaks: true })) {
+    if (token.type !== 'space' && token.type !== 'def' && !inside.has(line)) starts.add(line);
+    line += token.raw.split('\n').length - 1;
+  }
+  const text: string[] = [], origin: number[] = [];
+  lines.forEach((source, index) => {
+    if (starts.has(index) && source.trim()) {
+      text.push(`<div ${SOURCE_MARKER} data-source-line="${index + 1}"></div>`, '');
+      origin.push(index, index);
+    }
+    text.push(source);
+    origin.push(index);
+  });
+  return { text: text.join('\n'), lineOf: index => (origin[index] ?? index) + 1 };
+}
+
+/** Moves each marker's line onto the block after it and takes the marker out. */
+function placeSourceLines(body: HTMLElement) {
+  for (const marker of body.querySelectorAll(`[${SOURCE_MARKER}]`)) {
+    const next = marker.nextElementSibling;
+    if (next && !next.hasAttribute(SOURCE_MARKER) && !next.hasAttribute('data-source-line')) next.setAttribute('data-source-line', marker.getAttribute('data-source-line')!);
+    marker.remove();
+  }
 }
 
 interface RenderContext {
@@ -207,14 +256,17 @@ export function renderNote(content: string, notePath: string, tableLabel?: strin
   return renderNoteIn({ marked: md, parser: new DOMParser(), purify: DOMPurify, origin: typeof window !== 'undefined' ? window.location.origin : undefined }, content, notePath, tableLabel, youtubeLabels, notebookId, options);
 }
 
-function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string, { slides }: NoteRenderOptions = {}): string {
+function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string, { slides, sourceLines }: NoteRenderOptions = {}): string {
   const isMdx = /\.mdx$/i.test(notePath);
   let preprocessed = content;
+  let lineOf = (index: number) => index + 1;
+  // Lines are counted as the source editor shows them, where a CR or CRLF ends a line as LF does.
+  if (sourceLines) ({ text: preprocessed, lineOf } = markSourceLines(content.replace(/\r\n?/g, '\n'), marked, Boolean(slides)));
   if (isMdx) {
     preprocessed = stripMdxImports(preprocessed);
   }
 
-  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML, slides && { rendering: slides, lineOf: index => index + 1 });
+  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML, slides && { rendering: slides, lineOf });
 
   if (isMdx || /<(?:YouTubeEmbed|YouTube|ProtectedContent|Card|Tag|Badge|[A-Z][a-zA-Z0-9_-]*)\b/.test(preprocessed)) {
     preprocessed = transformMdxComponents(preprocessed, language);
@@ -371,6 +423,7 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     link.setAttribute('rel', 'noopener noreferrer');
     if (target.kind === 'external') link.setAttribute('target', '_blank');
   }
+  if (sourceLines) placeSourceLines(parsed.body);
   if (slides === 'preview') labelSlidePreview(parsed.body, stringsFor(language));
   return purify.sanitize(parsed.body.innerHTML, DOMPURIFY_DIRECTIVE_CONFIG);
 }

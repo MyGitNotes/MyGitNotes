@@ -177,6 +177,10 @@ member the editor covers) lists the tools exactly as before live notes: no
 unknown tool does.
 Note writes (`write`, `append`, `edit`, `save_note`, `update_note_metadata`)
 also return the note `path` and, when `APP_URL` is configured, the note's web page `url`.
+A caller that wants the person to land in live co-editing links to that `url`
+with `?edit` (or `?zoom&edit`), which checks the note out on arrival as 編輯
+does, for a writer where the repository has a live editor (see the live editor
+web app section of the architecture document).
 
 Hosted agent-system tools read what governs a notebook or note. A target is a
 `notebookId` or a note or folder `path` inside a notebook; a note path works

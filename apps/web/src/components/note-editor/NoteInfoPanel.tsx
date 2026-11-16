@@ -36,7 +36,7 @@ export function NoteInfoPanel({ note, ...gist }: { note: NoteRef; } & GistProps)
           <dd>{location.readOnly ? t(`editor.infoReadOnly.${location.readOnly}`) : t('editor.infoWritable')}</dd>
         </div>
         {location.gists && <NoteGist path={note.path} {...gist} />}
-        {location.gists && publishRows.map((render, index) => <Fragment key={index}>{render({ note, repository: location.repository, ...gist })}</Fragment>)}
+        {location.publishable && publishRows.map((render, index) => <Fragment key={index}>{render({ note, repository: location.repository, ...gist })}</Fragment>)}
       </dl>
     </section>
   );

@@ -43,7 +43,7 @@ for (const frame of ['compact', 'pane', 'zoom'] as const) {
     expect(content).toHaveAttribute('data-line-numbers', 'true');
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
-    fireEvent.click(screen.getByRole('button', { name: /^Switch to (source|live preview)$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^(Source\b|Switch to source$)/ }));
     expect(content).toHaveAttribute('data-line-numbers', 'true');
 
     fireEvent.click(toggle);

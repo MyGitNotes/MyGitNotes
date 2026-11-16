@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useContext } from 'react';
 import type { NoteRef } from '@mygitnotes/core/note-query';
+import type { RepositoryStatus } from '@mygitnotes/core/repository';
 
 /** Why a note cannot be edited. */
 export type ReadOnlyReason = 'unavailable' | 'core' | 'branch' | 'no-push';
@@ -14,6 +15,8 @@ export interface NoteLocation {
   readOnly?: ReadOnlyReason;
   /** Whether the note may be published as a Gist: a writable note of a GitHub repository. */
   gists: boolean;
+  /** Whether an edition's publish rows apply: a writable note that is not a demo's, whatever the repository type. */
+  publishable: boolean;
 }
 
 const NoteLocationContext = createContext<(note: NoteRef) => NoteLocation | undefined>(() => undefined);
@@ -31,4 +34,12 @@ export function readOnlyReason(repository: { unavailable?: unknown; branch: stri
   if (repository.branch === 'core') return 'core';
   if (repository.branch && repository.branch !== 'main') return 'branch';
   return 'no-push';
+}
+
+/** Where a note of the notebook titled `notebook` lives, given the repository that serves the notebook. */
+export function noteLocation(notebook: string, repository: Pick<RepositoryStatus, 'id' | 'type' | 'repository' | 'branch' | 'write' | 'demo' | 'unavailable'> | undefined, path: string): NoteLocation {
+  const name = repository?.repository ?? (repository?.id.startsWith('local:') ? repository.id.slice('local:'.length) : repository?.id ?? '');
+  const readOnly = readOnlyReason(repository);
+  const publishable = Boolean(repository) && !readOnly && !repository?.demo;
+  return { notebook, repository: name, branch: repository?.branch ?? '', path, readOnly, gists: publishable && repository?.type === 'github', publishable };
 }

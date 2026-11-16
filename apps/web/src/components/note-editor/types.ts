@@ -1,3 +1,4 @@
+import type { MarkdownEditorMode } from '../MarkdownEditor.js';
 import type { FileResult } from '../../lib/files-api.js';
 import type { FileChangeScope } from '../../lib/file-change-scope.js';
 import type { NewVersionRequest } from '../../lib/history-api.js';
@@ -45,6 +46,8 @@ export interface NoteEditorSharedProps {
    * out and frames the editor in zoom. Absent for notes the live editor does not take, and where the reader may not write.
    */
   live?: LiveNoteEditing;
+  /** Opens the note in zoom in `mode`, as a new history entry; a Focus pane hands split view to it, which it does not show itself. */
+  openInZoom?: (mode: MarkdownEditorMode) => void;
 }
 
 /** What a host that embeds the editor sees of its session, for features it builds on top of the body. */
