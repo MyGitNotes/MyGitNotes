@@ -141,3 +141,15 @@ it('counts no page break in the frontmatter: the body starts on page 1', () => {
   expect(labels.join(' ')).toContain('1');
   expect(labels.join(' ')).not.toContain('2');
 });
+
+// VQ P2 reported 5, 7, 8, 9 beside a body that starts on line 6; its screenshots and a real browser show 6, 7, 8, 9.
+it('numbers the body by its file lines past a hidden frontmatter, with no number for the block, separator line or not', () => {
+  for (const [text, first] of [['---\ntitle: x\nstatus: a\n---\n# Title\n\nBody\n', 5], ['---\ntitle: x\nstatus: a\n---\n\n# Title\n\nBody\n', 6]] as const) {
+    const { collab } = collabOf(text);
+    const { view, unmount } = mount(text, collab);
+    // The first element is CodeMirror's hidden width spacer.
+    const numbers = [...view().dom.querySelectorAll('.cm-lineNumbers .cm-gutterElement')].slice(1).map(element => element.textContent);
+    expect(numbers).toEqual([first, first + 1, first + 2, first + 3].map(String));
+    unmount();
+  }
+});
