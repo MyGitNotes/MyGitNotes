@@ -57,6 +57,8 @@ interface Column {
 }
 
 interface BoardContext {
+  /** Whether a note being edited live (編輯中) keeps its column until it is checked in. */
+  liveLocked: (note: NoteListItem) => boolean;
   columns: Column[];
   readOnly: boolean;
   canDelete: boolean;
@@ -95,7 +97,7 @@ function useColumnDrag(board: BoardContext, columnId: string) {
       const notePath = event.dataTransfer.getData('text/plain');
       const note = board.dragged;
       board.setDragged(null);
-      if (!note || (notePath && notePath !== note.path) || note.live) return;
+      if (!note || (notePath && notePath !== note.path) || board.liveLocked(note)) return;
       if ((note.status || '') !== columnId) board.onUpdateNoteStatus(note, columnId);
     },
   };
@@ -105,7 +107,7 @@ function useColumnDrag(board: BoardContext, columnId: string) {
 function cardDragProps(board: BoardContext, note: NoteListItem) {
   const canDragForFocus = !!board.focusMode?.canDrag(note);
   // A note being edited live (編輯中) keeps its column until it is checked in; it may still go into a Focus pane.
-  const fixed = board.readOnly || Boolean(note.live);
+  const fixed = board.readOnly || board.liveLocked(note);
   return {
     draggable: !fixed || canDragForFocus,
     onDragStart: (event: React.DragEvent<HTMLDivElement>) => {
@@ -131,9 +133,9 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
   const formattedDate = updated ? new Date(updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
   const selectionActive = Boolean(board.selectedKeys?.size);
   const selected = board.selectedKeys?.has(noteRefKey(note)) ?? false;
-  const locked = note.live ? t('live.checkedOut') : undefined;
   // A pending note may still be discarded (delete) and moved where its live editor can.
   const liveLock = useLiveLock();
+  const locked = liveLock(note, 'other');
   const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
   return (
     <div data-notepath={note.path} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} title={selectionActive ? undefined : t('notes.multiSelectHint')} className={`p-3 rounded-lg border transition-all cursor-grab active:cursor-grabbing group shadow-xs ${isBeingDragged ? 'opacity-40 scale-[0.98] border-primary shadow-inner' : 'hover:shadow-sm hover:border-muted'}`} style={{ backgroundColor: 'var(--color-surface)', borderColor: isBeingDragged ? 'var(--color-primary)' : 'var(--color-line)' }}>
@@ -144,7 +146,7 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
           <LiveBadge live={note.live} title={note.title} />
         </div>
         {/* A note being edited live keeps its column, so its card offers no handle to drag it to another. */}
-        {!note.live && <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />}
+        {!board.liveLocked(note) && <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />}
       </div>
       {note.tags.length > 0 && <NoteTags tags={note.tags} oneLine className='mb-2.5' />}
       {/* Card Actions & Timestamp */}
@@ -288,6 +290,7 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
 }
 
 export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leading, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, sortField = 'updated', sortOrder = 'desc', onSortChange, metadataSortFields, focusMode, selectedKeys, onToggleSelect }) => {
+  const liveLock = useLiveLock();
   const { t } = useTranslation();
   const dotClass = useStatusDotClass();
   const labelOf = useStatusLabel();
@@ -308,7 +311,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leadi
 
   const boardSortOptions = [{ value: 'updated:desc', label: t('sort.updatedDesc') }, { value: 'updated:asc', label: t('sort.updatedAsc') }, { value: 'created:desc', label: t('sort.createdDesc') }, { value: 'created:asc', label: t('sort.createdAsc') }, { value: 'title:asc', label: t('sort.titleAsc') }, { value: 'title:desc', label: t('sort.titleDesc') }, ...metadataSortOptions(t, metadataSortFields ?? [])];
 
-  const board: BoardContext = { metadataSortFields, columns, readOnly, canDelete, confirmDelete, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, dragged, setDragged, dragOverColumnId, setDragOverColumnId, focusMode, selectedKeys, onToggleSelect, onTotal: (columnId, total) => setTotals(previous => (previous[columnId] === total ? previous : { ...previous, [columnId]: total })) };
+  const board: BoardContext = { liveLocked: note => Boolean(liveLock(note, 'other')), metadataSortFields, columns, readOnly, canDelete, confirmDelete, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, dragged, setDragged, dragOverColumnId, setDragOverColumnId, focusMode, selectedKeys, onToggleSelect, onTotal: (columnId, total) => setTotals(previous => (previous[columnId] === total ? previous : { ...previous, [columnId]: total })) };
   // Only the columns on the board count, so a status that disappeared leaves no stale total.
   const boardTotal = [...columns.map(col => col.id), ''].reduce((sum, id) => sum + (totals[id] || 0), 0);
 

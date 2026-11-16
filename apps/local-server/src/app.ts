@@ -1,5 +1,5 @@
 import express from 'express';
-import { isBuiltinEditor, type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
+import { isBuiltinEditor, type LiveNotes, parseLiveBase, type RemoteCache, sweepIdleLive, sweepLive, templateTimeZone, validateLiveEditorInfo, withLiveCommits } from '@mygitnotes/core';
 import { fail } from './route-errors.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -30,10 +30,10 @@ import { createFileManagerRouter } from './file-manager.js';
 import { createGistRouter, gistSite, gistToken, noteGist, syncGists } from './gists.js';
 import { isLoopbackHttpOrigin, type PiAgent } from './pi-agent.js';
 import { externalPiAgent, externalPiEnvironment } from './pi-external-agent.js';
-import { type PublishingService, publishNotes } from './publishing.js';
+import { commitPublisher, publishChanges, type PublishingService, publishNotes } from './publishing.js';
 import { createWorkspaceMembersRouter } from './workspace-members.js';
 import { createLiveRouter, createLiveSweepRouter } from './live-routes.js';
-import { liveScheduleSetting, startLiveSchedule } from './live-schedule.js';
+import { liveIdleSetting, liveScheduleSetting, startLiveSchedule } from './live-schedule.js';
 
 export function applicationRoot() {
   let dir = path.dirname(fileURLToPath(import.meta.url));
@@ -62,7 +62,11 @@ export interface AppServices {
   /** The remote read cache; defaults to Redis when configured, else process memory. Local workspaces use none. */
   remoteCache?: RemoteCache;
   piAgent?: PiAgent;
-  /** Publishes committed notes beyond the repository, after the commit succeeded and beside the Gist push; without it nothing changes. */
+  /**
+   * Publishes committed notes beyond the repository, after the commit succeeded and beside the Gist push; without it
+   * nothing changes. Its `sync` hears the commit routes; its `syncCommitted`, when it has one, every other commit of
+   * note text: live check-ins, `/mcp` writes and tag commits.
+   */
   publishing?: PublishingService;
   /**
    * Keeps work a request starts without awaiting (the agent hearing of a membership change) alive after the answer, as
@@ -113,6 +117,12 @@ const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
  * check compares with (docs/specs/2026-11-15-builtin-live-editor §6.2), and the adapter's socket tickets.
  */
 function checkBuiltinLiveEditor(liveNotes: LiveNotes) {
+  checkBuiltinLiveHost();
+  if (typeof liveNotes.socketTicket !== 'function') throw new Error('The built-in live editor (liveNotes) declares a builtin editor but has no socketTicket.');
+}
+
+/** Refuses a host the built-in editor cannot run on: Vercel, or one whose `APP_URL` is not the app's bare origin. A composition may ask before it builds the editor. */
+export function checkBuiltinLiveHost() {
   if (process.env.VERCEL) throw new Error('The built-in live editor needs a long-running server with WebSockets; Vercel cannot host it.');
   const appUrl = process.env.APP_URL;
   let url: URL | undefined;
@@ -122,7 +132,6 @@ function checkBuiltinLiveEditor(liveNotes: LiveNotes) {
     url = undefined;
   }
   if (!url || url.origin !== appUrl || (url.protocol !== 'https:' && !(url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname)))) throw new Error("The built-in live editor needs APP_URL set to the app's bare origin, such as https://notes.example.com (http only on a loopback host): its socket accepts only that origin.");
-  if (typeof liveNotes.socketTicket !== 'function') throw new Error('The built-in live editor (liveNotes) declares a builtin editor but has no socketTicket.');
 }
 
 export function createApp(base: string, overrides: Partial<AppServices> = {}): express.Express {
@@ -132,11 +141,18 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   checkLiveNotes(overrides.liveNotes, local);
   // Read at start, so a time that is none, or an unknown time zone, stops the deployment instead of the first check-in.
   const liveSchedule = overrides.liveNotes ? liveScheduleSetting() : null;
+  const liveIdle = overrides.liveNotes ? liveIdleSetting() : null;
   // The lightweight mode keeps sign-ins in cookies and nothing on the server; local workspaces never use it.
   const lightweight = !local && storageMode() === 'cookie';
   const recordStore = overrides.recordStore ?? (lightweight ? new NoRecordStore() : createRecordStore(base));
   const services: AppServices = { ...overrides, configSource, recordStore, workspaceChoices, sessions: overrides.sessions ?? (lightweight ? cookieSessions() : storedSessions(recordStore)), assetStorage: overrides.assetStorage ?? envAssetStorage(), remoteCache: 'remoteCache' in overrides ? overrides.remoteCache : local ? undefined : createRemoteCache(), webDist: overrides.webDist ?? path.join(base, 'apps/web/dist') };
   const { remoteCache: cache, sessions, assetStorage, publishing } = services;
+  // Commits that answer no commit route are published too: a tag commit below, an `/mcp` write, and each commit of a check-in.
+  const publishCommit = commitPublisher({ ...(publishing ? { publishing } : {}), ...(services.defer ? { defer: services.defer } : {}) });
+  // The live editor as this app uses it: every check-in it runs (a person's, a sweep's, the schedule's) has its commit
+  // published, naming the person whose own credential made it, if any. It never pushes a Gist: Gists sync only on the app's
+  // commit routes, and a check-in commits text an agent may have typed.
+  const liveNotes = services.liveNotes && withLiveCommits(services.liveNotes, ({ repository, path: file, content, source, commit, person }) => void publishCommit({ repository: { kind: 'remote', id: repository, reader: source, authenticated: true }, notes: [{ path: file, content }], revision: commit, ...(person ? { person } : {}) }));
   const identity = services.identity ?? providerIdentity({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined });
   // A remote deployment offers the agent panel only when an edition supplies an agent or the deployer names an external bridge.
   const external = local || services.piAgent ? undefined : externalPiEnvironment();
@@ -148,15 +164,29 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   // person's repositories through its membership store.
   const visitorChoice = choosesRepository() && Boolean(workspaceChoices);
   if (product && choosesRepository()) throw new Error("A product repository (MYGITNOTES_PRODUCT_REPOSITORY or product_repository) offers Core updates, which a deployment where each visitor chooses a repository does not give its visitors. Remove it, or name the deployment's repository with MYGITNOTES_REPOSITORY.");
-  // A long-running server checks live notes in every night itself; on Vercel an external cron calls /api/live/sweep.
-  if (overrides.liveNotes && liveSchedule && !process.env.VERCEL) {
-    const live = overrides.liveNotes;
+  // A long-running server checks live notes in every night itself, and about every minute those everyone left; on Vercel an external cron calls /api/live/sweep.
+  // Both sweeps use the app's live editor, so each of their check-ins has its commit published too.
+  if (liveNotes && (liveSchedule || liveIdle) && !process.env.VERCEL) {
+    const live = liveNotes;
+    const timeZone = liveSchedule?.timeZone ?? templateTimeZone();
     startLiveSchedule({
       setting: liveSchedule,
       sweep: async instant => {
-        const report = await sweepLive(live, { instant, timeZone: liveSchedule.timeZone });
+        const report = await sweepLive(live, { instant, timeZone });
         if (report.due) console.info(`[live-notes] nightly check-in: ${report.results.filter(result => result.committed).length} committed, ${report.failed.length} failed of ${report.due} due`);
       },
+      ...(liveIdle
+        ? {
+          idle: {
+            sweep: async () => {
+              const report = await sweepIdleLive(live, { idleMs: liveIdle, timeZone });
+              const committed = report.results.filter(result => result.committed).length;
+              // A note only viewed is released without a commit, every minute somewhere: only commits and failures are worth a line.
+              if (committed || report.failed.length) console.info(`[live-notes] idle check-in: ${committed} committed, ${report.failed.length} failed of ${report.due} due`);
+            },
+          },
+        }
+        : {}),
     });
   }
   const app = express();
@@ -188,8 +218,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   app.use('/api/auth', refuseDemoPageSignIn, createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity, agentFor: piAgent?.availableTo }));
   app.use('/api', workspaceChoiceRouter({ identity, choices: workspaceChoices ?? undefined }));
   services.routes?.(app, services);
-  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources, services.liveNotes));
-  const { liveNotes } = services;
+  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources, liveNotes, publishCommit));
   // The sweep trigger opens no workspace and holds no session: it is mounted before the workspace routes.
   if (liveNotes) app.use(createLiveSweepRouter({ liveNotes, ...(services.defer ? { defer: services.defer } : {}) }));
   app.get('/api/history/events', serverlessHistoryEvents);
@@ -262,8 +291,8 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
           const snapshot = await handle.reader.getSnapshot();
           // The editor configuration is static: naming it asks the adapter nothing, so this answer stands while the editor is down.
           const view = handle.reader.liveView;
-          // `discard` and `retarget` are added only for an adapter that has them, so a 0.19 adapter's answer stays as it was.
-          const live = liveNotes ? { live: view ? view.discards || view.retargets ? { ...view.editor, ...(view.discards ? { discard: true as const } : {}), ...(view.retargets ? { retarget: true as const } : {}) } : view.editor : null } : {};
+          // `discard`, `retarget` and `merge` are added only for an adapter that has them, so a 0.19 adapter's answer stays as it was.
+          const live = liveNotes ? { live: view ? view.discards || view.retargets || view.merges ? { ...view.editor, ...(view.discards ? { discard: true as const } : {}), ...(view.retargets ? { retarget: true as const } : {}), ...(view.merges ? { merge: true as const } : {}) } : view.editor : null } : {};
           return { ...base, ...manifest, branch: handle.reader.branch, revision: snapshot.sha, write: handle.authenticated && handle.reader.canWrite(snapshot), ...live, ...('unavailable' in entry ? { unavailable: entry.unavailable } : {}) };
         }));
         const body: WorkspaceStatus = { keyedConfig, local: false, defaultRepository: workspace.default?.ref.id ?? null, repositories, coreUpdate: Boolean(product), ...(visitorChoice ? { repositoryChoice: true } : {}) };
@@ -497,6 +526,10 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         if (changes.length === 0) return res.json({ success: true, changedPaths: [] });
         const message = typeof req.body.message === 'string' && req.body.message.trim() ? req.body.message.trim() : `docs(notes): update tags in ${changes.length} note${changes.length === 1 ? '' : 's'}`;
         const receipt = await reader.commitChanges(changes, String(req.body.revision || ''), 'tags', 'notes', message);
+        // The notes are published with their new tags, as after a commit route; the answer is the commit's own either way.
+        // Tags are not in a Gist, so no Gist is pushed.
+        const person = requestPerson(res)?.person;
+        await publishChanges(publishCommit, { repository: target, changes, revision: receipt.revision, gistTextKept: true, ...(person ? { person } : {}) });
         res.json(receipt);
       } catch (error) {
         fail(res, error);

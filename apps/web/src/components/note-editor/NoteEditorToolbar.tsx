@@ -8,7 +8,7 @@ import type { MarkdownEditorMode } from '../MarkdownEditor.js';
 import { EditorModeGroup } from './EditorModeGroup.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { TypstPreviewToggle } from '../typst-preview/TypstPreviewToggle.js';
-import { NoteActionsMenu } from './NoteActionsMenu.js';
+import { type LiveDraftActions, NoteActionsMenu } from './NoteActionsMenu.js';
 import { NoteRefreshAction } from './NoteQuickActions.js';
 import { NoteRow } from './NoteRow.js';
 import { PhoneNoteChrome, type PhoneNoteChromeProps } from './PhoneNoteChrome.js';
@@ -46,7 +46,7 @@ interface NoteEditorToolbarProps {
   /** The note is a template file: the note row says so. */
   template?: boolean;
   /** A pending live note whose filing can be changed: its menu offers move and rename while the note is read-only. */
-  liveDraft?: { onRename?: () => void; };
+  liveDraft?: LiveDraftActions;
   /** Copies the note into its notebook's templates; absent for a template and a read-only note. */
   onSaveAsTemplate?: () => void;
   statuses: string[];

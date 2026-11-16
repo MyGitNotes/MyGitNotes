@@ -1,6 +1,6 @@
 import { SourceError } from './github-api.js';
 import { checkInLink, discardLink, type LiveCheckInOptions, type LiveCheckInResult, type LiveDiscardResult, type LiveRetarget, retargetLink, retargetLivePathRule } from './live-checkin.js';
-import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveInitialTextOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveMergeId, isLiveRevision, isLiveTypedIn, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveIdentityOf, liveInitialTextOf, type LiveMergeAnswer, liveMergeAnswerOf, type LiveMergeRequest, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { localIdIn, type NotebookKey } from './notebook-key.js';
 import type { RepositoryId } from './repository.js';
 import type { LiveNoteState, NotebookConfig } from './types.js';
@@ -32,6 +32,8 @@ export interface LiveRepository {
   readonly discards: boolean;
   /** Whether the adapter can move and rename a pending note (§20.2): its `service.retarget`. */
   readonly retargets: boolean;
+  /** Whether the adapter can merge a text written off the live note into it: its person calls' `merge`. Asking makes no adapter call. */
+  readonly merges: boolean;
   /** The repository's live links, checked; read from the adapter once per request. */
   checkouts(): Promise<LiveCheckout[]>;
   /** Those links with their notebooks and paths. */
@@ -64,6 +66,11 @@ export interface LiveRepository {
   retarget(path: string, change: LiveRetarget): Promise<LiveCheckout>;
   /** A ticket for the person to open a link's live document over the built-in editor's socket. */
   socketTicket(id: string): Promise<LiveSocketTicket>;
+  /**
+   * Merges a text written on `base` into a live link (texts sent in normal form), and answers whether it landed. Throws
+   * {@link LiveNotLiveError} where the adapter cannot merge, and a 400 for a `mergeId` that is none.
+   */
+  merge(id: string, request: LiveMergeRequest): Promise<LiveMergeAnswer>;
 }
 
 export interface LiveRepositoryOptions {
@@ -164,6 +171,9 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
     editor,
     discards: typeof liveNotes.service.discard === 'function',
     retargets: typeof liveNotes.service.retarget === 'function',
+    get merges() {
+      return typeof calls().merge === 'function';
+    },
     links,
     checkouts: async () => (await links()).map(link => link.checkout),
     async read(id) {
@@ -201,7 +211,9 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       const link = (await links()).find(entry => entry.path === path);
       if (!link) throw new LiveNotLiveError();
       try {
-        return await checkInLink(liveNotes, repository, link.checkout.id, { ...checkIn, mode: 'manual' });
+        // Whoever asks is the last credential tried, so a writer can check in a note whose editors no longer may.
+        const shown = liveIdentityOf(context);
+        return await checkInLink(liveNotes, repository, link.checkout.id, { ...checkIn, mode: 'manual', requester: { person: context.person, ...(shown ? { author: shown } : {}) } });
       } finally {
         // The link may be closed or filed now; the next read in this request asks again.
         listed = undefined;
@@ -235,6 +247,17 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
         listed = undefined;
       }
     },
+    async merge(id, request) {
+      const merge = calls().merge?.bind(calls());
+      if (!merge || !isLiveId(id)) throw new LiveNotLiveError();
+      if (typeof request.base !== 'string' || typeof request.text !== 'string') throw new SourceError('base and text must be text.', 400);
+      if (!isLiveMergeId(request.mergeId)) throw new SourceError('mergeId must be 8 to 128 letters, digits, _ or -.', 400);
+      if (request.typedIn !== undefined && !isLiveTypedIn(request.typedIn)) throw new SourceError('typedIn must name a live document and hold a Yjs update.', 400);
+      const answer = liveMergeAnswerOf(await call(() => merge(repository, id, { base: normalizeLiveText(request.base), text: normalizeLiveText(request.text), mergeId: request.mergeId, ...(request.typedIn ? { typedIn: { document: request.typedIn.document, update: request.typedIn.update } } : {}) })));
+      // The link's text moved: the next read in this request asks again.
+      if ('applied' in answer) listed = undefined;
+      return answer;
+    },
     async socketTicket(id) {
       if (!builtin || typeof liveNotes.socketTicket !== 'function' || !isLiveId(id)) throw new LiveUnavailableError();
       const ticket = liveSocketTicketOf(await call(() => liveNotes.socketTicket!(context, repository, id)));
@@ -251,11 +274,11 @@ export function editedLiveError(file: string): CheckedOutError {
 
 /**
  * What reads say of a live link; its `editorUrl` is the framed editor's page, or the built-in editor's note page in the
- * app. A pending note names where its check-in files it (`pathRule`) only where the adapter can move it (`retargets`),
+ * app, and `changed` says its text is not the Git text it was last synced with (a note only viewed is not). A pending note names where its check-in files it (`pathRule`) only where the adapter can move it (`retargets`),
  * so an adapter without retarget answers as 0.19 did.
  */
 export function liveNoteState(row: LiveCheckout, retargets = false): LiveNoteState {
-  return { since: row.since, activeEditors: row.activeEditors, ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}) };
+  return { since: row.since, activeEditors: row.activeEditors, ...(row.base && row.contentHash !== row.base.contentHash ? { changed: true as const } : {}), ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}) };
 }
 
 /*

@@ -156,9 +156,13 @@ on a conflict, overwritten with a `Live-Overwrote` trailer, and the live note
 closed. It answers `{ path, committed, commit?, released, reason?,
 activeEditors?, filedPath?, revision }`; `path` is where the note now is, and
 `filedPath` is present when a pending note was filed. `reason` says why the note
-stayed open: `active` (people are still editing; the commit was made and
-tonight's check-in closes it), `unfiled` (its path rule needs a value the note
-lacks), `leased` (a check-in runs elsewhere), `changed` or `not-synced`. After a
+stayed open: `active` (people are still editing; the commit was made, and
+the note is closed once they have left, by the idle check-in on a long-running
+server, or tonight), `unfiled` (its path rule needs a value the note
+lacks), `leased` (a check-in runs elsewhere), `changed`, `not-synced`, or, where
+the editor discards drafts, `uncommittable` (no credential of the note's editors
+or of the grant's person may write to the repository: nothing was committed, and
+the text stays live). After a
 check-in that committed, the branch moved: read again before writing. A note
 that is not checked out is refused. Where the live editor can discard drafts
 (the built-in editor, or an adapter with `discard`), a pending note that is an

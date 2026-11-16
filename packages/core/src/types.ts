@@ -7,6 +7,8 @@ export interface LiveNoteState {
   since: string;
   /** Connected, non-idle editors. */
   activeEditors: number;
+  /** The live text differs from the Git text it was last synced with: with nobody in the note, the badge still says 編輯中. */
+  changed?: true;
   /** A note created in the editor that has no Git path yet; its path is virtual. */
   pending?: true;
   /** What the last check-in overwrote. */

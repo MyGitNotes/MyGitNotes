@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { readNote } from '../lib/api.js';
 import { retargetLive } from '../lib/live-api.js';
+import { liveActionLocked } from '../components/live/live-drafts.js';
 import { type FileResult, mutateFile } from '../lib/files-api.js';
 import { beginNoteMove } from '../lib/moving-notes.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
@@ -39,6 +40,8 @@ interface Params {
   t: I18nContextValue['t'];
   /** Whether the live editor of a notebook's repository can move and rename a pending note (未歸檔); none by default. */
   retargets?: (notebookId: string) => boolean;
+  /** Whether the built-in editor releases a note nobody typed in as soon as its last editor leaves: such a note is not locked. */
+  releasesUntouched?: (notebookId: string) => boolean;
 }
 
 /** The note a move or rename names: a list row is enough, since the note itself is read where it lies. */
@@ -50,13 +53,13 @@ export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rena
 const isCompilation = (path: string) => noteSuffix(path) === '.compilation.yml';
 
 /** The Move and Rename actions of an open note, outline or compilation, and the dialogs that choose the folder or name. */
-export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote, focus, queryClient, queryScope, flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus, setActionError, t, retargets }: Params) {
+export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote, focus, queryClient, queryScope, flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus, setActionError, t, retargets, releasesUntouched }: Params) {
   const [request, setRequest] = useState<NoteMoveRequest | null>(null);
   const [busy, setBusy] = useState(false);
   // A note being edited live (編輯中) is neither moved nor renamed until it is checked in; a pending one (未歸檔) is, where
   // its live editor can retarget it: that sets where its check-in files it, and moves no file.
   const pendingDraft = (note: MovedNote) => Boolean(note.live?.pending && retargets?.(note.notebookId));
-  const movable = (note: MovedNote) => canWriteNotebook(note.notebookId) && (!note.live || pendingDraft(note));
+  const movable = (note: MovedNote) => canWriteNotebook(note.notebookId) && (pendingDraft(note) || !liveActionLocked(note, 'move', { discards: () => false, retargets: () => false, ...(releasesUntouched ? { releasesUntouched } : {}) }));
 
   /** Moves (`folder`) or renames (`name`) where a pending note is filed; nothing is committed, and the lists read it again. */
   const retarget = async (note: MovedNote, change: { folder?: string; name?: string; }) => {

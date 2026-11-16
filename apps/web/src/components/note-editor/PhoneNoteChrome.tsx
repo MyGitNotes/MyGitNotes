@@ -15,6 +15,7 @@ import { LiveBadge } from '../live/LiveBadge.js';
 import { useLiveLock } from '../live/live-drafts.js';
 import { PhoneSheet } from '../PhoneSheet.js';
 import { PHONE_TOOLS } from './phone-tools.js';
+import type { LiveDraftActions } from './NoteActionsMenu.js';
 import { NoteRowTags } from './NoteRowTags.js';
 import type { NoteDocumentPanelState } from './useNoteDocumentPanel.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
@@ -57,7 +58,7 @@ export interface PhoneNoteChromeProps {
   /** The live editor is open over the read view: the sheet says nothing of the read view's words or save state. */
   liveEditing?: boolean;
   /** A pending live note: Rename sets where its check-in files it. */
-  liveDraft?: { onRename?: () => void; };
+  liveDraft?: LiveDraftActions;
 }
 
 /** A phone's note screen top: back to the list, the title, the status dot, edit or read, the assistant, and the "⋯" sheet that holds everything else. */
@@ -226,13 +227,13 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         <div className='phone-sheet-quick'>{quickActions}</div>
         {onRename && !readOnly && <RenameRow title={session.title} onRename={onRename} onDone={onClose} />}
         {liveDraft?.onRename && <SheetItem icon={<Pencil aria-hidden='true' />} label={t('files.rename')} onClick={act(liveDraft.onRename)} />}
-        {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked && !draftMovable} onClick={act(onMove)} />}
+        {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked && !draftMovable && !liveDraft} onClick={act(onMove)} />}
         {onAddToOutline && <SheetItem icon={<ListTree aria-hidden='true' />} label={t('outline.add')} disabled={session.locked} onClick={act(onAddToOutline)} />}
         {onSaveAsTemplate && <SheetItem icon={<LayoutTemplate aria-hidden='true' />} label={t('templates.saveAs')} onClick={act(onSaveAsTemplate)} />}
         <SheetItem icon={<Copy aria-hidden='true' />} label={t(session.copyState === 'copied' ? 'editor.noteCopied' : session.copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.exportCopy')} onClick={() => void session.copyNote()} />
         <SheetItem icon={<FileText aria-hidden='true' />} label={t('editor.exportMarkdown')} onClick={act(() => downloadTextFile(filename, session.content, 'text/markdown;charset=utf-8'))} />
         <SheetItem icon={<Printer aria-hidden='true' />} label={t('editor.exportPdf')} onClick={act(() => void printNoteAsPdf(session.title || filename, session.content, note.path, t('mermaid.error'), note.notebookId, t))} />
-        {deleteNote && (!readOnly || discardable) && (
+        {deleteNote && (!readOnly || discardable || liveDraft?.onDelete) && (
           <SheetItem
             icon={<Trash2 aria-hidden='true' />}
             label={t(deleteArmed ? 'notes.confirmDelete' : 'notes.delete')}
@@ -240,9 +241,11 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
             onClick={() => {
               if (!deleteArmed) return setDeleteArmed(true);
               onClose();
+              const leave = () => (frame === 'pane' ? back() : void session.close());
+              // A collab-first note is checked in first; the screen stays on it when the check-in is refused.
+              if (liveDraft?.onDelete) return void liveDraft.onDelete().then(deleted => deleted && leave());
               deleteNote(note);
-              if (frame === 'pane') back();
-              else session.close();
+              leave();
             }}
           />
         )}

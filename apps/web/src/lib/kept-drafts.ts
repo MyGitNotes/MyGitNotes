@@ -17,7 +17,7 @@ const baseName = (path: string) => path.split('/').pop() || path;
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const text = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : '';
 
-function read(storage: Storage, key: string): unknown {
+function read(storage: Pick<Storage, 'getItem'>, key: string): unknown {
   try {
     return JSON.parse(storage.getItem(key) ?? 'null');
   } catch {
@@ -74,7 +74,8 @@ export function clearOpenedScopes(storage: Pick<Storage, 'removeItem'> = localSt
   } catch { /* Storage that is unavailable holds no record to clear. */ }
 }
 
-function openedScopes(storage: Storage): string[] | null {
+/** The draft scopes the signed-in session last opened; null when none is on record (signed out). */
+export function openedScopes(storage: Pick<Storage, 'getItem'>): string[] | null {
   const stored = read(storage, OPENED_SCOPES_KEY);
   return Array.isArray(stored) && stored.every(scope => typeof scope === 'string') && stored.length > 0 ? stored : null;
 }

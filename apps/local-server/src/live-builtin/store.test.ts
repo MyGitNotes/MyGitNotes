@@ -6,7 +6,7 @@ import { memoryLiveStore } from './memory-store.js';
 import { liveStorePrefix, redisLiveStore, redisLiveStoreOver } from './redis-store.js';
 import { redisTestTurn } from './redis-test-turn.js';
 import { liveStoreContract } from './store-contract.js';
-import { LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore } from './store.js';
+import { LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore } from './store.js';
 
 /*
  * The live store of the built-in editor (docs/specs/2026-11-15-builtin-live-editor §3, slice N2). The contract runs over
@@ -174,7 +174,7 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
   };
   /** What a key of the store holds, by its name under the prefix. */
   const kindOf = (name: string) => {
-    const kinds: [string, RegExp][] = [['repos', /^repos$/], ['links', /^r:[0-9a-f]{32}:links$/], ['path', /^r:[0-9a-f]{32}:path:[0-9a-f]{32}$/], ['link', /^link:[A-Za-z0-9_-]{22}$/], ['doc', /^doc:[A-Za-z0-9_-]{22}:[1-9][0-9]*$/], ['log', /^doc:[A-Za-z0-9_-]{22}:[1-9][0-9]*:log$/], ['editors', /^editors:[A-Za-z0-9_-]{22}$/], ['initial', /^initial:[A-Za-z0-9_-]{22}$/], ['lease', /^lease:[A-Za-z0-9_-]{22}$/], ['presence', /^presence:[A-Za-z0-9_-]{22}$/], ['ticket', /^ticket:[0-9a-f]{64}$/], ['tickets', /^tickets:[A-Za-z0-9_-]{22}$/]];
+    const kinds: [string, RegExp][] = [['repos', /^repos$/], ['links', /^r:[0-9a-f]{32}:links$/], ['path', /^r:[0-9a-f]{32}:path:[0-9a-f]{32}$/], ['link', /^link:[A-Za-z0-9_-]{22}$/], ['doc', /^doc:[A-Za-z0-9_-]{22}:[1-9][0-9]*$/], ['log', /^doc:[A-Za-z0-9_-]{22}:[1-9][0-9]*:log$/], ['editors', /^editors:[A-Za-z0-9_-]{22}$/], ['initial', /^initial:[A-Za-z0-9_-]{22}$/], ['lease', /^lease:[A-Za-z0-9_-]{22}$/], ['presence', /^presence:[A-Za-z0-9_-]{22}$/], ['ticket', /^ticket:[0-9a-f]{64}$/], ['tickets', /^tickets:[A-Za-z0-9_-]{22}$/], ['ended', /^ended:[A-Za-z0-9_-]{22}:[1-9][0-9]*$/]];
     return kinds.find(([, pattern]) => pattern.test(name))?.[0] ?? `unknown key ${name}`;
   };
   /** The lifetimes of the store's keys in milliseconds, by kind; -1 is none. */
@@ -207,7 +207,7 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
 
   liveStoreContract('redis', () => redisLiveStore({ url: url!, prefix: prefix() }));
 
-  it('gives no key a lifetime but a lease, presence and tickets', async () => {
+  it('gives no key a lifetime but a lease, presence, tickets and a released epoch’s document', async () => {
     const under = prefix();
     const store = redisLiveStore({ url: url!, prefix: under });
     const { link } = await checkout(store, 'notes/life/a.md', '# A\n');
@@ -215,6 +215,8 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     const { link: released } = await checkout(store, 'notes/life/b.md', '# B\n', T0 + 2);
     await store.append(link.id, 1, bytes('typed'), pat, T0 + 3);
     await store.append(draft.id, 1, bytes('typed'), pat, T0 + 3);
+    // Only an epoch that stored typing keeps its ended document (cfx-F002).
+    await store.append(released.id, 1, bytes('typed'), pat, T0 + 3);
     await store.presence(link.id, 'process-1', { [pat.key]: T0 + 3 }, T0 + 3);
     await store.putTicket(hash('1'), { repository, id: link.id, epoch: 1, document: `${link.id}.1`, editor: pat, display: 'Pat' }, T0 + 3 + LIVE_TICKET_MS);
     expect(await store.lease(link.id, 'lease-1', T0 + 4 + LEASE_MS, T0 + 4)).toBe('leased');
@@ -223,11 +225,11 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     expect(await store.compact(link.id, 1, 0, 0, bytes('state'), hash('a'), 1)).toBe(true);
     expect(await store.lease(released.id, 'lease-2', T0 + 4 + LEASE_MS, T0 + 4)).toBe('leased');
     expect(await store.synced(released.id, 'lease-2', receipt(hash('b'), 'notes/life/b.md'), T0 + 5)).toBe('ok');
-    expect(await store.release(released.id, 'lease-2', { seq: 0, contentHash: hash('b') }, T0 + 6)).toBe('released');
+    expect(await store.release(released.id, 'lease-2', { seq: 1, contentHash: hash('b') }, T0 + 6)).toBe('released');
     // A lease nothing was read under has its lifetime too.
     expect(await store.lease(draft.id, 'lease-3', T0 + 4 + LEASE_MS, T0 + 4)).toBe('leased');
     const found = await lifetimes(under);
-    expect([...found.keys()].sort()).toEqual(['doc', 'editors', 'initial', 'lease', 'link', 'links', 'log', 'path', 'presence', 'repos', 'ticket', 'tickets']);
+    expect([...found.keys()].sort()).toEqual(['doc', 'editors', 'ended', 'initial', 'lease', 'link', 'links', 'log', 'path', 'presence', 'repos', 'ticket', 'tickets']);
     for (const kind of ['repos', 'links', 'path', 'link', 'doc', 'log', 'editors', 'initial']) expect([kind, new Set(found.get(kind))]).toEqual([kind, new Set([-1])]);
     expect(found.get('link')).toHaveLength(3);
     expect(found.get('path')).toHaveLength(2);
@@ -242,9 +244,10 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     within('presence', LIVE_PRESENCE_MS);
     within('ticket', LIVE_TICKET_MS);
     within('tickets', LIVE_TICKET_MS);
+    within('ended', LIVE_MERGE_MS);
   });
 
-  it('leaves only the link and its path behind a release, and nothing behind a discard', async () => {
+  it('leaves only the link, its path and the ended document for a day behind a release, and nothing behind a discard', async () => {
     const under = prefix();
     const store = redisLiveStore({ url: url!, prefix: under });
     const { link } = await checkout(store, 'notes/life/a.md', '# A\n');
@@ -258,7 +261,10 @@ describe.skipIf(!url)('over a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
     expect(await store.synced(link.id, 'lease', receipt(hash('a'), 'notes/life/a.md'), T0 + 4)).toBe('ok');
     expect(await store.release(link.id, 'lease', { seq: 1, contentHash: hash('a') }, T0 + 5)).toBe('released');
     expect(await store.discard(draft.id, 'lease', { seq: 1 }, T0 + 5)).toBe('discarded');
-    expect(new Map([...await lifetimes(under)].sort())).toEqual(new Map([['link', [-1]], ['path', [-1]]]));
+    const left = new Map([...await lifetimes(under)].sort());
+    expect([...left.keys()]).toEqual(['ended', 'link', 'path']);
+    expect([left.get('link'), left.get('path')]).toEqual([[-1], [-1]]);
+    expect(left.get('ended')![0]).toBeGreaterThan(LIVE_MERGE_MS - 30_000);
   });
 
   it('serves two handles on one prefix the same links, as two processes on one Redis', async () => {

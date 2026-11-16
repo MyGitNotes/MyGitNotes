@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { fetchGitStatus, renderNoteTemplate, saveNote } from '../lib/api.js';
 import { buildNewNoteDraft, type LivePathPrompt, livePathPrompts } from '../lib/new-note.js';
 import { createLiveNote } from '../lib/live-api.js';
+import { isNetworkFailure } from '../lib/connectivity.js';
 import { serializeNoteFile } from '@mygitnotes/core/note-file';
 import { isBuiltinTemplate, renderBuiltinNoteTemplate } from '../lib/builtin-templates.js';
 import { localTemplateClock, renderNoteTemplate as fillNoteTemplate } from '@mygitnotes/core/note-template';
@@ -144,14 +145,23 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       // date and time. Only the title, date and time are filled: every other placeholder stays as written, a declared default
       // included, for the writer to replace.
       const clock = localTemplateClock();
-      if (live && kind === 'note') {
-        const created = await createLive({ notebook, folder, title, clock, opts });
-        if (created && currentRequest()) {
-          invalidateNotes();
-          // Zoom reads the new note's live text and frames its editor at once.
-          live.open(created);
+      // Offline, a note of a live repository is a browser draft like any other, handed to the live editor once online
+      // (collab-first A3.2); a live editor out of reach is offline too.
+      if (live && kind === 'note' && navigator.onLine) {
+        let created: NoteListItem | null | undefined;
+        try {
+          created = await createLive({ notebook, folder, title, clock, opts });
+        } catch (error) {
+          if (!(error instanceof TypeError && isNetworkFailure(error.message))) throw error;
         }
-        return;
+        if (created !== undefined) {
+          if (created && currentRequest()) {
+            invalidateNotes();
+            // Zoom reads the new note's live text and frames its editor at once.
+            live.open(created);
+          }
+          return;
+        }
       }
       // A template that is still a working change of this page has no file the workspace could read, so it is filled in here.
       const templateFile = remote && opts.templateId ? templates?.find(candidate => candidate.id === opts.templateId)?.file : undefined;

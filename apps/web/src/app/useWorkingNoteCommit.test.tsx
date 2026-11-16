@@ -122,3 +122,51 @@ it('blocks a deletion of a note that changed remotely since, keeping it in the t
   expect(commits).toEqual([]);
   expect(readWorkingNotes(draftStore(home))[base.path]).toMatchObject({ deleted: true, blocked: expect.stringContaining('Restore it from the trash') });
 });
+
+/*
+ * Collab-first (docs/specs/2026-11-16-collab-first-self-host A3.2.3): a draft of a note that is live now is merged into
+ * the live note instead of committed, which the server would refuse as checked out; the rest of the drafts are committed.
+ */
+it('merges a draft of a note that is live now into the live note, and commits the rest', async () => {
+  const live = { ...home, live: { kind: 'builtin' as const } };
+  repositories[0] = live;
+  try {
+    updateWorkingNote(draftStore(live), 'notes/life/b.md', { note: note('notes/life/b.md', 'notes~life', '# B edited', home.revision), base: note('notes/life/b.md', 'notes~life', '# B', home.revision) });
+    commits = [];
+    const merges: any[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        if (url === '/api/workspace?fresh=1') return new Response(JSON.stringify({ keyedConfig: null, local: false, defaultRepository: home.id, repositories, coreUpdate: false }));
+        if (url === '/api/notes/read-batch') return new Response(JSON.stringify({ notes: body.paths.map((path: string) => path === base.path ? { ...base, live: { since: '2026-11-16T01:00:00.000Z', activeEditors: 1, editorUrl: 'http://localhost/a' } } : { ...base, path, content: '# B' }) }));
+        if (url === '/api/live/merge') {
+          merges.push(body);
+          return new Response(JSON.stringify({ applied: true, contentHash: 'h'.repeat(64), checkout: {}, outcome: 'joined' }));
+        }
+        if (url === '/api/notes/commit') {
+          commits.push(body);
+          return new Response(JSON.stringify({ revision: `${body.repository}-next`, commit: { commitHash: 'x' } }));
+        }
+        throw new Error(`Unexpected request ${url}`);
+      }),
+    );
+    const { commitWorkingNotes, clearCommittedDrafts } = commitHook();
+    await commitWorkingNotes([change(base.path, live), change('notes/life/b.md', live)], 'docs: update');
+    expect(merges.map(merge => [merge.path, merge.text.includes('# A edited')])).toEqual([[base.path, true]]);
+    expect(commits.map(commit => commit.notes.map((item: any) => item.path))).toEqual([['notes/life/b.md']]);
+    expect(clearCommittedDrafts.mock.calls.flatMap(([, sent]) => Object.keys(sent)).sort()).toEqual([base.path, 'notes/life/b.md']);
+  } finally {
+    repositories[0] = home;
+  }
+});
+
+// cf16-F012: a live note's conflict draft in a commit is named in the app's words, not by its raw reason.
+it('names a conflict draft of a live note in the app’s words when it is in a commit', async () => {
+  stubServer();
+  updateWorkingNote(draftStore(home), base.path, { note: { ...base, content: '# A mine' }, base, blocked: 'live-merge-conflict' });
+  const { commitWorkingNotes } = commitHook();
+  const error = await commitWorkingNotes([change(base.path, home)], 'docs: update').catch((thrown: Error) => thrown);
+  expect((error as Error).message).toBe(`${base.path}: live.mergeConflict {}`);
+  expect(commits).toEqual([]);
+});

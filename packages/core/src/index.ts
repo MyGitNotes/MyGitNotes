@@ -48,14 +48,14 @@ export * from './note-versions.js';
 export * from './commit-author.js';
 export * from './live-checkin.js';
 export * from './live-merge.js';
-export { rebaseLiveText, type TextEdit, textEdits } from './live-text.js';
+export { rebaseLiveText, type RebaseOptions, type TextEdit, textEdits } from './live-text.js';
 export * from './live-default-draft.js';
 export * from './live-notes.js';
 export * from './live-repository.js';
 export * from './note-history.js';
 
 export * from './study-stages.js';
-export { type CommitNoteChange, type CommitNoteDeletion, type CommitNoteWrite, type HistoryRead, onRemoteCommit, type RemoteChange, type RemoteCommit, type RemoteCommitListener, type RemoteEntry, type RemoteSnapshot, RemoteSource } from './remote-source.js';
+export { type CommitNoteChange, type CommitNoteDeletion, type CommitNoteWrite, type HistoryRead, onRemoteCommit, type RemoteChange, type RemoteCommit, type RemoteCommitHeard, type RemoteCommitListener, type RemoteEntry, type RemoteSnapshot, RemoteSource } from './remote-source.js';
 export { GitLabSource } from './gitlab-source.js';
 export { createRemoteSource, openRemoteRepository } from './remote-factory.js';
 export { MANIFEST_FILES, RemoteManifest } from './remote-manifest.js';

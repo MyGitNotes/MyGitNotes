@@ -135,6 +135,31 @@ describe('rebaseLiveText', () => {
     expect(rebaseLiveText('log\n', 'log\ntheirs\n', 'log\nmine\n')).toBe('log\ntheirs\nmine\n');
   });
 
+  it('with an uncertain base, which may lack typing of mine theirs already holds, conflicts on two different insertions at one point instead of doubling text', () => {
+    const uncertain = { uncertainBase: true };
+    // The server stored part of the kept typing: merged as two insertions, the stored part would land twice.
+    expect(rebaseLiveText('a b c\n', 'a b X c\n', 'a b XZ c\n')).toBe('a b X XZ c\n');
+    expect(rebaseLiveText('a b c\n', 'a b X c\n', 'a b XZ c\n', undefined, uncertain)).toBeNull();
+    // The session's first acknowledgement never came: the base is empty, and the whole note would land twice.
+    expect(rebaseLiveText('', 'whole note\n', 'whole note\nmore\n', undefined, uncertain)).toBeNull();
+    // The same insertion applies once, and edits apart still merge.
+    expect(rebaseLiveText('ab', 'aXb', 'aXb', undefined, uncertain)).toBe('aXb');
+    expect(rebaseLiveText('one\ntwo\n', 'ONE\ntwo\n', 'one\ntwo\nthree\n', undefined, uncertain)).toBe('ONE\ntwo\nthree\n');
+  });
+
+  it('with an uncertain base, conflicts on an insertion at the edge of a span the other side replaced instead of doubling it (cfx-F003)', () => {
+    const uncertain = { uncertainBase: true };
+    // The server stored X; the tab then replaced the character after it.
+    expect(rebaseLiveText('a c', 'aX c', 'aXZc', undefined, uncertain)).toBeNull();
+    expect(rebaseLiveText('ab', 'aXb', 'aXY', undefined, uncertain)).toBeNull();
+    expect(rebaseLiveText('hello world', 'hello Xworld', 'hello XZorld', undefined, uncertain)).toBeNull();
+    // At the end of the replaced span too, either side.
+    expect(rebaseLiveText('abc', 'aYc', 'abXc', undefined, uncertain)).toBeNull();
+    expect(rebaseLiveText('abc', 'abXc', 'aYc', undefined, uncertain)).toBeNull();
+    // Apart from it, both still apply.
+    expect(rebaseLiveText('abcd', 'aYcd', 'abcXd', undefined, uncertain)).toBe('aYcXd');
+  });
+
   it('keeps an insertion at the edge of a span the other side replaced', () => {
     expect(rebaseLiveText('abcdefgh', 'abgh', 'abXcdefgh')).toBe('abXgh');
     expect(rebaseLiveText('abcdefgh', 'abgh', 'abcdefXgh')).toBe('abXgh');

@@ -1,6 +1,6 @@
-import { type LiveConflict, liveContentHash, type RepositoryId } from '@mygitnotes/core';
+import { LIVE_MAX_BYTES, type LiveConflict, liveContentHash, type RepositoryId } from '@mygitnotes/core';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { type EditorRef, type LinkInit, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredTicket, type SyncReceipt } from './store.js';
+import { type EditorRef, type LinkInit, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredTicket, type SyncReceipt } from './store.js';
 
 const T0 = Date.parse('2026-11-15T00:00:00.000Z');
 const LEASE_MS = 5 * 60_000;
@@ -136,6 +136,64 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(editors).toEqual([{ ...pat, firstAt: T0 + 1000, lastAt: T0 + 3000, lastSeq: 4 }, { ...sam, firstAt: T0 + 2000, lastAt: T0 + 2000, lastSeq: 2 }, { ...bot, firstAt: T0 + 2500, lastAt: T0 + 2500, lastSeq: 3 }]);
       expect(editors[2]).not.toHaveProperty('email');
       expect(await store.editors(unknown)).toEqual([]);
+    });
+
+    it('keeps the person an editor signed in as, for the check-in to commit with their own credential, and none where none is given', async () => {
+      const { id } = await open();
+      const signedIn = { ...pat, person: { realm: 'github:https://github.com:client', userId: 7 } };
+      await store.append(id, 1, bytes('one'), signedIn, T0 + 1000);
+      await store.append(id, 1, bytes('two'), sam, T0 + 2000);
+      // A later append of the same editor keeps the person it was first recorded with.
+      await store.append(id, 1, bytes('three'), pat, T0 + 3000);
+      const editors = await store.editors(id);
+      expect(editors).toEqual([{ ...signedIn, firstAt: T0 + 1000, lastAt: T0 + 3000, lastSeq: 3 }, { ...sam, firstAt: T0 + 2000, lastAt: T0 + 2000, lastSeq: 2 }]);
+      expect(editors[1]).not.toHaveProperty('person');
+      await store.putTicket(hash('1'), { ...ticket(id, 1), editor: signedIn }, T0 + 4000 + LIVE_TICKET_MS);
+      expect((await store.takeTicket(hash('1'), T0 + 5000))?.editor).toEqual(signedIn);
+    });
+
+    it('keeps the answer of a merge with its append, and answers it to a repeat without appending again', async () => {
+      const { id } = await open();
+      const key = hash('1'), answer = JSON.stringify({ applied: true, contentHash: hash('a') });
+      expect(await store.mergeAnswer(key, T0)).toBeNull();
+      expect(await store.append(id, 1, bytes('merged'), pat, T0 + 1000, { key, answer, until: T0 + 1000 + LIVE_MERGE_MS })).toEqual({ seq: 1, length: 1 });
+      expect(await store.mergeAnswer(key, T0 + 2000)).toBe(answer);
+      // The same merge again, whatever it would now answer: the first answer, and nothing appended.
+      expect(await store.append(id, 1, bytes('merged again'), sam, T0 + 3000, { key, answer: JSON.stringify({ applied: true, contentHash: hash('b') }), until: T0 + 3000 + LIVE_MERGE_MS })).toEqual({ merged: answer });
+      expect(await store.document(id, 1)).toMatchObject({ log: [bytes('merged')], seq: 1 });
+      expect((await store.editors(id)).map(editor => editor.key)).toEqual([pat.key]);
+      expect((await store.link(id))?.lastEditAt).toBe(T0 + 1000);
+      // Another merge is its own, and an append that names none never reads a merge.
+      expect(await store.append(id, 1, bytes('other'), sam, T0 + 4000, { key: hash('2'), answer: 'other', until: T0 + 4000 + LIVE_MERGE_MS })).toEqual({ seq: 2, length: 2 });
+      expect(await store.append(id, 1, bytes('typed'), sam, T0 + 5000)).toEqual({ seq: 3, length: 3 });
+      expect(await store.mergeAnswer(hash('2'), T0 + 5000)).toBe('other');
+      expect(await store.mergeAnswer(hash('3'), T0 + 5000)).toBeNull();
+      expect(await store.mergeAnswer('not-a-hash', T0 + 5000)).toBeNull();
+    });
+
+    it('forgets a merge answer once its time is up, by the time the caller passes, and then appends the merge again', async () => {
+      const { id } = await open();
+      const key = hash('1'), until = T0 + LIVE_MERGE_MS;
+      await store.append(id, 1, bytes('merged'), pat, T0, { key, answer: 'first', until });
+      expect(await store.mergeAnswer(key, until - 1)).toBe('first');
+      expect(await store.mergeAnswer(key, until)).toBeNull();
+      expect(await store.append(id, 1, bytes('merged late'), pat, until, { key, answer: 'second', until: until + LIVE_MERGE_MS })).toEqual({ seq: 2, length: 2 });
+      expect(await store.mergeAnswer(key, until + 1)).toBe('second');
+    });
+
+    it('keeps no merge answer for an append it refused, and a merge answer outlives the release of its link', async () => {
+      const { id } = await open();
+      const key = hash('1');
+      expect(await store.append(id, 2, bytes('next epoch'), pat, T0 + 1, { key, answer: 'refused', until: T0 + LIVE_MERGE_MS })).toBe('not-live');
+      expect(await store.append(unknown, 1, bytes('nowhere'), pat, T0 + 1, { key, answer: 'refused', until: T0 + LIVE_MERGE_MS })).toBe('not-live');
+      expect(await store.mergeAnswer(key, T0 + 2)).toBeNull();
+      await store.append(id, 1, bytes('merged'), pat, T0 + 3, { key, answer: 'kept', until: T0 + LIVE_MERGE_MS });
+      await checkIn(id, T0 + 10);
+      // A repeat that arrives after the note was checked in still finds its answer, as does one in the reopened note.
+      expect(await store.mergeAnswer(key, T0 + 20)).toBe('kept');
+      expect((await checkout(note, 'again', T0 + 30, 2)).outcome).toBe('reopened');
+      expect(await store.append(id, 2, bytes('merged again'), pat, T0 + 40, { key, answer: 'again', until: T0 + LIVE_MERGE_MS })).toEqual({ merged: 'kept' });
+      expect((await store.document(id, 2))?.log).toEqual([]);
     });
 
     it('numbers concurrent appends one by one and keeps every one', async () => {
@@ -391,6 +449,45 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.activePeople(id, T0, T0 + 11)).toBe(0);
       // Its path still names it.
       expect(await checkout(note, '# Again\n', T0 + 12, 2)).toMatchObject({ outcome: 'reopened', link: { id, epoch: 2, path: note } });
+    });
+
+    it('keeps the document an epoch ended with for a day after its release, for typing a tab kept to be merged once, and nothing of a discarded link', async () => {
+      const { id } = await open(note, '# A\n', T0);
+      expect(await store.ended(id, 1, T0)).toBeNull();
+      await store.append(id, 1, bytes('pat 1'), pat, T0 + 1);
+      expect(await checkIn(id, T0 + 10)).toBe('released');
+      expect(await store.document(id, 1)).toBeNull();
+      expect(await store.ended(id, 1, T0 + 11)).toEqual({ state: bytes('# A\n'), log: [bytes('pat 1')] });
+      // The reopened epoch has its own document; the ended one is still there, and only for its own epoch.
+      expect((await checkout(note, 'again', T0 + 20, 2)).outcome).toBe('reopened');
+      expect(await store.ended(id, 1, T0 + 21)).toEqual({ state: bytes('# A\n'), log: [bytes('pat 1')] });
+      expect(await store.ended(id, 2, T0 + 21)).toBeNull();
+      expect(await store.ended(unknown, 1, T0 + 21)).toBeNull();
+      // A day after the release it is gone.
+      expect(await store.ended(id, 1, T0 + 10 + LIVE_MERGE_MS - 1)).not.toBeNull();
+      expect(await store.ended(id, 1, T0 + 10 + LIVE_MERGE_MS)).toBeNull();
+      const draft = await pending('# Draft\n', T0 + 30);
+      const token = await leased(draft.id, T0 + 31);
+      expect(await store.discard(draft.id, token, { seq: 0 }, T0 + 32)).toBe('discarded');
+      expect(await store.ended(draft.id, 1, T0 + 33)).toBeNull();
+    });
+
+    // cfx-F002: an epoch that stored nothing keeps nothing (a merge on its seed and on the tab's base agree), and one past the largest live text keeps nothing either.
+    it('keeps the document an epoch ended with only when that epoch stored typing, and only up to the largest live text', async () => {
+      const untouched = await open(note, '# A\n', T0);
+      expect(await checkIn(untouched.id, T0 + 1)).toBe('released');
+      expect(await store.ended(untouched.id, 1, T0 + 2)).toBeNull();
+      // Typing compacted into the state still counts.
+      const compacted = await open('notes/life/c.md', '# C\n', T0);
+      await store.append(compacted.id, 1, bytes('pat 1'), pat, T0 + 1);
+      const read = (await store.document(compacted.id, 1))!;
+      expect(await store.compact(compacted.id, 1, read.gen, read.log.length, bytes('state c'), hash('1'), read.seq)).toBe(true);
+      expect(await checkIn(compacted.id, T0 + 2)).toBe('released');
+      expect(await store.ended(compacted.id, 1, T0 + 3)).toEqual({ state: bytes('state c'), log: [] });
+      const large = await open('notes/life/d.md', '# D\n', T0);
+      await store.append(large.id, 1, new Uint8Array(LIVE_MAX_BYTES + 1), pat, T0 + 1);
+      expect(await checkIn(large.id, T0 + 2)).toBe('released');
+      expect(await store.ended(large.id, 1, T0 + 3)).toBeNull();
     });
 
     it('discards a pending link whose sequence did not move, with everything it had, and never a filed one', async () => {

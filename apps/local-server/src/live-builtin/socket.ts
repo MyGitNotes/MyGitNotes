@@ -51,6 +51,11 @@ export interface LiveSocketLimits {
    * session that got its first ticket ended.
    */
   socketMs: number;
+  /**
+   * How long a document may stay without a seat of this process before `left` is told, in real time: a tab that drops
+   * and connects again within it (a short loss of the network) was never gone.
+   */
+  leaveMs: number;
 }
 
 export interface LiveSocketOptions {
@@ -65,6 +70,11 @@ export interface LiveSocketOptions {
   /** The app's origin; left out, `APP_URL` as each socket opens. */
   appUrl?: string;
   limits: LiveSocketLimits;
+  /**
+   * The last seat of this process left the document, its presence written: not when its socket closed for a new ticket,
+   * nor at shutdown, when the tab comes back.
+   */
+  left?(link: LiveEpoch & { repository: RepositoryId; }): Promise<void>;
 }
 
 export interface LiveSocket {
@@ -96,6 +106,11 @@ interface Seat {
   claim?: number;
   /** Its last awareness state without `user`, as JSON: a change of it is activity. */
   cursor: string;
+  /**
+   * The cursors its person's seats on this document left with in the last `RETURN_MS`, as it opened: its first
+   * awareness state is not activity when it is one of them, as a tab that came back re-sends its own.
+   */
+  returned?: Set<string>;
   /** Resolves when the seat is given up. */
   gone: Promise<void>;
   leave(): void;
@@ -128,6 +143,8 @@ class Refusal extends Error {
 
 /** The close of a socket that was open for `socketMs`: the tab connects again, with a fresh ticket, as after any close. */
 export const LIVE_RENEW_CODE = 4000;
+/** How soon a person's next seat on a document must open after their last one left to take on its last activity. */
+const RETURN_MS = 60_000;
 const RENEW_REASON = 'Live ticket renewal';
 
 const TICKET = /^[A-Za-z0-9_-]{32,128}$/;
@@ -147,7 +164,7 @@ function liveColour(key: string): string {
 
 const bytesOf = (data: RawData): Uint8Array => Array.isArray(data) ? Buffer.concat(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
 
-export function liveSocket({ documents, store, clock, process: processName, ready, covers, appUrl, limits }: LiveSocketOptions): LiveSocket {
+export function liveSocket({ documents, store, clock, process: processName, ready, covers, appUrl, limits, left }: LiveSocketOptions): LiveSocket {
   const { hocuspocus } = documents;
   const server = new WebSocketServer({ noServer: true, maxPayload: limits.maxPayload });
   /** Every open socket, with the documents open or being opened on it. */
@@ -174,7 +191,31 @@ export function liveSocket({ documents, store, clock, process: processName, read
     if (socket.readyState === socket.OPEN) socket.close(LIVE_RENEW_CODE, RENEW_REASON);
     return true;
   };
+  /** The socket is past its time: it was, or is being, closed for a new ticket. */
+  const renewing = (socket: WebSocket) => clock() >= (renewAt.get(socket) ?? Infinity);
   const rooms = new Map<string, Room>();
+  /** The documents everyone of this process left, until `leaveMs` passed. */
+  const leaving = new Map<string, NodeJS.Timeout>();
+  /**
+   * The last activity and awareness state of each seat that just left a document, by document and editor key: a seat
+   * of that person's that opens within `RETURN_MS` (a renewal's reconnect, a reload) takes on the latest activity of
+   * them, so coming back is not activity and an idle open tab stops counting `idleMs` after its last real move
+   * (cf14-F001). Every departed seat is kept until it runs out, not taken by the first to return, so two tabs of one
+   * person that a beat closed together both come back idle (cf15-F001).
+   */
+  const departed = new Map<string, { at: number; cursor: string; left: number; }[]>();
+  const departedKey = (seat: Seat) => `${seat.name}\u0000${seat.editor.key}`;
+  /** At most this many departed seats are kept a key; the ones with the oldest activity go first. */
+  const DEPARTED_PER_KEY = 16;
+  const freshDeparted = (key: string) => {
+    const fresh = (departed.get(key) ?? []).filter(kept => clock() - kept.left <= RETURN_MS);
+    if (fresh.length) departed.set(key, fresh);
+    else departed.delete(key);
+    return fresh;
+  };
+  const forgetDeparted = () => {
+    for (const key of departed.keys()) freshDeparted(key);
+  };
   /** The last write of each document's presence that is still under way, also once everyone left it. */
   const writes = new Map<string, Promise<void>>();
   /** What runs unawaited: presence writes and the unloading of documents everyone left. `shutdown` waits for it. */
@@ -232,6 +273,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
 
   const startTimers = () => {
     beat ??= setInterval(() => {
+      forgetDeparted();
       for (const socket of sockets.keys()) if (!expired(socket) && socket.readyState === socket.OPEN) socket.ping();
       // An entry lasts LIVE_PRESENCE_MS after it was written: one nobody changed is written again well before.
       for (const room of rooms.values()) if ([...room.seats].some(seat => seat.connected) && (room.dirty || clock() - room.written >= LIVE_PRESENCE_MS / 3)) void writePresence(room.link);
@@ -253,7 +295,13 @@ export function liveSocket({ documents, store, clock, process: processName, read
     seat.connection = connection;
     if (seat.connected || seat.left) return;
     seat.connected = true;
-    seat.at = clock();
+    const fresh = freshDeparted(departedKey(seat));
+    if (fresh.length) {
+      const latest = fresh.reduce((best, kept) => kept.at > best.at ? kept : best);
+      seat.at = Math.max(seat.at, latest.at);
+      seat.cursor ||= latest.cursor;
+      seat.returned = new Set(fresh.map(kept => kept.cursor));
+    } else seat.at = clock();
     void writePresence(seat.link);
   };
   const active = (seat: Seat) => {
@@ -291,10 +339,26 @@ export function liveSocket({ documents, store, clock, process: processName, read
         if (seat.claim !== undefined && room.claims.get(seat.claim) === seat) room.claims.delete(seat.claim);
         if (!room.seats.size && rooms.get(name) === room) rooms.delete(name);
         if (seat.connected) {
+          const kept = freshDeparted(departedKey(seat));
+          kept.push({ at: seat.at, cursor: seat.cursor, left: clock() });
+          if (kept.length > DEPARTED_PER_KEY) kept.splice(kept.indexOf(kept.reduce((least, entry) => entry.at < least.at ? entry : least)), 1);
+          departed.set(departedKey(seat), kept);
           // Written at once, so a note someone just left can be checked in and released.
-          void writePresence(link);
+          const written = writePresence(link);
           // The last one out: the document is compacted and let go now, once Hocuspocus has done with the connection, unless someone came meanwhile.
-          if (!rooms.has(name) && !stopping) background(new Promise<void>(resolve => setImmediate(resolve)).then(() => rooms.has(name) ? undefined : documents.unload(link)));
+          if (!rooms.has(name) && !stopping) {
+            background(new Promise<void>(resolve => setImmediate(resolve)).then(() => rooms.has(name) ? undefined : documents.unload(link)));
+            // A socket closed for a new ticket comes straight back: only a seat that stayed away tells the adapter.
+            if (left && !renewing(socket)) {
+              clearTimeout(leaving.get(name));
+              const timer = setTimeout(() => {
+                leaving.delete(name);
+                if (!rooms.has(name) && !stopping) background(written.then(() => rooms.has(name) ? undefined : left(link)));
+              }, limits.leaveMs);
+              timer.unref();
+              leaving.set(name, timer);
+            }
+          }
         }
         leave();
       },
@@ -405,12 +469,14 @@ export function liveSocket({ documents, store, clock, process: processName, read
           continue;
         }
         state.user = { name: seat.display, color: liveColour(seat.editor.key) };
-        // A cursor or selection that moved is activity; the same state sent again to stay alive is not.
+        // A cursor or selection that moved is activity; the same state sent again to stay alive is not, nor the first
+        // state of a seat that came back when one of its person's seats just left with it.
         const cursor = JSON.stringify({ ...state, user: undefined });
         if (cursor !== seat.cursor) {
           seat.cursor = cursor;
-          active(seat);
+          if (!seat.returned?.has(cursor)) active(seat);
         }
+        seat.returned = undefined;
       }
       for (const client of removedClients) if (room.claims.get(client) !== seat) removedClients.delete(client);
     },
@@ -471,6 +537,8 @@ export function liveSocket({ documents, store, clock, process: processName, read
   const stop = async () => {
     const end = Date.now() + limits.shutdownMs;
     stopTimers();
+    for (const timer of leaving.values()) clearTimeout(timer);
+    leaving.clear();
     const seats = [...sockets.values()].flatMap(held => [...held]);
     // What sockets sent so far is taken and compacted, within most of the time there is; the rest is for closing them.
     const flushed = await within(

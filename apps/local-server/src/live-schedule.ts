@@ -6,6 +6,9 @@ import { templateTimeZone } from '@mygitnotes/core';
  * now. A process sweeps at I and 10, 20 and 30 minutes after it, for releases refused while someone was still
  * editing, and once 60 to 120 s after it starts, which catches up after downtime. Every process of a deployment may
  * run it: the adapter's lease makes each link single-flight.
+ *
+ * Beside it, the idle check-in (docs/specs/2026-11-16-collab-first-self-host A5): a tick about every minute checks in
+ * the links nobody is active on and nobody typed in for MYGITNOTES_LIVE_IDLE_CHECKIN.
  */
 
 /** When the nightly check-in runs: a wall-clock time and the time zone it is read in. */
@@ -21,6 +24,18 @@ export function liveScheduleSetting(env: Record<string, string | undefined> = pr
   if (value.toLowerCase() === 'off') return null;
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error(`MYGITNOTES_LIVE_CHECKIN_AT '${value}' is not a time such as 03:00, or off.`);
   return { at: value, timeZone: templateTimeZone(env) };
+}
+
+/**
+ * How long nobody typed in a live note before the idle check-in takes it, in milliseconds: `MYGITNOTES_LIVE_IDLE_CHECKIN`
+ * as whole minutes from `1m` to `60m`, `5m` when unset; null when it is `off`, and a thrown Error for any other value.
+ */
+export function liveIdleSetting(env: Record<string, string | undefined> = process.env): number | null {
+  const value = env.MYGITNOTES_LIVE_IDLE_CHECKIN?.trim() || '5m';
+  if (value.toLowerCase() === 'off') return null;
+  const minutes = /^([1-9]\d?)m$/.exec(value)?.[1];
+  if (!minutes || Number(minutes) > 60) throw new Error(`MYGITNOTES_LIVE_IDLE_CHECKIN '${value}' is not a number of minutes from 1m to 60m, such as 5m, or off.`);
+  return Number(minutes) * 60_000;
 }
 
 /** The wall clock of an instant in a time zone. */
@@ -73,16 +88,23 @@ function nextTick(now: number, setting: LiveScheduleSetting): { at: number; inst
   return { at: upcoming, instant: upcoming };
 }
 
+/** How far apart the idle ticks fall, and how far each is moved either way. */
+const IDLE_TICK_MS = 60_000;
+const IDLE_JITTER_MS = 10_000;
+
 export interface LiveScheduleOptions {
-  setting: LiveScheduleSetting;
+  /** The nightly check-in; null where it is off, and only the idle tick runs. */
+  setting: LiveScheduleSetting | null;
   /** Checks in the links due at `instant`; it reports its own failures. */
   sweep(instant: Date): Promise<unknown>;
-  /** In [0, 1); jitters every timer by up to 60 s. */
+  /** The idle check-in: its sweep runs about every minute. Left out, there is no idle tick. */
+  idle?: { sweep(): Promise<unknown>; };
+  /** In [0, 1); jitters every nightly timer by up to 60 s, and every idle tick by up to 10 s either way. */
   random?: () => number;
 }
 
 /** Starts the schedule; its timers keep no process alive. Returns how to stop it. */
-export function startLiveSchedule({ setting, sweep, random = Math.random }: LiveScheduleOptions): { stop(): void; } {
+export function startLiveSchedule({ setting, sweep, idle, random = Math.random }: LiveScheduleOptions): { stop(): void; } {
   let stopped = false;
   let running = false;
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -101,16 +123,33 @@ export function startLiveSchedule({ setting, sweep, random = Math.random }: Live
     running = true;
     void sweep(new Date(instant)).catch(error => console.warn(`[live-notes] scheduled check-in failed: ${(error as Error)?.name ?? 'error'}`)).finally(() => (running = false));
   };
-  const plan = () => {
+  const plan = (nightly: LiveScheduleSetting) => {
     if (stopped) return;
-    const { at, instant } = nextTick(Date.now(), setting);
+    const { at, instant } = nextTick(Date.now(), nightly);
     later(at - Date.now() + jitter(), () => {
       fire(instant);
-      plan();
+      plan(nightly);
     });
   };
-  later(60_000 + jitter(), () => fire(liveDueInstant(new Date(), setting).getTime()));
-  plan();
+  if (setting) {
+    later(60_000 + jitter(), () => fire(liveDueInstant(new Date(), setting).getTime()));
+    plan(setting);
+  }
+  if (idle) {
+    // Its own turn: a nightly sweep that runs long holds no idle tick off, and an idle sweep skips no nightly tick.
+    let idling = false;
+    const tick = () => {
+      if (stopped) return;
+      later(IDLE_TICK_MS + Math.round((random() * 2 - 1) * IDLE_JITTER_MS), () => {
+        if (!stopped && !idling) {
+          idling = true;
+          void idle.sweep().catch(error => console.warn(`[live-notes] idle check-in failed: ${(error as Error)?.name ?? 'error'}`)).finally(() => (idling = false));
+        }
+        tick();
+      });
+    };
+    tick();
+  }
   return {
     stop() {
       stopped = true;

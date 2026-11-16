@@ -60,7 +60,7 @@ const ticketHash = (ticket: string) => createHash('sha256').update(ticket, 'utf8
 
 beforeEach(() => {
   root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mygitnotes-live-builtin-adapter-')));
-  for (const [key, value] of Object.entries({ SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', REDIS_URL: '', KV_REST_API_URL: '', MYGITNOTES_STORAGE: '', APP_URL: 'http://localhost', VERCEL: '', MYGITNOTES_PRODUCT_REPOSITORY: '', MYGITNOTES_SOURCE: 'github', MYGITNOTES_LIVE_SWEEP_SECRET: '', MYGITNOTES_LIVE_CHECKIN_AT: 'off', MYGITNOTES_TIMEZONE: '' })) vi.stubEnv(key, value);
+  for (const [key, value] of Object.entries({ SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', REDIS_URL: '', KV_REST_API_URL: '', MYGITNOTES_STORAGE: '', APP_URL: 'http://localhost', VERCEL: '', MYGITNOTES_PRODUCT_REPOSITORY: '', MYGITNOTES_SOURCE: 'github', MYGITNOTES_LIVE_SWEEP_SECRET: '', MYGITNOTES_LIVE_CHECKIN_AT: 'off', MYGITNOTES_LIVE_IDLE_CHECKIN: 'off', MYGITNOTES_TIMEZONE: '' })) vi.stubEnv(key, value);
   records = createRecordStore(root);
   files = new Map([['.mygitnotes.yaml', manifest], ['notes/life/a.md', gitA]]);
   live = builtinFixture({ files });
@@ -88,9 +88,9 @@ describe('the edition surface', () => {
 });
 
 describe('the app over the built-in live adapter', () => {
-  it('says builtin with discard and retarget, and creates, reads and tickets a pending note by its virtual path', async () => {
+  it('says builtin with discard, retarget and merge, and creates, reads and tickets a pending note by its virtual path', async () => {
     await start();
-    expect((await call('GET', '/api/workspace')).body.repositories.map((entry: { live: unknown; }) => entry.live)).toEqual([{ kind: 'builtin', discard: true, retarget: true }, null]);
+    expect((await call('GET', '/api/workspace')).body.repositories.map((entry: { live: unknown; }) => entry.live)).toEqual([{ kind: 'builtin', discard: true, retarget: true, merge: true }, null]);
     const made = await call('POST', '/api/live/new', { notebookId: 'notes~life', title: 'Idea', content: 'Some idea\n' });
     const pending = made.body.checkout;
     expect(made).toEqual({ status: 200, body: { checkout: { id: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/), notebookId: 'notes~life', path: `notes/life/.live/${pending.id}.md`, pending: true, editorUrl: `http://localhost/notebooks/notes~life/notes/.live/${pending.id}.md`, since: '2026-11-15T00:00:00.000Z', activeEditors: 0, conflict: null } } });
@@ -101,7 +101,7 @@ describe('the app over the built-in live adapter', () => {
     expect((await call('POST', '/api/live/socket-ticket', asked, 'p2')).status).toBe(403);
     const given = await call('POST', '/api/live/socket-ticket', asked);
     expect(given).toEqual({ status: 200, body: { ticket: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), document: `${pending.id}.1` } });
-    expect(await live.store.takeTicket(ticketHash(given.body.ticket), live.time.now())).toEqual({ repository, id: pending.id, epoch: 1, document: `${pending.id}.1`, editor: { key: 'person:pat@example.test', name: 'Pat', email: 'pat@example.test', agent: false }, display: 'Pat' });
+    expect(await live.store.takeTicket(ticketHash(given.body.ticket), live.time.now())).toEqual({ repository, id: pending.id, epoch: 1, document: `${pending.id}.1`, editor: { key: 'person:pat@example.test', name: 'Pat', email: 'pat@example.test', agent: false, person: { realm: 'edition', userId: 'p1' } }, display: 'Pat' });
     // Nobody typed in it yet: nothing was committed, and nothing names an editor.
     expect(commits()).toEqual([]);
     expect(await live.store.link(pending.id)).toMatchObject({ path: null, pathRule: '{{title}}.md', lastEditAt: null, seq: 0 });

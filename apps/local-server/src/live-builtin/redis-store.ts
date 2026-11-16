@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { LiveUnavailableError, type RepositoryId } from '@mygitnotes/core';
 import { createClient, ErrorReply } from 'redis';
 import { recordKeyPrefix } from '../record-store/index.js';
-import { LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
+import { LIVE_ENDED_MAX_BYTES, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
 
 /*
  * The live store in Redis (docs/specs/2026-11-15-builtin-live-editor §3.2). Under the prefix P:
@@ -19,9 +19,13 @@ import { LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, ty
  *   P:presence:<id>          hash    90 s, refreshed   process id to JSON { at, people: { person key: last activity } }
  *   P:ticket:<sha256>        string  60 s     JSON StoredTicket with its `until`
  *   P:tickets:<id>           set     60 s, refreshed   the hashes of the link's tickets, so a release or discard deletes them
+ *   P:merge:<sha256>         string  24 h     JSON { answer, until }: what a merge answered, for a repeat of it
+ *   P:ended:<id>:<epoch>     hash    24 h     a released epoch's document: `state`, `log` (base64, comma-joined) and `until`
+ *                                             (only for an epoch that stored typing, and only up to LIVE_ENDED_MAX_BYTES)
  *
  * `rk` and `pk` are the first 32 hex of the sha256 of the repository id and of the path. Live text carries no TTL, so a
- * volatile-* eviction policy never takes it; `check` refuses a policy that would. Every compound call is one EVAL
+ * volatile-* eviction policy never takes it (an ended document may go early, and a merge of typing kept of it then
+ * conflicts rather than doubling text); `check` refuses a policy that would. Every compound call is one EVAL
  * script, atomic in Redis; the scripts use nothing newer than Redis 2.6 and build some key names themselves, so they
  * need a single Redis, not a cluster. Lifetimes are a backstop in real time: what a lease, a presence entry or a ticket
  * is worth is decided by the time the caller passes.
@@ -33,6 +37,7 @@ const LEASE_GRACE_MS = 60_000;
 const RDB_RECENT_MS = 60 * 60_000;
 const LINK_ID = /^[A-Za-z0-9_-]{22}$/;
 const TICKET_HASH = /^[0-9a-f]{64}$/;
+const MERGE_KEY = /^[0-9a-f]{64}$/;
 
 /*
  * A script that fails halfway keeps what it had written, so each reads and decodes everything it needs before its first
@@ -114,10 +119,20 @@ local state = redis.call('GET', KEYS[2])
 if not state then return false end
 return {state, redis.call('LRANGE', KEYS[3], 0, -1), at[3], at[4]}`;
 
-/** KEYS link, log, editors. ARGV epoch, update, now, editor key ('' for a merge), editor JSON. */
+/**
+ * KEYS link, log, editors, and with a merge record its key. ARGV epoch, update, now, editor key ('' for a merge of
+ * Git's changes), editor JSON, the merge record ('' for none), its lifetime.
+ */
 const APPEND = `
 local at = redis.call('HMGET', KEYS[1], 'live', 'epoch')
 if at[1] ~= '1' or at[2] ~= ARGV[1] then return false end
+if ARGV[6] ~= '' then
+  local merged = redis.call('GET', KEYS[4])
+  if merged then
+    merged = cjson.decode(merged)
+    if merged['until'] > tonumber(ARGV[3]) then return {'merged', merged.answer} end
+  end
+end
 local editor = nil
 if ARGV[4] ~= '' then
   local known = redis.call('HGET', KEYS[3], ARGV[4])
@@ -132,6 +147,7 @@ if editor then
   redis.call('HSET', KEYS[3], ARGV[4], cjson.encode(editor))
   redis.call('HSET', KEYS[1], 'lastEditAt', ARGV[3])
 end
+if ARGV[6] ~= '' then redis.call('SET', KEYS[4], ARGV[6], 'PX', ARGV[7]) end
 return {seq, length}`;
 
 /** KEYS link, doc, log. ARGV epoch, gen, count, state, contentHash, contentSeq. */
@@ -193,12 +209,28 @@ if ARGV[6] == '' then redis.call('HDEL', KEYS[1], 'conflict') else redis.call('H
 for _, editor in ipairs(covered) do redis.call('HDEL', KEYS[3], editor) end
 return 'ok'`;
 
-/** KEYS link, lease, editors, presence, tickets, repos. ARGV token, now, seq, contentHash, P. */
+/**
+ * KEYS link, lease, editors, presence, tickets, repos. ARGV token, now, seq, contentHash, P, how long the ended document
+ * is kept, the most bytes it may take. Only an epoch that stored typing (a log entry, or a compaction) keeps it.
+ */
 const RELEASE = `${HOLDER}${ERASE}
 if not holder(ARGV[1], ARGV[2]) then return 'leased' end
-local at = redis.call('HMGET', KEYS[1], 'syncedAt', 'syncedHash', 'seq', 'epoch', 'id', 'rk', 'repository')
+local at = redis.call('HMGET', KEYS[1], 'syncedAt', 'syncedHash', 'seq', 'epoch', 'id', 'rk', 'repository', 'gen')
 if not at[1] or at[2] ~= ARGV[4] then return 'not-synced' end
 if at[3] ~= ARGV[3] then return 'changed' end
+local doc = ARGV[5] .. ':doc:' .. at[5] .. ':' .. at[4]
+local state, log = redis.call('GET', doc), redis.call('LRANGE', doc .. ':log', 0, -1)
+local size = 0
+if state then
+  size = #state
+  for _, entry in ipairs(log) do size = size + #entry end
+end
+if state and (tonumber(at[8] or '0') > 0 or #log > 0) and math.floor(size * 3 / 4) <= tonumber(ARGV[7]) then
+  local ended = ARGV[5] .. ':ended:' .. at[5] .. ':' .. at[4]
+  redis.call('DEL', ended)
+  redis.call('HMSET', ended, 'state', state, 'log', table.concat(log, ','), 'until', string.format('%.0f', tonumber(ARGV[2]) + tonumber(ARGV[6])))
+  redis.call('PEXPIRE', ended, ARGV[6])
+end
 erase(ARGV[5], at[5], at[4], at[6], at[7])
 redis.call('HSET', KEYS[1], 'live', '0')
 return 'released'`;
@@ -324,7 +356,7 @@ export function redisLiveStore({ url, prefix }: { url: string; prefix?: string; 
 /** The Redis live store over any way to send one command and get its reply, which a test fakes. `send` throws on failure. */
 export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>, prefix = liveStorePrefix()): LiveStore {
   const P = prefix;
-  const key = { repos: `${P}:repos`, links: (repository: RepositoryId) => `${P}:r:${digest32(repository)}:links`, path: (repository: RepositoryId, path: string) => `${P}:r:${digest32(repository)}:path:${digest32(path)}`, link: (id: string) => `${P}:link:${id}`, doc: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}`, log: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}:log`, editors: (id: string) => `${P}:editors:${id}`, initial: (id: string) => `${P}:initial:${id}`, lease: (id: string) => `${P}:lease:${id}`, presence: (id: string) => `${P}:presence:${id}`, ticket: (hash: string) => `${P}:ticket:${hash}`, tickets: (id: string) => `${P}:tickets:${id}` };
+  const key = { repos: `${P}:repos`, links: (repository: RepositoryId) => `${P}:r:${digest32(repository)}:links`, path: (repository: RepositoryId, path: string) => `${P}:r:${digest32(repository)}:path:${digest32(path)}`, link: (id: string) => `${P}:link:${id}`, doc: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}`, log: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}:log`, editors: (id: string) => `${P}:editors:${id}`, initial: (id: string) => `${P}:initial:${id}`, lease: (id: string) => `${P}:lease:${id}`, merge: (hash: string) => `${P}:merge:${hash}`, ended: (id: string, epoch: number) => `${P}:ended:${id}:${epoch}`, presence: (id: string) => `${P}:presence:${id}`, ticket: (hash: string) => `${P}:ticket:${hash}`, tickets: (id: string) => `${P}:tickets:${id}` };
   /**
    * One command. A failure is logged by the call and its link id and thrown as an unavailable live editor: a refusal by
    * the server with its first line (a full Redis must be visible), anything else without detail, since a client error
@@ -388,11 +420,28 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
       const found = await script(`document ${id}.${epoch}`, DOCUMENT, [key.link(id), key.doc(id, epoch), key.log(id, epoch)], [epoch]) as [string, string[], string, string] | null;
       return found ? { state: decode(found[0]), log: found[1].map(decode), gen: Number(found[2]), seq: Number(found[3]) } : null;
     },
-    async append(id, epoch, update, editor, now) {
+    async append(id, epoch, update, editor, now, merge) {
       if (!isLink(id) || !isEpoch(epoch)) return 'not-live';
-      const identity = editor ? JSON.stringify({ key: editor.key, name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent }) : '';
-      const appended = await script(`append ${id}.${epoch}`, APPEND, [key.link(id), key.log(id, epoch), key.editors(id)], [epoch, encode(update), now, editor?.key ?? '', identity]) as [number, number] | null;
-      return appended ? { seq: appended[0], length: appended[1] } : 'not-live';
+      if (merge && !MERGE_KEY.test(merge.key)) throw new Error('A merge answer is kept under a sha256 hex.');
+      const identity = editor ? JSON.stringify({ key: editor.key, name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, ...(editor.person !== undefined ? { person: { realm: editor.person.realm, userId: editor.person.userId } } : {}) }) : '';
+      // The key lives a day in real time at most; whether its answer still counts is decided by the times the caller passes.
+      const record = merge ? [JSON.stringify({ answer: merge.answer, until: merge.until }), Math.max(1, Math.min(LIVE_MERGE_MS, Math.ceil(merge.until - now)))] : ['', 0];
+      const appended = await script(`append ${id}.${epoch}`, APPEND, [key.link(id), key.log(id, epoch), key.editors(id), ...(merge ? [key.merge(merge.key)] : [])], [epoch, encode(update), now, editor?.key ?? '', identity, ...record]) as [number, number] | ['merged', string] | null;
+      if (!appended) return 'not-live';
+      return appended[0] === 'merged' ? { merged: appended[1] } : { seq: appended[0], length: appended[1] as number };
+    },
+    async ended(id, epoch, now) {
+      if (!isLink(id) || !isEpoch(epoch)) return null;
+      const [state, log, until] = await call(`ended ${id}.${epoch}`, ['HMGET', key.ended(id, epoch), 'state', 'log', 'until']) as [string | null, string | null, string | null];
+      if (state === null || Number(until) <= now) return null;
+      return { state: decode(state), log: log ? log.split(',').map(decode) : [] };
+    },
+    async mergeAnswer(hash, now) {
+      if (!MERGE_KEY.test(hash)) return null;
+      const found = await call('mergeAnswer', ['GET', key.merge(hash)]) as string | null;
+      if (!found) return null;
+      const { answer, until } = JSON.parse(found) as { answer: string; until: number; };
+      return until > now ? answer : null;
     },
     async compact(id, epoch, gen, count, state, contentHash, contentSeq) {
       if (!isLink(id) || !isEpoch(epoch) || !Number.isSafeInteger(count) || count < 0) return false;
@@ -420,7 +469,7 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
     },
     async release(id, token, expect, now) {
       if (!isLink(id)) return 'leased';
-      return await script(`release ${id}`, RELEASE, lifecycleKeys(id), [token, now, expect.seq, expect.contentHash, P]) as 'released' | 'leased' | 'not-synced' | 'changed';
+      return await script(`release ${id}`, RELEASE, lifecycleKeys(id), [token, now, expect.seq, expect.contentHash, P, LIVE_MERGE_MS, LIVE_ENDED_MAX_BYTES]) as 'released' | 'leased' | 'not-synced' | 'changed';
     },
     async discard(id, token, expect, now) {
       if (!isLink(id)) return 'leased';

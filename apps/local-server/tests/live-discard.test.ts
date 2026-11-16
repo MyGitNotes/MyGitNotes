@@ -208,7 +208,7 @@ describe('POST /api/live/discard and the routes around it', () => {
 
   beforeEach(() => {
     root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mygitnotes-live-discard-')));
-    for (const [key, value] of Object.entries({ SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', REDIS_URL: '', KV_REST_API_URL: '', MYGITNOTES_STORAGE: '', APP_URL: 'http://localhost', VERCEL: '', MYGITNOTES_PRODUCT_REPOSITORY: '', MYGITNOTES_SOURCE: 'github', MYGITNOTES_LIVE_SWEEP_SECRET: '', MYGITNOTES_LIVE_CHECKIN_AT: 'off', MYGITNOTES_TIMEZONE: '' })) vi.stubEnv(key, value);
+    for (const [key, value] of Object.entries({ SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', REDIS_URL: '', KV_REST_API_URL: '', MYGITNOTES_STORAGE: '', APP_URL: 'http://localhost', VERCEL: '', MYGITNOTES_PRODUCT_REPOSITORY: '', MYGITNOTES_SOURCE: 'github', MYGITNOTES_LIVE_SWEEP_SECRET: '', MYGITNOTES_LIVE_CHECKIN_AT: 'off', MYGITNOTES_LIVE_IDLE_CHECKIN: 'off', MYGITNOTES_TIMEZONE: '' })) vi.stubEnv(key, value);
     store = createRecordStore(root);
     files = new Map([['.mygitnotes.yaml', manifest], ['notes/life/a.md', '---\ntitle: A\n---\nGit body.\n']]);
     otherFiles = new Map([['.mygitnotes.yaml', manifest], ['notes/life/z.md', '# Z\n']]);
@@ -315,6 +315,8 @@ describe('POST /api/live/discard and the routes around it', () => {
     const listed = (await tools(token)).find(entry => entry.name === 'check_in_note')!;
     expect(listed.outputSchema.properties.reason.enum).toContain('empty');
     expect(listed.outputSchema.properties).toHaveProperty('discarded');
+    // cf16-F008: people still editing no longer wait for tonight; the idle check-in closes the note once they have left.
+    expect(listed.outputSchema.properties.reason.description).toContain("active (people are still editing; the commit was made, and the note is closed once they have left, by the idle check-in or tonight's)");
     expect(await tool(token, 'check_in_note', { path: second.path, notebookId: 'notes~life' })).toMatchObject({ path: second.path, committed: false, released: true, discarded: true, reason: 'empty' });
     expect(commits()).toEqual([]);
     expect(await liveNotes.service.checkouts(repository)).toEqual([]);
@@ -325,6 +327,7 @@ describe('POST /api/live/discard and the routes around it', () => {
     await start();
     const listed = (await tools(await grant())).find(entry => entry.name === 'check_in_note')!;
     expect(listed.outputSchema.properties.reason.enum).toEqual(['leased', 'released', 'unfiled', 'active', 'changed', 'not-synced']);
+    expect(listed.outputSchema.properties.reason.description).toBe("Why the note stayed open: leased (a check-in runs elsewhere), unfiled (its path rule lacks a value), active (people are still editing; tonight's check-in closes it), changed (typed during the check-in), not-synced");
     expect(listed.outputSchema.properties).not.toHaveProperty('discarded');
   });
 });

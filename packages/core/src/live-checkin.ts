@@ -4,7 +4,7 @@ import { type CommitAuthor, commitAuthor } from './commit-author.js';
 import { isNotebookContent } from './folders.js';
 import { parseNoteContent } from './frontmatter.js';
 import { SourceError } from './github-api.js';
-import { isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, type LiveEditor, liveEditorOf, liveInitialTextOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { announceLiveCommit, isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, LiveCredentialError, type LiveEditor, liveEditorOf, type LiveIdentity, liveInitialTextOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, liveRowBase, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { mergeLiveText } from './live-merge.js';
 import { parseNotebookKey } from './notebook-key.js';
 import { appendTrailers, utcDay } from './note-versions.js';
@@ -13,6 +13,7 @@ import { gitBlobId } from './remote-cache.js';
 import type { RemoteSnapshot, RemoteSource } from './remote-source.js';
 import { type RepositoryId, StaleRevisionError } from './repository.js';
 import type { NotebookConfig, NoteMetadata } from './types.js';
+import type { WorkspacePerson } from './workspace-config-source.js';
 
 /*
  * The check-in engine (docs/specs/2026-11-15-live-notes/spec.md §5): it commits a live note's text to Git with every
@@ -24,8 +25,16 @@ import type { NotebookConfig, NoteMetadata } from './types.js';
 /**
  * Why a check-in left the note open, or did not start; with `discarded`, why a pending note was discarded instead:
  * `empty`, an empty draft ({@link isEmptyLiveDraft}), or `untyped`, one nobody typed in (a sweep only).
+ * `uncommittable`: no credential the check-in could try may commit the note.
  */
-export type LiveCheckInReason = 'leased' | 'released' | 'unfiled' | 'active' | 'changed' | 'not-synced' | 'empty' | 'untyped';
+export type LiveCheckInReason = 'leased' | 'released' | 'unfiled' | 'active' | 'changed' | 'not-synced' | 'empty' | 'untyped' | 'uncommittable';
+
+/** Someone a check-in may commit as: their own credential, and how the commit names them. */
+export interface LiveCommitter {
+  person: WorkspacePerson;
+  /** Named as the commit's author when `commitAuthor` accepts it; else the commit is authored by the credential's account. */
+  author?: LiveIdentity;
+}
 
 export interface LiveCheckInResult {
   id: string;
@@ -58,6 +67,17 @@ export interface LiveCheckInOptions {
   sleep?: (ms: number) => Promise<void>;
   /** A sweep's check-in: a pending note nobody typed in is discarded too, not only an empty one, where the adapter can discard. */
   discardUntyped?: boolean;
+  /**
+   * Who asked for the check-in (「立即簽回」, `check_in_note`): the last credential it tries, after every editor's was
+   * refused, so someone who may write can still check in a note whose editors no longer can. When it commits, they
+   * author the commit and every editor is a co-author.
+   */
+  requester?: LiveCommitter;
+  /**
+   * Whether to send a notice; every notice is sent when absent. The idle check-in sends an uncommittable or unfiled
+   * notice once per link and text, and every other notice each time.
+   */
+  shouldNotify?: (notice: Omit<LiveNotice, 'repository' | 'editors'>) => boolean;
 }
 
 /** Each link is checked in within 4 minutes, inside its 5-minute lease; nothing is committed after that. */
@@ -88,7 +108,29 @@ function editorsOf(value: unknown): LiveEditor[] {
     if (!editor || typeof editor !== 'object') return false;
     const { name, email, agent, firstAt, lastAt } = editor as Record<string, unknown>;
     return typeof name === 'string' && name.length <= 256 && (email === undefined || typeof email === 'string') && typeof agent === 'boolean' && isTime(firstAt) && isTime(lastAt);
+  }).map(editor => {
+    if (editor.person === undefined) return editor;
+    // A person that is not one names nobody to commit as: the editor keeps its credit and loses the credential.
+    const { person, ...rest } = editor;
+    const known = personOf(person);
+    return known ? { ...rest, person: known } : rest;
   });
+}
+
+/** A person an adapter listed, checked and reduced to its fields. */
+function personOf(value: unknown): WorkspacePerson | undefined {
+  const { realm, userId } = (value ?? {}) as Record<string, unknown>;
+  const id = (typeof userId === 'string' && userId !== '' && userId.length <= 512) || (typeof userId === 'number' && Number.isFinite(userId));
+  return typeof realm === 'string' && realm !== '' && realm.length <= 512 && id ? { realm, userId: userId as string | number } : undefined;
+}
+const personKey = (person: WorkspacePerson) => JSON.stringify([person.realm, person.userId]);
+/** How a commit names someone, when `commitAuthor` accepts their name and email; undefined otherwise, never cleaned up. */
+function acceptedAuthor(value: { name: string; email?: string; } | undefined): CommitAuthor | undefined {
+  try {
+    return value ? commitAuthor({ name: value.name, email: value.email }, 'A live editor') : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -124,31 +166,74 @@ export interface LiveAuthorship {
  * The author is the earliest person `commitAuthor` accepts, else the earliest agent, else none (the credential's
  * account); every other accepted editor is a co-author, once per email. An editor whose name or email cannot be written
  * into a commit is skipped, never cleaned up.
+ *
+ * With `committer`, the commit is made with that person's own credential: they are its author, by `committer.author`
+ * or, without one, as the account of their credential, and every accepted editor but them is a co-author, whoever was
+ * first. An editor who is the committer is not skipped for lacking an email: the commit is theirs.
  */
-export function liveAuthorship(editors: readonly LiveEditor[]): LiveAuthorship {
+export function liveAuthorship(editors: readonly LiveEditor[], committer?: { person: WorkspacePerson; author?: CommitAuthor; }): LiveAuthorship {
   const sorted = [...editors].sort((a, b) => Date.parse(a.firstAt) - Date.parse(b.firstAt));
   const accepted: { editor: LiveEditor; author: CommitAuthor; }[] = [];
   const skipped: string[] = [];
+  const own = committer ? personKey(committer.person) : undefined;
   for (const editor of sorted) {
-    let author: CommitAuthor | undefined;
-    try {
-      author = commitAuthor({ name: editor.name, email: editor.email }, 'A live editor');
-    } catch {
-      author = undefined;
-    }
+    const author = acceptedAuthor(editor);
     if (author) accepted.push({ editor, author });
-    else skipped.push(editor.name);
+    else if (!(own !== undefined && editor.person && personKey(editor.person) === own)) skipped.push(editor.name);
   }
-  const lead = accepted.find(entry => !entry.editor.agent) ?? accepted[0];
-  const named = new Set(lead ? [lead.author.email.toLowerCase()] : []);
+  const lead = committer ? committer.author : (accepted.find(entry => !entry.editor.agent) ?? accepted[0])?.author;
+  const named = new Set(lead ? [lead.email.toLowerCase()] : []);
   const coAuthors: CommitAuthor[] = [];
   for (const { author } of accepted) {
     if (named.has(author.email.toLowerCase())) continue;
     named.add(author.email.toLowerCase());
     if (coAuthors.length < MAX_CO_AUTHORS) coAuthors.push(author);
   }
-  return { ...(lead ? { author: lead.author } : {}), coAuthors, skipped, agent: sorted.some(editor => editor.agent) };
+  return { ...(lead ? { author: lead } : {}), coAuthors, skipped, agent: sorted.some(editor => editor.agent) };
 }
+
+/** A credential a check-in may commit with: a person's own, or with no person the deployment's (0.20). */
+interface Committer {
+  person?: WorkspacePerson;
+  author?: CommitAuthor;
+}
+/** The one name a check-in knows a committer by while it runs. */
+const committerKey = (committer: Committer) => committer.person ? personKey(committer.person) : 'deployment';
+
+/**
+ * The credentials a check-in tries, in order (docs/specs/2026-11-16-collab-first-self-host A6): each editor who signed
+ * in as someone, people before agents and each group by who typed first, a person once however many of their entries
+ * typed. Where no editor names a person (a 0.20 adapter, or a note nobody typed in), the deployment's own credential,
+ * with the author of {@link liveAuthorship}. Last, whoever asked for the check-in, unless they are among the editors.
+ */
+function liveCommitters(editors: readonly LiveEditor[], requester?: LiveCommitter): Committer[] {
+  const sorted = [...editors].sort((a, b) => Date.parse(a.firstAt) - Date.parse(b.firstAt));
+  const committers: Committer[] = [];
+  const seen = new Set<string>();
+  for (const editor of [...sorted.filter(entry => !entry.agent), ...sorted.filter(entry => entry.agent)]) {
+    if (!editor.person || seen.has(personKey(editor.person))) continue;
+    seen.add(personKey(editor.person));
+    const author = acceptedAuthor(editor);
+    committers.push({ person: editor.person, ...(author ? { author } : {}) });
+  }
+  if (!committers.length) {
+    const { author } = liveAuthorship(editors);
+    committers.push(author ? { author } : {});
+  }
+  const asked = requester ? personOf(requester.person) : undefined;
+  if (asked && !seen.has(personKey(asked))) {
+    const author = acceptedAuthor(requester!.author);
+    committers.push({ person: asked, ...(author ? { author } : {}) });
+  }
+  return committers;
+}
+
+/**
+ * Whether an error says the committer's credential may not commit: the adapter's {@link LiveCredentialError}, or for a
+ * person's own credential the provider's 401, 403 or 404 while reading or committing. The deployment's own credential
+ * keeps failing as it did in 0.20, by the error thrown.
+ */
+const credentialRefused = (error: unknown, committer: Committer) => error instanceof LiveCredentialError || (committer.person !== undefined && error instanceof SourceError && [401, 403, 404].includes(error.status));
 
 /** The value a pending note's frontmatter gives a placeholder, as text. */
 const scalar = (value: unknown): string | undefined => typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : undefined;
@@ -287,7 +372,7 @@ interface SyncReceipt {
   path: string;
   conflict: LiveConflict | null;
 }
-type Attempt = { kind: 'discard'; reason: 'empty' | 'untyped'; contentHash: string; } | { kind: 'synced'; receipt: SyncReceipt; committed: boolean; filed: boolean; notice?: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; } | { kind: 'unfiled'; notice: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; };
+type Attempt = { kind: 'discard'; reason: 'empty' | 'untyped'; contentHash: string; } | { kind: 'synced'; receipt: SyncReceipt; committed: boolean; filed: boolean; notice?: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; } | { kind: 'unfiled'; notice: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; } | { kind: 'uncommittable'; path: string | null; notice: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; };
 
 /** The commit message of a check-in: its subject and the live trailers; `commitChanges` adds the co-authors after them. */
 function checkInMessage(file: string, id: string, text: string, { filing, overwrote, agentDay }: { filing: boolean; overwrote?: string; agentDay?: string; }): string {
@@ -469,14 +554,36 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
   const now = options.now ?? Date.now;
   const { service } = liveNotes;
   const deadline = now() + DEADLINE_MS;
+  /** The committers whose credential was refused in this check-in, and the one the running attempt commits as. */
+  const refused = new Set<string>();
+  let committing: Committer | undefined;
 
   const attempt = async (): Promise<Attempt> => {
+    committing = undefined;
     const detail = await adapter(() => service.detail(repository, id, lease));
     const text: LiveText = liveTextOf(detail);
     const live = normalizeLiveText(text.content);
     let editors = editorsOf((detail as { editors?: unknown; }).editors);
-    let { author, coAuthors, skipped, agent } = liveAuthorship(editors);
-    let source = await adapter(() => service.open(repository, author));
+    // What commits nothing needs no repository, and so nobody's credential: a draft to discard, and a note whose text is
+    // still the one its base holds, which Git therefore has (a note only viewed, or typed in and typed back). The latter
+    // still takes Git's newer text, or is written back if deleted in Git, as in 0.20, when a credential opens the
+    // repository; it settles on its base only when none can (cf14-F003).
+    const bare = (detail as { checkout?: { id?: unknown; }; }).checkout?.id === id ? liveRowBase((detail as { checkout?: unknown; }).checkout) : null;
+    if (bare?.path === null && typeof service.discard === 'function') {
+      const early = draftDiscard(detail, live, options.discardUntyped === true);
+      if (early) return { kind: 'discard', reason: early, contentHash: text.contentHash };
+    }
+    const atBase: Attempt | undefined = bare && bare.path !== null && bare.base?.contentHash === text.contentHash ? { kind: 'synced', receipt: { commit: bare.base.commit, blob: bare.base.blob, contentHash: text.contentHash, path: bare.path, conflict: null }, committed: false, filed: false, editors, skipped: [] } : undefined;
+    const committer = liveCommitters(editors, options.requester).find(candidate => !refused.has(committerKey(candidate)));
+    if (!committer && atBase) return atBase;
+    // Nobody is left to commit as: the text stays live, and the next check-in tries everyone again.
+    if (!committer) return { kind: 'uncommittable', path: bare?.path ?? null, notice: { kind: 'uncommittable', notebook: bare?.notebook ?? '', path: bare?.path ?? null, id, message: 'A live note could not be committed: no credential of its editors may write to the repository. It stays open and is tried again at the next check-in.' }, editors, skipped: liveAuthorship(editors).skipped };
+    committing = committer;
+    /** Who the commit names, for the credential it is made with. */
+    const authorship = (listed: readonly LiveEditor[]) => committer.person ? liveAuthorship(listed, { person: committer.person, ...(committer.author ? { author: committer.author } : {}) }) : liveAuthorship(listed);
+    let { author, coAuthors, skipped, agent } = authorship(editors);
+    const as = committer.person;
+    let source = await adapter(() => as ? service.open(repository, author, { person: as }) : service.open(repository, author));
     const snapshot = await source.getSnapshot(true);
     const notebooks = (await source.config()).notebooks;
     const notebookOf = (key: string) => notebooks.find(entry => entry.id === localPart(key));
@@ -490,7 +597,9 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
     const blobOf = (content: string) => gitBlobId(Buffer.from(content, 'utf8'), snapshot.sha.length);
     const commit = async (file: string, content: string, message: string) => {
       if (now() > deadline) throw new SourceError('The check-in ran past its deadline; nothing was committed.', 504);
-      return (await source.commitChanges([{ path: file, content }], snapshot.sha, 'write', 'notes', message, snapshot, coAuthors)).revision;
+      const { revision } = await source.commitChanges([{ path: file, content }], snapshot.sha, 'write', 'notes', message, snapshot, coAuthors);
+      announceLiveCommit(liveNotes, { repository, path: file, content, commit: revision, source, ...(author ? { author } : {}), ...(as ? { person: as } : {}) });
+      return revision;
     };
     const synced = (file: string, sha: string, blob: string, content: string, conflict: LiveConflict | null, committed: boolean, filed = false, notice?: Omit<LiveNotice, 'repository' | 'editors'>): Attempt => ({ kind: 'synced', receipt: { commit: sha, blob, contentHash: liveContentHash(content), path: file, conflict }, committed, filed, ...(notice ? { notice } : {}), editors, skipped });
 
@@ -554,7 +663,8 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
       text2 = normalizeLiveText(liveTextOf(after).content);
       // Whoever typed between the two reads is in the text committed, and `synced` clears them: they are named too.
       editors = unionLiveEditors(editors, editorsOf((after as { editors?: unknown; }).editors));
-      const named = liveAuthorship(editors);
+      const named = authorship(editors);
+      // Only the deployment's own credential follows the author; a person's own names that person, whoever typed since.
       if (named.author?.email !== author?.email || named.author?.name !== author?.name) source = await adapter(() => service.open(repository, named.author));
       ({ author, coAuthors, skipped, agent } = named);
       agentDay = agent ? utcDay(new Date(now())) : undefined;
@@ -565,13 +675,18 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
   };
 
   let tried: Attempt;
-  for (let tries = 0;; tries++) {
+  for (let tries = 0;;) {
     try {
       tried = await attempt();
       break;
     } catch (error) {
+      // This credential may not commit here: the next attempt reads everything again and commits as the next candidate.
+      if (committing && credentialRefused(error, committing)) {
+        refused.add(committerKey(committing));
+        continue;
+      }
       // The head moved between the snapshot and the commit: read everything again, once.
-      if (error instanceof StaleRevisionError && tries === 0) continue;
+      if (error instanceof StaleRevisionError && tries++ === 0) continue;
       throw error;
     }
   }
@@ -582,7 +697,7 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
   }
   const outcome = tried;
   const notify = async (notice: Omit<LiveNotice, 'repository' | 'editors'>) => {
-    if (!liveNotes.notify) return;
+    if (!liveNotes.notify || options.shouldNotify?.(notice) === false) return;
     try {
       await liveNotes.notify({ ...notice, repository, editors: outcome.editors.map(entry => ({ name: entry.name })) });
     } catch (error) {
@@ -590,6 +705,11 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
     }
   };
   const skippedEditors = outcome.skipped.length ? { skippedEditors: outcome.skipped } : {};
+  if (outcome.kind === 'uncommittable') {
+    console.warn(`[live-notes] check-in of ${id} committed nothing: no credential of its editors may write`);
+    await notify(outcome.notice);
+    return { id, path: outcome.path, committed: false, released: false, reason: 'uncommittable', ...skippedEditors };
+  }
   if (outcome.kind === 'unfiled') {
     await notify(outcome.notice);
     return { id, path: null, committed: false, released: false, reason: 'unfiled', ...skippedEditors };
@@ -625,16 +745,12 @@ export interface LiveSweepReport {
 
 const reasonOf = (error: unknown) => error instanceof SourceError ? `${error.status} ${error.message}` : 'unexpected error';
 
-/**
- * A scheduled check-in of every due link (§5.1): those whose `since` is before `instant`, in each repository the
- * adapter has live links in. A link's failure is logged by id and reason and never stops the others. Where the adapter
- * can discard, a pending note nobody typed in, or an empty one, is discarded instead of filed (§19).
- */
-export async function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions): Promise<LiveSweepReport> {
-  const { instant, concurrency = 2, max = 500 } = options;
+/** Checks in every live link `isDue` picks, in each repository the adapter has live links in; what both sweeps share. */
+async function sweepDue(liveNotes: LiveNotes, isDue: (row: Record<string, unknown>) => boolean, options: Pick<LiveSweepOptions, 'mode' | 'now' | 'timeZone' | 'concurrency' | 'max' | 'sleep'>, perLink?: (row: Record<string, unknown>) => Pick<LiveCheckInOptions, 'shouldNotify'>): Promise<LiveSweepReport> {
+  const { concurrency = 2, max = 500 } = options;
   const repositories = await adapter(() => liveNotes.service.repositories());
   if (!Array.isArray(repositories)) throw new LiveUnavailableError();
-  const due: { repository: RepositoryId; id: string; }[] = [];
+  const due: { repository: RepositoryId; id: string; row: Record<string, unknown>; }[] = [];
   for (const repository of repositories) {
     if (typeof repository !== 'string' || !liveEditorOf(liveNotes, repository)) continue;
     let rows: unknown;
@@ -646,17 +762,17 @@ export async function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions)
     }
     if (!Array.isArray(rows)) continue;
     for (const row of rows) {
-      const { id, since } = (row ?? {}) as { id?: unknown; since?: unknown; };
-      if (isLiveId(id) && isTime(since) && Date.parse(since) < instant.getTime() && due.length < max) due.push({ repository, id });
+      const { id } = (row ?? {}) as { id?: unknown; };
+      if (isLiveId(id) && isDue(row as Record<string, unknown>) && due.length < max) due.push({ repository, id, row: row as Record<string, unknown> });
     }
   }
   const report: LiveSweepReport = { due: due.length, results: [], failed: [] };
   let next = 0;
   const worker = async () => {
     while (next < due.length) {
-      const { repository, id } = due[next++];
+      const { repository, id, row } = due[next++];
       try {
-        report.results.push(await checkInLink(liveNotes, repository, id, { mode: options.mode ?? 'scheduled', discardUntyped: true, ...(options.now ? { now: options.now } : {}), ...(options.timeZone ? { timeZone: options.timeZone } : {}), ...(options.sleep ? { sleep: options.sleep } : {}) }));
+        report.results.push(await checkInLink(liveNotes, repository, id, { ...perLink?.(row), mode: options.mode ?? 'scheduled', discardUntyped: true, ...(options.now ? { now: options.now } : {}), ...(options.timeZone ? { timeZone: options.timeZone } : {}), ...(options.sleep ? { sleep: options.sleep } : {}) }));
       } catch (error) {
         const reason = reasonOf(error);
         console.warn(`[live-notes] check-in of ${id} failed: ${reason}`);
@@ -665,5 +781,113 @@ export async function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions)
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, due.length)) }, worker));
+  return report;
+}
+
+/**
+ * A scheduled check-in of every due link (§5.1): those whose `since` is before `instant`, in each repository the
+ * adapter has live links in. A link's failure is logged by id and reason and never stops the others. Where the adapter
+ * can discard, a pending note nobody typed in, or an empty one, is discarded instead of filed (§19).
+ */
+export function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions): Promise<LiveSweepReport> {
+  const instant = options.instant.getTime();
+  return sweepDue(liveNotes, ({ since }) => isTime(since) && Date.parse(since) < instant, options);
+}
+
+/** How long after its last edit a live note nobody is active on is checked in, unless the deployment says otherwise. */
+export const LIVE_IDLE_CHECKIN_MS = 5 * 60_000;
+
+export interface LiveIdleSweepOptions {
+  /** Milliseconds since the epoch: the clock the rows' times are compared with, and each check-in's; `Date.now` by default. */
+  now?: () => number;
+  /** How long nobody typed in a link before it is due; {@link LIVE_IDLE_CHECKIN_MS} by default. */
+  idleMs?: number;
+  timeZone?: string;
+  /** Check-ins at a time in this process; 2 by default. */
+  concurrency?: number;
+  /** Links one sweep handles; 500 by default. */
+  max?: number;
+  sleep?: (ms: number) => Promise<void>;
+  /** What earlier ticks learnt about links that could not be checked in; one per `liveNotes` by default. */
+  backoff?: LiveIdleBackoff;
+}
+
+/** The first wait before the idle check-in tries a link again that it could not check in; it doubles each time. */
+export const LIVE_IDLE_BACKOFF_MS = 60_000;
+/** The longest wait between two tries of such a link. */
+export const LIVE_IDLE_BACKOFF_MAX_MS = 30 * 60_000;
+
+/**
+ * Per link, for the idle check-in only: when a link that was `uncommittable`, `unfiled` or failed may be tried again,
+ * and whether its uncommittable or unfiled notice went out, both for its text (`contentHash`) and last edit at the
+ * time. A new edit or text starts afresh, and a link the adapter no longer lists is forgotten. The nightly sweep and
+ * 「立即簽回」 do not read it (cf14-F002, cf15-F002).
+ */
+export interface LiveIdleBackoff {
+  links: Map<string, { key: string; next: number; wait: number; notified: boolean; }>;
+}
+
+export function createLiveIdleBackoff(): LiveIdleBackoff {
+  return { links: new Map() };
+}
+
+const idleBackoffs = new WeakMap<LiveNotes, LiveIdleBackoff>();
+
+/**
+ * The idle check-in (docs/specs/2026-11-16-collab-first-self-host A5): checks in every live link nobody is active on
+ * (`activeEditors` 0, by the adapter's own idle rule) whose last edit, or whose checkout when nobody typed, is at least
+ * `idleMs` ago. Each runs as a scheduled check-in of a sweep: a note Git already holds is released without a commit, a
+ * pending note nobody typed in, or an empty one, is discarded where the adapter can, and a release refused because
+ * someone came back is left for the next tick.
+ */
+export async function sweepIdleLive(liveNotes: LiveNotes, options: LiveIdleSweepOptions = {}): Promise<LiveSweepReport> {
+  const { now = Date.now, idleMs = LIVE_IDLE_CHECKIN_MS } = options;
+  let backoff = options.backoff ?? idleBackoffs.get(liveNotes);
+  if (!backoff) idleBackoffs.set(liveNotes, backoff = createLiveIdleBackoff());
+  const { links } = backoff;
+  const at = now();
+  const keyOf = ({ contentHash, lastEditAt }: Record<string, unknown>) => `${String(contentHash)}\u0000${String(lastEditAt)}`;
+  const keys = new Map<string, string>();
+  /** Every link the adapter listed, due or not: what is held of any other is dropped (cf15-F002). */
+  const listed = new Set<string>();
+  /** The links whose uncommittable or unfiled notice went out in this sweep. */
+  const told = new Set<string>();
+  const isDue = (row: Record<string, unknown>) => {
+    const { id, since, activeEditors, lastEditAt } = row;
+    listed.add(String(id));
+    if (activeEditors !== 0) return false;
+    const last = lastEditAt === null || lastEditAt === undefined ? since : lastEditAt;
+    if (!isTime(last) || at - Date.parse(last) < idleMs) return false;
+    const key = keyOf(row), held = links.get(String(id));
+    if (held && held.key !== key) links.delete(String(id));
+    else if (held && at < held.next) return false;
+    keys.set(String(id), key);
+    return true;
+  };
+  // Only the notices of a link stuck on the same text repeat at every try; a conflict or a deletion is always told.
+  const shouldNotify = (row: Record<string, unknown>) => ({
+    shouldNotify: (notice: Omit<LiveNotice, 'repository' | 'editors'>) => {
+      if (notice.kind !== 'uncommittable' && notice.kind !== 'unfiled') return true;
+      const held = links.get(String(row.id));
+      if (held && held.key === keyOf(row) && held.notified) return false;
+      told.add(String(row.id));
+      return true;
+    },
+  });
+  const report = await sweepDue(liveNotes, isDue, { ...options, mode: 'scheduled' }, shouldNotify);
+  const stuck = (id: string) => {
+    const key = keys.get(id)!, held = links.get(id);
+    const same = held?.key === key;
+    const wait = same ? Math.min(held!.wait * 2, LIVE_IDLE_BACKOFF_MAX_MS) : LIVE_IDLE_BACKOFF_MS;
+    // Notified only once a notice went out for this text: a try that threw, or found no `notify`, told nobody.
+    links.set(id, { key, next: at + wait, wait, notified: told.has(id) || (same && held!.notified) });
+  };
+  for (const result of report.results) {
+    if (result.reason === 'uncommittable' || result.reason === 'unfiled') stuck(result.id);
+    // An earlier try still holds the lease: nothing was learnt.
+    else if (result.reason !== 'leased') links.delete(result.id);
+  }
+  for (const { id } of report.failed) stuck(id);
+  for (const id of links.keys()) if (!listed.has(id)) links.delete(id);
   return report;
 }

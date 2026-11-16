@@ -3,6 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { invalidateNoteQueries, noteLookupOptions, resetStaleNoteQueries, setNoteQueryScope, useNoteQueryScope, useStaleNoteQueries } from '../lib/use-note-queries.js';
 import { notebookRepositories, revisionSet } from '../lib/workspace-repositories.js';
 import { composeCommitted } from '../lib/draft-overlay.js';
+import { LIVE_MERGE_CONFLICT } from '../lib/live-handover.js';
+import type { WorkingNotes } from '../lib/working-notes.js';
 import { NO_COMMITTED, useCommittedLayer } from '../lib/use-committed-layer.js';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import type { NoteItem } from '../lib/types.js';
@@ -20,6 +22,11 @@ interface Params {
   t: I18nContextValue['t'];
 }
 
+const withoutLiveConflicts = (drafts: WorkingNotes): WorkingNotes => {
+  const kept = Object.entries(drafts).filter(([, entry]) => entry.blocked !== LIVE_MERGE_CONFLICT);
+  return kept.length === Object.keys(drafts).length ? drafts : Object.fromEntries(kept);
+};
+
 export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, remote, refreshWorkspace, readDraft, t }: Params) {
   // Every note query is answered for the revisions of the repositories it reads; staged drafts are overlaid on top.
   const queryClient = useQueryClient();
@@ -30,7 +37,8 @@ export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, 
   const live = repositories.filter(repository => repository.live).map(repository => repository.id).join('\n');
   // A demo workspace's local commits are overlaid under the working changes; any other workspace has none.
   const committed = useCommittedLayer(repositories);
-  const drafts = useMemo(() => composeCommitted(committed, activeWorkingNotes), [committed, activeWorkingNotes]);
+  // A live note's conflict draft (collab-first A3.1) is the person's to compare, copy or discard: reads show the live note.
+  const drafts = useMemo(() => composeCommitted(committed, withoutLiveConflicts(activeWorkingNotes)), [committed, activeWorkingNotes]);
   useLayoutEffect(() => {
     setNoteQueryScope({ sourceId, revisions, repositories: notebooks, members, drafts, ...(live ? { live: live.split('\n') } : {}), ...(committed === NO_COMMITTED ? {} : { committed }) });
   }, [sourceId, revisions, notebooks, members, drafts, committed, live]);

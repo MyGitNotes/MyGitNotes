@@ -72,7 +72,7 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
     const formattedDate = updated ? new Date(updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
     const canDrag = !!focusMode?.canDrag(note);
     // A note being edited live (編輯中) or still pending refuses every file operation until it is checked in.
-    const locked = note.live ? t('live.checkedOut') : undefined;
+    const locked = liveLock(note, 'other');
     // A pending note may still be discarded (delete) and moved where its live editor can.
     const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
     const canMove = !readOnly && !locked && Boolean(onMoveNote) && pointerMovesNotes();

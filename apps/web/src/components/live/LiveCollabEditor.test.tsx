@@ -3,7 +3,7 @@ import { createElement, forwardRef } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 import type { LiveCheckoutView } from '../../lib/live-api.js';
 
 /*
@@ -51,9 +51,10 @@ vi.mock('@hocuspocus/provider', () => ({
     on() {}
   },
 }));
-vi.mock('../LiveMarkdownEditor.js', () => ({ LiveMarkdownEditor: forwardRef<unknown, { collab?: { text: string; }; readOnly: boolean; }>(({ collab, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Live note content', value: collab?.text ?? '', readOnly, onChange: () => {} })) }));
+vi.mock('../LiveMarkdownEditor.js', () => ({ LiveMarkdownEditor: forwardRef<unknown, { collab?: { text: string; }; content?: string; readOnly: boolean; }>(({ collab, content, readOnly }, _ref) => createElement('textarea', { 'aria-label': 'Live note content', value: collab?.text ?? content ?? '', readOnly, onChange: () => {} })) }));
 
 const { LiveCollabEditor } = await import('./LiveCollabEditor.js');
+const { unsyncedLiveStore } = await import('../../lib/live-unsynced.js');
 type Props = Parameters<typeof LiveCollabEditor>[0];
 
 const checkout: LiveCheckoutView = { id: 'live-1', notebookId: 'notes~life', path: 'notes/life/a.md', pending: false, editorUrl: 'http://localhost/notebooks/notes~life/a.md', since: '2026-11-15T01:00:00.000Z', activeEditors: 1, conflict: null };
@@ -73,9 +74,12 @@ beforeEach(() => {
   });
   vi.stubGlobal('fetch', fetchMock);
 });
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.unstubAllGlobals();
+  // Typing a test left unsynced would be restored into the next test's document of the same note.
+  const store = unsyncedLiveStore();
+  for (const entry of await store.list()) await store.delete(entry.key);
 });
 
 const props = (overrides: Partial<Props> = {}): Props => ({ checkout, editor: { kind: 'builtin' }, onRefetch: vi.fn(), onClose: vi.fn(), onCheckedIn: vi.fn(), ...overrides });
@@ -245,6 +249,8 @@ describe('the bar', () => {
     expect(screen.getByText('Offline')).toBeInTheDocument();
     expect(checkInButton()).toBeDisabled();
     expect(fake.order).toEqual(['disconnect']);
+    // The provider reports its socket closed, as it does once the close lands.
+    emit(config => config.onStatus?.({ status: 'disconnected' }));
     act(() => void window.dispatchEvent(new Event('online')));
     expect(fake.order).toEqual(['disconnect', 'connect']);
   });
@@ -306,6 +312,19 @@ describe('立即簽回', () => {
     expect(fake.providers[1].destroyed).toBe(false);
   });
 
+  // cf16-F008, cf16-F009: not tonight but once people left; and what to do when no credential may commit.
+  it('says why the note stayed open, uncommittable included, in the app’s words', async () => {
+    fetchMock.mockImplementation(async (url: string) => (url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ id: 'live-1', path: checkout.path, committed: false, released: false, reason: 'uncommittable', revision: 'c'.repeat(40) })));
+    await open();
+    sync();
+    await settle();
+    await act(async () => {
+      fireEvent.click(checkInButton());
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Not checked in yet: none of its editors can write to the repository; sign in again, or ask someone with write access to check it in.');
+    expect(screen.getByRole('status')).not.toHaveTextContent('tonight');
+  });
+
   it('says an empty draft was discarded', async () => {
     const onDiscarded = vi.fn();
     fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ id: 'live-1', path: null, committed: false, released: true, discarded: true, reason: 'empty', revision: 'c'.repeat(40) }));
@@ -331,7 +350,12 @@ describe('a released note', () => {
     expect(onRefetch).toHaveBeenCalled();
   });
 
-  it('with unsaved changes, offers the tab’s text to copy or download, and never keeps the old document', async () => {
+  it('with unsaved changes and a live editor that cannot merge, offers the tab’s text to copy or download, and never keeps the old document', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      fake.order.push(url);
+      if (url === '/api/live/socket-ticket') return ticket(++tickets);
+      return json({ error: "This repository's live editor cannot merge a text into a live note.", code: 'not-live' }, 400);
+    });
     const writeText = vi.fn(async () => {});
     vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
     const createObjectURL = vi.fn(() => 'blob:mine');
@@ -345,8 +369,11 @@ describe('a released note', () => {
       config.onDirty?.({ dirty: true });
       config.onStatus?.({ status: 'disconnected' });
     });
-    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'released' }) }));
-    expect(provider().destroyed).toBe(true);
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    expect(fake.providers[0].destroyed).toBe(true);
+    expect(fake.order).toContain('/api/live/merge');
     expect(screen.getByRole('alert')).toHaveTextContent('This note was checked in; the changes you made offline were not saved.');
     expect(onCheckedIn).not.toHaveBeenCalled();
     // The note is no longer live: the lists read its live state again now, not only once the notice is left.
@@ -753,25 +780,16 @@ describe('an ending the person chooses while typing is unsaved', () => {
     expect(fake.providers).toHaveLength(providers + 1);
   });
 
-  it('leaving the note inside the app keeps the unsaved text, which the note’s editor offers when it opens again', async () => {
-    const writeText = clipboard();
+  it('leaving the note inside the app keeps the unsaved text, which the note’s editor syncs when it opens it again on the same document', async () => {
     const view = await open();
     sync('# A\n');
     typeOffline();
     view.unmount();
     expect(provider().destroyed).toBe(true);
     await open();
-    expect(screen.getByRole('alert')).toHaveTextContent('When you last left this note, your latest changes were not saved; copy or download your version.');
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Copy my version' }));
-    });
-    expect(writeText).toHaveBeenCalledWith('# A\noffline typing\n');
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByRole('alert')).toBeNull();
-    cleanup();
-    // Offered once: the text is the person's to keep now.
-    await open();
-    expect(screen.queryByRole('alert')).toBeNull();
+    // The kept typing is in the document before the provider connects: Yjs sync sends the server what it lacks.
+    expect(provider().configuration.document.getText('content').toString()).toBe('# A\noffline typing\n');
   });
 });
 
@@ -815,5 +833,259 @@ describe('a connect with nothing typed', () => {
     cleanup();
     await open();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+/*
+ * Offline handover, live → offline (docs/specs/2026-11-16-collab-first-self-host A3.1): typing the server has not
+ * stored is kept in the browser, synced again on the same document, and merged into the note when its document ended.
+ */
+describe('typing the server has not stored', () => {
+  /** The tab syncs `# A\n`, then types offline. */
+  const typeOffline = (typed = 'offline typing\n') =>
+    emit(config => {
+      config.document.getText('content').insert(4, typed);
+      config.onUnsyncedChanges?.({ number: 1 });
+      config.onDirty?.({ dirty: true });
+      config.onStatus?.({ status: 'disconnected' });
+    });
+  /** The server: tickets name `documents` in turn (the last one after), and a merge answers `merge`. */
+  const server = ({ documents = ['live-1.1'], merge = () => json({ applied: true, contentHash: 'h'.repeat(64), checkout: { ...checkout, since: '2026-11-16T02:00:00.000Z' }, outcome: 'reopened' }), first }: { documents?: string[]; merge?: () => Response; first?: () => Response; } = {}) => {
+    let asked = 0;
+    fetchMock.mockImplementation(async (url: string) => {
+      fake.order.push(url);
+      if (url === '/api/live/socket-ticket') {
+        if (first && asked === 0) {
+          asked++;
+          return first();
+        }
+        return ticket(++tickets, documents[Math.min(asked++, documents.length - 1)]);
+      }
+      if (url === '/api/live/merge') return merge();
+      return json({ id: 'live-1', path: checkout.path, committed: true, released: true, revision: 'c'.repeat(40) });
+    });
+  };
+  const mergeBody = () => JSON.parse(String(fetchMock.mock.calls.find(([url]) => url === '/api/live/merge')![1].body));
+
+  it('connects again once the socket’s close lands, when the browser was back online before it', async () => {
+    await open();
+    sync();
+    act(() => void window.dispatchEvent(new Event('offline')));
+    // Back online before the socket's close event: the provider still counts itself connected, and a connect now does nothing.
+    act(() => void window.dispatchEvent(new Event('online')));
+    fake.order.push('closed');
+    emit(config => config.onStatus?.({ status: 'disconnected' }));
+    expect(fake.order.slice(fake.order.indexOf('closed'))).toContain('connect');
+  });
+
+  it('is merged into the note with no copy or download when the note was checked in meanwhile, and the editor opens on its new document', async () => {
+    const onMergeConflict = vi.fn(), onReleased = vi.fn();
+    server({ documents: ['live-1.1', 'live-1.2'] });
+    await open({ onMergeConflict, onReleased });
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    expect(mergeBody()).toEqual({ notebookId: 'notes~life', path: 'notes/life/a.md', base: '# A\n', text: '# A\noffline typing\n', mergeId: expect.stringMatching(/^[A-Za-z0-9_-]{8,128}$/), typedIn: { document: 'live-1.1', update: expect.any(String) } });
+    // The tab's whole document goes with it: the server takes as base what the ended document held, so typing it stored lands once (cf16-F001).
+    const typed = new Y.Doc();
+    Y.applyUpdate(typed, Uint8Array.from(atob(mergeBody().typedIn.update), char => char.charCodeAt(0)));
+    expect(typed.getText('content').toString()).toBe('# A\noffline typing\n');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(onMergeConflict).not.toHaveBeenCalled();
+    expect(fake.providers).toHaveLength(2);
+    expect(fake.providers[0].destroyed).toBe(true);
+    expect(provider().configuration.name).toBe('live-1.2');
+    // The merged text arrives with the new document: the old one is never merged across epochs.
+    expect(provider().configuration.document.getText('content').toString()).toBe('');
+  });
+
+  // cf16-F002: a note has one conflict draft, which waits for the person; a second conflict never takes its place.
+  it('offers a conflicting merge to copy or download, and keeps it, when the note already has a conflict draft', async () => {
+    const onMergeConflict = vi.fn(() => false);
+    server({ documents: ['live-1.1', 'live-1.2'], merge: () => json({ error: 'The text changed the same lines as the live note did since. Nothing was merged.', code: 'merge-conflict', checkout }, 409) });
+    await open({ onMergeConflict });
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    expect(onMergeConflict).toHaveBeenCalledWith('# A\noffline typing\n');
+    expect(screen.getByRole('alert')).toHaveTextContent('An earlier conflict draft of this note is waiting');
+    expect(screen.getByRole('button', { name: 'Copy my version' })).toBeInTheDocument();
+    expect((await unsyncedLiveStore().list()).map(entry => entry.text)).toEqual(['# A\noffline typing\n']);
+  });
+
+  // cfx-F004: without a handler to stage it, a conflicting merge is not staged anywhere, so the typing is kept, never deleted as if saved.
+  it('keeps a conflicting merge, and offers it to copy or download, when nothing stages conflict drafts', async () => {
+    server({ documents: ['live-1.1', 'live-1.2'], merge: () => json({ error: 'The text changed the same lines as the live note did since. Nothing was merged.', code: 'merge-conflict', checkout }, 409) });
+    await open();
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: 'Copy my version' })).toBeInTheDocument();
+    expect((await unsyncedLiveStore().list()).map(entry => entry.text)).toEqual(['# A\noffline typing\n']);
+  });
+
+  it('takes the text of its first sync as the merge base, also when that sync waited on the connect’s own step', async () => {
+    server({ documents: ['live-1.1', 'live-1.2'] });
+    await open();
+    emit(config => {
+      config.document.getText('content').insert(0, '# A\n');
+      config.onStatus?.({ status: 'connected' });
+      // The connect's own step 2 is counted before the document synced, and its acknowledgement never comes.
+      config.onUnsyncedChanges?.({ number: 1 });
+      config.onSynced?.({ state: true });
+    });
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    expect(mergeBody()).toMatchObject({ base: '# A\n', text: '# A\noffline typing\n' });
+  });
+
+  it('keeps a conflicting merge as a conflict draft and opens the editor on the current note', async () => {
+    const onMergeConflict = vi.fn(() => true);
+    server({ documents: ['live-1.1', 'live-1.2'], merge: () => json({ error: 'The text changed the same lines as the live note did since. Nothing was merged.', code: 'merge-conflict', checkout }, 409) });
+    await open({ onMergeConflict });
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    expect(onMergeConflict).toHaveBeenCalledWith('# A\noffline typing\n');
+    expect(screen.queryByRole('button', { name: 'Copy my version' })).toBeNull();
+    expect(provider().configuration.name).toBe('live-1.2');
+  });
+
+  // S6 (c) at e3ceb70b: the release remounts the editor while the merge is under way; its answer must still be acted on.
+  it('keeps a conflicting merge as a conflict draft, and lets the typing go, when the editor closed while the merge was under way', async () => {
+    const onMergeConflict = vi.fn(() => true);
+    let answer: (response: Response) => void = () => {};
+    server({ documents: ['live-1.1', 'live-1.2'], merge: () => new Promise<Response>(resolve => void (answer = resolve)) as never });
+    const view = await open({ onMergeConflict });
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    view.unmount();
+    await act(async () => answer(json({ error: 'The text changed the same lines as the live note did since. Nothing was merged.', code: 'merge-conflict', checkout }, 409)));
+    await act(async () => {});
+    expect(onMergeConflict).toHaveBeenCalledWith('# A\noffline typing\n');
+    expect(await unsyncedLiveStore().list()).toEqual([]);
+  });
+
+  it('lets typing it merged go when the editor closed while the merge was under way', async () => {
+    let answer: (response: Response) => void = () => {};
+    server({ documents: ['live-1.1', 'live-1.2'], merge: () => new Promise<Response>(resolve => void (answer = resolve)) as never });
+    const view = await open();
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    view.unmount();
+    await act(async () => answer(json({ applied: true, contentHash: 'h'.repeat(64), checkout, outcome: 'reopened' })));
+    await act(async () => {});
+    expect(await unsyncedLiveStore().list()).toEqual([]);
+  });
+
+  it('after a reload, is synced again on the same document, and merged when the note was checked in meanwhile', async () => {
+    const view = await open();
+    sync('# A\n');
+    typeOffline();
+    // The page goes away with the typing unsynced; its editor opens again on a later load.
+    view.unmount();
+    server({ first: () => json({ error: 'The note is not open in the live editor.', code: 'not-live' }, 409), documents: ['live-1.2'] });
+    await open();
+    await act(async () => {});
+    expect(mergeBody()).toEqual(expect.objectContaining({ base: '# A\n', text: '# A\noffline typing\n' }));
+    expect(provider().configuration.name).toBe('live-1.2');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('after a reload with the server out of reach, shows the kept text read-only and offline, and syncs it once back online', async () => {
+    const view = await open();
+    sync('# A\n');
+    typeOffline();
+    view.unmount();
+    fetchMock.mockImplementation(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const providers = fake.providers.length;
+    await open();
+    expect(fake.providers).toHaveLength(providers);
+    expect(screen.getByText('Offline')).toBeInTheDocument();
+    expect(screen.getByLabelText('Live note content')).toHaveValue('# A\noffline typing\n');
+    expect(screen.getByLabelText('Live note content')).toHaveAttribute('readonly');
+    server();
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(fake.providers).toHaveLength(providers + 1);
+    expect(provider().configuration.document.getText('content').toString()).toBe('# A\noffline typing\n');
+  });
+
+  /*
+   * cf16-F004: every editor of a note (two tabs, or zoom over its Focus pane) keeps its own entry, and a session never
+   * merges the entry of an editor that is still open.
+   */
+  it('keeps the typing of two editors of one note apart, and merges both once the note was checked in meanwhile', async () => {
+    const first = await open();
+    const one = provider();
+    sync('# A\n');
+    typeOffline('from one\n');
+    const second = await open();
+    sync('# A\n');
+    typeOffline('from two\n');
+    expect(one).not.toBe(provider());
+    first.unmount();
+    second.unmount();
+    const kept = await unsyncedLiveStore().list();
+    expect(kept.map(entry => entry.text).sort()).toEqual(['# A\nfrom one\n', '# A\nfrom two\n']);
+    server({ first: () => json({ error: 'The note is not open in the live editor.', code: 'not-live' }, 409), documents: ['live-1.2'] });
+    await open();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === '/api/live/merge')).toHaveLength(2));
+    const texts = fetchMock.mock.calls.filter(([url]) => url === '/api/live/merge').map(([, init]) => JSON.parse(String((init as RequestInit).body)).text);
+    expect(texts.sort()).toEqual(['# A\nfrom one\n', '# A\nfrom two\n']);
+    await vi.waitFor(async () => expect(await unsyncedLiveStore().list()).toEqual([]));
+  });
+
+  it('never merges the typing an editor still open keeps, though the note was checked in meanwhile', async () => {
+    await open();
+    sync('# A\n');
+    typeOffline('still open\n');
+    await act(() => new Promise(resolve => setTimeout(resolve, 600)));
+    server({ first: () => json({ error: 'The note is not open in the live editor.', code: 'not-live' }, 409), documents: ['live-1.2'] });
+    await open();
+    await act(async () => {});
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/live/merge')).toEqual([]);
+    expect((await unsyncedLiveStore().list()).map(entry => entry.text)).toEqual(['# A\nstill open\n']);
+  });
+
+  it('is forgotten once the server stored it', async () => {
+    const view = await open();
+    sync('# A\n');
+    typeOffline();
+    emit(config => {
+      config.onStatus?.({ status: 'connected' });
+      config.onSynced?.({ state: true });
+      config.onUnsyncedChanges?.({ number: 0 });
+      config.onDirty?.({ dirty: false });
+    });
+    view.unmount();
+    await open();
+    expect(provider().configuration.document.getText('content').toString()).toBe('');
   });
 });

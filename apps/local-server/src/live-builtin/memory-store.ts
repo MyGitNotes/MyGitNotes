@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { RepositoryId } from '@mygitnotes/core';
-import { LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
+import { LIVE_ENDED_MAX_BYTES, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
 
 interface Lease {
   token: string;
@@ -27,6 +27,9 @@ export function memoryLiveStore(): LiveStore {
   const presence = new Map<string, Map<string, { at: number; people: Record<string, number>; }>>();
   const tickets = new Map<string, { ticket: StoredTicket; until: number; }>();
   const initial = new Map<string, string>();
+  const merges = new Map<string, { answer: string; until: number; }>();
+  /** `<id>.<epoch>` of each released epoch to the document it ended with, until a day after. */
+  const ended = new Map<string, { state: Uint8Array; log: Uint8Array[]; until: number; }>();
 
   const pathKey = (repository: RepositoryId, path: string) => `${repository}\n${path}`;
   const liveLinks = () => [...links.values()].filter(link => link.live);
@@ -81,9 +84,15 @@ export function memoryLiveStore(): LiveStore {
       if (!link?.live || link.epoch !== epoch || !document) return null;
       return { state: new Uint8Array(document.state), log: document.log.map(update => new Uint8Array(update)), gen: link.gen, seq: link.seq };
     },
-    async append(id, epoch, update, editor, now) {
+    async append(id, epoch, update, editor, now, merge) {
       const link = links.get(id), document = documents.get(id);
       if (!link?.live || link.epoch !== epoch || !document) return 'not-live';
+      if (merge) {
+        const known = merges.get(merge.key);
+        if (known && known.until > now) return { merged: known.answer };
+        for (const [key, entry] of merges) if (entry.until <= now) merges.delete(key);
+        merges.set(merge.key, { answer: merge.answer, until: merge.until });
+      }
       document.log.push(new Uint8Array(update));
       link.seq += 1;
       if (editor) {
@@ -92,9 +101,17 @@ export function memoryLiveStore(): LiveStore {
         editors.set(id, listed);
         const known = listed.get(editor.key);
         if (known) Object.assign(known, { lastAt: now, lastSeq: link.seq });
-        else listed.set(editor.key, { key: editor.key, name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, firstAt: now, lastAt: now, lastSeq: link.seq });
+        else listed.set(editor.key, { key: editor.key, name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, ...(editor.person !== undefined ? { person: { realm: editor.person.realm, userId: editor.person.userId } } : {}), firstAt: now, lastAt: now, lastSeq: link.seq });
       }
       return { seq: link.seq, length: document.log.length };
+    },
+    async ended(id, epoch, now) {
+      const document = ended.get(`${id}.${epoch}`);
+      return document && document.until > now ? { state: new Uint8Array(document.state), log: document.log.map(update => new Uint8Array(update)) } : null;
+    },
+    async mergeAnswer(key, now) {
+      const known = merges.get(key);
+      return known && known.until > now ? known.answer : null;
     },
     async compact(id, epoch, gen, count, state, contentHash, contentSeq) {
       const link = links.get(id), document = documents.get(id);
@@ -105,7 +122,7 @@ export function memoryLiveStore(): LiveStore {
       return true;
     },
     async editors(id) {
-      return [...(editors.get(id)?.values() ?? [])].sort((a, b) => a.firstAt - b.firstAt || (a.key < b.key ? -1 : 1)).map(editor => ({ ...editor }));
+      return [...(editors.get(id)?.values() ?? [])].sort((a, b) => a.firstAt - b.firstAt || (a.key < b.key ? -1 : 1)).map(editor => structuredClone(editor));
     },
     async lease(id, token, until, now) {
       if (!links.get(id)?.live) return 'not-live';
@@ -148,6 +165,11 @@ export function memoryLiveStore(): LiveStore {
       if (grip.link.syncedAt === null || grip.link.syncedHash !== expect.contentHash) return 'not-synced';
       if (grip.link.seq !== expect.seq) return 'changed';
       grip.link.live = false;
+      for (const [name, document] of ended) if (document.until <= now) ended.delete(name);
+      const document = documents.get(id);
+      // Only an epoch that stored typing keeps its document, and only up to the bound (cfx-F002).
+      const typed = document && (grip.link.gen > 0 || document.log.length > 0);
+      if (document && typed && document.log.reduce((sum, update) => sum + update.byteLength, document.state.byteLength) <= LIVE_ENDED_MAX_BYTES) ended.set(`${id}.${grip.link.epoch}`, { ...document, until: now + LIVE_MERGE_MS });
       erase(id);
       return 'released';
     },

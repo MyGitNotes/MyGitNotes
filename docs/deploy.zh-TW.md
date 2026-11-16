@@ -191,7 +191,7 @@ Compose 預設將 app 發布於 127.0.0.1:4321，並以 redis-data volume 保存
 
 ## 公開連線：使用 reverse proxy
 
-本小節同時適用於 [Docker Compose](#docker-compose-連接遠端儲存庫) 與 [Docker](#docker-連接遠端儲存庫)。將 `APP_URL` 設為 HTTPS 網址，並把 reverse proxy 指向 127.0.0.1:4321。保留 public Host header，轉送 /api/*、/mcp/*、/raw-assets/* 與 /r2-assets/*，並允許 streamed MCP responses。若 proxy 在另一個容器，兩者須共用 app network，並轉送至 mygitnotes:4321。
+本小節同時適用於 [Docker Compose](#docker-compose-連接遠端儲存庫) 與 [Docker](#docker-連接遠端儲存庫)。將 `APP_URL` 設為 HTTPS 網址，並把 reverse proxy 指向 127.0.0.1:4321。保留 public Host header，轉送 /api/*、/mcp/*、/raw-assets/* 與 /r2-assets/*，並允許 streamed MCP responses。若 proxy 在另一個容器，兩者須共用 app network，並轉送至 mygitnotes:4321。開啟內建即時編輯器時，proxy 還要轉送 /live/socket 的 WebSocket upgrade（[讓 WebSocket 通過 reverse proxy](#讓-websocket-通過-reverse-proxy)），在 Cloudflare 後面時也要轉傳用戶端位址（[Cloudflare 後面的 Caddy](#cloudflare-後面的-caddy)）。
 
 ## 在容器中開啟本機 checkout
 
@@ -373,7 +373,10 @@ pnpm convert-sources --workspace ../hub --yes   # 轉換另一個已對應 workt
 | 變數 | 意義 |
 | --- | --- |
 | `MYGITNOTES_LIVE_CHECKIN_AT` | 每晚簽回的時間，`HH:mm`，以 `MYGITNOTES_TIMEZONE` 的時區計（預設 `03:00`；沒設時區時為 UTC）。設為 `off` 關閉程序內排程。不是時間的值會讓伺服器啟動失敗。 |
+| `MYGITNOTES_LIVE_IDLE_CHECKIN` | 沒有人開著的筆記，在最後一次編輯後多久簽回，`1m` 到 `60m`（預設 `5m`），或 `off`。其他值會讓伺服器啟動失敗。 |
 | `MYGITNOTES_LIVE_SWEEP_SECRET` | 至少 32 字元的隨機密鑰，啟用給外部觸發用的 `POST /api/live/sweep`。沒設時這個路由回 404。 |
+
+**升級使用外部編輯器的版本：** 長駐的伺服器現在除了每晚簽回，也會在一則筆記沒有人開著滿 `MYGITNOTES_LIVE_IDLE_CHECKIN`（預設 5 分鐘）後簽回。設 `MYGITNOTES_LIVE_IDLE_CHECKIN=off` 只保留每晚簽回。簽不回的筆記（沒有任何編輯者的憑證能寫入，或待歸檔筆記的路徑規則無法歸檔）會在 1 分鐘後再試，之後 2、4 分鐘依此加倍，最多 30 分鐘，通知在筆記改變前只送一次。
 
 長時間執行的伺服器（Docker、Node）會自己在這個時間、以及之後 10、20、30 分鐘（給當時還有人在編輯的筆記）各簽回一次，啟動後一兩分鐘內也會補跑一次，補上停機期間錯過的簽回。Vercel 的函式不會常駐，所以那裡不跑排程：請用 Vercel Cron、Nomad periodic job 或 cron 呼叫簽回路由。路由回 202 後繼續在背景執行；加上 `?wait=1` 會等跑完再回報告。
 
@@ -385,14 +388,116 @@ curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" https
 
 ## 選用：內建即時編輯器
 
-社群版也附了自己的即時編輯器。多人直接在 MyGitNotes 自己的編輯器裡共同編輯一則筆記，看得到彼此打的字與標上名字的游標，簽回方式與上一節相同。打字經由 App 自己伺服器上的 WebSocket（`/live/socket`）傳送，兩次簽回之間的內容存在 Redis。
+社群版附了自己的即時編輯器。多人直接在 MyGitNotes 自己的編輯器裡共同編輯一則筆記，看得到彼此打的字與標上名字的游標。打字經由 App 自己伺服器上的 WebSocket（`/live/socket`）傳送，簽回 Git 之前的內容存在 Redis。
 
-0.20.0 沒有可以開啟它的環境變數，伺服器進入點（Docker 映像執行的那個）也不會啟動它。簽回要用寫入憑證提交，並以驗證過的 email 列出編輯者，而社群版部署兩者都沒有：使用者用自己的平台 token 登入，這個 token 不會活過單次請求，預設的登入方式也不提供驗證過的 email。兩者都有的部署，在自己的伺服器進入點用 `@mygitnotes/local-server` 的 `builtinLiveNotes` 組裝。`open` 回傳帶著部署自己寫入憑證的儲存庫，提交的作者是傳入的 author：
+設 `MYGITNOTES_LIVE_EDITOR=builtin` 開啟。預設關閉，沒設或設為 `off` 時，伺服器的行為與之前完全相同。開啟後，部署從自己的 GitHub、GitHub Enterprise 或 GitLab 站台提供的每個儲存庫都是協作優先：
+
+- **打開筆記。** 有權限寫入的人打開 Markdown 筆記，不論在 zoom、Focus 窗格或手機，都直接進協作編輯器，不必先按「編輯」。只能讀的人看到唯讀的即時文字，沒登入的訪客看到 Git 裡的文字。大綱、範本、合輯與其他檔案照舊開啟。
+- **離線。** 伺服器連不上時，筆記改開直接編輯器，修改存成這台瀏覽器裡的草稿，上方顯示「離線：修改先存在這台裝置，連線後會自動併入」。協作編輯器裡伺服器還沒存下的字也先存在瀏覽器，重新整理後還在。瀏覽器恢復連線後，兩者都會併入即時筆記。合併衝突時草稿留著，並提供比對、複製或捨棄；沒有本人選擇，就不會丟掉任何文字。
+- **簽回。** 大家都離開一則筆記後，它會在最後一次編輯後約 `MYGITNOTES_LIVE_IDLE_CHECKIN`（預設 5 分鐘）自動簽回 Git。關掉分頁立刻算離開；分頁開著沒動，10 分鐘後也不再算在編輯。每則即時筆記每晚 `MYGITNOTES_LIVE_CHECKIN_AT` 也會簽回，有人按「立即簽回」時也會。只看過、或改了又復原的筆記，最後一個人離開時就立刻釋放，不產生提交，移動、重新命名、刪除都不會被擋。
+- **誰提交。** 每次簽回都用第一位編輯者自己登入時存下的平台 token 提交，所以由平台在提交當下判斷他是否仍能寫入；部署本身不持有任何寫入憑證。第一位編輯者是作者，其他人寫成 `Co-authored-by`。第一位的 token 被拒時改用下一位的，每個人的署名都保留。所有人的都不能用時，文字留在即時筆記，伺服器記下 `uncommittable` 通知、稍後再試；有權限的人按「立即簽回」就會用他自己的 token 提交。github.com 的編輯者以 GitHub 的 noreply 地址 `<user id>+<login>@users.noreply.github.com` 署名。GitHub Enterprise 與 GitLab 的編輯者會用自己的 token 成為簽回的作者，但不會列為共同作者，因為沒有可驗證的地址。
+- **移動、改名或刪除。** 從筆記自己的編輯器操作時，沒有別人在編輯就先簽回再執行；還有別人在編輯則拒絕，顯示「N 人編輯中」。清單與批次操作碰到有人在編輯的筆記，仍會以「編輯中，請先簽回」拒絕。
+
+### 內建編輯器的變數
+
+| 變數 | 意義 |
+| --- | --- |
+| `MYGITNOTES_LIVE_EDITOR` | `builtin` 開啟編輯器；沒設或 `off` 維持關閉。其他值會讓伺服器啟動失敗。 |
+| `MYGITNOTES_LIVE_REDIS_URL` | 存放即時筆記的 Redis，原生的 `redis://` 或 `rediss://` URL。沒設時用 `REDIS_URL`。不支援 Redis REST。 |
+| `MYGITNOTES_CACHE_REDIS_URL` | 讀取快取專用、可以淘汰資料的 Redis（見[兩個 Redis](#兩個-redis)）。沒設時和以前一樣用 `REDIS_URL`。有沒有開即時編輯器都適用。 |
+| `MYGITNOTES_LIVE_IDLE_CHECKIN` | 大家都離開的筆記，在最後一次編輯後多久簽回，`1m` 到 `60m`（預設 `5m`），或 `off`。其他值會讓伺服器啟動失敗。 |
+| `MYGITNOTES_LIVE_CHECKIN_AT` | 每晚簽回的時間，`HH:mm`，以 `MYGITNOTES_TIMEZONE` 的時區計（預設 `03:00`；沒設時區時為 UTC），或 `off`。 |
+| `MYGITNOTES_LIVE_SWEEP_SECRET` | 啟用 `POST /api/live/sweep`，用法與[外部即時編輯器](#選用外部即時編輯器)相同。請設定：維護前或關閉編輯器前，要靠它把所有筆記簽回。 |
+
+設為 `builtin` 時，遇到下列情況伺服器會拒絕啟動，並說明怎麼修正：
+
+- 來源是本機 checkout（`--local` 或 `MYGITNOTES_SOURCE=local`）：本機工作區沒有即時編輯器；
+- 登入狀態存在 cookie（`MYGITNOTES_STORAGE=cookie`），沒有存下任何簽回可用來提交的 token；
+- 登入狀態會存在容器的資料夾裡（沒設 `REDIS_URL`，也沒設 Redis REST），重建容器就會遺失；
+- 沒有指定存放即時筆記的原生 Redis；
+- 設了 `VERCEL`：Vercel 的函式不會常駐，撐不住 WebSocket；
+- `APP_URL` 不是瀏覽器看到、不帶路徑的來源，例如 `https://notes.example.com`（只有 loopback 主機可用 `http`）。socket 只接受這個 `Origin`。
+
+伺服器另外需要：
+
+- **只跑一個 App 程序。** 部署交替時短暫有兩個程序仍然正確、不會丟字，但連到不同程序的人要每幾秒才看得到彼此打的字。
+- **記憶體**：每則開著的筆記約需它文字大小的幾倍；50 則 50 KiB 的筆記在數十 MiB 以內。每則筆記的即時文字上限是 5 MiB。
+- **停止時要等。** 收到 `SIGTERM` 時，編輯器會在 15 秒內存下打過的字，並以 1012 關閉 socket，然後伺服器才結束；分頁接著重新連到接手的程序。容器的停止寬限時間至少給 20 秒（Compose 的 `stop_grace_period: 30s`）。
+
+### 兩個 Redis
+
+跑兩個 Redis，各自是單一伺服器，不是 cluster：
+
+- **即時 Redis** 存登入狀態、Agent 授權、存下的平台 token 與即時文字。它絕不能淘汰資料，也應該持久保存：`appendonly yes` 加 `appendfsync everysec`，以及 `maxmemory-policy noeviction`（沒設 `maxmemory` 時的預設）。即時文字沒有到期時間，所以 `volatile-*` 策略也不會淘汰它；在 `allkeys-*` 策略下伺服器拒絕啟動，因為 Redis 可能丟掉打到一半的字。讀不到策略時（有些代管服務不公開），伺服器發出警告後照常啟動。沒有 append-only file 時，它會警告 Redis 重啟會丟掉上次簽回後打的字。如果用 `maxmemory` 設上限，Redis 滿了就不再收新打的字：分頁顯示「未儲存」而不是丟字，登入也會失敗，直到調高上限。筆記簽回時，即時 Redis 還會把那段工作階段結束時的文件保留 24 小時（`P:ended:<id>:<epoch>`），讓分頁在斷線時留下的字合併回來時不會重複；只有存過打字的工作階段才保留，超過 5 MiB 的不保留。請替這份副本預留記憶體：大約是過去一天內每篇有人打過字的筆記大小，乘上打過字的工作階段數。在 `noeviction` 下，這些副本和其他資料一樣計入 `maxmemory`，到期自動刪除；在 `volatile-*` 策略下 Redis 可能提早淘汰它們，之後合併這類留下的字時會變成衝突，而不是重複文字。
+- **快取 Redis** 只放讀取快取：依 Git object id 與內容雜湊存的筆記與索引副本，遺失也無妨。給它 `maxmemory` 與 `allkeys-lru`、不開持久化，並讓 `MYGITNOTES_CACHE_REDIS_URL` 指向它。快取寫入失敗時，那個請求會回 503，所以快取若和已滿的 `noeviction` Redis 共用，讀取就會失敗；分開後，快取自己淘汰，即時 Redis 只留下必須保存的資料。
+
+兩者的 key 都依 `MYGITNOTES_SESSION_NAMESPACE` 分開。用 [Docker Compose](#docker-compose-連接遠端儲存庫) 時，`redis` 服務本來就開了 append-only file、沒設 `maxmemory`，`compose.yaml` 也附了註解掉的 `cache` 服務：
+
+1. 在 `compose.yaml` 取消 `cache` 服務的註解，並照它的註解在 `mygitnotes` 服務加上 `MYGITNOTES_CACHE_REDIS_URL: redis://cache:6379`、對 `cache` 的 `depends_on` 與 `stop_grace_period: 30s`。
+2. 在 `.env.docker` 設 `MYGITNOTES_LIVE_EDITOR=builtin`、把 `APP_URL` 設為公開的 `https` 來源，並把 `MYGITNOTES_LIVE_SWEEP_SECRET` 設為 `openssl rand -hex 32` 的輸出。
+3. 重新啟動：`docker compose up -d --build`。log 裡沒有拒絕啟動的訊息，以有寫入權限的身分打開筆記時，會看到協作編輯器的工具列顯示「已儲存」。
+
+### 讓 WebSocket 通過 reverse proxy
+
+reverse proxy 要轉送 `/live/socket` 的 WebSocket upgrade，閒置逾時不能低於 60 秒；伺服器每 15 秒 ping 每個 socket 一次。Caddy 的 `reverse_proxy` 預設就會轉送。nginx 需要：
+
+```nginx
+location /live/ {
+  proxy_pass http://127.0.0.1:4321;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_read_timeout 120s;
+}
+```
+
+瀏覽器用 HTTP/1.1 開 socket，不必改 ALPN。
+
+還沒開啟筆記的 socket，伺服器最多保留 100 個，同一個位址最多 10 個，超過就回 503。從主機或私有網路上的 proxy（loopback、10/8、172.16/12、192.168/16、fc00::/7）連進來時，`X-Forwarded-For` 的最後一筆就是用戶端位址；Caddy 預設會設定。沒有這個標頭時，proxy 後面的所有用戶端都算同一個位址。伺服器只信任直接在 app 前面的那一層 proxy，只讀最後一筆；去掉 `:port` 或 `[...]` 後不是 IP 位址的值一律不算，改用連線來源位址。不要讓其他容器或區網用戶端直接連 app：來自私有位址的標頭會被採信。
+
+### Cloudflare 後面的 Caddy
+
+proxy 前面還有 Cloudflare（DNS 記錄開了 proxy）時，Caddy 寫進 `X-Forwarded-For` 的最後一筆會是 Cloudflare 節點的位址，所有訪客就只算成少數幾個位址。讓 Caddy 改傳 Cloudflare 在 `CF-Connecting-IP` 回報的用戶端位址：
+
+```caddy
+notes.example.com {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+	reverse_proxy 127.0.0.1:4321 {
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+		header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+		lb_try_duration 15s
+		stream_close_delay 5m
+	}
+}
+```
+
+- **只讓 Cloudflare 連到源站。** 主機防火牆的 80 與 443 埠只開放給 [Cloudflare 的 IP 網段](https://www.cloudflare.com/ips/)。其他人若能連到 Caddy，就能自己寫 `CF-Connecting-IP`。
+- **TLS。** 把 zone 的 SSL 模式設為 Full (strict)，並像上面那樣給 Caddy 一張 Cloudflare Origin CA 憑證；或用 Full 加 Caddy 的 `tls internal`。明確寫出 `tls`，Caddy 就不會去申請它在 proxy 後面拿不到的公開憑證。
+- **WebSocket** 要在 zone 的 Network 設定裡開啟。Cloudflare 會關掉約 100 秒沒有流量的 WebSocket，每 15 秒一次的 ping 讓它保持開啟。超過約 100 秒的請求會回 524，伺服器則在背景繼續做完。
+- `lb_try_duration` 讓請求在容器重啟時等候，而不是回 502；`stream_close_delay` 讓 Caddy 重新載入設定時，即時 socket 不會一次全部被切斷。不論哪種情況，分頁重新連線都不會丟字。
+
+### 開啟與關閉
+
+把儲存庫從外部編輯器換成內建編輯器，或關閉內建編輯器之前，先把所有即時筆記簽回：
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" "https://notes.example.com/api/live/sweep?mode=all&wait=1"
+```
+
+接著設定 `MYGITNOTES_LIVE_EDITOR` 並重新啟動。編輯器關閉時留在即時 Redis 的文字不會遺失，但要等編輯器再次開啟才看得到。
+
+用內建編輯器時，留白的新筆記會被捨棄，不會歸檔進 Git：有人對它按「立即簽回」、閒置簽回與每晚簽回時，或按「捨棄草稿」時都是如此。扣掉建立時就有的文字（或預設的標題與提示行）之後，如果沒有任何文字、數字、圖片或嵌入，就算留白。還沒歸檔的筆記也可以在第一次簽回前移動或改名；這只改它之後要歸檔的位置，不會提交。
+
+### 在版本中組裝
+
+版本（edition）在自己的伺服器進入點用 `@mygitnotes/local-server` 的 `builtinLiveNotes` 組裝編輯器。`open(repository, author, as)` 回傳簽回時用來提交的儲存庫，提交的作者是 `author`：可以帶部署自己的寫入憑證，也可以帶 `as.person` 指名的編輯者的憑證；那個人無法在這裡提交時，丟出 `LiveCredentialError`。
 
 ```ts
 import { builtinLiveNotes, createApp, redisLiveStore } from '@mygitnotes/local-server';
 
-const live = builtinLiveNotes({ covers, open, store: redisLiveStore({ url: process.env.REDIS_URL! }) });
+const live = builtinLiveNotes({ covers, open, store: redisLiveStore({ url: process.env.MYGITNOTES_LIVE_REDIS_URL! }) });
 await live.started; // 拒絕可能淘汰即時文字的 Redis
 const app = createApp(base, { liveNotes: live /* 以及部署的其他服務 */ });
 const server = app.listen(port, host);
@@ -400,40 +505,7 @@ server.on('upgrade', (req, socket, head) => { if (!live.upgrade(req, socket, hea
 process.once('SIGTERM', async () => { await live.shutdown(); server.close(); });
 ```
 
-伺服器需要：
-
-- **長時間執行、支援 WebSocket 的 Node 22 以上伺服器。** 不能跑在 Vercel：設了 `VERCEL` 時，`createApp` 會在啟動時停下。
-- **`APP_URL` 設為瀏覽器看到的來源**，不帶路徑的 `https` origin，例如 `https://notes.example.com`（只有 loopback 主機可用 `http`）。socket 只接受這個 `Origin`，沒設時伺服器不會啟動。
-- **單一 Redis 伺服器（不是 cluster）**，透過 `REDIS_URL`（`redis://` 或 `rediss://`；不支援 Redis REST）。設定 `maxmemory-policy noeviction`（建議）或 `volatile-*` 策略，並開 `appendonly yes`。即時文字沒有到期時間，所以 `volatile-*` 不會淘汰它；在 `allkeys-*` 策略下伺服器拒絕啟動，因為 Redis 可能丟掉打到一半的字。讀不到策略時（有些代管服務不公開），伺服器發出警告後照常啟動。沒有 append-only file 時，它會警告 Redis 重啟會丟掉上次簽回後打的字。和 session 共用同一個 Redis 沒有問題，它的 key 會依 `MYGITNOTES_SESSION_NAMESPACE` 分開。
-- **只跑一個 App 程序。** 部署交替時短暫有兩個程序仍然正確、不會丟字，但連到不同程序的人要每幾秒才看得到彼此打的字。
-- **reverse proxy 要轉送 `/live/socket` 的 WebSocket upgrade**，閒置逾時不能低於 60 秒；伺服器每 30 秒 ping 一次。Caddy 的 `reverse_proxy` 預設就會轉送。nginx 需要：
-
-  ```nginx
-  location /live/ {
-    proxy_pass http://127.0.0.1:4321;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_read_timeout 120s;
-  }
-  ```
-
-  瀏覽器用 HTTP/1.1 開 socket，不必改 ALPN。
-
-  還沒開啟筆記的 socket，伺服器最多保留 100 個，同一個位址最多 10 個，超過就回 503。從主機或私有網路上的 proxy（loopback、10/8、172.16/12、192.168/16、fc00::/7）連進來時，`X-Forwarded-For` 的最後一筆就是用戶端位址；Caddy 預設會設定。沒有這個標頭時，proxy 後面的所有用戶端都算同一個位址。伺服器只信任直接在 app 前面的那一層 proxy，只讀最後一筆；去掉 `:port` 或 `[...]` 後不是 IP 位址的值一律不算，改用連線來源位址。如果那層 proxy 前面還有 CDN，最後一筆會是 CDN 節點的位址：要讓主機上的 proxy 把 CDN 的用戶端 IP 標頭轉成 `X-Forwarded-For`（nginx 用 `real_ip_header` 加上 CDN 網段的 `set_real_ip_from`，再設 `proxy_set_header X-Forwarded-For $remote_addr`）。不要讓其他容器或區網用戶端直接連 app：來自私有位址的標頭會被採信。
-- **記憶體**：每則開著的筆記約需它文字大小的幾倍；50 則 50 KiB 的筆記在數十 MiB 以內。每則筆記的即時文字上限是 5 MiB。
-
 用 `memoryLiveStore()` 取代 `redisLiveStore` 時，即時文字只存在程序裡，每次重啟都會不見，只適合單人試用。
-
-`MYGITNOTES_LIVE_CHECKIN_AT`、`MYGITNOTES_TIMEZONE` 與 `MYGITNOTES_LIVE_SWEEP_SECRET` 的用法與外部編輯器相同。維護前，或把儲存庫從外部編輯器換成內建編輯器之前，先把所有即時筆記立即簽回：
-
-```sh
-curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" "https://notes.example.com/api/live/sweep?mode=all&wait=1"
-```
-
-用內建編輯器時，留白的新筆記會被捨棄，不會歸檔進 Git：有人對它按「立即簽回」、每晚簽回時，或按「捨棄草稿」時都是如此。扣掉建立時就有的文字（或預設的標題與提示行）之後，如果沒有任何文字、數字、圖片或嵌入，就算留白。還沒歸檔的筆記也可以在第一次簽回前移動或改名；這只改它之後要歸檔的位置，不會提交。
 
 ## 選用：私有 R2 素材
 

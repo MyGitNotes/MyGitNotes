@@ -8,7 +8,7 @@ import { textUpdate } from './documents.js';
 import { memoryLiveStore } from './memory-store.js';
 import { APP_ORIGIN, type LiveServer, liveServer, type LiveTab, notePath, pause, stubLiveEnv, until } from './socket-fixture.js';
 import type { LiveStore } from './store.js';
-import { type BuiltinFixture, builtinFixture, gate, manifest, person, redisTestStores, repository, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
+import { type BuiltinFixture, builtinFixture, gate, hugeDeletedUpdate, manifest, person, redisTestStores, repository, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
 
 /*
  * The socket of the built-in live editor (docs/specs/2026-11-15-builtin-live-editor §6, §4.3, §4.5, §4.6, §5.5; slice
@@ -50,6 +50,16 @@ const checkIn = (live: BuiltinFixture, id: string) => checkInLink(live.liveNotes
 const stored = async (store: LiveStore, id: string, epoch = 1) => storedText(await store.document(id, epoch));
 /** What `watcher` knows of the awareness state of `tab`'s client. */
 const seen = (watcher: LiveTab, tab: LiveTab) => watcher.provider.awareness!.getStates().get(tab.provider.document.clientID);
+/**
+ * Waits until the server holds the awareness state each of `tabs` set: a watcher of another person sees it relayed,
+ * which the server does only after it judged the state. The watcher then leaves, and the tabs' person alone counts.
+ */
+const cursorsHeld = async (server: LiveServer, id: string, tabs: LiveTab[]) => {
+  const watcher = await server.tab(2);
+  await until('the server holds the cursor of every tab', () => tabs.every(tab => JSON.stringify(seen(watcher, tab)?.cursor) === JSON.stringify(tab.provider.awareness!.getLocalState()?.cursor)));
+  watcher.destroy();
+  await until("only the tabs' person counts", async () => (await activeEditors(server.live, id)) === 1);
+};
 /** Sends, over `tab`'s socket, an awareness state (or a removal) for a client id that is not its own. */
 const speakFor = (tab: LiveTab, client: number, state: Record<string, unknown> | null) => {
   const awareness = tab.provider.awareness!;
@@ -269,6 +279,23 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       one.type(`${fits}好`);
       await one.saved();
       expect(await stored(store, id)).toBe(`${fits}好`);
+    });
+
+    // cfx-F001: a deleted run is stored as its length alone; one that claims more than any live text is refused, so no later merge walks it.
+    it('refuses typing that claims a deleted run past any live text: the tab is told too-large, and none of it is stored', async () => {
+      const server = await serverOver({ store: makeStore() });
+      const { store } = server.live;
+      const id = await server.checkout();
+      const one = await server.tab(1), two = await server.tab(2);
+      await Promise.all([one.synced(), two.synced()]);
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      two.sendUpdate(hugeDeletedUpdate(3e8));
+      await until('the tab was told', () => two.told.length > 0);
+      expect(two.told).toEqual([{ type: 'refused', reason: 'too-large' }]);
+      expect(await store.document(id, 1)).toMatchObject({ seq: 0, log: [] });
+      one.type(`${A}on\n`);
+      await one.saved();
+      expect(await stored(store, id)).toBe(`${A}on\n`);
     });
 
     it('refuses the socket past the most one document takes, and takes one again when someone left', async () => {
@@ -532,6 +559,49 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(one.closes).toHaveLength(1);
     });
 
+    it('does not count a renewal as activity: with the default limits, an idle open tab stops counting ten minutes after its last move, across a 4000 renewal (cf14-F001)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40 } });
+      const { time } = server.live;
+      const id = await server.checkout();
+      const one = await server.tab(1);
+      await one.synced();
+      one.provider.awareness!.setLocalState({ cursor: { anchor: 0, head: 0 } });
+      // Its cursor reached the server before the clock moves on.
+      await cursorsHeld(server, id, [one]);
+      // Ten minutes on, the socket is renewed and the tab comes back on a fresh ticket, doing nothing.
+      time.advance(10 * 60_000 + 1);
+      await until('the socket was closed for a new ticket', () => one.closes.length > 0);
+      expect(one.closes).toEqual([{ code: 4000, reason: 'Live ticket renewal' }]);
+      await until('the tab connected again with a fresh ticket', () => one.asked === 2 && one.provider.isSynced);
+      await pause(200);
+      expect(await activeEditors(server.live, id)).toBe(0);
+      // What it does next counts again.
+      one.type(`${A}back\n`);
+      await one.saved();
+      expect(await activeEditors(server.live, id)).toBe(1);
+    });
+
+    it('does not count two tabs of one person renewed in the same beat as activity, whichever comes back first (cf15-F001)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40 } });
+      const { time } = server.live;
+      const id = await server.checkout();
+      const one = await server.tab(1), two = await server.tab(1);
+      await Promise.all([one.synced(), two.synced()]);
+      one.provider.awareness!.setLocalState({ cursor: { anchor: 0, head: 0 } });
+      two.provider.awareness!.setLocalState({ cursor: { anchor: 1, head: 1 } });
+      await cursorsHeld(server, id, [one, two]);
+      // Ten minutes on, one beat closes both sockets, and both tabs come back doing nothing.
+      time.advance(10 * 60_000 + 1);
+      await until('both sockets were closed for a new ticket', () => one.closes.length > 0 && two.closes.length > 0);
+      await until('both tabs connected again with a fresh ticket', () => one.asked === 2 && two.asked === 2 && one.provider.isSynced && two.provider.isSynced);
+      await pause(200);
+      expect(await activeEditors(server.live, id)).toBe(0);
+      // What either does next counts again.
+      two.type(`${A}back\n`);
+      await two.saved();
+      expect(await activeEditors(server.live, id)).toBe(1);
+    });
+
     it('stores nothing a socket sends once it was open for socketMs: the tab gets it in again only with a fresh ticket, which a signed-out person is refused', async () => {
       const server = await serverOver({ store: makeStore(), limits: { socketMs: 60_000, beatMs: 60_000 } });
       const { store, time } = server.live;
@@ -598,7 +668,9 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
     });
 
     it('tells the tabs of a note that was checked in that it is released, takes nothing more of that epoch, and opens the next only by its own name', async () => {
-      const server = await serverOver({ store: makeStore() });
+      // Its clock runs past a socket's time, which is not what this test is about: a tab's half of its first sync that
+      // reached the server only after that would close its socket for a new ticket.
+      const server = await serverOver({ store: makeStore(), limits: { socketMs: 24 * 3_600_000 } });
       const { store, time, files, liveNotes } = server.live;
       const id = await server.checkout();
       const one = await server.tab(1), two = await server.tab(2);
@@ -636,8 +708,58 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(await stored(store, id, 2)).toBe(text);
     });
 
+    it('releases a note nobody typed in, or whose typing was undone, as soon as its last tab leaves, so a move is not refused; one typed in waits for the idle check-in (F006)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40, socketMs: 24 * 3_600_000, leaveMs: 20 } });
+      const { store, files } = server.live;
+      const listed = async (id: string) => (await server.live.liveNotes.service.checkouts(repository)).some(row => row.id === id);
+      const id = await server.checkout();
+      const viewer = await server.tab(1), other = await server.tab(2);
+      await Promise.all([viewer.synced(), other.synced()]);
+      // Someone is still in it: nothing is released.
+      viewer.destroy();
+      await pause(150);
+      expect(await listed(id)).toBe(true);
+      other.type(`${A}undone\n`);
+      await other.saved();
+      other.type(A);
+      await other.saved();
+      // The last one leaves, the text Git's: released at once, nothing committed, and a move goes ahead.
+      other.destroy();
+      await until('the note only viewed was released', async () => (await store.link(id))?.live === false, 2000);
+      expect(await listed(id)).toBe(false);
+      expect(files.get(notePath)).toBe(A);
+      const { revision } = (await server.call('GET', '/api/workspace')).body.repositories[0];
+      expect(await server.call('POST', '/api/files', { revision, command: { kind: 'move', notebookId: 'notes~life', path: notePath, destination: second } })).toMatchObject({ status: 200 });
+      // A note typed in stays checked out when everyone left, for the idle check-in.
+      const typed = await server.checkout(1, second);
+      const typist = await server.tab(1, { path: second });
+      await typist.synced();
+      typist.type(`${A}kept\n`);
+      await typist.saved();
+      typist.destroy();
+      await pause(200);
+      expect(await store.link(typed)).toMatchObject({ live: true });
+    });
+
+    it('releases nothing when the last tab of an untouched note only renews its socket (F006)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40, leaveMs: 0 } });
+      const { store, time } = server.live;
+      const id = await server.checkout();
+      const viewer = await server.tab(1);
+      await viewer.synced();
+      await viewer.saved();
+      time.advance(10 * 60_000 + 1);
+      await until('the tab connected again with a fresh ticket', () => viewer.asked === 2, 3000);
+      await viewer.synced();
+      await pause(150);
+      expect(await store.link(id)).toMatchObject({ live: true });
+      viewer.destroy();
+    });
+
     it('tells the tab of a draft that was discarded that it is released', async () => {
-      const server = await serverOver({ store: makeStore() });
+      // Its clock runs past a socket's time, which is not what this test is about: a tab's half of its first sync that
+      // reached the server only after that would close its socket, and the draft would go while the tab is between sockets.
+      const server = await serverOver({ store: makeStore(), limits: { socketMs: 24 * 3_600_000 } });
       const made = await server.call('POST', '/api/live/new', { notebookId: 'notes~life', title: 'Idea', content: 'Some idea\n' });
       const pending = made.body.checkout as { id: string; path: string; };
       const one = await server.tab(1, { path: pending.path });
@@ -893,6 +1015,18 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(one.asked).toBe(2);
     });
 
+    it('connects a tab again that is put back online before its own socket finished closing', async () => {
+      const server = await serverOver({ store: makeStore() });
+      const id = await server.checkout();
+      const one = await server.tab(1);
+      await one.synced();
+      // The tab's own close event has not landed yet when it is asked to connect again.
+      one.offline();
+      one.online();
+      await until('the tab connected again', () => one.asked === 2 && one.provider.isSynced);
+      expect(await activeEditors(server.live, id)).toBe(1);
+    });
+
     it('takes what a tab typed offline and while its next ticket was on the way: none of it is refused, and the tabs and the store agree', async () => {
       const server = await serverOver({ store: makeStore() });
       const { store } = server.live;
@@ -942,6 +1076,33 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(await documents.accept(link, textUpdate(held.document, `${A}back\n`)!, { key: 'person:p1@example.test', name: 'Person 1', email: 'p1@example.test', agent: false })).toBe(true);
       await held.close();
       expect(await stored(store, id)).toBe(`${A}back\n`);
+    });
+
+    it('lands a merge while two tabs type: every tab and the store end with the typing of both and the merged text, once', async () => {
+      const text = 'one\ntwo\nthree\n';
+      const server = await serverOver({ store: makeStore(), files: new Map([['.mygitnotes.yaml', manifest], [notePath, text]]) });
+      const id = await server.checkout();
+      const [one, two] = [await server.tab(1), await server.tab(2)];
+      await Promise.all([one.synced(), two.synced()]);
+      const request = { notebookId: 'notes~life', path: notePath, base: text, text: `${text}merged offline\n`, mergeId: 'socket-merge-1' };
+      one.type(one.text().replace('one', 'one typed'));
+      // The merge is asked for while both type, on the text Git holds.
+      const merging = server.call('POST', '/api/live/merge', request, 'p1');
+      two.type(two.text().replace('two', 'two typed'));
+      const answer = await merging;
+      expect(answer).toMatchObject({ status: 200, body: { applied: true, outcome: 'joined', checkout: { id } } });
+      await Promise.all([one.saved(), two.saved()]);
+      const full = 'one typed\ntwo typed\nthree\nmerged offline\n';
+      await until('both tabs show the typing of both and the merge', () => one.text() === full && two.text() === full);
+      expect(await stored(server.live.store, id)).toBe(full);
+      // The request again while they type on: the first answer, and no second copy anywhere.
+      one.type(one.text().replace('three', 'three typed'));
+      expect((await server.call('POST', '/api/live/merge', request, 'p1')).body).toMatchObject({ applied: true, contentHash: answer.body.contentHash });
+      await one.saved();
+      const after = full.replace('three', 'three typed');
+      await until('both tabs show one copy of the merge', () => one.text() === after && two.text() === after);
+      expect(await stored(server.live.store, id)).toBe(after);
+      expect((await server.live.store.editors(id)).map(editor => editor.key).sort()).toEqual(['person:p1@example.test', 'person:p2@example.test']);
     });
   });
 

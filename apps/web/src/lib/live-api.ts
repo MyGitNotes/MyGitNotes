@@ -1,7 +1,8 @@
 import type { LiveCheckInReason, LiveConflict, LiveEditorInfo } from '@mygitnotes/core';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { isOutlinePath } from '@mygitnotes/core/outline';
-import { ApiError, responseError } from './api.js';
+import { ApiError, isNetworkFailure, responseError } from './api.js';
+import { markReached, markUnreachable } from './live-reachability.js';
 
 /*
  * The browser's side of the live editor routes (docs/specs/2026-11-15-live-notes/spec.md §6, §8): check a note out,
@@ -55,6 +56,38 @@ export interface LiveNoteEditing {
   onReleased?: () => void;
   /** A pending note was discarded, by 「捨棄草稿」 or by a check-in that found it empty: it is gone, and the view leaves it. */
   onDiscarded?: () => void;
+  /**
+   * Where the editor is the built-in one, a checked-out note's own editor checks it in before it moves, renames or deletes
+   * it (collab-first A7), then runs the action here: the folder picker, the rename dialog, the deletion. `revision` is the
+   * head the check-in answered; none when the note was no longer live and nothing was checked in.
+   */
+  fileActions?: LiveFileActions;
+  /**
+   * Offline handover (collab-first A3.2): the direct editor opened offline holds a draft of the note, and the browser is
+   * back online. Hands the draft over to the live note; true once nothing of it is left to hand over (merged, or kept as a
+   * conflict draft), so the editor opens the collab editor; false when it could not finish, and the draft stays.
+   */
+  handOver?: () => Promise<boolean>;
+  /**
+   * What the collab editor kept could not be merged into the note (A3.1): the app keeps it as a conflict draft, and
+   * answers false when the note already has one, which the editor then offers to copy or download.
+   */
+  onMergeConflict?: (mine: string) => boolean;
+  /** The note's conflict draft, kept until the person compares, copies or discards it. */
+  mergeConflict?: LiveMergeConflict;
+}
+
+/** A conflict draft of a live note: the person's version, and how to drop it. */
+export interface LiveMergeConflict {
+  mine: string;
+  discard: () => void;
+}
+
+/** The file actions a collab-first note's own editor runs once its check-in released the note. */
+export interface LiveFileActions {
+  move?: (revision?: string) => void;
+  rename?: (revision?: string) => void;
+  remove?: (revision?: string) => Promise<void> | void;
 }
 
 /** A ticket to open a live note's document over the built-in editor's socket: single use, valid 60 s. */
@@ -74,7 +107,15 @@ export interface LiveRetargetAnswer {
 }
 
 const post = async <T>(url: string, body: unknown, fallback: string): Promise<T> => {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let res: Response;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (error) {
+    if (isNetworkFailure(error)) markUnreachable();
+    throw error;
+  }
+  // Any answer is the server reached: what waits for it tries again (cf16-F007).
+  markReached();
   if (!res.ok) throw await responseError(res, fallback);
   return res.json() as Promise<T>;
 };
@@ -84,6 +125,39 @@ export const checkOutLive = (notebookId: string, path: string) => post<{ checkou
 
 /** Creates a pending live note in `folder`: from a notebook template (`templateId`, with path `values`), or from the browser's own text. */
 export const createLiveNote = (params: { notebookId: string; folder: string; title: string; templateId?: string; values?: Record<string, string>; content?: string; clock?: { date: string; time: string; }; }) => post<{ checkout: LiveCheckoutView; }>('/api/live/new', params, 'Failed to create the live note');
+
+/** What a merge into a live note answers once the text is in: the note's live view, checked out by the merge when it was not live. */
+export interface LiveMergeAnswer {
+  applied: true;
+  contentHash: string;
+  checkout: LiveCheckoutView;
+  outcome: 'created' | 'joined' | 'reopened';
+}
+
+/**
+ * Merges a text written off the live note into it (collab-first A4): `base` is the text it was written on, and the server
+ * checks the note out first when it is not live. A repeated `mergeId` answers as the first did; a conflict takes nothing
+ * and answers 409 `merge-conflict`. Typing a collab editor tab kept names the document it was typed in and the tab's
+ * whole Yjs update of it (`typedIn`), so the server merges it on what that document ended with and takes what it already
+ * stored of it once.
+ */
+export const mergeLive = ({ typedIn, ...params }: { notebookId: string; path: string; base: string; text: string; mergeId: string; typedIn?: { document: string; update: Uint8Array; }; }) => post<LiveMergeAnswer>('/api/live/merge', { ...params, ...(typedIn ? { typedIn: { document: typedIn.document, update: base64(typedIn.update) } } : {}) }, 'Failed to merge the text into the live note');
+
+/** Bytes in base64, a chunk at a time so a large update does not overflow the call stack. */
+const base64 = (bytes: Uint8Array) => {
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return btoa(binary);
+};
+
+/** Whether a merge was refused because the text changed what the live note changed too: nothing was taken. */
+export const isMergeConflict = (error: unknown): boolean => error instanceof ApiError && error.code === 'merge-conflict';
+
+/** A fresh merge id: what keeps one text from being merged twice when its request is retried. */
+export const newMergeId = (): string => {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
 
 /** 「立即簽回」: commits the live text and closes the live note, or says why it stayed open. */
 export const checkInLive = (notebookId: string, path: string) => post<LiveCheckInAnswer>('/api/live/checkin', { notebookId, path }, 'Failed to check the note in');
@@ -141,6 +215,19 @@ export const recentCheckIn = (key: string, now = Date.now()): Omit<CheckInMark, 
   return mark && now - mark.at < CHECKED_IN_MS ? (mark.stillOpen === undefined ? {} : { stillOpen: mark.stillOpen }) : undefined;
 };
 export const forgetCheckedIn = (key: string) => void checkedIn.delete(key);
+
+/*
+ * A file action of a note's own collab editor refused while others edit the note (collab-first A7), by `noteRefKey`, so
+ * that the refusal outlives the editor: a check-in that committed the text before it was refused moves the head, and the
+ * workspace refresh mounts a new editor, which says it again. Forgotten when it is closed (null), or after REFUSAL_MS.
+ */
+const REFUSAL_MS = 30_000;
+const refusals = new Map<string, { text: string; at: number; }>();
+export const markRefusal = (key: string, text: string | null, now = Date.now()) => void (text === null ? refusals.delete(key) : refusals.set(key, { text, at: now }));
+export const recentRefusal = (key: string, now = Date.now()): string | null => {
+  const refusal = refusals.get(key);
+  return refusal && now - refusal.at < REFUSAL_MS ? refusal.text : null;
+};
 
 /** A pending live note's virtual path (`<root>/.live/<id>.md`), which a check-in files at a Git path. */
 export const isLivePendingPath = (path: string): boolean => /\/\.live\/[A-Za-z0-9_-]{1,64}\.md$/.test(path);

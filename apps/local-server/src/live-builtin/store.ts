@@ -1,4 +1,4 @@
-import type { LiveConflict, NotebookKey, RepositoryId } from '@mygitnotes/core';
+import { LIVE_MAX_BYTES, type LiveConflict, type NotebookKey, type RepositoryId, type WorkspacePerson } from '@mygitnotes/core';
 
 /*
  * What the built-in live editor keeps between check-ins (docs/specs/2026-11-15-builtin-live-editor §3): the links, each
@@ -10,6 +10,13 @@ import type { LiveConflict, NotebookKey, RepositoryId } from '@mygitnotes/core';
 
 /** How long a socket ticket holds. The Redis store gives a ticket's key this lifetime, whatever `until` says. */
 export const LIVE_TICKET_MS = 60_000;
+/** How long the answer of a merge is kept for a repeat of it, and the document of a released epoch for a merge of typing a tab kept of it. */
+export const LIVE_MERGE_MS = 24 * 60 * 60_000;
+/**
+ * The largest ended document kept, its state and log together, in bytes: one past it is not kept, and a merge of typing
+ * kept of its epoch falls back to the base the tab names (cfx-F002).
+ */
+export const LIVE_ENDED_MAX_BYTES = LIVE_MAX_BYTES;
 /** How long a process's presence entry counts after its last write, so a process that crashed stops counting. */
 export const LIVE_PRESENCE_MS = 90_000;
 
@@ -50,12 +57,24 @@ export interface EditorRef {
   name: string;
   email?: string;
   agent: boolean;
+  /** Who the editor signed in as: a check-in may commit with this person's own credential. An entry recorded by 0.20 has none. */
+  person?: WorkspacePerson;
 }
 /** An editor since the last sync. `lastSeq` is the sequence of their last append. */
 export interface StoredEditor extends EditorRef {
   firstAt: number;
   lastAt: number;
   lastSeq: number;
+}
+
+/** The answer a merge's append leaves for a repeat of it, in the same atomic call as the append. */
+export interface MergeRecord {
+  /** The sha256 hex of who merged, into which link, under which merge id. */
+  key: string;
+  /** What the repeat is answered, as the adapter wrote it. */
+  answer: string;
+  /** When the answer stops counting, by the adapter's clock. */
+  until: number;
 }
 
 /** What a created or reopened epoch starts from. */
@@ -119,8 +138,18 @@ export interface LiveStore {
   /**
    * Appends one Yjs update of the live epoch and records its editor (none for a merge). `seq` is the link's sequence
    * after it and `length` the log's. 'not-live' for a released or unknown link and for another epoch; nothing is kept then.
+   * With `merge`, the append and the answer kept under `merge.key` until `merge.until` are one step: when that key
+   * already holds an answer that still counts at `now`, nothing is appended and `{ merged }` gives that answer back.
    */
-  append(id: string, epoch: number, update: Uint8Array, editor: EditorRef | null, now: number): Promise<{ seq: number; length: number; } | 'not-live'>;
+  append(id: string, epoch: number, update: Uint8Array, editor: EditorRef | null, now: number, merge?: MergeRecord): Promise<{ seq: number; length: number; } | 'not-live' | { merged: string; }>;
+  /**
+   * The document a released epoch ended with, its state and log as they were at the release, for {@link LIVE_MERGE_MS}
+   * after it: a merge of typing a tab kept of that epoch takes it as base. Null before the release, past that time, for
+   * a discarded link, and for an unknown one.
+   */
+  ended(id: string, epoch: number, now: number): Promise<{ state: Uint8Array; log: Uint8Array[]; } | null>;
+  /** The answer a merge left under `key` that still counts at `now`; null for none. It outlives the release of its link. */
+  mergeAnswer(key: string, now: number): Promise<string | null>;
   /**
    * Replaces the state and drops the first `count` log entries, if `gen` is still the live epoch's: only the entries the
    * caller read and applied go, and one appended since stays. False, with nothing changed, otherwise.
@@ -144,7 +173,10 @@ export interface LiveStore {
   synced(id: string, token: string, receipt: SyncReceipt, now: number): Promise<'ok' | 'leased' | 'path-fixed'>;
   /**
    * Releases when the lease holds, the link is synced at `contentHash` and its sequence is still `seq`. Deletes the
-   * epoch's document, log, editors, presence, lease and tickets; keeps the link record and its path.
+   * epoch's editors, presence, lease and tickets, and moves its document and log to {@link LiveStore.ended} until `now`
+   * plus {@link LIVE_MERGE_MS} when the epoch stored anything beyond its seed (its log holds an update, or a compaction
+   * ran) and the two take at most {@link LIVE_ENDED_MAX_BYTES}; otherwise it keeps nothing of the document. Keeps the
+   * link record and its path.
    */
   release(id: string, token: string, expect: { seq: number; contentHash: string; }, now: number): Promise<'released' | 'leased' | 'not-synced' | 'changed'>;
   /**

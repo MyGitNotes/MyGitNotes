@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type express from 'express';
-import { aliasedMedia, type AvailableRepository, type CommitAuthor, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, liveEditorOf, type LiveNotes, liveRepository, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
+import { aliasedMedia, type AvailableRepository, type CommitAuthor, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, liveEditorOf, type LiveIdentity, type LiveNotes, liveRepository, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, type RemoteChange, type RemoteCommitHeard, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import type { EditionSources } from './edition-sources.js';
 import { CredentialRejected } from './auth.js';
@@ -35,6 +35,8 @@ export interface OpenOptions {
   person?: WorkspacePerson;
   /** Whom the commits the request makes on the site's provider are authored by (`SignedIn.author`); without one, the credential's account. */
   author?: CommitAuthor;
+  /** How the live editor shows and credits the person (`SignedIn.live`); without one, `author`. It authors no ordinary commit. */
+  live?: LiveIdentity;
   /** Opens edition members; without it an edition member is unavailable. */
   editionSources?: EditionSources;
   /** The request as the configuration source saw it, handed to the edition. */
@@ -46,13 +48,19 @@ export interface OpenOptions {
    * from the editor and refuses Git writes to them. A signed-out request gets no view and makes no adapter call.
    */
   liveNotes?: LiveNotes;
+  /**
+   * Hears of each commit a remote repository opened here makes through its reader (`RemoteSource.onCommit`): the
+   * repository, the commit's changes, and its revision. `/mcp` publishes its writes with it; a browser request's routes
+   * publish their own.
+   */
+  committed?: (repository: RemoteHandle, changes: readonly RemoteChange[], commit: RemoteCommitHeard) => void;
 }
 
 /**
  * Opens the workspace of one request: each visible member of its settings, from its worktree in a local deployment
  * or through the provider with the request's credential in a remote one, each with its own manifest.
  */
-export function openWorkspace(settings: WorkspaceSettings, token: string | undefined, cache?: RemoteCache, { fresh = false, person, author, editionSources, request = { headers: {} }, noCredentialMessage, liveNotes }: OpenOptions = {}): RequestWorkspace {
+export function openWorkspace(settings: WorkspaceSettings, token: string | undefined, cache?: RemoteCache, { fresh = false, person, author, live, editionSources, request = { headers: {} }, noCredentialMessage, liveNotes, committed }: OpenOptions = {}): RequestWorkspace {
   const members = visibleMembers(settings);
   if (settings.site.type === 'local') {
     return createWorkspaceRepositories<RepositoryHandle>({
@@ -74,8 +82,14 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
   /** Hands an opened reader the request's view of the live editor of its repository, when one covers it and someone is signed in. */
   const attachLive = (reader: RemoteSource, member: WorkspaceMember, scope: () => Promise<WorkspaceConfig>) => {
     if (!liveNotes || !person) return;
-    const view = liveRepository({ liveNotes, context: { person, ...(author ? { author } : {}), request }, repository: member.ref.id, alias: member.alias, notebooks: async () => (await scope()).notebooks, ...(process.env.APP_URL ? { appUrl: process.env.APP_URL } : {}) });
+    const view = liveRepository({ liveNotes, context: { person, ...(author ? { author } : {}), ...(live ? { live } : {}), request }, repository: member.ref.id, alias: member.alias, notebooks: async () => (await scope()).notebooks, ...(process.env.APP_URL ? { appUrl: process.env.APP_URL } : {}) });
     if (view) reader.useLive(view);
+  };
+  /** An opened repository as the workspace hands it on; its reader reports its commits where the caller listens. */
+  const opened = (id: RepositoryId, reader: RemoteSource, authenticated: boolean): RemoteHandle => {
+    const handle: RemoteHandle = { kind: 'remote', id, reader, authenticated };
+    if (committed) reader.onCommit((changes, commit) => committed(handle, changes, commit));
+    return handle;
   };
   return createWorkspaceRepositories<RepositoryHandle>({
     members,
@@ -91,7 +105,7 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
           const reader = editionSources.open(ref.source, { person, request }, cache, scope);
           await reader.getSnapshot(fresh);
           attachLive(reader, member, scope);
-          return { kind: 'remote', id: ref.id, reader, authenticated: Boolean(person) };
+          return opened(ref.id, reader, Boolean(person));
         } catch (error) {
           if (error instanceof RepositoryUnavailableError) return { reason: error.reason, message: error.message };
           throw error;
@@ -111,7 +125,7 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
         throw error;
       }
       attachLive(reader, member, scope);
-      return { kind: 'remote', id: ref.id, reader, authenticated: Boolean(token) };
+      return opened(ref.id, reader, Boolean(token));
     },
   });
 }
@@ -150,7 +164,7 @@ export function requestWorkspace(auth: IdentityOrSessions, configSource: Workspa
         return res.status(503).json({ error: 'Session service temporarily unavailable. Retry shortly.' });
       }
     }
-    res.locals.workspace = openWorkspace(settings, token, cache, { fresh: req.query.fresh === '1', ...(person ? { person: person.person } : {}), ...(person?.author ? { author: person.author } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
+    res.locals.workspace = openWorkspace(settings, token, cache, { fresh: req.query.fresh === '1', ...(person ? { person: person.person } : {}), ...(person?.author ? { author: person.author } : {}), ...(person?.live ? { live: person.live } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
     res.locals.token = token;
     res.locals.person = person;
     res.locals.site = settings.site;

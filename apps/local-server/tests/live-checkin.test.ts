@@ -44,6 +44,24 @@ describe('checkInLink', () => {
     expect(await liveNotes.service.checkouts(repository)).toEqual([]);
   });
 
+  it('takes the newer Git text into a note nobody changed, as in 0.20, when a credential opens the repository (cf14-F003)', async () => {
+    const id = await checkout('notes/life/a.md');
+    liveNotes.setActive(repository, id, 1);
+    const newer = '---\ntitle: A\n---\nONE\ntwo\nthree\nfour\nfive\n';
+    await gitCommit('notes/life/a.md', newer);
+    expect(await run(id, { mode: 'scheduled' })).toMatchObject({ committed: false, released: false, reason: 'active' });
+    expect(await liveText(id)).toBe(newer);
+    expect(commits()).toHaveLength(1);
+  });
+
+  it('writes back a note nobody changed that was deleted in Git, as in 0.20 (cf14-F003)', async () => {
+    const id = await checkout('notes/life/a.md');
+    const text = files.get('notes/life/a.md')!;
+    await gitCommit('notes/life/a.md', null);
+    expect(await run(id)).toMatchObject({ committed: true, conflict: { kind: 'deleted' } });
+    expect(files.get('notes/life/a.md')).toBe(text);
+  });
+
   it('commits the live text on an unmoved head, authored by the earliest person with the others and the live trailers', async () => {
     const id = await checkout('notes/life/a.md');
     liveNotes.type(repository, id, '---\ntitle: A\n---\none\nTWO\nthree\nfour\nfive\n', person(1));

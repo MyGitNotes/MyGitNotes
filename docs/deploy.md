@@ -191,7 +191,7 @@ The volume created by the [persistent session storage step](#plain-docker-with-a
 
 ## Public access behind a reverse proxy
 
-This subsection applies to [Docker Compose](#docker-compose-with-a-remote-repository) and [plain Docker](#plain-docker-with-a-remote-repository). Set `APP_URL` to the HTTPS origin and route the reverse proxy to 127.0.0.1:4321. Preserve the public Host header, forward /api/*, /mcp/*, /raw-assets/*, and /r2-assets/*, and allow streamed MCP responses. A proxy in another container must share the app network and forward to mygitnotes:4321.
+This subsection applies to [Docker Compose](#docker-compose-with-a-remote-repository) and [plain Docker](#plain-docker-with-a-remote-repository). Set `APP_URL` to the HTTPS origin and route the reverse proxy to 127.0.0.1:4321. Preserve the public Host header, forward /api/*, /mcp/*, /raw-assets/*, and /r2-assets/*, and allow streamed MCP responses. A proxy in another container must share the app network and forward to mygitnotes:4321. With the built-in live editor on, the proxy also passes WebSocket upgrades on /live/socket ([WebSockets through the reverse proxy](#websockets-through-the-reverse-proxy)), and behind Cloudflare it passes on the client address ([Caddy behind Cloudflare](#caddy-behind-cloudflare)).
 
 ## Local checkout inside a container
 
@@ -386,7 +386,10 @@ An edition may attach an external live (co-)editor to remote repositories; the c
 | Variable | Meaning |
 | --- | --- |
 | `MYGITNOTES_LIVE_CHECKIN_AT` | When the nightly check-in runs, `HH:mm` in `MYGITNOTES_TIMEZONE` (default `03:00`; UTC without a time zone). `off` turns the in-process schedule off. A value that is no time stops the server at start. |
+| `MYGITNOTES_LIVE_IDLE_CHECKIN` | How long after its last edit a note nobody has open is checked in, `1m` to `60m` (default `5m`), or `off`. Any other value stops the server at start. |
 | `MYGITNOTES_LIVE_SWEEP_SECRET` | A random secret of at least 32 characters that enables `POST /api/live/sweep` for an external trigger. Without it the route answers 404. |
+
+**Upgrading an edition with an external editor:** a long-running server now also checks a note in once nobody has had it open for `MYGITNOTES_LIVE_IDLE_CHECKIN` (5 minutes by default), beside the nightly check-in. Set `MYGITNOTES_LIVE_IDLE_CHECKIN=off` to keep only the nightly one. A note it cannot check in (no editor's credential may write, or a pending note its path rule cannot file) is tried again after 1 minute, then 2, 4 and so on up to 30, and its notice is sent once until the note changes.
 
 A long-running server (Docker, Node) sweeps by itself at that time and 10, 20 and 30 minutes later, for notes someone was still editing, and once a minute or two after it starts, which catches up after downtime. Vercel functions do not stay up, so there the schedule does not run: call the sweep route from Vercel Cron, a Nomad periodic job or cron. The route answers 202 and works on after answering; `?wait=1` waits and answers the report.
 
@@ -398,14 +401,116 @@ Every process of a multi-process deployment may run the schedule and the route: 
 
 ## Optional: the built-in live editor
 
-The community edition also ships its own live editor. People co-edit a note in MyGitNotes' own editor, see each other's text and named cursors, and the note is checked in as above. Typing travels over a WebSocket on the app's own server, `/live/socket`, and is kept in Redis between check-ins.
+The community edition ships its own live editor. People co-edit a note in MyGitNotes' own editor and see each other's text and named cursors. Typing travels over a WebSocket on the app's own server, `/live/socket`, and is kept in Redis until the note is checked into Git.
 
-Version 0.20.0 has no environment variable that turns it on. The server entry point (what the Docker image runs) does not start it. Check-ins commit with a write credential and name people by a verified email, and a community deployment has neither: people sign in with their own provider token, which does not outlive a request, and the default sign-in gives no verified email. A deployment that has both composes the editor in its own server entry with `builtinLiveNotes` from `@mygitnotes/local-server`. `open` returns the repository with the deployment's own write credential, its commits authored by the given author:
+Set `MYGITNOTES_LIVE_EDITOR=builtin` to turn it on. It is off by default, and with the variable unset or `off` the server runs exactly as before. Once it is on, every repository the deployment serves from its GitHub, GitHub Enterprise or GitLab site opens collab-first:
+
+- **Opening a note.** A person who may write opens a Markdown note straight into the collab editor, in zoom, in a Focus pane and on the phone, with no Edit click. A person who may only read sees the live text read-only, and a signed-out visitor sees the text in Git. Outlines, templates, compilations and other files open as before.
+- **Offline.** While the server cannot be reached, the note opens in the direct editor on a draft kept in the browser, under 「離線：修改先存在這台裝置，連線後會自動併入」. Typing in the collab editor that the server has not stored yet is kept in the browser too, and survives a reload. Once the browser is back online, both are merged into the live note. A merge that conflicts keeps the draft and offers to compare, copy or discard it; nothing is dropped without the person choosing to.
+- **Check-in.** A note is checked into Git by itself about `MYGITNOTES_LIVE_IDLE_CHECKIN` (5 minutes by default) after its last edit, once everyone has left it. Closing the tab counts as leaving at once, and an open tab nobody touches stops counting 10 minutes after its last activity. Every live note is also checked in nightly at `MYGITNOTES_LIVE_CHECKIN_AT`, and whenever someone presses 「立即簽回」. A note that was only viewed, or whose typing was undone, is released without a commit as soon as its last editor leaves, so nothing holds off moving, renaming or deleting it.
+- **Who commits.** Each check-in commits with the provider token the first editor's own sign-in stored, so the provider decides at that moment whether they may still write; the deployment holds no write credential of its own. The first editor is the author and the others are `Co-authored-by`. When the first editor's token is refused, the next editor's is tried, and everyone keeps their credit. When nobody's works, the text stays live, the server logs an `uncommittable` notice and tries again later, and someone with access can press 「立即簽回」 to commit with their own token. On github.com editors are credited by their GitHub noreply address, `<user id>+<login>@users.noreply.github.com`. GitHub Enterprise and GitLab editors author a check-in through their own token but are not listed as co-authors, since no verified address exists for them.
+- **Moving, renaming or deleting.** From the note's own editor, these first check the note in and then act, when nobody else is editing it; with others in it they are refused with 「N 人編輯中」. List and bulk actions on a note someone is editing are still refused with 「編輯中，請先簽回」.
+
+### Variables of the built-in editor
+
+| Variable | Meaning |
+| --- | --- |
+| `MYGITNOTES_LIVE_EDITOR` | `builtin` turns the editor on; unset or `off` leaves it off. Any other value stops the server at start. |
+| `MYGITNOTES_LIVE_REDIS_URL` | The Redis that keeps live notes: a native `redis://` or `rediss://` URL. `REDIS_URL` when unset. Redis REST is not supported. |
+| `MYGITNOTES_CACHE_REDIS_URL` | A Redis of its own for the read cache, which may evict (see [Two Redis instances](#two-redis-instances)). `REDIS_URL` when unset, as before. It works with or without the live editor. |
+| `MYGITNOTES_LIVE_IDLE_CHECKIN` | How long after the last edit a note everyone has left is checked in, `1m` to `60m` (default `5m`), or `off`. Any other value stops the server at start. |
+| `MYGITNOTES_LIVE_CHECKIN_AT` | The nightly check-in, `HH:mm` in `MYGITNOTES_TIMEZONE` (default `03:00`; UTC without a time zone), or `off`. |
+| `MYGITNOTES_LIVE_SWEEP_SECRET` | Enables `POST /api/live/sweep`, as for [an external live editor](#optional-an-external-live-editor). Set it: it is how you check every note in before maintenance or before turning the editor off. |
+
+With `builtin`, the server refuses to start, naming the fix, when:
+
+- the source is a local checkout (`--local`, or `MYGITNOTES_SOURCE=local`): a local workspace has no live editor;
+- sign-ins are kept in cookies (`MYGITNOTES_STORAGE=cookie`), which store no token a check-in could commit with;
+- sign-ins would be kept in the container's directory (no `REDIS_URL` and no Redis REST store is set), where recreating the container loses them;
+- no native Redis is named for live notes;
+- `VERCEL` is set: Vercel functions do not stay up to hold a WebSocket;
+- `APP_URL` is not the browser-facing bare origin, such as `https://notes.example.com` (`http` only on a loopback host). The socket accepts only that `Origin`.
+
+The server also needs:
+
+- **One app process.** Two during a deploy overlap stay correct and lose nothing, but people on different processes see each other's typing only every few seconds.
+- **Memory** for a few times the text of each open note: 50 open notes of 50 KiB stay within tens of MiB. Live text is limited to 5 MiB per note.
+- **A stop that waits.** On `SIGTERM` the editor stores what was typed and closes its sockets with 1012, within 15 s, before the server exits; tabs then reconnect to whichever process serves next. Give the container a stop grace period of at least 20 s (Compose `stop_grace_period: 30s`).
+
+### Two Redis instances
+
+Run two Redis servers, each a single server, not a cluster:
+
+- **The live Redis** keeps sign-ins, agent grants, the stored provider tokens and live text. It must never evict and should persist: `appendonly yes` with `appendfsync everysec`, and `maxmemory-policy noeviction` (the default when no `maxmemory` is set). Live text carries no expiry, so a `volatile-*` policy also never takes it; under an `allkeys-*` policy the server refuses to start, because Redis could drop typing. When the policy cannot be read (some managed services hide it), the server warns and starts. Without an append-only file it warns that a Redis restart loses typing since the last check-in. If you cap it with `maxmemory`, a full Redis refuses new typing: tabs show 未儲存 instead of losing text, and sign-ins fail until you raise the cap. When a note is checked in, the live Redis also keeps a copy of the document its session ended with for 24 hours (`P:ended:<id>:<epoch>`), so typing a tab kept while cut off merges without being put in twice; it keeps one only for a session that stored typing, and none above 5 MiB. Budget memory for that copy: roughly the size of each note typed in during the last day, once per session that typed in it. Under `noeviction` these copies count against `maxmemory` like everything else and expire on their own; under a `volatile-*` policy Redis may take them early, and a later merge of such kept typing then conflicts rather than doubling text.
+- **The cache Redis** holds the read cache only: copies of notes and indexes under Git object ids and content hashes, safe to lose. Give it a `maxmemory` with `allkeys-lru` and no persistence, and point `MYGITNOTES_CACHE_REDIS_URL` at it. A cache write that fails ends its request with 503, so a cache sharing a full `noeviction` Redis would make reads fail; apart, the cache evicts and the live Redis keeps only what must stay.
+
+Keys of both are namespaced by `MYGITNOTES_SESSION_NAMESPACE`. With [Docker Compose](#docker-compose-with-a-remote-repository), the `redis` service already runs with an append-only file and no `maxmemory`, and `compose.yaml` holds a commented `cache` service:
+
+1. In `compose.yaml`, uncomment the `cache` service, and add `MYGITNOTES_CACHE_REDIS_URL: redis://cache:6379`, a `depends_on` entry for `cache` and `stop_grace_period: 30s` to the `mygitnotes` service, as its comment shows.
+2. In `.env.docker`, set `MYGITNOTES_LIVE_EDITOR=builtin`, `APP_URL` to the public `https` origin, and `MYGITNOTES_LIVE_SWEEP_SECRET` to the output of `openssl rand -hex 32`.
+3. Start it again: `docker compose up -d --build`. The log shows no refusal, and opening a note as a writer shows the collab editor's bar with 已儲存.
+
+### WebSockets through the reverse proxy
+
+The reverse proxy must pass WebSocket upgrades on `/live/socket`, with no idle timeout under 60 s; the server pings every socket every 15 s. Caddy's `reverse_proxy` passes them by default. nginx needs:
+
+```nginx
+location /live/ {
+  proxy_pass http://127.0.0.1:4321;
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_read_timeout 120s;
+}
+```
+
+Browsers open the socket over HTTP/1.1, so no ALPN change is needed.
+
+The server keeps at most 100 sockets open that have no note on them yet, 10 of them from one address, and answers 503 past that. A proxy on the host or the private network (loopback, 10/8, 172.16/12, 192.168/16, fc00::/7) names the client in the last `X-Forwarded-For` entry; Caddy sets it by default. Without it, every client behind the proxy counts as one address. Only the proxy directly in front of the app is trusted, and only its last entry is read; an entry that is not an IP address (after dropping a `:port` or `[...]`) counts as none, and the peer is used. Do not let other containers or LAN clients reach the app directly: from a private address the header is believed.
+
+### Caddy behind Cloudflare
+
+With Cloudflare in front of the proxy (the DNS record proxied), the last `X-Forwarded-For` entry Caddy writes would be Cloudflare's edge, so every visitor would count as a few addresses. Have Caddy pass on the client address Cloudflare reports in `CF-Connecting-IP`:
+
+```caddy
+notes.example.com {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+	reverse_proxy 127.0.0.1:4321 {
+		header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+		header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+		lb_try_duration 15s
+		stream_close_delay 5m
+	}
+}
+```
+
+- **Only Cloudflare may reach the origin.** Allow ports 80 and 443 only from [Cloudflare's IP ranges](https://www.cloudflare.com/ips/) in the host's firewall. Anyone else who reaches Caddy could write `CF-Connecting-IP` themselves.
+- **TLS.** Set the zone's SSL mode to Full (strict) and give Caddy a Cloudflare Origin CA certificate, as above, or use Full with Caddy's `tls internal`. An explicit `tls` keeps Caddy from requesting a public certificate it cannot get behind the proxy.
+- **WebSockets** must be on in the zone's Network settings. Cloudflare closes a WebSocket after about 100 s without traffic, and the 15 s pings keep it open. A request that takes longer than about 100 s answers 524 while the server works on.
+- `lb_try_duration` holds requests while the container restarts instead of answering 502, and `stream_close_delay` keeps live sockets open across a Caddy reload instead of cutting them all at once. Tabs reconnect without losing typing either way.
+
+### Turning it on, and off
+
+Switching a repository from an external editor to the built-in one, or turning the built-in one off, first checks in every live note:
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" "https://notes.example.com/api/live/sweep?mode=all&wait=1"
+```
+
+Then set `MYGITNOTES_LIVE_EDITOR` and restart. Text left in the live Redis when the editor is off is not lost, but nobody sees it until the editor is on again.
+
+With the built-in editor, a new note left empty is discarded instead of being filed into Git: when someone presses 「立即簽回」 on it, at the idle and nightly check-ins, or with 「捨棄草稿」. A note counts as empty when nothing beyond the text it was created with, or the default title and placeholder line, holds a letter, digit, image or embed. A note not yet filed can also be moved or renamed before its first check-in; that changes where it will be filed and commits nothing.
+
+### Composing it in an edition
+
+An edition composes the editor in its own server entry with `builtinLiveNotes` from `@mygitnotes/local-server`. `open(repository, author, as)` returns the repository a check-in commits through, its commits authored by `author`: with the deployment's own write credential, or with the credential of the editor `as.person` names, throwing `LiveCredentialError` when that person cannot commit there.
 
 ```ts
 import { builtinLiveNotes, createApp, redisLiveStore } from '@mygitnotes/local-server';
 
-const live = builtinLiveNotes({ covers, open, store: redisLiveStore({ url: process.env.REDIS_URL! }) });
+const live = builtinLiveNotes({ covers, open, store: redisLiveStore({ url: process.env.MYGITNOTES_LIVE_REDIS_URL! }) });
 await live.started; // refuses a Redis that may evict live text
 const app = createApp(base, { liveNotes: live /* and the deployment's other services */ });
 const server = app.listen(port, host);
@@ -413,40 +518,7 @@ server.on('upgrade', (req, socket, head) => { if (!live.upgrade(req, socket, hea
 process.once('SIGTERM', async () => { await live.shutdown(); server.close(); });
 ```
 
-The server needs:
-
-- **A long-running Node 22 or later server with WebSockets.** It cannot run on Vercel: `createApp` stops at start when `VERCEL` is set.
-- **`APP_URL` set to the browser-facing origin**, a bare `https` origin such as `https://notes.example.com` (`http` only on a loopback host). The socket accepts only that `Origin`, and the server does not start without it.
-- **One Redis server, not a cluster**, through `REDIS_URL` (`redis://` or `rediss://`; Redis REST is not supported). Set `maxmemory-policy noeviction` (recommended) or a `volatile-*` policy, and `appendonly yes`. Live text carries no expiry, so `volatile-*` never evicts it; under an `allkeys-*` policy the server refuses to start, because Redis could drop typing. When the policy cannot be read (some managed services hide it), the server warns and starts. Without an append-only file it warns that a Redis restart loses typing since the last check-in. The same Redis as sessions is fine; its keys are namespaced by `MYGITNOTES_SESSION_NAMESPACE`.
-- **One app process.** Two during a deploy overlap stay correct and lose nothing, but people on different processes see each other's typing only every few seconds.
-- **A reverse proxy that passes WebSocket upgrades on `/live/socket`**, with no idle timeout under 60 s; the server pings every 30 s. Caddy's `reverse_proxy` does this by default. nginx needs:
-
-  ```nginx
-  location /live/ {
-    proxy_pass http://127.0.0.1:4321;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_read_timeout 120s;
-  }
-  ```
-
-  Browsers open the socket over HTTP/1.1, so no ALPN change is needed.
-
-  The server keeps at most 100 sockets open that have no note on them yet, 10 of them from one address, and answers 503 past that. A proxy on the host or the private network (loopback, 10/8, 172.16/12, 192.168/16, fc00::/7) names the client in the last `X-Forwarded-For` entry; Caddy sets it by default. Without it, every client behind the proxy counts as one address. Only the proxy directly in front of the app is trusted, and only its last entry is read; an entry that is not an IP address (after dropping a `:port` or `[...]`) counts as none, and the peer is used. With a CDN in front of that proxy, the last entry would be the CDN's edge: have the host proxy turn the CDN's client-IP header into `X-Forwarded-For` (for nginx, `real_ip_header` with `set_real_ip_from` the CDN's ranges, then `proxy_set_header X-Forwarded-For $remote_addr`). Do not let other containers or LAN clients reach the app directly: from a private address the header is believed.
-- **Memory** for a few times the text of each open note: 50 open notes of 50 KiB stay within tens of MiB. Live text is limited to 5 MiB per note.
-
 `memoryLiveStore()` in place of `redisLiveStore` keeps live text in the process: it is lost on every restart, so use it only for a single-user trial.
-
-`MYGITNOTES_LIVE_CHECKIN_AT`, `MYGITNOTES_TIMEZONE` and `MYGITNOTES_LIVE_SWEEP_SECRET` work as for an external editor. Before maintenance, or before switching a repository from an external editor to the built-in one, check in every live note now:
-
-```sh
-curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" "https://notes.example.com/api/live/sweep?mode=all&wait=1"
-```
-
-With the built-in editor, a new note left empty is discarded instead of being filed into Git: when someone presses 「立即簽回」 on it, at the nightly check-in, or with 「捨棄草稿」. A note counts as empty when nothing beyond the text it was created with, or the default title and placeholder line, holds a letter, digit, image or embed. A note not yet filed can also be moved or renamed before its first check-in; that changes where it will be filed and commits nothing.
 
 ## Optional: the time zone of template dates
 

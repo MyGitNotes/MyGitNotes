@@ -16,11 +16,23 @@ import type { WorkspacePerson, WorkspaceRequest } from './workspace-config-sourc
  * contract, the checks on every value an adapter returns, and the helpers both sides share.
  */
 
+/**
+ * How live editing shows and credits a person: the name other editors see, and the email a check-in commit names them
+ * by. The email is one the identity verified as theirs, or left out; a person without one is shown by name, may author
+ * a check-in through their own credential, and is nobody's co-author.
+ */
+export interface LiveIdentity {
+  name: string;
+  email?: string;
+}
+
 /** Who a person-side call acts for. */
 export interface LiveContext {
   person: WorkspacePerson;
   /** As SignedIn.author / BearerGrant.author. */
   author?: CommitAuthor;
+  /** As SignedIn.live / BearerGrant.live: how live editing shows and credits the person. Left out, `author` does. */
+  live?: LiveIdentity;
   /** The request as the configuration source saw it (for /mcp: the grant's request, no cookie). */
   request: WorkspaceRequest;
 }
@@ -42,6 +54,9 @@ export interface LiveBuiltinEditorInfo {
 /** A repository's live editor: a framed external one, or the built-in one. */
 export type LiveEditorInfo = LiveFrameEditorInfo | LiveBuiltinEditorInfo;
 export const isBuiltinEditor = (info: LiveEditorInfo): info is LiveBuiltinEditorInfo => info.kind === 'builtin';
+
+/** How live editing shows and credits the person of a context: its `live`, else its `author`. */
+export const liveIdentityOf = (context: Pick<LiveContext, 'author' | 'live'>): LiveIdentity | undefined => context.live ?? context.author;
 
 /** What a check-in overwrote: Git changes that lost to the live text, or a note deleted in Git and written back. */
 export interface LiveConflict {
@@ -90,6 +105,12 @@ export interface LiveEditor {
   agent: boolean;
   firstAt: string;
   lastAt: string;
+  /**
+   * Who the editor signed in as, where the adapter's check-ins commit with the editors' own credentials: the engine
+   * opens the repository as one of them (`service.open`'s `as`). Left out, as a 0.20 adapter leaves it, the
+   * deployment's own credential commits.
+   */
+  person?: WorkspacePerson;
 }
 
 /** What a signed-in person, or a write grant, may ask of the adapter. */
@@ -104,7 +125,46 @@ export interface LivePersonCalls {
   createPending(repository: RepositoryId, request: { notebook: NotebookKey; pathRule: string; content: string; }): Promise<LiveCheckout>;
   /** Where a link that is no longer live was filed; null when unknown. */
   filed(repository: RepositoryId, id: string): Promise<string | null>;
+  /**
+   * Merges `request.text`, written on `request.base`, into the live note over the typing since, as a three-way merge,
+   * and lists the person among its editors; texts come in normal form. A conflict takes nothing. A repeat of the same
+   * `mergeId` by the same person for the same link answers what the first answered for at least a day, also after the
+   * note was released and reopened, and takes nothing again. An adapter without it keeps 0.20's behavior: a text made
+   * off the live note is committed by hand, or copied.
+   */
+  merge?(repository: RepositoryId, id: string, request: LiveMergeRequest): Promise<LiveMergeAnswer>;
 }
+
+/**
+ * A text to take into a live note (docs/specs/2026-11-16-collab-first-self-host A4): `text`, written on `base`, such as
+ * a draft made offline on the text Git held, or what a tab typed after its note was released. The writer names the
+ * base; it only decides how their own text lands, and they could write any text anyway.
+ */
+export interface LiveMergeRequest {
+  base: string;
+  text: string;
+  /** Names this merge for its writer ({@link isLiveMergeId}): asked again under the same id, the first answer is given and nothing is taken twice. */
+  mergeId: string;
+  /**
+   * What a built-in editor tab typed `text` in: the Yjs document of an epoch that has ended (`<link id>.<epoch>`), and the
+   * tab's whole update of it. An adapter that still knows the text that document ended with takes it as the base, and
+   * the update applied to it as the text, so typing the server stored before the tab heard so lands once; one that no
+   * longer knows it merges on `base` as an uncertain one (`rebaseLiveText`'s `uncertainBase`).
+   */
+  typedIn?: LiveTypedIn;
+}
+/** See {@link LiveMergeRequest.typedIn}. */
+export interface LiveTypedIn {
+  document: string;
+  update: Uint8Array;
+}
+/** Whether a value is a {@link LiveTypedIn}: a live document's name and a Yjs update. */
+export function isLiveTypedIn(value: unknown): value is LiveTypedIn {
+  const typed = value as LiveTypedIn | null;
+  return typeof typed === 'object' && typed !== null && typeof typed.document === 'string' && LIVE_DOCUMENT_PATTERN.test(typed.document) && typed.update instanceof Uint8Array;
+}
+/** A merge landed, the note then reading the text `contentHash` names; or it changed what the live note changed too, and nothing was taken. */
+export type LiveMergeAnswer = { applied: true; contentHash: string; } | { conflict: true; };
 
 export interface LiveLease {
   token: string;
@@ -119,13 +179,24 @@ export interface LiveDetail extends LiveText {
 }
 export type LiveRelease = { released: true; } | { released: false; reason: 'active' | 'changed' | 'not-synced'; activeEditors?: number; };
 
+/** Whom `service.open` opens a repository as. */
+export interface LiveOpenAs {
+  /** The editor whose own credential the check-in commits with; left out, the deployment's own. */
+  person?: WorkspacePerson;
+}
+
 /** What the check-in engine asks of the adapter, with the deployment's own credential. */
 export interface LiveServiceCalls {
   /** Repositories with live links. */
   repositories(): Promise<RepositoryId[]>;
   checkouts(repository: RepositoryId): Promise<LiveCheckout[]>;
-  /** The repository with the deployment's own write credential; its commits are authored by `author` (none: the credential's account). */
-  open(repository: RepositoryId, author?: CommitAuthor): Promise<RemoteSource>;
+  /**
+   * The repository to commit a check-in through; its commits are authored by `author` (none: the credential's
+   * account). With `as.person`, an adapter that lists its editors' persons opens it with that person's own credential,
+   * and throws {@link LiveCredentialError} when they cannot commit there; the engine then asks as the next editor.
+   * Without `as`, and in an adapter that takes none (0.20), it is the deployment's own write credential.
+   */
+  open(repository: RepositoryId, author?: CommitAuthor, as?: LiveOpenAs): Promise<RemoteSource>;
   lease(repository: RepositoryId, id: string): Promise<LiveLease>;
   detail(repository: RepositoryId, id: string, lease: LiveLease): Promise<LiveDetail>;
   mergeIn(repository: RepositoryId, id: string, lease: LiveLease, change: { content: string; baseRevision: string; }): Promise<{ liveRevision: string; }>;
@@ -153,7 +224,8 @@ export interface LiveServiceCalls {
 }
 
 export interface LiveNotice {
-  kind: 'conflict' | 'deleted' | 'unfiled';
+  /** `uncommittable`: no credential the check-in could try may commit the note; it stays live and is tried again. */
+  kind: 'conflict' | 'deleted' | 'unfiled' | 'uncommittable';
   repository: RepositoryId;
   notebook: NotebookKey;
   path: string | null;
@@ -162,6 +234,25 @@ export interface LiveNotice {
   overwritten?: string;
   editors: { name: string; }[];
   message: string;
+}
+
+/** A commit a check-in made, as {@link LiveNotes.committed} hears it. */
+export interface LiveCommit {
+  repository: RepositoryId;
+  /** The note's Git path. */
+  path: string;
+  /** The text committed, frontmatter included. */
+  content: string;
+  commit: string;
+  /** The repository as the check-in opened it for this commit (`service.open`); it reads the commit from now on. */
+  source: RemoteSource;
+  /** Whom the commit is authored by, when an editor could be named; without one, the credential's account. */
+  author?: CommitAuthor;
+  /**
+   * The person whose own credential made the commit (`service.open` with `{ person }`): an editor, or whoever asked for
+   * the check-in. Left out when the deployment's credential made it.
+   */
+  person?: WorkspacePerson;
 }
 
 /** An edition's live editor (`AppServices.liveNotes`). */
@@ -176,8 +267,42 @@ export interface LiveNotes {
   person(context: LiveContext): LivePersonCalls;
   service: LiveServiceCalls;
   notify?(notice: LiveNotice): Promise<void>;
+  /**
+   * Hears of each commit a check-in makes, right after it landed, whoever started the check-in: a person, a sweep or a
+   * schedule. The check-in does not wait for it, and what it throws or rejects is logged by the note's path and
+   * changes nothing. `createApp` listens beside it ({@link withLiveCommits}) to publish the note.
+   */
+  committed?(commit: LiveCommit): void | Promise<void>;
   /** Required when `editors` declares a builtin editor: a ticket for the person to open the link's live document. */
   socketTicket?(context: LiveContext, repository: RepositoryId, id: string): Promise<LiveSocketTicket>;
+}
+
+/** Runs one listener of a check-in commit; whatever it throws or rejects is logged by the note's path, never by its text. */
+function hearLiveCommit(listener: (commit: LiveCommit) => void | Promise<void>, commit: LiveCommit) {
+  const failed = () => console.warn(`[live-notes] a listener of the check-in commit of ${commit.repository}/${commit.path} failed`);
+  try {
+    void Promise.resolve(listener(commit)).catch(failed);
+  } catch {
+    failed();
+  }
+}
+
+/** Tells the adapter's `committed` of a commit a check-in just made; the check-in goes on whatever comes of it. */
+export function announceLiveCommit(liveNotes: LiveNotes, commit: LiveCommit): void {
+  if (typeof liveNotes.committed === 'function') hearLiveCommit(heard => liveNotes.committed!(heard), commit);
+}
+
+/**
+ * The adapter as an app uses it once the app itself listens to check-in commits: `listener` hears each commit, and
+ * then the adapter's own `committed` does. Every other member is read through from `liveNotes`, which is not changed,
+ * so a member a later version adds is still there.
+ */
+export function withLiveCommits(liveNotes: LiveNotes, listener: (commit: LiveCommit) => void | Promise<void>): LiveNotes {
+  const committed = (commit: LiveCommit) => {
+    hearLiveCommit(listener, commit);
+    announceLiveCommit(liveNotes, commit);
+  };
+  return Object.create(liveNotes, { committed: { value: committed, enumerable: true } }) as LiveNotes;
 }
 
 /** What opens a link's live document over the built-in editor's socket. */
@@ -229,8 +354,23 @@ export function liveInitialTextOf(value: unknown): string | undefined {
   return typeof initial === 'string' && Buffer.byteLength(initial, 'utf8') <= LIVE_MAX_BYTES ? initial : undefined;
 }
 
+/** What names a merge: 8 to 128 letters, digits, `_` or `-`, such as a hash of the draft it merges. */
+export function isLiveMergeId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(value);
+}
+
+/** A merge answer an adapter returned, checked and reduced to its fields; anything else is a {@link LiveUnavailableError}. */
+export function liveMergeAnswerOf(value: unknown): LiveMergeAnswer {
+  const { applied, conflict, contentHash } = (value ?? {}) as Record<string, unknown>;
+  if (applied === true && isLiveContentHash(contentHash)) return { applied: true, contentHash };
+  if (conflict === true && applied === undefined) return { conflict: true };
+  throw new LiveUnavailableError();
+}
+
 /** What a live link id may be. */
 export const LIVE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+/** A live document's name: `<link id>.<epoch>`. */
+const LIVE_DOCUMENT_PATTERN = /^[A-Za-z0-9_-]{1,64}\.[1-9][0-9]{0,15}$/;
 /** The largest live text, in UTF-8 bytes, as for other writes. */
 export const LIVE_MAX_BYTES = 5 * 1024 * 1024;
 /** The dot folder of a notebook root that holds pending notes' virtual paths. */
@@ -260,6 +400,15 @@ export class LiveTooLargeError extends SourceError {
     super(message, 413);
   }
 }
+/**
+ * The person `service.open` was asked to open a repository as cannot commit there: their credential is missing,
+ * refused, revoked or expired, or it may not write. The check-in tries the next editor; it names no credential detail.
+ */
+export class LiveCredentialError extends SourceError {
+  constructor(message = "This person's credential cannot commit to the repository.") {
+    super(message, 403);
+  }
+}
 /** Any other adapter failure: it names no adapter detail. */
 export class LiveUnavailableError extends SourceError {
   constructor() {
@@ -282,7 +431,7 @@ export function checkedOutFields(error: unknown): { code?: 'checked-out'; paths?
   return error instanceof CheckedOutError ? { code: error.code, paths: error.paths } : {};
 }
 
-const LIVE_ERRORS = [LiveStaleError, LiveLeasedError, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, CheckedOutError];
+const LIVE_ERRORS = [LiveStaleError, LiveLeasedError, LiveNotLiveError, LiveTooLargeError, LiveCredentialError, LiveUnavailableError, CheckedOutError];
 
 /** An adapter failure as the community reports it: one of the live errors as thrown, anything else a 502 that names no detail. */
 export function liveAdapterError(error: unknown): SourceError {
@@ -400,6 +549,18 @@ function baseOf(value: unknown): LiveCheckout['base'] | undefined {
   const { commit, blob, contentHash } = value as Record<string, unknown>;
   if (typeof commit !== 'string' || !GIT_OBJECT_ID.test(commit) || typeof blob !== 'string' || !GIT_OBJECT_ID.test(blob) || !isLiveContentHash(contentHash)) return undefined;
   return { commit, blob, contentHash };
+}
+
+/**
+ * What a check-in that commits nothing reads of a row, checked without the repository's notebooks, which only an
+ * opened repository gives: its notebook key, its path (null while pending) and its base. Null for a row without them.
+ */
+export function liveRowBase(row: unknown): { notebook: NotebookKey; path: string | null; base: LiveCheckout['base']; } | null {
+  if (!row || typeof row !== 'object') return null;
+  const { notebook, path, base } = row as Record<string, unknown>;
+  const known = baseOf(base);
+  if (typeof notebook !== 'string' || !notebook || notebook.length > 512 || (path !== null && (typeof path !== 'string' || !isRelativePath(path))) || known === undefined) return null;
+  return { notebook, path, base: known };
 }
 
 /** Why a row is not a valid checkout; undefined when it is. */

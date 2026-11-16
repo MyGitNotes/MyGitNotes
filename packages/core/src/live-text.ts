@@ -64,15 +64,32 @@ export function textEdits(base: string, changed: string, timeoutMs = TEXT_DIFF_M
   return whole;
 }
 
+/** Whether one of two edits inserts at the start or end of a span the other replaces. */
+function touchesReplaced(a: TextEdit, b: TextEdit): boolean {
+  const [insertion, replaced] = a.from === a.to ? [a, b] : [b, a];
+  return insertion.from === insertion.to && replaced.to > replaced.from && (insertion.from === replaced.from || insertion.from === replaced.to);
+}
+
+/** How {@link rebaseLiveText} reads its base. */
+export interface RebaseOptions {
+  /**
+   * The base may lack typing of `mine` that `theirs` already holds, as when a tab never heard that the server stored its
+   * last keystrokes: two different insertions at one point, or an insertion at the edge of a span the other side replaced,
+   * are then a conflict, since applying both could put that typing in twice.
+   */
+  uncertainBase?: boolean;
+}
+
 /**
  * Rebases `mine`, a text written on `base`, over `theirs`, which `base` became meanwhile: a three-way merge by
  * character, so two changes in one line merge like typing does. Both sides are diffed against `base`
- * ({@link textEdits}). An edit both sides made applies once; two insertions at one point apply theirs first, then mine;
- * edits apart apply both, and an insertion at the edge of a span the other side replaced stays beside the replacement.
- * Null is a conflict: the sides replaced overlapping spans, or one inserted inside a span the other replaced. A diff
- * that ran out of time is coarser, so it conflicts more often and never merges wrongly.
+ * ({@link textEdits}). An edit both sides made applies once; two insertions at one point apply theirs first, then mine
+ * (or conflict, with {@link RebaseOptions.uncertainBase}); edits apart apply both, and an insertion at the edge of a span
+ * the other side replaced stays beside the replacement. Null is a conflict: the sides replaced overlapping spans, or one
+ * inserted inside a span the other replaced. A diff that ran out of time is coarser, so it conflicts more often and never
+ * merges wrongly.
  */
-export function rebaseLiveText(base: string, theirs: string, mine: string, timeoutMs = TEXT_DIFF_MS): string | null {
+export function rebaseLiveText(base: string, theirs: string, mine: string, timeoutMs = TEXT_DIFF_MS, { uncertainBase = false }: RebaseOptions = {}): string | null {
   if (theirs === base || theirs === mine) return mine;
   if (mine === base) return theirs;
   const theirEdits = textEdits(base, theirs, timeoutMs), myEdits = textEdits(base, mine, timeoutMs);
@@ -85,7 +102,7 @@ export function rebaseLiveText(base: string, theirs: string, mine: string, timeo
     const their = theirEdits[i], my = myEdits[j];
     if (their && my && their.from === my.from && their.to === my.to) {
       if (their.text === my.text) apply(their);
-      else if (their.from === their.to) apply(their, their.text + my.text);
+      else if (their.from === their.to && !uncertainBase) apply(their, their.text + my.text);
       else return null;
       i++;
       j++;
@@ -96,6 +113,9 @@ export function rebaseLiveText(base: string, theirs: string, mine: string, timeo
     const first = theirsFirst ? their! : my!, other = theirsFirst ? my : their;
     // The other side's next edit starts at or after this one: inside its span, the two cannot both apply.
     if (other && other.from < first.to) return null;
+    // An insertion at either edge of a span the other side replaced: on an uncertain base, the insertion may be typing the
+    // replacement already holds, and both would put it in twice (cfx-F003).
+    if (uncertainBase && other && touchesReplaced(first, other)) return null;
     apply(first);
     if (theirsFirst) i++;
     else j++;

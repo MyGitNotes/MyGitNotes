@@ -1,7 +1,7 @@
 import { type Document, Hocuspocus, type LocalTransactionOrigin } from '@hocuspocus/server';
-import { liveContentHash, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, type RepositoryId, type TextEdit, textEdits } from '@mygitnotes/core';
+import { LIVE_MAX_BYTES, liveContentHash, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RepositoryId, type TextEdit, textEdits } from '@mygitnotes/core';
 import * as Y from 'yjs';
-import type { EditorRef, LiveStore, StoredDocument, StoredLink } from './store.js';
+import type { EditorRef, LiveStore, MergeRecord, StoredDocument, StoredLink } from './store.js';
 
 /*
  * The Yjs documents of the built-in editor's live links in one process (docs/specs/2026-11-15-builtin-live-editor §4).
@@ -37,8 +37,13 @@ export interface LiveDocuments {
   /**
    * A server-side write: `change` turns the current text into the new one, and the difference is appended to the store
    * before the document takes it. Writes of one document run one after another.
+   *
+   * With `merge`, the write is a merge that may be asked for again: its append leaves `merge.answer(hash of the new
+   * text)` under `merge.key` in the same step, and the write answers it as `answer`. When the store already holds an
+   * answer under that key (another process, or an earlier request, landed the same merge), nothing is appended or
+   * applied, and that answer comes back as `merged`.
    */
-  edit(link: StoredLink, editor: EditorRef | null, change: (current: string, hash: string) => string): Promise<{ text: string; hash: string; changed: boolean; }>;
+  edit(link: StoredLink, editor: EditorRef | null, change: (current: string, hash: string) => string, merge?: LiveMergeWrite): Promise<{ text: string; hash: string; changed: boolean; answer?: string; merged?: string; }>;
   /** Loads the link's document from the store when this process does not hold it, brings it up to the link, and holds it. */
   open(link: StoredLink): Promise<OpenLiveDocument>;
   /**
@@ -70,6 +75,12 @@ export interface LiveDocuments {
   shutdown(): Promise<void>;
   /** The server the documents live in: the socket hands it connections and hooks into it. */
   readonly hocuspocus: Hocuspocus;
+}
+
+/** What makes a server-side write a merge that a repeat finds again. */
+export interface LiveMergeWrite extends Pick<MergeRecord, 'key' | 'until'> {
+  /** The answer to keep, given the hash of the text the merge made. */
+  answer(hash: string): string;
 }
 
 export interface LiveDocumentsOptions {
@@ -155,6 +166,32 @@ export function textUpdate(document: Y.Doc, next: string): Uint8Array | null {
   }
 }
 
+/**
+ * The most units one update may add to a live document, and the most a merge walks, for a text of at most `maxBytes`:
+ * clocks of every client, deleted runs included. A deleted run is stored as its length alone, so a few bytes of an update
+ * can claim any length; an update that claims more is refused (cfx-F001). The server's own rewrites add units a document
+ * never sheds, so a document may grow past this; a merge then does not walk it (cfx2-F001).
+ */
+export const liveMaxUnits = (maxBytes: number = LIVE_MAX_BYTES) => 4 * maxBytes;
+
+/** The units a state vector names: the sum of its clocks. */
+const unitsOf = (vector: Map<number, number>) => {
+  let units = 0;
+  for (const clock of vector.values()) units += clock;
+  return units;
+};
+
+/** The units a document holds once it takes `update`, without taking it; Infinity for an update that cannot be read. */
+function unitsAfter(document: Y.Doc, update: Uint8Array): number {
+  const ends = Y.decodeStateVector(Y.encodeStateVector(document));
+  try {
+    for (const struct of Y.decodeUpdate(update).structs) ends.set(struct.id.client, Math.max(ends.get(struct.id.client) ?? 0, struct.id.clock + struct.length));
+  } catch {
+    return Infinity;
+  }
+  return unitsOf(ends);
+}
+
 /** What a live text never holds (`normalizeLiveText`). */
 const CONTROL = /[\r\0]/;
 
@@ -225,6 +262,100 @@ function storedDocument(stored: StoredDocument): Y.Doc {
   Y.applyUpdate(document, stored.state);
   for (const update of stored.log) Y.applyUpdate(document, update);
   return document;
+}
+
+/** The UTF-16 units of each client's live string items in a document's text, by clock, for reading a unit by its id. */
+function liveUnits(text: Y.Text): (client: number, clock: number) => string | undefined {
+  const runs = new Map<number, { clock: number; str: string; }[]>();
+  for (let item = text._start; item; item = item.right) {
+    if (item.deleted || !(item.content instanceof Y.ContentString)) continue;
+    const list = runs.get(item.id.client) ?? [];
+    list.push({ clock: item.id.clock, str: item.content.str });
+    runs.set(item.id.client, list);
+  }
+  for (const list of runs.values()) list.sort((a, b) => a.clock - b.clock);
+  return (client, clock) => {
+    const list = runs.get(client);
+    if (!list) return undefined;
+    let low = 0, high = list.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1, run = list[middle];
+      if (clock < run.clock) high = middle - 1;
+      else if (clock >= run.clock + run.str.length) low = middle + 1;
+      else return run.str[clock - run.clock];
+    }
+    return undefined;
+  };
+}
+
+/**
+ * How a tab's typing kept of a released epoch merges (`LiveMergeRequest.typedIn`), from the document that epoch ended with
+ * (`ended`) and the tab's whole Yjs update of it: `base` is the text the document ended with and `text` the tab's typing on
+ * it; Yjs takes what the document already holds once, so typing the server stored before the tab heard so is in the base,
+ * not the change (cf16-F001).
+ *
+ * Where the ended document holds changes the tab never had (someone else typed while it was cut off), Yjs would string two
+ * replacements of one line together, so the tab's text is instead merged by character (A4) on what both had: the units
+ * both documents know that not both deleted. Two insertions at one point then conflict, since the span between them may
+ * have been replaced on both sides (spec A3.1, S6 (c)).
+ * Null for an update that cannot be read or that claims more than `maxUnits` (`liveMaxUnits`) units the ended document
+ * does not hold (cfx-F001); `unwalked` for an ended document past `maxUnits`, which server rewrites can make (cfx2-F001)
+ * and whose units would take too long to walk: the typing then merges on the base the tab names.
+ */
+export function typedInTexts(ended: Pick<StoredDocument, 'state' | 'log'>, update: Uint8Array, maxUnits = liveMaxUnits()): { base: string; text: string; } | { conflict: true; } | 'unwalked' | null {
+  const server = storedDocument({ ...ended, gen: 0, seq: 0 });
+  const tab = new Y.Doc();
+  try {
+    try {
+      Y.applyUpdate(tab, update);
+    } catch {
+      return null;
+    }
+    const serverText = server.getText(CONTENT), tabText = tab.getText(CONTENT);
+    const base = serverText.toString(), mine = tabText.toString();
+    const serverKnows = Y.decodeStateVector(Y.encodeStateVector(server)), tabKnows = Y.decodeStateVector(Y.encodeStateVector(tab));
+    // The first walk below is bounded by the server's units, the second by those plus what only the tab claims.
+    let excess = 0;
+    for (const [client, clock] of tabKnows) excess += Math.max(0, clock - (serverKnows.get(client) ?? 0));
+    if (excess > maxUnits) return null;
+    if (unitsOf(serverKnows) > maxUnits) return 'unwalked';
+    const serverDeleted = Y.createDeleteSetFromStructStore(server.store), tabDeleted = Y.createDeleteSetFromStructStore(tab.store);
+    const knownTo = (vector: Map<number, number>, client: number, clock: number) => clock < (vector.get(client) ?? 0);
+    // Changes the tab never had: units the server made it never heard of, or deleted where the tab still has them.
+    let unseen = [...serverKnows].some(([client, clock]) => clock > (tabKnows.get(client) ?? 0));
+    for (let item = serverText._start; item && !unseen; item = item.right) {
+      if (!item.deleted) continue;
+      for (let unit = 0; unit < item.length && !unseen; unit++) {
+        const id = Y.createID(item.id.client, item.id.clock + unit);
+        unseen = knownTo(tabKnows, id.client, id.clock) && !Y.isDeleted(tabDeleted, id);
+      }
+    }
+    if (!unseen) {
+      try {
+        Y.applyUpdate(server, update);
+      } catch {
+        return null;
+      }
+      return { base, text: serverText.toString() };
+    }
+    // What both had, in the tab's order: each unit both know that not both deleted, read from whichever still holds it.
+    const serverUnit = liveUnits(serverText);
+    let ancestor = '';
+    for (let item = tabText._start; item; item = item.right) {
+      const str = !item.deleted && item.content instanceof Y.ContentString ? item.content.str : null;
+      for (let unit = 0; unit < item.length; unit++) {
+        const id = Y.createID(item.id.client, item.id.clock + unit);
+        if (!knownTo(serverKnows, id.client, id.clock)) continue;
+        if (str !== null) ancestor += str[unit];
+        else if (!Y.isDeleted(serverDeleted, id)) ancestor += serverUnit(id.client, id.clock) ?? '';
+      }
+    }
+    const text = rebaseLiveText(ancestor, base, mine, undefined, { uncertainBase: true });
+    return text === null ? { conflict: true } : { base, text };
+  } finally {
+    server.destroy();
+    tab.destroy();
+  }
 }
 
 /** What this process knows of a document it holds. */
@@ -393,10 +524,14 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
     }
   };
 
-  /** Appends an update to the store, then applies it to the held document: never the other way round. */
-  const put = async (link: LiveEpoch, document: Document, state: Held, update: Uint8Array, editor: EditorRef | null) => {
-    const appended = await store.append(link.id, link.epoch, update, editor, clock());
+  /**
+   * Appends an update to the store, then applies it to the held document: never the other way round. An update that
+   * carries a merge record the store already holds an answer for is neither appended nor applied, and that answer is returned.
+   */
+  const put = async (link: LiveEpoch, document: Document, state: Held, update: Uint8Array, editor: EditorRef | null, merge?: MergeRecord): Promise<string | undefined> => {
+    const appended = await store.append(link.id, link.epoch, update, editor, clock(), merge);
     if (appended === 'not-live') throw new LiveNotLiveError();
+    if ('merged' in appended) return appended.merged;
     if (document.isDestroyed) return;
     Y.applyUpdate(document, update, APPENDED);
     state.top = Math.max(state.top, appended.seq);
@@ -462,7 +597,7 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       const stored = await store.document(link.id, link.epoch);
       return stored ? (await squash(link.id, link.epoch, stored)).hash : link.contentHash;
     },
-    edit(link, editor, change) {
+    edit(link, editor, change, merge) {
       return serial(liveDocumentName(link), async () => {
         const { document, state, close } = await hold(link);
         try {
@@ -472,8 +607,10 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
           const next = change(current.text, current.hash);
           const update = next === current.text ? null : textUpdate(document, next);
           if (!update) return { ...current, changed: false };
-          await put(link, document, state, update, editor);
-          return { ...heldText({ document, state }), changed: true };
+          const answer = merge?.answer(liveContentHash(next));
+          const merged = await put(link, document, state, update, editor, merge && answer !== undefined ? { key: merge.key, answer, until: merge.until } : undefined);
+          if (merged !== undefined) return { ...current, changed: false, merged };
+          return { ...heldText({ document, state }), changed: true, ...(answer !== undefined ? { answer } : {}) };
         } finally {
           await close();
         }
@@ -499,6 +636,8 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       if (verdict === 'not-typing') throw new LiveUpdateRefusedError();
       if (verdict === 'waiting') throw new LiveUpdateWaitingError();
       if (Y.snapshotContainsUpdate(Y.snapshot(document), update)) return false;
+      // A deleted run claims units by its length alone: an update that adds more than a live text needs is refused.
+      if (unitsAfter(document, update) - unitsOf(Y.decodeStateVector(Y.encodeStateVector(document))) > liveMaxUnits(maxBytes)) throw new LiveTooLargeError();
       // Only an update that could take the text past the limit is measured, on a copy.
       if (document.getText(CONTENT).length * 3 + update.byteLength > maxBytes) {
         const copy = new Y.Doc();

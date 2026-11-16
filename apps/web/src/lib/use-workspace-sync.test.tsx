@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { createElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, renderHook, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react';
 import YAML from 'yaml';
 import { expect, it, vi } from 'vitest';
 import type { FolderItem } from './types.js';
@@ -92,4 +92,21 @@ it("gives each notebook its repository's preferences, and the default repository
   expect(notebookPreferences('notes~a')).toMatchObject({ defaultShowLineNumbers: false });
   expect(notebookPreferences()).toMatchObject({ defaultShowLineNumbers: false });
   expect(notebookPreferences('elsewhere~x')).toMatchObject({ defaultShowLineNumbers: false });
+});
+
+it('never stages over the conflict draft of a live note: the person picks what to keep first (cf16-F002)', async () => {
+  const wrapper = ({ children }: { children: ReactNode; }) => createElement(QueryClientProvider, { client: new QueryClient() }, children);
+  const { result } = renderHook(() => useWorkspaceSync({}), { wrapper });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  const base = { id: 'x', path: 'src/x.md', notebookId: 'code~src', title: 'X', tags: [], metadata: { title: 'X' }, content: 'base\n' };
+  act(() => void result.current.stageWorkingNote({ ...base, content: 'mine one\n' }, base, 'live-merge-conflict'));
+  // Typing in the direct editor, a second conflict, or any other write would put its text in that one slot.
+  expect(() => result.current.stageWorkingNote({ ...base, content: 'typed later\n' }, base)).toThrow();
+  expect(() => result.current.stageWorkingNote({ ...base, content: 'mine two\n' }, base, 'live-merge-conflict')).toThrow();
+  expect(result.current.readDraft('code~src', 'src/x.md')).toMatchObject({ blocked: 'live-merge-conflict', note: { content: 'mine one\n' } });
+  // Discarded, the slot is free again.
+  act(() => result.current.updateDraft('code~src', 'src/x.md', null));
+  act(() => void result.current.stageWorkingNote({ ...base, content: 'typed later\n' }, base));
+  expect(result.current.readDraft('code~src', 'src/x.md')?.note.content).toBe('typed later\n');
+  act(() => result.current.updateDraft('code~src', 'src/x.md', null));
 });

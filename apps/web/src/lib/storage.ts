@@ -1,5 +1,6 @@
 import { LocalDraft } from './types.js';
 import { noteDemoWrite } from './demo-storage.js';
+import { relocateUnsynced, unsyncedLiveStore } from './live-unsynced.js';
 
 const DRAFT_PREFIX = 'gh_notes_draft';
 
@@ -124,4 +125,15 @@ export function adoptGraphDrafts(scope: string): void {
   } catch (err) {
     console.error('Failed to adopt graph drafts:', err);
   }
+}
+
+/**
+ * What a note leaves in this browser once it is moved or renamed: the editor's unsaved copy for its old path goes, the
+ * conflicted copy follows it, and so does the live typing its editors kept unsynced (cf16-F012), so nothing is left
+ * under a path no note has.
+ */
+export async function forgetNoteDrafts(scope: string, notebookId: string, path: string, destination: string): Promise<void> {
+  clearLocalDraft(scope, path);
+  moveLocalDraft(`${scope}:conflict`, path, destination);
+  await relocateUnsynced(unsyncedLiveStore(), scope, notebookId, path, destination).catch(() => {});
 }

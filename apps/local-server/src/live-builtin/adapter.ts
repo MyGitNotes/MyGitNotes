@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
-import { liveDocumentName, type LiveDocuments, liveDocuments, type LiveSnapshot, seedLiveState } from './documents.js';
+import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, liveMergeAnswerOf, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, type LiveTypedIn, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
+import { liveDocumentName, type LiveDocuments, liveDocuments, liveMaxUnits, type LiveSnapshot, seedLiveState, typedInTexts } from './documents.js';
 import { liveSocket, type LiveSocketLimits } from './socket.js';
-import { type EditorRef, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
+import { type EditorRef, LIVE_MERGE_MS, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
 
 /*
  * The built-in live editor as a `LiveNotes` (docs/specs/2026-11-15-builtin-live-editor §2, §5): the seam's calls over
@@ -31,10 +31,14 @@ export interface BuiltinLiveNotesOptions {
   /** Whether the built-in editor covers a repository. */
   covers(repository: RepositoryId): boolean;
   /**
-   * `service.open`: the repository with the deployment's own write credential, its commits authored by `author`
-   * (none: the credential's account). The check-in engine is its only caller.
+   * `service.open`: the repository a check-in commits through, its commits authored by `author` (none: the credential's
+   * account). `as.person` is the editor the engine commits as: an edition that commits with the editors' own
+   * credentials opens the repository with that person's and throws `LiveCredentialError` when they cannot commit there,
+   * so the engine asks as the next editor; one that commits with a credential of its own may ignore it. Without `as`
+   * (a note whose editors were recorded without a person) there is nobody to commit as. The check-in engine is its only
+   * caller.
    */
-  open(repository: RepositoryId, author?: CommitAuthor): Promise<RemoteSource>;
+  open(repository: RepositoryId, author?: CommitAuthor, as?: LiveOpenAs): Promise<RemoteSource>;
   /** `redisLiveStore({ url })`, or `memoryLiveStore()` for a deployment that accepts losing live text on restart. */
   store: LiveStore;
   notify?(notice: LiveNotice): Promise<void>;
@@ -78,17 +82,26 @@ export interface BuiltinLiveParts {
 }
 
 const BUILTIN: LiveBuiltinEditorInfo = { kind: 'builtin' };
-const DEFAULT_LIMITS: BuiltinLiveLimits = { maxBytes: LIVE_MAX_BYTES, idleMs: 10 * 60_000, leaseMs: 5 * 60_000, ringTexts: 64, ringBytes: 16 * 1024 * 1024, maxPayload: 8 * 1024 * 1024, maxDocuments: 200, maxConnections: 50, maxUnseated: 100, maxUnseatedPerAddress: 10, maxAwarenessBytes: 4096, pollMs: 5000, beatMs: 15_000, shutdownMs: 15_000, socketMs: 10 * 60_000 };
+const DEFAULT_LIMITS: BuiltinLiveLimits = { maxBytes: LIVE_MAX_BYTES, idleMs: 10 * 60_000, leaseMs: 5 * 60_000, ringTexts: 64, ringBytes: 16 * 1024 * 1024, maxPayload: 8 * 1024 * 1024, maxDocuments: 200, maxConnections: 50, maxUnseated: 100, maxUnseatedPerAddress: 10, maxAwarenessBytes: 4096, pollMs: 5000, beatMs: 15_000, shutdownMs: 15_000, socketMs: 10 * 60_000, leaveMs: 5000 };
 const REVISION = /^t:([0-9a-f]{64})$/;
+/** A merge changed what the live note changed too: nothing of it is taken. */
+class MergeConflict extends Error {}
+/**
+ * The store key of a merge's answer: one per person, link and merge id, so nobody answers, or forestalls, someone else's
+ * merge by naming its id, and a repeat finds the answer in the reopened note too.
+ */
+const mergeKey = ({ person }: LiveContext, id: string, mergeId: string) => createHash('sha256').update(JSON.stringify([person.realm, person.userId, id, mergeId]), 'utf8').digest('hex');
 const iso = (time: number) => new Date(time).toISOString();
 
 /**
- * Who an edit is recorded for: a person or an agent, by their verified email in lower case, else by their sign-in. The
- * email is the identity's (`LiveContext.author`), never a client's word, and no email is made up where there is none.
+ * Who an edit is recorded for: a person or an agent, by their verified email in lower case, else by their sign-in, with
+ * the person they signed in as, whose own credential a check-in may commit with. The name and email are the identity's
+ * (`LiveContext.live`, else `LiveContext.author`), never a client's word, and no email is made up where there is none.
  */
-export function liveEditorRef({ person, author }: LiveContext, agent: boolean): EditorRef {
+export function liveEditorRef(context: LiveContext, agent: boolean): EditorRef {
+  const { person } = context, shown = liveIdentityOf(context);
   const signIn = `${person.realm}:${person.userId}`;
-  return { key: `${agent ? 'agent' : 'person'}:${author?.email ? author.email.toLowerCase() : signIn}`, name: editorName(author?.name || signIn), ...(author?.email ? { email: author.email } : {}), agent };
+  return { key: `${agent ? 'agent' : 'person'}:${shown?.email ? shown.email.toLowerCase() : signIn}`, name: editorName(shown?.name || signIn), ...(shown?.email ? { email: shown.email } : {}), agent, person: { realm: person.realm, userId: person.userId } };
 }
 
 /** The longest editor name the check-in engine takes, in UTF-16 units; a longer one is cut, never split in a surrogate pair. */
@@ -142,7 +155,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     if (!link?.live || link.repository !== repository) throw new LiveNotLiveError();
     return link;
   };
-  const socket = liveSocket({ documents, store, clock, process: processName, ready, covers, ...(options.appUrl !== undefined ? { appUrl: options.appUrl } : {}), limits });
+  const socket = liveSocket({ documents, store, clock, process: processName, ready, covers, ...(options.appUrl !== undefined ? { appUrl: options.appUrl } : {}), limits, left: link => releaseUntouched(link) });
   const tokenOf = (lease: LiveLease) => typeof lease?.token === 'string' ? lease.token : '';
   /** The live link, when `lease` holds it now. */
   const leased = async (repository: RepositoryId, id: string, lease: LiveLease): Promise<StoredLink> => {
@@ -183,6 +196,21 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     });
     documents.remember(link, written);
     return written;
+  };
+
+  /** The base and text of typing a tab kept of an earlier epoch of `link`, from the document that epoch ended with; null once the store no longer has it. */
+  const typedIn = async (link: StoredLink, { document, update }: LiveTypedIn) => {
+    const at = document.lastIndexOf('.');
+    const epoch = Number(document.slice(at + 1));
+    if (document.slice(0, at) !== link.id || !Number.isSafeInteger(epoch) || epoch < 1 || epoch >= link.epoch) return null;
+    const ended = await store.ended(link.id, epoch, clock());
+    if (!ended) return null;
+    const texts = typedInTexts(ended, update, liveMaxUnits(limits.maxBytes));
+    if (!texts) throw new SourceError('typedIn.update is not a readable Yjs update, or claims more than a live note can hold beyond its document.', 400);
+    // An ended document too large to walk: the typing merges on the base the tab names.
+    if (texts === 'unwalked') return null;
+    if ('conflict' in texts) return texts;
+    return { base: fits(normalizeLiveText(texts.base)), text: fits(normalizeLiveText(texts.text)) };
   };
 
   const person = (context: LiveContext): LivePersonCalls =>
@@ -228,6 +256,43 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
         const link = isLiveId(id) ? await store.link(id) : null;
         return link && !link.live && link.repository === repository ? link.path : null;
       },
+      /*
+       * A text written on a base the writer names, merged by character over what the note became since (A4 of the
+       * collab-first spec). It is one more server write on the document's queue, in the writer's name, so they are
+       * credited and their credential may commit the check-in. A conflict, or a diff that ran out of time, takes nothing.
+       */
+      async merge(repository, id, request): Promise<LiveMergeAnswer> {
+        const link = await live(repository, id);
+        let base = fits(normalizeLiveText(request.base)), mine = fits(normalizeLiveText(request.text));
+        const key = mergeKey(context, link.id, request.mergeId);
+        // A repeat is answered before anything is computed; the append's own check decides between two that race.
+        const known = await store.mergeAnswer(key, clock());
+        if (known !== null) return liveMergeAnswerOf(JSON.parse(known));
+        // Typing a tab kept of an epoch that ended: merged on the text that epoch ended with, which holds whatever of it the
+        // server stored; once that is gone, the base the tab names may lack some of it, and two insertions at one point conflict.
+        let uncertainBase = false;
+        if (request.typedIn) {
+          const typed = await typedIn(link, request.typedIn);
+          if (typed && 'conflict' in typed) return { conflict: true };
+          if (typed) ({ base, text: mine } = typed);
+          else uncertainBase = true;
+        }
+        let written;
+        try {
+          written = await documents.edit(link, liveEditorRef(context, false), current => {
+            const next = rebaseLiveText(base, current, mine, undefined, { uncertainBase });
+            if (next === null) throw new MergeConflict();
+            return fits(next);
+          }, { key, until: clock() + LIVE_MERGE_MS, answer: hash => JSON.stringify({ applied: true, contentHash: hash }) });
+        } catch (error) {
+          if (error instanceof MergeConflict) return { conflict: true };
+          throw error;
+        }
+        if (written.merged !== undefined) return liveMergeAnswerOf(JSON.parse(written.merged));
+        documents.remember(link, written);
+        // Nothing to take (the note holds the text already) is applied too, and leaves no edit.
+        return written.answer !== undefined ? liveMergeAnswerOf(JSON.parse(written.answer)) : { applied: true, contentHash: written.hash };
+      },
     });
 
   const service = afterCheck<Required<LiveServiceCalls>>({
@@ -235,9 +300,9 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       return (await store.repositories()).filter(covers);
     },
     checkouts: rows,
-    async open(repository, author) {
+    async open(repository, author, as) {
       covered(repository);
-      return options.open(repository, author);
+      return options.open(repository, author, as);
     },
     async lease(repository, id) {
       const link = await live(repository, id);
@@ -254,7 +319,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       if (!(await store.leaseRead(link.id, tokenOf(lease), shot.seq, shot.hash, clock()))) throw new LiveLeasedError();
       documents.remember(link, shot);
       const [editors, initial, activeEditors] = await Promise.all([store.editors(link.id), link.path === null ? store.initialText(link.id) : null, active(link)]);
-      return { ...textOf(shot), checkout: rowOf(link, shot.hash, activeEditors), editors: editors.map((editor): LiveEditor => ({ name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, firstAt: iso(editor.firstAt), lastAt: iso(editor.lastAt) })), ...(initial !== null ? { initialText: initial } : {}) };
+      return { ...textOf(shot), checkout: rowOf(link, shot.hash, activeEditors), editors: editors.map((editor): LiveEditor => ({ name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, firstAt: iso(editor.firstAt), lastAt: iso(editor.lastAt), ...(editor.person !== undefined ? { person: editor.person } : {}) })), ...(initial !== null ? { initialText: initial } : {}) };
     },
     async mergeIn(repository, id, lease, change) {
       // A merge is nobody's edit: it names no editor and leaves lastEditAt.
@@ -309,6 +374,38 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       await store.unlease(link.id, tokenOf(lease), clock());
     },
   });
+
+  /**
+   * Releases a note its last editor just left when nobody typed in it, or what they typed was undone: its text is the
+   * one it was checked out (or last synced) with, so nothing is committed, and nothing locks it any longer (owner
+   * decision on cf16-F006). A note someone typed in is left to the idle check-in; one someone is still in, or that is
+   * being checked in, stays. A failure only leaves the note to the idle check-in.
+   */
+  const releaseUntouched = async ({ id, epoch }: { id: string; epoch: number; }) => {
+    try {
+      const link = await store.link(id);
+      if (!link?.live || link.epoch !== epoch || link.path === null || !link.base || !covers(link.repository)) return;
+      const { repository, path, base } = link;
+      if ((await documents.snapshot(link)).hash !== base.contentHash || (await active(link)) > 0) return;
+      let lease: LiveLease;
+      try {
+        lease = await service.lease(repository, id);
+      } catch (error) {
+        if (error instanceof LiveLeasedError || error instanceof LiveNotLiveError) return;
+        throw error;
+      }
+      try {
+        const detail = await service.detail(repository, id, lease);
+        if (detail.contentHash !== base.contentHash || detail.checkout.activeEditors > 0) return;
+        await service.synced(repository, id, lease, { commit: base.commit, blob: base.blob, contentHash: detail.contentHash, path, conflict: link.conflict });
+        await service.release(repository, id, lease, { contentHash: detail.contentHash });
+      } finally {
+        await service.unlease(repository, id, lease).catch(() => {});
+      }
+    } catch (error) {
+      console.warn(`[live-builtin] Releasing live note ${id} once everyone left failed: ${(error as Error)?.name ?? 'error'}.`);
+    }
+  };
 
   const liveNotes: BuiltinLiveNotes = {
     editors: [BUILTIN],

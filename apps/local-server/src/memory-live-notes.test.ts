@@ -22,6 +22,14 @@ liveNotesContract('memory', () => {
   return { liveNotes, repository, notebook: 'notes~life', root: 'notes/life', person, type: (id, text, who) => liveNotes.type(repository, id, text, who), setActive: (id, n) => liveNotes.setActive(repository, id, n), advance: ms => clock.advance(ms) };
 });
 
+// The same adapter listing each editor's person, as one that commits with the editors' own credentials does, and merging texts.
+liveNotesContract('memory (own credentials)', () => {
+  const files: MemoryFiles = new Map([['.mygitnotes.yaml', manifest], ['notes/life/a.md', '# A\n']]);
+  const clock = memoryLiveClock();
+  const liveNotes = memoryLiveNotes({ editor, repositories: [{ source, files }], clock, persons: true, merge: true });
+  return { ownCredentials: true, merges: true, liveNotes, repository, notebook: 'notes~life', root: 'notes/life', person, type: (id, text, who) => liveNotes.type(repository, id, text, who), setActive: (id, n) => liveNotes.setActive(repository, id, n), advance: ms => clock.advance(ms) };
+});
+
 describe('the memory live notes', () => {
   const base = { commit: 'a'.repeat(40), blob: 'b'.repeat(40), content: '# A\n' };
 

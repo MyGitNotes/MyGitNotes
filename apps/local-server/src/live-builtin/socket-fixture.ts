@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { createServer, type RequestListener } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import { HocuspocusProvider, HocuspocusProviderWebsocket, WebSocketStatus } from '@hocuspocus/provider';
 import { OutgoingMessage } from '@hocuspocus/server';
 import { deriveAlias, type EditionSourceConfig, repositoryName, repositoryRef, siteOf, textEdits, type WorkspaceConfigSource, type WorkspaceMember } from '@mygitnotes/core';
 import { Router } from 'express';
@@ -93,13 +93,16 @@ export interface LiveTab {
   refused: string[];
   /** Every close it saw: its socket's, with the code, and its document's (code 1000, with the server's reason). */
   closes: { code: number; reason: string; }[];
-  /** The first sync with the server is done. */
+  /**
+   * The tab has the server's text. The server may not have taken the tab's half of that first sync yet (`saved` waits
+   * for it): a test that moves the clock past `socketMs` before then has the socket closed for a new ticket when it lands.
+   */
   synced(): Promise<void>;
   /** The server acknowledged everything the tab typed. */
   saved(): Promise<void>;
   /** Closes the tab's socket and keeps it closed, as a network that went away. */
   offline(): void;
-  /** Lets the tab connect again. */
+  /** Lets the tab connect again, once its socket closed; if that never happens, the next `synced` or `saved` fails. */
   online(): void;
   /** Drops the tab's socket without a goodbye, as when the server died: the tab connects again by itself. */
   cut(): void;
@@ -141,7 +144,7 @@ export interface LiveServer {
 
 /** The environment `createApp` reads, for a test: stubbed until `vi.unstubAllEnvs()`. */
 export function stubLiveEnv(): void {
-  for (const [key, value] of Object.entries({ SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', REDIS_URL: '', KV_REST_API_URL: '', MYGITNOTES_STORAGE: '', APP_URL: APP_ORIGIN, VERCEL: '', MYGITNOTES_PRODUCT_REPOSITORY: '', MYGITNOTES_SOURCE: 'github', MYGITNOTES_LIVE_SWEEP_SECRET: '', MYGITNOTES_LIVE_CHECKIN_AT: 'off', MYGITNOTES_TIMEZONE: '' })) vi.stubEnv(key, value);
+  for (const [key, value] of Object.entries({ SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', REDIS_URL: '', KV_REST_API_URL: '', MYGITNOTES_STORAGE: '', APP_URL: APP_ORIGIN, VERCEL: '', MYGITNOTES_PRODUCT_REPOSITORY: '', MYGITNOTES_SOURCE: 'github', MYGITNOTES_LIVE_SWEEP_SECRET: '', MYGITNOTES_LIVE_CHECKIN_AT: 'off', MYGITNOTES_LIVE_IDLE_CHECKIN: 'off', MYGITNOTES_TIMEZONE: '' })) vi.stubEnv(key, value);
 }
 
 /** An HTTP server that runs the app over `first` and hands its adapter the upgrades. People p1 and p2 write; p3 only reads. */
@@ -183,6 +186,12 @@ export async function liveServer(first: BuiltinFixture): Promise<LiveServer> {
       const document = new Y.Doc();
       if (options.clientId !== undefined) document.clientID = options.clientId;
       const content = document.getText('content');
+      /** Why `online` could not connect the tab again: the next wait for the tab fails with it, not the run. */
+      let unreachable: Error | undefined;
+      const connectedAgain = () => {
+        if (unreachable) throw unreachable;
+        return tab.provider.isSynced;
+      };
       const tab: LiveTab = {
         provider: undefined as unknown as HocuspocusProvider,
         document: name,
@@ -201,10 +210,12 @@ export async function liveServer(first: BuiltinFixture): Promise<LiveServer> {
         asked: 0,
         refused: [],
         closes: [],
-        synced: () => until(`the tab of person ${n} synced with the server`, () => tab.provider.isSynced),
-        saved: () => until(`the server acknowledged what person ${n} typed`, () => tab.provider.isSynced && tab.provider.unsyncedChanges === 0),
+        synced: () => until(`the tab of person ${n} synced with the server`, connectedAgain),
+        saved: () => until(`the server acknowledged what person ${n} typed`, () => connectedAgain() && tab.provider.unsyncedChanges === 0),
         offline: () => websocket.disconnect(),
-        online: () => void websocket.connect(),
+        // The provider's `connect` does nothing while its socket still reads as connected, and `disconnect` only marks it
+        // closed once the close event lands: connecting before then would leave the tab offline for good.
+        online: () => void until(`the tab of person ${n} saw its socket close`, () => websocket.status === WebSocketStatus.Disconnected).then(() => websocket.connect(), (error: Error) => void (unreachable = error)),
         cut: () => (websocket.webSocket as unknown as WebSocket | null)?.terminate(),
         destroy() {
           tab.provider.destroy();

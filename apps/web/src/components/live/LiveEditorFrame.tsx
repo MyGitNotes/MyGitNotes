@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, ExternalLink, Users } from 'lucide-react';
 import type { LiveFrameEditorInfo } from '@mygitnotes/core';
-import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
+import { useTranslation } from '../../lib/i18n/index.js';
 import { checkInLive, type LiveCheckInAnswer, type LiveCheckoutView } from '../../lib/live-api.js';
 import { isLiveEditorUrl, liveEmbedUrl, type LiveStatus, liveStatusOf, type LiveTheme, liveThemeMessage } from '../../lib/live-message.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { discardDraft, keptReason } from './live-drafts.js';
-import { stillOpenText } from './useLiveEdit.js';
+import { notCheckedInText, stillOpenText } from './useLiveEdit.js';
 import './live-editor.css';
 
 export interface LiveEditorFrameProps {
@@ -30,8 +30,6 @@ export interface LiveEditorFrameProps {
 }
 
 type Phase = { kind: 'open'; } | { kind: 'checking'; } | { kind: 'released'; } | { kind: 'open-after'; answer: LiveCheckInAnswer; } | { kind: 'failed'; message: string; } | { kind: 'discarding'; } | { kind: 'discarded'; } | { kind: 'kept'; message: string; };
-
-const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled' };
 
 /**
  * The live editor of a checked-out note, framed (spec §8): rendered only for an embed URL of the editor's own origin, with
@@ -122,7 +120,7 @@ export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, o
   };
 
   const users = status?.users ?? checkout.activeEditors;
-  const stillOpen = (answer: LiveCheckInAnswer) => answer.reason === 'active' && answer.committed ? stillOpenText(t, answer.activeEditors ?? 1) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') });
+  const stillOpen = (answer: LiveCheckInAnswer) => answer.reason === 'active' && answer.committed ? stillOpenText(t, answer.activeEditors ?? 1) : notCheckedInText(t, answer.reason);
   return (
     <div className='live-editor-frame'>
       <div className='live-editor-bar' role='toolbar' aria-label={t('live.toolbar')}>

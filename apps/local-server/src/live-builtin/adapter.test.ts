@@ -7,7 +7,7 @@ import { liveEditorRef } from './adapter.js';
 import { builtinLiveNotes } from './index.js';
 import { memoryLiveStore } from './memory-store.js';
 import type { LiveStore } from './store.js';
-import { type BuiltinFixture, builtinFixture, gate, notebook, person, redisTestStores, repository, settle, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
+import { type BuiltinFixture, builtinFixture, gate, hugeDeletedUpdate, notebook, person, redisTestStores, repository, settle, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
 
 /*
  * The built-in live editor's adapter and documents (docs/specs/2026-11-15-builtin-live-editor §2, §4, §5, §19, §20;
@@ -24,9 +24,9 @@ const note = 'notes/life/a.md';
 /** No link has this id. */
 const unknown = 'A'.repeat(22);
 const base = (content: string, n = 1) => ({ commit: String(n % 10).repeat(40), blob: 'b'.repeat(39) + String(n % 10), content });
-const editorOf = (n: number) => ({ key: `person:p${n}@example.test`, name: `Person ${n}`, email: `p${n}@example.test`, agent: false });
+const editorOf = (n: number) => ({ key: `person:p${n}@example.test`, name: `Person ${n}`, email: `p${n}@example.test`, agent: false, person: { realm: 'edition', userId: `p${n}` } });
 /** The n-th person as a detail lists them, having typed only at the fixture's first instant. */
-const listed = (n: number) => ({ name: `Person ${n}`, email: `p${n}@example.test`, agent: false, firstAt: iso(T0), lastAt: iso(T0) });
+const listed = (n: number) => ({ name: `Person ${n}`, email: `p${n}@example.test`, agent: false, firstAt: iso(T0), lastAt: iso(T0), person: { realm: 'edition', userId: `p${n}` } });
 const ticketHash = (ticket: string) => createHash('sha256').update(ticket, 'utf8').digest('hex');
 
 const checkout = async (f: BuiltinFixture, content = '# A\n', path = note, n = 1) => (await f.liveNotes.person(person(n)).checkout(repository, { notebook, path, base: base(content) })).checkout;
@@ -53,7 +53,7 @@ afterEach(async () => {
 
 const kit = (store: () => LiveStore) => () => {
   const { time, liveNotes } = builtinFixture({ store: store() });
-  return { liveNotes, repository, notebook, root: 'notes/life', person, type: (id: string, text: string, who: LiveContext) => liveNotes.type(repository, id, text, who), setActive: (id: string, n: number) => liveNotes.setActive(repository, id, n), advance: (ms: number) => time.advance(ms) };
+  return { ownCredentials: true, merges: true, liveNotes, repository, notebook, root: 'notes/life', person, type: (id: string, text: string, who: LiveContext) => liveNotes.type(repository, id, text, who), setActive: (id: string, n: number) => liveNotes.setActive(repository, id, n), advance: (ms: number) => time.advance(ms) };
 };
 
 liveNotesContract('builtin (memory store)', kit(() => memoryLiveStore()));
@@ -243,6 +243,178 @@ describe('durable before acknowledged', () => {
     await expect(f.liveNotes.setActive(repository, made.id, 1)).rejects.toBeInstanceOf(LiveNotLiveError);
     expect(await f.store.link(made.id)).toMatchObject({ live: false, seq: 0, lastEditAt: null });
     expect(await f.store.editors(made.id)).toEqual([]);
+  });
+});
+
+/*
+ * cf16-F001: typing a tab kept after its note was released is merged on what the ended document held, so what of it the
+ * server already stored (an update whose acknowledgement never came back) lands once.
+ */
+describe('merging typing a tab kept', () => {
+  /** A tab holds the note's document, types `stored`, which the server takes without the tab hearing so, then types `kept` offline. */
+  const tabTyping = async (f: BuiltinFixture, id: string, stored: string, kept: string) => {
+    const link = (await f.store.link(id))!;
+    const held = await f.documents.open(link);
+    const tab = new Y.Doc();
+    Y.applyUpdate(tab, Y.encodeStateAsUpdate(held.document));
+    const updates: Uint8Array[] = [];
+    tab.on('update', (update: Uint8Array) => void updates.push(update));
+    const text = tab.getText('content');
+    text.insert(text.length, stored);
+    await f.documents.accept(link, updates[0], editorOf(1));
+    await held.close();
+    text.insert(text.length, kept);
+    return { document: `${id}.${link.epoch}`, update: Y.encodeStateAsUpdate(tab), text: text.toString() };
+  };
+  const merge = (f: BuiltinFixture, id: string, request: { base: string; text: string; mergeId: string; typedIn?: { document: string; update: Uint8Array; }; }) => f.liveNotes.person(person(1)).merge!(repository, id, request);
+
+  it('takes what the server stored of it once, whatever base the tab names, the empty one included', async () => {
+    for (const tabBase of ['# A\n', '']) {
+      const f = builtinFixture();
+      const made = await checkout(f, '# A\n');
+      const tab = await tabTyping(f, made.id, 'stored ', 'and kept\n');
+      expect((await checkIn(f, made.id)).release).toEqual({ released: true });
+      await checkout(f, '# A\nstored ', note, 2);
+      await type(f, made.id, 'Z\n# A\nstored ', 2);
+      expect(await merge(f, made.id, { base: tabBase, text: tab.text, mergeId: `kept-${tabBase.length}-merge`, typedIn: { document: tab.document, update: tab.update } })).toMatchObject({ applied: true });
+      expect((await read(f, made.id)).content).toBe('Z\n# A\nstored and kept\n');
+    }
+  });
+
+  it('takes a repeat of the same kept typing once, under a new merge id too', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\n');
+    const tab = await tabTyping(f, made.id, 'stored ', 'and kept\n');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\nstored ', note, 2);
+    const typedIn = { document: tab.document, update: tab.update };
+    await merge(f, made.id, { base: '# A\n', text: tab.text, mergeId: 'kept-merge-one', typedIn });
+    await merge(f, made.id, { base: '# A\n', text: tab.text, mergeId: 'kept-merge-two', typedIn });
+    expect((await read(f, made.id)).content).toBe('# A\nstored and kept\n');
+  });
+
+  /** A tab that forked the note's document, so what the server takes after this never reaches it. */
+  const forkedTab = async (f: BuiltinFixture, id: string) => {
+    const link = (await f.store.link(id))!;
+    const held = await f.documents.open(link);
+    const tab = new Y.Doc();
+    Y.applyUpdate(tab, Y.encodeStateAsUpdate(held.document));
+    await held.close();
+    const text = tab.getText('content');
+    const kept = () => ({ document: `${id}.${link.epoch}`, update: Y.encodeStateAsUpdate(tab), text: text.toString() });
+    return { text, kept };
+  };
+  const replace = (text: Y.Text, from: string, to: string) => {
+    const at = text.toString().indexOf(from);
+    text.delete(at, from.length);
+    text.insert(at, to);
+  };
+
+  // Spec A3.1 and S6 (c): two people who replaced the same line, one of them cut off, conflict; Yjs would string both together.
+  it('conflicts where someone else replaced the line the tab replaced while it was cut off', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\nThe plan.\n');
+    const tab = await forkedTab(f, made.id), other = await forkedTab(f, made.id);
+    const link = (await f.store.link(made.id))!;
+    const updates: Uint8Array[] = [];
+    other.text.doc!.on('update', (update: Uint8Array) => void updates.push(update));
+    replace(other.text, 'The plan.', 'Their plan.');
+    for (const update of updates) await f.documents.accept(link, update, editorOf(2));
+    replace(tab.text, 'The plan.', 'My plan.');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\nTheir plan.\n', note, 2);
+    const kept = tab.kept();
+    expect(await merge(f, made.id, { base: '# A\nThe plan.\n', text: kept.text, mergeId: 'kept-merge-same-line', typedIn: { document: kept.document, update: kept.update } })).toEqual({ conflict: true });
+    expect((await read(f, made.id)).content).toBe('# A\nTheir plan.\n');
+  });
+
+  it('merges typing kept apart from what someone else changed meanwhile, what the server stored of it once', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\nOne.\n\nTwo.\n');
+    const tab = await forkedTab(f, made.id);
+    const link = (await f.store.link(made.id))!;
+    const updates: Uint8Array[] = [];
+    tab.text.doc!.on('update', (update: Uint8Array) => void updates.push(update));
+    tab.text.insert(tab.text.toString().indexOf('Two.') + 4, ' stored');
+    await f.documents.accept(link, updates[0], editorOf(1));
+    await type(f, made.id, '# A\nOne, theirs.\n\nTwo. stored\n', 2);
+    tab.text.insert(tab.text.toString().indexOf('stored') + 6, ' and kept');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\nOne, theirs.\n\nTwo. stored\n', note, 2);
+    const kept = tab.kept();
+    for (const mergeId of ['kept-merge-apart', 'kept-merge-apart-again']) expect(await merge(f, made.id, { base: '# A\nOne.\n\nTwo.\n', text: kept.text, mergeId, typedIn: { document: kept.document, update: kept.update } })).toMatchObject({ applied: true });
+    expect((await read(f, made.id)).content).toBe('# A\nOne, theirs.\n\nTwo. stored and kept\n');
+  });
+
+  it('conflicts rather than doubling text once it no longer knows the ended document', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\n');
+    const tab = await tabTyping(f, made.id, 'stored ', 'and kept\n');
+    await checkIn(f, made.id);
+    f.time.advance(24 * 60 * 60_000 + 1);
+    await checkout(f, '# A\nstored ', note, 2);
+    expect(await merge(f, made.id, { base: '# A\n', text: tab.text, mergeId: 'kept-merge-late', typedIn: { document: tab.document, update: tab.update } })).toEqual({ conflict: true });
+    expect((await read(f, made.id)).content).toBe('# A\nstored ');
+  });
+
+  // cfx-F001: a deleted run is stored as its length alone, so a few bytes can name any length; walking it unit by unit would hold the process.
+  it('refuses with 400, at once, kept typing whose update claims a deleted run past any live text', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\n');
+    const tab = await tabTyping(f, made.id, 'stored ', 'kept\n');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\nstored ', note, 2);
+    const update = hugeDeletedUpdate(3e8);
+    expect(update.byteLength).toBeLessThan(64);
+    const started = Date.now();
+    await expect(merge(f, made.id, { base: '# A\n', text: 'x', mergeId: 'kept-merge-huge', typedIn: { document: tab.document, update } })).rejects.toMatchObject({ status: 400 });
+    expect(Date.now() - started).toBeLessThan(250);
+    expect((await read(f, made.id)).content).toBe('# A\nstored ');
+  });
+
+  // cfx2-F001: server rewrites add units a document never sheds; past the bound, the person's typing still goes in and kept typing still merges.
+  it('takes typing, and merges what a tab kept, after a hundred-odd whole rewrites of a 200 KB note', async () => {
+    const f = builtinFixture();
+    const lines = (n: number) => Array.from({ length: 2000 }, (_, line) => `${n} ${line} ${'x'.repeat(92)}`).join('\n') + '\n';
+    const made = await checkout(f, lines(0));
+    const link = (await f.store.link(made.id))!;
+    const tab = await forkedTab(f, made.id);
+    const held = await f.documents.open(link);
+    for (let n = 1; n <= 110; n++) await f.documents.edit(link, editorOf(3), () => lines(n));
+    const units = [...Y.decodeStateVector(Y.encodeStateVector(held.document)).values()].reduce((sum, clock) => sum + clock, 0);
+    expect(units).toBeGreaterThan(4 * LIVE_MAX_BYTES);
+    // A tab that is up to date types one character.
+    const live = new Y.Doc();
+    Y.applyUpdate(live, Y.encodeStateAsUpdate(held.document));
+    const updates: Uint8Array[] = [];
+    live.on('update', (update: Uint8Array) => void updates.push(update));
+    live.getText('content').insert(0, 'Z');
+    await expect(f.documents.accept(link, updates[0], editorOf(1))).resolves.toBe(true);
+    live.destroy();
+    await held.close();
+    // The forked tab typed offline; its epoch ended past the bound, and its typing still merges.
+    tab.text.insert(tab.text.length, 'kept\n');
+    await checkIn(f, made.id);
+    await checkout(f, `Z${lines(110)}`, note, 2);
+    const kept = tab.kept();
+    expect(await merge(f, made.id, { base: lines(0), text: kept.text, mergeId: 'kept-merge-rewritten', typedIn: { document: kept.document, update: kept.update } })).toMatchObject({ applied: true });
+    expect((await read(f, made.id)).content).toBe(`Z${lines(110)}kept\n`);
+  }, 60_000);
+
+  it('merges, at once and without walking it, kept typing of an epoch whose ended document claims a deleted run past any live text', async () => {
+    const f = builtinFixture();
+    const made = await checkout(f, '# A\n');
+    // Planted straight in the store, as a process from before the bound might have; an honest tab then holds it too.
+    await f.store.append(made.id, 1, hugeDeletedUpdate(3e8), editorOf(2), f.time.now());
+    const tab = await forkedTab(f, made.id);
+    tab.text.insert(tab.text.length, 'kept\n');
+    await checkIn(f, made.id);
+    await checkout(f, '# A\n', note, 2);
+    const kept = tab.kept();
+    const started = Date.now();
+    expect(await merge(f, made.id, { base: '# A\n', text: kept.text, mergeId: 'kept-merge-planted', typedIn: { document: kept.document, update: kept.update } })).toMatchObject({ applied: true });
+    expect(Date.now() - started).toBeLessThan(250);
+    expect((await read(f, made.id)).content).toBe('# A\nkept\n');
   });
 });
 
