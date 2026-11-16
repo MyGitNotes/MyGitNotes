@@ -14,6 +14,7 @@ import { LiveEditLinkProvider, liveEditLinkTarget } from './live-edit-link.js';
 
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
+    configuration = { websocketProvider: { webSocket: null } };
     destroy() {}
     on() {}
   },

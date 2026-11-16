@@ -9,6 +9,7 @@ import type { LiveBuiltinEditorInfo } from '@mygitnotes/core';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import { checkInLive, isMergeConflict, isNotLive, type LiveCheckInAnswer, type LiveCheckoutView, mergeLive, newMergeId, socketTicket } from '../../lib/live-api.js';
 import { holdClaim, takeClaim } from '../../lib/live-claims.js';
+import { noteLiveSocketClosing } from '../../lib/live-closing.js';
 import { liveOwnerClaim, relocateUnsynced, unsyncedKey, unsyncedLiveStore, type UnsyncedLiveText, unsyncedOf } from '../../lib/live-unsynced.js';
 import { isNetworkFailure } from '../../lib/api.js';
 import { onReachable } from '../../lib/live-reachability.js';
@@ -272,6 +273,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       taken = [];
       clearTimeout(timer);
       stopped = true;
+      // Its socket closes after this returns: a check-in of the note waits for that (VQ P1-a).
+      noteLiveSocketClosing(notebookId, path, provider?.configuration.websocketProvider?.webSocket);
       provider?.destroy();
       awareness.destroy();
       doc.destroy();

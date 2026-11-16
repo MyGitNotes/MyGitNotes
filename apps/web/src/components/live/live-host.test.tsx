@@ -20,6 +20,7 @@ import { LiveDraftsProvider } from './live-drafts.js';
 // The built-in editor's socket: a provider that never connects, so a test sees the tab ask for its ticket and wait.
 vi.mock('@hocuspocus/provider', () => ({
   HocuspocusProvider: class {
+    configuration = { websocketProvider: { webSocket: null } };
     destroy() {}
     on() {}
   },
