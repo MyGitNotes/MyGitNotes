@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { applyStageAction, applyStudyAction, createStudyNote, emptyStudyWorkspace, undoStudyAction } from '@mygitnotes/core/study';
-import { compilationRowItems, studyRowItems } from './compilation-content.js';
+import { compilationRowItems, studyQueueItems, studyRowItems } from './compilation-content.js';
 import type { NoteItem } from './types.js';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 const notes = [{ notebookId: 'a', path: 'notes/a/one.md', title: 'One', tags: ['clue'] }, { notebookId: 'b', path: 'notes/b/two.md', title: 'Two', tags: ['clue'] }, { notebookId: 'a', path: 'notes/a/sub/three.md', title: 'Three', tags: [] }, { notebookId: 'a', path: 'notes/ab/other.md', title: 'Other', tags: [] }].map((note, i) => ({ ...note, id: String(i), content: '', metadata: {} })) as NoteItem[];
@@ -85,4 +85,14 @@ it("lists a folder source's assets and sorts by statuses from the source's noteb
   const assets = [{ name: 'pic.png', notebookId: 'b', path: 'notes/b/pic.png', mtime: 1, size: 1, rawUrl: '', markdownRef: '' }, { name: 'own.png', notebookId: 'a', path: 'notes/b/own.png', mtime: 1, size: 1, rawUrl: '', markdownRef: '' }];
   const notebooks = [{ id: 'a', title: 'A', root: 'notes/a', statuses: ['done', 'draft'] }, { id: 'b', title: 'B', root: 'notes/b', statuses: ['draft', 'done'] }];
   expect(compilationRowItems(row, members, assets, notebooks).map(item => item.kind !== 'youtube' && `${item.notebookId}:${item.path}`)).toEqual(['b:notes/b/draft.md', 'b:notes/b/two.md', 'b:notes/b/pic.png']);
+});
+
+it('studies the pinned notes in flat order without chapter headings, while the reading views keep the headings in place', () => {
+  const selected = notes.slice(0, 2).map(note => ({ ...note, status: 'working' }));
+  const row: Extract<CompilationRow, { kind: 'custom'; }> = { id: 'chapters', path: 'notes/a/chapters.compilation.yml', name: 'Chapters', kind: 'custom', view: 'book', notebookId: 'a', items: [{ id: 'h1', kind: 'heading', title: 'One' }, { id: 'pin-0', kind: 'note', notebookId: 'a', path: selected[0].path }, { id: 'h2', kind: 'heading', title: 'Two' }, { id: 'pin-1', kind: 'note', notebookId: 'b', path: selected[1].path }, { id: 'v', kind: 'youtube', videoId: 'dQw4w9WgXcQ', start: 0 }] };
+  const queue = studyQueueItems(compilationRowItems(row, selected, []));
+  expect(queue.map(item => item.id)).toEqual(['pin-0', 'pin-1', 'v']);
+  expect(studyRowItems(queue, { ...row, study: { filter: 'all', dueFirst: true } }, selected, emptyStudyWorkspace()).map(item => item.id)).toEqual(['pin-0', 'pin-1', 'v']);
+  // A lane or book reads with the filter `all`, a status filter included: headings stay where they are.
+  expect(studyRowItems(row.items, { ...row, study: { filter: 'all', dueFirst: false, status: 'working' } }, selected, emptyStudyWorkspace()).map(item => item.id)).toEqual(['h1', 'pin-0', 'h2', 'pin-1']);
 });

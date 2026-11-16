@@ -122,6 +122,14 @@ describe('compilations in the remote catalog', () => {
     await expect(f.reader().save('notes/ex/reading.compilation.yml', note.content, note.metadata, 'stale')).rejects.toMatchObject({ status: 409 });
   });
 
+  it('lists a compilation with chapter headings as valid, counting its content items and its chapters', async () => {
+    const chaptered = compilation('chapters', '', '  - { id: h1, kind: heading, title: Internal meetings }\n  - { id: i1, kind: note, path: notes/ex/a.md }\n  - { id: h2, kind: heading, title: External meetings }\n  - { id: i2, kind: note, path: notes/other/z.md }');
+    const catalog = await catalogOf(githubFixture({ '.github-notes.yaml': manifest, 'notes/ex/a.md': '# A\n', 'notes/other/z.md': '# Z\n', 'notes/ex/chapters.compilation.yml': chaptered }));
+    const entry = (await queryNotes(catalog, query({ kind: 'compilation' }), options)).notes.find(note => note.path === 'notes/ex/chapters.compilation.yml');
+    expect(entry?.invalid).toBeUndefined();
+    expect(entry?.metadata).toMatchObject({ itemCount: 2, chapterCount: 2 });
+  });
+
   it('keeps compilations out of the note list that MCP reads', async () => {
     const reader = githubFixture(files).reader();
     const config = await reader.config();

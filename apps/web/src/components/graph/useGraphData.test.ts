@@ -9,6 +9,11 @@ it("draws only the members of the compilation's own notebook and counts the item
   expect(laneGraphMembers(row, ['notes/a/one.md', 'notes/b/two.md'])).toEqual({ ids: ['r~a:notes/a/one.md'], outside: 2 });
 });
 
+it('neither draws nor counts chapter headings', () => {
+  const row: CompilationRow = { ...base, id: 'h', kind: 'custom', items: [{ id: 'h1', kind: 'heading', title: 'One' }, { id: '1', kind: 'note', notebookId: 'r~a', path: 'notes/a/one.md' }, { id: 'h2', kind: 'heading', title: 'Two' }, { id: '2', kind: 'note', notebookId: 'r~b', path: 'notes/b/two.md' }] };
+  expect(laneGraphMembers(row, ['notes/a/one.md', 'notes/b/two.md'])).toEqual({ ids: ['r~a:notes/a/one.md'], outside: 1 });
+});
+
 it('counts every member of a dynamic folder source in another notebook as outside', () => {
   const row: CompilationRow = { ...base, id: 'd', kind: 'dynamic', source: { kind: 'folder', path: 'notes/b', recursive: true, notebookId: 'r~b' } };
   expect(laneGraphMembers(row, ['notes/b/x.md', 'notes/b/y.md'])).toEqual({ ids: [], outside: 2 });

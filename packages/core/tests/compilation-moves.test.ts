@@ -81,3 +81,28 @@ describe('references across notebooks of one repository', () => {
     expect(after.files.get('notes/a/handbook.compilation.yml')!.toString()).toBe(book);
   });
 });
+
+describe('references under chapter headings', () => {
+  const chaptered = `version: 1
+id: chapters
+title: Chapters
+arrangement: book
+items:
+  - { id: h1, kind: heading, title: Internal meetings }
+  - { id: n1, kind: note, path: notes/a/one/note.md }
+  - { id: h2, kind: heading, title: Folders }
+  - { id: f1, kind: folder, path: notes/a/one }
+  - { id: n2, kind: note, path: notes/a/two/other.md }
+`;
+  const headingLines = (text: string) => text.split('\n').filter(line => line.includes('kind: heading'));
+  const snapshot = (): FileSnapshot => ({ ...fileSnapshot(), files: new Map([...fileSnapshot().files, ['notes/a/chapters.compilation.yml', Buffer.from(chaptered)]]) });
+  it('rewrites a note and a folder under a heading and leaves the heading lines as they were', () => {
+    const noteMoved = planFileChange(snapshot(), { kind: 'move', notebookId: 'a', path: 'notes/a/one/note.md', destination: 'notes/a/two/renamed.md' }).files.get('notes/a/chapters.compilation.yml')!.toString();
+    expect(pinned(noteMoved)).toEqual([undefined, 'notes/a/two/renamed.md', undefined, 'notes/a/one', 'notes/a/two/other.md']);
+    expect(headingLines(noteMoved)).toEqual(headingLines(chaptered));
+    const folderMoved = planFileChange(snapshot(), { kind: 'move', notebookId: 'a', path: 'notes/a/one', destination: 'notes/a/renamed' }).files.get('notes/a/chapters.compilation.yml')!.toString();
+    expect(pinned(folderMoved)).toEqual([undefined, 'notes/a/renamed/note.md', undefined, 'notes/a/renamed', 'notes/a/two/other.md']);
+    expect(headingLines(folderMoved)).toEqual(headingLines(chaptered));
+    expect(YAML.parse(folderMoved).items.filter((item: { kind: string; }) => item.kind === 'heading').map((item: { title: string; }) => item.title)).toEqual(['Internal meetings', 'Folders']);
+  });
+});

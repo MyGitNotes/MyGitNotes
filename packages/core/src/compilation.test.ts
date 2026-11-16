@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { replaceFileTags } from './note-file.js';
 import YAML from 'yaml';
-import { applyCompilationMetadata, compilationCopyPath, compilationFields, type CompilationFile, compilationFile, compilationNotes, compilationRow, compilationSlug, copyCompilation, isCompilationPath, moveCompilationItem, parseCompilation, parseYouTubeUrl, relocateCompilation, serializeCompilation, uniqueCompilationPath } from './compilation.js';
+import { applyCompilationMetadata, compilationChapters, contentItems, compilationCopyPath, compilationFields, type CompilationFile, compilationFile, compilationNotes, compilationRow, compilationSlug, copyCompilation, isCompilationPath, moveCompilationItem, parseCompilation, parseYouTubeUrl, relocateCompilation, serializeCompilation, uniqueCompilationPath } from './compilation.js';
 
 const custom = `version: 1
 id: reading-queue
@@ -292,5 +292,101 @@ describe('replaceFileTags', () => {
   });
   it('patches the frontmatter of a note', () => {
     expect(replaceFileTags('---\ntags: [a]\n---\nBody\n', 'notes/one/a.md', ['b'])).toBe('---\ntags: [b]\n---\nBody\n');
+  });
+});
+
+describe('chapter headings', () => {
+  const chaptered = `version: 1
+id: meeting-notes
+title: Meeting notes
+arrangement: book
+items:
+  - { id: intro, kind: note, path: notes/one/README.md }
+  - { id: internal, kind: heading, title: Internal meetings }
+  - { id: m1, kind: note, path: notes/one/weekly-1.md }
+  - { id: m2, kind: note, path: notes/one/weekly-2.md }
+  - { id: external, kind: heading, title: External meetings }
+  - { id: product, kind: heading, title: Product meetings }
+  - { id: m5, kind: folder, path: notes/one/product }
+  - { id: v1, kind: youtube, videoId: dQw4w9WgXcQ, title: Demo recording }
+`;
+  const items = (body: string) => `version: 1\nid: x\ntitle: X\narrangement: book\nitems:\n${body}`;
+  const many = (count: number, make: (n: number) => string) => Array.from({ length: count }, (_, n) => `  - ${make(n)}\n`).join('');
+  it('parses heading items and round-trips them in place through the model and the file', () => {
+    const file = parseCompilation(chaptered, ['notes/one']);
+    expect(file.items!.map(item => item.kind)).toEqual(['note', 'heading', 'note', 'note', 'heading', 'heading', 'folder', 'youtube']);
+    const row = compilationRow(file, owner);
+    expect(row).toMatchObject({ kind: 'custom', items: [{ id: 'intro', notebookId: 'one' }, { id: 'internal', kind: 'heading', title: 'Internal meetings' }] });
+    if (row.kind !== 'custom') throw new Error('expected a custom row');
+    expect(row.items[1]).not.toHaveProperty('notebookId');
+    expect(compilationFile(row)).toEqual(file);
+    expect(parseCompilation(serializeCompilation(file), ['notes/one'])).toEqual(file);
+    expect(YAML.parse(serializeCompilation(file)).items[1]).toEqual({ id: 'internal', kind: 'heading', title: 'Internal meetings' });
+  });
+  it('serializes a file without headings exactly as before', () => {
+    const file = parseCompilation(custom, ['notes/one']);
+    // The app writes what the model holds; a 0.20.4 client wrote these bytes.
+    expect(serializeCompilation(compilationFile(compilationRow(file, owner)))).toBe('version: 1\nid: reading-queue\ntitle: Reading queue\narrangement: lane\nsize: medium\ntags:\n  - reading\nstatus: working\nitems:\n  - id: a1\n    kind: note\n    path: notes/one/a.md\n  - id: v1\n    kind: youtube\n    videoId: dQw4w9WgXcQ\n    start: 0\n    title: Optional\n  - id: f1\n    kind: folder\n    path: notes/one/sub\n');
+  });
+  it('refuses a heading with a path, an empty or long title, a repeated id, or one in a dynamic file, naming the field', () => {
+    expect(() => parseCompilation(items('  - { id: h, kind: heading, title: T, path: notes/one/a.md }\n'))).toThrow('items.0');
+    expect(() => parseCompilation(items('  - { id: h, kind: heading, title: "  " }\n'))).toThrow('items.0.title');
+    expect(() => parseCompilation(items(`  - { id: h, kind: heading, title: ${'x'.repeat(101)} }\n`))).toThrow('items.0.title');
+    expect(() => parseCompilation(items('  - { id: h, kind: heading }\n'))).toThrow('items.0.title');
+    expect(() => parseCompilation(items('  - { id: a, kind: note, path: notes/one/a.md }\n  - { id: a, kind: heading, title: T }\n'))).toThrow('Duplicate item id a');
+    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: book\nsource: { kind: tag, tag: t }\nitems:\n  - { id: h, kind: heading, title: T }\n')).toThrow('Give exactly one of items or source');
+    expect(parseCompilation(items(`  - { id: h, kind: heading, title: ${'x'.repeat(100)} }\n`)).items![0]).toMatchObject({ kind: 'heading' });
+  });
+  it('counts content items and headings against separate caps of 100: 73 items in 20 chapters fit', () => {
+    const book = many(20, n => `{ id: h${n}, kind: heading, title: Chapter ${n} }`) + many(73, n => `{ id: i${n}, kind: note, path: notes/one/n${n}.md }`);
+    expect(parseCompilation(items(book)).items).toHaveLength(93);
+    expect(parseCompilation(items(many(100, n => `{ id: h${n}, kind: heading, title: C${n} }`) + many(100, n => `{ id: i${n}, kind: note, path: notes/one/n${n}.md }`))).items).toHaveLength(200);
+    expect(() => parseCompilation(items(many(101, n => `{ id: i${n}, kind: note, path: notes/one/n${n}.md }`)))).toThrow(/items/);
+    expect(() => parseCompilation(items(many(101, n => `{ id: h${n}, kind: heading, title: C${n} }`)))).toThrow(/items: .*101 chapter headings|chapter headings/);
+    expect(() => parseCompilation(items(many(5, n => `{ id: h${n}, kind: heading, title: C${n} }`) + many(101, n => `{ id: i${n}, kind: note, path: notes/one/n${n}.md }`)))).toThrow(/items/);
+  });
+  it('groups items into chapters: a leading group without a heading per item before the first, and an empty chapter', () => {
+    const row = compilationRow(parseCompilation(chaptered, ['notes/one']), owner);
+    if (row.kind !== 'custom') throw new Error('expected a custom row');
+    const chapters = compilationChapters(row.items);
+    expect(chapters.map(chapter => [chapter.heading?.title ?? null, chapter.items.map(item => item.id)])).toEqual([[null, ['intro']], ['Internal meetings', ['m1', 'm2']], ['External meetings', []], ['Product meetings', ['m5', 'v1']]]);
+    expect(compilationChapters([{ id: 'a', kind: 'note', notebookId: 'one', path: 'notes/one/a.md' }, { id: 'b', kind: 'note', notebookId: 'one', path: 'notes/one/b.md' }]).map(chapter => chapter.items.map(item => item.id))).toEqual([['a'], ['b']]);
+    expect(compilationChapters([])).toEqual([]);
+    expect(contentItems(row.items).map(item => item.id)).toEqual(['intro', 'm1', 'm2', 'm5', 'v1']);
+  });
+  it('gives headings fresh ids when the compilation is copied', () => {
+    let n = 0;
+    const copy = copyCompilation(parseCompilation(chaptered, ['notes/one']), [], () => `new-${++n}`);
+    expect(copy.items!.filter(item => item.kind === 'heading').map(item => item.id)).toEqual(['new-2', 'new-5', 'new-6']);
+    expect(copy.items![1]).toMatchObject({ kind: 'heading', title: 'Internal meetings' });
+  });
+  it('lists a chaptered file as valid, counting content items only and naming the chapter count', () => {
+    const fields = compilationFields(chaptered, owner.path, ['notes/one']);
+    expect(fields.invalid).toBeUndefined();
+    expect(fields.metadata).toMatchObject({ itemCount: 5, chapterCount: 3 });
+    expect(compilationFields(custom, owner.path, ['notes/one']).metadata).not.toHaveProperty('chapterCount');
+  });
+  it('keeps headings and their titles when a pinned path is relocated, as a 0.20.4 client would', () => {
+    const next = relocateCompilation(chaptered, path => path === 'notes/one/weekly-1.md' ? 'notes/one/2026/weekly-1.md' : path.startsWith('notes/one/product') ? `notes/one/products${path.slice('notes/one/product'.length)}` : path)!;
+    const value = YAML.parse(next);
+    expect(value.items.map((item: { path?: string; title?: string; }) => item.path ?? item.title)).toEqual(['notes/one/README.md', 'Internal meetings', 'notes/one/2026/weekly-1.md', 'notes/one/weekly-2.md', 'External meetings', 'Product meetings', 'notes/one/products', 'Demo recording']);
+    expect(next.split('\n').filter(line => line.includes('kind: heading'))).toEqual(chaptered.split('\n').filter(line => line.includes('kind: heading')));
+  });
+  it('moves a content item into the chapter at its index, refuses a heading across compilations, and caps content only', () => {
+    const make = (id: string, list: CompilationFile['items']) => compilationRow({ version: 1, id, title: id, arrangement: 'book', items: list } satisfies CompilationFile, { notebookId: 'one', path: `notes/one/${id}.compilation.yml` });
+    const page = { rows: [make('one', [{ id: 'h1', kind: 'heading', title: 'One' }, { id: 'n1', kind: 'note', path: 'notes/one/a.md' }]), make('two', [{ id: 'h2', kind: 'heading', title: 'Two' }, { id: 'n2', kind: 'note', path: 'notes/one/b.md' }, { id: 'h3', kind: 'heading', title: 'Three' }])] };
+    expect(moveCompilationItem(page, 'n1', 'two', 3).rows[1]).toMatchObject({ items: [{ id: 'h2' }, { id: 'n2' }, { id: 'h3' }, { id: 'n1' }] });
+    expect(() => moveCompilationItem(page, 'h1', 'two', 0)).toThrow('Chapter headings stay in their compilation');
+    // Within one compilation a heading moves alone, which shifts the chapter boundary.
+    expect(moveCompilationItem(page, 'h3', 'two', 1).rows[1]).toMatchObject({ items: [{ id: 'h2' }, { id: 'h3' }, { id: 'n2' }] });
+    const full = make('full', [...Array.from({ length: 100 }, (_, n) => ({ id: `c${n}`, kind: 'note' as const, path: `notes/one/c${n}.md` })), { id: 'hx', kind: 'heading', title: 'X' }]);
+    const roomy = make('roomy', [...Array.from({ length: 99 }, (_, n) => ({ id: `r${n}`, kind: 'note' as const, path: `notes/one/r${n}.md` })), ...Array.from({ length: 50 }, (_, n) => ({ id: `rh${n}`, kind: 'heading' as const, title: `H${n}` }))]);
+    expect(() => moveCompilationItem({ rows: [page.rows[0], full] }, 'n1', 'full', 0)).toThrow('too many pinned items');
+    expect(moveCompilationItem({ rows: [page.rows[0], roomy] }, 'n1', 'roomy', 0).rows[1]).toMatchObject({ items: expect.arrayContaining([{ id: 'n1', kind: 'note', notebookId: 'one', path: 'notes/one/a.md' }]) });
+  });
+  it('leaves headings out of membership', () => {
+    const row = compilationRow(parseCompilation(chaptered, ['notes/one']), owner);
+    const notes = ['README', 'weekly-1', 'weekly-2'].map(name => ({ notebookId: 'one', path: `notes/one/${name}.md`, tags: [], metadata: {} }));
+    expect(compilationNotes(row, notes).map(note => note.path)).toEqual(['notes/one/README.md', 'notes/one/weekly-1.md', 'notes/one/weekly-2.md']);
   });
 });
