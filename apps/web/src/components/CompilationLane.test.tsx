@@ -4,9 +4,11 @@ import { createPortal } from 'react-dom';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { horizontalListSortingStrategy, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { DndContext, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
-import type { CompilationRow } from '@mygitnotes/core/compilation';
+import { type CompilationRow, moveCompilationItem } from '@mygitnotes/core/compilation';
+import { screenCollision, screenKeyboardCoordinates } from '../lib/compilation-drag.js';
 import { emptyStudyWorkspace } from '@mygitnotes/core/study';
 import type { NotebookConfig } from '../lib/types.js';
 import { CompilationEditingProvider, useCompilationEditing } from '../lib/compilation-editing.js';
@@ -350,4 +352,71 @@ it('shows a folder outside its notebook as missing, never the notebook it falls 
   await screen.findByText('Body of A');
   expect(within(card('up')).getByText('This item may have moved or been deleted.')).toBeInTheDocument();
   expect(within(card('up')).queryByText('Note B')).toBeNull();
+});
+
+const heading = (id: string, title: string) => ({ id, kind: 'heading' as const, title });
+const chaptered: CompilationRow = { ...row, view: 'small', items: [heading('h1', 'Internal meetings'), itemA, heading('h2', 'External meetings'), itemB] };
+const divider = (title: string) => screen.getByRole('heading', { level: 4, name: title });
+
+it('shows a chapter heading as a divider in the strip and as a header row under 560px, and counts only the items', async () => {
+  render(compilationView('900px', { row: chaptered }), { wrapper });
+  await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
+  expect(document.querySelector('.screen-lane')).toHaveAttribute('data-orientation', 'horizontal');
+  expect(divider('Internal meetings').closest('[data-screen-heading]')).toHaveAttribute('data-screen-heading', 'h1');
+  expect([...document.querySelectorAll('.screen-lane-strip > .screen-card-slot')].map(slot => slot.querySelector('[data-screen-heading]') ? `#${slot.textContent}` : slot.querySelector('.screen-card-title')?.textContent)).toEqual(['#Internal meetings', 'Note A', '#External meetings', 'Note B']);
+  expect(document.querySelector('.screen-count')).toHaveTextContent('2');
+  resizeTo(400);
+  expect(document.querySelector('.screen-lane')).toHaveAttribute('data-orientation', 'vertical');
+  expect(divider('External meetings')).toBeInTheDocument();
+});
+
+it('removes a divider alone, keeping its items, and offers no Edit or open on it', async () => {
+  const onRemove = vi.fn(), onOpen = vi.fn();
+  render(lane({ row: chaptered, onRemove, onOpen }), { wrapper });
+  await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
+  fireEvent.click(divider('Internal meetings'));
+  expect(onOpen).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Remove chapter heading (items stay): Internal meetings' }));
+  expect(onRemove).toHaveBeenCalledWith('h1');
+});
+
+/** The lane inside the drag context the compilation view gives it, storing where a drop leaves the items. */
+function DragHarness({ start, onMoved }: { start: CompilationRow; onMoved: (ids: string[]) => void; }) {
+  const sensors = useSensors(useSensor(KeyboardSensor, { coordinateGetter: screenKeyboardCoordinates }));
+  return createElement(DndContext, {
+    sensors,
+    collisionDetection: screenCollision,
+    onDragEnd: ({ active, over }) => {
+      if (!over || active.id === over.id || start.kind !== 'custom') return;
+      const moved = moveCompilationItem({ rows: [start] }, String(active.id), start.id, start.items.findIndex(item => item.id === over.id)).rows[0];
+      if (moved.kind === 'custom') onMoved(moved.items.map(item => item.id));
+    },
+  }, lane({ row: start, reorder: true }));
+}
+
+it('moves a card across a divider into the next chapter, and a divider alone, with the keyboard', async () => {
+  // Each slot of the strip sits 200px right of the one before it.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
+    const slot = this.closest('.screen-card-slot');
+    const index = slot ? [...slot.parentElement!.children].indexOf(slot) : 0;
+    return { x: index * 200, y: 0, left: index * 200, top: 0, width: 180, height: 300, right: index * 200 + 180, bottom: 300, toJSON() {} } as DOMRect;
+  });
+  const drag = async (label: string, presses: number) => {
+    const handle = screen.getByRole('button', { name: label });
+    handle.focus();
+    fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+    for (let n = 0; n < presses; n++) await act(async () => void fireEvent.keyDown(handle, { code: 'ArrowRight', key: 'ArrowRight' }));
+    await act(async () => void fireEvent.keyDown(handle, { code: 'Space', key: ' ' }));
+  };
+  const moved = vi.fn();
+  render(createElement(DragHarness, { start: chaptered, onMoved: moved }), { wrapper });
+  await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
+  await drag('Move item: Note A', 1);
+  await waitFor(() => expect(moved).toHaveBeenLastCalledWith(['h1', 'h2', 'item-1', 'item-2']));
+  cleanup();
+  render(createElement(DragHarness, { start: chaptered, onMoved: moved }), { wrapper });
+  await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
+  await drag('Move chapter heading: External meetings', 1);
+  await waitFor(() => expect(moved).toHaveBeenLastCalledWith(['h1', 'item-1', 'item-2', 'h2']));
+  vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
 });
