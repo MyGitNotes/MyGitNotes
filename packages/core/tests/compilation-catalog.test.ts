@@ -130,6 +130,18 @@ describe('compilations in the remote catalog', () => {
     expect(entry?.metadata).toMatchObject({ itemCount: 2, chapterCount: 2 });
   });
 
+  it('lists the folder grouping of a dynamic compilation, and orders a grouped folder query root notes first, then folders in the sidebar order', async () => {
+    const grouped = 'version: 1\nid: grouped\ntitle: Grouped\narrangement: book\nsource: { kind: folder, path: notes/ex/meet }\nsort: { field: title, order: asc }\ngroup: folder\n';
+    const f = githubFixture({ '.github-notes.yaml': manifest, 'notes/ex/meet/zeta/_dir.yml': 'title: Zeta\norder: 1\n', 'notes/ex/meet/alpha/_dir.yml': 'title: Alpha\norder: 2\n', 'notes/ex/meet/root.md': '# Root\n', 'notes/ex/meet/alpha/a.md': '# A\n', 'notes/ex/meet/zeta/b.md': '# B\n', 'notes/ex/meet/zeta/c.md': '# C\n', 'notes/ex/grouped.compilation.yml': grouped });
+    const catalog = await catalogOf(f);
+    const entry = (await queryNotes(catalog, query({ kind: 'compilation' }), options)).notes.find(note => note.path === 'notes/ex/grouped.compilation.yml');
+    expect(entry?.metadata).toMatchObject({ sourceKind: 'folder', group: 'folder' });
+    const paths = (await queryNotePaths(catalog, query({ folders: ['notes/ex/meet'], descendants: true, sort: 'title', order: 'asc', group: 'folder' }))).notes.map(note => note.path);
+    const folderOf = (path: string) => path.split('/').slice(0, -1).join('/');
+    expect([...new Set(paths.map(folderOf))]).toEqual(['notes/ex/meet', 'notes/ex/meet/zeta', 'notes/ex/meet/alpha']);
+    expect(paths.filter(path => folderOf(path) === 'notes/ex/meet/zeta')).toEqual(['notes/ex/meet/zeta/b.md', 'notes/ex/meet/zeta/c.md']);
+  });
+
   it('keeps compilations out of the note list that MCP reads', async () => {
     const reader = githubFixture(files).reader();
     const config = await reader.config();

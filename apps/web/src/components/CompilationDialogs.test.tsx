@@ -106,3 +106,19 @@ it('adds at the end by default and, with a chapter chosen, as that chapter\'s la
   await waitFor(() => expect(atEnd).toHaveBeenCalled());
   expect(atEnd.mock.calls[0][0].at(-1)).toMatchObject({ kind: 'note', path: 'notes/a/x.md' });
 });
+
+it('sets and clears the chapters by folder of a dynamic compilation from its Chapters select', () => {
+  const row: CompilationRow = { id: 'row', name: 'Live', view: 'book', notebookId: 'r~a', path: 'notes/a/live.compilation.yml', kind: 'dynamic', source: { kind: 'tag', tag: 'meeting', notebookId: 'r~a' } };
+  const onApply = vi.fn();
+  const { rerender } = render(createElement(CompilationEditRow, { row, notebooks, assets: [], folders: [], selectedNotebookId: 'r~a', onApply, onRemove: () => {}, onClose: () => {} }), { wrapper });
+  const chapters = screen.getByRole('combobox', { name: 'Chapters' });
+  expect(chapters).toHaveValue('');
+  expect(within(chapters).getAllByRole('option').map(option => option.textContent)).toEqual(['None', 'One per folder']);
+  fireEvent.change(chapters, { target: { value: 'folder' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply.mock.calls[0][0]).toMatchObject({ kind: 'dynamic', group: 'folder' });
+  rerender(createElement(CompilationEditRow, { row: { ...row, group: 'folder' }, notebooks, assets: [], folders: [], selectedNotebookId: 'r~a', onApply, onRemove: () => {}, onClose: () => {} }));
+  fireEvent.change(screen.getByRole('combobox', { name: 'Chapters' }), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+  expect(onApply.mock.calls[1][0]).not.toHaveProperty('group');
+});

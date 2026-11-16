@@ -1,6 +1,6 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { applyStageAction, applyStudyAction, createStudyNote, emptyStudyWorkspace, undoStudyAction } from '@mygitnotes/core/study';
-import { compilationRowItems, studyQueueItems, studyRowItems } from './compilation-content.js';
+import { compilationRowItems, studyQueueItems, studyRowItems, ungrouped } from './compilation-content.js';
 import type { NoteItem } from './types.js';
 import { type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
 const notes = [{ notebookId: 'a', path: 'notes/a/one.md', title: 'One', tags: ['clue'] }, { notebookId: 'b', path: 'notes/b/two.md', title: 'Two', tags: ['clue'] }, { notebookId: 'a', path: 'notes/a/sub/three.md', title: 'Three', tags: [] }, { notebookId: 'a', path: 'notes/ab/other.md', title: 'Other', tags: [] }].map((note, i) => ({ ...note, id: String(i), content: '', metadata: {} })) as NoteItem[];
@@ -95,4 +95,35 @@ it('studies the pinned notes in flat order without chapter headings, while the r
   expect(studyRowItems(queue, { ...row, study: { filter: 'all', dueFirst: true } }, selected, emptyStudyWorkspace()).map(item => item.id)).toEqual(['pin-0', 'pin-1', 'v']);
   // A lane or book reads with the filter `all`, a status filter included: headings stay where they are.
   expect(studyRowItems(row.items, { ...row, study: { filter: 'all', dueFirst: false, status: 'working' } }, selected, emptyStudyWorkspace()).map(item => item.id)).toEqual(['h1', 'pin-0', 'h2', 'pin-1']);
+});
+
+describe('chapters by folder', () => {
+  const notebooksA = [{ id: 'a', title: 'Company', root: 'notes/a' }];
+  const folderItems = [{ notebookId: 'a', path: 'meet', title: 'Meetings', order: 0 }, { notebookId: 'a', path: 'meet/zeta', title: 'Zeta', order: 1 }, { notebookId: 'a', path: 'meet/alpha', title: 'Alpha', order: 2 }];
+  const member = (path: string, title: string, mtime = 1) => ({ id: path, notebookId: 'a', path: `notes/a/${path}`, title, tags: ['meeting'], metadata: {}, content: '', mtime }) as NoteItem;
+  const members = [member('meet/alpha/a.md', 'A', 3), member('meet/zeta/c.md', 'C', 2), member('meet/root.md', 'Root', 5), member('meet/zeta/b.md', 'B', 4)];
+  const folderRow: Extract<CompilationRow, { kind: 'dynamic'; }> = { id: 'g', path: 'notes/a/g.compilation.yml', name: 'G', view: 'book', notebookId: 'a', kind: 'dynamic', source: { kind: 'folder', notebookId: 'a', path: 'notes/a/meet', recursive: true }, sort: { field: 'title', order: 'asc' }, group: 'folder' };
+  const shown = (items: ReturnType<typeof compilationRowItems>) => items.map(item => item.kind === 'heading' ? `# ${item.title}` : isFileItem(item) ? item.path.slice('notes/a/'.length) : item.id);
+  it('puts a heading named after each folder before its members, root notes first under the source folder, then folders in the sidebar order', () => {
+    expect(shown(compilationRowItems(folderRow, members, [], notebooksA, folderItems))).toEqual(['# Meetings', 'meet/root.md', '# Zeta', 'meet/zeta/b.md', 'meet/zeta/c.md', '# Alpha', 'meet/alpha/a.md']);
+    expect(compilationRowItems(folderRow, members, [], notebooksA, folderItems)[0]).toMatchObject({ id: 'group:meet', kind: 'heading' });
+  });
+  it('names the chapters of a tag source from the notebook root, its own notes under the notebook title', () => {
+    const tagRow: CompilationRow = { ...folderRow, source: { kind: 'tag', tag: 'meeting', notebookId: 'a' } };
+    expect(shown(compilationRowItems(tagRow, [...members, member('top.md', 'Top')], [], notebooksA, folderItems))).toEqual(['# Company', 'top.md', '# Meetings', 'meet/root.md', '# Meetings / Zeta', 'meet/zeta/b.md', 'meet/zeta/c.md', '# Meetings / Alpha', 'meet/alpha/a.md']);
+  });
+  it('orders each chapter by the manual order among its own members, so a path of another chapter moves nothing', () => {
+    const manual = { ...folderRow, sort: { field: 'manual' as const, order: 'asc' as const }, manualOrder: ['notes/a/meet/alpha/a.md', 'notes/a/meet/zeta/c.md'] };
+    expect(shown(compilationRowItems(manual, members, [], notebooksA, folderItems))).toEqual(['# Meetings', 'meet/root.md', '# Zeta', 'meet/zeta/c.md', 'meet/zeta/b.md', '# Alpha', 'meet/alpha/a.md']);
+  });
+  it("puts a folder source's assets in their folder's chapter after its notes, and folders of assets alone after the note chapters", () => {
+    const asset = (path: string) => ({ name: path.split('/').pop()!, notebookId: 'a', path: `notes/a/${path}`, mtime: 1, size: 1, rawUrl: '', markdownRef: '' });
+    expect(shown(compilationRowItems(folderRow, members, [asset('meet/zeta/pic.png'), asset('meet/files/doc.pdf')], notebooksA, folderItems))).toEqual(['# Meetings', 'meet/root.md', '# Zeta', 'meet/zeta/b.md', 'meet/zeta/c.md', 'meet/zeta/pic.png', '# Alpha', 'meet/alpha/a.md', '# files', 'meet/files/doc.pdf']);
+  });
+  it('leaves a compilation without group as it was, and the study queue the same with and without group', () => {
+    const plain = { ...folderRow, group: undefined };
+    expect(compilationRowItems(plain, members, [], notebooksA, folderItems).every(item => item.kind !== 'heading')).toBe(true);
+    // A study session reads the members as if the compilation had no chapters.
+    expect(studyQueueItems(compilationRowItems(ungrouped(folderRow), members, [], notebooksA, folderItems)).map(item => item.id)).toEqual(compilationRowItems(plain, members, [], notebooksA, folderItems).map(item => item.id));
+  });
 });

@@ -390,3 +390,35 @@ items:
     expect(compilationNotes(row, notes).map(note => note.path)).toEqual(['notes/one/README.md', 'notes/one/weekly-1.md', 'notes/one/weekly-2.md']);
   });
 });
+
+describe('dynamic chapters by folder', () => {
+  const grouped = 'version: 1\nid: meetings\ntitle: Meetings\narrangement: book\nsource: { kind: tag, tag: meeting }\nsort: { field: created, order: asc }\ngroup: folder\n';
+  it('parses group: folder beside a source and round-trips it through the model, written after sort', () => {
+    const file = parseCompilation(grouped, ['notes/one']);
+    expect(file.group).toBe('folder');
+    const row = compilationRow(file, owner);
+    expect(row).toMatchObject({ kind: 'dynamic', group: 'folder' });
+    expect(compilationFile(row)).toEqual(file);
+    expect(parseCompilation(serializeCompilation(file), ['notes/one'])).toEqual(file);
+    expect(serializeCompilation(file)).toMatch(/sort:\n {2}field: created\n {2}order: asc\ngroup: folder\n$/);
+    if (row.kind !== 'dynamic') throw new Error('expected a dynamic row');
+    expect(serializeCompilation(compilationFile({ ...row, group: undefined }))).not.toContain('group');
+  });
+  it('refuses group with items, or any value but folder', () => {
+    expect(() => parseCompilation('version: 1\nid: x\ntitle: X\narrangement: book\nitems: []\ngroup: folder\n')).toThrow('group: group applies to a source');
+    expect(() => parseCompilation(grouped.replace('group: folder', 'group: status'))).toThrow('group');
+  });
+  it('writes a dynamic compilation without group exactly as 0.20.4 did', () => {
+    const file = parseCompilation(dynamic);
+    expect(serializeCompilation(compilationFile(compilationRow(file, owner)))).toBe('version: 1\nid: clues\ntitle: Clues\narrangement: book\nsource:\n  kind: tag\n  tag: clue\nsort:\n  field: updated\n  order: desc\n');
+  });
+  it('lists the group in the summary of a dynamic compilation', () => {
+    expect(compilationFields(grouped, owner.path).metadata).toMatchObject({ sourceKind: 'tag', group: 'folder' });
+    expect(compilationFields(dynamic, owner.path).metadata).not.toHaveProperty('group');
+  });
+  it('keeps group and rewrites source.path and manualOrder when a folder moves, as a 0.20.4 client would', () => {
+    const raw = 'version: 1\nid: f\ntitle: F\narrangement: book\nsource: { kind: folder, path: notes/one/sub }\nsort: { field: manual, order: asc }\ngroup: folder\nmanualOrder: [notes/one/sub/a.md]\n';
+    const value = YAML.parse(relocateCompilation(raw, path => path.replace('notes/one/sub', 'notes/one/moved'))!);
+    expect(value).toMatchObject({ group: 'folder', source: { path: 'notes/one/moved' }, manualOrder: ['notes/one/moved/a.md'] });
+  });
+});

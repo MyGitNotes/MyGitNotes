@@ -50,3 +50,10 @@ it("queries a dynamic folder source in the source's notebook, which may be anoth
   expect(laneNoteQuery(row)).toMatchObject({ notebookId: 'work', folders: ['notes/work/sec'] });
   expect(laneNoteQuery(dynamic)).toMatchObject({ notebookId: 'life', tags: ['idea'] });
 });
+
+it('asks the server for folder-grouped pages when a dynamic compilation has chapters by folder, for the paged list and the all-paths load', () => {
+  const row: CompilationRow = { ...base, id: 'grouped', kind: 'dynamic', source: { kind: 'tag', tag: 'idea', notebookId: 'life' }, group: 'folder' };
+  expect(laneNoteQuery(row)).toMatchObject({ group: 'folder' });
+  expect(laneNoteQuery({ ...row, sort: { field: 'manual', order: 'asc' } })).toMatchObject({ group: 'folder' });
+  expect(laneNoteQuery(dynamic)).not.toHaveProperty('group');
+});

@@ -125,3 +125,36 @@ it('adds a chapter at the end when no row has focus', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Add chapter' }));
   expect(arranged().at(-1)).toBe('# ');
 });
+
+it('keeps the chapter separators of a dynamic compilation grouped by folder fixed and refuses a drop across one, saving one flat order', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ revision: REVISION, notes: [{ ...note('x/a', 300), title: 'Note A' }, { ...note('x/b', 200), title: 'Note B' }, { ...note('y/c', 100), title: 'Note C' }] }), { headers: { 'Content-Type': 'application/json' } })));
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
+    if (this.matches('.compilation-order-list')) return { x: 0, y: 0, left: 0, top: 0, width: 300, height: 400, right: 300, bottom: 400, toJSON() {} } as DOMRect;
+    const row = this.closest<HTMLElement>('.compilation-order-row');
+    const index = row ? [...row.parentElement!.children].indexOf(row) : 0;
+    const top = index * 40 + Number(/translate3d\([^,]+,\s*(-?[\d.]+)px/.exec(row?.style.transform ?? '')?.[1] ?? 0);
+    return { x: 0, y: top, left: 0, top, width: 300, height: 36, right: 300, bottom: top + 36, toJSON() {} } as DOMRect;
+  });
+  const grouped = { ...row, study: undefined, group: 'folder' as const };
+  const folders = [{ notebookId: 'nb1', path: 'x', title: 'Ex', order: 0 }, { notebookId: 'nb1', path: 'y', title: 'Why', order: 1 }];
+  const onSave = vi.fn();
+  render(createElement(CompilationOrderDialog, { row: grouped, notebooks, assets: [], folders, disabled: false, onSave, onClose: () => {} }), { wrapper });
+  await waitFor(() => expect(titles()).toEqual(['Ex', '1Note A', '2Note B', 'Why', '3Note C']));
+  expect(screen.queryByRole('button', { name: /Move .*: Ex/ })).not.toBeInTheDocument();
+  const move = async (label: string, key: 'ArrowUp' | 'ArrowDown') => {
+    const handle = screen.getByRole('button', { name: label });
+    handle.focus();
+    fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+    await act(() => new Promise(resolve => setTimeout(resolve, 0)));
+    await act(async () => void fireEvent.keyDown(handle, { code: key, key }));
+    await act(async () => void fireEvent.keyDown(handle, { code: 'Space', key: ' ' }));
+  };
+  // Within a chapter a note moves; into the next chapter it does not.
+  await move('Move item: Note B', 'ArrowUp');
+  await waitFor(() => expect(titles()).toEqual(['Ex', '1Note B', '2Note A', 'Why', '3Note C']));
+  await move('Move item: Note C', 'ArrowUp');
+  expect(titles()).toEqual(['Ex', '1Note B', '2Note A', 'Why', '3Note C']);
+  fireEvent.click(screen.getByRole('button', { name: 'Save order' }));
+  expect(onSave).toHaveBeenCalledWith(['notes/nb1/x/b.md', 'notes/nb1/x/a.md', 'notes/nb1/y/c.md']);
+  vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
+});

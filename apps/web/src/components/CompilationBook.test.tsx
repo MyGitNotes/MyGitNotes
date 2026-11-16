@@ -813,3 +813,22 @@ it('offers Arrange contents in the book of a writable custom compilation', async
   fireEvent.click(await screen.findByRole('button', { name: 'Arrange contents: Reading' }));
   expect(onArrange).toHaveBeenCalledTimes(1);
 });
+
+const groupedRow: CompilationRow = { id: 'by-folder', path: 'notes/nb1/by-folder.compilation.yml', name: 'By folder', view: 'book', notebookId: 'nb1', kind: 'dynamic', source: { kind: 'folder', path: 'notes/nb1', recursive: true, notebookId: 'nb1' }, sort: { field: 'title', order: 'asc' }, group: 'folder' };
+const inFolder = (folder: string, name: string) => ({ ...noteA, id: `notes/nb1/${folder}/${name}.md`, path: `notes/nb1/${folder}/${name}.md`, title: name, content: `Body of ${name}` });
+const groupFolders = [{ notebookId: 'nb1', path: 'x', title: 'Ex', order: 0 }, { notebookId: 'nb1', path: 'y', title: 'Why', order: 1 }];
+
+it('shows a dynamic compilation grouped by folder as one chapter per folder, continuous and paged', async () => {
+  laneOverride.current = lane([inFolder('y', 'Two'), inFolder('x', 'One'), inFolder('x', 'Also')]);
+  render(book({ row: groupedRow, folders: groupFolders }), { wrapper });
+  await waitFor(() => expect(chapters()).toHaveLength(2));
+  expect(chapters().map(chapter => [within(chapter).getByRole('heading', { level: 2 }).textContent, within(chapter).getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)])).toEqual([['Ex', ['Also', 'One']], ['Why', ['Two']]]);
+  expect(levels()).toEqual([['Ex', '0'], ['Also', '1'], ['One', '1'], ['Why', '0'], ['Two', '1']]);
+  cleanup();
+  writeBookReadingMode('paged');
+  render(book({ row: groupedRow, folders: groupFolders }), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Ex']));
+  expect(count()).toBe('1 / 2');
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['Why']));
+});
