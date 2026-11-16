@@ -10,13 +10,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import WebSocket from 'ws';
 import * as Y from 'yjs';
 import { githubFixture } from '../../../packages/core/tests/fixtures/github.js';
-import { credentialIdFor, CredentialRejected } from './auth.js';
-import { providerIdentity, providerLiveIdentity } from './identity.js';
-import { liveEditorSetting } from './live-env.js';
-import { redisTestTurn } from './live-builtin/redis-test-turn.js';
-import { createRecordStore } from './record-store/index.js';
-import { storedSessions } from './browser-sessions.js';
-import { type RunningServer, startServer } from './server.js';
+import { credentialIdFor, CredentialRejected } from '../src/auth.js';
+import { providerIdentity, providerLiveIdentity } from '../src/identity.js';
+import { liveEditorSetting } from '../src/live-env.js';
+import { redisTestTurn } from '../src/live-builtin/redis-test-turn.js';
+import { createRecordStore } from '../src/record-store/index.js';
+import { storedSessions } from '../src/browser-sessions.js';
+import { type RunningServer, startServer } from '../src/server.js';
 
 /*
  * The built-in live editor as the environment turns it on (docs/specs/2026-11-16-collab-first-self-host A8, A6; slice
@@ -44,44 +44,7 @@ const until = async (what: string, check: () => unknown, ms = 8000) => {
 };
 
 /** What a remote GitHub deployment's environment holds, with everything this suite must not inherit emptied. */
-const environment = (port: number, extra: Record<string, string> = {}) => ({
-  MYGITNOTES_SOURCE: 'github',
-  MYGITNOTES_REPOSITORY: 'owner/repo',
-  MYGITNOTES_BRANCH: 'main',
-  MYGITNOTES_GITHUB_URL: '',
-  MYGITNOTES_LOCAL_PATH: '',
-  GITHUB_NOTES_SOURCE: '',
-  GITHUB_NOTES_REPOSITORY: '',
-  GITHUB_NOTES_BRANCH: '',
-  GITHUB_NOTES_LOCAL_PATH: '',
-  REPO_ROOT: '',
-  GITHUB_CLIENT_ID: 'client',
-  GITHUB_CLIENT_SECRET: 'secret',
-  GITHUB_APP_TYPE: '',
-  SESSION_SECRET: 's'.repeat(64),
-  VERCEL: '',
-  REDIS_URL: '',
-  UPSTASH_REDIS_REST_URL: '',
-  UPSTASH_REDIS_REST_TOKEN: '',
-  KV_REST_API_URL: '',
-  KV_REST_API_TOKEN: '',
-  MYGITNOTES_STORAGE: '',
-  MYGITNOTES_PRODUCT_REPOSITORY: '',
-  MYGITNOTES_SESSION_NAMESPACE: '',
-  MYGITNOTES_LIVE_EDITOR: '',
-  MYGITNOTES_LIVE_REDIS_URL: '',
-  MYGITNOTES_CACHE_REDIS_URL: '',
-  MYGITNOTES_LIVE_CHECKIN_AT: 'off',
-  MYGITNOTES_LIVE_IDLE_CHECKIN: 'off',
-  MYGITNOTES_LIVE_SWEEP_SECRET: '',
-  MYGITNOTES_TIMEZONE: '',
-  MYGITNOTES_EXTERNAL_PI_URL: '',
-  MYGITNOTES_EXTERNAL_PI_PAIRING: '',
-  HOST: '127.0.0.1',
-  PORT: String(port),
-  APP_URL: `http://localhost:${port}`,
-  ...extra,
-});
+const environment = (port: number, extra: Record<string, string> = {}) => ({ MYGITNOTES_SOURCE: 'github', MYGITNOTES_REPOSITORY: 'owner/repo', MYGITNOTES_BRANCH: 'main', MYGITNOTES_GITHUB_URL: '', MYGITNOTES_LOCAL_PATH: '', GITHUB_NOTES_SOURCE: '', GITHUB_NOTES_REPOSITORY: '', GITHUB_NOTES_BRANCH: '', GITHUB_NOTES_LOCAL_PATH: '', REPO_ROOT: '', GITHUB_CLIENT_ID: 'client', GITHUB_CLIENT_SECRET: 'secret', GITHUB_APP_TYPE: '', SESSION_SECRET: 's'.repeat(64), VERCEL: '', REDIS_URL: '', UPSTASH_REDIS_REST_URL: '', UPSTASH_REDIS_REST_TOKEN: '', KV_REST_API_URL: '', KV_REST_API_TOKEN: '', MYGITNOTES_STORAGE: '', MYGITNOTES_PRODUCT_REPOSITORY: '', MYGITNOTES_SESSION_NAMESPACE: '', MYGITNOTES_LIVE_EDITOR: '', MYGITNOTES_LIVE_REDIS_URL: '', MYGITNOTES_CACHE_REDIS_URL: '', MYGITNOTES_LIVE_CHECKIN_AT: 'off', MYGITNOTES_LIVE_IDLE_CHECKIN: 'off', MYGITNOTES_LIVE_SWEEP_SECRET: '', MYGITNOTES_TIMEZONE: '', MYGITNOTES_EXTERNAL_PI_URL: '', MYGITNOTES_EXTERNAL_PI_PAIRING: '', HOST: '127.0.0.1', PORT: String(port), APP_URL: `http://localhost:${port}`, ...extra });
 
 let running: RunningServer | undefined;
 afterEach(async () => {
@@ -121,12 +84,16 @@ describe('MYGITNOTES_LIVE_EDITOR', () => {
     const workspace = await (await fetch(`${base}/api/workspace`)).json();
     expect(workspace.repositories).toHaveLength(1);
     expect(workspace.repositories[0]).not.toHaveProperty('live');
-    expect((await fetch(`${base}/api/live/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status).toBe(404);
+    // No live route is mounted: the request falls through to the answer every unknown API route of a remote deployment gets.
+    const unmounted = await fetch(`${base}/api/live/checkout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    expect([unmounted.status, await unmounted.json()]).toEqual([403, { error: 'This operation is available only in a local workspace.' }]);
     const socket = new WebSocket(`ws://127.0.0.1:${server.port}/live/socket`, { origin: `http://localhost:${server.port}` });
-    expect(await new Promise(resolve => {
-      socket.on('open', () => resolve('open'));
-      socket.on('error', () => resolve('refused'));
-    })).toBe('refused');
+    expect(
+      await new Promise(resolve => {
+        socket.on('open', () => resolve('open'));
+        socket.on('error', () => resolve('refused'));
+      }),
+    ).toBe('refused');
   });
 
   it('refuses to start with builtin where the editor cannot run, and names what to change', async () => {

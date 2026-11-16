@@ -1,6 +1,6 @@
 import type { CommitAuthor, LiveIdentity, WorkspacePerson, WorkspaceSite } from '@mygitnotes/core';
 import type { Request, Response, Router } from 'express';
-import { type AuthServices, authToken, credentialToken, getSession, ownerOf, providerFor, providerRouter, saveCredential, type SessionServices } from './auth.js';
+import { type AuthServices, authToken, credentialId, credentialToken, getSession, ownerOf, providerFor, providerRouter, saveCredential, type SessionServices } from './auth.js';
 import type { StoredRecord } from './record-store/index.js';
 
 /** Who a request acts for, as grants and configuration sources see them. */
@@ -108,15 +108,32 @@ export function bearerGrantRecord(resolved: BearerGrant): StoredRecord | null {
   return { kind: 'agent', ownerId: owner, person: { realm: person.realm, userId: person.userId }, site, write, ...(author ? { author: { name: author.name, email: author.email } } : {}), ...(live ? { live: { name: live.name, ...(live.email !== undefined ? { email: live.email } : {}) } } : {}) };
 }
 
+/**
+ * How the live editor shows and credits someone signed in with the site's provider. On github.com, their login and
+ * the noreply address GitHub documents for an account (`<id>+<login>@users.noreply.github.com`), which GitHub credits
+ * to that account in a commit; no personal email is read. On GitHub Enterprise and GitLab, their login alone: no
+ * address there is known to be theirs, so they are shown, author a check-in through their own token, and are nobody's
+ * co-author.
+ */
+export function providerLiveIdentity(site: WorkspaceSite, session: { userId: number | string; login: string; }): LiveIdentity {
+  return providerFor(site).unscoped ? { name: session.login, email: `${session.userId}+${session.login}@users.noreply.github.com` } : { name: session.login };
+}
+
+/** What the default identity adds where the deployment runs the built-in live editor. */
+export interface ProviderIdentityOptions {
+  /** Names each signed-in person for the live editor (`SignedIn.live`, {@link providerLiveIdentity}); left out, nobody is, and every answer is as before. */
+  live?: boolean;
+}
+
 /** Today's behavior: sign in with the workspace site's GitHub or GitLab, and hold that provider's token. */
-export function providerIdentity(services: AuthServices): IdentityService {
+export function providerIdentity(services: AuthServices, options: ProviderIdentityOptions = {}): IdentityService {
   const { store, sessions, configSource } = services;
   const siteOf = async (req: Request) => (await configSource.settings(req)).site;
   return {
     router: providerRouter(services),
     async signedIn(req) {
-      const provider = providerFor(await siteOf(req)), session = await getSession(req, sessions, provider);
-      return session ? { person: { realm: provider.realm, userId: session.userId }, login: session.login, owner: ownerOf(session, provider) } : null;
+      const site = await siteOf(req), provider = providerFor(site), session = await getSession(req, sessions, provider);
+      return session ? { person: { realm: provider.realm, userId: session.userId }, login: session.login, owner: ownerOf(session, provider), ...(options.live ? { live: providerLiveIdentity(site, session) } : {}) } : null;
     },
     token: (req, res, site, refreshWithinMs) => authToken(req, res, services, site, refreshWithinMs),
     async grantCredential(req, _res, _signedIn, site) {
@@ -124,6 +141,12 @@ export function providerIdentity(services: AuthServices): IdentityService {
       return session ? saveCredential(store, session, provider) : undefined;
     },
     grantToken: (grant, _person, site) => credentialToken(store, grant.credential || grant.session, site),
+    // The credential a stored sign-in left, the one the person's agent grants use; a cookie session leaves none.
+    async personToken(person, site) {
+      const provider = providerFor(site);
+      if (sessions.kind === 'cookie' || person.realm !== provider.realm || typeof person.userId !== 'number') return undefined;
+      return credentialToken(store, credentialId(person.userId, provider), site);
+    },
     noCredentialMessage: site => `Sign in with ${site.type === 'gitlab' ? 'GitLab' : 'GitHub'} to open this repository.`,
     async signInOptions(req) {
       const { type } = providerFor(await siteOf(req));

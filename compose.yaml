@@ -33,6 +33,31 @@ services:
       timeout: 3s
       retries: 10
 
+  # Optional: the built-in live editor, where people edit one note together (MYGITNOTES_LIVE_EDITOR=builtin in the
+  # env file). It needs APP_URL as the app's https origin and a reverse proxy that passes WebSockets. Live notes are
+  # kept in the `redis` service above, which must never evict: it sets no maxmemory, and keeps an append-only file.
+  # Give the read cache a Redis of its own that may evict, so cached reads never fill the one that holds live notes.
+  # Uncomment the service below, and add to the `mygitnotes` service:
+  #
+  #     environment:
+  #       MYGITNOTES_CACHE_REDIS_URL: redis://cache:6379
+  #     depends_on:
+  #       cache:
+  #         condition: service_healthy
+  #     stop_grace_period: 30s   # a stop lets the editor store what was typed and close its sockets first
+  #
+  # cache:
+  #   image: redis:7.4-alpine
+  #   restart: unless-stopped
+  #   command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+  #   networks:
+  #     - sessions
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 5s
+  #     timeout: 3s
+  #     retries: 10
+
 volumes:
   redis-data:
 

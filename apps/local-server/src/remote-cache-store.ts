@@ -6,7 +6,13 @@ function restConnection() {
   return process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_REST_TOKEN ? { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN } : { url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN };
 }
 
-/** Shared remote read cache in the session Redis; errors end the request. */
+/**
+ * The native Redis the cache uses: its own (`MYGITNOTES_CACHE_REDIS_URL`), so cached reads never fill a Redis that
+ * must not evict, such as the live store's; left out, the session Redis (`REDIS_URL`), as before.
+ */
+const nativeUrl = () => process.env.MYGITNOTES_CACHE_REDIS_URL || process.env.REDIS_URL;
+
+/** Shared remote read cache in its own Redis, else the session Redis; errors end the request. */
 export class RedisRemoteCache implements RemoteCache {
   private readonly prefix: string;
   constructor() {
@@ -24,7 +30,8 @@ export class RedisRemoteCache implements RemoteCache {
     if (!keys.length) return [];
     const command = ['MGET', ...keys.map(key => this.prefix + key)];
     try {
-      if (process.env.REDIS_URL) return await nativeRedisCommand(process.env.REDIS_URL, command);
+      const native = nativeUrl();
+      if (native) return await nativeRedisCommand(native, command);
       const body = await this.rest('', command) as { result?: (string | null)[]; error?: string; };
       if (body.error || !Array.isArray(body.result)) throw new Error();
       return body.result;
@@ -35,8 +42,9 @@ export class RedisRemoteCache implements RemoteCache {
   async set(entries: [string, string][], ttlSeconds: number): Promise<void> {
     const commands = entries.map(([key, value]) => ['SET', this.prefix + key, value, 'EX', String(ttlSeconds)]);
     try {
-      if (process.env.REDIS_URL) {
-        for (const command of commands) await nativeRedisCommand(process.env.REDIS_URL, command);
+      const native = nativeUrl();
+      if (native) {
+        for (const command of commands) await nativeRedisCommand(native, command);
         return;
       }
       for (let i = 0, bytes = 0, start = 0; i <= commands.length; i++) {
@@ -62,5 +70,5 @@ export class RedisRemoteCache implements RemoteCache {
 }
 
 export function createRemoteCache(): RemoteCache {
-  return process.env.REDIS_URL || restConnection().url ? new RedisRemoteCache() : new MemoryRemoteCache();
+  return nativeUrl() || restConnection().url ? new RedisRemoteCache() : new MemoryRemoteCache();
 }
