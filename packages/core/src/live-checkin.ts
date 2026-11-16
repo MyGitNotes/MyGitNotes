@@ -73,6 +73,8 @@ export interface LiveCheckInOptions {
    * author the commit and every editor is a co-author.
    */
   requester?: LiveCommitter;
+  /** Whether to send a notice; every notice is sent when absent. The idle check-in sends each once per link and text. */
+  shouldNotify?: (notice: Omit<LiveNotice, 'repository' | 'editors'>) => boolean;
 }
 
 /** Each link is checked in within 4 minutes, inside its 5-minute lease; nothing is committed after that. */
@@ -690,7 +692,7 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
   }
   const outcome = tried;
   const notify = async (notice: Omit<LiveNotice, 'repository' | 'editors'>) => {
-    if (!liveNotes.notify) return;
+    if (!liveNotes.notify || options.shouldNotify?.(notice) === false) return;
     try {
       await liveNotes.notify({ ...notice, repository, editors: outcome.editors.map(entry => ({ name: entry.name })) });
     } catch (error) {
@@ -739,11 +741,11 @@ export interface LiveSweepReport {
 const reasonOf = (error: unknown) => error instanceof SourceError ? `${error.status} ${error.message}` : 'unexpected error';
 
 /** Checks in every live link `isDue` picks, in each repository the adapter has live links in; what both sweeps share. */
-async function sweepDue(liveNotes: LiveNotes, isDue: (row: Record<string, unknown>) => boolean, options: Pick<LiveSweepOptions, 'mode' | 'now' | 'timeZone' | 'concurrency' | 'max' | 'sleep'>): Promise<LiveSweepReport> {
+async function sweepDue(liveNotes: LiveNotes, isDue: (row: Record<string, unknown>) => boolean, options: Pick<LiveSweepOptions, 'mode' | 'now' | 'timeZone' | 'concurrency' | 'max' | 'sleep'>, perLink?: (row: Record<string, unknown>) => Pick<LiveCheckInOptions, 'shouldNotify'>): Promise<LiveSweepReport> {
   const { concurrency = 2, max = 500 } = options;
   const repositories = await adapter(() => liveNotes.service.repositories());
   if (!Array.isArray(repositories)) throw new LiveUnavailableError();
-  const due: { repository: RepositoryId; id: string; }[] = [];
+  const due: { repository: RepositoryId; id: string; row: Record<string, unknown>; }[] = [];
   for (const repository of repositories) {
     if (typeof repository !== 'string' || !liveEditorOf(liveNotes, repository)) continue;
     let rows: unknown;
@@ -756,16 +758,16 @@ async function sweepDue(liveNotes: LiveNotes, isDue: (row: Record<string, unknow
     if (!Array.isArray(rows)) continue;
     for (const row of rows) {
       const { id } = (row ?? {}) as { id?: unknown; };
-      if (isLiveId(id) && isDue(row as Record<string, unknown>) && due.length < max) due.push({ repository, id });
+      if (isLiveId(id) && isDue(row as Record<string, unknown>) && due.length < max) due.push({ repository, id, row: row as Record<string, unknown> });
     }
   }
   const report: LiveSweepReport = { due: due.length, results: [], failed: [] };
   let next = 0;
   const worker = async () => {
     while (next < due.length) {
-      const { repository, id } = due[next++];
+      const { repository, id, row } = due[next++];
       try {
-        report.results.push(await checkInLink(liveNotes, repository, id, { mode: options.mode ?? 'scheduled', discardUntyped: true, ...(options.now ? { now: options.now } : {}), ...(options.timeZone ? { timeZone: options.timeZone } : {}), ...(options.sleep ? { sleep: options.sleep } : {}) }));
+        report.results.push(await checkInLink(liveNotes, repository, id, { ...perLink?.(row), mode: options.mode ?? 'scheduled', discardUntyped: true, ...(options.now ? { now: options.now } : {}), ...(options.timeZone ? { timeZone: options.timeZone } : {}), ...(options.sleep ? { sleep: options.sleep } : {}) }));
       } catch (error) {
         const reason = reasonOf(error);
         console.warn(`[live-notes] check-in of ${id} failed: ${reason}`);
@@ -801,7 +803,29 @@ export interface LiveIdleSweepOptions {
   /** Links one sweep handles; 500 by default. */
   max?: number;
   sleep?: (ms: number) => Promise<void>;
+  /** What earlier ticks learnt about links that could not be checked in; one per `liveNotes` by default. */
+  backoff?: LiveIdleBackoff;
 }
+
+/** The first wait before the idle check-in tries a link again that it could not check in; it doubles each time. */
+export const LIVE_IDLE_BACKOFF_MS = 60_000;
+/** The longest wait between two tries of such a link. */
+export const LIVE_IDLE_BACKOFF_MAX_MS = 30 * 60_000;
+
+/**
+ * Per link, for the idle check-in only: when a link that was `uncommittable`, `unfiled` or failed may be tried again,
+ * and whether its notice went out, both for its text (`contentHash`) and last edit at the time. A new edit or text
+ * starts afresh. The nightly sweep and 「立即簽回」 do not read it (cf14-F002).
+ */
+export interface LiveIdleBackoff {
+  links: Map<string, { key: string; next: number; wait: number; notified: boolean; }>;
+}
+
+export function createLiveIdleBackoff(): LiveIdleBackoff {
+  return { links: new Map() };
+}
+
+const idleBackoffs = new WeakMap<LiveNotes, LiveIdleBackoff>();
 
 /**
  * The idle check-in (docs/specs/2026-11-16-collab-first-self-host A5): checks in every live link nobody is active on
@@ -810,13 +834,42 @@ export interface LiveIdleSweepOptions {
  * pending note nobody typed in, or an empty one, is discarded where the adapter can, and a release refused because
  * someone came back is left for the next tick.
  */
-export function sweepIdleLive(liveNotes: LiveNotes, options: LiveIdleSweepOptions = {}): Promise<LiveSweepReport> {
+export async function sweepIdleLive(liveNotes: LiveNotes, options: LiveIdleSweepOptions = {}): Promise<LiveSweepReport> {
   const { now = Date.now, idleMs = LIVE_IDLE_CHECKIN_MS } = options;
+  let backoff = options.backoff ?? idleBackoffs.get(liveNotes);
+  if (!backoff) idleBackoffs.set(liveNotes, backoff = createLiveIdleBackoff());
+  const { links } = backoff;
   const at = now();
-  const isDue = ({ since, activeEditors, lastEditAt }: Record<string, unknown>) => {
+  const keyOf = ({ contentHash, lastEditAt }: Record<string, unknown>) => `${String(contentHash)}\u0000${String(lastEditAt)}`;
+  const keys = new Map<string, string>();
+  const isDue = (row: Record<string, unknown>) => {
+    const { id, since, activeEditors, lastEditAt } = row;
     if (activeEditors !== 0) return false;
     const last = lastEditAt === null || lastEditAt === undefined ? since : lastEditAt;
-    return isTime(last) && at - Date.parse(last) >= idleMs;
+    if (!isTime(last) || at - Date.parse(last) < idleMs) return false;
+    const key = keyOf(row), held = links.get(String(id));
+    if (held && held.key !== key) links.delete(String(id));
+    else if (held && at < held.next) return false;
+    keys.set(String(id), key);
+    return true;
   };
-  return sweepDue(liveNotes, isDue, { ...options, mode: 'scheduled' });
+  const shouldNotify = (row: Record<string, unknown>) => ({
+    shouldNotify: () => {
+      const held = links.get(String(row.id));
+      return !(held && held.key === keyOf(row) && held.notified);
+    },
+  });
+  const report = await sweepDue(liveNotes, isDue, { ...options, mode: 'scheduled' }, shouldNotify);
+  const stuck = (id: string) => {
+    const key = keys.get(id)!, held = links.get(id);
+    const wait = held?.key === key ? Math.min(held.wait * 2, LIVE_IDLE_BACKOFF_MAX_MS) : LIVE_IDLE_BACKOFF_MS;
+    links.set(id, { key, next: at + wait, wait, notified: true });
+  };
+  for (const result of report.results) {
+    if (result.reason === 'uncommittable' || result.reason === 'unfiled') stuck(result.id);
+    // An earlier try still holds the lease: nothing was learnt.
+    else if (result.reason !== 'leased') links.delete(result.id);
+  }
+  for (const { id } of report.failed) stuck(id);
+  return report;
 }
