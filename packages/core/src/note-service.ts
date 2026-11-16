@@ -8,15 +8,15 @@ import { NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.j
 import { loadWorkspaceConfig } from './config.js';
 
 /**
- * Reads a single note or compilation file from disk safely. `notebookRoot` lets a compilation
- * report content outside its notebook as invalid.
+ * Reads a single note or compilation file from disk safely. `scope`, the roots of every notebook in the
+ * repository, lets a compilation report a folder source in none of them as invalid.
  */
-export function readNoteFile(repoRoot: string, relPath: string, notebookId: string, notebookRoot?: string): NoteItem {
+export function readNoteFile(repoRoot: string, relPath: string, notebookId: string, scope?: readonly string[]): NoteItem {
   const safePath = resolveSafePath(repoRoot, relPath);
   const raw = fs.readFileSync(safePath, 'utf-8');
   const stat = fs.statSync(safePath);
 
-  const { metadata, content, title, lineNumberOffset, extra } = parseNoteFile(raw, relPath, notebookRoot);
+  const { metadata, content, title, lineNumberOffset, extra } = parseNoteFile(raw, relPath, scope);
 
   const filename = path.basename(relPath);
   const noteId = typeof metadata.id === 'string' && metadata.id.trim() ? metadata.id.trim() : path.basename(filename, path.extname(filename));
@@ -30,7 +30,7 @@ export function readNoteFile(repoRoot: string, relPath: string, notebookId: stri
 /**
  * Writes or updates a note file on disk safely.
  */
-export function writeNoteFile(repoRoot: string, relPath: string, content: string, metadata?: NoteMetadata, notebookId?: string, notebookRoot?: string): NoteItem {
+export function writeNoteFile(repoRoot: string, relPath: string, content: string, metadata?: NoteMetadata, notebookId?: string, scope?: readonly string[]): NoteItem {
   const safePath = resolveSafePath(repoRoot, relPath);
   const isNew = !fs.existsSync(safePath);
   const dir = path.dirname(safePath);
@@ -68,7 +68,7 @@ export function writeNoteFile(repoRoot: string, relPath: string, content: string
     resolvedNotebookId = parts.length >= 2 ? parts[1] : 'default';
   }
 
-  return readNoteFile(repoRoot, normalizedRel, resolvedNotebookId, notebookRoot);
+  return readNoteFile(repoRoot, normalizedRel, resolvedNotebookId, scope);
 }
 
 /**
@@ -84,7 +84,8 @@ export function stampIsRacy(stat: { mtimeMs: number | bigint; ctimeMs: number | 
  * Parsed files of each notebook scan, reused while a file's size, change times and inode are unchanged, so a
  * scan reads and parses only the files edited since the last one. A scan keeps only the files it saw.
  */
-const scanCache = new Map<string, Map<string, { stamp: string; note: NoteItem; }>>();
+/** A compilation's parse depends on the repository's notebook roots, so its cached entry also keeps the scope it was read with. */
+const scanCache = new Map<string, Map<string, { stamp: string; scope: string; note: NoteItem; }>>();
 
 /** A copy the caller may change without altering the cached parse; the body string is immutable and shared. */
 function copyNote({ content, ...rest }: NoteItem): NoteItem {
@@ -92,7 +93,8 @@ function copyNote({ content, ...rest }: NoteItem): NoteItem {
 }
 
 /** Walks a notebook, parsing the files changed since the last scan; it yields after each file, so a background scan can let requests in. */
-function* scanNotebookFiles(repoRoot: string, notebook: NotebookConfig, compilations: boolean): Generator<void, NoteItem[]> {
+function* scanNotebookFiles(repoRoot: string, notebook: NotebookConfig, compilations: boolean, scope?: readonly string[]): Generator<void, NoteItem[]> {
+  const scopeKey = scope ? JSON.stringify(scope) : '';
   const safeRoot = resolveSafePath(repoRoot, notebook.root);
   const cacheKey = JSON.stringify([path.resolve(repoRoot), notebook.id, notebook.root]);
   if (!fs.existsSync(safeRoot)) {
@@ -103,7 +105,7 @@ function* scanNotebookFiles(repoRoot: string, notebook: NotebookConfig, compilat
   const templateFiles = new Set((notebook.templates || []).map(t => t.file));
   const notes: NoteItem[] = [];
   const previous = scanCache.get(cacheKey);
-  const seen = new Map<string, { stamp: string; note: NoteItem; }>();
+  const seen = new Map<string, { stamp: string; scope: string; note: NoteItem; }>();
 
   function* walk(currentDir: string): Generator<void> {
     const entries = fs.readdirSync(currentDir, { withFileTypes: true });
@@ -128,8 +130,9 @@ function* scanNotebookFiles(repoRoot: string, notebook: NotebookConfig, compilat
             if (cached?.stamp === stamp) seen.set(relToRepo, cached);
             continue;
           }
-          const parsed = cached?.stamp === stamp ? cached.note : readNoteFile(repoRoot, relToRepo, notebook.id, notebook.root);
-          if (!stampIsRacy(stat)) seen.set(relToRepo, { stamp, note: parsed });
+          const reuse = cached?.stamp === stamp && (note || cached.scope === scopeKey);
+          const parsed = reuse ? cached!.note : readNoteFile(repoRoot, relToRepo, notebook.id, scope);
+          if (!stampIsRacy(stat)) seen.set(relToRepo, { stamp, scope: scopeKey, note: parsed });
           notes.push(copyNote(parsed));
           yield;
         }
@@ -142,8 +145,8 @@ function* scanNotebookFiles(repoRoot: string, notebook: NotebookConfig, compilat
   return notes;
 }
 
-function walkNotebook(repoRoot: string, notebook: NotebookConfig, compilations: boolean): NoteItem[] {
-  const scan = scanNotebookFiles(repoRoot, notebook, compilations);
+function walkNotebook(repoRoot: string, notebook: NotebookConfig, compilations: boolean, scope?: readonly string[]): NoteItem[] {
+  const scan = scanNotebookFiles(repoRoot, notebook, compilations, scope);
   let step = scan.next();
   while (!step.done) step = scan.next();
   return step.value;
@@ -155,7 +158,7 @@ function walkNotebook(repoRoot: string, notebook: NotebookConfig, compilations: 
  */
 export async function prewarmNotebookScans(repoRoot: string, notebooks: NotebookConfig[], batch = 25): Promise<void> {
   for (const notebook of notebooks) {
-    const scan = scanNotebookFiles(repoRoot, notebook, true);
+    const scan = scanNotebookFiles(repoRoot, notebook, true, notebooks.map(item => item.root));
     for (let files = 1; !scan.next().done; files++) {
       if (files % batch === 0) await new Promise(resolve => setImmediate(resolve));
     }
@@ -174,9 +177,9 @@ export function scanNotebookMarkdownNotes(repoRoot: string, notebook: NotebookCo
   return walkNotebook(repoRoot, notebook, false);
 }
 
-/** Lists the notes and compilations of a notebook; the catalog tells them apart by `kind`. */
-export function scanNotebookEntries(repoRoot: string, notebook: NotebookConfig): NoteItem[] {
-  return walkNotebook(repoRoot, notebook, true);
+/** Lists the notes and compilations of a notebook; the catalog tells them apart by `kind`. `scope` is the roots of every notebook in the repository, which a compilation's folder source must lie in. */
+export function scanNotebookEntries(repoRoot: string, notebook: NotebookConfig, scope?: readonly string[]): NoteItem[] {
+  return walkNotebook(repoRoot, notebook, true, scope);
 }
 
 /**

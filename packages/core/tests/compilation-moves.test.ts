@@ -74,9 +74,10 @@ describe('references across notebooks of one repository', () => {
     expect(pinned(planFileChange(snapshot(), { kind: 'move', notebookId: 'b', path: 'notes/b/z.md', destination: 'notes/b/renamed.md' }).files.get('notes/a/manual.compilation.yml')!)).toEqual(['notes/b/renamed.md', 'notes/b/sec']);
     expect(pinned(planFileChange(snapshot(), { kind: 'move', notebookId: 'b', path: 'notes/b/sec', destination: 'notes/b/part' }).files.get('notes/a/manual.compilation.yml')!)).toEqual(['notes/b/z.md', 'notes/b/part']);
   });
-  it('moves the compilation into notebook B and keeps what it names', () => {
-    const after = planFileChange(snapshot(), { kind: 'move', notebookId: 'a', path: 'notes/a/manual.compilation.yml', destination: 'notes/b/manual.compilation.yml' });
-    expect(after.files.get('notes/b/manual.compilation.yml')!.toString()).toBe(book);
-    expect(() => parseCompilation(book, twoNotebooks.map(notebook => notebook.root))).not.toThrow();
+  it('keeps a compilation valid wherever in the repository it lives, and moves it inside its notebook untouched', () => {
+    // The file manager moves files inside their notebook; a compilation placed in notebook B by hand or by Git stays valid there.
+    expect(() => parseCompilation(book.replace(/notes\/b\//g, 'notes/a/'), twoNotebooks.map(notebook => notebook.root))).not.toThrow();
+    const after = planFileChange(snapshot(), { kind: 'move', notebookId: 'a', path: 'notes/a/manual.compilation.yml', destination: 'notes/a/handbook.compilation.yml' });
+    expect(after.files.get('notes/a/handbook.compilation.yml')!.toString()).toBe(book);
   });
 });

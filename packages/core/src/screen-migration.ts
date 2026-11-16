@@ -46,7 +46,7 @@ export function legacyScreenToCompilations(page: ScreenPage, notebooks: readonly
     const status = (row as { status?: string; }).status || resolveNoteStatuses(notebook)[0];
     const content = serializeCompilation(compilationFile({ ...row, path: file, ...(status ? { status } : {}) } as CompilationRow));
     try {
-      parseCompilation(content, notebook.root);
+      parseCompilation(content, notebooks.map(item => item.root));
     } catch (error) {
       throw new ScreenMigrationError(`Lane "${row.name}" cannot become ${file}: ${(error as Error).message}`);
     }

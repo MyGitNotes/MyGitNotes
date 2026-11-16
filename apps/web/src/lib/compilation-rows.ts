@@ -22,7 +22,7 @@ export function parseCompilationNote(note: Pick<NoteListItem, 'path' | 'notebook
   if (note.invalid) return { ...base, error: note.invalid };
   if (typeof note.content !== 'string') return { ...base, error: note.invalid };
   try {
-    return { ...base, row: compilationRow(parseCompilation(note.content, notebook.root), { notebookId: note.notebookId, path: note.path }) };
+    return { ...base, row: compilationRow(parseCompilation(note.content, [notebook.root]), { notebookId: note.notebookId, path: note.path }) };
   } catch (error) {
     return { ...base, error: error instanceof Error ? error.message : String(error) };
   }

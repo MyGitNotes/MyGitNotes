@@ -20,9 +20,9 @@ export interface ParsedNoteFile {
 /**
  * Splits a stored file into the fields the note pipelines carry. A note is Markdown with
  * frontmatter; a compilation keeps its whole YAML as content, with a bounded summary as metadata.
- * `notebookRoot` lets a compilation report content outside its notebook as invalid.
+ * `scope`, the roots of every notebook in the repository, lets a compilation report a folder source in none of them as invalid.
  */
-export function parseNoteFile(raw: string, filePath: string, notebookRoot?: string): ParsedNoteFile {
+export function parseNoteFile(raw: string, filePath: string, scope?: readonly string[]): ParsedNoteFile {
   const name = filePath.split('/').pop() ?? filePath;
   if (!isCompilationPath(filePath)) {
     const outline = isOutlinePath(filePath);
@@ -30,7 +30,7 @@ export function parseNoteFile(raw: string, filePath: string, notebookRoot?: stri
     const { metadata, content, title, lineNumberOffset } = parseNoteContent(raw, fallback);
     return { metadata, content, title, lineNumberOffset, extra: outline ? { kind: 'outline' } : {} };
   }
-  const fields = compilationFields(raw, filePath, notebookRoot);
+  const fields = compilationFields(raw, filePath, scope);
   return { metadata: fields.metadata, content: raw, title: fields.title, lineNumberOffset: 0, extra: { kind: 'compilation', ...(fields.invalid ? { invalid: fields.invalid } : {}) } };
 }
 

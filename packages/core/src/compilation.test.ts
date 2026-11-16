@@ -246,7 +246,7 @@ describe('membership and item moves', () => {
     expect(() => moveCompilationItem({ rows: [keyed('qa~one')[0], keyed('other~one')[1]] }, 'n0', 'two', 0)).toThrow('Items stay inside their repository');
   });
   it('keeps a pinned note of another notebook and takes a dynamic folder source from its own notebook', () => {
-    const notebookOf = (path: string) => path.startsWith('notes/two/') ? 'two' : 'one';
+    const notebookOf = (path: string) => path === 'notes/two' || path.startsWith('notes/two/') ? 'two' : 'one';
     const notes = [{ notebookId: 'two', path: 'notes/two/z.md', tags: [], metadata: {} }, { notebookId: 'one', path: 'notes/two/z.md', tags: [], metadata: {} }, { notebookId: 'two', path: 'notes/two/sub/y.md', tags: [], metadata: {} }];
     const pinnedRow = compilationRow({ version: 1, id: 'p', title: 'P', arrangement: 'book', items: [{ id: 'z', kind: 'note', path: 'notes/two/z.md' }] }, owner, notebookOf);
     expect(compilationNotes(pinnedRow, notes)).toEqual([notes[0]]);

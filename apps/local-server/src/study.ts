@@ -76,7 +76,7 @@ export function createStudyRouter(): Router {
           if (!compilationPath || !withinNotebook(compilationPath, notebook.root)) throw new SourceError('Path is not a configured compilation.', 403);
           let lane;
           try {
-            lane = compilationRow(parseCompilation(await read(compilationPath), notebook.root), { notebookId: notebook.id, path: compilationPath });
+            lane = compilationRow(parseCompilation(await read(compilationPath), [notebook.root]), { notebookId: notebook.id, path: compilationPath });
           } catch {
             throw new SourceError('This compilation no longer exists or cannot be read. Reload before reviewing.', 409);
           }
