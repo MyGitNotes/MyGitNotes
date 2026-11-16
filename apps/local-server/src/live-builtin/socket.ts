@@ -128,6 +128,8 @@ class Refusal extends Error {
 
 /** The close of a socket that was open for `socketMs`: the tab connects again, with a fresh ticket, as after any close. */
 export const LIVE_RENEW_CODE = 4000;
+/** How soon a person's next seat on a document must open after their last one left to take on its last activity. */
+const RETURN_MS = 60_000;
 const RENEW_REASON = 'Live ticket renewal';
 
 const TICKET = /^[A-Za-z0-9_-]{32,128}$/;
@@ -175,6 +177,16 @@ export function liveSocket({ documents, store, clock, process: processName, read
     return true;
   };
   const rooms = new Map<string, Room>();
+  /**
+   * The last activity and awareness state of a person who just left a document, by document and editor key: a seat
+   * of theirs that opens within `RETURN_MS` (a renewal's reconnect, a reload) takes them on, so coming back is not
+   * activity and an idle open tab stops counting `idleMs` after its last real move (cf14-F001).
+   */
+  const departed = new Map<string, { at: number; cursor: string; left: number; }>();
+  const departedKey = (seat: Seat) => `${seat.name}\u0000${seat.editor.key}`;
+  const forgetDeparted = () => {
+    for (const [key, kept] of departed) if (clock() - kept.left > RETURN_MS) departed.delete(key);
+  };
   /** The last write of each document's presence that is still under way, also once everyone left it. */
   const writes = new Map<string, Promise<void>>();
   /** What runs unawaited: presence writes and the unloading of documents everyone left. `shutdown` waits for it. */
@@ -232,6 +244,7 @@ export function liveSocket({ documents, store, clock, process: processName, read
 
   const startTimers = () => {
     beat ??= setInterval(() => {
+      forgetDeparted();
       for (const socket of sockets.keys()) if (!expired(socket) && socket.readyState === socket.OPEN) socket.ping();
       // An entry lasts LIVE_PRESENCE_MS after it was written: one nobody changed is written again well before.
       for (const room of rooms.values()) if ([...room.seats].some(seat => seat.connected) && (room.dirty || clock() - room.written >= LIVE_PRESENCE_MS / 3)) void writePresence(room.link);
@@ -253,7 +266,12 @@ export function liveSocket({ documents, store, clock, process: processName, read
     seat.connection = connection;
     if (seat.connected || seat.left) return;
     seat.connected = true;
-    seat.at = clock();
+    const key = departedKey(seat), kept = departed.get(key);
+    departed.delete(key);
+    if (kept && clock() - kept.left <= RETURN_MS) {
+      seat.at = Math.max(seat.at, kept.at);
+      seat.cursor ||= kept.cursor;
+    } else seat.at = clock();
     void writePresence(seat.link);
   };
   const active = (seat: Seat) => {
@@ -291,6 +309,8 @@ export function liveSocket({ documents, store, clock, process: processName, read
         if (seat.claim !== undefined && room.claims.get(seat.claim) === seat) room.claims.delete(seat.claim);
         if (!room.seats.size && rooms.get(name) === room) rooms.delete(name);
         if (seat.connected) {
+          const key = departedKey(seat), kept = departed.get(key);
+          if (!kept || kept.at <= seat.at) departed.set(key, { at: seat.at, cursor: seat.cursor, left: clock() });
           // Written at once, so a note someone just left can be checked in and released.
           void writePresence(link);
           // The last one out: the document is compacted and let go now, once Hocuspocus has done with the connection, unless someone came meanwhile.

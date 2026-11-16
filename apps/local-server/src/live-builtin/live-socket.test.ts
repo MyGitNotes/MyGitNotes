@@ -540,6 +540,8 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       await one.synced();
       one.provider.awareness!.setLocalState({ cursor: { anchor: 0, head: 0 } });
       await until('the tab counts', async () => (await activeEditors(server.live, id)) === 1);
+      // Its cursor reached the server before the clock moves on.
+      await pause(150);
       // Ten minutes on, the socket is renewed and the tab comes back on a fresh ticket, doing nothing.
       time.advance(10 * 60_000 + 1);
       await until('the socket was closed for a new ticket', () => one.closes.length > 0);
