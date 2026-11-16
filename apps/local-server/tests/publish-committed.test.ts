@@ -216,10 +216,11 @@ describe('on GitHub', () => {
   /** Gists the fake GitHub holds, by id; the Gist requests it received, each with the token it was sent. */
   let gists: Map<string, { description: string; public: boolean; files: Record<string, { content: string; }>; }>;
   let gistCalls: { method: string; endpoint: string; token: string | null; }[];
-  /** The files the fake GitHub serves. */
+  /** The files the fake GitHub serves at its head, which a commit moves. */
   let files: Record<string, string>;
-  /** How long the fake GitHub takes to update a Gist, in milliseconds. */
-  let gistDelay: number;
+  /** The fake GitHub's head commit, and the trees and commits made on it that no ref names yet. */
+  let head: string, made: number;
+  let trees: Map<string, Record<string, string>>, commits: Map<string, string>;
 
   const start = async (services: Record<string, unknown> = {}) => {
     await listen(createApp(root, { defer: (work: Promise<unknown>) => void deferred.push(work), ...services }));
@@ -231,8 +232,11 @@ describe('on GitHub', () => {
   beforeEach(async () => {
     gists = new Map([['abc123', { description: 'Shared', public: false, files: { 'shared.md': { content: 'Old body\n' } } }]]);
     gistCalls = [];
-    gistDelay = 0;
     files = { ...initial };
+    head = 'a'.repeat(40);
+    made = 0;
+    trees = new Map();
+    commits = new Map();
     for (const [key, value] of Object.entries({ MYGITNOTES_SOURCE: 'github', MYGITNOTES_REPOSITORY: 'owner/home', MYGITNOTES_BRANCH: 'main', SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', REDIS_URL: '', KV_REST_API_URL: '', MYGITNOTES_STORAGE: '', APP_URL: '', VERCEL: '', MYGITNOTES_PRODUCT_REPOSITORY: '' })) vi.stubEnv(key, value);
     await createRecordStore(root).set(session, { kind: 'session', token: 'fixture-owner', userId: 1, login: 'owner' });
     const nativeFetch = globalThis.fetch;
@@ -245,7 +249,6 @@ describe('on GitHub', () => {
         const found = gists.get(gist[1]?.slice(1) ?? '');
         if (!found) return json({ message: 'Not Found' }, 404);
         if (method === 'PATCH') {
-          if (gistDelay) await new Promise(resolve => setTimeout(resolve, gistDelay));
           const body = JSON.parse(String(init!.body)) as { description: string; files: Record<string, { filename: string; content: string; }>; };
           for (const [name, file] of Object.entries(body.files)) {
             delete found.files[name];
@@ -259,34 +262,65 @@ describe('on GitHub', () => {
       if (!match) return nativeFetch(url, init);
       const endpoint = match[1];
       if (endpoint === '') return json({ id: 7, private: true, default_branch: 'main', permissions: { push: true } });
-      if (endpoint.startsWith('/commits/')) return json({ sha: 'a'.repeat(40), commit: { tree: { sha: 'tree' } } });
-      if (endpoint.startsWith('/git/trees/')) return json({ truncated: false, tree: Object.keys(files).map(file => ({ path: file, sha: `blob:${file}`, type: 'blob', mode: '100644', size: 10 })) });
-      if (endpoint.startsWith('/git/blobs/')) return json({ encoding: 'base64', content: Buffer.from(files[decodeURIComponent(endpoint.slice('/git/blobs/blob:'.length))] ?? '').toString('base64') });
-      if (endpoint === '/git/trees') return json({ sha: 'new-tree' });
-      if (endpoint === '/git/commits') return json({ sha: 'd'.repeat(40) });
-      if (endpoint.startsWith('/git/refs/')) return json({ object: { sha: 'd'.repeat(40) } });
+      // Commits apply: a written tree becomes the head's files once the ref moves to its commit.
+      const blob = (file: string) => `${gitBlobId(Buffer.from(files[file]), 40)}`;
+      if (endpoint.startsWith('/commits/')) return json({ sha: head, commit: { tree: { sha: `tree-${head}` } } });
+      if (endpoint.startsWith('/git/trees/')) return json({ truncated: false, tree: Object.keys(files).map(file => ({ path: file, sha: blob(file), type: 'blob', mode: '100644', size: Buffer.byteLength(files[file]) })) });
+      if (endpoint.startsWith('/git/blobs/')) {
+        const sha = endpoint.slice('/git/blobs/'.length), file = Object.keys(files).find(name => blob(name) === sha);
+        return file === undefined ? json({ message: 'Not Found' }, 404) : json({ encoding: 'base64', content: Buffer.from(files[file]).toString('base64') });
+      }
+      if (endpoint === '/git/trees') {
+        const { tree } = JSON.parse(String(init!.body)) as { tree: { path: string; content?: string; sha?: string | null; }[]; };
+        const next = { ...files };
+        for (const entry of tree) {
+          if (entry.content !== undefined) next[entry.path] = entry.content;
+          else if (entry.sha === null) delete next[entry.path];
+          else next[entry.path] = files[Object.keys(files).find(name => blob(name) === entry.sha)!];
+        }
+        const sha = `new-tree-${++made}`;
+        trees.set(sha, next);
+        return json({ sha });
+      }
+      if (endpoint === '/git/commits') {
+        const sha = String(made).padStart(40, 'd');
+        commits.set(sha, (JSON.parse(String(init!.body)) as { tree: string; }).tree);
+        return json({ sha });
+      }
+      if (endpoint.startsWith('/git/refs/')) {
+        const { sha } = JSON.parse(String(init!.body ?? '{}')) as { sha?: string; };
+        if (sha && commits.has(sha)) {
+          files = trees.get(commits.get(sha)!)!;
+          head = sha;
+        }
+        return json({ object: { sha: head } });
+      }
       return json({});
     });
   });
 
-  it('updates the Gist a note names after an MCP save_note, with the token of the grant', async () => {
+  it('pushes no Gist after an MCP save_note of a note that names one, and logs the path without the note text', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     await start();
-    const saved = await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'By the agent\n', revision: 'a'.repeat(40) });
-    expect(saved).toMatchObject({ committed: true, commit: { commitHash: 'd'.repeat(40) } });
-    // The answer is the commit's own: the Gist is updated beside it.
+    const saved = await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'Secret body\n', revision: 'a'.repeat(40) });
+    expect(saved).toMatchObject({ committed: true, commit: { commitHash: '1'.padStart(40, 'd') } });
     expect(saved.gists).toBeUndefined();
     await settled();
-    expect(gists.get('abc123')).toEqual({ description: 'Shared', public: false, files: { 'shared.md': { content: 'By the agent\n' } } });
-    expect(gistCalls.map(({ method, endpoint, token }) => [method, endpoint, token])).toEqual([['GET', '/abc123', 'Bearer fixture-owner'], ['PATCH', '/abc123', 'Bearer fixture-owner']]);
+    expect(gistCalls).toEqual([]);
+    expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'Old body\n' } });
+    const lines = info.mock.calls.map(parts => parts.join(' '));
+    expect(lines).toEqual(['[publishing] github:owner/home@main/notes/life/shared.md: gist not updated by an agent write; updates on the next app commit']);
+    expect(lines.join('\n')).not.toContain('Secret body');
   });
 
-  it('hands the note an MCP save_note committed to syncCommitted beside the Gist update', async () => {
+  it('hands the note an MCP save_note committed to syncCommitted, and pushes no Gist', async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {});
     await start({ publishing: service() });
     await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'By the agent\n', metadata: { publish: 'shared' }, revision: 'a'.repeat(40) });
     await settled();
     expect(committed).toHaveLength(1);
-    expect(committed[0]).toMatchObject({ person: { realm: 'github:https://github.com:', userId: 1 }, repository: { kind: 'remote', id: repository, authenticated: true }, revision: 'd'.repeat(40), notes: [{ path: 'notes/life/shared.md', content: 'By the agent\n', metadata: { publish: 'shared' } }] });
-    expect(gistCalls.map(({ method }) => method)).toEqual(['GET', 'PATCH']);
+    expect(committed[0]).toMatchObject({ person: { realm: 'github:https://github.com:', userId: 1 }, repository: { kind: 'remote', id: repository, authenticated: true }, revision: '1'.padStart(40, 'd'), notes: [{ path: 'notes/life/shared.md', content: 'By the agent\n', metadata: { publish: 'shared' } }] });
+    expect(gistCalls).toEqual([]);
     expect(synced).toEqual([]);
   });
 
@@ -302,18 +336,7 @@ describe('on GitHub', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('keeps the MCP commit and logs the path when the Gist cannot be updated', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    gists.clear();
-    await start();
-    expect(await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'Secret body\n', revision: 'a'.repeat(40) })).toMatchObject({ committed: true });
-    await settled();
-    const lines = warn.mock.calls.map(parts => parts.join(' '));
-    expect(lines).toEqual([expect.stringMatching(/^\[publishing\] github:owner\/home@main\/notes\/life\/shared\.md: .*404/)]);
-    expect(lines.join('\n')).not.toContain('Secret body');
-  });
-
-  it('pushes no Gist an MCP write newly names, and logs the path without the note text', async () => {
+  it('pushes no Gist an MCP write newly names, and still tells the service', async () => {
     gists.set('victim', { description: 'snippet.sh', public: true, files: { 'snippet.sh': { content: 'echo hi\n' } } });
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     await start({ publishing: service() });
@@ -321,19 +344,25 @@ describe('on GitHub', () => {
     await settled();
     expect(gistCalls).toEqual([]);
     expect(gists.get('victim')!.files).toEqual({ 'snippet.sh': { content: 'echo hi\n' } });
-    const lines = info.mock.calls.map(parts => parts.join(' '));
-    expect(lines).toEqual(['[publishing] github:owner/home@main/notes/life/private.md: gist id not in the previous commit, not updated']);
-    // The service still hears the note.
+    expect(info.mock.calls.map(parts => parts.join(' '))).toEqual(['[publishing] github:owner/home@main/notes/life/private.md: gist not updated by an agent write; updates on the next app commit']);
     expect(committed).toHaveLength(1);
   });
 
-  it('pushes no Gist an MCP write retargets from the id the note named before', async () => {
+  it('pushes no Gist when one MCP write sets the mark and the next adds the text (s0rr-F001)', async () => {
     gists.set('victim', { description: 'snippet.sh', public: true, files: { 'snippet.sh': { content: 'echo hi\n' } } });
     vi.spyOn(console, 'info').mockImplementation(() => {});
     await start();
-    expect(await tool(await grant(), 'write', { path: 'notes/life/shared.md', content: '---\ntitle: Shared\ngist: victim\n---\nLeaked\n', revision: 'a'.repeat(40) })).toMatchObject({ committed: true });
+    const token = await grant();
+    const first = await tool(token, 'write', { path: 'notes/life/private.md', content: '---\ngist: victim\n---\nharmless\n', revision: 'a'.repeat(40) });
+    expect(first).toMatchObject({ committed: true });
     await settled();
+    expect(files['notes/life/private.md']).toBe('---\ngist: victim\n---\nharmless\n');
+    const second = await tool(token, 'write', { path: 'notes/life/private.md', content: '---\ngist: victim\n---\nPRIVATE NOTE TEXT\n', revision: first.revision });
+    expect(second).toMatchObject({ committed: true });
+    await settled();
+    expect(files['notes/life/private.md']).toBe('---\ngist: victim\n---\nPRIVATE NOTE TEXT\n');
     expect(gistCalls).toEqual([]);
+    expect(gists.get('victim')!.files).toEqual({ 'snippet.sh': { content: 'echo hi\n' } });
   });
 
   it('publishes the notes a tag commit rewrote to the service, pushes no Gist as tags are not in one, and answers as before', async () => {
@@ -350,20 +379,20 @@ describe('on GitHub', () => {
     expect(synced).toEqual([]);
   });
 
-  it('holds the answer of an MCP write until the Gist is updated where the deployment keeps no work alive after an answer', async () => {
-    gistDelay = 300;
-    await start({ defer: undefined });
-    await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'By the agent\n', revision: 'a'.repeat(40) });
-    expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'By the agent\n' } });
+  it('holds the answer of an MCP write until the service heard it where the deployment keeps no work alive after an answer', async () => {
+    let heard = false;
+    await start({ defer: undefined, publishing: { sync: async () => [], syncCommitted: async () => (await new Promise(resolve => setTimeout(resolve, 300)), heard = true, []) } });
+    await tool(await grant(), 'save_note', { path: 'notes/life/private.md', content: 'By the agent\n', revision: 'a'.repeat(40) });
+    expect(heard).toBe(true);
   });
 
-  it('answers at once where the deployment keeps the work alive, and the Gist follows', async () => {
-    gistDelay = 300;
-    await start();
-    await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'By the agent\n', revision: 'a'.repeat(40) });
-    expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'Old body\n' } });
+  it('answers at once where the deployment keeps the work alive, and the service hears it after', async () => {
+    let heard = false;
+    await start({ publishing: { sync: async () => [], syncCommitted: async () => (await new Promise(resolve => setTimeout(resolve, 300)), heard = true, []) } });
+    await tool(await grant(), 'save_note', { path: 'notes/life/private.md', content: 'By the agent\n', revision: 'a'.repeat(40) });
+    expect(heard).toBe(false);
     await settled();
-    expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'By the agent\n' } });
+    expect(heard).toBe(true);
   });
 
   it('publishes no agent file or template an MCP write commits', async () => {
