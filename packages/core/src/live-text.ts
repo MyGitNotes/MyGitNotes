@@ -64,12 +64,18 @@ export function textEdits(base: string, changed: string, timeoutMs = TEXT_DIFF_M
   return whole;
 }
 
+/** Whether one of two edits inserts at the start or end of a span the other replaces. */
+function touchesReplaced(a: TextEdit, b: TextEdit): boolean {
+  const [insertion, replaced] = a.from === a.to ? [a, b] : [b, a];
+  return insertion.from === insertion.to && replaced.to > replaced.from && (insertion.from === replaced.from || insertion.from === replaced.to);
+}
+
 /** How {@link rebaseLiveText} reads its base. */
 export interface RebaseOptions {
   /**
    * The base may lack typing of `mine` that `theirs` already holds, as when a tab never heard that the server stored its
-   * last keystrokes: two different insertions at one point are then a conflict, since applying both could put that
-   * typing in twice.
+   * last keystrokes: two different insertions at one point, or an insertion at the edge of a span the other side replaced,
+   * are then a conflict, since applying both could put that typing in twice.
    */
   uncertainBase?: boolean;
 }
@@ -107,6 +113,9 @@ export function rebaseLiveText(base: string, theirs: string, mine: string, timeo
     const first = theirsFirst ? their! : my!, other = theirsFirst ? my : their;
     // The other side's next edit starts at or after this one: inside its span, the two cannot both apply.
     if (other && other.from < first.to) return null;
+    // An insertion at either edge of a span the other side replaced: on an uncertain base, the insertion may be typing the
+    // replacement already holds, and both would put it in twice (cfx-F003).
+    if (uncertainBase && other && touchesReplaced(first, other)) return null;
     apply(first);
     if (theirsFirst) i++;
     else j++;
