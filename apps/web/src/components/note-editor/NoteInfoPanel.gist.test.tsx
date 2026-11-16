@@ -37,6 +37,9 @@ it('remembers the Gist it creates for the note in this repository, and forgets i
   render(<Panel />);
   fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
   await screen.findByRole('button', { name: 'Unpublish' });
+  // The server binds the Gist it creates to this note of this repository.
+  const [, init] = vi.mocked(fetch).mock.calls.find(([url]) => url === '/api/gists')!;
+  expect(JSON.parse(String(init!.body))).toMatchObject({ repository: repository.id, path: note.path });
   expect(createdGistConfirmations(repository.id, [{ path: note.path, metadata: { gist: 'new456' } }])).toEqual([{ path: note.path, gist: 'new456' }]);
   expect(createdGistConfirmations('github:me/other@main', [{ path: note.path, metadata: { gist: 'new456' } }])).toEqual([]);
   fireEvent.click(screen.getByRole('button', { name: 'Unpublish' }));

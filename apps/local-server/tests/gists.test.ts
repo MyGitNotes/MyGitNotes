@@ -6,7 +6,7 @@ import { createServer, type Server } from 'node:http';
 import { gitBlobId } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { createRecordStore } from '../src/record-store/index.js';
-import { gistPageAllowed } from '../src/gists.js';
+import { gistMarker, gistPageAllowed } from '../src/gists.js';
 
 const manifest = 'schema_version: 1\nworkspace:\n  title: Hosted\n  default_notebook: life\nnotebooks:\n  - id: life\n    title: Life\n    root: notes/life\n';
 const files: Record<string, string> = { '.mygitnotes.yaml': manifest, 'notes/life/shared.md': '---\ntitle: Shared\ngist: abc123\n---\n\nOld body\n', 'notes/life/private.md': '# Private\n' };
@@ -143,6 +143,19 @@ it('reports a Gist update the grant is not allowed to make as needing a new sign
   const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { gist: 'abc123' } }]);
   expect(status).toBe(200);
   expect(body.gists).toEqual([{ path: 'notes/life/shared.md', gist: 'abc123', error: expect.any(String), reauthorize: true }]);
+});
+
+// The marker binds a Gist to a note of a repository as every device names it, whatever branch or local id it is opened by.
+it('marks a Gist with a hash of its repository and note path that every device computes alike and that hides the path', () => {
+  const home = { type: 'github' as const, repository: 'owner/home', branch: 'main' };
+  const marker = gistMarker(home, 'notes/life/shared.md');
+  expect(marker).toMatch(/^\[mgn:[0-9a-f]{8,}\]$/);
+  expect(gistMarker({ ...home, branch: 'drafts' }, 'notes/life/shared.md')).toBe(marker);
+  expect(gistMarker({ ...home, repository: 'Owner/Home' }, 'notes/life/shared.md')).toBe(marker);
+  expect(gistMarker({ ...home, url: 'https://github.com' }, 'notes/life/shared.md')).toBe(marker);
+  expect(gistMarker(home, 'notes/life/private.md')).not.toBe(marker);
+  expect(gistMarker({ ...home, repository: 'owner/other' }, 'notes/life/shared.md')).not.toBe(marker);
+  expect(gistMarker({ ...home, url: 'https://ghe.example.com' }, 'notes/life/shared.md')).not.toBe(marker);
 });
 
 it('opens only a Gist page of the workspace site', () => {
