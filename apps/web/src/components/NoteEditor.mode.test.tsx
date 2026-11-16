@@ -47,7 +47,7 @@ function open(url: string, props: Partial<NoteEditorProps> = {}) {
             <NoteEditor {...{ note, frame: 'zoom', active: true, statuses: [], autoSave: true, onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main', ...props } as NoteEditorProps} />
           </PanelProvider>
         </PhoneNotesProvider>
-        <Address report={value => address.current = value} />
+        <Address report={value => void (address.current = value)} />
       </EditorModeRouteProvider>
     </MemoryRouter>,
   );

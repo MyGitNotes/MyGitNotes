@@ -28,9 +28,12 @@ import { formatKeys } from '../lib/keyboard/keys.js';
 import { bindingsFor, keymapEntry, matchesCommand } from '../lib/keyboard/keymap.js';
 import { keyEnvironment } from '../lib/keyboard/platform.js';
 import { IconPickerDialog } from './IconPickerDialog.js';
+import { SplitView } from './SplitView.js';
+import type { EditorMode } from '../lib/editor-mode-url.js';
 
 const LiveMarkdownEditor = React.lazy(() => import('./LiveMarkdownEditor.js').then(module => ({ default: module.LiveMarkdownEditor })));
-export type MarkdownEditorMode = 'live' | 'raw';
+/** `split` is the source editor beside the rendered note, for a Markdown note; any other file shows its source. */
+export type MarkdownEditorMode = EditorMode;
 export interface MarkdownEditorHandle {
   /** Inserts `text` at `at`, or in place of the selection. */
   insert: (text: string, at?: number) => void;
@@ -243,7 +246,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
     setSourceIdentity({ path, mode });
     setActiveSourceLine(1);
   }
-  const match = !readOnly && mode === 'raw' && !dismissed && caret !== null ? noteCompletionAt(content, caret) : null;
+  const match = !readOnly && mode !== 'live' && !dismissed && caret !== null ? noteCompletionAt(content, caret) : null;
   const suggestions = useNoteCandidates(match ? match.query : null, path, isOutlinePath(path) ? notebookId : undefined);
   const pickerCandidates = useNoteCandidates(picker ? query : null, path, isOutlinePath(path) ? notebookId : undefined);
   const accept = (note: NoteListItem) => {
@@ -618,6 +621,113 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
     },
   }));
 
+  const rawEditor = (
+    <div className='flex-1 flex flex-col min-h-0 bg-surface'>
+      {!compact && (
+        <div className='note-source-heading px-3 py-1 bg-sidebar border-b border-line text-[11px] font-semibold text-muted uppercase tracking-wider flex items-center justify-between gap-4'>
+          <span>{isMarkdown ? t('editor.rawSource') : t('editor.plainTextSource')}</span>
+          <span className='font-mono truncate'>{path}</span>
+        </div>
+      )}
+      <div key={path} className='relative flex-1 flex min-h-0 overflow-hidden'>
+        {suggestions.length > 0 && (
+          <div role='listbox' aria-label={t('graph.findNote')} className='note-source-completions'>
+            {suggestions.map((note, index) => (
+              <button
+                type='button'
+                role='option'
+                aria-selected={index === choice % suggestions.length}
+                key={`${note.notebookId}:${note.path}`}
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => accept(note)}
+              >
+                {note.title}
+                <small>{note.notebookId}{' · '}{note.path}</small>
+              </button>
+            ))}
+          </div>
+        )}
+        {showLineNumbers && (
+          <div ref={setSourceGutter} data-source-line-numbers aria-hidden='true' className='w-12 shrink-0 overflow-hidden border-r border-line/70 bg-sidebar/60 text-muted/70 touch-none select-none'>
+            <div ref={sourceLineNumbers} className='py-4 pr-3 text-right font-mono text-xs tabular-nums' style={{ lineHeight: '1.421875rem' }}>
+              {Array.from({ length: sourceLineCount }, (_, index) => {
+                const line = index + 1;
+                const rangeStart = draggedSourceRange ? Math.min(...draggedSourceRange) : -1;
+                const rangeEnd = draggedSourceRange ? Math.max(...draggedSourceRange) : -1;
+                const inDraggedRange = line >= rangeStart && line <= rangeEnd;
+                return <div key={index} data-line-number data-body-line={line} data-active-line={line === activeSourceLine ? 'true' : undefined} data-line-copy-selected={inDraggedRange ? 'true' : undefined} className={`cursor-default select-none transition-[background-color,color] duration-150 ${inDraggedRange ? 'bg-fg/10 text-fg' : ''} ${line === activeSourceLine ? 'font-semibold text-muted' : ''}`}>{line + lineNumberOffset}</div>;
+              })}
+            </div>
+          </div>
+        )}
+        <textarea
+          ref={source}
+          readOnly={readOnly}
+          aria-label={ariaLabel}
+          value={content}
+          onBeforeInput={() => {
+            if (outline && !readOnly) rawBeforeInput.current = rawSnapshot();
+          }}
+          onChange={event => {
+            setDismissed(false);
+            setChoice(0);
+            updateActiveSourceLine(event.currentTarget);
+            changeSource(event.target.value, { anchor: event.currentTarget.selectionStart, head: event.currentTarget.selectionEnd }, rawBeforeInput.current ?? rawSnapshot(), false);
+            rawBeforeInput.current = null;
+          }}
+          onKeyDown={event => {
+            if (event.nativeEvent.isComposing) return;
+            const shortcut = SHORTCUT_FORMATS.find(([command]) => matchesCommand(event.nativeEvent, command))?.[1];
+            if (shortcut && isMarkdown && !readOnly) {
+              event.preventDefault();
+              applyFormat(shortcut);
+              return;
+            }
+            const redo = matchesCommand(event.nativeEvent, 'editor.redo');
+            if (outline && !readOnly && (redo || matchesCommand(event.nativeEvent, 'editor.undo'))) {
+              event.preventDefault();
+              rawUndo(redo);
+              return;
+            }
+            const escaped = tabEscape.current;
+            tabEscape.current = event.key === 'Escape';
+            if (outline && !readOnly && !event.altKey && !event.metaKey && !event.ctrlKey && !(event.key === 'Tab' && escaped)) {
+              const command = event.key === 'Enter' ? event.shiftKey ? 'annotation' : suggestions.length ? null : 'sibling' : event.key === 'Tab' ? event.shiftKey ? 'outdent' : 'indent' : null;
+              if (command && applyOutline(command)) {
+                event.preventDefault();
+                return;
+              }
+            }
+            if (!suggestions.length) return;
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault();
+              setChoice(value => (value + (event.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length);
+            }
+            if (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+              event.preventDefault();
+              accept(suggestions[choice % suggestions.length]);
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              setDismissed(true);
+            }
+          }}
+          onFocus={event => updateActiveSourceLine(event.currentTarget)}
+          onSelect={event => updateActiveSourceLine(event.currentTarget)}
+          onScroll={event => {
+            noteRawView(event.currentTarget);
+            if (sourceLineNumbers.current) sourceLineNumbers.current.style.transform = `translateY(-${event.currentTarget.scrollTop}px)`;
+          }}
+          wrap='off'
+          className='flex-1 min-w-0 min-h-0 px-4 py-4 font-mono text-sm text-fg bg-surface resize-none focus:outline-none'
+          style={{ lineHeight: '1.421875rem' }}
+          spellCheck={false}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div ref={root} className='relative flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden' data-markdown-editor>
       {toolbar && (toolbarSlot === undefined ? <div className='markdown-insert-toolbar'>{toolbar}</div> : toolbarSlot && createPortal(toolbar, toolbarSlot))}
@@ -654,112 +764,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
             <LiveMarkdownEditor key={path} ref={live} content={content} notePath={path} notebookId={notebookId} readOnly={readOnly} onChange={onChange} onCaret={onCaret} ariaLabel={ariaLabel} showLineNumbers={showLineNumbers} lineNumberOffset={lineNumberOffset} onCopyLines={copyLines} continuous={continuous} carry={carry} slides={slides} />
           </React.Suspense>
         )
-        : (
-          <div className='flex-1 flex flex-col min-h-0 bg-surface'>
-            {!compact && (
-              <div className='note-source-heading px-3 py-1 bg-sidebar border-b border-line text-[11px] font-semibold text-muted uppercase tracking-wider flex items-center justify-between gap-4'>
-                <span>{isMarkdown ? t('editor.rawSource') : t('editor.plainTextSource')}</span>
-                <span className='font-mono truncate'>{path}</span>
-              </div>
-            )}
-            <div key={path} className='relative flex-1 flex min-h-0 overflow-hidden'>
-              {suggestions.length > 0 && (
-                <div role='listbox' aria-label={t('graph.findNote')} className='note-source-completions'>
-                  {suggestions.map((note, index) => (
-                    <button
-                      type='button'
-                      role='option'
-                      aria-selected={index === choice % suggestions.length}
-                      key={`${note.notebookId}:${note.path}`}
-                      onMouseDown={event => event.preventDefault()}
-                      onClick={() => accept(note)}
-                    >
-                      {note.title}
-                      <small>{note.notebookId}{' · '}{note.path}</small>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {showLineNumbers && (
-                <div ref={setSourceGutter} data-source-line-numbers aria-hidden='true' className='w-12 shrink-0 overflow-hidden border-r border-line/70 bg-sidebar/60 text-muted/70 touch-none select-none'>
-                  <div ref={sourceLineNumbers} className='py-4 pr-3 text-right font-mono text-xs tabular-nums' style={{ lineHeight: '1.421875rem' }}>
-                    {Array.from({ length: sourceLineCount }, (_, index) => {
-                      const line = index + 1;
-                      const rangeStart = draggedSourceRange ? Math.min(...draggedSourceRange) : -1;
-                      const rangeEnd = draggedSourceRange ? Math.max(...draggedSourceRange) : -1;
-                      const inDraggedRange = line >= rangeStart && line <= rangeEnd;
-                      return <div key={index} data-line-number data-body-line={line} data-active-line={line === activeSourceLine ? 'true' : undefined} data-line-copy-selected={inDraggedRange ? 'true' : undefined} className={`cursor-default select-none transition-[background-color,color] duration-150 ${inDraggedRange ? 'bg-fg/10 text-fg' : ''} ${line === activeSourceLine ? 'font-semibold text-muted' : ''}`}>{line + lineNumberOffset}</div>;
-                    })}
-                  </div>
-                </div>
-              )}
-              <textarea
-                ref={source}
-                readOnly={readOnly}
-                aria-label={ariaLabel}
-                value={content}
-                onBeforeInput={() => {
-                  if (outline && !readOnly) rawBeforeInput.current = rawSnapshot();
-                }}
-                onChange={event => {
-                  setDismissed(false);
-                  setChoice(0);
-                  updateActiveSourceLine(event.currentTarget);
-                  changeSource(event.target.value, { anchor: event.currentTarget.selectionStart, head: event.currentTarget.selectionEnd }, rawBeforeInput.current ?? rawSnapshot(), false);
-                  rawBeforeInput.current = null;
-                }}
-                onKeyDown={event => {
-                  if (event.nativeEvent.isComposing) return;
-                  const shortcut = SHORTCUT_FORMATS.find(([command]) => matchesCommand(event.nativeEvent, command))?.[1];
-                  if (shortcut && isMarkdown && !readOnly) {
-                    event.preventDefault();
-                    applyFormat(shortcut);
-                    return;
-                  }
-                  const redo = matchesCommand(event.nativeEvent, 'editor.redo');
-                  if (outline && !readOnly && (redo || matchesCommand(event.nativeEvent, 'editor.undo'))) {
-                    event.preventDefault();
-                    rawUndo(redo);
-                    return;
-                  }
-                  const escaped = tabEscape.current;
-                  tabEscape.current = event.key === 'Escape';
-                  if (outline && !readOnly && !event.altKey && !event.metaKey && !event.ctrlKey && !(event.key === 'Tab' && escaped)) {
-                    const command = event.key === 'Enter' ? event.shiftKey ? 'annotation' : suggestions.length ? null : 'sibling' : event.key === 'Tab' ? event.shiftKey ? 'outdent' : 'indent' : null;
-                    if (command && applyOutline(command)) {
-                      event.preventDefault();
-                      return;
-                    }
-                  }
-                  if (!suggestions.length) return;
-                  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                    event.preventDefault();
-                    setChoice(value => (value + (event.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length);
-                  }
-                  if (event.key === 'Enter' && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
-                    event.preventDefault();
-                    accept(suggestions[choice % suggestions.length]);
-                  }
-                  if (event.key === 'Escape') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setDismissed(true);
-                  }
-                }}
-                onFocus={event => updateActiveSourceLine(event.currentTarget)}
-                onSelect={event => updateActiveSourceLine(event.currentTarget)}
-                onScroll={event => {
-                  noteRawView(event.currentTarget);
-                  if (sourceLineNumbers.current) sourceLineNumbers.current.style.transform = `translateY(-${event.currentTarget.scrollTop}px)`;
-                }}
-                wrap='off'
-                className='flex-1 min-w-0 min-h-0 px-4 py-4 font-mono text-sm text-fg bg-surface resize-none focus:outline-none'
-                style={{ lineHeight: '1.421875rem' }}
-                spellCheck={false}
-              />
-            </div>
-          </div>
-        )}
+        : mode === 'split' && isMarkdown
+        ? <SplitView source={rawEditor} sourceScroller={source} content={content} path={path} notebookId={notebookId} slides={slides} />
+        : rawEditor}
       {formatRefused && <div role='status' data-format-refused className='pointer-events-none absolute bottom-4 left-1/2 z-20 max-w-[90%] -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm' style={{ backgroundColor: 'var(--color-text)', color: 'var(--color-bg)' }}>{t('editor.qrcodeRefused')}</div>}
       {lineCopyFeedback && <div role='status' data-line-copy-feedback data-state={lineCopyFeedback.ok ? 'copied' : 'error'} className='pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm' style={{ backgroundColor: 'var(--color-text)', color: 'var(--color-bg)' }}>{lineCopyFeedback.ok ? t(lineCopyFeedback.start === lineCopyFeedback.end ? 'editor.lineCopied' : 'editor.linesCopied', { start: lineCopyFeedback.start, end: lineCopyFeedback.end }) : t('editor.lineCopyFailed')}</div>}
     </div>

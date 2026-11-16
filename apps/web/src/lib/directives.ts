@@ -540,6 +540,45 @@ export interface SlideDirectiveOptions {
   lineOf: (index: number) => number;
 }
 
+/**
+ * The directive blocks at the top level of a note as {@link transformDirectives} reads them: the 0-based line each opens on and the
+ * line that closes it. A block is drawn whole, so split view marks no source line inside one; a container left open is no block.
+ */
+export function directiveBlockSpans(content: string, slides = false): { start: number; end: number; }[] {
+  const lines = content.split('\n');
+  const spans: { start: number; end: number; }[] = [];
+  const stack: { fenceLength: number; index: number; }[] = [];
+  const inCode = fencedCodeLines();
+  const indentedCode = indentedCodeLines();
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (inCode(line)) {
+      indentedCode.interrupt();
+      continue;
+    }
+    if (stack.length === 0 ? indentedCode.line(line) : (indentedCode.interrupt(), false)) continue;
+    const open = parseDirectiveOpen(line);
+    if (open && (isInfographicKind(open.name) || isArgumentMapName(open.name) || isAnnotateName(open.name))) {
+      const end = infographicEnd(lines, i, open.fenceLength);
+      if (end !== undefined) {
+        if (stack.length === 0) spans.push({ start: i, end });
+        i = end;
+        continue;
+      }
+    }
+    if (open && slides && ((isSlideDirective(open.name) && !isSlideContainer(open.name)) || open.name === 'en')) continue;
+    if (open) {
+      stack.push({ fenceLength: open.fenceLength, index: i });
+      continue;
+    }
+    if (stack.length > 0 && matchDirectiveClose(line, stack[stack.length - 1].fenceLength)) {
+      const item = stack.pop()!;
+      if (stack.length === 0) spans.push({ start: item.index, end: i });
+    }
+  }
+  return spans;
+}
+
 /** The line where the figure block (an infographic or an argument map) opened at `start` closes, tracking the containers nested in it; undefined when it never does. */
 function infographicEnd(lines: readonly string[], start: number, fenceLength: number): number | undefined {
   const fences = [fenceLength];

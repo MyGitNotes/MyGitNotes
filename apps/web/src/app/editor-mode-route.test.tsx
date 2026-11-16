@@ -28,7 +28,7 @@ function open(entries: (string | { pathname: string; search?: string; hash?: str
   render(
     <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
       <EditorModeRouteProvider>
-        <Consumer report={value => probe.current = value} />
+        <Consumer report={value => void (probe.current = value)} />
       </EditorModeRouteProvider>
     </MemoryRouter>,
   );

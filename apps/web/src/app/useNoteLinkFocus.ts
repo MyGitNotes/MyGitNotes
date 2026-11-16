@@ -1,5 +1,6 @@
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { type Location, matchPath, UNSAFE_NavigationContext, useNavigationType } from 'react-router-dom';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { matchPath, useNavigationType } from 'react-router-dom';
+import { useCurrentEntry } from './current-entry.js';
 import type { useLocation, useNavigate } from 'react-router-dom';
 import { focusPanes } from '@mygitnotes/core/focus-page';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
@@ -16,19 +17,6 @@ import type { useFocusPanes } from './useFocusPanes.js';
 function routeNoteOf(location: ReturnType<typeof useLocation>, editorRoute: ReturnType<typeof parseWorkspaceRoute>): string | null {
   const query = new URLSearchParams(location.search);
   return editorRoute.tab === 'notes' && editorRoute.note && !query.has('returnTo') && !query.has('zoom') ? editorRoute.note : null;
-}
-
-/**
- * Whether the history is still on the entry `key`. The location a render saw falls behind the history once a navigation
- * is made: until that render's effects ran, and while React Router renders the next location as a transition. An address
- * computed from it replaces the entry it was computed for only, never a newer one the person made meanwhile.
- */
-function useCurrentEntry() {
-  const { navigator } = useContext(UNSAFE_NavigationContext);
-  // The navigator of BrowserRouter and MemoryRouter is their history, which tells the entry it is on.
-  const history = navigator as { location?: Location; };
-  if (!history.location) throw new Error('The address of the Focus needs a router whose navigator tells its location (BrowserRouter or MemoryRouter).');
-  return useCallback((key: string) => history.location!.key === key, [history]);
 }
 
 /**

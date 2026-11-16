@@ -5,7 +5,7 @@ import { useTranslation } from '../../lib/i18n/index.js';
 import type { NoteItem } from '../../lib/types.js';
 import { Button } from '../Button.js';
 import type { MarkdownEditorMode } from '../MarkdownEditor.js';
-import { EditorModeToggle } from './EditorModeToggle.js';
+import { EditorModeGroup } from './EditorModeGroup.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { TypstPreviewToggle } from '../typst-preview/TypstPreviewToggle.js';
 import { NoteActionsMenu } from './NoteActionsMenu.js';
@@ -25,6 +25,8 @@ interface NoteEditorToolbarProps {
   readOnly: boolean;
   editorMode: MarkdownEditorMode;
   setEditorMode: (mode: MarkdownEditorMode) => void;
+  /** The modes the head toolbar offers, in order; live and source when left out. */
+  editorModes?: readonly MarkdownEditorMode[];
   showLineNumbers: boolean;
   toggleLineNumbers: () => void;
   showFormatToolbar: boolean;
@@ -78,7 +80,7 @@ function togglePanel(docPanel: NoteDocumentPanelState, isMarkdown: boolean) {
 }
 
 /** The editor's actions: refresh and save, the view (mode, line numbers, formatting toolbar), the "⋯" menu, and in zoom the panels. */
-function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, liveDraft, phoneEditing }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onClose' | 'onRename' | 'actionsSlot' | 'template'>) {
+function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, editorModes = ['live', 'raw'], showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, liveDraft, phoneEditing }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onClose' | 'onRename' | 'actionsSlot' | 'template'>) {
   const { t } = useTranslation();
   const zoom = frame === 'zoom';
   return (
@@ -101,9 +103,10 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
           </button>
         </div>
       )}
+      {/* The mode leads the view, in a group of its own so it reads at a glance. */}
+      {isMarkdown && <EditorModeGroup mode={editorMode} modes={editorModes} onChange={setEditorMode} />}
       {/* Two groups in zoom, set apart by a thin separator: the view with the "⋯" menu, and the panels. */}
       <div role='group' className='note-controls-group' aria-label={t('editor.controlsView')}>
-        {isMarkdown && <EditorModeToggle mode={editorMode} onChange={setEditorMode} className='ui-icon-button toolbar-icon-button editor-mode-toggle' showKey />}
         <button type='button' aria-pressed={showLineNumbers} aria-label={t('editor.lineNumbers')} title={t('editor.lineNumbers')} onClick={toggleLineNumbers} className='ui-icon-button toolbar-icon-button editor-line-numbers-action'>
           <ListOrdered aria-hidden='true' />
         </button>

@@ -24,6 +24,7 @@ import { useBrowseNotes } from './app/useBrowseNotes.js';
 import { useNoteActions } from './app/useNoteActions.js';
 import { useFocusNoteNavigation } from './app/useFocusNoteNavigation.js';
 import { useNoteLinkLoad, useOpenNoteLinkInFocus } from './app/useNoteLinkFocus.js';
+import { EditorModeRouteProvider } from './app/editor-mode-route.js';
 import { useNoteSaving } from './app/useNoteSaving.js';
 import { useDeletionUndo } from './app/useDeletionUndo.js';
 import { useNoteRestoration } from './app/useNoteRestoration.js';
@@ -360,6 +361,8 @@ export const AppContent: React.FC = () => {
       beforeFileChange: !writable ? undefined : beforeFileChange,
       onFilesChanged: !writable ? undefined : onFilesChanged,
       readOnly: !editableNote,
+      // A Focus pane shows no split view: picking it opens the note in zoom, where Back returns to the pane.
+      openInZoom: mode => void handleOpenNote(note, '', { mode }),
       autoSave: true,
       draftMode: remote,
       remoteBase: draft?.base || (committed && typeof committed.content === 'string' ? committed : undefined),
@@ -983,7 +986,9 @@ export const AppContent: React.FC = () => {
         <StatusColorProvider statuses={statusEntries}>
           {/* The Typst preview and its citations run on this machine, so only a local workspace has them. */}
           <TypstPreviewProvider enabled={!remote && !loading}>
-            <PhoneNotesProvider value={phoneNotesValue}>{content}</PhoneNotesProvider>
+            <PhoneNotesProvider value={phoneNotesValue}>
+              <EditorModeRouteProvider>{content}</EditorModeRouteProvider>
+            </PhoneNotesProvider>
           </TypstPreviewProvider>
         </StatusColorProvider>
       </OutlineActionsProvider>

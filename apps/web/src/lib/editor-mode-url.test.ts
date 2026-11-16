@@ -17,6 +17,10 @@ describe('the editor mode in the query string', () => {
     expect(searchWithEditorMode('?q=1&mode=source&tag=x', 'live')).toBe('?q=1&tag=x');
     expect(searchWithEditorMode('?mode=source', 'live')).toBe('');
     expect(searchWithEditorMode('', 'live')).toBe('');
+    // A bare parameter stays bare.
+    expect(searchWithEditorMode('?zoom&mode=split', 'raw')).toBe('?zoom&mode=source');
+    expect(searchWithEditorMode('?zoom', 'split')).toBe('?zoom&mode=split');
+    expect(searchWithEditorMode('?mode=split&zoom&mode=live', 'live')).toBe('?zoom');
   });
 
   it('shows split only in zoom on a screen wider than a phone; a phone and a Focus pane show live instead', () => {
