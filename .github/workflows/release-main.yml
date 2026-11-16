@@ -46,7 +46,7 @@ jobs:
     # MYGITNOTES_TEST_REDIS_URL. The image's defaults (no maxmemory, noeviction) are what the live store requires.
     services:
       redis:
-        image: redis:7
+        image: redis:8.10.3@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53 # 8.10.3
         ports:
           - 6379:6379
         options: >-
