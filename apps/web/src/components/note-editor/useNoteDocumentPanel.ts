@@ -113,6 +113,7 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
   };
   const toggleEditorMode = () => {
     setIsEditorLeaderOpen(false);
+    // The leader switches between live and source; from split it goes back to live.
     setEditorMode(editorMode === 'live' ? 'raw' : 'live');
   };
   const stepFind = (delta: number) => {

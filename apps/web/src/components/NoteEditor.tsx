@@ -34,6 +34,8 @@ import { SlideDeck, type SlideDeckView } from './slides/SlideDeck.js';
 import { Pencil } from 'lucide-react';
 import { Button } from './Button.js';
 import { LiveEditorFrame } from './live/LiveEditorFrame.js';
+import { useEditorModeRoute } from '../app/editor-mode-route.js';
+import { shownEditorMode } from '../lib/editor-mode-url.js';
 import { LiveCollabEditor } from './live/LiveCollabEditor.js';
 import { useLiveEdit, useLiveTheme } from './live/useLiveEdit.js';
 
@@ -74,7 +76,7 @@ function footerActions({ frame, readOnly, session, refresh, canCommit }: { frame
 }
 
 /** A note's editing session: content, frontmatter, drafts, autosave, conflicts, crash recovery and the document panel. */
-export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly: givenReadOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate, live }, ref) => {
+export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly: givenReadOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate, live, openInZoom }, ref) => {
   const isMarkdown = /\.(md|markdown|mdx)$/i.test(note.path);
   // A note of a repository with a live editor is read here and edited there; `refresh` is declared below and read only after render.
   const liveEdit = useLiveEdit({ note, live, frame, refetch: () => void refresh?.() });
@@ -94,7 +96,19 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
 
   // A phone has no room for line numbers, and its notes have no card frame: whatever this device chose for a larger screen stays stored.
   const phone = usePhone();
-  const [editorMode, setEditorMode] = useState<MarkdownEditorMode>('live');
+  // Zoom and a Focus pane take their mode from the page's URL (`?mode=`); a graph card, and an editor embedded without the
+  // app's router, keep their own. Split needs zoom on a wider screen: a phone and a Focus pane show live for it, and a pane
+  // hands split to zoom, so Back returns to the pane.
+  const modeRoute = useEditorModeRoute();
+  const routed = modeRoute && (frame === 'zoom' || frame === 'pane') ? modeRoute : null;
+  const [ownMode, setOwnMode] = useState<MarkdownEditorMode>('live');
+  const editorMode = routed ? shownEditorMode(routed.mode, { frame: frame as 'zoom' | 'pane', phone }) : ownMode;
+  const setEditorMode = (mode: MarkdownEditorMode) => {
+    if (!routed) return setOwnMode(mode);
+    if (mode === 'split' && frame === 'pane') return openInZoom?.('split');
+    routed.setMode(mode);
+  };
+  const editorModes: MarkdownEditorMode[] = routed && !phone && (frame === 'zoom' || openInZoom) ? ['live', 'raw', 'split'] : ['live', 'raw'];
   const [showLineNumbers, setShowLineNumbers] = useState(() => readShowLineNumbers(note.notebookId));
   const toggleLineNumbers = () =>
     setShowLineNumbers(value => {
@@ -259,7 +273,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
       <div className='editor-notices'>{liveEdit.notices}</div>
-      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : liveEdit.edit ? { editing: false, onEdit: liveEdit.edit, onDone: liveEdit.edit } : undefined} onRefresh={refresh} onClose={onClose} onMove={givenReadOnly || template ? undefined : onMove} onRename={readOnly || template ? undefined : onRename} liveDraft={liveDraft} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
+      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} editorModes={editorModes} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : liveEdit.edit ? { editing: false, onEdit: liveEdit.edit, onDone: liveEdit.edit } : undefined} onRefresh={refresh} onClose={onClose} onMove={givenReadOnly || template ? undefined : onMove} onRename={readOnly || template ? undefined : onRename} liveDraft={liveDraft} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
       {awaitingRecovery && (
         <p role='status'>
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>

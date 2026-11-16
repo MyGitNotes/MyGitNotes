@@ -247,6 +247,18 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 .note-preview { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .note-preview-bar { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--color-line); font-size: 12px; color: var(--color-muted); }
 .note-preview-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; }
+/* Split view: the source editor and the rendered note side by side, with the scroll sync switch on the divider between them. */
+.note-split-view { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.note-split-pane { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; }
+.note-split-divider { position: relative; display: flex; flex: none; justify-content: center; width: 1px; background: var(--color-line); }
+.note-split-sync { position: absolute; top: 50%; z-index: 2; width: 28px; height: 28px; margin-top: -14px; border: 1px solid var(--color-line-strong); border-radius: 999px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 1px 3px color-mix(in srgb, var(--color-scrim) 18%, transparent); }
+.note-split-sync[aria-pressed='true'] { color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line-strong)); }
+.note-split-sync > svg { width: 15px; height: 15px; }
+.note-split-preview { flex: 1 1 0; min-width: 0; min-height: 0; overflow: auto; padding: 16px 28px 32px; background: var(--color-surface); }
+/* The editor's mode: three icon buttons, the one in use pressed. */
+.note-mode-group { display: flex; align-items: center; gap: 1px; padding: 2px; border-radius: var(--radius-control); background: color-mix(in srgb, var(--color-line) 70%, transparent); }
+.note-mode-group > .toolbar-icon-button { width: 30px; height: 28px; }
+.note-mode-group > .toolbar-icon-button[aria-pressed='true'] { background: var(--color-surface); color: var(--color-primary); box-shadow: 0 1px 2px color-mix(in srgb, var(--color-scrim) 14%, transparent); }
 .editor-secondary-action { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 6px 10px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-text); font-size: 12px; line-height: 18px; font-weight: 500; white-space: nowrap; transition-property: background-color, border-color, box-shadow, transform, filter; }
 .editor-secondary-action:hover, .editor-secondary-action[aria-pressed='true'] { background: var(--color-sidebar); }
 .editor-secondary-action[aria-pressed='true'] { color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line-strong)); background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface)); font-weight: 600; }
