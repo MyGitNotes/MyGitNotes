@@ -1,4 +1,6 @@
 import { readWorkingNotes, type WorkingNote, type WorkingNotes } from '../lib/working-notes.js';
+import { handOverDraft, LIVE_MERGE_CONFLICT } from '../lib/live-handover.js';
+import { liveEditableKind } from '../lib/live-api.js';
 import { serializeNoteFile } from '@mygitnotes/core/note-file';
 import { addVersion } from '@mygitnotes/core/note-versions';
 import { noteRefKey } from '@mygitnotes/core/note-query';
@@ -101,7 +103,21 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
     const existingPaths = entries.filter(entry => entry.base).map(entry => entry.note.path);
     const latestNotes = existingPaths.length ? await readNotes(repository.id, existingPaths, expected) : [];
     const latestByPath = new Map(latestNotes.map(note => [note.path, note]));
+    // A draft of a note that is live now goes to the live note (collab-first A3.2.3), whose commit the server would refuse
+    // as checked out: merged on the text it was made from, and cleared once the merge is stored; a conflict keeps it.
+    const isLiveNow = (entry: WorkingNote) => Boolean(repository.live?.kind === 'builtin' && entry.base && !entry.deleted && !entry.blocked && liveEditableKind(entry.note.path) && latestByPath.get(entry.note.path)?.live && !latestByPath.get(entry.note.path)!.live!.pending);
+    const merged = entries.filter(isLiveNow);
+    for (const entry of merged) {
+      const answer = await handOverDraft(entry, { scope: draftScope(repository), notebookRoot: '' });
+      if (answer.kind === 'conflict') {
+        stageWorkingNote(entry.note, entry.base, LIVE_MERGE_CONFLICT);
+        throw new Error(`${entry.note.path}: ${t('live.mergeConflict')}`);
+      }
+      if (answer.kind === 'failed') throw answer.error;
+      clearCommittedDrafts(repository, { [entry.note.path]: entry });
+    }
     for (const entry of entries) {
+      if (merged.includes(entry)) continue;
       if (entry.blocked) throw new Error(`${entry.note.path}: ${entry.blocked}`);
       let prepared = entry;
       if (entry.base) {

@@ -1,10 +1,10 @@
+import { useCallback, useEffect, useRef } from 'react';
+import { noteRefKey } from '@mygitnotes/core/note-query';
+import { handOverDraft, LIVE_MERGE_CONFLICT, type LiveHandover } from '../lib/live-handover.js';
 import type { LiveCheckoutView } from '../lib/live-api.js';
 import type { NoteItem } from '../lib/types.js';
 import type { WorkingNote } from '../lib/working-notes.js';
 
-/*
- * Offline handover at the workspace (docs/specs/2026-11-16-collab-first-self-host A3.2). Not implemented yet.
- */
 export interface LiveHandoverParams {
   /** The workspace is loaded: its drafts and repositories are known. */
   ready: boolean;
@@ -19,6 +19,66 @@ export interface LiveHandoverParams {
   onCreated?: (draft: NoteItem, checkout: LiveCheckoutView) => void;
 }
 
-export function useLiveHandover(_params: LiveHandoverParams) {
-  return { handOver: async (_note: NoteItem): Promise<boolean> => false };
+/** Whether a draft goes to the live editor by itself: a note's text, not a deletion, and not a conflict waiting for the person. */
+const handsOver = (entry: WorkingNote) => !entry.deleted && !entry.blocked;
+
+/**
+ * Offline handover at the workspace (docs/specs/2026-11-16-collab-first-self-host A3.2): when the browser is back online,
+ * and when the workspace loads online (after a reload made offline), every draft of a note the live editor covers is
+ * handed over to its live note. A merged draft is cleared only once the merge is stored; one that conflicts stays,
+ * blocked, until the person picks what to keep; one the server could not take stays as it is for the next time.
+ * Deletions and notes the live editor does not cover keep the manual commit. One note's handover runs once at a time:
+ * the note's open editor (`handOver`) shares a handover the workspace started.
+ */
+export function useLiveHandover(params: LiveHandoverParams) {
+  const latest = useRef(params);
+  useEffect(() => {
+    latest.current = params;
+  });
+  const running = useRef(new Map<string, Promise<LiveHandover | null>>());
+
+  /** Hands one draft over, or joins the handover of it already running; null when there is none to hand over. */
+  const handOverEntry = useCallback((key: string): Promise<LiveHandover | null> => {
+    const current = running.current.get(key);
+    if (current) return current;
+    const entry = latest.current.drafts[key];
+    const context = entry && handsOver(entry) ? latest.current.covered(entry.note) : null;
+    if (!entry || !context) return Promise.resolve(null);
+    const work = handOverDraft(entry, context).then(answer => {
+      const { updateDraft, stageWorkingNote, invalidateNotes, onCreated } = latest.current;
+      if (answer.kind === 'applied' || answer.kind === 'created') {
+        updateDraft(entry.note.notebookId, entry.note.path, null);
+        invalidateNotes();
+        if (answer.kind === 'created') onCreated?.(entry.note, answer.checkout);
+      } else if (answer.kind === 'conflict') stageWorkingNote(entry.note, entry.base, LIVE_MERGE_CONFLICT);
+      return answer;
+    }).finally(() => running.current.delete(key));
+    running.current.set(key, work);
+    return work;
+  }, []);
+
+  const sweep = useCallback(async () => {
+    if (!latest.current.ready || !navigator.onLine) return;
+    for (const key of Object.keys(latest.current.drafts)) await handOverEntry(key);
+  }, [handOverEntry]);
+
+  const { ready } = params;
+  useEffect(() => {
+    if (!ready) return;
+    void sweep();
+    const online = () => void sweep();
+    window.addEventListener('online', online);
+    return () => window.removeEventListener('online', online);
+  }, [ready, sweep]);
+
+  /**
+   * Hands the draft of `note` over for its open editor: true once the note itself can open in the collab editor (merged,
+   * kept as a conflict draft, or no draft left); false when the draft stays, or became a pending note `onCreated` opens.
+   */
+  const handOver = useCallback(async (note: NoteItem) => {
+    const answer = await handOverEntry(noteRefKey(note));
+    return answer === null || answer.kind === 'applied' || answer.kind === 'conflict';
+  }, [handOverEntry]);
+
+  return { handOver };
 }

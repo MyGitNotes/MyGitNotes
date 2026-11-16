@@ -7,7 +7,8 @@ import { yCollab } from 'y-codemirror.next';
 import type { Extension } from '@codemirror/state';
 import type { LiveBuiltinEditorInfo } from '@mygitnotes/core';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
-import { checkInLive, isNotLive, type LiveCheckInAnswer, type LiveCheckoutView, socketTicket } from '../../lib/live-api.js';
+import { checkInLive, isMergeConflict, isNotLive, type LiveCheckInAnswer, type LiveCheckoutView, mergeLive, newMergeId, socketTicket } from '../../lib/live-api.js';
+import { unsyncedKey, unsyncedLiveStore, type UnsyncedLiveText } from '../../lib/live-unsynced.js';
 import { isNetworkFailure } from '../../lib/api.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
@@ -33,6 +34,10 @@ export interface LiveCollabEditorProps {
   onDiscarded?: () => void;
   /** The note's title, which names a downloaded copy. */
   title?: string;
+  /** The repository's draft scope, which keys the typing this browser keeps unsynced. */
+  scope?: string;
+  /** What this tab kept could not be merged into the note: the app keeps it as a conflict draft (collab-first A3.1). */
+  onMergeConflict?: (mine: string) => void;
 }
 
 /** Why the server refused the tab's document; `other` for any reason this tab does not know. */
@@ -89,12 +94,10 @@ const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', 
 /** The socket of the app's own origin, as the page reached it: `wss:` under https. */
 const socketUrl = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/live/socket`;
 
-/**
- * The text of a tab that left a note inside the app (another note, another pane) while typing in it was unsaved, by
- * `notebookId` and path: the note's editor offers it once, the next time it opens in this page.
- */
-const leftUnsaved = new Map<string, string>();
-const leftKey = (notebookId: string, path: string) => `${notebookId}\n${path}`;
+/** How long typing waits before the browser keeps it: each keystroke is stored on the server within a few milliseconds. */
+const KEEP_MS = 500;
+/** The origin of a kept update applied to a new session's document: neither the tab's own typing nor the server's. */
+const RESTORED = Symbol('restored');
 
 /** A file name for the downloaded copy of the tab's text. */
 const downloadName = (title: string | undefined, path: string) => `${(title || path.split('/').pop()?.replace(/\.(md|markdown)$/i, '') || 'note').replace(/[\\/:*?"<>|\p{Cc}]+/gu, ' ').trim() || 'note'}.md`;
@@ -105,10 +108,16 @@ const downloadName = (title: string | undefined, path: string) => `${(title || p
  * ticket; the editor mounts once the document first synced. The bar says who is editing and whether every keystroke is
  * stored (已儲存 only once the server acknowledged it), and offers 「立即簽回」, 「捨棄草稿」 on a pending note, and 「關閉」.
  * A note checked in elsewhere ends the session: a tab with nothing unsaved reads it as checked in, one with unsaved typing
- * offers its text to copy or download, and its document is never merged into the reopened note. Every other end of a
- * session (a refusal, a ticket that cannot be had) offers unsaved typing the same way.
+ * merges its text into the note (collab-first A3.1), and its document is never merged into the reopened note. Every
+ * other end of a session (a refusal, a ticket that cannot be had) offers unsaved typing to copy or download.
+ *
+ * Typing the server has not stored is kept in this browser ({@link unsyncedLiveStore}) until the server stored it: the
+ * next session of the note, after a reload or on the way back to the note, applies it to its document before the
+ * provider connects when it opens the same document, and merges it into the note (`/api/live/merge`, on the text it was
+ * typed on) when that document ended; offline meanwhile, it shows the kept text read-only. A conflicting merge goes to
+ * `onMergeConflict`; a live editor that cannot merge leaves the copy or download.
  */
-export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title }: LiveCollabEditorProps) {
+export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict }: LiveCollabEditorProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   // Each session is one document and one provider; going back to the editor after a check-in that left it open starts a new one.
@@ -118,16 +127,28 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   const [copied, setCopied] = useState(false);
   /** 「關閉」 asked while typing is unsaved: the editor stays open under the question. */
   const [leaving, setLeaving] = useState(false);
-  /** Unsaved text this note's editor kept when the person last left the note inside the app. */
-  const [left, setLeft] = useState(() => leftUnsaved.get(leftKey(checkout.notebookId, checkout.path)) ?? null);
-  useEffect(() => {
-    leftUnsaved.delete(leftKey(checkout.notebookId, checkout.path));
-  }, [checkout.notebookId, checkout.path]);
+  /** Kept typing the session cannot sync or merge yet for want of a server: shown read-only, offline. */
+  const [kept, setKept] = useState<string | null>(null);
+  /** The session merges kept typing into the note before it opens it. */
+  const [merging, setMerging] = useState(false);
   const live = phase.kind === 'open';
-  const latest = useRef({ checkout, onRefetch, onCheckedIn, onReleased, connection, t });
+  const latest = useRef({ checkout, onRefetch, onCheckedIn, onReleased, onMergeConflict, connection, t, title });
   useEffect(() => {
-    latest.current = { checkout, onRefetch, onCheckedIn, onReleased, connection, t };
+    latest.current = { checkout, onRefetch, onCheckedIn, onReleased, onMergeConflict, connection, t, title };
   });
+  /** Kept typing a session that just ended hands to the next one, which merges it into the note. */
+  const carried = useRef<UnsyncedLiveText | null>(null);
+  // A new session starts from nothing: no connection yet, and the editor mounts again once its document synced.
+  const reopen = () => {
+    setConnection(START);
+    setCollab(null);
+    setCopied(false);
+    setLeaving(false);
+    setKept(null);
+    setMerging(false);
+    setSession(current => current + 1);
+    setPhase({ kind: 'open' });
+  };
   /** Ends the running session at once: the provider is destroyed (its socket closes), and its document read first. */
   const stopRef = useRef<() => string>(() => '');
   /** The running session's text. */
@@ -139,9 +160,48 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     const doc = new Y.Doc();
     const awareness = new Awareness(doc);
     const text = doc.getText('content');
+    const { notebookId, path } = latest.current.checkout;
+    const store = unsyncedLiveStore();
+    const key = unsyncedKey(scope, notebookId, path);
+    /** The socket as the provider last reported it, which `online` reads: a connect does nothing while it counts itself connected. */
+    let status: Connection['status'] = 'connecting', synced = false, unsynced = 0, dirty = false;
+    /** The document the session opened, and the text at its last full sync, which a merge of kept typing takes as its base. */
+    let opened = '', base = '';
+    /** Whether the store holds this session's typing, and the merge id it is kept under. */
+    let keeping = false, mergeId = newMergeId();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const keptEntry = (): UnsyncedLiveText => ({ key, scope, notebookId, path, ...(latest.current.title ? { title: latest.current.title } : {}), document: opened, update: Y.encodeStateAsUpdate(doc), text: text.toString(), baseText: base, mergeId, savedAt: Date.now() });
+    /** Keeps the typing the server has not stored in the browser. */
+    const keep = () => {
+      clearTimeout(timer);
+      timer = undefined;
+      if (stopped || !opened || !dirty) return;
+      keeping = true;
+      void store.put(keptEntry()).catch(() => {});
+    };
+    /** Everything is stored on the server: the text is the next merge's base, and the browser keeps nothing. */
+    const settle = () => {
+      if (!synced || unsynced > 0 || dirty) return;
+      base = text.toString();
+      clearTimeout(timer);
+      timer = undefined;
+      if (!keeping) return;
+      keeping = false;
+      mergeId = newMergeId();
+      void store.delete(key).catch(() => {});
+    };
+    // The tab's own typing is kept a moment after it, unless the server stored it by then; the server's updates move the base.
+    doc.on('update', (_update: Uint8Array, origin: unknown) => {
+      if (stopped || origin === RESTORED) return;
+      if (origin === provider) return settle();
+      clearTimeout(timer);
+      timer = setTimeout(keep, KEEP_MS);
+    });
     const stop = () => {
       const content = text.toString();
       if (stopped) return content;
+      if (dirty) keep();
+      clearTimeout(timer);
       stopped = true;
       provider?.destroy();
       awareness.destroy();
@@ -150,12 +210,20 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     };
     stopRef.current = stop;
     readRef.current = () => text.toString();
-    /** Ends the session: the tab's document is dropped, and its unsaved text offered when it has any, whatever ended it. */
+    /** Ends the session: the tab's document is dropped, and its unsaved text merged into the note or offered, whatever ended it. */
     const end = (ending: Ending) => {
       if (stopped) return;
-      const dirty = latest.current.connection.dirty;
+      const unsaved = latest.current.connection.dirty;
+      if (unsaved && ending.kind === 'released' && opened) {
+        // The next session merges it into the note, which its merge checks out again; the lists read the live state again now.
+        carried.current = keptEntry();
+        keep();
+        stop();
+        latest.current.onReleased?.();
+        return reopen();
+      }
       const content = stop();
-      if (dirty) {
+      if (unsaved) {
         // The lists stop saying 編輯中 now, whether the notice is left by its 關閉 or by closing the view.
         if (ending.kind === 'released') latest.current.onReleased?.();
         return setPhase({ kind: 'lost', text: content, ending });
@@ -169,24 +237,70 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     /** The note was checked in or discarded elsewhere. */
     const released = () => end({ kind: 'released' });
     const failed = (message: string) => end({ kind: 'failed', message });
-    const { notebookId, path } = latest.current.checkout;
-    /** Set while the first ticket waits for the connection: going online asks for it again. */
+    /** Set while the session waits for the connection: going online starts it again. */
     let retry: (() => void) | null = null;
+    /** The browser came back online before the socket's close landed: the close connects again. */
+    let reconnect = false;
+    /** Waits offline for the connection, showing the kept typing meanwhile. */
+    const waitOnline = (shown: UnsyncedLiveText | undefined) => {
+      retry = () => void begin();
+      setMerging(false);
+      if (shown) setKept(shown.text);
+      setConnection(current => ({ ...current, status: 'disconnected', unreachable: true }));
+    };
+    /**
+     * Merges typing a session kept into the note, whose document it was typed in ended: on the text it was typed on, so
+     * that it lands as an edit. Merged or kept as a conflict draft, the session opens the note as it is now.
+     */
+    const mergeKept = async (entry: UnsyncedLiveText) => {
+      setMerging(true);
+      try {
+        await mergeLive({ notebookId, path, base: entry.baseText, text: entry.text, mergeId: entry.mergeId });
+      } catch (error) {
+        if (stopped) return;
+        if (isNetworkFailure(error)) return waitOnline(entry);
+        if (!isMergeConflict(error)) {
+          // A live editor that cannot merge, or a note that is gone: the text is offered to copy or download.
+          setMerging(false);
+          return setPhase({ kind: 'lost', text: entry.text, ending: isNotLive(error) ? { kind: 'released' } : { kind: 'failed', message: (error as Error).message } });
+        }
+        latest.current.onMergeConflict?.(entry.text);
+      }
+      await store.delete(key).catch(() => {});
+      if (stopped) return;
+      setMerging(false);
+      setKept(null);
+      latest.current.onRefetch();
+      void begin();
+    };
     const begin = async () => {
+      // Typing the last session kept when its note was released is merged at once: its document ended.
+      const ended = carried.current;
+      carried.current = null;
+      if (ended) return void mergeKept(ended);
+      const stored = await store.get(key).catch(() => undefined);
+      if (stopped) return;
       let first: { ticket: string; document: string; };
       try {
         first = await socketTicket(notebookId, path);
       } catch (error) {
         if (stopped) return;
-        if (isNotLive(error)) released();
-        else if (isNetworkFailure(error)) {
-          // No server reached, nothing ended: the tab is offline until the browser is back online.
-          retry = () => void begin();
-          setConnection(current => ({ ...current, status: 'disconnected', unreachable: true }));
-        } else failed((error as Error).message);
-        return;
+        if (isNotLive(error)) return stored ? void mergeKept(stored) : released();
+        // No server reached, nothing ended: the tab is offline until the browser is back online.
+        if (isNetworkFailure(error)) return waitOnline(stored);
+        return failed((error as Error).message);
       }
       if (stopped) return;
+      // Kept typing of a document that ended is merged into the note; of the same document, Yjs syncs what the server lacks.
+      if (stored && stored.document !== first.document) return void mergeKept(stored);
+      if (stored) {
+        Y.applyUpdate(doc, stored.update, RESTORED);
+        base = stored.baseText;
+        mergeId = stored.mergeId;
+        keeping = true;
+      }
+      opened = first.document;
+      setKept(null);
       setConnection(current => (current.unreachable ? { ...current, status: 'connecting', unreachable: false } : current));
       let held: string | null = first.ticket;
       /** A fresh ticket for every connect; one that names another epoch's document means the note was checked in and reopened. */
@@ -214,17 +328,36 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         // The server keeps a state only past the clock it last saw of this client: 0 at first, the same after a reconnect.
         // Setting it again moves the clock, so the others count this tab from its connect, as the server's activeEditors do.
         onAuthenticated: () => awareness.setLocalState({ ...awareness.getLocalState() }),
-        // A socket that is not connected has no synced document: it syncs again once it reconnects.
-        onStatus: ({ status }) => setConnection(current => ({ ...current, status: status as Connection['status'], synced: status === 'connected' && current.synced })),
+        // A socket that is not connected has no synced document: it syncs again once it reconnects. A socket that closed
+        // after the browser came back online connects again now: the provider ignored a connect while it was still open.
+        onStatus: ({ status: next }) => {
+          status = next as Connection['status'];
+          if (status !== 'connected') synced = false;
+          if (status === 'disconnected' && reconnect) {
+            reconnect = false;
+            if (navigator.onLine) void provider?.connect();
+          }
+          setConnection(current => ({ ...current, status: status, synced: status === 'connected' && current.synced }));
+        },
         // After a close for a new ticket the provider connects again as usual, which reads as connecting; any other close, a failed retry included, reads as offline.
         onClose: ({ event }) => setConnection(current => ({ ...current, renewing: event.code === RENEW_CODE })),
         onSynced: ({ state }) => {
           if (!state || stopped) return;
+          synced = true;
+          settle();
           setConnection(current => ({ ...current, synced: true, everSynced: true, renewing: false }));
           setCollab(current => current ?? { extension: yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }), text: text.toString() });
         },
-        onUnsyncedChanges: ({ number }) => setConnection(current => ({ ...current, unsynced: number })),
-        onDirty: ({ dirty }) => setConnection(current => ({ ...current, dirty })),
+        onUnsyncedChanges: ({ number }) => {
+          unsynced = number;
+          settle();
+          setConnection(current => ({ ...current, unsynced: number }));
+        },
+        onDirty: ({ dirty: next }) => {
+          dirty = next;
+          settle();
+          setConnection(current => ({ ...current, dirty: next }));
+        },
         // The server writes each person's name; this tab counts itself once, and every other name once.
         onAwarenessChange: ({ states }) => setConnection(current => ({ ...current, people: 1 + new Set(states.filter(state => state.clientId !== doc.clientID && typeof state.user?.name === 'string').map(state => state.user.name as string)).size })),
         onStateless: ({ payload }) => {
@@ -247,6 +380,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     // The browser knows it is offline long before the socket's timeout does, and back online before its next retry.
     const offline = () => {
       if (stopped) return;
+      reconnect = false;
       provider?.disconnect();
       setConnection(current => ({ ...current, status: 'disconnected', synced: false, renewing: false }));
     };
@@ -255,18 +389,24 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       const again = retry;
       retry = null;
       if (again) again();
+      else if (status === 'connected') reconnect = true;
       else void provider?.connect();
+    };
+    // A page that goes away keeps its unsaved typing at once, not a moment later.
+    const hide = () => {
+      if (dirty) keep();
     };
     window.addEventListener('offline', offline);
     window.addEventListener('online', online);
+    window.addEventListener('pagehide', hide);
     return () => {
       window.removeEventListener('offline', offline);
       window.removeEventListener('online', online);
-      // Unmounted under a running session (the person went to another note or pane): its unsaved text is kept for later.
-      if (!stopped && latest.current.connection.dirty) leftUnsaved.set(leftKey(notebookId, path), text.toString());
+      window.removeEventListener('pagehide', hide);
+      // Unmounted under a running session (the person went to another note or pane): its unsaved typing stays kept for the next session.
       stop();
     };
-  }, [live, session]);
+  }, [live, session, scope]);
 
   // 已儲存 waits until nothing was unsaved for SETTLE_MS, so typing does not flicker it, or 立即簽回 with it.
   const [settled, setSettled] = useState(true);
@@ -303,15 +443,6 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     return () => window.removeEventListener('beforeunload', warn);
   }, [unsaved]);
 
-  // A new session starts from nothing: no connection yet, and the editor mounts again once its document synced.
-  const reopen = () => {
-    setConnection(START);
-    setCollab(null);
-    setCopied(false);
-    setLeaving(false);
-    setSession(current => current + 1);
-    setPhase({ kind: 'open' });
-  };
   const checkIn = async () => {
     // This tab counts as an active editor until its socket closes, so it goes before the check-in releases the note.
     stopRef.current();
@@ -348,6 +479,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       const answer = await discardDraft(checkout.notebookId, checkout.path, t, askDiscard);
       if (!answer) return stayed({ kind: 'kept' }, reopen);
       if (answer.discarded) {
+        forgetKept();
         onRefetch();
         onDiscarded?.();
         return;
@@ -371,8 +503,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     if (phase.kind === 'discarded') (onDiscarded ?? onClose)();
     else onClose();
   };
+  /** The typing this browser keeps for the note: the person took it from the notice, or the draft is gone. */
+  const forgetKept = () => void unsyncedLiveStore().delete(unsyncedKey(scope, checkout.notebookId, checkout.path)).catch(() => {});
   /** Leaves the lost text: for the read view of the checked-in note, or as 「關閉」 does when the note is still live. */
   const leaveLost = (ending: Ending) => {
+    forgetKept();
     if (ending.kind !== 'released') return closeNow();
     onRefetch();
     onCheckedIn?.();
@@ -411,16 +546,6 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         )}
         <div className='live-editor-actions'>{discardable && <Button size='small' variant='danger' title={t(discardOffline ? 'live.discardOffline' : 'live.discardHint')} disabled={discardOffline} onClick={() => void discard()}>{t('live.discard')}</Button>}{live && <Button size='small' variant='primary' title={t('live.checkInHint')} disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>}{phase.kind !== 'lost' && <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>}</div>
       </div>
-      {left !== null && (
-        <div role='alert' className='live-editor-notice'>
-          <p>{t('live.unsavedLeft')}</p>
-          <div className='live-editor-notice-actions'>
-            <Button size='small' variant='primary' onClick={() => void copy(left)}>{t(copied ? 'live.copied' : 'live.copyMine')}</Button>
-            <Button size='small' onClick={() => download(left)}>{t('live.download')}</Button>
-            <Button size='small' onClick={() => setLeft(null)}>{t('live.dismiss')}</Button>
-          </div>
-        </div>
-      )}
       {live && leaving && (
         <div role='alertdialog' aria-label={t('common.close')} className='live-editor-notice'>
           <p>{t('live.leaveUnsaved')}</p>
@@ -430,6 +555,13 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
             <Button size='small' variant='danger' onClick={closeNow}>{t('live.closeAnyway')}</Button>
             <Button size='small' onClick={() => setLeaving(false)}>{t('live.backToEditor')}</Button>
           </div>
+        </div>
+      )}
+      {live && merging && <LoadingStatus className='live-editor-notice'>{t('live.merging')}</LoadingStatus>}
+      {live && !collab && kept !== null && (
+        <div className='note-editor-body live-collab-body'>
+          <p role='status' className='live-editor-notice'>{t('live.keptOffline')}</p>
+          <LiveMarkdownEditor content={kept} notePath={checkout.path} notebookId={checkout.notebookId} readOnly onChange={() => {}} ariaLabel={t('live.toolbar')} />
         </div>
       )}
       {live && collab && (

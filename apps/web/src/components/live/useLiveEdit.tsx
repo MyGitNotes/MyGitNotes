@@ -4,7 +4,9 @@ import { flushSync } from 'react-dom';
 import { useLiveEditLink } from '../../app/live-edit-link.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { isNetworkFailure } from '../../lib/api.js';
-import { checkInLive, checkOutLive, forgetCheckedIn, isNotLive, keepsDirectEditor, type LiveCheckInAnswer, type LiveCheckoutView, type LiveFileActions, type LiveNoteEditing, markCheckedIn, recentCheckIn, requestLiveEdit, takeLiveEditRequest } from '../../lib/live-api.js';
+import { createUnifiedDiff } from '../../lib/unified-diff.js';
+import { noteFileText } from '../../lib/live-handover.js';
+import { checkInLive, checkOutLive, forgetCheckedIn, isNotLive, keepsDirectEditor, type LiveCheckInAnswer, type LiveCheckoutView, type LiveFileActions, type LiveNoteEditing, markCheckedIn, markRefusal, recentCheckIn, recentRefusal, requestLiveEdit, takeLiveEditRequest } from '../../lib/live-api.js';
 import type { LiveTheme } from '../../lib/live-message.js';
 import { getFamily, getThemeView, resolveMode, subscribeThemeChoice } from '../../lib/themes.js';
 import type { NoteItem } from '../../lib/types.js';
@@ -48,18 +50,6 @@ type FileAction = keyof LiveFileActions;
 const ACTIVE_REFUSALS = { move: ['live.activeMove', 'live.activeMoveOne'], rename: ['live.activeRename', 'live.activeRenameOne'], remove: ['live.activeDelete', 'live.activeDeleteOne'] } as const;
 const REASONS = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled' } as const;
 
-/*
- * A file action refused while others edit the note, by `noteRefKey`, so that the refusal outlives the editor: a check-in
- * that committed the text before it was refused moves the head, and the workspace refresh mounts a new editor, which says
- * it again. Forgotten when it is closed, or after REFUSAL_MS.
- */
-const REFUSAL_MS = 30_000;
-const refusals = new Map<string, { text: string; at: number; }>();
-const recentRefusal = (key: string, now = Date.now()) => {
-  const refusal = refusals.get(key);
-  return refusal && now - refusal.at < REFUSAL_MS ? refusal.text : null;
-};
-
 /** What a collab-first note's own editor offers for its file actions: each checks the note in first, and answers whether it ran. */
 export type LiveOwnFileActions = { [action in FileAction]?: () => Promise<boolean>; };
 
@@ -102,8 +92,7 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
   /** Refuses a file action while others edit the note: said until it is closed or another action runs. */
   const [refusal, showRefusal] = useState<string | null>(() => (live ? recentRefusal(key) : null));
   const setRefusal = (text: string | null) => {
-    if (text === null) refusals.delete(key);
-    else refusals.set(key, { text, at: Date.now() });
+    markRefusal(key, text);
     showRefusal(text);
   };
 
@@ -171,15 +160,23 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
   // A framed editor shows only in zoom; a note zoom hands back to its pane shows the read view there.
   if (!edits && state.checkout) setState({});
 
-  // Back online with nothing typed offline, the direct editor gives way to the collab editor; typing offline stays a draft.
+  // Back online, the direct editor gives way to the collab editor: at once with nothing typed offline, and once its draft
+  // was handed over to the live note (A3.2) otherwise; a draft that could not be handed over stays in the direct editor.
   const offline = Boolean(state.offline);
   useEffect(() => {
     if (!offline) return;
-    const back = () => {
-      if (!latest.current.hasDraft?.()) void checkOut();
+    let gone = false;
+    const back = async () => {
+      const { hasDraft, live: editing } = latest.current;
+      const handed = hasDraft?.() ? await (editing?.handOver?.() ?? Promise.resolve(false)) : true;
+      if (handed && !gone) void checkOut();
     };
-    window.addEventListener('online', back);
-    return () => window.removeEventListener('online', back);
+    const online = () => void back();
+    window.addEventListener('online', online);
+    return () => {
+      gone = true;
+      window.removeEventListener('online', online);
+    };
   }, [offline, checkOut]);
 
   const active = Boolean(live) && !state.direct && !offline;
@@ -259,10 +256,33 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
     latest.current.live?.onRefetch();
     latest.current.live?.onDiscarded?.();
   };
+  const [comparing, setComparing] = useState(false);
+  const [copiedMine, setCopiedMine] = useState(false);
+  const mergeConflict = live?.mergeConflict;
+  const mergeNotice = mergeConflict && (
+    <EditorNotice
+      actions={
+        <>
+          <Button
+            size='small'
+            aria-expanded={comparing}
+            onClick={() => setComparing(value => !value)}
+          >
+            {t(comparing ? 'live.hideCompare' : 'live.compare')}
+          </Button>
+          <Button size='small' onClick={() => void navigator.clipboard.writeText(mergeConflict.mine).then(() => setCopiedMine(true))}>{t(copiedMine ? 'live.copied' : 'live.copyMine')}</Button>
+          <Button size='small' variant='danger' onClick={mergeConflict.discard}>{t('live.discardMine')}</Button>
+        </>
+      }
+    >
+      {t('live.mergeConflict')}
+      {comparing && <pre className='live-merge-diff' aria-label={t('live.mergeDiff')}>{createUnifiedDiff(note.path, note.path, noteFileText(note), mergeConflict.mine)}</pre>}
+    </EditorNotice>
+  );
   const conflict = note.live?.conflict;
   const conflictShown = active && conflict && !state.checkout;
-  const notices = <>{state.busy && <LoadingStatus className='editor-notice'>{t('live.checkingOut')}</LoadingStatus>}{state.releasing && <LoadingStatus className='editor-notice'>{t('live.checkingIn')}</LoadingStatus>}{offline && <EditorNotice>{t('live.offlineDraft')}</EditorNotice>}{refusal && <EditorNotice actions={<Button size='small' onClick={() => setRefusal(null)}>{t('common.close')}</Button>}>{refusal}</EditorNotice>}{state.error && <EditorNotice tone='error'>{state.error}</EditorNotice>}{state.direct && <EditorNotice>{state.direct}</EditorNotice>}{state.checkedIn && <EditorNotice tone='success' actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{t('live.checkedIn')}</EditorNotice>}{state.stillOpen !== undefined && <EditorNotice actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{stillOpenText(t, state.stillOpen)}</EditorNotice>}{conflictShown && <EditorNotice>{t('live.conflict', { commit: conflict.overwritten.slice(0, 7) })}</EditorNotice>}</>;
-  const hasNotices = Boolean(state.busy || state.releasing || offline || refusal || state.error || state.direct || state.checkedIn || state.stillOpen !== undefined || conflictShown);
+  const notices = <>{state.busy && <LoadingStatus className='editor-notice'>{t('live.checkingOut')}</LoadingStatus>}{state.releasing && <LoadingStatus className='editor-notice'>{t('live.checkingIn')}</LoadingStatus>}{offline && <EditorNotice>{t('live.offlineDraft')}</EditorNotice>}{refusal && <EditorNotice actions={<Button size='small' onClick={() => setRefusal(null)}>{t('common.close')}</Button>}>{refusal}</EditorNotice>}{state.error && <EditorNotice tone='error'>{state.error}</EditorNotice>}{state.direct && <EditorNotice>{state.direct}</EditorNotice>}{state.checkedIn && <EditorNotice tone='success' actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{t('live.checkedIn')}</EditorNotice>}{state.stillOpen !== undefined && <EditorNotice actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{stillOpenText(t, state.stillOpen)}</EditorNotice>}{conflictShown && <EditorNotice>{t('live.conflict', { commit: conflict.overwritten.slice(0, 7) })}</EditorNotice>}{mergeNotice}</>;
+  const hasNotices = Boolean(state.busy || state.releasing || offline || refusal || state.error || state.direct || state.checkedIn || state.stillOpen !== undefined || conflictShown || mergeNotice);
   // While the editor shows, its bar counts the editors; once the note is checked in it is no longer 編輯中.
   const badgeShown = !(edits && state.checkout) && !state.checkedIn;
   return { active, checkout: edits ? state.checkout : undefined, edit, close, checkedIn, released, discarded, notices, hasNotices, badgeShown, fileActions, refetch: () => latest.current.refetch() };

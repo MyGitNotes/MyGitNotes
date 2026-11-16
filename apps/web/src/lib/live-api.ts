@@ -61,6 +61,22 @@ export interface LiveNoteEditing {
    * head the check-in answered; none when the note was no longer live and nothing was checked in.
    */
   fileActions?: LiveFileActions;
+  /**
+   * Offline handover (collab-first A3.2): the direct editor opened offline holds a draft of the note, and the browser is
+   * back online. Hands the draft over to the live note; true once nothing of it is left to hand over (merged, or kept as a
+   * conflict draft), so the editor opens the collab editor; false when it could not finish, and the draft stays.
+   */
+  handOver?: () => Promise<boolean>;
+  /** What the collab editor kept could not be merged into the note (A3.1): the app keeps it as a conflict draft. */
+  onMergeConflict?: (mine: string) => void;
+  /** The note's conflict draft, kept until the person compares, copies or discards it. */
+  mergeConflict?: LiveMergeConflict;
+}
+
+/** A conflict draft of a live note: the person's version, and how to drop it. */
+export interface LiveMergeConflict {
+  mine: string;
+  discard: () => void;
 }
 
 /** The file actions a collab-first note's own editor runs once its check-in released the note. */
@@ -97,6 +113,30 @@ export const checkOutLive = (notebookId: string, path: string) => post<{ checkou
 
 /** Creates a pending live note in `folder`: from a notebook template (`templateId`, with path `values`), or from the browser's own text. */
 export const createLiveNote = (params: { notebookId: string; folder: string; title: string; templateId?: string; values?: Record<string, string>; content?: string; clock?: { date: string; time: string; }; }) => post<{ checkout: LiveCheckoutView; }>('/api/live/new', params, 'Failed to create the live note');
+
+/** What a merge into a live note answers once the text is in: the note's live view, checked out by the merge when it was not live. */
+export interface LiveMergeAnswer {
+  applied: true;
+  contentHash: string;
+  checkout: LiveCheckoutView;
+  outcome: 'created' | 'joined' | 'reopened';
+}
+
+/**
+ * Merges a text written off the live note into it (collab-first A4): `base` is the text it was written on, and the server
+ * checks the note out first when it is not live. A repeated `mergeId` answers as the first did; a conflict takes nothing
+ * and answers 409 `merge-conflict`.
+ */
+export const mergeLive = (params: { notebookId: string; path: string; base: string; text: string; mergeId: string; }) => post<LiveMergeAnswer>('/api/live/merge', params, 'Failed to merge the text into the live note');
+
+/** Whether a merge was refused because the text changed what the live note changed too: nothing was taken. */
+export const isMergeConflict = (error: unknown): boolean => error instanceof ApiError && error.code === 'merge-conflict';
+
+/** A fresh merge id: what keeps one text from being merged twice when its request is retried. */
+export const newMergeId = (): string => {
+  const bytes = crypto.getRandomValues(new Uint8Array(18));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
 
 /** 「立即簽回」: commits the live text and closes the live note, or says why it stayed open. */
 export const checkInLive = (notebookId: string, path: string) => post<LiveCheckInAnswer>('/api/live/checkin', { notebookId, path }, 'Failed to check the note in');
@@ -154,6 +194,19 @@ export const recentCheckIn = (key: string, now = Date.now()): Omit<CheckInMark, 
   return mark && now - mark.at < CHECKED_IN_MS ? (mark.stillOpen === undefined ? {} : { stillOpen: mark.stillOpen }) : undefined;
 };
 export const forgetCheckedIn = (key: string) => void checkedIn.delete(key);
+
+/*
+ * A file action of a note's own collab editor refused while others edit the note (collab-first A7), by `noteRefKey`, so
+ * that the refusal outlives the editor: a check-in that committed the text before it was refused moves the head, and the
+ * workspace refresh mounts a new editor, which says it again. Forgotten when it is closed (null), or after REFUSAL_MS.
+ */
+const REFUSAL_MS = 30_000;
+const refusals = new Map<string, { text: string; at: number; }>();
+export const markRefusal = (key: string, text: string | null, now = Date.now()) => void (text === null ? refusals.delete(key) : refusals.set(key, { text, at: now }));
+export const recentRefusal = (key: string, now = Date.now()): string | null => {
+  const refusal = refusals.get(key);
+  return refusal && now - refusal.at < REFUSAL_MS ? refusal.text : null;
+};
 
 /** A pending live note's virtual path (`<root>/.live/<id>.md`), which a check-in files at a Git path. */
 export const isLivePendingPath = (path: string): boolean => /\/\.live\/[A-Za-z0-9_-]{1,64}\.md$/.test(path);

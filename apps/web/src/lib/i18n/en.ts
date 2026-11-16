@@ -1696,6 +1696,7 @@ export const en = {
   'pwa.offlineTitle': 'You are offline',
   'pwa.offlineMessage': 'MyGitNotes cannot reach the server. Notes open again when you are back online; drafts kept in this browser stay safe.',
   'pwa.offlineDrafts': 'Drafts kept in this browser',
+  'pwa.offlineLive': 'Live notes typed offline',
   'pwa.offlineDraftCount': 'Drafts kept in this browser: {count}. Sign in again when you are online to see them.',
 
   // MCP Tutorial Modal
@@ -2486,8 +2487,6 @@ export const en = {
   'live.copyMine': 'Copy my version',
   'live.leaveUnsaved': 'Your latest changes are not saved yet; copy or download your version before you close.',
   'live.closeAnyway': 'Close anyway',
-  'live.unsavedLeft': 'When you last left this note, your latest changes were not saved; copy or download your version.',
-  'live.dismiss': 'Dismiss',
   'live.copied': 'Copied',
   'live.download': 'Download',
   'live.tooLargeLive': 'This note is over the live editor’s size limit.',
@@ -2511,6 +2510,13 @@ export const en = {
   'live.activeRenameOne': '1 other person is editing this note, so it cannot be renamed now.',
   'live.activeDelete': '{count} people are editing this note, so it cannot be deleted now.',
   'live.activeDeleteOne': '1 other person is editing this note, so it cannot be deleted now.',
+  'live.merging': 'Merging the changes you made offline into the note…',
+  'live.keptOffline': 'Offline: these changes are kept on this device and merged in once you are back online.',
+  'live.mergeConflict': 'Your offline changes conflict with changes made since, so they were kept as a draft. Compare, copy or discard them.',
+  'live.compare': 'Compare',
+  'live.hideCompare': 'Hide comparison',
+  'live.mergeDiff': 'Your version against the note',
+  'live.discardMine': 'Discard my version',
   'live.collisionNote': 'If the name is taken at filing, -2 is added.',
 };
 

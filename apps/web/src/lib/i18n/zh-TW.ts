@@ -1697,6 +1697,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'pwa.offlineTitle': '目前離線',
   'pwa.offlineMessage': '連不上伺服器。恢復連線後即可開啟筆記；這個瀏覽器保留的草稿不會遺失。',
   'pwa.offlineDrafts': '這個瀏覽器保留的草稿',
+  'pwa.offlineLive': '離線時在即時編輯打的字',
   'pwa.offlineDraftCount': '這個瀏覽器保留的草稿：{count} 份。連上網路後再登入即可查看。',
 
   // MCP Tutorial Modal
@@ -2487,8 +2488,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.copyMine': '複製我的版本',
   'live.leaveUnsaved': '你最後的修改還沒存入；關閉前可以先複製或下載你的版本。',
   'live.closeAnyway': '仍要關閉',
-  'live.unsavedLeft': '你上次離開這篇筆記時，最後的修改沒有存入，可以複製或下載你的版本。',
-  'live.dismiss': '關閉提示',
   'live.copied': '已複製',
   'live.download': '下載',
   'live.tooLargeLive': '這篇筆記超過即時編輯的大小上限。',
@@ -2512,5 +2511,12 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.activeRenameOne': '1 人編輯中，無法重新命名',
   'live.activeDelete': '{count} 人編輯中，無法刪除',
   'live.activeDeleteOne': '1 人編輯中，無法刪除',
+  'live.merging': '正在把你離線時的修改併入筆記…',
+  'live.keptOffline': '離線：這些修改先存在這台裝置，連線後會自動併入',
+  'live.mergeConflict': '你離線時的修改和之後的修改衝突，已留成草稿；可以比對、複製或捨棄。',
+  'live.compare': '比對',
+  'live.hideCompare': '收起比對',
+  'live.mergeDiff': '你的版本與目前筆記的差異',
+  'live.discardMine': '捨棄我的版本',
   'live.collisionNote': '歸檔時若同名，會加上 -2。',
 };

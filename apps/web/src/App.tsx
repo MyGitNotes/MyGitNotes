@@ -123,6 +123,9 @@ import { I18nProvider, useTranslation } from './lib/i18n/index.js';
 import { AlertCircle, AlertTriangle, X } from 'lucide-react';
 import { LoadingStatus } from './components/LoadingStatus.js';
 import { isLiveNote, liveEditableKind, type LiveNoteEditing } from './lib/live-api.js';
+import { LIVE_MERGE_CONFLICT, noteFileText } from './lib/live-handover.js';
+import { parseNoteFile } from '@mygitnotes/core/note-file';
+import { useLiveHandover } from './app/useLiveHandover.js';
 import type { LivePathPrompt } from './lib/new-note.js';
 import { LiveNewNoteDialog } from './components/live/LiveNewNoteDialog.js';
 import { liveActionLocked, liveDestinationFolder, type LiveDrafts, LiveDraftsProvider } from './components/live/live-drafts.js';
@@ -304,6 +307,23 @@ export const AppContent: React.FC = () => {
     moveLocalDraft(`${scope}:conflict`, path, destination);
   };
   const noteMove = useNoteMove({ config, remote, canWriteNotebook: canChangeFiles, readDraft, updateDraft, stageWorkingNote, saveNote: handleSaveNote, focus: focusPage, queryClient, queryScope, flushEditors: editorRegistry.flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus: noteFocus.relocatePaths, setActionError, t, retargets: liveDrafts.retargets });
+  // Offline handover (collab-first A3.2): once online, drafts of notes the built-in live editor covers go to their live notes.
+  const liveHandover = useLiveHandover({
+    ready: Boolean(remote && sourceId && config),
+    drafts: activeWorkingNotes,
+    covered: draftNote => {
+      const repository = repositoryFor(draftNote.notebookId);
+      const notebook = config?.notebooks.find(nb => nb.id === draftNote.notebookId);
+      return repository?.live?.kind === 'builtin' && repository.write && notebook && liveEditableKind(draftNote.path) && !isTemplate(draftNote) ? { scope: draftScope(repository), notebookRoot: notebook.root } : null;
+    },
+    updateDraft,
+    stageWorkingNote,
+    invalidateNotes,
+    // A note made offline is a pending live note now: an editor showing its draft opens it there.
+    onCreated: (draftNote, checkout) => {
+      if (routedNote && sameNote(routedNote, draftNote)) void handleOpenNote({ id: checkout.id, path: checkout.path, notebookId: checkout.notebookId, title: draftNote.title, tags: [], metadata: {}, live: { since: checkout.since, activeEditors: checkout.activeEditors, pending: true, editorUrl: checkout.editorUrl } });
+    },
+  });
   const templateActions = useTemplateActions({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, revisionFor, queryClient, queryScope, invalidateNotes, setGitStatus, openInZoom: handleOpenNote, deleteNote: note => handleDeleteNote(note), relocateFile: noteMove.relocateFile, t });
   const movingNotebook = noteMove.request?.mode === 'move' ? config?.notebooks.find(nb => nb.id === noteMove.request?.note.notebookId) : undefined;
   const { bulkBusy, runBulkStatus, runBulkTag, runBulkMove } = useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNoteStatus: handleUpdateNoteStatus, beforeFileChange, onFilesChanged, repositories, remote, canWrite: canWriteFiles, t, invalidateNotes, setRepositoryRevision, setActionError, tagOperations, config });
@@ -320,7 +340,10 @@ export const AppContent: React.FC = () => {
     // A demo note is edited and committed in this browser; its assets and files are changes only the server makes.
     const editableNote = editable(repository);
     const writable = Boolean(repository?.write);
-    const draft = activeWorkingNotes[noteRefKey(note)];
+    // A live note's conflict draft is offered beside the live note (collab-first A3.1), never as the note's own draft.
+    const stored = activeWorkingNotes[noteRefKey(note)];
+    const liveConflict = stored?.blocked === LIVE_MERGE_CONFLICT ? stored : undefined;
+    const draft = liveConflict ? undefined : stored;
     const repositoryStatus = repository?.id === sourceId ? gitStatus : repository?.gitStatus ?? null;
     // A repository with a live editor opens its Markdown notes read-only, edited there; outlines and templates keep the direct editor.
     const live: LiveNoteEditing | undefined = repository?.live && repository.write && liveEditableKind(note.path) && !isTemplate(note)
@@ -344,6 +367,14 @@ export const AppContent: React.FC = () => {
         },
         // Collab-first (A7): the note's own editor checked it in, so it is moved, renamed or deleted as a note that is not live,
         // a deletion against the revision the check-in made.
+        // Offline handover (A3): a draft the direct editor made offline goes to the live note once online; what the collab
+        // editor kept but could not merge becomes a conflict draft, which the editor offers to compare, copy or discard.
+        handOver: () => liveHandover.handOver(note),
+        onMergeConflict: mine => {
+          const parsed = parseNoteFile(mine, note.path);
+          stageWorkingNote({ ...note, content: parsed.content, metadata: parsed.metadata }, note, LIVE_MERGE_CONFLICT);
+        },
+        ...(liveConflict ? { mergeConflict: { mine: noteFileText(liveConflict.note), discard: () => updateDraft(note.notebookId, note.path, null) } } : {}),
         fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined })?.(), rename: () => noteMove.renameNote({ ...note, live: undefined })?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
       }
       : undefined;

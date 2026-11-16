@@ -34,15 +34,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const params = (overrides: Partial<LiveHandoverParams> = {}): LiveHandoverParams => ({
-  ready: true,
-  drafts: Object.fromEntries([edited, deleted, plain].map(entry => [noteRefKey(entry.note), entry])),
-  covered: draft => draft.path === 'notes/life/p.md' ? null : { scope: 'edition:hosted:p1/notes@main', notebookRoot: 'notes/life' },
-  updateDraft: vi.fn(),
-  stageWorkingNote: vi.fn(draft => draft),
-  invalidateNotes: vi.fn(),
-  ...overrides,
-});
+const params = (overrides: Partial<LiveHandoverParams> = {}): LiveHandoverParams => ({ ready: true, drafts: Object.fromEntries([edited, deleted, plain].map(entry => [noteRefKey(entry.note), entry])), covered: draft => draft.path === 'notes/life/p.md' ? null : { scope: 'edition:hosted:p1/notes@main', notebookRoot: 'notes/life' }, updateDraft: vi.fn(), stageWorkingNote: vi.fn(draft => draft), invalidateNotes: vi.fn(), ...overrides });
 const merged = () => fetchMock.mock.calls.filter(([url]) => url === '/api/live/merge').map(([, init]) => JSON.parse(String((init as RequestInit).body)).path);
 
 it('hands each draft of a covered note over once the browser is back online, and clears it once the merge is stored', async () => {
@@ -55,7 +47,8 @@ it('hands each draft of a covered note over once the browser is back online, and
   await act(async () => {
     window.dispatchEvent(new Event('online'));
   });
-  await act(async () => {});
+  // The merge id is a digest, which the browser computes off the main thread.
+  await vi.waitFor(() => expect(input.updateDraft).toHaveBeenCalled());
   expect(merged()).toEqual(['notes/life/a.md']);
   expect(input.updateDraft).toHaveBeenCalledWith('notes~life', 'notes/life/a.md', null);
   expect(input.updateDraft).toHaveBeenCalledTimes(1);
@@ -68,16 +61,14 @@ it('hands the drafts over when the workspace loads online, as after a reload', a
   await act(async () => {});
   expect(fetchMock).not.toHaveBeenCalled();
   hook.rerender({ ...input, ready: true });
-  await act(async () => {});
-  expect(merged()).toEqual(['notes/life/a.md']);
+  await vi.waitFor(() => expect(merged()).toEqual(['notes/life/a.md']));
 });
 
 it('keeps a draft whose merge conflicted, blocked, and one the server could not take, as it is', async () => {
   fetchMock.mockImplementation(async () => json({ error: 'conflict', code: 'merge-conflict', checkout: view }, 409));
   const input = params();
   renderHook(useLiveHandover, { initialProps: input });
-  await act(async () => {});
-  expect(input.stageWorkingNote).toHaveBeenCalledWith(edited.note, edited.base, LIVE_MERGE_CONFLICT);
+  await vi.waitFor(() => expect(input.stageWorkingNote).toHaveBeenCalledWith(edited.note, edited.base, LIVE_MERGE_CONFLICT));
   expect(input.updateDraft).not.toHaveBeenCalled();
 });
 
