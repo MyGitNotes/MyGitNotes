@@ -1,4 +1,4 @@
-import { type LiveConflict, liveContentHash, type RepositoryId } from '@mygitnotes/core';
+import { LIVE_MAX_BYTES, type LiveConflict, liveContentHash, type RepositoryId } from '@mygitnotes/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { type EditorRef, type LinkInit, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredTicket, type SyncReceipt } from './store.js';
 
@@ -470,6 +470,24 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       const token = await leased(draft.id, T0 + 31);
       expect(await store.discard(draft.id, token, { seq: 0 }, T0 + 32)).toBe('discarded');
       expect(await store.ended(draft.id, 1, T0 + 33)).toBeNull();
+    });
+
+    // cfx-F002: an epoch that stored nothing keeps nothing (a merge on its seed and on the tab's base agree), and one past the largest live text keeps nothing either.
+    it('keeps the document an epoch ended with only when that epoch stored typing, and only up to the largest live text', async () => {
+      const untouched = await open(note, '# A\n', T0);
+      expect(await checkIn(untouched.id, T0 + 1)).toBe('released');
+      expect(await store.ended(untouched.id, 1, T0 + 2)).toBeNull();
+      // Typing compacted into the state still counts.
+      const compacted = await open('notes/life/c.md', '# C\n', T0);
+      await store.append(compacted.id, 1, bytes('pat 1'), pat, T0 + 1);
+      const read = (await store.document(compacted.id, 1))!;
+      expect(await store.compact(compacted.id, 1, read.gen, read.log.length, bytes('state c'), hash('1'), read.seq)).toBe(true);
+      expect(await checkIn(compacted.id, T0 + 2)).toBe('released');
+      expect(await store.ended(compacted.id, 1, T0 + 3)).toEqual({ state: bytes('state c'), log: [] });
+      const large = await open('notes/life/d.md', '# D\n', T0);
+      await store.append(large.id, 1, new Uint8Array(LIVE_MAX_BYTES + 1), pat, T0 + 1);
+      expect(await checkIn(large.id, T0 + 2)).toBe('released');
+      expect(await store.ended(large.id, 1, T0 + 3)).toBeNull();
     });
 
     it('discards a pending link whose sequence did not move, with everything it had, and never a filed one', async () => {
