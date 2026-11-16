@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { isBuiltinEditor, type LiveCheckout, type LiveContext, LiveLeasedError, type LiveNotes, LiveNotLiveError, LiveStaleError, type NotebookKey, type RepositoryId } from '@mygitnotes/core';
+import { checkInLink, type CommitAuthor, isBuiltinEditor, type LiveCheckout, type LiveContext, LiveCredentialError, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, LiveStaleError, type NotebookKey, type RepositoryId, type WorkspacePerson } from '@mygitnotes/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 /** What a {@link LiveNotes} adapter needs to be exercised: one repository it covers, a notebook of it, and the hooks of its editor. */
@@ -19,6 +19,12 @@ export interface LiveNotesFixture {
   setActive(id: string, n: number): void | Promise<void>;
   /** Moves the adapter's clock on. */
   advance(ms: number): void | Promise<void>;
+  /**
+   * Whether the adapter's check-ins commit with the editors' own credentials, so it must list each editor's `person`.
+   * Left out, the credential cases run when the adapter lists them and are passed over when it lists none, as a 0.20
+   * adapter that commits with the deployment's credential does.
+   */
+  ownCredentials?: boolean;
 }
 
 const sha256 = (text: string) => createHash('sha256').update(Buffer.from(text.replace(/[\r\0]/g, ''), 'utf8')).digest('hex');
@@ -351,13 +357,92 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       const lease = await service().lease(fixture.repository, id);
       const detail = await service().detail(fixture.repository, id, lease);
       const editors = [...detail.editors].sort((a, b) => Date.parse(a.firstAt) - Date.parse(b.firstAt) || Number(a.agent) - Number(b.agent));
-      expect(editors).toEqual([{ name: expect.any(String), email: fixture.person(1).author!.email, agent: false, firstAt: expect.stringMatching(ISO), lastAt: expect.stringMatching(ISO) }, { name: expect.any(String), email: fixture.person(2).author!.email, agent: true, firstAt: expect.stringMatching(ISO), lastAt: expect.stringMatching(ISO) }]);
+      // An adapter that commits with the editors' own credentials also lists who each signed in as; any other lists none.
+      const signedIn = (n: number) => editors.some(editor => editor.person !== undefined) ? { person: fixture.person(n).person } : {};
+      expect(editors).toEqual([{ name: expect.any(String), email: fixture.person(1).author!.email, agent: false, firstAt: expect.stringMatching(ISO), lastAt: expect.stringMatching(ISO), ...signedIn(1) }, { name: expect.any(String), email: fixture.person(2).author!.email, agent: true, firstAt: expect.stringMatching(ISO), lastAt: expect.stringMatching(ISO), ...signedIn(2) }]);
       for (const editor of editors) expect(Date.parse(editor.firstAt)).toBeLessThanOrEqual(Date.parse(editor.lastAt));
       expect(detail.checkout).toMatchObject<Partial<LiveCheckout>>({ id, contentHash: detail.contentHash });
       await service().mergeIn(fixture.repository, id, lease, { content: '# Editors\nhand\nagent\nmerged\n', baseRevision: detail.liveRevision });
       const after = await service().detail(fixture.repository, id, lease);
       expect(after.content).toBe('# Editors\nhand\nagent\nmerged\n');
       expect(after.editors.map(editor => editor.email).sort()).toEqual(editors.map(editor => editor.email).sort());
+    });
+
+    /*
+     * An adapter whose check-ins commit with the editors' own credentials (docs/specs/2026-11-16-collab-first-self-host
+     * A6) lists each editor's `person`, and its `service.open` takes `as`. One that commits with the deployment's own
+     * credential lists none, as in 0.20, and these cases do not apply to it.
+     */
+    const samePerson = (a: WorkspacePerson | undefined, b: WorkspacePerson) => a?.realm === b.realm && a.userId === b.userId;
+    /** Two people typed in a note; answers its id, or undefined for an adapter that lists no person. */
+    const typedByTwo = async () => {
+      const { id } = await checkout('# Credentials\n');
+      await fixture.type(id, '# Credentials\none\n', fixture.person(1));
+      await fixture.advance(1000);
+      await fixture.type(id, '# Credentials\none\ntwo\n', fixture.person(2));
+      const lease = await service().lease(fixture.repository, id);
+      const { editors } = await service().detail(fixture.repository, id, lease);
+      // The lease is left to run out, as a check-in that died would leave it.
+      await fixture.advance(LEASE_MS + 1000);
+      if (!fixture.ownCredentials && editors.every(editor => editor.person === undefined)) return undefined;
+      expect(editors.map(editor => editor.person)).toEqual([fixture.person(1).person, fixture.person(2).person]);
+      return id;
+    };
+    /** The adapter with `open` refusing the people `refused` names, every open it was asked for, and every notice. */
+    const refusing = (refused: (person: WorkspacePerson | undefined) => boolean) => {
+      const opens: { author: CommitAuthor | undefined; person: WorkspacePerson | undefined; refused: boolean; }[] = [];
+      const notices: LiveNotice[] = [];
+      const { liveNotes } = fixture;
+      const wrapped: LiveNotes = {
+        editors: liveNotes.editors,
+        editor: repository => liveNotes.editor(repository),
+        person: context => liveNotes.person(context),
+        ...(liveNotes.socketTicket ? { socketTicket: (context, repository, id) => liveNotes.socketTicket!(context, repository, id) } : {}),
+        notify: async notice => void notices.push(notice),
+        service: {
+          ...liveNotes.service,
+          open: async (repository, author, as) => {
+            opens.push({ author, person: as?.person, refused: refused(as?.person) });
+            if (refused(as?.person)) throw new LiveCredentialError();
+            return liveNotes.service.open(repository, author, as);
+          },
+        },
+      };
+      return { liveNotes: wrapped, opens, notices };
+    };
+
+    it("commits with the second editor's credential when the first editor's is refused: the second authors it and the first is still a co-author", async () => {
+      const id = await typedByTwo();
+      if (!id) return;
+      const [first, second] = [fixture.person(1), fixture.person(2)];
+      const { liveNotes, opens, notices } = refusing(person => samePerson(person, first.person));
+      const result = await checkInLink(liveNotes, fixture.repository, id, { mode: 'manual', sleep: async () => {} });
+      expect(result).toMatchObject({ id, committed: true, released: true, commit: expect.stringMatching(/^[0-9a-f]{40,64}$/) });
+      expect(opens).toEqual([{ author: first.author, person: first.person, refused: true }, { author: second.author, person: second.person, refused: false }]);
+      // The commit as Git holds it, read with the credential that made it.
+      const source = await fixture.liveNotes.service.open(fixture.repository, undefined, { person: second.person });
+      const [commit] = (await source.fileHistory(result.path!, 1, 1)).entries;
+      expect(commit.commit).toBe(result.commit);
+      expect(commit.author).toBe(second.author!.name);
+      expect(commit.body.split('\n')).toContain(`Co-authored-by: ${first.author!.name} <${first.author!.email}>`);
+      expect(commit.body).not.toContain(`Co-authored-by: ${second.author!.name}`);
+      expect(notices.filter(notice => notice.kind === 'uncommittable')).toEqual([]);
+    });
+
+    it('commits nothing when every editor is refused: the text stays live, its lease is given back, and uncommittable is notified', async () => {
+      const id = await typedByTwo();
+      if (!id) return;
+      const { liveNotes, opens, notices } = refusing(() => true);
+      const result = await checkInLink(liveNotes, fixture.repository, id, { mode: 'scheduled', sleep: async () => {} });
+      expect(result).toMatchObject({ id, committed: false, released: false, reason: 'uncommittable' });
+      expect(result).not.toHaveProperty('commit');
+      expect(opens.map(open => open.person)).toEqual([fixture.person(1).person, fixture.person(2).person]);
+      expect(notices).toEqual([expect.objectContaining({ kind: 'uncommittable', repository: fixture.repository, id, editors: [{ name: fixture.person(1).author!.name }, { name: fixture.person(2).author!.name }] })]);
+      // Nothing was lost: the text is live, both are still listed, and the next check-in need not wait for the lease.
+      expect((await as(1).read(fixture.repository, id)).content).toBe('# Credentials\none\ntwo\n');
+      if (!service().unlease) await fixture.advance(LEASE_MS + 1000);
+      const lease = await service().lease(fixture.repository, id);
+      expect((await service().detail(fixture.repository, id, lease)).editors.map(editor => editor.person)).toEqual([fixture.person(1).person, fixture.person(2).person]);
     });
   });
 }

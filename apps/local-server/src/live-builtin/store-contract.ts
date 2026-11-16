@@ -138,6 +138,20 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.editors(unknown)).toEqual([]);
     });
 
+    it('keeps the person an editor signed in as, for the check-in to commit with their own credential, and none where none is given', async () => {
+      const { id } = await open();
+      const signedIn = { ...pat, person: { realm: 'github:https://github.com:client', userId: 7 } };
+      await store.append(id, 1, bytes('one'), signedIn, T0 + 1000);
+      await store.append(id, 1, bytes('two'), sam, T0 + 2000);
+      // A later append of the same editor keeps the person it was first recorded with.
+      await store.append(id, 1, bytes('three'), pat, T0 + 3000);
+      const editors = await store.editors(id);
+      expect(editors).toEqual([{ ...signedIn, firstAt: T0 + 1000, lastAt: T0 + 3000, lastSeq: 3 }, { ...sam, firstAt: T0 + 2000, lastAt: T0 + 2000, lastSeq: 2 }]);
+      expect(editors[1]).not.toHaveProperty('person');
+      await store.putTicket(hash('1'), { ...ticket(id, 1), editor: signedIn }, T0 + 4000 + LIVE_TICKET_MS);
+      expect((await store.takeTicket(hash('1'), T0 + 5000))?.editor).toEqual(signedIn);
+    });
+
     it('numbers concurrent appends one by one and keeps every one', async () => {
       const { id } = await open();
       const results = await Promise.all(Array.from({ length: 25 }, (_, n) => store.append(id, 1, bytes(`update ${n}`), n % 2 ? pat : sam, T0 + n)));
