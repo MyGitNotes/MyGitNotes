@@ -101,10 +101,14 @@ try {
   // The file takes the new name along with the title.
   await saved('notes/example/renamed.compilation.yml', 'title: Renamed');
   assert.ok(!fs.existsSync(path.join(root, 'notes/example/reading.compilation.yml')), 'The old file name remains after the rename');
-  await page.waitForFunction(() => location.pathname.endsWith('/renamed.compilation.yml'), { timeout: 8000 }).catch(() => assert.fail(`The route still names the old file after the rename: ${page.url()}`));
+  // A note link opens the compilation in the Focus, and a compilation there gives the address to its notebook: the route names
+  // neither file, and a reload of that address shows the renamed compilation again in the Focus.
+  const notebookAddress = /^\/notebooks\/[^/]+$/;
+  assert.match(new URL(page.url()).pathname, notebookAddress, 'The route names a file while the Focus shows the compilation');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.querySelector('.compilation-view .screen-lane-heading h3')?.textContent === 'Renamed');
-  console.log('PASS rename from the heading is written and persists');
+  assert.match(new URL(page.url()).pathname, notebookAddress, 'The reload left the notebook address');
+  console.log('PASS rename from the heading is written and persists through a reload, and the address names the notebook');
 
   // Controls stay inside narrow viewports.
   for (const width of [320, 390, 1440]) {

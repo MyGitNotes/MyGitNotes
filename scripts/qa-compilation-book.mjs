@@ -5,6 +5,7 @@ import { assertReadingLayout, collectPageErrors, createQaWorkspace, launchQaBrow
 
 // Book arrangement against the built app and a disposable local workspace: a legacy `stack` file opens as Book without being
 // written, the contents follow scrolling and jump, the drawer serves a narrow compilation, and a section edits in place.
+// The book is read in zoom, which its link asks for with `?zoom`: a plain note link opens the compilation in the Focus instead.
 const require = qaRequire();
 const { SUPPORTED_SCHEMA_VERSION, WORKSPACE_CONFIG_FILENAME } = await import(`${product}/packages/core/dist/index.js`);
 const { root, write, git, commitFixture } = createQaWorkspace('mygitnotes-book-qa-');
@@ -43,9 +44,10 @@ const waitFile = async (file, text) => {
 const BODY = '.compilation-book';
 const anchor = id => `[data-book-anchor="chapter:${id}"]`;
 const section = n => `.compilation-book > .compilation-book-section:nth-child(${n})`;
-/** Opens the compilation and waits for `anchors` headings: all 15 when reading continuously, one chapter's when paged. */
+/** Opens the compilation in zoom and waits for `anchors` headings: all 15 when reading continuously, one chapter's when paged. */
 const open = async (anchors = 15) => {
-  await page.goto(`${base}/notebooks/a/notes/reading.compilation.yml`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/notebooks/a/notes/reading.compilation.yml?zoom`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.note-overlay [role="dialog"][aria-label="Compilation"]', { timeout: 20000 });
   await page.waitForSelector('.compilation-book-view', { timeout: 20000 });
   await page.waitForFunction(anchors => document.querySelectorAll('.compilation-book [data-book-anchor]').length >= anchors, {}, anchors);
 };

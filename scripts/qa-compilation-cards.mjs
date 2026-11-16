@@ -5,6 +5,7 @@ import { SUPPORTED_SCHEMA_VERSION } from '../packages/core/dist/config.js';
 import { assertReadingLayout, createQaWorkspace, launchQaBrowser, MOD_KEY, pressChord, product, qaRequire, slotReading, startQaServer } from './lib/qa-harness.mjs';
 
 // Lane cards of a compilation: the narrow vertical layout (L1-L5) and that changing layout never writes a file (S7), then editing a note in its card (E1-E12, E15, E16, L6, L7) and the Graph arrangement's own in-place editing (G1).
+// A compilation is read in zoom, which its link asks for with `?zoom` (a plain note link opens it in the Focus), or in the panes of a saved Focus.
 const require = qaRequire();
 const { root, write, commitFixture, git } = createQaWorkspace('github-notes-compilation-cards-qa-');
 write('.github-notes.yaml', `schema_version: ${SUPPORTED_SCHEMA_VERSION}\nworkspace:\n  title: Cards QA\n  default_notebook: work\nnotebooks:\n  - id: work\n    title: Work\n    root: notes/work\n`);
@@ -63,13 +64,21 @@ const load = async (url, selector) => {
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector(selector, { timeout: 20000 });
 };
+/** The address of the compilation `id` in zoom. */
+const zoomUrl = id => `${base}/notebooks/work/notes/${id}.compilation.yml?zoom`;
 const zoom = async (id, width, height) => {
   await viewport(width, height);
-  await load(`${base}/notebooks/work/notes/${id}.compilation.yml`, '.compilation-view .screen-card');
-  // A card is in the DOM before the lane gives it a height, so checks that measure cards start once every card has one.
-  await page.waitForFunction(() => [...document.querySelectorAll('.compilation-view .screen-card')].every(card => card.getBoundingClientRect().height > 0), { timeout: 20000 });
+  await load(zoomUrl(id), '.note-overlay [role="dialog"][aria-label="Compilation"] .compilation-view .screen-card');
+  // A card is in the DOM before the lane gives it a height, and shows only its path until the lane's notes arrive, when the
+  // note's own card replaces it; checks that measure cards start once every card reads its note and has a height.
+  await page.waitForFunction(() => [...document.querySelectorAll('.compilation-view .screen-card')].every(card => card.querySelector('.compilation-inline-reading') && card.getBoundingClientRect().height > 0), { timeout: 20000 });
 };
 const focusUrl = id => `${base}/notebooks/work?view=list&focus=${id}`;
+/**
+ * The widest viewport tried for a split Focus pane of about 500px: the browse dock and the rails keep their width beside the Focus,
+ * so each of two panes grows by half of what the viewport gains, and a wider dock moves that pane to a wider viewport.
+ */
+const PANE_SCAN_END = 1800;
 const openFocus = async (id, width, height) => {
   await viewport(width, height);
   await load(focusUrl(id), '[data-focus-pane] .compilation-view .screen-card');
@@ -224,7 +233,7 @@ try {
 
   // A pane of about 500px for the user's screenshot, wherever the browse dock leaves it.
   await openFocus('split2', 1000, 900);
-  for (let width = 900; width <= 1300; width += 20) {
+  for (let width = 900; width <= PANE_SCAN_END; width += 20) {
     await viewport(width, 900);
     await settle(150);
     const candidate = await measure(pane1);
@@ -472,7 +481,7 @@ try {
 
   // E11: a dynamic compilation sorted by update time keeps the editing card where it is until editing ends.
   await viewport(1440, 900);
-  await load(`${base}/notebooks/work/notes/recent.compilation.yml`, '.compilation-view .screen-card');
+  await load(zoomUrl('recent'), '.compilation-view .screen-card');
   assert.deepEqual(await titles('.compilation-view'), ['Recent 1', 'Recent 2', 'Recent 3']);
   await click('.compilation-view .screen-card-slot:nth-child(2) .compilation-inline-reading p');
   await page.waitForSelector('.compilation-view .screen-card[data-editing] .cm-content');
@@ -519,7 +528,7 @@ try {
   // L6/L7: a Focus pane of about 500px lists cards top to bottom; the card edits there, keeps its size and scrolls inside.
   await openFocus('split2', 1000, 900);
   let paneWidth = 0;
-  for (let width = 900; width <= 1300; width += 20) {
+  for (let width = 900; width <= PANE_SCAN_END; width += 20) {
     await viewport(width, 900);
     await settle(150);
     paneWidth = (await measure('[data-focus-pane="p1"]')).viewWidth;
@@ -587,7 +596,7 @@ try {
 
   // G1: in the Graph arrangement a node expanded from its hover button edits in place, and the note saves as it does outside a compilation.
   await viewport(1440, 900);
-  await load(`${base}/notebooks/work/notes/graphed.compilation.yml`, '.compilation-view [data-graph-nodes="2"]');
+  await load(zoomUrl('graphed'), '.compilation-view [data-graph-nodes="2"]');
   await settle(2500);
   // The graph is drawn on a canvas, so the node dots are found by their colour.
   const dots = await page.evaluate(() => {
