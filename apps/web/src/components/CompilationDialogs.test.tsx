@@ -89,7 +89,7 @@ it('offers no Chapter select when the compilation has no headings', () => {
   expect(screen.queryByRole('combobox', { name: 'Chapter' })).not.toBeInTheDocument();
 });
 
-it('adds at the end by default and, with a chapter chosen, as that chapter\'s last item', async () => {
+it("adds at the end by default and, with a chapter chosen, as that chapter's last item", async () => {
   const onAdd = vi.fn<(items: CompilationItem[]) => void>();
   render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [], items: meetings, onAdd, onClose: () => {} }), { wrapper });
   const chapter = screen.getByRole('combobox', { name: 'Chapter' });
