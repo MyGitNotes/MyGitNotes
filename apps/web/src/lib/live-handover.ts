@@ -1,4 +1,6 @@
-import { serializeNoteFile } from '@mygitnotes/core/note-file';
+import { parseNoteFile, serializeNoteFile } from '@mygitnotes/core/note-file';
+import { fetchHistoryContent } from './history-api.js';
+import { sameValue } from './merge-note.js';
 import { createLiveNote, isMergeConflict, type LiveCheckoutView, mergeLive } from './live-api.js';
 import type { NoteItem } from './types.js';
 import type { WorkingNote } from './working-notes.js';
@@ -33,6 +35,32 @@ async function draftMergeId(scope: string, note: NoteItem): Promise<string> {
   return hex(await crypto.subtle.digest('SHA-256', data));
 }
 
+/** Two frontmatters alike but for the timestamps a save stamps. */
+const sameIgnoringTimestamps = (a: Record<string, unknown>, b: Record<string, unknown>) => {
+  const strip = ({ created: _created, updated: _updated, ...rest }: Record<string, unknown>) => rest;
+  return sameValue(strip(a), strip(b));
+};
+
+/**
+ * The base and text of a draft's merge. The base is the Git file at the revision the draft was made from when it holds
+ * the draft's base, so that its frontmatter, quoting and final line break are the live note's own and the person's
+ * change is all the merge sees; written as a save writes it otherwise (a draft of a text Git never held), both sides at
+ * one stamp.
+ */
+async function mergeTexts(note: NoteItem, base: NoteItem, now: Date): Promise<{ base: string; text: string; }> {
+  if (base.revision) {
+    try {
+      const read = await fetchHistoryContent({ path: base.path, notebookId: base.notebookId }, { commit: base.revision });
+      const raw = 'content' in read ? read.content : undefined;
+      const parsed = raw === undefined ? undefined : parseNoteFile(raw, base.path);
+      if (raw !== undefined && parsed && parsed.content.trim() === base.content.trim() && sameIgnoringTimestamps(parsed.metadata, base.metadata)) return { base: raw, text: serializeNoteFile(note.path, note.metadata, note.content, false, now, raw) };
+    } catch {
+      // The file cannot be read now: the draft's own base is written instead.
+    }
+  }
+  return { base: fileText(base, now), text: fileText(note, now) };
+}
+
 /** The pending note made for a draft whose merge has not landed yet, by scope, notebook and path: a retry merges into it. */
 const created = new Map<string, LiveCheckoutView>();
 
@@ -45,8 +73,8 @@ export async function handOverDraft(entry: WorkingNote, { scope, notebookRoot }:
   try {
     const mergeId = await draftMergeId(scope, note);
     if (base) {
-      // Both sides are written at one stamp, so the person's own change is all that differs between them.
-      await mergeLive({ notebookId: note.notebookId, path: note.path, base: fileText(base, now), text: fileText(note, now), mergeId });
+      const { base: from, text } = await mergeTexts(note, base, now);
+      await mergeLive({ notebookId: note.notebookId, path: note.path, base: from, text, mergeId });
       return { kind: 'applied' };
     }
     const key = `${scope}\n${note.notebookId}\n${note.path}`;

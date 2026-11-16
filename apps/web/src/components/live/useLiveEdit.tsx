@@ -163,20 +163,26 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
   // Back online, the direct editor gives way to the collab editor: at once with nothing typed offline, and once its draft
   // was handed over to the live note (A3.2) otherwise; a draft that could not be handed over stays in the direct editor.
   const offline = Boolean(state.offline);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => void (mounted.current = false);
+  }, []);
   useEffect(() => {
     if (!offline) return;
-    let gone = false;
     const back = async () => {
       const { hasDraft, live: editing } = latest.current;
-      const handed = hasDraft?.() ? await (editing?.handOver?.() ?? Promise.resolve(false)) : true;
-      if (handed && !gone) void checkOut();
+      if (!hasDraft?.()) return void checkOut();
+      // Read-only while the draft is handed over: the direct editor writes nothing over it, nor marks the merged note a conflict.
+      setState({ busy: true });
+      const handed = await (editing?.handOver?.() ?? Promise.resolve(false));
+      if (!mounted.current) return;
+      if (handed) void checkOut();
+      else setState({ offline: true });
     };
     const online = () => void back();
     window.addEventListener('online', online);
-    return () => {
-      gone = true;
-      window.removeEventListener('online', online);
-    };
+    return () => window.removeEventListener('online', online);
   }, [offline, checkOut]);
 
   const active = Boolean(live) && !state.direct && !offline;
