@@ -50,6 +50,18 @@ it('names the note and the Gist it would go to, and answers publish', async () =
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
+it('says that not publishing removes the Gist link from the note', async () => {
+  open();
+  expect((await screen.findByRole('dialog')).textContent).toContain("Don't publish removes the Gist link from the note's draft");
+});
+
+it('answers no when Escape closes the dialog', async () => {
+  const onAnswer = open();
+  fireEvent(await screen.findByRole('dialog'), new Event('cancel', { cancelable: true }));
+  await waitFor(() => expect(onAnswer).toHaveBeenCalledWith(false));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
 it("answers don't publish, as closing the dialog does", async () => {
   const onAnswer = open();
   await screen.findByRole('dialog');
@@ -69,4 +81,5 @@ it('asks in Traditional Chinese', async () => {
   expect(dialog.textContent).toContain('victim');
   expect(screen.getByRole('button', { name: '發佈' })).toBeTruthy();
   expect(screen.getByRole('button', { name: '不要發佈' })).toBeTruthy();
+  expect(dialog.textContent).toContain('「不要發佈」會從這篇筆記的草稿移除 Gist 連結');
 });

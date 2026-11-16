@@ -170,6 +170,22 @@ it('pushes no Gist an agent planted when the owner next commits the note, and li
   expect(gists.get('victim')!.files).toEqual({ 'snippet.sh': { content: 'echo hi\n' } });
 });
 
+it("pushes nothing when the person's next commit drops the Gist link they did not publish", async () => {
+  const revision = await plant();
+  const first = await commit([{ path: PRIVATE, content: 'PRIVATE NOTE TEXT\n', metadata: { gist: 'victim' } }], revision);
+  expect(first.body.gistsNeedConfirm).toEqual([{ path: PRIVATE, gist: 'victim' }]);
+  // Don't publish staged the note without its `gist`; the person commits that draft.
+  const { status, body } = await commit([{ path: PRIVATE, content: 'PRIVATE NOTE TEXT\n', metadata: {} }], head);
+  expect(status).toBe(200);
+  expect(body.gists).toBeUndefined();
+  expect(body.gistsNeedConfirm).toBeUndefined();
+  expect(commits.get(head)!.files[PRIVATE]).not.toContain('gist');
+  // Later commits of the note have no Gist to push either.
+  expect((await commit([{ path: PRIVATE, content: 'More text\n', metadata: {} }], head)).body.gists).toBeUndefined();
+  expect(patches()).toEqual([]);
+  expect(gists.get('victim')!.files).toEqual({ 'snippet.sh': { content: 'echo hi\n' } });
+});
+
 it('asks first when an agent made the newest commit of a note, though the Gist id was there before', async () => {
   const written = await tool(await grant(), 'write', { path: SHARED, content: '---\ntitle: Shared\ngist: abc123\n---\n\nAgent body\n', revision: START });
   await settled();
