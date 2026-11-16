@@ -41,6 +41,20 @@ describe('a draft of a note that exists', () => {
     expect(body.text.replace('Typed offline.\n', '')).toBe(body.base);
   });
 
+  it('takes the Git file the draft was made from as the base when it holds the draft’s base, so text added at the end keeps its line break', async () => {
+    const raw = '---\ntitle: Alpha\nstatus: inbox\nupdated: "2026-11-16T01:00:00.000Z"\n---\n# Alpha\n\nFirst line.';
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.startsWith('/api/history/file?')) return json({ blob: 'b'.repeat(40), content: raw });
+      if (url === '/api/live/merge') return mergeAnswer();
+      return json({ error: 'unexpected' }, 500);
+    });
+    await expect(handOverDraft({ note: edited, base }, context)).resolves.toEqual({ kind: 'applied' });
+    expect(fetchMock.mock.calls[0]![0]).toBe(`/api/history/file?path=notes%2Flife%2Fa.md&notebookId=notes%7Elife&commit=r1`);
+    const [body] = bodies('/api/live/merge');
+    expect(body.base).toBe(raw);
+    expect(body.text).toContain('First line.\nTyped offline.');
+  });
+
   it('names the same merge for the same draft, so a retry never applies it twice, and another for another draft', async () => {
     await handOverDraft({ note: edited, base }, context);
     await handOverDraft({ note: edited, base }, context);

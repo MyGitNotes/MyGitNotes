@@ -177,6 +177,22 @@ describe('a writer’s note of a repository with the built-in editor', () => {
     expect(collabShown()).toBeInTheDocument();
   });
 
+  it('holds the direct editor read-only while its draft is handed over, so that it writes nothing over the draft meanwhile', async () => {
+    online = false;
+    let finish: (handed: boolean) => void = () => {};
+    const handOver = vi.fn(() => new Promise<boolean>(resolve => void (finish = resolve)));
+    await mount({ live: live({ handOver }), isDirty: true });
+    online = true;
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(handOver).toHaveBeenCalled();
+    expect(screen.getByLabelText('Note content')).toHaveAttribute('readonly');
+    await act(async () => finish(true));
+    await act(async () => {});
+    expect(collabShown()).toBeInTheDocument();
+  });
+
   it('stays in the direct editor on its draft when the handover could not finish', async () => {
     online = false;
     const handOver = vi.fn(async () => false);
