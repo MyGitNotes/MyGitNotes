@@ -1,5 +1,5 @@
 import { Button } from './Button.js';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { addToChapter, type CompilationItem, type CompilationRow, isHeadingItem, parseYouTubeUrl } from '@mygitnotes/core/compilation';
 import { defaultStudyProgression, studyLaneStatuses, type StudyProgression, StudyProgressionSchema } from '@mygitnotes/core/study-stages';
 import { StudyLaneSettings } from './StudyLane.js';
@@ -11,7 +11,9 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { compilationFolderOptions } from '../lib/compilation-content.js';
 import { repositoryNotebooks } from '../lib/compilation-rows.js';
 import { useCompilationAssets } from './useCompilationItemOpen.js';
-import { useNoteFacets, useNoteList } from '../lib/use-note-queries.js';
+import { useNoteFacets, useNoteList, useNoteLookup } from '../lib/use-note-queries.js';
+import { headingSlug } from '../lib/workspace-links.js';
+import { type OutlineHeading, parseMarkdownOutline } from '../lib/note-navigation.js';
 import { useDebounced } from '../lib/use-debounced.js';
 import { LoadingStatus } from './LoadingStatus.js';
 
@@ -194,6 +196,46 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
   const shown = loaded ? assets : extra.assets;
   const options = kind === 'note' ? noteMatches.notes.map(note => ({ path: note.path, title: note.title })) : kind === 'asset' ? shown.filter(asset => asset.notebookId === selected).map(asset => ({ path: asset.path, title: asset.name })) : compilationFolderOptions(nb, folders, shown);
   const video = parseYouTubeUrl(youtube);
+  // A chosen note is read once more with its content: one with headings offers a heading to pin its section, one without is pinned whole at once.
+  const [chosen, setChosen] = useState<{ notebookId: string; path: string; } | null>(null);
+  const [heading, setHeading] = useState('');
+  const lookup = useNoteLookup(chosen ? [chosen] : [], true);
+  const chosenNote = chosen && lookup.notes.find(note => note.path === chosen.path && note.notebookId === chosen.notebookId);
+  const outline: OutlineHeading[] | null = chosen && !lookup.loading ? parseMarkdownOutline(chosenNote?.content ?? '') : null;
+  const pinNote = (anchor?: string) => {
+    if (!chosen) return;
+    add({ id: crypto.randomUUID(), kind: 'note', notebookId: chosen.notebookId, path: chosen.path, ...(anchor ? { anchor } : {}) });
+    onClose();
+  };
+  const headingless = Boolean(outline && !outline.length);
+  useEffect(() => {
+    if (headingless) pinNote();
+    // Pinning runs once, when the chosen note turns out to have no headings.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headingless]);
+  // Only the first heading with a given slug can be pinned, as only it can be reached by a `#heading` link.
+  const top = Math.min(...(outline ?? []).map(entry => entry.depth));
+  const headingOptions = (outline ?? []).map((entry, index, all) => {
+    const repeated = all.slice(0, index).some(earlier => headingSlug(earlier.label) === headingSlug(entry.label));
+    return { value: String(index), label: `${'\u00a0\u00a0'.repeat(entry.depth - top)}${entry.label}${repeated ? ` (${t('screen.headingDuplicate')})` : ''}`, disabled: repeated };
+  });
+  if (chosen && outline?.length) {
+    return (
+      <WorkspaceDialog title={`${t('screen.addItem')} · ${rowName}`} onClose={onClose}>
+        <div className='screen-form'>
+          <p className='screen-dialog-hint'>{chosenNote?.title ?? chosen.path}</p>
+          <label>
+            {t('screen.itemHeading')}
+            <Select value={heading} onValueChange={setHeading} options={[{ value: '', label: t('screen.itemWholeNote') }, ...headingOptions]} />
+          </label>
+          <div className='workspace-dialog-actions'>
+            <Button onClick={() => setChosen(null)}>{t('common.cancel')}</Button>
+            <Button variant='primary' onClick={() => pinNote(heading === '' ? undefined : outline[Number(heading)].label)}>{t('screen.pin')}</Button>
+          </div>
+        </div>
+      </WorkspaceDialog>
+    );
+  }
   return (
     <WorkspaceDialog title={`${t('screen.addItem')} · ${rowName}`} onClose={onClose}>
       <div className='screen-form'>
@@ -251,7 +293,12 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
                     className='screen-item-option'
                     key={option.path}
                     onClick={() => {
-                      add({ id: crypto.randomUUID(), kind: kind as 'note' | 'asset' | 'folder', notebookId: selected, path: option.path });
+                      if (kind === 'note') {
+                        setHeading('');
+                        setChosen({ notebookId: selected, path: option.path });
+                        return;
+                      }
+                      add({ id: crypto.randomUUID(), kind: kind as 'asset' | 'folder', notebookId: selected, path: option.path });
                       onClose();
                     }}
                   >

@@ -5,6 +5,19 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { AssetItem, FolderItem, NotebookConfig } from './types.js';
 import { sortNotes } from './note-sort.js';
 import { noteFolderGrouping } from './note-groups.js';
+import { type NoteSection, noteSection } from './note-navigation.js';
+
+/**
+ * The section a heading-anchored note item shows: `undefined` when the item is not anchored or its note's content
+ * has not loaded, `null` once the note is there and no heading matches the anchor.
+ */
+/** A heading-anchored note item as the whole note: what Open the note opens. */
+export const wholeNoteItem = (item: Extract<CompilationItem, { kind: 'note'; }>): CompilationItem => ({ id: item.id, kind: 'note', notebookId: item.notebookId, path: item.path });
+
+export function itemSection(item: CompilationItem, note: Pick<NoteListItem, 'content'> | undefined): NoteSection | null | undefined {
+  if (item.kind !== 'note' || !item.anchor || typeof note?.content !== 'string') return undefined;
+  return noteSection(note.content, item.anchor);
+}
 
 export function compilationFolderOptions(notebook: NotebookConfig | undefined, folders: FolderItem[], assets: (AssetItem & { notebookId: string; })[]) {
   if (!notebook) return [];
@@ -107,9 +120,19 @@ export function noteSummary(content: string): string {
   return content.replace(/^#{1,6}\s+.*$/gm, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[`*_>#]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
-/** What a study session reviews, in flat item order: every item but the chapter headings. */
+/**
+ * What a study session reviews, in flat item order: every item but the chapter headings, and each note once, at its
+ * first item, since a card, its stage and its `status:` belong to the whole note however many of its sections are pinned.
+ */
 export function studyQueueItems(items: readonly CompilationItem[]): CompilationItem[] {
-  return contentItems(items);
+  const seen = new Set<string>();
+  return contentItems(items).filter(item => {
+    if (item.kind !== 'note') return true;
+    const key = JSON.stringify([item.notebookId, item.path]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** The items a lane, book or study session shows under the compilation's study settings; chapter headings stay where they are. */

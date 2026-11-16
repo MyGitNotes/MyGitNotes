@@ -36,7 +36,8 @@ export function useLaneNotes(row: CompilationRow | undefined, requested: { conte
   const dynamic = row?.kind === 'dynamic' ? laneNoteQuery(row) : null;
   const paged = useNoteList(options.all ? null : dynamic, { content: options.content });
   const allPaths = useNotePaths(options.all ? dynamic : null);
-  const pinned = row?.kind === 'custom' ? row.items.flatMap(item => item.kind === 'note' ? [{ notebookId: item.notebookId, path: item.path }] : []) : [];
+  // A note pinned as several sections is looked up once.
+  const pinned = row?.kind === 'custom' ? [...new Map(row.items.flatMap(item => item.kind === 'note' ? [[JSON.stringify([item.notebookId, item.path]), { notebookId: item.notebookId, path: item.path }] as const] : [])).values()] : [];
   const lookupNotes = row?.kind === 'custom' ? pinned : (options.all ? allPaths.notes : []);
   const lookup = useNoteLookup(lookupNotes, Boolean(options.content));
   if (row?.kind === 'custom' || options.all) {
@@ -52,7 +53,7 @@ export function useLanePaths(rows: CompilationRow[]): { paths: Map<string, strin
   const results = useQueries({ queries: dynamic.map(row => notePathsOptions(scope, laneNoteQuery(row)!)) });
   const paths = new Map<string, string[]>();
   for (const row of rows) {
-    if (row.kind === 'custom') paths.set(row.id, row.items.flatMap(item => item.kind === 'note' ? [item.path] : []));
+    if (row.kind === 'custom') paths.set(row.id, [...new Set(row.items.flatMap(item => item.kind === 'note' ? [item.path] : []))]);
   }
   dynamic.forEach((row, index) => paths.set(row.id, ((results[index]?.data as NotePaths | undefined)?.notes ?? []).map(note => note.path)));
   // The map is rebuilt every render; consumers key memos and effects on it, so it keeps its identity while the membership is unchanged.

@@ -25,7 +25,8 @@ export function laneGraphMembers(row: CompilationRow, paths: readonly string[]):
     return notebookId === row.notebookId ? { ids: paths.map(path => noteRefKey({ notebookId, path })), outside: 0 } : { ids: [], outside: paths.length };
   }
   const own = new Set(row.items.flatMap(item => item.kind === 'note' && item.notebookId === row.notebookId ? [item.path] : []));
-  return { ids: paths.filter(path => own.has(path)).map(path => noteRefKey({ notebookId: row.notebookId, path })), outside: row.items.filter(item => isFileItem(item) && item.notebookId !== row.notebookId).length };
+  // A note pinned as several sections is one node.
+  return { ids: [...new Set(paths)].filter(path => own.has(path)).map(path => noteRefKey({ notebookId: row.notebookId, path })), outside: row.items.filter(item => isFileItem(item) && item.notebookId !== row.notebookId).length };
 }
 
 export function useGraphData({ notebooks, filters, lane, activeLane, rows, laneIds, laneKey, showOutside, sessions, only, layout, showOrphans, positions, appearance }: Pick<GraphPageProps, 'notebooks' | 'filters' | 'lane'> & { activeLane?: CompilationRow; rows: CompilationRow[]; laneIds: string[]; laneKey: string; showOutside: boolean; sessions: ReturnType<typeof useGraphNoteSessions>['sessions']; only: string[] | null; layout: GraphPlacement; showOrphans: boolean; positions: MutableRefObject<Map<string, LayoutNode>>; appearance: GraphAppearance; }) {

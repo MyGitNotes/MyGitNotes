@@ -3,6 +3,8 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { type CompilationAsset, compilationItemTitle } from '../components/CompilationCard.js';
 import type { NotebookConfig } from './types.js';
 import { outsideNotebook } from './compilation-rows.js';
+import { itemSection } from './compilation-content.js';
+import type { NoteSection } from './note-navigation.js';
 
 export interface BookChapter {
   /** The compilation item's id. */
@@ -16,6 +18,8 @@ export interface BookChapter {
   item: CompilationItem;
   note?: NoteListItem;
   asset?: CompilationAsset;
+  /** The section a heading-anchored note shows, once its note has loaded and the heading is there. */
+  section?: NoteSection;
   /** A chapter heading's items, each a chapter one level down; absent for an item's own chapter. */
   members?: BookChapter[];
 }
@@ -46,8 +50,10 @@ export function bookChapters(items: readonly CompilationItem[], notes: readonly 
   const itemChapter = (item: CompilationItem): BookChapter => {
     const note = item.kind === 'note' ? noteList.find(candidate => candidate.path === item.path && candidate.notebookId === item.notebookId) : undefined;
     const asset = item.kind === 'asset' ? assetList.find(candidate => candidate.path === item.path && candidate.notebookId === item.notebookId) : undefined;
-    const missing = outsideNotebook(item, notebooks) || (item.kind === 'note' ? !note && !loading : item.kind === 'asset' && !asset);
-    return { id: item.id, anchor: chapterAnchor(item), kind: item.kind, title: compilationItemTitle(item, noteList, assetList), missing, item, ...(note ? { note } : {}), ...(asset ? { asset } : {}) };
+    // A heading-anchored note whose heading is gone is missing too, once its content is there to tell.
+    const section = itemSection(item, note);
+    const missing = outsideNotebook(item, notebooks) || (item.kind === 'note' ? !note && !loading || section === null : item.kind === 'asset' && !asset);
+    return { id: item.id, anchor: chapterAnchor(item), kind: item.kind, title: compilationItemTitle(item, noteList, assetList), missing, item, ...(note ? { note } : {}), ...(asset ? { asset } : {}), ...(section ? { section } : {}) };
   };
   return compilationChapters(items).map(chapter => chapter.heading ? { id: chapter.heading.id, anchor: chapterAnchor(chapter.heading), kind: 'heading', title: chapter.heading.title, missing: false, item: chapter.heading, members: chapter.items.map(itemChapter) } : itemChapter(chapter.items[0]));
 }

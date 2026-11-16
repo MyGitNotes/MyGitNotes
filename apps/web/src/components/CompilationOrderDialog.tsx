@@ -4,7 +4,9 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Heading, X } from 'lucide-react';
 import { type CompilationItem, type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
-import { compilationRowItems } from '../lib/compilation-content.js';
+import { compilationRowItems, itemSection } from '../lib/compilation-content.js';
+import { type OutlineHeading, parseMarkdownOutline } from '../lib/note-navigation.js';
+import { headingSlug } from '../lib/workspace-links.js';
 import { useLaneNotes } from '../lib/compilation-queries.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import type { FolderItem, NotebookConfig } from '../lib/types.js';
@@ -40,7 +42,12 @@ interface CompilationOrderDialogProps {
 interface OrderEntry {
   item: CompilationItem;
   title: string;
+  /** A pinned note of a custom compilation: its own title and its headings, to pin one heading's section or the whole note. */
+  note?: { title: string; headings: OutlineHeading[]; };
 }
+
+/** How a row names a note item: the note's title, then the heading it is anchored to. */
+const anchoredTitle = (noteTitle: string, heading: string | undefined) => heading ? `${noteTitle} › ${heading}` : noteTitle;
 
 /**
  * Sets a dynamic compilation's manual order, or arranges a custom compilation's contents (Arrange contents):
@@ -52,7 +59,8 @@ export function CompilationOrderDialog({ row, notebooks, assets, folders = [], d
   const custom = row.kind === 'custom';
   // Every member, whatever the study filter shows, so the saved order leaves none of them behind.
   const members = { ...row, study: undefined };
-  const lane = useLaneNotes(members, { all: true });
+  // A custom compilation's notes are read with their content, for the headings a note item can be anchored to.
+  const lane = useLaneNotes(members, { all: true, content: custom });
   const [entries, setEntries] = useState<OrderEntry[] | null>(null);
   // The row a new chapter goes after: the one that last held focus.
   const [focused, setFocused] = useState<string | null>(null);
@@ -63,7 +71,11 @@ export function CompilationOrderDialog({ row, notebooks, assets, folders = [], d
   if (entries === null && !lane.loading && !lane.error) {
     // A dynamic compilation grouped by folder shows its chapters as fixed separators.
     const items = custom ? row.items : compilationRowItems(members, lane.notes, assets, notebooks, folders).filter(item => isFileItem(item) || item.kind === 'heading');
-    setEntries(items.map(item => ({ item, title: compilationItemTitle(item, lane.notes, assets) })));
+    setEntries(items.map(item => {
+      const note = custom && item.kind === 'note' ? lane.notes.find(candidate => candidate.path === item.path && candidate.notebookId === item.notebookId) : undefined;
+      if (!note || item.kind !== 'note') return { item, title: compilationItemTitle(item, lane.notes, assets) };
+      return { item, title: anchoredTitle(note.title, item.anchor && (itemSection(item, note)?.heading ?? item.anchor)), note: { title: note.title, headings: parseMarkdownOutline(note.content ?? '') } };
+    }));
   }
   const title = custom ? t('compilation.arrange') : t('compilation.editOrder');
   const blank = Boolean(entries?.some(entry => entry.item.kind === 'heading' && !entry.item.title.trim()));
@@ -78,6 +90,14 @@ export function CompilationOrderDialog({ row, notebooks, assets, folders = [], d
     setFresh(heading.id);
   };
   const retitle = (id: string, value: string) => setEntries(current => current && current.map(entry => entry.item.id === id && entry.item.kind === 'heading' ? { item: { ...entry.item, title: value }, title: value } : entry));
+  const anchorTo = (id: string, heading: string) =>
+    setEntries(current =>
+      current && current.map(entry => {
+        if (entry.item.id !== id || entry.item.kind !== 'note' || !entry.note) return entry;
+        const { id: itemId, notebookId, path } = entry.item;
+        return { ...entry, item: { id: itemId, kind: 'note', notebookId, path, ...(heading ? { anchor: heading } : {}) }, title: anchoredTitle(entry.note.title, heading || undefined) };
+      })
+    );
   const remove = (id: string) => setEntries(current => current && current.filter(entry => entry.item.id !== id));
   // A row under a heading is indented, and only content items are numbered.
   const shown: { entry: OrderEntry; indent: boolean; index: number | null; }[] = [];
@@ -112,7 +132,7 @@ export function CompilationOrderDialog({ row, notebooks, assets, folders = [], d
           }}
         >
           <SortableContext items={entries.map(entry => entry.item.id)} strategy={verticalListSortingStrategy}>
-            <ol className='compilation-order-list' aria-label={title} onFocus={event => setFocused((event.target as HTMLElement).closest<HTMLElement>('[data-entry]')?.dataset.entry ?? null)}>{shown.map(({ entry, indent, index }) => <OrderRow key={entry.item.id} entry={entry} index={index} indent={indent} fixed={!custom && entry.item.kind === 'heading'} autoFocus={entry.item.id === fresh} onRetitle={retitle} onRemove={remove} />)}</ol>
+            <ol className='compilation-order-list' aria-label={title} onFocus={event => setFocused((event.target as HTMLElement).closest<HTMLElement>('[data-entry]')?.dataset.entry ?? null)}>{shown.map(({ entry, indent, index }) => <OrderRow key={entry.item.id} entry={entry} index={index} indent={indent} fixed={!custom && entry.item.kind === 'heading'} autoFocus={entry.item.id === fresh} onRetitle={retitle} onRemove={remove} onAnchor={anchorTo} />)}</ol>
           </SortableContext>
         </DndContext>
       )}
@@ -141,7 +161,7 @@ export function CompilationOrderDialog({ row, notebooks, assets, folders = [], d
   );
 }
 
-function OrderRow({ entry, index, indent, fixed, autoFocus, onRetitle, onRemove }: { entry: OrderEntry; index: number | null; indent: boolean; /** A derived chapter of a dynamic compilation: a separator that neither moves nor takes a drop. */ fixed: boolean; autoFocus: boolean; onRetitle: (id: string, title: string) => void; onRemove: (id: string) => void; }) {
+function OrderRow({ entry, index, indent, fixed, autoFocus, onRetitle, onRemove, onAnchor }: { entry: OrderEntry; index: number | null; indent: boolean; /** A derived chapter of a dynamic compilation: a separator that neither moves nor takes a drop. */ fixed: boolean; autoFocus: boolean; onRetitle: (id: string, title: string) => void; onRemove: (id: string) => void; onAnchor: (id: string, heading: string) => void; }) {
   const { t } = useTranslation();
   const sort = useSortable({ id: entry.item.id, disabled: fixed });
   const heading = entry.item.kind === 'heading';
@@ -172,9 +192,28 @@ function OrderRow({ entry, index, indent, fixed, autoFocus, onRetitle, onRemove 
           <>
             <span className='compilation-order-index'>{index}</span>
             <span className='compilation-order-title'>{entry.title}</span>
+            {entry.note && entry.item.kind === 'note' && (entry.note.headings.length > 0 || entry.item.anchor) && <HeadingChoice note={entry.note} anchor={entry.item.anchor} onChange={heading => onAnchor(entry.item.id, heading)} />}
           </>
         )}
     </li>
   );
   /* eslint-enable react/refs */
+}
+
+/** The heading a pinned note shows, or the whole note: every heading of the note, a repeated one disabled, and an anchor whose heading is gone kept until another is chosen. */
+function HeadingChoice({ note, anchor, onChange }: { note: NonNullable<OrderEntry['note']>; anchor?: string; onChange: (heading: string) => void; }) {
+  const { t } = useTranslation();
+  const top = Math.min(...note.headings.map(heading => heading.depth));
+  const current = anchor ? note.headings.find(heading => headingSlug(heading.label) === headingSlug(anchor))?.label ?? anchor : '';
+  const gone = Boolean(anchor) && !note.headings.some(heading => heading.label === current);
+  return (
+    <select className='ui-control compilation-order-heading' aria-label={`${t('screen.itemHeading')}: ${note.title}`} value={current} onChange={event => onChange(event.target.value)}>
+      <option value=''>{t('screen.itemWholeNote')}</option>
+      {gone && <option value={current}>{`${current} (${t('screen.headingMissing')})`}</option>}
+      {note.headings.map((heading, index) => {
+        const repeated = note.headings.slice(0, index).some(earlier => headingSlug(earlier.label) === headingSlug(heading.label));
+        return <option key={index} value={repeated ? `${index}:${heading.label}` : heading.label} disabled={repeated}>{`${'\u00a0\u00a0'.repeat(heading.depth - top)}${heading.label}${repeated ? ` (${t('screen.headingDuplicate')})` : ''}`}</option>;
+      })}
+    </select>
+  );
 }

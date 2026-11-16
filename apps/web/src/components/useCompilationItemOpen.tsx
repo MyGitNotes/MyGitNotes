@@ -10,7 +10,7 @@ import { Button } from './Button.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 import type { CompilationAsset, CompilationContentProps } from './CompilationCard.js';
 
-export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; assets: CompilationAsset[]; onOpenNote: (note: NoteListItem) => void; onMissing: () => void; }): { open: CompilationContentProps['onOpen']; preview: ReactNode; } {
+export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; assets: CompilationAsset[]; /** Opens a note; `anchor` names the heading a heading-anchored item opens at. */ onOpenNote: (note: NoteListItem, anchor?: string) => void; onMissing: () => void; }): { open: CompilationContentProps['onOpen']; preview: ReactNode; } {
   const { notebooks, assets, onOpenNote, onMissing } = options;
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -28,7 +28,7 @@ export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; a
       return;
     }
     if (item.kind === 'note') {
-      if (note) onOpenNote(note);
+      if (note) onOpenNote(note, item.anchor);
       else onMissing();
     } else if (item.kind === 'folder') {
       const assetRoot = `${nb.root}/${nb.assets || 'assets'}`;

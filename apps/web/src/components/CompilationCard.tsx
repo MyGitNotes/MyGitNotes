@@ -3,7 +3,7 @@ import { ExternalLink, FileText, Folder, Image as ImageIcon, Play, Youtube } fro
 import { type CompilationItem, type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { AssetItem, NotebookConfig } from '../lib/types.js';
-import { noteSummary } from '../lib/compilation-content.js';
+import { itemSection, noteSummary, wholeNoteItem } from '../lib/compilation-content.js';
 import { outsideNotebook } from '../lib/compilation-rows.js';
 import { renderNote } from '../lib/markdown.js';
 import { isSlideNote } from '../lib/slides/note.js';
@@ -26,6 +26,8 @@ export interface CompilationContentProps {
 export function compilationItemTitle(item: CompilationItem, notes: NoteListItem[], assets: CompilationAsset[]): string {
   if (item.kind === 'youtube') return item.title || 'YouTube';
   if (item.kind === 'heading') return item.title;
+  // A heading-anchored note is titled with its heading as the note has it now, or the stored anchor while it has not loaded or the heading is gone.
+  if (item.kind === 'note' && item.anchor) return itemSection(item, notes.find(note => note.path === item.path && note.notebookId === item.notebookId))?.heading ?? item.anchor;
   return notes.find(note => note.path === item.path && note.notebookId === item.notebookId)?.title || assets.find(asset => asset.path === item.path && asset.notebookId === item.notebookId)?.name || item.path.split('/').pop() || item.path;
 }
 
@@ -43,7 +45,11 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
   const tableLabel = t('preview.scrollableTable');
   /* eslint-disable react/preserve-manual-memoization -- Memoization follows the note content/path and display inputs used by the renderer. */
   const slides = isSlideNote(note?.metadata);
-  const html = useMemo(() => note?.content && view !== 'thumbnail' ? renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview' } : undefined) : '', [note?.content, note?.path, note?.notebookId, view, tableLabel, t, slides]);
+  // A heading-anchored note shows its heading's section only, rendered from the note's own path so its links and images resolve.
+  const anchored = item.kind === 'note' && Boolean(item.anchor);
+  const section = itemSection(item, note);
+  const source = anchored ? section?.body : note?.content;
+  const html = useMemo(() => source && note && view !== 'thumbnail' ? renderNote(source, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview' } : undefined) : '', [source, note, view, tableLabel, t, slides]);
   /* eslint-enable react/preserve-manual-memoization */
   const icon = item.kind === 'note' ? <FileText /> : item.kind === 'folder' ? <Folder /> : item.kind === 'asset' ? <ImageIcon /> : <Youtube />;
   // A folder outside its notebook's root is missing, not queried: it would list nothing, or the whole notebook.
@@ -52,7 +58,18 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
   const folderNotes = useNoteList(item.kind === 'folder' && !outside ? { notebookId: item.notebookId, folders: [item.path], descendants: true, sort: 'title', order: 'asc' } : null, { limit: 200 });
   const members = item.kind === 'folder' ? [...folderNotes.uncommitted, ...folderNotes.notes] : [];
   const memberAssets = item.kind === 'folder' ? content.assets.filter(asset => asset.notebookId === item.notebookId && asset.path.startsWith(`${item.path}/`)) : [];
-  const reading = note ? typeof note.content !== 'string' ? <LoadingStatus className='screen-summary'>{t('notes.loading')}</LoadingStatus> : view === 'thumbnail' ? <p className='screen-summary'>{noteSummary(note.content)}</p> : <NoteHtml className='prose-custom screen-markdown' html={html} notebookId={note.notebookId} /> : null;
+  const reading = note
+    ? typeof note.content !== 'string' ? <LoadingStatus className='screen-summary'>{t('notes.loading')}</LoadingStatus> : anchored && !section
+      ? (
+        <div className='screen-heading-missing'>
+          <p className='screen-missing'>{t('screen.headingMissing')}</p>
+          {item.kind === 'note' && <button type='button' className='ui-button' onClick={() => content.onOpen(wholeNoteItem(item), note)}>{t('screen.openWholeNote')}</button>}
+        </div>
+      )
+      : view === 'thumbnail'
+      ? <p className='screen-summary'>{noteSummary(source ?? '')}</p>
+      : <NoteHtml className='prose-custom screen-markdown' html={html} notebookId={note.notebookId} />
+    : null;
   const card = (slot?: InlineNoteSlotParts) => {
     return (
       <article
@@ -75,7 +92,7 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
           )}
         </header>
         <div className={slot ? 'screen-card-content screen-card-note' : 'screen-card-content'} tabIndex={0} aria-label={slot?.title ?? title}>
-          {slot ? slot.body : item.kind === 'folder' && !outside
+          {slot ? slot.body : anchored && note ? reading : item.kind === 'folder' && !outside
             ? (
               <div className='screen-folder-list'>
                 {folderNotes.error && <p role='alert' className='screen-missing'>{folderNotes.error}</p>}
@@ -130,5 +147,6 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
     );
   };
   // A note card is a note slot: it reads, or edits in place; every other kind of card keeps its own actions.
-  return note ? <InlineNoteSlot slot={item.id} notebookId={note.notebookId} path={note.path} title={title} writable={writable && !editorProps({ ...note, content: note.content ?? '' }).readOnly} layout='fill' reading={reading} onOpenZoom={() => content.onOpen(item, note)}>{parts => card(parts)}</InlineNoteSlot> : card();
+  // A heading-anchored card never edits in place: a click opens the whole note in zoom at the heading.
+  return note && !anchored ? <InlineNoteSlot slot={item.id} notebookId={note.notebookId} path={note.path} title={title} writable={writable && !editorProps({ ...note, content: note.content ?? '' }).readOnly} layout='fill' reading={reading} onOpenZoom={() => content.onOpen(item, note)}>{parts => card(parts)}</InlineNoteSlot> : card();
 }

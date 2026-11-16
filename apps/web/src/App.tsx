@@ -551,8 +551,9 @@ export const AppContent: React.FC = () => {
       folders={folders}
       frame={pane === undefined ? 'zoom' : 'pane'}
       // A card in a Focus pane opens its note in another pane (splitting when there is only one); in zoom, or when the Focus cannot take it, it opens in zoom.
-      onOpenNote={note => void (async () => {
-        if (pane === undefined || !await openInFocus(note, pane, 'beside')) await handleOpenNote(note);
+      // A heading-anchored item always opens in zoom, scrolled to its heading.
+      onOpenNote={(note, anchor) => void (async () => {
+        if (anchor || pane === undefined || !await openInFocus(note, pane, 'beside')) await handleOpenNote(note, anchor);
       })()}
       onOpenFolder={openCompilationFolder}
       onClose={pane === undefined ? closeZoom : undefined}

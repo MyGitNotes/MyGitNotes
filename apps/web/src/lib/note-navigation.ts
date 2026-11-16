@@ -1,3 +1,4 @@
+import { headingSlug } from './workspace-links.js';
 export interface TextMatch {
   from: number;
   to: number;
@@ -86,4 +87,31 @@ export function chooseOutlineHeading(outline: OutlineHeading[], index: number, o
   const heading = outline[index];
   if (!heading) return null;
   return { heading, line: heading.line, shouldClosePanel: options.closeAfter ?? false, focusEditor: options.focusEditor ?? false };
+}
+
+export interface NoteSection {
+  /** The heading's label as the note has it now. */
+  heading: string;
+  depth: number;
+  /** The Markdown from below the heading line to the next heading of the same or a higher level, or the end, without surrounding blank lines. */
+  body: string;
+}
+
+/**
+ * The section of `content` a heading anchor names: the first heading whose slug matches the anchor's, as a `#heading`
+ * link matches, so the heading text and its slug both work. Deeper sub-headings stay in the section; headings in fenced
+ * code never match. `null` when no heading matches.
+ */
+export function noteSection(content: string, anchor: string): NoteSection | null {
+  const slug = headingSlug(anchor);
+  const outline = parseMarkdownOutline(content);
+  const index = outline.findIndex(heading => headingSlug(heading.label) === slug);
+  if (index < 0) return null;
+  const heading = outline[index];
+  const next = outline.slice(index + 1).find(candidate => candidate.depth <= heading.depth);
+  const lines = content.split('\n');
+  // An ATX heading is one line; a setext heading is its text line and the underline below it.
+  const setext = !/^\s{0,3}#/.test(lines[heading.line - 1]);
+  const start = lines.slice(0, heading.line + (setext ? 1 : 0)).reduce((offset, line) => offset + line.length + 1, 0);
+  return { heading: heading.label, depth: heading.depth, body: content.slice(Math.min(start, content.length), next ? next.from : content.length).trim() };
 }

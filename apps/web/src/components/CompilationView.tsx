@@ -43,8 +43,8 @@ export interface CompilationViewProps {
   folders: FolderItem[];
   /** `zoom` is the full-screen dialog; `pane` fills a Focus pane. */
   frame: 'zoom' | 'pane';
-  /** Opens a pinned note where the host opens notes. */
-  onOpenNote: (note: NoteListItem) => void;
+  /** Opens a pinned note where the host opens notes; with `anchor`, a heading-anchored item opens the whole note in zoom at that heading. */
+  onOpenNote: (note: NoteListItem, anchor?: string) => void;
   /** Opens a pinned folder inside the Notes page; false lets the item navigate to it. */
   onOpenFolder?: (item: Extract<CompilationItem, { kind: 'folder'; }>) => boolean;
   /** Closes the view: the zoom dialog, or the Focus tab once the file is deleted. */

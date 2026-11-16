@@ -26,6 +26,10 @@ const videoId = z.string().regex(/^[\w-]{11}$/);
 const start = z.number().int().min(0).max(86400).default(0);
 const videoTitle = z.string().max(160).optional();
 const headingTitle = z.string().trim().min(1).max(100);
+/* eslint-disable no-control-regex -- An anchor names a heading's text and holds no control characters. */
+/** A heading inside a pinned note, written as its text (or slug); the item then shows that heading's section only. */
+const anchor = z.string().trim().min(1).max(200).refine(value => !/[\x00-\x1f\x7f]/.test(value), 'Invalid anchor').optional();
+/* eslint-enable no-control-regex */
 /** A chapter heading: it starts a chapter of the items after it, up to the next heading. It names no file, so it has no path or notebook. */
 const HeadingItemSchema = z.object({ id, kind: z.literal('heading'), title: headingTitle }).strict();
 export type CompilationHeadingItem = z.infer<typeof HeadingItemSchema>;
@@ -35,14 +39,14 @@ export type GraphLayout = z.infer<typeof GraphLayoutSchema>;
 
 const reference = { id, notebookId, path: repoPath };
 /** An item as the browser holds it: file references plus the owning notebook. */
-export const CompilationItemSchema = z.discriminatedUnion('kind', [z.object({ ...reference, kind: z.literal('note') }).strict(), z.object({ ...reference, kind: z.literal('folder') }).strict(), z.object({ ...reference, kind: z.literal('asset') }).strict(), z.object({ id, kind: z.literal('youtube'), videoId, start, title: videoTitle }).strict(), HeadingItemSchema]);
+export const CompilationItemSchema = z.discriminatedUnion('kind', [z.object({ ...reference, kind: z.literal('note'), anchor }).strict(), z.object({ ...reference, kind: z.literal('folder') }).strict(), z.object({ ...reference, kind: z.literal('asset') }).strict(), z.object({ id, kind: z.literal('youtube'), videoId, start, title: videoTitle }).strict(), HeadingItemSchema]);
 export type CompilationItem = z.infer<typeof CompilationItemSchema>;
 /** An item that names a file or folder of the repository: a note, folder or asset. */
 export type CompilationFileRef = Extract<CompilationItem, { path: string; }>;
 export const isFileItem = (item: CompilationItem): item is CompilationFileRef => item.kind !== 'youtube' && item.kind !== 'heading';
 
 const fileReference = { id, path: repoPath };
-const FileItemSchema = z.discriminatedUnion('kind', [z.object({ ...fileReference, kind: z.literal('note') }).strict(), z.object({ ...fileReference, kind: z.literal('folder') }).strict(), z.object({ ...fileReference, kind: z.literal('asset') }).strict(), z.object({ id, kind: z.literal('youtube'), videoId, start, title: videoTitle }).strict(), HeadingItemSchema]);
+const FileItemSchema = z.discriminatedUnion('kind', [z.object({ ...fileReference, kind: z.literal('note'), anchor }).strict(), z.object({ ...fileReference, kind: z.literal('folder') }).strict(), z.object({ ...fileReference, kind: z.literal('asset') }).strict(), z.object({ id, kind: z.literal('youtube'), videoId, start, title: videoTitle }).strict(), HeadingItemSchema]);
 const FileSourceSchema = z.discriminatedUnion('kind', [z.object({ kind: z.literal('tag'), tag: z.string().min(1).max(200) }).strict(), z.object({ kind: z.literal('folder'), path: repoPath, recursive: z.boolean().default(true) }).strict()]);
 const SortSchema = z.object({ field: z.enum(['updated', 'created', 'title', 'status', 'manual']), order: z.enum(['asc', 'desc']) }).strict();
 const StudySchema = z.object({ filter: z.enum(['all', 'due', 'future', 'paused']), dueFirst: z.boolean(), status: z.string().max(200).optional() }).strict();
@@ -209,7 +213,7 @@ export function compilationFile(row: CompilationRow): CompilationFile {
   const lane = row.view !== 'graph' && row.view !== 'book';
   const size = lane ? row.view as CompilationFile['size'] : row.size;
   const common = { version: 1 as const, id: row.id, title: row.name, arrangement: lane ? 'lane' as const : row.view as 'graph' | 'book', ...(size ? { size } : {}), ...(row.tags?.length ? { tags: row.tags } : {}), ...(row.status ? { status: row.status } : {}), ...(row.study ? { study: row.study } : {}), ...(row.progression ? { progression: row.progression } : {}), ...(row.graph ? { graph: row.graph } : {}) };
-  if (row.kind === 'custom') return { ...common, items: row.items.map(item => item.kind === 'youtube' || item.kind === 'heading' ? item : { id: item.id, kind: item.kind, path: item.path }) };
+  if (row.kind === 'custom') return { ...common, items: row.items.map(item => item.kind === 'youtube' || item.kind === 'heading' ? item : { id: item.id, kind: item.kind, path: item.path, ...(item.kind === 'note' && item.anchor ? { anchor: item.anchor } : {}) }) };
   const source = row.source.kind === 'tag' ? { kind: 'tag' as const, tag: row.source.tag } : { kind: 'folder' as const, path: row.source.path, recursive: row.source.recursive };
   return { ...common, source, ...(row.sort ? { sort: row.sort } : {}), ...(row.group ? { group: row.group } : {}), ...(row.manualOrder?.length ? { manualOrder: row.manualOrder } : {}) };
 }
