@@ -149,6 +149,9 @@ describe('a note in the collab editor', () => {
     fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
     expect(within(panel()).getByText(/cannot be read/i)).toBeInTheDocument();
     expect(within(panel()).getByRole('checkbox', { name: 'Hide note' })).toBeDisabled();
+    // The YAML view stays writable, to fix it there.
+    fireEvent.click(within(panel()).getByRole('button', { name: /YAML/ }));
+    expect((await within(panel()).findByRole('textbox', { name: 'YAML Metadata' })).getAttribute('contenteditable')).toBe('true');
   });
 
   it('renders the panel into a Focus pane’s rail', async () => {
