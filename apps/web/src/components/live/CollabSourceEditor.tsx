@@ -1,13 +1,13 @@
 import { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useRef } from 'react';
 import { Compartment, EditorState, Prec } from '@codemirror/state';
 import { EditorView, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view';
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { syntaxHighlighting } from '@codemirror/language';
 import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
-import { codeMirrorTokenTheme, tokenHighlightStyle } from '../../lib/codemirror-theme.js';
 import type { LiveMarkdownHandle } from '../LiveMarkdownEditor.js';
+
+/** Plain source as the direct editor's Source text area shows it: no Markdown styling, which would read the frontmatter's `---` as a heading rule. */
+const sourceTheme = EditorView.theme({ '.cm-content': { padding: '12px 16px', fontFamily: 'var(--font-mono, ui-monospace, monospace)' } });
 
 interface CollabSourceEditorProps {
   text: Y.Text;
@@ -21,7 +21,7 @@ interface CollabSourceEditorProps {
 
 /**
  * The collab editor's Source mode: the whole live text, frontmatter included, as plain Markdown source in its own
- * CodeMirror view bound to the same `Y.Text` and undo manager as the live view, so typing reaches everyone.
+ * CodeMirror view, plain text with no Markdown styling, bound to the same `Y.Text` and undo manager as the live view, so typing reaches everyone.
  */
 export const CollabSourceEditor = forwardRef<LiveMarkdownHandle, CollabSourceEditorProps>(({ text, awareness, undoManager, showLineNumbers = true, ariaLabel, scroller }, ref) => {
   const host = useRef<HTMLDivElement>(null);
@@ -70,11 +70,9 @@ export const CollabSourceEditor = forwardRef<LiveMarkdownHandle, CollabSourceEdi
         extensions: [
           yCollab(text, awareness, { undoManager }),
           Prec.high(keymap.of(yUndoManagerKeymap)),
-          markdown({ base: markdownLanguage }),
           gutter.current.of(showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []),
           EditorView.lineWrapping,
-          syntaxHighlighting(tokenHighlightStyle),
-          codeMirrorTokenTheme,
+          sourceTheme,
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel, 'role': 'textbox', 'aria-multiline': 'true', 'data-key-scope': 'markdown-editor' }),
         ],
       }),

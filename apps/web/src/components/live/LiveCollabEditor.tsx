@@ -1,4 +1,4 @@
-import { type ReactNode, type Ref, useEffect, useRef, useState } from 'react';
+import { type ReactNode, type Ref, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, Users } from 'lucide-react';
 import * as Y from 'yjs';
@@ -546,6 +546,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   }, [holdsTyping]);
   useEffect(() => () => unsavedChange.current?.(false), []);
 
+  // A view built again (another mode, another frame) starts from the shared text as it is now: the binding assumes the
+  // view's text equals it, and typing in a view built on the first sync's text would land at the wrong places.
+  const liveBinding = useMemo(() => collab && { extension: collab.extension, get text() { return collab.shared.toString(); } }, [collab]);
   // The panel writes metadata only while the document is connected and synced (Q2).
   const shared = live && collab ? collab.shared : null;
   const writable = connection.status === 'connected' && connection.synced;
@@ -697,7 +700,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       {live && collab && (
         <div className='note-editor-body live-collab-body'>
           {mode === 'live'
-            ? <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={collab} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} slides={slides} showLineNumbers={showLineNumbers} />
+            ? <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={liveBinding ?? undefined} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} slides={slides} showLineNumbers={showLineNumbers} />
             : mode === 'split'
             ? <SplitView source={<CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} scroller={sourceScroller} />} sourceScroller={sourceScroller} content={body} path={checkout.path} notebookId={checkout.notebookId} slides={slides} />
             : <CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} />}

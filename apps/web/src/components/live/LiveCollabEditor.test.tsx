@@ -1102,3 +1102,15 @@ describe('split mode', () => {
     expect(screen.getByRole('heading', { name: 'Shared heading' })).toBeInTheDocument();
   });
 });
+
+describe('a view built again', () => {
+  it('starts from the shared text as it is now, not the first sync’s', async () => {
+    const view = await open({ mode: 'live' });
+    sync('# A\n');
+    act(() => provider().configuration.document.getText('content').insert(4, 'peer\n'));
+    view.rerender(createElement(LiveCollabEditor, props({ mode: 'raw' })));
+    view.rerender(createElement(LiveCollabEditor, props({ mode: 'live' })));
+    await act(async () => {});
+    expect((screen.getByRole('textbox', { name: 'Live note content' }) as HTMLTextAreaElement).value).toBe('# A\npeer\n');
+  });
+});
