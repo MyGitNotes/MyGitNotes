@@ -1,7 +1,8 @@
 import type { LiveCheckInReason, LiveConflict, LiveEditorInfo } from '@mygitnotes/core';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { isOutlinePath } from '@mygitnotes/core/outline';
-import { ApiError, responseError } from './api.js';
+import { ApiError, isNetworkFailure, responseError } from './api.js';
+import { markReached, markUnreachable } from './live-reachability.js';
 
 /*
  * The browser's side of the live editor routes (docs/specs/2026-11-15-live-notes/spec.md §6, §8): check a note out,
@@ -106,7 +107,15 @@ export interface LiveRetargetAnswer {
 }
 
 const post = async <T>(url: string, body: unknown, fallback: string): Promise<T> => {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let res: Response;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (error) {
+    if (isNetworkFailure(error)) markUnreachable();
+    throw error;
+  }
+  // Any answer is the server reached: what waits for it tries again (cf16-F007).
+  markReached();
   if (!res.ok) throw await responseError(res, fallback);
   return res.json() as Promise<T>;
 };

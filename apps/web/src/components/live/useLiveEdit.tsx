@@ -4,6 +4,7 @@ import { flushSync } from 'react-dom';
 import { useLiveEditLink } from '../../app/live-edit-link.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { isNetworkFailure } from '../../lib/api.js';
+import { onReachable, RETRY_FIRST_MS, retryOnTimer } from '../../lib/live-reachability.js';
 import { createUnifiedDiff } from '../../lib/unified-diff.js';
 import { noteFileText } from '../../lib/live-handover.js';
 import { checkInLive, checkOutLive, forgetCheckedIn, isNotLive, keepsDirectEditor, type LiveCheckInAnswer, type LiveCheckoutView, type LiveFileActions, type LiveNoteEditing, markCheckedIn, markRefusal, recentCheckIn, recentRefusal, requestLiveEdit, takeLiveEditRequest } from '../../lib/live-api.js';
@@ -170,21 +171,37 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
     mounted.current = true;
     return () => void (mounted.current = false);
   }, []);
+  /** How long the next timed try waits: kept across the tries that fail, and started afresh once one got through. */
+  const backoff = useRef({ wait: RETRY_FIRST_MS });
+  useEffect(() => {
+    if (state.checkout) backoff.current.wait = RETRY_FIRST_MS;
+  }, [state.checkout]);
+  // Not only on `online`: a request may have failed while the browser counted itself online, and then none comes (A3.2.1).
   useEffect(() => {
     if (!offline) return;
+    let trying = false;
     const back = async () => {
-      const { hasDraft, live: editing } = latest.current;
-      if (!hasDraft?.()) return void checkOut();
-      // Read-only while the draft is handed over: the direct editor writes nothing over it, nor marks the merged note a conflict.
-      setState({ busy: true });
-      const handed = await (editing?.handOver?.() ?? Promise.resolve(false));
-      if (!mounted.current) return;
-      if (handed) void checkOut();
-      else setState({ offline: true });
+      if (trying) return;
+      trying = true;
+      try {
+        const { hasDraft, live: editing } = latest.current;
+        if (!hasDraft?.()) return await checkOut();
+        // Read-only while the draft is handed over: the direct editor writes nothing over it, nor marks the merged note a conflict.
+        setState({ busy: true });
+        const handed = await (editing?.handOver?.() ?? Promise.resolve(false));
+        if (!mounted.current) return;
+        if (handed) await checkOut();
+        else setState({ offline: true });
+      } finally {
+        trying = false;
+      }
     };
-    const online = () => void back();
-    window.addEventListener('online', online);
-    return () => window.removeEventListener('online', online);
+    const retry = () => void back();
+    const stopEvents = onReachable(retry), stopTimer = retryOnTimer(retry, backoff.current);
+    return () => {
+      stopEvents();
+      stopTimer();
+    };
   }, [offline, checkOut]);
 
   const active = Boolean(live) && !state.direct && !offline;

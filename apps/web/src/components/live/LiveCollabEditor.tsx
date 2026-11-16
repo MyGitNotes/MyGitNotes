@@ -11,6 +11,7 @@ import { checkInLive, isMergeConflict, isNotLive, type LiveCheckInAnswer, type L
 import { holdClaim, takeClaim } from '../../lib/live-claims.js';
 import { liveOwnerClaim, relocateUnsynced, unsyncedKey, unsyncedLiveStore, type UnsyncedLiveText, unsyncedOf } from '../../lib/live-unsynced.js';
 import { isNetworkFailure } from '../../lib/api.js';
+import { onReachable } from '../../lib/live-reachability.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
@@ -463,11 +464,12 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       if (dirty) keep();
     };
     window.addEventListener('offline', offline);
-    window.addEventListener('online', online);
+    // Back online, a live request that got through, or the page shown again: kept typing waiting for the server is tried again.
+    const stopReachable = onReachable(online);
     window.addEventListener('pagehide', hide);
     return () => {
       window.removeEventListener('offline', offline);
-      window.removeEventListener('online', online);
+      stopReachable();
       window.removeEventListener('pagehide', hide);
       // Unmounted under a running session (the person went to another note or pane): its unsaved typing stays kept for the next session.
       stop();

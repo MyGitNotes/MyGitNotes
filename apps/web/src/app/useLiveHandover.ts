@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { handOverDraft, LIVE_MERGE_CONFLICT, type LiveHandover } from '../lib/live-handover.js';
 import { withClaim } from '../lib/live-claims.js';
+import { onReachable } from '../lib/live-reachability.js';
 import { sameValue } from '../lib/merge-note.js';
 import type { LiveCheckoutView } from '../lib/live-api.js';
 import type { NoteItem } from '../lib/types.js';
@@ -77,9 +78,8 @@ export function useLiveHandover(params: LiveHandoverParams) {
   useEffect(() => {
     if (!ready) return;
     void sweep();
-    const online = () => void sweep();
-    window.addEventListener('online', online);
-    return () => window.removeEventListener('online', online);
+    // Not only on `online`: once a live request gets through, or the page shows again (cf16-F007).
+    return onReachable(() => void sweep());
   }, [ready, sweep]);
 
   /**
