@@ -91,7 +91,11 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
         <div className='phone-note-title' title={title}>{title}</div>
         {liveBadge && <LiveBadge live={props.note.live} title={props.note.title} />}
         {props.frontmatterInvalid
-          ? <span role='status' className='inline-flex text-danger' aria-label={t('editor.frontmatterInvalidShort')} title={t('editor.frontmatterInvalidLive')}><AlertTriangle aria-hidden='true' size={16} /></span>
+          ? (
+            <span role='status' className='inline-flex text-danger' aria-label={t('editor.frontmatterInvalidShort')} title={t('editor.frontmatterInvalidLive')}>
+              <AlertTriangle aria-hidden='true' size={16} />
+            </span>
+          )
           : <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />}
         {!autoSave && !readOnly && (
           <button type='button' className='ui-icon-button' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave}>
@@ -201,28 +205,26 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
     <PhoneSheet title={title} onClose={onClose} className='phone-note-sheet'>
       {!liveEditing && <p className='phone-sheet-meta' role='status' aria-label={t('phone.saveState')}>{t('editor.words', { count: words })}{' · '}{session.editorStatus}</p>}
       <section className='phone-sheet-section' aria-label={t('phone.noteActions')}>
-        {frontmatterInvalid
-          ? <FrontmatterInvalid />
-          : (
-            <>
-              <div className='phone-sheet-field'>
-                <span>{t('editor.status')}</span>
-                <NoteStatusSelect status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
-              </div>
-              <NoteRowTags metadata={session.metadata} setMetadata={session.setMetadata} availableTags={availableTags} locked={session.locked} />
-            </>
-          )}
+        {frontmatterInvalid ? <FrontmatterInvalid /> : (
+          <>
+            <div className='phone-sheet-field'>
+              <span>{t('editor.status')}</span>
+              <NoteStatusSelect
+                status={String(session.metadata.status || '')}
+                statuses={statuses}
+                readOnly={session.locked}
+                onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))}
+                label={t('editor.status')}
+              />
+            </div>
+            <NoteRowTags metadata={session.metadata} setMetadata={session.setMetadata} availableTags={availableTags} locked={session.locked} />
+          </>
+        )}
       </section>
       <section className='phone-sheet-section' aria-label={t('phone.noteTools')}>
         <div className='phone-sheet-tools'>
           {tools.map(({ id, icon: Icon, label }) => (
-            <button
-              type='button'
-              key={id}
-              className='phone-sheet-tool'
-              data-tool={id}
-              onClick={() => openTool(id)}
-            >
+            <button type='button' key={id} className='phone-sheet-tool' data-tool={id} onClick={() => openTool(id)}>
               <Icon aria-hidden='true' />
               {id === 'changes' && changesCount > 0 && <span className='phone-sheet-badge' aria-label={String(changesCount)}>{changesCount > 99 ? '99+' : changesCount}</span>}
               <span>{t(label)}</span>
