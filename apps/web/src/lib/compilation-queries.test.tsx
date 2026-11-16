@@ -4,7 +4,7 @@ import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
-import { useLanePaths } from './compilation-queries.js';
+import { laneNoteQuery, useLanePaths } from './compilation-queries.js';
 import { setNoteQueryScope } from './use-note-queries.js';
 
 const REVISION = 'a'.repeat(40);
@@ -43,4 +43,10 @@ it('gives new paths once a lane gains a member', async () => {
   rerender({ rows: [{ ...custom, items: [...custom.items, { id: 'c', kind: 'note', notebookId: 'life', path: 'notes/life/c.md' }] }] });
   expect(result.current.paths).not.toBe(before);
   expect(result.current.paths.get('pinned')).toEqual(['notes/life/a.md', 'notes/life/b.md', 'notes/life/c.md']);
+});
+
+it("queries a dynamic folder source in the source's notebook, which may be another notebook of the repository", () => {
+  const row: CompilationRow = { ...base, id: 'folder', kind: 'dynamic', source: { kind: 'folder', path: 'notes/work/sec', recursive: true, notebookId: 'work' } };
+  expect(laneNoteQuery(row)).toMatchObject({ notebookId: 'work', folders: ['notes/work/sec'] });
+  expect(laneNoteQuery(dynamic)).toMatchObject({ notebookId: 'life', tags: ['idea'] });
 });

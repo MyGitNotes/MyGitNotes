@@ -751,3 +751,17 @@ it('does not count scrolling within a page as scrolling the continuous book (P7)
   await waitFor(() => expect(chapters()).toHaveLength(1));
   expect(pageTitle()).toEqual(['Note A']);
 });
+
+it("reads a chapter from another notebook of the repository as that notebook's note, editing it under its own key, and shows a path in no notebook as missing", async () => {
+  const noteB = { id: 'notes/nb2/b.md', path: 'notes/nb2/b.md', notebookId: 'nb2', title: 'Note B', tags: [], metadata: {}, content: 'The body of note B.' };
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ revision: REVISION, notes: [noteB] }), { headers: { 'Content-Type': 'application/json' } })));
+  const cross: CompilationRow = { ...row, items: [{ id: 'b', kind: 'note', notebookId: 'nb2', path: 'notes/nb2/b.md' }, { id: 'lost', kind: 'note', notebookId: 'nb1', path: 'elsewhere/lost.md' }] };
+  render(book({ row: cross, readOnly: false, notebooks: [...notebooks, { id: 'nb2', title: 'NB2', root: 'notes/nb2' }] }), { wrapper });
+  expect(await screen.findByText('The body of note B.')).toBeInTheDocument();
+  expect(within(chapters()[1]).getByText('This item may have moved or been deleted.')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Note B' }));
+  await waitFor(() => expect(chapters()[0]).toHaveAttribute('data-editing'));
+  expect(editorProps).toHaveBeenCalledWith(expect.objectContaining({ notebookId: 'nb2', path: 'notes/nb2/b.md' }));
+  fireEvent.click(within(chapters()[0]).getByRole('button', { name: /^Finish editing/ }));
+  await waitFor(() => expect(flushEditors).toHaveBeenCalledWith(['nb2:notes/nb2/b.md']));
+});
