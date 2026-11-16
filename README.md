@@ -101,7 +101,7 @@ Run `pnpm update-core` from a clean `core` checkout; it fast-forwards `core` fro
 ## Compilations
 
 A compilation is a `<name>.compilation.yml` file in a notebook, tracked and synced by Git like a note.
-Its members are picked by hand (notes, folders, attachments or YouTube videos) or gathered dynamically by tag or folder.
+Its members are picked by hand (notes, folders, attachments or YouTube videos) from any notebook of the same repository, or gathered dynamically by tag or folder; a book can draw its chapters from several notebooks.
 Dynamic compilations sort by updated time, created time, title or status, or by your own order.
 They display as a card row (thumbnail, small, medium), a book with a contents list, or a graph.
 Click a card or a book section to edit its note in place; its title opens the note in zoom.

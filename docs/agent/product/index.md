@@ -60,7 +60,15 @@ Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/
 ### 合輯所有權
 
 合輯是筆記本內的 `<名稱>.compilation.yml`，屬於使用者的筆記內容，與筆記一樣由 Git 追蹤與同步。
-路徑所在的筆記本擁有合輯，檔案不重複 `notebookId`；項目與動態來源必須指向同一筆記本（YouTube 項目除外）。
+路徑所在的筆記本擁有合輯，檔案不重複 `notebookId`。
+項目以儲存庫相對路徑記錄，可以指向同一儲存庫的任何筆記本；項目的筆記本由路徑所在的筆記本根目錄決定（`compilationRow` 的 `notebookOf`），只在合輯自己的儲存庫內找，不會解析到其他儲存庫根目錄相同的筆記本。
+路徑不在任何筆記本內的項目仍可讀檔，顯示為找不到；動態合輯的資料夾來源必須在儲存庫某個筆記本內，否則檔案無效；標籤來源只查合輯自己的筆記本。
+`parseCompilation` 收儲存庫全部筆記本的根目錄，只檢查資料夾來源；目錄（本機與遠端）、學習路由與瀏覽器都用同一範圍。
+跨合輯拖曳項目限同一儲存庫（「Items stay inside their repository」）；新增項目的對話框可選同一儲存庫的筆記本，預設合輯自己的。
+學習時，合輯可在筆記所屬儲存庫的任何筆記本內；預設階段取合輯自己筆記本的狀態，所以其他筆記本的筆記可能得到該筆記本沒定義的狀態（看板會多一欄）。
+關聯圖排列只畫合輯自己筆記本的成員，並顯示「N items in other notebooks are not shown in the graph」／「另有 N 個項目在其他筆記本，關聯圖不顯示」，開啟時不寫檔。
+同一儲存庫裡能讀合輯的人就能讀所有筆記本，所以不會出現讀不到的項目；未來若有跨儲存庫或分享合輯，讀不到的項目採鎖定並隱藏標題。
+舊版用戶端讀到跨筆記本的合輯會標為無效（「outside the notebook」），不會丟棄或改寫；檔案格式與 `version` 不變，Pro 與社群版要一起升級。
 `packages/core/src/compilation.ts` 定義檔案格式；筆記目錄把它索引為 `compilation` 種類，`/api/notes/facets` 回傳各筆記本的合輯數，`/api/notes/query` 接受 `kind=compilation`。
 搬移或重新命名筆記與資料夾時，`workspace-documents.ts` 與合輯模組一併改寫合輯內的參照，包括 `manualOrder`。
 動態合輯的 `sort.field: manual` 依 `manualOrder` 的成員路徑排列，沒列入的成員依更新時間由舊到新接在後面；手動模式一次載入全部成員，選其他排序時保留 `manualOrder`。
