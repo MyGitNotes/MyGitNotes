@@ -222,6 +222,20 @@ describe('moving, renaming or deleting a note one has open in the collab editor'
     expect(collabShown()).toBeInTheDocument();
   });
 
+  it('keeps saying so in the editor the check-in’s workspace refresh mounts, when the check-in committed the text before it was refused', async () => {
+    const move = vi.fn(), onCheckedIn = vi.fn();
+    checkInAnswer = () => json({ id: 'abc', path: 'notes/life/a.md', committed: true, commit: 'c'.repeat(40), released: false, reason: 'active', activeEditors: 1, revision: 'r2' });
+    const props = { note: { ...note, live: liveState }, live: live({ fileActions: { move }, onCheckedIn }), onMove: vi.fn() };
+    await mount(props);
+    await pick('Move note');
+    expect(onCheckedIn).toHaveBeenCalledWith(expect.objectContaining({ committed: true, released: false }));
+    cleanup();
+    await mount(props);
+    expect(screen.getByText('1 other person is editing this note, so it cannot be moved now.')).toBeInTheDocument();
+    expect(collabShown()).toBeInTheDocument();
+    expect(move).not.toHaveBeenCalled();
+  });
+
   it('acts at once on a note that is no longer live', async () => {
     const rename = vi.fn();
     checkInAnswer = () => json({ error: 'Not live.', code: 'not-live' }, 409);
