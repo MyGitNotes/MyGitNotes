@@ -37,8 +37,8 @@ export interface LiveCollabEditorProps {
   title?: string;
   /** The repository's draft scope, which keys the typing this browser keeps unsynced. */
   scope?: string;
-  /** What this tab kept could not be merged into the note: the app keeps it as a conflict draft (collab-first A3.1). */
-  onMergeConflict?: (mine: string) => void;
+  /** What this tab kept could not be merged into the note: the app keeps it as a conflict draft (collab-first A3.1), or answers false when the note already has one. */
+  onMergeConflict?: (mine: string) => boolean;
   /** Whether the editor holds typing the server has not stored, or kept typing it has not merged yet: a file action waits for it (cf16-F003). */
   onUnsavedChange?: (unsaved: boolean) => void;
 }
@@ -306,7 +306,13 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           setMerging(false);
           return setPhase({ kind: 'lost', text: entry.text, ending: isNotLive(error) ? { kind: 'released' } : { kind: 'failed', message: (error as Error).message } });
         }
-        latest.current.onMergeConflict?.(entry.text);
+        if (latest.current.onMergeConflict?.(entry.text) === false) {
+          // The note's conflict draft waits for the person: this text is offered to copy or download, and kept until they leave it.
+          taken.push({ entry, release });
+          keptKeys.current = [entry.key];
+          setMerging(false);
+          return setPhase({ kind: 'lost', text: entry.text, ending: { kind: 'failed', message: latest.current.t('live.conflictPending') } });
+        }
       }
       await store.delete(entry.key).catch(() => {});
       release();

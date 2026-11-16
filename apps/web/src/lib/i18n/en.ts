@@ -2515,6 +2515,8 @@ export const en = {
   'live.activeDeleteOne': '1 other person is editing this note, so it cannot be deleted now.',
   'live.merging': 'Merging the changes you made offline into the note…',
   'live.keptOffline': 'Offline: these changes are kept on this device and merged in once you are back online.',
+  'live.conflictPending': 'An earlier conflict draft of this note is waiting. Compare, copy or discard it first.',
+  'live.conflictBlocksOffline': 'Deal with the conflict draft first: the note stays read-only here until you compare, copy or discard it.',
   'live.mergeConflict': 'Your offline changes conflict with changes made since, so they were kept as a draft. Compare, copy or discard them.',
   'live.compare': 'Compare',
   'live.hideCompare': 'Hide comparison',

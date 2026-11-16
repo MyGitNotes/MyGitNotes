@@ -371,9 +371,15 @@ export const AppContent: React.FC = () => {
         // Offline handover (A3): a draft the direct editor made offline goes to the live note once online; what the collab
         // editor kept but could not merge becomes a conflict draft, which the editor offers to compare, copy or discard.
         handOver: () => liveHandover.handOver(note),
+        // A second conflict never takes the place of one the person has not dealt with: the editor offers it to copy instead.
         onMergeConflict: mine => {
           const parsed = parseNoteFile(mine, note.path);
-          stageWorkingNote({ ...note, content: parsed.content, metadata: parsed.metadata }, note, LIVE_MERGE_CONFLICT);
+          try {
+            stageWorkingNote({ ...note, content: parsed.content, metadata: parsed.metadata }, note, LIVE_MERGE_CONFLICT);
+            return true;
+          } catch {
+            return false;
+          }
         },
         ...(liveConflict ? { mergeConflict: { mine: noteFileText(liveConflict.note), discard: () => updateDraft(note.notebookId, note.path, null) } } : {}),
         fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined })?.(), rename: () => noteMove.renameNote({ ...note, live: undefined })?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },

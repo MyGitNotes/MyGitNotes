@@ -10,7 +10,7 @@ import { WORKSPACE_DOCUMENT_CLIENTS } from './workspace-document-clients.js';
 import { AssetItem, FolderItem, GitStatus, NoteItem, WorkspaceConfig } from './types.js';
 import { fetchAssets, fetchFolders, fetchGitStatus, fetchWorkspace, openWorkspaceEvents } from './api.js';
 import { followPage } from './page-events.js';
-import { clearCommittedNotes, readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from './working-notes.js';
+import { clearCommittedNotes, LIVE_MERGE_CONFLICT, readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from './working-notes.js';
 import { isNotebookKey, resolveBareId } from './notebook-keys.js';
 import { sameValue } from './merge-note.js';
 import { invalidateNoteQueries, NOTE_QUERY_KEY } from './use-note-queries.js';
@@ -289,10 +289,14 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     };
   }, [sourceId, selectedNotebookId, config]);
 
-  /** Stages `note` against `base`; with `deleted`, stages the deletion of `base`. */
+  /**
+   * Stages `note` against `base`; with `deleted`, stages the deletion of `base`. A live note's conflict draft is never
+   * written over: the person picks what to keep first (`updateDraft(…, null)` drops it), so this throws instead.
+   */
   const stageWorkingNote = (note: NoteItem, base: NoteItem | null, blocked?: string, deleted?: boolean) => {
     note = { ...note, status: typeof note.metadata.status === 'string' ? note.metadata.status : undefined, tags: Array.isArray(note.metadata.tags) ? note.metadata.tags.map(String) : [], title: typeof note.metadata.title === 'string' && note.metadata.title ? note.metadata.title : note.content.match(/^#\s+(.+)$/m)?.[1] || note.title };
     const previous = readDraft(note.notebookId, note.path);
+    if (previous?.blocked === LIVE_MERGE_CONFLICT && !(blocked === LIVE_MERGE_CONFLICT && sameValue(previous.note, note))) throw new Error(translate.current('live.conflictPending'));
     const entry: WorkingNote = { note, base, ...(blocked ? { blocked } : {}), ...(deleted && base ? { deleted: true as const } : {}) };
     if (!sameValue(previous, entry)) updateDraft(note.notebookId, note.path, entry);
     onStageNote?.(note);

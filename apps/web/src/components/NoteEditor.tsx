@@ -87,7 +87,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   const own = givenReadOnly ? undefined : liveEdit.fileActions;
   const liveDraft = liveEdit.active && note.live?.pending && !givenReadOnly && onMove ? { onRename: onRename && frame === 'zoom' ? () => void onRename(note.title) : undefined } : own ? { onRename: own.rename && (() => void own.rename!()), onDelete: own.remove } : undefined;
   const moveNote = own?.move ? () => void own.move!() : givenReadOnly || template ? undefined : onMove;
-  const readOnly = givenReadOnly || liveEdit.active;
+  // Offline, the direct editor writes nothing over the note's conflict draft, its one draft slot (cf16-F002).
+  const readOnly = givenReadOnly || liveEdit.active || liveEdit.conflictHold;
   const { setHasOpenNote } = usePanelContext();
   // The workspace rail hides only behind zoom; a pane editor shares the page with it. It hides before the
   // first paint, so zoom opens at its final width instead of widening once the rail has gone.

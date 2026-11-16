@@ -12,8 +12,7 @@ import type { WorkingNote } from './working-notes.js';
  * edit: created with the text as its body, a check-in would take the untouched body for an empty draft and discard it.
  */
 
-/** The `blocked` reason of a draft whose merge into the live note conflicted: it stays until the person picks what to keep. */
-export const LIVE_MERGE_CONFLICT = 'live-merge-conflict';
+export { LIVE_MERGE_CONFLICT } from './working-notes.js';
 
 /** What handing a draft over to the live note did. */
 export type LiveHandover = { kind: 'applied'; } | { kind: 'created'; checkout: LiveCheckoutView; } | { kind: 'conflict'; } | { kind: 'failed'; error: unknown; };

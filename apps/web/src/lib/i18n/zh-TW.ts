@@ -2516,6 +2516,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.activeDeleteOne': '1 人編輯中，無法刪除',
   'live.merging': '正在把你離線時的修改併入筆記…',
   'live.keptOffline': '離線：這些修改先存在這台裝置，連線後會自動併入',
+  'live.conflictPending': '這篇筆記還有一份衝突草稿等你處理，請先比對、複製或捨棄它。',
+  'live.conflictBlocksOffline': '請先處理衝突草稿：比對、複製或捨棄之前，這篇筆記在這裡維持唯讀。',
   'live.mergeConflict': '你離線時的修改和之後的修改衝突，已留成草稿；可以比對、複製或捨棄。',
   'live.compare': '比對',
   'live.hideCompare': '收起比對',

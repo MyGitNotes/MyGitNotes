@@ -288,6 +288,7 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
       }
     >
       {t('live.mergeConflict')}
+      {offline && <> {t('live.conflictBlocksOffline')}</>}
       {comparing && <pre className='live-merge-diff' aria-label={t('live.mergeDiff')}>{createUnifiedDiff(note.path, note.path, noteFileText(note), mergeConflict.mine)}</pre>}
     </EditorNotice>
   );
@@ -297,5 +298,5 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
   const hasNotices = Boolean(state.busy || state.releasing || offline || refusal || state.error || state.direct || state.checkedIn || state.stillOpen !== undefined || conflictShown || mergeNotice);
   // While the editor shows, its bar counts the editors; once the note is checked in it is no longer 編輯中.
   const badgeShown = !(edits && state.checkout) && !state.checkedIn;
-  return { active, checkout: edits ? state.checkout : undefined, edit, close, checkedIn, released, discarded, notices, hasNotices, badgeShown, fileActions, refetch: () => latest.current.refetch(), unsavedChange: (unsaved: boolean) => void (unsavedTyping.current = unsaved) };
+  return { active, checkout: edits ? state.checkout : undefined, edit, close, checkedIn, released, discarded, notices, hasNotices, badgeShown, fileActions, refetch: () => latest.current.refetch(), conflictHold: offline && Boolean(mergeConflict), unsavedChange: (unsaved: boolean) => void (unsavedTyping.current = unsaved) };
 }

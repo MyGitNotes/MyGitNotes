@@ -14,6 +14,12 @@ export interface WorkingNote {
   deleted?: true;
 }
 export type WorkingNotes = Record<string, WorkingNote>;
+
+/**
+ * The `blocked` reason of a draft whose merge into the live note conflicted (collab-first A3.1): it stays until the person
+ * picks what to keep, and nothing is staged over it meanwhile (cf16-F002).
+ */
+export const LIVE_MERGE_CONFLICT = 'live-merge-conflict';
 const prefix = 'gh_notes_working:';
 export const workingNotesKey = (scope: string) => prefix + scope;
 

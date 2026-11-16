@@ -67,8 +67,11 @@ export interface LiveNoteEditing {
    * conflict draft), so the editor opens the collab editor; false when it could not finish, and the draft stays.
    */
   handOver?: () => Promise<boolean>;
-  /** What the collab editor kept could not be merged into the note (A3.1): the app keeps it as a conflict draft. */
-  onMergeConflict?: (mine: string) => void;
+  /**
+   * What the collab editor kept could not be merged into the note (A3.1): the app keeps it as a conflict draft, and
+   * answers false when the note already has one, which the editor then offers to copy or download.
+   */
+  onMergeConflict?: (mine: string) => boolean;
   /** The note's conflict draft, kept until the person compares, copies or discards it. */
   mergeConflict?: LiveMergeConflict;
 }
