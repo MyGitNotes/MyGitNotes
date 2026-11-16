@@ -2507,6 +2507,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.fileTo': '歸檔到：{path}',
   'live.fileToTitle': '歸檔到：{path}（檔名跟著標題）',
   'live.offlineDraft': '離線：修改先存在這台裝置，連線後會自動併入',
+  'live.unsavedFileAction': '還有修改沒存入，等編輯器顯示「已儲存」再移動、重新命名或刪除。',
   'live.activeMove': '{count} 人編輯中，無法移動',
   'live.activeMoveOne': '1 人編輯中，無法移動',
   'live.activeRename': '{count} 人編輯中，無法重新命名',

@@ -89,6 +89,8 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
     latest.current = { refetch, live, hasDraft, notebookId: note.notebookId, path: note.path };
   });
 
+  /** The collab editor holds typing the server has not stored: a file action would commit without it, and leave it under the old path. */
+  const unsavedTyping = useRef(false);
   /** Refuses a file action while others edit the note: said until it is closed or another action runs. */
   const [refusal, showRefusal] = useState<string | null>(() => (live ? recentRefusal(key) : null));
   const setRefusal = (text: string | null) => {
@@ -207,6 +209,10 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
     if (!run || !collab || !active || pending) return undefined;
     return async () => {
       const { notebookId, path } = latest.current;
+      if (unsavedTyping.current) {
+        setRefusal(t('live.unsavedFileAction'));
+        return false;
+      }
       setRefusal(null);
       flushSync(() => setState({ releasing: true }));
       let answer: LiveCheckInAnswer | undefined;
@@ -291,5 +297,5 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
   const hasNotices = Boolean(state.busy || state.releasing || offline || refusal || state.error || state.direct || state.checkedIn || state.stillOpen !== undefined || conflictShown || mergeNotice);
   // While the editor shows, its bar counts the editors; once the note is checked in it is no longer 編輯中.
   const badgeShown = !(edits && state.checkout) && !state.checkedIn;
-  return { active, checkout: edits ? state.checkout : undefined, edit, close, checkedIn, released, discarded, notices, hasNotices, badgeShown, fileActions, refetch: () => latest.current.refetch() };
+  return { active, checkout: edits ? state.checkout : undefined, edit, close, checkedIn, released, discarded, notices, hasNotices, badgeShown, fileActions, refetch: () => latest.current.refetch(), unsavedChange: (unsaved: boolean) => void (unsavedTyping.current = unsaved) };
 }

@@ -39,6 +39,8 @@ export interface LiveCollabEditorProps {
   scope?: string;
   /** What this tab kept could not be merged into the note: the app keeps it as a conflict draft (collab-first A3.1). */
   onMergeConflict?: (mine: string) => void;
+  /** Whether the editor holds typing the server has not stored, or kept typing it has not merged yet: a file action waits for it (cf16-F003). */
+  onUnsavedChange?: (unsaved: boolean) => void;
 }
 
 /** Why the server refused the tab's document; `other` for any reason this tab does not know. */
@@ -118,7 +120,7 @@ const downloadName = (title: string | undefined, path: string) => `${(title || p
  * typed on) when that document ended; offline meanwhile, it shows the kept text read-only. A conflicting merge goes to
  * `onMergeConflict`; a live editor that cannot merge leaves the copy or download.
  */
-export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict }: LiveCollabEditorProps) {
+export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange }: LiveCollabEditorProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   // Each session is one document and one provider; going back to the editor after a check-in that left it open starts a new one.
@@ -132,6 +134,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   const [kept, setKept] = useState<string | null>(null);
   /** The session merges kept typing into the note before it opens it. */
   const [merging, setMerging] = useState(false);
+  /** The store holds typing of this session that the server has not stored yet. */
+  const [holding, setHolding] = useState(false);
   const live = phase.kind === 'open';
   const latest = useRef({ checkout, onRefetch, onCheckedIn, onReleased, onMergeConflict, connection, t, title });
   useEffect(() => {
@@ -149,6 +153,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     setLeaving(false);
     setKept(null);
     setMerging(false);
+    setHolding(false);
     setSession(current => current + 1);
     setPhase({ kind: 'open' });
   };
@@ -202,6 +207,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       timer = undefined;
       if (stopped || !opened || !dirty) return Promise.resolve();
       keeping = true;
+      setHolding(true);
       return store.put(keptEntry()).catch(() => {});
     };
     /** Everything is stored on the server: the text is the next merge's base, and the browser keeps nothing. */
@@ -212,6 +218,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       timer = undefined;
       if (!keeping) return;
       keeping = false;
+      setHolding(false);
       mergeId = newMergeId();
       void store.delete(key).catch(() => {});
     };
@@ -344,6 +351,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         for (const { entry } of same) Y.applyUpdate(doc, entry.update, RESTORED);
         if (!keeping) base = same[0]!.entry.baseText;
         keeping = true;
+        setHolding(true);
         // Kept as this session's own before the others go, so none of it is ever out of the store.
         await store.put(keptEntry()).catch(() => {});
         for (const { entry } of same) await store.delete(entry.key).catch(() => {});
@@ -482,6 +490,17 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     const timer = setTimeout(() => setLasting(true), UNTYPED_PENDING_MS);
     return () => clearTimeout(timer);
   }, [pending]);
+
+  // A move, rename or deletion from the note's editor waits until nothing of this tab's typing is out of the server.
+  const holdsTyping = live && (Boolean(connection.dirty) || holding || merging || kept !== null);
+  const unsavedChange = useRef(onUnsavedChange);
+  useEffect(() => {
+    unsavedChange.current = onUnsavedChange;
+  });
+  useEffect(() => {
+    unsavedChange.current?.(holdsTyping);
+  }, [holdsTyping]);
+  useEffect(() => () => unsavedChange.current?.(false), []);
 
   // Typing the server has not stored yet is lost with the page.
   const unsaved = live && !!connection.dirty;

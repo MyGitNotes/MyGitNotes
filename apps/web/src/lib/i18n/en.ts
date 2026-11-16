@@ -2506,6 +2506,7 @@ export const en = {
   'live.fileTo': 'Files to: {path}',
   'live.fileToTitle': 'Files to: {path} (the name follows the title)',
   'live.offlineDraft': 'Offline: changes are kept on this device and merged in once you are back online.',
+  'live.unsavedFileAction': 'Some changes are not saved yet. Wait until the editor says Saved, then move, rename or delete the note.',
   'live.activeMove': '{count} people are editing this note, so it cannot be moved now.',
   'live.activeMoveOne': '1 other person is editing this note, so it cannot be moved now.',
   'live.activeRename': '{count} people are editing this note, so it cannot be renamed now.',

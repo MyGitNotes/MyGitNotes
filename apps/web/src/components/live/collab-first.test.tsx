@@ -62,8 +62,11 @@ beforeEach(() => {
   });
   vi.stubGlobal('fetch', fetchMock);
 });
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // Typing a test left unsynced would be taken up by the next test's editor of the same note.
+  const { unsyncedLiveStore } = await import('../../lib/live-unsynced.js');
+  for (const entry of await unsyncedLiveStore().list()) await unsyncedLiveStore().delete(entry.key);
   forgetCheckedIn(noteRefKey(note));
   takeLiveEditRequest(noteRefKey(note));
   vi.unstubAllGlobals();
