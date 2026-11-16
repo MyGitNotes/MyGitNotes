@@ -15,7 +15,7 @@ interface NoteRowProps {
   docPanel: NoteDocumentPanelState;
   statuses: string[];
   availableTags: string[];
-  readOnly: boolean;
+  /** Renames the note from its title; absent where it cannot be renamed, which shows the title as text. */
   onRename?: (title: string) => Promise<void> | void;
   /** The note is one of its notebook's template files, which the row labels ahead of the title. */
   template?: boolean;
@@ -27,7 +27,7 @@ interface NoteRowProps {
 const NARROW_BELOW = 280;
 
 /** The note's common metadata in one row: its title (renamed in place), status and tags, and the button that opens the full frontmatter. */
-export function NoteRow({ path, session, docPanel, statuses, availableTags, readOnly, onRename, template = false, trailing }: NoteRowProps) {
+export function NoteRow({ path, session, docPanel, statuses, availableTags, onRename, template = false, trailing }: NoteRowProps) {
   const { t } = useTranslation();
   const row = useRef<HTMLDivElement>(null);
   const [narrow, setNarrow] = useState(false);
@@ -47,7 +47,7 @@ export function NoteRow({ path, session, docPanel, statuses, availableTags, read
   return (
     <div ref={row} className='note-row' data-narrow={narrow || undefined} role='group' aria-label={t('editor.noteRow')}>
       {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
-      <NoteTitleEdit title={session.title} path={path} locked={session.locked} onRename={readOnly ? undefined : onRename} />
+      <NoteTitleEdit title={session.title} path={path} locked={session.locked} onRename={onRename} />
       <NoteStatusSelect status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
       <NoteRowTags metadata={session.metadata} setMetadata={session.setMetadata} availableTags={availableTags} locked={session.locked} />
       <button type='button' className='note-row-frontmatter ui-icon-button toolbar-icon-button' aria-pressed={docPanel.showFrontmatter} aria-label={t('editor.frontmatter')} title={t('editor.frontmatter')} onClick={() => docPanel.setNotePanel(docPanel.showFrontmatter ? null : 'frontmatter')}>

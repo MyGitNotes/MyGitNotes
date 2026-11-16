@@ -153,7 +153,7 @@ export function NoteEditorToolbar({ onClose, onRename, template = false, statuse
           </button>
         )
         : null)}
-      <NoteRow path={note.path} session={session} docPanel={docPanel} statuses={statuses} availableTags={availableTags} readOnly={readOnly} onRename={onRename} template={template} trailing={zoom && phoneEditing ? <PhoneEditToggle {...phoneEditing} /> : undefined} />
+      <NoteRow path={note.path} session={session} docPanel={docPanel} statuses={statuses} availableTags={availableTags} onRename={onRename} template={template} trailing={zoom && phoneEditing ? <PhoneEditToggle {...phoneEditing} /> : undefined} />
       {actionsSlot ? createPortal(controls, actionsSlot) : controls}
     </div>
   );

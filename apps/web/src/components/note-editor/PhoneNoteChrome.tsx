@@ -225,7 +225,7 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         {isMarkdown && <SheetItem icon={editorMode === 'live' ? <Code2 aria-hidden='true' /> : <Eye aria-hidden='true' />} label={t(editorMode === 'live' ? 'editor.switchToSource' : 'editor.switchToLive')} onClick={act(() => setEditorMode(editorMode === 'live' ? 'raw' : 'live'))} />}
         {toggleFormatToolbar && <SheetItem icon={<Type aria-hidden='true' />} label={t('editor.formatToolbar')} pressed={showFormatToolbar} onClick={toggleFormatToolbar} />}
         <div className='phone-sheet-quick'>{quickActions}</div>
-        {onRename && !readOnly && <RenameRow title={session.title} onRename={onRename} onDone={onClose} />}
+        {onRename && <RenameRow title={session.title} onRename={onRename} onDone={onClose} />}
         {liveDraft?.onRename && <SheetItem icon={<Pencil aria-hidden='true' />} label={t('files.rename')} onClick={act(liveDraft.onRename)} />}
         {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked && !draftMovable && !liveDraft} onClick={act(onMove)} />}
         {onAddToOutline && <SheetItem icon={<ListTree aria-hidden='true' />} label={t('outline.add')} disabled={session.locked} onClick={act(onAddToOutline)} />}
