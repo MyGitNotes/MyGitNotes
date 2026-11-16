@@ -105,6 +105,8 @@ describe('a live check-in', () => {
     expect(committed).toHaveLength(1);
     expect(committed[0].notes).toEqual([{ path: 'notes/life/a.md', content: 'Typed live.\n', metadata: { title: 'A', publish: 'a-page' } }]);
     expect(committed[0].repository).toMatchObject({ kind: 'remote', id: repository, authenticated: true });
+    // The commit's revision comes along, so a service can drop a publication a later commit overtook.
+    expect(committed[0].revision).toMatch(/^[0-9a-f]{40}$/);
     // The service reads the repository as the commit left it.
     expect((await committed[0].repository.reader.readFile('notes/life/a.md')).toString('utf8')).toBe(typed);
     // A check-in is no commit route: `sync` hears nothing, and the answer carries nothing of the publication.
@@ -151,7 +153,7 @@ describe('a live check-in', () => {
       publishing: {
         sync: service().sync,
         syncCommitted: async () => {
-          throw new Error('could not render: Typed live.');
+          throw Object.assign(new Error('could not render: Typed live.'), { name: 'Leak Typed live' });
         },
       },
     });
@@ -159,7 +161,7 @@ describe('a live check-in', () => {
     expect(await checkIn()).toMatchObject({ status: 200, body: { committed: true, released: true } });
     await settled();
     expect(files.get('notes/life/a.md')).toBe(typed);
-    expect(logged.filter(line => line.includes('notes/life/a.md'))).toHaveLength(1);
+    expect(logged.filter(line => line.includes('notes/life/a.md'))).toEqual(['[publishing] notes:p1/notes@main/notes/life/a.md: publishing failed (error)']);
     expect(logged.join('\n')).not.toContain('Typed live');
   });
 
@@ -194,7 +196,7 @@ describe('a live check-in', () => {
     expect(written.published).toBeUndefined();
     await settled();
     expect(committed).toHaveLength(1);
-    expect(committed[0]).toMatchObject({ person: { realm: 'edition', userId: 'p1' }, repository: { kind: 'remote', id: repository }, notes: [{ path: 'notes/life/b.md', content: 'By the agent.\n', metadata: { publish: 'b-page' } }] });
+    expect(committed[0]).toMatchObject({ person: { realm: 'edition', userId: 'p1' }, repository: { kind: 'remote', id: repository }, revision: written.revision, notes: [{ path: 'notes/life/b.md', content: 'By the agent.\n', metadata: { publish: 'b-page' } }] });
     // A write to a checked-out note goes to the live editor: nothing is committed, so nothing is published until its check-in.
     await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: 'notes/life/a.md' });
     const live = await tool(token, 'read', { path: 'notes/life/a.md' });
@@ -283,7 +285,7 @@ describe('on GitHub', () => {
     await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'By the agent\n', metadata: { publish: 'shared' }, revision: 'a'.repeat(40) });
     await settled();
     expect(committed).toHaveLength(1);
-    expect(committed[0]).toMatchObject({ person: { realm: 'github:https://github.com:', userId: 1 }, repository: { kind: 'remote', id: repository, authenticated: true }, notes: [{ path: 'notes/life/shared.md', content: 'By the agent\n', metadata: { publish: 'shared' } }] });
+    expect(committed[0]).toMatchObject({ person: { realm: 'github:https://github.com:', userId: 1 }, repository: { kind: 'remote', id: repository, authenticated: true }, revision: 'd'.repeat(40), notes: [{ path: 'notes/life/shared.md', content: 'By the agent\n', metadata: { publish: 'shared' } }] });
     expect(gistCalls.map(({ method }) => method)).toEqual(['GET', 'PATCH']);
     expect(synced).toEqual([]);
   });
@@ -311,7 +313,30 @@ describe('on GitHub', () => {
     expect(lines.join('\n')).not.toContain('Secret body');
   });
 
-  it('publishes the notes a tag commit rewrote, and answers as before', async () => {
+  it('pushes no Gist an MCP write newly names, and logs the path without the note text', async () => {
+    gists.set('victim', { description: 'snippet.sh', public: true, files: { 'snippet.sh': { content: 'echo hi\n' } } });
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    await start({ publishing: service() });
+    expect(await tool(await grant(), 'write', { path: 'notes/life/private.md', content: '---\ngist: victim\n---\nPRIVATE NOTE TEXT\n', revision: 'a'.repeat(40) })).toMatchObject({ committed: true });
+    await settled();
+    expect(gistCalls).toEqual([]);
+    expect(gists.get('victim')!.files).toEqual({ 'snippet.sh': { content: 'echo hi\n' } });
+    const lines = info.mock.calls.map(parts => parts.join(' '));
+    expect(lines).toEqual(['[publishing] github:owner/home@main/notes/life/private.md: gist id not in the previous commit, not updated']);
+    // The service still hears the note.
+    expect(committed).toHaveLength(1);
+  });
+
+  it('pushes no Gist an MCP write retargets from the id the note named before', async () => {
+    gists.set('victim', { description: 'snippet.sh', public: true, files: { 'snippet.sh': { content: 'echo hi\n' } } });
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    await start();
+    expect(await tool(await grant(), 'write', { path: 'notes/life/shared.md', content: '---\ntitle: Shared\ngist: victim\n---\nLeaked\n', revision: 'a'.repeat(40) })).toMatchObject({ committed: true });
+    await settled();
+    expect(gistCalls).toEqual([]);
+  });
+
+  it('publishes the notes a tag commit rewrote to the service, pushes no Gist as tags are not in one, and answers as before', async () => {
     await start({ publishing: service() });
     const { status, body } = await call('POST', '/api/tags/apply', { repository, revision: 'a'.repeat(40), entries: [{ path: 'notes/life/shared.md', tags: ['kept'] }, { path: 'notes/life/picks.compilation.yml', tags: ['kept'] }] });
     expect(status).toBe(200);
@@ -320,19 +345,16 @@ describe('on GitHub', () => {
     await settled();
     // The compilation is no note text: only the note is published.
     expect(committed).toHaveLength(1);
-    expect(committed[0]).toMatchObject({ person: { realm: 'github:https://github.com:', userId: 1 }, repository: { kind: 'remote', id: repository }, notes: [{ path: 'notes/life/shared.md', content: 'Old body\n', metadata: { title: 'Shared', gist: 'abc123', tags: ['kept'] } }] });
-    expect(gistCalls.map(({ method, endpoint, token }) => [method, endpoint, token])).toEqual([['GET', '/abc123', 'Bearer fixture-owner'], ['PATCH', '/abc123', 'Bearer fixture-owner']]);
+    expect(committed[0]).toMatchObject({ person: { realm: 'github:https://github.com:', userId: 1 }, repository: { kind: 'remote', id: repository }, revision: body.revision, notes: [{ path: 'notes/life/shared.md', content: 'Old body\n', metadata: { title: 'Shared', gist: 'abc123', tags: ['kept'] } }] });
+    expect(gistCalls).toEqual([]);
     expect(synced).toEqual([]);
   });
 
-  it('holds the answer of an MCP write and of a tag commit until the Gist is updated where the deployment keeps no work alive after an answer', async () => {
+  it('holds the answer of an MCP write until the Gist is updated where the deployment keeps no work alive after an answer', async () => {
     gistDelay = 300;
     await start({ defer: undefined });
     await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'By the agent\n', revision: 'a'.repeat(40) });
     expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'By the agent\n' } });
-    // The fake GitHub keeps serving the note's first text, which the tag commit rewrites and publishes.
-    expect((await call('POST', '/api/tags/apply', { repository, revision: 'a'.repeat(40), entries: [{ path: 'notes/life/shared.md', tags: ['kept'] }] })).status).toBe(200);
-    expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'Old body\n' } });
   });
 
   it('answers at once where the deployment keeps the work alive, and the Gist follows', async () => {
