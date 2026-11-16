@@ -47,8 +47,8 @@ afterEach(() => {
 const wrapper = ({ children }: { children: ReactNode; }) => createElement(QueryClientProvider, { client }, children);
 
 it("offers the notebooks of the compilation's repository only, the compilation's own first, and pins a note of the chosen notebook by its repository path", async () => {
-  const onAdd = vi.fn<(item: CompilationItem) => void>();
-  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [], onAdd, onClose: () => {} }), { wrapper });
+  const onAdd = vi.fn<(items: CompilationItem[]) => void>();
+  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [], items: [], onAdd, onClose: () => {} }), { wrapper });
   const picker = screen.getByRole('combobox', { name: 'Notebook' });
   expect(picker).toHaveValue('r~a');
   expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual(['Company', 'Manual']);
@@ -56,7 +56,7 @@ it("offers the notebooks of the compilation's repository only, the compilation's
   fireEvent.change(picker, { target: { value: 'r~b' } });
   fireEvent.click(await screen.findByText('X of r~b'));
   await waitFor(() => expect(onAdd).toHaveBeenCalled());
-  const item = onAdd.mock.calls[0][0];
+  const item = onAdd.mock.calls[0][0][0];
   expect(item).toMatchObject({ kind: 'note', notebookId: 'r~b', path: 'notes/b/x.md' });
   expect(requested.some(url => url.includes('r~b'))).toBe(true);
   const row: CompilationRow = { id: 'manual', name: 'Manual', notebookId: 'r~a', path: 'notes/a/manual.compilation.yml', view: 'book', kind: 'custom', items: [item] };
@@ -66,7 +66,7 @@ it("offers the notebooks of the compilation's repository only, the compilation's
 });
 
 it("lists the chosen notebook's folders", () => {
-  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [{ notebookId: 'r~b', path: 'guide', title: 'Guide' }] as never, onAdd: () => {}, onClose: () => {} }), { wrapper });
+  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [{ notebookId: 'r~b', path: 'guide', title: 'Guide' }] as never, items: [], onAdd: () => {}, onClose: () => {} }), { wrapper });
   fireEvent.change(screen.getByRole('combobox', { name: /Item type|Type/ }), { target: { value: 'folder' } });
   expect(screen.queryByText('notes/b/guide')).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole('combobox', { name: 'Notebook' }), { target: { value: 'r~b' } });
@@ -80,4 +80,29 @@ it("keeps a folder source's own notebook when its compilation is edited, and sho
   expect(screen.getByRole('option', { name: 'notes/b/sub' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onApply.mock.calls[0][0].source).toEqual({ kind: 'folder', notebookId: 'r~b', path: 'notes/b/sub', recursive: true });
+});
+
+const meetings: CompilationItem[] = [{ id: 'internal', kind: 'heading', title: 'Internal meetings' }, { id: 'm1', kind: 'note', notebookId: 'r~a', path: 'notes/a/m1.md' }, { id: 'external', kind: 'heading', title: 'External meetings' }, { id: 'm2', kind: 'note', notebookId: 'r~a', path: 'notes/a/m2.md' }, { id: 'product', kind: 'heading', title: 'Product meetings' }, { id: 'm3', kind: 'note', notebookId: 'r~a', path: 'notes/a/m3.md' }];
+
+it('offers no Chapter select when the compilation has no headings', () => {
+  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [], items: meetings.filter(item => item.kind !== 'heading'), onAdd: () => {}, onClose: () => {} }), { wrapper });
+  expect(screen.queryByRole('combobox', { name: 'Chapter' })).not.toBeInTheDocument();
+});
+
+it('adds at the end by default and, with a chapter chosen, as that chapter\'s last item', async () => {
+  const onAdd = vi.fn<(items: CompilationItem[]) => void>();
+  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [], items: meetings, onAdd, onClose: () => {} }), { wrapper });
+  const chapter = screen.getByRole('combobox', { name: 'Chapter' });
+  expect(chapter).toHaveValue('');
+  expect(within(chapter).getAllByRole('option').map(option => option.textContent)).toEqual(['At the end', 'Internal meetings', 'External meetings', 'Product meetings']);
+  fireEvent.change(chapter, { target: { value: 'external' } });
+  fireEvent.click(await screen.findByText('X of r~a'));
+  await waitFor(() => expect(onAdd).toHaveBeenCalled());
+  expect(onAdd.mock.calls[0][0].map(item => item.kind === 'heading' ? item.title : 'path' in item ? item.path : item.id)).toEqual(['Internal meetings', 'notes/a/m1.md', 'External meetings', 'notes/a/m2.md', 'notes/a/x.md', 'Product meetings', 'notes/a/m3.md']);
+  cleanup();
+  const atEnd = vi.fn<(items: CompilationItem[]) => void>();
+  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [], items: meetings, onAdd: atEnd, onClose: () => {} }), { wrapper });
+  fireEvent.click(await screen.findByText('X of r~a'));
+  await waitFor(() => expect(atEnd).toHaveBeenCalled());
+  expect(atEnd.mock.calls[0][0].at(-1)).toMatchObject({ kind: 'note', path: 'notes/a/x.md' });
 });

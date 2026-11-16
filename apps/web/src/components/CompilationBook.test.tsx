@@ -806,3 +806,10 @@ it('pages a chapter heading with all its items as one page, and turns to the pag
   await waitFor(() => expect(within(chapters()[0]).getByRole('heading', { level: 3, name: 'A talk' })).toHaveFocus());
   expect(contentsButtons().filter(entry => entry.getAttribute('aria-current') === 'location').map(entry => entry.textContent)).toEqual(['Internal meetings']);
 });
+
+it('offers Arrange contents in the book of a writable custom compilation', async () => {
+  const onArrange = vi.fn();
+  render(book({ row: chapteredRow, readOnly: false, onArrange }), { wrapper });
+  fireEvent.click(await screen.findByRole('button', { name: 'Arrange contents: Reading' }));
+  expect(onArrange).toHaveBeenCalledTimes(1);
+});

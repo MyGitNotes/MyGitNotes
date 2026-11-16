@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { createElement, type ReactNode } from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import type { NotebookConfig } from '../lib/types.js';
+import { compilationText } from '../lib/compilation-rows.js';
 import { setNoteQueryScope } from '../lib/use-note-queries.js';
 import { CompilationOrderDialog } from './CompilationOrderDialog.js';
 
@@ -72,4 +73,52 @@ it('saves nothing when cancelled', async () => {
   await waitFor(() => expect(titles()).toHaveLength(3));
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(onSave).not.toHaveBeenCalled();
+});
+
+const custom: Extract<CompilationRow, { kind: 'custom'; }> = { id: 'row-c', path: 'notes/nb1/book.compilation.yml', name: 'Book', view: 'book', notebookId: 'nb1', kind: 'custom', items: [{ id: 'h1', kind: 'heading', title: 'Internal meetings' }, { id: 'ia', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/a.md' }, { id: 'h2', kind: 'heading', title: 'External meetings' }, { id: 'ib', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/b.md' }, { id: 'v', kind: 'youtube', videoId: 'dQw4w9WgXcQ', start: 0, title: 'A talk' }] };
+/** Each row as the dialog shows it: a heading by its title field, an item by its title, indented under a heading. */
+const arranged = () => within(screen.getByRole('list', { name: 'Arrange contents' })).getAllByRole('listitem').map(row => row.hasAttribute('data-heading') ? `# ${within(row).getByRole('textbox', { name: 'Chapter title' }).getAttribute('value')}` : `${row.hasAttribute('data-indent') ? '  ' : ''}${row.querySelector('.compilation-order-title')!.textContent}`);
+
+it('arranges a custom compilation: adds a chapter after the focused row, renames and removes headings, moves a row with the keyboard, and saves the flat list once', async () => {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
+    const row = this.closest('.compilation-order-row');
+    const index = row ? [...row.parentElement!.children].indexOf(row) : 0;
+    return { x: 0, y: index * 40, left: 0, top: index * 40, width: 300, height: 36, right: 300, bottom: index * 40 + 36, toJSON() {} } as DOMRect;
+  });
+  const onSaveItems = vi.fn();
+  render(createElement(CompilationOrderDialog, { row: custom, notebooks, assets: [], disabled: false, onSave: () => {}, onSaveItems, onClose: () => {} }), { wrapper });
+  await waitFor(() => expect(arranged()).toEqual(['# Internal meetings', '  Note A', '# External meetings', '  Note B', '  A talk']));
+  // A new chapter goes after the row that has focus.
+  fireEvent.focus(screen.getByRole('button', { name: 'Move item: Note A' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add chapter' }));
+  const fresh = screen.getAllByRole('textbox', { name: 'Chapter title' })[1];
+  expect(fresh).toHaveValue('');
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  fireEvent.change(fresh, { target: { value: 'Planning' } });
+  fireEvent.change(screen.getAllByRole('textbox', { name: 'Chapter title' })[0], { target: { value: 'Internal' } });
+  expect(arranged()).toEqual(['# Internal', '  Note A', '# Planning', '# External meetings', '  Note B', '  A talk']);
+  // Removing a heading keeps its items, which join the chapter before.
+  fireEvent.click(screen.getByRole('button', { name: 'Remove chapter heading (items stay): External meetings' }));
+  expect(arranged()).toEqual(['# Internal', '  Note A', '# Planning', '  Note B', '  A talk']);
+  // Note B moves up one row with the keyboard, out of Planning into Internal.
+  const handle = screen.getByRole('button', { name: 'Move item: Note B' });
+  handle.focus();
+  fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+  await act(() => new Promise(resolve => setTimeout(resolve, 0)));
+  await act(async () => void fireEvent.keyDown(handle, { code: 'ArrowUp', key: 'ArrowUp' }));
+  await act(async () => void fireEvent.keyDown(handle, { code: 'Space', key: ' ' }));
+  await waitFor(() => expect(arranged()).toEqual(['# Internal', '  Note A', '  Note B', '# Planning', '  A talk']));
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(onSaveItems).toHaveBeenCalledTimes(1);
+  const items = onSaveItems.mock.calls[0][0];
+  expect(items.map((item: { id: string; }) => item.id).filter((id: string) => !['h1', 'ia', 'ib', 'v'].includes(id))).toHaveLength(1);
+  expect(compilationText({ ...custom, items })).toMatch(/items:\n {2}- id: h1\n {4}kind: heading\n {4}title: Internal\n {2}- id: ia\n {4}kind: note\n {4}path: notes\/nb1\/a.md\n {2}- id: ib\n {4}kind: note\n {4}path: notes\/nb1\/b.md\n {2}- id: [\w-]+\n {4}kind: heading\n {4}title: Planning\n {2}- id: v\n/);
+  vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
+});
+
+it('adds a chapter at the end when no row has focus', async () => {
+  render(createElement(CompilationOrderDialog, { row: custom, notebooks, assets: [], disabled: false, onSave: () => {}, onSaveItems: () => {}, onClose: () => {} }), { wrapper });
+  await waitFor(() => expect(arranged()).toHaveLength(5));
+  fireEvent.click(screen.getByRole('button', { name: 'Add chapter' }));
+  expect(arranged().at(-1)).toBe('# ');
 });

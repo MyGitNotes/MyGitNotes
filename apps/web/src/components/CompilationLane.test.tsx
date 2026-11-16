@@ -423,3 +423,14 @@ it('moves a card across a divider into the next chapter, and a divider alone, wi
   await waitFor(() => expect(moved).toHaveBeenLastCalledWith(['h1', 'item-1', 'item-2', 'h2']));
   vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
 });
+
+it('offers Arrange contents on a writable custom compilation, in lanes and in the graph arrangement', async () => {
+  const onArrange = vi.fn();
+  const { rerender } = render(lane({ row: chaptered, onArrange }), { wrapper });
+  fireEvent.click(await screen.findByRole('button', { name: 'Arrange contents: Pinned' }));
+  expect(onArrange).toHaveBeenCalledTimes(1);
+  rerender(lane({ row: { ...chaptered, view: 'graph' }, onArrange, graph: createElement('div') }));
+  expect(screen.getByRole('button', { name: 'Arrange contents: Pinned' })).toBeInTheDocument();
+  rerender(lane({ row: chaptered, onArrange, readOnly: true }));
+  expect(screen.queryByRole('button', { name: /Arrange contents/ })).not.toBeInTheDocument();
+});
