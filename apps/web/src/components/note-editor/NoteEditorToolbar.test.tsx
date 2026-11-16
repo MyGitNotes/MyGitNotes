@@ -200,22 +200,28 @@ it("keeps a pane's actions in one row after the note row where the tab bar gives
   expect([...bar.children].map(child => child.className.split(' ')[0])).toEqual(['note-row', 'note-controls']);
 });
 
-it('switches the mode with one icon button that shows the mode in use and names the other, with the leader key for the same switch', () => {
+it('switches the mode from a group of icon buttons, one per mode offered, the one in use pressed, with the leader key on live and source', () => {
   const setEditorMode = vi.fn();
-  const { rerender } = render(toolbar(undefined, { isMarkdown: true, setEditorMode }));
-  const toSource = screen.getByRole('button', { name: 'Switch to source' });
-  expect(toSource).toHaveAttribute('data-mode-toggle', 'live');
-  expect(toSource.textContent).toBe('');
-  expect(toSource).toHaveAttribute('title', expect.stringMatching(/^Switch to source \(.+ M\)$/));
-  expect(screen.queryByText('Live Preview')).toBeNull();
-  fireEvent.click(toSource);
-  expect(setEditorMode).toHaveBeenCalledWith('raw');
-  rerender(toolbar(undefined, { isMarkdown: true, setEditorMode, editorMode: 'raw' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Switch to live preview' }));
+  const { rerender } = render(toolbar(undefined, { isMarkdown: true, setEditorMode, editorModes: ['live', 'raw', 'split'] }));
+  const group = screen.getByRole('group', { name: 'Editor mode' });
+  const buttons = within(group).getAllByRole('button');
+  expect(buttons.map(button => button.getAttribute('data-mode'))).toEqual(['live', 'raw', 'split']);
+  expect(buttons.map(button => button.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+  for (const button of buttons) expect(button.textContent).toBe('');
+  expect(buttons[0]).toHaveAttribute('title', expect.stringMatching(/^Live Preview \(.+ M\)$/));
+  expect(buttons[1]).toHaveAttribute('title', expect.stringMatching(/^Source \(.+ M\)$/));
+  expect(buttons[2]).toHaveAttribute('title', 'Split view');
+  fireEvent.click(buttons[2]);
+  expect(setEditorMode).toHaveBeenCalledWith('split');
+  fireEvent.click(buttons[1]);
+  expect(setEditorMode).toHaveBeenLastCalledWith('raw');
+  rerender(toolbar(undefined, { isMarkdown: true, setEditorMode, editorMode: 'raw', editorModes: ['live', 'raw'] }));
+  expect(within(screen.getByRole('group', { name: 'Editor mode' })).getAllByRole('button').map(button => button.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+  fireEvent.click(screen.getByRole('button', { name: /^Live Preview/ }));
   expect(setEditorMode).toHaveBeenLastCalledWith('live');
   // A Focus pane answers the leader too.
-  rerender(toolbar(undefined, { isMarkdown: true, setEditorMode, frame: 'pane' }));
-  expect(screen.getByRole('button', { name: 'Switch to source' })).toHaveAttribute('title', expect.stringMatching(/^Switch to source \(.+ M\)$/));
+  rerender(toolbar(undefined, { isMarkdown: true, setEditorMode, frame: 'pane', editorModes: ['live', 'raw', 'split'] }));
+  expect(screen.getByRole('button', { name: /^Source/ })).toHaveAttribute('title', expect.stringMatching(/^Source \(.+ M\)$/));
 });
 
 it('offers the assistant toggle in zoom only, leaving a Focus pane to the header toggle', () => {
