@@ -150,8 +150,9 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   // Commits that answer no commit route are published too: a tag commit below, an `/mcp` write, and each commit of a check-in.
   const publishCommit = commitPublisher({ ...(publishing ? { publishing } : {}), ...(services.defer ? { defer: services.defer } : {}) });
   // The live editor as this app uses it: every check-in it runs (a person's, a sweep's, the schedule's) has its commit
-  // published. A check-in commits with the deployment's credential, so it names no person and holds no Gist access.
-  const liveNotes = services.liveNotes && withLiveCommits(services.liveNotes, ({ repository, path: file, content, source, commit }) => void publishCommit({ repository: { kind: 'remote', id: repository, reader: source, authenticated: true }, notes: [{ path: file, content }], revision: commit }));
+  // published, naming the person whose own credential made it, if any. It never pushes a Gist: Gists sync only on the app's
+  // commit routes, and a check-in commits text an agent may have typed.
+  const liveNotes = services.liveNotes && withLiveCommits(services.liveNotes, ({ repository, path: file, content, source, commit, person }) => void publishCommit({ repository: { kind: 'remote', id: repository, reader: source, authenticated: true }, notes: [{ path: file, content }], revision: commit, ...(person ? { person } : {}) }));
   const identity = services.identity ?? providerIdentity({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined });
   // A remote deployment offers the agent panel only when an edition supplies an agent or the deployer names an external bridge.
   const external = local || services.piAgent ? undefined : externalPiEnvironment();

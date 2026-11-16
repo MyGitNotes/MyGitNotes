@@ -203,7 +203,7 @@ describe('a live check-in', () => {
     expect(warn.mock.calls.map(parts => parts.join(' '))).toEqual([`[publishing] ${repository}/notes/life/a.md: The address is already used.`]);
   });
 
-  it('says in the log that the Gist of a checked-in note waits for the next commit in the app, as a check-in holds no GitHub token of a person', async () => {
+  it('says in the log that the Gist of a checked-in note waits for the next commit in the app, as Gists sync only on its commit routes', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {});
     const fetched = vi.spyOn(globalThis, 'fetch');
     files.set('notes/life/a.md', '---\ntitle: A\ngist: abc123\n---\nGit body.\n');

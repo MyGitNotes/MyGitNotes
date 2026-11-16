@@ -595,7 +595,7 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
     const commit = async (file: string, content: string, message: string) => {
       if (now() > deadline) throw new SourceError('The check-in ran past its deadline; nothing was committed.', 504);
       const { revision } = await source.commitChanges([{ path: file, content }], snapshot.sha, 'write', 'notes', message, snapshot, coAuthors);
-      announceLiveCommit(liveNotes, { repository, path: file, content, commit: revision, source, ...(author ? { author } : {}) });
+      announceLiveCommit(liveNotes, { repository, path: file, content, commit: revision, source, ...(author ? { author } : {}), ...(as ? { person: as } : {}) });
       return revision;
     };
     const synced = (file: string, sha: string, blob: string, content: string, conflict: LiveConflict | null, committed: boolean, filed = false, notice?: Omit<LiveNotice, 'repository' | 'editors'>): Attempt => ({ kind: 'synced', receipt: { commit: sha, blob, contentHash: liveContentHash(content), path: file, conflict }, committed, filed, ...(notice ? { notice } : {}), editors, skipped });

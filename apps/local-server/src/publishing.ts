@@ -37,8 +37,9 @@ export interface CommittedNotes {
   /** The notes whose text the commit wrote, in the shape `sync` receives; a moved, copied or deleted note is not among them. */
   notes: PublishedNote[];
   /**
-   * Whom the commit was made for, where the server knows: the person of an `/mcp` grant, or the one signed in for a tag
-   * commit. A check-in names none, as it commits with the deployment's own credential.
+   * Whom the commit was made for, where the server knows: the person of an `/mcp` grant, the one signed in for a tag
+   * commit, or for a check-in the person whose own credential made it. A check-in made with the deployment's own
+   * credential names none.
    */
   person?: WorkspacePerson;
   /**

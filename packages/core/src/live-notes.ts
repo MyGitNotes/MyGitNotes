@@ -231,6 +231,11 @@ export interface LiveCommit {
   source: RemoteSource;
   /** Whom the commit is authored by, when an editor could be named; without one, the credential's account. */
   author?: CommitAuthor;
+  /**
+   * The person whose own credential made the commit (`service.open` with `{ person }`): an editor, or whoever asked for
+   * the check-in. Left out when the deployment's credential made it.
+   */
+  person?: WorkspacePerson;
 }
 
 /** An edition's live editor (`AppServices.liveNotes`). */
