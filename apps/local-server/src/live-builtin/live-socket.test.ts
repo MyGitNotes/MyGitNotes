@@ -691,6 +691,54 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(await stored(store, id, 2)).toBe(text);
     });
 
+    it('releases a note nobody typed in, or whose typing was undone, as soon as its last tab leaves, so a move is not refused; one typed in waits for the idle check-in (F006)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40, socketMs: 24 * 3_600_000 } });
+      const { store, files } = server.live;
+      const listed = async (id: string) => (await server.live.liveNotes.service.checkouts(repository)).some(row => row.id === id);
+      const id = await server.checkout();
+      const viewer = await server.tab(1), other = await server.tab(2);
+      await Promise.all([viewer.synced(), other.synced()]);
+      // Someone is still in it: nothing is released.
+      viewer.destroy();
+      await pause(150);
+      expect(await listed(id)).toBe(true);
+      other.type(`${A}undone\n`);
+      await other.saved();
+      other.type(A);
+      await other.saved();
+      // The last one leaves, the text Git's: released at once, nothing committed, and a move goes ahead.
+      other.destroy();
+      await until('the note only viewed was released', async () => (await store.link(id))?.live === false, 2000);
+      expect(await listed(id)).toBe(false);
+      expect(files.get(notePath)).toBe(A);
+      const { revision } = (await server.call('GET', '/api/workspace')).body.repositories[0];
+      expect(await server.call('POST', '/api/files', { revision, command: { kind: 'move', notebookId: 'notes~life', path: notePath, destination: second } })).toMatchObject({ status: 200 });
+      // A note typed in stays checked out when everyone left, for the idle check-in.
+      const typed = await server.checkout(1, second);
+      const typist = await server.tab(1, { path: second });
+      await typist.synced();
+      typist.type(`${A}kept\n`);
+      await typist.saved();
+      typist.destroy();
+      await pause(200);
+      expect(await store.link(typed)).toMatchObject({ live: true });
+    });
+
+    it('releases nothing when the last tab of an untouched note only renews its socket (F006)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { beatMs: 40 } });
+      const { store, time } = server.live;
+      const id = await server.checkout();
+      const viewer = await server.tab(1);
+      await viewer.synced();
+      await viewer.saved();
+      time.advance(10 * 60_000 + 1);
+      await until('the tab connected again with a fresh ticket', () => viewer.asked === 2, 3000);
+      await viewer.synced();
+      await pause(150);
+      expect(await store.link(id)).toMatchObject({ live: true });
+      viewer.destroy();
+    });
+
     it('tells the tab of a draft that was discarded that it is released', async () => {
       // Its clock runs past a socket's time, which is not what this test is about: a tab's half of its first sync that
       // reached the server only after that would close its socket, and the draft would go while the tab is between sockets.
