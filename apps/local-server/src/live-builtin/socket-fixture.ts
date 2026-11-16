@@ -99,7 +99,7 @@ export interface LiveTab {
   saved(): Promise<void>;
   /** Closes the tab's socket and keeps it closed, as a network that went away. */
   offline(): void;
-  /** Lets the tab connect again. */
+  /** Lets the tab connect again, once its socket closed; if that never happens, the next `synced` or `saved` fails. */
   online(): void;
   /** Drops the tab's socket without a goodbye, as when the server died: the tab connects again by itself. */
   cut(): void;
@@ -183,6 +183,12 @@ export async function liveServer(first: BuiltinFixture): Promise<LiveServer> {
       const document = new Y.Doc();
       if (options.clientId !== undefined) document.clientID = options.clientId;
       const content = document.getText('content');
+      /** Why `online` could not connect the tab again: the next wait for the tab fails with it, not the run. */
+      let unreachable: Error | undefined;
+      const connectedAgain = () => {
+        if (unreachable) throw unreachable;
+        return tab.provider.isSynced;
+      };
       const tab: LiveTab = {
         provider: undefined as unknown as HocuspocusProvider,
         document: name,
@@ -201,12 +207,12 @@ export async function liveServer(first: BuiltinFixture): Promise<LiveServer> {
         asked: 0,
         refused: [],
         closes: [],
-        synced: () => until(`the tab of person ${n} synced with the server`, () => tab.provider.isSynced),
-        saved: () => until(`the server acknowledged what person ${n} typed`, () => tab.provider.isSynced && tab.provider.unsyncedChanges === 0),
+        synced: () => until(`the tab of person ${n} synced with the server`, connectedAgain),
+        saved: () => until(`the server acknowledged what person ${n} typed`, () => connectedAgain() && tab.provider.unsyncedChanges === 0),
         offline: () => websocket.disconnect(),
         // The provider's `connect` does nothing while its socket still reads as connected, and `disconnect` only marks it
         // closed once the close event lands: connecting before then would leave the tab offline for good.
-        online: () => void until(`the tab of person ${n} saw its socket close`, () => websocket.status === WebSocketStatus.Disconnected).then(() => websocket.connect()),
+        online: () => void until(`the tab of person ${n} saw its socket close`, () => websocket.status === WebSocketStatus.Disconnected).then(() => websocket.connect(), (error: Error) => void (unreachable = error)),
         cut: () => (websocket.webSocket as unknown as WebSocket | null)?.terminate(),
         destroy() {
           tab.provider.destroy();
