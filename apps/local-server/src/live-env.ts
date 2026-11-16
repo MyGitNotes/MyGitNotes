@@ -82,7 +82,7 @@ export interface EnvironmentLiveOptions {
 /**
  * The built-in live editor as `MYGITNOTES_LIVE_EDITOR` asks for it; undefined when it is off, and nothing is built or
  * read then. With `builtin`, the deployment must be able to run it, or this throws and names what to change:
- * a remote source; sign-ins kept on the server, since a check-in commits with a credential a sign-in stored; a native
+ * a remote source; sign-ins kept in Redis on the server, since a check-in commits with a credential a sign-in stored; a native
  * Redis for the live store (`MYGITNOTES_LIVE_REDIS_URL`, else `REDIS_URL`); a long-running server, not Vercel; and
  * `APP_URL` as the app's bare origin.
  */
@@ -92,6 +92,7 @@ export async function environmentLive(base: string, configSource: WorkspaceConfi
   if (storageMode() === 'cookie') throw new Error('MYGITNOTES_LIVE_EDITOR=builtin needs sign-ins kept on the server: a check-in commits with the credential a sign-in stored, and MYGITNOTES_STORAGE=cookie stores none. Remove MYGITNOTES_STORAGE=cookie and set REDIS_URL, or remove MYGITNOTES_LIVE_EDITOR.');
   const url = process.env.MYGITNOTES_LIVE_REDIS_URL || process.env.REDIS_URL;
   if (!url || !/^rediss?:\/\//.test(url)) throw new Error('MYGITNOTES_LIVE_EDITOR=builtin needs a native Redis for live notes: set MYGITNOTES_LIVE_REDIS_URL (or REDIS_URL) to a redis:// or rediss:// URL. A Redis reached over REST cannot hold them.');
+  if (storageMode() === 'directory') throw new Error("MYGITNOTES_LIVE_EDITOR=builtin needs sign-ins kept in Redis: a check-in commits with the credential a sign-in stored, and without REDIS_URL they are kept in the container's directory and lost when it is recreated. Set REDIS_URL, or remove MYGITNOTES_LIVE_EDITOR.");
   checkBuiltinLiveHost();
   const { site } = await configSource.settings({ headers: {} });
   // The same stores, sessions and choices `createApp` would make by itself, made here because the editor commits with
