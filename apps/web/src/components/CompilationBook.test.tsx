@@ -765,3 +765,44 @@ it("reads a chapter from another notebook of the repository as that notebook's n
   fireEvent.click(within(chapters()[0]).getByRole('button', { name: /^Finish editing/ }));
   await waitFor(() => expect(flushEditors).toHaveBeenCalledWith(['nb2:notes/nb2/b.md']));
 });
+
+const chapteredRow: CompilationRow = { ...row, items: [{ id: 'item-1', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/a.md' }, { id: 'internal', kind: 'heading', title: 'Internal meetings' }, { id: 'item-2', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/gone.md' }, { id: 'item-3', kind: 'youtube', videoId: 'dQw4w9WgXcQ', start: 0, title: 'A talk' }, { id: 'later', kind: 'heading', title: 'Later' }] };
+const levels = () => within(screen.getByRole('navigation', { name: 'Contents' })).getAllByRole('listitem').map(entry => [entry.textContent, entry.getAttribute('data-level')]);
+
+it('shows a chapter heading as a level-2 heading with its items one level down, an empty chapter with its notice, and the contents in levels 0 and 1', async () => {
+  render(book({ row: chapteredRow }), { wrapper });
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Chapter One' })).toBeInTheDocument());
+  expect(chapters().map(chapter => within(chapter).getAllByRole('heading', { level: 2 }).map(heading => heading.textContent))).toEqual([['Note A'], ['Internal meetings'], ['Later']]);
+  const internal = chapters()[1];
+  expect(within(internal).getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['gone.md', 'A talk']);
+  expect(within(internal).getByRole('heading', { level: 2, name: 'Internal meetings' })).toHaveAttribute('data-book-anchor', 'chapter:internal');
+  // A heading names nothing to open: its title is text, not a button.
+  expect(within(within(internal).getByRole('heading', { level: 2 })).queryByRole('button')).not.toBeInTheDocument();
+  expect(within(chapters()[2]).getByText('No items in this chapter')).toBeInTheDocument();
+  expect(levels()).toEqual([['Note A', '0'], ['Internal meetings', '0'], ['gone.md', '1'], ['A talk', '1'], ['Later', '0']]);
+});
+
+it("lists a folder's notes two levels down under a chapter heading, in the body and the contents", async () => {
+  const folder: CompilationRow = { ...row, items: [{ id: 'part', kind: 'heading', title: 'Part one' }, { id: 'folder-1', kind: 'folder', notebookId: 'nb1', path: 'notes/nb1/sub' }] };
+  render(book({ row: folder, readOnly: false }), { wrapper });
+  await waitFor(() => expect(within(chapters()[0]).getByRole('heading', { level: 4, name: 'Note A' })).toBeInTheDocument());
+  expect(within(chapters()[0]).getByRole('heading', { level: 3, name: 'sub' })).toBeInTheDocument();
+  await waitFor(() => expect(levels()).toEqual([['Part one', '0'], ['sub', '1'], ['Note A', '2']]));
+});
+
+it('pages a chapter heading with all its items as one page, and turns to the page of an item chosen in the contents', async () => {
+  writeBookReadingMode('paged');
+  render(book({ row: chapteredRow }), { wrapper });
+  await waitFor(() => expect(pageTitle()).toEqual(['Note A']));
+  expect(count()).toBe('1 / 3');
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['Internal meetings']));
+  expect(within(chapters()[0]).getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['gone.md', 'A talk']);
+  fireEvent.click(next());
+  await waitFor(() => expect(pageTitle()).toEqual(['Later']));
+  expect(count()).toBe('3 / 3');
+  fireEvent.click(contentsButtons().find(entry => entry.textContent === 'A talk')!);
+  await waitFor(() => expect(pageTitle()).toEqual(['Internal meetings']));
+  await waitFor(() => expect(within(chapters()[0]).getByRole('heading', { level: 3, name: 'A talk' })).toHaveFocus());
+  expect(contentsButtons().filter(entry => entry.getAttribute('aria-current') === 'location').map(entry => entry.textContent)).toEqual(['Internal meetings']);
+});

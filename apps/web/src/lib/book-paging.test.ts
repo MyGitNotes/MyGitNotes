@@ -22,6 +22,17 @@ it('finds the chapter of a contents anchor, including a folder note section', ()
   expect(chapterOfAnchor(chapters, 'chapter:zz')).toBeUndefined();
 });
 
+it('pages over heading chapters, and finds the chapter that holds an item or a folder note under a heading', () => {
+  const heading: BookChapter = { id: 'h', anchor: 'chapter:h', kind: 'heading', title: 'Part', missing: false, item: { id: 'h', kind: 'heading', title: 'Part' }, members: [chapter('x'), { ...chapter('f'), kind: 'folder' }] };
+  const book = [chapter('a'), heading, chapter('c')];
+  expect(resolvePage(book, 'h')).toBe(1);
+  expect(resolvePage(book, 'c')).toBe(2);
+  expect(chapterOfAnchor(book, 'chapter:x')?.id).toBe('h');
+  expect(chapterOfAnchor(book, 'chapter:f/notes/f/n.md')?.id).toBe('h');
+  expect(chapterOfAnchor(book, 'chapter:h')?.id).toBe('h');
+  expect(chapterOfAnchor(book, 'chapter:c')?.id).toBe('c');
+});
+
 it('takes a swipe for a page turn only when it is long, quick and mostly horizontal', () => {
   expect(swipeStep(-80, 10, 200)).toBe('next');
   expect(swipeStep(80, -10, 200)).toBe('previous');

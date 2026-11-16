@@ -58,3 +58,27 @@ it('marks a folder outside its notebook missing, as an ancestor of the root woul
   const folders: CompilationItem[] = [{ id: 'in', kind: 'folder', notebookId: 'nb', path: 'notes/nb/sub' }, { id: 'root', kind: 'folder', notebookId: 'nb', path: 'notes/nb' }, { id: 'up', kind: 'folder', notebookId: 'nb', path: 'notes' }, { id: 'gone', kind: 'folder', notebookId: 'nb', path: 'notes/removed/sub' }];
   expect(bookChapters(folders, [], [], false, notebooks).filter(chapter => chapter.missing).map(chapter => chapter.id)).toEqual(['up', 'gone']);
 });
+
+const chaptered: CompilationItem[] = [{ id: 'n1', kind: 'note', notebookId: 'nb', path: 'notes/nb/a.md' }, { id: 'h1', kind: 'heading', title: 'Internal meetings' }, { id: 'n2', kind: 'note', notebookId: 'nb', path: 'notes/nb/gone.md' }, { id: 'f1', kind: 'folder', notebookId: 'nb', path: 'notes/nb/sub' }, { id: 'h2', kind: 'heading', title: 'Empty' }, { id: 'h3', kind: 'heading', title: 'Videos' }, { id: 'y1', kind: 'youtube', videoId: 'dQw4w9WgXcQ', start: 0, title: 'A talk' }];
+
+it('makes a chapter of each heading holding the items up to the next one, after a chapter for each item before the first heading', () => {
+  const chapters = bookChapters(chaptered, [note('notes/nb/a.md', 'Alpha')], []);
+  expect(chapters.map(chapter => [chapter.id, chapter.kind, chapter.title, (chapter.members ?? []).map(member => member.id)])).toEqual([['n1', 'note', 'Alpha', []], ['h1', 'heading', 'Internal meetings', ['n2', 'f1']], ['h2', 'heading', 'Empty', []], ['h3', 'heading', 'Videos', ['y1']]]);
+  expect(chapters[1].members![0]).toMatchObject({ kind: 'note', missing: true, anchor: 'chapter:n2' });
+  expect(chapters[1].missing).toBe(false);
+  expect(new Set([...chapters, ...chapters.flatMap(chapter => chapter.members ?? [])].map(chapter => chapter.anchor)).size).toBe(8);
+});
+
+it('lists a heading at level 0, its items at level 1 and a folder under it with its notes at level 2, while items before the first heading keep levels 0 and 1', () => {
+  const items: CompilationItem[] = [{ id: 'f0', kind: 'folder', notebookId: 'nb', path: 'notes/nb/top' }, ...chaptered.slice(1)];
+  const chapters = bookChapters(items, [], []);
+  const sections = new Map<string, BookEntry[]>([['f0', [{ anchor: sectionAnchor(items[0], 'notes/nb/top/t.md'), title: 'T', level: 1 }]], ['f1', [{ anchor: sectionAnchor(items[3], 'notes/nb/sub/x.md'), title: 'X', level: 1 }]]]);
+  expect(bookEntries(chapters, sections).map(entry => [entry.title, entry.level])).toEqual([['top', 0], ['T', 1], ['Internal meetings', 0], ['gone.md', 1], ['sub', 1], ['X', 2], ['Empty', 0], ['Videos', 0], ['A talk', 1]]);
+});
+
+it('names the contents entry of a slot inside a heading chapter: an item, and a note of a folder under the heading', () => {
+  const chapters = bookChapters(chaptered, [note('notes/nb/a.md', 'Alpha')], []);
+  expect(slotAnchor('n2', chapters)).toBe('chapter:n2');
+  expect(slotAnchor('f1:notes/nb/sub/x.md', chapters)).toBe(sectionAnchor(chaptered[3], 'notes/nb/sub/x.md'));
+  expect(slotAnchor('h1', chapters)).toBe('chapter:h1');
+});
