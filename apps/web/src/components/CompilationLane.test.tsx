@@ -55,6 +55,7 @@ beforeEach(() => {
         resizeCallbacks.push(callback);
       }
       observe() {}
+      unobserve() {}
       disconnect() {}
     },
   );
@@ -405,6 +406,8 @@ it('moves a card across a divider into the next chapter, and a divider alone, wi
     const handle = screen.getByRole('button', { name: label });
     handle.focus();
     fireEvent.keyDown(handle, { code: 'Space', key: ' ' });
+    // The sensor listens for the moves from the next task on.
+    await act(() => new Promise(resolve => setTimeout(resolve, 0)));
     for (let n = 0; n < presses; n++) await act(async () => void fireEvent.keyDown(handle, { code: 'ArrowRight', key: 'ArrowRight' }));
     await act(async () => void fireEvent.keyDown(handle, { code: 'Space', key: ' ' }));
   };

@@ -745,6 +745,9 @@ export const en = {
   'book.pageCountMore': '{page} / {total}+',
   // Compilation chapters (章／節), heading-anchored items and dynamic grouping
   'book.emptyChapter': 'No items in this chapter',
+  'compilation.moveChapter': 'Move chapter heading',
+  'compilation.removeChapter': 'Remove chapter heading (items stay)',
+  'compilation.chapterStaysHere': 'Chapter headings stay in their compilation',
   'compilation.editNote': 'Edit {title}',
   'compilation.finishNote': 'Finish editing {title}',
   'compilation.backTo': 'Back to compilations',

@@ -747,6 +747,9 @@ export const zhTW: Record<TranslationKey, string> = {
   'book.pageCountMore': '{page} / {total}+',
   // Compilation chapters (章／節), heading-anchored items and dynamic grouping
   'book.emptyChapter': '這一章還沒有項目',
+  'compilation.moveChapter': '移動章名',
+  'compilation.removeChapter': '移除章名（項目保留）',
+  'compilation.chapterStaysHere': '章名只能留在原合輯',
   'compilation.editNote': '編輯「{title}」',
   'compilation.finishNote': '結束編輯「{title}」',
   'compilation.backTo': '返回合輯',

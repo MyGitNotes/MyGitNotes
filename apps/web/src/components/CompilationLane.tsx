@@ -3,7 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Plus, X } from 'lucide-react';
-import { type CompilationItem, type CompilationRow, type CompilationSort, contentItems } from '@mygitnotes/core/compilation';
+import { type CompilationHeadingItem, type CompilationItem, type CompilationRow, type CompilationSort, contentItems } from '@mygitnotes/core/compilation';
 import type { NotebookFacets } from '@mygitnotes/core/note-query';
 import type { NotebookConfig } from '../lib/types.js';
 import { useCompilationEditingContext, useHeldNotes, useHeldOrder } from '../lib/compilation-editing.js';
@@ -67,6 +67,43 @@ export function MovableCard({ item, row, reorder, disabled, editable, remove, ..
   /* eslint-enable react/refs */
 }
 
+/** A chapter heading in the strip: a narrow full-height column beside the cards, a header row when they list top to bottom. It names nothing to open. */
+function ChapterDivider({ item, controls }: { item: CompilationHeadingItem; controls?: ReactNode; }) {
+  return (
+    <div className='screen-chapter-divider' data-screen-heading={item.id}>
+      {controls}
+      <h4 className='screen-chapter-title' title={item.title}>{item.title}</h4>
+    </div>
+  );
+}
+
+/** A divider in reorder mode moves alone, which shifts the chapter boundary; removing it removes the heading only, and its items join the chapter before. */
+export function MovableDivider({ item, row, reorder, disabled, remove }: { item: CompilationHeadingItem; row: CompilationRow; reorder: boolean; disabled: boolean; remove: () => void; }) {
+  const { t } = useTranslation();
+  const sort = useSortable({ id: item.id, disabled: disabled || !reorder, data: { rowId: row.id } });
+  /* eslint-disable react/refs -- dnd-kit sortable bindings are callback refs and render state, forwarded to the divider and drag handle. */
+  return (
+    <div ref={sort.setNodeRef} className='screen-card-slot screen-chapter-slot' style={{ transform: CSS.Transform.toString(sort.transform), transition: sort.transition, opacity: sort.isDragging ? .3 : undefined }}>
+      <ChapterDivider
+        item={item}
+        controls={!disabled && (
+          <span className='screen-chapter-controls'>
+            {reorder && (
+              <Button type='button' ref={sort.setActivatorNodeRef} {...sort.attributes} {...sort.listeners} size='icon' className='screen-drag-handle' aria-label={`${t('compilation.moveChapter')}: ${item.title}`}>
+                <GripVertical size={14} />
+              </Button>
+            )}
+            <Button type='button' size='icon' className='screen-remove' aria-label={`${t('compilation.removeChapter')}: ${item.title}`} title={t('compilation.removeChapter')} onClick={remove}>
+              <X size={12} />
+            </Button>
+          </span>
+        )}
+      />
+    </div>
+  );
+  /* eslint-enable react/refs */
+}
+
 export function CompilationLane({ row, graph, reorder, disabled, study, facets, notebooks, assets, onOpen, onStudy, onStudyChange, onView, onSort, onEditOrder, onRename, onAdd, onRemove, onCreateNote, readOnly, extra }: Omit<CompilationContentProps, 'notes'> & { graph?: ReactNode; extra?: ReactNode; facets?: Record<string, NotebookFacets>; row: CompilationRow; reorder: boolean; disabled: boolean; study: StudyController; readOnly?: boolean; onStudy?: () => void; onView?: (view: CompilationRow['view']) => void; onAdd?: () => void; onRemove?: (id: string) => void; onSort?: (sort: CompilationSort) => void; onEditOrder?: () => void; onRename?: () => void; onStudyChange?: (study: NonNullable<CompilationRow['study']>) => void; onCreateNote?: (context?: { notebookId?: string; folder?: string; tag?: string; }) => void; }) {
   const { t } = useTranslation();
   const host = useRef<HTMLElement>(null), strip = useRef<HTMLDivElement>(null);
@@ -81,7 +118,7 @@ export function CompilationLane({ row, graph, reorder, disabled, study, facets, 
   const notes = useHeldNotes(laneNotes.notes);
   const content: CompilationContentProps = { notebooks, assets, onOpen, notes };
   const ordinaryRow = { ...row, study: { ...row.study, filter: 'all' as const, dueFirst: false } };
-  const items = useHeldOrder(studyRowItems(contentItems(compilationRowItems(row, content.notes, content.assets, content.notebooks)), ordinaryRow, content.notes, study.study, clock));
+  const items = useHeldOrder(studyRowItems(compilationRowItems(row, content.notes, content.assets, content.notebooks), ordinaryRow, content.notes, study.study, clock));
   // Reorder mode and a read-only compilation offer no editing (E12, E13).
   const editable = !readOnly && !disabled && !reorder;
   const filtered = Boolean(row.study?.status);
@@ -105,19 +142,15 @@ export function CompilationLane({ row, graph, reorder, disabled, study, facets, 
   };
   return (
     <section id={`screen-lane-${row.id}`} ref={host} data-orientation={row.view === 'graph' ? undefined : vertical ? 'vertical' : 'horizontal'} className={`screen-lane screen-view-${row.view} ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`} aria-label={row.name}>
-      <CompilationHeader row={row} count={items.length} disabled={disabled} readOnly={readOnly} notebooks={content.notebooks} facets={facets} extra={extra} onStudy={onStudy} onView={onView} onAdd={onAdd} onSort={onSort} onEditOrder={onEditOrder} onRename={onRename} onStudyChange={onStudyChange} onCreateInSource={handleCreateInLane} scrollButton={row.view === 'graph' || vertical ? undefined : scrollButton} />
+      <CompilationHeader row={row} count={contentItems(items).length} disabled={disabled} readOnly={readOnly} notebooks={content.notebooks} facets={facets} extra={extra} onStudy={onStudy} onView={onView} onAdd={onAdd} onSort={onSort} onEditOrder={onEditOrder} onRename={onRename} onStudyChange={onStudyChange} onCreateInSource={handleCreateInLane} scrollButton={row.view === 'graph' || vertical ? undefined : scrollButton} />
       {row.view === 'graph' ? graph : (
         <div ref={readOnly ? undefined : drop.setNodeRef} className={!readOnly && drop.isOver ? 'screen-drop-target' : ''}>
           <div ref={strip} className='screen-lane-strip' tabIndex={0} aria-label={`${row.name} · ${t('screen.items')}`}>
-            {!readOnly && row.kind === 'custom' ? <SortableContext items={items.map(item => item.id)} strategy={vertical ? verticalListSortingStrategy : horizontalListSortingStrategy}>{items.map(item => <MovableCard reorder={reorder} editable={editable} key={item.id} {...content} item={item} row={row} disabled={disabled || filtered} remove={() => onRemove?.(item.id)} />)}</SortableContext> : items.map(item => (
-              <div className='screen-card-slot' key={item.id}>
-                <CompilationCard {...content} item={item} view={row.view} writable={editable} />
-              </div>
-            ))}
+            {!readOnly && row.kind === 'custom' ? <SortableContext items={items.map(item => item.id)} strategy={vertical ? verticalListSortingStrategy : horizontalListSortingStrategy}>{items.map(item => item.kind === 'heading' ? <MovableDivider key={item.id} item={item} row={row} reorder={reorder} disabled={disabled || filtered} remove={() => onRemove?.(item.id)} /> : <MovableCard reorder={reorder} editable={editable} key={item.id} {...content} item={item} row={row} disabled={disabled || filtered} remove={() => onRemove?.(item.id)} />)}</SortableContext> : items.map(item => <div className={item.kind === 'heading' ? 'screen-card-slot screen-chapter-slot' : 'screen-card-slot'} key={item.id}>{item.kind === 'heading' ? <ChapterDivider item={item} /> : <CompilationCard {...content} item={item} view={row.view} writable={editable} />}</div>)}
             {laneNotes.error && <p role='alert' className='screen-error'>{laneNotes.error}</p>}
             {laneNotes.loading && <LoadingStatus className='screen-lane-empty'>{t('notes.loading')}</LoadingStatus>}
             <NoteListSentinel hasMore={laneNotes.hasMore} loading={laneNotes.loadingMore} error={laneNotes.error} onLoadMore={laneNotes.loadMore} className='screen-lane-sentinel' />
-            {!items.length && !laneNotes.loading && (
+            {!contentItems(items).length && !laneNotes.loading && (
               <div className='screen-lane-empty'>
                 {t(row.kind === 'custom' ? 'screen.emptyCustom' : 'screen.emptyDynamic')}
                 {!readOnly && !disabled && (

@@ -226,7 +226,12 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
         onDragEnd={({ active, over }) => {
           setDragging(undefined);
           if (!over || active.id === over.id || disabled || !reorder || current.kind !== 'custom' || current.study?.status) return;
-          compilation.change(moveCompilationItem(compilation.page, String(active.id), current.id, over.id === `lane:${current.id}` ? current.items.length : current.items.findIndex(item => item.id === over.id)));
+          // A content item lands in the chapter its drop index falls in; a heading moves alone, shifting the chapter boundary.
+          try {
+            compilation.change(moveCompilationItem(compilation.page, String(active.id), current.id, over.id === `lane:${current.id}` ? current.items.length : current.items.findIndex(item => item.id === over.id)));
+          } catch (error) {
+            setNotice((error as Error).message === 'Chapter headings stay in their compilation' ? t('compilation.chapterStaysHere') : (error as Error).message);
+          }
         }}
       >
         <CompilationLane

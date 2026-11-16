@@ -727,3 +727,12 @@
 @media (max-width: 640px) { .compilation-inline-editor [data-live-markdown][data-continuous] .note-youtube-embed, .compilation-inline-editor [data-live-markdown][data-continuous] .note-youtube-embed[data-youtube-mode='medium'], .compilation-inline-editor [data-live-markdown][data-continuous] .note-youtube-embed[data-youtube-mode='theater'] { width: 100%; } }
 /* A note that opens with a table keeps room above it for the table's toolbar, which the scroller would otherwise clip. */
 .compilation-inline-editor [data-live-markdown][data-continuous] .cm-scroller:has(> .cm-content > .live-md-table:first-child) { padding-top: 44px !important; }
+/* A chapter heading in a lane strip: a narrow full-height column with its title beside the cards; under 560px, where the cards list top to bottom, a full-width header row. */
+.screen-card-slot.screen-chapter-slot { flex: 0 0 48px; width: 48px; }
+.screen-chapter-divider { display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; min-height: 120px; padding: 8px 4px; border-inline-start: 3px solid var(--color-primary); border-radius: 6px; background: var(--workspace-selection); }
+.screen-chapter-controls { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.screen-chapter-title { flex: 1; min-height: 0; margin: 0; overflow: hidden; font-size: 14px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; writing-mode: vertical-rl; color: var(--color-text); }
+.screen-lane[data-orientation='vertical'] .screen-card-slot.screen-chapter-slot { flex: none; width: 100%; }
+.screen-lane[data-orientation='vertical'] .screen-chapter-divider { flex-direction: row-reverse; justify-content: flex-end; height: auto; min-height: 0; padding: 6px 8px; border-inline-start: 0; border-bottom: 2px solid var(--color-primary); border-radius: 0; background: transparent; }
+.screen-lane[data-orientation='vertical'] .screen-chapter-controls { flex-direction: row; }
+.screen-lane[data-orientation='vertical'] .screen-chapter-title { flex: 1; writing-mode: horizontal-tb; }
