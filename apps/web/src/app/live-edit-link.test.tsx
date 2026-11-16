@@ -56,7 +56,7 @@ type Frame = 'zoom' | 'pane' | 'inline';
  * writer of a repository with a live editor; a reader, or a deployment without one, gets none. `openZoom` lends the
  * editor to zoom, as zoom does with a note a pane shows.
  */
-function Page({ frame: initial, shown = note, live = true, report, zoomOpened }: { frame: Frame; shown?: NoteItem; live?: boolean; report: (probe: Probe) => void; zoomOpened: () => void; }) {
+function Page({ frame: initial, shown = note, live = true, collab = false, report, zoomOpened }: { frame: Frame; shown?: NoteItem; live?: boolean; collab?: boolean; report: (probe: Probe) => void; zoomOpened: () => void; }) {
   const location = useLocation();
   const { navigator } = useContext(UNSAFE_NavigationContext);
   const [frame, setFrame] = useState<Frame>(initial);
@@ -66,7 +66,7 @@ function Page({ frame: initial, shown = note, live = true, report, zoomOpened }:
   });
   useLayoutEffect(() => report({ url: location.pathname + location.search + location.hash, state: location.state, index: (navigator as unknown as { index: number; }).index }));
   const target = liveEditLinkTarget({ search: location.search, state: location.state, routedNote: note, zoomOpen: initial === 'zoom', inFocus: initial !== 'zoom', focusPending: false, activeNotePath: note.path });
-  const editing: LiveNoteEditing | undefined = live ? { editor, onRefetch: () => {}, openZoom } : undefined;
+  const editing: LiveNoteEditing | undefined = live ? { editor: collab ? { kind: 'builtin' } : editor, onRefetch: () => {}, openZoom } : undefined;
   const props = { note: shown, frame, active: true, statuses: ['inbox', 'done'], autoSave: true, onSave: async () => shown, onRestoreFile: async () => null, onCommitFile: async () => {}, branch: 'main', draftScope: 'src:main', onClose: frame === 'zoom' ? () => {} : undefined, live: editing } as NoteEditorProps;
   return (
     <LiveEditLinkProvider target={target}>
@@ -152,6 +152,24 @@ describe('a note address with ?edit', () => {
     expect(inline.opened).not.toHaveBeenCalled();
     expect(checkouts()).toHaveLength(0);
     expect(inline.probe.current.url).toBe(`${NOTE}?edit`);
+  });
+});
+
+describe('a note address with ?edit, where the repository opens notes collab-first', () => {
+  it('in zoom, checks the note out once and takes edit out of the address', async () => {
+    const { probe } = await open({ pathname: NOTE, search: '?zoom&edit&q=x', hash: '#part' }, { frame: 'zoom', collab: true });
+    expect(checkouts()).toHaveLength(1);
+    expect(probe.current.url).toBe(`${NOTE}?zoom&q=x#part`);
+    expect(screen.getByRole('toolbar', { name: 'Live editor' })).toBeInTheDocument();
+  });
+
+  it('in a Focus pane, opens the collab editor there, without zoom, and takes edit out of the address', async () => {
+    const { probe, opened } = await open({ pathname: NOTE, search: '?edit&mode=split', state: FOCUS_NOTE_STATE }, { frame: 'pane', collab: true });
+    expect(opened).not.toHaveBeenCalled();
+    expect(checkouts()).toHaveLength(1);
+    expect(probe.current.url).toBe(`${NOTE}?mode=split`);
+    expect(probe.current.state).toEqual(FOCUS_NOTE_STATE);
+    expect(screen.getByRole('toolbar', { name: 'Live editor' })).toBeInTheDocument();
   });
 });
 
