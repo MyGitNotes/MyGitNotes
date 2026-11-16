@@ -28,7 +28,8 @@ interface Params {
   setActionError: WorkspaceState['setActionError'];
   /**
    * Asks the person whether to publish notes to Gists a commit did not push: ones this app did not create for the note,
-   * or whose note an agent changed last. Without it those notes are only reported.
+   * or whose note an agent changed last. Without it, or when the person declines, each note gets a draft without its
+   * Gist link instead.
    */
   confirmGists?: (entries: GistConfirmation[]) => Promise<boolean>;
 }
@@ -37,8 +38,14 @@ interface Params {
 interface GroupReports {
   gists: GistSync[];
   published: PublishSync[];
-  /** Notes whose Gist waits for the person's confirmation, with the commit that holds them. */
-  unconfirmed?: { repository: string; revision: string; entries: GistConfirmation[]; };
+  /** Notes whose Gist waits for the person's confirmation, with the commit that holds them and the notes as committed. */
+  unconfirmed?: Unconfirmed;
+}
+interface Unconfirmed {
+  repository: WorkspaceRepository;
+  revision: string;
+  entries: GistConfirmation[];
+  notes: NoteItem[];
 }
 
 /** A note without its text, as a local commit keeps the server's note it replaces. */
@@ -187,25 +194,58 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
     }
     clearCommittedDrafts(repository, sent);
     setRepositoryRevision(repository.id, result.revision);
-    return { gists: (result.gists ?? []).filter(gist => gist.error), published: (result.published ?? []).filter(entry => entry.error || entry.notices?.length), ...(result.gistsNeedConfirm?.length ? { unconfirmed: { repository: repository.id, revision: result.revision, entries: result.gistsNeedConfirm } } : {}) };
+    return { gists: (result.gists ?? []).filter(gist => gist.error), published: (result.published ?? []).filter(entry => entry.error || entry.notices?.length), ...(result.gistsNeedConfirm?.length ? { unconfirmed: { repository, revision: result.revision, entries: result.gistsNeedConfirm, notes: Object.values(sent).filter(entry => !entry.deleted).map(entry => ({ ...entry.note, revision: result.revision })) } } : {}) };
+  };
+
+  /**
+   * Drops the Gist link from each declined note: a draft of the note as committed, without its `gist`, which the person
+   * sees in Changes and commits like any change. Left in, the link would be pushed by the note's next app commit, which
+   * is a person's. A draft made meanwhile loses the link too; a note whose head no longer names that Gist is left alone.
+   * Answers the notes whose draft could not be changed, such as one held by a live merge conflict, for the person to fix.
+   */
+  const dropDeclinedGists = async ({ repository, revision, entries, notes }: Unconfirmed): Promise<GistSync[]> => {
+    const failed: GistSync[] = [];
+    const store = draftStore(repository);
+    // The note as the server reads it now is the draft's base, so its next commit merges cleanly; the committed text stands in when that read fails.
+    const read = await readNotes(repository.id, entries.map(entry => entry.path), revision).catch(() => [] as NoteItem[]);
+    for (const { path, gist } of entries) {
+      const withoutGist = (item: NoteItem): NoteItem => {
+        const { gist: _dropped, ...metadata } = item.metadata;
+        return { ...item, metadata };
+      };
+      try {
+        const pending = readWorkingNotes(store)[path];
+        if (pending && !pending.deleted) {
+          if (pending.note.metadata.gist === gist) stageWorkingNote(withoutGist(pending.note), pending.base, pending.blocked);
+          continue;
+        }
+        const committed = read.find(item => item.path === path) ?? notes.find(item => item.path === path);
+        if (committed?.metadata.gist === gist) stageWorkingNote(withoutGist(committed), committed);
+      } catch (error) {
+        failed.push({ path, gist, error: (error as Error).message });
+      }
+    }
+    return failed;
   };
 
   /**
    * Asks once about every note a commit left unpublished to its Gist and, when the person publishes, has the server push
    * each from the commit that holds it; answers the pushes that failed. Without an asker the notes are reported.
    */
-  const confirmUnpublished = async (unconfirmed: NonNullable<GroupReports['unconfirmed']>[]): Promise<GistSync[]> => {
+  const confirmUnpublished = async (unconfirmed: Unconfirmed[]): Promise<GistSync[]> => {
     const entries = unconfirmed.flatMap(group => group.entries);
     if (!entries.length) return [];
-    if (!confirmGists) {
-      setActionError(t('editor.gistNotConfirmed', { notes: entries.map(entry => `${entry.path} → ${entry.gist}`).join('; ') }));
-      return [];
+    const publish = confirmGists ? await confirmGists(entries) : false;
+    if (!publish) {
+      const failed: GistSync[] = [];
+      for (const group of unconfirmed) failed.push(...await dropDeclinedGists(group));
+      if (!confirmGists && !failed.length) setActionError(t('editor.gistNotConfirmed', { notes: entries.map(entry => `${entry.path} → ${entry.gist}`).join('; ') }));
+      return failed;
     }
-    if (!await confirmGists(entries)) return [];
     const failed: GistSync[] = [];
     for (const group of unconfirmed) {
       try {
-        failed.push(...(await syncConfirmedGists(group.repository, group.revision, group.entries)).filter(gist => gist.error));
+        failed.push(...(await syncConfirmedGists(group.repository.id, group.revision, group.entries)).filter(gist => gist.error));
       } catch (error) {
         failed.push(...group.entries.map(entry => ({ ...entry, error: (error as Error).message })));
       }
@@ -240,7 +280,7 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
     const committed: string[] = [];
     const failedGists: GistSync[] = [];
     const publishReports: PublishSync[] = [];
-    const unconfirmed: NonNullable<GroupReports['unconfirmed']>[] = [];
+    const unconfirmed: Unconfirmed[] = [];
     for (const group of groups.values()) {
       try {
         const reports = await commitGroup(group, message, version);
@@ -249,6 +289,9 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
         if (reports.unconfirmed) unconfirmed.push(reports.unconfirmed);
       } catch (error) {
         if (!committed.length) throw error;
+        // The repositories already committed still ask about their Gists, so none is left to the next commit unasked.
+        const failed = await confirmUnpublished(unconfirmed);
+        if (failed.length) setActionError(t('editor.gistSyncFailed', { errors: failed.map(gist => `${gist.path}: ${gist.error}`).join('; ') }));
         throw new Error(t('changes.partialCommit', { repositories: committed.join(', '), error: (error as Error).message }));
       }
       committed.push(group.repository.repository || group.repository.id);

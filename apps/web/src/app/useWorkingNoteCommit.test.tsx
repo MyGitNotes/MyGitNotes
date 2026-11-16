@@ -193,7 +193,7 @@ const listPlanted = () => {
 /** The draft a declined Gist leaves: the committed note without its `gist`, over the committed note. */
 const declinedDraft = () => ({ note: expect.objectContaining({ path: base.path, content: '# A edited', metadata: { title: 'A' } }), base: expect.objectContaining({ revision: `${home.id}-next`, metadata: { title: 'A', gist: 'victim' } }) });
 
-it("stages a draft without the Gist link when the person does not publish, whose commit pushes nothing", async () => {
+it('stages a draft without the Gist link when the person does not publish, whose commit pushes nothing', async () => {
   stubServer();
   planted();
   listPlanted();
@@ -254,16 +254,25 @@ it('counts closing the dialog with Escape as not publishing', async () => {
   stubServer();
   planted();
   listPlanted();
-  let commit: ReturnType<typeof useWorkingNoteCommit>['commitWorkingNotes'] | undefined;
-  function Harness() {
+  const committed: Promise<void>[] = [];
+  function Harness({ onCommit }: { onCommit: (done: Promise<void>) => void; }) {
     const { confirmGists, gistConfirmDialog } = useGistConfirm();
-    commit = useWorkingNoteCommit({ documents: [], sourceId: home.id, t: (key => key) as never, stageWorkingNote, clearCommittedDrafts: clearDrafts, setRepositoryRevision: vi.fn(), setActionError: vi.fn(), confirmGists }).commitWorkingNotes;
-    return gistConfirmDialog;
+    const { commitWorkingNotes } = useWorkingNoteCommit({ documents: [], sourceId: home.id, t: ((key: string) => key) as never, stageWorkingNote, clearCommittedDrafts: clearDrafts, setRepositoryRevision: vi.fn(), setActionError: vi.fn(), confirmGists });
+    return (
+      <>
+        <button type='button' onClick={() => onCommit(commitWorkingNotes([change(base.path, home)], 'docs: update'))}>commit</button>
+        {gistConfirmDialog}
+      </>
+    );
   }
-  render(<I18nProvider><Harness /></I18nProvider>);
-  const pending = commit!([change(base.path, home)], 'docs: update');
+  render(
+    <I18nProvider>
+      <Harness onCommit={done => committed.push(done)} />
+    </I18nProvider>,
+  );
+  fireEvent.click(screen.getByText('commit'));
   fireEvent(await screen.findByRole('dialog'), new Event('cancel', { cancelable: true }));
-  await pending;
+  await committed[0];
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(syncs).toEqual([]);
   expect(readWorkingNotes(draftStore(home))[base.path]).toEqual(declinedDraft());
