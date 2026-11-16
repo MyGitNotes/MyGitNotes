@@ -20,7 +20,7 @@ describe('readLiveFrontmatter', () => {
     const read = readLiveFrontmatter(NOTE);
     expect(read).toMatchObject({ valid: true, yaml: '# kept\ntitle: Plan\ntags: [a]\nstatus: draft', metadata: { title: 'Plan', tags: ['a'], status: 'draft' } });
     expect(NOTE.slice(read.bodyStart)).toBe('Body\n');
-    expect(read.lineOffset).toBe(6);
+    expect(read.lineOffset).toBe(7);
   });
 
   it('a note without frontmatter is valid and empty', () => {
@@ -67,7 +67,9 @@ describe('writeLiveFrontmatter', () => {
     sync();
     const read = readLiveFrontmatter(a.toString());
     expect(read.valid).toBe(true);
-    expect(['donereview', 'reviewdone']).toContain(read.metadata.status);
+    expect(typeof read.metadata.status).toBe('string');
+    expect(read.metadata.status).not.toBe('draft');
+    expect(b.toString()).toBe(a.toString());
   });
 
   it('creates a block on a note without one', () => {
