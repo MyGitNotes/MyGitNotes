@@ -155,12 +155,12 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   useEffect(() => {
     liveShared.current = { text: shared?.text ?? null, metadata: liveFrontmatter.metadata };
   });
-  /** Writes the keys the control changed into the live text; the YAML view writes its text. Nothing while offline (Q2). */
+  /** Writes the keys the control changed into the live text; the YAML view writes its text over what it showed. Nothing while offline (Q2). */
   const sharedText = shared?.text ?? null;
   const shownMetadata = liveFrontmatter.metadata;
-  const setLiveMetadata = useCallback((next: Record<string, unknown>, yaml?: string) => {
+  const setLiveMetadata = useCallback((next: Record<string, unknown>, yaml?: string, shown?: string) => {
     if (!sharedText) return;
-    if (yaml !== undefined) writeLiveYaml(sharedText, yaml);
+    if (yaml !== undefined) writeLiveYaml(sharedText, yaml, shown);
     else writeLiveFrontmatter(sharedText, shownMetadata, next as NoteMetadata);
   }, [sharedText, shownMetadata]);
   const session: NoteEditorSessionState = shared ? { ...directSession, content: liveBody, metadata: liveFrontmatter.metadata, title: liveTitle, locked: liveLocked, setMetadata: setLiveMetadata as NoteEditorSessionState['setMetadata'] } : directSession;

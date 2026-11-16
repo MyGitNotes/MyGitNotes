@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import YAML from 'yaml';
 import { Code } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -34,9 +34,19 @@ export function FrontmatterHeader({ mode, metadata, yamlSource, onMode, onYaml }
   );
 }
 
-/** The YAML view: every valid mapping replaces the metadata (with the text it came from), and anything else shows its error and changes nothing. */
-export function FrontmatterYaml({ yamlText, setYamlText, yamlError, setYamlError, locked, setMetadata }: { yamlText: string; setYamlText: (value: string) => void; yamlError: string; setYamlError: (value: string) => void; locked: boolean; setMetadata: (metadata: Metadata, text: string) => void; }) {
+/**
+ * The YAML view: every valid mapping replaces the metadata (with the text it came from, and the text the view last
+ * wrote or opened on, which a shared note's write compares with what others changed since), and anything else shows
+ * its error and changes nothing.
+ */
+export function FrontmatterYaml({ yamlText, setYamlText, yamlError, setYamlError, locked, setMetadata }: { yamlText: string; setYamlText: (value: string) => void; yamlError: string; setYamlError: (value: string) => void; locked: boolean; setMetadata: (metadata: Metadata, text: string, shown: string) => void; }) {
   const { t } = useTranslation();
+  // The text typed in between may not parse: what was last written is what the note's frontmatter was made from.
+  const written = useRef(yamlText);
+  const write = (metadata: Metadata, text: string) => {
+    setMetadata(metadata, text, written.current);
+    written.current = text;
+  };
   return (
     <div className='flex-1 flex flex-col min-h-0 text-xs space-y-2'>
       {yamlError && <div className='p-2 rounded bg-danger-soft border border-danger/40 text-danger font-mono text-[11px] break-all'>{yamlError}</div>}
@@ -52,10 +62,10 @@ export function FrontmatterYaml({ yamlText, setYamlText, yamlError, setYamlError
               try {
                 const parsed = YAML.parse(newYaml);
                 if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                  setMetadata(parsed as Metadata, newYaml);
+                  write(parsed as Metadata, newYaml);
                   setYamlError('');
                 } else if (newYaml.trim() === '') {
-                  setMetadata({}, newYaml);
+                  write({}, newYaml);
                   setYamlError('');
                 } else {
                   setYamlError(`${t('editor.yamlError')}: Root must be a mapping`);

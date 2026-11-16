@@ -3,6 +3,7 @@ import YAML from 'yaml';
 import type * as Y from 'yjs';
 import type { NoteMetadata } from '@mygitnotes/core';
 import { noteFrontmatterSpan, patchNoteFrontmatter } from '@mygitnotes/core/frontmatter';
+import { FRONTMATTER_REGEX } from '@mygitnotes/core/frontmatter-patch';
 
 /** Frontmatter longer than this is not looked for: a note's metadata is a few lines. */
 export const MAX_FRONTMATTER = 64 * 1024;
@@ -77,21 +78,54 @@ export function writeLiveFrontmatter(text: Y.Text, shown: NoteMetadata, next: No
   return true;
 }
 
-/** Writes the YAML tab's text as the note's frontmatter, only when it parses to a map; an invalid block is replaced. */
-export function writeLiveYaml(text: Y.Text, yaml: string): { ok: true; } | { ok: false; error: string; } {
+/** The map a YAML text holds: `{}` for an empty text, null for one that does not parse to a map. */
+function yamlMap(yaml: string): NoteMetadata | null {
   try {
     const parsed: unknown = YAML.parse(yaml);
-    if (parsed !== null && parsed !== undefined && (typeof parsed !== 'object' || Array.isArray(parsed))) return { ok: false, error: 'not a map' };
-  } catch (failure) {
-    return { ok: false, error: (failure as Error).message };
+    if (parsed === null || parsed === undefined) return yaml.trim() ? null : {};
+    return typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as NoteMetadata : null;
+  } catch {
+    return null;
   }
+}
+
+/** The same YAML text, whatever its line endings and trailing blank lines. */
+const sameYaml = (a: string, b: string) => a.replace(/\r\n/g, '\n').trimEnd() === b.replace(/\r\n/g, '\n').trimEnd();
+
+/**
+ * Writes the YAML view's text as the note's frontmatter, only when it parses to a map. `shown` is the text the view showed
+ * before this edit. While the live block is still that text, the new text is written as typed, comments and order
+ * included; once someone else changed the block since, only the keys this edit changed are patched into the current text
+ * (CFR-F002), so their change stays. A block left with no key is taken out, separator line included, instead of being
+ * written empty, which would not parse (CFR-F003). An invalid block is replaced by the text; a new block takes the body's
+ * line endings (CFR-F005).
+ */
+export function writeLiveYaml(text: Y.Text, yaml: string, shown: string = yaml): { ok: true; } | { ok: false; error: string; } {
+  const next = yamlMap(yaml);
+  if (!next) {
+    try {
+      YAML.parse(yaml);
+    } catch (failure) {
+      return { ok: false, error: (failure as Error).message };
+    }
+    return { ok: false, error: 'not a map' };
+  }
+  const empty = Object.keys(next).length === 0;
   const current = text.toString();
   const span = noteFrontmatterSpan(current.length > MAX_FRONTMATTER ? current.slice(0, MAX_FRONTMATTER) : current);
-  const block = yaml.trimEnd();
-  const newline = span && current.slice(0, span.end).includes('\r\n') ? '\r\n' : '\n';
-  const fenced = `---${newline}${block.replace(/\r?\n/g, newline)}${newline}---${newline}`;
-  if (!span) replaceLiveText(text, current ? `${fenced}\n${current}` : fenced);
-  else replaceLiveText(text, fenced + current.slice(span.end));
+  const newline = (span ? current.slice(0, span.end) : current).includes('\r\n') ? '\r\n' : '\n';
+  const fenced = `---${newline}${yaml.trimEnd().replace(/\r?\n/g, newline)}${newline}---${newline}`;
+  if (!span) {
+    if (!empty) replaceLiveText(text, current ? `${fenced}${newline}${current}` : fenced);
+    return { ok: true };
+  }
+  if ('invalid' in span || sameYaml(span.yaml, shown)) {
+    replaceLiveText(text, empty ? current.slice(span.bodyStart) : fenced + current.slice(span.end));
+    return { ok: true };
+  }
+  const patched = patchNoteFrontmatter(current, yamlMap(shown) ?? {}, next);
+  const left = noteFrontmatterSpan(patched);
+  replaceLiveText(text, left && !('invalid' in left) && Object.keys(left.metadata).length === 0 ? patched.slice(left.bodyStart) : patched);
   return { ok: true };
 }
 
@@ -109,13 +143,12 @@ export function useLiveText(text: Y.Text | null): { text: string; frontmatter: L
   return { text: value, frontmatter };
 }
 
-/** The text up to and including the separator after the frontmatter's closing fence: what the frontmatter reads. */
+/** The text up to and including the separator after the frontmatter's closing fence, with core's fence: what the frontmatter reads. */
 function leadingBlock(text: string): string {
   if (!text.startsWith('---')) return '';
-  const close = text.slice(0, MAX_FRONTMATTER).search(/\r?\n---\r?\n/);
-  if (close < 0) return text.slice(0, MAX_FRONTMATTER);
-  const after = text.indexOf('\n', close + 1);
-  const fenceEnd = text.indexOf('\n', after + 1) + 1 || text.length;
-  const separator = text.slice(fenceEnd).match(/^[ \t]*\r?\n/)?.[0] ?? '';
-  return text.slice(0, fenceEnd + separator.length);
+  const head = text.slice(0, MAX_FRONTMATTER);
+  const fence = FRONTMATTER_REGEX.exec(head);
+  if (!fence) return head;
+  const separator = text.slice(fence[0].length).match(/^[ \t]*\r?\n/)?.[0] ?? '';
+  return text.slice(0, fence[0].length + separator.length);
 }

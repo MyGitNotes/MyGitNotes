@@ -12,14 +12,20 @@ export interface CollabFrontmatter {
   end: number;
   /** Past the blank separator line too: where the body starts. */
   bodyStart: number;
-  /** The YAML parses to a map: the block is hidden; otherwise it shows raw. */
+  /**
+   * The YAML parses to a map and the closing fence ends its line: the block is hidden; otherwise it shows raw. A fence
+   * that ends the text with no line end has no line after it for the caret, which would sit on the fence line, and
+   * typing would join it (`---a`), so that block shows raw until a line end follows it.
+   */
   valid: boolean;
 }
 
 /** The leading frontmatter of the editor's text, or null without one. */
 export function collabFrontmatter(state: EditorState): CollabFrontmatter | null {
   const span = noteFrontmatterSpan(state.doc.sliceString(0, Math.min(state.doc.length, MAX_FRONTMATTER)));
-  return span && { end: span.end, bodyStart: span.bodyStart, valid: !('invalid' in span) };
+  if (!span) return null;
+  const lineEnded = state.doc.sliceString(span.end - 1, span.end) === '\n';
+  return { end: span.end, bodyStart: span.bodyStart, valid: !('invalid' in span) && lineEnded };
 }
 
 /** Where the note's leading frontmatter ends, or 0 when it has none. */
