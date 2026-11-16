@@ -2,7 +2,7 @@ import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { useLiveEditLink } from '../../app/live-edit-link.js';
-import { useTranslation } from '../../lib/i18n/index.js';
+import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import { isNetworkFailure } from '../../lib/api.js';
 import { onReachable, RETRY_FIRST_MS, retryOnTimer } from '../../lib/live-reachability.js';
 import { createUnifiedDiff } from '../../lib/unified-diff.js';
@@ -49,10 +49,16 @@ interface LiveEditState {
 /** A file action of a collab-first note's own editor. */
 type FileAction = keyof LiveFileActions;
 const ACTIVE_REFUSALS = { move: ['live.activeMove', 'live.activeMoveOne'], rename: ['live.activeRename', 'live.activeRenameOne'], remove: ['live.activeDelete', 'live.activeDeleteOne'] } as const;
-const REASONS = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled' } as const;
+const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled', uncommittable: 'live.reason.uncommittable' };
 
 /** What a collab-first note's own editor offers for its file actions: each checks the note in first, and answers whether it ran. */
 export type LiveOwnFileActions = { [action in FileAction]?: () => Promise<boolean>; };
+
+/**
+ * 「尚未簽回：…」 with why: tried again once everyone has left, except when none of the editors may commit, which needs
+ * someone to act (cf16-F009); a reason this app does not know reads as the note having changed.
+ */
+export const notCheckedInText = (t: ReturnType<typeof useTranslation>['t'], reason: string | undefined) => t(reason === 'uncommittable' ? 'live.notCheckedInStuck' : 'live.notCheckedIn', { reason: t(REASONS[reason ?? ''] ?? 'live.reason.changed') });
 
 /** 「已存入 Git；仍有 N 人在編輯」, in the person's number. */
 export const stillOpenText = (t: ReturnType<typeof useTranslation>['t'], count: number) => t(count === 1 ? 'live.stillOpenOne' : 'live.stillOpen', { count });
@@ -245,7 +251,7 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
         if (answer.committed) latest.current.live?.onCheckedIn?.(answer);
         const count = answer.activeEditors ?? 1;
         const [many, one] = ACTIVE_REFUSALS[action];
-        setRefusal(answer.reason === 'active' ? t(count === 1 ? one : many, { count }) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason as keyof typeof REASONS] ?? 'live.reason.changed') }));
+        setRefusal(answer.reason === 'active' ? t(count === 1 ? one : many, { count }) : notCheckedInText(t, answer.reason));
         void checkOut();
         return false;
       }

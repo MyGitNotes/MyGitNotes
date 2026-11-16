@@ -17,7 +17,7 @@ import { LoadingStatus } from '../LoadingStatus.js';
 import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
 import { discardDraft, keptReason } from './live-drafts.js';
 import { LiveProvider } from './live-provider.js';
-import { stillOpenText } from './useLiveEdit.js';
+import { notCheckedInText, stillOpenText } from './useLiveEdit.js';
 import './live-editor.css';
 
 export interface LiveCollabEditorProps {
@@ -93,7 +93,6 @@ const RENEW_CODE = 4000;
 
 const REFUSALS: Record<RefusedReason, TranslationKey> = { 'too-large': 'live.tooLargeLive', busy: 'live.busy', other: 'live.socketRefused' };
 
-const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled' };
 
 /** The socket of the app's own origin, as the page reached it: `wss:` under https. */
 const socketUrl = () => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/live/socket`;
@@ -530,7 +529,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       const answer = await checkInLive(checkout.notebookId, checkout.path);
       if (answer.discarded) setPhase({ kind: 'discarded' });
       else {
-        setPhase(answer.released ? { kind: 'released' } : { kind: 'notice', tone: 'status', message: answer.reason === 'active' && answer.committed ? stillOpenText(t, answer.activeEditors ?? 1) : t('live.notCheckedIn', { reason: t(REASONS[answer.reason ?? ''] ?? 'live.reason.changed') }) });
+        setPhase(answer.released ? { kind: 'released' } : { kind: 'notice', tone: 'status', message: answer.reason === 'active' && answer.committed ? stillOpenText(t, answer.activeEditors ?? 1) : notCheckedInText(t, answer.reason) });
         if (answer.committed || answer.released) onCheckedIn?.(answer);
       }
     } catch (error) {
