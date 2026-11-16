@@ -45,6 +45,8 @@ interface NoteEditorToolbarProps {
   onRename?: (title: string) => Promise<void> | void;
   /** The note is a template file: the note row says so. */
   template?: boolean;
+  /** The note's frontmatter does not parse: the row and the phone's bar warn instead of showing a status and tags. */
+  frontmatterInvalid?: boolean;
   /** A pending live note whose filing can be changed: its menu offers move and rename while the note is read-only. */
   liveDraft?: LiveDraftActions;
   /** Copies the note into its notebook's templates; absent for a template and a read-only note. */
@@ -135,13 +137,13 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
  * The zoom and pane editor's top bars. The note row carries the title, status, tags and the frontmatter button; the actions
  * follow it in one row, led by the back button in zoom, and go into the Focus pane's tab bar while the pane hides this bar.
  */
-export function NoteEditorToolbar({ onClose, onRename, template = false, statuses, availableTags, actionsSlot, phoneEditing, phoneChrome, ...actions }: NoteEditorToolbarProps) {
+export function NoteEditorToolbar({ onClose, onRename, template = false, frontmatterInvalid, statuses, availableTags, actionsSlot, phoneEditing, phoneChrome, ...actions }: NoteEditorToolbarProps) {
   const { t } = useTranslation();
   const { frame, note, session, docPanel, readOnly } = actions;
   const zoom = frame === 'zoom';
   if (phoneChrome) {
     const { frame: phoneFrame, note: phoneNote, session: phoneSession, docPanel: phoneDocPanel, isMarkdown, autoSave, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate } = actions;
-    return <PhoneNoteChrome {...phoneChrome} onPlaySlides={onPlaySlides} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} liveDraft={actions.liveDraft} template={template} onSaveAsTemplate={onSaveAsTemplate} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
+    return <PhoneNoteChrome {...phoneChrome} onPlaySlides={onPlaySlides} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} liveDraft={actions.liveDraft} template={template} frontmatterInvalid={frontmatterInvalid} onSaveAsTemplate={onSaveAsTemplate} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
   }
   const controls: ReactNode = <NoteActions {...actions} phoneEditing={phoneEditing} />;
   return (
@@ -153,7 +155,7 @@ export function NoteEditorToolbar({ onClose, onRename, template = false, statuse
           </button>
         )
         : null)}
-      <NoteRow path={note.path} session={session} docPanel={docPanel} statuses={statuses} availableTags={availableTags} onRename={onRename} template={template} trailing={zoom && phoneEditing ? <PhoneEditToggle {...phoneEditing} /> : undefined} />
+      <NoteRow path={note.path} session={session} docPanel={docPanel} statuses={statuses} availableTags={availableTags} onRename={onRename} template={template} frontmatterInvalid={frontmatterInvalid} trailing={zoom && phoneEditing ? <PhoneEditToggle {...phoneEditing} /> : undefined} />
       {actionsSlot ? createPortal(controls, actionsSlot) : controls}
     </div>
   );

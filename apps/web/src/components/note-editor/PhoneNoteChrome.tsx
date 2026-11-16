@@ -1,5 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import '../phone-notes.css';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -16,6 +16,7 @@ import { useLiveLock } from '../live/live-drafts.js';
 import { PhoneSheet } from '../PhoneSheet.js';
 import { PHONE_TOOLS } from './phone-tools.js';
 import type { LiveDraftActions } from './NoteActionsMenu.js';
+import { FrontmatterInvalid } from './NoteRow.js';
 import { NoteRowTags } from './NoteRowTags.js';
 import type { NoteDocumentPanelState } from './useNoteDocumentPanel.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
@@ -40,6 +41,8 @@ export interface PhoneNoteChromeProps {
   onRename?: (title: string) => Promise<void> | void;
   /** The note is a template file: the title bar says so. */
   template?: boolean;
+  /** The note's frontmatter does not parse: a warning stands where its status and tags would. */
+  frontmatterInvalid?: boolean;
   /** Copies the note into its notebook's templates; absent for a template and a read-only note. */
   onSaveAsTemplate?: () => void;
   statuses: string[];
@@ -87,7 +90,9 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
         {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
         <div className='phone-note-title' title={title}>{title}</div>
         {liveBadge && <LiveBadge live={props.note.live} title={props.note.title} />}
-        <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
+        {props.frontmatterInvalid
+          ? <span role='status' className='inline-flex text-danger' aria-label={t('editor.frontmatterInvalidShort')} title={t('editor.frontmatterInvalidLive')}><AlertTriangle aria-hidden='true' size={16} /></span>
+          : <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />}
         {!autoSave && !readOnly && (
           <button type='button' className='ui-icon-button' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave}>
             <Save aria-hidden='true' />
@@ -162,7 +167,7 @@ function RenameRow({ title, onRename, onDone }: { title: string; onRename: (titl
 }
 
 /** The "⋯" sheet: the note's status and tags, the tools the rail offered on a larger screen, and the actions that file or export it. */
-function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, onSaveAsTemplate, statuses, availableTags, hasHistory, quickActions, liveEditing, liveDraft, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
+function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, onSaveAsTemplate, statuses, availableTags, frontmatterInvalid, hasHistory, quickActions, liveEditing, liveDraft, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
   const { t } = useTranslation();
   const panel = usePanelContext();
   const { changesCount, deleteNote, back } = usePhoneNotes();
@@ -196,11 +201,17 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
     <PhoneSheet title={title} onClose={onClose} className='phone-note-sheet'>
       {!liveEditing && <p className='phone-sheet-meta' role='status' aria-label={t('phone.saveState')}>{t('editor.words', { count: words })}{' · '}{session.editorStatus}</p>}
       <section className='phone-sheet-section' aria-label={t('phone.noteActions')}>
-        <div className='phone-sheet-field'>
-          <span>{t('editor.status')}</span>
-          <NoteStatusSelect status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
-        </div>
-        <NoteRowTags metadata={session.metadata} setMetadata={session.setMetadata} availableTags={availableTags} locked={session.locked} />
+        {frontmatterInvalid
+          ? <FrontmatterInvalid />
+          : (
+            <>
+              <div className='phone-sheet-field'>
+                <span>{t('editor.status')}</span>
+                <NoteStatusSelect status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
+              </div>
+              <NoteRowTags metadata={session.metadata} setMetadata={session.setMetadata} availableTags={availableTags} locked={session.locked} />
+            </>
+          )}
       </section>
       <section className='phone-sheet-section' aria-label={t('phone.noteTools')}>
         <div className='phone-sheet-tools'>

@@ -1,4 +1,4 @@
-import { Braces } from 'lucide-react';
+import { AlertTriangle, Braces } from 'lucide-react';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import '../note-row.css';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
@@ -21,13 +21,26 @@ interface NoteRowProps {
   template?: boolean;
   /** Shown after the frontmatter button; zoom puts a phone's Edit button here. */
   trailing?: ReactNode;
+  /** The note's frontmatter does not parse: a warning stands where its status and tags would, which it could not read. */
+  frontmatterInvalid?: boolean;
+}
+
+/** Says the frontmatter does not parse, where its status and tags are shown otherwise. */
+export function FrontmatterInvalid() {
+  const { t } = useTranslation();
+  return (
+    <span role='status' className='inline-flex items-center gap-1 text-xs text-danger' title={t('editor.frontmatterInvalidLive')}>
+      <AlertTriangle aria-hidden='true' size={14} />
+      {t('editor.frontmatterInvalidShort')}
+    </span>
+  );
 }
 
 /** Below this width the tags drop to a line of their own under the title, status and frontmatter button. */
 const NARROW_BELOW = 280;
 
 /** The note's common metadata in one row: its title (renamed in place), status and tags, and the button that opens the full frontmatter. */
-export function NoteRow({ path, session, docPanel, statuses, availableTags, onRename, template = false, trailing }: NoteRowProps) {
+export function NoteRow({ path, session, docPanel, statuses, availableTags, onRename, template = false, trailing, frontmatterInvalid = false }: NoteRowProps) {
   const { t } = useTranslation();
   const row = useRef<HTMLDivElement>(null);
   const [narrow, setNarrow] = useState(false);
@@ -48,8 +61,14 @@ export function NoteRow({ path, session, docPanel, statuses, availableTags, onRe
     <div ref={row} className='note-row' data-narrow={narrow || undefined} role='group' aria-label={t('editor.noteRow')}>
       {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
       <NoteTitleEdit title={session.title} path={path} locked={session.locked} onRename={onRename} />
-      <NoteStatusSelect status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
-      <NoteRowTags metadata={session.metadata} setMetadata={session.setMetadata} availableTags={availableTags} locked={session.locked} />
+      {frontmatterInvalid
+        ? <FrontmatterInvalid />
+        : (
+          <>
+            <NoteStatusSelect status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
+            <NoteRowTags metadata={session.metadata} setMetadata={session.setMetadata} availableTags={availableTags} locked={session.locked} />
+          </>
+        )}
       <button type='button' className='note-row-frontmatter ui-icon-button toolbar-icon-button' aria-pressed={docPanel.showFrontmatter} aria-label={t('editor.frontmatter')} title={t('editor.frontmatter')} onClick={() => docPanel.setNotePanel(docPanel.showFrontmatter ? null : 'frontmatter')}>
         <Braces aria-hidden='true' />
       </button>
