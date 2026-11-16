@@ -164,6 +164,20 @@ export interface LiveNotice {
   message: string;
 }
 
+/** A commit a check-in made, as {@link LiveNotes.committed} hears it. */
+export interface LiveCommit {
+  repository: RepositoryId;
+  /** The note's Git path. */
+  path: string;
+  /** The text committed, frontmatter included. */
+  content: string;
+  commit: string;
+  /** The repository as the check-in opened it for this commit (`service.open`); it reads the commit from now on. */
+  source: RemoteSource;
+  /** Whom the commit is authored by, when an editor could be named; without one, the credential's account. */
+  author?: CommitAuthor;
+}
+
 /** An edition's live editor (`AppServices.liveNotes`). */
 export interface LiveNotes {
   /**
@@ -176,8 +190,42 @@ export interface LiveNotes {
   person(context: LiveContext): LivePersonCalls;
   service: LiveServiceCalls;
   notify?(notice: LiveNotice): Promise<void>;
+  /**
+   * Hears of each commit a check-in makes, right after it landed, whoever started the check-in: a person, a sweep or a
+   * schedule. The check-in does not wait for it, and what it throws or rejects is logged by the note's path and
+   * changes nothing. `createApp` listens beside it ({@link withLiveCommits}) to publish the note.
+   */
+  committed?(commit: LiveCommit): void | Promise<void>;
   /** Required when `editors` declares a builtin editor: a ticket for the person to open the link's live document. */
   socketTicket?(context: LiveContext, repository: RepositoryId, id: string): Promise<LiveSocketTicket>;
+}
+
+/** Runs one listener of a check-in commit; whatever it throws or rejects is logged by the note's path, never by its text. */
+function hearLiveCommit(listener: (commit: LiveCommit) => void | Promise<void>, commit: LiveCommit) {
+  const failed = (error: unknown) => console.warn(`[live-notes] a listener of the check-in commit of ${commit.repository}/${commit.path} failed: ${(error as Error)?.name ?? 'error'}`);
+  try {
+    void Promise.resolve(listener(commit)).catch(failed);
+  } catch (error) {
+    failed(error);
+  }
+}
+
+/** Tells the adapter's `committed` of a commit a check-in just made; the check-in goes on whatever comes of it. */
+export function announceLiveCommit(liveNotes: LiveNotes, commit: LiveCommit): void {
+  if (typeof liveNotes.committed === 'function') hearLiveCommit(heard => liveNotes.committed!(heard), commit);
+}
+
+/**
+ * The adapter as an app uses it once the app itself listens to check-in commits: `listener` hears each commit, and
+ * then the adapter's own `committed` does. Every other member is read through from `liveNotes`, which is not changed,
+ * so a member a later version adds is still there.
+ */
+export function withLiveCommits(liveNotes: LiveNotes, listener: (commit: LiveCommit) => void | Promise<void>): LiveNotes {
+  const committed = (commit: LiveCommit) => {
+    hearLiveCommit(listener, commit);
+    announceLiveCommit(liveNotes, commit);
+  };
+  return Object.create(liveNotes, { committed: { value: committed, enumerable: true } }) as LiveNotes;
 }
 
 /** What opens a link's live document over the built-in editor's socket. */

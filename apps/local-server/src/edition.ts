@@ -8,10 +8,10 @@ export { type BearerGrant, bearerGrantRecord, type IdentityService, providerIden
 export { demoPageCredentials, isDemoPage } from './demo-page.js';
 export { type AssetScope, type AssetStorage, envAssetStorage } from './asset-storage.js';
 export { type PublishedNote } from './gists.js';
-export { type PublishingRequest, type PublishingService, type PublishSync } from './publishing.js';
+export { type CommittedNotes, type PublishingRequest, type PublishingService, type PublishSync } from './publishing.js';
 export { type EditionSources } from './edition-sources.js';
 export { type RemoteHandle } from './request-workspace.js';
-export { CheckedOutError, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveDetail, type LiveEditor, type LiveEditorInfo, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, type LiveText, LiveTooLargeError, LiveUnavailableError, normalizeLiveText } from '@mygitnotes/core';
+export { CheckedOutError, type LiveCheckout, type LiveCommit, type LiveConflict, liveContentHash, type LiveContext, type LiveDetail, type LiveEditor, type LiveEditorInfo, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, type LiveText, LiveTooLargeError, LiveUnavailableError, normalizeLiveText } from '@mygitnotes/core';
 export { type BuiltinLiveLimits, type BuiltinLiveNotes, builtinLiveNotes, type BuiltinLiveNotesOptions, type EditorRef, type LinkInit, type LiveStore, liveStorePrefix, memoryLiveStore, redisLiveStore, type StoredDocument, type StoredEditor, type StoredLink, type StoredTicket, type SyncReceipt } from './live-builtin/index.js';
 export { createPiAgent, type PiAgent, type PiAgentOptions } from './pi-agent.js';
 export { externalPiAgent, type ExternalPiAgentOptions, externalPiEnvironment } from './pi-external-agent.js';

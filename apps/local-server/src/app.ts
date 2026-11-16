@@ -1,5 +1,5 @@
 import express from 'express';
-import { isBuiltinEditor, type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
+import { isBuiltinEditor, type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo, withLiveCommits } from '@mygitnotes/core';
 import { fail } from './route-errors.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -17,7 +17,7 @@ import { createAuth } from './auth.js';
 import { demoPageCredentials, refuseDemoPageSignIn } from './demo-page.js';
 import type { EditionSources } from './edition-sources.js';
 import { type IdentityService, providerIdentity } from './identity.js';
-import { asLocal, asRemote, defaultRepository, eachRepository, namedRemote, namedRepository, notebookRepository, noteRepository, type RemoteHandle, repositoryOrDefault, requestCatalog, requestPerson, requestToken, requestWorkspace, storedDocumentDrafts, workspaceOf } from './request-workspace.js';
+import { asLocal, asRemote, defaultRepository, eachRepository, namedRemote, namedRepository, notebookRepository, noteRepository, type RemoteHandle, repositoryOrDefault, requestCatalog, requestPerson, requestSite, requestToken, requestWorkspace, storedDocumentDrafts, workspaceOf } from './request-workspace.js';
 import { createStudyRouter } from './study.js';
 import { createOutlineImportRouter } from './outline-import.js';
 import { createWorkspaceDocumentRouter } from './workspace-document.js';
@@ -27,10 +27,10 @@ import { type AssetStorage, envAssetStorage } from './asset-storage.js';
 import { createLocalR2AssetHandler, createR2AssetHandler, type NoteReader } from './r2-assets.js';
 import { createR2ManagerRouter } from './r2-manager.js';
 import { createFileManagerRouter } from './file-manager.js';
-import { createGistRouter, gistSite, gistToken, noteGist, syncGists } from './gists.js';
+import { createGistRouter, gistAccess, gistSite, gistToken, noteGist, syncGists } from './gists.js';
 import { isLoopbackHttpOrigin, type PiAgent } from './pi-agent.js';
 import { externalPiAgent, externalPiEnvironment } from './pi-external-agent.js';
-import { type PublishingService, publishNotes } from './publishing.js';
+import { commitPublisher, publishChanges, type PublishingService, publishNotes } from './publishing.js';
 import { createWorkspaceMembersRouter } from './workspace-members.js';
 import { createLiveRouter, createLiveSweepRouter } from './live-routes.js';
 import { liveScheduleSetting, startLiveSchedule } from './live-schedule.js';
@@ -62,7 +62,11 @@ export interface AppServices {
   /** The remote read cache; defaults to Redis when configured, else process memory. Local workspaces use none. */
   remoteCache?: RemoteCache;
   piAgent?: PiAgent;
-  /** Publishes committed notes beyond the repository, after the commit succeeded and beside the Gist push; without it nothing changes. */
+  /**
+   * Publishes committed notes beyond the repository, after the commit succeeded and beside the Gist push; without it
+   * nothing changes. Its `sync` hears the commit routes; its `syncCommitted`, when it has one, every other commit of
+   * note text: live check-ins, `/mcp` writes and tag commits.
+   */
   publishing?: PublishingService;
   /**
    * Keeps work a request starts without awaiting (the agent hearing of a membership change) alive after the answer, as
@@ -137,6 +141,11 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   const recordStore = overrides.recordStore ?? (lightweight ? new NoRecordStore() : createRecordStore(base));
   const services: AppServices = { ...overrides, configSource, recordStore, workspaceChoices, sessions: overrides.sessions ?? (lightweight ? cookieSessions() : storedSessions(recordStore)), assetStorage: overrides.assetStorage ?? envAssetStorage(), remoteCache: 'remoteCache' in overrides ? overrides.remoteCache : local ? undefined : createRemoteCache(), webDist: overrides.webDist ?? path.join(base, 'apps/web/dist') };
   const { remoteCache: cache, sessions, assetStorage, publishing } = services;
+  // Commits that answer no commit route are published too: a tag commit below, an `/mcp` write, and each commit of a check-in.
+  const publishCommit = commitPublisher({ ...(publishing ? { publishing } : {}), ...(services.defer ? { defer: services.defer } : {}) });
+  // The live editor as this app uses it: every check-in it runs (a person's, a sweep's, the schedule's) has its commit
+  // published. A check-in commits with the deployment's credential, so it names no person and holds no Gist access.
+  const liveNotes = services.liveNotes && withLiveCommits(services.liveNotes, ({ repository, path: file, content, source }) => void publishCommit({ repository: { kind: 'remote', id: repository, reader: source, authenticated: true }, notes: [{ path: file, content }] }));
   const identity = services.identity ?? providerIdentity({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined });
   // A remote deployment offers the agent panel only when an edition supplies an agent or the deployer names an external bridge.
   const external = local || services.piAgent ? undefined : externalPiEnvironment();
@@ -149,8 +158,8 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   const visitorChoice = choosesRepository() && Boolean(workspaceChoices);
   if (product && choosesRepository()) throw new Error("A product repository (MYGITNOTES_PRODUCT_REPOSITORY or product_repository) offers Core updates, which a deployment where each visitor chooses a repository does not give its visitors. Remove it, or name the deployment's repository with MYGITNOTES_REPOSITORY.");
   // A long-running server checks live notes in every night itself; on Vercel an external cron calls /api/live/sweep.
-  if (overrides.liveNotes && liveSchedule && !process.env.VERCEL) {
-    const live = overrides.liveNotes;
+  if (liveNotes && liveSchedule && !process.env.VERCEL) {
+    const live = liveNotes;
     startLiveSchedule({
       setting: liveSchedule,
       sweep: async instant => {
@@ -188,8 +197,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   app.use('/api/auth', refuseDemoPageSignIn, createAuth({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined, identity, agentFor: piAgent?.availableTo }));
   app.use('/api', workspaceChoiceRouter({ identity, choices: workspaceChoices ?? undefined }));
   services.routes?.(app, services);
-  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources, services.liveNotes));
-  const { liveNotes } = services;
+  app.use('/mcp', createRemoteMCP(recordStore, identity, configSource, assetStorage, cache, services.editionSources, liveNotes, publishCommit));
   // The sweep trigger opens no workspace and holds no session: it is mounted before the workspace routes.
   if (liveNotes) app.use(createLiveSweepRouter({ liveNotes, ...(services.defer ? { defer: services.defer } : {}) }));
   app.get('/api/history/events', serverlessHistoryEvents);
@@ -497,6 +505,9 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         if (changes.length === 0) return res.json({ success: true, changedPaths: [] });
         const message = typeof req.body.message === 'string' && req.body.message.trim() ? req.body.message.trim() : `docs(notes): update tags in ${changes.length} note${changes.length === 1 ? '' : 's'}`;
         const receipt = await reader.commitChanges(changes, String(req.body.revision || ''), 'tags', 'notes', message);
+        // The notes are published with their new tags, as after a commit route; the answer is the commit's own either way.
+        const person = requestPerson(res)?.person, gists = gistAccess(requestSite(res), requestToken(res));
+        await publishChanges(publishCommit, { repository: target, changes, ...(person ? { person } : {}), ...(gists ? { gists } : {}) });
         res.json(receipt);
       } catch (error) {
         fail(res, error);

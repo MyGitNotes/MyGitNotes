@@ -4,10 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { Router } from 'express';
-import { type EditionSourceConfig, type LiveContext, sourceIdentity, type WorkspaceConfigSource } from '@mygitnotes/core';
+import { checkInLink, type EditionSourceConfig, gitBlobId, type LiveCommit, type LiveContext, parseWorkspaceConfig, sourceIdentity, withLiveCommits, type WorkspaceConfigSource } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { type IdentityService } from '../src/identity.js';
-import { memoryCommits, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
+import { memoryCommitCounter, memoryCommits, MemoryEditionSource, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
 import { type MemoryLiveNotes, memoryLiveNotes } from '../src/memory-live-notes.js';
 import type { CommittedNotes, PublishingRequest, PublishingService, PublishSync } from '../src/publishing.js';
 import { createRecordStore, type RecordStore } from '../src/record-store/index.js';
@@ -207,13 +207,17 @@ describe('a live check-in', () => {
 
 describe('on GitHub', () => {
   const manifest = 'schema_version: 1\nworkspace:\n  title: Hosted\n  default_notebook: life\nnotebooks:\n  - id: life\n    title: Life\n    root: notes/life\n';
-  const files: Record<string, string> = { '.mygitnotes.yaml': manifest, 'notes/life/shared.md': '---\ntitle: Shared\ngist: abc123\ntags: [todo]\n---\n\nOld body\n', 'notes/life/private.md': '---\ntags: [todo]\n---\n# Private\n', 'notes/life/picks.compilation.yml': 'version: 1\nid: picks\ntitle: Picks\narrangement: lane\ntags: [todo]\nsource:\n  kind: tag\n  tag: todo\n' };
+  const initial: Record<string, string> = { '.mygitnotes.yaml': manifest, 'notes/life/shared.md': '---\ntitle: Shared\ngist: abc123\ntags: [todo]\n---\n\nOld body\n', 'notes/life/private.md': '---\ntags: [todo]\n---\n# Private\n', 'notes/life/picks.compilation.yml': 'version: 1\nid: picks\ntitle: Picks\narrangement: lane\ntags: [todo]\nsource:\n  kind: tag\n  tag: todo\n' };
   const session = 'c'.repeat(43);
   const headers = { Cookie: `gh_notes_session=${session}`, 'Content-Type': 'application/json' };
   const repository = 'github:owner/home@main';
   /** Gists the fake GitHub holds, by id; the Gist requests it received, each with the token it was sent. */
   let gists: Map<string, { description: string; public: boolean; files: Record<string, { content: string; }>; }>;
   let gistCalls: { method: string; endpoint: string; token: string | null; }[];
+  /** The files the fake GitHub serves. */
+  let files: Record<string, string>;
+  /** How long the fake GitHub takes to update a Gist, in milliseconds. */
+  let gistDelay: number;
 
   const start = async (services: Record<string, unknown> = {}) => {
     await listen(createApp(root, { defer: (work: Promise<unknown>) => void deferred.push(work), ...services }));
@@ -225,6 +229,8 @@ describe('on GitHub', () => {
   beforeEach(async () => {
     gists = new Map([['abc123', { description: 'Shared', public: false, files: { 'shared.md': { content: 'Old body\n' } } }]]);
     gistCalls = [];
+    gistDelay = 0;
+    files = { ...initial };
     for (const [key, value] of Object.entries({ MYGITNOTES_SOURCE: 'github', MYGITNOTES_REPOSITORY: 'owner/home', MYGITNOTES_BRANCH: 'main', SESSION_SECRET: 's'.repeat(64), UPSTASH_REDIS_REST_URL: '', REDIS_URL: '', KV_REST_API_URL: '', MYGITNOTES_STORAGE: '', APP_URL: '', VERCEL: '', MYGITNOTES_PRODUCT_REPOSITORY: '' })) vi.stubEnv(key, value);
     await createRecordStore(root).set(session, { kind: 'session', token: 'fixture-owner', userId: 1, login: 'owner' });
     const nativeFetch = globalThis.fetch;
@@ -237,6 +243,7 @@ describe('on GitHub', () => {
         const found = gists.get(gist[1]?.slice(1) ?? '');
         if (!found) return json({ message: 'Not Found' }, 404);
         if (method === 'PATCH') {
+          if (gistDelay) await new Promise(resolve => setTimeout(resolve, gistDelay));
           const body = JSON.parse(String(init!.body)) as { description: string; files: Record<string, { filename: string; content: string; }>; };
           for (const [name, file] of Object.entries(body.files)) {
             delete found.files[name];
@@ -318,6 +325,34 @@ describe('on GitHub', () => {
     expect(synced).toEqual([]);
   });
 
+  it('holds the answer of an MCP write and of a tag commit until the Gist is updated where the deployment keeps no work alive after an answer', async () => {
+    gistDelay = 300;
+    await start({ defer: undefined });
+    await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'By the agent\n', revision: 'a'.repeat(40) });
+    expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'By the agent\n' } });
+    // The fake GitHub keeps serving the note's first text, which the tag commit rewrites and publishes.
+    expect((await call('POST', '/api/tags/apply', { repository, revision: 'a'.repeat(40), entries: [{ path: 'notes/life/shared.md', tags: ['kept'] }] })).status).toBe(200);
+    expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'Old body\n' } });
+  });
+
+  it('answers at once where the deployment keeps the work alive, and the Gist follows', async () => {
+    gistDelay = 300;
+    await start();
+    await tool(await grant(), 'save_note', { path: 'notes/life/shared.md', content: 'By the agent\n', revision: 'a'.repeat(40) });
+    expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'Old body\n' } });
+    await settled();
+    expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'By the agent\n' } });
+  });
+
+  it('publishes no agent file or template an MCP write commits', async () => {
+    files['notes/life/.templates/post.md'] = '---\ngist: abc123\npublish: post\n---\n# {{title}}\n';
+    await start({ publishing: service() });
+    expect(await tool(await grant(), 'write', { path: 'notes/life/.templates/post.md', content: '---\ngist: abc123\npublish: post\n---\n# {{title}} again\n', revision: 'a'.repeat(40) })).toMatchObject({ committed: true });
+    await settled();
+    expect(committed).toEqual([]);
+    expect(gistCalls).toEqual([]);
+  });
+
   it('calls nothing after a tag commit of notes that name no Gist, without a service', async () => {
     await start();
     const { status, body } = await call('POST', '/api/tags/apply', { repository, revision: 'a'.repeat(40), entries: [{ path: 'notes/life/private.md', tags: ['kept'] }] });
@@ -326,5 +361,73 @@ describe('on GitHub', () => {
     await settled();
     expect(deferred).toEqual([]);
     expect(gistCalls).toEqual([]);
+  });
+});
+
+describe('the check-in engine', () => {
+  const manifest = 'schema_version: 4\nworkspace:\n  title: Hosted\n  default_notebook: life\nnotebooks:\n  - id: life\n    title: Life\n    root: notes/life\n';
+  const edition: EditionSourceConfig = { type: 'edition', platform: 'hosted', repository: 'p1/notes', branch: 'main', label: 'Notes' };
+  const repository = sourceIdentity(edition);
+  const pat: LiveContext = { person: { realm: 'edition', userId: 'p1' }, author: { name: 'Pat', email: 'pat@example.test' }, request: { headers: {} } };
+  let files: MemoryFiles, liveNotes: MemoryLiveNotes;
+  const git = () => new MemoryEditionSource(edition, files, true, memoryCommitCounter(files), undefined, async () => parseWorkspaceConfig(manifest));
+  const checkout = async () => {
+    const content = files.get('notes/life/a.md')!;
+    const { checkout: row } = await liveNotes.person(pat).checkout(repository, { notebook: 'notes~life', path: 'notes/life/a.md', base: { commit: (await git().getSnapshot(true)).sha, blob: gitBlobId(Buffer.from(content), 40), content } });
+    return row.id;
+  };
+  const run = (adapter: Parameters<typeof checkInLink>[0], id: string) => checkInLink(adapter, repository, id, { mode: 'manual', sleep: async () => {} });
+
+  beforeEach(() => {
+    files = new Map([['.mygitnotes.yaml', manifest], ['notes/life/a.md', '# Git\n']]);
+    liveNotes = memoryLiveNotes({ editor: { origin: 'https://live.example.test', messageType: 'live-status' }, repositories: [{ source: edition, files }] });
+  });
+
+  it('tells the listener and the adapter of one commit when the head moved and the check-in committed again', async () => {
+    const heard: LiveCommit[] = [], own: LiveCommit[] = [];
+    liveNotes.committed = commit => void own.push(commit);
+    const listening = withLiveCommits(liveNotes, commit => void heard.push(commit));
+    const id = await checkout();
+    liveNotes.type(repository, id, '# Typed\n', pat);
+    const open = liveNotes.service.open.bind(liveNotes.service);
+    vi.spyOn(liveNotes.service, 'open').mockImplementationOnce(async (...args) => {
+      const source = await open(...args);
+      const read = source.getSnapshot.bind(source);
+      source.getSnapshot = async fresh => {
+        const snapshot = await read(fresh);
+        // Someone commits another note between this check-in's read and its commit.
+        const other = git(), head = await other.getSnapshot(true);
+        await other.commitChanges([{ path: 'notes/life/other.md', content: '# Other\n' }], head.sha, 'write', 'notes', undefined, head);
+        source.getSnapshot = read;
+        return snapshot;
+      };
+      return source;
+    });
+    const result = await run(listening, id);
+    expect(result).toMatchObject({ committed: true, released: true });
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatchObject({ repository, path: 'notes/life/a.md', content: '# Typed\n', commit: result.commit, author: { name: 'Pat', email: 'pat@example.test' } });
+    expect((await heard[0].source.readFile('notes/life/a.md')).toString('utf8')).toBe('# Typed\n');
+    expect(own).toEqual(heard);
+  });
+
+  it('checks the note in whatever a listener throws or rejects, logging the path and not the text', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const thrown = () => {
+      throw new Error('# Typed');
+    };
+    for (const listener of [thrown, async () => thrown()]) {
+      files.set('notes/life/a.md', '# Git\n');
+      const id = await checkout();
+      liveNotes.type(repository, id, '# Typed\n', pat);
+      expect(await run(withLiveCommits(liveNotes, listener), id)).toMatchObject({ committed: true, released: true });
+    }
+    await new Promise(resolve => setImmediate(resolve));
+    const lines = warn.mock.calls.map(parts => parts.join(' '));
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line).toContain(`${repository}/notes/life/a.md`);
+      expect(line).not.toContain('Typed');
+    }
   });
 });
