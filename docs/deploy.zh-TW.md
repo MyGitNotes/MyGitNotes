@@ -373,7 +373,10 @@ pnpm convert-sources --workspace ../hub --yes   # 轉換另一個已對應 workt
 | 變數 | 意義 |
 | --- | --- |
 | `MYGITNOTES_LIVE_CHECKIN_AT` | 每晚簽回的時間，`HH:mm`，以 `MYGITNOTES_TIMEZONE` 的時區計（預設 `03:00`；沒設時區時為 UTC）。設為 `off` 關閉程序內排程。不是時間的值會讓伺服器啟動失敗。 |
+| `MYGITNOTES_LIVE_IDLE_CHECKIN` | 沒有人開著的筆記，在最後一次編輯後多久簽回，`1m` 到 `60m`（預設 `5m`），或 `off`。其他值會讓伺服器啟動失敗。 |
 | `MYGITNOTES_LIVE_SWEEP_SECRET` | 至少 32 字元的隨機密鑰，啟用給外部觸發用的 `POST /api/live/sweep`。沒設時這個路由回 404。 |
+
+**升級使用外部編輯器的版本：** 長駐的伺服器現在除了每晚簽回，也會在一則筆記沒有人開著滿 `MYGITNOTES_LIVE_IDLE_CHECKIN`（預設 5 分鐘）後簽回。設 `MYGITNOTES_LIVE_IDLE_CHECKIN=off` 只保留每晚簽回。簽不回的筆記（沒有任何編輯者的憑證能寫入，或待歸檔筆記的路徑規則無法歸檔）會在 1 分鐘後再試，之後 2、4 分鐘依此加倍，最多 30 分鐘，通知在筆記改變前只送一次。
 
 長時間執行的伺服器（Docker、Node）會自己在這個時間、以及之後 10、20、30 分鐘（給當時還有人在編輯的筆記）各簽回一次，啟動後一兩分鐘內也會補跑一次，補上停機期間錯過的簽回。Vercel 的函式不會常駐，所以那裡不跑排程：請用 Vercel Cron、Nomad periodic job 或 cron 呼叫簽回路由。路由回 202 後繼續在背景執行；加上 `?wait=1` 會等跑完再回報告。
 

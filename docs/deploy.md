@@ -386,7 +386,10 @@ An edition may attach an external live (co-)editor to remote repositories; the c
 | Variable | Meaning |
 | --- | --- |
 | `MYGITNOTES_LIVE_CHECKIN_AT` | When the nightly check-in runs, `HH:mm` in `MYGITNOTES_TIMEZONE` (default `03:00`; UTC without a time zone). `off` turns the in-process schedule off. A value that is no time stops the server at start. |
+| `MYGITNOTES_LIVE_IDLE_CHECKIN` | How long after its last edit a note nobody has open is checked in, `1m` to `60m` (default `5m`), or `off`. Any other value stops the server at start. |
 | `MYGITNOTES_LIVE_SWEEP_SECRET` | A random secret of at least 32 characters that enables `POST /api/live/sweep` for an external trigger. Without it the route answers 404. |
+
+**Upgrading an edition with an external editor:** a long-running server now also checks a note in once nobody has had it open for `MYGITNOTES_LIVE_IDLE_CHECKIN` (5 minutes by default), beside the nightly check-in. Set `MYGITNOTES_LIVE_IDLE_CHECKIN=off` to keep only the nightly one. A note it cannot check in (no editor's credential may write, or a pending note its path rule cannot file) is tried again after 1 minute, then 2, 4 and so on up to 30, and its notice is sent once until the note changes.
 
 A long-running server (Docker, Node) sweeps by itself at that time and 10, 20 and 30 minutes later, for notes someone was still editing, and once a minute or two after it starts, which catches up after downtime. Vercel functions do not stay up, so there the schedule does not run: call the sweep route from Vercel Cron, a Nomad periodic job or cron. The route answers 202 and works on after answering; `?wait=1` waits and answers the report.
 
