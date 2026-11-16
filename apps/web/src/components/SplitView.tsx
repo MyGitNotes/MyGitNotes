@@ -114,11 +114,13 @@ export function SplitView({ source, sourceScroller, content, path, notebookId, s
     if (!textarea) return;
     const listener = () => onScrollRef.current('source');
     textarea.addEventListener('scroll', listener, { passive: true });
-    const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+    const resize = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(() => {
         // An image or a diagram drawn late moves the blocks: the map is measured again and the preview kept on the source's place.
         points.current = null;
         if (syncRef.current) followRef.current('source');
-      }) : null;
+      })
+      : null;
     resize?.observe(textarea);
     if (preview.current) resize?.observe(preview.current);
     if (preview.current?.firstElementChild) resize?.observe(preview.current.firstElementChild);
@@ -147,9 +149,7 @@ export function SplitView({ source, sourceScroller, content, path, notebookId, s
     <div className='note-split-view' data-split-view>
       <div className='note-split-pane' data-split-part='source'>{source}</div>
       <div className='note-split-divider' data-split-part='divider'>
-        <button type='button' className='ui-icon-button note-split-sync' aria-label={label} aria-pressed={sync} title={t(sync ? 'editor.scrollSyncOn' : 'editor.scrollSyncOff')} onClick={toggle}>
-          {sync ? <Link2 aria-hidden='true' /> : <Link2Off aria-hidden='true' />}
-        </button>
+        <button type='button' className='ui-icon-button note-split-sync' aria-label={label} aria-pressed={sync} title={t(sync ? 'editor.scrollSyncOn' : 'editor.scrollSyncOff')} onClick={toggle}>{sync ? <Link2 aria-hidden='true' /> : <Link2Off aria-hidden='true' />}</button>
       </div>
       <div ref={preview} className='note-split-preview' data-split-part='preview' data-split-preview onScroll={() => onScrollRef.current('preview')}>
         <NoteHtml className='prose-custom screen-markdown' html={html} notebookId={notebookId} />
