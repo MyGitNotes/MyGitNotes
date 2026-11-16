@@ -7,6 +7,7 @@ import { createServer, type Server } from 'node:http';
 import { assetHash, deriveAlias, GitHubSource, notebookKey, type RemoteChange } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 
+vi.mock('../src/auth.js', async original => ({ ...await original<typeof import('../src/auth.js')>(), authToken: async () => 'fixture-token' }));
 // A workspace whose notes total more than 32 MiB: a move changes only what links to the moved note.
 vi.setConfig({ testTimeout: 60000 });
 const MiB = 1024 * 1024;
@@ -138,4 +139,44 @@ it('refuses a GitHub move whose linking notes total more than 32 MiB, naming the
   expect(response.status).toBe(413);
   expect((await response.json()).error).toMatch(RETAINED);
   expect(w.published).toHaveLength(0);
+});
+
+const moveFolder = async (base: string, notebookId: string) => {
+  const { revision } = await fetch(`${base}/api/folder-manager?notebookId=${notebookId}`).then(r => r.json());
+  return fetch(`${base}/api/folder-manager`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command: { kind: 'move', notebookId, path: 'docs', parent: 'archive' }, revision }) });
+};
+const folderWorkspace = () => {
+  const files = largeWorkspace();
+  files.set('notes/a/docs/_dir.yml', Buffer.from('title: Docs\n'));
+  files.set('notes/a/docs/page.md', Buffer.from('# Page\n\n[Up](../linker.md)\n'));
+  files.set('notes/a/archive/_dir.yml', Buffer.from('title: Archive\n'));
+  files.set('notes/a/linker.md', Buffer.from('# Linker\n\n[Page](docs/page.md)\n'));
+  return files;
+};
+
+it('moves a folder from the sidebar in a local workspace whose notes total more than 32 MiB', async () => {
+  const w = await local(folderWorkspace());
+  const response = await moveFolder(w.base, w.notebookId);
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(w.read('notes/a/archive/docs/page.md')).toBe('# Page\n\n[Up](../../linker.md)\n');
+  expect(w.read('notes/a/linker.md')).toBe('# Linker\n\n[Page](archive/docs/page.md)\n');
+  expect(w.read('notes/a/mention.md')).toBe('# Mention\n\nAn unrelated [path](other/path.md).\n');
+  expect(w.read('notes/a/bulk/filler-3.md')).toBe(filler(3).toString('utf8'));
+});
+
+it('moves a folder from the sidebar in a GitHub workspace whose notes total more than 32 MiB', async () => {
+  const w = await remote(folderWorkspace());
+  vi.spyOn(GitHubSource.prototype as any, 'commitChanges').mockImplementation(async (...args: unknown[]) => {
+    for (const change of args[0] as RemoteChange[]) {
+      if (change.sha === null) folderFiles.delete(change.path);
+      else folderFiles.set(change.path, Buffer.from(change.content ?? ''));
+    }
+    return { revision: 'two' };
+  });
+  const folderFiles = new Map<string, Buffer>();
+  const response = await moveFolder(w.base, w.notebookId);
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(folderFiles.get('notes/a/archive/docs/page.md')!.toString()).toBe('# Page\n\n[Up](../../linker.md)\n');
+  expect(folderFiles.get('notes/a/linker.md')!.toString()).toBe('# Linker\n\n[Page](archive/docs/page.md)\n');
+  expect([...folderFiles.keys()].some(file => file.includes('filler') || file.includes('mention'))).toBe(false);
 });
