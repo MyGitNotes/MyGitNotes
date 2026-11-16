@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
+import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, liveMergeAnswerOf, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
 import { liveDocumentName, type LiveDocuments, liveDocuments, type LiveSnapshot, seedLiveState } from './documents.js';
 import { liveSocket, type LiveSocketLimits } from './socket.js';
-import { type EditorRef, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
+import { type EditorRef, LIVE_MERGE_MS, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
 
 /*
  * The built-in live editor as a `LiveNotes` (docs/specs/2026-11-15-builtin-live-editor §2, §5): the seam's calls over
@@ -84,6 +84,13 @@ export interface BuiltinLiveParts {
 const BUILTIN: LiveBuiltinEditorInfo = { kind: 'builtin' };
 const DEFAULT_LIMITS: BuiltinLiveLimits = { maxBytes: LIVE_MAX_BYTES, idleMs: 10 * 60_000, leaseMs: 5 * 60_000, ringTexts: 64, ringBytes: 16 * 1024 * 1024, maxPayload: 8 * 1024 * 1024, maxDocuments: 200, maxConnections: 50, maxUnseated: 100, maxUnseatedPerAddress: 10, maxAwarenessBytes: 4096, pollMs: 5000, beatMs: 15_000, shutdownMs: 15_000, socketMs: 10 * 60_000 };
 const REVISION = /^t:([0-9a-f]{64})$/;
+/** A merge changed what the live note changed too: nothing of it is taken. */
+class MergeConflict extends Error {}
+/**
+ * The store key of a merge's answer: one per person, link and merge id, so nobody answers, or forestalls, someone else's
+ * merge by naming its id, and a repeat finds the answer in the reopened note too.
+ */
+const mergeKey = ({ person }: LiveContext, id: string, mergeId: string) => createHash('sha256').update(JSON.stringify([person.realm, person.userId, id, mergeId]), 'utf8').digest('hex');
 const iso = (time: number) => new Date(time).toISOString();
 
 /**
@@ -233,6 +240,34 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
         covered(repository);
         const link = isLiveId(id) ? await store.link(id) : null;
         return link && !link.live && link.repository === repository ? link.path : null;
+      },
+      /*
+       * A text written on a base the writer names, merged by character over what the note became since (A4 of the
+       * collab-first spec). It is one more server write on the document's queue, in the writer's name, so they are
+       * credited and their credential may commit the check-in. A conflict, or a diff that ran out of time, takes nothing.
+       */
+      async merge(repository, id, request): Promise<LiveMergeAnswer> {
+        const link = await live(repository, id);
+        const base = fits(normalizeLiveText(request.base)), mine = fits(normalizeLiveText(request.text));
+        const key = mergeKey(context, link.id, request.mergeId);
+        // A repeat is answered before anything is computed; the append's own check decides between two that race.
+        const known = await store.mergeAnswer(key, clock());
+        if (known !== null) return liveMergeAnswerOf(JSON.parse(known));
+        let written;
+        try {
+          written = await documents.edit(link, liveEditorRef(context, false), current => {
+            const next = rebaseLiveText(base, current, mine);
+            if (next === null) throw new MergeConflict();
+            return fits(next);
+          }, { key, until: clock() + LIVE_MERGE_MS, answer: hash => JSON.stringify({ applied: true, contentHash: hash }) });
+        } catch (error) {
+          if (error instanceof MergeConflict) return { conflict: true };
+          throw error;
+        }
+        if (written.merged !== undefined) return liveMergeAnswerOf(JSON.parse(written.merged));
+        documents.remember(link, written);
+        // Nothing to take (the note holds the text already) is applied too, and leaves no edit.
+        return written.answer !== undefined ? liveMergeAnswerOf(JSON.parse(written.answer)) : { applied: true, contentHash: written.hash };
       },
     });
 

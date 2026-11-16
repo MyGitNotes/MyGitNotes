@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { type EditionSourceConfig, isBuiltinEditor, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
+import { type EditionSourceConfig, isBuiltinEditor, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, type LiveMergeRequest, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, rebaseLiveText, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
 import { memoryCommitCounter, MemoryEditionSource, type MemoryFiles } from './memory-edition-source.js';
 
 /** The clock the memory adapter reads, which a test moves on. */
@@ -42,6 +42,8 @@ export interface MemoryLiveNotesOptions {
    * memory files whoever it is asked to open them as.
    */
   persons?: boolean;
+  /** Whether the person calls implement `merge` (A4 of the collab-first spec); left out, they do not, as a 0.20 adapter. */
+  merge?: boolean;
 }
 
 /** The memory adapter, with the hooks of its editor that a test drives. */
@@ -62,6 +64,8 @@ export interface MemoryLiveNotes extends LiveNotes {
 
 /** How long a socket ticket holds. */
 const TICKET_MS = 60_000;
+/** How long a merge's answer is kept for a repeat of it. */
+const MERGE_MS = 24 * 60 * 60_000;
 
 /** One change to a document: `text` replaces `from` to `to`. */
 interface Splice {
@@ -141,11 +145,13 @@ const iso = (time: number) => new Date(time).toISOString();
  * session is open and `h:<hash>` otherwise, and a write on an older revision of the open session is rebased over the
  * typing since. Its service opens a memory Git source over the same files that records each commit's author and message.
  */
-export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000, discard = false, retarget = false, persons = false }: MemoryLiveNotesOptions): MemoryLiveNotes {
+export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000, discard = false, retarget = false, persons = false, merge = false }: MemoryLiveNotesOptions): MemoryLiveNotes {
   const covered = new Map(repositories.map(entry => [sourceIdentity(entry.source), entry]));
   const state = new Map<RepositoryId, { links: Map<string, Link>; byPath: Map<string, string>; }>();
   const notices: LiveNotice[] = [];
   const tickets = new Map<string, { repository: RepositoryId; id: string; document: string; context: LiveContext; until: number; }>();
+  /** What each merge answered, by who merged, into which link, under which id. */
+  const merged = new Map<string, { answer: LiveMergeAnswer; until: number; }>();
   let created = 0;
 
   const repositoryState = (repository: RepositoryId) => {
@@ -261,6 +267,23 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           const link = repositoryState(repository).links.get(id);
           return link && !link.live ? link.path : null;
         },
+        ...(merge
+          ? {
+            async merge(repository: RepositoryId, id: string, request: LiveMergeRequest): Promise<LiveMergeAnswer> {
+              const link = linkOf(repository, id);
+              const key = JSON.stringify([context.person.realm, context.person.userId, id, request.mergeId]);
+              const known = merged.get(key);
+              if (known && known.until > clock.now()) return known.answer;
+              // As the built-in editor merges: by character, over what the note became since the base.
+              const next = rebaseLiveText(request.base.replace(/[\r\0]/g, ''), link.text, request.text.replace(/[\r\0]/g, ''));
+              if (next === null) return { conflict: true };
+              if (!record(link, fits(next), editorOf(context, false))) return { applied: true, contentHash: liveContentHash(link.text) };
+              const answer: LiveMergeAnswer = { applied: true, contentHash: liveContentHash(next) };
+              merged.set(key, { answer, until: clock.now() + MERGE_MS });
+              return answer;
+            },
+          }
+          : {}),
       };
     },
     service: {

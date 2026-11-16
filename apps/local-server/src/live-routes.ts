@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { formatTemplateDate, formatTemplateTime, isBuiltinEditor, isLiveNotePath, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, LiveLeasedError, type LiveNotes, LiveNotLiveError, livePathRule, livePathRuleParts, livePendingPath, LiveTooLargeError, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
+import { formatTemplateDate, formatTemplateTime, isBuiltinEditor, isLiveMergeId, isLiveNotePath, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, LiveLeasedError, type LiveNotes, LiveNotLiveError, livePathRule, livePathRuleParts, livePendingPath, type LiveRepository, LiveTooLargeError, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, type RemoteSnapshot, type RemoteSource, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
 import { liveDueInstant, liveScheduleSetting } from './live-schedule.js';
 import { asRemote, notebookRepository, noteRepository, requestPerson, workspaceOf } from './request-workspace.js';
 import { fail } from './route-errors.js';
@@ -58,7 +58,14 @@ class LeasedError extends SourceError {
     super('The note is being checked in. Try again in a moment.', 409);
   }
 }
-const liveFail = (res: express.Response, error: unknown) => fail(res, error, error instanceof LiveTooLargeError ? { code: 'too-large' } : error instanceof NotLiveError || error instanceof NotOpenLiveError || error instanceof HasEditsError || error instanceof LeasedError ? { code: error.code } : {});
+/** A merge that changed what the live note changed too: nothing was taken, and the web keeps the person's text as a draft. */
+class MergeConflictError extends SourceError {
+  readonly code = 'merge-conflict';
+  constructor(readonly checkout: LiveCheckoutView) {
+    super('The text changed the same lines as the live note did since. Nothing was merged.', 409);
+  }
+}
+const liveFail = (res: express.Response, error: unknown) => fail(res, error, error instanceof LiveTooLargeError ? { code: 'too-large' } : error instanceof MergeConflictError ? { code: error.code, checkout: error.checkout } : error instanceof NotLiveError || error instanceof NotOpenLiveError || error instanceof HasEditsError || error instanceof LeasedError ? { code: error.code } : {});
 
 /** The sweep secret of an environment: at least 32 characters, else none, and the sweep route answers 404. */
 export function liveSweepSecret(env: Record<string, string | undefined>): string | undefined {
@@ -128,6 +135,26 @@ const signedIn = (res: express.Response) => {
   if (!requestPerson(res)) throw new SourceError('Sign in with write permission to edit notes live.', 403);
 };
 
+/**
+ * Checks the note at `file` out to the editor on its Git text, or joins the link it already is; a pending note's
+ * virtual path answers the link it is while it is pending. What `/api/live/checkout` answers, and what a merge starts with.
+ */
+async function checkOut(file: string, notebook: NotebookConfig, key: NotebookKey, { reader, snapshot, view }: { reader: RemoteSource; snapshot: RemoteSnapshot; view: LiveRepository; }): Promise<{ checkout: LiveCheckout; outcome: 'created' | 'joined' | 'reopened'; }> {
+  // A pending note has no Git text to check out: its virtual path answers the link it already is, while it is pending.
+  if (parseLivePendingPath(file, [notebook])) {
+    const pending = await reader.liveCheckout(file);
+    if (!pending || pending.path !== null) throw new SourceError('Note not found.', 404);
+    return { checkout: pending, outcome: 'joined' };
+  }
+  const relative = file.slice(notebook.root.length + 1);
+  // Outlines, template files and compilations keep the direct editor.
+  if (!isLiveNotePath(relative, notebook) || (notebook.templates ?? []).some(template => template.file === relative)) throw notLive('This note opens in the direct editor.');
+  const entry = snapshot.entries.find(candidate => candidate.path === file && candidate.type === 'blob' && candidate.mode !== '120000');
+  if (!entry) throw new SourceError('Note not found.', 404);
+  const content = (await reader.readSnapshotFile(snapshot, file)).toString('utf8');
+  return view.checkout(key, file, { commit: snapshot.sha, blob: entry.sha, content: normalizeLiveText(content) });
+}
+
 const CLOCK_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const isFolder = (value: string) => value === '' || (value.length <= 512 && !/[\\\p{Cc}]/u.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..'));
@@ -141,21 +168,34 @@ export function createLiveRouter(): express.Router {
       signedIn(res);
       const { notebookId, path: file } = req.body ?? {};
       const { handle, notebook, key } = await noteRepository(res, file, notebookId);
-      const { reader, snapshot, view } = await writerOf(res, handle);
-      // A pending note has no Git text to check out: its virtual path answers the link it already is, while it is pending.
-      if (parseLivePendingPath(file as string, [notebook])) {
-        const pending = await reader.liveCheckout(file as string);
-        if (!pending || pending.path !== null) throw new SourceError('Note not found.', 404);
-        return res.json({ checkout: viewOf(pending, key, notebook), outcome: 'joined' });
-      }
-      const relative = (file as string).slice(notebook.root.length + 1);
-      // Outlines, template files and compilations keep the direct editor.
-      if (!isLiveNotePath(relative, notebook) || (notebook.templates ?? []).some(template => template.file === relative)) throw notLive('This note opens in the direct editor.');
-      const entry = snapshot.entries.find(candidate => candidate.path === file && candidate.type === 'blob' && candidate.mode !== '120000');
-      if (!entry) throw new SourceError('Note not found.', 404);
-      const content = (await reader.readSnapshotFile(snapshot, file)).toString('utf8');
-      const { checkout, outcome } = await view.checkout(key, file, { commit: snapshot.sha, blob: entry.sha, content: normalizeLiveText(content) });
+      const { checkout, outcome } = await checkOut(file as string, notebook, key, await writerOf(res, handle));
       res.json({ checkout: viewOf(checkout, key, notebook), outcome });
+    } catch (error) {
+      liveFail(res, error);
+    }
+  });
+
+  /*
+   * Merging a text written off the live note into it (docs/specs/2026-11-16-collab-first-self-host A4): a draft made
+   * offline on the text Git held (`base`), or what a tab typed after its note was released. With the rights of a
+   * checkout, which it makes first when the note is not live. The writer names the base: it only decides how their own
+   * text lands. A repeat of `mergeId` answers as the first did and takes nothing twice; a conflict takes nothing and
+   * answers 409 `merge-conflict` with the link, for the web to keep the text as a draft.
+   */
+  router.post('/api/live/merge', async (req, res) => {
+    try {
+      signedIn(res);
+      const { notebookId, path: file, base, text, mergeId } = req.body ?? {};
+      const { handle, notebook, key } = await noteRepository(res, file, notebookId);
+      const writer = await writerOf(res, handle);
+      if (!writer.view.merges) throw notLive("This repository's live editor cannot merge a text into a live note.");
+      if (typeof base !== 'string' || typeof text !== 'string') throw new SourceError('base and text must be text.');
+      if (!isLiveMergeId(mergeId)) throw new SourceError('mergeId must be 8 to 128 letters, digits, _ or -.');
+      if (Buffer.byteLength(base, 'utf8') > LIVE_MAX_BYTES || Buffer.byteLength(text, 'utf8') > LIVE_MAX_BYTES) throw new LiveTooLargeError();
+      const { checkout, outcome } = await checkOut(file as string, notebook, key, writer);
+      const answer = await writer.view.merge(checkout.id, { base, text, mergeId });
+      if ('conflict' in answer) throw new MergeConflictError(viewOf(checkout, key, notebook));
+      res.json({ applied: true, contentHash: answer.contentHash, checkout: viewOf(checkout, key, notebook), outcome });
     } catch (error) {
       liveFail(res, error);
     }

@@ -10,6 +10,8 @@ import type { LiveConflict, NotebookKey, RepositoryId, WorkspacePerson } from '@
 
 /** How long a socket ticket holds. The Redis store gives a ticket's key this lifetime, whatever `until` says. */
 export const LIVE_TICKET_MS = 60_000;
+/** How long the answer of a merge is kept for a repeat of it. */
+export const LIVE_MERGE_MS = 24 * 60 * 60_000;
 /** How long a process's presence entry counts after its last write, so a process that crashed stops counting. */
 export const LIVE_PRESENCE_MS = 90_000;
 
@@ -58,6 +60,16 @@ export interface StoredEditor extends EditorRef {
   firstAt: number;
   lastAt: number;
   lastSeq: number;
+}
+
+/** The answer a merge's append leaves for a repeat of it, in the same atomic call as the append. */
+export interface MergeRecord {
+  /** The sha256 hex of who merged, into which link, under which merge id. */
+  key: string;
+  /** What the repeat is answered, as the adapter wrote it. */
+  answer: string;
+  /** When the answer stops counting, by the adapter's clock. */
+  until: number;
 }
 
 /** What a created or reopened epoch starts from. */
@@ -121,8 +133,12 @@ export interface LiveStore {
   /**
    * Appends one Yjs update of the live epoch and records its editor (none for a merge). `seq` is the link's sequence
    * after it and `length` the log's. 'not-live' for a released or unknown link and for another epoch; nothing is kept then.
+   * With `merge`, the append and the answer kept under `merge.key` until `merge.until` are one step: when that key
+   * already holds an answer that still counts at `now`, nothing is appended and `{ merged }` gives that answer back.
    */
-  append(id: string, epoch: number, update: Uint8Array, editor: EditorRef | null, now: number): Promise<{ seq: number; length: number; } | 'not-live'>;
+  append(id: string, epoch: number, update: Uint8Array, editor: EditorRef | null, now: number, merge?: MergeRecord): Promise<{ seq: number; length: number; } | 'not-live' | { merged: string; }>;
+  /** The answer a merge left under `key` that still counts at `now`; null for none. It outlives the release of its link. */
+  mergeAnswer(key: string, now: number): Promise<string | null>;
   /**
    * Replaces the state and drops the first `count` log entries, if `gen` is still the live epoch's: only the entries the
    * caller read and applied go, and one appended since stays. False, with nothing changed, otherwise.

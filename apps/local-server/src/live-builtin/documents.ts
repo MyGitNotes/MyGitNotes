@@ -1,7 +1,7 @@
 import { type Document, Hocuspocus, type LocalTransactionOrigin } from '@hocuspocus/server';
 import { liveContentHash, LiveNotLiveError, LiveTooLargeError, LiveUnavailableError, normalizeLiveText, type RepositoryId, type TextEdit, textEdits } from '@mygitnotes/core';
 import * as Y from 'yjs';
-import type { EditorRef, LiveStore, StoredDocument, StoredLink } from './store.js';
+import type { EditorRef, LiveStore, MergeRecord, StoredDocument, StoredLink } from './store.js';
 
 /*
  * The Yjs documents of the built-in editor's live links in one process (docs/specs/2026-11-15-builtin-live-editor §4).
@@ -37,8 +37,13 @@ export interface LiveDocuments {
   /**
    * A server-side write: `change` turns the current text into the new one, and the difference is appended to the store
    * before the document takes it. Writes of one document run one after another.
+   *
+   * With `merge`, the write is a merge that may be asked for again: its append leaves `merge.answer(hash of the new
+   * text)` under `merge.key` in the same step, and the write answers it as `answer`. When the store already holds an
+   * answer under that key (another process, or an earlier request, landed the same merge), nothing is appended or
+   * applied, and that answer comes back as `merged`.
    */
-  edit(link: StoredLink, editor: EditorRef | null, change: (current: string, hash: string) => string): Promise<{ text: string; hash: string; changed: boolean; }>;
+  edit(link: StoredLink, editor: EditorRef | null, change: (current: string, hash: string) => string, merge?: LiveMergeWrite): Promise<{ text: string; hash: string; changed: boolean; answer?: string; merged?: string; }>;
   /** Loads the link's document from the store when this process does not hold it, brings it up to the link, and holds it. */
   open(link: StoredLink): Promise<OpenLiveDocument>;
   /**
@@ -70,6 +75,12 @@ export interface LiveDocuments {
   shutdown(): Promise<void>;
   /** The server the documents live in: the socket hands it connections and hooks into it. */
   readonly hocuspocus: Hocuspocus;
+}
+
+/** What makes a server-side write a merge that a repeat finds again. */
+export interface LiveMergeWrite extends Pick<MergeRecord, 'key' | 'until'> {
+  /** The answer to keep, given the hash of the text the merge made. */
+  answer(hash: string): string;
 }
 
 export interface LiveDocumentsOptions {
@@ -393,10 +404,14 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
     }
   };
 
-  /** Appends an update to the store, then applies it to the held document: never the other way round. */
-  const put = async (link: LiveEpoch, document: Document, state: Held, update: Uint8Array, editor: EditorRef | null) => {
-    const appended = await store.append(link.id, link.epoch, update, editor, clock());
+  /**
+   * Appends an update to the store, then applies it to the held document: never the other way round. An update that
+   * carries a merge record the store already holds an answer for is neither appended nor applied, and that answer is returned.
+   */
+  const put = async (link: LiveEpoch, document: Document, state: Held, update: Uint8Array, editor: EditorRef | null, merge?: MergeRecord): Promise<string | undefined> => {
+    const appended = await store.append(link.id, link.epoch, update, editor, clock(), merge);
     if (appended === 'not-live') throw new LiveNotLiveError();
+    if ('merged' in appended) return appended.merged;
     if (document.isDestroyed) return;
     Y.applyUpdate(document, update, APPENDED);
     state.top = Math.max(state.top, appended.seq);
@@ -462,7 +477,7 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       const stored = await store.document(link.id, link.epoch);
       return stored ? (await squash(link.id, link.epoch, stored)).hash : link.contentHash;
     },
-    edit(link, editor, change) {
+    edit(link, editor, change, merge) {
       return serial(liveDocumentName(link), async () => {
         const { document, state, close } = await hold(link);
         try {
@@ -472,8 +487,10 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
           const next = change(current.text, current.hash);
           const update = next === current.text ? null : textUpdate(document, next);
           if (!update) return { ...current, changed: false };
-          await put(link, document, state, update, editor);
-          return { ...heldText({ document, state }), changed: true };
+          const answer = merge?.answer(liveContentHash(next));
+          const merged = await put(link, document, state, update, editor, merge && answer !== undefined ? { key: merge.key, answer, until: merge.until } : undefined);
+          if (merged !== undefined) return { ...current, changed: false, merged };
+          return { ...heldText({ document, state }), changed: true, ...(answer !== undefined ? { answer } : {}) };
         } finally {
           await close();
         }

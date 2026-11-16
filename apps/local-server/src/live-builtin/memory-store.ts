@@ -27,6 +27,7 @@ export function memoryLiveStore(): LiveStore {
   const presence = new Map<string, Map<string, { at: number; people: Record<string, number>; }>>();
   const tickets = new Map<string, { ticket: StoredTicket; until: number; }>();
   const initial = new Map<string, string>();
+  const merges = new Map<string, { answer: string; until: number; }>();
 
   const pathKey = (repository: RepositoryId, path: string) => `${repository}\n${path}`;
   const liveLinks = () => [...links.values()].filter(link => link.live);
@@ -81,9 +82,15 @@ export function memoryLiveStore(): LiveStore {
       if (!link?.live || link.epoch !== epoch || !document) return null;
       return { state: new Uint8Array(document.state), log: document.log.map(update => new Uint8Array(update)), gen: link.gen, seq: link.seq };
     },
-    async append(id, epoch, update, editor, now) {
+    async append(id, epoch, update, editor, now, merge) {
       const link = links.get(id), document = documents.get(id);
       if (!link?.live || link.epoch !== epoch || !document) return 'not-live';
+      if (merge) {
+        const known = merges.get(merge.key);
+        if (known && known.until > now) return { merged: known.answer };
+        for (const [key, entry] of merges) if (entry.until <= now) merges.delete(key);
+        merges.set(merge.key, { answer: merge.answer, until: merge.until });
+      }
       document.log.push(new Uint8Array(update));
       link.seq += 1;
       if (editor) {
@@ -95,6 +102,10 @@ export function memoryLiveStore(): LiveStore {
         else listed.set(editor.key, { key: editor.key, name: editor.name, ...(editor.email !== undefined ? { email: editor.email } : {}), agent: editor.agent, ...(editor.person !== undefined ? { person: { realm: editor.person.realm, userId: editor.person.userId } } : {}), firstAt: now, lastAt: now, lastSeq: link.seq });
       }
       return { seq: link.seq, length: document.log.length };
+    },
+    async mergeAnswer(key, now) {
+      const known = merges.get(key);
+      return known && known.until > now ? known.answer : null;
     },
     async compact(id, epoch, gen, count, state, contentHash, contentSeq) {
       const link = links.get(id), document = documents.get(id);

@@ -101,7 +101,7 @@ export interface RepositoryStatus {
    * there only where the adapter can discard a pending note (「捨棄草稿」), `retarget` only where it can move and
    * rename one.
    */
-  live?: (LiveEditorInfo & { discard?: true; retarget?: true; }) | null;
+  live?: (LiveEditorInfo & { discard?: true; retarget?: true; merge?: true; }) | null;
 }
 /** The answer of `GET /api/workspace`. */
 export interface WorkspaceStatus {

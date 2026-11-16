@@ -125,7 +125,29 @@ export interface LivePersonCalls {
   createPending(repository: RepositoryId, request: { notebook: NotebookKey; pathRule: string; content: string; }): Promise<LiveCheckout>;
   /** Where a link that is no longer live was filed; null when unknown. */
   filed(repository: RepositoryId, id: string): Promise<string | null>;
+  /**
+   * Merges `request.text`, written on `request.base`, into the live note over the typing since, as a three-way merge,
+   * and lists the person among its editors; texts come in normal form. A conflict takes nothing. A repeat of the same
+   * `mergeId` by the same person for the same link answers what the first answered for at least a day, also after the
+   * note was released and reopened, and takes nothing again. An adapter without it keeps 0.20's behavior: a text made
+   * off the live note is committed by hand, or copied.
+   */
+  merge?(repository: RepositoryId, id: string, request: LiveMergeRequest): Promise<LiveMergeAnswer>;
 }
+
+/**
+ * A text to take into a live note (docs/specs/2026-11-16-collab-first-self-host A4): `text`, written on `base`, such as
+ * a draft made offline on the text Git held, or what a tab typed after its note was released. The writer names the
+ * base; it only decides how their own text lands, and they could write any text anyway.
+ */
+export interface LiveMergeRequest {
+  base: string;
+  text: string;
+  /** Names this merge for its writer ({@link isLiveMergeId}): asked again under the same id, the first answer is given and nothing is taken twice. */
+  mergeId: string;
+}
+/** A merge landed, the note then reading the text `contentHash` names; or it changed what the live note changed too, and nothing was taken. */
+export type LiveMergeAnswer = { applied: true; contentHash: string; } | { conflict: true; };
 
 export interface LiveLease {
   token: string;
@@ -260,6 +282,19 @@ export function isEmptyLiveDraft(text: string, initialText?: string): boolean {
 export function liveInitialTextOf(value: unknown): string | undefined {
   const initial = (value as { initialText?: unknown; } | null)?.initialText;
   return typeof initial === 'string' && Buffer.byteLength(initial, 'utf8') <= LIVE_MAX_BYTES ? initial : undefined;
+}
+
+/** What names a merge: 8 to 128 letters, digits, `_` or `-`, such as a hash of the draft it merges. */
+export function isLiveMergeId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(value);
+}
+
+/** A merge answer an adapter returned, checked and reduced to its fields; anything else is a {@link LiveUnavailableError}. */
+export function liveMergeAnswerOf(value: unknown): LiveMergeAnswer {
+  const { applied, conflict, contentHash } = (value ?? {}) as Record<string, unknown>;
+  if (applied === true && isLiveContentHash(contentHash)) return { applied: true, contentHash };
+  if (conflict === true && applied === undefined) return { conflict: true };
+  throw new LiveUnavailableError();
 }
 
 /** What a live link id may be. */

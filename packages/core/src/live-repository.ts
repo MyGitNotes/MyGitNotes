@@ -1,6 +1,6 @@
 import { SourceError } from './github-api.js';
 import { checkInLink, discardLink, type LiveCheckInOptions, type LiveCheckInResult, type LiveDiscardResult, type LiveRetarget, retargetLink, retargetLivePathRule } from './live-checkin.js';
-import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveIdentityOf, liveInitialTextOf, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { CheckedOutError, isBuiltinEditor, isEmptyLiveDraft, isLiveContentHash, isLiveId, isLiveMergeId, isLiveRevision, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveContext, type LiveEditorInfo, liveEditorOf, liveIdentityOf, liveInitialTextOf, type LiveMergeAnswer, liveMergeAnswerOf, type LiveMergeRequest, type LiveNotes, LiveNotLiveError, livePendingPath, type LivePersonCalls, type LiveSocketTicket, liveSocketTicketOf, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { localIdIn, type NotebookKey } from './notebook-key.js';
 import type { RepositoryId } from './repository.js';
 import type { LiveNoteState, NotebookConfig } from './types.js';
@@ -32,6 +32,8 @@ export interface LiveRepository {
   readonly discards: boolean;
   /** Whether the adapter can move and rename a pending note (§20.2): its `service.retarget`. */
   readonly retargets: boolean;
+  /** Whether the adapter can merge a text written off the live note into it: its person calls' `merge`. Asking makes no adapter call. */
+  readonly merges: boolean;
   /** The repository's live links, checked; read from the adapter once per request. */
   checkouts(): Promise<LiveCheckout[]>;
   /** Those links with their notebooks and paths. */
@@ -64,6 +66,11 @@ export interface LiveRepository {
   retarget(path: string, change: LiveRetarget): Promise<LiveCheckout>;
   /** A ticket for the person to open a link's live document over the built-in editor's socket. */
   socketTicket(id: string): Promise<LiveSocketTicket>;
+  /**
+   * Merges a text written on `base` into a live link (texts sent in normal form), and answers whether it landed. Throws
+   * {@link LiveNotLiveError} where the adapter cannot merge, and a 400 for a `mergeId` that is none.
+   */
+  merge(id: string, request: LiveMergeRequest): Promise<LiveMergeAnswer>;
 }
 
 export interface LiveRepositoryOptions {
@@ -164,6 +171,9 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
     editor,
     discards: typeof liveNotes.service.discard === 'function',
     retargets: typeof liveNotes.service.retarget === 'function',
+    get merges() {
+      return typeof calls().merge === 'function';
+    },
     links,
     checkouts: async () => (await links()).map(link => link.checkout),
     async read(id) {
@@ -236,6 +246,16 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       } finally {
         listed = undefined;
       }
+    },
+    async merge(id, request) {
+      const merge = calls().merge?.bind(calls());
+      if (!merge || !isLiveId(id)) throw new LiveNotLiveError();
+      if (typeof request.base !== 'string' || typeof request.text !== 'string') throw new SourceError('base and text must be text.', 400);
+      if (!isLiveMergeId(request.mergeId)) throw new SourceError('mergeId must be 8 to 128 letters, digits, _ or -.', 400);
+      const answer = liveMergeAnswerOf(await call(() => merge(repository, id, { base: normalizeLiveText(request.base), text: normalizeLiveText(request.text), mergeId: request.mergeId })));
+      // The link's text moved: the next read in this request asks again.
+      if ('applied' in answer) listed = undefined;
+      return answer;
     },
     async socketTicket(id) {
       if (!builtin || typeof liveNotes.socketTicket !== 'function' || !isLiveId(id)) throw new LiveUnavailableError();

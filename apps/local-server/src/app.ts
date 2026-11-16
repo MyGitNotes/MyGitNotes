@@ -276,8 +276,8 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
           const snapshot = await handle.reader.getSnapshot();
           // The editor configuration is static: naming it asks the adapter nothing, so this answer stands while the editor is down.
           const view = handle.reader.liveView;
-          // `discard` and `retarget` are added only for an adapter that has them, so a 0.19 adapter's answer stays as it was.
-          const live = liveNotes ? { live: view ? view.discards || view.retargets ? { ...view.editor, ...(view.discards ? { discard: true as const } : {}), ...(view.retargets ? { retarget: true as const } : {}) } : view.editor : null } : {};
+          // `discard`, `retarget` and `merge` are added only for an adapter that has them, so a 0.19 adapter's answer stays as it was.
+          const live = liveNotes ? { live: view ? view.discards || view.retargets || view.merges ? { ...view.editor, ...(view.discards ? { discard: true as const } : {}), ...(view.retargets ? { retarget: true as const } : {}), ...(view.merges ? { merge: true as const } : {}) } : view.editor : null } : {};
           return { ...base, ...manifest, branch: handle.reader.branch, revision: snapshot.sha, write: handle.authenticated && handle.reader.canWrite(snapshot), ...live, ...('unavailable' in entry ? { unavailable: entry.unavailable } : {}) };
         }));
         const body: WorkspaceStatus = { keyedConfig, local: false, defaultRepository: workspace.default?.ref.id ?? null, repositories, coreUpdate: Boolean(product), ...(visitorChoice ? { repositoryChoice: true } : {}) };
