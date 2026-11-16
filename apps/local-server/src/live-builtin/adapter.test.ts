@@ -7,7 +7,7 @@ import { liveEditorRef } from './adapter.js';
 import { builtinLiveNotes } from './index.js';
 import { memoryLiveStore } from './memory-store.js';
 import type { LiveStore } from './store.js';
-import { type BuiltinFixture, builtinFixture, gate, notebook, person, hugeDeletedUpdate, redisTestStores, repository, settle, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
+import { type BuiltinFixture, builtinFixture, gate, hugeDeletedUpdate, notebook, person, redisTestStores, repository, settle, sha256, shutdownFixtures, storedText, wrapStore } from './test-fixture.js';
 
 /*
  * The built-in live editor's adapter and documents (docs/specs/2026-11-15-builtin-live-editor §2, §4, §5, §19, §20;
