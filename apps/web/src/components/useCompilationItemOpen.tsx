@@ -16,6 +16,8 @@ export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; a
   const { t } = useTranslation();
   const [preview, setPreview] = useState<CompilationAsset>();
   const open: CompilationContentProps['onOpen'] = (item, note) => {
+    // A chapter heading names nothing to open.
+    if (item.kind === 'heading') return;
     if (item.kind === 'youtube') {
       window.open(`https://www.youtube.com/watch?v=${item.videoId}&t=${item.start}`, '_blank', 'noopener,noreferrer');
       return;

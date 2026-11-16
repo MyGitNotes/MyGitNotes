@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { replaceFileTags } from './note-file.js';
 import YAML from 'yaml';
-import { applyCompilationMetadata, compilationChapters, contentItems, compilationCopyPath, compilationFields, type CompilationFile, compilationFile, compilationNotes, compilationRow, compilationSlug, copyCompilation, isCompilationPath, moveCompilationItem, parseCompilation, parseYouTubeUrl, relocateCompilation, serializeCompilation, uniqueCompilationPath } from './compilation.js';
+import { applyCompilationMetadata, compilationChapters, compilationCopyPath, compilationFields, type CompilationFile, compilationFile, compilationNotes, compilationRow, compilationSlug, contentItems, copyCompilation, isCompilationPath, moveCompilationItem, parseCompilation, parseYouTubeUrl, relocateCompilation, serializeCompilation, uniqueCompilationPath } from './compilation.js';
 
 const custom = `version: 1
 id: reading-queue
@@ -316,8 +316,8 @@ items:
     const file = parseCompilation(chaptered, ['notes/one']);
     expect(file.items!.map(item => item.kind)).toEqual(['note', 'heading', 'note', 'note', 'heading', 'heading', 'folder', 'youtube']);
     const row = compilationRow(file, owner);
-    expect(row).toMatchObject({ kind: 'custom', items: [{ id: 'intro', notebookId: 'one' }, { id: 'internal', kind: 'heading', title: 'Internal meetings' }] });
     if (row.kind !== 'custom') throw new Error('expected a custom row');
+    expect(row.items.slice(0, 2)).toEqual([{ id: 'intro', kind: 'note', notebookId: 'one', path: 'notes/one/README.md' }, { id: 'internal', kind: 'heading', title: 'Internal meetings' }]);
     expect(row.items[1]).not.toHaveProperty('notebookId');
     expect(compilationFile(row)).toEqual(file);
     expect(parseCompilation(serializeCompilation(file), ['notes/one'])).toEqual(file);

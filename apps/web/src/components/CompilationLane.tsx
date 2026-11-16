@@ -3,7 +3,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Plus, X } from 'lucide-react';
-import type { CompilationItem, CompilationRow, CompilationSort } from '@mygitnotes/core/compilation';
+import { type CompilationItem, type CompilationRow, type CompilationSort, contentItems } from '@mygitnotes/core/compilation';
 import type { NotebookFacets } from '@mygitnotes/core/note-query';
 import type { NotebookConfig } from '../lib/types.js';
 import { useCompilationEditingContext, useHeldNotes, useHeldOrder } from '../lib/compilation-editing.js';
@@ -81,7 +81,7 @@ export function CompilationLane({ row, graph, reorder, disabled, study, facets, 
   const notes = useHeldNotes(laneNotes.notes);
   const content: CompilationContentProps = { notebooks, assets, onOpen, notes };
   const ordinaryRow = { ...row, study: { ...row.study, filter: 'all' as const, dueFirst: false } };
-  const items = useHeldOrder(studyRowItems(compilationRowItems(row, content.notes, content.assets, content.notebooks), ordinaryRow, content.notes, study.study, clock));
+  const items = useHeldOrder(studyRowItems(contentItems(compilationRowItems(row, content.notes, content.assets, content.notebooks)), ordinaryRow, content.notes, study.study, clock));
   // Reorder mode and a read-only compilation offer no editing (E12, E13).
   const editable = !readOnly && !disabled && !reorder;
   const filtered = Boolean(row.study?.status);

@@ -2,12 +2,12 @@ import { expect, it } from 'vitest';
 import { applyStageAction, applyStudyAction, createStudyNote, emptyStudyWorkspace, undoStudyAction } from '@mygitnotes/core/study';
 import { compilationRowItems, studyQueueItems, studyRowItems } from './compilation-content.js';
 import type { NoteItem } from './types.js';
-import type { CompilationRow } from '@mygitnotes/core/compilation';
+import { type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
 const notes = [{ notebookId: 'a', path: 'notes/a/one.md', title: 'One', tags: ['clue'] }, { notebookId: 'b', path: 'notes/b/two.md', title: 'Two', tags: ['clue'] }, { notebookId: 'a', path: 'notes/a/sub/three.md', title: 'Three', tags: [] }, { notebookId: 'a', path: 'notes/ab/other.md', title: 'Other', tags: [] }].map((note, i) => ({ ...note, id: String(i), content: '', metadata: {} })) as NoteItem[];
 it('lists tags only from the lane notebook and respects exact folder boundaries', () => {
   const base = { id: 'row', path: 'notes/a/live.compilation.yml', name: 'Live', view: 'small' as const, notebookId: 'a', kind: 'dynamic' as const };
-  expect(compilationRowItems({ ...base, source: { kind: 'tag', tag: 'clue', notebookId: 'a' } }, notes, []).map(i => i.kind !== 'youtube' && i.notebookId)).toEqual(['a']);
-  expect(compilationRowItems({ ...base, notebookId: 'b', source: { kind: 'tag', tag: 'clue', notebookId: 'b' } }, notes, []).map(i => i.kind !== 'youtube' && i.path)).toEqual(['notes/b/two.md']);
+  expect(compilationRowItems({ ...base, source: { kind: 'tag', tag: 'clue', notebookId: 'a' } }, notes, []).map(i => isFileItem(i) && i.notebookId)).toEqual(['a']);
+  expect(compilationRowItems({ ...base, notebookId: 'b', source: { kind: 'tag', tag: 'clue', notebookId: 'b' } }, notes, []).map(i => isFileItem(i) && i.path)).toEqual(['notes/b/two.md']);
   expect(compilationRowItems({ ...base, source: { kind: 'folder', notebookId: 'a', path: 'notes/a', recursive: false } }, notes, [])).toHaveLength(1);
   expect(compilationRowItems({ ...base, source: { kind: 'folder', notebookId: 'a', path: 'notes/a', recursive: true } }, notes, [])).toHaveLength(2);
   expect(compilationRowItems({ ...base, source: { kind: 'tag', tag: 'new-tag', notebookId: 'a' } }, [...notes, { ...notes[0], tags: ['new-tag'] }], [])).toHaveLength(1);
@@ -17,7 +17,7 @@ it('applies independent dynamic sorting to notes and assets without mutating inp
   const row: Extract<CompilationRow, { kind: 'dynamic'; }> = { id: 'r', path: 'notes/a/sorted.compilation.yml', name: 'Sorted', view: 'small', notebookId: 'a', kind: 'dynamic', source: { kind: 'folder', notebookId: 'a', path: 'notes/a', recursive: true }, sort: { field: 'title', order: 'desc' } };
   const selected = [{ ...notes[0], title: 'Note 2', mtime: 100, metadata: { created: 300 }, status: 'published' }, { ...notes[2], title: 'Note 10', mtime: 300, metadata: { created: 100 }, status: 'capture' }];
   const assets = [{ name: 'Note 5', notebookId: 'a', path: 'notes/a/image.png', mtime: 200, size: 1, rawUrl: '', markdownRef: '' }];
-  const paths = (sort: typeof row.sort) => compilationRowItems({ ...row, sort }, selected, assets, [{ id: 'a', title: 'A', root: 'notes/a', statuses: ['capture', 'published'] }]).map(item => item.kind !== 'youtube' && item.path);
+  const paths = (sort: typeof row.sort) => compilationRowItems({ ...row, sort }, selected, assets, [{ id: 'a', title: 'A', root: 'notes/a', statuses: ['capture', 'published'] }]).map(item => isFileItem(item) && item.path);
   expect(paths({ field: 'title', order: 'desc' })).toEqual(['notes/a/sub/three.md', 'notes/a/image.png', 'notes/a/one.md']);
   expect(paths({ field: 'updated', order: 'asc' })).toEqual(['notes/a/one.md', 'notes/a/image.png', 'notes/a/sub/three.md']);
   expect(paths({ field: 'created', order: 'desc' })).toEqual(['notes/a/one.md', 'notes/a/image.png', 'notes/a/sub/three.md']);
@@ -25,14 +25,14 @@ it('applies independent dynamic sorting to notes and assets without mutating inp
   expect(selected.map(note => note.title)).toEqual(['Note 2', 'Note 10']);
   expect(row.sort).toEqual({ field: 'title', order: 'desc' });
   const tagged: CompilationRow = { ...row, source: { kind: 'tag', tag: 'clue', notebookId: 'a' }, sort: { field: 'updated', order: 'desc' } };
-  expect(compilationRowItems(tagged, selected.map(note => ({ ...note, tags: ['clue'] })), assets).map(item => item.kind !== 'youtube' && item.path)).toEqual(['notes/a/sub/three.md', 'notes/a/one.md']);
+  expect(compilationRowItems(tagged, selected.map(note => ({ ...note, tags: ['clue'] })), assets).map(item => isFileItem(item) && item.path)).toEqual(['notes/a/sub/three.md', 'notes/a/one.md']);
 });
 
 it('follows a manual order, then adds the members it does not name oldest update first', () => {
   const row: Extract<CompilationRow, { kind: 'dynamic'; }> = { id: 'r', path: 'notes/a/manual.compilation.yml', name: 'Manual', view: 'small', notebookId: 'a', kind: 'dynamic', source: { kind: 'folder', notebookId: 'a', path: 'notes/a', recursive: true }, sort: { field: 'manual', order: 'asc' }, manualOrder: ['notes/a/one.md', 'notes/a/gone.md', 'notes/a/sub/three.md'] };
   const selected = [{ ...notes[0], mtime: 100 }, { ...notes[2], mtime: 50 }, { ...notes[0], id: 'new-late', path: 'notes/a/late.md', title: 'Late', mtime: 400 }, { ...notes[0], id: 'new-early', path: 'notes/a/early.md', title: 'Early', mtime: 200 }];
   const assets = [{ name: 'Image', notebookId: 'a', path: 'notes/a/image.png', mtime: 300, size: 1, rawUrl: '', markdownRef: '' }];
-  const paths = (next: typeof row) => compilationRowItems(next, selected, assets).map(item => item.kind !== 'youtube' && item.path);
+  const paths = (next: typeof row) => compilationRowItems(next, selected, assets).map(item => isFileItem(item) && item.path);
   expect(paths(row)).toEqual(['notes/a/one.md', 'notes/a/sub/three.md', 'notes/a/early.md', 'notes/a/image.png', 'notes/a/late.md']);
   // Without a stored order every member is new, so the lane reads oldest update first.
   expect(paths({ ...row, manualOrder: undefined })).toEqual(['notes/a/sub/three.md', 'notes/a/one.md', 'notes/a/early.md', 'notes/a/image.png', 'notes/a/late.md']);
@@ -84,7 +84,7 @@ it("lists a folder source's assets and sorts by statuses from the source's noteb
   const members = [{ ...notes[1], title: 'Done', status: 'done' }, { ...notes[1], id: 'x', path: 'notes/b/draft.md', title: 'Draft', status: 'draft' }];
   const assets = [{ name: 'pic.png', notebookId: 'b', path: 'notes/b/pic.png', mtime: 1, size: 1, rawUrl: '', markdownRef: '' }, { name: 'own.png', notebookId: 'a', path: 'notes/b/own.png', mtime: 1, size: 1, rawUrl: '', markdownRef: '' }];
   const notebooks = [{ id: 'a', title: 'A', root: 'notes/a', statuses: ['done', 'draft'] }, { id: 'b', title: 'B', root: 'notes/b', statuses: ['draft', 'done'] }];
-  expect(compilationRowItems(row, members, assets, notebooks).map(item => item.kind !== 'youtube' && `${item.notebookId}:${item.path}`)).toEqual(['b:notes/b/draft.md', 'b:notes/b/two.md', 'b:notes/b/pic.png']);
+  expect(compilationRowItems(row, members, assets, notebooks).map(item => isFileItem(item) && `${item.notebookId}:${item.path}`)).toEqual(['b:notes/b/draft.md', 'b:notes/b/two.md', 'b:notes/b/pic.png']);
 });
 
 it('studies the pinned notes in flat order without chapter headings, while the reading views keep the headings in place', () => {

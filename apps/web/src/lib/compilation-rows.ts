@@ -1,4 +1,4 @@
-import { compilationFile, type CompilationRow, compilationRow, parseCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
+import { compilationFile, type CompilationRow, compilationRow, isFileItem, parseCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import type { NotebookConfig } from './types.js';
@@ -30,7 +30,7 @@ export function repositoryNotebooks<T extends Pick<NotebookConfig, 'id'>>(notebo
  * An unknown notebook is left to the lookup.
  */
 export function outsideNotebook(item: { kind: string; notebookId?: string; path?: string; }, notebooks: readonly Pick<NotebookConfig, 'id' | 'root'>[]): boolean {
-  if (item.kind === 'youtube' || item.path === undefined) return false;
+  if (item.kind === 'youtube' || item.kind === 'heading' || item.path === undefined) return false;
   const root = notebooks.find(candidate => candidate.id === item.notebookId)?.root;
   return root !== undefined && item.path !== root && !item.path.startsWith(`${root}/`);
 }
@@ -38,7 +38,7 @@ export function outsideNotebook(item: { kind: string; notebookId?: string; path?
 /** Every notebook a row reads from: its own, its items' and its source's. */
 export function compilationNotebookIds(row: CompilationRow | undefined, fallback: string): string[] {
   if (!row) return [fallback];
-  const ids = row.kind === 'custom' ? row.items.flatMap(item => item.kind === 'youtube' ? [] : [item.notebookId]) : [row.source.notebookId];
+  const ids = row.kind === 'custom' ? row.items.flatMap(item => isFileItem(item) ? [item.notebookId] : []) : [row.source.notebookId];
   return [...new Set([row.notebookId, ...ids])];
 }
 

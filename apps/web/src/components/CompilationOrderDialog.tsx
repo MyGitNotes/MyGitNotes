@@ -3,7 +3,7 @@ import { closestCenter, DndContext, KeyboardSensor, type Modifier, PointerSensor
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
-import type { CompilationItem, CompilationRow } from '@mygitnotes/core/compilation';
+import { type CompilationFileRef, type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
 import { compilationRowItems } from '../lib/compilation-content.js';
 import { useLaneNotes } from '../lib/compilation-queries.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -36,7 +36,7 @@ interface CompilationOrderDialogProps {
 }
 
 interface OrderEntry {
-  item: CompilationItem & { path: string; };
+  item: CompilationFileRef;
   title: string;
 }
 
@@ -51,7 +51,7 @@ export function CompilationOrderDialog({ row, notebooks, assets, disabled, onSav
 
   // The snapshot is taken once, when the members arrive; later refetches do not reset what the user arranged.
   if (entries === null && !lane.loading && !lane.error) {
-    const items = compilationRowItems(members, lane.notes, assets, notebooks).flatMap(item => item.kind === 'youtube' ? [] : [{ item, title: compilationItemTitle(item, lane.notes, assets) }]);
+    const items = compilationRowItems(members, lane.notes, assets, notebooks).flatMap(item => isFileItem(item) ? [{ item, title: compilationItemTitle(item, lane.notes, assets) }] : []);
     setEntries(items);
   }
 

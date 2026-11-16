@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { ExternalLink, FileText, Folder, Image as ImageIcon, Play, Youtube } from 'lucide-react';
-import type { CompilationItem, CompilationRow } from '@mygitnotes/core/compilation';
+import { type CompilationItem, type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { AssetItem, NotebookConfig } from '../lib/types.js';
 import { noteSummary } from '../lib/compilation-content.js';
@@ -25,6 +25,7 @@ export interface CompilationContentProps {
 }
 export function compilationItemTitle(item: CompilationItem, notes: NoteListItem[], assets: CompilationAsset[]): string {
   if (item.kind === 'youtube') return item.title || 'YouTube';
+  if (item.kind === 'heading') return item.title;
   return notes.find(note => note.path === item.path && note.notebookId === item.notebookId)?.title || assets.find(asset => asset.path === item.path && asset.notebookId === item.notebookId)?.name || item.path.split('/').pop() || item.path;
 }
 
@@ -37,7 +38,7 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
   const [playing, setPlaying] = useState(false);
   const note = item.kind === 'note' ? content.notes.find(note => note.path === item.path && note.notebookId === item.notebookId) : undefined;
   const asset = item.kind === 'asset' ? content.assets.find(asset => asset.path === item.path && asset.notebookId === item.notebookId) : undefined;
-  const notebook = item.kind !== 'youtube' ? content.notebooks.find(nb => nb.id === item.notebookId) : undefined;
+  const notebook = isFileItem(item) ? content.notebooks.find(nb => nb.id === item.notebookId) : undefined;
   const title = compilationItemTitle(item, content.notes, content.assets);
   const tableLabel = t('preview.scrollableTable');
   /* eslint-disable react/preserve-manual-memoization -- Memoization follows the note content/path and display inputs used by the renderer. */
@@ -122,7 +123,7 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
             )
             : <p className='screen-missing'>{t('screen.missing')}</p>}
         </div>
-        <footer className='screen-card-footer' title={item.kind === 'youtube' ? item.videoId : item.path}>
+        <footer className='screen-card-footer' title={item.kind === 'youtube' ? item.videoId : isFileItem(item) ? item.path : undefined}>
           <span>{notebook?.title || (item.kind === 'youtube' ? 'YouTube' : t('screen.missing'))}</span>
         </footer>
       </article>

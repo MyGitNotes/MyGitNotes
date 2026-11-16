@@ -25,7 +25,7 @@ export const ScreenPageSchema = z.object({ version: z.literal(2), rows: z.array(
       if (ids.has(id)) context.addIssue({ code: 'custom', message: 'Duplicate Screen Page identity' });
       ids.add(id);
     }
-    const contents = row.kind === 'custom' ? row.items.flatMap(item => item.kind === 'youtube' ? [] : [item.notebookId]) : [row.source.notebookId];
+    const contents = row.kind === 'custom' ? row.items.flatMap(item => item.kind === 'youtube' || item.kind === 'heading' ? [] : [item.notebookId]) : [row.source.notebookId];
     if (contents.some(value => value !== row.notebookId)) context.addIssue({ code: 'custom', message: 'Screen lane content must belong to the lane notebook' });
   }
   if (items > 500) context.addIssue({ code: 'custom', message: 'Screen Page has too many pinned items' });
@@ -61,9 +61,9 @@ export function readScreenPage(value: unknown, config: ScreenNotebookConfig | nu
       return [{ ...row, notebookId: owner, source: { ...row.source, notebookId: owner } }];
     }
     const groups = new Map<string, CompilationItem[]>();
-    for (const item of row.items) if (item.kind !== 'youtube') groups.set(item.notebookId, [...(groups.get(item.notebookId) || []), item]);
+    for (const item of row.items) if (item.kind !== 'youtube' && item.kind !== 'heading') groups.set(item.notebookId, [...(groups.get(item.notebookId) || []), item]);
     const [first = fallback, ...rest] = groups.keys();
-    return [{ ...row, notebookId: first, items: row.items.filter(item => item.kind === 'youtube' || item.notebookId === first) }, ...rest.map(owner => ({ ...row, id: unique(`${row.id}-${owner}`), notebookId: owner, items: groups.get(owner)! }))];
+    return [{ ...row, notebookId: first, items: row.items.filter(item => item.kind === 'youtube' || item.kind === 'heading' || item.notebookId === first) }, ...rest.map(owner => ({ ...row, id: unique(`${row.id}-${owner}`), notebookId: owner, items: groups.get(owner)! }))];
   });
   return ScreenPageSchema.parse({ version: 2, rows });
 }

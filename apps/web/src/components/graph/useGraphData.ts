@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import type { NoteGraphNode } from '@mygitnotes/core/note-graph';
 import { selectFilteredGraph } from '@mygitnotes/core/note-filters';
-import type { CompilationRow } from '@mygitnotes/core/compilation';
+import { type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import type { NoteQuery } from '@mygitnotes/core/note-query';
 import { useNoteGraph, useNotePaths } from '../../lib/use-note-queries.js';
@@ -25,7 +25,7 @@ export function laneGraphMembers(row: CompilationRow, paths: readonly string[]):
     return notebookId === row.notebookId ? { ids: paths.map(path => noteRefKey({ notebookId, path })), outside: 0 } : { ids: [], outside: paths.length };
   }
   const own = new Set(row.items.flatMap(item => item.kind === 'note' && item.notebookId === row.notebookId ? [item.path] : []));
-  return { ids: paths.filter(path => own.has(path)).map(path => noteRefKey({ notebookId: row.notebookId, path })), outside: row.items.filter(item => item.kind !== 'youtube' && item.notebookId !== row.notebookId).length };
+  return { ids: paths.filter(path => own.has(path)).map(path => noteRefKey({ notebookId: row.notebookId, path })), outside: row.items.filter(item => isFileItem(item) && item.notebookId !== row.notebookId).length };
 }
 
 export function useGraphData({ notebooks, filters, lane, activeLane, rows, laneIds, laneKey, showOutside, sessions, only, layout, showOrphans, positions, appearance }: Pick<GraphPageProps, 'notebooks' | 'filters' | 'lane'> & { activeLane?: CompilationRow; rows: CompilationRow[]; laneIds: string[]; laneKey: string; showOutside: boolean; sessions: ReturnType<typeof useGraphNoteSessions>['sessions']; only: string[] | null; layout: GraphPlacement; showOrphans: boolean; positions: MutableRefObject<Map<string, LayoutNode>>; appearance: GraphAppearance; }) {

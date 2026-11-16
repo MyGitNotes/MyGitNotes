@@ -1,5 +1,5 @@
 import { findStudyNote, matchesStudyFilter, studyDue, type StudyWorkspace } from '@mygitnotes/core/study';
-import { type CompilationItem, compilationNotes, type CompilationRow } from '@mygitnotes/core/compilation';
+import { type CompilationItem, compilationNotes, type CompilationRow, contentItems } from '@mygitnotes/core/compilation';
 import { resolveNoteStatuses } from '@mygitnotes/core/note-status';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { AssetItem, FolderItem, NotebookConfig } from './types.js';
@@ -59,6 +59,12 @@ export function noteSummary(content: string): string {
   return content.replace(/^#{1,6}\s+.*$/gm, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[`*_>#]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180);
 }
 
+/** What a study session reviews, in flat item order: every item but the chapter headings. */
+export function studyQueueItems(items: readonly CompilationItem[]): CompilationItem[] {
+  return contentItems(items);
+}
+
+/** The items a lane, book or study session shows under the compilation's study settings; chapter headings stay where they are. */
 export function studyRowItems(items: CompilationItem[], row: CompilationRow, notes: NoteListItem[], study: StudyWorkspace, now = new Date()): CompilationItem[] {
   if (!row.study) return items;
   const sources = new Map(notes.map(note => [JSON.stringify([note.notebookId, note.path]), note]));
@@ -66,7 +72,7 @@ export function studyRowItems(items: CompilationItem[], row: CompilationRow, not
   const entries = items.map(item => {
     const note = lookup(item);
     return { item, note, study: note ? findStudyNote(study, { ...note, content: note.content ?? '' }) : undefined };
-  }).filter(entry => (!row.study!.status || entry.note?.status === row.study!.status) && matchesStudyFilter(entry.study, row.study!.filter, now));
+  }).filter(entry => entry.item.kind === 'heading' || (!row.study!.status || entry.note?.status === row.study!.status) && matchesStudyFilter(entry.study, row.study!.filter, now));
   if (row.study.dueFirst) entries.sort((a, b) => (a.study ? studyDue(a.study) || '~' : '~').localeCompare(b.study ? studyDue(b.study) || '~' : '~'));
   return entries.map(entry => entry.item);
 }
