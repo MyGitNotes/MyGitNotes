@@ -108,4 +108,27 @@ describe('the idle check-in', () => {
     expect(await sweep()).toMatchObject({ due: 1, results: [{ id, committed: false, released: true }] });
     expect(commits()).toHaveLength(1);
   });
+
+  it('waits longer each time before trying a link again that it could not check in, notifies once per text, and starts afresh once it is typed in (cf14-F002)', async () => {
+    const pending = await liveNotes.person(person(1)).createPending(repository, { notebook: 'notes~life', pathRule: '{{kind}}/{{title}}.md', content: '# Untitled\n' });
+    liveNotes.type(repository, pending.id, '# Untitled\nWords.\n', person(1));
+    clock.advance(5 * MINUTE);
+    expect(await sweep()).toMatchObject({ due: 1, results: [{ id: pending.id, reason: 'unfiled' }] });
+    expect(liveNotes.notices).toHaveLength(1);
+    // Not tried again within a minute.
+    clock.advance(30_000);
+    expect(await sweep()).toMatchObject({ due: 0 });
+    // Past its lease it is tried again, and no second notice goes out for the same text.
+    clock.advance(6 * MINUTE);
+    expect(await sweep()).toMatchObject({ due: 1, results: [{ id: pending.id, reason: 'unfiled' }] });
+    expect(liveNotes.notices).toHaveLength(1);
+    // The wait doubled.
+    clock.advance(MINUTE);
+    expect(await sweep()).toMatchObject({ due: 0 });
+    // Typed in: its next idle tick tries it, and tells again.
+    liveNotes.type(repository, pending.id, '# Untitled\nMore words.\n', person(1));
+    clock.advance(5 * MINUTE);
+    expect(await sweep()).toMatchObject({ due: 1, results: [{ id: pending.id, reason: 'unfiled' }] });
+    expect(liveNotes.notices).toHaveLength(2);
+  });
 });
