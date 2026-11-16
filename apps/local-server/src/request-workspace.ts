@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type express from 'express';
-import { aliasedMedia, type AvailableRepository, type CommitAuthor, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, liveEditorOf, type LiveNotes, liveRepository, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, type RemoteChange, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
+import { aliasedMedia, type AvailableRepository, type CommitAuthor, createRemoteSource, createWorkspaceRepositories, isBareNotebookId, KEY_SEPARATOR, type KeyedNotebook, liveEditorOf, type LiveNotes, liveRepository, localIdIn, localManifest, type NotebookConfig, type NotebookKey, notebookKey, type NoteCatalog, parseRevisions, prewarmNotebookScans, type RemoteCache, type RemoteChange, type RemoteCommitHeard, RemoteManifest, type RemoteSource, type RepositoryCatalog, type RepositoryId, RepositoryUnavailableError, sameSite, SourceError, SUPPORTED_SCHEMA_VERSION, visibleMembers, WORKSPACE_CONFIG_FILENAME, workspaceCatalog, type WorkspaceConfig, type WorkspaceConfigSource, type WorkspaceDocument, workspaceDocument, type WorkspaceMember, type WorkspacePerson, type WorkspaceRepositories, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError, type WorkspaceSite } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import type { EditionSources } from './edition-sources.js';
 import { CredentialRejected } from './auth.js';
@@ -48,9 +48,10 @@ export interface OpenOptions {
   liveNotes?: LiveNotes;
   /**
    * Hears of each commit a remote repository opened here makes through its reader (`RemoteSource.onCommit`): the
-   * repository and the commit's changes. `/mcp` publishes its writes with it; a browser request's routes publish their own.
+   * repository, the commit's changes, and its revision with a reader of the files as they were before it. `/mcp`
+   * publishes its writes with it; a browser request's routes publish their own.
    */
-  committed?: (repository: RemoteHandle, changes: readonly RemoteChange[]) => void;
+  committed?: (repository: RemoteHandle, changes: readonly RemoteChange[], commit: RemoteCommitHeard) => void;
 }
 
 /**
@@ -85,7 +86,7 @@ export function openWorkspace(settings: WorkspaceSettings, token: string | undef
   /** An opened repository as the workspace hands it on; its reader reports its commits where the caller listens. */
   const opened = (id: RepositoryId, reader: RemoteSource, authenticated: boolean): RemoteHandle => {
     const handle: RemoteHandle = { kind: 'remote', id, reader, authenticated };
-    if (committed) reader.onCommit(changes => committed(handle, changes));
+    if (committed) reader.onCommit((changes, commit) => committed(handle, changes, commit));
     return handle;
   };
   return createWorkspaceRepositories<RepositoryHandle>({

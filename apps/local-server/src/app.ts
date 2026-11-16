@@ -17,7 +17,7 @@ import { createAuth } from './auth.js';
 import { demoPageCredentials, refuseDemoPageSignIn } from './demo-page.js';
 import type { EditionSources } from './edition-sources.js';
 import { type IdentityService, providerIdentity } from './identity.js';
-import { asLocal, asRemote, defaultRepository, eachRepository, namedRemote, namedRepository, notebookRepository, noteRepository, type RemoteHandle, repositoryOrDefault, requestCatalog, requestPerson, requestSite, requestToken, requestWorkspace, storedDocumentDrafts, workspaceOf } from './request-workspace.js';
+import { asLocal, asRemote, defaultRepository, eachRepository, namedRemote, namedRepository, notebookRepository, noteRepository, type RemoteHandle, repositoryOrDefault, requestCatalog, requestPerson, requestToken, requestWorkspace, storedDocumentDrafts, workspaceOf } from './request-workspace.js';
 import { createStudyRouter } from './study.js';
 import { createOutlineImportRouter } from './outline-import.js';
 import { createWorkspaceDocumentRouter } from './workspace-document.js';
@@ -27,7 +27,7 @@ import { type AssetStorage, envAssetStorage } from './asset-storage.js';
 import { createLocalR2AssetHandler, createR2AssetHandler, type NoteReader } from './r2-assets.js';
 import { createR2ManagerRouter } from './r2-manager.js';
 import { createFileManagerRouter } from './file-manager.js';
-import { createGistRouter, gistAccess, gistSite, gistToken, noteGist, syncGists } from './gists.js';
+import { createGistRouter, gistSite, gistToken, noteGist, syncGists } from './gists.js';
 import { isLoopbackHttpOrigin, type PiAgent } from './pi-agent.js';
 import { externalPiAgent, externalPiEnvironment } from './pi-external-agent.js';
 import { commitPublisher, publishChanges, type PublishingService, publishNotes } from './publishing.js';
@@ -145,7 +145,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   const publishCommit = commitPublisher({ ...(publishing ? { publishing } : {}), ...(services.defer ? { defer: services.defer } : {}) });
   // The live editor as this app uses it: every check-in it runs (a person's, a sweep's, the schedule's) has its commit
   // published. A check-in commits with the deployment's credential, so it names no person and holds no Gist access.
-  const liveNotes = services.liveNotes && withLiveCommits(services.liveNotes, ({ repository, path: file, content, source }) => void publishCommit({ repository: { kind: 'remote', id: repository, reader: source, authenticated: true }, notes: [{ path: file, content }] }));
+  const liveNotes = services.liveNotes && withLiveCommits(services.liveNotes, ({ repository, path: file, content, source, commit }) => void publishCommit({ repository: { kind: 'remote', id: repository, reader: source, authenticated: true }, notes: [{ path: file, content }], revision: commit }));
   const identity = services.identity ?? providerIdentity({ store: recordStore, sessions, configSource, choices: workspaceChoices ?? undefined });
   // A remote deployment offers the agent panel only when an edition supplies an agent or the deployer names an external bridge.
   const external = local || services.piAgent ? undefined : externalPiEnvironment();
@@ -506,8 +506,9 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         const message = typeof req.body.message === 'string' && req.body.message.trim() ? req.body.message.trim() : `docs(notes): update tags in ${changes.length} note${changes.length === 1 ? '' : 's'}`;
         const receipt = await reader.commitChanges(changes, String(req.body.revision || ''), 'tags', 'notes', message);
         // The notes are published with their new tags, as after a commit route; the answer is the commit's own either way.
-        const person = requestPerson(res)?.person, gists = gistAccess(requestSite(res), requestToken(res));
-        await publishChanges(publishCommit, { repository: target, changes, ...(person ? { person } : {}), ...(gists ? { gists } : {}) });
+        // Tags are not in a Gist, so no Gist is pushed.
+        const person = requestPerson(res)?.person;
+        await publishChanges(publishCommit, { repository: target, changes, revision: receipt.revision, gistTextKept: true, ...(person ? { person } : {}) });
         res.json(receipt);
       } catch (error) {
         fail(res, error);

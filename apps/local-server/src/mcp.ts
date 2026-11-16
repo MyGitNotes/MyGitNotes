@@ -3,7 +3,7 @@ import express, { Router } from 'express';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { checkedOutFields, type LiveNotes, type RemoteCache, type RemoteChange, type RemoteSource, siteIdentity, SourceError, type WorkspaceConfigSource, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError } from '@mygitnotes/core';
+import { checkedOutFields, type LiveNotes, type RemoteCache, type RemoteChange, type RemoteCommitHeard, type RemoteSource, siteIdentity, SourceError, type WorkspaceConfigSource, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError } from '@mygitnotes/core';
 import { callWorkspaceRemoteTool, isMutationTool, liveDiscardRemoteTools, liveRemoteTools, remoteTools, TEMPLATE_GUIDANCE, type ToolAssets } from '@mygitnotes/mcp-server';
 import { type AssetStorage, resolveAssetScope } from './asset-storage.js';
 import { CredentialRejected, grantPerson } from './auth.js';
@@ -133,11 +133,13 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
       // The commits the call makes are authored by whom the grant names, where it names anyone: an outside bearer's grant
       // as the identity answered, a stored one as it was recorded.
       const granted = grantSettings(settings, grant);
-      // A note a write commits is published as after a commit in the app: a Gist it names is updated with the grant's own GitHub token.
+      // A note a write commits is published as after a commit in the app: a Gist it names is updated with the grant's own
+      // GitHub token, but only one the note already named before the commit. The id is note text the agent writes, so a
+      // new or changed one would aim the person's token at any Gist they hold.
       const gists = gistAccess(settings.site, token);
       /** The publication of the commits this call made, which its answer waits for where the deployment has no `defer`. */
       const publishing: Promise<unknown>[] = [];
-      const committed = (repository: RemoteHandle, changes: readonly RemoteChange[]) => void publishing.push(publishChanges(publish!, { repository, changes, ...(person ? { person } : {}), ...(gists ? { gists } : {}) }));
+      const committed = (repository: RemoteHandle, changes: readonly RemoteChange[], { revision, previous }: RemoteCommitHeard) => void publishing.push(publishChanges(publish!, { repository, changes, revision, previous, ...(person ? { person } : {}), ...(gists ? { gists } : {}) }));
       const tools = hasLiveView(granted, person, liveNotes) ? typeof liveNotes!.service.discard === 'function' ? liveDiscardRemoteTools : liveRemoteTools : remoteTools;
       const workspace = openWorkspace(granted, token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), ...(publish ? { committed } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
       const assets = toolAssets(assetStorage, req, res);

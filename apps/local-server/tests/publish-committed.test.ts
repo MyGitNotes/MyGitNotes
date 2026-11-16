@@ -161,7 +161,7 @@ describe('a live check-in', () => {
     expect(await checkIn()).toMatchObject({ status: 200, body: { committed: true, released: true } });
     await settled();
     expect(files.get('notes/life/a.md')).toBe(typed);
-    expect(logged.filter(line => line.includes('notes/life/a.md'))).toEqual(['[publishing] notes:p1/notes@main/notes/life/a.md: publishing failed (error)']);
+    expect(logged.filter(line => line.includes('notes/life/a.md'))).toEqual([`[publishing] ${repository}/notes/life/a.md: publishing failed (error)`]);
     expect(logged.join('\n')).not.toContain('Typed live');
   });
 
@@ -196,7 +196,7 @@ describe('a live check-in', () => {
     expect(written.published).toBeUndefined();
     await settled();
     expect(committed).toHaveLength(1);
-    expect(committed[0]).toMatchObject({ person: { realm: 'edition', userId: 'p1' }, repository: { kind: 'remote', id: repository }, revision: written.revision, notes: [{ path: 'notes/life/b.md', content: 'By the agent.\n', metadata: { publish: 'b-page' } }] });
+    expect(committed[0]).toMatchObject({ person: { realm: 'edition', userId: 'p1' }, repository: { kind: 'remote', id: repository }, revision: expect.stringMatching(/^[0-9a-f]{40}$/), notes: [{ path: 'notes/life/b.md', content: 'By the agent.\n', metadata: { publish: 'b-page' } }] });
     // A write to a checked-out note goes to the live editor: nothing is committed, so nothing is published until its check-in.
     await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: 'notes/life/a.md' });
     const live = await tool(token, 'read', { path: 'notes/life/a.md' });

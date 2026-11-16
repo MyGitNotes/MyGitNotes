@@ -202,11 +202,11 @@ export interface LiveNotes {
 
 /** Runs one listener of a check-in commit; whatever it throws or rejects is logged by the note's path, never by its text. */
 function hearLiveCommit(listener: (commit: LiveCommit) => void | Promise<void>, commit: LiveCommit) {
-  const failed = (error: unknown) => console.warn(`[live-notes] a listener of the check-in commit of ${commit.repository}/${commit.path} failed: ${(error as Error)?.name ?? 'error'}`);
+  const failed = () => console.warn(`[live-notes] a listener of the check-in commit of ${commit.repository}/${commit.path} failed`);
   try {
     void Promise.resolve(listener(commit)).catch(failed);
-  } catch (error) {
-    failed(error);
+  } catch {
+    failed();
   }
 }
 
