@@ -52,13 +52,20 @@ function gistFile(note: { path: string; content: string; }) {
 
 const MARKER = /\s*\[mgn:[^\]]*\]/g;
 
+/** Drops every marker from a text until none is left, so one nested inside a broken one does not survive. */
+function withoutMarkers(text: string): string {
+  let left = text;
+  for (let dropped = left.replace(MARKER, ''); dropped !== left; dropped = left.replace(MARKER, '')) left = dropped;
+  return left;
+}
+
 /**
  * The Gist's description: the note's title, then the marker that binds the Gist to the note when there is one. The
  * title is frontmatter an agent can write, and the marker is computable from the repository and path, so any marker
  * the title holds is dropped: a description carries no marker but the one the app writes.
  */
 function gistDescription(note: PublishedNote, marker?: string) {
-  const written = typeof note.metadata.title === 'string' ? note.metadata.title.replace(MARKER, '').trim() : '';
+  const written = typeof note.metadata.title === 'string' ? withoutMarkers(note.metadata.title).trim() : '';
   const title = written || path.posix.basename(note.path);
   return marker ? `${title} ${marker}` : title;
 }
