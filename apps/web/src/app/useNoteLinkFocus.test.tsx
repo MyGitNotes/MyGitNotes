@@ -21,13 +21,14 @@ interface FocusState {
 }
 
 /** A Focus of the `life` notebook: panes of tabs, the note each shows and the active pane, as the page's Focus keeps them. */
-function useFakeFocus(initial: FocusState, { loading = false, result }: { loading?: boolean; result?: OpenResult; }) {
+function useFakeFocus(initial: FocusState, { loading = false, result, gate }: { loading?: boolean; result?: OpenResult; gate?: (path: string) => Promise<void>; }) {
   const [state, setState] = useState(initial);
   const layout: FocusLayout = Object.keys(state.panes).length === 1 ? { root: { kind: 'pane', id: Object.keys(state.panes)[0]!, tabs: state.panes[Object.keys(state.panes)[0]!]!.map(path => ({ kind: 'note', path })) } } : { root: { kind: 'split', id: 's1', orientation: 'horizontal', children: Object.entries(state.panes).map(([id, paths]) => ({ kind: 'pane', id, tabs: paths.map(path => ({ kind: 'note', path })) })) } };
   const entry = { activePane: state.activePane, shown: Object.fromEntries(Object.entries(state.shown).map(([pane, path]) => [pane, path ? `note:${path}` : null])), recent: [], history: {}, ratios: {}, hideToolbar: {} };
   const [openNote] = useState(() =>
     vi.fn(async (path: string): Promise<OpenResult> => {
       if (result) return result;
+      if (gate) await gate(path);
       setState(current => ({ ...current, panes: { ...current.panes, [current.activePane]: current.panes[current.activePane]!.includes(path) ? current.panes[current.activePane]! : [...current.panes[current.activePane]!, path] }, shown: { ...current.shown, [current.activePane]: path } }));
       return 'opened';
     })
@@ -75,7 +76,7 @@ const existing = new Set([at('a.md'), at('b.md'), at('c.md'), at('renamed.md'), 
  * `onCommit` runs as each render of the page is committed, before the effects of that render: what the person does in a
  * handler the browser runs between a render and its effects (React runs the effects of a non-urgent render in a later task).
  */
-function Page({ report, focus: initial, options }: { report: (harness: Harness) => void; focus: FocusState; options: { loading?: boolean; result?: OpenResult; notebookId?: string; narrow?: 'focus' | 'browse'; onCommit?: (harness: Harness) => void; onMarked?: (harness: Harness) => void; }; }) {
+function Page({ report, focus: initial, options }: { report: (harness: Harness) => void; focus: FocusState; options: { loading?: boolean; result?: OpenResult; notebookId?: string; narrow?: 'focus' | 'browse'; onCommit?: (harness: Harness) => void; onMarked?: (harness: Harness) => void; gate?: (path: string) => Promise<void>; }; }) {
   const location = useLocation(), navigate = useNavigate();
   const editorRoute = useMemo(() => parseWorkspaceRoute(location.pathname, location.search), [location.pathname, location.search]);
   const link = useNoteLinkLoad(location, editorRoute);
@@ -124,6 +125,24 @@ const showsNote = async (api: { current: Harness; }, name: string) => {
 };
 /** The person clicks the tab of `path` in `pane`. */
 const show = (api: { current: Harness; }, pane: string, path: string) => (api.current.focus.noteFocus as { show: (pane: string, key: string) => Promise<void>; }).show(pane, `note:${path}`);
+
+/** Holds each note the Focus opens until the test lets it finish, as a note read over the network does. */
+function heldOpens() {
+  const waiting = new Map<string, () => void>();
+  const held = { holding: true };
+  const gate = (path: string) => held.holding ? new Promise<void>(release => waiting.set(path, release)) : Promise.resolve();
+  /** Lets the opens of `paths` finish, those not waiting skipped, in one render. */
+  const release = (...paths: string[]) =>
+    act(async () => {
+      for (const path of paths) {
+        waiting.get(path)?.();
+        waiting.delete(path);
+      }
+    });
+  /** Opens finish at once from now on. */
+  const stop = () => void (held.holding = false);
+  return { gate, waiting, release, stop };
+}
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -234,6 +253,39 @@ describe('a note link loaded as the page', () => {
     await waitFor(() => expect(api.current.focus.openNote).not.toHaveBeenCalled());
     expect(api.current.url).toBe('/notebooks/life/notes/missing.md');
   });
+  for (const order of ['the click first', 'both in one render'] as const) {
+    it(`wins over a list click made while it opens (${order}), which opens nothing and leaves the history as it was`, async () => {
+      const held = heldOpens();
+      const { api } = open(['/settings', '/notebooks/life/notes/a.md'], empty(), { gate: held.gate });
+      await waitFor(() => expect(held.waiting.has(at('a.md'))).toBe(true));
+      expect(api.current.linkPending).toBe(true);
+      let clicked: Promise<void> | undefined;
+      act(() => void (clicked = api.current.browse(at('b.md'))));
+      if (order === 'the click first') {
+        await held.release(at('b.md'));
+        await held.release(at('a.md'));
+      } else {
+        await held.release(at('a.md'), at('b.md'));
+      }
+      // The ignored click settles: nothing waits for it.
+      await act(async () => await clicked);
+      await waitFor(() => expect(isFocusNoteState(api.current.state)).toBe(true));
+      await showsNote(api, 'a.md');
+      expect(api.current.focus.openNote).toHaveBeenCalledTimes(1);
+      expect(api.current.focus.openNote).toHaveBeenCalledWith(at('a.md'));
+      expect(api.current.focus.state.panes.p1).toEqual([at('a.md')]);
+      expect(api.current.handleOpenNote).not.toHaveBeenCalled();
+      // Once it settled, a click opens its note as before, in a new entry Back leaves for the loaded note.
+      held.stop();
+      await act(() => api.current.browse(at('b.md')));
+      await showsNote(api, 'b.md');
+      await back(api);
+      await showsNote(api, 'a.md');
+      expect(isFocusNoteState(api.current.state)).toBe(true);
+      await back(api);
+      expect(api.current.url).toBe('/settings');
+    });
+  }
   it('leaves a template file’s link in zoom: a template never opens in a Focus pane', async () => {
     const { api } = open(['/notebooks/life/notes/.templates/reading.md']);
     await waitFor(() => expect(api.current.zoomed).toBe(true));
