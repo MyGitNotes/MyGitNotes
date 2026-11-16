@@ -428,7 +428,7 @@ curl -fsS -X POST -H "Authorization: Bearer $MYGITNOTES_LIVE_SWEEP_SECRET" https
 
 跑兩個 Redis，各自是單一伺服器，不是 cluster：
 
-- **即時 Redis** 存登入狀態、Agent 授權、存下的平台 token 與即時文字。它絕不能淘汰資料，也應該持久保存：`appendonly yes` 加 `appendfsync everysec`，以及 `maxmemory-policy noeviction`（沒設 `maxmemory` 時的預設）。即時文字沒有到期時間，所以 `volatile-*` 策略也不會淘汰它；在 `allkeys-*` 策略下伺服器拒絕啟動，因為 Redis 可能丟掉打到一半的字。讀不到策略時（有些代管服務不公開），伺服器發出警告後照常啟動。沒有 append-only file 時，它會警告 Redis 重啟會丟掉上次簽回後打的字。如果用 `maxmemory` 設上限，Redis 滿了就不再收新打的字：分頁顯示「未儲存」而不是丟字，登入也會失敗，直到調高上限。
+- **即時 Redis** 存登入狀態、Agent 授權、存下的平台 token 與即時文字。它絕不能淘汰資料，也應該持久保存：`appendonly yes` 加 `appendfsync everysec`，以及 `maxmemory-policy noeviction`（沒設 `maxmemory` 時的預設）。即時文字沒有到期時間，所以 `volatile-*` 策略也不會淘汰它；在 `allkeys-*` 策略下伺服器拒絕啟動，因為 Redis 可能丟掉打到一半的字。讀不到策略時（有些代管服務不公開），伺服器發出警告後照常啟動。沒有 append-only file 時，它會警告 Redis 重啟會丟掉上次簽回後打的字。如果用 `maxmemory` 設上限，Redis 滿了就不再收新打的字：分頁顯示「未儲存」而不是丟字，登入也會失敗，直到調高上限。筆記簽回時，即時 Redis 還會把那段工作階段結束時的文件保留 24 小時（`P:ended:<id>:<epoch>`），讓分頁在斷線時留下的字合併回來時不會重複；只有存過打字的工作階段才保留，超過 5 MiB 的不保留。請替這份副本預留記憶體：大約是過去一天內每篇有人打過字的筆記大小，乘上打過字的工作階段數。在 `noeviction` 下，這些副本和其他資料一樣計入 `maxmemory`，到期自動刪除；在 `volatile-*` 策略下 Redis 可能提早淘汰它們，之後合併這類留下的字時會變成衝突，而不是重複文字。
 - **快取 Redis** 只放讀取快取：依 Git object id 與內容雜湊存的筆記與索引副本，遺失也無妨。給它 `maxmemory` 與 `allkeys-lru`、不開持久化，並讓 `MYGITNOTES_CACHE_REDIS_URL` 指向它。快取寫入失敗時，那個請求會回 503，所以快取若和已滿的 `noeviction` Redis 共用，讀取就會失敗；分開後，快取自己淘汰，即時 Redis 只留下必須保存的資料。
 
 兩者的 key 都依 `MYGITNOTES_SESSION_NAMESPACE` 分開。用 [Docker Compose](#docker-compose-連接遠端儲存庫) 時，`redis` 服務本來就開了 append-only file、沒設 `maxmemory`，`compose.yaml` 也附了註解掉的 `cache` 服務：

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { RepositoryId } from '@mygitnotes/core';
-import { LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
+import { LIVE_ENDED_MAX_BYTES, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
 
 interface Lease {
   token: string;
@@ -167,7 +167,9 @@ export function memoryLiveStore(): LiveStore {
       grip.link.live = false;
       for (const [name, document] of ended) if (document.until <= now) ended.delete(name);
       const document = documents.get(id);
-      if (document) ended.set(`${id}.${grip.link.epoch}`, { ...document, until: now + LIVE_MERGE_MS });
+      // Only an epoch that stored typing keeps its document, and only up to the bound (cfx-F002).
+      const typed = document && (grip.link.gen > 0 || document.log.length > 0);
+      if (document && typed && document.log.reduce((sum, update) => sum + update.byteLength, document.state.byteLength) <= LIVE_ENDED_MAX_BYTES) ended.set(`${id}.${grip.link.epoch}`, { ...document, until: now + LIVE_MERGE_MS });
       erase(id);
       return 'released';
     },

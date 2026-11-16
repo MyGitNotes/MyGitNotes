@@ -1,4 +1,4 @@
-import type { LiveConflict, NotebookKey, RepositoryId, WorkspacePerson } from '@mygitnotes/core';
+import { LIVE_MAX_BYTES, type LiveConflict, type NotebookKey, type RepositoryId, type WorkspacePerson } from '@mygitnotes/core';
 
 /*
  * What the built-in live editor keeps between check-ins (docs/specs/2026-11-15-builtin-live-editor §3): the links, each
@@ -12,6 +12,11 @@ import type { LiveConflict, NotebookKey, RepositoryId, WorkspacePerson } from '@
 export const LIVE_TICKET_MS = 60_000;
 /** How long the answer of a merge is kept for a repeat of it, and the document of a released epoch for a merge of typing a tab kept of it. */
 export const LIVE_MERGE_MS = 24 * 60 * 60_000;
+/**
+ * The largest ended document kept, its state and log together, in bytes: one past it is not kept, and a merge of typing
+ * kept of its epoch falls back to the base the tab names (cfx-F002).
+ */
+export const LIVE_ENDED_MAX_BYTES = LIVE_MAX_BYTES;
 /** How long a process's presence entry counts after its last write, so a process that crashed stops counting. */
 export const LIVE_PRESENCE_MS = 90_000;
 
@@ -169,7 +174,9 @@ export interface LiveStore {
   /**
    * Releases when the lease holds, the link is synced at `contentHash` and its sequence is still `seq`. Deletes the
    * epoch's editors, presence, lease and tickets, and moves its document and log to {@link LiveStore.ended} until `now`
-   * plus {@link LIVE_MERGE_MS}; keeps the link record and its path.
+   * plus {@link LIVE_MERGE_MS} when the epoch stored anything beyond its seed (its log holds an update, or a compaction
+   * ran) and the two take at most {@link LIVE_ENDED_MAX_BYTES}; otherwise it keeps nothing of the document. Keeps the
+   * link record and its path.
    */
   release(id: string, token: string, expect: { seq: number; contentHash: string; }, now: number): Promise<'released' | 'leased' | 'not-synced' | 'changed'>;
   /**

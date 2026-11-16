@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { LiveUnavailableError, type RepositoryId } from '@mygitnotes/core';
 import { createClient, ErrorReply } from 'redis';
 import { recordKeyPrefix } from '../record-store/index.js';
-import { LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
+import { LIVE_ENDED_MAX_BYTES, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
 
 /*
  * The live store in Redis (docs/specs/2026-11-15-builtin-live-editor §3.2). Under the prefix P:
@@ -21,6 +21,7 @@ import { LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type S
  *   P:tickets:<id>           set     60 s, refreshed   the hashes of the link's tickets, so a release or discard deletes them
  *   P:merge:<sha256>         string  24 h     JSON { answer, until }: what a merge answered, for a repeat of it
  *   P:ended:<id>:<epoch>     hash    24 h     a released epoch's document: `state`, `log` (base64, comma-joined) and `until`
+ *                                             (only for an epoch that stored typing, and only up to LIVE_ENDED_MAX_BYTES)
  *
  * `rk` and `pk` are the first 32 hex of the sha256 of the repository id and of the path. Live text carries no TTL, so a
  * volatile-* eviction policy never takes it (an ended document may go early, and a merge of typing kept of it then
@@ -208,15 +209,23 @@ if ARGV[6] == '' then redis.call('HDEL', KEYS[1], 'conflict') else redis.call('H
 for _, editor in ipairs(covered) do redis.call('HDEL', KEYS[3], editor) end
 return 'ok'`;
 
-/** KEYS link, lease, editors, presence, tickets, repos. ARGV token, now, seq, contentHash, P, how long the ended document is kept. */
+/**
+ * KEYS link, lease, editors, presence, tickets, repos. ARGV token, now, seq, contentHash, P, how long the ended document
+ * is kept, the most bytes it may take. Only an epoch that stored typing (a log entry, or a compaction) keeps it.
+ */
 const RELEASE = `${HOLDER}${ERASE}
 if not holder(ARGV[1], ARGV[2]) then return 'leased' end
-local at = redis.call('HMGET', KEYS[1], 'syncedAt', 'syncedHash', 'seq', 'epoch', 'id', 'rk', 'repository')
+local at = redis.call('HMGET', KEYS[1], 'syncedAt', 'syncedHash', 'seq', 'epoch', 'id', 'rk', 'repository', 'gen')
 if not at[1] or at[2] ~= ARGV[4] then return 'not-synced' end
 if at[3] ~= ARGV[3] then return 'changed' end
 local doc = ARGV[5] .. ':doc:' .. at[5] .. ':' .. at[4]
 local state, log = redis.call('GET', doc), redis.call('LRANGE', doc .. ':log', 0, -1)
+local size = 0
 if state then
+  size = #state
+  for _, entry in ipairs(log) do size = size + #entry end
+end
+if state and (tonumber(at[8] or '0') > 0 or #log > 0) and math.floor(size * 3 / 4) <= tonumber(ARGV[7]) then
   local ended = ARGV[5] .. ':ended:' .. at[5] .. ':' .. at[4]
   redis.call('DEL', ended)
   redis.call('HMSET', ended, 'state', state, 'log', table.concat(log, ','), 'until', string.format('%.0f', tonumber(ARGV[2]) + tonumber(ARGV[6])))
@@ -460,7 +469,7 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
     },
     async release(id, token, expect, now) {
       if (!isLink(id)) return 'leased';
-      return await script(`release ${id}`, RELEASE, lifecycleKeys(id), [token, now, expect.seq, expect.contentHash, P, LIVE_MERGE_MS]) as 'released' | 'leased' | 'not-synced' | 'changed';
+      return await script(`release ${id}`, RELEASE, lifecycleKeys(id), [token, now, expect.seq, expect.contentHash, P, LIVE_MERGE_MS, LIVE_ENDED_MAX_BYTES]) as 'released' | 'leased' | 'not-synced' | 'changed';
     },
     async discard(id, token, expect, now) {
       if (!isLink(id)) return 'leased';
