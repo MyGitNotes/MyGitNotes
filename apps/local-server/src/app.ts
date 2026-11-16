@@ -1,5 +1,5 @@
 import express from 'express';
-import { isBuiltinEditor, type LiveNotes, parseLiveBase, type RemoteCache, sweepLive, validateLiveEditorInfo } from '@mygitnotes/core';
+import { isBuiltinEditor, type LiveNotes, parseLiveBase, type RemoteCache, sweepIdleLive, sweepLive, templateTimeZone, validateLiveEditorInfo } from '@mygitnotes/core';
 import { fail } from './route-errors.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -33,7 +33,7 @@ import { externalPiAgent, externalPiEnvironment } from './pi-external-agent.js';
 import { type PublishingService, publishNotes } from './publishing.js';
 import { createWorkspaceMembersRouter } from './workspace-members.js';
 import { createLiveRouter, createLiveSweepRouter } from './live-routes.js';
-import { liveScheduleSetting, startLiveSchedule } from './live-schedule.js';
+import { liveIdleSetting, liveScheduleSetting, startLiveSchedule } from './live-schedule.js';
 
 export function applicationRoot() {
   let dir = path.dirname(fileURLToPath(import.meta.url));
@@ -132,6 +132,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   checkLiveNotes(overrides.liveNotes, local);
   // Read at start, so a time that is none, or an unknown time zone, stops the deployment instead of the first check-in.
   const liveSchedule = overrides.liveNotes ? liveScheduleSetting() : null;
+  const liveIdle = overrides.liveNotes ? liveIdleSetting() : null;
   // The lightweight mode keeps sign-ins in cookies and nothing on the server; local workspaces never use it.
   const lightweight = !local && storageMode() === 'cookie';
   const recordStore = overrides.recordStore ?? (lightweight ? new NoRecordStore() : createRecordStore(base));
@@ -148,15 +149,28 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
   // person's repositories through its membership store.
   const visitorChoice = choosesRepository() && Boolean(workspaceChoices);
   if (product && choosesRepository()) throw new Error("A product repository (MYGITNOTES_PRODUCT_REPOSITORY or product_repository) offers Core updates, which a deployment where each visitor chooses a repository does not give its visitors. Remove it, or name the deployment's repository with MYGITNOTES_REPOSITORY.");
-  // A long-running server checks live notes in every night itself; on Vercel an external cron calls /api/live/sweep.
-  if (overrides.liveNotes && liveSchedule && !process.env.VERCEL) {
+  // A long-running server checks live notes in every night itself, and about every minute those everyone left; on Vercel an external cron calls /api/live/sweep.
+  if (overrides.liveNotes && (liveSchedule || liveIdle) && !process.env.VERCEL) {
     const live = overrides.liveNotes;
+    const timeZone = liveSchedule?.timeZone ?? templateTimeZone();
     startLiveSchedule({
       setting: liveSchedule,
       sweep: async instant => {
-        const report = await sweepLive(live, { instant, timeZone: liveSchedule.timeZone });
+        const report = await sweepLive(live, { instant, timeZone });
         if (report.due) console.info(`[live-notes] nightly check-in: ${report.results.filter(result => result.committed).length} committed, ${report.failed.length} failed of ${report.due} due`);
       },
+      ...(liveIdle
+        ? {
+          idle: {
+            sweep: async () => {
+              const report = await sweepIdleLive(live, { idleMs: liveIdle, timeZone });
+              const committed = report.results.filter(result => result.committed).length;
+              // A note only viewed is released without a commit, every minute somewhere: only commits and failures are worth a line.
+              if (committed || report.failed.length) console.info(`[live-notes] idle check-in: ${committed} committed, ${report.failed.length} failed of ${report.due} due`);
+            },
+          },
+        }
+        : {}),
     });
   }
   const app = express();

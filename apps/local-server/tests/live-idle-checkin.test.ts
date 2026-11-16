@@ -101,7 +101,10 @@ describe('the idle check-in', () => {
     expect(await sweep()).toMatchObject({ due: 1, results: [{ id, committed: true, released: false, reason: 'active', activeEditors: 1 }], failed: [] });
     expect(refused).toHaveBeenCalledTimes(1);
     liveNotes.setActive(repository, id, 0);
+    // This adapter has no `unlease`: the next tick finds the first check-in's lease, and one after it ran out takes the note.
     clock.advance(MINUTE);
+    expect(await sweep()).toMatchObject({ due: 1, results: [{ id, committed: false, released: false, reason: 'leased' }] });
+    clock.advance(5 * MINUTE);
     expect(await sweep()).toMatchObject({ due: 1, results: [{ id, committed: false, released: true }] });
     expect(commits()).toHaveLength(1);
   });

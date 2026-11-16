@@ -625,13 +625,9 @@ export interface LiveSweepReport {
 
 const reasonOf = (error: unknown) => error instanceof SourceError ? `${error.status} ${error.message}` : 'unexpected error';
 
-/**
- * A scheduled check-in of every due link (§5.1): those whose `since` is before `instant`, in each repository the
- * adapter has live links in. A link's failure is logged by id and reason and never stops the others. Where the adapter
- * can discard, a pending note nobody typed in, or an empty one, is discarded instead of filed (§19).
- */
-export async function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions): Promise<LiveSweepReport> {
-  const { instant, concurrency = 2, max = 500 } = options;
+/** Checks in every live link `isDue` picks, in each repository the adapter has live links in; what both sweeps share. */
+async function sweepDue(liveNotes: LiveNotes, isDue: (row: Record<string, unknown>) => boolean, options: Pick<LiveSweepOptions, 'mode' | 'now' | 'timeZone' | 'concurrency' | 'max' | 'sleep'>): Promise<LiveSweepReport> {
+  const { concurrency = 2, max = 500 } = options;
   const repositories = await adapter(() => liveNotes.service.repositories());
   if (!Array.isArray(repositories)) throw new LiveUnavailableError();
   const due: { repository: RepositoryId; id: string; }[] = [];
@@ -646,8 +642,8 @@ export async function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions)
     }
     if (!Array.isArray(rows)) continue;
     for (const row of rows) {
-      const { id, since } = (row ?? {}) as { id?: unknown; since?: unknown; };
-      if (isLiveId(id) && isTime(since) && Date.parse(since) < instant.getTime() && due.length < max) due.push({ repository, id });
+      const { id } = (row ?? {}) as { id?: unknown; };
+      if (isLiveId(id) && isDue(row as Record<string, unknown>) && due.length < max) due.push({ repository, id });
     }
   }
   const report: LiveSweepReport = { due: due.length, results: [], failed: [] };
@@ -666,4 +662,48 @@ export async function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions)
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, due.length)) }, worker));
   return report;
+}
+
+/**
+ * A scheduled check-in of every due link (§5.1): those whose `since` is before `instant`, in each repository the
+ * adapter has live links in. A link's failure is logged by id and reason and never stops the others. Where the adapter
+ * can discard, a pending note nobody typed in, or an empty one, is discarded instead of filed (§19).
+ */
+export function sweepLive(liveNotes: LiveNotes, options: LiveSweepOptions): Promise<LiveSweepReport> {
+  const instant = options.instant.getTime();
+  return sweepDue(liveNotes, ({ since }) => isTime(since) && Date.parse(since) < instant, options);
+}
+
+/** How long after its last edit a live note nobody is active on is checked in, unless the deployment says otherwise. */
+export const LIVE_IDLE_CHECKIN_MS = 5 * 60_000;
+
+export interface LiveIdleSweepOptions {
+  /** Milliseconds since the epoch: the clock the rows' times are compared with, and each check-in's; `Date.now` by default. */
+  now?: () => number;
+  /** How long nobody typed in a link before it is due; {@link LIVE_IDLE_CHECKIN_MS} by default. */
+  idleMs?: number;
+  timeZone?: string;
+  /** Check-ins at a time in this process; 2 by default. */
+  concurrency?: number;
+  /** Links one sweep handles; 500 by default. */
+  max?: number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * The idle check-in (docs/specs/2026-11-16-collab-first-self-host A5): checks in every live link nobody is active on
+ * (`activeEditors` 0, by the adapter's own idle rule) whose last edit, or whose checkout when nobody typed, is at least
+ * `idleMs` ago. Each runs as a scheduled check-in of a sweep: a note Git already holds is released without a commit, a
+ * pending note nobody typed in, or an empty one, is discarded where the adapter can, and a release refused because
+ * someone came back is left for the next tick.
+ */
+export function sweepIdleLive(liveNotes: LiveNotes, options: LiveIdleSweepOptions = {}): Promise<LiveSweepReport> {
+  const { now = Date.now, idleMs = LIVE_IDLE_CHECKIN_MS } = options;
+  const at = now();
+  const isDue = ({ since, activeEditors, lastEditAt }: Record<string, unknown>) => {
+    if (activeEditors !== 0) return false;
+    const last = lastEditAt === null || lastEditAt === undefined ? since : lastEditAt;
+    return isTime(last) && at - Date.parse(last) >= idleMs;
+  };
+  return sweepDue(liveNotes, isDue, { ...options, mode: 'scheduled' });
 }
