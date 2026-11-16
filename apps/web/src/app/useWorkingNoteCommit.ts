@@ -59,7 +59,7 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
     const changes: Record<string, NoteChangeInput> = {};
     const layer = committedLayer(readLocalCommits(scope));
     for (const entry of entries) {
-      if (entry.blocked) throw new Error(`${entry.note.path}: ${entry.blocked}`);
+      if (entry.blocked) throw new Error(`${entry.note.path}: ${entry.blocked === LIVE_MERGE_CONFLICT ? t('live.mergeConflict') : entry.blocked}`);
       if (!sameValue(readWorkingNotes(store)[entry.note.path], entry)) throw new Error('Local draft changed during review. Retry Commit.');
       const { path, notebookId } = entry.note;
       sent[path] = entry;
@@ -118,7 +118,7 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
     }
     for (const entry of entries) {
       if (merged.includes(entry)) continue;
-      if (entry.blocked) throw new Error(`${entry.note.path}: ${entry.blocked}`);
+      if (entry.blocked) throw new Error(`${entry.note.path}: ${entry.blocked === LIVE_MERGE_CONFLICT ? t('live.mergeConflict') : entry.blocked}`);
       let prepared = entry;
       if (entry.base) {
         let latest: NoteItem;

@@ -53,7 +53,7 @@ import { notebookRoute, noteRoute, noteTrail, parseWorkspaceRoute, trailCompilat
 import { draftScope, editable, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
 import { DemoBanner } from './components/DemoBanner.js';
 import { demoFocusesOf, useDemoScenario } from './app/useDemoScenario.js';
-import { clearLocalDraft, moveLocalDraft } from './lib/storage.js';
+import { forgetNoteDrafts } from './lib/storage.js';
 import { sameValue } from './lib/merge-note.js';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchFileDiff, fetchGitStatus, readNote } from './lib/api.js';
@@ -303,8 +303,7 @@ export const AppContent: React.FC = () => {
   const forgetDrafts = (notebookId: string, path: string, destination: string) => {
     const repository = repositoryFor(notebookId);
     const scope = (repository ? draftScope(repository) : '') || repository?.branch || '';
-    clearLocalDraft(scope, path);
-    moveLocalDraft(`${scope}:conflict`, path, destination);
+    void forgetNoteDrafts(scope, notebookId, path, destination);
   };
   const noteMove = useNoteMove({ config, remote, canWriteNotebook: canChangeFiles, readDraft, updateDraft, stageWorkingNote, saveNote: handleSaveNote, focus: focusPage, queryClient, queryScope, flushEditors: editorRegistry.flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus: noteFocus.relocatePaths, setActionError, t, retargets: liveDrafts.retargets, releasesUntouched: liveDrafts.releasesUntouched });
   // Offline handover (collab-first A3.2): once online, drafts of notes the built-in live editor covers go to their live notes.
