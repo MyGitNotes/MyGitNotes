@@ -167,9 +167,10 @@ export function textUpdate(document: Y.Doc, next: string): Uint8Array | null {
 }
 
 /**
- * The most units a live document may hold for a text of at most `maxBytes`: every clock of every client, deleted runs
- * included. A deleted run is stored as its length alone, so a few bytes of an update can claim any length; a document
- * past this is refused, so nothing that walks a document's units runs without end (cfx-F001).
+ * The most units one update may add to a live document, and the most a merge walks, for a text of at most `maxBytes`:
+ * clocks of every client, deleted runs included. A deleted run is stored as its length alone, so a few bytes of an update
+ * can claim any length; an update that claims more is refused (cfx-F001). The server's own rewrites add units a document
+ * never sheds, so a document may grow past this; a merge then does not walk it (cfx2-F001).
  */
 export const liveMaxUnits = (maxBytes: number = LIVE_MAX_BYTES) => 4 * maxBytes;
 
@@ -297,10 +298,11 @@ function liveUnits(text: Y.Text): (client: number, clock: number) => string | un
  * replacements of one line together, so the tab's text is instead merged by character (A4) on what both had: the units
  * both documents know that not both deleted. Two insertions at one point then conflict, since the span between them may
  * have been replaced on both sides (spec A3.1, S6 (c)).
- * Null for an update that cannot be read, and for either document past `maxUnits` (`liveMaxUnits`), whose units would
- * take too long to walk (cfx-F001).
+ * Null for an update that cannot be read or that claims more than `maxUnits` (`liveMaxUnits`) units the ended document
+ * does not hold (cfx-F001); `unwalked` for an ended document past `maxUnits`, which server rewrites can make (cfx2-F001)
+ * and whose units would take too long to walk: the typing then merges on the base the tab names.
  */
-export function typedInTexts(ended: Pick<StoredDocument, 'state' | 'log'>, update: Uint8Array, maxUnits = liveMaxUnits()): { base: string; text: string; } | { conflict: true; } | null {
+export function typedInTexts(ended: Pick<StoredDocument, 'state' | 'log'>, update: Uint8Array, maxUnits = liveMaxUnits()): { base: string; text: string; } | { conflict: true; } | 'unwalked' | null {
   const server = storedDocument({ ...ended, gen: 0, seq: 0 });
   const tab = new Y.Doc();
   try {
@@ -312,8 +314,11 @@ export function typedInTexts(ended: Pick<StoredDocument, 'state' | 'log'>, updat
     const serverText = server.getText(CONTENT), tabText = tab.getText(CONTENT);
     const base = serverText.toString(), mine = tabText.toString();
     const serverKnows = Y.decodeStateVector(Y.encodeStateVector(server)), tabKnows = Y.decodeStateVector(Y.encodeStateVector(tab));
-    // Every walk below is bounded by the units of the two documents.
-    if (unitsOf(serverKnows) > maxUnits || unitsOf(tabKnows) > maxUnits) return null;
+    // The first walk below is bounded by the server's units, the second by those plus what only the tab claims.
+    let excess = 0;
+    for (const [client, clock] of tabKnows) excess += Math.max(0, clock - (serverKnows.get(client) ?? 0));
+    if (excess > maxUnits) return null;
+    if (unitsOf(serverKnows) > maxUnits) return 'unwalked';
     const serverDeleted = Y.createDeleteSetFromStructStore(server.store), tabDeleted = Y.createDeleteSetFromStructStore(tab.store);
     const knownTo = (vector: Map<number, number>, client: number, clock: number) => clock < (vector.get(client) ?? 0);
     // Changes the tab never had: units the server made it never heard of, or deleted where the tab still has them.
@@ -631,8 +636,8 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       if (verdict === 'not-typing') throw new LiveUpdateRefusedError();
       if (verdict === 'waiting') throw new LiveUpdateWaitingError();
       if (Y.snapshotContainsUpdate(Y.snapshot(document), update)) return false;
-      // A deleted run claims units by its length alone: a document past the most units a live text needs is refused.
-      if (unitsAfter(document, update) > liveMaxUnits(maxBytes)) throw new LiveTooLargeError();
+      // A deleted run claims units by its length alone: an update that adds more than a live text needs is refused.
+      if (unitsAfter(document, update) - unitsOf(Y.decodeStateVector(Y.encodeStateVector(document))) > liveMaxUnits(maxBytes)) throw new LiveTooLargeError();
       // Only an update that could take the text past the limit is measured, on a copy.
       if (document.getText(CONTENT).length * 3 + update.byteLength > maxBytes) {
         const copy = new Y.Doc();

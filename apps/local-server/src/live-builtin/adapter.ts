@@ -206,7 +206,9 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     const ended = await store.ended(link.id, epoch, clock());
     if (!ended) return null;
     const texts = typedInTexts(ended, update, liveMaxUnits(limits.maxBytes));
-    if (!texts) throw new SourceError('typedIn.update is not a Yjs update of its document.', 400);
+    if (!texts) throw new SourceError('typedIn.update is not a readable Yjs update, or claims more than a live note can hold beyond its document.', 400);
+    // An ended document too large to walk: the typing merges on the base the tab names.
+    if (texts === 'unwalked') return null;
     if ('conflict' in texts) return texts;
     return { base: fits(normalizeLiveText(texts.base)), text: fits(normalizeLiveText(texts.text)) };
   };
