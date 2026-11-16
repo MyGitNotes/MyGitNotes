@@ -48,6 +48,18 @@ type FileAction = keyof LiveFileActions;
 const ACTIVE_REFUSALS = { move: ['live.activeMove', 'live.activeMoveOne'], rename: ['live.activeRename', 'live.activeRenameOne'], remove: ['live.activeDelete', 'live.activeDeleteOne'] } as const;
 const REASONS = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled' } as const;
 
+/*
+ * A file action refused while others edit the note, by `noteRefKey`, so that the refusal outlives the editor: a check-in
+ * that committed the text before it was refused moves the head, and the workspace refresh mounts a new editor, which says
+ * it again. Forgotten when it is closed, or after REFUSAL_MS.
+ */
+const REFUSAL_MS = 30_000;
+const refusals = new Map<string, { text: string; at: number; }>();
+const recentRefusal = (key: string, now = Date.now()) => {
+  const refusal = refusals.get(key);
+  return refusal && now - refusal.at < REFUSAL_MS ? refusal.text : null;
+};
+
 /** What a collab-first note's own editor offers for its file actions: each checks the note in first, and answers whether it ran. */
 export type LiveOwnFileActions = { [action in FileAction]?: () => Promise<boolean>; };
 
@@ -88,7 +100,12 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
   });
 
   /** Refuses a file action while others edit the note: said until it is closed or another action runs. */
-  const [refusal, setRefusal] = useState<string | null>(null);
+  const [refusal, showRefusal] = useState<string | null>(() => (live ? recentRefusal(key) : null));
+  const setRefusal = (text: string | null) => {
+    if (text === null) refusals.delete(key);
+    else refusals.set(key, { text, at: Date.now() });
+    showRefusal(text);
+  };
 
   const checkOut = useCallback(async () => {
     const { notebookId, path } = latest.current;
