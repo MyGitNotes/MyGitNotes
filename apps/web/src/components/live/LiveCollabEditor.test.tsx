@@ -952,6 +952,41 @@ describe('typing the server has not stored', () => {
     expect(provider().configuration.name).toBe('live-1.2');
   });
 
+  // S6 (c) at e3ceb70b: the release remounts the editor while the merge is under way; its answer must still be acted on.
+  it('keeps a conflicting merge as a conflict draft, and lets the typing go, when the editor closed while the merge was under way', async () => {
+    const onMergeConflict = vi.fn(() => true);
+    let answer: (response: Response) => void = () => {};
+    server({ documents: ['live-1.1', 'live-1.2'], merge: () => new Promise<Response>(resolve => void (answer = resolve)) as never });
+    const view = await open({ onMergeConflict });
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    view.unmount();
+    await act(async () => answer(json({ error: 'The text changed the same lines as the live note did since. Nothing was merged.', code: 'merge-conflict', checkout }, 409)));
+    await act(async () => {});
+    expect(onMergeConflict).toHaveBeenCalledWith('# A\noffline typing\n');
+    expect(await unsyncedLiveStore().list()).toEqual([]);
+  });
+
+  it('lets typing it merged go when the editor closed while the merge was under way', async () => {
+    let answer: (response: Response) => void = () => {};
+    server({ documents: ['live-1.1', 'live-1.2'], merge: () => new Promise<Response>(resolve => void (answer = resolve)) as never });
+    const view = await open();
+    sync('# A\n');
+    typeOffline();
+    await act(async () => {
+      provider().configuration.onStateless?.({ payload: JSON.stringify({ type: 'released' }) });
+    });
+    await act(async () => {});
+    view.unmount();
+    await act(async () => answer(json({ applied: true, contentHash: 'h'.repeat(64), checkout, outcome: 'reopened' })));
+    await act(async () => {});
+    expect(await unsyncedLiveStore().list()).toEqual([]);
+  });
+
   it('after a reload, is synced again on the same document, and merged when the note was checked in meanwhile', async () => {
     const view = await open();
     sync('# A\n');
