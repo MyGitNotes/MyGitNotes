@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
 import type { RepositoryStatus } from '@mygitnotes/core/repository';
 import { NoteInfoPanel } from './NoteInfoPanel.js';
-import { NoteLocationProvider, noteLocation } from '../../lib/note-location.js';
+import { noteLocation, NoteLocationProvider } from '../../lib/note-location.js';
 import { type WebFeature, WebFeaturesProvider } from '../../lib/web-features.js';
 
 type Repository = Pick<RepositoryStatus, 'id' | 'type' | 'repository' | 'branch' | 'write' | 'demo' | 'unavailable'>;

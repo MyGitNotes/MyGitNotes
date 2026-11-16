@@ -38,7 +38,7 @@ import { useWorkspaceSync } from './lib/use-workspace-sync.js';
 import { discardDocumentDraft } from './lib/use-workspace-document.js';
 import { documentClientOf } from './lib/workspace-document-clients.js';
 import { WorkspaceLinks } from './components/WorkspaceLinks.js';
-import { type NoteLocation, NoteLocationProvider, noteLocation } from './lib/note-location.js';
+import { type NoteLocation, noteLocation, NoteLocationProvider } from './lib/note-location.js';
 import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
 import { useFoldAnimation } from './lib/use-fold-animation.js';

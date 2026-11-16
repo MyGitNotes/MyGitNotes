@@ -190,11 +190,11 @@ it('asks a remote deployment for an agent session when its server reports one fo
 
 it("renders an edition's rows in a writable note's info panel and none without features", () => {
   const note = { notebookId: 'life', path: 'notes/life/a.md' };
-  const location = (gists: boolean) => ({ notebook: 'Life', repository: 'owner/home', branch: 'main', path: note.path, gists });
-  const panel = (features: WebFeature[], gists = true) =>
+  const location = (writable: boolean) => ({ notebook: 'Life', repository: 'owner/home', branch: 'main', path: note.path, gists: writable, publishable: writable });
+  const panel = (features: WebFeature[], writable = true) =>
     renderToStaticMarkup(
       <WebFeaturesProvider features={features}>
-        <NoteLocationProvider locate={() => location(gists)}>
+        <NoteLocationProvider locate={() => location(writable)}>
           <NoteInfoPanel note={note} content='Body' metadata={{ publish: 'a' }} setMetadata={() => {}} locked={false} />
         </NoteLocationProvider>
       </WebFeaturesProvider>,
