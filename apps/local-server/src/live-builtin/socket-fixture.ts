@@ -93,7 +93,10 @@ export interface LiveTab {
   refused: string[];
   /** Every close it saw: its socket's, with the code, and its document's (code 1000, with the server's reason). */
   closes: { code: number; reason: string; }[];
-  /** The first sync with the server is done. */
+  /**
+   * The tab has the server's text. The server may not have taken the tab's half of that first sync yet (`saved` waits
+   * for it): a test that moves the clock past `socketMs` before then has the socket closed for a new ticket when it lands.
+   */
   synced(): Promise<void>;
   /** The server acknowledged everything the tab typed. */
   saved(): Promise<void>;

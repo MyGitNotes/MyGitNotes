@@ -651,7 +651,9 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
     });
 
     it('tells the tabs of a note that was checked in that it is released, takes nothing more of that epoch, and opens the next only by its own name', async () => {
-      const server = await serverOver({ store: makeStore() });
+      // Its clock runs past a socket's time, which is not what this test is about: a tab's half of its first sync that
+      // reached the server only after that would close its socket for a new ticket.
+      const server = await serverOver({ store: makeStore(), limits: { socketMs: 24 * 3_600_000 } });
       const { store, time, files, liveNotes } = server.live;
       const id = await server.checkout();
       const one = await server.tab(1), two = await server.tab(2);
@@ -690,7 +692,9 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
     });
 
     it('tells the tab of a draft that was discarded that it is released', async () => {
-      const server = await serverOver({ store: makeStore() });
+      // Its clock runs past a socket's time, which is not what this test is about: a tab's half of its first sync that
+      // reached the server only after that would close its socket, and the draft would go while the tab is between sockets.
+      const server = await serverOver({ store: makeStore(), limits: { socketMs: 24 * 3_600_000 } });
       const made = await server.call('POST', '/api/live/new', { notebookId: 'notes~life', title: 'Idea', content: 'Some idea\n' });
       const pending = made.body.checkout as { id: string; path: string; };
       const one = await server.tab(1, { path: pending.path });
