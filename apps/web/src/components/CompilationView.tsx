@@ -63,7 +63,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   const study = useStudyWorkspace(actions.repository(notebookId), ignoreSaved);
   const { assets, error: assetError } = useCompilationAssets(notebooks, compilationNotebookIds(compilation.page.rows[0] as CompilationRow | undefined, notebookId));
   const facets = useNoteFacets(false);
-  const [dialog, setDialog] = useState<'edit' | 'add' | 'delete' | 'order' | null>(null);
+  const [dialog, setDialog] = useState<'edit' | 'add' | 'delete' | 'order' | 'arrange' | null>(null);
   const [reorder, setReorder] = useState(false);
   const [dragging, setDragging] = useState<CompilationItem>();
   const [missing, setMissing] = useState(false);
@@ -208,6 +208,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       ),
       onSort: (sort: NonNullable<Extract<CompilationRow, { kind: 'dynamic'; }>['sort']>) => current.kind === 'dynamic' && change({ ...current, sort }),
       onEditOrder: current.kind === 'dynamic' && compilation.writable ? () => setDialog('order') : undefined,
+      onArrange: current.kind === 'custom' && compilation.writable ? () => setDialog('arrange') : undefined,
       onRename: rename(current),
       onCreateNote: actions.createNote,
     };
@@ -289,7 +290,8 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
             : view(row)}
         </div>
         {row && dialog === 'edit' && <CompilationEditRow row={row} disabled={disabled} notebooks={notebooks} assets={assets} folders={folders} selectedNotebookId={notebookId} onClose={() => setDialog(null)} onApply={next => rearrange(row, next)} onRemove={() => setDialog('delete')} />}
-        {row?.kind === 'custom' && dialog === 'add' && <CompilationAddItem notebooks={notebooks} assets={assets} folders={folders} rowName={row.name} notebookId={row.notebookId} onClose={() => setDialog(null)} onAdd={item => change({ ...row, items: [...row.items, item] })} />}
+        {row?.kind === 'custom' && dialog === 'add' && <CompilationAddItem notebooks={notebooks} assets={assets} folders={folders} rowName={row.name} notebookId={row.notebookId} items={row.items} onClose={() => setDialog(null)} onAdd={items => change({ ...row, items })} />}
+        {row?.kind === 'custom' && dialog === 'arrange' && <CompilationOrderDialog row={row} notebooks={notebooks} assets={assets} disabled={disabled} onClose={() => setDialog(null)} onSave={() => {}} onSaveItems={items => change({ ...row, items })} />}
         {row?.kind === 'dynamic' && dialog === 'order' && <CompilationOrderDialog row={row} notebooks={notebooks} assets={assets} disabled={disabled} onClose={() => setDialog(null)} onSave={order => change({ ...row, sort: { field: 'manual', order: 'asc' }, manualOrder: order })} />}
         {row && dialog === 'delete' && (
           <WorkspaceDialog title={t('compilation.delete')} onClose={() => setDialog(null)}>

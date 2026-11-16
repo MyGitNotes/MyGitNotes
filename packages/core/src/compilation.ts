@@ -95,6 +95,15 @@ export function compilationChapters<T extends { kind: string; }>(items: readonly
   return chapters;
 }
 
+/** Inserts an item as the last item of the chapter a heading starts (before the next heading), or at the end when no heading is named or found. */
+export function addToChapter<T extends { id: string; kind: string; }>(items: readonly T[], item: T, headingId?: string): T[] {
+  const start = headingId === undefined ? -1 : items.findIndex(candidate => candidate.id === headingId && candidate.kind === 'heading');
+  if (start < 0) return [...items, item];
+  const next = items.findIndex((candidate, index) => index > start && candidate.kind === 'heading');
+  const at = next < 0 ? items.length : next;
+  return [...items.slice(0, at), item, ...items.slice(at)];
+}
+
 export type CompilationView = 'thumbnail' | 'small' | 'medium' | 'graph' | 'book';
 export const COMPILATION_VIEWS: readonly CompilationView[] = ['thumbnail', 'small', 'medium', 'graph', 'book'];
 export interface CompilationStudy {

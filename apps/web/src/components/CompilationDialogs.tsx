@@ -1,6 +1,6 @@
 import { Button } from './Button.js';
 import { useState } from 'react';
-import { type CompilationItem, type CompilationRow, parseYouTubeUrl } from '@mygitnotes/core/compilation';
+import { addToChapter, type CompilationItem, type CompilationRow, isHeadingItem, parseYouTubeUrl } from '@mygitnotes/core/compilation';
 import { defaultStudyProgression, studyLaneStatuses, type StudyProgression, StudyProgressionSchema } from '@mygitnotes/core/study-stages';
 import { StudyLaneSettings } from './StudyLane.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
@@ -165,8 +165,13 @@ export function CompilationEditRow(props: RowDialogContent & { row: CompilationR
   return <CompilationRowDialog {...props} />;
 }
 
-export function CompilationAddItem({ rowName, notebookId, notebooks, assets, folders, onAdd, onClose }: Omit<CompilationContentProps, 'onOpen' | 'notes'> & { rowName: string; notebookId: string; folders: FolderItem[]; onAdd: (item: CompilationItem) => void; onClose: () => void; }) {
+/** Pins one item to a custom compilation: at the end, or as the last item of a chosen chapter. `onAdd` receives the compilation's items with the new one in place. */
+export function CompilationAddItem({ rowName, notebookId, notebooks, assets, folders, items, onAdd, onClose }: Omit<CompilationContentProps, 'onOpen' | 'notes'> & { rowName: string; notebookId: string; folders: FolderItem[]; /** The compilation's items, chapter headings included. */ items: CompilationItem[]; onAdd: (items: CompilationItem[]) => void; onClose: () => void; }) {
   const { t } = useTranslation();
+  const headings = items.filter(isHeadingItem);
+  // '' is the end of the compilation, today's place for a new item.
+  const [chapter, setChapter] = useState('');
+  const add = (item: CompilationItem) => onAdd(addToChapter(items, item, chapter || undefined));
   const [kind, setKind] = useState('note');
   const [query, setQuery] = useState(''), [youtube, setYoutube] = useState(''), [title, setTitle] = useState('');
   // An item may come from any notebook of the compilation's repository; the file stores its repository path only.
@@ -188,6 +193,12 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
           {t('screen.itemType')}
           <Select value={kind} onValueChange={setKind} options={[{ value: 'note', label: t('nav.notes') }, { value: 'folder', label: t('folder.folders') }, { value: 'asset', label: t('nav.assets') }, { value: 'youtube', label: 'YouTube' }]} />
         </label>
+        {headings.length > 0 && (
+          <label>
+            {t('screen.itemChapter')}
+            <Select value={chapter} onValueChange={setChapter} options={[{ value: '', label: t('screen.itemChapterEnd') }, ...headings.map(heading => ({ value: heading.id, label: heading.title }))]} />
+          </label>
+        )}
         {kind !== 'youtube' && choices.length > 1 && (
           <label>
             {t('screen.itemNotebook')}
@@ -211,7 +222,7 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
                   disabled={!video}
                   onClick={() => {
                     if (video) {
-                      onAdd({ id: crypto.randomUUID(), kind: 'youtube', ...video, title: title.trim() || 'YouTube' });
+                      add({ id: crypto.randomUUID(), kind: 'youtube', ...video, title: title.trim() || 'YouTube' });
                       onClose();
                     }
                   }}
@@ -232,7 +243,7 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
                     className='screen-item-option'
                     key={option.path}
                     onClick={() => {
-                      onAdd({ id: crypto.randomUUID(), kind: kind as 'note' | 'asset' | 'folder', notebookId: selected, path: option.path });
+                      add({ id: crypto.randomUUID(), kind: kind as 'note' | 'asset' | 'folder', notebookId: selected, path: option.path });
                       onClose();
                     }}
                   >

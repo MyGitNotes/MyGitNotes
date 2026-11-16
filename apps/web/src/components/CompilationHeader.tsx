@@ -1,5 +1,5 @@
 import { type ButtonHTMLAttributes, type ReactNode, useState } from 'react';
-import { BookOpen, Brain, ChevronLeft, ChevronRight, Columns2, Columns3, LayoutGrid, ListOrdered, Network, Plus, SlidersHorizontal, Zap } from 'lucide-react';
+import { BookOpen, Brain, ChevronLeft, ChevronRight, Columns2, Columns3, LayoutGrid, ListOrdered, Network, Plus, SlidersHorizontal, TableOfContents, Zap } from 'lucide-react';
 import type { CompilationRow, CompilationSort } from '@mygitnotes/core/compilation';
 import { type NotebookFacets, noteQueryStatuses } from '@mygitnotes/core/note-query';
 import type { NotebookConfig } from '../lib/types.js';
@@ -26,6 +26,8 @@ export interface CompilationHeaderProps {
   onSort?: (sort: CompilationSort) => void;
   /** Opens the dialog that sets a dynamic compilation's manual order. */
   onEditOrder?: () => void;
+  /** Opens the dialog that arranges a custom compilation's items and chapters. */
+  onArrange?: () => void;
   /** Renames the compilation from its name; absent when it cannot be renamed. */
   onRename?: () => void;
   onStudyChange?: (study: NonNullable<CompilationRow['study']>) => void;
@@ -38,7 +40,7 @@ export interface CompilationHeaderProps {
 }
 
 /** The compilation's name, source and the controls shared by its arrangements. */
-export function CompilationHeader({ row, count, disabled, readOnly, notebooks, facets, onStudy, onView, onAdd, onSort, onEditOrder, onRename, onStudyChange, onCreateInSource, scrollButton, extra }: CompilationHeaderProps) {
+export function CompilationHeader({ row, count, disabled, readOnly, notebooks, facets, onStudy, onView, onAdd, onSort, onEditOrder, onArrange, onRename, onStudyChange, onCreateInSource, scrollButton, extra }: CompilationHeaderProps) {
   const { t } = useTranslation();
   const [queryOpen, setQueryOpen] = useState(false);
   const query = row.study || { filter: 'all' as const, dueFirst: false };
@@ -131,6 +133,11 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
         {!readOnly && (
           <Button type='button' size='icon' className='screen-start-study' aria-label={`${t('study.start')}: ${row.name}`} title={t('study.start')} onClick={onStudy}>
             <Brain size={18} />
+          </Button>
+        )}
+        {!readOnly && onArrange && row.kind === 'custom' && (
+          <Button type='button' size='icon' className='screen-lane-arrange' disabled={disabled} aria-label={`${t('compilation.arrange')}: ${row.name}`} title={t('compilation.arrange')} onClick={onArrange}>
+            <TableOfContents size={16} aria-hidden='true' />
           </Button>
         )}
         {!readOnly && (row.kind === 'custom'

@@ -334,6 +334,11 @@
 .compilation-order-row[data-dragging] { z-index: 1; box-shadow: 0 4px 12px color-mix(in srgb, var(--color-scrim) 13%, transparent); }
 .compilation-order-index { flex: none; min-width: 2ch; color: var(--color-muted); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
 .compilation-order-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+/* Arrange contents: a chapter heading row is bold with its title in a field; the rows under it are indented. */
+.compilation-order-row[data-heading] { background: var(--workspace-selection); }
+.compilation-order-row[data-indent] { margin-inline-start: 20px; }
+.compilation-order-chapter { flex: 1; min-width: 0; min-height: 30px; font-weight: 600; }
+.compilation-order-add { display: inline-flex; align-items: center; gap: 6px; margin: -8px 0 16px; }
 .screen-form label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: var(--color-muted); }
 .screen-form .screen-checkbox { flex-direction: row; align-items: center; gap: 8px; }
 .screen-dialog-hint { color: var(--color-muted); font-size: 12px; line-height: 1.8; }

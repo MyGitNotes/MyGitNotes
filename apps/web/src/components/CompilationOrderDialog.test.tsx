@@ -81,9 +81,12 @@ const arranged = () => within(screen.getByRole('list', { name: 'Arrange contents
 
 it('arranges a custom compilation: adds a chapter after the focused row, renames and removes headings, moves a row with the keyboard, and saves the flat list once', async () => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
-    const row = this.closest('.compilation-order-row');
+    // Rows stack 40px apart and, as in a browser, a row's rect includes the translation dnd-kit gives it.
+    if (this.matches('.compilation-order-list')) return { x: 0, y: 0, left: 0, top: 0, width: 300, height: 400, right: 300, bottom: 400, toJSON() {} } as DOMRect;
+    const row = this.closest<HTMLElement>('.compilation-order-row');
     const index = row ? [...row.parentElement!.children].indexOf(row) : 0;
-    return { x: 0, y: index * 40, left: 0, top: index * 40, width: 300, height: 36, right: 300, bottom: index * 40 + 36, toJSON() {} } as DOMRect;
+    const top = index * 40 + Number(/translate3d\([^,]+,\s*(-?[\d.]+)px/.exec(row?.style.transform ?? '')?.[1] ?? 0);
+    return { x: 0, y: top, left: 0, top, width: 300, height: 36, right: 300, bottom: top + 36, toJSON() {} } as DOMRect;
   });
   const onSaveItems = vi.fn();
   render(createElement(CompilationOrderDialog, { row: custom, notebooks, assets: [], disabled: false, onSave: () => {}, onSaveItems, onClose: () => {} }), { wrapper });

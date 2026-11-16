@@ -104,7 +104,7 @@ export function MovableDivider({ item, row, reorder, disabled, remove }: { item:
   /* eslint-enable react/refs */
 }
 
-export function CompilationLane({ row, graph, reorder, disabled, study, facets, notebooks, assets, onOpen, onStudy, onStudyChange, onView, onSort, onEditOrder, onRename, onAdd, onRemove, onCreateNote, readOnly, extra }: Omit<CompilationContentProps, 'notes'> & { graph?: ReactNode; extra?: ReactNode; facets?: Record<string, NotebookFacets>; row: CompilationRow; reorder: boolean; disabled: boolean; study: StudyController; readOnly?: boolean; onStudy?: () => void; onView?: (view: CompilationRow['view']) => void; onAdd?: () => void; onRemove?: (id: string) => void; onSort?: (sort: CompilationSort) => void; onEditOrder?: () => void; onRename?: () => void; onStudyChange?: (study: NonNullable<CompilationRow['study']>) => void; onCreateNote?: (context?: { notebookId?: string; folder?: string; tag?: string; }) => void; }) {
+export function CompilationLane({ row, graph, reorder, disabled, study, facets, notebooks, assets, onOpen, onStudy, onStudyChange, onView, onSort, onEditOrder, onRename, onAdd, onRemove, onCreateNote, onArrange, readOnly, extra }: Omit<CompilationContentProps, 'notes'> & { graph?: ReactNode; extra?: ReactNode; facets?: Record<string, NotebookFacets>; row: CompilationRow; reorder: boolean; disabled: boolean; study: StudyController; readOnly?: boolean; onStudy?: () => void; onView?: (view: CompilationRow['view']) => void; onAdd?: () => void; onRemove?: (id: string) => void; onSort?: (sort: CompilationSort) => void; onEditOrder?: () => void; onArrange?: () => void; onRename?: () => void; onStudyChange?: (study: NonNullable<CompilationRow['study']>) => void; onCreateNote?: (context?: { notebookId?: string; folder?: string; tag?: string; }) => void; }) {
   const { t } = useTranslation();
   const host = useRef<HTMLElement>(null), strip = useRef<HTMLDivElement>(null);
   const [clock, setClock] = useState(() => new Date());
@@ -142,7 +142,7 @@ export function CompilationLane({ row, graph, reorder, disabled, study, facets, 
   };
   return (
     <section id={`screen-lane-${row.id}`} ref={host} data-orientation={row.view === 'graph' ? undefined : vertical ? 'vertical' : 'horizontal'} className={`screen-lane screen-view-${row.view} ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`} aria-label={row.name}>
-      <CompilationHeader row={row} count={contentItems(items).length} disabled={disabled} readOnly={readOnly} notebooks={content.notebooks} facets={facets} extra={extra} onStudy={onStudy} onView={onView} onAdd={onAdd} onSort={onSort} onEditOrder={onEditOrder} onRename={onRename} onStudyChange={onStudyChange} onCreateInSource={handleCreateInLane} scrollButton={row.view === 'graph' || vertical ? undefined : scrollButton} />
+      <CompilationHeader row={row} count={contentItems(items).length} disabled={disabled} readOnly={readOnly} notebooks={content.notebooks} facets={facets} extra={extra} onStudy={onStudy} onView={onView} onAdd={onAdd} onSort={onSort} onEditOrder={onEditOrder} onArrange={onArrange} onRename={onRename} onStudyChange={onStudyChange} onCreateInSource={handleCreateInLane} scrollButton={row.view === 'graph' || vertical ? undefined : scrollButton} />
       {row.view === 'graph' ? graph : (
         <div ref={readOnly ? undefined : drop.setNodeRef} className={!readOnly && drop.isOver ? 'screen-drop-target' : ''}>
           <div ref={strip} className='screen-lane-strip' tabIndex={0} aria-label={`${row.name} · ${t('screen.items')}`}>

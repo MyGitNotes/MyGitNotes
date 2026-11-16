@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { closestCenter, DndContext, KeyboardSensor, type Modifier, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical } from 'lucide-react';
-import { type CompilationFileRef, type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
+import { GripVertical, Heading, X } from 'lucide-react';
+import { type CompilationItem, type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
 import { compilationRowItems } from '../lib/compilation-content.js';
 import { useLaneNotes } from '../lib/compilation-queries.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -23,43 +23,73 @@ const withinList: Modifier = ({ transform, draggingNodeRect, containerNodeRect }
   return { ...transform, x: 0, y };
 };
 
-type DynamicRow = Extract<CompilationRow, { kind: 'dynamic'; }>;
-
 interface CompilationOrderDialogProps {
-  row: DynamicRow;
+  row: CompilationRow;
   notebooks: NotebookConfig[];
   assets: CompilationAsset[];
   disabled: boolean;
-  /** Receives every member path, in the order the user set. */
+  /** A dynamic compilation: receives every member path, in the order the user set. */
   onSave: (order: string[]) => void;
+  /** A custom compilation: receives its items, chapter headings included, in the arranged flat order. */
+  onSaveItems?: (items: CompilationItem[]) => void;
   onClose: () => void;
 }
 
 interface OrderEntry {
-  item: CompilationFileRef;
+  item: CompilationItem;
   title: string;
 }
 
-/** Sets a dynamic compilation's manual order: it opens on a snapshot of the current order and saves the rearranged paths. */
-export function CompilationOrderDialog({ row, notebooks, assets, disabled, onSave, onClose }: CompilationOrderDialogProps) {
+/**
+ * Sets a dynamic compilation's manual order, or arranges a custom compilation's contents (Arrange contents):
+ * it opens on a snapshot of the current order and saves once. A custom compilation's rows are its items and chapter
+ * headings in one flat list; a heading moves alone, its title edits in place, and removing it keeps its items.
+ */
+export function CompilationOrderDialog({ row, notebooks, assets, disabled, onSave, onSaveItems, onClose }: CompilationOrderDialogProps) {
   const { t } = useTranslation();
+  const custom = row.kind === 'custom';
   // Every member, whatever the study filter shows, so the saved order leaves none of them behind.
   const members = { ...row, study: undefined };
   const lane = useLaneNotes(members, { all: true });
   const [entries, setEntries] = useState<OrderEntry[] | null>(null);
+  // The row a new chapter goes after: the one that last held focus.
+  const [focused, setFocused] = useState<string | null>(null);
+  const [fresh, setFresh] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
   // The snapshot is taken once, when the members arrive; later refetches do not reset what the user arranged.
   if (entries === null && !lane.loading && !lane.error) {
-    const items = compilationRowItems(members, lane.notes, assets, notebooks).flatMap(item => isFileItem(item) ? [{ item, title: compilationItemTitle(item, lane.notes, assets) }] : []);
-    setEntries(items);
+    const items = custom ? row.items : compilationRowItems(members, lane.notes, assets, notebooks).filter(isFileItem);
+    setEntries(items.map(item => ({ item, title: compilationItemTitle(item, lane.notes, assets) })));
+  }
+  const title = custom ? t('compilation.arrange') : t('compilation.editOrder');
+  const blank = Boolean(entries?.some(entry => entry.item.kind === 'heading' && !entry.item.title.trim()));
+  const addChapter = () => {
+    const heading: CompilationItem = { id: crypto.randomUUID(), kind: 'heading', title: '' };
+    setEntries(current => {
+      if (!current) return current;
+      const after = focused === null ? -1 : current.findIndex(entry => entry.item.id === focused);
+      const at = after < 0 ? current.length : after + 1;
+      return [...current.slice(0, at), { item: heading, title: '' }, ...current.slice(at)];
+    });
+    setFresh(heading.id);
+  };
+  const retitle = (id: string, value: string) => setEntries(current => current && current.map(entry => entry.item.id === id && entry.item.kind === 'heading' ? { item: { ...entry.item, title: value }, title: value } : entry));
+  const remove = (id: string) => setEntries(current => current && current.filter(entry => entry.item.id !== id));
+  // A row under a heading is indented, and only content items are numbered.
+  const shown: { entry: OrderEntry; indent: boolean; index: number | null; }[] = [];
+  for (const entry of entries ?? []) {
+    const heading = entry.item.kind === 'heading';
+    const previous = shown.at(-1);
+    const underHeading = heading || Boolean(previous && (previous.indent || previous.entry.item.kind === 'heading'));
+    shown.push({ entry, indent: !heading && underHeading, index: heading ? null : shown.filter(row => row.index !== null).length + 1 });
   }
 
   return (
-    <WorkspaceDialog title={`${t('compilation.editOrder')}: ${row.name}`} className='compilation-order-dialog' onClose={onClose}>
-      <p className='screen-dialog-hint'>{t('compilation.orderHint')}</p>
+    <WorkspaceDialog title={`${title}: ${row.name}`} className='compilation-order-dialog' onClose={onClose}>
+      <p className='screen-dialog-hint'>{t(custom ? 'compilation.arrangeHint' : 'compilation.orderHint')}</p>
       {lane.error && <p role='alert' className='screen-error'>{lane.error}</p>}
-      {!entries ? !lane.error && <LoadingStatus>{t('screen.loading')}</LoadingStatus> : entries.length === 0 ? <p className='screen-dialog-hint'>{t('compilation.orderEmpty')}</p> : (
+      {!entries ? !lane.error && <LoadingStatus>{t('screen.loading')}</LoadingStatus> : entries.length === 0 && !custom ? <p className='screen-dialog-hint'>{t('compilation.orderEmpty')}</p> : (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -75,39 +105,61 @@ export function CompilationOrderDialog({ row, notebooks, assets, disabled, onSav
           }}
         >
           <SortableContext items={entries.map(entry => entry.item.id)} strategy={verticalListSortingStrategy}>
-            <ol className='compilation-order-list' aria-label={t('compilation.editOrder')}>{entries.map((entry, index) => <OrderRow key={entry.item.id} entry={entry} index={index} />)}</ol>
+            <ol className='compilation-order-list' aria-label={title} onFocus={event => setFocused((event.target as HTMLElement).closest<HTMLElement>('[data-entry]')?.dataset.entry ?? null)}>{shown.map(({ entry, indent, index }) => <OrderRow key={entry.item.id} entry={entry} index={index} indent={indent} autoFocus={entry.item.id === fresh} onRetitle={retitle} onRemove={remove} />)}</ol>
           </SortableContext>
         </DndContext>
+      )}
+      {custom && entries && (
+        <Button type='button' className='compilation-order-add' onClick={addChapter}>
+          <Heading size={14} aria-hidden='true' />
+          {t('compilation.addChapter')}
+        </Button>
       )}
       <div className='workspace-dialog-actions'>
         <Button onClick={onClose}>{t('common.cancel')}</Button>
         <Button
           variant='primary'
-          disabled={disabled || !entries?.length}
+          disabled={disabled || !entries?.length || blank}
           onClick={() => {
             if (!entries) return;
-            onSave(entries.map(entry => entry.item.path));
+            if (custom) onSaveItems?.(entries.map(entry => entry.item.kind === 'heading' ? { ...entry.item, title: entry.item.title.trim() } : entry.item));
+            else onSave(entries.flatMap(entry => isFileItem(entry.item) ? [entry.item.path] : []));
             onClose();
           }}
         >
-          {t('compilation.orderSave')}
+          {t(custom ? 'common.save' : 'compilation.orderSave')}
         </Button>
       </div>
     </WorkspaceDialog>
   );
 }
 
-function OrderRow({ entry, index }: { entry: OrderEntry; index: number; }) {
+function OrderRow({ entry, index, indent, autoFocus, onRetitle, onRemove }: { entry: OrderEntry; index: number | null; indent: boolean; autoFocus: boolean; onRetitle: (id: string, title: string) => void; onRemove: (id: string) => void; }) {
   const { t } = useTranslation();
   const sort = useSortable({ id: entry.item.id });
+  const heading = entry.item.kind === 'heading';
   /* eslint-disable react/refs -- dnd-kit sortable bindings are callback refs and render state, forwarded to the row and its handle. */
   return (
-    <li ref={sort.setNodeRef} className='compilation-order-row' data-dragging={sort.isDragging || undefined} style={{ transform: CSS.Translate.toString(sort.transform), transition: sort.transition }}>
-      <Button type='button' size='icon' ref={sort.setActivatorNodeRef} {...sort.attributes} {...sort.listeners} className='screen-drag-handle' aria-label={`${t('screen.moveItem')}: ${entry.title}`}>
+    <li ref={sort.setNodeRef} className='compilation-order-row' data-entry={entry.item.id} data-heading={heading || undefined} data-indent={indent || undefined} data-dragging={sort.isDragging || undefined} style={{ transform: CSS.Translate.toString(sort.transform), transition: sort.transition }}>
+      <Button type='button' size='icon' ref={sort.setActivatorNodeRef} {...sort.attributes} {...sort.listeners} className='screen-drag-handle' aria-label={`${t(heading ? 'compilation.moveChapter' : 'screen.moveItem')}: ${entry.title}`}>
         <GripVertical size={16} aria-hidden='true' />
       </Button>
-      <span className='compilation-order-index'>{index + 1}</span>
-      <span className='compilation-order-title'>{entry.title}</span>
+      {heading
+        ? (
+          <>
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- A chapter just added takes focus so its title can be typed at once. */}
+            <input className='ui-control compilation-order-chapter' aria-label={t('compilation.chapterTitle')} placeholder={t('compilation.chapterTitle')} value={entry.title} maxLength={100} autoFocus={autoFocus} onChange={event => onRetitle(entry.item.id, event.target.value)} />
+            <Button type='button' size='icon' aria-label={`${t('compilation.removeChapter')}: ${entry.title}`} title={t('compilation.removeChapter')} onClick={() => onRemove(entry.item.id)}>
+              <X size={14} aria-hidden='true' />
+            </Button>
+          </>
+        )
+        : (
+          <>
+            <span className='compilation-order-index'>{index}</span>
+            <span className='compilation-order-title'>{entry.title}</span>
+          </>
+        )}
     </li>
   );
   /* eslint-enable react/refs */
