@@ -207,7 +207,7 @@ describe('the credential a check-in commits with', () => {
 });
 
 describe('a check-in that commits nothing', () => {
-  it("releases a note whose text is still the one Git gave it without opening the repository, even when Git moved on and nobody's credential works", async () => {
+  it("releases a note whose text is still the one Git gave it when Git moved on and nobody's credential opens the repository, settling on its base", async () => {
     const id = await checkout();
     const source = git();
     const snapshot = await source.getSnapshot(true);
@@ -216,20 +216,21 @@ describe('a check-in that commits nothing', () => {
       throw new LiveCredentialError();
     });
     expect(await run(id, { mode: 'scheduled' })).toEqual({ id, path: file, committed: false, released: true });
-    expect(opens).toEqual([]);
+    // Nobody typed: only the deployment's own credential is asked, which this adapter does not have.
+    expect(opens.map(open => open.person)).toEqual([undefined]);
     expect(commits()).toHaveLength(1);
     expect(files.get(file)).toBe(`${A}pushed from elsewhere\n`);
     expect(await liveNotes.service.checkouts(repository)).toEqual([]);
     expect(liveNotes.notices).toEqual([]);
   });
 
-  it('releases a note typed in and typed back to the text of its base the same way', async () => {
+  it('releases a note typed in and typed back to the text of its base without a commit', async () => {
     const id = await checkout();
     liveNotes.type(repository, id, `${A}three\n`, person(1));
     liveNotes.type(repository, id, A, person(1));
     const opens = opening();
     expect(await run(id)).toEqual({ id, path: file, committed: false, released: true });
-    expect(opens).toEqual([]);
+    expect(opens.map(open => open.person)).toEqual([who(1)]);
     expect(commits()).toEqual([]);
   });
 
@@ -238,7 +239,8 @@ describe('a check-in that commits nothing', () => {
     liveNotes.setActive(repository, id, 1);
     const opens = opening();
     expect(await run(id, { mode: 'scheduled' })).toEqual({ id, path: file, committed: false, released: false, reason: 'active', activeEditors: 1 });
-    expect(opens).toEqual([]);
+    expect(commits()).toEqual([]);
+    expect(opens.length).toBeLessThanOrEqual(1);
     expect((await liveNotes.service.checkouts(repository)).map(row => row.id)).toEqual([id]);
   });
 

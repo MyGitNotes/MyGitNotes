@@ -560,14 +560,17 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
     const live = normalizeLiveText(text.content);
     let editors = editorsOf((detail as { editors?: unknown; }).editors);
     // What commits nothing needs no repository, and so nobody's credential: a draft to discard, and a note whose text is
-    // still the one its base holds, which Git therefore has (a note only viewed, or typed in and typed back).
+    // still the one its base holds, which Git therefore has (a note only viewed, or typed in and typed back). The latter
+    // still takes Git's newer text, or is written back if deleted in Git, as in 0.20, when a credential opens the
+    // repository; it settles on its base only when none can (cf14-F003).
     const bare = (detail as { checkout?: { id?: unknown; }; }).checkout?.id === id ? liveRowBase((detail as { checkout?: unknown; }).checkout) : null;
     if (bare?.path === null && typeof service.discard === 'function') {
       const early = draftDiscard(detail, live, options.discardUntyped === true);
       if (early) return { kind: 'discard', reason: early, contentHash: text.contentHash };
     }
-    if (bare && bare.path !== null && bare.base?.contentHash === text.contentHash) return { kind: 'synced', receipt: { commit: bare.base.commit, blob: bare.base.blob, contentHash: text.contentHash, path: bare.path, conflict: null }, committed: false, filed: false, editors, skipped: [] };
+    const atBase: Attempt | undefined = bare && bare.path !== null && bare.base?.contentHash === text.contentHash ? { kind: 'synced', receipt: { commit: bare.base.commit, blob: bare.base.blob, contentHash: text.contentHash, path: bare.path, conflict: null }, committed: false, filed: false, editors, skipped: [] } : undefined;
     const committer = liveCommitters(editors, options.requester).find(candidate => !refused.has(committerKey(candidate)));
+    if (!committer && atBase) return atBase;
     // Nobody is left to commit as: the text stays live, and the next check-in tries everyone again.
     if (!committer) return { kind: 'uncommittable', path: bare?.path ?? null, notice: { kind: 'uncommittable', notebook: bare?.notebook ?? '', path: bare?.path ?? null, id, message: 'A live note could not be committed: no credential of its editors may write to the repository. It stays open and is tried again at the next check-in.' }, editors, skipped: liveAuthorship(editors).skipped };
     committing = committer;
