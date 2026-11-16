@@ -1,6 +1,6 @@
 import type express from 'express';
 import { isCompilationPath, isNotebookContent, isNoteFile, parseNoteContent, type RemoteSource, type WorkspacePerson } from '@mygitnotes/core';
-import { type GistAccess, noteGist, type PublishedNote, syncGists } from './gists.js';
+import { noteGist, type PublishedNote } from './gists.js';
 import type { RemoteHandle } from './request-workspace.js';
 
 /** What an edition's publishing service reports for one committed note; the web app shows `error` and `notices` beside the commit result. */
@@ -30,7 +30,8 @@ export interface PublishingRequest {
 export interface CommittedNotes {
   /**
    * The repository the notes were committed to, read with the credential that made the commit. It is all of that
-   * credential the service gets: a person's token stays with the server, which updates Gists itself.
+   * credential the service gets: a person's token is never handed to it. No Gist is pushed after such a commit; Gists
+   * sync only on the app's commit routes.
    */
   repository: RemoteHandle;
   /** The notes whose text the commit wrote, in the shape `sync` receives; a moved, copied or deleted note is not among them. */
@@ -112,11 +113,6 @@ export interface PublishedCommit {
   /** Whom the commit was made for, where known. */
   person?: WorkspacePerson;
   /**
-   * The Gist access of the person the commit was made for. Gists sync only on the app's commit routes, so no caller
-   * passes it today: a check-in, an `/mcp` write and a tag commit never push a Gist.
-   */
-  gists?: GistAccess;
-  /**
    * An `/mcp` write made the commit. Its note text, the `gist:` mark included, is the agent's, so it never aims the
    * person's token at a Gist; the Gist follows on the owner's next commit of the note in the app.
    */
@@ -135,13 +131,13 @@ export type CommitPublisher = (commit: PublishedCommit) => Promise<void> | undef
 
 /**
  * Publishes the notes of commits that answer no commit route (a live check-in, an `/mcp` write, a tag commit) as those
- * routes publish theirs: the service's `syncCommitted` hears every note. A Gist is pushed only with `gists`, which no
- * caller passes, as Gists sync only on the commit routes; a note that names one is logged by path instead. The commit stands and its answer is the same whatever comes of
- * it. A failure is logged with its repository and path, never with note text. Without a service that has
- * `syncCommitted` and without a note that names a Gist, nothing is called.
+ * routes publish theirs: the service's `syncCommitted` hears every note. No Gist is ever pushed from here, as Gists
+ * sync only on the commit routes; a note that names one is logged by path instead. The commit stands and its answer is
+ * the same whatever comes of it. A failure is logged with its repository and path, never with note text. Without a
+ * service that has `syncCommitted` and without a note that names a Gist, nothing is called.
  */
 export function commitPublisher({ publishing, defer }: { publishing?: PublishingService; defer?: (work: Promise<unknown>) => void; }): CommitPublisher {
-  return ({ repository, notes: texts, person, gists, agentWrite, revision, gistTextKept }) => {
+  return ({ repository, notes: texts, person, agentWrite, revision, gistTextKept }) => {
     const notes = texts.map((text): PublishedNote => {
       const { metadata, content } = parseNoteContent(text.content);
       return { path: text.path, content, metadata };
@@ -156,10 +152,9 @@ export function commitPublisher({ publishing, defer }: { publishing?: Publishing
       for (const result of results) if (result.error) console.warn(`[publishing] ${where(result.path)}: ${result.error}`);
     };
     const work: Promise<unknown>[] = [];
-    if (named.length && gists) work.push(syncGists(gists.token, named, gists.url).then(report).catch(failed('the Gist update', named.map(note => note.path))));
     // The Gist keeps its last text until a person commits the note in the app, which updates it as before.
-    else if (agentWrite) { for (const note of named) console.info(`[publishing] ${where(note.path)}: gist not updated by an agent write; updates on the next app commit`); }
-    else for (const note of named) console.info(`[publishing] ${where(note.path)}: the Gist it names was not updated, as no person's GitHub token made this commit; the next commit of the note in the app updates it`);
+    if (agentWrite) for (const note of named) console.info(`[publishing] ${where(note.path)}: gist not updated by an agent write; updates on the next app commit`);
+    else for (const note of named) console.info(`[publishing] ${where(note.path)}: the Gist it names was not updated, as Gists sync only on the app's commit routes; the next commit of the note in the app updates it`);
     if (service) work.push(Promise.resolve().then(() => service.syncCommitted!({ repository, notes, ...(person ? { person } : {}), ...(revision ? { revision } : {}) })).then(report).catch(failed('publishing', notes.map(note => note.path))));
     if (!work.length) return undefined;
     const done = Promise.all(work).then(() => undefined);

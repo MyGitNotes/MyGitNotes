@@ -61,7 +61,7 @@ function grantSettings(settings: WorkspaceSettings, grant: StoredRecord): Worksp
   return { ...settings, members: settings.members.filter(member => member.ref.id === grant.source && !member.hidden).map(member => ({ ...member, default: true })) };
 }
 
-/** `publish` hears the notes a call's writes commit, with the grant's person and Gist access; the call's answer is the same with or without it. */
+/** `publish` hears the notes a call's writes commit, with the grant's person and no Gist access; the call's answer is the same with or without it. */
 export function createRemoteMCP(store: RecordStore, identity: IdentityService, configSource: WorkspaceConfigSource, assetStorage: AssetStorage, cache?: RemoteCache, editionSources?: EditionSources, liveNotes?: LiveNotes, publish?: CommitPublisher): Router {
   const router = Router();
   router.post(['/', '/:token'], async (req, res) => {

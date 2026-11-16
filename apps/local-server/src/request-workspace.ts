@@ -50,8 +50,8 @@ export interface OpenOptions {
   liveNotes?: LiveNotes;
   /**
    * Hears of each commit a remote repository opened here makes through its reader (`RemoteSource.onCommit`): the
-   * repository, the commit's changes, and its revision with a reader of the files as they were before it. `/mcp`
-   * publishes its writes with it; a browser request's routes publish their own.
+   * repository, the commit's changes, and its revision. `/mcp` publishes its writes with it; a browser request's routes
+   * publish their own.
    */
   committed?: (repository: RemoteHandle, changes: readonly RemoteChange[], commit: RemoteCommitHeard) => void;
 }

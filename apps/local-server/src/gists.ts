@@ -92,12 +92,6 @@ export async function syncGists(token: string, notes: PublishedNote[], url?: str
   return results;
 }
 
-/** What reaches the Gists of a person: their GitHub token, and the GitHub Enterprise site that holds the Gists, if any. */
-export interface GistAccess {
-  token: string;
-  url?: string;
-}
-
 /** The signed-in GitHub token of a request whose workspace is on GitHub, or undefined for any other request. */
 export function gistToken(res: Response): string | undefined {
   return requestSite(res).type === 'github' ? requestToken(res) : undefined;
