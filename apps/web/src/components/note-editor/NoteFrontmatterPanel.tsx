@@ -33,6 +33,10 @@ export interface NoteFrontmatterPanelProps {
   onRename?: (title: string) => Promise<void> | void;
   /** Shown below the fields, in the same scroll. */
   children?: ReactNode;
+  /** The frontmatter as written, which the YAML view opens on (comments and order included); else rendered from `metadata`. */
+  yamlSource?: string;
+  /** The note's frontmatter does not parse, with why: the form is disabled and the YAML view opens on the text as written. */
+  invalid?: string;
 }
 
 /** The title field: typed freely, then Enter or leaving the field renames the note (title and file name together). Without a rename it edits the field. */
@@ -76,7 +80,7 @@ function TitleField({ metadata, setMetadata, onRename }: Pick<NoteFrontmatterPan
 }
 
 /** A note's frontmatter: title, status, tags with autocomplete, custom metadata fields, and a raw-YAML view; `children` follow it. */
-export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadataFields, availableTags, locked, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, onRename, children }: NoteFrontmatterPanelProps) {
+export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadataFields, availableTags, locked, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, onRename, children, yamlSource, invalid }: NoteFrontmatterPanelProps) {
   const { t } = useTranslation();
   const labelOf = useStatusLabel();
 
@@ -99,19 +103,21 @@ export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadata
       <FrontmatterHeader
         mode={frontmatterViewMode}
         metadata={metadata}
+        yamlSource={yamlSource}
         onMode={setFrontmatterViewMode}
         onYaml={text => {
           setYamlText(text);
-          setYamlError('');
+          setYamlError(invalid ?? '');
         }}
       />
+      {invalid !== undefined && <p role='status' className='text-xs text-danger mb-2'>{t('editor.frontmatterInvalidLive')}</p>}
       {frontmatterViewMode === 'form'
         ? (
-          <fieldset disabled={locked} className='note-metadata min-w-0 text-xs animate-fadeIn space-y-3'>
+          <fieldset disabled={locked || invalid !== undefined} className='note-metadata min-w-0 text-xs animate-fadeIn space-y-3'>
             <TitleField metadata={metadata} setMetadata={setMetadata} onRename={onRename} />
             <div>
               <label className='block text-muted font-semibold mb-1'>{t('editor.status')}</label>
-              <Select aria-label={t('editor.status')} disabled={locked} value={String(metadata.status || '')} onValueChange={value => setMetadata(withNoteStatus(metadata, value))} options={Array.from(new Set(['', ...statuses, String(metadata.status || '')])).map(value => ({ value, label: value ? labelOf(value) : t('editor.noStatus') }))} className={`w-full ${metadata.status ? '' : 'status-empty'}`} />
+              <Select aria-label={t('editor.status')} disabled={locked || invalid !== undefined} value={String(metadata.status || '')} onValueChange={value => setMetadata(withNoteStatus(metadata, value))} options={Array.from(new Set(['', ...statuses, String(metadata.status || '')])).map(value => ({ value, label: value ? labelOf(value) : t('editor.noStatus') }))} className={`w-full ${metadata.status ? '' : 'status-empty'}`} />
               <label className='flex items-center gap-2 min-h-11 cursor-pointer'>
                 <input type='checkbox' aria-label={t('editor.hideNote')} checked={isNoteHidden(metadata)} onChange={event => setMetadata({ ...metadata, hiden: event.target.checked })} className='w-4 h-4 accent-primary' />
                 {t('editor.hideNote')}

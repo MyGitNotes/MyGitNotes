@@ -86,7 +86,8 @@ export interface LiveMergeConflict {
 /** The file actions a collab-first note's own editor runs once its check-in released the note. */
 export interface LiveFileActions {
   move?: (revision?: string) => void;
-  rename?: (revision?: string) => void;
+  /** `title`: what the person typed in the note's row or panel, which the rename dialog starts from. */
+  rename?: (revision?: string, title?: string) => void;
   remove?: (revision?: string) => Promise<void> | void;
 }
 

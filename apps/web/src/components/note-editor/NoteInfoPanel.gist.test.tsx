@@ -54,7 +54,7 @@ it('shows the Gist read-only for a note in the collab editor', () => {
       <NoteInfoPanel note={note} content='Body' metadata={{ gist: 'abc123' }} setMetadata={() => {}} locked={false} liveNote />
     </NoteLocationProvider>,
   );
-  expect(screen.getByRole('link', { name: 'Open Gist' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Unpublish' })).toBeDisabled();
-  expect(screen.getByText(/live/i)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Open the Gist' })).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'Unpublish' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(/Live check-ins/)).toBeTruthy();
 });

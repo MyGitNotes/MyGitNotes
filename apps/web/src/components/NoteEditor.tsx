@@ -5,8 +5,9 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { NoteQuickActions } from './note-editor/NoteQuickActions.js';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { parseNoteFile } from '@mygitnotes/core/note-file';
+import type { NoteMetadata } from '@mygitnotes/core';
 import { currentNoteFile } from '../lib/current-note-file.js';
-import type { LiveEditorCarry } from './LiveMarkdownEditor.js';
+import type { LiveEditorCarry, LiveMarkdownHandle } from './LiveMarkdownEditor.js';
 import { MarkdownEditor, type MarkdownEditorHandle, type MarkdownEditorMode } from './MarkdownEditor.js';
 import type { NoteItem } from '../lib/types.js';
 import { usePanelContext } from '../lib/panel-context.js';
@@ -36,7 +37,8 @@ import { Button } from './Button.js';
 import { LiveEditorFrame } from './live/LiveEditorFrame.js';
 import { useEditorModeRoute } from '../app/editor-mode-route.js';
 import { shownEditorMode } from '../lib/editor-mode-url.js';
-import { LiveCollabEditor } from './live/LiveCollabEditor.js';
+import { LiveCollabEditor, type LiveSession } from './live/LiveCollabEditor.js';
+import { replaceLiveText, useLiveText, writeLiveFrontmatter, writeLiveYaml } from './live/live-frontmatter.js';
 import { useLiveEdit, useLiveTheme } from './live/useLiveEdit.js';
 
 export interface NoteEditorHandle {
@@ -139,7 +141,28 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     onCaret?.(position);
   };
 
-  const session = useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession });
+  const directSession = useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession });
+  // A note in the built-in collab editor: its row and document panel read and write the live text (collab-frontmatter).
+  const [liveSession, setLiveSession] = useState<LiveSession | null>(null);
+  const collabShown = Boolean(live && liveEdit.checkout && live.editor.kind === 'builtin');
+  const shared = collabShown ? liveSession : null;
+  const { text: liveText, frontmatter: liveFrontmatter } = useLiveText(shared?.text ?? null);
+  const collabEditorRef = useRef<LiveMarkdownHandle>(null);
+  const liveBody = shared ? liveText.slice(liveFrontmatter.bodyStart) : '';
+  const liveTitle = useMemo(() => (shared ? parseNoteFile(liveText.slice(0, liveFrontmatter.bodyStart) + liveBody, note.path).title : ''), [shared, liveText, liveFrontmatter.bodyStart, liveBody, note.path]);
+  const liveLocked = !shared?.online || !liveFrontmatter.valid;
+  const liveShared = useRef<{ text: LiveSession['text'] | null; metadata: NoteMetadata; }>({ text: null, metadata: {} });
+  useEffect(() => {
+    liveShared.current = { text: shared?.text ?? null, metadata: liveFrontmatter.metadata };
+  });
+  /** Writes the keys the control changed into the live text; the YAML view writes its text. Nothing while offline (Q2). */
+  const setLiveMetadata = useCallback((next: Record<string, unknown>, yaml?: string) => {
+    const { text, metadata } = liveShared.current;
+    if (!text) return;
+    if (yaml !== undefined) writeLiveYaml(text, yaml);
+    else writeLiveFrontmatter(text, metadata, next as NoteMetadata);
+  }, []);
+  const session: NoteEditorSessionState = shared ? { ...directSession, content: liveBody, metadata: liveFrontmatter.metadata, title: liveTitle, locked: liveLocked, setMetadata: setLiveMetadata as NoteEditorSessionState['setMetadata'] } : directSession;
   // Read when the browser is back online: a direct editor opened offline gives way to the collab editor only with nothing typed.
   const sessionRef = useRef(session);
   useEffect(() => {
@@ -152,7 +175,45 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   const { t } = useTranslation();
   const changes = useNoteDiffStats(frame === 'compact' || frame === 'inline' ? undefined : readDiff, session.isDirty, !session.isSaving && !session.hasUnsavedChanges);
   const refresh = onReadRemote && !session.blocked ? session.pullLatest : undefined;
-  const docPanel = useNoteDocumentPanel({ frame, active, isMarkdown, content: session.content, editorMode, setEditorMode, documentPanel, editorRef, metadata: session.metadata, notePath: note.path, branch, draftScope, readOnly });
+  // The panel's find and outline speak in body positions and lines; the collab editor holds the whole file, frontmatter included.
+  const liveOffsets = useRef({ on: false, bodyStart: 0, lines: 0 });
+  useEffect(() => {
+    liveOffsets.current = { on: Boolean(shared), bodyStart: liveFrontmatter.bodyStart, lines: liveFrontmatter.lineOffset };
+  });
+  const panelEditorRef = useRef<MarkdownEditorHandle>(null);
+  /* eslint-disable react/refs -- A stable handle that forwards to whichever editor shows the note. */
+  if (!panelEditorRef.current) {
+    const collabEditor = () => (liveOffsets.current.on ? collabEditorRef.current : null);
+    (panelEditorRef as React.MutableRefObject<MarkdownEditorHandle>).current = {
+      insert: (text, at) => editorRef.current?.insert(text, at),
+      insertAnnotated: line => editorRef.current?.insertAnnotated(line),
+      revealRange: (from, to, focus) => {
+        const collab = collabEditor();
+        if (!collab) return editorRef.current?.revealRange(from, to, focus);
+        collab.revealRange(from + liveOffsets.current.bodyStart, to + liveOffsets.current.bodyStart, focus);
+      },
+      goToLine: (line, options) => {
+        const collab = collabEditor();
+        if (!collab) return editorRef.current?.goToLine(line, options);
+        collab.goToLine(line + liveOffsets.current.lines, options);
+      },
+      getCurrentLine: () => {
+        const collab = collabEditor();
+        return collab ? Math.max(1, collab.getCurrentLine() - liveOffsets.current.lines) : editorRef.current?.getCurrentLine() ?? 1;
+      },
+      getSelection: () => {
+        const collab = collabEditor();
+        if (!collab) return editorRef.current?.getSelection() ?? null;
+        const selection = collab.getSelection();
+        const start = liveOffsets.current.bodyStart;
+        return selection && { from: Math.max(0, selection.from - start), to: Math.max(0, selection.to - start) };
+      },
+      ready: () => Boolean(collabEditor()?.ready() ?? editorRef.current?.ready()),
+      focus: () => (collabEditor() ?? editorRef.current)?.focus(),
+    };
+  }
+  /* eslint-enable react/refs */
+  const docPanel = useNoteDocumentPanel({ frame, active, isMarkdown, content: session.content, editorMode, setEditorMode, documentPanel, editorRef: panelEditorRef, metadata: session.metadata, notePath: note.path, branch, draftScope, readOnly });
   // The active editor is the file the agent panel names to Pi, with the line its caret is on.
   const contentRef = useRef(session.content);
   useEffect(() => {
@@ -198,6 +259,12 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     setSessionContent(parsed.content);
     setSessionMetadata(parsed.metadata);
   }, [note.path, setSessionContent, setSessionMetadata]);
+
+  const liveCurrent = useCallback(() => liveShared.current.text?.toString() ?? '', []);
+  const restoreLive = useCallback((text: string) => {
+    const shared = liveShared.current.text;
+    if (shared && window.confirm(t('history.restoreLiveConfirm'))) replaceLiveText(shared, text);
+  }, [t]);
 
   // The formatting toolbar's Insert image opens the notebook's assets; a chosen image goes in at the caret.
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
@@ -275,9 +342,14 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     );
   }
 
+  const liveHistory = { target: historyTarget, dirty: true, current: liveCurrent, onRestore: shared?.online ? restoreLive : undefined };
+  const liveRename = givenReadOnly || template ? undefined : liveEdit.checkout?.pending ? (title: string) => setLiveMetadata({ ...liveFrontmatter.metadata, title }) : own?.rename ? (title: string) => void own.rename!(title) : undefined;
   const quickActions = <NoteQuickActions {...footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) })} changes={changes} disabled={session.isSaving} />;
   const history = { target: historyTarget, dirty: session.isDirty, current: currentFile, onRestore: readOnly || session.locked ? undefined : restoreFile, onCommitVersion: onCommitFile && !readOnly ? async (text: VersionText) => void await session.commitNote({ path: note.path, today: today(), ...text }) : undefined };
-  const panel = { ...docPanel, isMarkdown, history, onRename: readOnly || template ? undefined : onRename, notePath: note.path, content: session.content, lineNumberOffset: session.baseNote.lineNumberOffset || 0, metadata: session.metadata, setMetadata: session.setMetadata, statuses, metadataFields, availableTags, locked: session.locked, notebookId: note.notebookId, readOnly };
+  const directPanel = { ...docPanel, isMarkdown, history, onRename: readOnly || template ? undefined : onRename, notePath: note.path, content: session.content, lineNumberOffset: session.baseNote.lineNumberOffset || 0, metadata: session.metadata, setMetadata: session.setMetadata, statuses, metadataFields, availableTags, locked: session.locked, notebookId: note.notebookId, readOnly };
+  // In the collab editor: the live text's history (read against the live text, restored into it after a confirm), the
+  // title per Q3 (a filed note renames after checking in, a pending one writes `title:`), the Gist read-only (Q4).
+  const panel = shared ? { ...directPanel, history: liveHistory, onRename: liveRename, lineNumberOffset: liveFrontmatter.lineOffset, readOnly: false, yamlSource: liveFrontmatter.yaml, frontmatterInvalid: liveFrontmatter.valid ? undefined : liveFrontmatter.error ?? '', liveNote: true } : directPanel;
   return (
     <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
@@ -288,7 +360,11 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
         </p>
       )}
-      {live && liveEdit.checkout && (live.editor.kind === 'builtin' ? <LiveCollabEditor checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} /> : <LiveEditorFrame checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} />)}
+      {live && liveEdit.checkout && (live.editor.kind === 'builtin' ? (
+        <LiveCollabEditor checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} showLineNumbers={lineNumbersShown}>
+          {shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}
+        </LiveCollabEditor>
+      ) : <LiveEditorFrame checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} />)}
       {formatToolbarShown && !liveEdit.checkout && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       {!liveEdit.checkout && (
         <div className='note-editor-body'>

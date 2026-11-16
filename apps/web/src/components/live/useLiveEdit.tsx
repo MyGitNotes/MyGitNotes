@@ -52,7 +52,8 @@ const ACTIVE_REFUSALS = { move: ['live.activeMove', 'live.activeMoveOne'], renam
 const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled', uncommittable: 'live.reason.uncommittable' };
 
 /** What a collab-first note's own editor offers for its file actions: each checks the note in first, and answers whether it ran. */
-export type LiveOwnFileActions = { [action in FileAction]?: () => Promise<boolean>; };
+/** A rename may carry the title typed in the note's row or panel, which the rename dialog starts from. */
+export type LiveOwnFileActions = { [action in FileAction]?: (title?: string) => Promise<boolean>; };
 
 /**
  * 「尚未簽回：…」 with why: tried again once everyone has left, except when none of the editors may commit, which needs
@@ -227,10 +228,10 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
    * check-in answered. A note that was no longer live runs it at once; one others still edit is refused with how many,
    * and its editor opens again.
    */
-  const fileAction = (action: FileAction): (() => Promise<boolean>) | undefined => {
+  const fileAction = (action: FileAction): ((title?: string) => Promise<boolean>) | undefined => {
     const run = live?.fileActions?.[action];
     if (!run || !collab || !active || pending) return undefined;
-    return async () => {
+    return async (title?: string) => {
       const { notebookId, path } = latest.current;
       if (unsavedTyping.current) {
         setRefusal(t('live.unsavedFileAction'));
@@ -257,7 +258,8 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
       }
       if (answer) checkedIn(answer);
       else setState({});
-      await run(answer?.revision);
+      if (action === 'rename' && title !== undefined) await live!.fileActions!.rename!(answer?.revision, title);
+      else await run(answer?.revision);
       return true;
     };
   };

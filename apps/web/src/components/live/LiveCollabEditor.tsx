@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, type Ref, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, Users } from 'lucide-react';
 import * as Y from 'yjs';
@@ -14,7 +14,7 @@ import { isNetworkFailure } from '../../lib/api.js';
 import { onReachable } from '../../lib/live-reachability.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
-import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
+import { LiveMarkdownEditor, type LiveMarkdownHandle } from '../LiveMarkdownEditor.js';
 import { discardDraft, keptReason } from './live-drafts.js';
 import { LiveProvider } from './live-provider.js';
 import { readLiveFrontmatter } from './live-frontmatter.js';
@@ -43,6 +43,24 @@ export interface LiveCollabEditorProps {
   onMergeConflict?: (mine: string) => boolean;
   /** Whether the editor holds typing the server has not stored, or kept typing it has not merged yet: a file action waits for it (cf16-F003). */
   onUnsavedChange?: (unsaved: boolean) => void;
+  /**
+   * The session's shared text once its document synced, and whether metadata may be written now (connected and synced,
+   * collab-frontmatter Q2); null while no document is shown. The note's document panel and row read and write it.
+   */
+  onLive?: (live: LiveSession | null) => void;
+  /** The collab Markdown editor, for the document panel's find and outline. */
+  editorRef?: Ref<LiveMarkdownHandle>;
+  /** The note is a slide deck: its editor labels slides as the direct editor does. */
+  slides?: boolean;
+  showLineNumbers?: boolean;
+  /** Beside the editor in its body: the note's document panel. */
+  children?: ReactNode;
+}
+
+/** A running collab session as the note's panel sees it. */
+export interface LiveSession {
+  text: Y.Text;
+  online: boolean;
 }
 
 /** Why the server refused the tab's document; `other` for any reason this tab does not know. */
@@ -126,13 +144,13 @@ const downloadName = (title: string | undefined, path: string) => `${(title || p
  * typed on) when that document ended; offline meanwhile, it shows the kept text read-only. A conflicting merge goes to
  * `onMergeConflict`; a live editor that cannot merge leaves the copy or download.
  */
-export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange }: LiveCollabEditorProps) {
+export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange, onLive, editorRef, slides, showLineNumbers, children }: LiveCollabEditorProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   // Each session is one document and one provider; going back to the editor after a check-in that left it open starts a new one.
   const [session, setSession] = useState(1);
   const [connection, setConnection] = useState<Connection>(START);
-  const [collab, setCollab] = useState<{ extension: Extension; text: string; } | null>(null);
+  const [collab, setCollab] = useState<{ extension: Extension; text: string; shared: Y.Text; } | null>(null);
   const [copied, setCopied] = useState(false);
   /** 「關閉」 asked while typing is unsaved: the editor stays open under the question. */
   const [leaving, setLeaving] = useState(false);
@@ -418,7 +436,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           if (!keeping && !dirty) base = text.toString();
           settle();
           setConnection(current => ({ ...current, synced: true, everSynced: true, renewing: false }));
-          setCollab(current => current ?? { extension: yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }), text: text.toString() });
+          setCollab(current => current ?? { extension: yCollab(text, awareness, { undoManager: new Y.UndoManager(text) }), text: text.toString(), shared: text });
         },
         onUnsyncedChanges: ({ number }) => {
           unsynced = number;
@@ -514,6 +532,18 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     unsavedChange.current?.(holdsTyping);
   }, [holdsTyping]);
   useEffect(() => () => unsavedChange.current?.(false), []);
+
+  // The panel writes metadata only while the document is connected and synced (Q2).
+  const shared = live && collab ? collab.shared : null;
+  const writable = connection.status === 'connected' && connection.synced;
+  const liveReport = useRef(onLive);
+  useEffect(() => {
+    liveReport.current = onLive;
+  });
+  useEffect(() => {
+    liveReport.current?.(shared ? { text: shared, online: writable } : null);
+  }, [shared, writable]);
+  useEffect(() => () => liveReport.current?.(null), []);
 
   // Typing the server has not stored yet is lost with the page.
   const unsaved = live && !!connection.dirty;
@@ -653,7 +683,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       )}
       {live && collab && (
         <div className='note-editor-body live-collab-body'>
-          <LiveMarkdownEditor content={collab.text} collab={collab} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} />
+          <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={collab} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.toolbar')} slides={slides} showLineNumbers={showLineNumbers} />
+          {children}
         </div>
       )}
       {phase.kind === 'checking' && <LoadingStatus className='live-editor-notice'>{t('live.checkingIn')}</LoadingStatus>}

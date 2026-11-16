@@ -48,7 +48,7 @@ export function readLiveFrontmatter(text: string): LiveFrontmatter {
 }
 
 /** Replaces `text` by `next` as one insertion and one deletion between their common prefix and suffix, in one transaction. */
-function applyText(text: Y.Text, next: string): void {
+export function replaceLiveText(text: Y.Text, next: string): void {
   const current = text.toString();
   if (current === next) return;
   let start = 0;
@@ -73,7 +73,7 @@ function applyText(text: Y.Text, next: string): void {
 export function writeLiveFrontmatter(text: Y.Text, shown: NoteMetadata, next: NoteMetadata): boolean {
   const current = text.toString();
   if (!readLiveFrontmatter(current).valid) return false;
-  applyText(text, patchNoteFrontmatter(current, shown, next));
+  replaceLiveText(text, patchNoteFrontmatter(current, shown, next));
   return true;
 }
 
@@ -90,8 +90,8 @@ export function writeLiveYaml(text: Y.Text, yaml: string): { ok: true; } | { ok:
   const block = yaml.trimEnd();
   const newline = span && current.slice(0, span.end).includes('\r\n') ? '\r\n' : '\n';
   const fenced = `---${newline}${block.replace(/\r?\n/g, newline)}${newline}---${newline}`;
-  if (!span) applyText(text, current ? `${fenced}\n${current}` : fenced);
-  else applyText(text, fenced + current.slice(span.end));
+  if (!span) replaceLiveText(text, current ? `${fenced}\n${current}` : fenced);
+  else replaceLiveText(text, fenced + current.slice(span.end));
   return { ok: true };
 }
 

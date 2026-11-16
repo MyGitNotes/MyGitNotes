@@ -14,6 +14,8 @@ interface GistProps {
   setMetadata: (metadata: Record<string, unknown>) => void;
   /** The session accepts no edit right now. */
   locked: boolean;
+  /** The note is in the collab editor, whose check-ins push no Gist: the row shows the link and offers no action (collab-frontmatter Q4). */
+  liveNote?: boolean;
 }
 
 /** The note's info, under the frontmatter in the document panel: the note's notebook, repository, branch, path, whether it can be edited, and its Gist. */
@@ -37,7 +39,7 @@ export function NoteInfoPanel({ note, ...gist }: { note: NoteRef; } & GistProps)
           <dd>{location.readOnly ? t(`editor.infoReadOnly.${location.readOnly}`) : t('editor.infoWritable')}</dd>
         </div>
         {location.gists && <NoteGist path={note.path} repository={location.repositoryId} {...gist} />}
-        {location.publishable && publishRows.map((render, index) => <Fragment key={index}>{render({ note, repository: location.repository, ...gist })}</Fragment>)}
+        {location.publishable && publishRows.map((render, index) => <Fragment key={index}>{render({ note, repository: location.repository, ...gist, locked: gist.locked || Boolean(gist.liveNote) })}</Fragment>)}
       </dl>
     </section>
   );
@@ -48,7 +50,7 @@ export function NoteInfoPanel({ note, ...gist }: { note: NoteRef; } & GistProps)
  * in the `gist` frontmatter of the draft; every later commit of the note updates the Gist, and the server opens it on its site. Unpublishing deletes the Gist and drops the field.
  * This browser also keeps the id it created, outside the draft, as the confirmation the next commit sends for it.
  */
-function NoteGist({ path, repository, content, metadata, setMetadata, locked }: { path: string; repository: string; } & GistProps) {
+function NoteGist({ path, repository, content, metadata, setMetadata, locked, liveNote }: { path: string; repository: string; } & GistProps) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; reauthorize: boolean; } | null>(null);
@@ -82,8 +84,8 @@ function NoteGist({ path, repository, content, metadata, setMetadata, locked }: 
       <dt>{t('editor.infoGist')}</dt>
       <dd className='note-info-gist'>
         {id ? <a href={`/api/gists/${encodeURIComponent(id)}/open`} target='_blank' rel='noreferrer'>{t('editor.gistOpen')}</a> : <span>{t('editor.gistNotPublished')}</span>}
-        <Button size='small' variant={id ? 'danger' : 'default'} disabled={busy || locked || (!id && !content.trim())} onClick={() => void (id ? unpublish() : publish())}>{t(id ? 'editor.gistUnpublish' : 'editor.gistPublish')}</Button>
-        <span className='note-info-hint'>{t(id ? 'editor.gistSyncHint' : 'editor.gistPublishHint')}</span>
+        <Button size='small' variant={id ? 'danger' : 'default'} disabled={busy || locked || liveNote || (!id && !content.trim())} onClick={() => void (id ? unpublish() : publish())}>{t(id ? 'editor.gistUnpublish' : 'editor.gistPublish')}</Button>
+        <span className='note-info-hint'>{t(liveNote ? 'editor.gistLiveHint' : id ? 'editor.gistSyncHint' : 'editor.gistPublishHint')}</span>
         {error && <span role='alert' className='text-danger'>{error.message} {error.reauthorize && <a className='underline' href='/api/auth/github'>{t('auth.signInWithGithub')}</a>}</span>}
       </dd>
     </div>
