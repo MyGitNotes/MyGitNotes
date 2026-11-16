@@ -153,6 +153,60 @@ describe('a writer’s note of a repository with the built-in editor', () => {
     expect(collabShown()).toBeInTheDocument();
   });
 
+  it('back online with a draft typed offline, hands the draft over to the live note first, then opens the collab editor', async () => {
+    online = false;
+    const order: string[] = [];
+    const handOver = vi.fn(async () => {
+      order.push('handOver');
+      return true;
+    });
+    fetchMock.mockImplementation(async (url: string) => {
+      order.push(url);
+      if (url === '/api/live/checkout') return json({ checkout: view, outcome: 'joined' });
+      if (url === '/api/live/socket-ticket') return json({ ticket: 't'.padEnd(32, 'x'), document: 'abc.1' });
+      return json({ error: 'unexpected' }, 500);
+    });
+    await mount({ live: live({ handOver }), isDirty: true });
+    expect(screen.getByLabelText('Note content')).not.toHaveAttribute('readonly');
+    online = true;
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    await act(async () => {});
+    expect(order.slice(0, 2)).toEqual(['handOver', '/api/live/checkout']);
+    expect(collabShown()).toBeInTheDocument();
+  });
+
+  it('stays in the direct editor on its draft when the handover could not finish', async () => {
+    online = false;
+    const handOver = vi.fn(async () => false);
+    await mount({ live: live({ handOver }), isDirty: true });
+    online = true;
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+    expect(handOver).toHaveBeenCalled();
+    expect(calls('/api/live/checkout')).toHaveLength(0);
+    expect(screen.getByLabelText('Note content')).not.toHaveAttribute('readonly');
+  });
+
+  it('says a merge that conflicted kept the person’s version as a draft, and offers to compare, copy or discard it', async () => {
+    const discard = vi.fn();
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    await mount({ note: { ...note, content: '# Alpha\nTheirs.\n' }, live: live({ mergeConflict: { mine: '# Alpha\nMine.\n', discard } }) });
+    expect(collabShown()).toBeInTheDocument();
+    expect(screen.getByText('Your offline changes conflict with changes made since, so they were kept as a draft. Compare, copy or discard them.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
+    expect(screen.getByLabelText('Your version against the note')).toHaveTextContent('+Mine.');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy my version' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('# Alpha\nMine.\n');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard my version' }));
+    expect(discard).toHaveBeenCalled();
+  });
+
   it('opens in the direct editor the same way when the checkout cannot reach the server', async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url === '/api/live/checkout') throw new TypeError('Failed to fetch');

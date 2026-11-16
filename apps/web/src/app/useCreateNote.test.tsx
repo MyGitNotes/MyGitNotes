@@ -153,3 +153,24 @@ it('fills a template that is still a working change of this page here, without a
   // note `template` is the id of the template it came from.
   expect(staged.metadata).toEqual({ id: 'untitled', kind: 'reading', author: '{{author}}', title: 'Untitled', template: 'reading', tags: [], status: 'inbox' });
 });
+
+/* Collab-first (docs/specs/2026-11-16-collab-first-self-host A3.2): offline, a note of a live repository is a browser draft, handed to the live editor once online. */
+it('makes a new note of a live repository a browser draft while offline, instead of asking the live editor', async () => {
+  const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+  const fetchMock = vi.fn(async () => {
+    throw new TypeError('Failed to fetch');
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    const input = params({ remote: true, live: { askLivePathValues: vi.fn(), open: vi.fn() } });
+    const hook = renderHook(useCreateNote, { initialProps: input });
+    await act(() => hook.result.current.createNote());
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(input.stageWorkingNote).toHaveBeenCalledWith(expect.objectContaining({ path: 'notes/shared/untitled.md' }), null);
+    expect(input.onCreated).toHaveBeenCalledOnce();
+    expect(input.onError).not.toHaveBeenCalledWith(expect.stringMatching(/./));
+  } finally {
+    online.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});

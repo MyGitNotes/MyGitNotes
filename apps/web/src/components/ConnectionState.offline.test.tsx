@@ -92,3 +92,23 @@ it('lists no title of the person’s notes in the demo, and counts only the demo
   expect(container.textContent).not.toContain('Demo edit');
   expect(container.textContent).toContain('Drafts kept in this browser: 2');
 });
+
+/* Collab-first (docs/specs/2026-11-16-collab-first-self-host A3.1): a reload while offline still shows live typing the server has not stored. */
+it('shows the live typing this session kept unsynced, by title with its text, and only the session’s own', async () => {
+  const { unsyncedLiveStore, unsyncedKey } = await import('../lib/live-unsynced.js');
+  const store = unsyncedLiveStore();
+  const entry = (scope: string, title: string, text: string) => ({ key: unsyncedKey(scope, 'notes~life', `notes/life/${title}.md`), scope, notebookId: 'notes~life', path: `notes/life/${title}.md`, title, document: 'abc.1', update: new Uint8Array([0, 0]), text, baseText: '', mergeId: 'merge-0001', savedAt: 1 });
+  await store.put(entry('repo-1:main', 'Plan', '# Plan\nTyped offline.\n'));
+  await store.put(entry('repo-9:main', 'Theirs', '# Theirs\nNot mine.\n'));
+  localStorage.setItem('gh_notes_opened_scopes', JSON.stringify(['repo-1:main']));
+  try {
+    await mount('Failed to fetch');
+    await act(async () => {});
+    expect(container.textContent).toContain('Live notes typed offline');
+    expect(container.textContent).toContain('Plan');
+    expect(container.textContent).toContain('Typed offline.');
+    expect(container.textContent).not.toContain('Not mine.');
+  } finally {
+    for (const kept of await store.list()) await store.delete(kept.key);
+  }
+});
