@@ -57,8 +57,6 @@ export type RemoteChange = { path: string; content?: string; base64?: string; sh
 export interface RemoteCommitHeard {
   /** The commit's id. */
   revision: string;
-  /** A file's text in the branch head the commit was made on; undefined when that head did not hold it as a file. */
-  previous(file: string): Promise<string | undefined>;
 }
 /** A commit as a provider lists it in a file's history. */
 export interface RemoteCommit {
@@ -154,9 +152,9 @@ export abstract class RemoteSource {
   }
   /**
    * Has this reader tell `listener` of each commit it makes through `commitChanges`, once it landed: the changes as
-   * they were written, so a text needs no second read, and the commit's revision and a reader of each file as it was
-   * before the commit. The server publishes the notes of an `/mcp` call's commits with it. What the listener throws is
-   * logged and never fails the commit; a second listener replaces the first.
+   * they were written, so a text needs no second read, and the commit's revision. The server publishes the notes of an
+   * `/mcp` call's commits with it. What the listener throws is logged and never fails the commit; a second listener
+   * replaces the first.
    */
   onCommit(listener: (changes: readonly RemoteChange[], commit: RemoteCommitHeard) => void) {
     this.commitHeard = listener;
@@ -1114,14 +1112,7 @@ export abstract class RemoteSource {
       revision = await this.publishChanges(changes, snapshot, message, author);
       this.announceCommit(changedPaths);
       try {
-        const before = snapshot;
-        this.commitHeard?.(changes, {
-          revision,
-          previous: async file => {
-            const entry = before.entries.find(e => e.path === file && e.type === 'blob' && e.mode !== '120000');
-            return entry ? (this.loaded.get(entry.sha) ?? await this.readBlob(entry.sha)).toString('utf8') : undefined;
-          },
-        });
+        this.commitHeard?.(changes, { revision });
       } catch {
         console.warn("[remote-source] the reader's commit listener failed");
       }

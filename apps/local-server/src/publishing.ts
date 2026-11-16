@@ -111,13 +111,16 @@ export interface PublishedCommit {
   notes: readonly CommittedText[];
   /** Whom the commit was made for, where known. */
   person?: WorkspacePerson;
-  /** The Gist access of the person the commit was made for; a check-in, and a commit that cannot change a Gist's text, have none. */
+  /**
+   * The Gist access of the person the commit was made for. Gists sync only on the app's commit routes, so no caller
+   * passes it today: a check-in, an `/mcp` write and a tag commit never push a Gist.
+   */
   gists?: GistAccess;
   /**
-   * The Gist id each note named before the commit, by path, where Gists may follow only a mark already in Git: an
-   * `/mcp` write cannot add or retarget one, so a Gist whose id is not the note's earlier one is not pushed.
+   * An `/mcp` write made the commit. Its note text, the `gist:` mark included, is the agent's, so it never aims the
+   * person's token at a Gist; the Gist follows on the owner's next commit of the note in the app.
    */
-  earlierGists?: ReadonlyMap<string, string | undefined>;
+  agentWrite?: boolean;
   /** The commit's revision ({@link CommittedNotes.revision}). */
   revision?: string;
   /** The commit cannot change a Gist's text (a tag commit): no Gist is pushed and nothing is logged of them. */
@@ -132,25 +135,19 @@ export type CommitPublisher = (commit: PublishedCommit) => Promise<void> | undef
 
 /**
  * Publishes the notes of commits that answer no commit route (a live check-in, an `/mcp` write, a tag commit) as those
- * routes publish theirs: each note that names a Gist is pushed to it where a person's GitHub token made the commit,
- * and the service's `syncCommitted` hears every note. The commit stands and its answer is the same whatever comes of
+ * routes publish theirs: the service's `syncCommitted` hears every note. A Gist is pushed only with `gists`, which no
+ * caller passes, as Gists sync only on the commit routes; a note that names one is logged by path instead. The commit stands and its answer is the same whatever comes of
  * it. A failure is logged with its repository and path, never with note text. Without a service that has
  * `syncCommitted` and without a note that names a Gist, nothing is called.
  */
 export function commitPublisher({ publishing, defer }: { publishing?: PublishingService; defer?: (work: Promise<unknown>) => void; }): CommitPublisher {
-  return ({ repository, notes: texts, person, gists, earlierGists, revision, gistTextKept }) => {
+  return ({ repository, notes: texts, person, gists, agentWrite, revision, gistTextKept }) => {
     const notes = texts.map((text): PublishedNote => {
       const { metadata, content } = parseNoteContent(text.content);
       return { path: text.path, content, metadata };
     });
     const where = (file: string) => `${repository.id}/${file}`;
-    const named = gistTextKept ? [] : notes.filter(note => {
-      const id = noteGist(note.metadata);
-      if (!id) return false;
-      if (!earlierGists || earlierGists.get(note.path) === id) return true;
-      console.info(`[publishing] ${where(note.path)}: gist id not in the previous commit, not updated`);
-      return false;
-    });
+    const named = gistTextKept ? [] : notes.filter(note => noteGist(note.metadata));
     const service = publishing?.syncCommitted && notes.length ? publishing : undefined;
     if (!named.length && !service) return undefined;
     // What is thrown may quote the note, so only a fixed label is logged, never the error's name or message.
@@ -161,6 +158,7 @@ export function commitPublisher({ publishing, defer }: { publishing?: Publishing
     const work: Promise<unknown>[] = [];
     if (named.length && gists) work.push(syncGists(gists.token, named, gists.url).then(report).catch(failed('the Gist update', named.map(note => note.path))));
     // The Gist keeps its last text until a person commits the note in the app, which updates it as before.
+    else if (agentWrite) { for (const note of named) console.info(`[publishing] ${where(note.path)}: gist not updated by an agent write; updates on the next app commit`); }
     else for (const note of named) console.info(`[publishing] ${where(note.path)}: the Gist it names was not updated, as no person's GitHub token made this commit; the next commit of the note in the app updates it`);
     if (service) work.push(Promise.resolve().then(() => service.syncCommitted!({ repository, notes, ...(person ? { person } : {}), ...(revision ? { revision } : {}) })).then(report).catch(failed('publishing', notes.map(note => note.path))));
     if (!work.length) return undefined;
@@ -175,24 +173,10 @@ export function commitPublisher({ publishing, defer }: { publishing?: Publishing
  * Publishes the note texts among the changes of a commit a request made, and answers what that request waits for
  * ({@link CommitPublisher}). It never rejects: the commit has landed, so whatever fails here is only logged.
  */
-export async function publishChanges(publish: CommitPublisher, { repository, changes, previous, ...by }: Omit<PublishedCommit, 'notes' | 'earlierGists'> & {
-  changes: readonly { path: string; content?: string; }[];
-  /** Where Gists follow only a mark already in Git: the text of a file before the commit ({@link PublishedCommit.earlierGists}). */
-  previous?: (file: string) => Promise<string | undefined>;
-}): Promise<void> {
+export async function publishChanges(publish: CommitPublisher, { repository, changes, ...by }: Omit<PublishedCommit, 'notes'> & { changes: readonly { path: string; content?: string; }[]; }): Promise<void> {
   try {
     const notes = await committedNotes(repository.reader, changes);
-    let earlierGists: Map<string, string | undefined> | undefined;
-    if (previous && by.gists && !by.gistTextKept) {
-      earlierGists = new Map();
-      for (const note of notes) {
-        if (!noteGist(parseNoteContent(note.content).metadata)) continue;
-        // An earlier text that cannot be read names no Gist, so the Gist is left as it is.
-        const before = await previous(note.path).catch(() => undefined);
-        earlierGists.set(note.path, before === undefined ? undefined : noteGist(parseNoteContent(before).metadata));
-      }
-    }
-    await publish({ repository, notes, ...by, ...(earlierGists ? { earlierGists } : {}) });
+    await publish({ repository, notes, ...by });
   } catch {
     console.warn(`[publishing] ${repository.id}: publishing failed (error)`);
   }

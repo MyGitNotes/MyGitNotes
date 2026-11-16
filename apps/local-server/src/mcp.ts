@@ -10,7 +10,6 @@ import { CredentialRejected, grantPerson } from './auth.js';
 import { type BearerGrant, bearerGrantRecord, type IdentityService } from './identity.js';
 import type { RecordStore, StoredRecord } from './record-store/index.js';
 import type { EditionSources } from './edition-sources.js';
-import { gistAccess } from './gists.js';
 import { type CommitPublisher, publishChanges } from './publishing.js';
 import { dropHeaders } from './request-headers.js';
 import { hasLiveView, openWorkspace, type RemoteHandle, type RequestWorkspace } from './request-workspace.js';
@@ -133,13 +132,12 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
       // The commits the call makes are authored by whom the grant names, where it names anyone: an outside bearer's grant
       // as the identity answered, a stored one as it was recorded.
       const granted = grantSettings(settings, grant);
-      // A note a write commits is published as after a commit in the app: a Gist it names is updated with the grant's own
-      // GitHub token, but only one the note already named before the commit. The id is note text the agent writes, so a
-      // new or changed one would aim the person's token at any Gist they hold.
-      const gists = gistAccess(settings.site, token);
+      // A note a write commits is published to the edition as after a commit in the app, but no Gist is pushed: Gists
+      // sync only on the app's commit routes. The `gist:` id is note text the agent writes, so pushing it would aim the
+      // person's token at any Gist they hold; the Gist follows on the owner's next commit of the note in the app.
       /** The publication of the commits this call made, which its answer waits for where the deployment has no `defer`. */
       const publishing: Promise<unknown>[] = [];
-      const committed = (repository: RemoteHandle, changes: readonly RemoteChange[], { revision, previous }: RemoteCommitHeard) => void publishing.push(publishChanges(publish!, { repository, changes, revision, previous, ...(person ? { person } : {}), ...(gists ? { gists } : {}) }));
+      const committed = (repository: RemoteHandle, changes: readonly RemoteChange[], { revision }: RemoteCommitHeard) => void publishing.push(publishChanges(publish!, { repository, changes, revision, agentWrite: true, ...(person ? { person } : {}) }));
       const tools = hasLiveView(granted, person, liveNotes) ? typeof liveNotes!.service.discard === 'function' ? liveDiscardRemoteTools : liveRemoteTools : remoteTools;
       const workspace = openWorkspace(granted, token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), ...(publish ? { committed } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
       const assets = toolAssets(assetStorage, req, res);

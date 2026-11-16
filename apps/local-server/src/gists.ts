@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { type Response, Router } from 'express';
-import { githubSite, SourceError, type WorkspaceSite } from '@mygitnotes/core';
+import { githubSite, SourceError } from '@mygitnotes/core';
 import { requestSite, requestToken } from './request-workspace.js';
 
 /** A Gist request refused because the sign-in grant lacks the `gist` scope; signing in again grants it. */
@@ -96,11 +96,6 @@ export async function syncGists(token: string, notes: PublishedNote[], url?: str
 export interface GistAccess {
   token: string;
   url?: string;
-}
-
-/** The Gist access a person's `token` on `site` gives: none off GitHub, and none without a token. */
-export function gistAccess(site: WorkspaceSite, token: string | undefined): GistAccess | undefined {
-  return site.type === 'github' && token ? { token, ...(site.url ? { url: site.url } : {}) } : undefined;
 }
 
 /** The signed-in GitHub token of a request whose workspace is on GitHub, or undefined for any other request. */
