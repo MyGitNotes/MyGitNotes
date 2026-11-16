@@ -42,4 +42,14 @@ describe('starting with live notes', () => {
     expect(start({ liveNotes: liveNotes({ ...editor, messageType: 'a:b' }) })).toThrow(/live editor/i);
     expect(start({ liveNotes: { ...liveNotes(), editors: [] } })).toThrow(/live editor/i);
   });
+
+  it('refuses an idle check-in setting that is no number of minutes, and only where live notes are attached', () => {
+    vi.stubEnv('MYGITNOTES_LIVE_IDLE_CHECKIN', '2h');
+    expect(start({ liveNotes: liveNotes() })).toThrow(/MYGITNOTES_LIVE_IDLE_CHECKIN/);
+    expect(start({})).not.toThrow();
+    for (const value of ['off', '1m', '60m', '']) {
+      vi.stubEnv('MYGITNOTES_LIVE_IDLE_CHECKIN', value);
+      expect(start({ liveNotes: liveNotes() }), value).not.toThrow();
+    }
+  });
 });

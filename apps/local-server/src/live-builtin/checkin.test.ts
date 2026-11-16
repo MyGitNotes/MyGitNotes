@@ -1,8 +1,10 @@
-import { checkInLink, gitBlobId, type LiveCheckInOptions, liveContentHash, normalizeLiveText, parseWorkspaceConfig, sweepLive } from '@mygitnotes/core';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { checkInLink, gitBlobId, type LiveCheckInOptions, liveContentHash, normalizeLiveText, parseWorkspaceConfig, sweepIdleLive, sweepLive } from '@mygitnotes/core';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource } from '../memory-edition-source.js';
 import { memoryLiveClock } from '../memory-live-notes.js';
-import { type BuiltinFixture, builtinFixture, edition, manifest, notebook, person, repository, shutdownFixtures } from './test-fixture.js';
+import { memoryLiveStore } from './memory-store.js';
+import type { LiveStore } from './store.js';
+import { type BuiltinFixture, builtinFixture, edition, manifest, notebook, person, redisTestStores, repository, shutdownFixtures } from './test-fixture.js';
 
 /*
  * The 0.19 check-in engine over the built-in adapter (docs/specs/2026-11-15-builtin-live-editor §5, §19; slice N3): the
@@ -228,4 +230,68 @@ describe('pending notes through the check-in', () => {
     expect(await f.liveNotes.service.checkouts(repository)).toEqual([]);
     expect(f.notices).toEqual([]);
   });
+});
+
+/*
+ * The idle check-in (docs/specs/2026-11-16-collab-first-self-host A5, slice S1) over the built-in adapter: its rows say
+ * who is active and when the note was last typed in, by the adapter's clock.
+ */
+const idleCheckIn = (store: () => LiveStore) => () => {
+  it('makes one commit 5 minutes after two typists left, and none a second before', async () => {
+    const f = builtinFixture({ store: store(), files: new Map([['.mygitnotes.yaml', manifest], [file, A]]), time: memoryLiveClock(Date.parse('2026-11-14T20:00:00.000Z')) });
+    const idle = () => sweepIdleLive(f.liveNotes, { now: f.time.now, idleMs: 5 * 60_000, timeZone: 'Asia/Taipei', sleep: async () => {} });
+    const id = await checkout(f);
+    await f.liveNotes.setActive(repository, id, 2);
+    await type(f, id, A.replace('two', 'TWO'), 1);
+    f.time.advance(1000);
+    await type(f, id, A.replace('two', 'TWO').replace('three', 'THREE'), 2);
+    // Both are connected: however long the tick waits, nothing is due.
+    expect(await idle()).toEqual({ due: 0, results: [], failed: [] });
+    await f.liveNotes.setActive(repository, id, 0);
+    f.time.advance(5 * 60_000 - 1000);
+    expect(await idle()).toEqual({ due: 0, results: [], failed: [] });
+    expect(commits(f)).toEqual([]);
+    f.time.advance(1000);
+    expect(await idle()).toEqual({ due: 1, results: [{ id, path: file, committed: true, commit: expect.stringMatching(/^[0-9a-f]{40}$/), released: true }], failed: [] });
+    const text = A.replace('two', 'TWO').replace('three', 'THREE');
+    expect(f.files.get(file)).toBe(text);
+    expect(commits(f)).toHaveLength(1);
+    expect(commits(f)[0].author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
+    expect(commits(f)[0].message).toBe(`docs(notes): live edit a.md\n\nLive-Link: ${id}\nLive-Content: sha256:${liveContentHash(text)}\nCo-authored-by: Person 2 <p2@example.test>`);
+    expect(await f.liveNotes.service.checkouts(repository)).toEqual([]);
+    expect(await f.store.link(id)).toMatchObject({ live: false, path: file });
+    f.time.advance(60_000);
+    expect(await idle()).toEqual({ due: 0, results: [], failed: [] });
+    expect(commits(f)).toHaveLength(1);
+  });
+
+  it('waits for an open tab that went idle: at most 10 minutes after its last activity', async () => {
+    const f = builtinFixture({ store: store(), files: new Map([['.mygitnotes.yaml', manifest], [file, A]]), time: memoryLiveClock(Date.parse('2026-11-14T20:00:00.000Z')) });
+    const idle = () => sweepIdleLive(f.liveNotes, { now: f.time.now, idleMs: 5 * 60_000, timeZone: 'Asia/Taipei', sleep: async () => {} });
+    const id = await checkout(f);
+    const opened = f.time.now();
+    await type(f, id, A.replace('two', 'TWO'), 1);
+    // The tab stays connected and does nothing more: its process keeps writing a presence entry that names its last activity.
+    const present = () => f.store.presence(id, 'tab-process', { 'person:p1@example.test': opened }, f.time.now());
+    await present();
+    f.time.advance(9 * 60_000 + 59_000);
+    await present();
+    expect(await idle()).toEqual({ due: 0, results: [], failed: [] });
+    f.time.advance(2000);
+    await present();
+    expect(await idle()).toMatchObject({ due: 1, results: [{ id, committed: true, released: true }] });
+    expect(commits(f)).toHaveLength(1);
+  });
+};
+
+describe('the idle check-in over the built-in adapter (memory store)', idleCheckIn(() => memoryLiveStore()));
+
+const url = process.env.MYGITNOTES_TEST_REDIS_URL;
+describe.skipIf(!url)('the idle check-in over the built-in adapter and a real Redis (MYGITNOTES_TEST_REDIS_URL)', () => {
+  const redis = redisTestStores(url);
+  beforeAll(() => redis.begin());
+  afterAll(async () => {
+    expect(await redis.end()).toBe(0);
+  });
+  idleCheckIn(() => redis.store())();
 });
