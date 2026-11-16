@@ -111,7 +111,7 @@ export function noteSection(content: string, anchor: string): NoteSection | null
   const next = outline.slice(index + 1).find(candidate => candidate.depth <= heading.depth);
   const lines = content.split('\n');
   // An ATX heading is one line; a setext heading is its text line and the underline below it.
-  const setext = !/^\s{0,3}#/.test(lines[heading.line - 1]);
+  const setext = /^\s{0,3}(=+|-+)\s*$/.test(lines[heading.line] ?? '') && !/^\s{0,3}#{1,6}(\s|$)/.test(lines[heading.line - 1]);
   const start = lines.slice(0, heading.line + (setext ? 1 : 0)).reduce((offset, line) => offset + line.length + 1, 0);
   return { heading: heading.label, depth: heading.depth, body: content.slice(Math.min(start, content.length), next ? next.from : content.length).trim() };
 }

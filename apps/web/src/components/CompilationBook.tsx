@@ -2,7 +2,7 @@ import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { List } from 'lucide-react';
 import { type CompilationRow, contentItems } from '@mygitnotes/core/compilation';
 import type { NotebookFacets } from '@mygitnotes/core/note-query';
-import { type BookChapter as Chapter, bookChapters, bookEntries, type BookEntry, slotAnchor } from '../lib/book-chapters.js';
+import { allChapters, type BookChapter as Chapter, bookChapters, bookEntries, type BookEntry, slotAnchor } from '../lib/book-chapters.js';
 import { chapterOfAnchor, type PageStep, resolvePage } from '../lib/book-paging.js';
 import { useBookReadingMode, writeBookReadingMode } from '../lib/book-reading.js';
 import { useCompilationEditingContext, useHeldNotes, useHeldOrder } from '../lib/compilation-editing.js';
@@ -111,7 +111,8 @@ export function CompilationBook({ row, notebooks, assets, folders = [], onOpen, 
       return copy;
     });
   }, []);
-  const chapterIds = chapters.map(chapter => chapter.id).join('\n');
+  // Members too: a folder under a chapter heading reports its notes under its own id.
+  const chapterIds = allChapters(chapters).map(chapter => chapter.id).join('\n');
   useEffect(() => {
     const present = new Set(chapterIds.split('\n'));
     setSections(current => {

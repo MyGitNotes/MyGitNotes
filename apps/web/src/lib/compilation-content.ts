@@ -7,12 +7,13 @@ import { sortNotes } from './note-sort.js';
 import { noteFolderGrouping } from './note-groups.js';
 import { type NoteSection, noteSection } from './note-navigation.js';
 
+/** A heading-anchored note item as the whole note: what Open the note opens. */
+export const wholeNoteItem = (item: Extract<CompilationItem, { kind: 'note'; }>): CompilationItem => ({ id: item.id, kind: 'note', notebookId: item.notebookId, path: item.path });
+
 /**
  * The section a heading-anchored note item shows: `undefined` when the item is not anchored or its note's content
  * has not loaded, `null` once the note is there and no heading matches the anchor.
  */
-/** A heading-anchored note item as the whole note: what Open the note opens. */
-export const wholeNoteItem = (item: Extract<CompilationItem, { kind: 'note'; }>): CompilationItem => ({ id: item.id, kind: 'note', notebookId: item.notebookId, path: item.path });
 
 export function itemSection(item: CompilationItem, note: Pick<NoteListItem, 'content'> | undefined): NoteSection | null | undefined {
   if (item.kind !== 'note' || !item.anchor || typeof note?.content !== 'string') return undefined;

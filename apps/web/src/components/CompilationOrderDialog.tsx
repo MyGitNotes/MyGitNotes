@@ -209,10 +209,10 @@ function HeadingChoice({ note, anchor, onChange }: { note: NonNullable<OrderEntr
   return (
     <select className='ui-control compilation-order-heading' aria-label={`${t('screen.itemHeading')}: ${note.title}`} value={current} onChange={event => onChange(event.target.value)}>
       <option value=''>{t('screen.itemWholeNote')}</option>
-      {gone && <option value={current}>{`${current} (${t('screen.headingMissing')})`}</option>}
+      {gone && <option value={current}>{t('screen.headingMissingOption', { label: current })}</option>}
       {note.headings.map((heading, index) => {
         const repeated = note.headings.slice(0, index).some(earlier => headingSlug(earlier.label) === headingSlug(heading.label));
-        return <option key={index} value={repeated ? `${index}:${heading.label}` : heading.label} disabled={repeated}>{`${'\u00a0\u00a0'.repeat(heading.depth - top)}${heading.label}${repeated ? ` (${t('screen.headingDuplicate')})` : ''}`}</option>;
+        return <option key={index} value={repeated ? `${index}:${heading.label}` : heading.label} disabled={repeated}>{`${'\u00a0\u00a0'.repeat(heading.depth - top)}${repeated ? t('screen.headingDuplicateOption', { label: heading.label }) : heading.label}`}</option>;
       })}
     </select>
   );

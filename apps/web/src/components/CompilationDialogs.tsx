@@ -196,12 +196,12 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
   const shown = loaded ? assets : extra.assets;
   const options = kind === 'note' ? noteMatches.notes.map(note => ({ path: note.path, title: note.title })) : kind === 'asset' ? shown.filter(asset => asset.notebookId === selected).map(asset => ({ path: asset.path, title: asset.name })) : compilationFolderOptions(nb, folders, shown);
   const video = parseYouTubeUrl(youtube);
-  // A chosen note is read once more with its content: one with headings offers a heading to pin its section, one without is pinned whole at once.
+  // A chosen note is read once more with its content: one with headings offers a heading to pin its section, one without is pinned whole at once, and one that cannot be read shows why and is not pinned.
   const [chosen, setChosen] = useState<{ notebookId: string; path: string; } | null>(null);
   const [heading, setHeading] = useState('');
   const lookup = useNoteLookup(chosen ? [chosen] : [], true);
   const chosenNote = chosen && lookup.notes.find(note => note.path === chosen.path && note.notebookId === chosen.notebookId);
-  const outline: OutlineHeading[] | null = chosen && !lookup.loading ? parseMarkdownOutline(chosenNote?.content ?? '') : null;
+  const outline: OutlineHeading[] | null = chosen && !lookup.loading && !lookup.error ? parseMarkdownOutline(chosenNote?.content ?? '') : null;
   const pinNote = (anchor?: string) => {
     if (!chosen) return;
     add({ id: crypto.randomUUID(), kind: 'note', notebookId: chosen.notebookId, path: chosen.path, ...(anchor ? { anchor } : {}) });
@@ -217,7 +217,7 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
   const top = Math.min(...(outline ?? []).map(entry => entry.depth));
   const headingOptions = (outline ?? []).map((entry, index, all) => {
     const repeated = all.slice(0, index).some(earlier => headingSlug(earlier.label) === headingSlug(entry.label));
-    return { value: String(index), label: `${'\u00a0\u00a0'.repeat(entry.depth - top)}${entry.label}${repeated ? ` (${t('screen.headingDuplicate')})` : ''}`, disabled: repeated };
+    return { value: String(index), label: `${'\u00a0\u00a0'.repeat(entry.depth - top)}${repeated ? t('screen.headingDuplicateOption', { label: entry.label }) : entry.label}`, disabled: repeated };
   });
   if (chosen && outline?.length) {
     return (
@@ -286,6 +286,7 @@ export function CompilationAddItem({ rowName, notebookId, notebooks, assets, fol
             <>
               <input className='ui-control' type='search' aria-label={t('screen.findItem')} placeholder={t('screen.findItem')} value={query} onChange={e => setQuery(e.target.value)} />
               {noteMatches.error && <p role='alert' className='screen-form-error'>{noteMatches.error}</p>}
+              {chosen && lookup.error && <p role='alert' className='screen-form-error'>{lookup.error}</p>}
               {noteMatches.loading && <LoadingStatus>{t('notes.loading')}</LoadingStatus>}
               <div className='screen-item-options'>
                 {options.filter(option => kind === 'note' || `${option.title} ${option.path}`.toLowerCase().includes(query.toLowerCase())).map(option => (
