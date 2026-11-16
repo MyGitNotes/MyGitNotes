@@ -126,6 +126,25 @@ describe('a live check-in', () => {
     expect(committed[0].person).toBeUndefined();
   });
 
+  it('publishes after the idle check-in of the schedule, through the app\'s live editor', async () => {
+    vi.stubEnv('MYGITNOTES_LIVE_IDLE_CHECKIN', '1m');
+    // The adapter's clock runs ten minutes behind, so the note was last typed in long enough ago at the first idle tick.
+    liveNotes = memoryLiveNotes({ editor, repositories: [{ source: notes, files }], clock: { now: () => Date.now() - 10 * 60_000, advance: () => {} } });
+    // Only the schedule's timers are faked, so the requests below run on real ones; the first idle tick falls within 70 s.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await start({ publishing: service() });
+      await edit(typed);
+      await vi.advanceTimersByTimeAsync(71_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    await vi.waitFor(() => expect(files.get('notes/life/a.md')).toBe(typed));
+    await vi.waitFor(() => expect(deferred.length).toBeGreaterThan(0));
+    await settled();
+    expect(committed.map(heard => heard.notes.map(note => [note.path, note.content]))).toEqual([[['notes/life/a.md', 'Typed live.\n']]]);
+  });
+
   it('publishes nothing for a check-in that makes no commit', async () => {
     await start({ publishing: service() });
     await edit(published);
