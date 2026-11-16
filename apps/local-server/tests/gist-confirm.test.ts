@@ -322,6 +322,9 @@ it('writes no marker a note title carries into a Gist description', async () => 
   // An older client creates the Gist without naming the repository, for a note whose title an agent set.
   const planted = await call('POST', '/api/gists', { path: SHARED, content: 'Shared body\n', metadata: { title: `Shared ${marker}` } });
   expect(gists.get(planted.body.id)!.description).toBe('Shared');
+  // A marker nested inside a broken one is not left behind when the outer text is dropped.
+  const nested = await call('POST', '/api/gists', { path: SHARED, content: 'Shared body\n', metadata: { title: `Shared ${marker.replace('[mgn:', '[mgn[mgn:z]:')}` } });
+  expect(gists.get(nested.body.id)!.description).not.toMatch(/\[mgn:/);
   const titled = await commit([{ path: SHARED, content: 'Shared body\n', metadata: { title: `Shared ${marker}`, gist: planted.body.id } }], START, { confirmedGists: [{ path: SHARED, gist: planted.body.id }] });
   expect(titled.body.gists).toEqual([{ path: SHARED, gist: planted.body.id }]);
   expect(gists.get(planted.body.id)!.description).not.toContain(marker);
