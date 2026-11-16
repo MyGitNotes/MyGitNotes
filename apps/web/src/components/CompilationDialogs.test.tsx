@@ -11,7 +11,7 @@ import { setNoteQueryScope } from '../lib/use-note-queries.js';
 import { CompilationAddItem, CompilationEditRow } from './CompilationDialogs.js';
 
 // A native select stands in for the Radix one, which jsdom cannot open.
-vi.mock('./Select.js', () => ({ Select: ({ value, onValueChange, options, ...rest }: { value: string; onValueChange: (value: string) => void; options: { value: string; label: string; }[]; }) => createElement('select', { ...rest, value, onChange: (event: { target: { value: string; }; }) => onValueChange(event.target.value) }, options.map(option => createElement('option', { key: option.value, value: option.value }, option.label))) }));
+vi.mock('./Select.js', () => ({ Select: ({ value, onValueChange, options, ...rest }: { value: string; onValueChange: (value: string) => void; options: { value: string; label: string; disabled?: boolean; }[]; }) => createElement('select', { ...rest, value, onChange: (event: { target: { value: string; }; }) => onValueChange(event.target.value) }, options.map(option => createElement('option', { key: option.value, value: option.value, disabled: option.disabled }, option.label))) }));
 
 const REVISION = 'f'.repeat(40);
 let client: QueryClient;
@@ -121,4 +121,27 @@ it('sets and clears the chapters by folder of a dynamic compilation from its Cha
   fireEvent.change(screen.getByRole('combobox', { name: 'Chapters' }), { target: { value: '' } });
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   expect(onApply.mock.calls[1][0]).not.toHaveProperty('group');
+});
+
+it("pins a note whole by default, or one heading's section picked from the note's headings, a repeated heading disabled", async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ revision: REVISION, total: 1, notes: [{ ...noteOf('r~a', 'notes/a'), content: '## Monday\n\n### Action items\n\n## Tuesday\n\n### Action items\n' }] }), { headers: { 'Content-Type': 'application/json' } })));
+  const onAdd = vi.fn<(items: CompilationItem[]) => void>();
+  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [], items: [], onAdd, onClose: () => {} }), { wrapper });
+  fireEvent.click(await screen.findByText('X of r~a'));
+  const picker = await screen.findByRole('combobox', { name: 'Heading in the note' });
+  expect(picker).toHaveValue('');
+  const options = within(picker).getAllByRole('option') as HTMLOptionElement[];
+  expect(options.map(option => [option.textContent!.trim(), option.disabled])).toEqual([['Whole note', false], ['Monday', false], ['Action items', false], ['Tuesday', false], ['Action items (Same text as an earlier heading; only the first can be pinned)', true]]);
+  expect(onAdd).not.toHaveBeenCalled();
+  fireEvent.change(picker, { target: { value: options[3].value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+  expect(onAdd.mock.calls[0][0]).toEqual([expect.objectContaining({ kind: 'note', path: 'notes/a/x.md', anchor: 'Tuesday' })]);
+});
+
+it('pins a note without headings at once, as before', async () => {
+  const onAdd = vi.fn<(items: CompilationItem[]) => void>();
+  render(createElement(CompilationAddItem, { rowName: 'Manual', notebookId: 'r~a', notebooks, assets: [], folders: [], items: [], onAdd, onClose: () => {} }), { wrapper });
+  fireEvent.click(await screen.findByText('X of r~a'));
+  await waitFor(() => expect(onAdd).toHaveBeenCalled());
+  expect(onAdd.mock.calls[0][0][0]).not.toHaveProperty('anchor');
 });

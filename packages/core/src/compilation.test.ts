@@ -422,3 +422,30 @@ describe('dynamic chapters by folder', () => {
     expect(value).toMatchObject({ group: 'folder', source: { path: 'notes/one/moved' }, manualOrder: ['notes/one/moved/a.md'] });
   });
 });
+
+describe('heading-anchored note items', () => {
+  const anchored = 'version: 1\nid: weekly\ntitle: Weekly\narrangement: book\nitems:\n  - { id: w1, kind: note, path: notes/one/2025-weekly.md, anchor: 2025-08-26 週會 }\n  - { id: w2, kind: note, path: notes/one/2025-weekly.md, anchor: 2025-09-02 週會 }\n  - { id: w3, kind: note, path: notes/one/other.md }\n';
+  const one = (item: string) => `version: 1\nid: x\ntitle: X\narrangement: book\nitems:\n  - ${item}\n`;
+  it('parses an anchor on a note item and round-trips it through the model and the file', () => {
+    const file = parseCompilation(anchored, ['notes/one']);
+    expect(file.items![0]).toEqual({ id: 'w1', kind: 'note', path: 'notes/one/2025-weekly.md', anchor: '2025-08-26 週會' });
+    const row = compilationRow(file, owner);
+    expect(row).toMatchObject({ items: [{ anchor: '2025-08-26 週會', notebookId: 'one' }, { anchor: '2025-09-02 週會' }, { id: 'w3' }] });
+    expect(compilationFile(row)).toEqual(file);
+    expect(parseCompilation(serializeCompilation(compilationFile(row)), ['notes/one'])).toEqual(file);
+    expect(serializeCompilation(compilationFile(row))).toContain('  - id: w1\n    kind: note\n    path: notes/one/2025-weekly.md\n    anchor: 2025-08-26 週會\n');
+    expect(compilationFile(row).items![2]).not.toHaveProperty('anchor');
+  });
+  it('refuses an anchor on any other kind, and an empty, long or control-character anchor', () => {
+    for (const item of ['{ id: f, kind: folder, path: notes/one/sub, anchor: A }', '{ id: a, kind: asset, path: notes/one/p.png, anchor: A }', '{ id: v, kind: youtube, videoId: dQw4w9WgXcQ, anchor: A }', '{ id: h, kind: heading, title: T, anchor: A }']) expect(() => parseCompilation(one(item)), item).toThrow('items.0');
+    expect(() => parseCompilation(one('{ id: n, kind: note, path: notes/one/a.md, anchor: "  " }'))).toThrow('items.0.anchor');
+    expect(() => parseCompilation(one(`{ id: n, kind: note, path: notes/one/a.md, anchor: ${'x'.repeat(201)} }`))).toThrow('items.0.anchor');
+    expect(() => parseCompilation(one('{ id: n, kind: note, path: notes/one/a.md, anchor: "a\\tb" }'))).toThrow('items.0.anchor');
+    expect(parseCompilation(one(`{ id: n, kind: note, path: notes/one/a.md, anchor: ${'x'.repeat(200)} }`)).items![0]).toMatchObject({ anchor: 'x'.repeat(200) });
+  });
+  it('keeps the anchor when a move rewrites the path, and copies it', () => {
+    const value = YAML.parse(relocateCompilation(anchored, path => path.replace('2025-weekly', '2025/weekly'))!);
+    expect(value.items.slice(0, 2)).toEqual([{ id: 'w1', kind: 'note', path: 'notes/one/2025/weekly.md', anchor: '2025-08-26 週會' }, { id: 'w2', kind: 'note', path: 'notes/one/2025/weekly.md', anchor: '2025-09-02 週會' }]);
+    expect(copyCompilation(parseCompilation(anchored), []).items![0]).toMatchObject({ anchor: '2025-08-26 週會' });
+  });
+});

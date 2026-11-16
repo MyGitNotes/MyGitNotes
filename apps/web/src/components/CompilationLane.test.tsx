@@ -434,3 +434,16 @@ it('offers Arrange contents on a writable custom compilation, in lanes and in th
   rerender(lane({ row: chaptered, onArrange, readOnly: true }));
   expect(screen.queryByRole('button', { name: /Arrange contents/ })).not.toBeInTheDocument();
 });
+
+it("shows an anchored note card as its heading's section, titled with the heading, and opens zoom at the heading from it", async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ revision: REVISION, notes: [{ id: 'w', path: 'notes/nb1/weekly.md', notebookId: 'nb1', title: 'Weekly', content: '## Monday\n\nMonday notes.\n\n## Tuesday\n\nTuesday notes.', tags: [], metadata: {} }] }), { headers: { 'Content-Type': 'application/json' } })));
+  const onOpen = vi.fn();
+  const anchored: CompilationRow = { ...row, view: 'small', items: [{ id: 'w2', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/weekly.md', anchor: 'Tuesday' }] };
+  render(lane({ row: anchored, onOpen }), { wrapper });
+  await waitFor(() => expect(screen.getByText('Tuesday notes.')).toBeInTheDocument());
+  expect(screen.queryByText('Monday notes.')).not.toBeInTheDocument();
+  expect(card('w2').querySelector('.screen-card-title')).toHaveTextContent('Tuesday');
+  expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
+  mouseClick(screen.getByText('Tuesday notes.'));
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'Tuesday' }), expect.objectContaining({ path: 'notes/nb1/weekly.md' }));
+});

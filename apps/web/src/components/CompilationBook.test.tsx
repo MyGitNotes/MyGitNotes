@@ -832,3 +832,37 @@ it('shows a dynamic compilation grouped by folder as one chapter per folder, con
   fireEvent.click(next());
   await waitFor(() => expect(pageTitle()).toEqual(['Why']));
 });
+
+const weeklyNote = { ...noteA, id: 'notes/nb1/weekly.md', path: 'notes/nb1/weekly.md', title: 'Weekly 2025', content: '# 2025\n\nIntro.\n\n## 2025-08-26 週會\n\nFirst meeting.\n\n### Action items\n\n- one\n\n## 2025-09-02 週會\n\nSecond meeting.\n' };
+const anchoredRow: CompilationRow = { ...row, items: [{ id: 'w1', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/weekly.md', anchor: '2025-08-26-週會' }, { id: 'w2', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/weekly.md', anchor: 'Renamed away' }] };
+
+it("shows an anchored item as its heading's section only, titled with the heading as the note has it, and its Edit opens zoom at the heading without an editor in place", async () => {
+  laneOverride.current = lane([weeklyNote]);
+  const onOpen = vi.fn();
+  render(book({ row: anchoredRow, readOnly: false, onOpen }), { wrapper });
+  await waitFor(() => expect(within(chapters()[0]).getByRole('heading', { level: 2 })).toHaveTextContent('2025-08-26 週會'));
+  const section = chapters()[0];
+  expect(within(section).getByText('First meeting.')).toBeInTheDocument();
+  expect(within(section).getByRole('heading', { name: 'Action items' })).toBeInTheDocument();
+  expect(within(section).queryByText('Second meeting.')).not.toBeInTheDocument();
+  expect(within(section).queryByText('Intro.')).not.toBeInTheDocument();
+  expect(contentsButtons()[0]).toHaveTextContent('2025-08-26 週會');
+  fireEvent.pointerDown(within(section).getByText('First meeting.'), { pointerType: 'mouse' });
+  fireEvent.click(within(section).getByText('First meeting.'), { pointerType: 'mouse' });
+  expect(onOpen).not.toHaveBeenCalled();
+  fireEvent.click(within(section).getByRole('button', { name: 'Edit 2025-08-26 週會' }));
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'w1', anchor: '2025-08-26-週會' }), expect.objectContaining({ path: 'notes/nb1/weekly.md' }));
+  expect(screen.queryByRole('textbox', { name: 'Note content' })).not.toBeInTheDocument();
+  expect(section).not.toHaveAttribute('data-editing');
+});
+
+it('shows an anchored item whose heading is gone as missing in place, titled with the stored anchor, with a button that opens the whole note', async () => {
+  laneOverride.current = lane([weeklyNote]);
+  const onOpen = vi.fn();
+  render(book({ row: anchoredRow, readOnly: false, onOpen }), { wrapper });
+  await waitFor(() => expect(within(chapters()[1]).getByRole('heading', { level: 2 })).toHaveTextContent('Renamed away'));
+  expect(within(chapters()[1]).getByText('This heading is no longer in the note.')).toBeInTheDocument();
+  expect(within(contentsButtons()[1]).getByLabelText('This item may have moved or been deleted.')).toBeInTheDocument();
+  fireEvent.click(within(chapters()[1]).getByRole('button', { name: 'Open the note' }));
+  expect(onOpen).toHaveBeenCalledWith(expect.not.objectContaining({ anchor: expect.anything() }), expect.objectContaining({ path: 'notes/nb1/weekly.md' }));
+});

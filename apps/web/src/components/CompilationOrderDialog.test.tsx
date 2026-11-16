@@ -158,3 +158,20 @@ it('keeps the chapter separators of a dynamic compilation grouped by folder fixe
   expect(onSave).toHaveBeenCalledWith(['notes/nb1/x/b.md', 'notes/nb1/x/a.md', 'notes/nb1/y/c.md']);
   vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
 });
+
+it('shows an anchored item as "Note › heading" and changes its heading or sets it back to the whole note', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ revision: REVISION, notes: [{ ...note('a', 1), title: 'Note A', content: '## Monday\n\nOne.\n\n## Tuesday\n\nTwo.' }, { ...note('b', 1), title: 'Note B', content: 'No headings.' }] }), { headers: { 'Content-Type': 'application/json' } })));
+  const anchored: Extract<CompilationRow, { kind: 'custom'; }> = { ...custom, items: [{ id: 'ia', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/a.md', anchor: 'Monday' }, { id: 'ib', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/b.md' }] };
+  const onSaveItems = vi.fn();
+  render(createElement(CompilationOrderDialog, { row: anchored, notebooks, assets: [], disabled: false, onSave: () => {}, onSaveItems, onClose: () => {} }), { wrapper });
+  await waitFor(() => expect(arranged()).toEqual(['Note A › Monday', 'Note B']));
+  const heading = screen.getByRole('combobox', { name: 'Heading in the note: Note A' });
+  expect(within(heading).getAllByRole('option').map(option => option.textContent!.trim())).toEqual(['Whole note', 'Monday', 'Tuesday']);
+  expect(screen.queryByRole('combobox', { name: 'Heading in the note: Note B' })).not.toBeInTheDocument();
+  fireEvent.change(heading, { target: { value: 'Tuesday' } });
+  expect(arranged()).toEqual(['Note A › Tuesday', 'Note B']);
+  fireEvent.change(heading, { target: { value: '' } });
+  expect(arranged()).toEqual(['Note A', 'Note B']);
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(onSaveItems.mock.calls[0][0][0]).toEqual({ id: 'ia', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/a.md' });
+});

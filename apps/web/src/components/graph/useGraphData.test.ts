@@ -14,6 +14,11 @@ it('neither draws nor counts chapter headings', () => {
   expect(laneGraphMembers(row, ['notes/a/one.md', 'notes/b/two.md'])).toEqual({ ids: ['r~a:notes/a/one.md'], outside: 1 });
 });
 
+it('draws a note pinned as two sections as one node', () => {
+  const row: CompilationRow = { ...base, id: 's', kind: 'custom', items: [{ id: '1', kind: 'note', notebookId: 'r~a', path: 'notes/a/one.md', anchor: 'Monday' }, { id: '2', kind: 'note', notebookId: 'r~a', path: 'notes/a/one.md', anchor: 'Tuesday' }] };
+  expect(laneGraphMembers(row, ['notes/a/one.md', 'notes/a/one.md'])).toEqual({ ids: ['r~a:notes/a/one.md'], outside: 0 });
+});
+
 it('counts every member of a dynamic folder source in another notebook as outside', () => {
   const row: CompilationRow = { ...base, id: 'd', kind: 'dynamic', source: { kind: 'folder', path: 'notes/b', recursive: true, notebookId: 'r~b' } };
   expect(laneGraphMembers(row, ['notes/b/x.md', 'notes/b/y.md'])).toEqual({ ids: [], outside: 2 });

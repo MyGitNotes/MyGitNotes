@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyStageAction, applyStudyAction, createStudyNote, emptyStudyWorkspace, undoStudyAction } from '@mygitnotes/core/study';
 import { compilationRowItems, studyQueueItems, studyRowItems, ungrouped } from './compilation-content.js';
 import type { NoteItem } from './types.js';
-import { type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
+import { type CompilationItem, type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
 const notes = [{ notebookId: 'a', path: 'notes/a/one.md', title: 'One', tags: ['clue'] }, { notebookId: 'b', path: 'notes/b/two.md', title: 'Two', tags: ['clue'] }, { notebookId: 'a', path: 'notes/a/sub/three.md', title: 'Three', tags: [] }, { notebookId: 'a', path: 'notes/ab/other.md', title: 'Other', tags: [] }].map((note, i) => ({ ...note, id: String(i), content: '', metadata: {} })) as NoteItem[];
 it('lists tags only from the lane notebook and respects exact folder boundaries', () => {
   const base = { id: 'row', path: 'notes/a/live.compilation.yml', name: 'Live', view: 'small' as const, notebookId: 'a', kind: 'dynamic' as const };
@@ -126,4 +126,10 @@ describe('chapters by folder', () => {
     // A study session reads the members as if the compilation had no chapters.
     expect(studyQueueItems(compilationRowItems(ungrouped(folderRow), members, [], notebooksA, folderItems)).map(item => item.id)).toEqual(compilationRowItems(plain, members, [], notebooksA, folderItems).map(item => item.id));
   });
+});
+
+it('studies a note pinned as two sections once, at its first item', () => {
+  const selected = notes.slice(0, 2);
+  const items: CompilationItem[] = [{ id: 's1', kind: 'note', notebookId: 'a', path: selected[0].path, anchor: 'One' }, { id: 'b', kind: 'note', notebookId: 'b', path: selected[1].path }, { id: 's2', kind: 'note', notebookId: 'a', path: selected[0].path, anchor: 'Two' }];
+  expect(studyQueueItems(items).map(item => item.id)).toEqual(['s1', 'b']);
 });

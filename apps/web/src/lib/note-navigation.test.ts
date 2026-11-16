@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseOutlineHeading, findOutlineIndexForLine, findTextMatches, parseMarkdownOutline } from './note-navigation.js';
+import { chooseOutlineHeading, findOutlineIndexForLine, findTextMatches, noteSection, parseMarkdownOutline } from './note-navigation.js';
 
 describe('note editor navigation', () => {
   it('finds every case-insensitive, non-overlapping text match', () => {
@@ -41,5 +41,26 @@ describe('note editor navigation', () => {
       expect(chooseOutlineHeading(outline, -1)).toBeNull();
       expect(chooseOutlineHeading(outline, 5)).toBeNull();
     });
+  });
+});
+
+describe('note sections', () => {
+  const weekly = ['# 2025 weekly', '', 'Intro.', '', '## 2025-08-26 週會', '', 'First meeting.', '', '### Action items', '', '- one', '', '## 2025-09-02 週會', '', 'Second meeting.', '', '```md', '## 2025-09-09 週會', '```', '', '# Appendix', 'End.'].join('\n');
+  it('takes the section from the heading to the next one of the same or a higher level, keeping deeper sub-headings and leaving out the heading line and the blank lines around the body', () => {
+    expect(noteSection(weekly, '2025-08-26 週會')).toEqual({ heading: '2025-08-26 週會', depth: 2, body: 'First meeting.\n\n### Action items\n\n- one' });
+    expect(noteSection(weekly, '2025-09-02 週會')).toEqual({ heading: '2025-09-02 週會', depth: 2, body: 'Second meeting.\n\n```md\n## 2025-09-09 週會\n```' });
+    expect(noteSection(weekly, 'Appendix')?.body).toBe('End.');
+  });
+  it('matches a CJK anchor by its text and by its slug', () => {
+    expect(noteSection(weekly, '2025-08-26-週會')?.heading).toBe('2025-08-26 週會');
+    expect(noteSection(weekly, '## 2025-08-26 週會')?.heading).toBe('2025-08-26 週會');
+  });
+  it('takes the first of two headings with the same text, and never one inside a code fence', () => {
+    expect(noteSection('## Notes\n\nfirst\n\n## Notes\n\nsecond', 'Notes')?.body).toBe('first');
+    expect(noteSection(weekly, '2025-09-09 週會')).toBeNull();
+  });
+  it('reads setext headings, and returns null when no heading matches', () => {
+    expect(noteSection('Part one\n========\n\nBody one.\n\nPart two\n--------\n\nBody two.\n\nPart three\n==========\n\nBody three.', 'Part one')).toEqual({ heading: 'Part one', depth: 1, body: 'Body one.\n\nPart two\n--------\n\nBody two.' });
+    expect(noteSection(weekly, 'Gone')).toBeNull();
   });
 });
