@@ -5,8 +5,7 @@ import { gitlabFixture } from '../../core/tests/fixtures/gitlab.js';
 
 const reader = (f: ReturnType<typeof gitlabFixture>) => openRemoteRepository({ type: 'gitlab', url: 'https://gitlab.example.test/gitlab', repository: 'group/subgroup/project', branch: 'main' }, 'fixture-token', f.request).reader;
 
-// The app's commit routes push a note to its Gist without asking only when the newest commit of the note is not an
-// agent's, so every remote tool that commits note text marks its commit as an agent edit.
+// Every remote tool that commits note text marks its commit as an agent edit, so history shows who changed the note.
 it('marks the commits of cp, mv and replace_notes as agent edits', async () => {
   const f = gitlabFixture();
   const copied = await callRemoteTool(reader(f), 'cp', { source: 'notes/ex/a.md', destination: 'notes/ex/copy.md', revision: f.head }, true);

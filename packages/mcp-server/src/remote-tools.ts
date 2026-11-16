@@ -368,7 +368,7 @@ async function runRemoteTool(reader: RemoteSource, name: string, args: Record<st
       }
       const rev = await revisionArg(reader, args);
       const changes = modified.map((n) => ({ path: n.path, content: serializeNoteContent(n.metadata, n.content, false) }));
-      // Marked as an agent edit, as every note text an agent commits: the app pushes a Gist without asking only after a person's commit.
+      // Marked as an agent edit, as every note text an agent commits, so history shows who changed the notes.
       const receipt = await reader.commitChanges(changes, rev, 'replace', 'notes', agentEditMessage(`docs(notes): replace "${search}" across ${modified.length} notes`));
       return { success: true, dryRun: false, search, replace, matchedFiles: modified.map((n) => n.path), totalFiles: modified.length, commit: receipt.commit };
     }

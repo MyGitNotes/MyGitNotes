@@ -44,7 +44,7 @@ it('names the note and the Gist it would go to, and answers publish', async () =
   const dialog = await screen.findByRole('dialog');
   expect(dialog.textContent).toContain('notes/life/private.md');
   expect(dialog.textContent).toContain('victim');
-  expect(dialog.textContent).toMatch(/did not create|changed last/);
+  expect(dialog.textContent).toMatch(/not yet linked to the note/);
   fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
   await waitFor(() => expect(onAnswer).toHaveBeenCalledWith(true));
   expect(screen.queryByRole('dialog')).toBeNull();

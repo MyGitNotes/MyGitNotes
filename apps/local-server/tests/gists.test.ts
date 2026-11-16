@@ -60,8 +60,6 @@ beforeEach(async () => {
     const endpoint = match[1];
     const blob = (file: string) => gitBlobId(Buffer.from(files[file]), 40);
     if (endpoint === '') return json({ private: true, default_branch: 'main', permissions: { push: true } });
-    // Each note's newest commit is a person's, so a note that already named its Gist is pushed without asking.
-    if (endpoint.startsWith('/commits?')) return json([{ sha: 'a'.repeat(40), parents: [], commit: { message: 'docs: write the notes', author: { name: 'Owner', date: '2026-11-16T00:00:00Z' } } }]);
     if (endpoint.startsWith('/commits/')) return json({ sha: 'a'.repeat(40), commit: { tree: { sha: 'tree' } } });
     if (endpoint.startsWith('/contents/')) {
       const file = decodeURIComponent(endpoint.slice('/contents/'.length).split('?')[0]);
@@ -87,7 +85,11 @@ afterEach(async () => {
 
 const headers = { Cookie: `gh_notes_session=${session}`, 'Content-Type': 'application/json' };
 const call = (method: string, url: string, body?: object, requestHeaders: Record<string, string> = headers) => fetch(`${base}${url}`, { method, headers: requestHeaders, body: body && JSON.stringify(body) }).then(async response => ({ status: response.status, body: await response.json() }));
-const commit = (notes: object[]) => call('POST', '/api/notes/commit', { repository: 'github:owner/home@main', revision: 'a'.repeat(40), message: 'docs: update', notes });
+const commit = (notes: object[], extra: object = {}) => call('POST', '/api/notes/commit', { repository: 'github:owner/home@main', revision: 'a'.repeat(40), message: 'docs: update', notes, ...extra });
+/** The marker that binds a Gist to the shared note, as the app writes it when it creates or confirms the Gist. */
+const SHARED_MARKER = gistMarker({ type: 'github', repository: 'owner/home', branch: 'main' }, 'notes/life/shared.md');
+/** The person confirms the shared note's Gist on this commit, as the browser that created it does. */
+const confirmShared = { confirmedGists: [{ path: 'notes/life/shared.md', gist: 'abc123' }] };
 
 it('publishes a note body as a secret Gist of the signed-in account', async () => {
   const { status, body } = await call('POST', '/api/gists', { path: 'notes/life/private.md', content: '# Private\n', metadata: { title: 'Private' } });
@@ -117,10 +119,11 @@ it('unpublishes by deleting the Gist, and treats a Gist already gone as deleted'
 });
 
 it('updates the Gist a committed note names with its latest body, renaming its file', async () => {
+  gists.get('abc123')!.description = `Shared ${SHARED_MARKER}`;
   const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { title: 'Shared again', gist: 'abc123' } }, { path: 'notes/life/private.md', content: '# Private changed\n', metadata: {} }]);
   expect(status).toBe(200);
   expect(body.gists).toEqual([{ path: 'notes/life/shared.md', gist: 'abc123' }]);
-  expect(gists.get('abc123')).toEqual({ description: 'Shared again', public: false, files: { 'shared.md': { content: 'New body\n' } } });
+  expect(gists.get('abc123')).toEqual({ description: `Shared again ${SHARED_MARKER}`, public: false, files: { 'shared.md': { content: 'New body\n' } } });
 });
 
 it('does not call Gists when no committed note names one', async () => {
@@ -132,7 +135,7 @@ it('does not call Gists when no committed note names one', async () => {
 
 it('keeps the commit and reports the note when its Gist cannot be updated', async () => {
   gists.clear();
-  const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { gist: 'abc123' } }]);
+  const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { gist: 'abc123' } }], confirmShared);
   expect(status).toBe(200);
   expect(body.commit.commitHash).toBe('d'.repeat(40));
   expect(body.gists).toEqual([{ path: 'notes/life/shared.md', gist: 'abc123', error: expect.stringContaining('404') }]);
@@ -140,7 +143,7 @@ it('keeps the commit and reports the note when its Gist cannot be updated', asyn
 
 it('reports a Gist update the grant is not allowed to make as needing a new sign-in', async () => {
   scopes = 'repo, workflow';
-  const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { gist: 'abc123' } }]);
+  const { status, body } = await commit([{ path: 'notes/life/shared.md', content: 'New body\n', metadata: { gist: 'abc123' } }], confirmShared);
   expect(status).toBe(200);
   expect(body.gists).toEqual([{ path: 'notes/life/shared.md', gist: 'abc123', error: expect.any(String), reauthorize: true }]);
 });

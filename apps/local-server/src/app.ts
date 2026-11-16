@@ -27,7 +27,7 @@ import { type AssetStorage, envAssetStorage } from './asset-storage.js';
 import { createLocalR2AssetHandler, createR2AssetHandler, type NoteReader } from './r2-assets.js';
 import { createR2ManagerRouter } from './r2-manager.js';
 import { createFileManagerRouter } from './file-manager.js';
-import { createGistRouter, gistConfirmations, gistSite, gistToken, noteGist, publishCommittedGists } from './gists.js';
+import { createGistRouter, gistConfirmations, gistSite, gistToken, noteGist, publishCommittedGists, repositoryMarkers } from './gists.js';
 import { isLoopbackHttpOrigin, type PiAgent } from './pi-agent.js';
 import { externalPiAgent, externalPiEnvironment } from './pi-external-agent.js';
 import { commitPublisher, publishChanges, type PublishingService, publishNotes } from './publishing.js';
@@ -270,12 +270,13 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
     if (liveNotes) app.use(createLiveRouter());
     app.use(createGistRouter());
     /**
-     * Pushes committed notes that name a Gist to it, each only when the person meant it (`publishCommittedGists`):
-     * `parent` is the revision the commit was made on, `confirmed` the request's `confirmedGists`. Notes that name none cost nothing.
+     * Pushes committed notes of `repository` that name a Gist to it, each only when the person meant it
+     * (`publishCommittedGists`): `confirmed` is the request's `confirmedGists`, else the Gist must carry the note's
+     * marker. Notes that name none cost nothing.
      */
-    const publishedGists = async (res: express.Response, reader: RemoteSource, parent: string, notes: { path: string; content: string; metadata: Record<string, unknown>; }[], confirmed: unknown) => {
+    const publishedGists = async (res: express.Response, repository: string, notes: { path: string; content: string; metadata: Record<string, unknown>; }[], confirmed: unknown) => {
       const token = gistToken(res);
-      return token && notes.some(note => noteGist(note.metadata)) ? await publishCommittedGists(token, reader, parent, notes, gistConfirmations(confirmed), gistSite(res)) : {};
+      return token && notes.some(note => noteGist(note.metadata)) ? await publishCommittedGists(token, await repositoryMarkers(res, repository), notes, gistConfirmations(confirmed), gistSite(res)) : {};
     };
     app.get('/api/workspace', async (_req, res) => {
       try {
@@ -482,7 +483,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         if (!target.authenticated) throw new SourceError('Sign in with write permission to commit notes.', 403);
         const receipt = await target.reader.commitNotes(notes, revision, message, storedDocumentDrafts(alias, documents), newVersion(version));
         // A deleted note publishes nothing.
-        res.json({ ...receipt, ...await publishedGists(res, target.reader, revision, notes.filter((note: { delete?: boolean; }) => note?.delete !== true), confirmedGists), ...await publishNotes(publishing, { req, res, repository: target, notes }) });
+        res.json({ ...receipt, ...await publishedGists(res, target.id, notes.filter((note: { delete?: boolean; }) => note?.delete !== true), confirmedGists), ...await publishNotes(publishing, { req, res, repository: target, notes }) });
       } catch (error) {
         fail(res, error);
       }
@@ -495,7 +496,7 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         const target = await remoteNote(res, file, notebookId);
         // An internal `live:` revision is the hosted router's to hand on, never a browser's: here it is no revision at all.
         const saved = await target.reader.save(file, content, metadata, parseLiveBase(revision) ? '' : revision, createOnly);
-        res.json({ ...saved, note: keyedItem(target.alias)(saved.note), ...await publishedGists(res, target.reader, revision, [saved.note], confirmedGists), ...await publishNotes(publishing, { req, res, repository: target, notes: [saved.note] }) });
+        res.json({ ...saved, note: keyedItem(target.alias)(saved.note), ...await publishedGists(res, target.id, [saved.note], confirmedGists), ...await publishNotes(publishing, { req, res, repository: target, notes: [saved.note] }) });
       } catch (error) {
         fail(res, error);
       }

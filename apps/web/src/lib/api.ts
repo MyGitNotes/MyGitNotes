@@ -86,9 +86,9 @@ export async function responseError(res: Response, fallback: string): Promise<Ap
   return new ApiError(message, res.status, Number.isFinite(seconds) && seconds > 0 ? seconds : undefined, Array.isArray(data.staleRepositories) ? data.staleRepositories : undefined, data.reauthorize === true, details);
 }
 
-/** Publishes a note body as a secret Gist of the signed-in GitHub account. */
-export async function publishGist(note: { path: string; content: string; metadata: Record<string, unknown>; }): Promise<{ id: string; url: string; }> {
-  const res = await fetch(`${API_BASE}/gists`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(note) });
+/** Publishes a note body as a secret Gist of the signed-in GitHub account, which the server binds to the note at `path` of `repository`. */
+export async function publishGist(repository: RepositoryId, note: { path: string; content: string; metadata: Record<string, unknown>; }): Promise<{ id: string; url: string; }> {
+  const res = await fetch(`${API_BASE}/gists`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repository, ...note }) });
   if (!res.ok) throw await responseError(res, 'Failed to publish the Gist');
   return res.json();
 }

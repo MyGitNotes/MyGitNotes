@@ -338,7 +338,7 @@ describe('on GitHub', () => {
     expect(gistCalls).toEqual([]);
     expect(gists.get('abc123')!.files).toEqual({ 'shared.md': { content: 'Old body\n' } });
     const lines = info.mock.calls.map(parts => parts.join(' '));
-    expect(lines).toEqual(['[publishing] github:owner/home@main/notes/life/shared.md: gist not updated by an agent write; the next app commit asks the owner first']);
+    expect(lines).toEqual(['[publishing] github:owner/home@main/notes/life/shared.md: gist not updated by an agent write; the next app commit updates a Gist bound to the note and asks the owner about any other']);
     expect(lines.join('\n')).not.toContain('Secret body');
   });
 
@@ -373,7 +373,7 @@ describe('on GitHub', () => {
     await settled();
     expect(gistCalls).toEqual([]);
     expect(gists.get('victim')!.files).toEqual({ 'snippet.sh': { content: 'echo hi\n' } });
-    expect(info.mock.calls.map(parts => parts.join(' '))).toEqual(['[publishing] github:owner/home@main/notes/life/private.md: gist not updated by an agent write; the next app commit asks the owner first']);
+    expect(info.mock.calls.map(parts => parts.join(' '))).toEqual(['[publishing] github:owner/home@main/notes/life/private.md: gist not updated by an agent write; the next app commit updates a Gist bound to the note and asks the owner about any other']);
     expect(committed).toHaveLength(1);
   });
 

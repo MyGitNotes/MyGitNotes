@@ -44,8 +44,8 @@ export function NoteInfoPanel({ note, ...gist }: { note: NoteRef; } & GistProps)
 }
 
 /**
- * Publishes the note body as a secret Gist and records its id in the `gist` frontmatter of the draft; every later commit
- * of the note updates the Gist, and the server opens it on its site. Unpublishing deletes the Gist and drops the field.
+ * Publishes the note body as a secret Gist, which the server binds to this note of this repository, and records its id
+ * in the `gist` frontmatter of the draft; every later commit of the note updates the Gist, and the server opens it on its site. Unpublishing deletes the Gist and drops the field.
  * This browser also keeps the id it created, outside the draft, as the confirmation the next commit sends for it.
  */
 function NoteGist({ path, repository, content, metadata, setMetadata, locked }: { path: string; repository: string; } & GistProps) {
@@ -66,7 +66,7 @@ function NoteGist({ path, repository, content, metadata, setMetadata, locked }: 
   };
   const publish = () =>
     run(async () => {
-      const created = await publishGist({ path, content, metadata });
+      const created = await publishGist(repository, { path, content, metadata });
       rememberCreatedGist(repository, path, created.id);
       setMetadata({ ...metadata, gist: created.id });
     });

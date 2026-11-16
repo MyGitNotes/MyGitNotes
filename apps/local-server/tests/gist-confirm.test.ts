@@ -37,8 +37,8 @@ let trees: Map<string, Record<string, string>>;
 let canPush: boolean, gistDown: boolean;
 /** The marker a Gist description carries once bound, after its title. */
 const BOUND = /^(.*) (\[mgn:[0-9a-f]{8,}\])$/;
-/** Measured cases take up to about 15 s, most of it the 1 s GitHubApi keeps between writes; each gets four times that. */
-const TIMEOUT = 60_000;
+/** Measured cases take up to about 11 s, most of it the 1 s GitHubApi keeps between writes, whatever the load; each gets four times that. */
+const TIMEOUT = 45_000;
 
 const call = (method: string, url: string, body?: object) => fetch(`${base}${url}`, { method, headers, body: body && JSON.stringify(body) }).then(async response => ({ status: response.status, body: await response.json() }));
 const commit = (notes: object[], revision: string, extra: object = {}) => call('POST', '/api/notes/commit', { repository, revision, message: 'docs: update', notes, ...extra });
@@ -313,6 +313,23 @@ it('asks about a Gist bound to another note of the same repository', async () =>
   expect(body.gists).toBeUndefined();
   expect(body.gistsNeedConfirm).toEqual([{ path: SHARED, gist: created.body.id }]);
   expect(patches()).toEqual([]);
+}, TIMEOUT);
+
+// The marker is computable from the repository and path, and a note's title is text an agent can write.
+it('writes no marker a note title carries into a Gist description', async () => {
+  const bound = await call('POST', '/api/gists', { repository, path: PRIVATE, content: 'Private body\n', metadata: { title: 'Private' } });
+  const marker = BOUND.exec(gists.get(bound.body.id)!.description)![2];
+  // An older client creates the Gist without naming the repository, for a note whose title an agent set.
+  const planted = await call('POST', '/api/gists', { path: SHARED, content: 'Shared body\n', metadata: { title: `Shared ${marker}` } });
+  expect(gists.get(planted.body.id)!.description).toBe('Shared');
+  const titled = await commit([{ path: SHARED, content: 'Shared body\n', metadata: { title: `Shared ${marker}`, gist: planted.body.id } }], START, { confirmedGists: [{ path: SHARED, gist: planted.body.id }] });
+  expect(titled.body.gists).toEqual([{ path: SHARED, gist: planted.body.id }]);
+  expect(gists.get(planted.body.id)!.description).not.toContain(marker);
+  // The agent then names that Gist in the private note: the owner's next commit asks.
+  external({ [PRIVATE]: `---\ngist: ${planted.body.id}\n---\nPRIVATE\n` });
+  const { body } = await commit([{ path: PRIVATE, content: 'PRIVATE NOTE TEXT\n', metadata: { gist: planted.body.id } }], head);
+  expect(body.gistsNeedConfirm).toEqual([{ path: PRIVATE, gist: planted.body.id }]);
+  expect(gists.get(planted.body.id)!.files).toEqual({ 'shared.md': { content: 'Shared body\n' } });
 }, TIMEOUT);
 
 it('asks when the Gist cannot be read', async () => {

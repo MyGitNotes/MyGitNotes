@@ -124,8 +124,8 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
     return reader.commitChanges(changes, expected, operation, scope, message, snapshot);
   };
   /**
-   * The program's message for a commit that writes note text, marked as an agent edit: the app's commit routes push a
-   * note to its Gist without asking only when no agent made the note's newest commit.
+   * The program's message for a commit that writes note text, marked as an agent edit, as every note text an agent
+   * commits, so history shows the commit as an agent's.
    */
   const agentMessage = (changes: { path: string; }[], scope: CommitScope) => {
     const paths = changes.map(change => change.path).sort();

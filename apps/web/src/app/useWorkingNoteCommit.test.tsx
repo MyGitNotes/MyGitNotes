@@ -148,8 +148,7 @@ it('blocks a deletion of a note that changed remotely since, keeping it in the t
 });
 
 /*
- * A Gist the app did not create for a note, or one an agent changed last, is pushed only once the person confirms it
- * (todo #31). A Gist this browser created for the note is its own confirmation.
+ * A Gist not bound to a note is pushed only once the person confirms it (todo #31). A Gist this browser created for the note is its own confirmation.
  */
 it('sends the Gist this app created for a note as its confirmation, and asks nothing', async () => {
   stubServer();

@@ -1376,7 +1376,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'editor.gistSyncFailed': '已提交，但部分 Gist 沒有更新：{errors}',
   'editor.gistNotConfirmed': '已提交，但下列筆記沒有發佈到它們的 Gist，草稿已移除 Gist 連結：{notes}',
   'editor.gistConfirmTitle': '要發佈到 Gist 嗎？',
-  'editor.gistConfirmBody': '下列每篇筆記都會發佈到它指定的 Gist。這個 Gist 不是 MyGitNotes 為這篇筆記建立的，或是最後修改這篇筆記的是 Agent。拿到 Gist 連結的人都能閱讀。「不要發佈」會從這篇筆記的草稿移除 Gist 連結，提交這項變更後就不會再發佈。',
+  'editor.gistConfirmBody': '下列每篇筆記都會發佈到它指定的 Gist。這個 Gist 還沒有綁定到這個位置的這篇筆記：連結可能是 Agent 加上的，筆記可能搬過位置，或是這個 Gist 在這項檢查推出前就已發佈。拿到 Gist 連結的人都能閱讀。「發佈」會把 Gist 綁定到這篇筆記，之後的提交就直接更新，不再詢問。「不要發佈」會從這篇筆記的草稿移除 Gist 連結；這項變更提交之前，每次提交都會再問一次。',
   'editor.gistConfirmEntry': '{path} → Gist {gist}',
   'editor.gistConfirmPublish': '發佈',
   'editor.gistConfirmSkip': '不要發佈',

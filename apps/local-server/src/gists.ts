@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { type Response, Router } from 'express';
-import { githubSite, isNoteFile, parseNoteContent, type RemoteSource, SourceError } from '@mygitnotes/core';
+import { githubSite, isNoteFile, parseNoteContent, type RemoteSource, type SourceConfig, SourceError } from '@mygitnotes/core';
 import { asRemote, namedRepository, requestSite, requestToken } from './request-workspace.js';
 
 /** A Gist request refused because the sign-in grant lacks the `gist` scope; signing in again grants it. */
@@ -49,14 +50,50 @@ function gistFile(note: { path: string; content: string; }) {
   return { filename: path.posix.basename(note.path), content: note.content };
 }
 
-function gistDescription(note: PublishedNote) {
-  return typeof note.metadata.title === 'string' && note.metadata.title.trim() ? note.metadata.title.trim() : path.posix.basename(note.path);
+const MARKER = /\s*\[mgn:[^\]]*\]/g;
+
+/**
+ * The Gist's description: the note's title, then the marker that binds the Gist to the note when there is one. The
+ * title is frontmatter an agent can write, and the marker is computable from the repository and path, so any marker
+ * the title holds is dropped: a description carries no marker but the one the app writes.
+ */
+function gistDescription(note: PublishedNote, marker?: string) {
+  const written = typeof note.metadata.title === 'string' ? note.metadata.title.replace(MARKER, '').trim() : '';
+  const title = written || path.posix.basename(note.path);
+  return marker ? `${title} ${marker}` : title;
 }
 
-/** Creates a secret Gist holding the note's body; `url` names the GitHub Enterprise site that holds it, if any. */
-export async function createGist(token: string, note: PublishedNote, url?: string): Promise<{ id: string; url: string; }> {
+/**
+ * A repository as every device and deployment names it: its platform, site and owner/name, case-folded as the
+ * platforms match them, without the branch or any id this server gives it.
+ */
+function repositoryIdentity(source: SourceConfig): string {
+  if (source.type === 'local') throw new SourceError('Gists require a GitHub repository.');
+  const site = source.type === 'github' ? githubSite(source.url).web : source.type === 'gitlab' ? source.url : source.platform;
+  return `${source.type}\n${site}\n${source.repository}`.toLowerCase();
+}
+
+/**
+ * The marker that binds a Gist to the note at `file` of the repository `source` names, kept at the end of the Gist's
+ * description: 16 hex digits of a SHA-256 over the repository's identity and the path, so the Gist does not show the
+ * path. The app writes it when it creates the Gist for the note, and when the person confirms the Gist on a commit or
+ * with Publish; a commit pushes a note to a Gist without asking only when the Gist carries the note's marker. Only the
+ * Gist's owner can write its description, which an agent writing the note's frontmatter never reaches.
+ */
+export function gistMarker(source: SourceConfig, file: string): string {
+  return `[mgn:${createHash('sha256').update(`${repositoryIdentity(source)}\n${file}`).digest('hex').slice(0, 16)}]`;
+}
+
+/** The markers of the notes of the repository a request names. */
+export async function repositoryMarkers(res: Response, repository: unknown): Promise<(file: string) => string> {
+  const { source } = (await namedRepository(res, repository)).ref;
+  return file => gistMarker(source, file);
+}
+
+/** Creates a secret Gist holding the note's body, bound to the note by `marker` when given; `url` names the GitHub Enterprise site that holds it, if any. */
+export async function createGist(token: string, note: PublishedNote, url?: string, marker?: string): Promise<{ id: string; url: string; }> {
   const file = gistFile(note);
-  const response = await gistRequest(token, '', { method: 'POST', body: JSON.stringify({ description: gistDescription(note), public: false, files: { [file.filename]: { content: file.content } } }) }, url);
+  const response = await gistRequest(token, '', { method: 'POST', body: JSON.stringify({ description: gistDescription(note, marker), public: false, files: { [file.filename]: { content: file.content } } }) }, url);
   const body = await response.json() as { id?: unknown; html_url?: unknown; };
   if (typeof body.id !== 'string' || typeof body.html_url !== 'string') throw new SourceError('GitHub returned an invalid Gist.', 502);
   return { id: body.id, url: body.html_url };
@@ -68,12 +105,31 @@ export async function deleteGist(token: string, id: string, url?: string): Promi
   await gistRequest(token, `/${id}`, { method: 'DELETE' }, url);
 }
 
-/** Replaces the Gist's single file with the note's body, renaming the file when the note moved. */
-async function updateGist(token: string, id: string, note: PublishedNote, url?: string): Promise<void> {
+/** A Gist as it is now: its description and file names. */
+interface CurrentGist {
+  description: string;
+  files: string[];
+}
+
+async function readGist(token: string, id: string, url?: string): Promise<CurrentGist> {
+  const current = await (await gistRequest(token, `/${id}`, {}, url)).json() as { description?: unknown; files?: Record<string, unknown>; };
+  return { description: typeof current.description === 'string' ? current.description : '', files: Object.keys(current.files || {}) };
+}
+
+/** Whether the Gist's description ends with `marker`, binding it to that note. */
+function gistBound(current: CurrentGist, marker: string): boolean {
+  return current.description === marker || current.description.endsWith(` ${marker}`);
+}
+
+/** Replaces the Gist's single file with the note's body, renaming the file when the note moved, and binds it to the note with `marker`. */
+async function updateGist(token: string, id: string, note: PublishedNote, marker: string, url?: string, current?: CurrentGist): Promise<void> {
   const file = gistFile(note);
-  const current = await (await gistRequest(token, `/${id}`, {}, url)).json() as { files?: Record<string, unknown>; };
-  const [existing] = Object.keys(current.files || {});
-  await gistRequest(token, `/${id}`, { method: 'PATCH', body: JSON.stringify({ description: gistDescription(note), files: { [existing || file.filename]: file } }) }, url);
+  const [existing] = (current ?? await readGist(token, id, url)).files;
+  await gistRequest(token, `/${id}`, { method: 'PATCH', body: JSON.stringify({ description: gistDescription(note, marker), files: { [existing || file.filename]: file } }) }, url);
+}
+
+function gistFailure(file: string, gist: string, error: unknown): GistSync {
+  return { path: file, gist, error: error instanceof Error ? error.message : 'Gist update failed.', ...(error instanceof GistAuthorizationError ? { reauthorize: true } : {}) };
 }
 
 /** A note and the Gist a person agreed to publish it to. */
@@ -93,42 +149,47 @@ export function gistConfirmations(value: unknown): Set<string> {
 }
 
 /**
- * Whether a commit may push `note` to `gist` without asking: the note's text in the commit's `parent` already named
- * that Gist, and an agent did not make the note's newest commit there. The second costs one history read. A read that
- * fails counts as no, so the note is listed to confirm instead.
- */
-export async function gistKept(reader: RemoteSource, parent: string, note: PublishedNote, gist: string): Promise<boolean> {
-  try {
-    const before = await reader.readFileAt(parent, note.path);
-    if (!before || !('content' in before) || before.content === undefined || noteGist(parseNoteContent(before.content).metadata) !== gist) return false;
-    const [newest] = (await reader.fileHistory(note.path, 1, 1, parent)).entries;
-    return Boolean(newest) && !newest.agent;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Pushes the committed notes that name a Gist, each only when the person meant it: the request confirms that Gist for
- * that note, or {@link gistKept} holds for the commit's `parent`. The frontmatter is repository content an agent can
- * write, so any other note is pushed nothing and answered in `gistsNeedConfirm`; the commit stands either way.
+ * that note, or the Gist's description already carries the note's marker (`marker(path)`, {@link gistMarker}), read
+ * with the Gist request the push makes anyway, before any change. The frontmatter is repository content an agent can
+ * write, so any other note, or one whose Gist cannot be read, is pushed nothing and answered in `gistsNeedConfirm`; the
+ * commit stands either way. Every push writes the note's marker, binding the Gist to it.
  */
-export async function publishCommittedGists(token: string, reader: RemoteSource, parent: string, notes: PublishedNote[], confirmed: Set<string>, url?: string): Promise<{ gists?: GistSync[]; gistsNeedConfirm?: GistConfirmation[]; }> {
-  const ready: PublishedNote[] = [], unconfirmed: GistConfirmation[] = [];
+export async function publishCommittedGists(token: string, marker: (file: string) => string, notes: PublishedNote[], confirmed: Set<string>, url?: string): Promise<{ gists?: GistSync[]; gistsNeedConfirm?: GistConfirmation[]; }> {
+  const pushed: GistSync[] = [], unconfirmed: GistConfirmation[] = [];
   for (const note of notes) {
     const gist = noteGist(note.metadata);
     if (!gist) continue;
-    if (confirmed.has(`${note.path}\0${gist}`) || await gistKept(reader, parent, note, gist)) ready.push(note);
-    else unconfirmed.push({ path: note.path, gist });
+    const mark = marker(note.path);
+    const ask = !confirmed.has(`${note.path}\0${gist}`);
+    let current: CurrentGist;
+    try {
+      current = await readGist(token, gist, url);
+    } catch (error) {
+      if (ask) unconfirmed.push({ path: note.path, gist });
+      else pushed.push(gistFailure(note.path, gist, error));
+      continue;
+    }
+    if (ask && !gistBound(current, mark)) {
+      unconfirmed.push({ path: note.path, gist });
+      continue;
+    }
+    try {
+      await updateGist(token, gist, note, mark, url, current);
+      pushed.push({ path: note.path, gist });
+    } catch (error) {
+      pushed.push(gistFailure(note.path, gist, error));
+    }
   }
-  return { ...(ready.length ? { gists: await syncGists(token, ready, url) } : {}), ...(unconfirmed.length ? { gistsNeedConfirm: unconfirmed } : {}) };
+  return { ...(pushed.length ? { gists: pushed } : {}), ...(unconfirmed.length ? { gistsNeedConfirm: unconfirmed } : {}) };
 }
 
 /**
  * Pushes notes a person confirmed after their commit: each note as `revision` holds it, to the Gist it names there,
- * which must be the confirmed one. A note that commit does not hold, or that names another Gist, is reported and pushed nothing.
+ * which must be the confirmed one, binding the Gist to the note. A note that commit does not hold, or that names
+ * another Gist, is reported and pushed nothing.
  */
-export async function syncConfirmedGists(token: string, reader: RemoteSource, revision: string, confirmations: GistConfirmation[], url?: string): Promise<GistSync[]> {
+export async function syncConfirmedGists(token: string, reader: RemoteSource, revision: string, marker: (file: string) => string, confirmations: GistConfirmation[], url?: string): Promise<GistSync[]> {
   const results: GistSync[] = [];
   for (const { path: file, gist } of confirmations) {
     try {
@@ -136,26 +197,10 @@ export async function syncConfirmedGists(token: string, reader: RemoteSource, re
       if (!read || !('content' in read) || read.content === undefined) throw new SourceError('The note is not readable in that commit.', 404);
       const { metadata, content } = parseNoteContent(read.content);
       if (noteGist(metadata) !== gist) throw new SourceError('The note names another Gist in that commit.', 409);
-      await updateGist(token, gist, { path: file, content, metadata }, url);
+      await updateGist(token, gist, { path: file, content, metadata }, marker(file), url);
       results.push({ path: file, gist });
     } catch (error) {
-      results.push({ path: file, gist, error: error instanceof Error ? error.message : 'Gist update failed.', ...(error instanceof GistAuthorizationError ? { reauthorize: true } : {}) });
-    }
-  }
-  return results;
-}
-
-/** Pushes each note that names a Gist to that Gist, one at a time; a failure is reported for its note and never undoes the commit. */
-export async function syncGists(token: string, notes: PublishedNote[], url?: string): Promise<GistSync[]> {
-  const results: GistSync[] = [];
-  for (const note of notes) {
-    const gist = noteGist(note.metadata);
-    if (!gist) continue;
-    try {
-      await updateGist(token, gist, note, url);
-      results.push({ path: note.path, gist });
-    } catch (error) {
-      results.push({ path: note.path, gist, error: error instanceof Error ? error.message : 'Gist update failed.', ...(error instanceof GistAuthorizationError ? { reauthorize: true } : {}) });
+      results.push(gistFailure(file, gist, error));
     }
   }
   return results;
@@ -196,22 +241,29 @@ export function createGistRouter(): Router {
   const fail = (res: Response, error: unknown) => res.status(error instanceof SourceError ? error.status : 500).json({ error: error instanceof Error ? error.message : 'Gist request failed.', ...(error instanceof GistAuthorizationError ? { reauthorize: true } : {}) });
   router.post('/api/gists', async (req, res) => {
     try {
-      const { path: file, content, metadata } = req.body ?? {};
+      const { repository, path: file, content, metadata } = req.body ?? {};
       if (typeof file !== 'string' || !file || typeof content !== 'string') throw new SourceError('path and content are required.');
-      res.json(await createGist(token(res), { path: file, content, metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {} }, gistSite(res)));
+      const credential = token(res);
+      // The app names the note's repository, so the Gist is bound to the note from the start; without one, the commit
+      // that records the id confirms it and binds it then.
+      const marker = repository === undefined ? undefined : (await repositoryMarkers(res, repository))(file);
+      res.json(await createGist(credential, { path: file, content, metadata: metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {} }, gistSite(res), marker));
     } catch (error) {
       fail(res, error);
     }
   });
-  // Pushes notes the person confirmed after a commit answered them in `gistsNeedConfirm`, from that commit.
+  // Pushes notes the person confirmed after a commit answered them in `gistsNeedConfirm`, from that commit, and binds
+  // their Gists to them. Binding is what a commit trusts, so it takes the write access a commit route takes.
   router.post('/api/gists/sync', async (req, res) => {
     try {
       const { repository, revision, notes } = req.body ?? {};
       if (typeof revision !== 'string' || !/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(revision)) throw new SourceError('revision must name a commit.');
       if (!Array.isArray(notes) || !notes.length || notes.length > 200 || notes.some(note => typeof note?.path !== 'string' || !isNoteFile(note.path) || typeof note.gist !== 'string' || !GIST_ID.test(note.gist))) throw new SourceError('notes must list 1 to 200 notes, each with its path and Gist id.');
       const credential = token(res);
-      const { reader } = asRemote((await namedRepository(res, repository)).handle);
-      res.json({ gists: await syncConfirmedGists(credential, reader, revision, notes.map(note => ({ path: note.path as string, gist: note.gist as string })), gistSite(res)) });
+      const { ref, handle } = await namedRepository(res, repository);
+      const target = asRemote(handle);
+      if (!target.authenticated || !target.reader.canWrite(await target.reader.getSnapshot())) throw new SourceError('Write access on the main workspace branch is required.', 403);
+      res.json({ gists: await syncConfirmedGists(credential, target.reader, revision, file => gistMarker(ref.source, file), notes.map(note => ({ path: note.path as string, gist: note.gist as string })), gistSite(res)) });
     } catch (error) {
       fail(res, error);
     }

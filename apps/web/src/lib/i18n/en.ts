@@ -1375,7 +1375,7 @@ export const en = {
   'editor.gistSyncFailed': 'Committed, but some Gists were not updated: {errors}',
   'editor.gistNotConfirmed': 'Committed. These notes were not published to their Gists, and their drafts drop the Gist link: {notes}',
   'editor.gistConfirmTitle': 'Publish to Gist?',
-  'editor.gistConfirmBody': "Each note below will be published to the Gist it names. MyGitNotes did not create that Gist for the note, or an agent changed the note last. Anyone with the Gist link can read it. Don't publish removes the Gist link from the note's draft; commit that change to keep it off.",
+  'editor.gistConfirmBody': "Each note below will be published to the Gist it names. That Gist is not yet linked to the note at this place: an agent may have added the link, the note may have moved, or the Gist was published before this check. Anyone with the Gist link can read it. Publish links the Gist to the note, so its later commits update it without asking. Don't publish removes the Gist link from the note's draft; until that change is committed, each commit asks again.",
   'editor.gistConfirmEntry': '{path} → Gist {gist}',
   'editor.gistConfirmPublish': 'Publish',
   'editor.gistConfirmSkip': "Don't publish",

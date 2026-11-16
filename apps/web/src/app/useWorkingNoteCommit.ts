@@ -27,8 +27,8 @@ interface Params {
   /** Reports what a successful commit could not finish, such as a Gist it did not update. */
   setActionError: WorkspaceState['setActionError'];
   /**
-   * Asks the person whether to publish notes to Gists a commit did not push: ones this app did not create for the note,
-   * or whose note an agent changed last. Without it, or when the person declines, each note gets a draft without its
+   * Asks the person whether to publish notes to Gists a commit did not push: ones not yet bound to the note on the
+   * server and not created by this browser for it. Without it, or when the person declines, each note gets a draft without its
    * Gist link instead.
    */
   confirmGists?: (entries: GistConfirmation[]) => Promise<boolean>;
@@ -185,7 +185,7 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
     // A Gist this browser created for a note is confirmed by the commit itself; the server asks about any other.
     const created = createdGistConfirmations(repository.id, Object.values(sent).filter(entry => !entry.deleted).map(entry => entry.note));
     const result = await commitRemoteNotes(repository.id, Object.values(sent).map(entry => entry.deleted ? { path: entry.note.path, delete: true as const } : { path: entry.note.path, content: entry.note.content, metadata: entry.note.metadata, createOnly: !entry.base }), expected, message, sentDocuments.map(({ path, page, base }) => ({ path, page, base })), version, created);
-    // The note now names its Gist in a person's commit, so later commits push it without a confirmation.
+    // The push bound the Gist to the note on the server, so later commits push it without a confirmation from this browser.
     for (const pushed of result.gists ?? []) if (!pushed.error && created.some(entry => entry.path === pushed.path && entry.gist === pushed.gist)) forgetCreatedGist(repository.id, pushed.path);
     for (const document of sentDocuments) {
       if (!settleDocumentDraft(document.client, repository, document, result.revision)) setActionError(t('changes.reviewRequired'));
@@ -199,8 +199,8 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
 
   /**
    * Drops the Gist link from each declined note: a draft of the note as committed, without its `gist`, which the person
-   * sees in Changes and commits like any change. Left in, the link would be pushed by the note's next app commit, which
-   * is a person's. A draft made meanwhile loses the link too; a note whose head no longer names that Gist is left alone.
+   * sees in Changes and commits like any change. Left in, the link would only ask again on the note's next app commit,
+   * since nothing bound the Gist to the note. A draft made meanwhile loses the link too; a note whose head no longer names that Gist is left alone.
    * Answers the notes whose draft could not be changed, such as one held by a live merge conflict, for the person to fix.
    */
   const dropDeclinedGists = async ({ repository, revision, entries, notes }: Unconfirmed): Promise<GistSync[]> => {

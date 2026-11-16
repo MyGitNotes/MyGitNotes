@@ -439,13 +439,10 @@ export abstract class RemoteSource {
     throw new SourceError('History is unavailable for this source.', 501);
   }
 
-  /**
-   * One page of the commits that changed `file`, listed from this reader's snapshot so pages never mix branch states, or
-   * from the commit `head` names.
-   */
-  async fileHistory(file: string, page: number, perPage = 50, head?: string): Promise<{ entries: HistoryEntry[]; more: boolean; }> {
-    if (head !== undefined && !OBJECT_ID.test(head)) throw new SourceError('Invalid commit.');
-    const { commits, more } = await this.historyPage(file, head ?? (await this.getSnapshot()).sha, page, perPage);
+  /** One page of the commits that changed `file`, listed from this reader's snapshot so pages never mix branch states. */
+  async fileHistory(file: string, page: number, perPage = 50): Promise<{ entries: HistoryEntry[]; more: boolean; }> {
+    const snapshot = await this.getSnapshot();
+    const { commits, more } = await this.historyPage(file, snapshot.sha, page, perPage);
     return {
       entries: commits.map(({ sha, parents, date, author, message }) => {
         const [subject = '', ...rest] = message.replace(/\n+$/, '').split('\n');
