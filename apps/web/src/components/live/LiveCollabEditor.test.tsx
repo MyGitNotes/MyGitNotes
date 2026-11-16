@@ -958,6 +958,43 @@ describe('typing the server has not stored', () => {
     expect(provider().configuration.document.getText('content').toString()).toBe('# A\noffline typing\n');
   });
 
+  /*
+   * cf16-F004: every editor of a note (two tabs, or zoom over its Focus pane) keeps its own entry, and a session never
+   * merges the entry of an editor that is still open.
+   */
+  it('keeps the typing of two editors of one note apart, and merges both once the note was checked in meanwhile', async () => {
+    const first = await open();
+    const one = provider();
+    sync('# A\n');
+    typeOffline('from one\n');
+    const second = await open();
+    sync('# A\n');
+    typeOffline('from two\n');
+    expect(one).not.toBe(provider());
+    first.unmount();
+    second.unmount();
+    const kept = await unsyncedLiveStore().list();
+    expect(kept.map(entry => entry.text).sort()).toEqual(['# A\nfrom one\n', '# A\nfrom two\n']);
+    server({ first: () => json({ error: 'The note is not open in the live editor.', code: 'not-live' }, 409), documents: ['live-1.2'] });
+    await open();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === '/api/live/merge')).toHaveLength(2));
+    const texts = fetchMock.mock.calls.filter(([url]) => url === '/api/live/merge').map(([, init]) => JSON.parse(String((init as RequestInit).body)).text);
+    expect(texts.sort()).toEqual(['# A\nfrom one\n', '# A\nfrom two\n']);
+    await vi.waitFor(async () => expect(await unsyncedLiveStore().list()).toEqual([]));
+  });
+
+  it('never merges the typing an editor still open keeps, though the note was checked in meanwhile', async () => {
+    await open();
+    sync('# A\n');
+    typeOffline('still open\n');
+    await act(() => new Promise(resolve => setTimeout(resolve, 600)));
+    server({ first: () => json({ error: 'The note is not open in the live editor.', code: 'not-live' }, 409), documents: ['live-1.2'] });
+    await open();
+    await act(async () => {});
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/live/merge')).toEqual([]);
+    expect((await unsyncedLiveStore().list()).map(entry => entry.text)).toEqual(['# A\nstill open\n']);
+  });
+
   it('is forgotten once the server stored it', async () => {
     const view = await open();
     sync('# A\n');

@@ -79,3 +79,21 @@ it('hands one note over for its open editor, sharing a handover already running'
   expect(result).toBe(true);
   expect(merged()).toEqual(['notes/life/a.md']);
 });
+
+/*
+ * cf16-F005: every tab hears `online` and sweeps the same drafts, which reach every tab. A note made offline is created
+ * once: one tab at a time hands a draft over, and a tab reads the draft again before it does, so one another tab
+ * already handed over is left alone.
+ */
+it('files a note made offline once when two tabs sweep it together', async () => {
+  const made = { note: note('notes/life/trip.md', '# Trip\nPack the tent.\n'), base: null };
+  const stored = new Map<string, WorkingNote>([[noteRefKey(made.note), made]]);
+  const shared = { readDraft: (notebookId: string, path: string) => stored.get(noteRefKey({ notebookId, path })), updateDraft: vi.fn((notebookId: string, path: string, entry: WorkingNote | null) => void (entry ? stored.set(noteRefKey({ notebookId, path }), entry) : stored.delete(noteRefKey({ notebookId, path })))) };
+  fetchMock.mockImplementation(async (url: string) => (url === '/api/live/new' ? json({ checkout: { ...view, id: 'new1', path: 'notes/life/.live/new1.md', pending: true } }) : json({ applied: true, contentHash: 'h'.repeat(64), checkout: view, outcome: 'joined' })));
+  const tab = () => renderHook(useLiveHandover, { initialProps: params({ drafts: { [noteRefKey(made.note)]: made }, ...shared }) });
+  tab();
+  tab();
+  await vi.waitFor(() => expect(stored.size).toBe(0));
+  await act(() => new Promise(resolve => setTimeout(resolve, 50)));
+  expect(fetchMock.mock.calls.filter(([url]) => url === '/api/live/new')).toHaveLength(1);
+});
