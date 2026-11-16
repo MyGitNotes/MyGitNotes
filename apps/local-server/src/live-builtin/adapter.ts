@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, liveMergeAnswerOf, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, type LiveTypedIn, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
-import { liveDocumentName, type LiveDocuments, liveDocuments, type LiveSnapshot, seedLiveState, typedInTexts } from './documents.js';
+import { liveDocumentName, type LiveDocuments, liveDocuments, liveMaxUnits, type LiveSnapshot, seedLiveState, typedInTexts } from './documents.js';
 import { liveSocket, type LiveSocketLimits } from './socket.js';
 import { type EditorRef, LIVE_MERGE_MS, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
 
@@ -205,7 +205,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     if (document.slice(0, at) !== link.id || !Number.isSafeInteger(epoch) || epoch < 1 || epoch >= link.epoch) return null;
     const ended = await store.ended(link.id, epoch, clock());
     if (!ended) return null;
-    const texts = typedInTexts(ended, update);
+    const texts = typedInTexts(ended, update, liveMaxUnits(limits.maxBytes));
     if (!texts) throw new SourceError('typedIn.update is not a Yjs update of its document.', 400);
     if ('conflict' in texts) return texts;
     return { base: fits(normalizeLiveText(texts.base)), text: fits(normalizeLiveText(texts.text)) };
