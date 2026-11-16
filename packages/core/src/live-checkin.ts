@@ -4,7 +4,7 @@ import { type CommitAuthor, commitAuthor } from './commit-author.js';
 import { isNotebookContent } from './folders.js';
 import { parseNoteContent } from './frontmatter.js';
 import { SourceError } from './github-api.js';
-import { isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, LiveCredentialError, type LiveEditor, liveEditorOf, type LiveIdentity, liveInitialTextOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, liveRowBase, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { announceLiveCommit, isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, LiveCredentialError, type LiveEditor, liveEditorOf, type LiveIdentity, liveInitialTextOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, liveRowBase, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
 import { mergeLiveText } from './live-merge.js';
 import { parseNotebookKey } from './notebook-key.js';
 import { appendTrailers, utcDay } from './note-versions.js';
@@ -594,7 +594,9 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
     const blobOf = (content: string) => gitBlobId(Buffer.from(content, 'utf8'), snapshot.sha.length);
     const commit = async (file: string, content: string, message: string) => {
       if (now() > deadline) throw new SourceError('The check-in ran past its deadline; nothing was committed.', 504);
-      return (await source.commitChanges([{ path: file, content }], snapshot.sha, 'write', 'notes', message, snapshot, coAuthors)).revision;
+      const { revision } = await source.commitChanges([{ path: file, content }], snapshot.sha, 'write', 'notes', message, snapshot, coAuthors);
+      announceLiveCommit(liveNotes, { repository, path: file, content, commit: revision, source, ...(author ? { author } : {}) });
+      return revision;
     };
     const synced = (file: string, sha: string, blob: string, content: string, conflict: LiveConflict | null, committed: boolean, filed = false, notice?: Omit<LiveNotice, 'repository' | 'editors'>): Attempt => ({ kind: 'synced', receipt: { commit: sha, blob, contentHash: liveContentHash(content), path: file, conflict }, committed, filed, ...(notice ? { notice } : {}), editors, skipped });
 

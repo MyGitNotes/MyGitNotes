@@ -53,6 +53,11 @@ export interface RemoteSnapshot {
   info: RepositoryInfo;
 }
 export type RemoteChange = { path: string; content?: string; base64?: string; sha?: string | null; };
+/** What a reader's commit listener hears beside the changes ({@link RemoteSource.onCommit}). */
+export interface RemoteCommitHeard {
+  /** The commit's id. */
+  revision: string;
+}
 /** A commit as a provider lists it in a file's history. */
 export interface RemoteCommit {
   sha: string;
@@ -114,6 +119,8 @@ export abstract class RemoteSource {
   private liveLoaded = new Map<string, { content: string; contentHash: string; }>();
   /** The revision and hash this request last read or wrote of each live note, by path. */
   private liveSeen = new Map<string, LiveRecord>();
+  /** Whom this reader tells of each commit `commitChanges` makes ({@link onCommit}). */
+  private commitHeard?: (changes: readonly RemoteChange[], commit: RemoteCommitHeard) => void;
   /**
    * `scope` supplies the notebooks this repository serves; the workspace manifest is never read from here. `commitsAs` is
    * who the commits this source publishes are authored by, for a deployment whose `token` is not the person's own;
@@ -142,6 +149,15 @@ export abstract class RemoteSource {
         console.warn(`[remote-source] commit listener failed: ${(error as Error).message}`);
       }
     }
+  }
+  /**
+   * Has this reader tell `listener` of each commit it makes through `commitChanges`, once it landed: the changes as
+   * they were written, so a text needs no second read, and the commit's revision. The server publishes the notes of an
+   * `/mcp` call's commits with it. What the listener throws is logged and never fails the commit; a second listener
+   * replaces the first.
+   */
+  onCommit(listener: (changes: readonly RemoteChange[], commit: RemoteCommitHeard) => void) {
+    this.commitHeard = listener;
   }
   /**
    * Hands the request's view of the live editor to this reader: from then on every read of a checked-out note by path
@@ -1095,6 +1111,11 @@ export abstract class RemoteSource {
     try {
       revision = await this.publishChanges(changes, snapshot, message, author);
       this.announceCommit(changedPaths);
+      try {
+        this.commitHeard?.(changes, { revision });
+      } catch {
+        console.warn("[remote-source] the reader's commit listener failed");
+      }
     } finally {
       this.invalidate();
       this.snapshot = undefined;

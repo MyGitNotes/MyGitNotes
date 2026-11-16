@@ -3,13 +3,14 @@ import express, { Router } from 'express';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { checkedOutFields, type LiveNotes, type RemoteCache, type RemoteSource, siteIdentity, SourceError, type WorkspaceConfigSource, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError } from '@mygitnotes/core';
+import { checkedOutFields, type LiveNotes, type RemoteCache, type RemoteChange, type RemoteCommitHeard, type RemoteSource, siteIdentity, SourceError, type WorkspaceConfigSource, type WorkspaceRequest, type WorkspaceSettings, WorkspaceSetupError } from '@mygitnotes/core';
 import { callWorkspaceRemoteTool, isMutationTool, liveDiscardRemoteTools, liveRemoteTools, remoteTools, TEMPLATE_GUIDANCE, type ToolAssets } from '@mygitnotes/mcp-server';
 import { type AssetStorage, resolveAssetScope } from './asset-storage.js';
 import { CredentialRejected, grantPerson } from './auth.js';
 import { type BearerGrant, bearerGrantRecord, type IdentityService } from './identity.js';
 import type { RecordStore, StoredRecord } from './record-store/index.js';
 import type { EditionSources } from './edition-sources.js';
+import { type CommitPublisher, publishChanges } from './publishing.js';
 import { dropHeaders } from './request-headers.js';
 import { hasLiveView, openWorkspace, type RemoteHandle, type RequestWorkspace } from './request-workspace.js';
 
@@ -60,7 +61,8 @@ function grantSettings(settings: WorkspaceSettings, grant: StoredRecord): Worksp
   return { ...settings, members: settings.members.filter(member => member.ref.id === grant.source && !member.hidden).map(member => ({ ...member, default: true })) };
 }
 
-export function createRemoteMCP(store: RecordStore, identity: IdentityService, configSource: WorkspaceConfigSource, assetStorage: AssetStorage, cache?: RemoteCache, editionSources?: EditionSources, liveNotes?: LiveNotes): Router {
+/** `publish` hears the notes a call's writes commit, with the grant's person and Gist access; the call's answer is the same with or without it. */
+export function createRemoteMCP(store: RecordStore, identity: IdentityService, configSource: WorkspaceConfigSource, assetStorage: AssetStorage, cache?: RemoteCache, editionSources?: EditionSources, liveNotes?: LiveNotes, publish?: CommitPublisher): Router {
   const router = Router();
   router.post(['/', '/:token'], async (req, res) => {
     try {
@@ -130,8 +132,14 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
       // The commits the call makes are authored by whom the grant names, where it names anyone: an outside bearer's grant
       // as the identity answered, a stored one as it was recorded.
       const granted = grantSettings(settings, grant);
+      // A note a write commits is published to the edition as after a commit in the app, but no Gist is pushed: Gists
+      // sync only on the app's commit routes. The `gist:` id is note text the agent writes, so pushing it would aim the
+      // person's token at any Gist they hold; the Gist follows on the owner's next commit of the note in the app.
+      /** The publication of the commits this call made, which its answer waits for where the deployment has no `defer`. */
+      const publishing: Promise<unknown>[] = [];
+      const committed = (repository: RemoteHandle, changes: readonly RemoteChange[], { revision }: RemoteCommitHeard) => void publishing.push(publishChanges(publish!, { repository, changes, revision, agentWrite: true, ...(person ? { person } : {}) }));
       const tools = hasLiveView(granted, person, liveNotes) ? typeof liveNotes!.service.discard === 'function' ? liveDiscardRemoteTools : liveRemoteTools : remoteTools;
-      const workspace = openWorkspace(granted, token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(grant.live ? { live: grant.live } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
+      const workspace = openWorkspace(granted, token, cache, { ...(person ? { person } : {}), ...(grant.author ? { author: grant.author } : {}), ...(grant.live ? { live: grant.live } : {}), ...(editionSources ? { editionSources } : {}), ...(liveNotes ? { liveNotes } : {}), ...(publish ? { committed } : {}), request: req, noCredentialMessage: site => identity.noCredentialMessage(site) });
       const assets = toolAssets(assetStorage, req, res);
       try {
         await readBody(req, res, workspace, assets);
@@ -148,6 +156,8 @@ export function createRemoteMCP(store: RecordStore, identity: IdentityService, c
           return { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] };
         } catch (error) {
           return { isError: true, content: [{ type: 'text', text: JSON.stringify({ error: (error as Error).message, ...checkedOutFields(error) }) }] };
+        } finally {
+          await Promise.all(publishing.splice(0));
         }
       });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
