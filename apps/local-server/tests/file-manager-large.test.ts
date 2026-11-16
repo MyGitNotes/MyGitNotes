@@ -9,7 +9,7 @@ import { createApp } from '../src/app.js';
 
 vi.mock('../src/auth.js', async original => ({ ...await original<typeof import('../src/auth.js')>(), authToken: async () => 'fixture-token' }));
 // A workspace whose notes total more than 32 MiB: a move changes only what links to the moved note.
-vi.setConfig({ testTimeout: 60000 });
+vi.setConfig({ testTimeout: 15000 }); // Each case takes about a second under load.
 const MiB = 1024 * 1024;
 const CONFIG = 'schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: a\nnotebooks:\n  - id: a\n    title: A\n    root: notes/a\n';
 /** About 1 MiB of prose that names neither the moved note nor a path near it. */
@@ -83,7 +83,8 @@ const remote = async (files: Map<string, Buffer>) => {
     return { sha: revision, treeSha: revision, info: { private: true, permissions: { push: true }, default_branch: 'main' }, entries: [...[...dirs].map(path => ({ path, type: 'tree', mode: '040000', sha: path })), ...[...files].map(([path, bytes]) => ({ path, type: 'blob', mode: '100644', sha: assetHash(bytes), size: bytes.length }))] };
   });
   vi.spyOn(prototype, 'readBlob').mockImplementation(async (...args: unknown[]) => blobs.get(args[0] as string)!);
-  const prefetch = vi.spyOn(prototype, 'prefetchFiles');
+  // The batched download is GitHub's; here each blob comes from `readBlob` after the batch is announced.
+  const prefetch = vi.spyOn(prototype, 'prefetchFiles').mockImplementation(async () => {});
   vi.spyOn(prototype, 'publishChanges').mockImplementation(async (...args: unknown[]) => {
     const changes = args[0] as RemoteChange[];
     published.push(changes);

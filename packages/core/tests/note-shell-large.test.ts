@@ -3,7 +3,7 @@ import { callNoteShell } from '../src/note-shell.js';
 import { githubFixture } from './fixtures/github.js';
 
 // A workspace whose notes total more than 32 MiB: an MCP move rewrites only the notes that link to what moved.
-vi.setConfig({ testTimeout: 60000 });
+vi.setConfig({ testTimeout: 15000 }); // Each case takes about a second under load.
 const filler = (i: number) => `# Filler ${i}\n\n` + `lorem ipsum dolor sit amet ${i}\n`.repeat(Math.floor(1024 * 1024 / 30));
 
 it('moves a note with mv in a workspace whose notes total more than 32 MiB', async () => {

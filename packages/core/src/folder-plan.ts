@@ -6,6 +6,7 @@ import { isNotebookContent, parseFolderConfig, sortFolders } from './folders.js'
 import { relocateWorkspaceDocuments } from './workspace-documents.js';
 import { isCompilationPath, relocateCompilation } from './compilation.js';
 import type { FolderItem, NotebookConfig } from './types.js';
+import { mayLinkToMove } from './move-retention.js';
 import { CASE_COLLISION_ERROR, differsOnlyInCase, foldedIndex, foldName } from './case-collision.js';
 
 const relative = z.string().max(512).refine(value => !value || !/[\\\0]/.test(value) && value.split('/').every(part => part && part !== '.' && part !== '..'));
@@ -60,29 +61,13 @@ function markdownCodeRanges(raw: string): [number, number][] {
   return ranges;
 }
 
-/** `raw` with every percent-escape that decodes cleanly decoded, so a link names a file however its characters are escaped. */
-const unescaped = (raw: string) =>
-  raw.includes('%')
-    ? raw.replace(/(?:%[0-9a-f]{2})+/gi, run => {
-      try {
-        return decodeURIComponent(run);
-      } catch {
-        return run;
-      }
-    })
-    : raw;
-
 /**
  * `relocateLinks` for a move of `source`: a note that does not name the moved file or folder by its last path segment
  * has no link to rewrite, and a note that stays where it is is returned without being parsed. A note that moves with
  * `source` still has its own relative links rewritten.
  */
 export function relocateMovedLinks(raw: string, oldFile: string, newFile: string, relocate: (file: string) => string, source: string): string {
-  if (oldFile === newFile) {
-    const name = source.slice(source.lastIndexOf('/') + 1);
-    // A raw-file link spells a path as a query value, where `+` stands for a space; it is always read.
-    if (!name || !raw.includes(name) && !unescaped(raw).includes(name) && !raw.includes('/api/files/raw?')) return raw;
-  }
+  if (oldFile === newFile && !mayLinkToMove(raw, source)) return raw;
   return relocateLinks(raw, oldFile, newFile, relocate);
 }
 
