@@ -122,3 +122,11 @@ it('lets a remote edit inside the block through, and shows the block once it sto
   expect(lines[1]!.textContent).toBe('title: [Ideas');
   expect(lines[1]!.classList.contains('live-md-frontmatter')).toBe(true);
 });
+
+it('counts no page break in the frontmatter: the body starts on page 1', () => {
+  const { collab } = collabOf(NOTE);
+  const { view } = mount(NOTE, collab);
+  const labels = [...view().dom.querySelectorAll('[data-page-break], .live-md-page-break-tag')].map(element => element.textContent || element.getAttribute('data-page-label'));
+  expect(labels.join(' ')).toContain('1');
+  expect(labels.join(' ')).not.toContain('2');
+});

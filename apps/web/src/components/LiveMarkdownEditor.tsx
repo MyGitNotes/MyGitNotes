@@ -27,7 +27,7 @@ import { cjkEmphasis } from './live-markdown/cjk-emphasis.js';
 import { anchorMermaidSwap } from './live-markdown/mermaid-scroll.js';
 import { inlineIconAtomicRanges } from './live-markdown/inline-icons.js';
 import { liveDecorations } from './live-markdown/decorations.js';
-import { collabFrontmatterGuard, withFrontmatter } from './live-markdown/collab-frontmatter.js';
+import { collabFrontmatterGuard, frontmatterEnd, withFrontmatter } from './live-markdown/collab-frontmatter.js';
 import { citationLibrary } from './live-markdown/citations.js';
 import { slideNote } from './live-markdown/slide-structure.js';
 import { citationCompletionSource } from './live-markdown/citation-completion-source.js';
@@ -222,7 +222,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   useEffect(() => {
     // The collab editor holds the whole file: its leading frontmatter is drawn as frontmatter, not as Markdown.
     const decorate = (state: EditorState, focused: boolean) => {
-      const decorations = liveDecorations(state, focused, notePath, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous);
+      const decorations = liveDecorations(state, focused, notePath, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous, collab ? frontmatterEnd(state) : 0);
       return collab ? withFrontmatter(state, decorations) : decorations;
     };
     const field = StateField.define<{ decorations: DecorationSet; focused: boolean; }>({
