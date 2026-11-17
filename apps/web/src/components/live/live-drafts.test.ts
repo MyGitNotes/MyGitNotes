@@ -16,7 +16,9 @@ describe('liveActionLocked', () => {
   });
 
   it('locks a note someone is in, or whose text differs from Git, and every checked-out note of a framed editor', () => {
-    expect(liveActionLocked(row({ activeEditors: 1 }), 'move', builtin)).toBe(true);
+    expect(liveActionLocked(row({ activeEditors: 1 }), 'delete', builtin)).toBe(true);
+    // A filed note others edit moves where the editor can retarget it: the move records where its check-in moves it.
+    expect(liveActionLocked(row({ activeEditors: 1 }), 'move', builtin)).toBe(false);
     expect(liveActionLocked(row({ changed: true }), 'other', builtin)).toBe(true);
     expect(liveActionLocked(row({}), 'move', framed)).toBe(true);
     expect(liveActionLocked({ notebookId: 'notes~life' }, 'move', framed)).toBe(false);

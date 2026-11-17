@@ -44,8 +44,11 @@ interface Params {
   releasesUntouched?: (notebookId: string) => boolean;
 }
 
-/** The note a move or rename names: a list row is enough, since the note itself is read where it lies. */
-export type MovedNote = Pick<NoteItem, 'notebookId' | 'path' | 'title'> & { live?: NoteItem['live']; };
+/**
+ * The note a move or rename names: a list row is enough, since the note itself is read where it lies. `editing`: the
+ * note's own collab editor asks, so the note is live and the person moving it has it open.
+ */
+export type MovedNote = Pick<NoteItem, 'notebookId' | 'path' | 'title'> & { live?: NoteItem['live']; editing?: boolean; };
 
 /** What the Move or Rename dialog acts on. A compilation keeps its name in its own file, so it applies the new name itself. */
 export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rename'; note: MovedNote; applyTitle?: (title: string) => void; };
@@ -83,7 +86,10 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
     if (!await flushEditors()) throw new Error(t('folder.draftsHint'));
     const retitled = title && !isCompilation(note.path) ? title : undefined;
     const withTitle = (current: NoteItem) => retitled ? { ...current, ...retitle(current.content, current.metadata, retitled, noteSuffix(current.path) === '.outline.md', current.title), title: retitled } : current;
-    const plan = planRelocation(note.path, destination, remote ? readDraft(note.notebookId, note.path) : undefined);
+    // A filed live note (編輯中) moves on the server, which records where its check-in moves it and retitles its live text (§20.4).
+    const liveFiled = Boolean(note.editing || (note.live && !note.live.pending));
+    if (liveFiled && destination === note.path && !retitled) return;
+    const plan = liveFiled ? { kind: 'file' as const } : planRelocation(note.path, destination, remote ? readDraft(note.notebookId, note.path) : undefined);
     const taken = () => new Error(t('files.moveTaken', { path: destination }));
     // A committed destination is refused by the server that holds the files; a draft exists only in this browser, and a draft that moves has no file to ask.
     if (plan.kind !== 'none' && readDraft(note.notebookId, destination)) throw taken();
@@ -117,7 +123,8 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
     const endMove = beginNoteMove(noteRefKey({ notebookId: note.notebookId, path: note.path }));
     let result: FileResult;
     try {
-      result = await mutateFile({ kind: 'move', notebookId: note.notebookId, path: note.path, destination, ...(retitled ? { title: retitled } : {}) });
+      const command = { kind: 'move' as const, notebookId: note.notebookId, path: note.path, destination, ...(retitled ? { title: retitled } : {}) };
+      result = await (note.editing ? mutateFile(command, undefined, { editing: true }) : mutateFile(command));
     } catch (error) {
       endMove(false);
       throw moveError(error, destination);

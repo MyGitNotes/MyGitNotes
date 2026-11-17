@@ -512,10 +512,10 @@ describe('a pending note in the lists, where the adapter can discard and retarge
     expect(onDeleteNote).toHaveBeenCalledWith(filing);
     fireEvent.click(within(row(filing)).getByRole('button', { name: 'Move note' }));
     expect(onMoveNote).toHaveBeenCalledWith(filing);
-    // Its status is still the live editor's, and a checked-out note stays locked.
+    // Its status is still the live editor's; a checked-out note is not deleted, and moves at its next check-in (§20.4).
     expect(within(row(filing)).getByRole('combobox')).toBeDisabled();
     expect(within(row(checkedOut)).getByRole('button', { name: 'Delete note' })).toBeDisabled();
-    expect(within(row(checkedOut)).getByRole('button', { name: 'Move note' })).toBeDisabled();
+    expect(within(row(checkedOut)).getByRole('button', { name: 'Move note' })).toBeEnabled();
   });
 
   it('keeps delete and move locked where the adapter can do neither', () => {

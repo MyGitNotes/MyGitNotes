@@ -347,8 +347,9 @@ describe('a note in the collab editor', () => {
     expect(text().toString()).toBe('# Alpha\n\n## Second\nneedle\n');
   });
 
-  // CFR-F004: the row's title went to the direct rename, which a live note refuses without a word.
-  it('runs the check-in-first rename from the note row’s title too', async () => {
+  // CFR-F004: the row's title went to the direct rename, which a live note refuses without a word. A filed note's rename
+  // now records where it moves, with no check-in first (§20.4 of the built-in editor spec).
+  it('runs the collab rename from the note row’s title too', async () => {
     const rename = vi.fn(), onRename = vi.fn();
     await open({ live: live({ fileActions: { rename } }), onRename });
     fireEvent.click(within(row()).getByRole('button', { name: 'Edit title: Alpha' }));
@@ -357,7 +358,7 @@ describe('a note in the collab editor', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     await act(async () => {});
     await act(async () => {});
-    expect(rename).toHaveBeenCalledWith('r2', 'Beta');
+    expect(rename).toHaveBeenCalledWith(undefined, 'Beta');
     expect(onRename).not.toHaveBeenCalled();
   });
 
@@ -390,7 +391,7 @@ describe('a note in the collab editor', () => {
     expect(screen.queryByRole('dialog', { name: 'Replace the live text?' })).toBeNull();
   });
 
-  it('runs the check-in-first rename for a filed note', async () => {
+  it('runs the collab rename for a filed note, without checking it in first', async () => {
     const rename = vi.fn();
     await open({ live: live({ fileActions: { rename } }), onRename: vi.fn() });
     fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
@@ -399,7 +400,7 @@ describe('a note in the collab editor', () => {
     fireEvent.keyDown(title, { key: 'Enter' });
     await act(async () => {});
     await act(async () => {});
-    expect(rename).toHaveBeenCalledWith('r2', 'Beta');
+    expect(rename).toHaveBeenCalledWith(undefined, 'Beta');
   });
 });
 

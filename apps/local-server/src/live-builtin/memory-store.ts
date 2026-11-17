@@ -64,6 +64,10 @@ export function memoryLiveStore(): LiveStore {
       if (known?.live) return { link: structuredClone(known), outcome: 'joined' };
       const fresh = { notebook, since: now, live: true, base: structuredClone(base), syncedAt: null, syncedHash: null, lastEditAt: null, conflict: null, gen: 0, contentHash };
       const link: StoredLink = known ? { ...known, ...fresh, epoch: known.epoch + 1, contentSeq: known.seq } : { id: randomBytes(16).toString('base64url'), repository, path, ...fresh, epoch: 1, seq: 0, contentSeq: 0 };
+      // A reopened epoch starts with no move of its own.
+      delete link.target;
+      delete link.unmoved;
+      delete link.unmovedReason;
       links.set(link.id, link);
       paths.set(pathKey(repository, path), link.id);
       documents.set(link.id, { state: new Uint8Array(state), log: [] });
@@ -144,12 +148,26 @@ export function memoryLiveStore(): LiveStore {
       const grip = held(id, token, now);
       if (!grip) return 'leased';
       const { link, lease } = grip;
-      if (link.path !== null && link.path !== receipt.path) return 'path-fixed';
+      if (link.path !== null && link.path !== receipt.path && link.target !== receipt.path) return 'path-fixed';
       if (link.path === null) {
         link.path = receipt.path;
         delete link.pathRule;
         initial.delete(id);
         paths.set(pathKey(link.repository, receipt.path), id);
+      } else if (link.target !== undefined) {
+        // Moved to its target, the link is named by its new path alone; kept in place, it remembers the target it did not take.
+        if (receipt.path === link.target) {
+          if (paths.get(pathKey(link.repository, link.path)) === id) paths.delete(pathKey(link.repository, link.path));
+          link.path = receipt.path;
+          paths.set(pathKey(link.repository, receipt.path), id);
+          delete link.unmoved;
+          delete link.unmovedReason;
+        } else {
+          link.unmoved = link.target;
+          if (receipt.unmovedReason) link.unmovedReason = receipt.unmovedReason;
+          else delete link.unmovedReason;
+        }
+        delete link.target;
       }
       Object.assign(link, { base: { commit: receipt.commit, blob: receipt.blob, contentHash: receipt.contentHash }, syncedAt: now, syncedHash: receipt.contentHash, conflict: structuredClone(receipt.conflict) });
       // The receipt's text is the text at the cut: whoever last typed at or before it is in the commit.
@@ -183,12 +201,21 @@ export function memoryLiveStore(): LiveStore {
       erase(id);
       return 'discarded';
     },
-    async retarget(id, token, pathRule, now) {
+    async retarget(id, token, change, now) {
       const grip = held(id, token, now);
       if (!grip) return 'leased';
       leases.delete(id);
-      if (grip.link.path !== null) return 'not-pending';
-      grip.link.pathRule = pathRule;
+      const { link } = grip;
+      if (typeof change === 'string') {
+        if (link.path !== null) return 'not-pending';
+        link.pathRule = change;
+        return 'retargeted';
+      }
+      if (link.path === null) return 'not-filed';
+      if (change.target === null) delete link.target;
+      else link.target = change.target;
+      delete link.unmoved;
+      delete link.unmovedReason;
       return 'retargeted';
     },
     async unlease(id, token, now) {

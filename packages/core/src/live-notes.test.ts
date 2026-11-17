@@ -109,6 +109,16 @@ describe('checkout rows', () => {
     expect(liveCheckoutOf(row({ pathRule: '{{title}}.md' }), context)).toEqual(row());
   });
 
+  it('keeps a filed row’s target and the target a check-in found taken, both notes of its notebook, and drops them on a pending row (§20.4)', () => {
+    expect(liveCheckoutOf(row({ target: 'notes/life/archive/a.md' }), context)).toEqual(row({ target: 'notes/life/archive/a.md' }));
+    expect(liveCheckoutOf(row({ unmoved: 'notes/life/archive/a.md' }), context)).toEqual(row({ unmoved: 'notes/life/archive/a.md' }));
+    const pending = row({ path: null, pathRule: '{{title}}.md', base: null });
+    expect(liveCheckoutOf({ ...pending, target: 'notes/life/x.md', unmoved: 'notes/life/y.md' }, context)).toEqual(pending);
+    const warn = quiet();
+    for (const target of ['notes/other/a.md', 'notes/life/a.outline.md', 'notes/life/.live/a.md', '../x.md', 3]) expect(liveCheckoutOf(row({ target }), context), String(target)).toBeNull();
+    expect(warn).toHaveBeenCalled();
+  });
+
   it('drops a bad row and logs it by id only', () => {
     const warn = quiet();
     const bad: Record<string, unknown>[] = [{ id: '../x' }, { editorUrl: 'https://evil.test/n/link-1' }, { embedUrl: 'http://live.example.test/n/link-1' }, { embedUrl: 'https://user:pw@live.example.test/n' }, { notebook: 'repo~unknown' }, { path: 'notes/other/a.md' }, { path: 'notes/life/a.outline.md' }, { path: 'notes/life/../life/a.md' }, { path: 'notes/life/.live/a.md' }, { path: 'notes/life/work/drafts/a.md', notebook: 'repo~work' }, { path: null }, { path: null, pathRule: '../x.md' }, { path: null, pathRule: '/x.md' }, { contentHash: 'nope' }, { activeEditors: -1 }, { activeEditors: 1.5 }, { since: 'yesterday' }, { lastEditAt: 'soon' }, { base: { commit: 'xyz', blob, contentHash: liveContentHash('') } }, { conflict: { kind: 'other', overwritten: commit, commit, at: '2026-11-15T03:00:00.000Z' } }];

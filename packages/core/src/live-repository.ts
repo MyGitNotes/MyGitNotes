@@ -18,7 +18,10 @@ export interface LiveRecord {
   contentHash: string;
 }
 
-/** A live link with the notebook it belongs to and the path reads know it by: its Git path, or a pending note's virtual path. */
+/**
+ * A live link with the notebook it belongs to and the path reads know it by: its Git path, the target a filed note
+ * moves to at its next check-in (§20.4 of the built-in editor spec), or a pending note's virtual path.
+ */
 export interface LiveLink {
   checkout: LiveCheckout;
   notebook: NotebookConfig;
@@ -49,8 +52,11 @@ export interface LiveRepository {
   createPending(notebook: NotebookKey, pathRule: string, content: string): Promise<LiveCheckout>;
   /** Where a link that is no longer live was filed: its repository path, or null when unknown. */
   filed(id: string): Promise<string | null>;
-  /** 「立即簽回」: checks the live note at `path` (a Git path or a pending note's virtual path) in now (spec §5.3, manual). */
-  checkIn(path: string): Promise<LiveCheckInResult>;
+  /**
+   * 「立即簽回」: checks the live note at `path` (a Git path, a moving note's target or Git path, or a pending note's
+   * virtual path) in now (spec §5.3), as a manual check-in unless `mode` says otherwise.
+   */
+  checkIn(path: string, mode?: 'manual' | 'scheduled'): Promise<LiveCheckInResult>;
   /**
    * 「捨棄草稿」: drops the pending note at its virtual `path` without a commit. A draft someone typed content in is kept
    * (`has-edits`) unless `confirm`. Throws {@link LiveNotLiveError} where the adapter cannot discard or `path` is no
@@ -64,6 +70,13 @@ export interface LiveRepository {
    * live, and {@link LiveLeasedError} while a check-in keeps the lease.
    */
   retarget(path: string, change: LiveRetarget): Promise<LiveCheckout>;
+  /**
+   * Sets where the filed live note at `path` (as reads know it, or its Git path while it moves) moves at its next
+   * check-in (§20.4): `target`, a repository path the caller checked, or null to keep it where it lies. Nothing is
+   * committed, and open editors keep working. Throws {@link LiveNotLiveError} where the adapter cannot retarget or `path`
+   * is no filed live note, and {@link LiveLeasedError} while a check-in keeps the lease.
+   */
+  move(path: string, target: string | null): Promise<LiveCheckout>;
   /** A ticket for the person to open a link's live document over the built-in editor's socket. */
   socketTicket(id: string): Promise<LiveSocketTicket>;
   /**
@@ -119,7 +132,7 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
   /** A checked row as the community hands it on: a built-in editor's link gets its note page in the app as `editorUrl`. */
   const withPage = (checkout: LiveCheckout, notebook: NotebookConfig): LiveCheckout => {
     if (!builtin) return checkout;
-    const relative = (checkout.path ?? livePendingPath(notebook.root, checkout.id)).slice(notebook.root.length + 1);
+    const relative = (checkout.target ?? checkout.path ?? livePendingPath(notebook.root, checkout.id)).slice(notebook.root.length + 1);
     return { ...checkout, editorUrl: liveNotePageUrl(appUrl!, checkout.notebook, relative) };
   };
   let person: LivePersonCalls | undefined;
@@ -152,7 +165,7 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
         if (!valid) continue;
         const owner = notebook(valid.notebook)!;
         const checkout = withPage(valid, owner);
-        const path = checkout.path ?? livePendingPath(owner.root, checkout.id);
+        const path = checkout.target ?? checkout.path ?? livePendingPath(owner.root, checkout.id);
         if (seen.has(path) || seen.has(`id:${checkout.id}`)) {
           console.warn(`[live-notes] dropped live link ${checkout.id}: a second link for its path or id`);
           continue;
@@ -165,6 +178,11 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
     // A failed list is asked again by the next read rather than remembered.
     listed.catch(() => (listed = undefined));
     return listed;
+  };
+  /** The link at `path`: the path reads know it by, or the Git path of a note moving elsewhere. */
+  const linkAt = async (path: string) => {
+    const all = await links();
+    return all.find(entry => entry.path === path) ?? all.find(entry => entry.checkout.target !== undefined && entry.checkout.path === path);
   };
   return {
     repository,
@@ -207,13 +225,13 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       const answer = await call(() => calls().filed(repository, id));
       return typeof answer === 'string' && answer.length <= 1024 && !answer.startsWith('/') && !/[\\\p{Cc}]/u.test(answer) && answer.split('/').every(part => part && part !== '.' && part !== '..') ? answer : null;
     },
-    async checkIn(path) {
-      const link = (await links()).find(entry => entry.path === path);
+    async checkIn(path, mode = 'manual') {
+      const link = await linkAt(path);
       if (!link) throw new LiveNotLiveError();
       try {
         // Whoever asks is the last credential tried, so a writer can check in a note whose editors no longer may.
         const shown = liveIdentityOf(context);
-        return await checkInLink(liveNotes, repository, link.checkout.id, { ...checkIn, mode: 'manual', requester: { person: context.person, ...(shown ? { author: shown } : {}) } });
+        return await checkInLink(liveNotes, repository, link.checkout.id, { ...checkIn, mode, requester: { person: context.person, ...(shown ? { author: shown } : {}) } });
       } finally {
         // The link may be closed or filed now; the next read in this request asks again.
         listed = undefined;
@@ -247,6 +265,17 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
         listed = undefined;
       }
     },
+    async move(path, target) {
+      const link = await linkAt(path);
+      if (!link || link.checkout.path === null || typeof liveNotes.service.retarget !== 'function') throw new LiveNotLiveError();
+      try {
+        const checkout = await checkedRow(await retargetLink(liveNotes, repository, link.checkout.id, { target, ...(checkIn?.sleep ? { sleep: checkIn.sleep } : {}) }));
+        if (checkout.id !== link.checkout.id || checkout.path !== link.checkout.path || (checkout.target ?? null) !== target) throw new LiveUnavailableError();
+        return checkout;
+      } finally {
+        listed = undefined;
+      }
+    },
     async merge(id, request) {
       const merge = calls().merge?.bind(calls());
       if (!merge || !isLiveId(id)) throw new LiveNotLiveError();
@@ -275,10 +304,12 @@ export function editedLiveError(file: string): CheckedOutError {
 /**
  * What reads say of a live link; its `editorUrl` is the framed editor's page, or the built-in editor's note page in the
  * app, and `changed` says its text is not the Git text it was last synced with (a note only viewed is not). A pending note names where its check-in files it (`pathRule`) only where the adapter can move it (`retargets`),
- * so an adapter without retarget answers as 0.19 did.
+ * so an adapter without retarget answers as 0.19 did. A filed note moving at its next check-in names its Git path
+ * (`movingFrom`), and one its last check-in did not move names that target (`unmoved`): one Git held, or one
+ * `unmovedReason` explains.
  */
 export function liveNoteState(row: LiveCheckout, retargets = false): LiveNoteState {
-  return { since: row.since, activeEditors: row.activeEditors, ...(row.base && row.contentHash !== row.base.contentHash ? { changed: true as const } : {}), ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}) };
+  return { since: row.since, activeEditors: row.activeEditors, ...(row.base && row.contentHash !== row.base.contentHash ? { changed: true as const } : {}), ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}), ...(row.path !== null && row.target !== undefined ? { movingFrom: row.path } : {}), ...(row.path !== null && row.unmoved !== undefined ? { unmoved: row.unmoved, ...(row.unmovedReason ? { unmovedReason: row.unmovedReason } : {}) } : {}) };
 }
 
 /*

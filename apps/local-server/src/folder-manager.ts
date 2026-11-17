@@ -200,10 +200,20 @@ export function createFolderManagerRouter(): Router {
       const { reader } = handle;
       const { snapshot: before, state: current } = await remoteSnapshot(reader, folderSource(command.data, notebook));
       if (current.sha !== req.body.revision) throw new SourceError('The workspace changed. Reload the folders and try again.', 409);
-      const after = planFolderChange(before, command.data);
-      const changes: RemoteChange[] = [...changesFor(before, after), ...versionFileChanges(current.entries, Object.keys(after.pathMap), file => after.pathMap[file] ?? file, () => false)];
+      // The live notes a folder move takes along stay where they lie in its commit, and the links to them with them: each
+      // moves at its own check-in (§20.4 of the built-in editor spec). A note already moving into the folder follows it,
+      // by the folder's own move.
+      const source = folderSource(command.data, notebook);
+      const moved = command.data.kind === 'move' ? `${notebook.root.replace(/\/$/, '')}/${path.posix.join(command.data.parent, path.posix.basename(command.data.path))}` : source;
+      const relocation = (file: string) => file === source || file.startsWith(`${source}/`) ? moved + file.slice(source.length) : file;
+      const live = moved !== source ? await reader.liveRelocations(relocation) : { moves: [], kept: new Set<string>() };
+      const after = planFolderChange(before, command.data, { stays: live.kept });
+      const relocate = (file: string) => after.pathMap[file] ?? file;
+      const changes: RemoteChange[] = [...changesFor(before, after), ...versionFileChanges(current.entries, Object.keys(after.pathMap), relocate, () => false)];
       const receipt = changes.length ? await reader.commitChanges(changes, req.body.revision, command.data.kind, 'folders', undefined, current) : { revision: current.sha };
-      res.json({ selectedPath: after.selectedPath, revision: receipt.revision });
+      // The commit landed: a live note that cannot follow stays where the links to it lead, and the answer says so.
+      const { left } = await reader.followLiveRelocation(live, relocation);
+      res.json({ selectedPath: after.selectedPath, revision: receipt.revision, ...(left.length ? { liveLeft: left } : {}) });
     } catch (error) {
       fail(res, error);
     }

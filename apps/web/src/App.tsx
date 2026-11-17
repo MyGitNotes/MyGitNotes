@@ -367,8 +367,8 @@ export const AppContent: React.FC = () => {
           invalidateNotes();
           closeZoom();
         },
-        // Collab-first (A7): the note's own editor checked it in, so it is moved, renamed or deleted as a note that is not live,
-        // a deletion against the revision the check-in made.
+        // Collab-first (A7): the note's own editor moves or renames it while it stays open, the server recording where its
+        // check-in moves it (§20.4); a deletion follows a check-in, against the revision the check-in made.
         // Offline handover (A3): a draft the direct editor made offline goes to the live note once online; what the collab
         // editor kept but could not merge becomes a conflict draft, which the editor offers to compare, copy or discard.
         handOver: () => liveHandover.handOver(note),
@@ -383,7 +383,7 @@ export const AppContent: React.FC = () => {
           }
         },
         ...(liveConflict ? { mergeConflict: { mine: noteFileText(liveConflict.note), discard: () => updateDraft(note.notebookId, note.path, null) } } : {}),
-        fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined })?.(), rename: (_revision, title) => noteMove.renameNote({ ...note, ...(title ? { title } : {}), live: undefined })?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
+        fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined, editing: true })?.(), rename: (_revision, title) => noteMove.renameNote({ ...note, ...(title ? { title } : {}), live: undefined, editing: true })?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
       }
       : undefined;
     return {

@@ -42,16 +42,16 @@ interface LiveEditState {
   stillOpen?: number;
   /** Collab-first: the server could not be reached, so the note opens in the direct editor on a browser draft (A1). */
   offline?: boolean;
-  /** A move, rename or deletion from the note's own editor is checking the note in first (A7). */
+  /** A deletion from the note's own editor is checking the note in first (A7). */
   releasing?: boolean;
 }
 
 /** A file action of a collab-first note's own editor. */
 type FileAction = keyof LiveFileActions;
-const ACTIVE_REFUSALS = { move: ['live.activeMove', 'live.activeMoveOne'], rename: ['live.activeRename', 'live.activeRenameOne'], remove: ['live.activeDelete', 'live.activeDeleteOne'] } as const;
+const ACTIVE_REFUSALS = { remove: ['live.activeDelete', 'live.activeDeleteOne'] } as const;
 const REASONS: Record<string, TranslationKey> = { active: 'live.reason.active', changed: 'live.reason.changed', 'not-synced': 'live.reason.not-synced', leased: 'live.reason.leased', released: 'live.reason.released', unfiled: 'live.reason.unfiled', uncommittable: 'live.reason.uncommittable' };
 
-/** What a collab-first note's own editor offers for its file actions: each checks the note in first, and answers whether it ran. */
+/** What a collab-first note's own editor offers for its file actions: a deletion checks the note in first; each answers whether it ran. */
 /** A rename may carry the title typed in the note's row or panel, which the rename dialog starts from. */
 export type LiveOwnFileActions = { [action in FileAction]?: (title?: string) => Promise<boolean>; };
 
@@ -223,15 +223,24 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
     setState({});
   };
   /**
-   * A move, rename or deletion from the note's own collab editor (A7): the editor closes first, so that this tab no longer
-   * counts as editing, then the note is checked in, and once it is released the action runs against the revision the
-   * check-in answered. A note that was no longer live runs it at once; one others still edit is refused with how many,
-   * and its editor opens again.
+   * A move, rename or deletion from the note's own collab editor (A7). A move or rename runs at once and the editor stays:
+   * it records where the note goes, and its next check-in, at once when nobody else edits it, moves it there (§20.4 of
+   * the built-in editor spec). A deletion closes the editor first, so that this tab no longer counts as editing, then
+   * checks the note in, and once it is released deletes it against the revision the check-in answered. A note that was
+   * no longer live is deleted at once; one others still edit is refused with how many, and its editor opens again.
    */
   const fileAction = (action: FileAction): ((title?: string) => Promise<boolean>) | undefined => {
     const run = live?.fileActions?.[action];
     if (!run || !collab || !active || pending) return undefined;
-    return async (title?: string) => {
+    if (action !== 'remove') {
+      return async (title?: string) => {
+        setRefusal(null);
+        if (action === 'rename' && title !== undefined) await live!.fileActions!.rename!(undefined, title);
+        else await run();
+        return true;
+      };
+    }
+    return async () => {
       const { notebookId, path } = latest.current;
       if (unsavedTyping.current) {
         setRefusal(t('live.unsavedFileAction'));
@@ -258,8 +267,7 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
       }
       if (answer) checkedIn(answer);
       else setState({});
-      if (action === 'rename' && title !== undefined) await live!.fileActions!.rename!(answer?.revision, title);
-      else await run(answer?.revision);
+      await run(answer?.revision);
       return true;
     };
   };
