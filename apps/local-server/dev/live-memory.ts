@@ -77,7 +77,7 @@ const repository = sourceIdentity(notes);
 const editor = { origin: editorOrigin, messageType: 'dev-live', themeParam: 'theme' };
 const builtinMode = process.env.MYGITNOTES_LIVE_DEV_EDITOR === 'builtin';
 const framed = builtinMode ? undefined : memoryLiveNotes({ editor, repositories: [{ source: notes, files: notesFiles }], maxBytes: 64 * 1024, discard: true, retarget: true });
-// The built-in editor commits its check-ins to the memory source as the person who typed first.
+// The built-in editor commits its check-ins to the memory source as the person who checked in, else who typed last.
 const builtin = builtinMode ? builtinLiveNotes({ covers: id => id === repository, open: async (_repository, author?: CommitAuthor) => new MemoryEditionSource(notes, notesFiles, true, memoryCommitCounter(notesFiles), undefined, async () => parseWorkspaceConfig(manifest), author), store: memoryLiveStore() }) : undefined;
 const liveNotes = builtin ?? framed!;
 
