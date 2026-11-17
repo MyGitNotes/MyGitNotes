@@ -770,5 +770,29 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.leftFrom(repository, 'notes/life/c.md')).toBeNull();
       expect(await store.leftFrom(repository, 'notes/life/never.md')).toBeNull();
     });
+
+    it('forgets that a link left a path when asked for that link, and keeps a record another link made (FLM-F004)', async () => {
+      const link = await open(note, '# A\n', T0);
+      const later = await open('notes/life/c.md', '# C\n', T0 + 1);
+      const first = 'notes/life/moved/a.md';
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 2), { target: first }, T0 + 3)).toBe('retargeted');
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 4), { target: null }, T0 + 5)).toBe('retargeted');
+      expect(await store.leftFrom(repository, first)).toMatchObject({ id: link.id });
+      // Another link, or another repository, forgets nothing.
+      await store.forgetLeft(repository, first, later.id);
+      await store.forgetLeft(other, first, link.id);
+      expect(await store.leftFrom(repository, first)).toMatchObject({ id: link.id });
+      await store.forgetLeft(repository, first, link.id);
+      expect(await store.leftFrom(repository, first)).toBeNull();
+      // Forgetting again, or a path never left, is nothing.
+      await store.forgetLeft(repository, first, link.id);
+      await store.forgetLeft(repository, 'notes/life/never.md', link.id);
+      // Left again later, it is named again.
+      expect(await store.retarget(later.id, await leased(later.id, T0 + 6), { target: first }, T0 + 7)).toBe('retargeted');
+      expect(await store.retarget(later.id, await leased(later.id, T0 + 8), { target: null }, T0 + 9)).toBe('retargeted');
+      expect(await store.leftFrom(repository, first)).toMatchObject({ id: later.id });
+      await store.forgetLeft(repository, first, link.id);
+      expect(await store.leftFrom(repository, first)).toMatchObject({ id: later.id });
+    });
   });
 }

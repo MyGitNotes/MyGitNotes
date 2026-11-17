@@ -63,6 +63,12 @@ const gitCommit = async (file: string, content: string) => {
   const snapshot = await source.getSnapshot(true);
   return (await source.commitChanges([{ path: file, content }], snapshot.sha, 'write', 'notes', undefined, snapshot)).revision;
 };
+/** A deletion someone makes in Git directly. */
+const gitDelete = async (file: string) => {
+  const source = new MemoryEditionSource(notes, files, true, memoryCommitCounter(files), undefined, scope);
+  const snapshot = await source.getSnapshot(true);
+  return (await source.commitChanges([{ path: file, sha: null }], snapshot.sha, 'delete', 'notes', undefined, snapshot)).revision;
+};
 const checkout = (file: string) => call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: file });
 const open = async (file: string) => (await checkout(file)).body.checkout.id as string;
 const move = (from: string, destination: string, extra: Record<string, unknown> = {}, who: string | null = 'p1') => call('POST', '/api/files', { command: { kind: 'move', notebookId: 'notes~life', path: from, destination, ...(extra.title ? { title: extra.title } : {}) }, ...(extra.editing ? { editing: true } : {}) }, who);
@@ -218,6 +224,11 @@ describe('moving a live note someone else edits', () => {
     // A file Git gets at a path it left is that file's.
     await gitCommit(weekly, '# New weekly\n');
     expect(await read(weekly)).toMatchObject({ status: 200, body: { note: { path: weekly, title: 'New weekly' } } });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: again } });
+    // That file deleted in Git later, the path no longer leads to the note that left it before the file was there (FLM-F004).
+    await gitDelete(weekly);
+    expect((await read(weekly)).body).not.toHaveProperty('movedTo');
+    expect(await checkout(weekly)).toMatchObject({ status: 404 });
     expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: again } });
   });
 
@@ -554,6 +565,105 @@ describe('moving a live note someone else edits', () => {
       expect(files.get(archived)).toBe(`${rewritten}${'[x](../archive/old.md)\n'.repeat(3)}`);
     });
   }
+
+  it('rewrites the links of a note moved there, back, and there again, each move on its own (FLM-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    const there = own.replace('../archive/old.md', 'old.md');
+    for (const [from, to, text] of [[weekly, archived, there], [archived, weekly, own], [weekly, archived, there]] as const) {
+      await move(from, to);
+      expect(await checkIn(to)).toMatchObject({ status: 200, body: { path: to, committed: true, moved: { from } } });
+      expect(files.get(to)).toBe(text);
+      expect((await liveNotes.person(pat).read(repository, id)).content).toBe(text);
+      // The memory adapter cannot give a lease back: the check-in that left the note live holds it until it runs out.
+      leaseRunsOut();
+    }
+    // Nothing typed since, the next check-in commits nothing and the links still lead where they did.
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: false, released: true } });
+    expect(files.get(archived)).toBe(there);
+  });
+
+  it('never rewrites the links of a landed move twice when its acknowledgement was lost twice, with typing between (FLM-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n\n結論\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new LiveUnavailableError()).mockRejectedValueOnce(new LiveUnavailableError());
+    expect((await checkIn(archived)).status).toBe(502);
+    const rewritten = own.replace('../archive/old.md', 'old.md');
+    expect(files.get(archived)).toBe(rewritten);
+    liveNotes.type(repository, id, rewritten.replace('結論', '結論二'), sam);
+    liveNotes.setActive(repository, id, 0);
+    leaseRunsOut();
+    expect((await checkIn(archived)).status).toBe(502);
+    expect(files.get(archived)).toBe(rewritten.replace('結論', '結論二'));
+    leaseRunsOut();
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: false, released: true } });
+    expect(files.get(archived)).toBe(rewritten.replace('結論', '結論二'));
+  });
+
+  it('leaves a link line the person fixed by hand after the write-back of a landed move failed, and rewrites the rest (FLM-F002)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n[x](../archive/old.md)\n[y](../archive/y.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockRejectedValueOnce(new LiveUnavailableError());
+    expect((await checkIn(archived)).status).toBe(502);
+    const rewritten = '---\ntitle: 公司週會\n---\n[x](old.md)\n[y](y.md)\n';
+    expect(files.get(archived)).toBe(rewritten);
+    // The editor reads the note where it went: the person fixes the first link for that folder.
+    liveNotes.type(repository, id, own.replace('../archive/old.md', 'old.md'), sam);
+    liveNotes.setActive(repository, id, 0);
+    leaseRunsOut();
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, released: true } });
+    expect(files.get(archived)).toBe(rewritten);
+  });
+
+  it('leaves a link line typing fixed when a write-back it refused is made again in the same check-in (FLM-F002)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n[x](../archive/old.md)\n[y](../archive/y.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    const once = liveNotes.service.mergeInOnce!.bind(liveNotes.service);
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockImplementationOnce(async () => {
+      liveNotes.type(repository, id, own.replace('../archive/old.md', 'old.md'), sam);
+      throw new LiveStaleError();
+    }).mockImplementation(once);
+    // The live text holds what the move committed, so it is released with it.
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true, released: true } });
+    expect(files.get(archived)).toBe('---\ntitle: 公司週會\n---\n[x](old.md)\n[y](y.md)\n');
+  });
+
+  it('never rewrites the links of a landed move twice when its acknowledgement was lost for more than a day (FLM-F003)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new LiveUnavailableError());
+    expect((await checkIn(archived)).status).toBe(502);
+    const rewritten = own.replace('../archive/old.md', 'old.md');
+    expect((await liveNotes.person(pat).read(repository, id)).content).toBe(rewritten);
+    clock.advance(25 * 60 * 60_000);
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, released: true } });
+    expect(files.get(archived)).toBe(rewritten);
+  });
 
   it("tries a folder move's rewrite of a live note's links again on a fresh read, and says when its links still lead where the notes were (LMR-F003)", async () => {
     files.set(weekly, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');

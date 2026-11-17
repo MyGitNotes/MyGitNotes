@@ -399,6 +399,14 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       await retarget(fixture.repository, later.id, await service().lease(fixture.repository, later.id), { target: null });
       expect(await leftFrom(first)).toBe(later.id);
       expect(await leftFrom(notePath())).toBeNull();
+      // Forgotten for the note that left it last, and only for that one, it names none (FLM-F004).
+      const forget = as(2).forgetLeft?.bind(as(2));
+      if (!forget) return;
+      await forget(fixture.repository, first, filed.id);
+      expect(await leftFrom(first)).toBe(later.id);
+      await forget(fixture.repository, first, later.id);
+      expect(await leftFrom(first)).toBeNull();
+      expect(await leftFrom(filed.path!, 1)).toBe(filed.id);
     });
 
     it('lists the editors since the last sync for the service, with email and an agent flag, and attributes a merge to nobody', async () => {
