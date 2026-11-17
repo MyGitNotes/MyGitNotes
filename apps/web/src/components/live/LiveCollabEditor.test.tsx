@@ -339,6 +339,20 @@ describe('立即簽回', () => {
   });
 });
 
+describe('a note moved elsewhere while open', () => {
+  it('reads the note again when the server says another person moved it, so the page follows it there, and stays connected', async () => {
+    const onRefetch = vi.fn(), onCheckedIn = vi.fn();
+    await open({ onRefetch, onCheckedIn });
+    sync();
+    onRefetch.mockClear();
+    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'moved' }) }));
+    expect(onRefetch).toHaveBeenCalledOnce();
+    expect(provider().destroyed).toBe(false);
+    expect(onCheckedIn).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Live note content')).toHaveValue('# A\n');
+  });
+});
+
 describe('a released note', () => {
   it('with nothing unsaved, takes the checked-in path', async () => {
     const onCheckedIn = vi.fn(), onRefetch = vi.fn();
