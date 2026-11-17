@@ -35,6 +35,8 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
   const pair = map.items[index];
   const newline = match[0].includes('\r\n') ? '\r\n' : '\n';
   const offset = raw.indexOf('\n') + 1;
+  /** The line end before the closing fence, which the extracted YAML omits; a block of mixed line ends may end its other lines otherwise. */
+  const closing = raw.startsWith('\r\n', offset + yaml.length) ? '\r\n' : '\n';
   const patch = (start: number, end: number, text: string) => raw.slice(0, offset + start) + text + raw.slice(offset + end);
 
   if (value === undefined) {
@@ -48,7 +50,7 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
     } else {
       start = yaml.lastIndexOf('\n', start - 1) + 1;
       // The extracted YAML omits the newline before the closing delimiter.
-      if (end === yaml.length) end += newline.length;
+      if (end === yaml.length) end += closing.length;
     }
     return patch(start, end, !map.flow && map.items.length === 1 ? `{}${newline}` : '');
   }
@@ -96,7 +98,7 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
   const [, , cstEnd] = oldValue.range!;
   const isLastField = cstEnd === yaml.length;
   // The extracted YAML omits the newline before the closing delimiter, same as the deletion branch above.
-  const consumeEnd = isLastField ? cstEnd + newline.length : cstEnd;
+  const consumeEnd = isLastField ? cstEnd + closing.length : cstEnd;
   const node = new YAML.Scalar(value);
   if (YAML.isScalar(oldValue) && ['QUOTE_SINGLE', 'QUOTE_DOUBLE'].includes(oldValue.type || '')) node.type = oldValue.type;
   if (typeof oldValue.comment === 'string') node.comment = oldValue.comment;
@@ -109,5 +111,7 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
   // newline to the delimiter, so a keep-chomped ("|+") value needs one extra newline of padding.
   if (isLastField && typeof value === 'string' && value.endsWith('\n\n')) replacement += '\n';
   if (match[0].includes('\r\n')) replacement = replacement.replace(/\n/g, '\r\n');
+  // The last field's line end is the one it consumed, so the closing fence stays on a line of its own.
+  if (isLastField) replacement = replacement.replace(/\r?\n$/, closing);
   return patch((pair.key as YAML.Node).range![1], consumeEnd, replacement);
 }

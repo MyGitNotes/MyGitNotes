@@ -2,6 +2,7 @@ import YAML from 'yaml';
 import { NoteMetadata } from './types.js';
 import { stampSaveTimestamps } from './note-timestamps.js';
 import { FRONTMATTER_REGEX, patchFrontmatterField } from './frontmatter-patch.js';
+import { NOTE_H1 } from './note-title.js';
 
 export interface ParsedNote {
   metadata: NoteMetadata;
@@ -16,8 +17,7 @@ export interface ParsedNote {
  * Extracts the first H1 heading from Markdown content.
  */
 export function extractFirstH1(content: string): string | null {
-  const match = content.match(/^#\s+(.+)$/m);
-  return match ? match[1].trim() : null;
+  return content.match(NOTE_H1)?.[1] ?? null;
 }
 
 /**

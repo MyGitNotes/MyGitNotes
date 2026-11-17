@@ -39,6 +39,21 @@ it('retitles in place: only the title, the heading that repeats it and `updated:
   expect(retitleNoteFile('---\r\ntitle: Old\r\n---\r\n# Old\r\nBody.\r\n', 'notes/a/old.md', 'Fresh', now)).toMatch(/\r\n---\r\n# Fresh\r\nBody\.\r\n$/);
 });
 
+// FHT-F002: a block whose fences end their lines differently kept its closing fence only by luck of the line ends.
+it('retitles a note whose frontmatter mixes LF and CRLF line ends and keeps a valid block', () => {
+  const now = new Date('2026-01-02T03:04:05.000Z');
+  const updated = 'updated: "2026-01-02T03:04:05.000Z"';
+  expect(retitleNoteFile('---\ntitle: Ideas\n---\r\n# Ideas\r\nBody\r\n', 'notes/a/i.md', 'New', now)).toBe(`---\ntitle: New\r\n${updated}\n---\r\n# New\r\nBody\r\n`);
+  expect(retitleNoteFile('---\r\ntitle: Ideas\r\nstatus: draft\n---\n# Ideas\n', 'notes/a/i.md', 'New', now)).toBe(`---\r\ntitle: New\r\nstatus: draft\r\n${updated}\n---\n# New\n`);
+});
+
+// A heading needs text on its own line: an empty `#` line does not run on into the next one.
+it('retitles the heading that repeats the title, not an empty `#` line and the line after it', () => {
+  const now = new Date('2026-01-02T03:04:05.000Z');
+  expect(retitleNoteFile('---\ntitle: Ideas\n---\n#\nIdeas\n\n# Ideas\n', 'notes/a/i.md', 'New', now)).toBe('---\ntitle: New\nupdated: "2026-01-02T03:04:05.000Z"\n---\n#\nIdeas\n\n# New\n');
+  expect(retitleNoteFile('#\n\nIdeas\n', 'notes/a/i.md', 'New', now)).toContain('#\n\nIdeas\n');
+});
+
 it('leaves a compilation, a folder and a plain file untouched by the title', () => {
   const files = { 'notes/a/dir/x.png': 'bin', 'notes/a/dir/n.md': '# N\n', 'notes/a/pins.compilation.yml': 'version: 1\nid: row\ntitle: Pins\narrangement: lane\nitems: []\n' };
   const compilation = planFileChange(snapshot(files), { kind: 'move', notebookId: 'a', path: 'notes/a/pins.compilation.yml', destination: 'notes/a/renamed.compilation.yml', title: 'Renamed' });

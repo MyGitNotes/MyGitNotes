@@ -5,7 +5,7 @@ import type { NotebookConfig } from './types.js';
 import { aliasedMedia, isHiddenPath } from './classifier.js';
 import { parseFolderConfig } from './folders.js';
 import { relocateMovedLinks } from './folder-plan.js';
-import { retitle } from './note-title.js';
+import { NOTE_H1, retitle } from './note-title.js';
 import { isNoteFile, parseNoteFile, serializeNoteFile } from './note-file.js';
 import { isOutlinePath } from './outline.js';
 import { relocateWorkspaceDocuments, workspaceDocument } from './workspace-documents.js';
@@ -83,7 +83,7 @@ export function retitleNoteFile(raw: string, file: string, title: string, now: D
   const next = retitle(parsed.content, parsed.metadata, title, isOutlinePath(file), parsed.title);
   if (next.content === parsed.content || !raw.endsWith(parsed.content)) return serializeNoteFile(file, next.metadata, next.content, false, now, raw);
   const head = raw.slice(0, raw.length - parsed.content.length);
-  const body = parsed.content.replace(/^#\s+.+$/m, line => `# ${title}${line.endsWith('\r') ? '\r' : ''}`);
+  const body = parsed.content.replace(NOTE_H1, line => `# ${title}${line.endsWith('\r') ? '\r' : ''}`);
   return serializeNoteFile(file, next.metadata, body, false, now, head + body);
 }
 

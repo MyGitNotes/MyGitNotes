@@ -1,3 +1,10 @@
+/**
+ * A note's H1: `#`, white space, and text on the same line; an empty `#` line is no title and does not run on into the
+ * next line. The text is group 1, without the white space around it; the match ends before the line's `\n`, a CRLF's
+ * `\r` included.
+ */
+export const NOTE_H1 = /^#[^\S\r\n]+(?=[^\r\n]*\S)([^\r\n]*?)[^\S\r\n]*\r?$/m;
+
 /** The kind suffix a renamed note keeps: `.outline.md`, `.compilation.yml`, or its plain extension. */
 export function noteSuffix(path: string): string {
   return path.match(/(\.outline\.md|\.compilation\.yml|\.[^./]+)$/)?.[1] ?? '';
@@ -20,9 +27,9 @@ export function renamedPath(path: string, title: string): string {
  * neither gains a frontmatter title.
  */
 export function retitle(content: string, metadata: Record<string, unknown>, title: string, outline: boolean, previous?: string): { content: string; metadata: Record<string, unknown>; } {
-  const heading = content.match(/^#\s+(.+)$/m);
+  const heading = content.match(NOTE_H1);
   if (outline || !heading) return { content, metadata: { ...metadata, title } };
-  const rewritten = content.replace(/^#\s+.+$/m, `# ${title}`);
+  const rewritten = content.replace(NOTE_H1, line => `# ${title}${line.endsWith('\r') ? '\r' : ''}`);
   if (typeof metadata.title !== 'string') return { content: rewritten, metadata };
   return { content: heading[1].trim() === previous ? rewritten : content, metadata: { ...metadata, title } };
 }

@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
-import { formatTemplateDate, formatTemplateTime, isBuiltinEditor, isLiveMergeId, isLiveNotePath, isLiveTypedIn, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, LiveLeasedError, type LiveNotes, LiveNotLiveError, livePathRule, livePathRuleParts, livePendingPath, type LiveRepository, LiveTooLargeError, type LiveTypedIn, normalizeLiveText, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, type RemoteSnapshot, type RemoteSource, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
+import { formatTemplateDate, formatTemplateTime, isBuiltinEditor, isLiveMergeId, isLiveNotePath, isLiveTypedIn, isNotebookContent, isNoteFile, LIVE_MAX_BYTES, type LiveCheckout, LiveLeasedError, type LiveNotes, LiveNotLiveError, livePathRule, livePathRuleParts, livePendingPath, type LiveRepository, LiveTooLargeError, type LiveTypedIn, normalizeLiveText, NOTE_H1, type NotebookConfig, type NotebookKey, noteWebPath, parseLivePendingPath, parseNotebookKey, parseNoteContent, type RemoteSnapshot, type RemoteSource, serializeNoteContent, SourceError, sweepLive, TemplateError, templateTimeZone, templateValues } from '@mygitnotes/core';
 import { liveDueInstant, liveScheduleSetting } from './live-schedule.js';
 import { asRemote, notebookRepository, noteRepository, requestPerson, workspaceOf } from './request-workspace.js';
 import { fail } from './route-errors.js';
@@ -247,7 +247,7 @@ export function createLiveRouter(): express.Router {
         const body = content ?? '';
         const parsed = parseNoteContent(body);
         // A note that names no title of its own takes the one given, so its first check-in files it under that title.
-        text = typeof parsed.metadata.title === 'string' && parsed.metadata.title.trim() || /^#\s+\S/m.test(parsed.content) ? body : serializeNoteContent({ ...parsed.metadata, title: title.trim() }, parsed.content, true, now);
+        text = typeof parsed.metadata.title === 'string' && parsed.metadata.title.trim() || NOTE_H1.test(parsed.content) ? body : serializeNoteContent({ ...parsed.metadata, title: title.trim() }, parsed.content, true, now);
         rule = `${folder ? `${folder}/` : ''}{{title}}.md`;
       }
       if (Buffer.byteLength(text, 'utf8') > LIVE_MAX_BYTES) throw new LiveTooLargeError();
