@@ -1,3 +1,4 @@
+import { stagedNoteFields } from './staged-note.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { announceWorkspaceFilesChanged } from './workspace-changes.js';
 import { useQueryClient } from '@tanstack/react-query';
@@ -294,7 +295,7 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
    * written over: the person picks what to keep first (`updateDraft(…, null)` drops it), so this throws instead.
    */
   const stageWorkingNote = (note: NoteItem, base: NoteItem | null, blocked?: string, deleted?: boolean) => {
-    note = { ...note, status: typeof note.metadata.status === 'string' ? note.metadata.status : undefined, tags: Array.isArray(note.metadata.tags) ? note.metadata.tags.map(String) : [], title: typeof note.metadata.title === 'string' && note.metadata.title ? note.metadata.title : note.content.match(/^#\s+(.+)$/m)?.[1] || note.title };
+    note = stagedNoteFields(note);
     const previous = readDraft(note.notebookId, note.path);
     if (previous?.blocked === LIVE_MERGE_CONFLICT && !(blocked === LIVE_MERGE_CONFLICT && sameValue(previous.note, note))) throw new Error(translate.current('live.conflictPending'));
     const entry: WorkingNote = { note, base, ...(blocked ? { blocked } : {}), ...(deleted && base ? { deleted: true as const } : {}) };

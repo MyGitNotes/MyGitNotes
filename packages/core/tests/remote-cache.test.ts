@@ -141,7 +141,7 @@ describe('shared remote cache', () => {
     expect(blobKeys.length).toBeGreaterThan(0);
     expect(blobKeys.every(key => allowed.has(key))).toBe(true);
     // The only tree it asks for is the one its authorized commit read named.
-    expect(keys.filter(key => !key.startsWith('mgn:blob:')).every(key => key.startsWith('mgn:index:v3:owner/repo:') || key === `mgn:tree:v1:owner/repo:${listing.treeSha}`)).toBe(true);
+    expect(keys.filter(key => !key.startsWith('mgn:blob:')).every(key => key.startsWith('mgn:index:v4:owner/repo:') || key === `mgn:tree:v1:owner/repo:${listing.treeSha}`)).toBe(true);
   });
 
   it('never stores content whose git object id does not match the tree', async () => {

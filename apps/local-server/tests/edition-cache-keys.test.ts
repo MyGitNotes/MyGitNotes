@@ -41,7 +41,7 @@ describe('edition cache keys', () => {
     const github = new GitHubSource('owner/repo', 'main', 'token', (async () => new Response('{}', { status: 500 })) as typeof fetch, cache, scope);
     const theirs = (github as unknown as { cacheRepository(): string; }).cacheRepository();
     expect(mine).toContain('edition:hosted:owner/repo');
-    expect(mine.startsWith(`mgn:index:v3:${theirs}:`)).toBe(false);
+    expect(mine.startsWith(`mgn:index:v4:${theirs}:`)).toBe(false);
   });
 
   it('keeps provider keys as they were', () => {

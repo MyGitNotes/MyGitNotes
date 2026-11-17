@@ -98,7 +98,7 @@ function useColumnDrag(board: BoardContext, columnId: string) {
       const notePath = event.dataTransfer.getData('text/plain');
       const note = board.dragged;
       board.setDragged(null);
-      if (!note || (notePath && notePath !== note.path) || board.liveLocked(note)) return;
+      if (!note || (notePath && notePath !== note.path) || board.liveLocked(note) || note.frontmatterInvalid) return;
       if ((note.status || '') !== columnId) board.onUpdateNoteStatus(note, columnId);
     },
   };
@@ -107,8 +107,9 @@ function useColumnDrag(board: BoardContext, columnId: string) {
 /** A card moves between columns when the board is writable and drags into a Focus pane when the Focus accepts it. */
 function cardDragProps(board: BoardContext, note: NoteListItem) {
   const canDragForFocus = !!board.focusMode?.canDrag(note);
-  // A note being edited live (編輯中) keeps its column until it is checked in; it may still go into a Focus pane.
-  const fixed = board.readOnly || board.liveLocked(note);
+  // A note being edited live (編輯中) keeps its column until it is checked in, and one whose frontmatter cannot be read
+  // takes no status until it is fixed; either may still go into a Focus pane.
+  const fixed = board.readOnly || board.liveLocked(note) || Boolean(note.frontmatterInvalid);
   return {
     draggable: !fixed || canDragForFocus,
     onDragStart: (event: React.DragEvent<HTMLDivElement>) => {

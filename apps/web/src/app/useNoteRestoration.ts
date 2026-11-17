@@ -75,9 +75,14 @@ export function useNoteRestoration({ remote, readDraft, updateDraft, setEditingN
       setActionError(t('live.checkedOut'));
       return false;
     }
+    // No write may put a second block in front of frontmatter that cannot be read; it is fixed in the editor first.
+    if (note.frontmatterInvalid) {
+      setActionError(t('editor.frontmatterInvalidLive'));
+      return false;
+    }
     // The row carries no body; the note is read in full before the status is written.
     try {
-      await handleSaveNote(await noteStatusChange(readNoteForChange, note, newStatus));
+      await handleSaveNote(await noteStatusChange(readNoteForChange, note, newStatus, t('editor.frontmatterInvalidLive')));
       return true;
     } catch (error) {
       setActionError((error as Error).message);

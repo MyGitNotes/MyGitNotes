@@ -193,3 +193,23 @@ it('marks the delete on a checked-out card disabled, with no hover that reads as
   // Hover feedback applies only to an enabled delete.
   expect(remove.className.split(' ').filter(name => name.startsWith('hover:'))).toEqual([]);
 });
+
+it('keeps a card whose frontmatter cannot be read out of the status columns, and still lets it drag into a Focus pane', async () => {
+  vi.mocked(fetch).mockImplementation(async (url: unknown) => {
+    const notes = String(url).includes('status=inbox') ? [{ ...noteOf('notes/life/a.md', 'inbox'), frontmatterInvalid: true }] : [];
+    return new Response(JSON.stringify({ revision: REVISION, total: notes.length, nextCursor: null, notes }), { headers: { 'Content-Type': 'application/json' } });
+  });
+  const onUpdateNoteStatus = vi.fn();
+  const { unmount } = render(twoColumnBoard({ onUpdateNoteStatus }), { wrapper });
+  await waitFor(() => expect(screen.getByText('notes/life/a.md')).toBeInTheDocument());
+  expect(screen.getByText('notes/life/a.md').closest('[data-notepath]')).toHaveAttribute('draggable', 'false');
+  unmount();
+  render(twoColumnBoard({ onUpdateNoteStatus, focusMode: { onZoomNote: () => {}, canDrag: () => true } }), { wrapper });
+  await waitFor(() => expect(screen.getByText('notes/life/a.md')).toBeInTheDocument());
+  const card = screen.getByText('notes/life/a.md').closest('[data-notepath]')!;
+  const dataTransfer = makeDataTransfer();
+  fireEvent.dragStart(card, { dataTransfer });
+  expect(dataTransfer.getData(NOTE_DRAG_TYPE)).toBe('notes/life/a.md');
+  fireEvent.drop(document.querySelector('[data-status-column="doing"]')!, { dataTransfer });
+  expect(onUpdateNoteStatus).not.toHaveBeenCalled();
+});

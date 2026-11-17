@@ -14,6 +14,8 @@ export interface NoteItem {
   lineNumberOffset?: number;
   mtime?: number;
   size?: number;
+  /** The note opens a frontmatter block that cannot be read: it has no status or tags until it is fixed. */
+  frontmatterInvalid?: true;
   /** Present while the note is checked out to the live editor (編輯中), or pending: the text is the live text. */
   live?: LiveNoteState;
 }

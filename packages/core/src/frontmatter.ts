@@ -1,7 +1,7 @@
 import YAML from 'yaml';
 import { NoteMetadata } from './types.js';
 import { stampSaveTimestamps } from './note-timestamps.js';
-import { FRONTMATTER_REGEX, patchFrontmatterField } from './frontmatter-patch.js';
+import { fillEmptyBlock, FRONTMATTER_REGEX, patchFrontmatterField } from './frontmatter-patch.js';
 
 export interface ParsedNote {
   metadata: NoteMetadata;
@@ -23,6 +23,9 @@ export function extractFirstH1(content: string): string | null {
 /**
  * Parses note file content, extracting optional YAML frontmatter and determining the title.
  */
+/** An empty block (`---` then `---`, or only blank lines between) parses to `null`; it is read as an empty map. */
+const emptyAsMap = (parsed: unknown) => (parsed === null || parsed === undefined ? {} : parsed);
+
 export function parseNoteContent(rawContent: string, fallbackFilename?: string): ParsedNote {
   const match = rawContent.match(FRONTMATTER_REGEX);
 
@@ -32,9 +35,9 @@ export function parseNoteContent(rawContent: string, fallbackFilename?: string):
   let bodyStart = 0;
 
   if (match) {
-    const rawYaml = match[1];
+    const rawYaml = match[1] ?? '';
     try {
-      const parsed = YAML.parse(rawYaml);
+      const parsed = emptyAsMap(YAML.parse(rawYaml));
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         metadata = parsed as NoteMetadata;
         hasFrontmatter = true;
@@ -171,9 +174,9 @@ export function noteFrontmatterSpan(text: string): NoteFrontmatterSpan | null {
   if (!match) return unclosedSpan(text);
   const end = match[0].length;
   const bodyStart = end + separatorAt(text, end).length;
-  const yaml = match[1];
+  const yaml = match[1] ?? '';
   try {
-    const parsed: unknown = YAML.parse(yaml);
+    const parsed: unknown = emptyAsMap(YAML.parse(yaml));
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const metadata = parsed as NoteMetadata;
       if (Array.isArray(metadata.tags)) metadata.tags = metadata.tags.map(String);
@@ -258,8 +261,9 @@ export function serializeNoteContent(metadata: NoteMetadata, content: string, is
 export function replaceNoteStatus(raw: string, status: string | null): string {
   const match = raw.match(FRONTMATTER_REGEX);
   if (match && parseNoteContent(raw).hasFrontmatter) {
-    const yaml = match[1];
+    const yaml = match[1] ?? '';
     const document = YAML.parseDocument(yaml);
+    if (document.contents === null) return status === null ? raw : fillEmptyBlock(raw, match, [`status: ${new YAML.Document(new YAML.Scalar(status)).toString({ lineWidth: 0 }).trimEnd()}`]);
     if (!YAML.isMap(document.contents)) return raw;
     const map = document.contents;
     const index = map.items.findIndex(pair => YAML.isScalar(pair.key) && pair.key.value === 'status');
@@ -311,7 +315,7 @@ export function replaceNoteStatus(raw: string, status: string | null): string {
 export function replaceNoteTags(raw: string, tags: string[]): string {
   const match = raw.match(FRONTMATTER_REGEX);
   if (!match || !parseNoteContent(raw).hasFrontmatter) return raw;
-  const yamlText = match[1];
+  const yamlText = match[1] ?? '';
   const document = YAML.parseDocument(yamlText);
   if (!YAML.isMap(document.contents)) return raw;
   const map = document.contents;
@@ -350,11 +354,12 @@ function setQuoted(document: YAML.Document, key: string, value: string): void {
 export function fillMissingNoteTimestamps(raw: string, created: string | undefined, updated: string | undefined): { raw: string; changed: boolean; } {
   const match = raw.match(FRONTMATTER_REGEX);
   if (match && parseNoteContent(raw).hasFrontmatter) {
-    const document = YAML.parseDocument(match[1]);
+    const document = YAML.parseDocument(match[1] ?? '');
     const lines: string[] = [];
     if (!document.get('created') && created) lines.push(`created: ${JSON.stringify(created)}`);
     if (!document.get('updated') && updated) lines.push(`updated: ${JSON.stringify(updated)}`);
     if (lines.length === 0) return { raw, changed: false };
+    if (document.contents === null) return { raw: fillEmptyBlock(raw, match, lines), changed: true };
     // Append raw lines instead of re-serializing, so existing YAML keeps its original formatting.
     const newline = match[0].includes('\r\n') ? '\r\n' : '\n';
     const insertAt = `---${newline}`.length + match[1].length;
