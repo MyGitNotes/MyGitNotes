@@ -28,3 +28,6 @@
 .live-collab .live-md-frontmatter, .live-collab .live-md-frontmatter * { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; font-weight: 400; font-style: normal; color: var(--color-muted); text-decoration: none; background: none; border: 0; }
 /* A remote cursor's name: the app's font, not y-codemirror's serif; three classes outrank its base theme. */
 .live-collab .cm-editor .cm-ySelectionInfo { font-family: var(--font-body); }
+/* Source and Split: line numbers on the page as the Live view draws them, not on CodeMirror's light default strip; three classes outrank its base theme. */
+.live-collab-source .cm-editor .cm-gutters { background: transparent; color: var(--color-muted); border-right: 1px solid var(--color-border); }
+.live-collab-source .cm-editor .cm-activeLineGutter { background: transparent; color: var(--color-primary); }

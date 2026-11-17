@@ -6,6 +6,7 @@ import { EditorView, layer, RectangleMarker } from '@codemirror/view';
 // It must be listed after drawSelection() in the extensions array: CodeMirror z-indexes
 // same-"above" layers by their order (later = more negative), so this needs the later slot
 // to stay behind the selection layer instead of covering it again.
+// Line numbers are part of the page: the card starts at the gutter, which the theme keeps beside the text.
 export const cardBackgroundLayer = layer({
   above: false,
   class: 'cm-card-background-layer',
@@ -13,9 +14,11 @@ export const cardBackgroundLayer = layer({
   markers(view) {
     const contentRect = view.contentDOM.getBoundingClientRect();
     const scrollerRect = view.scrollDOM.getBoundingClientRect();
-    const left = contentRect.left - scrollerRect.left + view.scrollDOM.scrollLeft;
+    const gutters = view.scrollDOM.querySelector<HTMLElement>(':scope > .cm-gutters');
+    const from = gutters && gutters.offsetWidth > 0 ? Math.min(gutters.getBoundingClientRect().left, contentRect.left) : contentRect.left;
+    const left = from - scrollerRect.left + view.scrollDOM.scrollLeft;
     const top = contentRect.top - scrollerRect.top + view.scrollDOM.scrollTop;
-    return [new RectangleMarker('cm-card-background', left, top, contentRect.width, contentRect.height)];
+    return [new RectangleMarker('cm-card-background', left, top, contentRect.right - from, contentRect.height)];
   },
 });
 export const theme = EditorView.theme({
@@ -31,7 +34,10 @@ export const theme = EditorView.theme({
   '.cm-line': { padding: '0 40px' },
   '.cm-cursor': { borderLeftColor: 'var(--color-primary)' },
   // Line numbers are controls, not text: a selection that reaches the gutter (easy while a phone reads a note) leaves them out.
-  '.cm-gutters': { backgroundColor: 'transparent', borderRight: '1px solid var(--color-border)', touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none' },
+  // They sit on the card beside the text, the pair centred as the text alone is (the free room goes before the gutter,
+  // not between it and the text), and run as far down as the card does, not to the scroller's end (VQ P3).
+  '.cm-gutters': { backgroundColor: 'transparent', borderRight: '1px solid var(--color-border)', marginLeft: 'auto', height: 'calc(100% - 48px)', touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none' },
+  '.cm-gutters ~ .cm-content': { marginLeft: '0' },
   '.cm-lineNumbers': { color: 'var(--color-muted)', fontFamily: 'monospace', fontSize: '11px', opacity: '0.55' },
   // The number takes the body text's line box (its font size at the scroller's 1.8 line height),
   // so it sits centred beside a line's first row instead of at the top of a taller box.
