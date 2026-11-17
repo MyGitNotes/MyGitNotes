@@ -175,3 +175,27 @@ describe('parseNoteFile frontmatterInvalid', () => {
     expect(parseNoteFile(saved, 'notes/a.md').metadata).toMatchObject({ status: 'done' });
   });
 });
+
+// C230-F001: an empty block whose opening and closing lines end differently keeps its closing fence and everything after
+// it byte for byte; the lines written into it end as the line before the closing fence does.
+describe('filling an empty block with mixed line endings', () => {
+  const now = new Date('2026-11-17T00:00:00Z');
+  const cases: [string, string, string][] = [['LF', '---\n\n---\n# T\nx\n', '\n'], ['CRLF', '---\r\n\r\n---\r\n# T\r\nx\r\n', '\r\n'], ['LF opening, CRLF closing', '---\n\n---\r\n# T\r\nx\r\n', '\n'], ['CRLF opening, LF closing', '---\r\n\n---\n# T\nx\n', '\n'], ['LF opening, CRLF inside', '---\n\r\n---\n# T\nx\n', '\r\n'], ['no line between, LF then CRLF', '---\n---\r\n# T\r\nx\r\n', '\n'], ['no line between, CRLF then LF', '---\r\n---\n# T\nx\n', '\r\n']];
+  it.each(cases)('%s', (_name, raw, inserted) => {
+    const opening = raw.slice(0, raw.indexOf('\n') + 1);
+    const fence = raw.lastIndexOf('---');
+    const tail = raw.slice(fence);
+    const expectFilled = (out: string, lines: string[]) => {
+      expect(out).toBe(opening + lines.map(line => line + inserted).join('') + tail);
+      expect(noteFrontmatterSpan(out)).not.toHaveProperty('invalid');
+    };
+    expectFilled(replaceNoteStatus(raw, 'done'), ['status: done']);
+    expectFilled(patchFrontmatterField(raw, 'tags', ['a']), ['tags:', '  - a']);
+    expectFilled(fillMissingNoteTimestamps(raw, 'c', 'u').raw, ['created: "c"', 'updated: "u"']);
+    // A save through the editor patches the same block.
+    const { metadata, content } = parseNoteContent(raw);
+    const saved = serializeNoteFile('notes/a.md', { ...metadata, status: 'x' }, content, false, now, raw);
+    expect(saved.endsWith(tail)).toBe(true);
+    expect(parseNoteFile(saved, 'notes/a.md')).toMatchObject({ metadata: { status: 'x' }, extra: {} });
+  });
+});

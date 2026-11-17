@@ -24,14 +24,16 @@ function renderedKeyEnd(rendered: string): number {
  */
 /**
  * Writes `lines` into a block that holds no keys (`---` then `---`, or only blank or comment lines between, which reads
- * as an empty map): its comments stay, its blank lines go, and the closing fence and body keep their bytes.
+ * as an empty map): its comments stay, its blank lines go, and the closing fence and body keep their bytes. Both cut
+ * points come from the match itself, since the opening and closing lines may end differently (C230-F001); every line
+ * written ends as the line before the closing fence does.
  */
 export function fillEmptyBlock(raw: string, match: RegExpMatchArray, lines: string[]): string {
-  const newline = match[0].includes('\r\n') ? '\r\n' : '\n';
-  const yaml = match[1] ?? '';
-  const opening = `---${newline}`.length;
-  const closing = match[1] === undefined ? opening : opening + yaml.length + newline.length;
-  const kept = yaml.split(/\r?\n/).filter(line => line.trim());
+  const opening = match[0].indexOf('\n') + 1;
+  // Only spaces, tabs and a line end follow the closing fence in the match, so its last `---` is that fence.
+  const closing = match[0].lastIndexOf('---');
+  const newline = match[0].slice(closing - 2, closing) === '\r\n' ? '\r\n' : '\n';
+  const kept = (match[1] ?? '').split(/\r?\n/).filter(line => line.trim());
   return raw.slice(0, opening) + [...kept, ...lines].map(line => line + newline).join('') + raw.slice(closing);
 }
 
