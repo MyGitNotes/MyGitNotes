@@ -121,6 +121,54 @@ describe('a Focus tab the lists no longer show', () => {
     expect(tabPaths(stored()?.current)).toEqual([IDEAS, OTHER, 'notes/third.md']);
   });
 
+  it('shows the note in its pane at every render once the server said where it lies, never another tab meanwhile', async () => {
+    // The moved note is not the pane's first tab: a pane that lost track of it would show that first tab instead.
+    localStorage.setItem(storageKey, JSON.stringify({ current: { root: { kind: 'pane', id: 'p1', tabs: [note(OTHER), note(IDEAS)] } }, entries: { [CURRENT_FOCUS]: { activePane: 'p1', shown: { p1: `note:${IDEAS}` }, recent: ['p1'], history: {}, ratios: {}, hideToolbar: {} } }, last: CURRENT_FOCUS }));
+    read.mockImplementation(async () => {
+      throw movedTo(RENAMED);
+    });
+    const renders: { tabs: string[]; shown: string | null | undefined; }[] = [];
+    const hook = renderHook(() => {
+      const focus = useNoteFocus({ page: controller(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true });
+      renders.push({ tabs: tabPaths(focus.layout), shown: focus.entry?.shown.p1 });
+      return focus;
+    }, { wrapper });
+    refetch([OTHER, RENAMED]);
+    hook.rerender();
+    await waitFor(() => expect(hook.result.current.entry?.shown.p1).toBe(`note:${RENAMED}`));
+    // Each render that shows the tab where the note lies shows it in the pane too: its editor is never swapped for another note's.
+    expect(renders.filter(render => render.tabs.includes(RENAMED)).map(render => render.shown)).toEqual(renders.filter(render => render.tabs.includes(RENAMED)).map(() => `note:${RENAMED}`));
+    expect(renders.map(render => render.shown)).not.toContain(`note:${OTHER}`);
+  });
+
+  it('is neither hidden nor dropped by a layout change for an answer the server gave before the lists showed the note again', async () => {
+    // A background tab: the pane shows another note.
+    localStorage.setItem(storageKey, JSON.stringify({ current: { root: { kind: 'pane', id: 'p1', tabs: [note(IDEAS), note(OTHER), note('notes/third.md')] } }, entries: { [CURRENT_FOCUS]: { activePane: 'p1', shown: { p1: `note:${OTHER}` }, recent: ['p1'], history: {}, ratios: {}, hideToolbar: {} } }, last: CURRENT_FOCUS }));
+    read.mockRejectedValue(new ApiError('Note not found', 404));
+    const hook = open();
+    // For a while the server did not find it: the tab is hidden then.
+    refetch([OTHER, 'notes/third.md']);
+    hook.rerender();
+    await waitFor(() => expect(tabPaths(hook.result.current.layout)).toEqual([OTHER, 'notes/third.md']));
+    // The lists show it again: the tab is back.
+    refetch([IDEAS, OTHER, 'notes/third.md']);
+    hook.rerender();
+    expect(tabPaths(hook.result.current.layout)).toEqual([IDEAS, OTHER, 'notes/third.md']);
+    // Someone moves it; the server is asked again, and the earlier answer says nothing of where it is now.
+    let answer!: (error: unknown) => void;
+    read.mockImplementation(() => new Promise((_, reject) => void (answer = reject)));
+    refetch([OTHER, 'notes/third.md', RENAMED]);
+    hook.rerender();
+    expect(tabPaths(hook.result.current.layout)).toEqual([IDEAS, OTHER, 'notes/third.md']);
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    // The person closes another note meanwhile: the tab stays in what that writes.
+    await act(async () => void await hook.result.current.close('note:notes/third.md', 'p1'));
+    expect(tabPaths(stored()?.current)).toEqual([IDEAS, OTHER]);
+    await act(async () => answer(movedTo(RENAMED)));
+    await waitFor(() => expect(tabPaths(hook.result.current.layout)).toEqual([RENAMED, OTHER]));
+    expect(tabPaths(stored()?.current)).toEqual([RENAMED, OTHER]);
+  });
+
   it('is hidden at once where this browser deleted the note (a draft deletion), without asking', async () => {
     const hook = open();
     lists.withheld = [IDEAS];

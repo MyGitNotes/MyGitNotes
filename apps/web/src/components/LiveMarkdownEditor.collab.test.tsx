@@ -153,3 +153,23 @@ it('numbers the body by its file lines past a hidden frontmatter, with no number
     unmount();
   }
 });
+
+// Another person moved or renamed the note (§20.4): the page follows it to its new path, and the person goes on typing.
+it('keeps its view when the note is followed to another path: the focus, caret and selection stay, links resolve from there', () => {
+  const text = '# Shared\n\n[Next](next.md)\n';
+  const { collab } = collabOf(text);
+  const client = new QueryClient(), onChange = () => {};
+  const tree = (notePath: string) => createElement(QueryClientProvider, { client }, createElement(I18nProvider, null, createElement(MemoryRouter, {}, createElement(LiveMarkdownEditor, { content: text, notePath, notebookId: 'ex', readOnly: false, onChange, ariaLabel: 'Note content', collab }))));
+  const result = render(tree('notes/ex/a.md'));
+  const view = EditorView.findFromDOM(screen.getByRole('textbox', { name: 'Note content' }))!;
+  act(() => {
+    view.focus();
+    view.dispatch({ selection: { anchor: 2, head: 8 } });
+  });
+  expect(view.contentDOM.querySelector('[data-workspace-link]')?.getAttribute('data-source-path')).toBe('notes/ex/a.md');
+  result.rerender(tree('notes/ex/archive/a.md'));
+  expect(EditorView.findFromDOM(screen.getByRole('textbox', { name: 'Note content' }))).toBe(view);
+  expect(view.hasFocus).toBe(true);
+  expect(view.state.selection.main).toMatchObject({ anchor: 2, head: 8 });
+  expect(view.contentDOM.querySelector('[data-workspace-link]')?.getAttribute('data-source-path')).toBe('notes/ex/archive/a.md');
+});

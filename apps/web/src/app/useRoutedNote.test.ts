@@ -81,3 +81,32 @@ describe('useRoutedNote and a note the lists do not show', () => {
     expect(hook.result.current.routeError).toBe('');
   });
 });
+
+/*
+ * Another person moved or renamed the note zoom shows (§20.4): the address follows it there, and the note stays open in
+ * zoom, its editor and the person's typing in it, while the lists read it at its new path.
+ */
+describe('useRoutedNote and a note the address follows to where it moved', () => {
+  it('goes on showing the note at its new path while the lists read it there', async () => {
+    const { followMovedNote } = await import('./follow-moved-note.js');
+    const note = { notebookId: 'nb', path: 'notes/idea.md', title: 'Idea', content: '# Idea\n', metadata: {}, tags: [] };
+    lookup.current = { notes: [note], committed: [], loading: false, paused: false, error: '', updatedAt: 1 };
+    const hook = renderHook(({ route }) => useRoutedNote({ config, editorRoute: parseWorkspaceRoute(route, ''), editorNotebookId: 'nb', editingNote: null, loading: false, sourceId: 'src', setEditingNote: vi.fn() }), { initialProps: { route: '/notebooks/nb/notes/idea.md' } });
+    expect(hook.result.current.routedNote).toEqual(note);
+    followMovedNote({ note, to: 'notes/archive/idea.md', notebook: { id: 'nb', root: 'notes' }, routedPath: 'notes/idea.md', search: '', relocatePaths: () => {}, navigate: () => {}, refresh: () => {} });
+    lookup.current = { notes: [], committed: [], loading: true, paused: false, error: '', updatedAt: 1 };
+    hook.rerender({ route: '/notebooks/nb/notes/archive/idea.md' });
+    expect(hook.result.current.routedNote).toEqual({ ...note, path: 'notes/archive/idea.md' });
+    expect(hook.result.current.routedLoading).toBe(false);
+  });
+
+  it('loads another note the address names, which shows nothing of the one before', () => {
+    const note = { notebookId: 'nb', path: 'notes/idea.md', title: 'Idea', content: '# Idea\n', metadata: {}, tags: [] };
+    lookup.current = { notes: [note], committed: [], loading: false, paused: false, error: '', updatedAt: 1 };
+    const hook = renderHook(({ route }) => useRoutedNote({ config, editorRoute: parseWorkspaceRoute(route, ''), editorNotebookId: 'nb', editingNote: null, loading: false, sourceId: 'src', setEditingNote: vi.fn() }), { initialProps: { route: '/notebooks/nb/notes/idea.md' } });
+    lookup.current = { notes: [], committed: [], loading: true, paused: false, error: '', updatedAt: 1 };
+    hook.rerender({ route: '/notebooks/nb/notes/other.md' });
+    expect(hook.result.current.routedNote).toBeNull();
+    expect(hook.result.current.routedLoading).toBe(true);
+  });
+});

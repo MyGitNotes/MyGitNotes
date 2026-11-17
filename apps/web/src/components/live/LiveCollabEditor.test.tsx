@@ -881,6 +881,31 @@ describe('typing the server has not stored', () => {
   };
   const mergeBody = () => JSON.parse(String(fetchMock.mock.calls.find(([url]) => url === '/api/live/merge')![1].body));
 
+  // Another person moved or renamed the note (§20.4): the page follows it there with this tab's session going on.
+  it('goes on in the same session when its note is followed to where it moved, its next ticket and kept typing there', async () => {
+    const MOVED = 'notes/life/archive/a.md';
+    const view = await open();
+    sync('# A\n');
+    typeOffline();
+    // The page goes away for a moment: the typing is kept now, under the path the note lies at.
+    act(() => void window.dispatchEvent(new Event('pagehide')));
+    await act(async () => {});
+    view.rerender(createElement(LiveCollabEditor, props({ checkout: { ...checkout, path: MOVED } })));
+    await act(async () => {});
+    expect(fake.providers).toHaveLength(1);
+    expect(provider().destroyed).toBe(false);
+    expect((await unsyncedLiveStore().list()).map(entry => [entry.path, entry.text])).toEqual([[MOVED, '# A\noffline typing\n']]);
+    // Its held ticket was for the first connect; the next asks where the note lies now.
+    await act(async () => void await provider().configuration.token());
+    await act(async () => void await provider().configuration.token());
+    expect(JSON.parse(String(fetchMock.mock.calls.filter(([url]) => url === '/api/live/socket-ticket').at(-1)![1].body))).toEqual({ notebookId: 'notes~life', path: MOVED });
+    // Typing kept from now on is kept there too.
+    typeUnsaved('more\n');
+    act(() => void window.dispatchEvent(new Event('pagehide')));
+    await act(async () => {});
+    expect((await unsyncedLiveStore().list()).map(entry => [entry.path, entry.text])).toEqual([[MOVED, '# A\noffline typing\nmore\n']]);
+  });
+
   it('connects again once the socket’s close lands, when the browser was back online before it', async () => {
     await open();
     sync();

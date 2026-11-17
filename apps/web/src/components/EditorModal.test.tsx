@@ -3,6 +3,7 @@ import { createElement, forwardRef, useLayoutEffect, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+import { followMovedNote } from '../app/follow-moved-note.js';
 import { NoteEditingProvider } from '../lib/note-editing.js';
 import { assistantDock } from '../lib/assistant-dock.js';
 import { PanelProvider, usePanelContext } from '../lib/panel-context.js';
@@ -19,7 +20,7 @@ vi.mock('./NoteEditor.js', () => ({
       setHasOpenNote(true);
       return () => setHasOpenNote(false);
     }, [frame, setHasOpenNote]);
-    return createElement('div', { 'data-testid': 'editor' }, onMove && createElement('button', { type: 'button', onClick: onMove }, 'Move note'));
+    return createElement('div', { 'data-testid': 'editor' }, onMove && createElement('button', { type: 'button', onClick: onMove }, 'Move note'), createElement('textarea', { 'aria-label': 'Typing' }));
   }),
 }));
 
@@ -124,6 +125,20 @@ it('says a refused move or rename inside zoom, where the person sees it, not beh
   expect(within(screen.getByRole('dialog', { name: 'Compilation' })).getByRole('alert')).toHaveTextContent('A note already exists');
   rerender(modal({ note: alpha }));
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+// Another person moved or renamed the zoomed note (§20.4): the address follows it there, and the person goes on typing.
+it('keeps the zoomed note\u2019s editor, and the focus in it, when the note is followed to where it moved', () => {
+  const { rerender } = render(modal({ note: alpha }));
+  const typing = screen.getByRole('textbox', { name: 'Typing' });
+  act(() => typing.focus());
+  followMovedNote({ note: alpha, to: 'notes/archive/alpha.md', notebook: { id: 'a', root: 'notes' }, routedPath: alpha.path, search: '', relocatePaths: () => {}, navigate: () => {}, refresh: () => {} });
+  rerender(modal({ note: { ...alpha, path: 'notes/archive/alpha.md' } }));
+  expect(screen.getByRole('textbox', { name: 'Typing' })).toBe(typing);
+  expect(document.activeElement).toBe(typing);
+  // Another note opened in zoom is another editor.
+  rerender(modal({ note: { ...alpha, id: 'b', path: 'notes/b.md' } }));
+  expect(screen.getByRole('textbox', { name: 'Typing' })).not.toBe(typing);
 });
 
 describe('beside the assistant dock', () => {

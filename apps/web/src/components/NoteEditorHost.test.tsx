@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
 import { createElement, forwardRef, Fragment, type ReactNode, useEffect } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+import { followMovedNote } from '../app/follow-moved-note.js';
 import { NoteEditingProvider, useNoteEditing } from '../lib/note-editing.js';
 import type { NoteEditorProps } from './NoteEditor.js';
 import { HostedNoteEditor } from './NoteEditorHost.js';
 
 const alpha = { id: 'a', path: 'notes/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: {}, content: '# Alpha\n\nBody.' };
 
-const lookup = vi.hoisted(() => ({ note: { id: 'a', path: 'notes/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: {} as Record<string, unknown>, content: '# Alpha\n\nBody.' }, typing: false }));
-vi.mock('../lib/use-note-queries.js', () => ({ useNoteLookup: () => ({ notes: [lookup.note], committed: [], loading: false, error: '' }) }));
+// The lists show the note at whatever path a host asks for, except at the paths in `unread`, which they have not read yet.
+const lookup = vi.hoisted(() => ({ note: { id: 'a', path: 'notes/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: {} as Record<string, unknown>, content: '# Alpha\n\nBody.' }, typing: false, unread: new Set<string>() }));
+vi.mock('../lib/use-note-queries.js', () => ({ useNoteLookup: (refs: { path: string; }[]) => ({ notes: refs.filter(ref => !lookup.unread.has(ref.path)).map(ref => ({ ...lookup.note, path: ref.path })), committed: [], loading: refs.some(ref => lookup.unread.has(ref.path)), error: '' }) }));
+// Each mounted editor has a text field of its own: it keeps its focus only while the editor stays mounted.
 vi.mock('./NoteEditor.js', () => ({
   NoteEditor: forwardRef<unknown, NoteEditorProps>(({ frame, note, onSession }, _ref) => {
     /* eslint-disable react-hooks/exhaustive-deps -- The test double reports one mounted session and its cleanup; prop refreshes are exercised independently of mounting. */
@@ -19,7 +22,7 @@ vi.mock('./NoteEditor.js', () => ({
       return () => onSession?.(null);
     }, []);
     /* eslint-enable react-hooks/exhaustive-deps */
-    return createElement('div', { 'data-testid': 'editor', 'data-frame': frame }, note.content);
+    return createElement('div', { 'data-testid': 'editor', 'data-frame': frame, 'data-path': note.path }, note.content, createElement('textarea', { 'aria-label': 'Typing' }));
   }),
 }));
 
@@ -27,6 +30,7 @@ afterEach(() => {
   cleanup();
   lookup.note = { ...lookup.note, content: '# Alpha\n\nBody.', title: 'Alpha' };
   lookup.typing = false;
+  lookup.unread.clear();
 });
 
 let editing: ReturnType<typeof useNoteEditing>;
@@ -143,6 +147,54 @@ it('shows a note that changed under its editor, as a rename that retitled it doe
   lookup.note = { ...lookup.note, title: 'Beta', content: '# Beta\n\nBody.' };
   view.rerender(twoHosts());
   expect(screen.getByTestId('editor')).toHaveTextContent('# Beta');
+});
+
+describe('a note the page followed to where it moved', () => {
+  const MOVED = 'notes/archive/alpha.md';
+  /** The page heard that the note lies elsewhere now (another person moved or renamed it), as an open editor hears it. */
+  const follow = () => followMovedNote({ note: { notebookId: 'a', path: 'notes/a.md' }, to: MOVED, notebook: { id: 'a', root: 'notes' }, routedPath: null, search: '', relocatePaths: () => {}, navigate: () => {}, refresh: () => {} });
+  const host = (path: string, frame: 'pane' | 'compact' = 'pane') => createElement(HostedNoteEditor, { notebookId: 'a', path, frame, active: frame === 'pane' });
+
+  it('keeps its editor and the focus in it, showing the note where it lies before the lists read it there', () => {
+    const view = render(provide(host('notes/a.md')));
+    const typing = screen.getByRole('textbox', { name: 'Typing' });
+    act(() => typing.focus());
+    follow();
+    lookup.unread.add(MOVED);
+    view.rerender(provide(host(MOVED)));
+    expect(screen.getByRole('textbox', { name: 'Typing' })).toBe(typing);
+    expect(document.activeElement).toBe(typing);
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-path', MOVED);
+    // The lists read it there: still the same editor.
+    lookup.unread.clear();
+    view.rerender(provide(host(MOVED)));
+    expect(screen.getByRole('textbox', { name: 'Typing' })).toBe(typing);
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-path', MOVED);
+  });
+
+  it('keeps the editor in the host that had it when every host of the note follows it', async () => {
+    const both = (path: string) => provide(createElement('section', { 'data-testid': 'card' }, host(path, 'compact')), createElement('section', { 'data-testid': 'pane' }, host(path)));
+    const view = render(both('notes/a.md'));
+    // The pane holds the editor, though the card came first.
+    await act(async () => {
+      fireEvent.click(within(screen.getByTestId('pane')).getByRole('button', { name: 'Edit here' }));
+    });
+    const typing = within(screen.getByTestId('pane')).getByRole('textbox', { name: 'Typing' });
+    act(() => typing.focus());
+    follow();
+    view.rerender(both(MOVED));
+    expect(within(screen.getByTestId('pane')).getByRole('textbox', { name: 'Typing' })).toBe(typing);
+    expect(document.activeElement).toBe(typing);
+    expect(screen.getByTestId('card')).toHaveTextContent('This note is open for editing elsewhere.');
+  });
+
+  it('opens another note shown in its place in an editor of its own', () => {
+    const view = render(provide(host('notes/a.md')));
+    const typing = screen.getByRole('textbox', { name: 'Typing' });
+    view.rerender(provide(host('notes/b.md')));
+    expect(screen.getByRole('textbox', { name: 'Typing' })).not.toBe(typing);
+    expect(screen.getByTestId('editor')).toHaveAttribute('data-path', 'notes/b.md');
+  });
 });
 
 it('keeps the editor on its own text when the note changes under unsaved typing', () => {
