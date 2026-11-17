@@ -311,7 +311,7 @@ export const AppContent: React.FC = () => {
     const scope = (repository ? draftScope(repository) : '') || repository?.branch || '';
     void forgetNoteDrafts(scope, notebookId, path, destination);
   };
-  const noteMove = useNoteMove({ config, remote, canWriteNotebook: canChangeFiles, readDraft, updateDraft, stageWorkingNote, saveNote: handleSaveNote, focus: focusPage, queryClient, queryScope, flushEditors: editorRegistry.flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus: noteFocus.relocatePaths, setActionError, t, retargets: liveDrafts.retargets, releasesUntouched: liveDrafts.releasesUntouched });
+  const noteMove = useNoteMove({ config, remote, canWriteNotebook: canChangeFiles, readDraft, updateDraft, stageWorkingNote, saveNote: handleSaveNote, focus: focusPage, queryClient, queryScope, flushEditors: editorRegistry.flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, setActionError, t, retargets: liveDrafts.retargets, releasesUntouched: liveDrafts.releasesUntouched });
   // Offline handover (collab-first A3.2): once online, drafts of notes the built-in live editor covers go to their live notes.
   const liveHandover = useLiveHandover({
     ready: Boolean(remote && sourceId && config),
