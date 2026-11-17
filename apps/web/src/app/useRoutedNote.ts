@@ -4,7 +4,7 @@ import type { NotebookConfig, NoteItem } from '../lib/types.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { useNoteLookup } from '../lib/use-note-queries.js';
 import { followsNote } from '../lib/note-follows.js';
-import { useNoteWhereabouts } from '../lib/note-whereabouts.js';
+import { useNoteWhereabouts, whereaboutsIn } from '../lib/note-whereabouts.js';
 import type { parseWorkspaceRoute } from '../lib/routes.js';
 
 interface UseRoutedNoteParams {
@@ -37,7 +37,8 @@ export function useRoutedNote({ config, editorRoute, editorNotebookId, editingNo
   // address follows it there. Not found is said only once the server says the note is gone.
   const routedRef = useMemo(() => routedPath && routedNotebook && !listedNote && !loading ? [{ notebookId: routedNotebook.id, path: routedPath }] : [], [routedPath, routedNotebook, listedNote, loading]);
   const answers = useNoteWhereabouts(routedRef, routedLookup);
-  const whereabouts = routedRef[0] ? answers.get(noteRefKey(routedRef[0])) : undefined;
+  // A note the server says moved out of its notebook is gone from it: the address says not found rather than wait (R5-F001).
+  const whereabouts = routedRef[0] && routedNotebook ? whereaboutsIn(answers.get(noteRefKey(routedRef[0])), routedNotebook.root) : undefined;
   const foundNote = listedNote ?? (whereabouts?.kind === 'here' && typeof whereabouts.note.content === 'string' ? whereabouts.note : null);
   // A note the address followed to where it moved (another person moved or renamed it, §20.4) is shown there at once, as
   // it was read where it lay, until the lists read it there: zoom keeps it open, with its editor and the person's typing.

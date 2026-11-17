@@ -12,6 +12,17 @@ import type { NoteItem } from './types.js';
  */
 export type NoteWhereabouts = { kind: 'here'; note: NoteItem; } | { kind: 'moved'; path: string; } | { kind: 'gone'; } | { kind: 'unknown'; error: string; };
 
+/** Whether a note at `path` lies in the notebook rooted at `root`: a note is followed only within its own notebook. */
+export const inNotebookRoot = (root: string, path: string) => path.startsWith(`${root}/`);
+
+/**
+ * `answer` as a view of the notebook rooted at `root` reads it: a note the server says moved out of the notebook is gone
+ * from it, never followed there nor waited for (R5-F001, R5-F002).
+ */
+export function whereaboutsIn<T extends NoteWhereabouts | undefined>(answer: T, root: string): T | { kind: 'gone'; } {
+  return answer?.kind === 'moved' && !inNotebookRoot(root, answer.path) ? { kind: 'gone' } : answer;
+}
+
 /** Asks the server where the note `ref` is, by reading it there. */
 export async function locateNote(ref: NoteRef): Promise<NoteWhereabouts> {
   try {
@@ -39,7 +50,8 @@ export interface ListedNotes {
  * lists show, or whose question has no answer yet, has none: nobody may take it for deleted until the answer is `gone`.
  * An earlier answer stands until the next one arrives, so a note already found gone is not shown again meanwhile; it
  * speaks of that absence only, and is forgotten once the lists show the note again, so a later absence waits for its own
- * answer. A note found moved is one the page follows there ({@link noteFollowed}).
+ * answer. A note found gone is not asked about again while it stays missing, whatever reads of the lists come (R5-F003).
+ * A note found moved is one the page follows there ({@link noteFollowed}).
  */
 export function useNoteWhereabouts(refs: readonly NoteRef[], listed: ListedNotes): ReadonlyMap<string, NoteWhereabouts> {
   const settled = !listed.loading && !listed.error;
@@ -65,7 +77,8 @@ export function useNoteWhereabouts(refs: readonly NoteRef[], listed: ListedNotes
     }
     for (const ref of latest.current.asked) {
       const key = noteRefKey(ref);
-      if (answered.current.get(key)?.generation === generation) continue;
+      const known = answered.current.get(key);
+      if (known?.generation === generation || known?.whereabouts.kind === 'gone') continue;
       void locateNote(ref).then(whereabouts => {
         if (whereabouts.kind === 'moved') noteFollowed(ref.notebookId, ref.path, whereabouts.path);
         if (current) setAnswers(previous => new Map(previous).set(key, { generation, whereabouts }));
@@ -90,12 +103,16 @@ export function useNoteWhereabouts(refs: readonly NoteRef[], listed: ListedNotes
   }, [answers, missingKey, withheldKey]);
 }
 
-/** The notes `whereabouts` says moved, by path, for notes of `notebookId`, with the path each lies at now. */
-export function movedPaths(whereabouts: ReadonlyMap<string, NoteWhereabouts>, refs: readonly NoteRef[]): Map<string, string> {
+/**
+ * The notes `whereabouts` says moved within the notebook rooted at `root`, by path, with the path each lies at now; none
+ * while the root is not known.
+ */
+export function movedPaths(whereabouts: ReadonlyMap<string, NoteWhereabouts>, refs: readonly NoteRef[], root: string | undefined): Map<string, string> {
   const moved = new Map<string, string>();
+  if (root === undefined) return moved;
   for (const ref of refs) {
     const answer = whereabouts.get(noteRefKey(ref));
-    if (answer?.kind === 'moved') moved.set(ref.path, answer.path);
+    if (answer?.kind === 'moved' && inNotebookRoot(root, answer.path)) moved.set(ref.path, answer.path);
   }
   return moved;
 }
