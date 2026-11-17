@@ -51,7 +51,7 @@ interface Params {
 export type MovedNote = Pick<NoteItem, 'notebookId' | 'path' | 'title'> & { live?: NoteItem['live']; editing?: boolean; };
 
 /** What the Move or Rename dialog acts on. A compilation keeps its name in its own file, so it applies the new name itself. */
-export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rename'; note: MovedNote; applyTitle?: (title: string) => void; };
+export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rename'; note: MovedNote; applyTitle?: (title: string) => void; name?: string; };
 
 const isCompilation = (path: string) => noteSuffix(path) === '.compilation.yml';
 
@@ -70,7 +70,8 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
     await onFilesChanged({ revision: '', selectedPath: note.path, pathMap: {}, deletedPaths: [] }, { background: true });
   };
   const moveNote = (note: MovedNote) => movable(note) ? () => setRequest({ mode: 'move', note }) : undefined;
-  const renameNote = (note: MovedNote, applyTitle?: (title: string) => void) => movable(note) ? () => setRequest({ mode: 'rename', note, applyTitle }) : undefined;
+  /** The Rename dialog for `note`, named after its title until confirmed; `name`, a title already typed, starts its field. */
+  const renameNote = (note: MovedNote, applyTitle?: (title: string) => void, name?: string) => movable(note) ? () => setRequest({ mode: 'rename', note, applyTitle, ...(name !== undefined ? { name } : {}) }) : undefined;
 
   /** The error a refused move shows: a taken destination reads as the dialog's own message. */
   const moveError = (error: unknown, destination: string) => {

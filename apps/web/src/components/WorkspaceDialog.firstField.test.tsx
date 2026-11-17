@@ -76,6 +76,20 @@ describe('each dialog opens on its first field', () => {
     expect([field.selectionStart, field.selectionEnd]).toEqual([0, 4]);
   });
 
+  // lm-visual3 P3: the heading echoed the new name as it was typed.
+  it('Rename note names the note by its current title until the new one is confirmed', () => {
+    const onConfirm = vi.fn();
+    inApp(<RenameNoteDialog path='notes/a/done.md' title='Done' initial='Plan' busy={false} onClose={() => undefined} onConfirm={onConfirm} />);
+    const field = screen.getByRole<HTMLInputElement>('textbox', { name: 'Name' });
+    expect(field.value).toBe('Plan');
+    expect(screen.getByRole('dialog', { name: 'Rename “Done”' })).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: 'Plan Next' } });
+    expect(screen.getByRole('dialog', { name: 'Rename “Done”' })).toBeInTheDocument();
+    expect(screen.queryByText('Rename “Plan Next”')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    expect(onConfirm).toHaveBeenCalledWith('Plan Next');
+  });
+
   it('Save graph lane focuses the name', () => {
     const model = { t: (key: string) => key, saveOpen: true, setSaveOpen: () => undefined, name: '', setName: () => undefined, saveLane: () => undefined };
     render(<GraphSaveDialog model={model as unknown as ReturnType<typeof useGraphController>} />);

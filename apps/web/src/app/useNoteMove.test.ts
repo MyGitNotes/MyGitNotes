@@ -88,6 +88,16 @@ describe('useNoteMove', () => {
     expect(params.beforeFileChange).not.toHaveBeenCalled();
   });
 
+  // lm-visual3 P3: the dialog's heading read the title typed in the editor, not the note's own.
+  it('opens the Rename dialog on the note as it is named, with a title already typed kept apart', () => {
+    const { hook } = setup({});
+    act(() => hook.result.current.renameNote(note, undefined, 'Plan')?.());
+    expect(hook.result.current.request).toMatchObject({ mode: 'rename', note: { title: note.title }, name: 'Plan' });
+    act(() => hook.result.current.cancel());
+    act(() => hook.result.current.renameNote(note)?.());
+    expect(hook.result.current.request).not.toHaveProperty('name');
+  });
+
   it('refuses to re-key a draft onto a note that already exists there', async () => {
     lookup.notes = [{ ...note, path: 'notes/work/idea.md' }];
     const { params, drafts, move } = setup({ draft: { note, base: null } });

@@ -387,7 +387,7 @@ export const AppContent: React.FC = () => {
           }
         },
         ...(liveConflict ? { mergeConflict: { mine: noteFileText(liveConflict.note), discard: () => updateDraft(note.notebookId, note.path, null) } } : {}),
-        fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined, editing: true })?.(), rename: (_revision, title) => noteMove.renameNote({ ...note, ...(title ? { title } : {}), live: undefined, editing: true })?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
+        fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined, editing: true })?.(), rename: (_revision, title) => noteMove.renameNote({ ...note, live: undefined, editing: true }, undefined, title || undefined)?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
       }
       : undefined;
     return {
@@ -916,7 +916,7 @@ export const AppContent: React.FC = () => {
                   />
                 )}
                 {manageTemplatesOpen && selectedNotebook && <ManageTemplatesDialog notebookTitle={selectedNotebook.title} templates={notebookTemplates.templates} builtin={builtinNoteTemplates(t)} loading={notebookTemplates.loading} error={notebookTemplates.error} readOnly={!canWrite} fileActions={canWriteFiles} onCreate={name => templateActions.createTemplate(selectedNotebook.id, name)} onEdit={templateActions.editTemplate} onRename={templateActions.renameTemplate} onDelete={templateActions.deleteTemplate} onClose={() => setManageTemplatesOpen(false)} />}
-                {noteMove.request?.mode === 'rename' && <RenameNoteDialog path={noteMove.request.note.path} title={noteMove.request.note.title} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={title => void noteMove.confirmRename(title)} />}
+                {noteMove.request?.mode === 'rename' && <RenameNoteDialog path={noteMove.request.note.path} title={noteMove.request.note.title} initial={noteMove.request.name} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={title => void noteMove.confirmRename(title)} />}
                 {bulkMoveOpen && bulkMoveNotebook && (
                   <FolderPickerDialog
                     notebooks={[bulkMoveNotebook]}

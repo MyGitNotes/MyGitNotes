@@ -4,10 +4,13 @@ import { WorkspaceDialog } from './WorkspaceDialog.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { noteStem, renamedPath } from '../lib/note-move.js';
 
-/** Names a note: its title, and the file name that follows from it in the same folder. */
-export function RenameNoteDialog({ path, title, busy, onClose, onConfirm }: { path: string; title: string; busy: boolean; onClose: () => void; onConfirm: (title: string) => void; }) {
+/**
+ * Names a note: its title, and the file name that follows from it in the same folder. The heading names the note by its
+ * current `title` until the new one is confirmed; the field starts from `initial`, a title already typed, or the title.
+ */
+export function RenameNoteDialog({ path, title, initial, busy, onClose, onConfirm }: { path: string; title: string; initial?: string; busy: boolean; onClose: () => void; onConfirm: (title: string) => void; }) {
   const { t } = useTranslation();
-  const [name, setName] = useState(title);
+  const [name, setName] = useState(initial ?? title);
   const valid = Boolean(noteStem(name));
   const submit = () => {
     if (valid && !busy) onConfirm(name);

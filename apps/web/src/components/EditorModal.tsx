@@ -114,7 +114,7 @@ const ZoomFrame: React.FC<{ note: NoteItem; committed?: NoteItem; error?: string
     <div className='note-overlay viewport-overlay dock-edge fixed inset-0 z-50 bg-scrim/60 backdrop-blur-sm flex items-center justify-center p-3 animate-fadeIn'>
       <div role='dialog' aria-modal={modal} aria-label='Note editor' className='note-dialog ui-dialog shadow-2xl w-full max-w-none h-full flex flex-col overflow-hidden transition-colors'>
         <ZoomError error={error} />
-        {borrowed ? <div ref={setSlot} className='note-editor-slot' /> : <NoteEditor key={`${props.draftScope}:${editorKey}`} {...props} note={note} frame='zoom' active onClose={editing.closeZoom} onMove={editing.moveNote?.(note)} onRename={editing.renameNote?.(note) && (title => editing.renameNote?.({ ...note, title })?.())} />}
+        {borrowed ? <div ref={setSlot} className='note-editor-slot' /> : <NoteEditor key={`${props.draftScope}:${editorKey}`} {...props} note={note} frame='zoom' active onClose={editing.closeZoom} onMove={editing.moveNote?.(note)} onRename={editing.renameNote?.(note) && (title => editing.renameNote?.(note, undefined, title)?.())} />}
       </div>
     </div>
   );

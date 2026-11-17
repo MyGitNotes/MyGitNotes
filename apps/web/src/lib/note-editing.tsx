@@ -96,8 +96,11 @@ interface NoteEditingValue {
   addToFocus: (note: NoteItem) => (() => void) | undefined;
   /** The Move to folder action for `note`, or undefined when its notebook is read-only. */
   moveNote?: (note: NoteItem) => (() => void) | undefined;
-  /** The Rename action for `note` (its `title` prefills the name), or undefined when its notebook is read-only. A compilation passes `applyTitle` to rename itself. */
-  renameNote?: (note: NoteItem, applyTitle?: (title: string) => void) => (() => void) | undefined;
+  /**
+   * The Rename action for `note`, or undefined when its notebook is read-only. The dialog names the note by its `title`;
+   * `name`, a title already typed, prefills the field, else the title does. A compilation passes `applyTitle` to rename itself.
+   */
+  renameNote?: (note: NoteItem, applyTitle?: (title: string) => void, name?: string) => (() => void) | undefined;
   /** Renames `note` to the typed title, its file name following, without the dialog; absent where renaming is unavailable. */
   renameNoteTo?: (note: NoteItem, title: string) => Promise<void>;
 }
