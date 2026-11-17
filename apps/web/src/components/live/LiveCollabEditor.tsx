@@ -69,6 +69,8 @@ export interface LiveCollabEditorProps {
 export interface LiveSession {
   text: Y.Text;
   online: boolean;
+  /** How many people have the note open, as the bar shows it. */
+  people: number;
 }
 
 /** Why the server refused the tab's document; `other` for any reason this tab does not know. */
@@ -108,6 +110,10 @@ interface Connection {
   unreachable?: boolean;
   /** The tab typed something the server has not stored: what the prompts about unsaved text ask about (`unsynced` also counts a connect's own sync step). */
   dirty?: boolean;
+  /**
+   * How many people have the note open: the server's count (`{ type: 'people', count }`), each person once with every
+   * window of theirs; until it first tells, this tab and every other name in awareness. Offline, this tab alone.
+   */
   people: number;
 }
 const START: Connection = { status: 'connecting', synced: false, unsynced: 0, people: 1 };
@@ -232,6 +238,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     };
     /** The socket as the provider last reported it, which `online` reads: a connect does nothing while it counts itself connected. */
     let status: Connection['status'] = 'connecting', synced = false, unsynced = 0, dirty = false;
+    /** The server counts the people: awareness, which a background tab stops renewing, then only shows cursors. */
+    let counted = false;
     /** The document the session opened, and the text at its last full sync, which a merge of kept typing takes as its base. */
     let opened = '', base = '';
     /** Whether the store holds this session's typing, and the merge id it is kept under. */
@@ -447,6 +455,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         onStatus: ({ status: next }) => {
           status = next as Connection['status'];
           if (status !== 'connected') synced = false;
+          // Offline, the tab knows only itself; the server tells it the count again as it connects.
+          if (status === 'disconnected') setConnection(current => ({ ...current, people: 1 }));
           if (status === 'disconnected' && reconnect) {
             reconnect = false;
             if (navigator.onLine) void provider?.connect();
@@ -478,8 +488,11 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           settle();
           setConnection(current => ({ ...current, dirty: next }));
         },
-        // The server writes each person's name; this tab counts itself once, and every other name once.
-        onAwarenessChange: ({ states }) => setConnection(current => ({ ...current, people: 1 + new Set(states.filter(state => state.clientId !== doc.clientID && typeof state.user?.name === 'string').map(state => state.user.name as string)).size })),
+        // A server that does not count: the server writes each person's name; this tab counts itself once, and every other name once.
+        onAwarenessChange: ({ states }) => {
+          if (counted) return;
+          setConnection(current => ({ ...current, people: 1 + new Set(states.filter(state => state.clientId !== doc.clientID && typeof state.user?.name === 'string').map(state => state.user.name as string)).size }));
+        },
         onStateless: ({ payload }) => {
           let message: { type?: unknown; reason?: unknown; };
           try {
@@ -487,7 +500,12 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           } catch {
             return;
           }
-          if (message.type === 'released') released();
+          if (message.type === 'people') {
+            const { count } = message as { count?: unknown; };
+            if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 10_000) return;
+            counted = true;
+            setConnection(current => ({ ...current, people: count }));
+          } else if (message.type === 'released') released();
           // Someone moved or renamed the note (§20.4): it is read again, which says where it lies, and the page follows it there.
           else if (message.type === 'moved') latest.current.onRefetch();
           else if (message.type === 'refused') end({ kind: 'refused', reason: message.reason === 'too-large' || message.reason === 'busy' ? message.reason : 'other' });
@@ -584,8 +602,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     liveReport.current = onLive;
   });
   useEffect(() => {
-    liveReport.current?.(shared ? { text: shared, online: writable } : null);
-  }, [shared, writable]);
+    liveReport.current?.(shared ? { text: shared, online: writable, people: connection.people } : null);
+  }, [shared, writable, connection.people]);
   useEffect(() => () => liveReport.current?.(null), []);
 
   // Typing the server has not stored yet is lost with the page.

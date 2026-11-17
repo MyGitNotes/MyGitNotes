@@ -136,6 +136,43 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect([one.asked, two.asked, one.refused, one.closes, one.told]).toEqual([1, 1, [], [], []]);
     });
 
+    it('tells every tab how many people have the note open, each person once however many windows, at once as they come, close, go offline and come back', async () => {
+      const server = await serverOver({ store: makeStore() });
+      await server.checkout();
+      const latest = (tab: LiveTab) => tab.people.at(-1);
+      const one = await server.tab(1), two = await server.tab(2);
+      await Promise.all([one.synced(), two.synced()]);
+      await until('both tabs count two people', () => latest(one) === 2 && latest(two) === 2, 1000);
+      // A second window of person 2 is told the count as it opens, and it counts them once: the same in every window.
+      const window = await server.tab(2);
+      await window.synced();
+      await until('the second window counts two people', () => latest(window) === 2, 1000);
+      expect([latest(one), latest(two)]).toEqual([2, 2]);
+      // Closing that window leaves person 2 with the note open in the other.
+      window.destroy();
+      await pause(200);
+      expect([latest(one), latest(two)]).toEqual([2, 2]);
+      // A closing editor takes its awareness state away before its socket closes: it stops counting then. The app's
+      // editor speaks for its client id once it is let in.
+      two.provider.awareness!.setLocalState({ cursor: null });
+      await pause(200);
+      two.provider.awareness!.setLocalState(null);
+      await until('person 1 counts one once person 2 closes the editor', () => latest(one) === 1, 1000);
+      two.provider.awareness!.setLocalState({ cursor: null });
+      await until('person 2 counts again', () => latest(one) === 2 && latest(two) === 2, 1000);
+      // Offline, person 2 stops counting at once; back online, their tab is told the count as it connects.
+      two.offline();
+      await until('person 1 counts one while person 2 is offline', () => latest(one) === 1, 1000);
+      const before = two.people.length;
+      two.online();
+      await two.synced();
+      await until('person 2 is told two people as they come back', () => two.people.length > before && latest(two) === 2 && latest(one) === 2, 1000);
+      // A tab that stays open counts however long it sends nothing: an idle or background tab is still there.
+      two.destroy();
+      await until('person 1 counts one once person 2 left', () => latest(one) === 1, 1000);
+      expect(one.told).toEqual([]);
+    });
+
     it("opens a document only for a ticket of its own: not for none, a malformed, an unknown, a used or an expired one, or another document's", async () => {
       const server = await serverOver({ store: makeStore(), files: twoNotes() });
       const { time } = server.live;
