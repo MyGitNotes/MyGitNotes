@@ -110,6 +110,27 @@ describe('useRoutedNote and a note the address follows to where it moved', () =>
     expect(hook.result.current.routedLoading).toBe(false);
   });
 
+  it('goes on showing the followed note past the time a follow is news, while the lists have not caught up (review6 F004)', async () => {
+    vi.useFakeTimers({ now: Date.now() });
+    try {
+      const { followMovedNote } = await import('./follow-moved-note.js');
+      const note = { notebookId: 'nb', path: 'notes/slow.md', title: 'Slow', content: '# Slow\n', metadata: {}, tags: [] };
+      lookup.current = { notes: [note], committed: [], loading: false, paused: false, error: '', updatedAt: 1 };
+      const hook = renderHook(({ route }) => useRoutedNote({ config, editorRoute: parseWorkspaceRoute(route, ''), editorNotebookId: 'nb', editingNote: null, loading: false, sourceId: 'src', setEditingNote: vi.fn() }), { initialProps: { route: '/notebooks/nb/notes/slow.md' } });
+      followMovedNote({ note, to: 'notes/archive/slow.md', notebook: { id: 'nb', root: 'notes' }, routedPath: 'notes/slow.md', search: '', relocatePaths: () => {}, navigate: () => {}, refresh: () => {} });
+      lookup.current = { notes: [], committed: [], loading: true, paused: false, error: '', updatedAt: 1 };
+      hook.rerender({ route: '/notebooks/nb/notes/archive/slow.md' });
+      expect(hook.result.current.routedNote).toEqual({ ...note, path: 'notes/archive/slow.md' });
+      // A minute and more later, the lists still read: the note stays shown where the address followed it.
+      vi.advanceTimersByTime(61_000);
+      lookup.current = { notes: [], committed: [], loading: true, paused: false, error: '', updatedAt: 2 };
+      hook.rerender({ route: '/notebooks/nb/notes/archive/slow.md' });
+      expect(hook.result.current.routedNote).toEqual({ ...note, path: 'notes/archive/slow.md' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('says the note is not found where the server says it is gone, though the address followed it there', async () => {
     const { followMovedNote } = await import('./follow-moved-note.js');
     const note = { notebookId: 'nb', path: 'notes/idea.md', title: 'Idea', content: '# Idea\n', metadata: {}, tags: [] };
