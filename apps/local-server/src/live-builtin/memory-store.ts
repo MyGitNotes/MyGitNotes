@@ -72,6 +72,7 @@ export function memoryLiveStore(): LiveStore {
       const link: StoredLink = known ? { ...known, ...fresh, epoch: known.epoch + 1, contentSeq: known.seq } : { id: randomBytes(16).toString('base64url'), repository, path, ...fresh, epoch: 1, seq: 0, contentSeq: 0 };
       // A reopened epoch starts with no move of its own.
       delete link.target;
+      delete link.movedBy;
       delete link.unmoved;
       delete link.unmovedReason;
       delete link.formerPaths;
@@ -176,6 +177,7 @@ export function memoryLiveStore(): LiveStore {
           else delete link.unmovedReason;
         }
         delete link.target;
+        delete link.movedBy;
       }
       Object.assign(link, { base: { commit: receipt.commit, blob: receipt.blob, contentHash: receipt.contentHash }, syncedAt: now, syncedHash: receipt.contentHash, conflict: structuredClone(receipt.conflict) });
       // The receipt's text is the text at the cut: whoever last typed at or before it is in the commit.
@@ -221,8 +223,12 @@ export function memoryLiveStore(): LiveStore {
       }
       if (link.path === null) return 'not-filed';
       setFormerPaths(link, withFormerPath(link.formerPaths, link.target, change.target ?? link.path));
+      delete link.movedBy;
       if (change.target === null) delete link.target;
-      else link.target = change.target;
+      else {
+        link.target = change.target;
+        if (change.movedBy) link.movedBy = structuredClone(change.movedBy);
+      }
       delete link.unmoved;
       delete link.unmovedReason;
       return 'retargeted';

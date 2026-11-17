@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { type EditionSourceConfig, isBuiltinEditor, LIVE_FORMER_PATHS, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, type LiveMergeRequest, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveRetargetRequest, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, type LiveUnmovedReason, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, rebaseLiveText, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
+import { type EditionSourceConfig, isBuiltinEditor, LIVE_FORMER_PATHS, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, type LiveIdentity, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, type LiveMergeRequest, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveRetargetRequest, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, type LiveUnmovedReason, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, rebaseLiveText, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
 import { memoryCommitCounter, MemoryEditionSource, type MemoryFiles } from './memory-edition-source.js';
 
 /** The clock the memory adapter reads, which a test moves on. */
@@ -93,6 +93,8 @@ interface Link {
   pathRule?: string;
   /** A filed note: where its next check-in moves it. */
   target?: string;
+  /** With `target`: who moved it there. */
+  movedBy?: LiveIdentity;
   /** A filed note: the target its last check-in did not move it to. */
   unmoved?: string;
   unmovedReason?: LiveUnmovedReason;
@@ -186,7 +188,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
   };
   const revision = (link: Link) => link.log ? `e${link.epoch}:${link.log.length - 1}` : `h:${liveContentHash(link.text)}`;
   const text = (link: Link) => ({ content: link.text, liveRevision: revision(link), contentHash: liveContentHash(link.text) });
-  const row = (link: Link): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), ...(link.path !== null && link.target !== undefined ? { target: link.target } : {}), ...(link.path !== null && link.unmoved !== undefined ? { unmoved: link.unmoved, ...(link.unmovedReason ? { unmovedReason: link.unmovedReason } : {}) } : {}), ...(link.path !== null && link.formerPaths?.length ? { formerPaths: [...link.formerPaths] } : {}), since: iso(link.since), ...(isBuiltinEditor(editor) ? {} : { editorUrl: `${editor.origin}/n/${link.id}`, embedUrl: `${editor.origin}/n/${link.id}?embed=1` }), contentHash: liveContentHash(link.text), activeEditors: link.active, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
+  const row = (link: Link): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), ...(link.path !== null && link.target !== undefined ? { target: link.target, ...(link.movedBy ? { movedBy: { ...link.movedBy } } : {}) } : {}), ...(link.path !== null && link.unmoved !== undefined ? { unmoved: link.unmoved, ...(link.unmovedReason ? { unmovedReason: link.unmovedReason } : {}) } : {}), ...(link.path !== null && link.formerPaths?.length ? { formerPaths: [...link.formerPaths] } : {}), since: iso(link.since), ...(isBuiltinEditor(editor) ? {} : { editorUrl: `${editor.origin}/n/${link.id}`, embedUrl: `${editor.origin}/n/${link.id}?embed=1` }), contentHash: liveContentHash(link.text), activeEditors: link.active, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
   const live = (repository: RepositoryId) => [...repositoryState(repository).links.values()].filter(link => link.live);
   const editorOf = (context: LiveContext, agent: boolean): EditorRef => {
     const { person } = context, shown = liveIdentityOf(context);
@@ -270,6 +272,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           if (known) link.checkouts += 1;
           Object.assign(link, { notebook, since: clock.now(), text: base.content, log: null, active: 0, lastEditAt: null, syncedAt: null, syncedHash: null, base: { commit: base.commit, blob: base.blob, contentHash: liveContentHash(base.content) }, conflict: null, edits: [], live: true, lease: null });
           delete link.target;
+          delete link.movedBy;
           delete link.unmoved;
           delete link.unmovedReason;
           delete link.formerPaths;
@@ -362,6 +365,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
             else delete link.unmovedReason;
           }
           delete link.target;
+          delete link.movedBy;
         }
         link.base = { commit: receipt.commit, blob: receipt.blob, contentHash: receipt.contentHash };
         link.syncedAt = clock.now();
@@ -407,8 +411,12 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
             }
             if (link.path === null) throw new LiveNotLiveError('A pending note moves by its path rule.');
             former(link, link.target, request.target ?? link.path);
+            delete link.movedBy;
             if (request.target === null) delete link.target;
-            else link.target = request.target;
+            else {
+              link.target = request.target;
+              if (request.movedBy) link.movedBy = { ...request.movedBy };
+            }
             delete link.unmoved;
             delete link.unmovedReason;
             return row(link);

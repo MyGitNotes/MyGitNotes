@@ -600,6 +600,25 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.link(link.id)).not.toHaveProperty('pathRule');
     });
 
+    it('keeps who moved a filed link with its target, replaced by the next move and gone with the target and at the receipt (FCP-F003)', async () => {
+      const link = await open(note, '# A\n', T0);
+      const sam = { name: 'Sam', email: 'sam@example.test' };
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 1), { target: 'notes/life/moved/a.md', movedBy: sam }, T0 + 2)).toBe('retargeted');
+      expect(await store.link(link.id)).toMatchObject({ target: 'notes/life/moved/a.md', movedBy: sam });
+      // A move by nobody named drops the mover of the move it replaces.
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 3), { target: 'notes/life/b.md' }, T0 + 4)).toBe('retargeted');
+      expect(await store.link(link.id)).not.toHaveProperty('movedBy');
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 5), { target: 'notes/life/c.md', movedBy: { name: 'Pat' } }, T0 + 6)).toBe('retargeted');
+      expect(await store.link(link.id)).toMatchObject({ movedBy: { name: 'Pat' } });
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 7), { target: null, movedBy: sam }, T0 + 8)).toBe('retargeted');
+      expect(await store.link(link.id)).not.toHaveProperty('movedBy');
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 9), { target: 'notes/life/moved/a.md', movedBy: sam }, T0 + 10)).toBe('retargeted');
+      const token = await leased(link.id, T0 + 11);
+      expect(await store.leaseRead(link.id, token, 0, hash('a'), T0 + 11)).toBe(true);
+      expect(await store.synced(link.id, token, receipt(hash('a'), 'notes/life/moved/a.md'), T0 + 12)).toBe('ok');
+      expect(await store.link(link.id)).not.toHaveProperty('movedBy');
+    });
+
     it('moves a filed link to its target at the receipt that names it, and its path then names it, the old one no longer', async () => {
       const link = await open(note, '# A\n', T0);
       expect(await store.retarget(link.id, await leased(link.id, T0 + 1), { target: 'notes/life/moved/a.md' }, T0 + 2)).toBe('retargeted');

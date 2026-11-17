@@ -205,6 +205,18 @@ export function liveAuthorship(editors: readonly LiveEditor[], committer?: { per
   return { ...(lead ? { author: lead } : {}), coAuthors, skipped, agent: sorted.some(editor => editor.agent) };
 }
 
+/**
+ * The co-authors of a check-in that moves a note, with whoever moved it while others edited it (`movedBy`) among them:
+ * the owner's rule credits a move to its mover. Left as they are when the mover authors the commit, is a co-author
+ * already, or cannot be written into a commit.
+ */
+function withMover(coAuthors: readonly CommitAuthor[], author: CommitAuthor | undefined, movedBy: LiveIdentity | undefined): CommitAuthor[] {
+  const mover = acceptedAuthor(movedBy);
+  const email = mover?.email.toLowerCase();
+  if (!mover || email === author?.email.toLowerCase() || coAuthors.some(entry => entry.email.toLowerCase() === email) || coAuthors.length >= MAX_CO_AUTHORS) return [...coAuthors];
+  return [...coAuthors, mover];
+}
+
 /** A credential a check-in may commit with: a person's own, or with no person the deployment's (0.20). */
 interface Committer {
   person?: WorkspacePerson;
@@ -533,7 +545,7 @@ export async function discardLink(liveNotes: LiveNotes, repository: RepositoryId
  * A retarget: a pending note's new rule, as {@link retargetLivePathRule} builds it, or the path a filed note moves to at
  * its next check-in (null: where it lies).
  */
-export type LiveRetargetOptions = Pick<LiveCheckInOptions, 'sleep'> & ({ pathRule: string; } | { target: string | null; });
+export type LiveRetargetOptions = Pick<LiveCheckInOptions, 'sleep'> & ({ pathRule: string; } | { target: string | null; movedBy?: LiveIdentity; });
 
 /**
  * Moves or renames a pending note (§20.2), or sets where a filed note moves at its next check-in (§20.4): takes its
@@ -557,7 +569,7 @@ export async function retargetLink(liveNotes: LiveNotes, repository: RepositoryI
   }
   const held = lease;
   try {
-    return await adapter(() => liveNotes.service.retarget!(repository, id, held, 'pathRule' in options ? { pathRule: options.pathRule } : { target: options.target }));
+    return await adapter(() => liveNotes.service.retarget!(repository, id, held, 'pathRule' in options ? { pathRule: options.pathRule } : { target: options.target, ...(options.target !== null && options.movedBy ? { movedBy: options.movedBy } : {}) }));
   } catch (error) {
     // A retarget that failed may have left the lease held: it is given back where the adapter can, so no check-in waits it out.
     if (typeof liveNotes.service.unlease === 'function') await liveNotes.service.unlease(repository, id, held).catch(() => {});
@@ -745,7 +757,7 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
         }
         if (planned) {
           const message = checkInMessage(moveTo, id, planned.content, { filing: false, ...(overwrote ? { overwrote } : {}), ...(agentDay ? { agentDay } : {}), moved: file });
-          const { revision } = await source.commitChanges(planned.changes, snapshot.sha, 'move', 'files', message, snapshot, coAuthors);
+          const { revision } = await source.commitChanges(planned.changes, snapshot.sha, 'move', 'files', message, snapshot, withMover(coAuthors, author, row.movedBy));
           announceLiveCommit(liveNotes, { repository, path: moveTo, content: planned.content, commit: revision, source, ...(author ? { author } : {}), ...(as ? { person: as } : {}) });
           if (planned.content !== content) await adapter(() => service.mergeIn(repository, id, lease, { content: planned.content, baseRevision: revisionNow }));
           return { sha: revision, text: planned.content, at: moveTo };

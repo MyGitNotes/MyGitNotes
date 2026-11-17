@@ -602,6 +602,19 @@ describe('a socket the server closed for a new ticket (4000)', () => {
     expect(screen.getByText('Offline')).toBeInTheDocument();
   });
 
+  it('keeps the count of the people across the renewal, and resets it on any other close (FCP-F001)', async () => {
+    await open();
+    sync();
+    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'people', count: 2 }) }));
+    renew();
+    expect(screen.getByText('2 editing')).toBeInTheDocument();
+    emit(config => {
+      config.onStatus?.({ status: 'disconnected' });
+      config.onClose?.({ event: { code: 1006, reason: '' } });
+    });
+    expect(screen.getByText('1 editing')).toBeInTheDocument();
+  });
+
   it('says offline once a retry after it fails too', async () => {
     await open();
     sync();

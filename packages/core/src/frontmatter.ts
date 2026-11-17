@@ -336,6 +336,12 @@ export function replaceNoteTags(raw: string, tags: string[]): string {
   return raw.slice(0, start) + replacement + raw.slice(end);
 }
 
+function setQuoted(document: YAML.Document, key: string, value: string): void {
+  const node = document.createNode(value) as YAML.Scalar;
+  node.type = 'QUOTE_DOUBLE';
+  document.set(key, node);
+}
+
 /**
  * Fills `created`/`updated` only where missing, from the given fallbacks.
  * Never overwrites an existing value or touches any other frontmatter key
@@ -343,12 +349,6 @@ export function replaceNoteTags(raw: string, tags: string[]): string {
  * cannot read (a fence that never closes, YAML that does not parse) is left
  * as it is and answered `unreadable`.
  */
-function setQuoted(document: YAML.Document, key: string, value: string): void {
-  const node = document.createNode(value) as YAML.Scalar;
-  node.type = 'QUOTE_DOUBLE';
-  document.set(key, node);
-}
-
 export function fillMissingNoteTimestamps(raw: string, created: string | undefined, updated: string | undefined): { raw: string; changed: boolean; unreadable?: true; } {
   const match = raw.match(FRONTMATTER_REGEX);
   if (match && parseNoteContent(raw).hasFrontmatter) {

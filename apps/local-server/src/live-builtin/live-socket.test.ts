@@ -173,6 +173,54 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(one.told).toEqual([]);
     });
 
+    it('tells the others that someone came only once their presence is written, and the one who came at once (FCP-F002)', async () => {
+      const real = makeStore(), slow = gate();
+      let hold = false;
+      const server = await serverOver({
+        store: wrapStore(real, {
+          presence: async (...given) => {
+            if (hold) await slow.opened;
+            return real.presence(...given);
+          },
+        }),
+      });
+      await server.checkout();
+      const latest = (tab: LiveTab) => tab.people.at(-1);
+      const one = await server.tab(1);
+      await one.synced();
+      await until('person 1 counts one', () => latest(one) === 1, 1000);
+      hold = true;
+      const two = await server.tab(2);
+      await two.synced();
+      await until('person 2 is told two at once', () => latest(two) === 2, 1000);
+      await pause(200);
+      // Person 2's presence is not written yet: person 1, whose lists would read it again, is not told yet.
+      expect(latest(one)).toBe(1);
+      slow.open();
+      await until('person 1 counts two once person 2 is written', () => latest(one) === 2, 1000);
+    });
+
+    it('keeps the count of the others as a tab renews its socket: they are never told it went down (FCP-F001)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { socketMs: 60_000, beatMs: 40 } });
+      const { time } = server.live;
+      await server.checkout();
+      const latest = (tab: LiveTab) => tab.people.at(-1);
+      const one = await server.tab(1);
+      await one.synced();
+      time.advance(30_000);
+      const two = await server.tab(2);
+      await two.synced();
+      await until('both count two', () => latest(one) === 2 && latest(two) === 2, 1000);
+      const told = two.people.length;
+      // Person 1's socket is renewed; person 2's is not due yet.
+      time.advance(30_000);
+      await until('person 1 renewed', () => one.closes.length === 1 && one.asked === 2 && one.provider.isSynced, 2000);
+      await pause(300);
+      expect(one.closes).toEqual([{ code: 4000, reason: 'Live ticket renewal' }]);
+      expect(two.people.slice(told)).toEqual([]);
+      expect(latest(one)).toBe(2);
+    });
+
     it("opens a document only for a ticket of its own: not for none, a malformed, an unknown, a used or an expired one, or another document's", async () => {
       const server = await serverOver({ store: makeStore(), files: twoNotes() });
       const { time } = server.live;

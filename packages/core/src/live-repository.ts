@@ -280,7 +280,9 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       const link = await linkAt(path);
       if (!link || link.checkout.path === null || typeof liveNotes.service.retarget !== 'function') throw new LiveNotLiveError();
       try {
-        const checkout = await checkedRow(await retargetLink(liveNotes, repository, link.checkout.id, { target, ...(checkIn?.sleep ? { sleep: checkIn.sleep } : {}) }));
+        // Whoever moves it is credited by the check-in that moves it, however much later (a co-author unless its author).
+        const mover = liveIdentityOf(context);
+        const checkout = await checkedRow(await retargetLink(liveNotes, repository, link.checkout.id, { target, ...(mover ? { movedBy: mover } : {}), ...(checkIn?.sleep ? { sleep: checkIn.sleep } : {}) }));
         if (checkout.id !== link.checkout.id || checkout.path !== link.checkout.path || (checkout.target ?? null) !== target) throw new LiveUnavailableError();
         return checkout;
       } finally {

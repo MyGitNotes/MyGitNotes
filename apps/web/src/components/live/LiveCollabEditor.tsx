@@ -115,6 +115,8 @@ interface Connection {
    * window of theirs; until it first tells, this tab and every other name in awareness. Offline, this tab alone.
    */
   people: number;
+  /** The count before the socket was last reported disconnected, until its close says whether it was for a new ticket. */
+  kept?: number;
 }
 const START: Connection = { status: 'connecting', synced: false, unsynced: 0, people: 1 };
 /** How long nothing may be unsaved before the bar says 已儲存: each keystroke is stored within a few milliseconds. */
@@ -455,8 +457,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
         onStatus: ({ status: next }) => {
           status = next as Connection['status'];
           if (status !== 'connected') synced = false;
-          // Offline, the tab knows only itself; the server tells it the count again as it connects.
-          if (status === 'disconnected') setConnection(current => ({ ...current, people: 1 }));
+          // Offline, the tab knows only itself; the server tells it the count again as it connects. A close for a new
+          // ticket, which the provider reports right after, gives the count back: the tab comes straight back.
+          if (status === 'disconnected') setConnection(current => ({ ...current, people: 1, kept: current.people }));
           if (status === 'disconnected' && reconnect) {
             reconnect = false;
             if (navigator.onLine) void provider?.connect();
@@ -464,7 +467,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           setConnection(current => ({ ...current, status: status, synced: status === 'connected' && current.synced }));
         },
         // After a close for a new ticket the provider connects again as usual, which reads as connecting; any other close, a failed retry included, reads as offline.
-        onClose: ({ event }) => setConnection(current => ({ ...current, renewing: event.code === RENEW_CODE })),
+        onClose: ({ event }) => setConnection(({ kept, ...current }) => ({ ...current, renewing: event.code === RENEW_CODE, people: event.code === RENEW_CODE && kept !== undefined ? kept : current.people })),
         onSynced: ({ state }) => {
           if (!state || stopped) return;
           synced = true;

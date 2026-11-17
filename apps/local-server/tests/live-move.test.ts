@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { Router } from 'express';
-import { type EditionSourceConfig, type LiveContext, type LiveEditorInfo, LiveUnavailableError, parseWorkspaceConfig, RemoteSource, sourceIdentity, StaleRevisionError, type WorkspaceConfigSource } from '@mygitnotes/core';
+import { checkInLink, type EditionSourceConfig, type LiveContext, type LiveEditorInfo, LiveUnavailableError, parseWorkspaceConfig, RemoteSource, sourceIdentity, StaleRevisionError, type WorkspaceConfigSource } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { type IdentityService } from '../src/identity.js';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
@@ -152,6 +152,34 @@ describe('moving a live note someone else edits', () => {
     liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程\nSam 寫的\n', sam);
     expect(await move(weekly, archived)).toMatchObject({ status: 200, body: { live: { checkIn: { committed: true } } } });
     expect(commits()).toHaveLength(1);
+    expect(commits()[0].author).toEqual({ name: 'Pat', email: 'pat@example.test' });
+    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Sam <sam@example.test>']);
+  });
+
+  it('credits a move that waits for a later check-in to its mover, a co-author of the commit that moves it (FCP-F003)', async () => {
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    expect(commits()).toEqual([]);
+    liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程\nSam 寫的\n', sam);
+    liveNotes.setActive(repository, id, 0);
+    // A scheduled check-in, which nobody asked for: whoever typed last authors it, and the mover is credited.
+    expect(await checkInLink(liveNotes, repository, id, { mode: 'scheduled' })).toMatchObject({ committed: true });
+    expect(commits()).toHaveLength(1);
+    expect(commits()[0].paths).toContain(archived);
+    expect(commits()[0].author).toEqual({ name: 'Sam', email: 'sam@example.test' });
+    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Pat <pat@example.test>']);
+  });
+
+  it('does not list the mover again when they author the later check-in that moves the note', async () => {
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程\nSam 寫的\n', sam);
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { committed: true } });
     expect(commits()[0].author).toEqual({ name: 'Pat', email: 'pat@example.test' });
     expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Sam <sam@example.test>']);
   });

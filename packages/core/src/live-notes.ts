@@ -89,6 +89,11 @@ export interface LiveCheckout {
    */
   target?: string;
   /**
+   * With `target`: who moved the note there, where the adapter keeps it. The check-in that moves it lists them as a
+   * co-author (the owner's rule: a move is credited to whoever moved it), unless they author that commit.
+   */
+  movedBy?: LiveIdentity;
+  /**
    * Filed only: a target the last check-in did not move the note to, since Git held that path, or as `unmovedReason`
    * says; the next move clears it.
    */
@@ -207,7 +212,7 @@ export interface LiveLease {
 export type LiveUnmovedReason = 'too-large';
 export const isLiveUnmovedReason = (value: unknown): value is LiveUnmovedReason => value === 'too-large';
 /** What `retarget` sets: a pending note's path rule, or where a filed note moves at its next check-in. */
-export type LiveRetargetRequest = { pathRule: string; } | { target: string | null; };
+export type LiveRetargetRequest = { pathRule: string; } | { target: string | null; movedBy?: LiveIdentity; };
 /** The live text with its row and the editors since the last sync, with their email. */
 export interface LiveDetail extends LiveText {
   checkout: LiveCheckout;
@@ -640,6 +645,13 @@ export interface LiveRowContext {
   notebook(key: NotebookKey): NotebookConfig | undefined;
 }
 
+/** A row's `movedBy`, when it is a name with an optional email; anything else is left out. */
+function movedByOf(value: unknown): LiveIdentity | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const { name, email } = value as { name?: unknown; email?: unknown; };
+  if (typeof name !== 'string' || !name || (email !== undefined && typeof email !== 'string')) return undefined;
+  return { name, ...(email ? { email } : {}) };
+}
 /**
  * A row an adapter returned, checked before use and reduced to the contract's fields; null for a bad row, which is
  * logged by its id (or as an invalid id) and nothing else, since a row may hold anything.
@@ -663,7 +675,7 @@ export function liveCheckoutOf(row: unknown, context: LiveRowContext): LiveCheck
   // Paths it was read at are a courtesy to tabs still there: one that is no note of its notebook, or its path or target now, is left out.
   const notebook = context.notebook(value.notebook as string)!;
   const former = !pending && Array.isArray(value.formerPaths) ? [...new Set(value.formerPaths.filter((entry): entry is string => isNoteOf(entry, notebook) && entry !== value.path && entry !== value.target))].slice(-LIVE_FORMER_PATHS) : [];
-  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), ...(!pending && value.target !== undefined ? { target: value.target as string } : {}), ...(!pending && value.unmoved !== undefined ? { unmoved: value.unmoved as string, ...(value.unmovedReason !== undefined ? { unmovedReason: value.unmovedReason as LiveUnmovedReason } : {}) } : {}), ...(former.length ? { formerPaths: former } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
+  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), ...(!pending && value.target !== undefined ? { target: value.target as string, ...(movedByOf(value.movedBy) ? { movedBy: movedByOf(value.movedBy)! } : {}) } : {}), ...(!pending && value.unmoved !== undefined ? { unmoved: value.unmoved as string, ...(value.unmovedReason !== undefined ? { unmovedReason: value.unmovedReason as LiveUnmovedReason } : {}) } : {}), ...(former.length ? { formerPaths: former } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
 }
 
 /**
