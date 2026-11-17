@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { Router } from 'express';
-import { type EditionSourceConfig, type LiveContext, type LiveEditorInfo, parseWorkspaceConfig, sourceIdentity, type WorkspaceConfigSource } from '@mygitnotes/core';
+import { type EditionSourceConfig, type LiveContext, type LiveEditorInfo, LiveUnavailableError, parseWorkspaceConfig, RemoteSource, sourceIdentity, StaleRevisionError, type WorkspaceConfigSource } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { type IdentityService } from '../src/identity.js';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
@@ -171,12 +171,14 @@ describe('moving a live note someone else edits', () => {
     await move(weekly, archived);
     await gitCommit(archived, '# Someone else\n');
     liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程\n續寫\n', sam);
+    // The editor stays active, so the manual check-in retries its release with real waits (about 9 s): bounded at about 4x (LM-F004).
     expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: weekly, committed: true, unmoved: archived } });
     expect(files.get(archived)).toBe('# Someone else\n');
     expect(files.get(weekly)).toBe('---\ntitle: 公司週會\n---\n議程\n續寫\n');
     expect(await rows()).toMatchObject([{ id, path: weekly, unmoved: archived }]);
+    expect((await rows())[0]).not.toHaveProperty('unmovedReason');
     expect((await read(weekly)).body.note.live).toMatchObject({ unmoved: archived });
-  });
+  }, 40_000);
 
   it('replaces the target with a second move, and a move back to where it lies clears it', async () => {
     await start();
@@ -192,22 +194,68 @@ describe('moving a live note someone else edits', () => {
     expect(commits()).toEqual([]);
   });
 
-  it('moves a folder now and its live note at its check-in', async () => {
+  it('moves a folder now and its live note at its check-in, every link right at each step', async () => {
+    const pastWeekly = 'notes/life/past/2026-11-17 公司週會.md';
+    files.set(weekly, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
+    files.set('notes/life/會議/other.md', '# Other\n\n[w](2026-11-17%20公司週會.md)\n');
     await start();
     const id = await open(weekly);
     liveNotes.setActive(repository, id, 1);
     const moved = await move('notes/life/會議', 'notes/life/past');
-    expect(moved).toMatchObject({ status: 200, body: { pathMap: { 'notes/life/會議/other.md': 'notes/life/past/other.md', [weekly]: 'notes/life/past/2026-11-17 公司週會.md' } } });
-    // The links to the live note already point where the folder goes; its check-in moves the note there.
-    expect(commits().map(commit => commit.paths)).toEqual([[index, 'notes/life/past/other.md', 'notes/life/會議/other.md'].sort()]);
-    expect(await rows()).toMatchObject([{ id, path: weekly, target: 'notes/life/past/2026-11-17 公司週會.md' }]);
+    expect(moved).toMatchObject({ status: 200, body: { pathMap: { 'notes/life/會議/other.md': 'notes/life/past/other.md', [weekly]: pastWeekly } } });
+    expect(moved.body.liveLeft).toBeUndefined();
+    // The links to the live note keep its Git path, where it still lies; its check-in moves it and rewrites them (LM-F006).
+    expect(commits().map(commit => commit.paths)).toEqual([['notes/life/past/other.md', 'notes/life/會議/other.md'].sort()]);
+    expect(files.get(index)).toBe('# Index\n\n[週會](會議/2026-11-17%20公司週會.md)\n');
+    expect(decodeURIComponent(files.get('notes/life/past/other.md')!)).toContain('](../會議/2026-11-17 公司週會.md)');
+    // Its own link to a note the folder took along follows that note at once, from where it lies (LM-F002).
+    expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toContain('[o](../past/other.md)');
+    expect(await rows()).toMatchObject([{ id, path: weekly, target: pastWeekly }]);
     liveNotes.setActive(repository, id, 0);
-    expect(await checkIn('notes/life/past/2026-11-17 公司週會.md')).toMatchObject({ status: 200, body: { committed: true, moved: { from: weekly } } });
-    expect(files.has('notes/life/past/2026-11-17 公司週會.md')).toBe(true);
+    expect(await checkIn(pastWeekly)).toMatchObject({ status: 200, body: { committed: true, moved: { from: weekly } } });
+    expect(files.get(pastWeekly)).toBe('---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
+    expect(decodeURIComponent(files.get(index)!)).toContain('](past/2026-11-17 公司週會.md)');
+    expect(decodeURIComponent(files.get('notes/life/past/other.md')!)).toContain('[w](2026-11-17 公司週會.md)');
     expect([...files.keys()].some(file => file.startsWith('notes/life/會議/'))).toBe(false);
   });
 
+  it('keeps every link right when a folder move\'s live note finds its target taken at its check-in (LM-F006)', async () => {
+    const pastWeekly = 'notes/life/past/2026-11-17 公司週會.md';
+    files.set(weekly, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move('notes/life/會議', 'notes/life/past');
+    await gitCommit(pastWeekly, '# Someone else\n');
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(pastWeekly)).toMatchObject({ status: 200, body: { path: weekly, committed: true, unmoved: pastWeekly } });
+    expect(files.get(pastWeekly)).toBe('# Someone else\n');
+    // The note stays where the links to it lead, and its own link still finds the note that moved.
+    expect(files.get(index)).toBe('# Index\n\n[週會](會議/2026-11-17%20公司週會.md)\n');
+    expect(files.get(weekly)).toBe('---\ntitle: 公司週會\n---\n議程 [o](../past/other.md)\n');
+  });
+
+  it('answers a folder move whose commit landed with the live notes it could not take along, which stay where the links lead (LM-F003)', async () => {
+    files.set(weekly, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    vi.spyOn(liveNotes.service, 'retarget').mockRejectedValue(new LiveUnavailableError());
+    const moved = await move('notes/life/會議', 'notes/life/past');
+    expect(moved).toMatchObject({ status: 200, body: { pathMap: { 'notes/life/會議/other.md': 'notes/life/past/other.md' }, liveLeft: [{ path: weekly }] } });
+    expect(moved.body.pathMap).not.toHaveProperty([weekly]);
+    expect(files.has('notes/life/past/other.md')).toBe(true);
+    expect((await rows())[0]).not.toHaveProperty('target');
+    expect(files.get(index)).toBe('# Index\n\n[週會](會議/2026-11-17%20公司週會.md)\n');
+    expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toContain('[o](../past/other.md)');
+    // The folder tree answers the same way.
+    const revision = (await call('GET', '/api/folder-manager?notebookId=notes~life')).body.revision;
+    expect(await call('POST', '/api/folder-manager', { command: { kind: 'move', notebookId: 'notes~life', path: '會議', parent: 'archive' }, revision })).toMatchObject({ status: 200, body: { liveLeft: [{ path: weekly }] } });
+    expect((await rows())[0]).not.toHaveProperty('target');
+  });
+
   it('moves a folder from the folder tree the same way', async () => {
+    files.set(weekly, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
     await start();
     const id = await open(weekly);
     liveNotes.setActive(repository, id, 1);
@@ -215,7 +263,12 @@ describe('moving a live note someone else edits', () => {
     expect(await call('POST', '/api/folder-manager', { command: { kind: 'move', notebookId: 'notes~life', path: '會議', parent: 'archive' }, revision })).toMatchObject({ status: 200 });
     expect(files.has('notes/life/archive/會議/other.md')).toBe(true);
     expect(files.has(weekly)).toBe(true);
+    expect(files.get(index)).toBe('# Index\n\n[週會](會議/2026-11-17%20公司週會.md)\n');
     expect(await rows()).toMatchObject([{ id, path: weekly, target: 'notes/life/archive/會議/2026-11-17 公司週會.md' }]);
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn('notes/life/archive/會議/2026-11-17 公司週會.md')).toMatchObject({ status: 200, body: { committed: true, moved: { from: weekly } } });
+    expect(files.get('notes/life/archive/會議/2026-11-17 公司週會.md')).toBe('---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
+    expect(decodeURIComponent(files.get(index)!)).toContain('](archive/會議/2026-11-17 公司週會.md)');
   });
 
   it('keeps refusing a deletion while others edit, and a move where the live editor cannot retarget', async () => {
@@ -248,5 +301,116 @@ describe('moving a live note someone else edits', () => {
     expect(String(answer.result!.hint)).toMatch(/check-in/i);
     expect(commits()).toEqual([]);
     expect(await rows()).toMatchObject([{ id, target: archived }]);
+    // Moved back, then with its folder: the links to it keep its Git path, and its own link follows the folder.
+    await move(archived, weekly);
+    liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n', sam);
+    const folder = await tool('mv', { source: 'notes/life/會議', destination: 'notes/life/past', recursive: true, revision: (await tool('glob', { pattern: 'notes/**/*.md' })).result!.revision as string });
+    expect(folder).toMatchObject({ result: { live: true } });
+    expect(files.get(index)).toBe('# Index\n\n[週會](會議/2026-11-17%20公司週會.md)\n');
+    expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toContain('[o](../past/other.md)');
+    expect(await rows()).toMatchObject([{ id, path: weekly, target: 'notes/life/past/2026-11-17 公司週會.md' }]);
+  });
+
+  it('rewrites the moving note\'s own links once when its move commit is tried again (LM-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    const merged: string[] = [];
+    const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service);
+    vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
+      merged.push(args[3].content);
+      return mergeIn(...args);
+    });
+    const commit = RemoteSource.prototype.commitChanges;
+    let stale = 1;
+    vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function (this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
+      if (args[2] === 'move' && stale-- > 0) throw new StaleRevisionError([repository]);
+      return commit.apply(this, args);
+    });
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true, moved: { from: weekly } } });
+    expect(files.get(archived)).toBe('---\ntitle: 公司週會\n---\n議程 [x](old.md)\n');
+    // The live text takes the rewrite once, after the commit landed.
+    expect(merged).toEqual(['---\ntitle: 公司週會\n---\n議程 [x](old.md)\n']);
+  });
+
+  it('commits the note in place with its own text when the retried move finds its target taken (LM-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.type(repository, id, own.replace('議程', '議程二'), sam);
+    liveNotes.setActive(repository, id, 0);
+    const merged: string[] = [];
+    const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service);
+    vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
+      merged.push(args[3].content);
+      return mergeIn(...args);
+    });
+    const commit = RemoteSource.prototype.commitChanges;
+    let stale = 1;
+    vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function (this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
+      if (args[2] === 'move' && stale-- > 0) {
+        await gitCommit(archived, '# Someone else\n');
+        throw new StaleRevisionError([repository]);
+      }
+      return commit.apply(this, args);
+    });
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: weekly, committed: true, unmoved: archived } });
+    expect(files.get(archived)).toBe('# Someone else\n');
+    expect(files.get(weekly)).toBe(own.replace('議程', '議程二'));
+    expect(merged).toEqual([]);
+  });
+
+  it('finishes a move whose commit landed but whose live text missed the rewrite, rewriting it once (LM-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n\n結論\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    vi.spyOn(liveNotes.service, 'mergeIn').mockRejectedValueOnce(new LiveUnavailableError());
+    expect((await checkIn(archived)).status).toBe(502);
+    expect(files.get(archived)).toBe(own.replace('../archive/old.md', 'old.md'));
+    // Typing goes on in the live text, which still holds the links as they were.
+    liveNotes.type(repository, id, own.replace('結論', '結論二'), sam);
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true } });
+    expect(files.get(archived)).toBe(own.replace('../archive/old.md', 'old.md').replace('結論', '結論二'));
+    expect(files.has(weekly)).toBe(false);
+  });
+
+  it('commits a note in place, marked unmoved for its size, when its move would change too many files (LM-F005)', async () => {
+    for (let n = 0; n < 201; n++) files.set(`notes/life/refs/r${n}.md`, `[w](../會議/2026-11-17%20公司週會.md)\n`);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    expect(await move(weekly, archived)).toMatchObject({ status: 200, body: { live: { target: archived } } });
+    liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程\n續寫\n', sam);
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: weekly, committed: true, unmoved: archived, unmovedReason: 'too-large' } });
+    expect(files.get(weekly)).toBe('---\ntitle: 公司週會\n---\n議程\n續寫\n');
+    expect(files.has(archived)).toBe(false);
+  });
+
+  it('moves a note its mover alone edits in place when the move is too large, keeps it open marked with the reason, and checks it in again (LM-F005)', async () => {
+    for (let n = 0; n < 201; n++) files.set(`notes/life/refs/r${n}.md`, `[w](../會議/2026-11-17%20公司週會.md)\n`);
+    await start();
+    const id = await open(weekly);
+    liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程\n續寫\n', pat);
+    liveNotes.setActive(repository, id, 1);
+    expect(await move(weekly, archived, { editing: true })).toMatchObject({ status: 200, body: { live: { path: weekly, target: null, checkIn: { path: weekly, committed: true, released: false, unmoved: archived, unmovedReason: 'too-large' } } } });
+    expect(await rows()).toMatchObject([{ id, path: weekly, unmoved: archived, unmovedReason: 'too-large' }]);
+    expect((await read(weekly)).body.note.live).toMatchObject({ unmoved: archived, unmovedReason: 'too-large' });
+    liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程\n續寫\n再寫\n', sam);
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(weekly)).toMatchObject({ status: 200, body: { path: weekly, committed: true, released: true } });
+    expect(files.get(weekly)).toBe('---\ntitle: 公司週會\n---\n議程\n續寫\n再寫\n');
   });
 });
