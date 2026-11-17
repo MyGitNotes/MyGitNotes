@@ -59,6 +59,18 @@ describe('backfill-note-timestamps CLI', () => {
 
     expect(fs.readFileSync(path.join(root, 'notes/personal/complete.md'), 'utf8')).toBe(completeRaw);
   });
+  it('reports a note whose frontmatter cannot be read as skipped and unreadable, never as complete, and leaves it as it is', async () => {
+    const brokenRaw = '---\ntitle: Broken\n\nThe fence never closes.\n';
+    write('notes/personal/broken.md', brokenRaw);
+    const completeRaw = '---\ncreated: "2010-01-01T00:00:00.000Z"\nupdated: "2010-01-02T00:00:00.000Z"\n---\n\nAlready complete.\n';
+    write('notes/personal/complete.md', completeRaw);
+    await commitAt(['notes/personal/broken.md', 'notes/personal/complete.md'], 'add notes', '2026-09-15T12:00:00+00:00');
+    const output = backfill();
+    expect(fs.readFileSync(path.join(root, 'notes/personal/broken.md'), 'utf8')).toBe(brokenRaw);
+    expect(output).toContain('[backfill] Skipped notes/personal/broken.md: its frontmatter cannot be read.');
+    expect(output).toContain('Updated 0 note(s), skipped 1 (already complete), 1 unreadable, 0 without git history.');
+  });
+
   it('backfills the notebooks of every mapped worktree from its own manifest, and names a worktree without one', async () => {
     const second = fs.mkdtempSync(path.join(os.tmpdir(), 'github-notes-backfill-second-'));
     const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'github-notes-backfill-bare-'));

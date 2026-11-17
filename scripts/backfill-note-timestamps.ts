@@ -12,6 +12,7 @@ async function backfillNoteTimestamps() {
 
   let updated = 0;
   let skipped = 0;
+  let unreadable = 0;
   let noHistory = 0;
 
   // Every visible member worktree mygitnotes.server.yaml maps is processed with the notebooks of its own manifest.
@@ -39,7 +40,14 @@ async function backfillNoteTimestamps() {
         const raw = fs.readFileSync(safePath, 'utf-8');
         // Imported notes keep their original modification time in `modified`; prefer it over git history.
         const modified = typeof note.metadata.modified === 'string' && !Number.isNaN(Date.parse(note.metadata.modified)) ? new Date(note.metadata.modified).toISOString() : undefined;
-        const { raw: patched, changed } = fillMissingNoteTimestamps(raw, first, modified ?? last);
+        const filled = fillMissingNoteTimestamps(raw, first, modified ?? last);
+        const { raw: patched, changed } = filled;
+        // A frontmatter block that never closes, or does not parse, is left as it is and named: it is not complete.
+        if (filled.unreadable) {
+          unreadable++;
+          console.log(`[backfill] Skipped ${root === repoRoot ? '' : `${root}:`}${note.path}: its frontmatter cannot be read.`);
+          continue;
+        }
         if (!changed) {
           skipped++;
           continue;
@@ -52,7 +60,7 @@ async function backfillNoteTimestamps() {
     }
   }
 
-  console.log(`\n[backfill] Done. Updated ${updated} note(s), skipped ${skipped} (already complete), ${noHistory} without git history.`);
+  console.log(`\n[backfill] Done. Updated ${updated} note(s), skipped ${skipped} (already complete), ${unreadable} unreadable, ${noHistory} without git history.`);
   console.log('[backfill] Review the changes with `git diff` before committing.');
 }
 
