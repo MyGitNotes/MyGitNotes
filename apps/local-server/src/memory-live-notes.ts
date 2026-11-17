@@ -162,7 +162,8 @@ const iso = (time: number) => new Date(time).toISOString();
  */
 export function memoryLiveNotes({ editor, repositories, clock = { now: () => Date.now(), advance: () => {} }, maxBytes = LIVE_MAX_BYTES, leaseMs = 5 * 60_000, discard = false, retarget = false, persons = false, merge = false }: MemoryLiveNotesOptions): MemoryLiveNotes {
   const covered = new Map(repositories.map(entry => [sourceIdentity(entry.source), entry]));
-  const state = new Map<RepositoryId, { links: Map<string, Link>; byPath: Map<string, string>; }>();
+  /** Per repository: its links, the link of each path, and the link that left each path last (`leftFrom`). */
+  const state = new Map<RepositoryId, { links: Map<string, Link>; byPath: Map<string, string>; lefts: Map<string, string>; }>();
   const notices: LiveNotice[] = [];
   const tickets = new Map<string, { repository: RepositoryId; id: string; document: string; context: LiveContext; until: number; }>();
   /** What each merge answered, by who merged, into which link, under which id. */
@@ -172,7 +173,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
   const repositoryState = (repository: RepositoryId) => {
     if (!covered.has(repository)) throw new LiveUnavailableError();
     let entry = state.get(repository);
-    if (!entry) state.set(repository, entry = { links: new Map(), byPath: new Map() });
+    if (!entry) state.set(repository, entry = { links: new Map(), byPath: new Map(), lefts: new Map() });
     return entry;
   };
   const linkOf = (repository: RepositoryId, id: string) => {
@@ -286,6 +287,11 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           const link = repositoryState(repository).links.get(id);
           return link && !link.live ? link.path : null;
         },
+        async leftFrom(repository, path) {
+          const { links, lefts } = repositoryState(repository);
+          const link = links.get(lefts.get(path) ?? '');
+          return link && link.path !== null && link.path !== path && link.target !== path ? link.id : null;
+        },
         ...(merge
           ? {
             async merge(repository: RepositoryId, id: string, request: LiveMergeRequest): Promise<LiveMergeAnswer> {
@@ -348,10 +354,11 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           repositoryState(repository).byPath.set(receipt.path, link.id);
         } else if (link.target !== undefined) {
           // Moved, the link is named by its new path alone; kept in place, it remembers the target it did not take.
-          const { byPath } = repositoryState(repository);
+          const { byPath, lefts } = repositoryState(repository);
           if (receipt.path === link.target) {
             if (byPath.get(link.path) === link.id) byPath.delete(link.path);
             former(link, link.path, receipt.path);
+            lefts.set(link.path, link.id);
             link.path = receipt.path;
             byPath.set(receipt.path, link.id);
             delete link.unmoved;
@@ -407,6 +414,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
             }
             if (link.path === null) throw new LiveNotLiveError('A pending note moves by its path rule.');
             former(link, link.target, request.target ?? link.path);
+            if (link.target !== undefined && link.target !== (request.target ?? link.path)) repositoryState(repository).lefts.set(link.target, link.id);
             if (request.target === null) delete link.target;
             else link.target = request.target;
             delete link.unmoved;

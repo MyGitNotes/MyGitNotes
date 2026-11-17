@@ -28,6 +28,7 @@ import { type CommitAuthor, commitAuthor, withCoAuthors } from './commit-author.
 import { CheckedOutError, isLiveNotePath, LIVE_MAX_BYTES, liveContentHash, LiveNotLiveError, LiveStaleError, LiveTooLargeError, normalizeLiveText, parseLivePendingPath } from './live-notes.js';
 import type { LiveCheckInResult } from './live-checkin.js';
 import { editedLiveError, type LiveLink, liveNoteState, type LiveRecord, type LiveRepository, parseLiveBase } from './live-repository.js';
+import { notebookOfPath } from './workspace-links.js';
 
 export { SourceError } from './github-api.js';
 const CACHEABLE_FILE = /\.(md|markdown|mdx|txt|ya?ml)$/i;
@@ -338,10 +339,12 @@ export abstract class RemoteSource {
   async liveFiled(file: string): Promise<string | null | undefined> {
     if (!this.live || typeof file !== 'string') return undefined;
     // A filed note moving elsewhere (§20.4) is read at its target: its Git path leads there until its check-in.
-    const moving = (await this.liveLinkAt(file))?.path;
-    if (moving !== undefined && moving !== file) return moving;
+    const at = await this.liveAt(file);
+    if (at && 'link' in at) return at.link.path !== file ? at.link.path : undefined;
+    // A path a note left while live leads where it went once it is no longer live, as long as Git holds that.
+    if (at) return at.left;
     const pending = parseLivePendingPath(file, (await this.config()).notebooks);
-    if (!pending || await this.liveLink(file)) return undefined;
+    if (!pending) return undefined;
     return this.live.filed(pending.id);
   }
   /** The live link of a path: a checked-out note's or a pending note's virtual path; undefined without one. */
@@ -356,13 +359,34 @@ export abstract class RemoteSource {
    * file's. Undefined without one.
    */
   private async liveLinkAt(file: string): Promise<LiveLink | undefined> {
+    const at = await this.liveAt(file);
+    return at && 'link' in at ? at.link : undefined;
+  }
+  /**
+   * The live link at `file`, as {@link liveLinkAt} finds it; or, for a path a note left that is no longer live, where it
+   * went (`left`): the path it was filed at, a note of the same notebook that Git holds. When several notes left
+   * `file`, the one that left it last counts (the adapter's `leftFrom`); an adapter that cannot tell is asked only for
+   * its live links' former paths, and a path two of them left leads nowhere. Undefined without one.
+   */
+  private async liveAt(file: string): Promise<{ link: LiveLink; } | { left: string; } | undefined> {
     if (!this.live || typeof file !== 'string' || !/\.(md|markdown)$/i.test(file)) return undefined;
     const links = await this.live.links();
     const at = links.find(link => link.path === file) ?? links.find(link => link.checkout.target !== undefined && link.checkout.path === file);
-    if (at) return at;
-    const left = links.find(link => link.checkout.formerPaths?.includes(file));
-    if (!left || (await this.getSnapshot()).entries.some(entry => entry.path === file)) return undefined;
-    return left;
+    if (at) return { link: at };
+    const snapshot = await this.getSnapshot();
+    const holds = (path: string) => snapshot.entries.some(entry => entry.path === path);
+    if (holds(file)) return undefined;
+    const id = await this.live.leftFrom(file);
+    if (id === undefined) {
+      const listed = links.filter(link => link.checkout.formerPaths?.includes(file));
+      return listed.length === 1 ? { link: listed[0] } : undefined;
+    }
+    if (id === null) return undefined;
+    const link = links.find(entry => entry.checkout.id === id);
+    if (link) return { link };
+    const filed = await this.live.filed(id);
+    const notebook = notebookOfPath(file, (await this.config()).notebooks);
+    return filed !== null && filed !== file && notebook && notebookOfPath(filed, (await this.config()).notebooks)?.id === notebook.id && holds(filed) ? { left: filed } : undefined;
   }
   /**
    * The live link of a checked-out note or pending note at `file`, also by the Git path of a note moving elsewhere;

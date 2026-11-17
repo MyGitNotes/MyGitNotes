@@ -156,6 +156,15 @@ export interface LivePersonCalls {
   /** Where a link that is no longer live was filed; null when unknown. */
   filed(repository: RepositoryId, id: string): Promise<string | null>;
   /**
+   * The id of the link, live or no longer live, that reads knew at the repository path `path` and that left it last:
+   * a target a later move replaced, or the path a check-in moved it from (its {@link LiveCheckout.formerPaths}, also
+   * after its release, a reopen, and beyond the latest few). A tab, address or open editor still at `path` then finds
+   * the note where it is now, live or where it was filed, as long as Git holds no file at `path`. Null for none, and
+   * while that link is read at `path` again. An adapter without it is asked only for its live links' `formerPaths`, and
+   * a path that is no longer live leads nowhere.
+   */
+  leftFrom?(repository: RepositoryId, path: string): Promise<string | null>;
+  /**
    * Merges `request.text`, written on `request.base`, into the live note over the typing since, as a three-way merge,
    * and lists the person among its editors; texts come in normal form. A conflict takes nothing. A repeat of the same
    * `mergeId` by the same person for the same link answers what the first answered for at least a day, also after the

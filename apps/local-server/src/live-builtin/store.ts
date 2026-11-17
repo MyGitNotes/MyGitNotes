@@ -151,6 +151,13 @@ export interface LiveStore {
   /** Live or released; null for an id never issued, or discarded. */
   link(id: string): Promise<StoredLink | null>;
   /**
+   * The link of the repository, live or released, that reads knew at `path` and that left it last: a target a later move
+   * replaced, or the path a receipt moved it from. Kept past the release and the reopen of that link, and past the
+   * latest {@link LIVE_FORMER_PATHS} of its `formerPaths`, so a tab still there finds the note where it went. Null for
+   * none, and while that link is read at `path` again (its path or target).
+   */
+  leftFrom(repository: RepositoryId, path: string): Promise<StoredLink | null>;
+  /**
    * One link per repository and path: created (epoch 1), joined (the live link, untouched), or a released link reopened
    * under its id with epoch + 1, its base and text replaced and its sync, conflict, editors, lease and presence cleared.
    * `state` seeds a created or reopened epoch and is ignored by a join.

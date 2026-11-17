@@ -262,6 +262,10 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
         const link = isLiveId(id) ? await store.link(id) : null;
         return link && !link.live && link.repository === repository ? link.path : null;
       },
+      async leftFrom(repository, path) {
+        covered(repository);
+        return typeof path === 'string' ? (await store.leftFrom(repository, path))?.id ?? null : null;
+      },
       /*
        * A text written on a base the writer names, merged by character over what the note became since (A4 of the
        * collab-first spec). It is one more server write on the document's queue, in the writer's name, so they are
