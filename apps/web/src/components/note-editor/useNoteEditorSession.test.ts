@@ -274,3 +274,52 @@ describe('useNoteEditorSession and a read that cannot reach the server', () => {
     await vi.waitFor(() => expect(hook.result.current.saveError).toBe("Cannot read properties of undefined (reading 'content')"));
   });
 });
+
+// FM-F003: a save refused because the note's frontmatter cannot be read (someone broke the block) is a 409 too, but no
+// remote change merges it away: the session shows the refusal, reads nothing back, and its autosave does not send the
+// refused draft again.
+describe('useNoteEditorSession and a save refused because the frontmatter cannot be read', () => {
+  const refusal = 'The frontmatter cannot be read.';
+  const refused = () => new ApiError(refusal, 409, undefined, undefined, false, { code: 'frontmatter-invalid' });
+  function open(autoSave: boolean) {
+    const onReadRemote = vi.fn(async () => note('Old name'));
+    const onSave = vi.fn(async (): Promise<NoteItem> => {
+      throw refused();
+    });
+    const base = { readOnly: false, autoSave, draftMode: false, propIsDirty: false, branch: 'main', draftScope: '', onSave: onSave as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote, onRestoreFile: vi.fn(), onCommitFile: undefined, remoteBase: undefined, conflictReason: undefined, onMarkConflict: undefined } satisfies Omit<UseNoteEditorSessionParams, 'note'>;
+    return { hook: renderHook(() => useNoteEditorSession({ ...base, note: note('Old name') })), onReadRemote, onSave };
+  }
+
+  it('shows the refusal of an explicit save of a remote note, not a remote change', async () => {
+    const { hook, onReadRemote, onSave } = open(false);
+    await vi.waitFor(() => expect(onReadRemote).toHaveBeenCalledOnce());
+    act(() => hook.result.current.setMetadata({ ...hook.result.current.metadata, status: 'done' }));
+    await act(async () => {
+      expect(await hook.result.current.handleExplicitSave()).toBe(false);
+    });
+    expect(hook.result.current.saveError).toBe(refusal);
+    expect(onSave).toHaveBeenCalledOnce();
+    // The read before the save, and none after the refusal.
+    expect(onReadRemote).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.hasUnsavedChanges).toBe(true);
+    expect(hook.result.current.metadata).toMatchObject({ status: 'done' });
+  });
+
+  it('does not autosave a refused draft again, until it changes', async () => {
+    const { hook, onSave } = open(true);
+    act(() => hook.result.current.setMetadata({ ...hook.result.current.metadata, status: 'done' }));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledOnce(), { timeout: 3000 });
+    await vi.waitFor(() => expect(hook.result.current.saveError).toBe(refusal));
+    // An explicit save tries once more, as asked; it reads the note first, which hands the session a new base.
+    await act(async () => {
+      expect(await hook.result.current.handleExplicitSave()).toBe(false);
+    });
+    expect(onSave).toHaveBeenCalledTimes(2);
+    await act(() => new Promise(resolve => setTimeout(resolve, 1500)));
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.saveError).toBe(refusal);
+    // A changed draft is saved again.
+    act(() => hook.result.current.setContent('# Old name\n\nFixed.\n'));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(3), { timeout: 3000 });
+  });
+});

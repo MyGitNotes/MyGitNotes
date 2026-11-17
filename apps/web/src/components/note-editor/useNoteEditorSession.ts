@@ -78,7 +78,13 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   const savedStates = useRef<{ content: string; metadata: Record<string, unknown>; }[]>([]);
   // The note being adopted until the state has caught up with it, so the save effect does not take the state it replaces for an edit.
   const adopting = useRef<{ content: string; metadata: Record<string, unknown>; } | null>(null);
+  /**
+   * The draft a save was refused for because the note's frontmatter cannot be read (`frontmatter-invalid`): autosave does
+   * not send it again, as the same text and metadata are refused the same way; a changed draft, or an explicit save, is tried.
+   */
+  const refusedDraft = useRef<{ content: string; metadata: Record<string, unknown>; } | null>(null);
   const markSaved = (saved: { content: string; metadata: Record<string, unknown>; }) => {
+    refusedDraft.current = null;
     lastSaved.current = saved;
     savedStates.current = [...savedStates.current.slice(-7), saved];
   };
@@ -182,6 +188,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       else if (!writeFailed.current) setSaveError(isNetworkFailure(error) ? 'editor.remoteUnreachable' : (error as Error).message);
     }
   };
+  /** A save refused because the note's frontmatter cannot be read: its own 409, which no merge of the remote note resolves. */
+  const isFrontmatterRefusal = (error: unknown) => error instanceof ApiError && error.code === 'frontmatter-invalid';
   /** Shows why a write failed, in the app's words when it reached no server, until a write succeeds. */
   const showWriteFailure = (error: unknown) => {
     if (!mounted.current) return;
@@ -401,6 +409,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       saveLocalDraft(draftScope || branch, note.path, content, metadata);
 
       if (!autoSave || blocked) return;
+      const refused = refusedDraft.current;
+      if (refused && refused.content === content && sameValue(refused.metadata, metadata)) return;
 
       // Timestamps are stamped server-side on every save; absorb them so the next
       // comparison against the refreshed `note`/`baseNote` prop doesn't see a
@@ -455,6 +465,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
           setHasUnsavedChanges(false);
           clearWriteFailure();
         } catch (err) {
+          if (isFrontmatterRefusal(err)) refusedDraft.current = { content, metadata };
           showWriteFailure(err);
         } finally {
           autosaving.current = false;
@@ -501,7 +512,12 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       clearWriteFailure();
       return true;
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409 && onReadRemote) {
+      // Refused because the frontmatter cannot be read: said as such, with nothing read back, since no remote change
+      // merged into the draft would let it through.
+      if (isFrontmatterRefusal(error)) {
+        refusedDraft.current = { content: current.current.content, metadata: current.current.metadata };
+        showWriteFailure(error);
+      } else if (error instanceof ApiError && error.status === 409 && onReadRemote) {
         try {
           const latest = await onReadRemote(note.path);
           if (mounted.current && applyRemote(latest)) setSaveError('editor.remoteChangedDuringSave');

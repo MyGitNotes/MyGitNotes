@@ -5,7 +5,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { Router } from 'express';
-import { deriveAlias, type EditionSourceConfig, type LiveEditorInfo, notebookKey, sourceIdentity, type WorkspaceConfigSource } from '@mygitnotes/core';
+import { deriveAlias, type EditionSourceConfig, type LiveContext, type LiveEditorInfo, notebookKey, sourceIdentity, type WorkspaceConfigSource } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { type IdentityService } from '../src/identity.js';
 import { memoryCommits, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
@@ -24,9 +24,10 @@ const manifest = `schema_version: 4\nworkspace:\n  title: Hosted\n  default_note
 const notes: EditionSourceConfig = { type: 'edition', platform: 'hosted', repository: 'p1/notes', branch: 'main', label: 'Notes' };
 const repository = sourceIdentity(notes);
 const builtin: LiveEditorInfo = { kind: 'builtin' };
+const pat: LiveContext = { person: { realm: 'edition', userId: 'p2' }, author: { name: 'Sam', email: 'sam@example.test' }, request: { headers: {} } };
 const broken = 'notes/life/broken.md';
 const raw = '---\nnot: [yaml\n---\n# Old\n';
-const refused = { status: 409, body: { code: 'frontmatter-invalid', error: 'The frontmatter cannot be read: fix it in the YAML view or the editor.' } };
+const refused = { status: 409, body: { code: 'frontmatter-invalid', error: 'The frontmatter cannot be read: in the note\'s text, fix the YAML between its first "---" line and the closing "---" line.' } };
 
 const identity: IdentityService = { router: Router(), signedIn: async req => typeof req.headers['x-person'] === 'string' ? { person: { realm: 'edition', userId: req.headers['x-person'] }, login: req.headers['x-person'], owner: `edition:${req.headers['x-person']}`, author: { name: 'Pat', email: 'pat@example.test' } } : null, token: async () => undefined, grantCredential: async () => undefined, grantToken: async () => undefined, noCredentialMessage: () => 'No credential.', signInOptions: async () => [], configured: async () => true, signOut: async () => {} };
 const configSource: WorkspaceConfigSource = {
@@ -80,6 +81,17 @@ describe('a note whose frontmatter cannot be read', () => {
     expect(files.get(broken)).toBe(`${raw}More\n`);
   });
 
+  // FM-F002: a `---` with no closing fence and no `key:` line after it is a rule in a note without frontmatter.
+  it('takes metadata on a note that opens with a rule, putting a block in front of it', async () => {
+    const rule = 'notes/life/rule.md';
+    files.set(rule, '---\n\nHR body\n');
+    await start();
+    const saved = await call('POST', '/api/notes', { notebookId: 'notes~life', path: rule, content: '---\n\nHR body\n', metadata: { status: 'done' }, revision: await revision() });
+    expect(saved).toMatchObject({ status: 200, body: { note: { status: 'done' } } });
+    expect(saved.body.note).not.toHaveProperty('frontmatterInvalid');
+    expect(files.get(rule)).toMatch(/^---\nstatus: done\nupdated: ".+"\n---\n\n---\n\nHR body\n$/);
+  });
+
   it('refuses a rename that writes a title, and moves the file as it is without one', async () => {
     await start();
     expect(await move('notes/life/new.md', 'New')).toMatchObject(refused);
@@ -98,6 +110,28 @@ describe('a note whose frontmatter cannot be read', () => {
     expect(row).toMatchObject({ id, path: broken });
     expect(row.target ?? null).toBeNull();
     expect((await call('GET', `/api/notes/read?notebookId=notes~life&path=${encodeURIComponent(broken)}`)).body.note).toMatchObject({ path: broken, content: raw, frontmatterInvalid: true });
+  });
+
+  // FM-F004: the title is written on the text the rename read, before anything moves, so a block someone breaks while the
+  // rename runs can no longer leave a note moved under a 409.
+  it('writes the title of a live rename before it moves the note, so no move follows a refused title', async () => {
+    const ok = 'notes/life/ok.md';
+    files.set(ok, '---\ntitle: Old\n---\n\n# Old\n');
+    await start();
+    const id = (await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: ok })).body.checkout.id as string;
+    liveNotes.setActive(repository, id, 1);
+    const retarget = liveNotes.service.retarget!.bind(liveNotes.service);
+    let textAtMove = '';
+    liveNotes.service.retarget = async (...args) => {
+      textAtMove = (await liveNotes.person(pat).read(repository, id)).content;
+      liveNotes.type(repository, id, '---\ntitle: [Old\n---\n\n# Old\n', pat);
+      return retarget(...args);
+    };
+    const moved = await call('POST', '/api/files', { command: { kind: 'move', notebookId: 'notes~life', path: ok, destination: 'notes/life/new.md', title: 'New' }, revision: await revision() });
+    expect(moved.status).toBe(200);
+    expect(textAtMove).toMatch(/^---\ntitle: New\n/);
+    const [row] = await liveNotes.service.checkouts(repository);
+    expect(row).toMatchObject({ id, path: ok, target: 'notes/life/new.md' });
   });
 });
 
@@ -137,5 +171,16 @@ describe('a note whose frontmatter cannot be read, on a local workspace', () => 
     expect(fs.readFileSync(path.join(local, 'docs/broken.md'), 'utf8')).toBe(raw);
     expect(await post({ notebookId, path: 'docs/broken.md', content: `${raw}More\n`, metadata: {}, noCommit: true })).toMatchObject({ status: 200 });
     expect(fs.readFileSync(path.join(local, 'docs/broken.md'), 'utf8')).toBe(`${raw}More\n`);
+  });
+
+  // FM-F001: Undo after deleting such a note sends its text with metadata `{}`; the file comes back byte for byte, with no
+  // block stamped in front of the broken one.
+  it('restores a deleted note as it was', async () => {
+    const notebookId = notebookKey(deriveAlias(local, new Set()), 'a');
+    fs.rmSync(path.join(local, 'docs/broken.md'));
+    const response = await fetch(`${url}/api/notes/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notebookId, path: 'docs/broken.md', content: raw, metadata: {} }) });
+    expect(response.status).toBe(200);
+    expect((await response.json()).note).toMatchObject({ frontmatterInvalid: true });
+    expect(fs.readFileSync(path.join(local, 'docs/broken.md'), 'utf8')).toBe(raw);
   });
 });

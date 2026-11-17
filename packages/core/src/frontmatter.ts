@@ -134,12 +134,15 @@ export class NoteFrontmatterUnreadableError extends Error {
   readonly code = 'frontmatter-invalid';
   readonly status = 409;
   constructor() {
-    super('The frontmatter cannot be read: fix it in the YAML view or the editor.');
+    super('The frontmatter cannot be read: in the note\'s text, fix the YAML between its first "---" line and the closing "---" line.');
     this.name = 'NoteFrontmatterUnreadableError';
   }
 }
 
-/** The text opens a frontmatter block that cannot be read: one that never closes, or whose YAML is not a map. */
+/**
+ * The text opens a frontmatter block that cannot be read: one whose YAML is not a map, or one that never closes and
+ * looks like YAML (a `---` with no closing fence and no `key:` line after it is a horizontal rule, not a block).
+ */
 export function hasUnreadableFrontmatter(raw: string): boolean {
   const span = noteFrontmatterSpan(raw);
   return span !== null && 'invalid' in span;
@@ -150,7 +153,8 @@ export type NoteFrontmatterSpan =
   /** `end` is just past the closing fence, `bodyStart` past the blank separator line too. */
   | { yaml: string; end: number; bodyStart: number; metadata: NoteMetadata; }
   /**
-   * A block `parseNoteContent` reads as body: its YAML does not parse to a map, or it has no closing fence. Then
+   * A block `parseNoteContent` reads as body: its YAML does not parse to a map, or it has no closing fence and its first
+   * line with text on it is a `key:` line (without one, the opening `---` is a horizontal rule and there is no block). Then
    * `unclosed` is the line that starts with `---` yet has more on it (`---x`, `----`), through which the block runs,
    * or `''` when no line does and the block runs to the end of the text.
    */
@@ -163,8 +167,19 @@ const OPENING_FENCE = /^---\r?\n/;
 const separatorAt = (text: string, end: number) => text.slice(end).match(/^[ \t]*\r?\n/)?.[0] ?? '';
 
 /**
+ * A line a YAML map starts with: a key, plain or quoted, then `:` and a space, a tab or the end of the line. A Markdown
+ * heading, list item, quote or sentence without such a colon is none.
+ */
+const MAP_KEY_LINE = /^(?:"[^"\n]*"|'[^'\n]*'|[^\s#'"\-?:,[\]{}&*!|>%@`][^\n]*?)[ \t]*:(?:[ \t]|$)/;
+
+/** What follows an opening `---` looks like YAML: its first line with text on it is a `key:` line (FM-F002). */
+const looksLikeYaml = (yaml: string) => MAP_KEY_LINE.test(yaml.split(/\r?\n/).find(line => line.trim()) ?? '');
+
+/**
  * A block opened by `---` that no fence closes: it runs through the first line that starts with `---`, or to the end
- * of the text. A lone `---` right after the opening closes an empty block, which does not parse to a map either.
+ * of the text. A lone `---` right after the opening closes an empty block, which does not parse to a map either. It is
+ * a block only when what it holds looks like YAML; otherwise the `---` is a horizontal rule in a note without one, and
+ * there is no block (`null`), so a writer puts a block in front of the rule.
  */
 function unclosedSpan(text: string): NoteFrontmatterSpan | null {
   const opening = OPENING_FENCE.exec(text);
@@ -176,17 +191,20 @@ function unclosedSpan(text: string): NoteFrontmatterSpan | null {
     if (text.startsWith('---', at)) {
       const line = text.slice(at, next).replace(/\r?\n$/, '');
       const yaml = text.slice(start, at).replace(/\r?\n$/, '');
+      if (!looksLikeYaml(yaml)) return null;
       return { invalid: true, yaml, end: next, bodyStart: next + separatorAt(text, next).length, ...(/^---[ \t]*$/.test(line) ? {} : { unclosed: line }) };
     }
     at = next;
   }
-  return { invalid: true, yaml: text.slice(start), end: text.length, bodyStart: text.length, unclosed: '' };
+  const yaml = text.slice(start);
+  return looksLikeYaml(yaml) ? { invalid: true, yaml, end: text.length, bodyStart: text.length, unclosed: '' } : null;
 }
 
 /**
  * Where a text's frontmatter is and what it holds, with the same fence, map check and separator
  * line as `parseNoteContent`; `null` when the text has no block. A text whose first line opens a
- * block that no fence closes has an invalid one. The collab editor hides `[0, bodyStart)` and
+ * block that no fence closes has an invalid one when what follows looks like YAML, and none when
+ * it does not. This is the one rule the lists, the editors and the writers read. The collab editor hides `[0, bodyStart)` and
  * its panel reads `metadata` from it.
  */
 export function noteFrontmatterSpan(text: string): NoteFrontmatterSpan | null {
@@ -244,17 +262,20 @@ export function patchNoteFrontmatter(raw: string, before: NoteMetadata, after: N
  * When `existingRaw` is the note's current file content and its Markdown body is unchanged,
  * the frontmatter is patched key by key onto that existing block instead of being rendered
  * from scratch, so a metadata-only edit (e.g. a status change) changes only the lines of the
- * keys it actually edits. When `existingRaw` opens a block that cannot be read, `content` is
- * written as it is, unstamped, without metadata; metadata over a `content` that still opens a
- * block throws `NoteFrontmatterUnreadableError`.
+ * keys it actually edits. When `existingRaw` or `content` opens a block that cannot be read,
+ * `content` is written as it is, unstamped, without metadata; metadata over a `content` that
+ * still opens a block throws `NoteFrontmatterUnreadableError`.
  */
 export function serializeNoteContent(metadata: NoteMetadata, content: string, isNew: boolean, now: Date = new Date(), existingRaw?: string, preserveBodyWhitespace = false): string {
   // A note whose block cannot be read reads as body only, block included. A save of that body is written as it is; one
   // that sets metadata over a body still opening a block is refused, rather than putting a second block in front of it.
-  // A body without one (a restored version, or the block deleted) replaces the text as a note without a block.
-  if (existingRaw !== undefined && hasUnreadableFrontmatter(existingRaw)) {
+  // A body without one (a restored version, or the block deleted) replaces the text as a note without a block. The same
+  // holds for a text that itself opens a block that cannot be read, whatever was there before: an undone deletion or a
+  // create writes it as it is, or is refused with metadata (FM-F001).
+  const unreadableBefore = existingRaw !== undefined && hasUnreadableFrontmatter(existingRaw);
+  if (unreadableBefore || hasUnreadableFrontmatter(content)) {
     if (!Object.values(metadata).some(value => value !== undefined)) return content;
-    if (OPENING_FENCE.test(content)) throw new NoteFrontmatterUnreadableError();
+    if (noteFrontmatterSpan(content) !== null) throw new NoteFrontmatterUnreadableError();
     existingRaw = undefined;
   }
   const stamped = stampSaveTimestamps(metadata, isNew, now);
@@ -334,7 +355,7 @@ export function replaceNoteStatus(raw: string, status: string | null): string {
   }
   // A block that cannot be read keeps the text as it is, rather than a second block going in front of it (CFR2-F001):
   // the caller compares the result to tell.
-  return status === null || OPENING_FENCE.test(raw) ? raw : `---\n${YAML.stringify({ status })}---\n${raw}`;
+  return status === null || hasUnreadableFrontmatter(raw) ? raw : `---\n${YAML.stringify({ status })}---\n${raw}`;
 }
 
 /**
@@ -398,7 +419,7 @@ export function fillMissingNoteTimestamps(raw: string, created: string | undefin
     return { raw: `${raw.slice(0, insertAt)}${lines.map(line => `${newline}${line}`).join('')}${raw.slice(insertAt)}`, changed: true };
   }
   // A block that cannot be read is not filled, nor given a second block in front of it (CFR2-F001), and says so.
-  if (OPENING_FENCE.test(raw)) return { raw, changed: false, unreadable: true };
+  if (hasUnreadableFrontmatter(raw)) return { raw, changed: false, unreadable: true };
 
   const fields: [string, string][] = [];
   if (created) fields.push(['created', created]);

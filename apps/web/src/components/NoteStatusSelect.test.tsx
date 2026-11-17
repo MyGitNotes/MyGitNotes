@@ -117,7 +117,7 @@ it('translates the built-in statuses for a notebook without labels and leaves cu
 it('says the frontmatter cannot be read in place of the status, with no menu, named where only the sign shows', () => {
   render(createElement(I18nProvider, null, createElement(NoteStatusSelect, { status: '', statuses: ['inbox'], readOnly: false, onChange: vi.fn(), label: 'Status for Alpha', unreadable: true })));
   expect(screen.queryByRole('combobox')).toBeNull();
-  expect(screen.getByText('Frontmatter cannot be read').closest('.note-frontmatter-invalid')).toHaveAttribute('title', 'The frontmatter cannot be read: fix it in the YAML view or the editor.');
+  expect(screen.getByText('Frontmatter cannot be read').closest('.note-frontmatter-invalid')).toHaveAttribute('title', 'The frontmatter cannot be read: in the note\'s text, fix the YAML between its first "---" line and the closing "---" line.');
   cleanup();
   render(createElement(I18nProvider, null, createElement(NoteStatusSelect, { status: '', statuses: ['inbox'], readOnly: false, onChange: vi.fn(), label: 'Status for Alpha', unreadable: true, dotOnly: true })));
   expect(screen.queryByRole('combobox')).toBeNull();

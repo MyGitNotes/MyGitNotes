@@ -1375,7 +1375,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'editor.gistUnpublish': '取消發佈',
   'editor.gistPublishHint': '把筆記本文發佈成 secret Gist，拿到連結的人都能閱讀。不含圖片。',
   'editor.gistLiveHint': '即時編輯的簽回不會更新 Gist；簽回後再發佈或取消發佈。',
-  'editor.frontmatterInvalidLive': '標頭屬性無法解析，請在 YAML 檢視或編輯器中修正。',
+  'editor.frontmatterInvalidLive': '標頭屬性無法解析：請在筆記內文中，修正開頭「---」行與結尾「---」行之間的 YAML。',
   'editor.frontmatterInvalidShort': '標頭屬性無法解析',
   'editor.gistSyncHint': '每次提交這篇筆記都會更新 Gist。提交後，發佈狀態才會記錄在筆記裡。',
   'editor.gistSyncFailed': '已提交，但部分 Gist 沒有更新：{errors}',

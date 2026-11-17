@@ -56,7 +56,7 @@ it('offers no metadata, status or rename on a note whose frontmatter cannot be r
   expect(document.querySelector('.title-rename')).toBeNull();
   // The panel remembers the tab last open, so it is opened on Frontmatter only when it is not already.
   if (!screen.queryByPlaceholderText('New field name...')) fireEvent.click(screen.getByRole('tab', { name: 'Frontmatter' }));
-  expect(screen.getByText('The frontmatter cannot be read: fix it in the YAML view or the editor.')).toBeInTheDocument();
+  expect(screen.getByText('The frontmatter cannot be read: in the note\'s text, fix the YAML between its first "---" line and the closing "---" line.')).toBeInTheDocument();
   for (const status of screen.getAllByRole('combobox', { name: 'Status' })) expect(status).toBeDisabled();
   expect(screen.getByPlaceholderText('New field name...')).toBeDisabled();
   expect(screen.getByLabelText('Note content')).toHaveValue(broken.content);

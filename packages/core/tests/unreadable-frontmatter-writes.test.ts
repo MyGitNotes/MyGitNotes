@@ -36,6 +36,34 @@ describe('serializeNoteContent over a block it cannot read', () => {
   });
 });
 
+// FM-F001: a text that itself opens a block that cannot be read gets no block in front of it either, whatever the note
+// held before: an undone deletion writes a new file with metadata `{}`, and a create may carry such a text.
+describe('serializeNoteContent of a text that opens a block it cannot read', () => {
+  it.each(unreadable)('writes a new note of it as it is, unstamped: %j', raw => {
+    expect(serializeNoteFile('notes/a.md', {}, raw, true, now)).toBe(raw);
+    expect(serializeNoteContent({}, raw, false, now)).toBe(raw);
+    expect(serializeNoteFile('notes/a.outline.md', {}, raw, true, now)).toBe(raw);
+  });
+
+  it.each(unreadable)('refuses metadata over it, new or over a readable note: %j', raw => {
+    expect(() => serializeNoteFile('notes/a.md', { status: 'done' }, raw, true, now)).toThrow(NoteFrontmatterUnreadableError);
+    expect(() => serializeNoteContent({ title: 'A' }, raw, false, now, '---\ntitle: A\n---\n\nBody\n')).toThrow(NoteFrontmatterUnreadableError);
+  });
+
+  it('restores a deleted note through writeNoteFile byte for byte', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mgn-undo-'));
+    try {
+      const saved = writeNoteFile(dir, 'notes/a.md', unreadable[0], {});
+      expect(fs.readFileSync(path.join(dir, 'notes/a.md'), 'utf8')).toBe(unreadable[0]);
+      expect(saved.frontmatterInvalid).toBe(true);
+      expect(() => writeNoteFile(dir, 'notes/b.md', unreadable[1], { status: 'done' })).toThrow(NoteFrontmatterUnreadableError);
+      expect(fs.existsSync(path.join(dir, 'notes/b.md'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('retitling a note whose block cannot be read', () => {
   it.each(unreadable)('is refused: %j', raw => {
     expect(() => retitleNoteFile(raw, 'notes/a/a.md', 'New', now)).toThrow(NoteFrontmatterUnreadableError);

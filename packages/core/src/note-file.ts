@@ -15,7 +15,8 @@ export interface ParsedNoteFile {
   lineNumberOffset: number;
   /**
    * Specialized kind, leaving an ordinary note's shape unchanged, and `frontmatterInvalid` on a note that opens a
-   * frontmatter block which does not parse to a map or is never closed: its body then holds the block, and it has no status or tags.
+   * frontmatter block which does not parse to a map, or is never closed and looks like YAML (`noteFrontmatterSpan`): its
+   * body then holds the block, and it has no status or tags.
    */
   extra: { kind?: 'compilation' | 'outline'; invalid?: string; frontmatterInvalid?: true; };
 }

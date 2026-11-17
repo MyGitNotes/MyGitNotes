@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { fillMissingNoteTimestamps, noteFrontmatterSpan, parseNoteContent, patchNoteFrontmatter, replaceNoteStatus, replaceNoteTags } from '../src/frontmatter.js';
+import { fillMissingNoteTimestamps, hasUnreadableFrontmatter, noteFrontmatterSpan, parseNoteContent, patchNoteFrontmatter, replaceNoteStatus, replaceNoteTags, serializeNoteContent } from '../src/frontmatter.js';
+import { retitleNoteFile } from '../src/file-manager.js';
 import { patchFrontmatterField } from '../src/frontmatter-patch.js';
 import { parseNoteFile, serializeNoteFile } from '../src/note-file.js';
 
@@ -161,7 +162,7 @@ describe('parseNoteFile frontmatterInvalid', () => {
     }
     expect(parseNoteFile('---\n---\nBody', 'notes/a.md').content).toBe('Body');
     expect(parseNoteContent('---\r\n\r\n---\r\nBody')).toMatchObject({ hasFrontmatter: true, content: 'Body' });
-    expect(unreadable('---\n\nIntro after a rule\n')).toBe(true);
+    expect(unreadable('---\ntitle: A\n')).toBe(true);
   });
   it('writes keys into an empty block instead of rendering a second one, keeping its comments and line endings', () => {
     expect(replaceNoteStatus('---\n---\nBody', 'done')).toBe('---\nstatus: done\n---\nBody');
@@ -197,5 +198,50 @@ describe('filling an empty block with mixed line endings', () => {
     const saved = serializeNoteFile('notes/a.md', { ...metadata, status: 'x' }, content, false, now, raw);
     expect(saved.endsWith(tail)).toBe(true);
     expect(parseNoteFile(saved, 'notes/a.md')).toMatchObject({ metadata: { status: 'x' }, extra: {} });
+  });
+});
+
+// FM-F002 (owner: 「像 YAML 才算壞掉」): an opening `---` that no fence closes is a broken frontmatter only when what follows
+// looks like YAML, its first line with text on it a `key:` line. Otherwise it is a horizontal rule in a note without
+// frontmatter: no list, editor or writer marks it, and a write puts a block in front of it as before 0.23.0.
+describe('a leading `---` that no fence closes', () => {
+  const now = new Date('2026-11-17T00:00:00Z');
+  const rules = ['---\n\nHR body\n', '---\r\n\r\nHR body\r\n', '---\nIntro after a rule\n', '---\n- a list\n', '---\n# Heading\ntitle: x\n', '---\n\nSee http://example.com\n----\nMore\n', '---\n', '---\n\n\n'];
+  it.each(rules)('is a rule, not a block: %j', raw => {
+    expect(noteFrontmatterSpan(raw)).toBeNull();
+    expect(hasUnreadableFrontmatter(raw)).toBe(false);
+    expect(parseNoteFile(raw, 'notes/a.md').extra).toEqual({});
+    expect(parseNoteContent(raw)).toMatchObject({ hasFrontmatter: false, content: raw });
+  });
+
+  it.each(rules)('takes metadata with a block put in front, the rule kept as body: %j', raw => {
+    const status = replaceNoteStatus(raw, 'done');
+    expect(status).toBe(`---\nstatus: done\n---\n${raw}`);
+    expect(parseNoteFile(status, 'notes/a.md')).toMatchObject({ metadata: { status: 'done' }, content: raw, extra: {} });
+    expect(fillMissingNoteTimestamps(raw, 'c', 'u')).toEqual({ raw: `---\ncreated: "c"\nupdated: "u"\n---\n${raw}`, changed: true });
+    const patched = patchNoteFrontmatter(raw, {}, { status: 'done' });
+    expect(parseNoteFile(patched, 'notes/a.md')).toMatchObject({ metadata: { status: 'done' }, extra: {} });
+    expect(patched.endsWith(raw)).toBe(true);
+    const saved = serializeNoteContent({ status: 'done' }, raw, false, now, raw);
+    expect(parseNoteFile(saved, 'notes/a.md')).toMatchObject({ metadata: { status: 'done', updated: now.toISOString() }, extra: {} });
+    expect(parseNoteFile(retitleNoteFile(raw, 'notes/a.md', 'New', now), 'notes/a.md')).toMatchObject({ title: 'New', extra: {} });
+  });
+
+  const blocks = ['---\ntitle: x\n', '---\r\ntitle: x\r\n', '---\n\ntitle: x\nBody\n', '---\n"quoted key": 1\n', '---\n標題: 筆記\n', '---\ntags:\n  - a\n----\nBody\n'];
+  it.each(blocks)('is a broken block when it looks like YAML: %j', raw => {
+    expect(noteFrontmatterSpan(raw)).toMatchObject({ invalid: true });
+    expect(hasUnreadableFrontmatter(raw)).toBe(true);
+    expect(parseNoteFile(raw, 'notes/a.md').extra).toEqual({ frontmatterInvalid: true });
+    expect(replaceNoteStatus(raw, 'done')).toBe(raw);
+    expect(fillMissingNoteTimestamps(raw, 'c', 'u')).toEqual({ raw, changed: false, unreadable: true });
+    expect(() => serializeNoteContent({ status: 'done' }, raw, false, now, raw)).toThrow('frontmatter');
+    expect(() => retitleNoteFile(raw, 'notes/a.md', 'New', now)).toThrow('frontmatter');
+  });
+
+  it('keeps a closed block that is not a map unreadable, rule-like or not', () => {
+    for (const raw of ['---\n\nPara\n\n---\n\nMore', '---\n- a\n---\nBody', '---\r\nPlain words\r\n---\r\n']) {
+      expect(hasUnreadableFrontmatter(raw)).toBe(true);
+      expect(parseNoteFile(raw, 'notes/a.md').extra).toEqual({ frontmatterInvalid: true });
+    }
   });
 });

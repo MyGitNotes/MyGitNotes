@@ -44,6 +44,16 @@ describe('readLiveFrontmatter', () => {
     expect(read.error).toContain('---x');
     expect(readLiveFrontmatter('---\ntitle: x\nBody\n').error).toMatch(/closing/i);
   });
+
+  // FM-F002: a leading `---` with no closing fence and no `key:` line after it is a horizontal rule, as core reads it.
+  it.each(['---\n\nHR body\n', '---\r\n\r\nHR body\r\n'])('a leading rule is no block: %j', text => {
+    expect(readLiveFrontmatter(text)).toEqual({ valid: true, metadata: {}, yaml: '', bodyStart: 0, lineOffset: 0 });
+    const { a } = pair(text);
+    expect(writeLiveFrontmatter(a, {}, { status: 'done' })).toBe(true);
+    const newline = text.includes('\r\n') ? '\r\n' : '\n';
+    expect(a.toString()).toBe(`---${newline}status: done${newline}---${newline}${newline}${text}`);
+    expect(readLiveFrontmatter(a.toString())).toMatchObject({ valid: true, metadata: { status: 'done' } });
+  });
 });
 
 // lm-visual3: a new note's heading stayed "Untitled" once titled, so check-in discarded it as empty (設了標題就算有內容).

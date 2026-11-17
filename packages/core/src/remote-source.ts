@@ -8,7 +8,7 @@ import path from 'node:path';
 import { assetInfo, assetPath, assetRoot, decodeAsset, isAssetPath } from './assets.js';
 import { MANIFEST_FILES } from './remote-manifest.js';
 import { type RepositoryId, type RepositoryScope, StaleRevisionError } from './repository.js';
-import { hasUnreadableFrontmatter, NoteFrontmatterUnreadableError, parseNoteContent } from './frontmatter.js';
+import { parseNoteContent } from './frontmatter.js';
 import { isCompilationPath } from './compilation.js';
 import { isOutlinePath } from './outline.js';
 import { isNoteFile, NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.js';
@@ -274,19 +274,19 @@ export abstract class RemoteSource {
       const others = (await this.live!.links()).filter(other => other.checkout.id !== link.checkout.id);
       if (others.some(other => other.path === destination || other.checkout.path === destination)) throw new SourceError('Destination already exists.', 409);
     }
-    // A title cannot be written into a text whose block cannot be read; the rename is refused before anything moves.
-    if (options.title !== undefined && hasUnreadableFrontmatter((await this.readLiveLink(link)).content)) throw new NoteFrontmatterUnreadableError();
+    if (options.title !== undefined) {
+      // A rename retitles the live text as it would a file: written on the text just read, over typing since. The title is
+      // checked and written on that one read before anything moves, so a block that cannot be read refuses the rename
+      // (`retitleNoteFile` throws) with the note where it was, however its text changed since the checks above (FM-F004).
+      const read = await this.live!.read(link.checkout.id);
+      const retitled = normalizeLiveText(retitleNoteFile(read.content, destination, options.title));
+      if (retitled !== read.content) await this.live!.write(link.checkout.id, retitled, read.liveRevision, false);
+    }
     const target = destination === from ? null : destination;
     let checkout = target === (link.checkout.target ?? null) ? link.checkout : await this.live!.move(link.path, target);
     for (const path of [link.path, from, destination]) {
       this.liveLoaded.delete(path);
       this.liveSeen.delete(path);
-    }
-    if (options.title !== undefined) {
-      // A rename retitles the live text as it would a file: written on the text just read, over typing since.
-      const read = await this.live!.read(checkout.id);
-      const retitled = normalizeLiveText(retitleNoteFile(read.content, destination, options.title));
-      if (retitled !== read.content) await this.live!.write(checkout.id, retitled, read.liveRevision, false);
     }
     // Nobody else has it open: it is checked in now, which moves it. The adapter tells who besides the mover is connected,
     // idle or not; one that cannot is judged by who is active, the mover among them when they edit it.

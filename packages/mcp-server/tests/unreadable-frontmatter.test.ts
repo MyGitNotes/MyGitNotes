@@ -19,3 +19,15 @@ it('replaces text in a note whose frontmatter cannot be read without adding a bl
   expect(f.writes).toBe(before);
   expect(f.files.get(broken)).toBe('---\nnot: [yaml\n---\n# Broken Gamma\n');
 });
+
+// FM-F001: a new note whose own text opens a block that cannot be read gets no block put in front of it: written as it
+// is without metadata, refused with it, and nothing written.
+it('creates a note whose text opens an unreadable block as it is, and refuses one that adds metadata to it', async () => {
+  const f = gitlabFixture();
+  const before = f.writes;
+  await expect(callRemoteTool(reader(f), 'save_note', { path: 'notes/ex/new.md', content: raw, status: 'done', revision: f.head }, true)).rejects.toThrow('The frontmatter cannot be read');
+  expect(f.writes).toBe(before);
+  expect(f.files.has('notes/ex/new.md')).toBe(false);
+  await callRemoteTool(reader(f), 'save_note', { path: 'notes/ex/new.md', content: raw, metadata: {}, revision: f.head }, true);
+  expect(f.files.get('notes/ex/new.md')).toBe(raw);
+});
