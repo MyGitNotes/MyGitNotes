@@ -9,6 +9,8 @@ import { createApp } from '../src/app.js';
 import { type IdentityService } from '../src/identity.js';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
 import { type MemoryLiveClock, memoryLiveClock, type MemoryLiveNotes, memoryLiveNotes } from '../src/memory-live-notes.js';
+import { liveEditorRef } from '../src/live-builtin/adapter.js';
+import { type BuiltinFixture, builtinFixture, shutdownFixtures } from '../src/live-builtin/test-fixture.js';
 import { createRecordStore, type RecordStore } from '../src/record-store/index.js';
 import { workspaceSettings } from './workspace-settings.js';
 
@@ -42,9 +44,9 @@ const configSource: WorkspaceConfigSource = {
 let root: string, server: Server | undefined, base: string, store: RecordStore, files: MemoryFiles, liveNotes: MemoryLiveNotes, clock: MemoryLiveClock;
 /** Past the memory adapter's lease, which a failed call leaves held (it has no `unlease`). */
 const leaseRunsOut = () => clock.advance(5 * 60_000 + 1);
-const start = async () => {
+const start = async (live: unknown = liveNotes) => {
   const editionSources = memoryEditionSources({ repositories: new Map([['p1/notes', files]]), mayWrite: who => who.userId !== 'p2' });
-  server = createServer(createApp(root, { configSource, recordStore: store, remoteCache: undefined, workspaceChoices: null, identity, editionSources, liveNotes }));
+  server = createServer(createApp(root, { configSource, recordStore: store, remoteCache: undefined, workspaceChoices: null, identity, editionSources, liveNotes: live as MemoryLiveNotes }));
   await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${(server.address() as { port: number; }).port}`;
 };
@@ -80,6 +82,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+  await shutdownFixtures();
   fs.rmSync(root, { recursive: true, force: true });
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -151,6 +154,35 @@ describe('moving a live note someone else edits', () => {
     expect(await move(weekly, renamed, { title: '全員週會', editing: true })).toMatchObject({ status: 200, body: { live: { target: renamed } } });
     expect(commits()).toEqual([]);
     expect((await liveNotes.person(pat).read(repository, id)).content).toContain('title: 全員週會');
+  });
+
+  it('leads every path the note was read at while live to where it is now, until Git holds a file there', async () => {
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    const again = 'notes/life/archive/週會.md';
+    await move(archived, again);
+    // A tab still at the first target finds the note at the second, and joins the same live note there.
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: again } });
+    expect(await checkout(archived)).toMatchObject({ status: 200, body: { outcome: 'joined', checkout: { id, path: again } } });
+    // Moved back where it lies, both targets lead there.
+    await move(again, weekly);
+    expect(await read(again)).toMatchObject({ status: 404, body: { movedTo: weekly } });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: weekly } });
+    expect(await checkout(again)).toMatchObject({ status: 200, body: { outcome: 'joined', checkout: { id, path: weekly } } });
+    expect(commits()).toEqual([]);
+    // A move checked in at once leaves its old path behind: a tab there finds the note at its new path, still live.
+    const other = 'notes/life/會議/other.md', otherMoved = 'notes/life/archive/other.md';
+    const second = await open(other);
+    liveNotes.setActive(repository, second, 1);
+    expect(await move(other, otherMoved, { editing: true })).toMatchObject({ status: 200, body: { live: { path: otherMoved, checkIn: { committed: true, released: false } } } });
+    expect(await read(other)).toMatchObject({ status: 404, body: { movedTo: otherMoved } });
+    expect(await checkout(other)).toMatchObject({ status: 200, body: { outcome: 'joined', checkout: { id: second, path: otherMoved } } });
+    // A file Git gets at a path the note was read at is that file's: it is read there, not led away.
+    await gitCommit(archived, '# Archived\n');
+    expect(await read(archived)).toMatchObject({ status: 200, body: { note: { path: archived, title: 'Archived' } } });
+    expect(await read(again)).toMatchObject({ status: 404, body: { movedTo: weekly } });
   });
 
   it('refuses a destination Git holds or another live note goes to, with 409, and records nothing', async () => {
@@ -417,5 +449,42 @@ describe('moving a live note someone else edits', () => {
     leaseRunsOut();
     expect(await checkIn(weekly)).toMatchObject({ status: 200, body: { path: weekly, committed: true, released: true } });
     expect(files.get(weekly)).toBe('---\ntitle: 公司週會\n---\n議程\n續寫\n再寫\n');
+  });
+});
+
+describe('moving a live note over the built-in editor', () => {
+  let fixture: BuiltinFixture;
+  const IDLE_MS = 10 * 60_000;
+  /** Who has the note open on a process of the editor, and when each last did something there. */
+  const present = async (id: string, people: Record<string, number>) => fixture.store.presence(id, 'process-x', people, fixture.time.now());
+  // The app signs every writer of this file in as Pat: the mover.
+  const mover = liveEditorRef(pat, false).key, other = liveEditorRef(sam, false).key;
+  beforeEach(async () => {
+    fixture = builtinFixture({ files });
+    await start(fixture.liveNotes);
+  });
+
+  it("checks a move from the mover's own editor in at once only when nobody else has the note open, whether they or the mover typed lately or not", async () => {
+    const id = await open(weekly);
+    fixture.time.advance(IDLE_MS + 1000);
+    const now = fixture.time.now();
+    // The mover has been idle a while, and Sam is typing: Sam still edits it.
+    await present(id, { [mover]: now - IDLE_MS - 1, [other]: now });
+    expect(await move(weekly, archived, { editing: true })).toMatchObject({ status: 200, body: { live: { path: weekly, target: archived } } });
+    expect(commits()).toEqual([]);
+    // Sam has been idle a while but has it open: still not alone.
+    await present(id, { [mover]: now, [other]: now - IDLE_MS - 1 });
+    const renamed = 'notes/life/archive/週會.md';
+    expect(await move(archived, renamed, { editing: true })).toMatchObject({ status: 200, body: { live: { path: weekly, target: renamed } } });
+    expect(await move(renamed, archived, { title: '公司週會', editing: true })).toMatchObject({ status: 200, body: { live: { target: archived } } });
+    expect(commits()).toEqual([]);
+    // Sam left: the mover alone has it open, and the move lands now.
+    await present(id, { [mover]: now });
+    expect(await move(archived, renamed, { editing: true })).toMatchObject({ status: 200, body: { live: { path: renamed, target: null, checkIn: { committed: true, released: false, reason: 'active' } } } });
+    expect(commits().map(commit => commit.paths)).toEqual([[index, renamed, weekly].sort()]);
+    // A tab still at any path the note was read at follows it, and its socket opens there.
+    expect(await read(weekly)).toMatchObject({ status: 404, body: { movedTo: renamed } });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: renamed } });
+    for (const path of [weekly, archived, renamed]) expect(await call('POST', '/api/live/socket-ticket', { notebookId: 'notes~life', path }), path).toMatchObject({ status: 200, body: { document: expect.stringMatching(new RegExp(`^${id}\\.`)) } });
   });
 });

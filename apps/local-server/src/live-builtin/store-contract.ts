@@ -587,7 +587,8 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.retarget(link.id, await leased(link.id, T0 + 5), { target: 'notes/life/b.md' }, T0 + 6)).toBe('retargeted');
       expect(await store.link(link.id)).toMatchObject({ path: note, target: 'notes/life/b.md' });
       expect(await store.retarget(link.id, await leased(link.id, T0 + 7), { target: null }, T0 + 8)).toBe('retargeted');
-      expect(await store.link(link.id)).toEqual({ ...link, seq: 1, lastEditAt: T0 + 1 });
+      // The targets it was read at are remembered, so a tab still there finds it.
+      expect(await store.link(link.id)).toEqual({ ...link, seq: 1, lastEditAt: T0 + 1, formerPaths: ['notes/life/moved/a.md', 'notes/life/b.md'] });
       // A pending link takes a path rule, never a target, and a filed one never a path rule; each lease ends all the same.
       const draft = await pending('# Draft\n', T0 + 9);
       const draftToken = await leased(draft.id, T0 + 9);
@@ -606,7 +607,7 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.leaseRead(link.id, token, 0, hash('a'), T0 + 3)).toBe(true);
       expect(await store.synced(link.id, token, receipt(hash('a'), 'notes/life/moved/a.md'), T0 + 4)).toBe('ok');
       const moved = (await store.link(link.id))!;
-      expect(moved).toEqual({ ...link, path: 'notes/life/moved/a.md', ...synced(hash('a')), syncedAt: T0 + 4 });
+      expect(moved).toEqual({ ...link, path: 'notes/life/moved/a.md', formerPaths: [note], ...synced(hash('a')), syncedAt: T0 + 4 });
       expect(moved).not.toHaveProperty('target');
       // Another path is still refused whole.
       expect(await store.synced(link.id, token, receipt(hash('b'), 'notes/life/elsewhere.md'), T0 + 5)).toBe('path-fixed');
@@ -688,6 +689,50 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.activePeople(id, now - IDLE_MS, now + LIVE_PRESENCE_MS - 1)).toBe(1);
       expect(await store.activePeople(id, now - IDLE_MS, now + LIVE_PRESENCE_MS)).toBe(0);
       expect(await store.activePeople(unknown, T0, now)).toBe(0);
+    });
+
+    it('counts the people other than one, idle or not, for whether anyone else has a note open', async () => {
+      const { id } = await open();
+      const now = T0 + IDLE_MS;
+      await store.presence(id, 'process-1', { [pat.key]: now, [sam.key]: now - IDLE_MS - 1 }, now);
+      await store.presence(id, 'process-2', { [pat.key]: now - 5 }, now);
+      // Pat is on both processes and is left out on both; Sam counts, however long ago he last did something.
+      expect(await store.activePeople(id, -Infinity, now, pat.key)).toBe(1);
+      expect(await store.activePeople(id, -Infinity, now, sam.key)).toBe(1);
+      expect(await store.activePeople(id, now - IDLE_MS, now, pat.key)).toBe(0);
+      await store.presence(id, 'process-1', { [pat.key]: now + 1 }, now + 1);
+      expect(await store.activePeople(id, -Infinity, now + 1, pat.key)).toBe(0);
+    });
+
+    it('remembers the paths a filed link was read at earlier in its epoch: each target a move replaced, and the path a receipt moved it from; a reopen forgets them', async () => {
+      const link = await open(note, '# A\n', T0);
+      const first = 'notes/life/moved/a.md', second = 'notes/life/b.md';
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 1), { target: first }, T0 + 2)).toBe('retargeted');
+      // Its path still names it: nothing is remembered yet.
+      expect(await store.link(link.id)).not.toHaveProperty('formerPaths');
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 3), { target: second }, T0 + 4)).toBe('retargeted');
+      expect(await store.link(link.id)).toMatchObject({ target: second, formerPaths: [first] });
+      // Moved back to a path it was read at, that path is its own again.
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 5), { target: first }, T0 + 6)).toBe('retargeted');
+      expect(await store.link(link.id)).toMatchObject({ target: first, formerPaths: [second] });
+      const token = await leased(link.id, T0 + 7);
+      expect(await store.leaseRead(link.id, token, 0, hash('a'), T0 + 7)).toBe(true);
+      expect(await store.synced(link.id, token, receipt(hash('a'), first), T0 + 8)).toBe('ok');
+      expect(await store.link(link.id)).toMatchObject({ path: first, formerPaths: [second, note] });
+      expect((await store.links(repository))[0]).toMatchObject({ path: first, formerPaths: [second, note] });
+      // Kept in place, a link remembers its target as unmoved, not as a path it was read at.
+      await store.unlease(link.id, token, T0 + 9);
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 10), { target: 'notes/life/taken.md' }, T0 + 11)).toBe('retargeted');
+      const kept = await leased(link.id, T0 + 12);
+      expect(await store.synced(link.id, kept, receipt(hash('a'), first), T0 + 13)).toBe('ok');
+      expect(await store.link(link.id)).toMatchObject({ path: first, unmoved: 'notes/life/taken.md', formerPaths: [second, note] });
+      // At most the latest eight are kept.
+      await store.unlease(link.id, kept, T0 + 14);
+      for (let n = 0; n < 10; n++) expect(await store.retarget(link.id, await leased(link.id, T0 + 20 + 2 * n), { target: `notes/life/m${n}.md` }, T0 + 21 + 2 * n)).toBe('retargeted');
+      expect((await store.link(link.id))!.formerPaths).toEqual(Array.from({ length: 8 }, (_, n) => `notes/life/m${n + 1}.md`));
+      // Released and checked out again, the new epoch starts with none.
+      expect(await checkIn(link.id, T0 + 50)).toBe('released');
+      expect((await checkout(first, '# Again\n', T0 + 51, 2)).link).not.toHaveProperty('formerPaths');
     });
   });
 }
