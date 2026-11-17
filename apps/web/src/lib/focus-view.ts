@@ -161,6 +161,32 @@ export function readFocusView(raw: unknown): FocusViewState {
   return { current, entries, last, dock: { left, top, collapsed, split, splitCollapsed } };
 }
 
+const isLegacyEntry = (entry: FocusEntryView | LegacyFocusEntryView): entry is LegacyFocusEntryView => Array.isArray(entry.shown);
+
+/**
+ * The view state with every note tab key its entries keep (the tab a pane shows and its history) pointing at the path
+ * `move` gives the note, as a file move relocates the tabs themselves: a moved note stays the tab its pane shows. The
+ * (current) layout is relocated by the caller. Returns `state` itself when no key changed.
+ */
+export function relocateEntryKeys(state: FocusViewState, move: (path: string) => string): FocusViewState {
+  let changed = false;
+  const key = (value: string) => {
+    if (!value.startsWith('note:')) return value;
+    const next = `note:${move(value.slice('note:'.length))}`;
+    if (next !== value) changed = true;
+    return next;
+  };
+  const shown = (value: string | null) => value === null ? null : key(value);
+  const keys = (values: string[]) => values.map(key);
+  const byPane = <T>(values: Record<string, T>, change: (value: T) => T) => Object.fromEntries(Object.entries(values).map(([pane, value]) => [pane, change(value)]));
+  const relocated = (entry: FocusEntryView | LegacyFocusEntryView): FocusEntryView | LegacyFocusEntryView => {
+    if (isLegacyEntry(entry)) return { ...entry, shown: entry.shown.map(shown), history: entry.history.map(keys) };
+    return { ...entry, shown: byPane(entry.shown, shown), history: byPane(entry.history, keys) };
+  };
+  const entries = Object.fromEntries(Object.entries(state.entries).map(([id, entry]) => [id, relocated(entry)]));
+  return changed ? { ...state, entries } : state;
+}
+
 function splitNodes(node: FocusNode): FocusSplitNode[] {
   return node.kind === 'pane' ? [] : [node, ...node.children.flatMap(splitNodes)];
 }

@@ -37,9 +37,11 @@ interface Params {
   folderRoot: string | undefined;
   changeFilters: FilterControls['onChange'];
   handleOpenFolderIndex: ReturnType<typeof useNoteRestoration>['handleOpenFolderIndex'];
+  /** Points the shown notebook's Focus tabs, and the tab each pane shows, at the path `move` gives them. */
+  relocateFocus?: (move: (path: string) => string) => void;
 }
 
-export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, setActionError, navigate, location, returnTo, focusNoteRoute, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex }: Params) {
+export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, setActionError, navigate, location, returnTo, focusNoteRoute, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex, relocateFocus }: Params) {
   /**
    * Saves the open editors, then refuses a change that would strand drafts: those under the paths it touches. A change
    * without a scope touches no note (an R2 asset move rewrites links, which the commit of any draft merges).
@@ -58,6 +60,9 @@ export function useFileNavigation({ editorRegistry, draftsUnder, remote, readDra
    * new path at once and the workspace is read again while the person already works there.
    */
   const onFilesChanged = async (result: FileResult, { background = false }: { background?: boolean; } = {}) => {
+    // The tabs of the notes it moved, a folder's included, follow them before the lists are read again, which would find
+    // nothing at their old paths and close them: a live note's target the move took along too (§20.4).
+    if (Object.keys(result.pathMap).length) relocateFocus?.(path => result.pathMap[path] ?? path);
     // A file action commits in a remote workspace; read the head past the server's cache.
     const refresh = Promise.all([refreshWorkspace(true), refreshDocuments()]).then(() => {});
     const nb = editorRoute.note ? config?.notebooks.find(nb => nb.id === editorNotebookId) : undefined;

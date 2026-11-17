@@ -451,6 +451,22 @@ describe('useNoteFocus relocatePaths', () => {
     expect(tabsAt(result.current.view.current, 0)?.map(entry => entry.path)).toEqual(['notes/new.md', 'notes/other.md']);
     expect(JSON.parse(localStorage.getItem(storageKey)!).current.root.tabs.map((entry: { path: string; }) => entry.path)).toEqual(['notes/new.md', 'notes/other.md']);
   });
+
+  it('keeps the moved note the shown tab of its pane, in the (current) Focus and a named one, instead of showing another tab', async () => {
+    const layout: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/ideas.md' }, { kind: 'note', path: 'notes/big.md' }] } };
+    const entry = { activePane: 'p1', shown: { p1: 'note:notes/big.md' }, recent: ['p1'], history: { p1: ['note:notes/big.md', 'note:notes/ideas.md'] }, ratios: {}, hideToolbar: { p1: false } };
+    localStorage.setItem(storageKey, JSON.stringify({ current: layout, entries: { [CURRENT_FOCUS]: entry, named: entry }, last: null, dock: { left: 320, bottom: 280, collapsed: false } }));
+    const { result } = renderHook(() => useNoteFocus({ page: fakeController(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+    await waitFor(() => expect(tabsAt(result.current.layout, 0)?.length).toBe(2));
+    expect(result.current.entry?.shown.p1).toBe('note:notes/big.md');
+
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/big.md' ? 'notes/archive/big.md' : path));
+    expect(tabsAt(result.current.view.current, 0)?.map(entry => entry.path)).toEqual(['notes/ideas.md', 'notes/archive/big.md']);
+    expect(result.current.entry?.shown.p1).toBe('note:notes/archive/big.md');
+    expect(result.current.entry?.history.p1).toEqual(['note:notes/archive/big.md', 'note:notes/ideas.md']);
+    // A named Focus the server relocated in the workspace keeps its shown tab too.
+    expect(JSON.parse(localStorage.getItem(storageKey)!).entries.named).toMatchObject({ shown: { p1: 'note:notes/archive/big.md' }, history: { p1: ['note:notes/archive/big.md', 'note:notes/ideas.md'] } });
+  });
 });
 
 describe('useNoteFocus in a demo repository', () => {

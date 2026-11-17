@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement, forwardRef, useLayoutEffect, useState } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { NoteEditingProvider } from '../lib/note-editing.js';
@@ -66,7 +66,7 @@ const View = () => {
   return createElement('button', { type: 'button' }, 'Open Alpha');
 };
 /* eslint-disable react/no-children-prop -- The provider's props type names its children. */
-const modal = (props: { note: typeof alpha | null; loading?: boolean; behind?: { notebookId: string; path: string; }; }) => createElement(PanelProvider, null, createElement(Rail), createElement(NoteEditingProvider, { register: () => () => {}, flushEditors: async () => true, refreshNotes: async () => {}, closeZoom: () => {}, addToFocus: () => undefined, editorProps: () => ({ statuses: [], onSave: async () => alpha, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' }), children: createElement(EditorModal, { loading: false, isOpen: true, renderCompilation: () => createElement(View), ...props }) }));
+const modal = (props: { note: typeof alpha | null; loading?: boolean; behind?: { notebookId: string; path: string; }; error?: string; }) => createElement(PanelProvider, null, createElement(Rail), createElement(NoteEditingProvider, { register: () => () => {}, flushEditors: async () => true, refreshNotes: async () => {}, closeZoom: () => {}, addToFocus: () => undefined, editorProps: () => ({ statuses: [], onSave: async () => alpha, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' }), children: createElement(EditorModal, { loading: false, isOpen: true, renderCompilation: () => createElement(View), ...props }) }));
 /* eslint-enable react/no-children-prop */
 const behind = { notebookId: 'a', path: reading.path };
 
@@ -114,6 +114,16 @@ it('shows a note that is still loading as a dialog of its own over the hidden co
   render(modal({ note: null, loading: true, behind }));
   expect(screen.getAllByRole('dialog', { hidden: true })).toHaveLength(2);
   expect(screen.getByRole('dialog', { name: 'Loading note…' })).toHaveAttribute('aria-busy', 'true');
+});
+
+it('says a refused move or rename inside zoom, where the person sees it, not behind the overlay', () => {
+  const { rerender } = render(modal({ note: alpha, error: 'A note already exists at notes/ideas.md.' }));
+  const dialog = screen.getByRole('dialog', { name: 'Note editor' });
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('A note already exists at notes/ideas.md.');
+  rerender(modal({ note: reading, error: 'A note already exists at notes/ideas.md.' }));
+  expect(within(screen.getByRole('dialog', { name: 'Compilation' })).getByRole('alert')).toHaveTextContent('A note already exists');
+  rerender(modal({ note: alpha }));
+  expect(screen.queryByRole('alert')).toBeNull();
 });
 
 describe('beside the assistant dock', () => {

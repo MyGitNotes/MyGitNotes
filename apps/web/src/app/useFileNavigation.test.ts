@@ -82,3 +82,19 @@ it('keeps a renamed note the Focus shows at an address of the Focus, so it is no
   await model.onFilesChanged({ revision: 'r2', selectedPath: 'notes/a/one/nested/fresh.md', pathMap: { 'notes/a/one/nested/note.md': 'notes/a/one/nested/fresh.md' }, deletedPaths: [] });
   expect(params.navigate).toHaveBeenCalledWith('/notebooks/a/notes/one/nested/fresh.md?q=x', { replace: true, state: { focusNote: true } });
 });
+it('points the Focus tabs of every file a move relocated at its new path before the workspace is read again, so a tab of a moved note stays open', async () => {
+  const order: string[] = [];
+  const relocateFocus = vi.fn(() => void order.push('relocate'));
+  const refreshWorkspace = vi.fn(async () => void order.push('refresh'));
+  const { model } = fixture({ relocateFocus, refreshWorkspace });
+  // A folder move takes along a live note's target inside it: the mover's own tab of that note follows like the others.
+  await model.onFilesChanged({ revision: 'r2', selectedPath: 'notes/a/projects/archive', pathMap: { 'notes/a/archive': 'notes/a/projects/archive', 'notes/a/archive/ideas.md': 'notes/a/projects/archive/ideas.md' }, deletedPaths: ['notes/a/archive'] });
+  expect(relocateFocus).toHaveBeenCalledOnce();
+  const [move] = relocateFocus.mock.calls[0] as unknown as [(path: string) => string];
+  expect(move('notes/a/archive/ideas.md')).toBe('notes/a/projects/archive/ideas.md');
+  expect(move('notes/a/big.md')).toBe('notes/a/big.md');
+  expect(order).toEqual(['relocate', 'refresh']);
+  // A change that moved nothing leaves the Focus alone.
+  await model.onFilesChanged({ revision: 'r3', selectedPath: 'notes/a', pathMap: {}, deletedPaths: [] });
+  expect(relocateFocus).toHaveBeenCalledOnce();
+});
