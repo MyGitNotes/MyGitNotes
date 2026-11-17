@@ -48,6 +48,8 @@ export interface NoteListItem {
   kind?: 'compilation' | 'outline';
   /** Why a compilation cannot open. */
   invalid?: string;
+  /** The note opens a frontmatter block that cannot be read: lists mark it so, in place of its status. */
+  frontmatterInvalid?: true;
   /** Present while the note is checked out to the live editor: title, tags, status and size are the live text's. */
   live?: LiveNoteState;
 }

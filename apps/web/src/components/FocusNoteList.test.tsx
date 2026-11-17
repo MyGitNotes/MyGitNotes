@@ -68,6 +68,15 @@ it('lists each note as a status dot and a title that is clamped to two lines, wi
   expect(css).toMatch(/\.focus-row-title \{[^}]*min-height: calc\(var\(--title-lines, 2\) \* 1\.375em\)/);
 });
 
+// FU P3: a broken frontmatter read as "no status" in the list while the editor said it could not be read.
+it('marks a row whose frontmatter cannot be read with the warning sign in place of its status dot', () => {
+  setup({ notes: [note('a'), note('b', { status: undefined, frontmatterInvalid: true })] });
+  const [plain, broken] = document.querySelectorAll('[data-focus-row]');
+  expect(plain.querySelector('.status-dot')).toBeInTheDocument();
+  expect(broken.querySelector('.status-dot, [role=combobox]')).toBeNull();
+  expect(within(broken as HTMLElement).getByRole('img', { name: 'Frontmatter cannot be read' })).toBeInTheDocument();
+});
+
 it('opens a note on a click and on Enter, and marks the one the active pane shows as open', () => {
   const props = setup({ focusMode: { onZoomNote: vi.fn(), canDrag: () => false, compactRows: true, openPath: 'notes/life/projects/b.md' } });
   fireEvent.click(rowOf('a'));

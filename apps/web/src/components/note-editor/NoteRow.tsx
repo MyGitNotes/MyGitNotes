@@ -1,9 +1,9 @@
-import { AlertTriangle, Braces } from 'lucide-react';
+import { Braces } from 'lucide-react';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import '../note-row.css';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import { useTranslation } from '../../lib/i18n/index.js';
-import { NoteStatusSelect } from '../NoteStatusSelect.js';
+import { FrontmatterInvalid, NoteStatusSelect } from '../NoteStatusSelect.js';
 import { NoteRowTags } from './NoteRowTags.js';
 import { NoteTitleEdit } from './NoteTitleEdit.js';
 import type { NoteDocumentPanelState } from './useNoteDocumentPanel.js';
@@ -25,19 +25,11 @@ interface NoteRowProps {
   frontmatterInvalid?: boolean;
 }
 
-/** Says the frontmatter does not parse, where its status and tags are shown otherwise. */
-export function FrontmatterInvalid() {
-  const { t } = useTranslation();
-  return (
-    <span role='status' className='inline-flex items-center gap-1 text-xs text-danger' title={t('editor.frontmatterInvalidLive')}>
-      <AlertTriangle aria-hidden='true' size={14} />
-      {t('editor.frontmatterInvalidShort')}
-    </span>
-  );
-}
-
-/** Below this width the tags drop to a line of their own under the title, status and frontmatter button. */
-const NARROW_BELOW = 280;
+/**
+ * Below this width the status and tags drop to a line of their own under the title and frontmatter button. Above it the
+ * title, the status chip, the tags folded to + and the frontmatter button share one line, the title giving way first.
+ */
+const NARROW_BELOW = 240;
 
 /** The note's common metadata in one row: its title (renamed in place), status and tags, and the button that opens the full frontmatter. */
 export function NoteRow({ path, session, docPanel, statuses, availableTags, onRename, template = false, trailing, frontmatterInvalid = false }: NoteRowProps) {
@@ -61,7 +53,7 @@ export function NoteRow({ path, session, docPanel, statuses, availableTags, onRe
     <div ref={row} className='note-row' data-narrow={narrow || undefined} role='group' aria-label={t('editor.noteRow')}>
       {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
       <NoteTitleEdit title={session.title} path={path} locked={session.locked} onRename={onRename} />
-      {frontmatterInvalid ? <FrontmatterInvalid /> : (
+      {frontmatterInvalid ? <FrontmatterInvalid announce /> : (
         <>
           <NoteStatusSelect status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />
           <NoteRowTags metadata={session.metadata} setMetadata={session.setMetadata} availableTags={availableTags} locked={session.locked} />

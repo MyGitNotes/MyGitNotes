@@ -1,4 +1,4 @@
-import { EditorView, layer, RectangleMarker } from '@codemirror/view';
+import { EditorView, layer, RectangleMarker, ViewPlugin } from '@codemirror/view';
 
 // .cm-content is a non-positioned box, so it always paints above drawSelection()'s
 // negative-z-index selection layer, hiding the tint. This layer paints the "card" background
@@ -21,6 +21,38 @@ export const cardBackgroundLayer = layer({
     return [new RectangleMarker('cm-card-background', left, top, contentRect.right - from, contentRect.height)];
   },
 });
+/**
+ * The line-number gutter's width as `--cm-gutter-width` on the editor, 0px without one: the theme keeps the room the gutter
+ * takes off the right of the scroller, so turning line numbers on or off leaves the text where it was.
+ */
+export const gutterWidth = ViewPlugin.fromClass(
+  class {
+    /** The width last written; the variable's own fallback is 0px, so an editor without a gutter writes nothing. */
+    private width = 0;
+    constructor(readonly view: EditorView) {
+      this.measure();
+    }
+    update() {
+      this.measure();
+    }
+    private measure() {
+      this.view.requestMeasure({
+        key: this,
+        read: view => view.scrollDOM.querySelector<HTMLElement>(':scope > .cm-gutters')?.offsetWidth ?? 0,
+        write: (width, view) => {
+          if (width === this.width) return;
+          this.width = width;
+          view.dom.style.setProperty('--cm-gutter-width', `${width}px`);
+          // The text moved without CodeMirror seeing it, which leaves the card where it was: an update after this
+          // measure has the card layer read the page again. A width that holds asks no further update.
+          queueMicrotask(() => {
+            if (view.dom.isConnected) view.dispatch({});
+          });
+        },
+      });
+    }
+  },
+);
 export const theme = EditorView.theme({
   '&': { height: '100%', color: 'var(--color-text)', backgroundColor: 'var(--color-bg)' },
   '&.cm-focused': { outline: 'none' },
@@ -34,9 +66,12 @@ export const theme = EditorView.theme({
   '.cm-line': { padding: '0 40px' },
   '.cm-cursor': { borderLeftColor: 'var(--color-primary)' },
   // Line numbers are controls, not text: a selection that reaches the gutter (easy while a phone reads a note) leaves them out.
-  // They sit on the card beside the text, the pair centred as the text alone is (the free room goes before the gutter,
-  // not between it and the text), and run as far down as the card does, not to the scroller's end (VQ P3).
+  // They sit on the card beside the text (the free room goes before the gutter, not between it and the text) and run as
+  // far down as the card does, not to the scroller's end (VQ P3). The text stays where it was without them: the scroller
+  // keeps as much room as the gutter takes on its right, out of the margin the text left there, so the card grows to the
+  // left by the gutter and the text moves only where that margin is narrower than the gutter.
   '.cm-gutters': { backgroundColor: 'transparent', borderRight: '1px solid var(--color-border)', marginLeft: 'auto', height: 'calc(100% - 48px)', touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none' },
+  '.cm-scroller:has(> .cm-gutters)': { paddingRight: 'calc(16px + min(var(--cm-gutter-width, 0px), max(0px, (100% - 32px - var(--note-content-width, 880px)) / 2)))' },
   '.cm-gutters ~ .cm-content': { marginLeft: '0' },
   '.cm-lineNumbers': { color: 'var(--color-muted)', fontFamily: 'monospace', fontSize: '11px', opacity: '0.55' },
   // The number takes the body text's line box (its font size at the scroller's 1.8 line height),

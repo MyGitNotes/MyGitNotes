@@ -32,7 +32,7 @@ import { editedLiveError, type LiveLink, liveNoteState, type LiveRecord, type Li
 
 export { SourceError } from './github-api.js';
 const CACHEABLE_FILE = /\.(md|markdown|mdx|txt|ya?ml)$/i;
-const INDEX_VERSION = 'v3';
+const INDEX_VERSION = 'v4';
 /** The shape of a cached template list; a change of `NoteTemplateInfo` or of how a template is described raises it. */
 const TEMPLATES_VERSION = 'v1';
 /** Blobs kept in memory for one request. */

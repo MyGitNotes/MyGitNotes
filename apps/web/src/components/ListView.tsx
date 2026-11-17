@@ -117,7 +117,7 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
       </td>
       {/* In-Table Selectable Status */}
       <td className='py-2 px-3'>
-        <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => actions.status(note, status)} />
+        <NoteStatusSelect unreadable={note.frontmatterInvalid} statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => actions.status(note, status)} />
       </td>
       <td className='py-2 px-3'>{note.tags.length > 0 ? <NoteTags tags={note.tags} oneLine tagActions={tagActions} /> : <span className='text-xs text-muted'>—</span>}</td>
       <td className='py-2 px-3 text-xs text-muted whitespace-nowrap tabular-nums'>

@@ -1,5 +1,6 @@
 import { NoteMoveButton } from './NoteMoveButton.js';
 import { LiveBadge } from './live/LiveBadge.js';
+import { FrontmatterInvalid } from './NoteStatusSelect.js';
 import { useLiveLock } from './live/live-drafts.js';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Clock, GripVertical, Kanban as KanbanIcon, Plus, Trash2 } from 'lucide-react';
@@ -97,7 +98,7 @@ function useColumnDrag(board: BoardContext, columnId: string) {
       const notePath = event.dataTransfer.getData('text/plain');
       const note = board.dragged;
       board.setDragged(null);
-      if (!note || (notePath && notePath !== note.path) || board.liveLocked(note)) return;
+      if (!note || (notePath && notePath !== note.path) || board.liveLocked(note) || note.frontmatterInvalid) return;
       if ((note.status || '') !== columnId) board.onUpdateNoteStatus(note, columnId);
     },
   };
@@ -106,8 +107,9 @@ function useColumnDrag(board: BoardContext, columnId: string) {
 /** A card moves between columns when the board is writable and drags into a Focus pane when the Focus accepts it. */
 function cardDragProps(board: BoardContext, note: NoteListItem) {
   const canDragForFocus = !!board.focusMode?.canDrag(note);
-  // A note being edited live (編輯中) keeps its column until it is checked in; it may still go into a Focus pane.
-  const fixed = board.readOnly || board.liveLocked(note);
+  // A note being edited live (編輯中) keeps its column until it is checked in, and one whose frontmatter cannot be read
+  // takes no status until it is fixed; either may still go into a Focus pane.
+  const fixed = board.readOnly || board.liveLocked(note) || Boolean(note.frontmatterInvalid);
   return {
     draggable: !fixed || canDragForFocus,
     onDragStart: (event: React.DragEvent<HTMLDivElement>) => {
@@ -143,6 +145,7 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
         <div className='flex items-start gap-1.5 min-w-0 flex-1'>
           {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
           <div className='font-medium text-fg text-sm line-clamp-2 transition min-w-0'>{note.title}</div>
+          {note.frontmatterInvalid && <FrontmatterInvalid iconOnly />}
           <LiveBadge live={note.live} title={note.title} />
         </div>
         {/* A note being edited live keeps its column, so its card offers no handle to drag it to another. */}
@@ -277,6 +280,7 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
               <div className='flex items-start gap-1.5 mb-1 min-w-0'>
                 {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
                 <div className='font-medium text-fg text-sm line-clamp-2 min-w-0'>{note.title}</div>
+                {note.frontmatterInvalid && <FrontmatterInvalid iconOnly />}
                 <LiveBadge live={note.live} title={note.title} />
               </div>
               {(board.focusMode || (!board.readOnly && board.onMoveNote)) && <div className='flex justify-end items-center gap-1' onClick={event => event.stopPropagation()}>{board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />} {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={liveLock(note, 'move')} />}</div>}

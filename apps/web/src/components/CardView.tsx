@@ -90,7 +90,7 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
             {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
             <LiveBadge live={note.live} title={note.title} />
           </h3>
-          <NoteStatusSelect statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => onUpdateNoteStatus(note, status)} />
+          <NoteStatusSelect unreadable={note.frontmatterInvalid} statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => onUpdateNoteStatus(note, status)} />
         </div>
         {note.matchSnippet && (
           <p className='text-xs text-muted line-clamp-2 leading-relaxed'>

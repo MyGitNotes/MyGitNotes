@@ -93,7 +93,7 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
         }}
       >
         {selectionActive && !draft && <NoteSelectBox title={note.title} checked={selected} onToggle={() => onToggleSelect?.(note)} className='focus-row-check' />}
-        <NoteStatusSelect dotOnly statuses={statuses} status={note.status} readOnly={readOnly || draft} lockedReason={liveLock(note, 'other')} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateNoteStatus(note, status)} />
+        <NoteStatusSelect unreadable={note.frontmatterInvalid} dotOnly statuses={statuses} status={note.status} readOnly={readOnly || draft} lockedReason={liveLock(note, 'other')} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateNoteStatus(note, status)} />
         <span className='focus-row-title' style={{ ['--title-lines' as string]: TITLE_LINES }}>
           {isCompilationPath(note.path) && <GalleryHorizontalEnd className='focus-row-kind' aria-hidden='true' />}
           <HighlightText text={note.title} query={highlightQuery} />

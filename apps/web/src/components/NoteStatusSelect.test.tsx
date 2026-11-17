@@ -112,3 +112,14 @@ it('translates the built-in statuses for a notebook without labels and leaves cu
   inLanguage('zh-TW', ['inbox', 'working', 'review'], { status: 'inbox' });
   expect(screen.getByRole('combobox', { name: 'Status for Alpha' })).toHaveTextContent('收件匣');
 });
+
+// FU P3: a note whose frontmatter cannot be read has no status to show or set; every list says so in the status's place.
+it('says the frontmatter cannot be read in place of the status, with no menu, named where only the sign shows', () => {
+  render(createElement(I18nProvider, null, createElement(NoteStatusSelect, { status: '', statuses: ['inbox'], readOnly: false, onChange: vi.fn(), label: 'Status for Alpha', unreadable: true })));
+  expect(screen.queryByRole('combobox')).toBeNull();
+  expect(screen.getByText('Frontmatter cannot be read').closest('.note-frontmatter-invalid')).toHaveAttribute('title', 'The frontmatter cannot be read: fix it in the YAML view or the editor.');
+  cleanup();
+  render(createElement(I18nProvider, null, createElement(NoteStatusSelect, { status: '', statuses: ['inbox'], readOnly: false, onChange: vi.fn(), label: 'Status for Alpha', unreadable: true, dotOnly: true })));
+  expect(screen.queryByRole('combobox')).toBeNull();
+  expect(screen.getByRole('img', { name: 'Frontmatter cannot be read' })).toHaveAttribute('data-icon-only');
+});

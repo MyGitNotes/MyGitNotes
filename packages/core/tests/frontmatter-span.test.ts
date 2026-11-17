@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fillMissingNoteTimestamps, noteFrontmatterSpan, parseNoteContent, patchNoteFrontmatter, replaceNoteStatus, replaceNoteTags } from '../src/frontmatter.js';
 import { patchFrontmatterField } from '../src/frontmatter-patch.js';
+import { parseNoteFile, serializeNoteFile } from '../src/note-file.js';
 
 describe('noteFrontmatterSpan', () => {
   it('finds the block and its blank separator as parseNoteContent does', () => {
@@ -41,8 +42,8 @@ describe('noteFrontmatterSpan', () => {
     // Without any line that starts with `---`, the block runs to the end of the text.
     const open = '---\ntitle: x\nBody\n';
     expect(noteFrontmatterSpan(open)).toEqual({ invalid: true, yaml: 'title: x\nBody\n', end: open.length, bodyStart: open.length, unclosed: '' });
-    // An empty block closes with a fence the block regex does not take: it reads as a block with nothing in it.
-    expect(noteFrontmatterSpan('---\n---\n\nBody')).toEqual({ invalid: true, yaml: '', end: 8, bodyStart: 9 });
+    // An empty block is a block with nothing in it: an empty map (FUI-F003).
+    expect(noteFrontmatterSpan('---\n---\n\nBody')).toEqual({ yaml: '', end: 8, bodyStart: 9, metadata: {} });
     // A text that does not open with a fence line has no block.
     expect(noteFrontmatterSpan('--- \ntitle: x\n---\n')).toBeNull();
     expect(noteFrontmatterSpan('---')).toBeNull();
@@ -131,5 +132,46 @@ describe('patchNoteFrontmatter', () => {
 
   it('does not stamp timestamps', () => {
     expect(patchNoteFrontmatter(raw, parseNoteContent(raw).metadata, parseNoteContent(raw).metadata)).toBe(raw);
+  });
+});
+
+// A note whose frontmatter cannot be read is listed as such, as the editor shows it, instead of as a note without a status.
+describe('parseNoteFile frontmatterInvalid', () => {
+  const unreadable = (raw: string, file = 'notes/a.md') => parseNoteFile(raw, file).extra.frontmatterInvalid;
+  it('marks a block no fence closes, one closed by a line with more on it, and one that is not a map', () => {
+    expect(unreadable('---\ntitle: A\nstatus: done\n---x\n# A\n')).toBe(true);
+    expect(unreadable('---\ntitle: A\n----\n# A\n')).toBe(true);
+    expect(unreadable('---\ntitle: A\nstatus: done\n# A\n')).toBe(true);
+    expect(unreadable('---\ntitle: [oops\n---\nBody')).toBe(true);
+    expect(unreadable('---\n- a\n---\nBody')).toBe(true);
+    expect(unreadable('---\ntitle: A\n---x\n', 'notes/a.outline.md')).toBe(true);
+    expect(parseNoteFile('---\ntitle: A\n---x\n', 'notes/a.outline.md').extra.kind).toBe('outline');
+  });
+  it('leaves a note with a readable block, with none, or opening with another dash line unmarked', () => {
+    expect(parseNoteFile('---\ntitle: A\nstatus: done\n---\n# A\n', 'notes/a.md').extra).toEqual({});
+    expect(unreadable('# A\n\n---\n')).toBeUndefined();
+    expect(unreadable('----\nBody\n')).toBeUndefined();
+    expect(unreadable('')).toBeUndefined();
+  });
+  it('reads an empty block as an empty map, in LF and CRLF, and keeps an unclosed leading fence unreadable', () => {
+    for (const raw of ['---\n---\nBody', '---\n\n---\nBody', '---\r\n---\r\nBody', '---\r\n\r\n---\r\nBody', '---\n---']) {
+      expect(parseNoteFile(raw, 'notes/a.md')).toMatchObject({ metadata: {}, extra: {} });
+      expect(noteFrontmatterSpan(raw)).toMatchObject({ metadata: {} });
+      expect(noteFrontmatterSpan(raw)).not.toHaveProperty('invalid');
+    }
+    expect(parseNoteFile('---\n---\nBody', 'notes/a.md').content).toBe('Body');
+    expect(parseNoteContent('---\r\n\r\n---\r\nBody')).toMatchObject({ hasFrontmatter: true, content: 'Body' });
+    expect(unreadable('---\n\nIntro after a rule\n')).toBe(true);
+  });
+  it('writes keys into an empty block instead of rendering a second one, keeping its comments and line endings', () => {
+    expect(replaceNoteStatus('---\n---\nBody', 'done')).toBe('---\nstatus: done\n---\nBody');
+    expect(replaceNoteStatus('---\r\n\r\n---\r\nBody', 'done')).toBe('---\r\nstatus: done\r\n---\r\nBody');
+    expect(replaceNoteStatus('---\n---\nBody', null)).toBe('---\n---\nBody');
+    expect(patchFrontmatterField('---\n# keep\n---\nBody', 'tags', ['a'])).toBe('---\n# keep\ntags:\n  - a\n---\nBody');
+    expect(patchNoteFrontmatter('---\n---\n\nBody', {}, { status: 'done' })).toBe('---\nstatus: done\n---\n\nBody');
+    expect(fillMissingNoteTimestamps('---\n---\nBody', 'c', 'u').raw).toBe('---\ncreated: "c"\nupdated: "u"\n---\nBody');
+    const saved = serializeNoteFile('notes/a.md', { status: 'done' }, 'Body', false, new Date('2026-11-17T00:00:00Z'), '---\n---\nBody');
+    expect(saved.match(/^---$/gm)).toHaveLength(2);
+    expect(parseNoteFile(saved, 'notes/a.md').metadata).toMatchObject({ status: 'done' });
   });
 });

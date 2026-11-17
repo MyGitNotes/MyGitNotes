@@ -4,7 +4,7 @@ import YAML from 'yaml';
  * A note's leading frontmatter block: `---` on the first line, the YAML, and a closing `---` that ends its line (trailing
  * spaces or tabs allowed), or the text. A `---` followed by more on its line is no fence, as for other Markdown readers.
  */
-export const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
+export const FRONTMATTER_REGEX = /^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/;
 
 /**
  * Length of a single-key document's rendered key, e.g. `2` for `a: 1\n` but `6` for a quoted
@@ -22,11 +22,30 @@ function renderedKeyEnd(rendered: string): number {
  * Agent skill metadata panel, so a hidden key's exact bytes (line endings, spacing, quoting)
  * survive an edit to a key the UI does expose.
  */
+/**
+ * Writes `lines` into a block that holds no keys (`---` then `---`, or only blank or comment lines between, which reads
+ * as an empty map): its comments stay, its blank lines go, and the closing fence and body keep their bytes.
+ */
+export function fillEmptyBlock(raw: string, match: RegExpMatchArray, lines: string[]): string {
+  const newline = match[0].includes('\r\n') ? '\r\n' : '\n';
+  const yaml = match[1] ?? '';
+  const opening = `---${newline}`.length;
+  const closing = match[1] === undefined ? opening : opening + yaml.length + newline.length;
+  const kept = yaml.split(/\r?\n/).filter(line => line.trim());
+  return raw.slice(0, opening) + [...kept, ...lines].map(line => line + newline).join('') + raw.slice(closing);
+}
+
 export function patchFrontmatterField(raw: string, key: string, value: unknown): string {
   const match = raw.match(FRONTMATTER_REGEX);
   if (!match) return raw;
-  const yaml = match[1];
+  const yaml = match[1] ?? '';
   const document = YAML.parseDocument(yaml);
+  if (document.contents === null && document.errors.length === 0) {
+    if (value === undefined) return raw;
+    const node = value !== null && typeof value === 'object' ? value : new YAML.Scalar(value);
+    if (YAML.isScalar(node) && typeof value === 'string' && (key === 'created' || key === 'updated')) node.type = 'QUOTE_DOUBLE';
+    return fillEmptyBlock(raw, match, new YAML.Document({ [key]: node }).toString({ lineWidth: 0, flowCollectionPadding: false }).trimEnd().split('\n'));
+  }
   if (!YAML.isMap(document.contents)) return raw;
   const map = document.contents;
   // A YAML key parses to its resolved type (true, null, 42, ...), not the string form callers
