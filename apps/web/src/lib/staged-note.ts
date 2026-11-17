@@ -9,11 +9,5 @@ import type { NoteItem } from './types.js';
 export function stagedNoteFields(note: NoteItem): NoteItem {
   const { frontmatterInvalid: _previous, ...rest } = note;
   const unreadable = Object.keys(note.metadata).length === 0 && parseNoteFile(note.content, note.path).extra.frontmatterInvalid;
-  return {
-    ...rest,
-    status: typeof note.metadata.status === 'string' ? note.metadata.status : undefined,
-    tags: Array.isArray(note.metadata.tags) ? note.metadata.tags.map(String) : [],
-    title: typeof note.metadata.title === 'string' && note.metadata.title ? note.metadata.title : note.content.match(/^#\s+(.+)$/m)?.[1] || note.title,
-    ...(unreadable ? { frontmatterInvalid: true as const } : {}),
-  };
+  return { ...rest, status: typeof note.metadata.status === 'string' ? note.metadata.status : undefined, tags: Array.isArray(note.metadata.tags) ? note.metadata.tags.map(String) : [], title: typeof note.metadata.title === 'string' && note.metadata.title ? note.metadata.title : note.content.match(/^#\s+(.+)$/m)?.[1] || note.title, ...(unreadable ? { frontmatterInvalid: true as const } : {}) };
 }
