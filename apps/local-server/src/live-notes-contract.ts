@@ -351,6 +351,30 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       expect(await row(pending.id)).toMatchObject({ path: null, pathRule: '{{title}}.md' });
     });
 
+    it('names the note that left a path last, live or released, and none while it is read there again', async () => {
+      const retarget = service().retarget?.bind(service());
+      const leftFrom = (path: string, n = 2) => as(n).leftFrom!(fixture.repository, path);
+      if (!retarget || !as(1).leftFrom) return;
+      const filed = await checkout('# Moving\n');
+      const first = notePath(), second = notePath();
+      expect(await leftFrom(filed.path!)).toBeNull();
+      await retarget(fixture.repository, filed.id, await service().lease(fixture.repository, filed.id), { target: first });
+      expect(await leftFrom(filed.path!)).toBeNull();
+      await retarget(fixture.repository, filed.id, await service().lease(fixture.repository, filed.id), { target: second });
+      expect(await leftFrom(first)).toBe(filed.id);
+      // Checked in at its target and released, it still left both paths, and is filed where it went.
+      expect((await checkIn(filed.id, second)).release).toEqual({ released: true });
+      expect(await leftFrom(filed.path!, 1)).toBe(filed.id);
+      expect(await leftFrom(first)).toBe(filed.id);
+      expect(await as(1).filed(fixture.repository, filed.id)).toBe(second);
+      // A later note that leaves the same path is named instead.
+      const later = await checkout('# Later\n');
+      await retarget(fixture.repository, later.id, await service().lease(fixture.repository, later.id), { target: first });
+      await retarget(fixture.repository, later.id, await service().lease(fixture.repository, later.id), { target: null });
+      expect(await leftFrom(first)).toBe(later.id);
+      expect(await leftFrom(notePath())).toBeNull();
+    });
+
     it('lists the editors since the last sync for the service, with email and an agent flag, and attributes a merge to nobody', async () => {
       const { id } = await checkout('# Editors\n');
       await fixture.type(id, '# Editors\nhand\n', fixture.person(1));

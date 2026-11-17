@@ -185,6 +185,49 @@ describe('moving a live note someone else edits', () => {
     expect(await read(again)).toMatchObject({ status: 404, body: { movedTo: weekly } });
   });
 
+  it('keeps leading a path a note left while live to where it was filed once it is checked in and released, until Git holds a file there (fix5 P2-2)', async () => {
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    const again = 'notes/life/archive/週會.md';
+    await move(archived, again);
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(again)).toMatchObject({ status: 200, body: { committed: true, released: true, path: again } });
+    expect(await rows()).toEqual([]);
+    // No longer live, the note still leads a background tab at either path to where it lies in Git.
+    expect(await read(weekly)).toMatchObject({ status: 404, body: { movedTo: again } });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: again } });
+    // Opened again, it is the same note there, and the old paths lead to it still.
+    expect(await checkout(again)).toMatchObject({ status: 200, body: { outcome: 'reopened', checkout: { id, path: again } } });
+    expect(await read(weekly)).toMatchObject({ status: 404, body: { movedTo: again } });
+    // A file Git gets at a path it left is that file's.
+    await gitCommit(weekly, '# New weekly\n');
+    expect(await read(weekly)).toMatchObject({ status: 200, body: { note: { path: weekly, title: 'New weekly' } } });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: again } });
+  });
+
+  it('leads a path two notes left in turn to the one that left it last, live or not (review3 F002)', async () => {
+    await start();
+    const other = 'notes/life/會議/other.md', parked = 'notes/life/parked.md';
+    const first = await open(weekly);
+    liveNotes.setActive(repository, first, 1);
+    await move(weekly, archived);
+    const second = await open(other);
+    liveNotes.setActive(repository, second, 1);
+    // The second note goes where the first went, and then leaves it: the path is a former path of both.
+    await move(weekly, 'notes/life/archive/週會.md');
+    await move(other, archived);
+    await move(archived, parked);
+    expect((await rows()).map(row => row.formerPaths)).toEqual([[archived], [archived]]);
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: parked } });
+    expect(await checkout(archived)).toMatchObject({ status: 200, body: { checkout: { id: second } } });
+    // Released, the second still counts over the first, which left the path earlier.
+    liveNotes.setActive(repository, second, 0);
+    expect(await checkIn(parked)).toMatchObject({ status: 200, body: { released: true, path: parked } });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: parked } });
+  });
+
   it('refuses a destination Git holds or another live note goes to, with 409, and records nothing', async () => {
     await start();
     const id = await open(weekly);
@@ -508,5 +551,14 @@ describe('moving a live note over the built-in editor', () => {
     expect(await read(weekly)).toMatchObject({ status: 404, body: { movedTo: renamed } });
     expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: renamed } });
     for (const path of [weekly, archived, renamed]) expect(await call('POST', '/api/live/socket-ticket', { notebookId: 'notes~life', path }), path).toMatchObject({ status: 200, body: { document: expect.stringMatching(new RegExp(`^${id}\\.`)) } });
+  });
+
+  it('keeps leading the paths a note left to where it was filed once it is released (fix5 P2-2)', async () => {
+    const id = await open(weekly);
+    // Nobody else has it open: the move lands now, and the note is released with nobody in it.
+    expect(await move(weekly, archived)).toMatchObject({ status: 200, body: { live: { path: archived, checkIn: { committed: true, released: true } } } });
+    expect(await fixture.liveNotes.service.checkouts(repository)).toEqual([]);
+    expect(await read(weekly)).toMatchObject({ status: 404, body: { movedTo: archived } });
+    expect((await fixture.store.link(id))?.live).toBe(false);
   });
 });
