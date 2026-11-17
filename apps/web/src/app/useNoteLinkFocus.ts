@@ -25,9 +25,10 @@ function routeNoteOf(location: ReturnType<typeof useLocation>, editorRoute: Retu
  */
 export function useNoteLinkLoad(location: ReturnType<typeof useLocation>, editorRoute: ReturnType<typeof parseWorkspaceRoute>) {
   const routeNote = routeNoteOf(location, editorRoute);
-  const [linked, setLinked] = useState(() => routeNote);
+  // `from`: the name the link was loaded on, when the note was found to lie elsewhere; the address is on its way to `note`.
+  const [linked, setLinked] = useState<{ note: string; from?: string; } | null>(() => routeNote === null ? null : { note: routeNote });
   // Leaving the note before it opened (or a redirect to another note) drops the request; a redirect that only rewrites the notebook keeps it.
-  const pending = linked !== null && editorRoute.note === linked;
+  const pending = linked !== null && (editorRoute.note === linked.note || (linked.from !== undefined && editorRoute.note === linked.from));
   /** Whether the Focus took the note of the history entry `key`; one it could not take is shown in zoom. */
   const [outcome, setOutcome] = useState<{ key: string; inFocus: boolean; } | null>(null);
   const settle = useCallback((key: string, inFocus: boolean) => {
@@ -39,7 +40,9 @@ export function useNoteLinkLoad(location: ReturnType<typeof useLocation>, editor
   }, [linked, pending]);
   // A note route the app opened itself without `returnTo` (a folder's index, the guide of a demo) is zoom, as before.
   const inFocus = routeNote !== null && (pending || (outcome?.key === location.key ? outcome.inFocus : isFocusNoteState(location.state)));
-  return { pending, inFocus, settle };
+  /** The note the link names lies at `to` now (another person moved it): the link waits for it there, where the address is redirected. */
+  const follow = useCallback((from: string, to: string) => setLinked(current => current?.note === from ? { note: to, from } : current), []);
+  return { pending, inFocus, settle, follow };
 }
 
 interface Params {

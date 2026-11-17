@@ -67,6 +67,12 @@ export interface LiveDocuments {
   /** The link's epoch ended: the sockets on its document are told `released` and closed, it is let go, and nothing of it is stored. */
   drop(link: LiveEpoch): Promise<void>;
   /**
+   * The link may lie elsewhere now (a move or rename recorded its target, §20.4): the sockets on its document, if this
+   * process holds it, are told `moved` when the path reads know it by changed, so each tab reads the note again and
+   * follows it. Another process finds the change at its next catch-up.
+   */
+  relocated(link: StoredLink): void;
+  /**
    * Brings every document that sockets hold up to the store (§4.5): what another process appended reaches them, and a
    * document whose epoch another process ended is dropped. One process finds nothing new.
    */
@@ -109,6 +115,11 @@ export const liveDocumentName = (link: LiveEpoch) => `${link.id}.${link.epoch}`;
 
 /** What every socket on a document is told when its epoch ended (§6.5). */
 export const RELEASED = JSON.stringify({ type: 'released' });
+/** What every socket on a document is told when its note lies elsewhere now: a move or rename recorded its target (§20.4). */
+export const MOVED = JSON.stringify({ type: 'moved' });
+
+/** Where reads know a link's note: its target while it waits to move there, else its path. */
+const placeOf = (link: Pick<StoredLink, 'path' | 'target'>) => link.target ?? link.path;
 
 /** A socket sent an update that is not typing in the note's text; nothing of it was stored. */
 export class LiveUpdateRefusedError extends Error {
@@ -370,6 +381,8 @@ interface Held {
   text?: { text: string; hash: string; };
   /** A `\r` or NUL may have reached the text since it was last tidied. */
   unclean: boolean;
+  /** Where reads knew the note when its tabs were last told of it ({@link placeOf}). */
+  place: string | null;
 }
 
 /** The texts handed out for one document, oldest first. */
@@ -444,7 +457,7 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       if (!stored) throw await lost(link);
       Y.applyUpdate(document, stored.state, FROM_STORE);
       for (const update of stored.log) Y.applyUpdate(document, update, FROM_STORE);
-      const state: Held = { seen: stored.seq, top: 0, gen: stored.gen, unclean: CONTROL.test(document.getText(CONTENT).toString()) };
+      const state: Held = { seen: stored.seq, top: 0, gen: stored.gen, unclean: CONTROL.test(document.getText(CONTENT).toString()), place: placeOf(link) };
       states.set(document, state);
       document.on('update', (update: Uint8Array) => {
         state.text = undefined;
@@ -584,6 +597,15 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
     await letGo(name);
   };
 
+  /** Tells the tabs on the link's document, held here, that the note moved, once per place it moves to. */
+  const relocated = (link: StoredLink) => {
+    const document = hocuspocus.documents.get(liveDocumentName(link));
+    const state = document && states.get(document);
+    if (!document || !state || state.place === placeOf(link)) return;
+    state.place = placeOf(link);
+    document.broadcastStateless(MOVED);
+  };
+
   return {
     async snapshot(link) {
       const shot = await read(link);
@@ -681,6 +703,7 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
       await letGo(name);
     },
     drop,
+    relocated,
     async catchUp() {
       await Promise.all([...hocuspocus.documents].map(async ([name, document]) => {
         const [, id, epoch] = NAME.exec(name) ?? [];
@@ -689,6 +712,7 @@ export function liveDocuments({ store, clock, maxBytes, ringTexts, ringBytes }: 
         try {
           const link = await store.link(id);
           if (!link?.live || link.epoch !== Number(epoch)) return await drop({ id, epoch: Number(epoch) });
+          relocated(link);
           // Nothing new, and nothing of this process's own beyond a gap another process left.
           if (link.seq === state.seen && link.gen === state.gen && state.top <= state.seen) return;
           const stored = await store.document(id, link.epoch);

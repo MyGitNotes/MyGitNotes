@@ -107,6 +107,32 @@ const twoProcesses = (name: string, makeStore: () => LiveStore) =>
       expect([tabOne.told, tabTwo.told]).toEqual([[{ type: 'released' }], [{ type: 'released' }]]);
     });
 
+    it('tell the tabs on both processes, within the catch-up poll, each time the note is moved elsewhere, and not when it is only typed in', async () => {
+      const { one, two } = pair(makeStore());
+      const first = await liveServer(one), next = await liveServer(two);
+      servers.push(first, next);
+      const id = await first.checkout();
+      const tabOne = await first.tab(1), tabTwo = await next.tab(2);
+      await Promise.all([tabOne.synced(), tabTwo.synced()]);
+      const retarget = async (target: string) => {
+        const { service } = one.liveNotes;
+        await service.retarget(repository, id, await service.lease(repository, id), { target });
+      };
+      // A rename through process one: the tab there is told at once, the tab on process two by its next catch-up.
+      await retarget('notes/life/renamed.md');
+      await until('both tabs were told the note moved', () => tabOne.told.length > 0 && tabTwo.told.length > 0, 6000);
+      expect([tabOne.told, tabTwo.told]).toEqual([[{ type: 'moved' }], [{ type: 'moved' }]]);
+      // Typing moves nothing.
+      tabTwo.type(`${A}typed\n`);
+      await tabTwo.saved();
+      await until('the other tab shows the typing', () => tabOne.text() === `${A}typed\n`, 6000);
+      expect([tabOne.told, tabTwo.told]).toEqual([[{ type: 'moved' }], [{ type: 'moved' }]]);
+      // Moved again: each tab is told again, so each follows every retarget.
+      await retarget('notes/life/archive/renamed.md');
+      await until('both tabs were told the second move', () => tabOne.told.length > 1 && tabTwo.told.length > 1, 6000);
+      expect([tabOne.told, tabTwo.told]).toEqual([[{ type: 'moved' }, { type: 'moved' }], [{ type: 'moved' }, { type: 'moved' }]]);
+    });
+
     it('compact in turn without losing what the other appended: the stored state and log hold the union', async () => {
       const { one, two } = pair(makeStore());
       const { id } = (await checkout(one)).checkout;

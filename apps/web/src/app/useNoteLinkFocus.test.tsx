@@ -11,6 +11,7 @@ import { useNoteLinkLoad, useOpenNoteLinkInFocus } from './useNoteLinkFocus.js';
 import { useNoteSort } from './useNoteSort.js';
 import { useNoteActions } from './useNoteActions.js';
 import { editorModeOf, shownEditorMode } from '../lib/editor-mode-url.js';
+import { followMovedNote } from './follow-moved-note.js';
 
 vi.mock(import('../lib/api.js'), async original => ({ ...await original(), fetchAssets: vi.fn(async () => []) }));
 
@@ -82,7 +83,7 @@ const existing = new Set([at('a.md'), at('b.md'), at('c.md'), at('renamed.md'), 
  * `onCommit` runs as each render of the page is committed, before the effects of that render: what the person does in a
  * handler the browser runs between a render and its effects (React runs the effects of a non-urgent render in a later task).
  */
-function Page({ report, focus: initial, options }: { report: (harness: Harness) => void; focus: FocusState; options: { loading?: boolean; result?: OpenResult; notebookId?: string; narrow?: 'focus' | 'browse'; onCommit?: (harness: Harness) => void; onMarked?: (harness: Harness) => void; gate?: (path: string) => Promise<void>; }; }) {
+function Page({ report, focus: initial, options }: { report: (harness: Harness) => void; focus: FocusState; options: { loading?: boolean; result?: OpenResult; notebookId?: string; narrow?: 'focus' | 'browse'; onCommit?: (harness: Harness) => void; onMarked?: (harness: Harness) => void; gate?: (path: string) => Promise<void>; moved?: Record<string, string>; }; }) {
   const location = useLocation(), navigate = useNavigate();
   const editorRoute = useMemo(() => parseWorkspaceRoute(location.pathname, location.search), [location.pathname, location.search]);
   const link = useNoteLinkLoad(location, editorRoute);
@@ -91,7 +92,12 @@ function Page({ report, focus: initial, options }: { report: (harness: Harness) 
   const returnTo = noteReturnRoute(location.search, editorRoute.notebook ?? 'life', editorRoute.folder);
   const routedPath = editorRoute.note ? at(editorRoute.note) : null;
   const routedNote = routedPath && existing.has(routedPath) ? { notebookId: options.notebookId ?? 'life', path: routedPath, title: routedPath, content: '' } as never : null;
-  const routeError = routedPath && !existing.has(routedPath) ? 'route.noteNotFound' : '';
+  // A note the server says lies elsewhere now (a live note's earlier target) is loading until the page follows it there, as the app's routed note does.
+  const movedTo = routedPath ? options.moved?.[routedPath] : undefined;
+  const routeError = routedPath && !existing.has(routedPath) && !movedTo ? 'route.noteNotFound' : '';
+  useEffect(() => {
+    if (movedTo && routedPath) followMovedNote({ note: { notebookId: 'life', path: routedPath }, to: movedTo, notebook: { id: 'life', root: ROOT }, routedPath, search: location.search, state: location.state, link, relocatePaths: () => {}, navigate, refresh: () => {} });
+  });
   const [handleOpenNote] = useState(() => vi.fn(async () => true));
   const { handleSortChange } = useNoteSort('life', undefined, link.inFocus);
   const [setEditingNote] = useState(() => vi.fn()), [setAssets] = useState(() => vi.fn());
@@ -299,6 +305,15 @@ describe('a note link loaded as the page', () => {
     await waitFor(() => expect(api.current.zoomed).toBe(true));
     expect(api.current.focus.openNote).not.toHaveBeenCalled();
     expect(api.current.url).toBe('/notebooks/life/notes/.templates/reading.md');
+  });
+});
+
+describe('a note link loaded at a path the note moved away from', () => {
+  it('opens the note in the Focus where it lies now, the address naming it there, instead of the not-found page or zoom', async () => {
+    const { api } = open(['/notebooks/life/notes/old.md'], empty(), { moved: { [at('old.md')]: at('renamed.md') } });
+    await showsNote(api, 'renamed.md');
+    expect(api.current.focus.openNote).toHaveBeenCalledWith(at('renamed.md'));
+    expect(api.current.focus.openNote).toHaveBeenCalledOnce();
   });
 });
 
