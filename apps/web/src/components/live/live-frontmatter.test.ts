@@ -135,6 +135,15 @@ describe('writeLiveYaml', () => {
     expect(a.toString()).toBe('---\n# new\nstatus: done\n---\n\nBody\n');
   });
 
+  it('keeps the trailing spaces of the last line as written, dropping only the line endings after it', () => {
+    const { a } = pair(NOTE);
+    expect(writeLiveYaml(a, 'status: done\nnote: |\n  two  \n  last  \n\n')).toEqual({ ok: true });
+    expect(a.toString()).toBe('---\nstatus: done\nnote: |\n  two  \n  last  \n---\n\nBody\n');
+    const { a: crlf } = pair('---\r\nstatus: inbox\r\n---\r\n\r\nBody\r\n');
+    expect(writeLiveYaml(crlf, 'status: done  \r\n')).toEqual({ ok: true });
+    expect(crlf.toString()).toBe('---\r\nstatus: done  \r\n---\r\n\r\nBody\r\n');
+  });
+
   it('refuses YAML that does not parse to a map', () => {
     const { a } = pair(NOTE);
     expect(writeLiveYaml(a, 'x: [')).toMatchObject({ ok: false });

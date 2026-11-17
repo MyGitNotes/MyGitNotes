@@ -119,7 +119,10 @@ export function writeLiveYaml(text: Y.Text, yaml: string, shown?: string): { ok:
   const current = text.toString();
   const span = noteFrontmatterSpan(current.length > MAX_FRONTMATTER ? current.slice(0, MAX_FRONTMATTER) : current);
   const newline = (span ? current.slice(0, span.end) : current).includes('\r\n') ? '\r\n' : '\n';
-  const fenced = `---${newline}${yaml.trimEnd().replace(/\r?\n/g, newline)}${newline}---${newline}`;
+  // Only the line endings after the last line go: its trailing spaces are part of what the person wrote.
+  let last = yaml.length;
+  while (last > 0 && (yaml[last - 1] === '\n' || yaml[last - 1] === '\r')) last--;
+  const fenced = `---${newline}${yaml.slice(0, last).replace(/\r?\n/g, newline)}${newline}---${newline}`;
   if (!span) {
     const before = shown === undefined ? null : yamlMap(shown);
     if (before && Object.keys(before).length) {
