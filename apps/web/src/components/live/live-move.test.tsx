@@ -60,6 +60,13 @@ describe('a filed live note others edit', () => {
     expect(warning.closest('[title]')).toHaveAttribute('title', expect.stringContaining('notes/life/archive/2026-11-17 公司週會.md'));
   });
 
+  it('says on its row when the check-in kept it in place because the move would change too much', () => {
+    render(createElement(LiveBadge, { live: { since, activeEditors: 1, editorUrl: '', unmoved: 'notes/life/archive/2026-11-17 公司週會.md', unmovedReason: 'too-large' } }));
+    const warning = screen.getByText('Not moved: too many files to change');
+    expect(warning.closest('[title]')).toHaveAttribute('title', expect.stringContaining('more files than one commit takes'));
+    expect(zhTW['live.unmovedTooLarge']).toBe('沒有移動：牽動的檔案太多');
+  });
+
   it('reads 簽回後移到這裡 and 沒有移動：目標已存在 in Traditional Chinese', () => {
     expect(zhTW['live.movingHere']).toBe('簽回後移到這裡');
     expect(zhTW['live.unmoved']).toBe('沒有移動：目標已存在');

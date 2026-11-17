@@ -39,9 +39,9 @@ export function LiveBadge({ live, title }: { live: LiveNoteState | undefined; ti
     </span>
   );
   const unmoved = live.unmoved !== undefined && (
-    <span className='live-badge' data-unmoved='' title={t('live.unmovedHint', { path: live.unmoved })}>
+    <span className='live-badge' data-unmoved='' title={t(live.unmovedReason === 'too-large' ? 'live.unmovedTooLargeHint' : 'live.unmovedHint', { path: live.unmoved })}>
       <AlertTriangle aria-hidden='true' />
-      {t('live.unmoved')}
+      {t(live.unmovedReason === 'too-large' ? 'live.unmovedTooLarge' : 'live.unmoved')}
     </span>
   );
   if (!moving && !unmoved) return editing;

@@ -169,7 +169,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     return store.activePeople(link.id, clock() - limits.idleMs, clock());
   };
   /** A row carries no URL: the note is edited on its own page in the app. */
-  const rowOf = (link: StoredLink, contentHash: string, activeEditors: number): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), ...(link.path !== null && link.target !== undefined ? { target: link.target } : {}), ...(link.path !== null && link.unmoved !== undefined ? { unmoved: link.unmoved } : {}), since: iso(link.since), contentHash, activeEditors, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
+  const rowOf = (link: StoredLink, contentHash: string, activeEditors: number): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), ...(link.path !== null && link.target !== undefined ? { target: link.target } : {}), ...(link.path !== null && link.unmoved !== undefined ? { unmoved: link.unmoved, ...(link.unmovedReason ? { unmovedReason: link.unmovedReason } : {}) } : {}), since: iso(link.since), contentHash, activeEditors, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
   const row = async (link: StoredLink) => rowOf(link, await documents.contentHash(link), await active(link));
   const rows = async (repository: RepositoryId) => {
     covered(repository);
@@ -328,7 +328,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     },
     async synced(repository, id, lease, receipt) {
       const link = await live(repository, id);
-      const answer = await store.synced(link.id, tokenOf(lease), { commit: receipt.commit, blob: receipt.blob, contentHash: receipt.contentHash, path: receipt.path, conflict: receipt.conflict }, clock());
+      const answer = await store.synced(link.id, tokenOf(lease), { commit: receipt.commit, blob: receipt.blob, contentHash: receipt.contentHash, path: receipt.path, conflict: receipt.conflict, ...(receipt.unmovedReason ? { unmovedReason: receipt.unmovedReason } : {}) }, clock());
       if (answer === 'leased') throw new LiveLeasedError();
       if (answer === 'path-fixed') throw new SourceError('A live note keeps the path it was filed at.', 409);
     },
@@ -370,7 +370,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       if (answer === 'not-pending') throw new LiveNotLiveError('Only a pending note can be moved or renamed by its path rule.');
       if (answer === 'not-filed') throw new LiveNotLiveError('A pending note moves by its path rule.');
       if ('pathRule' in request) return row({ ...link, pathRule: request.pathRule });
-      const { target: _target, unmoved: _unmoved, ...rest } = link;
+      const { target: _target, unmoved: _unmoved, unmovedReason: _unmovedReason, ...rest } = link;
       return row({ ...rest, ...(request.target !== null ? { target: request.target } : {}) });
     },
     async unlease(repository, id, lease) {

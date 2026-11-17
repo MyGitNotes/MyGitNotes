@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { LiveUnavailableError, type RepositoryId } from '@mygitnotes/core';
+import { isLiveUnmovedReason, LiveUnavailableError, type LiveUnmovedReason, type RepositoryId } from '@mygitnotes/core';
 import { createClient, ErrorReply } from 'redis';
 import { recordKeyPrefix } from '../record-store/index.js';
 import { LIVE_ENDED_MAX_BYTES, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
@@ -81,7 +81,7 @@ elseif redis.call('HGET', link, 'live') ~= '1' then
   outcome = 'reopened'
   redis.call('HINCRBY', link, 'epoch', 1)
   redis.call('HSET', link, 'contentSeq', redis.call('HGET', link, 'seq'))
-  redis.call('HDEL', link, 'syncedAt', 'syncedHash', 'lastEditAt', 'conflict', 'target', 'unmoved')
+  redis.call('HDEL', link, 'syncedAt', 'syncedHash', 'lastEditAt', 'conflict', 'target', 'unmoved', 'unmovedReason')
 end
 if outcome ~= 'joined' then
   redis.call('HMSET', link, 'live', '1', 'notebook', ARGV[5], 'since', ARGV[10], 'gen', '0', 'contentHash', ARGV[8])
@@ -182,7 +182,7 @@ lease.readHash = ARGV[4]
 redis.call('SET', KEYS[2], cjson.encode(lease), 'PX', string.format('%.0f', lease['until'] - tonumber(ARGV[2]) + tonumber(ARGV[5])))
 return 1`;
 
-/** KEYS link, lease, editors, initial. ARGV token, now, base, contentHash, path, conflict, P, pk. */
+/** KEYS link, lease, editors, initial. ARGV token, now, base, contentHash, path, conflict, P, pk, old pk, why unmoved ('' for a target Git held). */
 const SYNCED = `${HOLDER}
 local lease = holder(ARGV[1], ARGV[2])
 if not lease then return 'leased' end
@@ -210,9 +210,10 @@ elseif at[7] then
     if redis.call('GET', old) == at[5] then redis.call('DEL', old) end
     redis.call('HSET', KEYS[1], 'path', ARGV[5])
     redis.call('SET', paths .. ARGV[8], at[5])
-    redis.call('HDEL', KEYS[1], 'unmoved')
+    redis.call('HDEL', KEYS[1], 'unmoved', 'unmovedReason')
   else
     redis.call('HSET', KEYS[1], 'unmoved', at[7])
+    if ARGV[10] == '' then redis.call('HDEL', KEYS[1], 'unmovedReason') else redis.call('HSET', KEYS[1], 'unmovedReason', ARGV[10]) end
   end
   redis.call('HDEL', KEYS[1], 'target')
 end
@@ -269,7 +270,7 @@ if ARGV[3] == 'rule' then
 end
 if not path then return 'not-filed' end
 if ARGV[4] == '' then redis.call('HDEL', KEYS[1], 'target') else redis.call('HSET', KEYS[1], 'target', ARGV[4]) end
-redis.call('HDEL', KEYS[1], 'unmoved')
+redis.call('HDEL', KEYS[1], 'unmoved', 'unmovedReason')
 return 'retargeted'`;
 
 /** KEYS link, lease. ARGV token, now. */
@@ -357,7 +358,7 @@ function linkOf(reply: unknown): StoredLink | null {
   const number = (name: string) => Number(fields.get(name) ?? 0);
   const time = (name: string) => fields.has(name) ? Number(fields.get(name)) : null;
   const parsed = (name: string) => fields.has(name) ? JSON.parse(fields.get(name)!) : null;
-  return { id, repository: fields.get('repository') ?? '', notebook: fields.get('notebook') ?? '', path: fields.get('path') ?? null, ...(fields.has('pathRule') ? { pathRule: fields.get('pathRule') } : {}), ...(fields.has('target') ? { target: fields.get('target') } : {}), ...(fields.has('unmoved') ? { unmoved: fields.get('unmoved') } : {}), since: number('since'), epoch: number('epoch'), live: fields.get('live') === '1', base: parsed('base'), syncedAt: time('syncedAt'), syncedHash: fields.get('syncedHash') ?? null, lastEditAt: time('lastEditAt'), conflict: parsed('conflict'), seq: number('seq'), gen: number('gen'), contentHash: fields.get('contentHash') ?? '', contentSeq: number('contentSeq') };
+  return { id, repository: fields.get('repository') ?? '', notebook: fields.get('notebook') ?? '', path: fields.get('path') ?? null, ...(fields.has('pathRule') ? { pathRule: fields.get('pathRule') } : {}), ...(fields.has('target') ? { target: fields.get('target') } : {}), ...(fields.has('unmoved') ? { unmoved: fields.get('unmoved'), ...(isLiveUnmovedReason(fields.get('unmovedReason')) ? { unmovedReason: fields.get('unmovedReason') as LiveUnmovedReason } : {}) } : {}), since: number('since'), epoch: number('epoch'), live: fields.get('live') === '1', base: parsed('base'), syncedAt: time('syncedAt'), syncedHash: fields.get('syncedHash') ?? null, lastEditAt: time('lastEditAt'), conflict: parsed('conflict'), seq: number('seq'), gen: number('gen'), contentHash: fields.get('contentHash') ?? '', contentSeq: number('contentSeq') };
 }
 
 /** The prefix of every live store key of this deployment, namespaced as its sessions are. */
@@ -487,7 +488,7 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
       // holding the lease changes a filed link's path, so it is still the one the script finds, which drops that key only
       // when it names this link.
       const old = await call(`synced ${id}`, ['HGET', key.link(id), 'path']) as string | null;
-      return await script(`synced ${id}`, SYNCED, [key.link(id), key.lease(id), key.editors(id), key.initial(id)], [token, now, json(base), receipt.contentHash, receipt.path, json(receipt.conflict), P, digest32(receipt.path), old ? digest32(old) : '']) as 'ok' | 'leased' | 'path-fixed';
+      return await script(`synced ${id}`, SYNCED, [key.link(id), key.lease(id), key.editors(id), key.initial(id)], [token, now, json(base), receipt.contentHash, receipt.path, json(receipt.conflict), P, digest32(receipt.path), old ? digest32(old) : '', receipt.unmovedReason ?? '']) as 'ok' | 'leased' | 'path-fixed';
     },
     async release(id, token, expect, now) {
       if (!isLink(id)) return 'leased';

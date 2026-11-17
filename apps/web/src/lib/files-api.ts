@@ -29,6 +29,8 @@ export interface FileResult {
   selectedPath: string;
   pathMap: Record<string, string>;
   deletedPaths: string[];
+  /** Live notes (編輯中) a folder move landed without: each stays where it is, as the links to it say. */
+  liveLeft?: { path: string; destination?: string; reason: string; }[];
 }
 const query = (notebookId: string, path?: string) => new URLSearchParams({ notebookId, ...(path ? { path } : {}) }).toString();
 async function request<T>(url: string, init?: RequestInit): Promise<T> {

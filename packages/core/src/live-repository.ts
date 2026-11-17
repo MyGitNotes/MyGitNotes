@@ -305,10 +305,11 @@ export function editedLiveError(file: string): CheckedOutError {
  * What reads say of a live link; its `editorUrl` is the framed editor's page, or the built-in editor's note page in the
  * app, and `changed` says its text is not the Git text it was last synced with (a note only viewed is not). A pending note names where its check-in files it (`pathRule`) only where the adapter can move it (`retargets`),
  * so an adapter without retarget answers as 0.19 did. A filed note moving at its next check-in names its Git path
- * (`movingFrom`), and one its last check-in could not move names the target it found taken (`unmoved`).
+ * (`movingFrom`), and one its last check-in did not move names that target (`unmoved`): one Git held, or one
+ * `unmovedReason` explains.
  */
 export function liveNoteState(row: LiveCheckout, retargets = false): LiveNoteState {
-  return { since: row.since, activeEditors: row.activeEditors, ...(row.base && row.contentHash !== row.base.contentHash ? { changed: true as const } : {}), ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}), ...(row.path !== null && row.target !== undefined ? { movingFrom: row.path } : {}), ...(row.path !== null && row.unmoved !== undefined ? { unmoved: row.unmoved } : {}) };
+  return { since: row.since, activeEditors: row.activeEditors, ...(row.base && row.contentHash !== row.base.contentHash ? { changed: true as const } : {}), ...(row.path === null ? { pending: true as const } : {}), ...(row.conflict ? { conflict: row.conflict } : {}), editorUrl: row.editorUrl!, ...(retargets && row.path === null && row.pathRule !== undefined ? { pathRule: row.pathRule } : {}), ...(row.path !== null && row.target !== undefined ? { movingFrom: row.path } : {}), ...(row.path !== null && row.unmoved !== undefined ? { unmoved: row.unmoved, ...(row.unmovedReason ? { unmovedReason: row.unmovedReason } : {}) } : {}) };
 }
 
 /*

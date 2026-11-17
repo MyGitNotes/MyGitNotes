@@ -2,6 +2,7 @@ import { NewerVersionError } from './newer-version-error.js';
 import { STUDY_FILE } from './study.js';
 import { BookmarkError } from './bookmark-error.js';
 import { managedNotebook, retitleNoteFile } from './file-manager.js';
+import { relocateLinks } from './folder-plan.js';
 import path from 'node:path';
 import { assetInfo, assetPath, assetRoot, decodeAsset, isAssetPath } from './assets.js';
 import { MANIFEST_FILES } from './remote-manifest.js';
@@ -272,9 +273,10 @@ export abstract class RemoteSource {
   /**
    * The live notes (編輯中) a Git relocation moves, as `relocate` maps a path (itself when it stays): each filed note,
    * by the path reads know it by, with where it goes. A note already moving elsewhere follows its target. A relocation
-   * commits none of them: their Git files stay out of its commit (`kept`), and each is moved with {@link moveLive}.
-   * Throws a {@link CheckedOutError} for them where the live editor cannot retarget, as before, and a 409 for a
-   * destination another live note holds or goes to.
+   * commits none of them: their Git files stay where they lie (`kept`, the planner's `stays`), so the links to them keep
+   * naming them there until each check-in moves it and rewrites those links, and once the commit landed
+   * {@link followLiveRelocation} takes them along. Throws a {@link CheckedOutError} for them where the live editor cannot
+   * retarget, as before, and a 409 for a destination another live note holds or goes to.
    */
   async liveRelocations(relocate: (file: string) => string): Promise<{ moves: { file: string; destination: string; }[]; kept: Set<string>; }> {
     if (!this.live) return { moves: [], kept: new Set() };
@@ -290,6 +292,38 @@ export abstract class RemoteSource {
       going.add(destination);
     }
     return { moves, kept: new Set(moving.map(link => link.checkout.path!)) };
+  }
+  /**
+   * Takes the live notes of {@link liveRelocations} along once the relocation's commit landed: each kept note's own links
+   * to the files the commit relocated (`relocate`) are rewritten in its live text from where it lies, so they hold there
+   * and at its check-in (LM-F002); then each of `moves` records where it goes, without a check-in. A note either step
+   * fails for stays where it lies, where the links to it lead, and is answered in `left` with why, for the caller to
+   * say: the commit stands either way (LM-F003).
+   */
+  async followLiveRelocation({ moves, kept }: Awaited<ReturnType<RemoteSource['liveRelocations']>>, relocate: (file: string) => string): Promise<{ moved: { file: string; destination: string; }[]; left: { path: string; destination?: string; reason: string; }[]; }> {
+    const moved: { file: string; destination: string; }[] = [], left: { path: string; destination?: string; reason: string; }[] = [];
+    if (!this.live || !kept.size) return { moved, left };
+    const relink = (file: string) => kept.has(file) ? file : relocate(file);
+    const links = (await this.live.links()).filter(link => link.checkout.path !== null && kept.has(link.checkout.path));
+    for (const link of links) {
+      const from = link.checkout.path!;
+      const destination = moves.find(entry => entry.file === link.path)?.destination;
+      try {
+        const read = await this.live.read(link.checkout.id);
+        const relinked = normalizeLiveText(relocateLinks(read.content, from, from, relink));
+        if (relinked !== read.content) await this.live.write(link.checkout.id, relinked, read.liveRevision, false);
+        this.liveLoaded.delete(link.path);
+        if (destination !== undefined) {
+          await this.moveLive(link.path, destination, { checkIn: false });
+          moved.push({ file: link.path, destination });
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'The live note could not be taken along.';
+        console.warn(`[live-notes] ${link.checkout.id} stays at ${from} after a relocation: ${(error as Error)?.name ?? 'error'}`);
+        left.push({ path: link.path, ...(destination !== undefined ? { destination } : {}), reason });
+      }
+    }
+    return { moved, left };
   }
   /**
    * Where a pending note's virtual path went once it was checked in: its Git path, or null when the editor does not

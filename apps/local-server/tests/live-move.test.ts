@@ -8,7 +8,7 @@ import { type EditionSourceConfig, type LiveContext, type LiveEditorInfo, LiveUn
 import { createApp } from '../src/app.js';
 import { type IdentityService } from '../src/identity.js';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
-import { memoryLiveClock, type MemoryLiveNotes, memoryLiveNotes } from '../src/memory-live-notes.js';
+import { type MemoryLiveClock, memoryLiveClock, type MemoryLiveNotes, memoryLiveNotes } from '../src/memory-live-notes.js';
 import { createRecordStore, type RecordStore } from '../src/record-store/index.js';
 import { workspaceSettings } from './workspace-settings.js';
 
@@ -39,7 +39,9 @@ const configSource: WorkspaceConfigSource = {
   },
 };
 
-let root: string, server: Server | undefined, base: string, store: RecordStore, files: MemoryFiles, liveNotes: MemoryLiveNotes;
+let root: string, server: Server | undefined, base: string, store: RecordStore, files: MemoryFiles, liveNotes: MemoryLiveNotes, clock: MemoryLiveClock;
+/** Past the memory adapter's lease, which a failed call leaves held (it has no `unlease`). */
+const leaseRunsOut = () => clock.advance(5 * 60_000 + 1);
 const start = async () => {
   const editionSources = memoryEditionSources({ repositories: new Map([['p1/notes', files]]), mayWrite: who => who.userId !== 'p2' });
   server = createServer(createApp(root, { configSource, recordStore: store, remoteCache: undefined, workspaceChoices: null, identity, editionSources, liveNotes }));
@@ -66,7 +68,7 @@ const checkIn = (file: string) => call('POST', '/api/live/checkin', { notebookId
 const read = (file: string) => call('GET', `/api/notes/read?notebookId=notes~life&path=${encodeURIComponent(file)}`);
 const listed = async () => ((await call('GET', '/api/notes?notebookId=notes~life')).body.notes as { path: string; live?: Record<string, unknown>; }[]).map(note => note.path).sort();
 const rows = () => liveNotes.service.checkouts(repository);
-const make = (editor: LiveEditorInfo = builtin, retarget = true) => memoryLiveNotes({ editor, repositories: [{ source: notes, files }], clock: memoryLiveClock(), discard: true, retarget });
+const make = (editor: LiveEditorInfo = builtin, retarget = true) => memoryLiveNotes({ editor, repositories: [{ source: notes, files }], clock: clock = memoryLiveClock(), discard: true, retarget });
 
 beforeEach(() => {
   root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'mygitnotes-live-move-')));
@@ -219,7 +221,7 @@ describe('moving a live note someone else edits', () => {
     expect([...files.keys()].some(file => file.startsWith('notes/life/會議/'))).toBe(false);
   });
 
-  it('keeps every link right when a folder move\'s live note finds its target taken at its check-in (LM-F006)', async () => {
+  it("keeps every link right when a folder move's live note finds its target taken at its check-in (LM-F006)", async () => {
     const pastWeekly = 'notes/life/past/2026-11-17 公司週會.md';
     files.set(weekly, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
     await start();
@@ -249,6 +251,7 @@ describe('moving a live note someone else edits', () => {
     expect(files.get(index)).toBe('# Index\n\n[週會](會議/2026-11-17%20公司週會.md)\n');
     expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toContain('[o](../past/other.md)');
     // The folder tree answers the same way.
+    leaseRunsOut();
     const revision = (await call('GET', '/api/folder-manager?notebookId=notes~life')).body.revision;
     expect(await call('POST', '/api/folder-manager', { command: { kind: 'move', notebookId: 'notes~life', path: '會議', parent: 'archive' }, revision })).toMatchObject({ status: 200, body: { liveLeft: [{ path: weekly }] } });
     expect((await rows())[0]).not.toHaveProperty('target');
@@ -311,7 +314,7 @@ describe('moving a live note someone else edits', () => {
     expect(await rows()).toMatchObject([{ id, path: weekly, target: 'notes/life/past/2026-11-17 公司週會.md' }]);
   });
 
-  it('rewrites the moving note\'s own links once when its move commit is tried again (LM-F001)', async () => {
+  it("rewrites the moving note's own links once when its move commit is tried again (LM-F001)", async () => {
     const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n';
     files.set(weekly, own);
     await start();
@@ -327,7 +330,7 @@ describe('moving a live note someone else edits', () => {
     });
     const commit = RemoteSource.prototype.commitChanges;
     let stale = 1;
-    vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function (this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
+    vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function(this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
       if (args[2] === 'move' && stale-- > 0) throw new StaleRevisionError([repository]);
       return commit.apply(this, args);
     });
@@ -354,7 +357,7 @@ describe('moving a live note someone else edits', () => {
     });
     const commit = RemoteSource.prototype.commitChanges;
     let stale = 1;
-    vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function (this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
+    vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function(this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
       if (args[2] === 'move' && stale-- > 0) {
         await gitCommit(archived, '# Someone else\n');
         throw new StaleRevisionError([repository]);
@@ -381,6 +384,7 @@ describe('moving a live note someone else edits', () => {
     // Typing goes on in the live text, which still holds the links as they were.
     liveNotes.type(repository, id, own.replace('結論', '結論二'), sam);
     liveNotes.setActive(repository, id, 0);
+    leaseRunsOut();
     expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true } });
     expect(files.get(archived)).toBe(own.replace('../archive/old.md', 'old.md').replace('結論', '結論二'));
     expect(files.has(weekly)).toBe(false);
@@ -410,6 +414,7 @@ describe('moving a live note someone else edits', () => {
     expect((await read(weekly)).body.note.live).toMatchObject({ unmoved: archived, unmovedReason: 'too-large' });
     liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程\n續寫\n再寫\n', sam);
     liveNotes.setActive(repository, id, 0);
+    leaseRunsOut();
     expect(await checkIn(weekly)).toMatchObject({ status: 200, body: { path: weekly, committed: true, released: true } });
     expect(files.get(weekly)).toBe('---\ntitle: 公司週會\n---\n議程\n續寫\n再寫\n');
   });

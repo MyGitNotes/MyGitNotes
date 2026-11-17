@@ -85,8 +85,13 @@ export interface LiveCheckout {
    * with the links to it rewritten (docs/specs/2026-11-15-builtin-live-editor §20.4). Reads know the note by it meanwhile.
    */
   target?: string;
-  /** Filed only: a target the last check-in did not move the note to, since Git held that path; the next move clears it. */
+  /**
+   * Filed only: a target the last check-in did not move the note to, since Git held that path, or as `unmovedReason`
+   * says; the next move clears it.
+   */
   unmoved?: string;
+  /** With `unmoved`, why the note stayed when not because Git held its target: `too-large`, the move would change too much. */
+  unmovedReason?: LiveUnmovedReason;
   /** ISO: when this checkout or reopen began. */
   since: string;
   /** Present, and on the editor's origin, exactly for a framed editor. */
@@ -179,6 +184,12 @@ export interface LiveLease {
   token: string;
   until: string;
 }
+/**
+ * Why a check-in kept a moving note where it lies though its target was free: `too-large`, the move would change more
+ * files or bytes than a commit takes (§20.4 of the built-in editor spec). A target Git holds needs no reason.
+ */
+export type LiveUnmovedReason = 'too-large';
+export const isLiveUnmovedReason = (value: unknown): value is LiveUnmovedReason => value === 'too-large';
 /** What `retarget` sets: a pending note's path rule, or where a filed note moves at its next check-in. */
 export type LiveRetargetRequest = { pathRule: string; } | { target: string | null; };
 /** The live text with its row and the editors since the last sync, with their email. */
@@ -211,7 +222,11 @@ export interface LiveServiceCalls {
   lease(repository: RepositoryId, id: string): Promise<LiveLease>;
   detail(repository: RepositoryId, id: string, lease: LiveLease): Promise<LiveDetail>;
   mergeIn(repository: RepositoryId, id: string, lease: LiveLease, change: { content: string; baseRevision: string; }): Promise<{ liveRevision: string; }>;
-  synced(repository: RepositoryId, id: string, lease: LiveLease, receipt: { commit: string; blob: string; contentHash: string; path: string; conflict: LiveConflict | null; }): Promise<void>;
+  /**
+   * Records a check-in's commit. A receipt for a note moving elsewhere names its target (moved there) or its path (kept
+   * there, its target recorded as `unmoved`, with `unmovedReason` when it is not that Git held the target).
+   */
+  synced(repository: RepositoryId, id: string, lease: LiveLease, receipt: { commit: string; blob: string; contentHash: string; path: string; conflict: LiveConflict | null; unmovedReason?: LiveUnmovedReason; }): Promise<void>;
   release(repository: RepositoryId, id: string, lease: LiveLease, check: { contentHash: string; }): Promise<LiveRelease>;
   /**
    * Drops a pending note (no path) and its live text without a commit; refused like `release` when someone is editing
@@ -590,6 +605,7 @@ function checkoutProblem(row: Record<string, unknown>, context: LiveRowContext):
   } else if (!isNoteOf(path, notebook)) return 'a path that is not a note of its notebook';
   else if (row.target !== undefined && !isNoteOf(row.target, notebook)) return 'a target that is not a note of its notebook';
   else if (row.unmoved !== undefined && !isNoteOf(row.unmoved, notebook)) return 'an unmoved target that is not a note of its notebook';
+  else if (row.unmovedReason !== undefined && (row.unmoved === undefined || !isLiveUnmovedReason(row.unmovedReason))) return 'an unknown reason a note did not move';
   if (!isTime(since)) return 'an invalid since';
   // A framed editor's rows carry both URLs on its origin; a built-in editor's URLs, if any, are ignored and dropped.
   if (!isBuiltinEditor(context.editor) && (!onOrigin(editorUrl, context.editor) || !onOrigin(embedUrl, context.editor))) return 'a URL off the editor origin';
@@ -628,7 +644,7 @@ export function liveCheckoutOf(row: unknown, context: LiveRowContext): LiveCheck
     return null;
   }
   const pending = value.path === null;
-  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), ...(!pending && value.target !== undefined ? { target: value.target as string } : {}), ...(!pending && value.unmoved !== undefined ? { unmoved: value.unmoved as string } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
+  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), ...(!pending && value.target !== undefined ? { target: value.target as string } : {}), ...(!pending && value.unmoved !== undefined ? { unmoved: value.unmoved as string, ...(value.unmovedReason !== undefined ? { unmovedReason: value.unmovedReason as LiveUnmovedReason } : {}) } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
 }
 
 /**

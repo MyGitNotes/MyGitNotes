@@ -1,4 +1,4 @@
-import { LIVE_MAX_BYTES, type LiveConflict, type NotebookKey, type RepositoryId, type WorkspacePerson } from '@mygitnotes/core';
+import { LIVE_MAX_BYTES, type LiveConflict, type LiveUnmovedReason, type NotebookKey, type RepositoryId, type WorkspacePerson } from '@mygitnotes/core';
 
 /*
  * What the built-in live editor keeps between check-ins (docs/specs/2026-11-15-builtin-live-editor §3): the links, each
@@ -34,6 +34,8 @@ export interface StoredLink {
   target?: string;
   /** Filed only: a target the last check-in did not move the note to, since Git held that path; the next move clears it. */
   unmoved?: string;
+  /** With `unmoved`, why the note stayed when not because Git held the target (the receipt's `unmovedReason`). */
+  unmovedReason?: LiveUnmovedReason;
   /** When this epoch began. */
   since: number;
   /** One per check-out or reopen, from 1. The document of an epoch is `<id>.<epoch>`. */
@@ -101,6 +103,8 @@ export interface SyncReceipt {
   contentHash: string;
   path: string;
   conflict: LiveConflict | null;
+  /** For a link with a target, kept at its path: why, when it is not that Git held the target. */
+  unmovedReason?: LiveUnmovedReason;
 }
 
 /** What a socket ticket opens, and for whom. The store keeps it under the ticket's hash, never under the ticket. */
@@ -178,7 +182,7 @@ export interface LiveStore {
    * the receipt's hash is the stored `contentHash` and that is current (`contentSeq === seq`); else nobody. A pending link
    * gets its path once. A filed link with a target moves there when the receipt names the target: its path becomes the
    * target, which then names the link in place of the old path; a receipt that names its path instead keeps it there and
-   * records the target as `unmoved`. Either way the target is gone. 'path-fixed', with nothing recorded, for a receipt
+   * records the target as `unmoved`, with the receipt's `unmovedReason` when it has one. Either way the target is gone. 'path-fixed', with nothing recorded, for a receipt
    * that names another path. 'leased' when `token` does not hold the lease.
    */
   synced(id: string, token: string, receipt: SyncReceipt, now: number): Promise<'ok' | 'leased' | 'path-fixed'>;
@@ -198,7 +202,7 @@ export interface LiveStore {
   /**
    * Sets, when the lease holds, the path rule a pending link (no path) is filed by, or with `{ target }` the path a filed
    * link moves to at its next check-in (null takes the target away), and ends the lease: its text, editors and presence
-   * stay, and a target clears `unmoved`. 'not-pending' for a path rule on a filed link and 'not-filed' for a target on a
+   * stay, and a target clears `unmoved` and its reason. 'not-pending' for a path rule on a filed link and 'not-filed' for a target on a
    * pending one, with nothing set and the lease ended all the same, so the call never holds a check-in off. 'leased',
    * with the lease kept, when `token` does not hold it.
    */

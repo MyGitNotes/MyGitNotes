@@ -82,7 +82,12 @@ export function retitleNoteFile(raw: string, file: string, title: string, now: D
   return serializeNoteFile(file, next.metadata, next.content, false, now, raw);
 }
 
-export function planFileChange(snapshot: FileSnapshot, input: unknown) {
+/**
+ * The plan of a file command over `snapshot`. `stays` names files a move leaves where they lie although they are inside
+ * what it moves: live notes (編輯中), which each move at their own check-in (§20.4 of the built-in editor spec). Their
+ * bytes are untouched and links to them keep naming them where they lie.
+ */
+export function planFileChange(snapshot: FileSnapshot, input: unknown, { stays }: { stays?: ReadonlySet<string>; } = {}) {
   const command = FileCommandSchema.parse(input);
   const nb = snapshot.notebooks.find(n => n.id === command.notebookId);
   const snapshotDirectories = new Set(snapshot.directories);
@@ -156,10 +161,10 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
     // The source itself counts: a rename that changes only letter case writes the new name over the old entry, then deletes it.
     const inSource = (entry: string) => withinPath(entry, command.path) && entry !== command.path;
     const title = command.kind === 'move' ? command.title : undefined;
-    const relocate = (file: string) => withinPath(file, command.path) ? destination + file.slice(command.path.length) : file;
+    const relocate = (file: string) => stays?.has(file) ? file : withinPath(file, command.path) ? destination + file.slice(command.path.length) : file;
     const removedMetadata = command.kind === 'remove-directory' ? command.path + '/_dir.yml' : '';
     for (const source of [...directories, ...files.keys()]) {
-      if (!withinPath(source, command.path) || source === removedMetadata || command.kind === 'remove-directory' && source === command.path) continue;
+      if (!withinPath(source, command.path) || source === removedMetadata || command.kind === 'remove-directory' && source === command.path || stays?.has(source)) continue;
       const next = relocate(source);
       assertPath(next, false, snapshotDirectories.has(source));
       if (exists(next)) throw new Error('Destination already exists.');
@@ -171,6 +176,10 @@ export function planFileChange(snapshot: FileSnapshot, input: unknown) {
     for (const dir of snapshot.directories) if (!(command.kind === 'remove-directory' && dir === command.path)) directories.add(relocate(dir));
     for (const [file, bytes] of snapshot.files) {
       if (file === removedMetadata) continue;
+      if (stays?.has(file)) {
+        files.set(file, bytes);
+        continue;
+      }
       const next = relocate(file);
       const raw = /\.(md|markdown)$/i.test(file) ? decodeTextFile(bytes) : undefined;
       // A compilation pins paths of its notebook; they follow the move like a link does.

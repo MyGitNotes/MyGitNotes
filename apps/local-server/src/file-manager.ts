@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { getCurrentBranch } from '@mygitnotes/git';
-import { assetHash, assetInfo, assetRoot, changedFiles, checkedOutFields, editableFile, type FileCommand, FileCommandSchema, fileNeedsContent, filePresentation, fileRetainer, type FileSnapshot, isNotebookContent, managedNotebook, type NotebookConfig, parseFolderConfig, planFileChange, rawFileHeaders, remoteFileChanges, remoteFileSnapshot, type RemoteSnapshot, type RemoteSource, SourceError, stampIsRacy, versionFilePath, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
+import { assetHash, assetInfo, assetRoot, changedFiles, checkedOutFields, editableFile, type FileCommand, FileCommandSchema, fileNeedsContent, filePresentation, fileRetainer, type FileSnapshot, isNotebookContent, managedNotebook, type NotebookConfig, parseFolderConfig, planFileChange, rawFileHeaders, remoteFileChanges, remoteFileSnapshot, type RemoteSnapshot, type RemoteSource, SourceError, stampIsRacy, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
 import { defaultRepository, eachRepository, notebookRepository, noteRepository, type RepositoryHandle } from './request-workspace.js';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { regularPath, writeFileAtomicSync } from './workspace-files.js';
@@ -279,33 +279,31 @@ export function createFileManagerRouter(): Router {
       // A move is planned from the snapshot read here, so it needs no revision of the client's view: a named one must still be current.
       const unversioned = command.kind === 'move' && req.body.revision === undefined;
       if (!unversioned && (!req.body.revision || req.body.revision !== state.revision)) throw new SourceError('The workspace changed. Reload before saving.', 409);
-      const after = planFileChange(state.snapshot, command), paths = changedFiles(state.snapshot, after);
+      // The live notes a move takes along stay where they lie in its commit, and the links to them with them: each moves
+      // at its own check-in (§20.4 of the built-in editor spec).
+      const relocation = (file: string) => command.kind === 'move' && withinPath(file, command.path) ? command.destination + file.slice(command.path.length) : file;
+      const live = state.reader && command.kind === 'move' ? await state.reader.liveRelocations(relocation) : { moves: [], kept: new Set<string>() };
+      const after = planFileChange(state.snapshot, command, { stays: live.kept }), paths = changedFiles(state.snapshot, after);
       // Version files follow their files: moved along the path map, deleted with a deleted file.
       const relocate = (file: string) => after.pathMap[file] ?? file;
       const removed = (file: string) => !after.files.has(file) && !(file in after.pathMap);
       const followed = [...paths, ...Object.keys(after.pathMap)];
       let nextRevision: string;
+      let liveLeft: Awaited<ReturnType<RemoteSource['followLiveRelocation']>>['left'] = [];
       if (state.local !== undefined) {
         applyLocalFilePlan(state.local, state.snapshot, after);
         moveLocalVersionFiles(state.local, followed, relocate, removed);
         nextRevision = catalogRevision(localFileCatalog(state.local, state.notebooks));
       } else {
         const reader = state.reader!;
-        let { changes } = remoteFileChanges(state.remoteSnapshot!, state.snapshot, after);
-        // The live notes a folder move takes along stay out of its commit: each moves at its own check-in (§20.4).
-        const live = command.kind === 'move' ? await reader.liveRelocations(file => withinPath(file, command.path) ? command.destination + file.slice(command.path.length) : file) : { moves: [], kept: new Set<string>() };
-        if (live.kept.size) {
-          const left = new Set([...live.kept].flatMap(file => [file, relocate(file), versionFilePath(file), versionFilePath(relocate(file))]));
-          changes = changes.filter(change => !left.has(change.path));
-          for (const file of live.kept) delete after.pathMap[file];
-        }
+        const { changes } = remoteFileChanges(state.remoteSnapshot!, state.snapshot, after);
         nextRevision = changes.length ? (await reader.commitChanges(changes, state.revision, command.kind, 'files', undefined, state.remoteSnapshot)).revision : state.revision;
-        for (const { file, destination } of live.moves) {
-          await reader.moveLive(file, destination, { checkIn: false });
-          after.pathMap[file] = destination;
-        }
+        // The commit landed: a live note that cannot follow stays where the links to it lead, and the answer says so.
+        const followed = await reader.followLiveRelocation(live, relocation);
+        for (const { file, destination } of followed.moved) after.pathMap[file] = destination;
+        liveLeft = followed.left;
       }
-      res.json({ revision: nextRevision, selectedPath: after.selectedPath, pathMap: after.pathMap, deletedPaths: [...paths.filter(file => !after.files.has(file)), ...state.snapshot.directories.filter(dir => !after.directories.includes(dir))] });
+      res.json({ revision: nextRevision, selectedPath: after.selectedPath, pathMap: after.pathMap, deletedPaths: [...paths.filter(file => !after.files.has(file)), ...state.snapshot.directories.filter(dir => !after.directories.includes(dir))], ...(liveLeft.length ? { liveLeft } : {}) });
     };
     try {
       // A local mutation is serialized on the worktree it changes.

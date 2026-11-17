@@ -25,8 +25,10 @@ export interface LiveNoteState {
    * moves to, and this is its Git path until the next check-in moves it, as 「簽回後移到這裡」 says.
    */
   movingFrom?: string;
-  /** The path the last check-in did not move the note to, since Git held it: 「沒有移動：目標已存在」. */
+  /** The path the last check-in did not move the note to, since Git held it: 「沒有移動：目標已存在」, or as `unmovedReason` says. */
   unmoved?: string;
+  /** With `unmoved`: `too-large`, the move would change more files or bytes than a commit takes: 「沒有移動：牽動的檔案太多」. */
+  unmovedReason?: 'too-large';
 }
 
 export type ViewMode = 'list' | 'card' | 'kanban' | 'flat' | 'graph';

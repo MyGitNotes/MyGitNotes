@@ -634,6 +634,23 @@ export function liveStoreContract(name: string, makeStore: () => LiveStore | Pro
       expect(await store.link(link.id)).not.toHaveProperty('unmoved');
     });
 
+    it('remembers why a link stayed at its path when the receipt says, and forgets it with the next move or a later receipt', async () => {
+      const link = await open(note, '# A\n', T0);
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 1), { target: 'notes/life/far.md' }, T0 + 2)).toBe('retargeted');
+      const token = await leased(link.id, T0 + 3);
+      expect(await store.synced(link.id, token, { ...receipt(hash('a'), note), unmovedReason: 'too-large' }, T0 + 4)).toBe('ok');
+      expect(await store.link(link.id)).toMatchObject({ path: note, unmoved: 'notes/life/far.md', unmovedReason: 'too-large' });
+      expect((await store.links(repository))[0]).toMatchObject({ unmoved: 'notes/life/far.md', unmovedReason: 'too-large' });
+      await store.unlease(link.id, token, T0 + 5);
+      expect(await store.retarget(link.id, await leased(link.id, T0 + 6), { target: 'notes/life/far.md' }, T0 + 7)).toBe('retargeted');
+      expect(await store.link(link.id)).not.toHaveProperty('unmovedReason');
+      // Kept again, now since Git holds the target: no reason.
+      const again = await leased(link.id, T0 + 8);
+      expect(await store.synced(link.id, again, receipt(hash('a'), note), T0 + 9)).toBe('ok');
+      expect(await store.link(link.id)).toMatchObject({ unmoved: 'notes/life/far.md' });
+      expect(await store.link(link.id)).not.toHaveProperty('unmovedReason');
+    });
+
     it('gives a ticket out once, and never after it ran out', async () => {
       const { id } = await open();
       const issued = ticket(id, 1), agent: StoredTicket = { ...issued, editor: bot, display: 'Robo' };

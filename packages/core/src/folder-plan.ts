@@ -126,7 +126,8 @@ export function relocateLinks(raw: string, oldFile: string, newFile: string, rel
   return result + prose(raw.slice(cursor));
 }
 
-export function planFolderChange(snapshot: FolderSnapshot, input: unknown) {
+/** The plan of a folder command over `snapshot`; `stays` names files a move leaves where they lie, as {@link planFileChange} does. */
+export function planFolderChange(snapshot: FolderSnapshot, input: unknown, { stays }: { stays?: ReadonlySet<string>; } = {}) {
   const command = FolderCommandSchema.parse(input);
   const notebook = snapshot.notebooks.find(nb => nb.id === command.notebookId);
   if (!notebook) throw new Error('Notebook does not exist.');
@@ -148,7 +149,7 @@ export function planFolderChange(snapshot: FolderSnapshot, input: unknown) {
     if (differsOnlyInCase(folded.get(foldName(next)) ?? [], next, entry => !!source && inside(entry, source) && entry !== source)) throw new Error(CASE_COLLISION_ERROR);
   };
   if (command.kind === 'create') assertCase(destination);
-  const relocate = (file: string) => source && inside(file, source) ? destination + file.slice(source.length) : file;
+  const relocate = (file: string) => !stays?.has(file) && source && inside(file, source) ? destination + file.slice(source.length) : file;
   const files = new Map<string, string>();
   const directories = new Set<string>();
   const removedMetadata = command.kind === 'delete' ? `${source}/_dir.yml` : '';
@@ -161,6 +162,10 @@ export function planFolderChange(snapshot: FolderSnapshot, input: unknown) {
   }
   for (const [file, raw] of snapshot.files) {
     if (file === removedMetadata) continue;
+    if (stays?.has(file)) {
+      files.set(file, raw);
+      continue;
+    }
     const next = relocate(file);
     if (file !== next && (snapshot.files.has(next) && !inside(next, source) || snapshot.directories.includes(next) || snapshot.protectedPaths.includes(next))) throw new Error('Destination already exists.');
     if (file !== next) assertCase(next);

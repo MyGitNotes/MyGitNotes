@@ -67,6 +67,7 @@ export function memoryLiveStore(): LiveStore {
       // A reopened epoch starts with no move of its own.
       delete link.target;
       delete link.unmoved;
+      delete link.unmovedReason;
       links.set(link.id, link);
       paths.set(pathKey(repository, path), link.id);
       documents.set(link.id, { state: new Uint8Array(state), log: [] });
@@ -160,7 +161,12 @@ export function memoryLiveStore(): LiveStore {
           link.path = receipt.path;
           paths.set(pathKey(link.repository, receipt.path), id);
           delete link.unmoved;
-        } else link.unmoved = link.target;
+          delete link.unmovedReason;
+        } else {
+          link.unmoved = link.target;
+          if (receipt.unmovedReason) link.unmovedReason = receipt.unmovedReason;
+          else delete link.unmovedReason;
+        }
         delete link.target;
       }
       Object.assign(link, { base: { commit: receipt.commit, blob: receipt.blob, contentHash: receipt.contentHash }, syncedAt: now, syncedHash: receipt.contentHash, conflict: structuredClone(receipt.conflict) });
@@ -209,6 +215,7 @@ export function memoryLiveStore(): LiveStore {
       if (change.target === null) delete link.target;
       else link.target = change.target;
       delete link.unmoved;
+      delete link.unmovedReason;
       return 'retargeted';
     },
     async unlease(id, token, now) {

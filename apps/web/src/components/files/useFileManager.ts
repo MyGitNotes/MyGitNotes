@@ -197,6 +197,8 @@ export function useFileManager({ notebookId, writable, initialPath, initialOpera
       readSequence.current++;
     }
     await onChanged?.(result);
+    // The move landed; the live notes it could not take along stay where they are, and the person is told.
+    if (result.liveLeft?.length) setError(t('folder.liveLeft', { paths: result.liveLeft.map(entry => entry.path).join(', ') }));
   };
   const save = () => detail && typeof detail.content === 'string' ? run(() => apply({ kind: 'write', notebookId, path: detail.path, content }, detail.revision)) : Promise.resolve(false);
   const prepareLeave = async () => {

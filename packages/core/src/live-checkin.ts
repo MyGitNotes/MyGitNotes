@@ -4,7 +4,8 @@ import { type CommitAuthor, commitAuthor } from './commit-author.js';
 import { isNotebookContent } from './folders.js';
 import { parseNoteContent } from './frontmatter.js';
 import { SourceError } from './github-api.js';
-import { announceLiveCommit, isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, LiveCredentialError, type LiveEditor, liveEditorOf, type LiveIdentity, liveInitialTextOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, liveRowBase, type LiveText, liveTextOf, LiveUnavailableError, normalizeLiveText } from './live-notes.js';
+import { relocateLinks } from './folder-plan.js';
+import { announceLiveCommit, isEmptyLiveDraft, isLiveId, isLiveNotePath, LIVE_MAX_BYTES, liveAdapterError, type LiveCheckout, liveCheckoutOf, type LiveConflict, liveContentHash, LiveCredentialError, type LiveEditor, liveEditorOf, type LiveIdentity, liveInitialTextOf, type LiveLease, LiveLeasedError, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, liveRowBase, type LiveText, liveTextOf, LiveUnavailableError, type LiveUnmovedReason, normalizeLiveText } from './live-notes.js';
 import { mergeLiveText } from './live-merge.js';
 import { parseNotebookKey } from './notebook-key.js';
 import { appendTrailers, utcDay } from './note-versions.js';
@@ -58,8 +59,10 @@ export interface LiveCheckInResult {
   discarded?: true;
   /** A filed note this run moved to `path` (§20.4 of the built-in editor spec), from the Git path it had. */
   moved?: { from: string; };
-  /** The target this run did not move the note to, since Git held that path: the note stays at `path`. */
+  /** The target this run did not move the note to, since Git held that path, or as `unmovedReason` says: the note stays at `path`. */
   unmoved?: string;
+  /** Why the note did not move to `unmoved`, when not because Git held that path: `too-large`, the move would change too much. */
+  unmovedReason?: LiveUnmovedReason;
 }
 
 export interface LiveCheckInOptions {
@@ -369,6 +372,27 @@ export function retargetLivePathRule(rule: string, change: LiveRetarget, noteboo
 /** The local id a link's notebook key names; a bare id names itself. */
 const localPart = (key: string) => parseNotebookKey(key)?.localId ?? key;
 
+/** A note's text moved from `from` to `to`: its own relative links rewritten for its new place, as the move planner rewrites them. */
+const ownLinksMoved = (content: string, from: string, to: string) => relocateLinks(content, from, to, file => file === from ? to : file);
+
+/**
+ * Whether `live`, the text of a note whose move commit landed with `git` as its text, still lacks the move's rewrite of
+ * its own links (`rewritten`, which only changes lines in place). The lines the rewrite changes tell: Git holds them as
+ * rewritten when the live note never took the rewrite, and as they are when it did, so the rewrite is taken only once.
+ */
+function missedRewrite(live: string, rewritten: string, git: string) {
+  const held = new Set(git.split('\n'));
+  const before = live.split('\n'), after = rewritten.split('\n');
+  if (before.length !== after.length) return false;
+  let missed = 0, taken = 0;
+  for (let line = 0; line < before.length; line++) {
+    if (before[line] === after[line]) continue;
+    if (held.has(after[line]!)) missed++;
+    else if (held.has(before[line]!)) taken++;
+  }
+  return missed > taken;
+}
+
 /** The receipt `synced` takes. */
 interface SyncReceipt {
   commit: string;
@@ -376,8 +400,9 @@ interface SyncReceipt {
   contentHash: string;
   path: string;
   conflict: LiveConflict | null;
+  unmovedReason?: LiveUnmovedReason;
 }
-type Attempt = { kind: 'discard'; reason: 'empty' | 'untyped'; contentHash: string; } | { kind: 'synced'; receipt: SyncReceipt; committed: boolean; filed: boolean; notice?: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; moved?: string; unmoved?: string; } | { kind: 'unfiled'; notice: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; } | { kind: 'uncommittable'; path: string | null; notice: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; };
+type Attempt = { kind: 'discard'; reason: 'empty' | 'untyped'; contentHash: string; } | { kind: 'synced'; receipt: SyncReceipt; committed: boolean; filed: boolean; notice?: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; moved?: string; unmoved?: string; unmovedReason?: LiveUnmovedReason; } | { kind: 'unfiled'; notice: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; } | { kind: 'uncommittable'; path: string | null; notice: Omit<LiveNotice, 'repository' | 'editors'>; editors: LiveEditor[]; skipped: string[]; };
 
 /** The commit message of a check-in: its subject and the live trailers; `commitChanges` adds the co-authors after them. */
 function checkInMessage(file: string, id: string, text: string, { filing, overwrote, agentDay, moved }: { filing: boolean; overwrote?: string; agentDay?: string; moved?: string; }): string {
@@ -519,7 +544,13 @@ export async function retargetLink(liveNotes: LiveNotes, repository: RepositoryI
     }
   }
   const held = lease;
-  return adapter(() => liveNotes.service.retarget!(repository, id, held, 'pathRule' in options ? { pathRule: options.pathRule } : { target: options.target }));
+  try {
+    return await adapter(() => liveNotes.service.retarget!(repository, id, held, 'pathRule' in options ? { pathRule: options.pathRule } : { target: options.target }));
+  } catch (error) {
+    // A retarget that failed may have left the lease held: it is given back where the adapter can, so no check-in waits it out.
+    if (typeof liveNotes.service.unlease === 'function') await liveNotes.service.unlease(repository, id, held).catch(() => {});
+    throw error;
+  }
 }
 
 /**
@@ -569,7 +600,7 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
     committing = undefined;
     const detail = await adapter(() => service.detail(repository, id, lease));
     const text: LiveText = liveTextOf(detail);
-    const live = normalizeLiveText(text.content);
+    let live = normalizeLiveText(text.content);
     let editors = editorsOf((detail as { editors?: unknown; }).editors);
     // What commits nothing needs no repository, and so nobody's credential: a draft to discard, and a note whose text is
     // still the one its base holds, which Git therefore has (a note only viewed, or typed in and typed back). The latter
@@ -610,8 +641,13 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
       announceLiveCommit(liveNotes, { repository, path: file, content, commit: revision, source, ...(author ? { author } : {}), ...(as ? { person: as } : {}) });
       return revision;
     };
-    // A note moving elsewhere (§20.4) says whether this check-in moved it: its receipt names the target, or its path.
-    const synced = (file: string, sha: string, blob: string, content: string, conflict: LiveConflict | null, committed: boolean, filed = false, notice?: Omit<LiveNotice, 'repository' | 'editors'>): Attempt => ({ kind: 'synced', receipt: { commit: sha, blob, contentHash: liveContentHash(content), path: file, conflict }, committed, filed, ...(notice ? { notice } : {}), editors, skipped, ...(row.path !== null && row.target !== undefined ? file === row.target ? { moved: row.path } : { unmoved: row.target } : {}) });
+    /** Why this attempt committed a moving note in place though its target was free: the move would change too much (LM-F005). */
+    let unmovedReason: LiveUnmovedReason | undefined;
+    // A note moving elsewhere (§20.4) says whether this check-in moved it: its receipt names the target, or its path and why.
+    const synced = (file: string, sha: string, blob: string, content: string, conflict: LiveConflict | null, committed: boolean, filed = false, notice?: Omit<LiveNotice, 'repository' | 'editors'>): Attempt => {
+      const unmoved = row.path !== null && row.target !== undefined && file !== row.target;
+      return { kind: 'synced', receipt: { commit: sha, blob, contentHash: liveContentHash(content), path: file, conflict, ...(unmoved && unmovedReason ? { unmovedReason } : {}) }, committed, filed, ...(notice ? { notice } : {}), editors, skipped, ...(row.path !== null && row.target !== undefined ? unmoved ? { unmoved: row.target, ...(unmovedReason ? { unmovedReason } : {}) } : { moved: row.path } : {}) };
+    };
 
     // A pending note is filed at the path its rule renders, at a path no entry takes.
     if (row.path === null) {
@@ -641,16 +677,18 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
     // A note moving elsewhere (§20.4) moves with this check-in, in one commit, to its target; one Git holds by now stays
     // where it is, its target never overwritten.
     let moveTo: string | undefined;
+    /** The Git path this link's own move commit, whose acknowledgement was lost, moved the note from. */
+    let landedFrom: string | undefined;
     if (row.target !== undefined) {
       const target = row.target, from = file;
       const existing = snapshot.entries.map(candidate => candidate.path);
       const landed = snapshot.entries.some(candidate => candidate.path === target && candidate.type === 'blob');
       // An earlier run moved it there and lost its acknowledgement: this run goes on at the target.
-      if (landed && await checkedInBy(source, target, id, async () => normalizeLiveText((await source.readSnapshotFile(snapshot, target)).toString('utf8')))) file = target;
-      else if (!existing.includes(target) && !differsOnlyInCase(existing, target, candidate => candidate === from) && !existing.some(candidate => candidate.startsWith(`${target}/`))) moveTo = target;
+      if (landed && await checkedInBy(source, target, id, async () => normalizeLiveText((await source.readSnapshotFile(snapshot, target)).toString('utf8')))) {
+        file = target;
+        landedFrom = from;
+      } else if (!existing.includes(target) && !differsOnlyInCase(existing, target, candidate => candidate === from) && !existing.some(candidate => candidate.startsWith(`${target}/`))) moveTo = target;
     }
-    /** Where the commit puts the note. */
-    const at = moveTo ?? file;
     /** The live note's revision now: what a merge into it is made on. */
     let revisionNow = text.liveRevision;
     /** Takes the editors of a detail read after a merge into the live note: whoever typed between the reads is in the text committed. */
@@ -665,32 +703,55 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
       agentDay = agent ? utcDay(new Date(now())) : undefined;
       return normalizeLiveText(read.content);
     };
+    /** Merges `content`, made on the live text at `revisionNow`, into the live note, and reads it again. */
+    const mergeLive = async (content: string) => {
+      await adapter(() => service.mergeIn(repository, id, lease, { content, baseRevision: revisionNow }));
+      return retake(await adapter(() => service.detail(repository, id, lease)));
+    };
+    // The move landed but the live note may not have taken its rewrite of the note's own links, which follows the commit:
+    // it takes it now, once (LM-F001).
+    if (landedFrom !== undefined) {
+      const rewritten = ownLinksMoved(live, landedFrom, file);
+      if (rewritten !== live && missedRewrite(live, rewritten, normalizeLiveText((await source.readSnapshotFile(snapshot, file)).toString('utf8')))) live = await mergeLive(rewritten);
+    }
     /**
      * Commits `content` as the note's text: where it lies, or moved to its target in one commit that rewrites the links
-     * to it as a move does. A move rewrites the note's own relative links too, which the live note takes first.
+     * to it as a move does, and the note's own relative links for its new place. The live note takes that rewrite only
+     * once the commit landed, so an attempt tried again plans from the text as typed (LM-F001). A move the planner refuses
+     * as too large commits the note where it lies instead, marked unmoved for that (LM-F005).
      */
-    const commitNote = async (content: string, overwrote?: string): Promise<{ sha: string; text: string; }> => {
-      if (!moveTo) return { sha: await commit(file, content, checkInMessage(file, id, content, { filing: false, ...(overwrote ? { overwrote } : {}), ...(agentDay ? { agentDay } : {}) })), text: content };
-      if (now() > deadline) throw new SourceError('The check-in ran past its deadline; nothing was committed.', 504);
-      const planned = await planRemoteNoteMove(source, snapshot, notebook.id, file, moveTo, content);
-      let moved = content;
-      if (planned.content !== content) {
-        await adapter(() => service.mergeIn(repository, id, lease, { content: planned.content, baseRevision: revisionNow }));
-        moved = await retake(await adapter(() => service.detail(repository, id, lease)));
+    const commitNote = async (content: string, overwrote?: string): Promise<{ sha: string; text: string; at: string; }> => {
+      if (moveTo) {
+        if (now() > deadline) throw new SourceError('The check-in ran past its deadline; nothing was committed.', 504);
+        let planned: Awaited<ReturnType<typeof planRemoteNoteMove>> | undefined;
+        try {
+          planned = await planRemoteNoteMove(source, snapshot, notebook.id, file, moveTo, content);
+        } catch (error) {
+          if (!(error instanceof SourceError) || error.status !== 413) throw error;
+          console.warn(`[live-notes] check-in of ${id} commits it in place: its move to its target is too large (${error.message})`);
+          unmovedReason = 'too-large';
+        }
+        if (planned) {
+          const message = checkInMessage(moveTo, id, planned.content, { filing: false, ...(overwrote ? { overwrote } : {}), ...(agentDay ? { agentDay } : {}), moved: file });
+          const { revision } = await source.commitChanges(planned.changes, snapshot.sha, 'move', 'files', message, snapshot, coAuthors);
+          announceLiveCommit(liveNotes, { repository, path: moveTo, content: planned.content, commit: revision, source, ...(author ? { author } : {}), ...(as ? { person: as } : {}) });
+          if (planned.content !== content) await adapter(() => service.mergeIn(repository, id, lease, { content: planned.content, baseRevision: revisionNow }));
+          return { sha: revision, text: planned.content, at: moveTo };
+        }
       }
-      const changes = planned.changes.map(change => change.path === moveTo ? { path: moveTo, content: moved } : change);
-      const message = checkInMessage(moveTo, id, moved, { filing: false, ...(overwrote ? { overwrote } : {}), ...(agentDay ? { agentDay } : {}), moved: file });
-      const { revision } = await source.commitChanges(changes, snapshot.sha, 'move', 'files', message, snapshot, coAuthors);
-      announceLiveCommit(liveNotes, { repository, path: moveTo, content: moved, commit: revision, source, ...(author ? { author } : {}), ...(as ? { person: as } : {}) });
-      return { sha: revision, text: moved };
+      return { sha: await commit(file, content, checkInMessage(file, id, content, { filing: false, ...(overwrote ? { overwrote } : {}), ...(agentDay ? { agentDay } : {}) })), text: content, at: file };
     };
     const entry = snapshot.entries.find(candidate => candidate.path === file && candidate.type === 'blob');
-    // Deleted in Git meanwhile: the live text is written back, at its target when it moves, and the deletion is what it overwrote.
+    // Deleted in Git meanwhile: the live text is written back, at its target when it moves, with its own links rewritten for
+    // that place, and the deletion is what it overwrote.
     if (!entry) {
+      const at = moveTo ?? file;
+      const written = moveTo ? ownLinksMoved(live, file, moveTo) : live;
       const overwritten = await newestTouching(source, snapshot, file);
-      const sha = await commit(at, live, checkInMessage(at, id, live, { filing: false, overwrote: overwritten, ...(agentDay ? { agentDay } : {}), ...(moveTo ? { moved: file } : {}) }));
+      const sha = await commit(at, written, checkInMessage(at, id, written, { filing: false, overwrote: overwritten, ...(agentDay ? { agentDay } : {}), ...(moveTo ? { moved: file } : {}) }));
+      if (written !== live) await adapter(() => service.mergeIn(repository, id, lease, { content: written, baseRevision: revisionNow }));
       const conflict: LiveConflict = { kind: 'deleted', overwritten, commit: sha, at: new Date(now()).toISOString() };
-      return synced(at, sha, blobOf(live), live, conflict, true, false, { kind: 'deleted', notebook: row.notebook, path: at, id, commit: sha, overwritten, message: `${file} was deleted in Git while it was edited live; the check-in wrote it back${moveTo ? ` at ${moveTo}` : ''}.` });
+      return synced(at, sha, blobOf(written), written, conflict, true, false, { kind: 'deleted', notebook: row.notebook, path: at, id, commit: sha, overwritten, message: `${file} was deleted in Git while it was edited live; the check-in wrote it back${moveTo ? ` at ${moveTo}` : ''}.` });
     }
     const git = normalizeLiveText((await source.readSnapshotFile(snapshot, file)).toString('utf8'));
     // Git already holds the live text: a commit whose acknowledgement was lost, or nothing typed. Only acknowledge, unless it moves.
@@ -699,27 +760,23 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
       const overwritten = await newestTouching(source, snapshot, file);
       const done = await commitNote(live, overwritten);
       const conflict: LiveConflict = { kind: 'overwrote', overwritten, commit: done.sha, at: new Date(now()).toISOString() };
-      return synced(at, done.sha, blobOf(done.text), done.text, conflict, true, false, { kind: 'conflict', notebook: row.notebook, path: at, id, commit: done.sha, overwritten, message: `${file} changed in Git and in the live editor at the same lines; the live text was committed over ${overwritten.slice(0, 12)}.` });
+      return synced(done.at, done.sha, blobOf(done.text), done.text, conflict, true, false, { kind: 'conflict', notebook: row.notebook, path: done.at, id, commit: done.sha, overwritten, message: `${file} changed in Git and in the live editor at the same lines; the live text was committed over ${overwritten.slice(0, 12)}.` });
     };
     // Git holds this link's own last check-in, whose acknowledgement was lost, or the live text: the live text descends from it.
     if (git === live || (row.base && entry.sha === row.base.blob) || await checkedInBy(source, file, id, async () => git)) {
       const done = await commitNote(live);
-      return synced(at, done.sha, blobOf(done.text), done.text, null, true);
+      return synced(done.at, done.sha, blobOf(done.text), done.text, null, true);
     }
     // Git moved since the checkout: merge its changes in, or let the live text win.
     const base = row.base ? await source.readHistoryBlob(row.base.blob, undefined, LIVE_MAX_BYTES) : undefined;
     if (!base || !('content' in base)) return overwrite();
     const merged = mergeLiveText(normalizeLiveText(base.content), live, git);
     if (merged.conflict) return overwrite();
-    let text2 = live;
-    if (merged.text !== live) {
-      // The live note takes Git's changes before the base moves, or the next check-in would revert them.
-      await adapter(() => service.mergeIn(repository, id, lease, { content: merged.text, baseRevision: text.liveRevision }));
-      text2 = await retake(await adapter(() => service.detail(repository, id, lease)));
-    }
+    // The live note takes Git's changes before the base moves, or the next check-in would revert them.
+    const text2 = merged.text !== live ? await mergeLive(merged.text) : live;
     if (text2 === git && !moveTo) return synced(file, snapshot.sha, entry.sha, git, null, false);
     const done = await commitNote(text2);
-    return synced(at, done.sha, blobOf(done.text), done.text, null, true);
+    return synced(done.at, done.sha, blobOf(done.text), done.text, null, true);
   };
 
   let tried: Attempt;
@@ -766,7 +823,7 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
   if (outcome.notice) await notify(outcome.notice);
   await adapter(() => service.synced(repository, id, lease, receipt));
   const released = await retried(options, async () => releaseOf(await adapter(() => service.release(repository, id, lease, { contentHash: receipt.contentHash }))));
-  return { id, path: receipt.path, committed: outcome.committed, ...(outcome.committed ? { commit: receipt.commit } : {}), released: released.released, ...(released.released ? {} : { reason: released.reason, ...(released.activeEditors !== undefined ? { activeEditors: released.activeEditors } : {}) }), ...(receipt.conflict && outcome.committed ? { conflict: receipt.conflict } : {}), ...skippedEditors, ...(outcome.filed ? { filed: true as const } : {}), ...(outcome.moved !== undefined ? { moved: { from: outcome.moved } } : {}), ...(outcome.unmoved !== undefined ? { unmoved: outcome.unmoved } : {}) };
+  return { id, path: receipt.path, committed: outcome.committed, ...(outcome.committed ? { commit: receipt.commit } : {}), released: released.released, ...(released.released ? {} : { reason: released.reason, ...(released.activeEditors !== undefined ? { activeEditors: released.activeEditors } : {}) }), ...(receipt.conflict && outcome.committed ? { conflict: receipt.conflict } : {}), ...skippedEditors, ...(outcome.filed ? { filed: true as const } : {}), ...(outcome.moved !== undefined ? { moved: { from: outcome.moved } } : {}), ...(outcome.unmoved !== undefined ? { unmoved: outcome.unmoved, ...(outcome.unmovedReason ? { unmovedReason: outcome.unmovedReason } : {}) } : {}) };
 }
 
 export interface LiveSweepOptions {
