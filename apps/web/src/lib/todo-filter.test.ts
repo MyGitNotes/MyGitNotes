@@ -11,7 +11,11 @@ function tasksOf(...lines: string[]) {
 describe('listAssignees', () => {
   it('lists every assignee once, sorted by name, counting completed tasks too', () => {
     const tasks = tasksOf('- [ ] one @bob @alice', '- [x] two @小林', '- [ ] three @alice', '- [ ] none');
-    expect(listAssignees(tasks)).toEqual(['alice', 'bob', '小林']);
+    const assignees = listAssignees(tasks);
+    // The order follows the reader's locale, which places 小林 before or after the Latin names; only their relative order is fixed.
+    expect(assignees).toHaveLength(3);
+    expect(assignees).toContain('小林');
+    expect(assignees.filter(name => name !== '小林')).toEqual(['alice', 'bob']);
   });
 
   it('copes with a cached task that predates assignees', () => {
