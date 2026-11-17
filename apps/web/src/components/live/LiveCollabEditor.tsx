@@ -29,7 +29,7 @@ export interface LiveCollabEditorProps {
   checkout: LiveCheckoutView;
   /** The repository's built-in editor; `discard` where it can discard a pending note (「捨棄草稿」). */
   editor: LiveBuiltinEditorInfo & { discard?: true; };
-  /** Reads the note again: the text was saved, the note was checked in, or the editor was closed. */
+  /** Reads the note again: the text was saved, the note was checked in or moved elsewhere, or the editor was closed. */
   onRefetch: () => void;
   /** Leaves the live editor for the note's read view. */
   onClose: () => void;
@@ -474,6 +474,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
             return;
           }
           if (message.type === 'released') released();
+          // Someone moved or renamed the note (§20.4): it is read again, which says where it lies, and the page follows it there.
+          else if (message.type === 'moved') latest.current.onRefetch();
           else if (message.type === 'refused') end({ kind: 'refused', reason: message.reason === 'too-large' || message.reason === 'busy' ? message.reason : 'other' });
         },
         // A refused ticket is not retried: the note was checked in meanwhile, or the server refused this tab.

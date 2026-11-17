@@ -10,8 +10,12 @@ export interface FollowMovedNote {
   routedPath: string | null | undefined;
   /** The address's query, kept as it is. */
   search: string;
+  /** The state of the address's history entry, kept as it is: a note the Focus shows stays in the Focus. */
+  state?: unknown;
+  /** The note link the page was loaded on, which waits for the Focus to show it: it waits for the note where it lies now (note names relative to the notebook). */
+  link?: { follow: (from: string, to: string) => void; };
   relocatePaths: (notebookId: string, move: (path: string) => string) => void;
-  navigate: (to: string, options: { replace: true; }) => void;
+  navigate: (to: string, options: { replace: true; state?: unknown; }) => void;
   /** Reads the lists and the workspace again, which still show the note where it was. */
   refresh: () => void;
 }
@@ -22,9 +26,13 @@ export interface FollowMovedNote {
  * that show it, and the address when it names it; the lists are read again. A path outside the note's notebook is not
  * followed.
  */
-export function followMovedNote({ note, to, notebook, routedPath, search, relocatePaths, navigate, refresh }: FollowMovedNote): void {
+export function followMovedNote({ note, to, notebook, routedPath, search, state, link, relocatePaths, navigate, refresh }: FollowMovedNote): void {
   if (!notebook || notebook.id !== note.notebookId || !to.startsWith(`${notebook.root}/`) || to === note.path) return;
   relocatePaths(note.notebookId, path => path === note.path ? to : path);
-  if (routedPath === note.path) navigate(noteRoute(notebook.id, to.slice(notebook.root.length + 1)) + search, { replace: true });
+  if (routedPath === note.path) {
+    const name = to.slice(notebook.root.length + 1);
+    if (note.path.startsWith(`${notebook.root}/`)) link?.follow(note.path.slice(notebook.root.length + 1), name);
+    navigate(noteRoute(notebook.id, name) + search, { replace: true, state: state ?? null });
+  }
   refresh();
 }

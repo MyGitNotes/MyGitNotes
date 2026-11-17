@@ -82,7 +82,7 @@ describe('opening the path a live note is moving away from', () => {
     const onFiled = vi.fn();
     const config = { notebooks: [{ id: 'nb', root: 'notes', name: 'Notes' }] } as unknown as Parameters<typeof useRoutedNote>[0]['config'];
     renderHook(() => useRoutedNote({ config, editorRoute: parseWorkspaceRoute('/notebooks/nb/notes/meetings/weekly.md', ''), editorNotebookId: 'nb', editingNote: null, loading: false, sourceId: 'src', setEditingNote: vi.fn(), onFiled }));
-    await waitFor(() => expect(onFiled).toHaveBeenCalledWith('nb', 'notes/archive/weekly.md'));
+    await waitFor(() => expect(onFiled).toHaveBeenCalledWith('nb', 'notes/archive/weekly.md', 'notes/meetings/weekly.md'));
     expect(api.readNote).toHaveBeenCalledWith('notes/meetings/weekly.md', 'nb');
   });
 });

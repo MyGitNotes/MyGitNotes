@@ -4,6 +4,7 @@ import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPan
 import type { FocusPageController } from './use-focus-page.js';
 import { noteDemoViewWriteIn, noteDemoWriteIn } from './demo-storage.js';
 import { useNoteLookup } from './use-note-queries.js';
+import { movedPaths, useNoteWhereabouts } from './note-whereabouts.js';
 import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, emptyFocusView, entryView, fillPane, type FocusEntryView, type FocusViewState, readFocusView, relocateEntryKeys, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
 interface NoteFocusOptions {
@@ -86,12 +87,23 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   const lookup = useNoteLookup(storedPaths.map(path => ({ notebookId, path })), false);
   const notes = useMemo(() => new Map(lookup.notes.map(note => [note.path, note])), [lookup.notes]);
   const settled = !lookup.loading && !lookup.error;
-  /** A tab is kept until its note or lane is known to be missing. */
-  const present = (tab: FocusTab) => !settled || !storedPaths.includes(tab.path) || notes.has(tab.path);
-  /** Missing notes and compilations are hidden now and dropped on the next write. */
+  // A tab whose path the lists no longer show is not taken for a deleted note: the server says where the note is (another
+  // person moved or renamed a live note, so the lists show it at its target), and the tab follows it there.
+  const storedRefs = storedPaths.map(path => ({ notebookId, path }));
+  const whereabouts = useNoteWhereabouts(storedRefs, lookup);
+  const moved = movedPaths(whereabouts, storedRefs);
+  /** A tab is kept until the server says its note or lane is gone; while the question is on its way, and when it could not be asked (offline), it stays. */
+  const present = (tab: FocusTab) => !settled || !storedPaths.includes(tab.path) || notes.has(tab.path) || whereabouts.get(noteRefKey({ notebookId, path: tab.path }))?.kind !== 'gone';
+  /** A named Focus shows a moved note's tab where it lies now, and its next write keeps it there; this browser's (current) one is relocated at once, below. */
+  const followed = (layout: FocusLayout) => {
+    if (!moved.size) return layout;
+    const relocated = structuredClone(layout);
+    return relocateFocusLayout(relocated, path => moved.get(path) ?? path) ? relocated : layout;
+  };
+  /** Gone notes and compilations are hidden now and dropped on the next write. */
   const layoutOf = (target: string) => {
     const layout = storedLayout(target);
-    return layout && pruneFocus(layout, present);
+    return layout && pruneFocus(followed(layout), present);
   };
   const entryOf = (target: string, layout = layoutOf(target)) => layout ? entryView(viewRef.current, target, layout) : undefined;
   const namedWritable = writable && page.writable && available;
@@ -116,8 +128,8 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   const mutate = (target: string, change: (layout: FocusLayout) => FocusLayout): boolean => {
     if (!editable(target)) return false;
     try {
-      if (target === CURRENT_FOCUS) update(current => ({ ...current, current: change(pruneFocus(current.current, present)) }), true);
-      else page.change(updateFocus(page.page, target, focus => ({ ...focus, ...change(pruneFocus(focus, present)) })));
+      if (target === CURRENT_FOCUS) update(current => ({ ...current, current: change(pruneFocus(followed(current.current), present)) }), true);
+      else page.change(updateFocus(page.page, target, focus => ({ ...focus, ...change(pruneFocus(followed(focus), present)) })));
       setMutationError(null);
       return true;
     } catch (caught) {
@@ -317,11 +329,23 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     const keyed = relocateEntryKeys(viewRef.current, move);
     if (moved || keyed !== viewRef.current) update(() => moved ? { ...keyed, current: layout } : keyed, moved);
   };
+  // The tabs of a note the server says lies elsewhere now follow it there: this browser's (current) Focus, and the tab
+  // each pane of any Focus shows. Another window of this browser reads the relocated view and follows too.
+  const movedKey = [...moved].map(pair => pair.join('\t')).join('\n');
+  const relocate = useRef(relocatePaths);
+  useEffect(() => {
+    relocate.current = relocatePaths;
+  });
+  useEffect(() => {
+    if (!movedKey) return;
+    const map = new Map(movedKey.split('\n').map(line => line.split('\t') as [string, string]));
+    relocate.current(notebookId, path => map.get(path) ?? path);
+  }, [movedKey, notebookId]);
 
   const canName = namedWritable && page.page.focuses.length < FOCUS_MAX_FOCUSES;
   /** Names (current): it becomes a named Focus with the same view, and (current) starts empty. Throws FocusError. */
   const name = (label: string): string => {
-    const { page: next, focus } = nameFocus(page.page, pruneFocus(viewRef.current.current, present), notebookId, label);
+    const { page: next, focus } = nameFocus(page.page, pruneFocus(followed(viewRef.current.current), present), notebookId, label);
     page.change(next);
     update(current => {
       const { [CURRENT_FOCUS]: moved, ...entries } = current.entries;

@@ -96,9 +96,9 @@ describe('a Focus tab the lists no longer show', () => {
     let answer!: (error: unknown) => void;
     read.mockImplementation(() => new Promise((_, reject) => void (answer = reject)));
     const hook = open();
-    refetch([OTHER]);
+    refetch([OTHER, 'notes/third.md']);
     hook.rerender();
-    await waitFor(() => expect(read).toHaveBeenCalled());
+    await waitFor(() => expect(read).toHaveBeenCalledWith(IDEAS, NOTEBOOK));
     // A layout change while the answer is on its way keeps the tab in what it writes.
     await act(async () => void await hook.result.current.place(CURRENT_FOCUS, note('notes/third.md'), 'p1'));
     expect(tabPaths(stored()?.current)).toEqual([IDEAS, OTHER, 'notes/third.md']);
@@ -112,7 +112,7 @@ describe('a Focus tab the lists no longer show', () => {
   it('is kept when the server cannot be asked (offline), through a layout change too', async () => {
     read.mockRejectedValue(new TypeError('Failed to fetch'));
     const hook = open();
-    refetch([OTHER]);
+    refetch([OTHER, 'notes/third.md']);
     hook.rerender();
     await waitFor(() => expect(read).toHaveBeenCalled());
     await act(async () => {});
@@ -139,14 +139,14 @@ describe('a second window of the same person', () => {
     const first = open();
     expect(tabPaths(first.result.current.layout)).toEqual([IDEAS, OTHER]);
     // The second window reads the lists afresh: Ideas lies at a later target now.
-    refetch([OTHER, ARCHIVED]);
+    refetch([OTHER, ARCHIVED, 'notes/third.md']);
     const second = open();
     await waitFor(() => expect(tabPaths(second.result.current.layout)).toEqual([ARCHIVED, OTHER]));
+    expect(second.result.current.entry?.shown.p1).toBe(`note:${ARCHIVED}`);
     // Going about its business there (here: a layout change) never drops the tab.
     await act(async () => void await second.result.current.place(CURRENT_FOCUS, note('notes/third.md'), 'p1'));
     expect(tabPaths(stored()?.current)).toEqual([ARCHIVED, OTHER, 'notes/third.md']);
     act(() => void window.dispatchEvent(new StorageEvent('storage', { key: storageKey })));
     await waitFor(() => expect(tabPaths(first.result.current.layout)).toEqual([ARCHIVED, OTHER, 'notes/third.md']));
-    expect(first.result.current.entry?.shown.p1).toBe(`note:${ARCHIVED}`);
   });
 });

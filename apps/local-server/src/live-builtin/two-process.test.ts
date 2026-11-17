@@ -131,7 +131,7 @@ const twoProcesses = (name: string, makeStore: () => LiveStore) =>
       await retarget('notes/life/archive/renamed.md');
       await until('both tabs were told the second move', () => tabOne.told.length > 1 && tabTwo.told.length > 1, 6000);
       expect([tabOne.told, tabTwo.told]).toEqual([[{ type: 'moved' }, { type: 'moved' }], [{ type: 'moved' }, { type: 'moved' }]]);
-    }, 30_000);
+    });
 
     it('compact in turn without losing what the other appended: the stored state and log hold the union', async () => {
       const { one, two } = pair(makeStore());

@@ -377,7 +377,10 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       if (answer === 'not-filed') throw new LiveNotLiveError('A pending note moves by its path rule.');
       if ('pathRule' in request) return row({ ...link, pathRule: request.pathRule });
       const { target: _target, unmoved: _unmoved, unmovedReason: _unmovedReason, ...rest } = link;
-      return row({ ...rest, ...(request.target !== null ? { target: request.target } : {}) });
+      const moved = { ...rest, ...(request.target !== null ? { target: request.target } : {}) };
+      // The tabs on the note here read it again and follow it; those on another process do at its next catch-up.
+      documents.relocated(moved);
+      return row(moved);
     },
     async unlease(repository, id, lease) {
       const link = await live(repository, id);

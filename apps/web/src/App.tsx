@@ -49,7 +49,7 @@ import { noteLookupOptions, useNotebookTemplates } from './lib/use-note-queries.
 import { isTemplatePath } from './lib/note-templates.js';
 import { useTemplateActions } from './app/useTemplateActions.js';
 import { ManageTemplatesDialog } from './components/ManageTemplatesDialog.js';
-import { notebookRoute, noteRoute, noteTrail, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
+import { FOCUS_NOTE_STATE, notebookRoute, noteRoute, noteTrail, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
 import { draftScope, editable, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
 import { DemoBanner } from './components/DemoBanner.js';
 import { demoFocusesOf, useDemoScenario } from './app/useDemoScenario.js';
@@ -160,6 +160,8 @@ export const AppContent: React.FC = () => {
   // A refusal is said where it happened: moving on to another note, folder, filter or search clears it.
   useActionErrorReset(location.pathname + location.search, setActionError);
   const noteLink = useNoteLinkLoad(location, editorRoute);
+  /** The state an address keeps when it follows a moved note: a note the Focus shows (or is about to) stays in the Focus. */
+  const followedState = () => noteLink.inFocus ? FOCUS_NOTE_STATE : location.state;
   const { sortField, sortOrder, handleSortChange, metadataSortFields } = useNoteSort(selectedNotebookId, config?.notebooks.find(notebook => notebook.id === selectedNotebookId), noteLink.inFocus);
   const agentEnabled = useAgentEnabled(remote);
   const refreshDocuments = async () => {
@@ -253,10 +255,8 @@ export const AppContent: React.FC = () => {
     loading,
     sourceId,
     setEditingNote,
-    onFiled: (notebookId, path) => {
-      const notebook = config?.notebooks.find(nb => nb.id === notebookId);
-      if (notebook && path.startsWith(`${notebook.root}/`)) navigate(noteRoute(notebook.id, path.slice(notebook.root.length + 1)) + location.search, { replace: true });
-    },
+    // The note the address names lies elsewhere now: the address, a note link still waiting for the Focus and the Focus tabs follow it there.
+    onFiled: (notebookId, path, from) => followMovedNote({ note: { notebookId, path: from }, to: path, notebook: config?.notebooks.find(nb => nb.id === notebookId), routedPath: from, search: location.search, state: followedState(), link: noteLink, relocatePaths: noteFocus.relocatePaths, navigate, refresh: () => void refreshWorkspace(true).then(invalidateNotes) }),
   });
   /** Whether a note is one of its notebook's template files, which is edited in zoom and never opens in a Focus pane. */
   const isTemplate = (note: { notebookId: string; path: string; }) => isTemplatePath(config?.notebooks.find(nb => nb.id === note.notebookId), note.path);
@@ -421,7 +421,7 @@ export const AppContent: React.FC = () => {
         : undefined,
       onReadRemote: remote && draft?.base === null ? undefined : (path: string) => readNote(path, note.notebookId),
       // A live note another person moved: its tabs, the address and the lists follow it (§20.4 of the built-in editor spec).
-      onMoved: to => followMovedNote({ note, to, notebook: config?.notebooks.find(nb => nb.id === note.notebookId), routedPath, search: location.search, relocatePaths: noteFocus.relocatePaths, navigate, refresh: () => void refreshWorkspace(true).then(invalidateNotes) }),
+      onMoved: to => followMovedNote({ note, to, notebook: config?.notebooks.find(nb => nb.id === note.notebookId), routedPath, search: location.search, state: followedState(), link: noteLink, relocatePaths: noteFocus.relocatePaths, navigate, refresh: () => void refreshWorkspace(true).then(invalidateNotes) }),
       branch: repository?.branch ?? '',
       draftScope: repository ? draftScope(repository) : '',
       template: isTemplate(note),

@@ -56,7 +56,7 @@ describe('useRoutedNote and a note the lists do not show', () => {
     expect(hook.result.current.routeError).toBe('');
     expect(readNote).toHaveBeenCalledWith('notes/idea.md', 'nb');
     await act(async () => answer.reject(new ApiError('This live note was checked in and filed.', 404, undefined, undefined, false, { movedTo: 'notes/archive/idea.md' })));
-    expect(onFiled).toHaveBeenCalledWith('nb', 'notes/archive/idea.md');
+    expect(onFiled).toHaveBeenCalledWith('nb', 'notes/archive/idea.md', 'notes/idea.md');
     expect(hook.result.current.routeError).toBe('');
     expect(hook.result.current.routedLoading).toBe(true);
   });
