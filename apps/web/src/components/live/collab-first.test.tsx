@@ -14,7 +14,7 @@ import { LiveBadge } from './LiveBadge.js';
 /*
  * Collab-first opening (docs/specs/2026-11-16-collab-first-self-host A1, A7): where the repository's editor is the built-in
  * one, a writer's note opens straight into the collab editor in zoom, a Focus pane and the phone's note screen, with no
- * 編輯; moving, renaming or deleting it from its own editor checks it in first.
+ * 編輯; deleting it from its own editor checks it in first, while moving or renaming it records where it goes (§20.4).
  */
 
 interface FakeConfig {
@@ -320,32 +320,18 @@ const pick = async (name: string) => {
 };
 
 describe('moving, renaming or deleting a note one has open in the collab editor', () => {
-  it('Rename leaves the collab editor, checks the note in, and then opens the rename with the revision the check-in answered', async () => {
+  // A move or rename records where the note goes (docs/specs/2026-11-15-builtin-live-editor §20.4): the editor stays open
+  // and nothing is checked in here; the server checks the note in at once when nobody else is editing it.
+  it('Rename keeps the collab editor open, checks nothing in, and opens the rename at once', async () => {
     const rename = vi.fn();
     await mount({ note: { ...note, live: liveState }, live: live({ fileActions: { rename } }) });
     expect(collabShown()).toBeInTheDocument();
     await pick('Rename');
-    expect(fake.order.indexOf('destroy')).toBeGreaterThan(-1);
-    expect(fake.order.indexOf('destroy')).toBeLessThan(fake.order.indexOf('/api/live/checkin'));
-    expect(calls('/api/live/checkin')[0]![1]).toEqual(expect.objectContaining({ body: JSON.stringify({ notebookId: 'notes~life', path: 'notes/life/a.md' }) }));
-    expect(rename).toHaveBeenCalledWith('r2');
-    expect(collabShown()).toBeNull();
-  });
-
-  // VQ P1-a: sent while the editor's socket still closes, the check-in can find this tab still editing the note.
-  it('checks the note in only once the editor’s socket has closed', async () => {
-    const socket = Object.assign(new EventTarget(), { readyState: 1 });
-    fake.socket = socket;
-    const rename = vi.fn();
-    await mount({ note: { ...note, live: liveState }, live: live({ fileActions: { rename } }) });
-    await pick('Rename');
-    expect(fake.order).toContain('destroy');
+    expect(rename).toHaveBeenCalledTimes(1);
+    expect(rename.mock.calls[0]![0]).toBeUndefined();
     expect(calls('/api/live/checkin')).toHaveLength(0);
-    socket.readyState = 3;
-    await act(async () => void socket.dispatchEvent(new Event('close')));
-    await act(async () => {});
-    expect(calls('/api/live/checkin')).toHaveLength(1);
-    expect(rename).toHaveBeenCalledWith('r2');
+    expect(fake.order).not.toContain('destroy');
+    expect(collabShown()).toBeInTheDocument();
   });
 
   it('checks the note in from Check in now only once the editor’s socket has closed', async () => {
@@ -366,60 +352,56 @@ describe('moving, renaming or deleting a note one has open in the collab editor'
     expect(calls('/api/live/checkin')).toHaveLength(1);
   });
 
-  it('Move does the same, and opens the folder picker once the note is released', async () => {
+  it('Move opens the folder picker at once while others edit, and the collab editor stays', async () => {
     const move = vi.fn();
-    await mount({ note: { ...note, live: liveState }, live: live({ fileActions: { move } }), onMove: vi.fn() });
+    await mount({ note: { ...note, live: { ...liveState, activeEditors: 3 } }, live: live({ fileActions: { move } }), onMove: vi.fn() });
     await pick('Move note');
-    expect(calls('/api/live/checkin')).toHaveLength(1);
-    expect(move).toHaveBeenCalledWith('r2');
+    expect(move).toHaveBeenCalledTimes(1);
+    expect(calls('/api/live/checkin')).toHaveLength(0);
+    expect(screen.queryByText(/cannot be moved now/)).toBeNull();
+    expect(collabShown()).toBeInTheDocument();
   });
 
-  it('refuses while someone else is editing, says how many, and goes back to the collab editor', async () => {
-    const move = vi.fn();
+  it('still refuses a deletion while someone else is editing, says how many, and goes back to the collab editor', async () => {
+    phone = true;
+    const remove = vi.fn(async () => {});
     checkInAnswer = () => json({ id: 'abc', path: 'notes/life/a.md', committed: true, commit: 'c'.repeat(40), released: false, reason: 'active', activeEditors: 2, revision: 'r2' });
-    await mount({ note: { ...note, live: liveState }, live: live({ fileActions: { move } }), onMove: vi.fn() });
-    await pick('Move note');
-    expect(move).not.toHaveBeenCalled();
-    expect(screen.getByText('2 people are editing this note, so it cannot be moved now.')).toBeInTheDocument();
-    expect(calls('/api/live/checkout')).toHaveLength(2);
-    expect(collabShown()).toBeInTheDocument();
-  });
-
-  it('keeps saying so in the editor the check-in’s workspace refresh mounts, when the check-in committed the text before it was refused', async () => {
-    const move = vi.fn(), onCheckedIn = vi.fn();
-    checkInAnswer = () => json({ id: 'abc', path: 'notes/life/a.md', committed: true, commit: 'c'.repeat(40), released: false, reason: 'active', activeEditors: 1, revision: 'r2' });
-    const props = { note: { ...note, live: liveState }, live: live({ fileActions: { move }, onCheckedIn }), onMove: vi.fn() };
-    await mount(props);
-    await pick('Move note');
-    expect(onCheckedIn).toHaveBeenCalledWith(expect.objectContaining({ committed: true, released: false }));
-    cleanup();
-    await mount(props);
-    expect(screen.getByText('1 other person is editing this note, so it cannot be moved now.')).toBeInTheDocument();
-    expect(collabShown()).toBeInTheDocument();
-    expect(move).not.toHaveBeenCalled();
+    await mount({ frame: 'pane', onClose: undefined, note: { ...note, live: liveState }, live: live({ fileActions: { remove } }) }, vi.fn());
+    fireEvent.click(within(screen.getByRole('group', { name: 'Note' })).getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Click again to confirm deletion' }));
+    });
+    await act(async () => {});
+    expect(remove).not.toHaveBeenCalled();
+    expect(screen.getByText('2 people are editing this note, so it cannot be deleted now.')).toBeInTheDocument();
   });
 
   // cf16-F003: the editor's own typing would be left out of the commit and kept under the old path.
-  it('refuses while the editor holds typing the server has not stored, says why, and keeps the editor open', async () => {
+  it('moves and renames while the editor holds typing the server has not stored: the live note follows, and the typing lands there', async () => {
     const rename = vi.fn(), move = vi.fn();
     await mount({ note: { ...note, live: liveState }, live: live({ fileActions: { rename, move } }), onMove: vi.fn() });
-    expect(collabShown()).toBeInTheDocument();
     act(() => fake.config!.onDirty?.({ dirty: true }));
     await pick('Rename');
     await pick('Move note');
-    expect([rename, move].map(action => action.mock.calls.length)).toEqual([0, 0]);
+    expect([rename, move].map(action => action.mock.calls.length)).toEqual([1, 1]);
     expect(calls('/api/live/checkin')).toHaveLength(0);
     expect(fake.order).not.toContain('destroy');
-    expect(screen.getByText('Some changes are not saved yet. Wait until the editor says Saved, then move, rename or delete the note.')).toBeInTheDocument();
     expect(collabShown()).toBeInTheDocument();
   });
 
-  it('acts at once on a note that is no longer live', async () => {
-    const rename = vi.fn();
+  it('deletes at once a note that is no longer live', async () => {
+    phone = true;
+    const remove = vi.fn(async () => {});
     checkInAnswer = () => json({ error: 'Not live.', code: 'not-live' }, 409);
-    await mount({ note: { ...note, live: liveState }, live: live({ fileActions: { rename } }) });
-    await pick('Rename');
-    expect(rename).toHaveBeenCalledWith(undefined);
+    await mount({ frame: 'pane', onClose: undefined, note: { ...note, live: liveState }, live: live({ fileActions: { remove } }) }, vi.fn());
+    fireEvent.click(within(screen.getByRole('group', { name: 'Note' })).getByRole('button', { name: 'More actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Click again to confirm deletion' }));
+    });
+    await act(async () => {});
+    expect(remove).toHaveBeenCalledWith(undefined);
   });
 
   it('deletes from the phone’s sheet after the check-in, with the revision it answered', async () => {
