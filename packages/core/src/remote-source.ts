@@ -3,6 +3,7 @@ import { STUDY_FILE } from './study.js';
 import { BookmarkError } from './bookmark-error.js';
 import { managedNotebook, retitleNoteFile } from './file-manager.js';
 import { relocateLinks } from './folder-plan.js';
+import { timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { assetInfo, assetPath, assetRoot, decodeAsset, isAssetPath } from './assets.js';
 import { MANIFEST_FILES } from './remote-manifest.js';
@@ -84,6 +85,18 @@ export type HistoryRead = { blob: string; content: string; } | { blob: string; n
 const HISTORY_MAX_BYTES = 1024 * 1024;
 /** How many renames or moves a file's history follows back, each costing the provider a few more requests. */
 const MAX_FOLLOWED_RENAMES = 50;
+/** The shape of a remembered history fact; a change of `HistorySpan` or of what a fact means raises it. */
+const HISTORY_FACTS_VERSION = 'v1';
+/** How many history facts a process remembers per backend, the least recently used going first. */
+const HISTORY_MEMO_ENTRIES = 10_000;
+/** History facts this process remembers, by the backend its readers share (see `historyMemoOwner`). */
+const historyMemos = new WeakMap<object, Map<string, string>>();
+/** A path's commits from a head, once listed to the end: how many, the oldest, and that one's first parent ('' for none). */
+interface HistorySpan {
+  count: number;
+  oldest: string;
+  parent: string;
+}
 const OBJECT_ID = /^[a-f0-9]{40}([a-f0-9]{24})?$/;
 /** Shared-cache keys of live texts, each value the text whose sha256 the key ends with. */
 const LIVE_TEXT_VERSION = 'v1';
@@ -600,12 +613,92 @@ export abstract class RemoteSource {
   protected renamedFrom(_commit: string, _file: string): Promise<string | null> {
     return Promise.resolve(null);
   }
+  /**
+   * The backend whose readers share what this process learned of history, such as a provider's `fetch`; undefined for a
+   * reader that remembers only for itself.
+   */
+  protected historyMemoOwner(): object | undefined {
+    return undefined;
+  }
+  private ownHistoryMemo?: Map<string, string>;
+  private historyMemo(): Map<string, string> {
+    const owner = this.historyMemoOwner();
+    if (!owner) return this.ownHistoryMemo ??= new Map();
+    let memo = historyMemos.get(owner);
+    if (!memo) historyMemos.set(owner, memo = new Map());
+    return memo;
+  }
+  private historyKey(kind: 'span' | 'renamed', commit: string, file: string) {
+    return `mgn:history:${HISTORY_FACTS_VERSION}:${JSON.stringify([this.id, kind, commit, file])}`;
+  }
+  /**
+   * A fact of the history that a commit fixes for good, from this process or the shared cache. A provider's answer
+   * hashes to no key of its own, so the shared cache's value is trusted only under the cache's seal over key and value.
+   */
+  private async knownHistoryFact(key: string): Promise<string | undefined> {
+    const memo = this.historyMemo(), remembered = memo.get(key);
+    if (remembered !== undefined) {
+      memo.delete(key);
+      memo.set(key, remembered);
+      return remembered;
+    }
+    if (!this.cache?.sign) return undefined;
+    const [stored] = await this.cache.get([key]);
+    if (stored === null) return undefined;
+    let slot: { value?: unknown; seal?: unknown; };
+    try {
+      slot = JSON.parse(stored);
+    } catch {
+      return undefined;
+    }
+    const { value, seal } = slot || {};
+    if (typeof value !== 'string' || typeof seal !== 'string') return undefined;
+    const expected = Buffer.from(this.cache.sign(JSON.stringify([key, value])) ?? ''), given = Buffer.from(seal);
+    if (!expected.length || expected.length !== given.length || !timingSafeEqual(expected, given)) return undefined;
+    this.rememberHistoryFact(key, value);
+    return value;
+  }
+  private rememberHistoryFact(key: string, value: string) {
+    const memo = this.historyMemo();
+    memo.delete(key);
+    memo.set(key, value);
+    while (memo.size > HISTORY_MEMO_ENTRIES) memo.delete(memo.keys().next().value!);
+  }
+  private async keepHistoryFact(key: string, value: string) {
+    this.rememberHistoryFact(key, value);
+    const seal = this.cache?.sign?.(JSON.stringify([key, value]));
+    if (seal) await this.cache!.set([[key, JSON.stringify({ value, seal })]], REMOTE_CACHE_TTL);
+  }
+  /** {@link renamedFrom}, asked of the provider once per commit and path. */
+  private async followedFrom(commit: string, file: string): Promise<string | null> {
+    const key = this.historyKey('renamed', commit, file), known = await this.knownHistoryFact(key);
+    if (known !== undefined) return known || null;
+    const former = await this.renamedFrom(commit, file);
+    await this.keepHistoryFact(key, former ?? '');
+    return former;
+  }
+  /** How many commits from `head` changed `file` at that path, and the oldest of them with its first parent, once a listing ran out. */
+  private async knownSpan(head: string, file: string): Promise<HistorySpan | undefined> {
+    const known = await this.knownHistoryFact(this.historyKey('span', head, file));
+    if (known === undefined) return undefined;
+    try {
+      const { count, oldest, parent } = JSON.parse(known) as Partial<HistorySpan>;
+      if (typeof count === 'number' && Number.isInteger(count) && count > 0 && typeof oldest === 'string' && typeof parent === 'string') return { count, oldest, parent };
+    } catch {
+      // A value from an older shape is read again from the provider.
+    }
+    return undefined;
+  }
 
   /**
    * One page of the commits that changed `file`, newest first, listed from this reader's snapshot so pages never mix
    * branch states. Renames are followed as `git log --follow` does: once the commits at a path run out, the oldest one
    * that renamed or moved the file there continues the list at its former path, from that commit's parent. Each entry
    * carries the file's path in that commit.
+   *
+   * How many commits each path holds and where it was renamed from are remembered, since commits never change, so a
+   * later page starts at the path that holds it instead of listing every path before it again. A read of one entry (a
+   * check-in asks for the newest commit) follows no rename, so its `more` speaks only of the current path.
    */
   async fileHistory(file: string, page: number, perPage = 50): Promise<{ entries: HistoryEntry[]; more: boolean; }> {
     const snapshot = await this.getSnapshot();
@@ -613,35 +706,52 @@ export abstract class RemoteSource {
     /** The commits listed so far, from index `skipped` of the whole history, each with the file's path in it. */
     const listed: (RemoteCommit & { path: string; })[] = [];
     let skipped = 0, path = file, head = snapshot.sha;
+    /** The index in the whole history of the first commit at `path`. */
+    let offset = 0;
     // A provider page that says more follow past a full page answers `more` without reading on (a check-in asks for one entry).
     const full = () => skipped + listed.length >= start + perPage;
     let more = false;
-    for (let hop = 0; hop <= MAX_FOLLOWED_RENAMES && !more && skipped + listed.length < wanted; hop++) {
-      let next = 1, exhausted = false;
-      const take = (found: { commits: RemoteCommit[]; more: boolean; }) => {
-        listed.push(...found.commits.map(commit => ({ ...commit, path })));
-        exhausted = !found.more || !found.commits.length;
-        more = !exhausted && full();
-      };
-      // The current path's commits start the history, so its provider page `page` is the one asked for when it holds any.
-      if (hop === 0 && page > 1) {
-        const jump = await this.historyPage(path, head, page, perPage);
-        if (jump.commits.length) {
-          skipped = start;
-          take(jump);
-          next = page + 1;
+    for (let hop = 0; hop <= MAX_FOLLOWED_RENAMES; hop++) {
+      let span = await this.knownSpan(head, path);
+      if (!span || offset + span.count > start) {
+        // The path's commits continue the listing, or start it where the page begins at this path.
+        if (skipped + listed.length !== offset) {
+          listed.length = 0;
+          skipped = offset;
         }
+        let next = 1, first = 1, exhausted = false, fetched = 0, oldest: RemoteCommit | undefined;
+        const take = (found: { commits: RemoteCommit[]; more: boolean; }) => {
+          listed.push(...found.commits.map(commit => ({ ...commit, path })));
+          fetched += found.commits.length;
+          oldest = found.commits.at(-1) ?? oldest;
+          exhausted = !found.more || !found.commits.length;
+          more = !exhausted && full();
+        };
+        // The provider page of this path that holds the page's first commit, when this path holds it at all.
+        const jump = Math.floor(Math.max(0, start - offset) / perPage) + 1;
+        if (jump > 1 && (!span || span.count > (jump - 1) * perPage)) {
+          const found = await this.historyPage(path, head, jump, perPage);
+          if (found.commits.length) {
+            listed.length = 0;
+            skipped = offset + (jump - 1) * perPage;
+            first = jump;
+            take(found);
+            next = jump + 1;
+          }
+        }
+        while (!exhausted && !more && skipped + listed.length < wanted) take(await this.historyPage(path, head, next++, perPage));
+        if (more || skipped + listed.length >= wanted || !exhausted || !oldest) break;
+        span = { count: (first - 1) * perPage + fetched, oldest: oldest.sha, parent: oldest.parents[0] ?? '' };
+        await this.keepHistoryFact(this.historyKey('span', head, path), JSON.stringify(span));
       }
-      while (!exhausted && !more && skipped + listed.length < wanted) take(await this.historyPage(path, head, next++, perPage));
-      if (more || skipped + listed.length >= wanted) break;
+      if (perPage === 1 && page === 1 && full()) break;
       // The oldest commit at this path added the file there; where it renamed or moved it, the history goes on before it.
-      const oldest = listed.at(-1);
-      const parent = oldest?.parents[0];
-      if (!exhausted || !oldest || oldest.path !== path || !parent) break;
-      const former = await this.renamedFrom(oldest.sha, path);
+      if (!span.parent) break;
+      const former = await this.followedFrom(span.oldest, path);
       if (!former || former === path) break;
+      offset += span.count;
       path = former;
-      head = parent;
+      head = span.parent;
     }
     const entries = listed.slice(start - skipped, start - skipped + perPage).map(({ sha, parents, date, author, message, path: at }) => {
       const [subject = '', ...rest] = message.replace(/\n+$/, '').split('\n');

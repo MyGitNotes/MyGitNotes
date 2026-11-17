@@ -77,3 +77,32 @@ it('follows a note’s GitLab history back through the commit that moved it, fro
   expect(more).toBe(false);
   expect(calls[1]).toContain(`ref_name=${before}`);
 });
+
+it('asks GitLab about a move once per commit, and not at all when a check-in reads a note’s newest commit', async () => {
+  const f = gitlabFixture();
+  const prefix = 'https://gitlab.example.test/gitlab/api/v4/projects/group%2Fsubgroup%2Fproject';
+  const move = 'd'.repeat(40), before = 'e'.repeat(40);
+  const commit = (id: string, parents: string[], message: string) => ({ id, parent_ids: parents, authored_date: '2026-10-07T01:00:00+08:00', author_name: 'Tester', message });
+  const diffs: string[] = [];
+  const request = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const endpoint = String(input).slice(prefix.length);
+    const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', 'x-next-page': '' } });
+    if (endpoint.startsWith('/repository/commits?')) {
+      const at = `${url.searchParams.get('path')}@${url.searchParams.get('ref_name')}`;
+      if (at === `notes/ex/done/a.md@${f.head}`) return json([commit(f.head, [move], 'Edit'), commit(move, [before], 'Move')]);
+      if (at === `notes/ex/a.md@${before}`) return json([commit(before, [], 'Start')]);
+      if (at === `notes/ex/new.md@${f.head}`) return json([commit(f.head, [move], 'Add')]);
+      return json([]);
+    }
+    if (endpoint.startsWith('/repository/commits/') && endpoint.includes('/diff')) diffs.push(endpoint);
+    if (endpoint.startsWith(`/repository/commits/${move}/diff`)) return json([{ old_path: 'notes/ex/a.md', new_path: 'notes/ex/done/a.md', renamed_file: true }]);
+    if (endpoint.startsWith(`/repository/commits/${f.head}/diff`)) return json([{ old_path: 'notes/ex/new.md', new_path: 'notes/ex/new.md', new_file: true }]);
+    return f.request(input, init);
+  }) as typeof fetch;
+  const reader = () => openRemoteRepository({ type: 'gitlab', url: 'https://gitlab.example.test/gitlab', repository: 'group/subgroup/project', branch: 'main' }, 'token', request).reader;
+  expect((await reader().fileHistory('notes/ex/new.md', 1, 1)).entries.map(entry => entry.commit)).toEqual([f.head]);
+  expect(diffs).toEqual([]);
+  for (let read = 0; read < 2; read++) expect((await reader().fileHistory('notes/ex/done/a.md', 1, 50)).entries.map(entry => entry.path)).toEqual(['notes/ex/done/a.md', 'notes/ex/done/a.md', 'notes/ex/a.md']);
+  expect(diffs).toHaveLength(1);
+});

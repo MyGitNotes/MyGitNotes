@@ -387,6 +387,10 @@ export class GitLabSource extends RemoteSource {
     const diff = await this.json(`/repository/commits/${commit}/diff?per_page=100`) as { new_path: string; deleted_file?: boolean; }[];
     return { date: found.authored_date || '', paths: Array.isArray(diff) ? diff.filter(entry => !entry.deleted_file).map(entry => entry.new_path) : [] };
   }
+  /** Readers on one `fetch` share what history they learned, as they share the provider's runtime. */
+  protected override historyMemoOwner() {
+    return this.request;
+  }
   /** GitLab lists a commit's diff a page at a time, a rename as one entry with both paths. */
   protected async renamedFrom(commit: string, file: string): Promise<string | null> {
     for (let page = 1; page <= 30; page++) {

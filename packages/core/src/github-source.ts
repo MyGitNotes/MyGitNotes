@@ -249,6 +249,10 @@ export class GitHubSource extends RemoteSource {
     }
     return { date: found.commit.author?.date || '', paths: (found.files || []).filter(entry => entry.status !== 'removed').map(entry => entry.filename) };
   }
+  /** Readers on one `fetch` share what history they learned, as they share the provider's runtime. */
+  protected override historyMemoOwner() {
+    return this.request;
+  }
   /** GitHub lists a commit's files a page at a time, at most 3,000 of them, a rename with its former name. */
   protected async renamedFrom(commit: string, file: string): Promise<string | null> {
     for (let page = 1; page <= 30; page++) {

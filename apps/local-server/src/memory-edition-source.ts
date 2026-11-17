@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type CommitAuthor, type EditionSourceConfig, gitBlobId, type RemoteCache, type RemoteChange, type RemoteCommit, type RemoteEntry, type RemoteSnapshot, RemoteSource, type RepositoryId, type RepositoryScope, RepositoryUnavailableError, sourceIdentity, StaleRevisionError, type WorkspacePerson } from '@mygitnotes/core';
+import { type CommitAuthor, type EditionSourceConfig, gitBlobId, noteFrontmatterSpan, type RemoteCache, type RemoteChange, type RemoteCommit, type RemoteEntry, type RemoteSnapshot, RemoteSource, type RepositoryId, type RepositoryScope, RepositoryUnavailableError, sourceIdentity, StaleRevisionError, type WorkspacePerson } from '@mygitnotes/core';
 import type { EditionSources } from './edition-sources.js';
 
 /** Files by repository-relative path; the repository's whole content. */
@@ -42,12 +42,16 @@ const blobOf = (content: string) => gitBlobId(Buffer.from(content, 'utf8'), 40);
 /**
  * Of the files a commit removed, the one an added file of text `added` was renamed from, as Git's rename detection takes
  * it: the same text, else the most similar one that keeps at least half its lines (counting each line once per
- * occurrence, against the longer of the two); null when none does.
+ * occurrence, against the longer of the two); null when none does. Only the body's lines with text on them count, so
+ * two notes of one template do not pass for one note by their frontmatter and blank lines.
  */
 export function renamedSource(added: string, removed: readonly (readonly [string, string])[]): string | null {
   const exact = removed.find(([, text]) => text === added);
   if (exact) return exact[0];
-  const lines = (text: string) => text.split('\n').filter((line, index, all) => line || index < all.length - 1);
+  const lines = (text: string) => {
+    const span = noteFrontmatterSpan(text);
+    return text.slice(span && !('invalid' in span) ? span.bodyStart : 0).split('\n').filter(line => line.trim());
+  };
   const mine = lines(added);
   let best: [string, number] | null = null;
   for (const [path, text] of removed) {
@@ -130,6 +134,10 @@ export class MemoryEditionSource extends RemoteSource {
   protected override async commitInfo(commit: string): Promise<{ date: string; paths: string[]; } | null> {
     const entry = memoryCommits(this.files).find(logged => logged.sha === commit);
     return entry ? { date: entry.date, paths: entry.paths } : null;
+  }
+  /** Readers of the same files share what history they learned, since every commit of them is logged with them. */
+  protected override historyMemoOwner() {
+    return this.files;
   }
   /** A path the commit removed whose text the added `file` keeps, as Git detects a rename; see {@link renamedSource}. */
   protected override async renamedFrom(commit: string, file: string): Promise<string | null> {

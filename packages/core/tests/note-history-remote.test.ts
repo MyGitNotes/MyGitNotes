@@ -1,8 +1,10 @@
+import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { callNoteShell } from '../src/note-shell.js';
 import { onRemoteCommit } from '../src/remote-source.js';
 import { agentEditMessage, placeVersions, readVersionFile, versionFilePath } from '../src/note-versions.js';
-import { gitBlobId } from '../src/remote-cache.js';
+import { gitBlobId, MemoryRemoteCache, type RemoteCache } from '../src/remote-cache.js';
+import { openRemoteRepository } from '../src/remote-factory.js';
 import { githubFixture } from './fixtures/github.js';
 
 const versions = (f: ReturnType<typeof githubFixture>, file: string) => readVersionFile(f.text(versionFilePath(file)) ?? null).versions;
@@ -51,6 +53,38 @@ describe('remote note history', { timeout: 20_000 }, () => {
     expect(await f.reader().fileHistory('notes/ex/work/alpha.md', 2, 1)).toMatchObject({ more: true, entries: [{ commit: moved }] });
     expect(await f.reader().fileHistory('notes/ex/work/alpha.md', 3, 1)).toMatchObject({ more: true, entries: [{ commit: second, path: 'notes/ex/a.md' }] });
     expect(await f.reader().fileHistory('notes/ex/work/alpha.md', 5, 1)).toEqual({ more: false, entries: [] });
+  });
+
+  it('asks GitHub about a move once per commit, and a later page never lists again the paths an earlier page passed', async () => {
+    const f = githubFixture({}, { hexIds: true });
+    await callNoteShell(f.reader(), 'write', { path: 'notes/ex/a.md', content: '# Alpha\nsecond\n', revision: f.head() }, true);
+    await callNoteShell(f.reader(), 'mv', { source: 'notes/ex/a.md', destination: 'notes/ex/work/alpha.md', revision: f.head() }, true);
+    const moved = f.head();
+    await callNoteShell(f.reader(), 'append', { path: 'notes/ex/work/alpha.md', content: 'fourth\n', revision: f.head() }, true);
+    const file = 'notes/ex/work/alpha.md';
+    const store = new MemoryRemoteCache();
+    const cache: RemoteCache = { get: keys => store.get(keys), set: (entries, ttl) => store.set(entries, ttl), sign: text => createHmac('sha256', 'test seal').update(text).digest('hex') };
+    // Each read runs as a new server instance would: a GitHub runtime of its own, the sealed shared cache in common.
+    const instance = () => openRemoteRepository({ type: 'github', repository: 'owner/repo', branch: 'main' }, 'test-token', ((input, init) => f.request(input, init)) as typeof fetch, cache).reader;
+    // A commit's own files, as the rename lookup reads them, and a path's commits, as each history page lists them.
+    const commitReads = () => f.calls.filter(call => /^\/commits\/[0-9a-f]{40}\?/.test(call.endpoint)).length;
+    const listings = () => f.calls.filter(call => call.endpoint.startsWith('/commits?')).length;
+    const perPage: number[] = [];
+    for (const page of [1, 2, 3, 4]) {
+      const before = listings();
+      await instance().fileHistory(file, page, 1);
+      perPage.push(listings() - before);
+    }
+    // Page 3 finds where the note's current path runs out; page 4 starts past it, on the former path's second page.
+    expect(perPage).toEqual([1, 1, 4, 1]);
+    expect(commitReads()).toBe(1);
+    const paths = [file, file, 'notes/ex/a.md', 'notes/ex/a.md'];
+    expect((await instance().fileHistory(file, 1, 50)).entries.map(entry => entry.path)).toEqual(paths);
+    expect(commitReads()).toBe(1);
+    // A value the store holds without the cache's seal over it is asked of GitHub again.
+    await store.set([[`mgn:history:v1:${JSON.stringify(['github:owner/repo@main', 'renamed', moved, file])}`, JSON.stringify({ value: 'notes/ex/forged.md', seal: 'f'.repeat(64) })]], 60);
+    expect((await instance().fileHistory(file, 1, 50)).entries.map(entry => entry.path)).toEqual(paths);
+    expect(commitReads()).toBe(2);
   });
 
   it('records a new version in the same commit as the note, naming the head it was made on', async () => {
