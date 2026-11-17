@@ -3,7 +3,8 @@ import { createElement, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react';
 import YAML from 'yaml';
-import { expect, it, vi } from 'vitest';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FolderItem } from './types.js';
 
 const folders = vi.hoisted(() => {
@@ -109,4 +110,57 @@ it('never stages over the conflict draft of a live note: the person picks what t
   act(() => void result.current.stageWorkingNote({ ...base, content: 'typed later\n' }, base));
   expect(result.current.readDraft('code~src', 'src/x.md')?.note.content).toBe('typed later\n');
   act(() => result.current.updateDraft('code~src', 'src/x.md', null));
+});
+
+describe('the notebook last used on this device', () => {
+  const key = 'github-notes:last-notebook:local:/notes';
+  const wrapper = ({ children }: { children: ReactNode; }) => createElement(QueryClientProvider, { client: new QueryClient() }, children);
+  beforeEach(() => localStorage.removeItem(key));
+
+  it('opens when the route names no notebook', async () => {
+    localStorage.setItem(key, 'code~src');
+    const { result } = renderHook(() => useWorkspaceSync({}), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.selectedNotebookId).toBe('code~src');
+    expect(localStorage.getItem(key)).toBe('code~src');
+  });
+
+  it('gives way to a route that names a notebook, which becomes the one remembered', async () => {
+    localStorage.setItem(key, 'code~src');
+    const { result } = renderHook(() => useWorkspaceSync({ routeNotebook: 'notes~a' }), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.selectedNotebookId).toBe('notes~a');
+    await waitFor(() => expect(localStorage.getItem(key)).toBe('notes~a'));
+  });
+
+  it('is not remembered from a route naming a notebook the workspace lacks', async () => {
+    localStorage.setItem(key, 'code~src');
+    const { result } = renderHook(() => useWorkspaceSync({ routeNotebook: 'gone~x' }), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.selectedNotebookId).toBe('gone~x');
+    expect(localStorage.getItem(key)).toBe('code~src');
+  });
+
+  it('falls back to the default notebook and is forgotten once the workspace no longer serves it', async () => {
+    localStorage.setItem(key, 'gone~x');
+    const { result } = renderHook(() => useWorkspaceSync({}), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.selectedNotebookId).toBe('notes~a');
+    await waitFor(() => expect(localStorage.getItem(key)).toBeNull());
+  });
+
+  it('is where a former all-notebooks URL redirects', async () => {
+    localStorage.setItem(key, 'code~src');
+    const { useWorkspaceNavigation } = await import('../app/useWorkspaceNavigation.js');
+    const { parseWorkspaceRoute } = await import('./routes.js');
+    const routed = ({ children }: { children: ReactNode; }) => createElement(MemoryRouter, { initialEntries: ['/notebooks/all?q=hello'] }, wrapper({ children }));
+    const { result } = renderHook(() => {
+      const location = useLocation();
+      const route = parseWorkspaceRoute(location.pathname, location.search);
+      const sync = useWorkspaceSync({ routeNotebook: route.notebook || undefined });
+      useWorkspaceNavigation({ location, navigate: useNavigate(), route, editorRoute: route, activeTab: route.tab, selectedNotebookId: sync.selectedNotebookId, config: sync.config, loading: sync.loading, resolveBareNotebook: sync.resolveBareNotebook, queryState: {} as never, selectedFolders: [], setFilterQuery: (async () => new URLSearchParams()) as never, folderRoot: undefined, viewMode: 'flat', selectedFolder: null, editorRegistry: {} as never, fileManagerRef: { current: null } });
+      return location;
+    }, { wrapper: routed });
+    await waitFor(() => expect(result.current.pathname + result.current.search).toBe('/notebooks/code~src?q=hello&notebook=code%7Esrc&allNotebooks=true'));
+  });
 });
