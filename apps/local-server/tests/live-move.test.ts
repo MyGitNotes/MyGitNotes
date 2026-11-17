@@ -289,6 +289,28 @@ describe('moving a live note someone else edits', () => {
     expect((await rows())[0]).not.toHaveProperty('target');
   });
 
+  it('takes a target inside a moved folder along with the folder, and the target it replaced still leads to the note', async () => {
+    files.set('notes/life/projects/plan.md', '# Plan\n');
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    const projected = 'notes/life/projects/archive/2026-11-17 公司週會.md';
+    const moved = await move('notes/life/archive', 'notes/life/projects/archive');
+    expect(moved).toMatchObject({ status: 200, body: { pathMap: { [archived]: projected, 'notes/life/archive/old.md': 'notes/life/projects/archive/old.md' } } });
+    expect(moved.body.liveLeft).toBeUndefined();
+    expect(moved.body.deletedPaths).not.toContain(projected);
+    // The note's Git file stays where it lies; only the folder's own files moved.
+    expect(files.get(weekly)).toBe('---\ntitle: 公司週會\n---\n議程\n');
+    expect(commits().map(commit => commit.paths)).toEqual([['notes/life/archive/old.md', 'notes/life/projects/archive/old.md']]);
+    expect(await rows()).toMatchObject([{ id, path: weekly, target: projected }]);
+    // An editor still at the old target finds the note at the new one and joins the same live note there.
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: projected } });
+    expect(await checkout(archived)).toMatchObject({ status: 200, body: { outcome: 'joined', checkout: { id, path: projected } } });
+    expect(await listed()).toContain(projected);
+    expect(await listed()).not.toContain(archived);
+  });
+
   it('moves a folder from the folder tree the same way', async () => {
     files.set(weekly, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
     await start();
