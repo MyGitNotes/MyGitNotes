@@ -10,6 +10,9 @@ import { PhoneNotesProvider } from '../../lib/phone-notes.js';
 import type { NoteItem } from '../../lib/types.js';
 import { forgetCheckedIn, type LiveNoteEditing, takeLiveEditRequest } from '../../lib/live-api.js';
 import { NoteEditor, type NoteEditorProps } from '../NoteEditor.js';
+// The YAML view loads its editor lazily; loaded here once, it is there before a test's 1 s wait for it runs out on a
+// busy machine (a full run once timed out waiting).
+import '../FileSourceEditor.js';
 
 /*
  * The document panel and the note row of a note in the collab editor (docs/specs/2026-11-16-collab-frontmatter): every
