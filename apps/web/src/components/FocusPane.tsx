@@ -74,6 +74,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   const tabs: PaneTab[] = displayed.panes.flatMap(pane => tabsOf(pane).map((tab, index) => ({ tab, key: focusTabKey(tab), pane, index, label: focus.notes.get(tab.path)?.title || tab.path.split('/').pop()!.replace(/\.md$|\.compilation\.yml$/, '') })));
   const repeatedLabels = new Set(tabs.filter((tab, index) => tabs.findIndex(candidate => candidate.label === tab.label) !== index).map(tab => tab.label));
   const shown = tabs.find(tab => tab.pane === displayed.pane && tab.key === displayed.key);
+  const editorKey = useShownEditorKey(tabsOf(displayed.pane).map(tab => tab.path), shown?.tab.path);
   const panelId = `focus-pane-${displayed.pane}`;
   const hideToolbar = entry.hideToolbar[displayed.pane];
   // The tab bar holds the tabs; the shown note's editor keeps its actions in its own note row, and puts them in this slot of the bar only while that row is hidden. A phone's bar has no room, so there they stay with the note.
@@ -347,7 +348,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
                 {renderCompilation(shown.tab.path, displayed.pane)}
               </React.Fragment>
             )
-            : <PaneNoteEditor key={shown.tab.path} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} actionsSlot={barActions ? actionsSlot : undefined} />
+            : <PaneNoteEditor key={editorKey} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} actionsSlot={barActions ? actionsSlot : undefined} />
           : (
             <div className='focus-pane-empty'>
               <p>{editable ? t('focus.emptyPane') : t('focus.emptyPaneReadonly')}</p>
@@ -504,6 +505,20 @@ const PaneMenu: React.FC<{ label: string; items: { key: string; label: string; i
     </DropdownMenu.Portal>
   </DropdownMenu.Root>
 );
+
+/**
+ * What keys the editor of the note a pane shows. A tab that follows its note in place, at the same place among the pane's
+ * tabs, under a path the pane had no tab of, and leaving none at the old one (the page heard that another person moved or
+ * renamed it, §20.4), keeps the editor: the person's caret, selection and focus stay. Any other tab shown is another editor.
+ */
+function useShownEditorKey(tabs: readonly string[], shown: string | undefined): string | undefined {
+  const [state, setState] = useState({ tabs, shown, key: shown });
+  if (state.shown === shown && state.tabs.join('\n') === tabs.join('\n')) return state.key;
+  const followed = state.shown !== undefined && shown !== undefined && state.shown !== shown && !tabs.includes(state.shown) && !state.tabs.includes(shown) && state.tabs.indexOf(state.shown) === tabs.indexOf(shown);
+  const next = { tabs, shown, key: followed ? state.key : shown };
+  setState(next);
+  return next.key;
+}
 
 /** A note tab's editor: the pane is one host of the note, sharing its single editor with zoom and graph cards. */
 /** A compilation has no editor to name itself to the agent panel, so its pane names the file, without a caret. */

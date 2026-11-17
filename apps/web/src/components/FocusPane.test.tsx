@@ -102,7 +102,7 @@ describe('a note followed to where it moved', () => {
   // A pane of two notes showing Alpha at `path`: what the page shows after a move took Alpha's tab along in place.
   const at = (path: string, key = `note:${path}`) => {
     const layout: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path }, { kind: 'note', path: 'notes/c.md' }] } };
-    const followed = { ...focus, layout, entry: { ...focus.entry, shown: { p1: key }, history: { p1: [key] } }, notes: new Map([[path, { title: 'Alpha' }], ['notes/c.md', { title: 'Gamma' }]]) } as unknown as NoteFocus;
+    const followed = { ...focus, layout, entry: { ...focus.entry, shown: { p1: key }, history: { p1: [key] } }, notes: new Map([[path, { title: 'Alpha' }], ['notes/c.md', { title: 'Gamma' }]]), activate: () => {} } as unknown as NoteFocus;
     return createElement(I18nProvider, null, createElement(FocusPane, { focus: followed, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p1'], pane: 'p1', key } }));
   };
 

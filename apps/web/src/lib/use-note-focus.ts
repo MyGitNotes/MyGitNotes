@@ -105,12 +105,14 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     const layout = storedLayout(target);
     return layout && pruneFocus(followed(layout), present);
   };
-  const entryOf = (target: string, layout = layoutOf(target)) => layout ? entryView(viewRef.current, target, layout) : undefined;
+  /** The tab each pane shows, followed as its tab is: from the render the server says where the note lies, the pane shows it there, never another tab meanwhile. */
+  const followedView = (state: FocusViewState) => moved.size ? relocateEntryKeys(state, path => moved.get(path) ?? path) : state;
+  const entryOf = (target: string, layout = layoutOf(target)) => layout ? entryView(followedView(viewRef.current), target, layout) : undefined;
   const namedWritable = writable && page.writable && available;
   const editable = (target: string) => target === CURRENT_FOCUS || namedWritable;
 
   const layout = shown ? layoutOf(shown) ?? null : null;
-  const entry = shown && layout ? entryView(view, shown, layout) : null;
+  const entry = shown && layout ? entryView(followedView(view), shown, layout) : null;
 
   // Remember the displayed Focus so returning to this notebook shows it again.
   useEffect(() => {
@@ -119,7 +121,7 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
 
   const setEntry = (target: string, change: (entry: FocusEntryView) => FocusEntryView, layout = layoutOf(target)) => {
     if (!layout) return;
-    update(current => ({ ...current, entries: { ...current.entries, [target]: change(entryView(current, target, layout)) } }));
+    update(current => ({ ...current, entries: { ...current.entries, [target]: change(entryView(followedView(current), target, layout)) } }));
   };
   const [mutationError, setMutationError] = useState<FocusError | null>(null);
   // An error belongs to the Focus it was raised on.

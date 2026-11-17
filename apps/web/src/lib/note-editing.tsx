@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { followedFrom } from './note-follows.js';
 import type { NoteItem } from './types.js';
 import type { NoteEditorSharedProps } from '../components/note-editor/types.js';
 
@@ -14,7 +15,9 @@ export interface ZoomState {
 
 /**
  * Places that can show a note's editor: Focus panes and graph cards. A note has one mounted editor,
- * owned by the first registered host of its `noteRefKey`; the others show a preview until they claim it.
+ * owned by the first registered host of its `noteRefKey`; the others show a preview until they claim it. A note the page
+ * followed to where it moved (another person moved or renamed it, §20.4) keeps its owner there: until its hosts follow it,
+ * the owner of the key it lay at owns it, and each host that follows keeps its place among them.
  */
 export class NoteHosts {
   private hosts = new Map<string, string[]>();
@@ -32,7 +35,28 @@ export class NoteHosts {
     this.listeners.forEach(listener => listener());
   }
   owner(key: string): string | undefined {
-    return this.hosts.get(key)?.[0];
+    const owner = this.hosts.get(key)?.[0];
+    if (owner !== undefined) return owner;
+    for (const from of followedFrom(key)) {
+      const earlier = this.hosts.get(from)?.[0];
+      if (earlier !== undefined) return earlier;
+    }
+    return undefined;
+  }
+  /** The key host `id` is registered under. */
+  keyOf(id: string): string | undefined {
+    for (const [key, ids] of this.hosts) if (ids.includes(id)) return key;
+    return undefined;
+  }
+  /** Host `id` follows its note from `from` to `to`: the owner of the note there owns it here, any other host joins after it. */
+  follow(from: string, to: string, id: string) {
+    const was = this.hosts.get(from) ?? [];
+    const left = was.filter(other => other !== id);
+    if (left.length) this.hosts.set(from, left);
+    else this.hosts.delete(from);
+    const others = (this.hosts.get(to) ?? []).filter(other => other !== id);
+    this.hosts.set(to, was[0] === id ? [id, ...others] : [...others, id]);
+    this.emit();
   }
   register(key: string, id: string) {
     const ids = this.hosts.get(key) ?? [];

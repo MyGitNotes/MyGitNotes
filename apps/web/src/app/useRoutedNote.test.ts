@@ -100,6 +100,21 @@ describe('useRoutedNote and a note the address follows to where it moved', () =>
     expect(hook.result.current.routedLoading).toBe(false);
   });
 
+  it('says the note is not found where the server says it is gone, though the address followed it there', async () => {
+    const { followMovedNote } = await import('./follow-moved-note.js');
+    const note = { notebookId: 'nb', path: 'notes/idea.md', title: 'Idea', content: '# Idea\n', metadata: {}, tags: [] };
+    lookup.current = { notes: [note], committed: [], loading: false, paused: false, error: '', updatedAt: 1 };
+    const hook = renderHook(({ route }) => useRoutedNote({ config, editorRoute: parseWorkspaceRoute(route, ''), editorNotebookId: 'nb', editingNote: null, loading: false, sourceId: 'src', setEditingNote: vi.fn() }), { initialProps: { route: '/notebooks/nb/notes/idea.md' } });
+    followMovedNote({ note, to: 'notes/gone/idea.md', notebook: { id: 'nb', root: 'notes' }, routedPath: 'notes/idea.md', search: '', relocatePaths: () => {}, navigate: () => {}, refresh: () => {} });
+    readNote.mockReset();
+    readNote.mockRejectedValue(new ApiError('Note not found', 404));
+    lookup.current = { notes: [], committed: [], loading: false, paused: false, error: '', updatedAt: 2 };
+    hook.rerender({ route: '/notebooks/nb/notes/gone/idea.md' });
+    await act(async () => {});
+    expect(hook.result.current.routedNote).toBeNull();
+    expect(hook.result.current.routeError).toBe('route.noteNotFound');
+  });
+
   it('loads another note the address names, which shows nothing of the one before', () => {
     const note = { notebookId: 'nb', path: 'notes/idea.md', title: 'Idea', content: '# Idea\n', metadata: {}, tags: [] };
     lookup.current = { notes: [note], committed: [], loading: false, paused: false, error: '', updatedAt: 1 };

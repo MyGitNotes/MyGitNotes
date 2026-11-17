@@ -145,6 +145,7 @@ describe('a Focus tab the lists no longer show', () => {
     // A background tab: the pane shows another note.
     localStorage.setItem(storageKey, JSON.stringify({ current: { root: { kind: 'pane', id: 'p1', tabs: [note(IDEAS), note(OTHER), note('notes/third.md')] } }, entries: { [CURRENT_FOCUS]: { activePane: 'p1', shown: { p1: `note:${OTHER}` }, recent: ['p1'], history: {}, ratios: {}, hideToolbar: {} } }, last: CURRENT_FOCUS }));
     read.mockRejectedValue(new ApiError('Note not found', 404));
+    lists.paths = new Set([IDEAS, OTHER, 'notes/third.md']);
     const hook = open();
     // For a while the server did not find it: the tab is hidden then.
     refetch([OTHER, 'notes/third.md']);

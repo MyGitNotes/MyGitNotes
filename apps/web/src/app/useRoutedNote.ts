@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { NotebookConfig, NoteItem } from '../lib/types.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { useNoteLookup } from '../lib/use-note-queries.js';
+import { followsNote } from '../lib/note-follows.js';
 import { useNoteWhereabouts } from '../lib/note-whereabouts.js';
 import type { parseWorkspaceRoute } from '../lib/routes.js';
 
@@ -37,7 +38,16 @@ export function useRoutedNote({ config, editorRoute, editorNotebookId, editingNo
   const routedRef = useMemo(() => routedPath && routedNotebook && !listedNote && !loading ? [{ notebookId: routedNotebook.id, path: routedPath }] : [], [routedPath, routedNotebook, listedNote, loading]);
   const answers = useNoteWhereabouts(routedRef, routedLookup);
   const whereabouts = routedRef[0] ? answers.get(noteRefKey(routedRef[0])) : undefined;
-  const routedNote = listedNote ?? (whereabouts?.kind === 'here' && typeof whereabouts.note.content === 'string' ? whereabouts.note : null);
+  const foundNote = listedNote ?? (whereabouts?.kind === 'here' && typeof whereabouts.note.content === 'string' ? whereabouts.note : null);
+  // A note the address followed to where it moved (another person moved or renamed it, §20.4) is shown there at once, as
+  // it was read where it lay, until the lists read it there: zoom keeps it open, with its editor and the person's typing.
+  // A note the server says is gone there is not.
+  const [shownNote, setShownNote] = useState<NoteItem | null>(null);
+  if (foundNote && foundNote !== shownNote) setShownNote(foundNote);
+  const routedKey = routedPath && routedNotebook ? noteRefKey({ notebookId: routedNotebook.id, path: routedPath }) : '';
+  const gone = whereabouts?.kind === 'gone';
+  const followed = useMemo(() => !foundNote && !gone && shownNote && routedPath && followsNote(noteRefKey(shownNote), routedKey) ? { ...shownNote, path: routedPath } : null, [foundNote, gone, shownNote, routedPath, routedKey]);
+  const routedNote = foundNote ?? followed;
   // A read that waits for the connection is not loading: the note opens once the browser is online and the read runs again.
   const routedOffline = Boolean(routedPath) && !routedNote && routedLookup.paused;
   const asking = routedRef.length > 0 && !routedLookup.loading && !routedLookup.error && (!whereabouts || whereabouts.kind === 'moved');

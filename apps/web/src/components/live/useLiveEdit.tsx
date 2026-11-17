@@ -169,6 +169,9 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
 
   // A framed editor shows only in zoom; a note zoom hands back to its pane shows the read view there.
   if (!edits && state.checkout) setState({});
+  // The editor's hosts give another note another editor: a note that changes path here is this one, which another person
+  // moved or renamed (§20.4) and the page followed there. Its checkout goes on where it lies now, the session with it.
+  else if (state.checkout && !state.checkout.pending && state.checkout.notebookId === note.notebookId && state.checkout.path !== note.path) setState({ ...state, checkout: { ...state.checkout, path: note.path } });
 
   // Back online, the direct editor gives way to the collab editor: at once with nothing typed offline, and once its draft
   // was handed over to the live note (A3.2) otherwise; a draft that could not be handed over stays in the direct editor.

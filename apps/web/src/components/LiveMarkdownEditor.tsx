@@ -107,6 +107,9 @@ interface Props {
 }
 const focusChanged = StateEffect.define<boolean>();
 let youtubeEditorSequence = 0;
+/** An outline note's keys and drag handles; nothing for any other note. */
+const outlineExtensions = (path: string, t: ReturnType<typeof useTranslation>['t']): Extension => isOutlinePath(path) ? [outlineKeymap, outlineDrag({ move: t('outline.move'), before: t('outline.dropBefore'), after: t('outline.dropAfter'), child: t('outline.dropChild') })] : [];
+
 export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry: givenCarry, slides, collab }, ref) => {
   // The shared text is the binding's: a carried state would hold another text and another history.
   const carry = collab ? undefined : givenCarry;
@@ -158,6 +161,15 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   /* eslint-disable react/refs -- The persistent CodeMirror view reads current callbacks and options through refs. */
   lineOffset.current = lineNumberOffset;
   /* eslint-enable react/refs */
+  // The note's path, which its links, completions and outline commands read. A collab view is one view of the shared text
+  // wherever the note lies: followed to another path (another person moved or renamed it, §20.4), it stays, with the
+  // person's caret, selection, scroll and focus, and reads the new path from then on. A direct view is built again.
+  const currentPath = useRef(notePath);
+  /* eslint-disable react/refs -- The persistent CodeMirror view reads current callbacks and options through refs. */
+  currentPath.current = notePath;
+  /* eslint-enable react/refs */
+  const outlineMode = useRef(new Compartment());
+  const viewPath = collab ? '' : notePath;
   useImperativeHandle(ref, () => ({
     ready: () => Boolean(editor.current),
     focus: () => editor.current?.focus(),
@@ -222,7 +234,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   useEffect(() => {
     // The collab editor holds the whole file: its leading frontmatter is drawn as frontmatter, not as Markdown.
     const decorate = (state: EditorState, focused: boolean) => {
-      const decorations = liveDecorations(state, focused, notePath, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous, collab ? frontmatterEnd(state) : 0);
+      const decorations = liveDecorations(state, focused, currentPath.current, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous, collab ? frontmatterEnd(state) : 0);
       return collab ? withFrontmatter(state, decorations) : decorations;
     };
     const field = StateField.define<{ decorations: DecorationSet; focused: boolean; }>({
@@ -248,7 +260,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           vimBindings.current.of(getVimMode()),
           markdown({ base: markdownLanguage, extensions: [cjkEmphasis] }),
           collab ? [collab.extension, Prec.high(keymap.of(yUndoManagerKeymap))] : history(),
-          isOutlinePath(notePath) ? [outlineKeymap, outlineDrag({ move: t('outline.move'), before: t('outline.dropBefore'), after: t('outline.dropAfter'), child: t('outline.dropChild') })] : [],
+          outlineMode.current.of(outlineExtensions(currentPath.current, t)),
           tableBoundaries,
           formatKeymap,
           markdownEditorKeymap(),
@@ -292,9 +304,10 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
               await new Promise(resolve => setTimeout(resolve, 150));
               if (context.aborted) return null;
               const { queryClient: client, scope: current } = completionSource.current;
-              const notes = await fetchNoteCandidates(client, current, match.query, notePath, isOutlinePath(notePath) ? notebookId : undefined);
+              const path = currentPath.current;
+              const notes = await fetchNoteCandidates(client, current, match.query, path, isOutlinePath(path) ? notebookId : undefined);
               if (context.aborted) return null;
-              return { from: match.from, to: match.to, filter: false, options: notes.map(note => ({ label: note.title, detail: `${note.notebookId} · ${note.path}`, apply: noteLinkHref(notePath, note.path) + (text[context.pos] === ')' ? '' : ')') })) };
+              return { from: match.from, to: match.to, filter: false, options: notes.map(note => ({ label: note.title, detail: `${note.notebookId} · ${note.path}`, apply: noteLinkHref(path, note.path) + (text[context.pos] === ')' ? '' : ')') })) };
             }],
           }),
           inlineIconAtomicRanges(view => view.state.field(field).decorations),
@@ -330,9 +343,13 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
       view.destroy();
       editor.current = undefined;
     };
-  }, [notePath, notebookId, ariaLabel, linkLabel, tableLabel, pageLabel, continuous, t]);
+  }, [viewPath, notebookId, ariaLabel, linkLabel, tableLabel, pageLabel, continuous, t]);
   /* eslint-enable react-hooks/exhaustive-deps */
   const collabMode = Boolean(collab);
+  // A collab view whose note was followed elsewhere draws its links from there, and takes the outline's keys if it is one now.
+  useEffect(() => {
+    if (collabMode) editor.current?.dispatch({ effects: outlineMode.current.reconfigure(outlineExtensions(notePath, t)) });
+  }, [collabMode, notePath, t]);
   useEffect(() => {
     const view = editor.current;
     // The binding brings every change of a shared text; `content` is only read back from it.

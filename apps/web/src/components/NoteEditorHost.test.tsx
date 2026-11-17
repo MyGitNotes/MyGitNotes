@@ -188,6 +188,23 @@ describe('a note the page followed to where it moved', () => {
     expect(screen.getByTestId('card')).toHaveTextContent('This note is open for editing elsewhere.');
   });
 
+  it('keeps the editor it lends to zoom there, focused, while zoom follows the note after it', () => {
+    const view = render(provide(host('notes/a.md')));
+    const slot = document.createElement('div');
+    document.body.append(slot);
+    act(() => editing.setZoom({ key: 'a:notes/a.md', borrowed: true, slot }));
+    const typing = screen.getByRole('textbox', { name: 'Typing' });
+    act(() => typing.focus());
+    follow();
+    view.rerender(provide(host(MOVED)));
+    expect(slot.contains(typing)).toBe(true);
+    expect(document.activeElement).toBe(typing);
+    act(() => editing.setZoom({ key: `a:${MOVED}`, borrowed: true, slot }));
+    expect(slot.contains(typing)).toBe(true);
+    expect(document.activeElement).toBe(typing);
+    slot.remove();
+  });
+
   it('opens another note shown in its place in an editor of its own', () => {
     const view = render(provide(host('notes/a.md')));
     const typing = screen.getByRole('textbox', { name: 'Typing' });

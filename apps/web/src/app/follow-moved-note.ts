@@ -1,3 +1,4 @@
+import { noteFollowed } from '../lib/note-follows.js';
 import { noteRoute } from '../lib/routes.js';
 
 export interface FollowMovedNote {
@@ -23,11 +24,12 @@ export interface FollowMovedNote {
 /**
  * A note this page shows answered that it lies elsewhere now: a live note another person moved, checked in or still waiting
  * for its check-in (docs/specs/2026-11-15-builtin-live-editor §20.4). Every view of it follows it there: the Focus tabs
- * that show it, and the address when it names it; the lists are read again. A path outside the note's notebook is not
- * followed.
+ * that show it, and the address when it names it; the lists are read again. Each keeps the editor it shows the note in,
+ * with the person's typing, caret and focus ({@link noteFollowed}). A path outside the note's notebook is not followed.
  */
 export function followMovedNote({ note, to, notebook, routedPath, search, state, link, relocatePaths, navigate, refresh }: FollowMovedNote): void {
   if (!notebook || notebook.id !== note.notebookId || !to.startsWith(`${notebook.root}/`) || to === note.path) return;
+  noteFollowed(note.notebookId, note.path, to);
   relocatePaths(note.notebookId, path => path === note.path ? to : path);
   if (routedPath === note.path) {
     const name = to.slice(notebook.root.length + 1);
