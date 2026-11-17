@@ -141,12 +141,12 @@ describe('the notebook last used on this device', () => {
     expect(localStorage.getItem(key)).toBe('code~src');
   });
 
-  it('falls back to the default notebook and is forgotten once the workspace no longer serves it', async () => {
+  it('falls back to the default notebook while the workspace does not list it, and keeps it for when it is listed again', async () => {
     localStorage.setItem(key, 'gone~x');
     const { result } = renderHook(() => useWorkspaceSync({}), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.selectedNotebookId).toBe('notes~a');
-    await waitFor(() => expect(localStorage.getItem(key)).toBeNull());
+    expect(localStorage.getItem(key)).toBe('gone~x');
   });
 
   it('is where a former all-notebooks URL redirects', async () => {

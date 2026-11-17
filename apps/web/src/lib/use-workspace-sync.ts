@@ -16,7 +16,7 @@ import { sameValue } from './merge-note.js';
 import { invalidateNoteQueries, NOTE_QUERY_KEY } from './use-note-queries.js';
 import { setWorkspaceNotebooks } from './workspace-links.js';
 import { setNotebookPreferences } from './notebook-preferences.js';
-import { forgetLastNotebook, openingNotebook, readLastNotebook, rememberLastNotebook } from './last-notebook.js';
+import { openingNotebook, readLastNotebook, rememberLastNotebook } from './last-notebook.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
 import { listLocalDrafts } from './storage.js';
 import { recordOpenedScopes } from './kept-drafts.js';
@@ -89,14 +89,11 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
   // Read again whenever the route changes, so returning to an address without a notebook finds the one just opened.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `routedNotebook` and `config` only mark when the stored value may have changed.
   const remembered = useMemo(() => (lastNotebookScope ? readLastNotebook(lastNotebookScope) : null), [lastNotebookScope, routedNotebook, config]);
-  const opening = openingNotebook({ routed: routedNotebook, remembered, config });
-  const selectedNotebookId = opening.notebook;
+  const selectedNotebookId = openingNotebook({ routed: routedNotebook, remembered, config });
   useEffect(() => {
     if (!config || !lastNotebookScope) return;
-    if (routedNotebook) {
-      if (config.notebooks.some(notebook => notebook.id === routedNotebook)) rememberLastNotebook(lastNotebookScope, routedNotebook);
-    } else if (opening.stale) forgetLastNotebook(lastNotebookScope);
-  }, [config, lastNotebookScope, routedNotebook, opening.stale]);
+    if (routedNotebook && config.notebooks.some(notebook => notebook.id === routedNotebook)) rememberLastNotebook(lastNotebookScope, routedNotebook);
+  }, [config, lastNotebookScope, routedNotebook]);
 
   const defaultRepositoryBranch = defaultRepository?.branch ?? '';
   const repositoryFor = (notebookId: string) => repositoryOf(repositories, notebookId);

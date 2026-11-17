@@ -292,7 +292,8 @@ browser, not the workspace's `default_notebook`. `useWorkspaceSync` resolves it 
 still lists it in `keyedConfig.notebooks`, else `default_notebook`, else the first notebook. Every route that names a
 notebook the workspace lists saves it in `localStorage` under `github-notes:last-notebook:<default repository id>`,
 so each workspace keeps its own. A remembered notebook the workspace no longer lists (removed, or its repository
-unavailable or no longer permitted) falls back silently and is forgotten. A demo workspace remembers nothing. It is a
+unavailable or no longer permitted) falls back silently and is kept, so a repository that is down for a moment
+does not lose it; it opens again once the workspace lists it. A demo workspace remembers nothing. It is a
 view preference of the device: no file is written and no commit made.
 
 ## Notes, files and `exclude`
