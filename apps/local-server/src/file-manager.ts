@@ -91,6 +91,19 @@ function needsContent(file: string, command?: FileCommand) {
 }
 const moves = (command?: FileCommand): command is Extract<FileCommand, { kind: 'move' | 'remove-directory'; }> => command?.kind === 'move' || command?.kind === 'remove-directory';
 /**
+ * The commit message of a one-file move, which a note's history shows: a rename names the old and the new name, a
+ * move the folder the file went to, rather than the default count of the paths it changed (「move 2 files」). None
+ * for a folder's move, which keeps the count.
+ */
+function moveMessage(pathMap: Record<string, string>): string | undefined {
+  const moved = Object.entries(pathMap);
+  if (moved.length !== 1) return undefined;
+  const [[from, to]] = moved;
+  const plain = (text: string) => text.replace(/[\r\n]/g, ' ');
+  const name = plain(path.posix.basename(from));
+  return path.posix.dirname(from) === path.posix.dirname(to) ? `docs(files): rename ${name} to ${plain(path.posix.basename(to))}` : `docs(files): move ${name} to ${plain(path.posix.dirname(to))}`;
+}
+/**
  * Whether the planner needs `file`'s bytes once read: a move keeps what moves, compilations and workspace documents,
  * and only the notes that can link to the moved path (`mayLinkToMove`, the test the planner itself applies); every
  * other note stays an empty placeholder, as untouched files are, so it still counts for collisions.
@@ -338,7 +351,7 @@ export function createFileManagerRouter(): Router {
           return content === undefined ? { path: file, base64: bytes.toString('base64') } : { path: file, content };
         });
         changes.push(...versionFileChanges(entries, followed, relocate, removed));
-        nextRevision = changes.length ? (await state.reader!.commitChanges(changes, state.revision, command.kind, 'files', undefined, state.remoteSnapshot)).revision : state.revision;
+        nextRevision = changes.length ? (await state.reader!.commitChanges(changes, state.revision, command.kind, 'files', command.kind === 'move' ? moveMessage(after.pathMap) : undefined, state.remoteSnapshot)).revision : state.revision;
       }
       res.json({ revision: nextRevision, selectedPath: after.selectedPath, pathMap: after.pathMap, deletedPaths: [...paths.filter(file => !after.files.has(file)), ...state.snapshot.directories.filter(dir => !after.directories.includes(dir))] });
     };

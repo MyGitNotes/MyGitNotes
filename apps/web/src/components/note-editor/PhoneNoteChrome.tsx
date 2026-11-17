@@ -239,7 +239,8 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         {toggleFormatToolbar && <SheetItem icon={<Type aria-hidden='true' />} label={t('editor.formatToolbar')} pressed={showFormatToolbar} onClick={toggleFormatToolbar} />}
         <div className='phone-sheet-quick'>{quickActions}</div>
         {onRename && <RenameRow title={session.title} onRename={onRename} onDone={onClose} />}
-        {liveDraft?.onRename && <SheetItem icon={<Pencil aria-hidden='true' />} label={t('files.rename')} onClick={act(liveDraft.onRename)} />}
+        {/* A live note's own rename, where the title cannot be renamed here: the title's rename runs it too, so one is offered. */}
+        {liveDraft?.onRename && !onRename && <SheetItem icon={<Pencil aria-hidden='true' />} label={t('files.rename')} onClick={act(liveDraft.onRename)} />}
         {onMove && <SheetItem icon={<FolderInput aria-hidden='true' />} label={t('files.moveNote')} disabled={session.locked && !draftMovable && !liveDraft} onClick={act(onMove)} />}
         {onAddToOutline && <SheetItem icon={<ListTree aria-hidden='true' />} label={t('outline.add')} disabled={session.locked} onClick={act(onAddToOutline)} />}
         {onSaveAsTemplate && <SheetItem icon={<LayoutTemplate aria-hidden='true' />} label={t('templates.saveAs')} onClick={act(onSaveAsTemplate)} />}

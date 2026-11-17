@@ -167,6 +167,16 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   useEffect(() => {
     refetchLists.current = live?.onRefetch;
   });
+  // The lists count this tab among the note's editors once its socket has joined the live document, which the checkout
+  // they read on opening came before: each session's first sync has them read it again (VQ P3, a renamed note's row
+  // lost 「編輯中 · 1」 until someone else joined).
+  const joined = useRef<LiveSession['text'] | null>(null);
+  const joinedText = shared?.online ? shared.text : null;
+  useEffect(() => {
+    if (!joinedText || joined.current === joinedText) return;
+    joined.current = joinedText;
+    refetchLists.current?.();
+  }, [joinedText]);
   useEffect(() => {
     if (liveYaml === null) {
       listedYaml.current = null;
