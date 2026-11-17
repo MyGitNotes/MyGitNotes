@@ -168,6 +168,8 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
   const tickets = new Map<string, { repository: RepositoryId; id: string; document: string; context: LiveContext; until: number; }>();
   /** What each merge answered, by who merged, into which link, under which id. */
   const merged = new Map<string, { answer: LiveMergeAnswer; until: number; }>();
+  /** Until when each key a `mergeInOnce` took counts, by repository, link and key. */
+  const takenOnce = new Map<string, number>();
   let created = 0;
 
   const repositoryState = (repository: RepositoryId) => {
@@ -343,6 +345,14 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
         const link = held(repository, id, lease);
         record(link, fits(rebase(link, change.baseRevision, change.content)), null);
         return { liveRevision: revision(link) };
+      },
+      async mergeInOnce(repository, id, lease, change) {
+        const link = held(repository, id, lease);
+        const key = JSON.stringify([repository, id, change.key]);
+        if ((takenOnce.get(key) ?? -Infinity) > clock.now()) return { liveRevision: revision(link), repeated: true };
+        record(link, fits(rebase(link, change.baseRevision, change.content)), null);
+        takenOnce.set(key, clock.now() + MERGE_MS);
+        return { liveRevision: revision(link), repeated: false };
       },
       async synced(repository, id, lease, receipt) {
         const link = held(repository, id, lease);

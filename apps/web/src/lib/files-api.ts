@@ -1,4 +1,5 @@
 import { responseError } from './api.js';
+import type { I18nContextValue } from './i18n/index.js';
 import type { FileCommand } from '@mygitnotes/core';
 export interface FileEntry {
   path: string;
@@ -29,8 +30,25 @@ export interface FileResult {
   selectedPath: string;
   pathMap: Record<string, string>;
   deletedPaths: string[];
-  /** Live notes (編輯中) a folder move landed without: each stays where it is, as the links to it say. */
-  liveLeft?: { path: string; destination?: string; reason: string; }[];
+  /**
+   * Live notes (編輯中) a folder move landed without: each stays where it is, as the links to it say, unless `moved`;
+   * with `linksBroken`, its own links to the notes moved still lead where they were.
+   */
+  liveLeft?: LiveLeft[];
+}
+export interface LiveLeft {
+  path: string;
+  destination?: string;
+  reason: string;
+  linksBroken?: true;
+  moved?: true;
+}
+/** What a person is told of the live notes a move that landed could not wholly take along; null when nothing. */
+export function liveLeftMessage(left: readonly LiveLeft[] | undefined, t: I18nContextValue['t']): string | null {
+  const entries = Array.isArray(left) ? left : [];
+  const stayed = entries.filter(entry => !entry.moved).map(entry => entry.path), broken = entries.filter(entry => entry.linksBroken).map(entry => entry.path);
+  const said = [...(stayed.length ? [t('folder.liveLeft', { paths: stayed.join(', ') })] : []), ...(broken.length ? [t('folder.liveLinksBroken', { paths: broken.join(', ') })] : [])];
+  return said.length ? said.join(' ') : null;
 }
 const query = (notebookId: string, path?: string) => new URLSearchParams({ notebookId, ...(path ? { path } : {}) }).toString();
 async function request<T>(url: string, init?: RequestInit): Promise<T> {

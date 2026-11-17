@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { type CommitAuthor, isLiveId, LIVE_MAX_BYTES, type LiveBuiltinEditorInfo, type LiveCheckout, liveContentHash, type LiveContext, type LiveEditor, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, liveMergeAnswerOf, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveOpenAs, type LivePersonCalls, type LiveRelease, type LiveServiceCalls, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, type LiveTypedIn, LiveUnavailableError, normalizeLiveText, rebaseLiveText, type RemoteSource, type RepositoryId, SourceError } from '@mygitnotes/core';
-import { liveDocumentName, type LiveDocuments, liveDocuments, liveMaxUnits, type LiveSnapshot, seedLiveState, typedInTexts } from './documents.js';
+import { liveDocumentName, type LiveDocuments, liveDocuments, liveMaxUnits, type LiveMergeWrite, type LiveSnapshot, seedLiveState, typedInTexts } from './documents.js';
 import { liveSocket, type LiveSocketLimits } from './socket.js';
 import { type EditorRef, LIVE_MERGE_MS, LIVE_TICKET_MS, type LiveStore, type StoredLink } from './store.js';
 
@@ -184,7 +184,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
    * when the revision is its hash, else a text this process handed out for the epoch and still keeps; any other base is
    * stale, as is a write that changed the same characters as the typing.
    */
-  const rewrite = async (link: StoredLink, editor: EditorRef | null, content: string, baseRevision: string) => {
+  const rewrite = async (link: StoredLink, editor: EditorRef | null, content: string, baseRevision: string, merge?: LiveMergeWrite) => {
     const mine = fits(normalizeLiveText(content));
     const base = typeof baseRevision === 'string' ? REVISION.exec(baseRevision)?.[1] : undefined;
     if (!base) throw new LiveStaleError();
@@ -193,7 +193,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       const next = from === undefined ? null : rebaseLiveText(from, current, mine);
       if (next === null) throw new LiveStaleError();
       return fits(next);
-    });
+    }, merge);
     documents.remember(link, written);
     return written;
   };
@@ -335,6 +335,15 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
       // A merge is nobody's edit: it names no editor and leaves lastEditAt.
       const written = await rewrite(await leased(repository, id, lease), null, change.content, change.baseRevision);
       return { liveRevision: `t:${written.hash}` };
+    },
+    async mergeInOnce(repository, id, lease, change) {
+      const link = await leased(repository, id, lease);
+      if (typeof change?.key !== 'string' || !change.key || change.key.length > 256) throw new SourceError('A merge taken once needs a key of 1 to 256 characters.', 400);
+      // Kept as a merge answer is, under the hash of the link and the key: one taken is answered as repeated for a day.
+      const key = createHash('sha256').update(`merge-in-once\n${link.id}\n${change.key}`, 'utf8').digest('hex');
+      if (await store.mergeAnswer(key, clock()) !== null) return { liveRevision: `t:${(await documents.snapshot(link)).hash}`, repeated: true };
+      const written = await rewrite(link, null, change.content, change.baseRevision, { key, until: clock() + LIVE_MERGE_MS, answer: hash => JSON.stringify({ taken: hash }) });
+      return { liveRevision: `t:${written.hash}`, repeated: written.merged !== undefined };
     },
     async synced(repository, id, lease, receipt) {
       const link = await live(repository, id);

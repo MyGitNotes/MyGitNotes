@@ -248,6 +248,15 @@ export interface LiveServiceCalls {
   detail(repository: RepositoryId, id: string, lease: LiveLease): Promise<LiveDetail>;
   mergeIn(repository: RepositoryId, id: string, lease: LiveLease, change: { content: string; baseRevision: string; }): Promise<{ liveRevision: string; }>;
   /**
+   * `mergeIn`, taken at most once per `key` for the link: the merge and the record that `key` was taken are one step,
+   * kept for at least a day, also past a release and a reopen, so a repeat under the same key takes nothing and answers
+   * `repeated`. A check-in writes the rewrite of a moved note's own links back into its live text this way, keyed by the
+   * move, so the check-in after a write-back that failed or lost its answer knows whether to take it (LMR-F001): taken,
+   * it is not taken twice; not taken, it is taken then, on the text as typed since. An adapter without it leaves the
+   * check-in to tell by the text's lines.
+   */
+  mergeInOnce?(repository: RepositoryId, id: string, lease: LiveLease, change: { content: string; baseRevision: string; key: string; }): Promise<{ liveRevision: string; repeated: boolean; }>;
+  /**
    * Records a check-in's commit. A receipt for a note moving elsewhere names its target (moved there) or its path (kept
    * there, its target recorded as `unmoved`, with `unmovedReason` when it is not that Git held the target).
    */

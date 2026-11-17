@@ -57,6 +57,19 @@ export interface RemoteSnapshot {
 }
 export type RemoteChange = { path: string; content?: string; base64?: string; sha?: string | null; };
 /**
+ * A live note a relocation could not wholly take along ({@link RemoteSource.followLiveRelocation}): by the path reads
+ * know it by, where it was to go, and why, in words. `linksBroken`: its own links to the relocated files still lead to
+ * where those were. `moved`: it goes to `destination` all the same; without it, it stays where it lies.
+ */
+export interface LiveRelocationLeft {
+  path: string;
+  destination?: string;
+  reason: string;
+  linksBroken?: true;
+  moved?: true;
+}
+
+/**
  * What a move of a filed live note answers (docs/specs/2026-11-15-builtin-live-editor §20.4): its Git path now, where its
  * next check-in moves it (null: nowhere, as it lies there or the move was taken back), and the check-in it got at once
  * when nobody else edits it, with the head that check-in left.
@@ -303,32 +316,47 @@ export abstract class RemoteSource {
   /**
    * Takes the live notes of {@link liveRelocations} along once the relocation's commit landed: each kept note's own links
    * to the files the commit relocated (`relocate`) are rewritten in its live text from where it lies, so they hold there
-   * and at its check-in (LM-F002); then each of `moves` records where it goes, without a check-in. A note either step
-   * fails for stays where it lies, where the links to it lead, and is answered in `left` with why, for the caller to
-   * say: the commit stands either way (LM-F003).
+   * and at its check-in (LM-F002), tried again once on a fresh read when typing or the editor refuses the write; then
+   * each of `moves` records where it goes, without a check-in. A note either step fails for is answered in `left` with
+   * why, for the caller to say, and the commit stands either way (LM-F003): `linksBroken` when its links to the relocated
+   * files still lead where those were, and `moved` when it goes to its destination all the same; without `moved` it
+   * stays where it lies, where the links to it lead.
    */
-  async followLiveRelocation({ moves, kept }: Awaited<ReturnType<RemoteSource['liveRelocations']>>, relocate: (file: string) => string): Promise<{ moved: { file: string; destination: string; }[]; left: { path: string; destination?: string; reason: string; }[]; }> {
-    const moved: { file: string; destination: string; }[] = [], left: { path: string; destination?: string; reason: string; }[] = [];
+  async followLiveRelocation({ moves, kept }: Awaited<ReturnType<RemoteSource['liveRelocations']>>, relocate: (file: string) => string): Promise<{ moved: { file: string; destination: string; }[]; left: LiveRelocationLeft[]; }> {
+    const moved: { file: string; destination: string; }[] = [], left: LiveRelocationLeft[] = [];
     if (!this.live || !kept.size) return { moved, left };
+    const live = this.live;
     const relink = (file: string) => kept.has(file) ? file : relocate(file);
-    const links = (await this.live.links()).filter(link => link.checkout.path !== null && kept.has(link.checkout.path));
+    const why = (error: unknown) => error instanceof Error ? error.message : 'The live note could not be taken along.';
+    const links = (await live.links()).filter(link => link.checkout.path !== null && kept.has(link.checkout.path));
     for (const link of links) {
       const from = link.checkout.path!;
       const destination = moves.find(entry => entry.file === link.path)?.destination;
-      try {
-        const read = await this.live.read(link.checkout.id);
+      const relinkOnce = async () => {
+        const read = await live.read(link.checkout.id);
         const relinked = normalizeLiveText(relocateLinks(read.content, from, from, relink));
-        if (relinked !== read.content) await this.live.write(link.checkout.id, relinked, read.liveRevision, false);
-        this.liveLoaded.delete(link.path);
-        if (destination !== undefined) {
+        if (relinked !== read.content) await live.write(link.checkout.id, relinked, read.liveRevision, false);
+      };
+      let linksBroken: string | undefined, stays: string | undefined;
+      try {
+        await relinkOnce().catch(relinkOnce);
+      } catch (error) {
+        linksBroken = why(error);
+        console.warn(`[live-notes] ${link.checkout.id} keeps its links to the notes a relocation moved from ${from}: ${(error as Error)?.name ?? 'error'}`);
+      }
+      this.liveLoaded.delete(link.path);
+      if (destination !== undefined) {
+        try {
           await this.moveLive(link.path, destination, { checkIn: false });
           moved.push({ file: link.path, destination });
+        } catch (error) {
+          stays = why(error);
+          console.warn(`[live-notes] ${link.checkout.id} stays at ${from} after a relocation: ${(error as Error)?.name ?? 'error'}`);
         }
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : 'The live note could not be taken along.';
-        console.warn(`[live-notes] ${link.checkout.id} stays at ${from} after a relocation: ${(error as Error)?.name ?? 'error'}`);
-        left.push({ path: link.path, ...(destination !== undefined ? { destination } : {}), reason });
       }
+      if (linksBroken === undefined && stays === undefined) continue;
+      const reasons = [...(stays !== undefined ? [`It stays where it is: ${stays}`] : []), ...(linksBroken !== undefined ? [`Its links to the notes moved still lead where they were: ${linksBroken}`] : [])];
+      left.push({ path: link.path, ...(destination !== undefined ? { destination } : {}), reason: reasons.join(' '), ...(linksBroken !== undefined ? { linksBroken: true as const } : {}), ...(destination !== undefined && stays === undefined ? { moved: true as const } : {}) });
     }
     return { moved, left };
   }

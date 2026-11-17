@@ -675,6 +675,7 @@ export const en = {
   'folder.failed': 'Folder operation failed. Contents are preserved.',
   'folder.reload': 'Reload',
   'folder.liveLeft': 'Moved. Being edited live, {paths} stayed where it is; move it again to try once more.',
+  'folder.liveLinksBroken': 'The links in {paths}, being edited live, to the notes moved could not be updated and still lead where those were; fix them in the editor.',
   'folder.draftsHint': 'An open note has edits that could not be saved. Resolve them before changing files.',
   'view.flat': 'Expand',
   'view.groupByFolder': 'Group by folder',
