@@ -7,6 +7,7 @@ import { parseFolderConfig } from './folders.js';
 import { relocateMovedLinks } from './folder-plan.js';
 import { NOTE_H1, retitle } from './note-title.js';
 import { isNoteFile, parseNoteFile, serializeNoteFile } from './note-file.js';
+import { hasUnreadableFrontmatter, NoteFrontmatterUnreadableError } from './frontmatter.js';
 import { isOutlinePath } from './outline.js';
 import { relocateWorkspaceDocuments, workspaceDocument } from './workspace-documents.js';
 import { isCompilationPath, relocateCompilation } from './compilation.js';
@@ -76,9 +77,12 @@ export function editableFile(file: string, bytes: Uint8Array): string | undefine
  * The stored form of the note `raw` once renamed `title`: the frontmatter title, or the heading that names the note,
  * follow `retitle`, and `updated` is stamped. Not applied to a compilation, which keeps its name in its own file. A
  * frontmatter is patched in place and only the heading's own line is rewritten, so the rest of the text keeps its bytes:
- * no blank line is added after the fence, and the body keeps its whitespace and line endings.
+ * no blank line is added after the fence, and the body keeps its whitespace and line endings. A note whose frontmatter
+ * cannot be read is refused (`NoteFrontmatterUnreadableError`).
  */
 export function retitleNoteFile(raw: string, file: string, title: string, now: Date = new Date()): string {
+  // A title goes into a block or a heading of the text; with a block that cannot be read, neither is told apart from it.
+  if (hasUnreadableFrontmatter(raw)) throw new NoteFrontmatterUnreadableError();
   const parsed = parseNoteFile(raw, file);
   const next = retitle(parsed.content, parsed.metadata, title, isOutlinePath(file), parsed.title);
   if (next.content === parsed.content || !raw.endsWith(parsed.content)) return serializeNoteFile(file, next.metadata, next.content, false, now, raw);

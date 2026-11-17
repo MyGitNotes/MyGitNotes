@@ -81,8 +81,9 @@ export async function responseError(res: Response, fallback: string): Promise<Ap
   const data = await res.json().catch(() => ({}));
   const seconds = Number(res.headers.get('Retry-After') || data.retryAfter);
   const details: ApiErrorDetails = { ...(typeof data.code === 'string' ? { code: data.code } : {}), ...(textList(data.paths) ? { paths: textList(data.paths) } : {}), ...(typeof data.movedTo === 'string' ? { movedTo: data.movedTo } : {}) };
-  // A write refused because a note is being edited live (編輯中) reads the same wherever it is shown.
-  const message = details.code === 'checked-out' ? translateNow(details.paths?.length ? 'live.checkedOutPaths' : 'live.checkedOut', { paths: details.paths?.join(', ') ?? '' }) : data.error || fallback;
+  // A write refused because a note is being edited live (編輯中), or because its frontmatter cannot be read, reads the same
+  // wherever it is shown.
+  const message = details.code === 'checked-out' ? translateNow(details.paths?.length ? 'live.checkedOutPaths' : 'live.checkedOut', { paths: details.paths?.join(', ') ?? '' }) : details.code === 'frontmatter-invalid' ? translateNow('editor.frontmatterInvalidLive') : data.error || fallback;
   return new ApiError(message, res.status, Number.isFinite(seconds) && seconds > 0 ? seconds : undefined, Array.isArray(data.staleRepositories) ? data.staleRepositories : undefined, data.reauthorize === true, details);
 }
 

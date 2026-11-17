@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { getCurrentBranch } from '@mygitnotes/git';
-import { assetHash, assetInfo, assetRoot, changedFiles, checkedOutFields, editableFile, type FileCommand, FileCommandSchema, fileNeedsContent, filePresentation, fileRetainer, type FileSnapshot, isNotebookContent, managedNotebook, type NotebookConfig, parseFolderConfig, planFileChange, rawFileHeaders, remoteFileChanges, remoteFileSnapshot, type RemoteSnapshot, type RemoteSource, SourceError, stampIsRacy, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
+import { assetHash, assetInfo, assetRoot, changedFiles, checkedOutFields, editableFile, type FileCommand, FileCommandSchema, fileNeedsContent, filePresentation, fileRetainer, type FileSnapshot, isNotebookContent, managedNotebook, type NotebookConfig, NoteFrontmatterUnreadableError, parseFolderConfig, planFileChange, rawFileHeaders, remoteFileChanges, remoteFileSnapshot, type RemoteSnapshot, type RemoteSource, SourceError, stampIsRacy, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
 import { defaultRepository, eachRepository, notebookRepository, noteRepository, type RepositoryHandle } from './request-workspace.js';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { regularPath, writeFileAtomicSync } from './workspace-files.js';
@@ -331,5 +331,6 @@ export function createFileManagerRouter(): Router {
   return router;
 }
 function fail(res: Response, error: unknown) {
-  res.status(error instanceof SourceError ? error.status : 400).json({ error: error instanceof Error ? error.message : 'File operation failed.', ...checkedOutFields(error) });
+  const unreadable = error instanceof NoteFrontmatterUnreadableError;
+  res.status(error instanceof SourceError || unreadable ? error.status : 400).json({ error: error instanceof Error ? error.message : 'File operation failed.', ...checkedOutFields(error), ...(unreadable ? { code: error.code } : {}) });
 }

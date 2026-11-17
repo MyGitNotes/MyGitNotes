@@ -125,6 +125,26 @@ function patchNoteMetadata(raw: string, metadata: NoteMetadata): string | null {
   return next;
 }
 
+/**
+ * A metadata write refused because the note opens a frontmatter block that cannot be read (never closed, or not a map):
+ * a block written in front of it would leave two, the broken one read as body. The note is fixed in its text first.
+ * `code` and `status` let a server answer it as a conflict the browser names in its own language.
+ */
+export class NoteFrontmatterUnreadableError extends Error {
+  readonly code = 'frontmatter-invalid';
+  readonly status = 409;
+  constructor() {
+    super('The frontmatter cannot be read: fix it in the YAML view or the editor.');
+    this.name = 'NoteFrontmatterUnreadableError';
+  }
+}
+
+/** The text opens a frontmatter block that cannot be read: one that never closes, or whose YAML is not a map. */
+export function hasUnreadableFrontmatter(raw: string): boolean {
+  const span = noteFrontmatterSpan(raw);
+  return span !== null && 'invalid' in span;
+}
+
 /** A text's leading frontmatter block, as `parseNoteContent` reads it. */
 export type NoteFrontmatterSpan =
   /** `end` is just past the closing fence, `bodyStart` past the blank separator line too. */
@@ -224,9 +244,19 @@ export function patchNoteFrontmatter(raw: string, before: NoteMetadata, after: N
  * When `existingRaw` is the note's current file content and its Markdown body is unchanged,
  * the frontmatter is patched key by key onto that existing block instead of being rendered
  * from scratch, so a metadata-only edit (e.g. a status change) changes only the lines of the
- * keys it actually edits.
+ * keys it actually edits. When `existingRaw` opens a block that cannot be read, `content` is
+ * written as it is, unstamped, without metadata; metadata over a `content` that still opens a
+ * block throws `NoteFrontmatterUnreadableError`.
  */
 export function serializeNoteContent(metadata: NoteMetadata, content: string, isNew: boolean, now: Date = new Date(), existingRaw?: string, preserveBodyWhitespace = false): string {
+  // A note whose block cannot be read reads as body only, block included. A save of that body is written as it is; one
+  // that sets metadata over a body still opening a block is refused, rather than putting a second block in front of it.
+  // A body without one (a restored version, or the block deleted) replaces the text as a note without a block.
+  if (existingRaw !== undefined && hasUnreadableFrontmatter(existingRaw)) {
+    if (!Object.values(metadata).some(value => value !== undefined)) return content;
+    if (OPENING_FENCE.test(content)) throw new NoteFrontmatterUnreadableError();
+    existingRaw = undefined;
+  }
   const stamped = stampSaveTimestamps(metadata, isNew, now);
   const keys = Object.keys(stamped);
   const trimmedContent = content.trim();

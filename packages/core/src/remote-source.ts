@@ -8,7 +8,7 @@ import path from 'node:path';
 import { assetInfo, assetPath, assetRoot, decodeAsset, isAssetPath } from './assets.js';
 import { MANIFEST_FILES } from './remote-manifest.js';
 import { type RepositoryId, type RepositoryScope, StaleRevisionError } from './repository.js';
-import { parseNoteContent } from './frontmatter.js';
+import { hasUnreadableFrontmatter, NoteFrontmatterUnreadableError, parseNoteContent } from './frontmatter.js';
 import { isCompilationPath } from './compilation.js';
 import { isOutlinePath } from './outline.js';
 import { isNoteFile, NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.js';
@@ -274,6 +274,8 @@ export abstract class RemoteSource {
       const others = (await this.live!.links()).filter(other => other.checkout.id !== link.checkout.id);
       if (others.some(other => other.path === destination || other.checkout.path === destination)) throw new SourceError('Destination already exists.', 409);
     }
+    // A title cannot be written into a text whose block cannot be read; the rename is refused before anything moves.
+    if (options.title !== undefined && hasUnreadableFrontmatter((await this.readLiveLink(link)).content)) throw new NoteFrontmatterUnreadableError();
     const target = destination === from ? null : destination;
     let checkout = target === (link.checkout.target ?? null) ? link.checkout : await this.live!.move(link.path, target);
     for (const path of [link.path, from, destination]) {

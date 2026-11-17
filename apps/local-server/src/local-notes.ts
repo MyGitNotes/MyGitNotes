@@ -7,6 +7,7 @@ import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { asLocal, eachRepository, type LocalHandle, notebookRepository, noteRepository, requestCatalog } from './request-workspace.js';
 import { moveLocalVersionFiles, restoreLocalVersionFile } from './version-files.js';
 import { regularPath } from './workspace-files.js';
+import { fail } from './route-errors.js';
 
 /**
  * Refuses every path that is not a note, an outline, a compilation or a template: a text file, a PDF, a page, an image,
@@ -136,7 +137,7 @@ export function createLocalNotesRouter(): Router {
         res.json({ success: true, note: saved, commit, committed: true });
       });
     } catch (err: unknown) {
-      res.status(err instanceof SourceError ? err.status : 500).json({ error: err instanceof Error ? err.message : String(err) });
+      fail(res, err);
     }
   });
 
@@ -197,7 +198,7 @@ export function createLocalNotesRouter(): Router {
         res.json({ success: true, note: restoredNote });
       });
     } catch (err: unknown) {
-      res.status(err instanceof SourceError ? err.status : 500).json({ error: err instanceof Error ? err.message : String(err) });
+      fail(res, err);
     }
   });
 

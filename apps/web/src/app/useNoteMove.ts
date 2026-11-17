@@ -107,7 +107,10 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
     if (plan.kind === 'none') {
       // Same file name, new title only: the note is saved where it lies, before the workspace is read again.
       if (retitled) {
-        const current = withTitle(readDraft(note.notebookId, note.path)?.note ?? await readNote(note.path, note.notebookId));
+        const read = readDraft(note.notebookId, note.path)?.note ?? await readNote(note.path, note.notebookId);
+        // A title is not written into a note whose frontmatter cannot be read: a block put in front would leave two.
+        if (read.frontmatterInvalid) throw new Error(t('editor.frontmatterInvalidLive'));
+        const current = withTitle(read);
         await saveNote({ path: note.path, notebookId: note.notebookId, content: current.content, metadata: current.metadata });
       }
       await onFilesChanged({ revision: '', selectedPath: note.path, pathMap: {}, deletedPaths: [] }, { background: true });

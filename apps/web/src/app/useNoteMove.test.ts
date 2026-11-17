@@ -239,6 +239,17 @@ describe('useNoteMove', () => {
     expect(order).toEqual(['save notes/idea.md', 'files changed']);
   });
 
+  // No title goes into a note whose frontmatter cannot be read: a block put in front of the broken one would leave two.
+  it('refuses a title that keeps the file name, for a note whose frontmatter cannot be read, and saves nothing', async () => {
+    api.readNote.mockResolvedValue({ ...note, content: '---\nnot: [yaml\n---\n# Idea\n', frontmatterInvalid: true });
+    const { params, rename } = setup({ remote: false });
+    await rename('Idea!');
+    expect(params.saveNote).not.toHaveBeenCalled();
+    expect(files.mutateFile).not.toHaveBeenCalled();
+    expect(params.onFilesChanged).not.toHaveBeenCalled();
+    expect(params.setActionError).toHaveBeenLastCalledWith('editor.frontmatterInvalidLive');
+  });
+
   it('retitles a note whose file name has capitals where it lies, when the new name differs only in case, and keeps it selected', async () => {
     const upper = { ...note, path: 'notes/Ideas.md', title: 'Ideas', content: '# Ideas' };
     api.readNote.mockResolvedValue(upper);

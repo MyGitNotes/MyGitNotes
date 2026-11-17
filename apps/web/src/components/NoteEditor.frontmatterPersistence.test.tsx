@@ -45,3 +45,19 @@ it('keeps in-progress frontmatter form, tag and YAML state across a switch to an
   expect(screen.getByPlaceholderText('New field name...')).toHaveValue('custom');
   expect(screen.getByPlaceholderText('Add tag (e.g. project)...')).toHaveValue('wip');
 });
+
+// A note whose frontmatter cannot be read is all body in the direct editor, its block included: its form, status and
+// rename are not offered, since any of them would put a second block in front of the broken one.
+it('offers no metadata, status or rename on a note whose frontmatter cannot be read, and says why', async () => {
+  const broken = { ...note, metadata: {}, content: '---\nnot: [yaml\n---\n# Alpha\n', frontmatterInvalid: true as const };
+  render(editor({ note: broken, onRename: vi.fn() }));
+  // The note row marks the note instead of offering its status and tags, and its title is no rename button.
+  expect(screen.getByText('Frontmatter cannot be read')).toBeInTheDocument();
+  expect(document.querySelector('.title-rename')).toBeNull();
+  // The panel remembers the tab last open, so it is opened on Frontmatter only when it is not already.
+  if (!screen.queryByPlaceholderText('New field name...')) fireEvent.click(screen.getByRole('tab', { name: 'Frontmatter' }));
+  expect(screen.getByText('The frontmatter cannot be read: fix it in the YAML view or the editor.')).toBeInTheDocument();
+  for (const status of screen.getAllByRole('combobox', { name: 'Status' })) expect(status).toBeDisabled();
+  expect(screen.getByPlaceholderText('New field name...')).toBeDisabled();
+  expect(screen.getByLabelText('Note content')).toHaveValue(broken.content);
+});

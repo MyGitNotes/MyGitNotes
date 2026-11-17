@@ -352,12 +352,12 @@ async function runRemoteTool(reader: RemoteSource, name: string, args: Record<st
       const caseSensitive = Boolean(args.caseSensitive);
       const dryRun = Boolean(args.dryRun);
       const regex = textSearchRegex(search, isRegex, caseSensitive);
-      const modified: { path: string; metadata: any; content: string; }[] = [];
+      const modified: { path: string; metadata: any; content: string; frontmatterInvalid?: true; }[] = [];
       for (const note of notes) {
         if (regex.test(note.content)) {
           regex.lastIndex = 0;
           const newContent = note.content.replace(regex, replace);
-          modified.push({ path: note.path, metadata: note.metadata, content: newContent });
+          modified.push({ path: note.path, metadata: note.metadata, content: newContent, ...(note.frontmatterInvalid ? { frontmatterInvalid: true as const } : {}) });
         }
       }
       if (dryRun) {
@@ -367,7 +367,8 @@ async function runRemoteTool(reader: RemoteSource, name: string, args: Record<st
         return { success: true, dryRun: false, search, replace, matchedFiles: [], totalFiles: 0 };
       }
       const rev = await revisionArg(reader, args);
-      const changes = modified.map((n) => ({ path: n.path, content: serializeNoteContent(n.metadata, n.content, false) }));
+      // A note whose frontmatter cannot be read holds it in its content, which is written as it is: a rendered block would go in front of it.
+      const changes = modified.map((n) => ({ path: n.path, content: n.frontmatterInvalid ? n.content : serializeNoteContent(n.metadata, n.content, false) }));
       // Marked as an agent edit, as every note text an agent commits, so history shows who changed the notes.
       const receipt = await reader.commitChanges(changes, rev, 'replace', 'notes', agentEditMessage(`docs(notes): replace "${search}" across ${modified.length} notes`));
       return { success: true, dryRun: false, search, replace, matchedFiles: modified.map((n) => n.path), totalFiles: modified.length, commit: receipt.commit };
