@@ -62,6 +62,8 @@ export interface LiveRepository {
    * `leftFrom`); null for none, and undefined where the adapter cannot tell, which leaves the live links' `formerPaths`.
    */
   leftFrom(path: string): Promise<string | null | undefined>;
+  /** Forgets that link `id` left `path`, which Git holds a file at (the adapter's `forgetLeft`); nothing where it has none. */
+  forgetLeft(path: string, id: string): Promise<void>;
   /**
    * 「立即簽回」: checks the live note at `path` (a Git path, a moving note's target or Git path, or a pending note's
    * virtual path) in now (spec §5.3), as a manual check-in unless `mode` says otherwise.
@@ -246,6 +248,10 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       if (!ask) return undefined;
       const answer = await call(() => ask(repository, path));
       return isLiveId(answer) ? answer : null;
+    },
+    async forgetLeft(path, id) {
+      const forget = calls().forgetLeft?.bind(calls());
+      if (forget && isLiveId(id)) await call(() => forget(repository, path, id));
     },
     async checkIn(path, mode = 'manual') {
       const link = await linkAt(path);

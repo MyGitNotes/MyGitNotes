@@ -377,9 +377,26 @@ const ownLinksMoved = (content: string, from: string, to: string) => relocateLin
 
 /**
  * The key a move's write-back of the note's own links into its live text is taken once under (`mergeInOnce`): the link,
- * the paths it moved from and to, and the text the move committed there.
+ * the paths it moved from and to, and the commit the link was last synced with (its `base`) when the move was committed.
+ * That base stays while the move's receipt is not recorded, so every check-in that goes on with the move finds the same
+ * key; each recorded check-in replaces it, so a later move, even one along the same paths and with the same text, has a
+ * key of its own (FLM-F001).
  */
-const rewriteKey = (id: string, from: string, to: string, committed: string) => liveContentHash(`live-move-rewrite\n${id}\n${from}\n${to}\n${liveContentHash(normalizeLiveText(committed))}`);
+const rewriteKey = (id: string, from: string, to: string, base: string) => liveContentHash(`live-move-rewrite\n${id}\n${from}\n${to}\n${base}`);
+
+/**
+ * The move's rewrite of the note's own links in `live`, made again after a write-back failed, was refused, or may have
+ * been taken without its record: line by line, leaving a line Git holds as it is in `committed`, the text that move or a
+ * check-in since committed there, which has the rewrite already or was fixed for the new place by hand (FLM-F002,
+ * FLM-F003).
+ */
+function linesMoved(live: string, from: string, to: string, committed: string) {
+  const rewritten = ownLinksMoved(live, from, to);
+  const before = live.split('\n'), after = rewritten.split('\n');
+  if (before.length !== after.length) return rewritten;
+  const held = new Set(committed.split('\n'));
+  return after.map((line, at) => line !== before[at] && held.has(before[at]!) ? before[at]! : line).join('\n');
+}
 
 /**
  * Whether `live`, the text of a note whose move commit landed with `git` as its text, still lacks the move's rewrite of
@@ -716,37 +733,54 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
       return retake(await adapter(() => service.detail(repository, id, lease)));
     };
     const once = typeof service.mergeInOnce === 'function' ? service.mergeInOnce.bind(service) : undefined;
+    /** The base this check-in started from: the move it goes on with is keyed by it (FLM-F001). */
+    const moveBase = row.base?.commit ?? '';
     /**
      * Writes the rewrite of the note's own links for its move from `from` to `to`, whose commit landed with `committed`,
      * into the live text: `rewritten`, made on the live text at `revisionNow`. Where the adapter takes it once per move
-     * (`mergeInOnce`), a write-back that typing on the same lines refuses is made again, once, on the text as typed, and
-     * one taken before is not taken again (LMR-F001). Answers whether the live text took it now.
+     * (`mergeInOnce`), a write-back that typing on the same lines refuses is made again, once, on the text as typed, line
+     * by line ({@link linesMoved}), and one taken before is not taken again (LMR-F001). Answers whether the live text took
+     * it now (`taken`), had taken it before (`repeated`), or had nothing left of it to take as typed (`none`).
      */
-    const writeBack = async (rewritten: string, from: string, to: string, committed: string) => {
+    const writeBack = async (rewritten: string, from: string, to: string, committed: string): Promise<'taken' | 'repeated' | 'none'> => {
       if (!once) {
         await adapter(() => service.mergeIn(repository, id, lease, { content: rewritten, baseRevision: revisionNow }));
-        return true;
+        return 'taken';
       }
-      const key = rewriteKey(id, from, to, committed);
+      const key = rewriteKey(id, from, to, moveBase);
       try {
-        return !(await adapter(() => once(repository, id, lease, { content: rewritten, baseRevision: revisionNow, key }))).repeated;
+        return (await adapter(() => once(repository, id, lease, { content: rewritten, baseRevision: revisionNow, key }))).repeated ? 'repeated' : 'taken';
       } catch (error) {
         if (!(error instanceof LiveStaleError)) throw error;
       }
       const fresh = liveTextOf(await adapter(() => service.detail(repository, id, lease)));
       revisionNow = fresh.liveRevision;
-      const typed = normalizeLiveText(fresh.content), again = ownLinksMoved(typed, from, to);
-      return again !== typed && !(await adapter(() => once(repository, id, lease, { content: again, baseRevision: revisionNow, key }))).repeated;
+      const typed = normalizeLiveText(fresh.content), again = linesMoved(typed, from, to, committed);
+      if (again === typed) return 'none';
+      return (await adapter(() => once(repository, id, lease, { content: again, baseRevision: revisionNow, key }))).repeated ? 'repeated' : 'taken';
+    };
+    /**
+     * After the commit of a move from `from` to `to` that committed `committed` there, writes its rewrite of the note's own
+     * links back into the live text (`rewritten`). Not taken now, it is not dropped: either the live text took it before,
+     * or nothing of it is left as typed. The receipt names the text committed, so the live text, which differs, is not
+     * released with it, and the next check-in commits the live text as it is.
+     */
+    const movedBack = async (rewritten: string, from: string, to: string, committed: string) => {
+      const answer = await writeBack(rewritten, from, to, committed);
+      if (answer !== 'taken') console.warn(`[live-notes] check-in of ${id}: its live text ${answer === 'repeated' ? 'had taken the rewrite of its links for this move before' : 'holds none of the links its move rewrote'}; the next check-in commits it as it is`);
     };
     // The move landed but the live note may not have taken its rewrite of the note's own links, which follows the commit:
-    // it takes it now, once (LM-F001): where the adapter records the write-back with the move, by that record, else by
-    // the lines the rewrite changes.
+    // it takes it now, once (LM-F001): where the adapter records the write-back with the move, by that record and only on
+    // the lines Git does not hold as typed (FLM-F002, FLM-F003), else by the lines the rewrite changes.
     if (landedFrom !== undefined) {
-      const rewritten = ownLinksMoved(live, landedFrom, file);
       const committed = normalizeLiveText((await source.readSnapshotFile(snapshot, file)).toString('utf8'));
-      if (rewritten !== live && once) {
-        if (await writeBack(rewritten, landedFrom, file, committed)) live = await retake(await adapter(() => service.detail(repository, id, lease)));
-      } else if (rewritten !== live && missedRewrite(live, rewritten, committed)) live = await mergeLive(rewritten);
+      if (once) {
+        const rewritten = linesMoved(live, landedFrom, file, committed);
+        if (rewritten !== live && await writeBack(rewritten, landedFrom, file, committed) === 'taken') live = await retake(await adapter(() => service.detail(repository, id, lease)));
+      } else {
+        const rewritten = ownLinksMoved(live, landedFrom, file);
+        if (rewritten !== live && missedRewrite(live, rewritten, committed)) live = await mergeLive(rewritten);
+      }
     }
     /**
      * Commits `content` as the note's text: where it lies, or moved to its target in one commit that rewrites the links
@@ -769,7 +803,7 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
           const message = checkInMessage(moveTo, id, planned.content, { filing: false, ...(overwrote ? { overwrote } : {}), ...(agentDay ? { agentDay } : {}), moved: file });
           const { revision } = await source.commitChanges(planned.changes, snapshot.sha, 'move', 'files', message, snapshot, coAuthors);
           announceLiveCommit(liveNotes, { repository, path: moveTo, content: planned.content, commit: revision, source, ...(author ? { author } : {}), ...(as ? { person: as } : {}) });
-          if (planned.content !== content) await writeBack(planned.content, file, moveTo, planned.content);
+          if (planned.content !== content) await movedBack(planned.content, file, moveTo, planned.content);
           return { sha: revision, text: planned.content, at: moveTo };
         }
       }
@@ -783,7 +817,7 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
       const written = moveTo ? ownLinksMoved(live, file, moveTo) : live;
       const overwritten = await newestTouching(source, snapshot, file);
       const sha = await commit(at, written, checkInMessage(at, id, written, { filing: false, overwrote: overwritten, ...(agentDay ? { agentDay } : {}), ...(moveTo ? { moved: file } : {}) }));
-      if (written !== live) await writeBack(written, file, moveTo!, written);
+      if (written !== live) await movedBack(written, file, moveTo!, written);
       const conflict: LiveConflict = { kind: 'deleted', overwritten, commit: sha, at: new Date(now()).toISOString() };
       return synced(at, sha, blobOf(written), written, conflict, true, false, { kind: 'deleted', notebook: row.notebook, path: at, id, commit: sha, overwritten, message: `${file} was deleted in Git while it was edited live; the check-in wrote it back${moveTo ? ` at ${moveTo}` : ''}.` });
     }

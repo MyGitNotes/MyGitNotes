@@ -403,7 +403,10 @@ export abstract class RemoteSource {
     if (at) return { link: at };
     const snapshot = await this.getSnapshot();
     const holds = (path: string) => snapshot.entries.some(entry => entry.path === path);
-    if (holds(file)) return undefined;
+    if (holds(file)) {
+      await this.forgetLeft(file, links, holds);
+      return undefined;
+    }
     const id = await this.live.leftFrom(file);
     if (id === undefined) {
       const listed = links.filter(link => link.checkout.formerPaths?.includes(file));
@@ -415,6 +418,17 @@ export abstract class RemoteSource {
     const filed = await this.live.filed(id);
     const notebook = notebookOfPath(file, (await this.config()).notebooks);
     return filed !== null && filed !== file && notebook && notebookOfPath(filed, (await this.config()).notebooks)?.id === notebook.id && holds(filed) ? { left: filed } : undefined;
+  }
+  /**
+   * A file Git holds at `file`, a path a note left, is that file's: the path stops leading to the note for good, so it
+   * does not lead there again once the file is deleted or moved away (FLM-F004). Forgotten only while Git also holds the
+   * note where it went, live at its Git path or filed: a snapshot read before the note's move holds its old file there.
+   */
+  private async forgetLeft(file: string, links: readonly LiveLink[], holds: (path: string) => boolean) {
+    const id = await this.live!.leftFrom(file);
+    if (!id) return;
+    const where = links.find(entry => entry.checkout.id === id)?.checkout.path ?? await this.live!.filed(id);
+    if (where && where !== file && holds(where)) await this.live!.forgetLeft(file, id);
   }
   /**
    * The live link of a checked-out note or pending note at `file`, also by the Git path of a note moving elsewhere;

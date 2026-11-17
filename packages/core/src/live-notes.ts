@@ -165,6 +165,12 @@ export interface LivePersonCalls {
    */
   leftFrom?(repository: RepositoryId, path: string): Promise<string | null>;
   /**
+   * Forgets that link `id` left `path`, once Git holds a file there: the path is that file's, and stops leading to the
+   * note for good, also once the file is deleted or moved away. A record another link left there later is kept. Part of
+   * `leftFrom`; an adapter with it has this too.
+   */
+  forgetLeft?(repository: RepositoryId, path: string, id: string): Promise<void>;
+  /**
    * Merges `request.text`, written on `request.base`, into the live note over the typing since, as a three-way merge,
    * and lists the person among its editors; texts come in normal form. A conflict takes nothing. A repeat of the same
    * `mergeId` by the same person for the same link answers what the first answered for at least a day, also after the

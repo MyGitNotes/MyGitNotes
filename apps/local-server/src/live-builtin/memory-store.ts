@@ -71,6 +71,9 @@ export function memoryLiveStore(): LiveStore {
       const link = links.get(lefts.get(pathKey(repository, path)) ?? '');
       return link && link.repository === repository && link.path !== null && link.path !== path && link.target !== path ? structuredClone(link) : null;
     },
+    async forgetLeft(repository, path, id) {
+      if (lefts.get(pathKey(repository, path)) === id) lefts.delete(pathKey(repository, path));
+    },
     async checkout(repository, { path, notebook, base, contentHash }, state, now) {
       const known = links.get(paths.get(pathKey(repository, path)) ?? '');
       if (known?.live) return { link: structuredClone(known), outcome: 'joined' };

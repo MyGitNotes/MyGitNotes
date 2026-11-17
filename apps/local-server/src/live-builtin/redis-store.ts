@@ -304,6 +304,11 @@ const UNLEASE = `${HOLDER}
 if holder(ARGV[1], ARGV[2]) then redis.call('DEL', KEYS[2]) end
 return 'ok'`;
 
+/** KEYS left. ARGV the link id: the record is dropped only while it names that link. */
+const FORGET_LEFT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('DEL', KEYS[1]) end
+return 1`;
+
 /** KEYS link, presence. ARGV process, its entry ('' for none), lifetime. */
 const PRESENCE = `
 if redis.call('HGET', KEYS[1], 'live') ~= '1' then return 0 end
@@ -453,6 +458,9 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
       const id = await call('leftFrom', ['GET', key.left(repository, path)]) as string | null;
       const link = id && isLink(id) ? linkOf(await call(`leftFrom ${id}`, ['HGETALL', key.link(id)])) : null;
       return link && link.repository === repository && link.path !== null && link.path !== path && link.target !== path ? link : null;
+    },
+    async forgetLeft(repository, path, id) {
+      if (isLink(id)) await script(`forgetLeft ${id}`, FORGET_LEFT, [key.left(repository, path)], [id]);
     },
     async checkout(repository, { path, notebook, base, contentHash }, state, now) {
       const [outcome, link] = await script('checkout', CHECKOUT, [key.path(repository, path), key.repos, key.links(repository)], [P, randomBytes(16).toString('base64url'), repository, digest32(repository), notebook, path, json(base), contentHash, encode(state), now]) as ['created' | 'joined' | 'reopened', unknown];

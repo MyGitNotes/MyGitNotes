@@ -294,6 +294,10 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           const link = links.get(lefts.get(path) ?? '');
           return link && link.path !== null && link.path !== path && link.target !== path ? link.id : null;
         },
+        async forgetLeft(repository, path, id) {
+          const { lefts } = repositoryState(repository);
+          if (lefts.get(path) === id) lefts.delete(path);
+        },
         ...(merge
           ? {
             async merge(repository: RepositoryId, id: string, request: LiveMergeRequest): Promise<LiveMergeAnswer> {

@@ -158,6 +158,11 @@ export interface LiveStore {
    */
   leftFrom(repository: RepositoryId, path: string): Promise<StoredLink | null>;
   /**
+   * Drops the record that link `id` left `path` last, once Git holds a file there, so the path no longer leads to it
+   * after that file is gone; a record another link left later is kept.
+   */
+  forgetLeft(repository: RepositoryId, path: string, id: string): Promise<void>;
+  /**
    * One link per repository and path: created (epoch 1), joined (the live link, untouched), or a released link reopened
    * under its id with epoch + 1, its base and text replaced and its sync, conflict, editors, lease and presence cleared.
    * `state` seeds a created or reopened epoch and is ignored by a join.
