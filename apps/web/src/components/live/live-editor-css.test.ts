@@ -27,6 +27,17 @@ describe('the collab editor', () => {
     expect(css).toMatch(/\.live-collab \.cm-editor \.cm-ySelectionInfo\s*\{[^}]*font-family:\s*var\(--font-body\)/);
   });
 
+  // A long note in Source or Split had no scroll bar: CodeMirror took the height of its text and its pane cut it off.
+  it('lets CodeMirror fill the Source and Split pane, so a long note scrolls inside it', () => {
+    const rule = (selector: RegExp) => css.match(new RegExp(`${selector.source}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+    const host = rule(/\.live-collab-source/);
+    expect(host).toMatch(/display:\s*flex/);
+    expect(host).toMatch(/flex-direction:\s*column/);
+    const editor = rule(/\.live-collab-source > \.cm-editor/);
+    expect(editor).toMatch(/flex:\s*1 1 auto/);
+    expect(editor).toMatch(/min-height:\s*0/);
+  });
+
   // VQ P2-3: Source and Split drew their line numbers on CodeMirror's light default strip in the dark theme.
   it('draws the line numbers of Source and Split in the theme’s colours, over CodeMirror’s light defaults', () => {
     const rule = (selector: RegExp) => css.match(new RegExp(`${selector.source}\\s*\\{([^}]*)\\}`))?.[1] ?? '';

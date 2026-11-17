@@ -621,8 +621,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
     },
   }));
 
+  // In split the source takes its pane's ground, which sets it apart from the preview; alone it sits on the surface.
+  const sourceFill = mode === 'split' && isMarkdown ? 'bg-transparent' : 'bg-surface';
   const rawEditor = (
-    <div className='flex-1 flex flex-col min-h-0 bg-surface'>
+    <div className={`flex-1 flex flex-col min-h-0 ${sourceFill}`}>
       {!compact && (
         <div className='note-source-heading px-3 py-1 bg-sidebar border-b border-line text-[11px] font-semibold text-muted uppercase tracking-wider flex items-center justify-between gap-4'>
           <span>{isMarkdown ? t('editor.rawSource') : t('editor.plainTextSource')}</span>
@@ -720,7 +722,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
             if (sourceLineNumbers.current) sourceLineNumbers.current.style.transform = `translateY(-${event.currentTarget.scrollTop}px)`;
           }}
           wrap='off'
-          className='flex-1 min-w-0 min-h-0 px-4 py-4 font-mono text-sm text-fg bg-surface resize-none focus:outline-none'
+          className={`flex-1 min-w-0 min-h-0 px-4 py-4 font-mono text-sm text-fg ${sourceFill} resize-none focus:outline-none`}
           style={{ lineHeight: '1.421875rem' }}
           spellCheck={false}
         />

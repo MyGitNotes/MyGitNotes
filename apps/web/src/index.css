@@ -250,6 +250,8 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 /* Split view: the source editor and the rendered note side by side, with the scroll sync switch on the divider between them. */
 .note-split-view { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .note-split-pane { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; }
+/* The source pane sits on the page's ground and the preview on the surface, so the side being typed in reads apart from the rendered one. Every palette keeps its text at 4.5:1 on both. */
+.note-split-pane[data-split-part='source'] { background: var(--color-bg); }
 .note-split-divider { position: relative; display: flex; flex: none; justify-content: center; width: 1px; background: var(--color-line); }
 .note-split-sync { position: absolute; top: 50%; z-index: 2; width: 28px; height: 28px; margin-top: -14px; border: 1px solid var(--color-line-strong); border-radius: 999px; background: var(--color-surface); color: var(--color-muted); box-shadow: 0 1px 3px color-mix(in srgb, var(--color-scrim) 18%, transparent); }
 .note-split-sync[aria-pressed='true'] { color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line-strong)); }

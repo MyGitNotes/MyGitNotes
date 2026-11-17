@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createElement, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
@@ -34,6 +36,16 @@ describe('split view', () => {
     fireEvent.change(source, { target: { value: '# Renamed\n\nBody' } });
     await waitFor(() => expect(preview.querySelector('h1')?.textContent).toBe('Renamed'));
     expect(preview.querySelector('p')).toHaveAttribute('data-source-line', '3');
+  });
+
+  it('draws the source pane on the page ground, apart from the preview on the surface', () => {
+    const { container } = open('# Title\n');
+    const pane = container.querySelector<HTMLElement>('[data-split-part="source"]')!;
+    // The source editor leaves its own surface fill off in split, so the pane's ground shows through it.
+    expect(pane.querySelector('.bg-surface')).toBeNull();
+    const css = readFileSync(resolve(__dirname, '../index.css'), 'utf8');
+    expect(css).toMatch(/\.note-split-pane\[data-split-part='source'\]\s*\{[^}]*background:\s*var\(--color-bg\)/);
+    expect(css).toMatch(/\.note-split-preview\s*\{[^}]*background:\s*var\(--color-surface\)/);
   });
 
   it('turns scroll sync on and off from a button on the divider, linked by default and kept for the session', () => {
