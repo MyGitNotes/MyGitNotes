@@ -82,7 +82,7 @@ function footerActions({ frame, readOnly, session, refresh, canCommit }: { frame
 /** How long after the last frontmatter change of a live note the lists read it again: its typing reaches the server first. */
 const LIST_REFETCH_MS = 500;
 
-export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly: givenReadOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate, live, openInZoom }, ref) => {
+export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly: givenReadOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onMoved, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate, live, openInZoom }, ref) => {
   const isMarkdown = /\.(md|markdown|mdx)$/i.test(note.path);
   // A note of a repository with a live editor is read here and edited there; `refresh` is declared below and read only after render.
   const liveEdit = useLiveEdit({ note, live, frame, refetch: () => void refresh?.(), hasDraft: () => Boolean(sessionRef.current?.isDirty) });
@@ -145,7 +145,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     onCaret?.(position);
   };
 
-  const directSession = useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession });
+  const directSession = useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onMoved, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession });
   // A note in the built-in collab editor: its row and document panel read and write the live text (collab-frontmatter).
   const [liveSession, setLiveSession] = useState<LiveSession | null>(null);
   const collabShown = Boolean(live && liveEdit.checkout && live.editor.kind === 'builtin');

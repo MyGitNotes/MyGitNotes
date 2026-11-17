@@ -169,7 +169,7 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
     return store.activePeople(link.id, clock() - limits.idleMs, clock());
   };
   /** A row carries no URL: the note is edited on its own page in the app. */
-  const rowOf = (link: StoredLink, contentHash: string, activeEditors: number): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), ...(link.path !== null && link.target !== undefined ? { target: link.target } : {}), ...(link.path !== null && link.unmoved !== undefined ? { unmoved: link.unmoved, ...(link.unmovedReason ? { unmovedReason: link.unmovedReason } : {}) } : {}), since: iso(link.since), contentHash, activeEditors, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
+  const rowOf = (link: StoredLink, contentHash: string, activeEditors: number): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), ...(link.path !== null && link.target !== undefined ? { target: link.target } : {}), ...(link.path !== null && link.unmoved !== undefined ? { unmoved: link.unmoved, ...(link.unmovedReason ? { unmovedReason: link.unmovedReason } : {}) } : {}), ...(link.path !== null && link.formerPaths?.length ? { formerPaths: [...link.formerPaths] } : {}), since: iso(link.since), contentHash, activeEditors, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
   const row = async (link: StoredLink) => rowOf(link, await documents.contentHash(link), await active(link));
   const rows = async (repository: RepositoryId) => {
     covered(repository);
@@ -216,6 +216,12 @@ export function createBuiltinLiveNotes(options: BuiltinLiveNotesOptions): Builti
   const person = (context: LiveContext): LivePersonCalls =>
     afterCheck<LivePersonCalls>({
       checkouts: rows,
+      async othersEditing(repository, id) {
+        const link = await live(repository, id);
+        // Connected is enough: someone who has the note open edits it, however long ago they last typed.
+        await socket.settle(link);
+        return store.activePeople(link.id, -Infinity, clock(), liveEditorRef(context, false).key);
+      },
       async read(repository, id) {
         const link = await live(repository, id);
         const shot = await documents.snapshot(link);

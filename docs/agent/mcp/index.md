@@ -147,7 +147,7 @@ write on that revision. Where the live editor can move a checked-out note (the
 built-in editor, or an adapter with `retarget`), `mv` of it commits nothing: it
 answers `committed: false, live: true` with the note's Git `path`, the `target`
 its next check-in moves it to (with the links to it rewritten), and a `hint`; the
-note reads at the target meanwhile. When nobody else edits it, it is checked in
+note reads at the target meanwhile. When nobody else has it open, it is checked in
 at once and the answer says `committed: true` with `target: null`. `mv` of a
 folder holding such notes commits the rest, leaving them and the links to them
 where they lie, and moves each at its check-in; a note it could not take along

@@ -1,4 +1,4 @@
-import { LIVE_MAX_BYTES, type LiveConflict, type LiveUnmovedReason, type NotebookKey, type RepositoryId, type WorkspacePerson } from '@mygitnotes/core';
+import { LIVE_FORMER_PATHS, LIVE_MAX_BYTES, type LiveConflict, type LiveUnmovedReason, type NotebookKey, type RepositoryId, type WorkspacePerson } from '@mygitnotes/core';
 
 /*
  * What the built-in live editor keeps between check-ins (docs/specs/2026-11-15-builtin-live-editor §3): the links, each
@@ -19,6 +19,14 @@ export const LIVE_MERGE_MS = 24 * 60 * 60_000;
 export const LIVE_ENDED_MAX_BYTES = LIVE_MAX_BYTES;
 /** How long a process's presence entry counts after its last write, so a process that crashed stops counting. */
 export const LIVE_PRESENCE_MS = 90_000;
+/** How many of a link's {@link StoredLink.formerPaths} are kept: the latest, as many as a row may carry. */
+export { LIVE_FORMER_PATHS };
+/** `paths` with `left` added last and `current` taken out, the latest {@link LIVE_FORMER_PATHS} kept; a path is listed once. */
+export function withFormerPath(paths: readonly string[] | undefined, left: string | undefined, current: string | undefined): string[] {
+  const kept = (paths ?? []).filter(path => path !== left && path !== current);
+  if (left !== undefined && left !== current) kept.push(left);
+  return kept.slice(-LIVE_FORMER_PATHS);
+}
 
 /** One link: a note checked out to the built-in editor, or a pending note created there. */
 export interface StoredLink {
@@ -36,6 +44,12 @@ export interface StoredLink {
   unmoved?: string;
   /** With `unmoved`, why the note stayed when not because Git held the target (the receipt's `unmovedReason`). */
   unmovedReason?: LiveUnmovedReason;
+  /**
+   * Filed only: the paths reads knew the link by earlier in this epoch and no longer do, oldest first, at most
+   * {@link LIVE_FORMER_PATHS}: each target a later move replaced, and the path a receipt moved it from. A tab still at
+   * one finds the note where it is now; a reopen starts without them.
+   */
+  formerPaths?: string[];
   /** When this epoch began. */
   since: number;
   /** One per check-out or reopen, from 1. The document of an epoch is `<id>.<epoch>`. */
@@ -211,8 +225,11 @@ export interface LiveStore {
   unlease(id: string, token: string, now: number): Promise<void>;
   /** Replaces what `process` knows of the link's connected people: person key to last activity. None removes its entry. */
   presence(id: string, process: string, people: Record<string, number>, now: number): Promise<void>;
-  /** The distinct people, over every process's entry written within {@link LIVE_PRESENCE_MS} of `now`, last active at or after `since`. */
-  activePeople(id: string, since: number, now: number): Promise<number>;
+  /**
+   * The distinct people, over every process's entry written within {@link LIVE_PRESENCE_MS} of `now`, last active at or
+   * after `since`, leaving out the person `except` names: `-Infinity` for `since` counts whoever has the note open.
+   */
+  activePeople(id: string, since: number, now: number, except?: string): Promise<number>;
   /** Keeps a ticket under its hash until `until`. */
   putTicket(hash: string, ticket: StoredTicket, until: number): Promise<void>;
   /** Takes a ticket, once; null for an unknown, taken or expired one. */

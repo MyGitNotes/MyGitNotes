@@ -146,9 +146,10 @@ async function checkOut(file: string, notebook: NotebookConfig, key: NotebookKey
     if (!pending || pending.path !== null) throw new SourceError('Note not found.', 404);
     return { checkout: pending, outcome: 'joined' };
   }
-  // A note moving elsewhere (§20.4) is joined at either path: its target has no Git text yet, and its Git path is no longer how reads know it.
+  // A note moving elsewhere (§20.4) is joined at either path: its target has no Git text yet, and its Git path is no longer
+  // how reads know it. So is a note at any path it was read at earlier while live, which a tab still there names.
   const moving = await reader.liveCheckout(file);
-  if (moving?.target !== undefined) return { checkout: moving, outcome: 'joined' };
+  if (moving && (moving.target !== undefined || moving.path !== file)) return { checkout: moving, outcome: 'joined' };
   const relative = file.slice(notebook.root.length + 1);
   // Outlines, template files and compilations keep the direct editor.
   if (!isLiveNotePath(relative, notebook) || (notebook.templates ?? []).some(template => template.file === relative)) throw notLive('This note opens in the direct editor.');

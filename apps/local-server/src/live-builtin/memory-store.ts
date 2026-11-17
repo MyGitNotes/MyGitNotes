@@ -1,6 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import type { RepositoryId } from '@mygitnotes/core';
-import { LIVE_ENDED_MAX_BYTES, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
+import { LIVE_ENDED_MAX_BYTES, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket, withFormerPath } from './store.js';
+
+/** Sets a link's former paths, leaving the field out when there are none. */
+const setFormerPaths = (link: StoredLink, paths: string[]) => {
+  if (paths.length) link.formerPaths = paths;
+  else delete link.formerPaths;
+};
 
 interface Lease {
   token: string;
@@ -68,6 +74,7 @@ export function memoryLiveStore(): LiveStore {
       delete link.target;
       delete link.unmoved;
       delete link.unmovedReason;
+      delete link.formerPaths;
       links.set(link.id, link);
       paths.set(pathKey(repository, path), link.id);
       documents.set(link.id, { state: new Uint8Array(state), log: [] });
@@ -158,6 +165,7 @@ export function memoryLiveStore(): LiveStore {
         // Moved to its target, the link is named by its new path alone; kept in place, it remembers the target it did not take.
         if (receipt.path === link.target) {
           if (paths.get(pathKey(link.repository, link.path)) === id) paths.delete(pathKey(link.repository, link.path));
+          setFormerPaths(link, withFormerPath(link.formerPaths, link.path, receipt.path));
           link.path = receipt.path;
           paths.set(pathKey(link.repository, receipt.path), id);
           delete link.unmoved;
@@ -212,6 +220,7 @@ export function memoryLiveStore(): LiveStore {
         return 'retargeted';
       }
       if (link.path === null) return 'not-filed';
+      setFormerPaths(link, withFormerPath(link.formerPaths, link.target, change.target ?? link.path));
       if (change.target === null) delete link.target;
       else link.target = change.target;
       delete link.unmoved;
@@ -230,11 +239,11 @@ export function memoryLiveStore(): LiveStore {
       if (entries.size) presence.set(id, entries);
       else presence.delete(id);
     },
-    async activePeople(id, since, now) {
+    async activePeople(id, since, now, except) {
       const active = new Set<string>();
       for (const entry of presence.get(id)?.values() ?? []) {
         if (entry.at + LIVE_PRESENCE_MS <= now) continue;
-        for (const [person, last] of Object.entries(entry.people)) if (last >= since) active.add(person);
+        for (const [person, last] of Object.entries(entry.people)) if (last >= since && person !== except) active.add(person);
       }
       return active.size;
     },

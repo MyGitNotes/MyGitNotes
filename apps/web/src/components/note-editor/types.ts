@@ -20,6 +20,11 @@ export interface NoteEditorSharedProps {
   onMarkConflict?: (reason: string, draft: NoteItem, base: NoteItem) => void;
   onSave: (params: { path: string; content: string; metadata?: Record<string, unknown>; revision?: string; baseNote?: NoteItem; }) => Promise<NoteItem>;
   onReadRemote?: (path: string) => Promise<NoteItem>;
+  /**
+   * A read answered that the note lies at `path` now: a live note another person moved, whose check-in moved it or is
+   * still to (§20.4 of the built-in editor spec). The host takes every view of the note there; the editor keeps nothing.
+   */
+  onMoved?: (path: string) => void;
   onRestoreFile: (path: string) => Promise<NoteItem | null>;
   /** Commits one note's saved file alone, from the footer or with a new version; absent when the note's repository is read-only. */
   onCommitFile?: (path: string, version?: NewVersionRequest) => Promise<void>;

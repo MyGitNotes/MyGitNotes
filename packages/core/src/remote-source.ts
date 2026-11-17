@@ -223,10 +223,11 @@ export abstract class RemoteSource {
    * Moves or renames the filed live note (編輯中) at `file` (as reads know it, or its Git path while it moves) to
    * `destination` (docs/specs/2026-11-15-builtin-live-editor §20.4): any writer may, whoever edits it. Nothing is
    * committed: the note's next check-in moves it there, in one commit with the links to it rewritten, and until then it
-   * is read at `destination`. A destination where it lies already takes the move back. When nobody but the mover edits
-   * it (`editing`: the mover has it open), it is checked in at once, so the move lands now. `title` retitles its live
-   * text as a rename does. A destination Git holds, or another live note holds or goes to, is refused (409); where the
-   * live editor cannot retarget, the move is refused as 編輯中, as before.
+   * is read at `destination`. A destination where it lies already takes the move back. When nobody but the mover has it
+   * open, idle or not (where the adapter cannot tell, nobody but the mover is active: `editing`, the mover has it open),
+   * it is checked in at once, so the move lands now. `title` retitles its live text as a rename does. A destination Git
+   * holds, or another live note holds or goes to, is refused (409); where the live editor cannot retarget, the move is
+   * refused as 編輯中, as before.
    */
   async moveLive(file: string, destination: string, options: { title?: string; editing?: boolean; checkIn?: boolean; } = {}): Promise<LiveMoveResult> {
     const snapshot = await this.getSnapshot(true);
@@ -256,9 +257,14 @@ export abstract class RemoteSource {
       const retitled = normalizeLiveText(retitleNoteFile(read.content, destination, options.title));
       if (retitled !== read.content) await this.live!.write(checkout.id, retitled, read.liveRevision, false);
     }
-    // Nobody else edits it: it is checked in now, which moves it.
+    // Nobody else has it open: it is checked in now, which moves it. The adapter tells who besides the mover is connected,
+    // idle or not; one that cannot is judged by who is active, the mover among them when they edit it.
     const changed = target !== (link.checkout.target ?? null) || options.title !== undefined;
-    if (changed && options.checkIn !== false && checkout.activeEditors - (options.editing ? 1 : 0) <= 0) {
+    const alone = async () => {
+      const others = await this.live!.othersEditing(checkout.id);
+      return others !== null ? others === 0 : checkout.activeEditors - (options.editing ? 1 : 0) <= 0;
+    };
+    if (changed && options.checkIn !== false && await alone()) {
       const moved = (await this.live!.links()).find(entry => entry.checkout.id === checkout.id);
       if (moved) {
         const checkIn = await this.checkInLink(moved, 'scheduled');
@@ -343,11 +349,20 @@ export abstract class RemoteSource {
     if (!this.live || typeof file !== 'string' || !/\.(md|markdown)$/i.test(file)) return undefined;
     return (await this.live.links()).find(link => link.path === file);
   }
-  /** The live link at `file` as reads know it, or at the Git path of a note moving elsewhere; undefined without one. */
+  /**
+   * The live link at `file` as reads know it, or at the Git path of a note moving elsewhere; else the one that was read
+   * at `file` earlier while live (its `formerPaths`: a target a later move replaced, or the path a check-in moved it
+   * from), so a tab, address or open editor still there finds it, unless Git holds a file at `file` now, which is that
+   * file's. Undefined without one.
+   */
   private async liveLinkAt(file: string): Promise<LiveLink | undefined> {
     if (!this.live || typeof file !== 'string' || !/\.(md|markdown)$/i.test(file)) return undefined;
     const links = await this.live.links();
-    return links.find(link => link.path === file) ?? links.find(link => link.checkout.target !== undefined && link.checkout.path === file);
+    const at = links.find(link => link.path === file) ?? links.find(link => link.checkout.target !== undefined && link.checkout.path === file);
+    if (at) return at;
+    const left = links.find(link => link.checkout.formerPaths?.includes(file));
+    if (!left || (await this.getSnapshot()).entries.some(entry => entry.path === file)) return undefined;
+    return left;
   }
   /**
    * The live link of a checked-out note or pending note at `file`, also by the Git path of a note moving elsewhere;

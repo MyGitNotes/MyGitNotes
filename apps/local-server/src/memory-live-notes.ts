@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { type EditionSourceConfig, isBuiltinEditor, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, type LiveMergeRequest, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveRetargetRequest, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, type LiveUnmovedReason, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, rebaseLiveText, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
+import { type EditionSourceConfig, isBuiltinEditor, LIVE_FORMER_PATHS, LIVE_MAX_BYTES, type LiveCheckout, type LiveConflict, liveContentHash, type LiveContext, type LiveEditor, type LiveEditorInfo, liveIdentityOf, type LiveLease, LiveLeasedError, type LiveMergeAnswer, type LiveMergeRequest, type LiveNotes, type LiveNotice, LiveNotLiveError, type LiveRelease, type LiveRetargetRequest, type LiveSocketTicket, LiveStaleError, LiveTooLargeError, LiveUnavailableError, type LiveUnmovedReason, MANIFEST_FILES, type NotebookKey, parseWorkspaceConfig, rebaseLiveText, type RemoteCache, type RepositoryId, type RepositoryScope, SourceError, sourceIdentity, type WorkspacePerson } from '@mygitnotes/core';
 import { memoryCommitCounter, MemoryEditionSource, type MemoryFiles } from './memory-edition-source.js';
 
 /** The clock the memory adapter reads, which a test moves on. */
@@ -96,6 +96,8 @@ interface Link {
   /** A filed note: the target its last check-in did not move it to. */
   unmoved?: string;
   unmovedReason?: LiveUnmovedReason;
+  /** A filed note: the paths it was read at earlier in this session, as {@link LiveCheckout.formerPaths}. */
+  formerPaths?: string[];
   /** A pending note: the text it was created with. */
   initial?: string;
   since: number;
@@ -116,6 +118,14 @@ interface Link {
   edits: Edit[];
   live: boolean;
   lease: { token: string; until: number; } | null;
+}
+
+/** Remembers `left` as a path the note was read at, last, and forgets `current`, keeping the latest {@link LIVE_FORMER_PATHS}. */
+function former(link: Link, left: string | undefined, current: string) {
+  const kept = (link.formerPaths ?? []).filter(path => path !== left && path !== current);
+  if (left !== undefined && left !== current) kept.push(left);
+  if (kept.length) link.formerPaths = kept.slice(-LIVE_FORMER_PATHS);
+  else delete link.formerPaths;
 }
 
 /** The one splice that turns `a` into `b`: their common start and end kept, the middle replaced. */
@@ -176,7 +186,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
   };
   const revision = (link: Link) => link.log ? `e${link.epoch}:${link.log.length - 1}` : `h:${liveContentHash(link.text)}`;
   const text = (link: Link) => ({ content: link.text, liveRevision: revision(link), contentHash: liveContentHash(link.text) });
-  const row = (link: Link): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), ...(link.path !== null && link.target !== undefined ? { target: link.target } : {}), ...(link.path !== null && link.unmoved !== undefined ? { unmoved: link.unmoved, ...(link.unmovedReason ? { unmovedReason: link.unmovedReason } : {}) } : {}), since: iso(link.since), ...(isBuiltinEditor(editor) ? {} : { editorUrl: `${editor.origin}/n/${link.id}`, embedUrl: `${editor.origin}/n/${link.id}?embed=1` }), contentHash: liveContentHash(link.text), activeEditors: link.active, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
+  const row = (link: Link): LiveCheckout => ({ id: link.id, notebook: link.notebook, path: link.path, ...(link.path === null && link.pathRule !== undefined ? { pathRule: link.pathRule } : {}), ...(link.path !== null && link.target !== undefined ? { target: link.target } : {}), ...(link.path !== null && link.unmoved !== undefined ? { unmoved: link.unmoved, ...(link.unmovedReason ? { unmovedReason: link.unmovedReason } : {}) } : {}), ...(link.path !== null && link.formerPaths?.length ? { formerPaths: [...link.formerPaths] } : {}), since: iso(link.since), ...(isBuiltinEditor(editor) ? {} : { editorUrl: `${editor.origin}/n/${link.id}`, embedUrl: `${editor.origin}/n/${link.id}?embed=1` }), contentHash: liveContentHash(link.text), activeEditors: link.active, lastEditAt: link.lastEditAt === null ? null : iso(link.lastEditAt), syncedAt: link.syncedAt === null ? null : iso(link.syncedAt), base: link.base, conflict: link.conflict });
   const live = (repository: RepositoryId) => [...repositoryState(repository).links.values()].filter(link => link.live);
   const editorOf = (context: LiveContext, agent: boolean): EditorRef => {
     const { person } = context, shown = liveIdentityOf(context);
@@ -262,6 +272,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           delete link.target;
           delete link.unmoved;
           delete link.unmovedReason;
+          delete link.formerPaths;
           links.set(link.id, link);
           byPath.set(path, link.id);
           return { checkout: row(link), outcome: known ? 'reopened' : 'created' };
@@ -340,6 +351,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
           const { byPath } = repositoryState(repository);
           if (receipt.path === link.target) {
             if (byPath.get(link.path) === link.id) byPath.delete(link.path);
+            former(link, link.path, receipt.path);
             link.path = receipt.path;
             byPath.set(receipt.path, link.id);
             delete link.unmoved;
@@ -394,6 +406,7 @@ export function memoryLiveNotes({ editor, repositories, clock = { now: () => Dat
               return row(link);
             }
             if (link.path === null) throw new LiveNotLiveError('A pending note moves by its path rule.');
+            former(link, link.target, request.target ?? link.path);
             if (request.target === null) delete link.target;
             else link.target = request.target;
             delete link.unmoved;
