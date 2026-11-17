@@ -15,7 +15,7 @@ import { fail } from './route-errors.js';
 export interface LiveCheckoutView {
   id: string;
   notebookId: NotebookKey;
-  /** The Git path, or a pending note's virtual path. */
+  /** The Git path, the path a filed note moves to at its next check-in, or a pending note's virtual path. */
   path: string;
   pending: boolean;
   /** A framed editor's page of the note, or the built-in editor's note page in the app. */
@@ -27,7 +27,7 @@ export interface LiveCheckoutView {
   conflict: LiveCheckout['conflict'];
 }
 
-const viewOf = (checkout: LiveCheckout, key: NotebookKey, notebook: NotebookConfig): LiveCheckoutView => ({ id: checkout.id, notebookId: key, path: checkout.path ?? livePendingPath(notebook.root, checkout.id), pending: checkout.path === null, editorUrl: checkout.editorUrl!, ...(checkout.embedUrl !== undefined ? { embedUrl: checkout.embedUrl } : {}), since: checkout.since, activeEditors: checkout.activeEditors, conflict: checkout.conflict });
+const viewOf = (checkout: LiveCheckout, key: NotebookKey, notebook: NotebookConfig): LiveCheckoutView => ({ id: checkout.id, notebookId: key, path: checkout.target ?? checkout.path ?? livePendingPath(notebook.root, checkout.id), pending: checkout.path === null, editorUrl: checkout.editorUrl!, ...(checkout.embedUrl !== undefined ? { embedUrl: checkout.embedUrl } : {}), since: checkout.since, activeEditors: checkout.activeEditors, conflict: checkout.conflict });
 
 /** A refusal the web tells apart: the note or repository opens in the direct editor instead. */
 class NotLiveError extends SourceError {
@@ -146,6 +146,9 @@ async function checkOut(file: string, notebook: NotebookConfig, key: NotebookKey
     if (!pending || pending.path !== null) throw new SourceError('Note not found.', 404);
     return { checkout: pending, outcome: 'joined' };
   }
+  // A note moving elsewhere (§20.4) is joined at either path: its target has no Git text yet, and its Git path is no longer how reads know it.
+  const moving = await reader.liveCheckout(file);
+  if (moving?.target !== undefined) return { checkout: moving, outcome: 'joined' };
   const relative = file.slice(notebook.root.length + 1);
   // Outlines, template files and compilations keep the direct editor.
   if (!isLiveNotePath(relative, notebook) || (notebook.templates ?? []).some(template => template.file === relative)) throw notLive('This note opens in the direct editor.');

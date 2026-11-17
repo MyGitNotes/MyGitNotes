@@ -28,11 +28,13 @@ export type LiveNoteAction = 'delete' | 'move' | 'other';
 
 /**
  * Whether `action` is refused for a live note, given what its editor can do: a pending note may be discarded or moved,
- * and with the built-in editor a note only viewed (nobody in it, its text Git's: no badge) is not locked, since it is
+ * a filed one moved (its next check-in moves it), and with the built-in editor a note only viewed (nobody in it, its text Git's: no badge) is not locked, since it is
  * released as soon as its last editor leaves; should it still be checked out, the server refuses the action itself.
  */
 export function liveActionLocked(note: { notebookId: string; live?: LiveNoteState; }, action: LiveNoteAction, drafts: LiveDrafts): boolean {
   if (!note.live) return false;
+  // A filed note moves while others edit it where its editor can retarget: its next check-in moves it (§20.4).
+  if (!note.live.pending && action === 'move' && drafts.retargets(note.notebookId)) return false;
   if (!note.live.pending) return !(drafts.releasesUntouched?.(note.notebookId) && note.live.activeEditors === 0 && !note.live.changed);
   if (action === 'delete') return !drafts.discards(note.notebookId);
   if (action === 'move') return !drafts.retargets(note.notebookId);

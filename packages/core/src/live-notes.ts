@@ -80,6 +80,13 @@ export interface LiveCheckout {
   path: string | null;
   /** Pending only: the notebook-relative path pattern the first check-in files the note at. */
   pathRule?: string;
+  /**
+   * Filed only, where the adapter can retarget: the repository path the next check-in moves the note to, in one commit
+   * with the links to it rewritten (docs/specs/2026-11-15-builtin-live-editor §20.4). Reads know the note by it meanwhile.
+   */
+  target?: string;
+  /** Filed only: a target the last check-in did not move the note to, since Git held that path; the next move clears it. */
+  unmoved?: string;
   /** ISO: when this checkout or reopen began. */
   since: string;
   /** Present, and on the editor's origin, exactly for a framed editor. */
@@ -172,6 +179,8 @@ export interface LiveLease {
   token: string;
   until: string;
 }
+/** What `retarget` sets: a pending note's path rule, or where a filed note moves at its next check-in. */
+export type LiveRetargetRequest = { pathRule: string; } | { target: string | null; };
 /** The live text with its row and the editors since the last sync, with their email. */
 export interface LiveDetail extends LiveText {
   checkout: LiveCheckout;
@@ -211,12 +220,16 @@ export interface LiveServiceCalls {
    */
   discard?(repository: RepositoryId, id: string, lease: LiveLease, check: { contentHash: string; }): Promise<LiveRelease>;
   /**
-   * Sets the path rule a pending note (no path) is filed by at its first check-in, and answers its row with that
-   * `pathRule`; nothing is committed and its text is not touched, so open editors do not hold it. A note with a path is
-   * refused with {@link LiveNotLiveError}. The lease ends with the call, whether it retargets or refuses, so it never
-   * holds a check-in off. An adapter without it keeps each pending note's rule as it was created, as in 0.19.
+   * Sets the path rule a pending note (no path) is filed by at its first check-in, or with `target` the repository path
+   * a filed note moves to at its next check-in (null: it stays where it is), and answers its row with that `pathRule` or
+   * `target`; a target also clears `unmoved`. Nothing is committed and its text is not touched, so open editors do not
+   * hold it. A path rule for a note with a path, or a target for a pending note, is refused with
+   * {@link LiveNotLiveError}. The lease ends with the call, whether it retargets or refuses, so it never holds a check-in
+   * off. The check-in then commits the move and names the target in its receipt (`synced`), which moves the link there;
+   * a receipt that names the note's path instead keeps it there and records the target as `unmoved`. An adapter without
+   * it keeps each pending note's rule as it was created, as in 0.19, and a filed note cannot move while it is live.
    */
-  retarget?(repository: RepositoryId, id: string, lease: LiveLease, request: { pathRule: string; }): Promise<LiveCheckout>;
+  retarget?(repository: RepositoryId, id: string, lease: LiveLease, request: LiveRetargetRequest): Promise<LiveCheckout>;
   /**
    * Ends `lease` while the note stays live: a check-in that did not release the note (refused, unfiled, or failed) calls
    * it, so the next check-in, such as 「立即簽回」 again, need not wait for the lease to run out. A lease another holder
@@ -563,6 +576,9 @@ export function liveRowBase(row: unknown): { notebook: NotebookKey; path: string
   return { notebook, path, base: known };
 }
 
+/** Whether a value is a repository path of a note of `notebook` the live editor takes. */
+const isNoteOf = (value: unknown, notebook: NotebookConfig): value is string => typeof value === 'string' && isRelativePath(value) && value.startsWith(`${notebook.root}/`) && isLiveNotePath(value.slice(notebook.root.length + 1), notebook);
+
 /** Why a row is not a valid checkout; undefined when it is. */
 function checkoutProblem(row: Record<string, unknown>, context: LiveRowContext): string | undefined {
   const { notebook: key, path, pathRule, since, editorUrl, embedUrl, contentHash, activeEditors, lastEditAt, syncedAt } = row;
@@ -571,7 +587,9 @@ function checkoutProblem(row: Record<string, unknown>, context: LiveRowContext):
   if (!notebook) return 'an unknown notebook';
   if (path === null) {
     if (typeof pathRule !== 'string' || !isRelativePath(pathRule)) return 'a pending note without a valid path rule';
-  } else if (typeof path !== 'string' || !isRelativePath(path) || !path.startsWith(`${notebook.root}/`) || !isLiveNotePath(path.slice(notebook.root.length + 1), notebook)) return 'a path that is not a note of its notebook';
+  } else if (!isNoteOf(path, notebook)) return 'a path that is not a note of its notebook';
+  else if (row.target !== undefined && !isNoteOf(row.target, notebook)) return 'a target that is not a note of its notebook';
+  else if (row.unmoved !== undefined && !isNoteOf(row.unmoved, notebook)) return 'an unmoved target that is not a note of its notebook';
   if (!isTime(since)) return 'an invalid since';
   // A framed editor's rows carry both URLs on its origin; a built-in editor's URLs, if any, are ignored and dropped.
   if (!isBuiltinEditor(context.editor) && (!onOrigin(editorUrl, context.editor) || !onOrigin(embedUrl, context.editor))) return 'a URL off the editor origin';
@@ -610,7 +628,7 @@ export function liveCheckoutOf(row: unknown, context: LiveRowContext): LiveCheck
     return null;
   }
   const pending = value.path === null;
-  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
+  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), ...(!pending && value.target !== undefined ? { target: value.target as string } : {}), ...(!pending && value.unmoved !== undefined ? { unmoved: value.unmoved as string } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
 }
 
 /**

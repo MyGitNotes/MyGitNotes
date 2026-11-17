@@ -31,6 +31,7 @@ export * from './folders.js';
 export * from './folder-plan.js';
 export { mayLinkToMove, MOVE_RETAINED_BYTES, moveRetainedError, snapshotFileBatches } from './move-retention.js';
 export * from './file-manager.js';
+export { changedFiles, fileNeedsContent, fileRetainer, planRemoteNoteMove, remoteFileChanges, remoteFileSnapshot } from './remote-file-plan.js';
 export * from './case-collision.js';
 export * from './github-source.js';
 export * from './note-shell.js';

@@ -1,7 +1,7 @@
 import { NewerVersionError } from './newer-version-error.js';
 import { STUDY_FILE } from './study.js';
 import { BookmarkError } from './bookmark-error.js';
-import { managedNotebook } from './file-manager.js';
+import { managedNotebook, retitleNoteFile } from './file-manager.js';
 import path from 'node:path';
 import { assetInfo, assetPath, assetRoot, decodeAsset, isAssetPath } from './assets.js';
 import { MANIFEST_FILES } from './remote-manifest.js';
@@ -24,7 +24,8 @@ import type { NoteListItem } from './note-query.js';
 import { addVersion, agentEditMessage, type HistoryEntry, isAgentEdit, readVersionFile, serializeVersionFile, versionedPath, versionFilePath, type VersionLabel } from './note-versions.js';
 import { CASE_COLLISION_ERROR, differsOnlyInCase } from './case-collision.js';
 import { type CommitAuthor, commitAuthor, withCoAuthors } from './commit-author.js';
-import { CheckedOutError, LIVE_MAX_BYTES, liveContentHash, LiveNotLiveError, LiveStaleError, LiveTooLargeError, normalizeLiveText, parseLivePendingPath } from './live-notes.js';
+import { CheckedOutError, isLiveNotePath, LIVE_MAX_BYTES, liveContentHash, LiveNotLiveError, LiveStaleError, LiveTooLargeError, normalizeLiveText, parseLivePendingPath } from './live-notes.js';
+import type { LiveCheckInResult } from './live-checkin.js';
 import { editedLiveError, type LiveLink, liveNoteState, type LiveRecord, type LiveRepository, parseLiveBase } from './live-repository.js';
 
 export { SourceError } from './github-api.js';
@@ -53,6 +54,16 @@ export interface RemoteSnapshot {
   info: RepositoryInfo;
 }
 export type RemoteChange = { path: string; content?: string; base64?: string; sha?: string | null; };
+/**
+ * What a move of a filed live note answers (docs/specs/2026-11-15-builtin-live-editor §20.4): its Git path now, where its
+ * next check-in moves it (null: nowhere, as it lies there or the move was taken back), and the check-in it got at once
+ * when nobody else edits it, with the head that check-in left.
+ */
+export interface LiveMoveResult {
+  path: string;
+  target: string | null;
+  checkIn?: LiveCheckInResult & { revision: string; };
+}
 /** What a reader's commit listener hears beside the changes ({@link RemoteSource.onCommit}). */
 export interface RemoteCommitHeard {
   /** The commit's id. */
@@ -177,12 +188,18 @@ export abstract class RemoteSource {
   async checkInLive(file: string) {
     const snapshot = await this.getSnapshot();
     if (!this.canWrite(snapshot)) throw new SourceError('Write access on the main workspace branch is required.', 403);
-    const link = await this.liveLink(file);
+    const link = await this.liveLinkAt(file);
     if (!link) throw new LiveNotLiveError('This note is not being edited live (編輯中).');
-    const result = await this.live!.checkIn(link.path);
-    // The check-in may have moved the head and closed or filed the note; this request reads both again.
-    this.liveLoaded.delete(link.path);
-    this.liveSeen.delete(link.path);
+    return this.checkInLink(link, 'manual');
+  }
+  /** Checks a link in; the check-in may have moved the head, and closed, filed or moved the note, so this request reads them again. */
+  private async checkInLink(link: LiveLink, mode: 'manual' | 'scheduled') {
+    const result = await this.live!.checkIn(link.path, mode);
+    for (const file of [link.path, link.checkout.path, result.path]) {
+      if (!file) continue;
+      this.liveLoaded.delete(file);
+      this.liveSeen.delete(file);
+    }
     this.snapshot = undefined;
     return { ...result, revision: (await this.getSnapshot(true)).sha };
   }
@@ -202,11 +219,87 @@ export abstract class RemoteSource {
     }
   }
   /**
+   * Moves or renames the filed live note (編輯中) at `file` (as reads know it, or its Git path while it moves) to
+   * `destination` (docs/specs/2026-11-15-builtin-live-editor §20.4): any writer may, whoever edits it. Nothing is
+   * committed: the note's next check-in moves it there, in one commit with the links to it rewritten, and until then it
+   * is read at `destination`. A destination where it lies already takes the move back. When nobody but the mover edits
+   * it (`editing`: the mover has it open), it is checked in at once, so the move lands now. `title` retitles its live
+   * text as a rename does. A destination Git holds, or another live note holds or goes to, is refused (409); where the
+   * live editor cannot retarget, the move is refused as 編輯中, as before.
+   */
+  async moveLive(file: string, destination: string, options: { title?: string; editing?: boolean; checkIn?: boolean; } = {}): Promise<LiveMoveResult> {
+    const snapshot = await this.getSnapshot(true);
+    if (!this.canWrite(snapshot)) throw new SourceError('Write access on the main workspace branch is required.', 403);
+    const link = await this.liveLinkAt(file);
+    if (!link || link.checkout.path === null) throw new LiveNotLiveError('This note is not being edited live (編輯中).');
+    if (!this.live!.retargets) throw new CheckedOutError([file]);
+    const from = link.checkout.path, root = link.notebook.root;
+    const relative = typeof destination === 'string' && destination.startsWith(`${root}/`) ? destination.slice(root.length + 1) : '';
+    if (!relative || !isLiveNotePath(relative, link.notebook) || templateFileId(relative) !== undefined || (link.notebook.templates ?? []).some(template => template.file === relative) || /[\\\p{Cc}]/u.test(relative) || relative.split('/').some(part => !part || part === '.' || part === '..')) throw new SourceError('Choose a note path in the same notebook.', 400);
+    if (destination !== from) {
+      const existing = snapshot.entries.map(entry => entry.path);
+      if (existing.includes(destination) || existing.some(entry => entry.startsWith(`${destination}/`))) throw new SourceError('Destination already exists.', 409);
+      if (differsOnlyInCase(existing, destination, entry => entry === from)) throw new SourceError(CASE_COLLISION_ERROR, 409);
+      const others = (await this.live!.links()).filter(other => other.checkout.id !== link.checkout.id);
+      if (others.some(other => other.path === destination || other.checkout.path === destination)) throw new SourceError('Destination already exists.', 409);
+    }
+    const target = destination === from ? null : destination;
+    let checkout = target === (link.checkout.target ?? null) ? link.checkout : await this.live!.move(link.path, target);
+    for (const path of [link.path, from, destination]) {
+      this.liveLoaded.delete(path);
+      this.liveSeen.delete(path);
+    }
+    if (options.title !== undefined) {
+      // A rename retitles the live text as it would a file: written on the text just read, over typing since.
+      const read = await this.live!.read(checkout.id);
+      const retitled = normalizeLiveText(retitleNoteFile(read.content, destination, options.title));
+      if (retitled !== read.content) await this.live!.write(checkout.id, retitled, read.liveRevision, false);
+    }
+    // Nobody else edits it: it is checked in now, which moves it.
+    const changed = target !== (link.checkout.target ?? null) || options.title !== undefined;
+    if (changed && options.checkIn !== false && checkout.activeEditors - (options.editing ? 1 : 0) <= 0) {
+      const moved = (await this.live!.links()).find(entry => entry.checkout.id === checkout.id);
+      if (moved) {
+        const checkIn = await this.checkInLink(moved, 'scheduled');
+        const path = checkIn.path ?? destination;
+        const left = (await this.live!.links()).find(entry => entry.checkout.id === checkout.id)?.checkout;
+        if (left) checkout = left;
+        return { path: left?.path ?? path, target: left?.target ?? null, checkIn };
+      }
+    }
+    return { path: from, target: checkout.target ?? null };
+  }
+  /**
+   * The live notes (編輯中) a Git relocation moves, as `relocate` maps a path (itself when it stays): each filed note,
+   * by the path reads know it by, with where it goes. A note already moving elsewhere follows its target. A relocation
+   * commits none of them: their Git files stay out of its commit (`kept`), and each is moved with {@link moveLive}.
+   * Throws a {@link CheckedOutError} for them where the live editor cannot retarget, as before, and a 409 for a
+   * destination another live note holds or goes to.
+   */
+  async liveRelocations(relocate: (file: string) => string): Promise<{ moves: { file: string; destination: string; }[]; kept: Set<string>; }> {
+    if (!this.live) return { moves: [], kept: new Set() };
+    const links = (await this.live.links()).filter(link => link.checkout.path !== null);
+    const moving = links.filter(link => relocate(link.path) !== link.path || relocate(link.checkout.path!) !== link.checkout.path);
+    if (!moving.length) return { moves: [], kept: new Set() };
+    if (!this.live.retargets) throw new CheckedOutError(moving.map(link => link.checkout.path!));
+    const moves = moving.filter(link => relocate(link.path) !== link.path).map(link => ({ file: link.path, destination: relocate(link.path) }));
+    const held = new Set(links.filter(link => !moving.includes(link)).flatMap(link => [link.path, link.checkout.path!]));
+    const going = new Set<string>();
+    for (const { destination } of moves) {
+      if (held.has(destination) || going.has(destination)) throw new SourceError('Destination already exists.', 409);
+      going.add(destination);
+    }
+    return { moves, kept: new Set(moving.map(link => link.checkout.path!)) };
+  }
+  /**
    * Where a pending note's virtual path went once it was checked in: its Git path, or null when the editor does not
    * know. Undefined for any other path, and for a pending note that is still live.
    */
   async liveFiled(file: string): Promise<string | null | undefined> {
     if (!this.live || typeof file !== 'string') return undefined;
+    // A filed note moving elsewhere (§20.4) is read at its target: its Git path leads there until its check-in.
+    const moving = (await this.liveLinkAt(file))?.path;
+    if (moving !== undefined && moving !== file) return moving;
     const pending = parseLivePendingPath(file, (await this.config()).notebooks);
     if (!pending || await this.liveLink(file)) return undefined;
     return this.live.filed(pending.id);
@@ -216,9 +309,22 @@ export abstract class RemoteSource {
     if (!this.live || typeof file !== 'string' || !/\.(md|markdown)$/i.test(file)) return undefined;
     return (await this.live.links()).find(link => link.path === file);
   }
-  /** The live link of a checked-out note or pending note at `file`; undefined when it is not live or no editor is in use. */
+  /** The live link at `file` as reads know it, or at the Git path of a note moving elsewhere; undefined without one. */
+  private async liveLinkAt(file: string): Promise<LiveLink | undefined> {
+    if (!this.live || typeof file !== 'string' || !/\.(md|markdown)$/i.test(file)) return undefined;
+    const links = await this.live.links();
+    return links.find(link => link.path === file) ?? links.find(link => link.checkout.target !== undefined && link.checkout.path === file);
+  }
+  /**
+   * The live link of a checked-out note or pending note at `file`, also by the Git path of a note moving elsewhere;
+   * undefined when it is not live or no editor is in use.
+   */
   async liveCheckout(file: string) {
-    return (await this.liveLink(file))?.checkout;
+    return (await this.liveLinkAt(file))?.checkout;
+  }
+  /** The path reads know the live note at `file` by: a moving note's target for its Git path, else `file`; undefined when it is not live. */
+  async livePath(file: string) {
+    return (await this.liveLinkAt(file))?.path;
   }
   /** What this request last read or wrote of the live note at `file`. */
   liveRecord(file: string): LiveRecord | undefined {
@@ -300,7 +406,8 @@ export abstract class RemoteSource {
    */
   async refuseCheckedOut(paths: readonly string[], refusal?: (touched: string[]) => CheckedOutError) {
     if (!this.live || !paths.some(file => /\.(md|markdown)$/i.test(file))) return;
-    const live = new Set((await this.live.links()).map(link => link.path));
+    // A note moving elsewhere holds both its Git path and its target until its check-in moves it.
+    const live = new Set((await this.live.links()).flatMap(link => link.checkout.path !== null && link.checkout.path !== link.path ? [link.path, link.checkout.path] : [link.path]));
     const touched = [...new Set(paths.filter(file => live.has(file)))].sort();
     if (touched.length) throw refusal?.(touched) ?? new CheckedOutError(touched);
   }
@@ -537,8 +644,17 @@ export abstract class RemoteSource {
   /** Note paths of one notebook, taken from the snapshot tree without reading any file, and its pending live notes' virtual paths. */
   async notePaths(nb: NotebookConfig): Promise<string[]> {
     const { entries } = await this.getSnapshot();
-    const pending = (await this.notebookLinks(nb)).filter(link => link.checkout.path === null).map(link => link.path);
-    return [...this.notebookFiles(nb, entries).map(entry => entry.path), ...pending];
+    const { away, added } = await this.liveOverlay(nb);
+    return [...this.notebookFiles(nb, entries).map(entry => entry.path).filter(file => !away.has(file)), ...added.map(link => link.path)];
+  }
+  /**
+   * How the live links of a notebook change its Git listing: the Git paths of notes moving elsewhere leave it (`away`),
+   * and pending notes and moving notes join it at the paths reads know them by (`added`).
+   */
+  private async liveOverlay(nb: NotebookConfig) {
+    const links = await this.notebookLinks(nb);
+    const moving = links.filter(link => link.checkout.path !== null && link.checkout.target !== undefined);
+    return { links, away: new Set(moving.map(link => link.checkout.path!)), added: links.filter(link => link.checkout.path === null || link.checkout.target !== undefined) };
   }
 
   private notebookKey(kind: string, notebooks: NotebookConfig[], entries: RemoteEntry[]) {
@@ -605,12 +721,12 @@ export abstract class RemoteSource {
    * and size from its live text, and a pending note is added at its virtual path. The Git index under it is never changed.
    */
   private async liveIndex(nb: NotebookConfig, items: NoteListItem[]): Promise<NoteListItem[]> {
-    const links = await this.notebookLinks(nb);
+    const { links, away, added } = await this.liveOverlay(nb);
     if (!links.length) return items;
     const scope = (await this.config()).notebooks.map(item => item.root);
     if (links.length > 500) console.warn(`[live-notes] ${links.length} live links in one notebook; the overlay reads only what a request needs`);
     const listed = new Set(items.map(item => item.path));
-    const shown = links.filter(link => link.checkout.path === null || listed.has(link.path));
+    const shown = links.filter(link => added.includes(link) || listed.has(link.path));
     await this.loadLiveTexts(shown);
     const revision = (await this.getSnapshot()).sha;
     const item = (link: LiveLink): NoteListItem => {
@@ -619,7 +735,7 @@ export abstract class RemoteSource {
       return { id: typeof metadata.id === 'string' ? metadata.id : link.path, path: link.path, notebookId: nb.id, title, metadata, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], status: typeof metadata.status === 'string' ? metadata.status : undefined, size: Buffer.byteLength(raw), ...extra, revision, live: liveNoteState(link.checkout, this.live!.retargets) };
     };
     const byPath = new Map(shown.map(link => [link.path, link]));
-    return [...items.map(entry => byPath.has(entry.path) ? item(byPath.get(entry.path)!) : entry), ...shown.filter(link => link.checkout.path === null).map(item)];
+    return [...items.filter(entry => !away.has(entry.path)).map(entry => byPath.has(entry.path) && !added.includes(byPath.get(entry.path)!) ? item(byPath.get(entry.path)!) : entry), ...added.map(item)];
   }
 
   /** The Git index of a notebook, cached by its tree: it never holds a live text. */
@@ -772,9 +888,9 @@ export abstract class RemoteSource {
     const { entries } = await this.getSnapshot();
     const output: NoteItem[] = [];
     for (const nb of config.notebooks.filter(n => !notebookId || n.id === notebookId)) {
-      const links = await this.notebookLinks(nb);
-      // Pending live notes are listed at their virtual paths after the notebook's Git notes.
-      const files = [...this.notebookFiles(nb, entries, includeOutlines).filter(file => NOTE_EXTENSIONS.test(file.path)).map(file => file.path), ...links.filter(link => link.checkout.path === null).map(link => link.path)];
+      const { links, away, added } = await this.liveOverlay(nb);
+      // Pending live notes are listed at their virtual paths after the notebook's Git notes, and notes moving elsewhere at their targets.
+      const files = [...this.notebookFiles(nb, entries, includeOutlines).filter(file => NOTE_EXTENSIONS.test(file.path) && !away.has(file.path)).map(file => file.path), ...added.map(link => link.path)];
       await this.prefetchFiles(files);
       await this.loadLiveTexts(links.filter(link => files.includes(link.path)));
       // The shared transport coalesces cache misses and serializes upstream requests.

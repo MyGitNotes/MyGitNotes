@@ -2,7 +2,7 @@ import { Router } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { checkedOutFields, type FolderCommand, FolderCommandSchema, type FolderSnapshot, isCompilationPath, isNotebookContent, mayLinkToMove, MOVE_RETAINED_BYTES, moveRetainedError, type NotebookConfig, planFolderChange, type RemoteChange, type RemoteSnapshot, RemoteSource, snapshotFileBatches, SourceError, stampIsRacy, versionFileChanges, WORKSPACE_DOCUMENTS } from '@mygitnotes/core';
+import { checkedOutFields, type FolderCommand, FolderCommandSchema, type FolderSnapshot, isCompilationPath, isNotebookContent, mayLinkToMove, MOVE_RETAINED_BYTES, moveRetainedError, type NotebookConfig, planFolderChange, type RemoteChange, type RemoteSnapshot, RemoteSource, snapshotFileBatches, SourceError, stampIsRacy, versionFileChanges, versionFilePath, WORKSPACE_DOCUMENTS } from '@mygitnotes/core';
 import { getCurrentBranch } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { notebookRepository } from './request-workspace.js';
@@ -201,8 +201,19 @@ export function createFolderManagerRouter(): Router {
       const { snapshot: before, state: current } = await remoteSnapshot(reader, folderSource(command.data, notebook));
       if (current.sha !== req.body.revision) throw new SourceError('The workspace changed. Reload the folders and try again.', 409);
       const after = planFolderChange(before, command.data);
-      const changes: RemoteChange[] = [...changesFor(before, after), ...versionFileChanges(current.entries, Object.keys(after.pathMap), file => after.pathMap[file] ?? file, () => false)];
+      const relocate = (file: string) => after.pathMap[file] ?? file;
+      let changes: RemoteChange[] = [...changesFor(before, after), ...versionFileChanges(current.entries, Object.keys(after.pathMap), relocate, () => false)];
+      // The live notes a folder move takes along stay out of its commit: each moves at its own check-in (§20.4 of the
+      // built-in editor spec). A note already moving into the folder follows it, by the folder's own move.
+      const source = folderSource(command.data, notebook);
+      const moved = command.data.kind === 'move' ? `${notebook.root.replace(/\/$/, '')}/${path.posix.join(command.data.parent, path.posix.basename(command.data.path))}` : source;
+      const live = moved !== source ? await reader.liveRelocations(file => file === source || file.startsWith(`${source}/`) ? moved + file.slice(source.length) : file) : { moves: [], kept: new Set<string>() };
+      if (live.kept.size) {
+        const left = new Set([...live.kept].flatMap(file => [file, relocate(file), versionFilePath(file), versionFilePath(relocate(file))]));
+        changes = changes.filter(change => !left.has(change.path));
+      }
       const receipt = changes.length ? await reader.commitChanges(changes, req.body.revision, command.data.kind, 'folders', undefined, current) : { revision: current.sha };
+      for (const { file, destination } of live.moves) await reader.moveLive(file, destination, { checkIn: false });
       res.json({ selectedPath: after.selectedPath, revision: receipt.revision });
     } catch (error) {
       fail(res, error);

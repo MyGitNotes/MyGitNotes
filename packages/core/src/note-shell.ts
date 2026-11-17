@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { RemoteEntry, RemoteSource, SourceError } from './remote-source.js';
+import { type LiveMoveResult, RemoteEntry, RemoteSource, SourceError } from './remote-source.js';
 import { isNotebookContent, serializeFolderConfig } from './folders.js';
 import { NotebookConfig } from './types.js';
 import { skillFile } from './agent-system.js';
@@ -90,6 +90,13 @@ async function writeLiveNote(reader: RemoteSource, operation: 'write' | 'append'
  * Shell-shaped operations over the configured note tree and its skill files, pinned to one commit. The live calls on the
  * reader are made optionally: a reader that is not a `RemoteSource` subclass, such as a test double, is never live.
  */
+/** What `mv` answers for a filed live note: nothing committed unless nobody else edits it, when it was checked in at once. */
+function liveMoveReceipt(reader: RemoteSource, revision: string, from: string, to: string, moved: LiveMoveResult) {
+  const committed = moved.checkIn?.committed === true;
+  const hint = moved.target ? `${from} is being edited live (編輯中): it moves to ${moved.target} at its next check-in (check_in_note), with the links to it rewritten. Read it at ${moved.target} meanwhile.` : committed ? `${from} was checked in and moved to ${moved.path}.` : `${from} stays where it is.`;
+  return { success: true as const, committed, pushed: committed, live: true as const, repository: reader.repository, branch: reader.branch, revision: moved.checkIn?.revision ?? revision, changedPaths: [from, to], path: moved.path, target: moved.target, hint };
+}
+
 export async function callNoteShell(reader: RemoteSource, operation: string, args: Args, write: boolean): Promise<Record<string, unknown>> {
   if (mutating.has(operation) && !write) throw new SourceError('This agent grant is read-only.', 403);
   const [config, snapshot] = await Promise.all([reader.config(), reader.getSnapshot()]);
@@ -275,11 +282,20 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
   if (operation === 'mv' || operation === 'cp') {
     const from = directoryPath(string(args, 'source'));
     let to = directoryPath(string(args, 'destination'));
-    const files = selected(from, args.recursive === true);
-    // A copy of a checked-out note would copy its stale Git text; a move would leave its live note behind.
-    await reader.refuseCheckedOut?.(files.map(entry => entry.path));
     if (snapshot.entries.some(e => e.path === to && e.type === 'tree')) to = to + '/' + path.posix.basename(from);
+    // A filed live note (編輯中) moves at its next check-in, as the app moves it (§20.4 of the built-in editor spec).
+    if (operation === 'mv' && reader.liveView && await reader.livePath(from)) {
+      if (to === from) throw new SourceError('Source and destination must be separate paths.');
+      if (!noteFile(to, notebooks)) throw new SourceError('Destination must be inside a configured note directory.', 403);
+      return liveMoveReceipt(reader, revision, from, to, await reader.moveLive(from, to));
+    }
+    const all = selected(from, args.recursive === true);
     if (to === from || to.startsWith(from + '/') || from.startsWith(to + '/')) throw new SourceError('Source and destination must be separate paths.');
+    const relocate = (file: string) => file === from || file.startsWith(from + '/') ? to + file.slice(from.length) : file;
+    // A copy of a checked-out note would copy its stale Git text; a move takes its live notes along to move at their check-in.
+    const live = operation === 'mv' && reader.liveView ? await reader.liveRelocations(relocate) : { moves: [], kept: new Set<string>() };
+    const files = all.filter(entry => !live.kept.has(entry.path));
+    await reader.refuseCheckedOut?.(files.map(entry => entry.path));
     const changes: { path: string; sha?: string | null; content?: string; }[] = [];
     for (const entry of files) {
       const target = to + entry.path.slice(from.length);
@@ -289,12 +305,11 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
       if (operation === 'mv') changes.push({ path: entry.path, sha: null });
     }
     if (operation === 'mv') {
-      const relocate = (file: string) => file === from || file.startsWith(from + '/') ? to + file.slice(from.length) : file;
       const destinations = new Set(files.map(entry => relocate(entry.path)));
       const merged = new Map(changes.map(change => [change.path, change]));
       // Notes are read a batch at a time and only the rewritten ones are kept, so the workspace's size does not matter.
       // An overwritten destination's old body must not replace the moved source.
-      const notes = blobs.filter(entry => /\.(md|markdown)$/i.test(entry.path) && !destinations.has(entry.path)).map(entry => entry.path);
+      const notes = blobs.filter(entry => /\.(md|markdown)$/i.test(entry.path) && !destinations.has(entry.path) && !live.kept.has(entry.path)).map(entry => entry.path);
       let bytes = 0;
       for await (const [file, content] of snapshotFileBatches(reader, snapshot, notes)) {
         const raw = decodeTextFile(content);
@@ -312,7 +327,12 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
         const change = await bookmarkRelocationChange(reader, snapshot, owner, relocate);
         if (change) merged.set(change.path, change);
       }
-      return receipt([...merged.values()], 'folders', agentMessage([...merged.values()], 'folders'));
+      // A folder of live notes alone moves nothing in Git now.
+      const moved = merged.size ? await receipt([...merged.values()], 'folders', agentMessage([...merged.values()], 'folders')) : undefined;
+      for (const { file, destination } of live.moves) await reader.moveLive(file, destination, { checkIn: false });
+      if (!live.moves.length) return moved!;
+      const pending = live.moves.map(entry => entry.destination);
+      return { ...(moved ?? { success: true, committed: false, pushed: false, repository: reader.repository, branch: reader.branch, revision, changedPaths: [] }), live: true, hint: `${pending.length === 1 ? 'A note' : `${pending.length} notes`} being edited live (編輯中) move at their next check-in: ${pending.join(', ')}.` };
     }
     return receipt(changes, 'notes', agentMessage(changes, 'notes'));
   }

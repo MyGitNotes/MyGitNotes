@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { getCurrentBranch } from '@mygitnotes/git';
-import { assetHash, assetInfo, assetRoot, checkedOutFields, decodeTextFile, editableFile, type FileCommand, FileCommandSchema, filePresentation, type FileSnapshot, isCompilationPath, isNotebookContent, managedNotebook, mayLinkToMove, MOVE_RETAINED_BYTES, moveRetainedError, type NotebookConfig, parseFolderConfig, planFileChange, rawFileHeaders, type RemoteChange, type RemoteSnapshot, type RemoteSource, snapshotFileBatches, SourceError, stampIsRacy, versionFileChanges, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
+import { assetHash, assetInfo, assetRoot, changedFiles, checkedOutFields, editableFile, type FileCommand, FileCommandSchema, fileNeedsContent, filePresentation, fileRetainer, type FileSnapshot, isNotebookContent, managedNotebook, type NotebookConfig, parseFolderConfig, planFileChange, rawFileHeaders, remoteFileChanges, remoteFileSnapshot, type RemoteSnapshot, type RemoteSource, SourceError, stampIsRacy, versionFilePath, withinPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig } from '@mygitnotes/core';
 import { defaultRepository, eachRepository, notebookRepository, noteRepository, type RepositoryHandle } from './request-workspace.js';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { regularPath, writeFileAtomicSync } from './workspace-files.js';
@@ -82,42 +82,14 @@ async function localHash(root: string, file: string, size: number, stamp: string
   if (!stampIsRacy(fs.statSync(regularPath(root, file)))) localHashes.set(key, { stamp, hash: digest });
   return digest;
 }
-function needsContent(file: string, command?: FileCommand) {
-  if (!command) return true;
-  // Keep original bytes for rollback if unlink/rmdir fails partway through deletion.
-  if (command.kind === 'delete-directory') return withinPath(file, command.path);
-  if (moves(command)) return withinPath(file, command.path) || /\.(md|markdown)$/i.test(file) || isCompilationPath(file) || auxiliary.includes(file);
-  return file === command.path || command.kind === 'metadata' && file === command.path + '/_dir.yml';
-}
-const moves = (command?: FileCommand): command is Extract<FileCommand, { kind: 'move' | 'remove-directory'; }> => command?.kind === 'move' || command?.kind === 'remove-directory';
-/**
- * Whether the planner needs `file`'s bytes once read: a move keeps what moves, compilations and workspace documents,
- * and only the notes that can link to the moved path (`mayLinkToMove`, the test the planner itself applies); every
- * other note stays an empty placeholder, as untouched files are, so it still counts for collisions.
- */
-function retained(file: string, bytes: Buffer, command?: FileCommand) {
-  if (!moves(command) || withinPath(file, command.path) || !/\.(md|markdown)$/i.test(file)) return true;
-  const raw = decodeTextFile(bytes);
-  return raw !== undefined && mayLinkToMove(raw, command.path);
-}
-/** Keeps what `retained` asks for within `MOVE_RETAINED_BYTES` of a move, read one file at a time. */
-function retainer(command?: FileCommand) {
-  let total = 0;
-  return (file: string, bytes: Buffer) => {
-    if (!retained(file, bytes, command)) return Buffer.alloc(0);
-    total += bytes.length;
-    if (total > MOVE_RETAINED_BYTES) throw moves(command) ? moveRetainedError() : new SourceError('File operations support 32 MiB per workspace snapshot.', 413);
-    return bytes;
-  };
-}
 export function localFileSnapshot(root: string, notebooks: NotebookConfig[], command?: FileCommand): FileSnapshot {
   const catalog = localFileCatalog(root, notebooks);
-  const keep = retainer(command);
+  const keep = fileRetainer(command);
   const files = new Map<string, Buffer>();
   for (const file of catalog.files.keys()) {
     // Untouched entries retain their paths for collision checks. Only affected
     // files and reference-bearing documents need content for the planner.
-    files.set(file, needsContent(file, command) ? keep(file, localRead(root, file)) : Buffer.alloc(0));
+    files.set(file, fileNeedsContent(file, command) ? keep(file, localRead(root, file)) : Buffer.alloc(0));
   }
   return { ...catalog, files };
 }
@@ -125,27 +97,8 @@ function catalogRevision(catalog: FileCatalog) {
   return createHash('sha256').update(JSON.stringify([catalog.notebooks, [...catalog.directories].sort(), [...catalog.protectedPaths].sort(), [...catalog.files].sort(([a], [b]) => a.localeCompare(b)).map(([file, entry]) => [file, entry.stamp])])).digest('hex');
 }
 async function remoteFiles(reader: RemoteSource, command: FileCommand): Promise<{ snapshot: FileSnapshot; state: RemoteSnapshot; }> {
-  const state = await reader.getSnapshot(true), config = await reader.config();
-  const snapshot: FileSnapshot = { notebooks: config.notebooks, files: new Map(), directories: [], protectedPaths: [] };
-  const readable: string[] = [];
-  for (const entry of state.entries) {
-    if (!config.notebooks.some(nb => withinPath(entry.path, nb.root)) && !auxiliary.includes(entry.path)) continue;
-    if (entry.mode === '120000' || !['blob', 'tree'].includes(entry.type) || !auxiliary.includes(entry.path) && !managedNotebook(entry.path, config.notebooks, entry.type === 'tree' ? 'directory' : 'file')) snapshot.protectedPaths.push(entry.path);
-    else if (entry.type === 'tree') snapshot.directories.push(entry.path);
-    else readable.push(entry.path);
-  }
-  // A move reads every note for the links it rewrites, so the reads are batched instead of one round trip each, and
-  // each batch keeps only the notes that can link to the moved path.
-  const keep = retainer(command);
-  for (const file of readable) snapshot.files.set(file, Buffer.alloc(0));
-  for await (const [file, bytes] of snapshotFileBatches(reader, state, readable.filter(file => needsContent(file, command)))) snapshot.files.set(file, keep(file, bytes));
-  return { snapshot, state };
-}
-export function changedFiles(before: FileSnapshot, after: FileSnapshot) {
-  const files = [...new Set([...before.files.keys(), ...after.files.keys()])].filter(file => !before.files.get(file)?.equals(after.files.get(file) ?? Buffer.alloc(0)) || !after.files.has(file));
-  // A new empty file is a change even though it contains zero bytes.
-  if (files.length > 200 || files.reduce((sum, file) => sum + (after.files.get(file)?.length || 0), 0) > 5 * 1024 * 1024) throw new SourceError('Operation exceeds 200 changed files or 5 MiB.', 413);
-  return files;
+  const state = await reader.getSnapshot(true);
+  return { snapshot: await remoteFileSnapshot(reader, state, command), state };
 }
 export function applyLocalFilePlan(root: string, before: FileSnapshot, after: ReturnType<typeof planFileChange>) {
   const changes = changedFiles(before, after);
@@ -312,7 +265,16 @@ export function createFileManagerRouter(): Router {
   });
   router.post('/api/files', async (req, res) => {
     const execute = async () => {
-      const state = await load(res, FileCommandSchema.parse(req.body?.command)), { command } = state;
+      const parsed = FileCommandSchema.parse(req.body?.command);
+      // A filed live note (編輯中) moves without a Git write: its next check-in moves it (§20.4 of the built-in editor spec).
+      if (parsed.kind === 'move') {
+        const { handle } = await notebookRepository(res, parsed.notebookId);
+        if (handle.kind !== 'local' && handle.reader.liveView && await handle.reader.livePath(parsed.path)) {
+          const moved = await handle.reader.moveLive(parsed.path, parsed.destination, { ...(parsed.title !== undefined ? { title: parsed.title } : {}), editing: req.body?.editing === true });
+          return void res.json({ revision: moved.checkIn?.revision ?? (await handle.reader.getSnapshot()).sha, selectedPath: parsed.destination, pathMap: { [parsed.path]: parsed.destination }, deletedPaths: [], live: moved });
+        }
+      }
+      const state = await load(res, parsed), { command } = state;
       if (!state.writable) throw new SourceError('Write access on the main workspace branch is required.', 403);
       // A move is planned from the snapshot read here, so it needs no revision of the client's view: a named one must still be current.
       const unversioned = command.kind === 'move' && req.body.revision === undefined;
@@ -328,17 +290,20 @@ export function createFileManagerRouter(): Router {
         moveLocalVersionFiles(state.local, followed, relocate, removed);
         nextRevision = catalogRevision(localFileCatalog(state.local, state.notebooks));
       } else {
-        const entries = state.remoteSnapshot!.entries;
-        const changes: RemoteChange[] = paths.map(file => {
-          const bytes = after.files.get(file);
-          if (!bytes) return { path: file, sha: null };
-          const original = [...state.snapshot.files].find(([, original]) => original === bytes);
-          if (original) return { path: file, sha: entries.find(entry => entry.path === original[0])!.sha };
-          const content = editableFile(file, bytes);
-          return content === undefined ? { path: file, base64: bytes.toString('base64') } : { path: file, content };
-        });
-        changes.push(...versionFileChanges(entries, followed, relocate, removed));
-        nextRevision = changes.length ? (await state.reader!.commitChanges(changes, state.revision, command.kind, 'files', undefined, state.remoteSnapshot)).revision : state.revision;
+        const reader = state.reader!;
+        let { changes } = remoteFileChanges(state.remoteSnapshot!, state.snapshot, after);
+        // The live notes a folder move takes along stay out of its commit: each moves at its own check-in (§20.4).
+        const live = command.kind === 'move' ? await reader.liveRelocations(file => withinPath(file, command.path) ? command.destination + file.slice(command.path.length) : file) : { moves: [], kept: new Set<string>() };
+        if (live.kept.size) {
+          const left = new Set([...live.kept].flatMap(file => [file, relocate(file), versionFilePath(file), versionFilePath(relocate(file))]));
+          changes = changes.filter(change => !left.has(change.path));
+          for (const file of live.kept) delete after.pathMap[file];
+        }
+        nextRevision = changes.length ? (await reader.commitChanges(changes, state.revision, command.kind, 'files', undefined, state.remoteSnapshot)).revision : state.revision;
+        for (const { file, destination } of live.moves) {
+          await reader.moveLive(file, destination, { checkIn: false });
+          after.pathMap[file] = destination;
+        }
       }
       res.json({ revision: nextRevision, selectedPath: after.selectedPath, pathMap: after.pathMap, deletedPaths: [...paths.filter(file => !after.files.has(file)), ...state.snapshot.directories.filter(dir => !after.directories.includes(dir))] });
     };

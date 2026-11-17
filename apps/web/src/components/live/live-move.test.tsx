@@ -69,13 +69,13 @@ describe('a filed live note others edit', () => {
 describe('opening the path a live note is moving away from', () => {
   it('goes to the path it moves to, as a filed pending note does', async () => {
     const { ApiError } = await import('../../lib/api.js');
-    api.readNote.mockRejectedValue(new ApiError('Moved.', 404, undefined, undefined, false, { movedTo: 'notes/life/archive/2026-11-17 公司週會.md' }));
+    api.readNote.mockRejectedValue(new ApiError('Moved.', 404, undefined, undefined, false, { movedTo: 'notes/archive/weekly.md' }));
     lookup.current = { notes: [], committed: [], loading: false, paused: false, error: '' };
     const { useRoutedNote } = await import('../../app/useRoutedNote.js');
     const onFiled = vi.fn();
-    const config = { notebooks: [{ id: 'notes~life', root: 'notes/life', name: 'Life' }] } as unknown as Parameters<typeof useRoutedNote>[0]['config'];
-    renderHook(() => useRoutedNote({ config, editorRoute: parseWorkspaceRoute('/notebooks/notes~life/會議/2026-11-17 公司週會.md', ''), editorNotebookId: 'notes~life', editingNote: null, loading: false, sourceId: 'src', setEditingNote: vi.fn(), onFiled }));
-    await waitFor(() => expect(onFiled).toHaveBeenCalledWith('notes~life', 'notes/life/archive/2026-11-17 公司週會.md'));
-    expect(api.readNote).toHaveBeenCalledWith('notes/life/會議/2026-11-17 公司週會.md', 'notes~life');
+    const config = { notebooks: [{ id: 'nb', root: 'notes', name: 'Notes' }] } as unknown as Parameters<typeof useRoutedNote>[0]['config'];
+    renderHook(() => useRoutedNote({ config, editorRoute: parseWorkspaceRoute('/notebooks/nb/notes/meetings/weekly.md', ''), editorNotebookId: 'nb', editingNote: null, loading: false, sourceId: 'src', setEditingNote: vi.fn(), onFiled }));
+    await waitFor(() => expect(onFiled).toHaveBeenCalledWith('nb', 'notes/archive/weekly.md'));
+    expect(api.readNote).toHaveBeenCalledWith('notes/meetings/weekly.md', 'nb');
   });
 });

@@ -30,6 +30,10 @@ export interface StoredLink {
   path: string | null;
   /** Pending only: the path pattern the first check-in files the note at. */
   pathRule?: string;
+  /** Filed only: the path the next check-in moves the note to (§20.4); the receipt that names it moves the link there. */
+  target?: string;
+  /** Filed only: a target the last check-in did not move the note to, since Git held that path; the next move clears it. */
+  unmoved?: string;
   /** When this epoch began. */
   since: number;
   /** One per check-out or reopen, from 1. The document of an epoch is `<id>.<epoch>`. */
@@ -75,6 +79,11 @@ export interface MergeRecord {
   answer: string;
   /** When the answer stops counting, by the adapter's clock. */
   until: number;
+}
+
+/** A filed link's move: the path its next check-in moves it to, or null for none. */
+export interface RetargetTarget {
+  target: string | null;
 }
 
 /** What a created or reopened epoch starts from. */
@@ -167,8 +176,10 @@ export interface LiveStore {
    * Records a check-in's receipt, and clears the editors whose last append is at or before the receipt's text: the
    * sequence `leaseRead` recorded when the receipt's hash is the one that read returned; else the link's sequence when
    * the receipt's hash is the stored `contentHash` and that is current (`contentSeq === seq`); else nobody. A pending link
-   * gets its path once; 'path-fixed', with nothing recorded, for a receipt that names another path. 'leased' when `token`
-   * does not hold the lease.
+   * gets its path once. A filed link with a target moves there when the receipt names the target: its path becomes the
+   * target, which then names the link in place of the old path; a receipt that names its path instead keeps it there and
+   * records the target as `unmoved`. Either way the target is gone. 'path-fixed', with nothing recorded, for a receipt
+   * that names another path. 'leased' when `token` does not hold the lease.
    */
   synced(id: string, token: string, receipt: SyncReceipt, now: number): Promise<'ok' | 'leased' | 'path-fixed'>;
   /**
@@ -185,11 +196,13 @@ export interface LiveStore {
    */
   discard(id: string, token: string, expect: { seq: number; }, now: number): Promise<'discarded' | 'leased' | 'not-pending' | 'changed'>;
   /**
-   * Sets the path rule a pending link (no path) is filed by, when the lease holds, and ends the lease: its text, editors
-   * and presence stay. 'not-pending', with nothing set, for a link with a path, whose lease ends all the same, so the
-   * call never holds a check-in off. 'leased', with the lease kept, when `token` does not hold it.
+   * Sets, when the lease holds, the path rule a pending link (no path) is filed by, or with `{ target }` the path a filed
+   * link moves to at its next check-in (null takes the target away), and ends the lease: its text, editors and presence
+   * stay, and a target clears `unmoved`. 'not-pending' for a path rule on a filed link and 'not-filed' for a target on a
+   * pending one, with nothing set and the lease ended all the same, so the call never holds a check-in off. 'leased',
+   * with the lease kept, when `token` does not hold it.
    */
-  retarget(id: string, token: string, pathRule: string, now: number): Promise<'retargeted' | 'leased' | 'not-pending'>;
+  retarget(id: string, token: string, change: string | RetargetTarget, now: number): Promise<'retargeted' | 'leased' | 'not-pending' | 'not-filed'>;
   /** Ends the link's lease when `token` holds it at `now`; anything else changes nothing. */
   unlease(id: string, token: string, now: number): Promise<void>;
   /** Replaces what `process` knows of the link's connected people: person key to last activity. None removes its entry. */

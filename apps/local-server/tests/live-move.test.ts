@@ -118,7 +118,7 @@ describe('moving a live note someone else edits', () => {
     expect(commits()[0].message).toMatch(/Live-Link: /);
     expect(files.has(weekly)).toBe(false);
     expect(files.get(archived)).toBe('---\ntitle: 公司週會\n---\n議程\n續寫\n');
-    expect(files.get(index)).toMatch(/\]\(archive\/2026-11-17(%20| )公司週會\.md\)/);
+    expect(decodeURIComponent(files.get(index)!)).toContain('](archive/2026-11-17 公司週會.md)');
     expect(await rows()).toEqual([]);
     expect(await read(archived)).toMatchObject({ status: 200, body: { note: { path: archived } } });
   });
@@ -198,7 +198,8 @@ describe('moving a live note someone else edits', () => {
     liveNotes.setActive(repository, id, 1);
     const moved = await move('notes/life/會議', 'notes/life/past');
     expect(moved).toMatchObject({ status: 200, body: { pathMap: { 'notes/life/會議/other.md': 'notes/life/past/other.md', [weekly]: 'notes/life/past/2026-11-17 公司週會.md' } } });
-    expect(commits().map(commit => commit.paths)).toEqual([['notes/life/past/other.md', 'notes/life/會議/other.md'].sort()]);
+    // The links to the live note already point where the folder goes; its check-in moves the note there.
+    expect(commits().map(commit => commit.paths)).toEqual([[index, 'notes/life/past/other.md', 'notes/life/會議/other.md'].sort()]);
     expect(await rows()).toMatchObject([{ id, path: weekly, target: 'notes/life/past/2026-11-17 公司週會.md' }]);
     liveNotes.setActive(repository, id, 0);
     expect(await checkIn('notes/life/past/2026-11-17 公司週會.md')).toMatchObject({ status: 200, body: { committed: true, moved: { from: weekly } } });

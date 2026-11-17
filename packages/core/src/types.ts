@@ -20,6 +20,13 @@ export interface LiveNoteState {
    * (`{{title}}`-style placeholders kept), as 「歸檔到」 says.
    */
   pathRule?: string;
+  /**
+   * A filed note moved while it is edited (docs/specs/2026-11-15-builtin-live-editor §20.4): it is listed at the path it
+   * moves to, and this is its Git path until the next check-in moves it, as 「簽回後移到這裡」 says.
+   */
+  movingFrom?: string;
+  /** The path the last check-in did not move the note to, since Git held it: 「沒有移動：目標已存在」. */
+  unmoved?: string;
 }
 
 export type ViewMode = 'list' | 'card' | 'kanban' | 'flat' | 'graph';

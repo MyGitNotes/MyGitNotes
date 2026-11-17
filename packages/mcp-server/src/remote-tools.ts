@@ -33,7 +33,7 @@ const nullableInteger: Schema = { type: ['integer', 'null'] };
 /** What reads say of a note checked out to the live editor (編輯中). */
 const liveSchema: Schema = object({ since: str('When the note was checked out'), activeEditors: int('People editing it now', 0, 10000), pending: { const: true, description: 'A note created in the live editor that has no Git path yet' }, editorUrl: str("The live editor's page of the note") }, ['since', 'activeEditors', 'editorUrl']);
 /** One sentence each note-writing and file tool adds about notes that are being edited live. */
-const LIVE_WRITES = ' On a note that is 編輯中 (checked out to the live editor), text writes land in the live editor and file operations are refused until check_in_note.';
+const LIVE_WRITES = ' On a note that is 編輯中 (checked out to the live editor), text writes land in the live editor; mv records where it moves at its next check-in (at once when nobody else edits it), and other file operations are refused until check_in_note.';
 const noteWriteTools = new Set(['write', 'append', 'edit', 'save_note', 'update_note_metadata']);
 
 const mutatingTools = new Set(['save_note', 'delete_note', 'add_asset', 'delete_asset', 'replace_notes', 'update_note_metadata', 'check_in_note']);

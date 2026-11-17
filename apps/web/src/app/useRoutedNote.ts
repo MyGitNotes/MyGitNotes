@@ -1,7 +1,6 @@
 import { sameNote } from '@mygitnotes/core/note-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, readNote } from '../lib/api.js';
-import { isLivePendingPath } from '../lib/live-api.js';
 import type { NotebookConfig, NoteItem } from '../lib/types.js';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { useNoteLookup } from '../lib/use-note-queries.js';
@@ -15,7 +14,7 @@ interface UseRoutedNoteParams {
   loading: boolean;
   sourceId: string;
   setEditingNote: (note: NoteListItem | null) => void;
-  /** A pending live note that was checked in and filed: the note now lives at `path` of the same notebook. */
+  /** A pending live note that was checked in and filed, or a live note moving elsewhere: the note is now at `path` of the same notebook. */
   onFiled?: (notebookId: string, path: string) => void;
 }
 
@@ -68,8 +67,9 @@ export function useRoutedNote({ config, editorRoute, editorNotebookId, editingNo
     setRouteError('route.noteNotFound');
   }, [editorRoute, config, loading, editorNotebookId, sourceId, routedNotebook, routedNote, routedLoading, routedOffline, routedLookup.error, setEditingNote]);
 
-  // A pending live note that is gone was most likely checked in: the server says where it was filed, and the note opens there.
-  const missingPending = !loading && Boolean(routedPath && routedNotebook && isLivePendingPath(routedPath)) && !routedNote && !routedLoading && !routedOffline && !routedLookup.error;
+  // A pending live note that is gone was most likely checked in, and a filed live note may be moving elsewhere (§20.4 of
+  // the built-in editor spec): the server says where the note is, and it opens there.
+  const missingPending = !loading && Boolean(routedPath && routedNotebook) && !routedNote && !routedLoading && !routedOffline && !routedLookup.error;
   const filed = useRef(onFiled);
   useEffect(() => {
     filed.current = onFiled;

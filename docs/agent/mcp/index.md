@@ -143,10 +143,17 @@ a checked-out note is refused with `code: "checked-out"` and its `paths`: read
 it again. `edit` also needs the text it read to be the current one, or it is
 refused as changed in the live editor. `append` always lands live.
 `update_note_metadata` and `save_note` without `content` read the note fresh and
-write on that revision. `mv`, `cp`, `rm`, `delete_note`, `replace_notes` and any
-other commit that would touch a checked-out note (a move rewriting its links
-included) are refused with `code: "checked-out"` and the paths, committing
-nothing. Read-only grants read live text and write nothing; a note no longer
+write on that revision. Where the live editor can move a checked-out note (the
+built-in editor, or an adapter with `retarget`), `mv` of it commits nothing: it
+answers `committed: false, live: true` with the note's Git `path`, the `target`
+its next check-in moves it to (with the links to it rewritten), and a `hint`; the
+note reads at the target meanwhile. When nobody else edits it, it is checked in
+at once and the answer says `committed: true` with `target: null`. `mv` of a
+folder holding such notes commits the rest and moves each at its check-in. A
+destination that exists is refused. Elsewhere `mv`, and everywhere `cp`, `rm`,
+`delete_note`, `replace_notes` and any other commit that would touch a
+checked-out note (a move rewriting its links included), are refused with
+`code: "checked-out"` and the paths, committing nothing. Read-only grants read live text and write nothing; a note no longer
 checked out ignores its live entry and checks the commit.
 
 `check_in_note { path, notebookId? }` (「立即簽回」, write grants only, so a
