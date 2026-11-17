@@ -30,6 +30,29 @@ describe('remote note history', { timeout: 20_000 }, () => {
     expect(paged.more).toBe(true);
   });
 
+  it('follows a note back through a move, listing and reading each commit at the path the note had then', async () => {
+    const f = githubFixture({}, { hexIds: true });
+    const start = f.head();
+    await callNoteShell(f.reader(), 'write', { path: 'notes/ex/a.md', content: '# Alpha\nsecond\n', revision: f.head() }, true);
+    const second = f.head();
+    await callNoteShell(f.reader(), 'mv', { source: 'notes/ex/a.md', destination: 'notes/ex/work/alpha.md', revision: f.head() }, true);
+    const moved = f.head();
+    await callNoteShell(f.reader(), 'append', { path: 'notes/ex/work/alpha.md', content: 'fourth\n', revision: f.head() }, true);
+    const fourth = f.head();
+
+    const { entries, more } = await f.reader().fileHistory('notes/ex/work/alpha.md', 1, 50);
+    expect(entries.map(entry => [entry.commit, entry.path])).toEqual([[fourth, 'notes/ex/work/alpha.md'], [moved, 'notes/ex/work/alpha.md'], [second, 'notes/ex/a.md'], [start, 'notes/ex/a.md']]);
+    expect(more).toBe(false);
+    // Each earlier version reads, and so restores, from the path the note had in its commit.
+    expect(await f.reader().readFileAt(second, entries[2].path)).toMatchObject({ content: '# Alpha\nsecond\n' });
+    // Pages run on across the move.
+    expect(await f.reader().fileHistory('notes/ex/work/alpha.md', 1, 3)).toMatchObject({ more: true, entries: [{ commit: fourth }, { commit: moved }, { commit: second }] });
+    expect(await f.reader().fileHistory('notes/ex/work/alpha.md', 2, 3)).toMatchObject({ more: false, entries: [{ commit: start, path: 'notes/ex/a.md' }] });
+    expect(await f.reader().fileHistory('notes/ex/work/alpha.md', 2, 1)).toMatchObject({ more: true, entries: [{ commit: moved }] });
+    expect(await f.reader().fileHistory('notes/ex/work/alpha.md', 3, 1)).toMatchObject({ more: true, entries: [{ commit: second, path: 'notes/ex/a.md' }] });
+    expect(await f.reader().fileHistory('notes/ex/work/alpha.md', 5, 1)).toEqual({ more: false, entries: [] });
+  });
+
   it('records a new version in the same commit as the note, naming the head it was made on', async () => {
     const f = githubFixture({}, { hexIds: true });
     const before = f.head();

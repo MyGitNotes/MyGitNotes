@@ -40,6 +40,35 @@ export function memoryCommits(files: MemoryFiles): readonly MemoryCommit[] {
 const blobOf = (content: string) => gitBlobId(Buffer.from(content, 'utf8'), 40);
 
 /**
+ * Of the files a commit removed, the one an added file of text `added` was renamed from, as Git's rename detection takes
+ * it: the same text, else the most similar one that keeps at least half its lines (counting each line once per
+ * occurrence, against the longer of the two); null when none does.
+ */
+export function renamedSource(added: string, removed: readonly (readonly [string, string])[]): string | null {
+  const exact = removed.find(([, text]) => text === added);
+  if (exact) return exact[0];
+  const lines = (text: string) => text.split('\n').filter((line, index, all) => line || index < all.length - 1);
+  const mine = lines(added);
+  let best: [string, number] | null = null;
+  for (const [path, text] of removed) {
+    const left = new Map<string, number>();
+    for (const line of mine) left.set(line, (left.get(line) ?? 0) + 1);
+    const theirs = lines(text);
+    let shared = 0;
+    for (const line of theirs) {
+      const count = left.get(line) ?? 0;
+      if (count > 0) {
+        left.set(line, count - 1);
+        shared++;
+      }
+    }
+    const score = shared / Math.max(mine.length, theirs.length, 1);
+    if (score >= 0.5 && (!best || score > best[1])) best = [path, score];
+  }
+  return best?.[0] ?? null;
+}
+
+/**
  * A `RemoteSource` over a `Map`: the reference for an edition adapter that keeps repositories outside any provider.
  * Every commit is logged with its author and message (`memoryCommits`), so a file's history and past blobs read back,
  * and a commit on a head that moved is refused as a provider refuses it.
@@ -101,6 +130,15 @@ export class MemoryEditionSource extends RemoteSource {
   protected override async commitInfo(commit: string): Promise<{ date: string; paths: string[]; } | null> {
     const entry = memoryCommits(this.files).find(logged => logged.sha === commit);
     return entry ? { date: entry.date, paths: entry.paths } : null;
+  }
+  /** A path the commit removed whose text the added `file` keeps, as Git detects a rename; see {@link renamedSource}. */
+  protected override async renamedFrom(commit: string, file: string): Promise<string | null> {
+    const log = memoryCommits(this.files);
+    const entry = log.find(logged => logged.sha === commit);
+    const before = entry?.parents[0] ? log.find(logged => logged.sha === entry.parents[0])?.files : undefined;
+    const added = entry?.files.get(file);
+    if (!entry || !before || added === undefined || before.has(file)) return null;
+    return renamedSource(added, entry.paths.flatMap(path => before.has(path) && !entry.files.has(path) ? [[path, before.get(path)!] as const] : []));
   }
   protected async publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string, author?: CommitAuthor): Promise<string> {
     const parent = this.head();

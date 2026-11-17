@@ -82,6 +82,8 @@ export interface RemoteCommit {
 export type HistoryRead = { blob: string; content: string; } | { blob: string; notice: 'binary' | 'too-large'; };
 /** History reads show at most this much of a file. */
 const HISTORY_MAX_BYTES = 1024 * 1024;
+/** How many renames or moves a file's history follows back, each costing the provider a few more requests. */
+const MAX_FOLLOWED_RENAMES = 50;
 const OBJECT_ID = /^[a-f0-9]{40}([a-f0-9]{24})?$/;
 /** Shared-cache keys of live texts, each value the text whose sha256 the key ends with. */
 const LIVE_TEXT_VERSION = 'v1';
@@ -594,18 +596,58 @@ export abstract class RemoteSource {
   protected commitInfo(_commit: string): Promise<{ date: string; paths: string[]; } | null> {
     throw new SourceError('History is unavailable for this source.', 501);
   }
+  /** The path `commit` renamed or moved to `file`, as the provider detects renames; null when it added `file` otherwise. */
+  protected renamedFrom(_commit: string, _file: string): Promise<string | null> {
+    return Promise.resolve(null);
+  }
 
-  /** One page of the commits that changed `file`, listed from this reader's snapshot so pages never mix branch states. */
+  /**
+   * One page of the commits that changed `file`, newest first, listed from this reader's snapshot so pages never mix
+   * branch states. Renames are followed as `git log --follow` does: once the commits at a path run out, the oldest one
+   * that renamed or moved the file there continues the list at its former path, from that commit's parent. Each entry
+   * carries the file's path in that commit.
+   */
   async fileHistory(file: string, page: number, perPage = 50): Promise<{ entries: HistoryEntry[]; more: boolean; }> {
     const snapshot = await this.getSnapshot();
-    const { commits, more } = await this.historyPage(file, snapshot.sha, page, perPage);
-    return {
-      entries: commits.map(({ sha, parents, date, author, message }) => {
-        const [subject = '', ...rest] = message.replace(/\n+$/, '').split('\n');
-        return { commit: sha, parents, date, author, subject, body: rest.join('\n').trim(), path: file, agent: isAgentEdit(message) };
-      }),
-      more,
-    };
+    const start = (page - 1) * perPage, wanted = start + perPage + 1;
+    /** The commits listed so far, from index `skipped` of the whole history, each with the file's path in it. */
+    const listed: (RemoteCommit & { path: string; })[] = [];
+    let skipped = 0, path = file, head = snapshot.sha;
+    // A provider page that says more follow past a full page answers `more` without reading on (a check-in asks for one entry).
+    const full = () => skipped + listed.length >= start + perPage;
+    let more = false;
+    for (let hop = 0; hop <= MAX_FOLLOWED_RENAMES && !more && skipped + listed.length < wanted; hop++) {
+      let next = 1, exhausted = false;
+      const take = (found: { commits: RemoteCommit[]; more: boolean; }) => {
+        listed.push(...found.commits.map(commit => ({ ...commit, path })));
+        exhausted = !found.more || !found.commits.length;
+        more = !exhausted && full();
+      };
+      // The current path's commits start the history, so its provider page `page` is the one asked for when it holds any.
+      if (hop === 0 && page > 1) {
+        const jump = await this.historyPage(path, head, page, perPage);
+        if (jump.commits.length) {
+          skipped = start;
+          take(jump);
+          next = page + 1;
+        }
+      }
+      while (!exhausted && !more && skipped + listed.length < wanted) take(await this.historyPage(path, head, next++, perPage));
+      if (more || skipped + listed.length >= wanted) break;
+      // The oldest commit at this path added the file there; where it renamed or moved it, the history goes on before it.
+      const oldest = listed.at(-1);
+      const parent = oldest?.parents[0];
+      if (!exhausted || !oldest || oldest.path !== path || !parent) break;
+      const former = await this.renamedFrom(oldest.sha, path);
+      if (!former || former === path) break;
+      path = former;
+      head = parent;
+    }
+    const entries = listed.slice(start - skipped, start - skipped + perPage).map(({ sha, parents, date, author, message, path: at }) => {
+      const [subject = '', ...rest] = message.replace(/\n+$/, '').split('\n');
+      return { commit: sha, parents, date, author, subject, body: rest.join('\n').trim(), path: at, agent: isAgentEdit(message) };
+    });
+    return { entries, more: more || skipped + listed.length > start + perPage };
   }
   /** `file` as it was in `commit`, or why it is not shown; undefined when that commit does not hold it. */
   async readFileAt(commit: string, file: string): Promise<HistoryRead | undefined> {

@@ -23,10 +23,16 @@ export function githubFixture(extra: Record<string, string> = {}, options: { hex
   const commits = new Map<string, string>([[head, treeId]]);
   const parents = new Map<string, string[]>();
   const messages = new Map<string, { message: string; date: string; }>([[head, { message: 'Start', date: '2026-01-01T00:00:00Z' }]]);
-  /** The files whose blob differs between a commit and its first parent. */
-  const changed = (sha: string) => {
+  /** The files whose blob differs between a commit and its first parent; an added file with a removed file's blob is a rename, as GitHub detects one. */
+  const changed = (sha: string): { filename: string; status: string; previous_filename?: string; }[] => {
     const tree = trees.get(commits.get(sha)!)!, parent = parents.get(sha)?.[0], before = parent ? trees.get(commits.get(parent)!)! : new Map<string, string>();
-    return [...new Set([...tree.keys(), ...before.keys()])].filter(file => tree.get(file) !== before.get(file)).map(file => ({ filename: file, status: tree.has(file) ? before.has(file) ? 'modified' : 'added' : 'removed' }));
+    const files = [...new Set([...tree.keys(), ...before.keys()])].filter(file => tree.get(file) !== before.get(file)).map(file => ({ filename: file, status: tree.has(file) ? before.has(file) ? 'modified' : 'added' : 'removed' }));
+    const renamed = new Map<string, string>();
+    for (const file of files) {
+      const from = file.status === 'added' && files.find(gone => gone.status === 'removed' && before.get(gone.filename) === tree.get(file.filename) && ![...renamed.values()].includes(gone.filename));
+      if (from) renamed.set(file.filename, from.filename);
+    }
+    return files.filter(file => ![...renamed.values()].includes(file.filename)).map(file => renamed.has(file.filename) ? { filename: file.filename, status: 'renamed', previous_filename: renamed.get(file.filename) } : file);
   };
   const listed = (sha: string) => ({ sha, parents: (parents.get(sha) ?? []).map(parent => ({ sha: parent })), commit: { tree: { sha: commits.get(sha) }, message: messages.get(sha)?.message ?? '', author: { name: 'Tester', date: messages.get(sha)?.date ?? '2026-01-01T00:00:00Z' } } });
   const calls: { endpoint: string; method?: string; body: any; }[] = [];
@@ -39,16 +45,19 @@ export function githubFixture(extra: Record<string, string> = {}, options: { hex
     let result: any;
     if (!endpoint) result = { private: true, permissions: { push: true } };
     else if (endpoint.startsWith('/commits/')) {
-      const ref = endpoint.slice('/commits/'.length);
+      const url = new URL(`https://api.github.com${endpoint}`);
+      const ref = url.pathname.slice('/commits/'.length);
       const sha = ref === 'main' ? head : ref;
       if (!commits.has(sha)) return new Response('{}', { status: 404 });
-      result = { ...listed(sha), files: changed(sha) };
+      // GitHub pages a commit's files; without per_page it lists the first 300.
+      const perPage = Number(url.searchParams.get('per_page') || 300), page = Number(url.searchParams.get('page') || 1);
+      result = { ...listed(sha), files: changed(sha).slice((page - 1) * perPage, page * perPage) };
     } else if (endpoint.startsWith('/commits?')) {
       // A file's history from a commit along first parents: the commits that changed it.
       const query = new URL(`https://api.github.com${endpoint}`).searchParams;
       const file = query.get('path')!, perPage = Number(query.get('per_page')), page = Number(query.get('page'));
       const all: string[] = [];
-      for (let sha: string | undefined = query.get('sha')!; sha; sha = parents.get(sha)?.[0]) if (changed(sha).some(entry => entry.filename === file)) all.push(sha);
+      for (let sha: string | undefined = query.get('sha')!; sha; sha = parents.get(sha)?.[0]) if (changed(sha).some(entry => entry.filename === file || entry.previous_filename === file)) all.push(sha);
       result = all.slice((page - 1) * perPage, page * perPage).map(listed);
     } else if (endpoint.startsWith('/contents/')) {
       const url = new URL(`https://api.github.com${endpoint}`);

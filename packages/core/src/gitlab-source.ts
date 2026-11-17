@@ -387,6 +387,23 @@ export class GitLabSource extends RemoteSource {
     const diff = await this.json(`/repository/commits/${commit}/diff?per_page=100`) as { new_path: string; deleted_file?: boolean; }[];
     return { date: found.authored_date || '', paths: Array.isArray(diff) ? diff.filter(entry => !entry.deleted_file).map(entry => entry.new_path) : [] };
   }
+  /** GitLab lists a commit's diff a page at a time, a rename as one entry with both paths. */
+  protected async renamedFrom(commit: string, file: string): Promise<string | null> {
+    for (let page = 1; page <= 30; page++) {
+      let diff: { old_path?: string; new_path?: string; renamed_file?: boolean; }[];
+      try {
+        diff = await this.json(`/repository/commits/${commit}/diff?per_page=100&page=${page}`);
+      } catch (error) {
+        if (error instanceof SourceError && error.status === 404) return null;
+        throw error;
+      }
+      if (!Array.isArray(diff)) return null;
+      const entry = diff.find(candidate => candidate.new_path === file);
+      if (entry) return entry.renamed_file && entry.old_path ? entry.old_path : null;
+      if (diff.length < 100) return null;
+    }
+    return null;
+  }
   protected async publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string, author?: CommitAuthor): Promise<string> {
     const actions = [];
     /** What the commit leaves at each path: the object id of the bytes sent, or null where it deletes. */

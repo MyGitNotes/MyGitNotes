@@ -77,6 +77,17 @@ describe('the memory live notes', () => {
     expect(history.entries.map(entry => entry.commit)).toEqual([receipt.revision, before.sha]);
   });
 
+  it('follows a file’s history back through a commit that moved it, edits and all', async () => {
+    const { liveNotes } = setup();
+    const service = await liveNotes.service.open(repository);
+    const first = await service.getSnapshot(true);
+    const edited = await service.commitChanges([{ path: 'notes/life/a.md', content: '# A\none\ntwo\nthree\n' }], first.sha, 'edit');
+    const moved = await service.commitChanges([{ path: 'notes/life/a.md', sha: null }, { path: 'notes/life/done/b.md', content: '# B\none\ntwo\nthree\n' }], edited.revision, 'move');
+    const history = await (await liveNotes.service.open(repository)).fileHistory('notes/life/done/b.md', 1);
+    expect(history.entries.map(entry => [entry.commit, entry.path])).toEqual([[moved.revision, 'notes/life/done/b.md'], [edited.revision, 'notes/life/a.md'], [first.sha, 'notes/life/a.md']]);
+    expect(await service.readFileAt(edited.revision, history.entries[1].path)).toMatchObject({ content: '# A\none\ntwo\nthree\n' });
+  });
+
   it('refuses a commit on a head that moved, as a provider does', async () => {
     const { liveNotes } = setup();
     const first = await liveNotes.service.open(repository);

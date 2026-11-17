@@ -49,3 +49,31 @@ it('reads a note’s GitLab history from the snapshot head, page by page, and th
   expect(await reader().commitDetails('d'.repeat(40))).toBeNull();
   await expect(reader().readFileAt('not-a-commit', 'notes/ex/a.md')).rejects.toThrow('Invalid commit');
 });
+
+it('follows a note’s GitLab history back through the commit that moved it, from that commit’s parent', async () => {
+  const f = gitlabFixture();
+  const prefix = 'https://gitlab.example.test/gitlab/api/v4/projects/group%2Fsubgroup%2Fproject';
+  const move = 'd'.repeat(40), before = 'e'.repeat(40);
+  const commit = (id: string, parents: string[], message: string) => ({ id, parent_ids: parents, authored_date: '2026-10-07T01:00:00+08:00', author_name: 'Tester', message });
+  const calls: string[] = [];
+  const request = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const endpoint = String(input).slice(prefix.length);
+    const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', 'x-next-page': '' } });
+    if (endpoint.startsWith('/repository/commits?')) {
+      calls.push(endpoint);
+      const at = `${url.searchParams.get('path')}@${url.searchParams.get('ref_name')}`;
+      if (at === `notes/ex/done/a.md@${f.head}`) return json([commit(f.head, [move], 'Edit'), commit(move, [before], 'Move')]);
+      if (at === `notes/ex/a.md@${before}`) return json([commit(before, [], 'Start')]);
+      return json([]);
+    }
+    if (endpoint.startsWith(`/repository/commits/${move}/diff`)) return json([{ old_path: 'notes/ex/other.md', new_path: 'notes/ex/other.md' }, { old_path: 'notes/ex/a.md', new_path: 'notes/ex/done/a.md', renamed_file: true }]);
+    if (endpoint.startsWith(`/repository/commits/${before}/diff`)) return json([{ old_path: 'notes/ex/a.md', new_path: 'notes/ex/a.md', new_file: true }]);
+    return f.request(input, init);
+  }) as typeof fetch;
+  const reader = openRemoteRepository({ type: 'gitlab', url: 'https://gitlab.example.test/gitlab', repository: 'group/subgroup/project', branch: 'main' }, 'token', request).reader;
+  const { entries, more } = await reader.fileHistory('notes/ex/done/a.md', 1, 50);
+  expect(entries.map(entry => [entry.commit, entry.path, entry.subject])).toEqual([[f.head, 'notes/ex/done/a.md', 'Edit'], [move, 'notes/ex/done/a.md', 'Move'], [before, 'notes/ex/a.md', 'Start']]);
+  expect(more).toBe(false);
+  expect(calls[1]).toContain(`ref_name=${before}`);
+});

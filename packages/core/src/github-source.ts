@@ -249,6 +249,22 @@ export class GitHubSource extends RemoteSource {
     }
     return { date: found.commit.author?.date || '', paths: (found.files || []).filter(entry => entry.status !== 'removed').map(entry => entry.filename) };
   }
+  /** GitHub lists a commit's files a page at a time, at most 3,000 of them, a rename with its former name. */
+  protected async renamedFrom(commit: string, file: string): Promise<string | null> {
+    for (let page = 1; page <= 30; page++) {
+      let files: { filename: string; status: string; previous_filename?: string; }[];
+      try {
+        files = (await this.api(`/commits/${commit}?per_page=100&page=${page}`)).files || [];
+      } catch (error) {
+        if (error instanceof SourceError && [404, 422].includes(error.status)) return null;
+        throw error;
+      }
+      const entry = files.find(candidate => candidate.filename === file);
+      if (entry) return entry.status === 'renamed' && entry.previous_filename ? entry.previous_filename : null;
+      if (files.length < 100) return null;
+    }
+    return null;
+  }
 
   protected async publishChanges(changes: RemoteChange[], snapshot: RemoteSnapshot, message: string, author?: CommitAuthor): Promise<string> {
     const entries = [];
