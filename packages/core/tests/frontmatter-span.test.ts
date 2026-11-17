@@ -25,14 +25,34 @@ describe('noteFrontmatterSpan', () => {
   // CFR-F001: a closing fence followed by text on its line is no fence, for every reader of the block.
   it('closes a block only with a fence that ends its line', () => {
     const typed = '---\ntitle: x\n---a\nBody\n';
-    expect(noteFrontmatterSpan(typed)).toBeNull();
     expect(parseNoteContent(typed)).toMatchObject({ hasFrontmatter: false, metadata: {}, content: typed });
-    expect(noteFrontmatterSpan('---\ntitle: x\n----\nBody\n')).toBeNull();
-    // The key patch, the status and tag replacers and the timestamp backfill see no block in it either.
+    // The key patch and the tag replacer see no block in it to patch.
     expect(patchFrontmatterField(typed, 'title', 'y')).toBe(typed);
     expect(replaceNoteTags(typed, ['a'])).toBe(typed);
-    expect(replaceNoteStatus(typed, 'done')).toBe(`---\nstatus: done\n---\n${typed}`);
-    expect(fillMissingNoteTimestamps(typed, '2026-11-17', undefined).raw).toBe(`---\ncreated: "2026-11-17"\n---\n${typed}`);
+  });
+
+  // VQ P2-2 / CFR2-F001: a note that opens a block and never closes it reads as an unparsable block, not as a note
+  // without one, so the collab editor warns instead of drawing its metadata as body text.
+  it('reads a block opened by `---` with no closing fence as invalid, up to the line that should have closed it', () => {
+    const typed = '---\ntitle: x\n---a\n\nBody\n';
+    expect(noteFrontmatterSpan(typed)).toEqual({ invalid: true, yaml: 'title: x', end: typed.indexOf('\nBody'), bodyStart: typed.indexOf('Body'), unclosed: '---a' });
+    const dashes = '---\r\ntitle: x\r\n----\r\nBody';
+    expect(noteFrontmatterSpan(dashes)).toEqual({ invalid: true, yaml: 'title: x', end: dashes.indexOf('Body'), bodyStart: dashes.indexOf('Body'), unclosed: '----' });
+    // Without any line that starts with `---`, the block runs to the end of the text.
+    const open = '---\ntitle: x\nBody\n';
+    expect(noteFrontmatterSpan(open)).toEqual({ invalid: true, yaml: 'title: x\nBody\n', end: open.length, bodyStart: open.length, unclosed: '' });
+    // An empty block closes with a fence the block regex does not take: it reads as a block with nothing in it.
+    expect(noteFrontmatterSpan('---\n---\n\nBody')).toEqual({ invalid: true, yaml: '', end: 8, bodyStart: 9 });
+    // A text that does not open with a fence line has no block.
+    expect(noteFrontmatterSpan('--- \ntitle: x\n---\n')).toBeNull();
+    expect(noteFrontmatterSpan('---')).toBeNull();
+  });
+
+  // CFR2-F001: the writers that add a block in front of a text with none must not add a second one in front of a block they cannot read.
+  it.each(['---\ntitle: x\n---a\nBody\n', '---\ntitle: x\n----\nBody\n', '---\ntitle: [x\n---\nBody\n', '---\ntitle: x\nBody\n'])('adds no second block in front of a block it cannot read: %j', raw => {
+    expect(replaceNoteStatus(raw, 'done')).toBe(raw);
+    expect(fillMissingNoteTimestamps(raw, '2026-11-17', undefined)).toEqual({ raw, changed: false });
+    expect(patchNoteFrontmatter(raw, {}, { status: 'done' })).toBe(raw);
   });
 
   it('takes trailing spaces of the closing fence into the fence line, and still closes a block at the end of the text', () => {

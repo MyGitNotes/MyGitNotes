@@ -86,6 +86,21 @@ it('shows an unparsable leading YAML block raw: its lines marked, no heading, ru
   expect(ytext.toString()).toBe(text.replace('title', 'name'));
 });
 
+// VQ P2-2: the opening `---` was drawn as a page break and the keys as body paragraphs, with no sign anything was wrong.
+it('shows a block whose closing fence has text after it raw, through that line, as it shows one that does not parse', () => {
+  for (const fence of ['---x', '----']) {
+    const text = `---\ntitle: Ideas\nstatus: inbox\n${fence}\n\n# Body\n`;
+    const { collab } = collabOf(text);
+    const { view, unmount } = mount(text, collab);
+    const lines = [...view().contentDOM.querySelectorAll('.cm-line')];
+    expect(lines.slice(0, 4).map(line => line.textContent)).toEqual(['---', 'title: Ideas', 'status: inbox', fence]);
+    expect(lines.slice(0, 4).every(line => line.classList.contains('live-md-frontmatter'))).toBe(true);
+    expect(lines.at(-1)!.classList.contains('live-md-frontmatter')).toBe(false);
+    expect(view().dom.querySelector('.live-md-page-break-tag, [data-page-break]')?.textContent ?? '').not.toContain('2');
+    unmount();
+  }
+});
+
 const NOTE = '---\ntitle: Ideas\ntags: [a]\n---\n\n# Body\ntext\n';
 const BODY = NOTE.indexOf('# Body');
 

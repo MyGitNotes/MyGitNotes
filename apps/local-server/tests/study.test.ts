@@ -109,6 +109,18 @@ it('saves a stage transition with note status, preserves the body and undoes bot
   expect((await undone.json()).note.status).toBe('new');
   expect(readNoteFile(root, source.path, 'a').status).toBe('new');
 });
+// CFR2-F001: the note's status is written into its frontmatter, which a broken closing fence keeps it from reading: the
+// review is refused, instead of a second block going in front of the note or the status silently staying.
+it('refuses a stage transition on a note whose frontmatter cannot be read, writing neither file', async () => {
+  await stageFixture();
+  const broken = '---\ntitle: Question\n---x\n\nQuestion\n\n---\n\nAnswer\n';
+  await writeFile(path.join(root, source.path), broken);
+  const response = await act(await stageRequest());
+  expect(response.status).toBe(409);
+  expect((await response.json()).error).toMatch(/frontmatter/i);
+  expect(await readFile(path.join(root, source.path), 'utf8')).toBe(broken);
+  expect((await fetch(url).then(response => response.json())).study.events).toEqual([]);
+});
 it('refuses a stale note without writing its stage history', async () => {
   await stageFixture();
   const request = await stageRequest();

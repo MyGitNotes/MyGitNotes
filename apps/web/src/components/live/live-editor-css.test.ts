@@ -26,4 +26,14 @@ describe('the collab editor', () => {
   it('names a remote cursor in the app font, not y-codemirror’s serif', () => {
     expect(css).toMatch(/\.live-collab \.cm-editor \.cm-ySelectionInfo\s*\{[^}]*font-family:\s*var\(--font-body\)/);
   });
+
+  // VQ P2-3: Source and Split drew their line numbers on CodeMirror's light default strip in the dark theme.
+  it('draws the line numbers of Source and Split in the theme’s colours, over CodeMirror’s light defaults', () => {
+    const rule = (selector: RegExp) => css.match(new RegExp(`${selector.source}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+    const gutters = rule(/\.live-collab-source \.cm-editor \.cm-gutters/);
+    expect(gutters).toMatch(/background(?:-color)?:\s*(?:transparent|var\(--color-[a-z-]+\))/);
+    expect(gutters).toMatch(/color:\s*var\(--color-muted\)/);
+    expect(gutters).toMatch(/border-right:[^;]*var\(--color-[a-z-]+\)/);
+    expect(rule(/\.live-collab-source \.cm-editor \.cm-activeLineGutter/)).toMatch(/background(?:-color)?:\s*(?:transparent|var\(--color-[a-z-]+\))/);
+  });
 });

@@ -36,6 +36,14 @@ describe('readLiveFrontmatter', () => {
   it('an unparsable block is invalid, shown from 0', () => {
     expect(readLiveFrontmatter('---\nx: [\n---\nBody')).toMatchObject({ valid: false, yaml: 'x: [', bodyStart: 0, metadata: {} });
   });
+
+  // VQ P2-2: a closing fence with text after it read as no frontmatter at all.
+  it('a block with no closing fence is invalid, and says which line fails to close it', () => {
+    const read = readLiveFrontmatter('---\ntitle: x\n---x\n\nBody');
+    expect(read).toMatchObject({ valid: false, yaml: 'title: x', bodyStart: 0, metadata: {} });
+    expect(read.error).toContain('---x');
+    expect(readLiveFrontmatter('---\ntitle: x\nBody\n').error).toMatch(/closing/i);
+  });
 });
 
 describe('writeLiveFrontmatter', () => {
@@ -91,6 +99,14 @@ describe('writeLiveFrontmatter', () => {
     expect(a.toString()).toBe(bad);
   });
 
+  // VQ P2-2: the form's status write put a second block in front of one whose closing fence had text after it.
+  it('writes nothing, and no second block, while the block has no closing fence', () => {
+    const unclosed = '---\ntitle: x\n---x\n\nBody\n';
+    const { a } = pair(unclosed);
+    expect(writeLiveFrontmatter(a, {}, { status: 'x' })).toBe(false);
+    expect(a.toString()).toBe(unclosed);
+  });
+
   it('is not undone by the editor undo manager', () => {
     const shown = readLiveFrontmatter(NOTE).metadata;
     const fresh = new Y.Doc();
@@ -133,5 +149,19 @@ describe('writeLiveYaml', () => {
     const { a: bad } = pair('---\nx: [\n---\nBody');
     writeLiveYaml(bad, 'x: [1]');
     expect(bad.toString()).toBe('---\nx: [1]\n---\nBody');
+  });
+
+  it('fixes a block with no closing fence, through the line that should have closed it', () => {
+    const { a } = pair('---\ntitle: x\n---x\n\nBody\n');
+    expect(writeLiveYaml(a, 'title: x\nstatus: done', 'title: x')).toEqual({ ok: true });
+    expect(a.toString()).toBe('---\ntitle: x\nstatus: done\n---\n\nBody\n');
+  });
+
+  // VQ P2-1: someone took the block away while the view still held a text it had not written: only what this edit
+  // changed goes into a new block, not every key the view had opened on.
+  it('puts only the keys this edit changed into a new block when the block it was made over is gone', () => {
+    const { a } = pair('Body\n');
+    expect(writeLiveYaml(a, 'title: Plan\nstatus: draft\nx: 1', 'title: Plan\nstatus: draft')).toEqual({ ok: true });
+    expect(a.toString()).toBe('---\nx: 1\n---\n\nBody\n');
   });
 });

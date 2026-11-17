@@ -108,6 +108,7 @@ it.each(['github', 'gitlab'])('%s note delete and move go through the same atomi
   const files = new Map([['.github-notes.yaml', Buffer.from('schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: a\nnotebooks:\n  - id: a\n    title: A\n    root: notes/a\n')], ['notes/a/note.md', Buffer.from('# Note\n')], ['notes/a/second.md', Buffer.from('# Second\n')]]);
   let revision = 'one', canPush = true;
   const published: RemoteChange[][] = [];
+  const messages: string[] = [];
   const prototype = (provider === 'github' ? GitHubSource : GitLabSource).prototype as any;
   vi.spyOn(prototype, 'loadSnapshot').mockImplementation(async () => {
     const dirs = new Set<string>();
@@ -121,6 +122,7 @@ it.each(['github', 'gitlab'])('%s note delete and move go through the same atomi
   vi.spyOn(prototype, 'publishChanges').mockImplementation(async (...args: unknown[]) => {
     const changes = args[0] as RemoteChange[];
     published.push(changes);
+    messages.push(args[2] as string);
     for (const change of changes) {
       if (change.sha === null) files.delete(change.path);
       else files.set(change.path, change.content !== undefined ? Buffer.from(change.content) : Buffer.alloc(0));
@@ -141,6 +143,8 @@ it.each(['github', 'gitlab'])('%s note delete and move go through the same atomi
     expect(moved.status).toBe(200);
     expect(files.has('notes/a/note.md')).toBe(false);
     expect(files.get('notes/a/renamed.md')!.toString()).toBe('# Note\n');
+    // VQ P3: a note's history read 「move 2 files」 for its rename, the old path's deletion and the new path's file.
+    expect(messages.at(-1)).toMatch(/^docs\(files\): rename note\.md to renamed\.md$/m);
 
     // A rename carries the new title: the moved note is retitled in the same commit, not by a later save.
     published.length = 0;
@@ -153,6 +157,11 @@ it.each(['github', 'gitlab'])('%s note delete and move go through the same atomi
     expect(files.get('notes/a/final-name.md')!.toString()).toMatch(/^---\ntitle: Final name\nupdated: [^\n]+\n---\n\n# Final name\n\n\[Second\]\(second\.md\)\n$/);
     expect(files.get('notes/a/links.md')!.toString()).toBe('[Draft](final-name.md)\n');
     expect(published[0].map(change => change.path).sort()).toEqual(['notes/a/draft.md', 'notes/a/final-name.md', 'notes/a/links.md']);
+    expect(messages.at(-1)).toMatch(/^docs\(files\): rename draft\.md to final-name\.md$/m);
+    // A note moved to another folder says where it went.
+    files.set('notes/a/sub/_dir.yml', Buffer.from('title: Sub\n'));
+    expect((await post({ notebookId: nb('a'), kind: 'move', path: 'notes/a/renamed.md', destination: 'notes/a/sub/renamed.md' })).status).toBe(200);
+    expect(messages.at(-1)).toMatch(/^docs\(files\): move renamed\.md to notes\/a\/sub$/m);
     // A named revision must still be current, and a taken destination is still refused.
     expect((await post({ notebookId: nb('a'), kind: 'move', path: 'notes/a/final-name.md', destination: 'notes/a/second.md', title: 'Second' })).status).toBe(400);
     expect((await post({ notebookId: nb('a'), kind: 'move', path: 'notes/a/final-name.md', destination: 'notes/a/other.md', title: 'Other' }, 'one')).status).toBe(409);

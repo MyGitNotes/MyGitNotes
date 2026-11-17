@@ -239,6 +239,99 @@ describe('a note in the collab editor', () => {
     expect(text().toString()).toBe(TEXT.replace('# kept', '# added\n# kept'));
   });
 
+  // VQ P2-1: the YAML view kept the text it opened on after a Restore took the block away, and typing there wrote every
+  // key it showed back in front of the restored text.
+  it('writes no key back from the YAML view that a Restore took away', async () => {
+    await open();
+    fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
+    fireEvent.click(within(panel()).getByRole('button', { name: /YAML/ }));
+    const source = await within(panel()).findByRole('textbox', { name: 'YAML Metadata' });
+    act(() => {
+      text().delete(0, text().length);
+      text().insert(0, '# Old\n');
+    });
+    const { EditorView } = await import('@codemirror/view');
+    const yaml = EditorView.findFromDOM(source)!;
+    act(() => yaml.dispatch({ changes: { from: yaml.state.doc.length, insert: `${yaml.state.doc.length ? '\n' : ''}x: 1` } }));
+    expect(text().toString()).toBe('---\nx: 1\n---\n\n# Old\n');
+  });
+
+  it('shows the live block in the YAML view as it changes, writing nothing back for it, comments and trailing spaces kept', async () => {
+    await open();
+    fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
+    fireEvent.click(within(panel()).getByRole('button', { name: /YAML/ }));
+    const source = await within(panel()).findByRole('textbox', { name: 'YAML Metadata' });
+    const restored = "---\n# kept\ntitle: Alpha\nstatus: done\nodd:   'q'   # c1  \n---\n\n# Alpha\n";
+    act(() => {
+      text().delete(0, text().length);
+      text().insert(0, restored);
+    });
+    const { EditorView } = await import('@codemirror/view');
+    expect(EditorView.findFromDOM(source)!.state.doc.toString()).toBe("# kept\ntitle: Alpha\nstatus: done\nodd:   'q'   # c1  ");
+    expect(text().toString()).toBe(restored);
+  });
+
+  it('keeps what is typed in the YAML view and does not parse yet when the block changes, then writes only its own change', async () => {
+    await open();
+    fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
+    fireEvent.click(within(panel()).getByRole('button', { name: /YAML/ }));
+    const source = await within(panel()).findByRole('textbox', { name: 'YAML Metadata' });
+    const { EditorView } = await import('@codemirror/view');
+    const yaml = EditorView.findFromDOM(source)!;
+    const at = yaml.state.doc.toString().indexOf(']');
+    act(() => yaml.dispatch({ changes: { from: at, to: at + 1, insert: ', tw' } }));
+    act(() => {
+      const status = text().toString().indexOf('inbox');
+      text().delete(status, 'inbox'.length);
+      text().insert(status, 'done');
+    });
+    expect(yaml.state.doc.toString()).toContain('status: inbox\ntags: [one, tw');
+    act(() => yaml.dispatch({ changes: { from: at + 4, insert: 'o]' } }));
+    expect(text().toString()).toBe(TEXT.replace('inbox', 'done').replace('[one]', '[one, two]'));
+    expect(yaml.state.doc.toString()).toContain('status: done');
+  });
+
+  // VQ P2-2: a closing fence with text after it read as no frontmatter: the row said 「No status」, the form stayed
+  // editable, and a status set there put a second block in front of the note.
+  it('warns and locks the form while the closing fence has text after it, and the YAML view fixes it', async () => {
+    const broken = '---\ntitle: Alpha\nstatus: inbox\n---x\n\n# Alpha\n';
+    await open({}, broken);
+    expect(within(row()).getByText('Frontmatter cannot be read')).toBeInTheDocument();
+    expect(within(row()).queryByText('No status')).toBeNull();
+    fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
+    expect(within(panel()).getByRole('checkbox', { name: 'Hide note' })).toBeDisabled();
+    fireEvent.click(within(panel()).getByRole('button', { name: /YAML/ }));
+    const source = await within(panel()).findByRole('textbox', { name: 'YAML Metadata' });
+    const { EditorView } = await import('@codemirror/view');
+    const yaml = EditorView.findFromDOM(source)!;
+    expect(yaml.state.doc.toString()).toBe('title: Alpha\nstatus: inbox');
+    expect(within(panel()).getByText(/---x/)).toBeInTheDocument();
+    expect(text().toString()).toBe(broken);
+    // VQ P2-4: a long line ran past the panel's edge, the view scrolled sideways and cut the start of every line.
+    expect(yaml.contentDOM.classList.contains('cm-lineWrapping')).toBe(true);
+    act(() => yaml.dispatch({ changes: { from: yaml.state.doc.length, insert: '\ntags: [one]' } }));
+    expect(text().toString()).toBe('---\ntitle: Alpha\nstatus: inbox\ntags: [one]\n---\n\n# Alpha\n');
+    expect(within(row()).getByText('one')).toBeInTheDocument();
+  });
+
+  // VQ P3: the list row lost 「編輯中 · 1」 after a rename: its checkout was read before this tab's socket joined, which
+  // is what the server counts, and nothing read it again.
+  it('has the lists read the note again once this tab has joined the live document', async () => {
+    const onRefetch = vi.fn();
+    render(tree({ live: live({ onRefetch }) }));
+    await act(async () => {});
+    const config = fake.providers[fake.providers.length - 1]!.configuration;
+    const before = onRefetch.mock.calls.length;
+    act(() => {
+      config.document.getText('content').insert(0, TEXT);
+      config.onStatus?.({ status: 'connected' });
+      config.onSynced?.({ state: true });
+    });
+    expect(onRefetch).toHaveBeenCalledTimes(before + 1);
+    act(() => config.onSynced?.({ state: true }));
+    expect(onRefetch).toHaveBeenCalledTimes(before + 1);
+  });
+
   // CFR-F003: an empty block reads as invalid, so the note would show its fences raw.
   it('takes the block out when the YAML view is cleared, leaving the body', async () => {
     await open();
@@ -304,6 +397,30 @@ describe('a note in the collab editor', () => {
     await act(async () => {});
     await act(async () => {});
     expect(rename).toHaveBeenCalledWith('r2', 'Beta');
+  });
+});
+
+describe('a note in the collab editor on a phone', () => {
+  beforeEach(() => {
+    window.matchMedia = ((query: string) => ({ matches: query.includes('max-width'), media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false })) as typeof window.matchMedia;
+  });
+  const sheet = () => screen.getByRole('dialog', { name: 'Alpha' });
+
+  // VQ P3: the sheet listed the title rename and the rename dialog as two items named Rename.
+  it('offers one Rename in the more sheet', async () => {
+    await open({ live: live({ fileActions: { rename: vi.fn() } }), onRename: vi.fn(), onMove: vi.fn() });
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(within(sheet()).getAllByRole('button', { name: 'Rename' })).toHaveLength(1);
+  });
+
+  // VQ P3: the sheet's title said Frontmatter, and the section's heading said it again under it.
+  it('names the frontmatter sheet once', async () => {
+    await open();
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    fireEvent.click(within(sheet()).getByRole('button', { name: 'Frontmatter' }));
+    const frontmatter = screen.getByRole('dialog', { name: 'Frontmatter' });
+    expect(within(frontmatter).getAllByText('Frontmatter')).toHaveLength(1);
+    expect(within(frontmatter).getByRole('checkbox', { name: 'Hide note' })).toBeInTheDocument();
   });
 });
 
