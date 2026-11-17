@@ -29,10 +29,18 @@ export function noteFollowed(notebookId: string, from: string, to: string): void
   while (follows.size > LIMIT) follows.delete(follows.keys().next().value!);
 }
 
-/** The keys the note at `key` lay at before the page followed it here, the latest first: one per recent move. */
+/**
+ * The keys the note at `key` lay at before the page followed it here, the latest first: one per recent move. A step goes
+ * back only to a move heard no later than the one after it, so a note moved into a path another note left later is not
+ * taken for that other note (review6 F002).
+ */
 export function followedFrom(key: string): string[] {
   const keys: string[] = [], now = Date.now();
-  for (let step = follows.get(key); step && now - step.at < FOLLOW_MS && step.from !== key && !keys.includes(step.from); step = follows.get(step.from)) keys.push(step.from);
+  let after = Infinity;
+  for (let step = follows.get(key); step && step.at <= after && now - step.at < FOLLOW_MS && step.from !== key && !keys.includes(step.from); step = follows.get(step.from)) {
+    keys.push(step.from);
+    after = step.at;
+  }
   return keys;
 }
 

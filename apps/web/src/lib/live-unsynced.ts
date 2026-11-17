@@ -35,6 +35,11 @@ export interface UnsyncedLiveStore {
   get(key: string): Promise<UnsyncedLiveText | undefined>;
   put(entry: UnsyncedLiveText): Promise<void>;
   delete(key: string): Promise<void>;
+  /**
+   * Keeps `entry` and drops the entry at `from` in one step, so a crash between them never leaves the typing under both
+   * keys, to be merged twice (review6 F001).
+   */
+  move(entry: UnsyncedLiveText, from: string): Promise<void>;
   list(): Promise<UnsyncedLiveText[]>;
 }
 
@@ -51,8 +56,8 @@ export const unsyncedOf = async (store: UnsyncedLiveStore, scope: string, notebo
  */
 export async function relocateUnsynced(store: UnsyncedLiveStore, scope: string, notebookId: string, path: string, to: string | null): Promise<void> {
   for (const entry of await unsyncedOf(store, scope, notebookId, path)) {
-    if (to !== null) await store.put({ ...entry, path: to, key: unsyncedKey(scope, notebookId, to, entry.owner) });
-    await store.delete(entry.key);
+    if (to !== null) await store.move({ ...entry, path: to, key: unsyncedKey(scope, notebookId, to, entry.owner) }, entry.key);
+    else await store.delete(entry.key);
   }
 }
 
@@ -64,14 +69,23 @@ const isEntry = (value: unknown): value is UnsyncedLiveText => {
 /** A store that lasts as long as the page: where the browser has no IndexedDB, or it refuses to open. */
 export function memoryUnsyncedStore(): UnsyncedLiveStore {
   const entries = new Map<string, UnsyncedLiveText>();
-  return { get: async key => entries.get(key), put: async entry => void entries.set(entry.key, entry), delete: async key => void entries.delete(key), list: async () => [...entries.values()] };
+  return {
+    get: async key => entries.get(key),
+    put: async entry => void entries.set(entry.key, entry),
+    delete: async key => void entries.delete(key),
+    move: async (entry, from) => {
+      if (from !== entry.key) entries.delete(from);
+      entries.set(entry.key, entry);
+    },
+    list: async () => [...entries.values()],
+  };
 }
 
 const DATABASE = 'mygitnotes-live';
 const STORE = 'unsynced';
 
-/** IndexedDB's store; every call falls back to `fallback` once the database cannot be opened. */
-function indexedDbUnsyncedStore(factory: IDBFactory, fallback: UnsyncedLiveStore): UnsyncedLiveStore {
+/** IndexedDB's store; every call falls back to `fallback` once the database cannot be opened. Exported for its tests. */
+export function indexedDbUnsyncedStore(factory: IDBFactory, fallback: UnsyncedLiveStore): UnsyncedLiveStore {
   let opened: Promise<IDBDatabase | null> | null = null;
   const database = () =>
     opened ??= new Promise(resolve => {
@@ -96,7 +110,22 @@ function indexedDbUnsyncedStore(factory: IDBFactory, fallback: UnsyncedLiveStore
       transaction.onabort = () => reject(transaction.error ?? request.error);
     });
   };
-  return { get: key => run('readonly', store => store.get(key), request => isEntry(request.result) ? request.result : undefined, () => fallback.get(key)), put: entry => run('readwrite', store => store.put(entry), () => undefined, () => fallback.put(entry)), delete: key => run('readwrite', store => store.delete(key), () => undefined, () => fallback.delete(key)), list: () => run('readonly', store => store.getAll(), request => (request.result as unknown[]).filter(isEntry), () => fallback.list()) };
+  return {
+    get: key => run('readonly', store => store.get(key), request => isEntry(request.result) ? request.result : undefined, () => fallback.get(key)),
+    put: entry => run('readwrite', store => store.put(entry), () => undefined, () => fallback.put(entry)),
+    delete: key => run('readwrite', store => store.delete(key), () => undefined, () => fallback.delete(key)),
+    move: (entry, from) =>
+      run(
+        'readwrite',
+        store => {
+          if (from !== entry.key) store.delete(from);
+          return store.put(entry);
+        },
+        () => undefined,
+        () => fallback.move(entry, from),
+      ),
+    list: () => run('readonly', store => store.getAll(), request => (request.result as unknown[]).filter(isEntry), () => fallback.list()),
+  };
 }
 
 let store: UnsyncedLiveStore | null = null;
