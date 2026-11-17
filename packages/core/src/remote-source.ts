@@ -184,7 +184,7 @@ export abstract class RemoteSource {
   }
   /**
    * 「立即簽回」: checks the live note at `file` into Git now and closes it, or says why it stayed open. Any writer may;
-   * the commit is made with the deployment's own credential and authored by the note's editors.
+   * the person who asks authors the commit, and the note's other editors are its co-authors.
    */
   async checkInLive(file: string) {
     const snapshot = await this.getSnapshot();

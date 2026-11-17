@@ -107,7 +107,7 @@ describe('the app over the built-in live adapter', () => {
     expect(await live.store.link(pending.id)).toMatchObject({ path: null, pathRule: '{{title}}.md', lastEditAt: null, seq: 0 });
   });
 
-  it("lands an agent's write in the live document over the typing since, keeps Git as it was, and checks it in by the typist", async () => {
+  it("lands an agent's write in the live document over the typing since, keeps Git as it was, and checks it in by whoever presses check-in, with the typist as co-author", async () => {
     await start();
     expect(await call('POST', '/api/live/socket-ticket', note)).toMatchObject({ status: 409, body: { code: 'not-live' } });
     const opened = await call('POST', '/api/live/checkout', note);
@@ -134,7 +134,8 @@ describe('the app over the built-in live adapter', () => {
     expect(done).toMatchObject({ status: 200, body: { id, path: 'notes/life/a.md', committed: true, released: true } });
     expect(files.get('notes/life/a.md')).toBe(text);
     expect(commits()).toHaveLength(1);
-    expect(commits()[0].author).toEqual({ name: 'Person 2', email: 'p2@example.test' });
+    expect(commits()[0].author).toEqual({ name: 'Pat', email: 'pat@example.test' });
+    expect(commits()[0].message).toContain('Co-authored-by: Person 2 <p2@example.test>');
     expect(commits()[0].message).toContain(`Live-Link: ${id}`);
     expect(commits()[0].message).toMatch(/\nAgent-Edit: \d{4}-\d{2}-\d{2}/);
     // Checked in, it is no longer live: no ticket, and the next checkout reopens it as the next epoch.

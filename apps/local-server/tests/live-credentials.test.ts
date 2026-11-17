@@ -73,47 +73,77 @@ beforeEach(() => {
 });
 
 describe('the credential a check-in commits with', () => {
-  it("is the first editor's while it works: they author the commit and everyone else is a co-author", async () => {
+  it("is the last typer's while it works when nobody asked for the check-in: they author the commit and everyone else is a co-author", async () => {
     const id = await typedByTwo();
     const opens = opening();
-    expect(await run(id)).toMatchObject({ committed: true, released: true });
-    expect(opens).toEqual([{ author: author(1), person: who(1), arguments: 3 }]);
-    expect(commits()).toHaveLength(1);
-    expect(commits()[0].author).toEqual(author(1));
-    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Person 2 <p2@example.test>']);
-  });
-
-  it('is the next editor’s when opening the repository as the first is refused, and the first is still credited', async () => {
-    const id = await typedByTwo();
-    const opens = opening(candidate => {
-      if (is(1)(candidate)) throw new LiveCredentialError();
-    });
-    expect(await run(id)).toMatchObject({ committed: true, released: true });
-    expect(opens.map(open => open.person)).toEqual([who(1), who(2)]);
-    expect(opens[1].author).toEqual(author(2));
+    expect(await run(id, { mode: 'scheduled' })).toMatchObject({ committed: true, released: true });
+    expect(opens).toEqual([{ author: author(2), person: who(2), arguments: 3 }]);
     expect(commits()).toHaveLength(1);
     expect(commits()[0].author).toEqual(author(2));
     expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Person 1 <p1@example.test>']);
+  });
+
+  it('follows whoever typed last, not who typed first: someone who typed first and again later authors it', async () => {
+    const id = await typedByTwo();
+    clock.advance(1000);
+    liveNotes.type(repository, id, `${A}three\nfour\nfive\n`, person(1));
+    const opens = opening();
+    expect(await run(id, { mode: 'scheduled' })).toMatchObject({ committed: true, released: true });
+    expect(opens).toEqual([{ author: author(1), person: who(1), arguments: 3 }]);
+    expect(commits()[0].message).toContain('Co-authored-by: Person 2 <p2@example.test>');
+  });
+
+  it("is the person's who pressed check-in, an editor or not, with every other editor a co-author", async () => {
+    const id = await typedByTwo();
+    const opens = opening();
+    expect(await run(id, { requester: { person: who(1), author: author(1) } })).toMatchObject({ committed: true, released: true });
+    expect(opens).toEqual([{ author: author(1), person: who(1), arguments: 3 }]);
+    expect(commits()[0].author).toEqual(author(1));
+    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Person 2 <p2@example.test>']);
+    vi.restoreAllMocks();
+    clock.advance(6 * 60_000);
+    const again = await checkout();
+    liveNotes.type(repository, again, `${A}three\nfour\nsix\n`, person(1));
+    clock.advance(1000);
+    liveNotes.type(repository, again, `${A}three\nfour\nsix\nseven\n`, person(2));
+    const second = opening();
+    expect(await run(again, { requester: { person: who(3), author: author(3) } })).toMatchObject({ committed: true, released: true });
+    expect(second).toEqual([{ author: author(3), person: who(3), arguments: 3 }]);
+    expect(commits()[1].author).toEqual(author(3));
+    expect(commits()[1].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Person 1 <p1@example.test>', 'Co-authored-by: Person 2 <p2@example.test>']);
+  });
+
+  it('is the next editor’s, by who typed last, when opening the repository as the last typer is refused, and the last typer is still credited', async () => {
+    const id = await typedByTwo();
+    const opens = opening(candidate => {
+      if (is(2)(candidate)) throw new LiveCredentialError();
+    });
+    expect(await run(id, { mode: 'scheduled' })).toMatchObject({ committed: true, released: true });
+    expect(opens.map(open => open.person)).toEqual([who(2), who(1)]);
+    expect(opens[1].author).toEqual(author(1));
+    expect(commits()).toHaveLength(1);
+    expect(commits()[0].author).toEqual(author(1));
+    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Person 2 <p2@example.test>']);
     expect(liveNotes.notices).toEqual([]);
     expect(files.get(file)).toBe(`${A}three\nfour\n`);
   });
 
-  it.each([401, 403, 404])("is the next editor's when the provider refuses the first editor's commit with %i", async status => {
+  it.each([401, 403, 404])("is the next editor's when the provider refuses the last typer's commit with %i", async status => {
     const id = await typedByTwo();
     const opens = opening((candidate, source) => {
-      if (is(1)(candidate)) refuseCommit(source, status);
+      if (is(2)(candidate)) refuseCommit(source, status);
     });
-    expect(await run(id)).toMatchObject({ committed: true, released: true });
-    expect(opens.map(open => open.person)).toEqual([who(1), who(2)]);
-    expect(commits().map(commit => commit.author)).toEqual([author(2)]);
-    expect(commits()[0].message).toContain('Co-authored-by: Person 1 <p1@example.test>');
+    expect(await run(id, { mode: 'scheduled' })).toMatchObject({ committed: true, released: true });
+    expect(opens.map(open => open.person)).toEqual([who(2), who(1)]);
+    expect(commits().map(commit => commit.author)).toEqual([author(1)]);
+    expect(commits()[0].message).toContain('Co-authored-by: Person 2 <p2@example.test>');
   });
 
   it("throws a failure that is not a credential's, and tries nobody else", async () => {
     const id = await typedByTwo();
     const opens = opening((_candidate, source) => refuseCommit(source, 500));
     await expect(run(id)).rejects.toMatchObject({ status: 500 });
-    expect(opens.map(open => open.person)).toEqual([who(1)]);
+    expect(opens.map(open => open.person)).toEqual([who(2)]);
     expect(commits()).toEqual([]);
     expect(liveNotes.notices).toEqual([]);
   });
@@ -125,27 +155,27 @@ describe('the credential a check-in commits with', () => {
       if (refused) throw new LiveCredentialError();
     });
     expect(await run(id, { mode: 'scheduled' })).toEqual({ id, path: file, committed: false, released: false, reason: 'uncommittable' });
-    expect(opens.map(open => open.person)).toEqual([who(1), who(2)]);
+    expect(opens.map(open => open.person)).toEqual([who(2), who(1)]);
     expect(commits()).toEqual([]);
     expect(files.get(file)).toBe(A);
     expect((await liveNotes.person(person(1)).read(repository, id)).content).toBe(`${A}three\nfour\n`);
     expect(liveNotes.notices).toEqual([{ kind: 'uncommittable', repository, notebook: 'notes~life', path: file, id, editors: [{ name: 'Person 1' }, { name: 'Person 2' }], message: expect.stringMatching(/could not be committed/) }]);
-    // The idle tick tries again, and commits once the first editor's credential works again.
+    // The idle tick tries again, and commits once the last typer's credential works again.
     clock.advance(6 * 60_000);
     expect(await sweepIdleLive(liveNotes, { now: clock.now, sleep: async () => {} })).toMatchObject({ due: 1, results: [{ id, reason: 'uncommittable' }], failed: [] });
     refused = false;
     clock.advance(6 * 60_000);
     expect(await sweepIdleLive(liveNotes, { now: clock.now, sleep: async () => {} })).toMatchObject({ due: 1, results: [{ id, committed: true, released: true }] });
-    expect(commits().map(commit => commit.author)).toEqual([author(1)]);
+    expect(commits().map(commit => commit.author)).toEqual([author(2)]);
   });
 
   it('lets an editor without a verified email author through their own token, and names them nowhere when another commits', async () => {
     const id = await checkout();
     // As a GitLab or GitHub Enterprise person is shown: a name, and no email to credit them by.
     const nameless: LiveContext = { person: who(1), live: { name: 'gl-user' }, request: { headers: {} } };
-    liveNotes.type(repository, id, `${A}three\n`, nameless);
+    liveNotes.type(repository, id, `${A}three\n`, person(2));
     clock.advance(1000);
-    liveNotes.type(repository, id, `${A}three\nfour\n`, person(2));
+    liveNotes.type(repository, id, `${A}three\nfour\n`, nameless);
     const opens = opening();
     const result = await run(id, { mode: 'scheduled' });
     expect(result).toEqual({ id, path: file, committed: true, commit: expect.any(String), released: true });
@@ -176,23 +206,24 @@ describe('the credential a check-in commits with', () => {
       throw new LiveCredentialError();
     });
     expect(await run(id, { mode: 'scheduled' })).toMatchObject({ reason: 'uncommittable' });
-    expect(opens.map(open => open.person)).toEqual([who(1), who(2)]);
+    // People before agents, though the agent wrote last.
+    expect(opens.map(open => open.person)).toEqual([who(2), who(1)]);
     vi.restoreAllMocks();
     clock.advance(6 * 60_000);
     const alone = opening();
     expect(await run(id)).toMatchObject({ committed: true, released: true });
-    expect(alone).toEqual([{ author: author(1), person: who(1), arguments: 3 }]);
+    expect(alone).toEqual([{ author: author(2), person: who(2), arguments: 3 }]);
   });
 
-  it('takes the person who asks for the check-in as the last candidate, credited as its author, with every editor a co-author', async () => {
+  it('tries the person who asks for the check-in first, and the editors by who typed last once their credential is refused', async () => {
     const id = await typedByTwo();
     const opens = opening(candidate => {
-      if (!is(3)(candidate)) throw new LiveCredentialError();
+      if (is(3)(candidate)) throw new LiveCredentialError();
     });
     expect(await run(id, { requester: { person: who(3), author: author(3) } })).toMatchObject({ committed: true, released: true });
-    expect(opens.map(open => open.person)).toEqual([who(1), who(2), who(3)]);
-    expect(commits()[0].author).toEqual(author(3));
-    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Person 1 <p1@example.test>', 'Co-authored-by: Person 2 <p2@example.test>']);
+    expect(opens.map(open => open.person)).toEqual([who(3), who(2)]);
+    expect(commits()[0].author).toEqual(author(2));
+    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Person 1 <p1@example.test>']);
     expect(liveNotes.notices).toEqual([]);
   });
 
@@ -201,7 +232,7 @@ describe('the credential a check-in commits with', () => {
     const opens = opening(() => {
       throw new LiveCredentialError();
     });
-    expect(await run(id, { requester: { person: who(2), author: author(2) } })).toMatchObject({ reason: 'uncommittable' });
+    expect(await run(id, { requester: { person: who(1), author: author(1) } })).toMatchObject({ reason: 'uncommittable' });
     expect(opens.map(open => open.person)).toEqual([who(1), who(2)]);
   });
 });
@@ -260,13 +291,22 @@ describe('an adapter that commits with the deployment’s own credential', () =>
     liveNotes = memoryLiveNotes({ editor, repositories: [{ source: edition, files }], clock });
   });
 
-  it('is opened once, with the author alone as in 0.20, whoever asks for the check-in', async () => {
+  it('is opened once, with the author alone as in 0.20: the person who asks for the check-in, every editor a co-author', async () => {
     const id = await typedByTwo();
     const opens = opening();
     expect(await run(id, { requester: { person: who(3), author: author(3) } })).toMatchObject({ committed: true, released: true });
-    expect(opens).toEqual([{ author: author(1), person: undefined, arguments: 2 }]);
-    expect(commits()[0].author).toEqual(author(1));
-    expect(commits()[0].message).toContain('Co-authored-by: Person 2 <p2@example.test>');
+    expect(opens).toEqual([{ author: author(3), person: undefined, arguments: 2 }]);
+    expect(commits()[0].author).toEqual(author(3));
+    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Person 1 <p1@example.test>', 'Co-authored-by: Person 2 <p2@example.test>']);
+  });
+
+  it('names the last typer as the author when nobody asked for the check-in', async () => {
+    const id = await typedByTwo();
+    const opens = opening();
+    expect(await run(id, { mode: 'scheduled' })).toMatchObject({ committed: true, released: true });
+    expect(opens).toEqual([{ author: author(2), person: undefined, arguments: 2 }]);
+    expect(commits()[0].author).toEqual(author(2));
+    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Person 1 <p1@example.test>']);
   });
 
   it('lists no person on its editors', async () => {
@@ -360,7 +400,7 @@ describe('the app with an identity that says how live editing shows a person', (
     expect(made()[0].author).toBeUndefined();
   });
 
-  it('asks for a check-in as the signed-in person: when no editor may commit, 「立即簽回」 commits with the credential of whoever pressed it', async () => {
+  it('asks for a check-in as the signed-in person: 「立即簽回」 commits first with the credential of whoever pressed it, the editors co-authors', async () => {
     const { id } = (await call('/api/live/checkout', note)).body.checkout;
     await live.liveNotes.type(hostedRepository, id, `${A}three\n`, { person: who(9), author: author(9), request: { headers: {} } });
     const opens: (WorkspacePerson | undefined)[] = [];
@@ -371,7 +411,7 @@ describe('the app with an identity that says how live editing shows a person', (
       return open(...args);
     });
     expect(await call('/api/live/checkin', note)).toMatchObject({ status: 200, body: { id, path: 'notes/life/a.md', committed: true, released: true } });
-    expect(opens).toEqual([who(9), who(1)]);
+    expect(opens).toEqual([who(1)]);
     expect(made()).toHaveLength(1);
     expect(made()[0].author).toEqual(pat);
     expect(made()[0].message).toContain('Co-authored-by: Person 9 <p9@example.test>');

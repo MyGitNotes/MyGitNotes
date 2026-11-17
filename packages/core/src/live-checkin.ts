@@ -76,9 +76,9 @@ export interface LiveCheckInOptions {
   /** A sweep's check-in: a pending note nobody typed in is discarded too, not only an empty one, where the adapter can discard. */
   discardUntyped?: boolean;
   /**
-   * Who asked for the check-in (「立即簽回」, `check_in_note`): the last credential it tries, after every editor's was
-   * refused, so someone who may write can still check in a note whose editors no longer can. When it commits, they
-   * author the commit and every editor is a co-author.
+   * Who asked for the check-in (「立即簽回」, `check_in_note`, or a move that lands at once): its author, with every
+   * other editor a co-author. With the editors' own credentials theirs is the first one tried; once it is refused the
+   * editors' are, by who typed last. With the deployment's own credential the commit names them as its author.
    */
   requester?: LiveCommitter;
   /**
@@ -170,26 +170,31 @@ export interface LiveAuthorship {
   agent: boolean;
 }
 
+/** Editors by who typed last first; two who typed at the same instant keep their order. */
+const byLastTyped = (editors: readonly LiveEditor[]) => [...editors].sort((a, b) => Date.parse(b.lastAt) - Date.parse(a.lastAt));
+
 /**
- * The author is the earliest person `commitAuthor` accepts, else the earliest agent, else none (the credential's
- * account); every other accepted editor is a co-author, once per email. An editor whose name or email cannot be written
- * into a commit is skipped, never cleaned up.
+ * The author is the person `commitAuthor` accepts who typed last, else the agent that wrote last, else none (the
+ * credential's account); every other accepted editor is a co-author, once per email, in the order they first typed. An
+ * editor whose name or email cannot be written into a commit is skipped, never cleaned up.
  *
- * With `committer`, the commit is made with that person's own credential: they are its author, by `committer.author`
- * or, without one, as the account of their credential, and every accepted editor but them is a co-author, whoever was
- * first. An editor who is the committer is not skipped for lacking an email: the commit is theirs.
+ * With `committer`, the commit is made for them: with `person`, with that person's own credential, else with the
+ * deployment's credential naming them (the person who asked for the check-in). They are its author, by
+ * `committer.author` or, without one, as the account of the credential, and every accepted editor but them is a
+ * co-author, whoever typed last. An editor who is the committer is not skipped for lacking an email: the commit is theirs.
  */
-export function liveAuthorship(editors: readonly LiveEditor[], committer?: { person: WorkspacePerson; author?: CommitAuthor; }): LiveAuthorship {
+export function liveAuthorship(editors: readonly LiveEditor[], committer?: { person?: WorkspacePerson; author?: CommitAuthor; }): LiveAuthorship {
   const sorted = [...editors].sort((a, b) => Date.parse(a.firstAt) - Date.parse(b.firstAt));
   const accepted: { editor: LiveEditor; author: CommitAuthor; }[] = [];
   const skipped: string[] = [];
-  const own = committer ? personKey(committer.person) : undefined;
+  const own = committer?.person ? personKey(committer.person) : undefined;
   for (const editor of sorted) {
     const author = acceptedAuthor(editor);
     if (author) accepted.push({ editor, author });
     else if (!(own !== undefined && editor.person && personKey(editor.person) === own)) skipped.push(editor.name);
   }
-  const lead = committer ? committer.author : (accepted.find(entry => !entry.editor.agent) ?? accepted[0])?.author;
+  const last = byLastTyped(accepted.map(entry => entry.editor));
+  const lead = committer ? committer.author : acceptedAuthor(last.find(editor => !editor.agent) ?? last[0]);
   const named = new Set(lead ? [lead.email.toLowerCase()] : []);
   const coAuthors: CommitAuthor[] = [];
   for (const { author } of accepted) {
@@ -204,20 +209,31 @@ export function liveAuthorship(editors: readonly LiveEditor[], committer?: { per
 interface Committer {
   person?: WorkspacePerson;
   author?: CommitAuthor;
+  /** The deployment's credential names the person who asked for the check-in, whoever types meanwhile. */
+  asked?: true;
 }
 /** The one name a check-in knows a committer by while it runs. */
 const committerKey = (committer: Committer) => committer.person ? personKey(committer.person) : 'deployment';
 
 /**
- * The credentials a check-in tries, in order (docs/specs/2026-11-16-collab-first-self-host A6): each editor who signed
- * in as someone, people before agents and each group by who typed first, a person once however many of their entries
- * typed. Where no editor names a person (a 0.20 adapter, or a note nobody typed in), the deployment's own credential,
- * with the author of {@link liveAuthorship}. Last, whoever asked for the check-in, unless they are among the editors.
+ * The credentials a check-in tries, in order (docs/specs/2026-11-16-collab-first-self-host A6, owner decision on the
+ * check-in author: whoever checks in authors it, the other editors are co-authors). Where an editor signed in as
+ * someone: first whoever asked for the check-in, then each editor who signed in as someone, people before agents and
+ * each group by who typed last, a person once however many of their entries typed. Where no editor names a person (a
+ * 0.20 adapter, or a note nobody typed in), the deployment's own credential, naming as the author whoever asked for the
+ * check-in, else the author of {@link liveAuthorship}; then whoever asked, with their own.
  */
 function liveCommitters(editors: readonly LiveEditor[], requester?: LiveCommitter): Committer[] {
-  const sorted = [...editors].sort((a, b) => Date.parse(a.firstAt) - Date.parse(b.firstAt));
+  const sorted = byLastTyped(editors);
   const committers: Committer[] = [];
   const seen = new Set<string>();
+  const asked = requester ? personOf(requester.person) : undefined;
+  const askedAuthor = asked ? acceptedAuthor(requester!.author) : undefined;
+  const ask = () => {
+    seen.add(personKey(asked!));
+    committers.push({ person: asked!, ...(askedAuthor ? { author: askedAuthor } : {}) });
+  };
+  if (asked && editors.some(editor => editor.person)) ask();
   for (const editor of [...sorted.filter(entry => !entry.agent), ...sorted.filter(entry => entry.agent)]) {
     if (!editor.person || seen.has(personKey(editor.person))) continue;
     seen.add(personKey(editor.person));
@@ -225,14 +241,10 @@ function liveCommitters(editors: readonly LiveEditor[], requester?: LiveCommitte
     committers.push({ person: editor.person, ...(author ? { author } : {}) });
   }
   if (!committers.length) {
-    const { author } = liveAuthorship(editors);
-    committers.push(author ? { author } : {});
+    const author = askedAuthor ?? liveAuthorship(editors).author;
+    committers.push({ ...(author ? { author } : {}), ...(askedAuthor ? { asked: true as const } : {}) });
   }
-  const asked = requester ? personOf(requester.person) : undefined;
-  if (asked && !seen.has(personKey(asked))) {
-    const author = acceptedAuthor(requester!.author);
-    committers.push({ person: asked, ...(author ? { author } : {}) });
-  }
+  if (asked && !seen.has(personKey(asked))) ask();
   return committers;
 }
 
@@ -620,7 +632,7 @@ async function checkInLeased(liveNotes: LiveNotes, repository: RepositoryId, id:
     if (!committer) return { kind: 'uncommittable', path: bare?.path ?? null, notice: { kind: 'uncommittable', notebook: bare?.notebook ?? '', path: bare?.path ?? null, id, message: 'A live note could not be committed: no credential of its editors may write to the repository. It stays open and is tried again at the next check-in.' }, editors, skipped: liveAuthorship(editors).skipped };
     committing = committer;
     /** Who the commit names, for the credential it is made with. */
-    const authorship = (listed: readonly LiveEditor[]) => committer.person ? liveAuthorship(listed, { person: committer.person, ...(committer.author ? { author: committer.author } : {}) }) : liveAuthorship(listed);
+    const authorship = (listed: readonly LiveEditor[]) => committer.person || committer.asked ? liveAuthorship(listed, { ...(committer.person ? { person: committer.person } : {}), ...(committer.author ? { author: committer.author } : {}) }) : liveAuthorship(listed);
     let { author, coAuthors, skipped, agent } = authorship(editors);
     const as = committer.person;
     let source = await adapter(() => as ? service.open(repository, author, { person: as }) : service.open(repository, author));

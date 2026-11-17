@@ -146,6 +146,16 @@ describe('moving a live note someone else edits', () => {
     expect((await rows())[0]).not.toHaveProperty('target');
   });
 
+  it('credits the commit of a move that lands at once to the person who moved it, and whoever typed as co-authors', async () => {
+    await start();
+    const id = await open(weekly);
+    liveNotes.type(repository, id, '---\ntitle: 公司週會\n---\n議程\nSam 寫的\n', sam);
+    expect(await move(weekly, archived)).toMatchObject({ status: 200, body: { live: { checkIn: { committed: true } } } });
+    expect(commits()).toHaveLength(1);
+    expect(commits()[0].author).toEqual({ name: 'Pat', email: 'pat@example.test' });
+    expect(commits()[0].message.split('\n').filter(line => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: Sam <sam@example.test>']);
+  });
+
   it('retitles the live text with a rename, without a check-in while others edit', async () => {
     await start();
     const id = await open(weekly);
