@@ -68,6 +68,8 @@ import { BulkActionsToolbar } from './components/BulkActionsToolbar.js';
 import { FolderPickerDialog } from './components/FolderPickerDialog.js';
 import { useAssetOperations } from './app/useAssetOperations.js';
 import { useRoutedNote } from './app/useRoutedNote.js';
+import { followMovedNote } from './app/follow-moved-note.js';
+import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { UNTITLED_STEM, useCreateNote } from './app/useCreateNote.js';
 import { useNoteMove } from './app/useNoteMove.js';
 import { folderCommandScope } from './lib/file-change-scope.js';
@@ -155,6 +157,8 @@ export const AppContent: React.FC = () => {
   const editorRoute = useMemo(() => parseWorkspaceRoute(location.pathname, location.search), [location.pathname, location.search]);
 
   const { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, gitStatus, setGitStatus, assets, setAssets, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus: focusPage, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote } = useWorkspaceSync({ routeNotebook: editorRoute.notebook || undefined, onStageNote: note => setEditingNote(current => current && sameNote(current, note) && !sameValue(current, note) ? note : current) });
+  // A refusal is said where it happened: moving on to another note, folder, filter or search clears it.
+  useActionErrorReset(location.pathname + location.search, setActionError);
   const noteLink = useNoteLinkLoad(location, editorRoute);
   const { sortField, sortOrder, handleSortChange, metadataSortFields } = useNoteSort(selectedNotebookId, config?.notebooks.find(notebook => notebook.id === selectedNotebookId), noteLink.inFocus);
   const agentEnabled = useAgentEnabled(remote);
@@ -416,6 +420,8 @@ export const AppContent: React.FC = () => {
         }
         : undefined,
       onReadRemote: remote && draft?.base === null ? undefined : (path: string) => readNote(path, note.notebookId),
+      // A live note another person moved: its tabs, the address and the lists follow it (§20.4 of the built-in editor spec).
+      onMoved: to => followMovedNote({ note, to, notebook: config?.notebooks.find(nb => nb.id === note.notebookId), routedPath, search: location.search, relocatePaths: noteFocus.relocatePaths, navigate, refresh: () => void refreshWorkspace(true).then(invalidateNotes) }),
       branch: repository?.branch ?? '',
       draftScope: repository ? draftScope(repository) : '',
       template: isTemplate(note),

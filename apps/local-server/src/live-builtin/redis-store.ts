@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { isLiveUnmovedReason, LiveUnavailableError, type LiveUnmovedReason, type RepositoryId } from '@mygitnotes/core';
 import { createClient, ErrorReply } from 'redis';
 import { recordKeyPrefix } from '../record-store/index.js';
-import { LIVE_ENDED_MAX_BYTES, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
+import { LIVE_ENDED_MAX_BYTES, LIVE_FORMER_PATHS, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
 
 /*
  * The live store in Redis (docs/specs/2026-11-15-builtin-live-editor §3.2). Under the prefix P:
@@ -64,6 +64,22 @@ local function erase(P, id, epoch, rk, repository)
   if redis.call('SCARD', links) == 0 then redis.call('SREM', KEYS[6], repository) end
 end`;
 
+/**
+ * Sets the former paths of the link hash `KEYS[1]` as `withFormerPath` does: `left` (false for none) added last,
+ * `current` taken out, the latest kept; the field is dropped when none are left.
+ */
+const FORMER = `
+local function former(left, current)
+  local raw = redis.call('HGET', KEYS[1], 'formerPaths')
+  local kept = {}
+  for _, path in ipairs(raw and cjson.decode(raw) or {}) do
+    if path ~= left and path ~= current then kept[#kept + 1] = path end
+  end
+  if left and left ~= current then kept[#kept + 1] = left end
+  while #kept > ${LIVE_FORMER_PATHS} do table.remove(kept, 1) end
+  if #kept == 0 then redis.call('HDEL', KEYS[1], 'formerPaths') else redis.call('HSET', KEYS[1], 'formerPaths', cjson.encode(kept)) end
+end`;
+
 /** KEYS path, repos, links. ARGV P, new id, repository, rk, notebook, path, base, contentHash, state, now. */
 const CHECKOUT = `
 local P = ARGV[1]
@@ -81,7 +97,7 @@ elseif redis.call('HGET', link, 'live') ~= '1' then
   outcome = 'reopened'
   redis.call('HINCRBY', link, 'epoch', 1)
   redis.call('HSET', link, 'contentSeq', redis.call('HGET', link, 'seq'))
-  redis.call('HDEL', link, 'syncedAt', 'syncedHash', 'lastEditAt', 'conflict', 'target', 'unmoved', 'unmovedReason')
+  redis.call('HDEL', link, 'syncedAt', 'syncedHash', 'lastEditAt', 'conflict', 'target', 'unmoved', 'unmovedReason', 'formerPaths')
 end
 if outcome ~= 'joined' then
   redis.call('HMSET', link, 'live', '1', 'notebook', ARGV[5], 'since', ARGV[10], 'gen', '0', 'contentHash', ARGV[8])
@@ -183,7 +199,7 @@ redis.call('SET', KEYS[2], cjson.encode(lease), 'PX', string.format('%.0f', leas
 return 1`;
 
 /** KEYS link, lease, editors, initial. ARGV token, now, base, contentHash, path, conflict, P, pk, old pk, why unmoved ('' for a target Git held). */
-const SYNCED = `${HOLDER}
+const SYNCED = `${HOLDER}${FORMER}
 local lease = holder(ARGV[1], ARGV[2])
 if not lease then return 'leased' end
 local at = redis.call('HMGET', KEYS[1], 'path', 'seq', 'contentHash', 'contentSeq', 'id', 'rk', 'target')
@@ -208,6 +224,7 @@ elseif at[7] then
   if at[7] == ARGV[5] then
     local old = paths .. ARGV[9]
     if redis.call('GET', old) == at[5] then redis.call('DEL', old) end
+    former(at[1], ARGV[5])
     redis.call('HSET', KEYS[1], 'path', ARGV[5])
     redis.call('SET', paths .. ARGV[8], at[5])
     redis.call('HDEL', KEYS[1], 'unmoved', 'unmovedReason')
@@ -259,7 +276,7 @@ redis.call('DEL', KEYS[1], KEYS[7])
 return 'discarded'`;
 
 /** KEYS link, lease. ARGV token, now, kind ('rule' or 'target'), the path rule or target ('' to take the target away). */
-const RETARGET = `${HOLDER}
+const RETARGET = `${HOLDER}${FORMER}
 if not holder(ARGV[1], ARGV[2]) then return 'leased' end
 local path = redis.call('HGET', KEYS[1], 'path')
 redis.call('DEL', KEYS[2])
@@ -269,6 +286,7 @@ if ARGV[3] == 'rule' then
   return 'retargeted'
 end
 if not path then return 'not-filed' end
+former(redis.call('HGET', KEYS[1], 'target'), ARGV[4] == '' and path or ARGV[4])
 if ARGV[4] == '' then redis.call('HDEL', KEYS[1], 'target') else redis.call('HSET', KEYS[1], 'target', ARGV[4]) end
 redis.call('HDEL', KEYS[1], 'unmoved', 'unmovedReason')
 return 'retargeted'`;
@@ -358,7 +376,7 @@ function linkOf(reply: unknown): StoredLink | null {
   const number = (name: string) => Number(fields.get(name) ?? 0);
   const time = (name: string) => fields.has(name) ? Number(fields.get(name)) : null;
   const parsed = (name: string) => fields.has(name) ? JSON.parse(fields.get(name)!) : null;
-  return { id, repository: fields.get('repository') ?? '', notebook: fields.get('notebook') ?? '', path: fields.get('path') ?? null, ...(fields.has('pathRule') ? { pathRule: fields.get('pathRule') } : {}), ...(fields.has('target') ? { target: fields.get('target') } : {}), ...(fields.has('unmoved') ? { unmoved: fields.get('unmoved'), ...(isLiveUnmovedReason(fields.get('unmovedReason')) ? { unmovedReason: fields.get('unmovedReason') as LiveUnmovedReason } : {}) } : {}), since: number('since'), epoch: number('epoch'), live: fields.get('live') === '1', base: parsed('base'), syncedAt: time('syncedAt'), syncedHash: fields.get('syncedHash') ?? null, lastEditAt: time('lastEditAt'), conflict: parsed('conflict'), seq: number('seq'), gen: number('gen'), contentHash: fields.get('contentHash') ?? '', contentSeq: number('contentSeq') };
+  return { id, repository: fields.get('repository') ?? '', notebook: fields.get('notebook') ?? '', path: fields.get('path') ?? null, ...(fields.has('pathRule') ? { pathRule: fields.get('pathRule') } : {}), ...(fields.has('target') ? { target: fields.get('target') } : {}), ...(fields.has('unmoved') ? { unmoved: fields.get('unmoved'), ...(isLiveUnmovedReason(fields.get('unmovedReason')) ? { unmovedReason: fields.get('unmovedReason') as LiveUnmovedReason } : {}) } : {}), ...(fields.has('formerPaths') ? { formerPaths: parsed('formerPaths') as string[] } : {}), since: number('since'), epoch: number('epoch'), live: fields.get('live') === '1', base: parsed('base'), syncedAt: time('syncedAt'), syncedHash: fields.get('syncedHash') ?? null, lastEditAt: time('lastEditAt'), conflict: parsed('conflict'), seq: number('seq'), gen: number('gen'), contentHash: fields.get('contentHash') ?? '', contentSeq: number('contentSeq') };
 }
 
 /** The prefix of every live store key of this deployment, namespaced as its sessions are. */
@@ -511,13 +529,13 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
       if (!isLink(id)) return;
       await script(`presence ${id}`, PRESENCE, [key.link(id), key.presence(id)], [process, Object.keys(people).length ? JSON.stringify({ at: now, people }) : '', LIVE_PRESENCE_MS]);
     },
-    async activePeople(id, since, now) {
+    async activePeople(id, since, now, except) {
       if (!isLink(id)) return 0;
       const active = new Set<string>();
       for (const value of fieldsOf(await call(`activePeople ${id}`, ['HGETALL', key.presence(id)])).values()) {
         const entry = JSON.parse(value) as { at: number; people: Record<string, number>; };
         if (entry.at + LIVE_PRESENCE_MS <= now) continue;
-        for (const [person, last] of Object.entries(entry.people)) if (last >= since) active.add(person);
+        for (const [person, last] of Object.entries(entry.people)) if (last >= since && person !== except) active.add(person);
       }
       return active.size;
     },

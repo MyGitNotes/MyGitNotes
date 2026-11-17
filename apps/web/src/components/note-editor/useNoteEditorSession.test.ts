@@ -151,6 +151,24 @@ describe('useNoteEditorSession when the check of the remote note fails', () => {
   });
 });
 
+describe('useNoteEditorSession and a note the remote says moved', () => {
+  it.each([true, false])('follows a note the remote reports at another path, keeping no conflict draft, nothing of its own having been typed (read-only: %s)', async readOnly => {
+    const onMarkConflict = vi.fn(), onMoved = vi.fn();
+    const moved = new ApiError('This live note was checked in and filed.', 404, undefined, undefined, false, { movedTo: 'notes/archive/idea.md' });
+    const base = { readOnly, autoSave: true, draftMode: true, propIsDirty: false, branch: 'main', draftScope: 'repo', onSave: vi.fn() as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote: vi.fn(async () => Promise.reject(moved)), onRestoreFile: vi.fn(async () => Promise.reject(moved)), onCommitFile: undefined, remoteBase: undefined, conflictReason: undefined, onMarkConflict, onMoved } satisfies Omit<UseNoteEditorSessionParams, 'note'>;
+    const hook = renderHook(() => useNoteEditorSession({ ...base, note: note('Contract') }));
+    await vi.waitFor(() => expect(onMoved).toHaveBeenCalledWith('notes/archive/idea.md'));
+    // A refresh asked of it, as a live editor's refetch asks, follows too.
+    onMoved.mockClear();
+    await act(() => hook.result.current.pullLatest());
+    expect(onMoved).toHaveBeenCalledWith('notes/archive/idea.md');
+    expect(hook.result.current.blocked).toBe(false);
+    expect(hook.result.current.saveError).toBe('');
+    expect(onMarkConflict).not.toHaveBeenCalled();
+    expect(Object.keys(localStorage)).toEqual([]);
+  });
+});
+
 describe('useNoteEditorSession and a read that cannot reach the server', () => {
   it('says so in its own words instead of the browser’s, and clears it once the connection is back', async () => {
     const onReadRemote = vi.fn<() => Promise<NoteItem>>().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(note('Old name'));

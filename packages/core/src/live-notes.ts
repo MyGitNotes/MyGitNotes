@@ -57,6 +57,9 @@ export interface LiveBuiltinEditorInfo {
 export type LiveEditorInfo = LiveFrameEditorInfo | LiveBuiltinEditorInfo;
 export const isBuiltinEditor = (info: LiveEditorInfo): info is LiveBuiltinEditorInfo => info.kind === 'builtin';
 
+/** How many of a live note's {@link LiveCheckout.formerPaths} count: the latest. */
+export const LIVE_FORMER_PATHS = 8;
+
 /** How live editing shows and credits the person of a context: its `live`, else its `author`. */
 export const liveIdentityOf = (context: Pick<LiveContext, 'author' | 'live'>): LiveIdentity | undefined => context.live ?? context.author;
 
@@ -92,6 +95,13 @@ export interface LiveCheckout {
   unmoved?: string;
   /** With `unmoved`, why the note stayed when not because Git held its target: `too-large`, the move would change too much. */
   unmovedReason?: LiveUnmovedReason;
+  /**
+   * Filed only, where the adapter can retarget: the repository paths reads knew the note by earlier while it was live and
+   * no longer do, oldest first, at most {@link LIVE_FORMER_PATHS}: each target a later move replaced, and the path a
+   * check-in moved it from. A tab, address or open editor still at one finds the note where it is now, as long as Git
+   * holds no file there and no other live note is read there. Left out by an adapter that keeps none.
+   */
+  formerPaths?: string[];
   /** ISO: when this checkout or reopen began. */
   since: string;
   /** Present, and on the editor's origin, exactly for a framed editor. */
@@ -131,6 +141,12 @@ export interface LiveEditor {
 export interface LivePersonCalls {
   /** Live links only; the adapter may cache the list up to 10 s. */
   checkouts(repository: RepositoryId): Promise<LiveCheckout[]>;
+  /**
+   * How many people other than the one asking have the live note open now, connected, whether or not they typed lately:
+   * a move from the mover's own editor is checked in at once only when this is 0 (§20.4 of the built-in editor spec).
+   * An adapter without it is judged by `activeEditors`, the mover counted among them when they edit it.
+   */
+  othersEditing?(repository: RepositoryId, id: string): Promise<number>;
   /** Fresh. A pending note may carry its `initialText`, as in {@link LiveDetail}, for the discard precheck to judge it by. */
   read(repository: RepositoryId, id: string): Promise<LiveText & { initialText?: string; }>;
   write(repository: RepositoryId, id: string, change: { content: string; baseRevision: string; agent: boolean; }): Promise<{ liveRevision: string; changed: boolean; }>;
@@ -644,7 +660,10 @@ export function liveCheckoutOf(row: unknown, context: LiveRowContext): LiveCheck
     return null;
   }
   const pending = value.path === null;
-  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), ...(!pending && value.target !== undefined ? { target: value.target as string } : {}), ...(!pending && value.unmoved !== undefined ? { unmoved: value.unmoved as string, ...(value.unmovedReason !== undefined ? { unmovedReason: value.unmovedReason as LiveUnmovedReason } : {}) } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
+  // Paths it was read at are a courtesy to tabs still there: one that is no note of its notebook, or its path or target now, is left out.
+  const notebook = context.notebook(value.notebook as string)!;
+  const former = !pending && Array.isArray(value.formerPaths) ? [...new Set(value.formerPaths.filter((entry): entry is string => isNoteOf(entry, notebook) && entry !== value.path && entry !== value.target))].slice(-LIVE_FORMER_PATHS) : [];
+  return { id: value.id, notebook: value.notebook as string, path: value.path as string | null, ...(pending ? { pathRule: value.pathRule as string } : {}), ...(!pending && value.target !== undefined ? { target: value.target as string } : {}), ...(!pending && value.unmoved !== undefined ? { unmoved: value.unmoved as string, ...(value.unmovedReason !== undefined ? { unmovedReason: value.unmovedReason as LiveUnmovedReason } : {}) } : {}), ...(former.length ? { formerPaths: former } : {}), since: value.since as string, ...(isBuiltinEditor(context.editor) ? {} : { editorUrl: value.editorUrl as string, embedUrl: value.embedUrl as string }), contentHash: value.contentHash as string, activeEditors: value.activeEditors as number, lastEditAt: value.lastEditAt as string | null, syncedAt: value.syncedAt as string | null, base: baseOf(value.base)!, conflict: conflictOf(value.conflict)! };
 }
 
 /**

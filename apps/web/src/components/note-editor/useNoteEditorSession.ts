@@ -25,7 +25,7 @@ function sameIgnoringTimestamps(a: Record<string, unknown>, b: Record<string, un
 }
 
 /** `onCommitFile` commits this note's saved file alone; absent when the note cannot be committed from the editor. */
-export interface UseNoteEditorSessionParams extends Pick<NoteEditorSharedProps, 'remoteBase' | 'conflictReason' | 'onMarkConflict' | 'onSave' | 'onReadRemote' | 'onRestoreFile' | 'onCommitFile' | 'branch' | 'draftScope'> {
+export interface UseNoteEditorSessionParams extends Pick<NoteEditorSharedProps, 'remoteBase' | 'conflictReason' | 'onMarkConflict' | 'onSave' | 'onReadRemote' | 'onMoved' | 'onRestoreFile' | 'onCommitFile' | 'branch' | 'draftScope'> {
   note: NoteItem;
   readOnly: boolean;
   autoSave: boolean;
@@ -36,7 +36,7 @@ export interface UseNoteEditorSessionParams extends Pick<NoteEditorSharedProps, 
 }
 
 /** A note's editing session: content, frontmatter, drafts, autosave, conflicts, crash recovery and save/restore/close actions. */
-export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession }: UseNoteEditorSessionParams) {
+export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onMoved, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession }: UseNoteEditorSessionParams) {
   const { t } = useTranslation();
   const [content, setContent] = useState(note.content);
   const sessionKey = JSON.stringify([note.notebookId, note.path, draftScope, branch, readOnly]);
@@ -85,6 +85,10 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   const closing = useRef(false);
   const nextRemoteCheck = useRef(0);
   const mounted = useRef(true);
+  const onMovedRef = useRef(onMoved);
+  useEffect(() => {
+    onMovedRef.current = onMoved;
+  });
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -153,9 +157,15 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     }
     // A note this page just moved is not deleted: the editor of its old path is on its way out.
     if (error instanceof ApiError && error.status === 404 && isNoteMoving(noteRefKey(note))) return;
-    // A pending live note checked in and filed elsewhere is the route's to follow; its read-only editor holds nothing of the reader's to keep.
+    // A live note that lies elsewhere now (filed, or moved by someone else) is followed there: an editor that holds nothing of
+    // the person's own, as a live note's never does, keeps nothing. A pending note gone without saying where is the route's.
     const state = current.current;
-    if (error instanceof ApiError && error.status === 404 && (error.movedTo !== undefined || isLivePendingPath(note.path)) && readOnly && state.content === state.baseNote.content && sameValue(state.metadata, state.baseNote.metadata)) return;
+    const untouched = state.content === state.baseNote.content && sameValue(state.metadata, state.baseNote.metadata);
+    if (error instanceof ApiError && error.status === 404 && error.movedTo && (readOnly || untouched)) {
+      onMovedRef.current?.(error.movedTo);
+      return;
+    }
+    if (error instanceof ApiError && error.status === 404 && (error.movedTo !== undefined || isLivePendingPath(note.path)) && readOnly && untouched) return;
     if (error instanceof ApiError && error.status === 404) {
       preserveConflict();
       current.current.blocked = true;

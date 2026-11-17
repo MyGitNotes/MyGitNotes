@@ -43,6 +43,11 @@ export interface LiveRepository {
   links(): Promise<LiveLink[]>;
   /** The live text of a link, fresh from the adapter and checked. */
   read(id: string): Promise<LiveText>;
+  /**
+   * How many people other than the one asking have the link open now, idle or not; null where the adapter cannot tell
+   * (no `othersEditing`) or answers no count.
+   */
+  othersEditing(id: string): Promise<number | null>;
   /** Writes a whole text on `baseRevision`, which the editor rebases over typing since; the text is sent in normal form. */
   write(id: string, content: string, baseRevision: string, agent: boolean): Promise<{ liveRevision: string; changed: boolean; }>;
   append(id: string, text: string, agent: boolean): Promise<{ liveRevision: string; }>;
@@ -197,6 +202,12 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
     async read(id) {
       if (!isLiveId(id)) throw new LiveUnavailableError();
       return liveTextOf(await call(() => calls().read(repository, id)));
+    },
+    async othersEditing(id) {
+      const ask = calls().othersEditing?.bind(calls());
+      if (!ask || !isLiveId(id)) return null;
+      const answer = await call(() => ask(repository, id));
+      return typeof answer === 'number' && Number.isInteger(answer) && answer >= 0 && answer <= 10_000 ? answer : null;
     },
     async write(id, content, baseRevision, agent) {
       const answer = await call(() => calls().write(repository, id, { content: normalizeLiveText(content), baseRevision, agent }));
