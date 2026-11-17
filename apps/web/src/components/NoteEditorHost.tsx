@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Pencil } from 'lucide-react';
 import type { NoteItem } from '../lib/types.js';
 import { useNoteEditing } from '../lib/note-editing.js';
+import { followsNote, useFollowedKey } from '../lib/note-follows.js';
 import { useNoteLookup } from '../lib/use-note-queries.js';
 import { renderNote } from '../lib/markdown.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -39,7 +40,8 @@ export interface HostedNoteEditorProps {
  * A place that shows a note's editor: a Focus pane, a graph card, or a compilation's card or Book section. A note has one mounted editor across
  * these hosts and zoom. The owning host renders it into a stable element so zoom can borrow it without
  * remounting; while zoom shows the note the other hosts say so, and otherwise they show a preview with a
- * control that moves editing there.
+ * control that moves editing there. A host whose note the page followed to where it moved (another person moved or
+ * renamed it, §20.4) keeps its editor and its place among the note's hosts; another note shown in its place is another editor.
  */
 export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, path, frame, active, documentPanel, actionsSlot, editorRef, onSession, onCaret, claim = false }) => {
   const { t } = useTranslation();
@@ -47,11 +49,21 @@ export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, 
   const { hosts } = editing;
   const id = useId();
   const key = noteRefKey({ notebookId, path });
+  const editorKey = useFollowedKey(key);
   useSyncExternalStore(hosts.subscribe, hosts.snapshot);
   useLayoutEffect(() => {
-    hosts.register(key, id);
-    return () => hosts.release(key, id);
+    const from = hosts.keyOf(id);
+    if (from === key) return;
+    if (from !== undefined && followsNote(from, key)) hosts.follow(from, key, id);
+    else {
+      if (from !== undefined) hosts.release(from, id);
+      hosts.register(key, id);
+    }
   }, [hosts, key, id]);
+  useLayoutEffect(() => () => {
+    const at = hosts.keyOf(id);
+    if (at !== undefined) hosts.release(at, id);
+  }, [hosts, id]);
   const owner = hosts.owner(key) === id;
   // A host that was asked to edit claims the note once it is registered; until the claim settles it shows the loading status, and a failed claim leaves the preview with its Edit here button.
   const [claiming, setClaiming] = useState(claim);
@@ -69,7 +81,8 @@ export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, 
   const lookup = useNoteLookup([{ notebookId, path }], true);
   const found = lookup.notes[0], committed = lookup.committed[0];
   const loaded = found && typeof found.content === 'string' ? found as NoteItem : null;
-  const zoom = editing.zoom?.key === key ? editing.zoom : null;
+  // Zoom names the note where it lay until it follows the note too.
+  const zoom = editing.zoom && (editing.zoom.key === key || followsNote(editing.zoom.key, key)) ? editing.zoom : null;
   const lending = owner && Boolean(zoom?.borrowed);
   const showsEditor = owner && (!zoom || lending);
   // Like zoom, the editor keeps the note it opened and follows only its own saves.
@@ -77,7 +90,9 @@ export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, 
   // Unsaved typing in the editor, which a note that changed elsewhere must not replace.
   const [typing, setTyping] = useState(false);
   const [seen, setSeen] = useState(loaded);
-  if (!showsEditor && pinned) setPinned(null);
+  // The note followed to where it moved is pinned there at once, before the lists read it there; another note is not pinned.
+  if (pinned && noteRefKey(pinned) !== key) setPinned(showsEditor && followsNote(noteRefKey(pinned), key) ? { ...pinned, notebookId, path } : null);
+  else if (!showsEditor && pinned) setPinned(null);
   else if (showsEditor && !pinned && loaded) setPinned(loaded);
   // A note that changes under an editor with nothing unsaved (a rename that retitled it) is what the editor shows next. Only
   // a change of the loaded note counts, so a read that lags behind the editor's own save never takes the editor back.
@@ -113,7 +128,7 @@ export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, 
       {createPortal(
         <NoteEditor
           ref={editorRef}
-          key={`${props.draftScope}:${key}`}
+          key={`${props.draftScope}:${editorKey}`}
           {...props}
           note={note}
           onSave={async params => {

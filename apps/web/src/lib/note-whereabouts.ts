@@ -1,6 +1,7 @@
 import { type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, readNote } from './api.js';
+import { noteFollowed } from './note-follows.js';
 import type { NoteItem } from './types.js';
 
 /**
@@ -36,7 +37,9 @@ export interface ListedNotes {
  * The one place that decides what became of a note the lists no longer show (a Focus tab, the note an address names, an
  * open editor's): it asks the server, for each read of the lists again, and answers per note by `noteRefKey`. A note the
  * lists show, or whose question has no answer yet, has none: nobody may take it for deleted until the answer is `gone`.
- * An earlier answer stands until the next one arrives, so a note already found gone is not shown again meanwhile.
+ * An earlier answer stands until the next one arrives, so a note already found gone is not shown again meanwhile; it
+ * speaks of that absence only, and is forgotten once the lists show the note again, so a later absence waits for its own
+ * answer. A note found moved is one the page follows there ({@link noteFollowed}).
  */
 export function useNoteWhereabouts(refs: readonly NoteRef[], listed: ListedNotes): ReadonlyMap<string, NoteWhereabouts> {
   const settled = !listed.loading && !listed.error;
@@ -46,17 +49,25 @@ export function useNoteWhereabouts(refs: readonly NoteRef[], listed: ListedNotes
   const askedKey = asked.map(noteRefKey).join('\n');
   const generation = listed.updatedAt ?? 0;
   const [answers, setAnswers] = useState<ReadonlyMap<string, { generation: number; whereabouts: NoteWhereabouts; }>>(() => new Map());
-  const answered = useRef(answers), latest = useRef(asked);
+  const answered = useRef(answers), latest = useRef({ asked, missing, settled });
   useEffect(() => {
     answered.current = answers;
-    latest.current = asked;
+    latest.current = { asked, missing, settled };
   });
   useEffect(() => {
     let current = true;
-    for (const ref of latest.current) {
+    // The settled lists show every note they are not missing: what was said of its earlier absence is no news of this one.
+    if (latest.current.settled) {
+      const still = new Set(latest.current.missing.map(noteRefKey));
+      /* eslint-disable react/set-state-in-effect -- Each read of the lists settles which answers still speak of a missing note. */
+      if ([...answered.current.keys()].some(key => !still.has(key))) setAnswers(previous => new Map([...previous].filter(([key]) => still.has(key))));
+      /* eslint-enable react/set-state-in-effect */
+    }
+    for (const ref of latest.current.asked) {
       const key = noteRefKey(ref);
       if (answered.current.get(key)?.generation === generation) continue;
       void locateNote(ref).then(whereabouts => {
+        if (whereabouts.kind === 'moved') noteFollowed(ref.notebookId, ref.path, whereabouts.path);
         if (current) setAnswers(previous => new Map(previous).set(key, { generation, whereabouts }));
       });
     }

@@ -10,11 +10,12 @@ import { FocusPane } from './FocusPane.js';
 import { PhoneNotesProvider } from '../lib/phone-notes.js';
 
 // The pane body hosts a note editor; this test is about the tab bar and the pane frame.
-const hosted = vi.hoisted(() => ({ slots: [] as unknown[] }));
+// `editors`: the host stands for the editor with a text field of its own, which keeps its focus only while it stays mounted.
+const hosted = vi.hoisted(() => ({ slots: [] as unknown[], editors: false }));
 vi.mock('./NoteEditorHost.js', () => ({
-  HostedNoteEditor: ({ actionsSlot }: { actionsSlot?: unknown; }) => {
+  HostedNoteEditor: ({ actionsSlot, path }: { actionsSlot?: unknown; path: string; }) => {
     hosted.slots.push(actionsSlot);
-    return null;
+    return hosted.editors ? createElement('textarea', { 'aria-label': 'Note editor', 'data-path': path }) : null;
   },
 }));
 
@@ -36,6 +37,7 @@ afterEach(() => {
   cleanup();
   window.localStorage.clear();
   vi.unstubAllGlobals();
+  hosted.editors = false;
 });
 
 const layout: FocusLayout = { root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }, { kind: 'note', path: 'notes/b.compilation.yml' }] }, { kind: 'pane', id: 'p2', tabs: [{ kind: 'note', path: 'notes/c.md' }] }] } };
@@ -94,6 +96,36 @@ it("offers the shown note's editor a slot at the start of the bar's actions whil
   const slot = view.container.querySelector('.focus-pane-actions')!.firstElementChild;
   expect(slot).toHaveClass('focus-pane-note-actions');
   expect(hosted.slots.at(-1)).toBe(slot);
+});
+
+describe('a note followed to where it moved', () => {
+  // A pane of two notes showing Alpha at `path`: what the page shows after a move took Alpha's tab along in place.
+  const at = (path: string, key = `note:${path}`) => {
+    const layout: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path }, { kind: 'note', path: 'notes/c.md' }] } };
+    const followed = { ...focus, layout, entry: { ...focus.entry, shown: { p1: key }, history: { p1: [key] } }, notes: new Map([[path, { title: 'Alpha' }], ['notes/c.md', { title: 'Gamma' }]]), activate: () => {} } as unknown as NoteFocus;
+    return createElement(I18nProvider, null, createElement(FocusPane, { focus: followed, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p1'], pane: 'p1', key } }));
+  };
+
+  it('keeps the shown note’s editor, and the focus in it, when its tab follows the note in place', () => {
+    hosted.editors = true;
+    const view = render(at('notes/a.md'));
+    const editor = screen.getByLabelText('Note editor');
+    act(() => editor.focus());
+    // Another person renamed and moved Alpha: its tab names it where it lies now, in the same place among the tabs.
+    view.rerender(at('notes/archive/alpha.md'));
+    expect(screen.getByLabelText('Note editor')).toBe(editor);
+    expect(editor).toHaveAttribute('data-path', 'notes/archive/alpha.md');
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it('gives another tab the person shows its own editor', () => {
+    hosted.editors = true;
+    const view = render(at('notes/a.md'));
+    const editor = screen.getByLabelText('Note editor');
+    view.rerender(at('notes/a.md', 'note:notes/c.md'));
+    expect(screen.getByLabelText('Note editor')).not.toBe(editor);
+    expect(screen.getByLabelText('Note editor')).toHaveAttribute('data-path', 'notes/c.md');
+  });
 });
 
 describe('drop zones', () => {

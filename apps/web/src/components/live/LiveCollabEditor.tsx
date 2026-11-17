@@ -195,6 +195,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   const stopRef = useRef<() => string>(() => '');
   /** The running session's text. */
   const readRef = useRef<() => string>(() => '');
+  /** Takes the running session to the path its note lies at now: another person moved or renamed it (§20.4), and the page followed it. */
+  const followRef = useRef<(path: string) => void>(() => {});
 
   useEffect(() => {
     if (!live) return;
@@ -202,12 +204,15 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     const doc = new Y.Doc();
     const awareness = new Awareness(doc);
     const text = doc.getText('content');
-    const { notebookId, path } = latest.current.checkout;
+    const { notebookId } = latest.current.checkout;
+    // The path the note lies at: where the session asks for its tickets and keeps its typing. It follows the note when the
+    // page follows it elsewhere, and the session goes on in the same document.
+    let path = latest.current.checkout.path;
     const store = unsyncedLiveStore();
     // The session keeps its typing under an owner of its own, held while it runs, so no other tab or editor of the note
     // overwrites it or takes it (cf16-F004).
     const owner = newMergeId();
-    const key = unsyncedKey(scope, notebookId, path, owner);
+    let key = unsyncedKey(scope, notebookId, path, owner);
     const releaseOwner = holdClaim(liveOwnerClaim(owner));
     keptKeys.current = [key];
     /** What sessions that ended kept of the note, taken by this one until it merged them or holds them as its own. */
@@ -282,6 +287,15 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
     };
     stopRef.current = stop;
     readRef.current = () => text.toString();
+    followRef.current = to => {
+      if (stopped || to === path) return;
+      const from = key;
+      path = to;
+      key = unsyncedKey(scope, notebookId, to, owner);
+      keptKeys.current = [key];
+      // Typing kept under the path the note left goes with it, so a later session where it lies finds it.
+      if (keeping) void store.put(keptEntry()).then(() => store.delete(from)).catch(() => {});
+    };
     /** Ends the session: the tab's document is dropped, and its unsaved text merged into the note or offered, whatever ended it. */
     const end = (ending: Ending) => {
       if (stopped) return;
@@ -516,6 +530,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       stop();
     };
   }, [live, session, scope]);
+  // The note followed to where it moved goes on in the running session: no new document, socket or editor.
+  useEffect(() => followRef.current(checkout.path), [checkout.path]);
 
   // 已儲存 waits until nothing was unsaved for SETTLE_MS, so typing does not flicker it, or 立即簽回 with it.
   const [settled, setSettled] = useState(true);

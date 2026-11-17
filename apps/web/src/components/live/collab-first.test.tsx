@@ -19,6 +19,7 @@ import { LiveBadge } from './LiveBadge.js';
 
 interface FakeConfig {
   document: import('yjs').Doc;
+  token?: () => Promise<string>;
   onDirty?: (event: { dirty: boolean; }) => void;
   onStatus?: (event: { status: string; }) => void;
   onSynced?: (event: { state: boolean; }) => void;
@@ -416,6 +417,34 @@ describe('moving, renaming or deleting a note one has open in the collab editor'
     await act(async () => {});
     expect(calls('/api/live/checkin')).toHaveLength(1);
     expect(remove).toHaveBeenCalledWith('r2');
+  });
+});
+
+// Another person moved or renamed the note this editor has open (§20.4): the page follows it there, and the person goes on
+// typing in the same editor, whose session, caret and focus stay.
+describe('a note one has open in the collab editor, followed to where it moved', () => {
+  const MOVED = 'notes/life/archive/alpha.md';
+
+  it('keeps the collab editor and the focus in it: no new checkout or session, and its next ticket asks where the note lies now', async () => {
+    const pane = { frame: 'pane' as const, onClose: undefined, live: live() };
+    const view = await mount({ ...pane, note: { ...note, live: liveState } });
+    act(() => {
+      fake.config!.document.getText('content').insert(0, '# Alpha\n');
+      fake.config!.onStatus?.({ status: 'connected' });
+      fake.config!.onSynced?.({ state: true });
+    });
+    const typing = screen.getByLabelText('Live note content');
+    act(() => typing.focus());
+    view.rerender(noteEditor({ ...pane, note: { ...note, id: MOVED, path: MOVED, live: liveState } }));
+    await act(async () => {});
+    expect(screen.getByLabelText('Live note content')).toBe(typing);
+    expect(document.activeElement).toBe(typing);
+    expect(calls('/api/live/checkout')).toHaveLength(1);
+    expect(fake.order).not.toContain('destroy');
+    // The connect it holds a ticket for is the first; the next, a reconnect, asks for one where the note lies now.
+    await act(async () => void await fake.config!.token!());
+    await act(async () => void await fake.config!.token!());
+    expect(calls('/api/live/socket-ticket').at(-1)![1]).toEqual(expect.objectContaining({ body: JSON.stringify({ notebookId: 'notes~life', path: MOVED }) }));
   });
 });
 

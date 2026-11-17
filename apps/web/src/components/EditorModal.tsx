@@ -5,6 +5,7 @@ import { NoteItem } from '../lib/types.js';
 import type { NoteRef } from '@mygitnotes/core/note-query';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useNoteEditing } from '../lib/note-editing.js';
+import { useFollowedKey } from '../lib/note-follows.js';
 import { usePanelContext } from '../lib/panel-context.js';
 import { NoteEditor } from './NoteEditor.js';
 import { useAssistantDockVisible } from './assistant/useAssistantDockVisible.js';
@@ -30,12 +31,14 @@ interface EditorModalProps {
 
 /** Zoom: the full-screen frame around a note's editor. */
 export const EditorModal: React.FC<EditorModalProps> = ({ note, committed, loading, isOpen, renderCompilation, behind, error }) => {
+  // A note the address follows to where it moved (another person moved or renamed it, §20.4) keeps its zoom and editor.
+  const zoomKey = useFollowedKey(note ? noteRefKey(note) : '');
   if (!isOpen) return null;
   const compilation = note && isCompilationPath(note.path) ? note : null;
   // The compilation keeps one place and one key whether it is shown or waits behind a note, so opening a note from it
   // does not unmount its view: editing state, scroll position and a section's editor survive, and zoom can borrow that editor.
   const shown = compilation ?? behind ?? null;
-  return <>{shown && <CompilationFrame key={noteRefKey(shown)} hidden={!compilation} error={compilation ? error : undefined}>{renderCompilation(shown.path)}</CompilationFrame>}{!compilation && (note ? <ZoomFrame key={noteRefKey(note)} note={note} committed={committed} error={error} /> : loading ? <EditorModalLoading /> : null)}</>;
+  return <>{shown && <CompilationFrame key={noteRefKey(shown)} hidden={!compilation} error={compilation ? error : undefined}>{renderCompilation(shown.path)}</CompilationFrame>}{!compilation && (note ? <ZoomFrame key={zoomKey} note={note} committed={committed} error={error} /> : loading ? <EditorModalLoading /> : null)}</>;
 };
 
 /** The action error above the zoom's content, where the person sees it. */
@@ -98,6 +101,7 @@ const ZoomFrame: React.FC<{ note: NoteItem; committed?: NoteItem; error?: string
   // A host that already edits this note lends its editor, so both places keep one session, cursor and undo history.
   useSyncExternalStore(hosts.subscribe, hosts.snapshot);
   const key = noteRefKey(note);
+  const editorKey = useFollowedKey(key);
   const [canBorrow] = useState(() => Boolean(hosts.owner(key)));
   const borrowed = canBorrow && Boolean(hosts.owner(key));
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
@@ -110,7 +114,7 @@ const ZoomFrame: React.FC<{ note: NoteItem; committed?: NoteItem; error?: string
     <div className='note-overlay viewport-overlay dock-edge fixed inset-0 z-50 bg-scrim/60 backdrop-blur-sm flex items-center justify-center p-3 animate-fadeIn'>
       <div role='dialog' aria-modal={modal} aria-label='Note editor' className='note-dialog ui-dialog shadow-2xl w-full max-w-none h-full flex flex-col overflow-hidden transition-colors'>
         <ZoomError error={error} />
-        {borrowed ? <div ref={setSlot} className='note-editor-slot' /> : <NoteEditor key={`${props.draftScope}:${key}`} {...props} note={note} frame='zoom' active onClose={editing.closeZoom} onMove={editing.moveNote?.(note)} onRename={editing.renameNote?.(note) && (title => editing.renameNote?.({ ...note, title })?.())} />}
+        {borrowed ? <div ref={setSlot} className='note-editor-slot' /> : <NoteEditor key={`${props.draftScope}:${editorKey}`} {...props} note={note} frame='zoom' active onClose={editing.closeZoom} onMove={editing.moveNote?.(note)} onRename={editing.renameNote?.(note) && (title => editing.renameNote?.({ ...note, title })?.())} />}
       </div>
     </div>
   );
