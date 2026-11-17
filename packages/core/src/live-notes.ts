@@ -3,7 +3,8 @@ import type { CommitAuthor } from './commit-author.js';
 import { isNotebookContent } from './folders.js';
 // The frontmatter block a note opens with, as `parseNoteContent` finds it.
 import { FRONTMATTER_REGEX } from './frontmatter-patch.js';
-import { LIVE_DEFAULT_DRAFT_LINES } from './live-default-draft.js';
+import { parseNoteContent } from './frontmatter.js';
+import { LIVE_DEFAULT_DRAFT_LINES, LIVE_DEFAULT_DRAFT_TITLES } from './live-default-draft.js';
 import { SourceError } from './github-api.js';
 import type { NotebookKey } from './notebook-key.js';
 import { isOutlinePath } from './outline.js';
@@ -371,14 +372,24 @@ export function liveSocketTicketOf(value: unknown): LiveSocketTicket | null {
 /** What makes a line content: a letter, a digit, or an image or embed. */
 const DRAFT_CONTENT = /[\p{L}\p{N}]|!\[|<(img|iframe|video)\b/iu;
 
+/** The frontmatter title a live text names, trimmed; undefined without one. */
+function draftTitle(text: string): string | undefined {
+  const { metadata } = parseNoteContent(normalizeLiveText(text));
+  return typeof metadata.title === 'string' && metadata.title.trim() ? metadata.title.trim() : undefined;
+}
+
 /**
  * Whether a pending note is an empty draft (docs/specs/2026-11-15-builtin-live-editor §19.1): once the lines of its
  * initial body, or without `initialText` the web's default new-note lines ({@link LIVE_DEFAULT_DRAFT_LINES}), are taken
  * out of its body, one each, what is left holds no letter, digit, image or embed. Whitespace, punctuation, Markdown
- * markers and emoji alone are empty; the frontmatter never counts, and lines are compared whole, without the whitespace
- * around them. The default lines are never taken out on top of an initial text's, so a line typed a second time counts.
+ * markers and emoji alone are empty, and lines are compared whole, without the whitespace around them. The default lines
+ * are never taken out on top of an initial text's, so a line typed a second time counts. Of the frontmatter only the
+ * title counts: a note someone gave a title is not empty (設了標題就算有內容), which is a title other than the initial
+ * text's, or without `initialText` one other than the web's default titles ({@link LIVE_DEFAULT_DRAFT_TITLES}).
  */
 export function isEmptyLiveDraft(text: string, initialText?: string): boolean {
+  const title = draftTitle(text);
+  if (title !== undefined && (initialText === undefined ? !LIVE_DEFAULT_DRAFT_TITLES.includes(title) : title !== draftTitle(initialText))) return false;
   const lines = (value: string) => normalizeLiveText(value).replace(FRONTMATTER_REGEX, '').split('\n').map(line => line.trim());
   const initial = new Map<string, number>();
   for (const line of initialText === undefined ? LIVE_DEFAULT_DRAFT_LINES : lines(initialText)) initial.set(line, (initial.get(line) ?? 0) + 1);

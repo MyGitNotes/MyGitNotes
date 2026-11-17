@@ -176,14 +176,14 @@ describe('a note in the collab editor', () => {
     target.remove();
   });
 
-  it('writes `title:` for a pending note', async () => {
+  it('writes `title:` and the heading that repeats it for a pending note', async () => {
     pending = true;
     await open({ onRename: vi.fn() });
     fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
     const title = within(panel()).getByRole('textbox', { name: 'Title' });
     fireEvent.change(title, { target: { value: 'Beta' } });
     fireEvent.keyDown(title, { key: 'Enter' });
-    expect(text().toString()).toBe(TEXT.replace('title: Alpha', 'title: Beta'));
+    expect(text().toString()).toBe(TEXT.replace('title: Alpha', 'title: Beta').replace('\n# Alpha\n', '\n# Beta\n'));
   });
 
   // VQ P2: the row said 「無狀態」 with no tags, as if the note had none.
@@ -362,7 +362,7 @@ describe('a note in the collab editor', () => {
     expect(onRename).not.toHaveBeenCalled();
   });
 
-  it('writes `title:` from the note row’s title for a pending note', async () => {
+  it('writes `title:` and the heading from the note row’s title for a pending note', async () => {
     pending = true;
     const onRename = vi.fn();
     await open({ onRename });
@@ -371,7 +371,7 @@ describe('a note in the collab editor', () => {
     fireEvent.change(input, { target: { value: 'Beta' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     await act(async () => {});
-    expect(text().toString()).toBe(TEXT.replace('title: Alpha', 'title: Beta'));
+    expect(text().toString()).toBe(TEXT.replace('title: Alpha', 'title: Beta').replace('\n# Alpha\n', '\n# Beta\n'));
     expect(onRename).not.toHaveBeenCalled();
   });
 

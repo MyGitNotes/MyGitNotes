@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { LIVE_FRONTMATTER_ORIGIN, readLiveFrontmatter, writeLiveFrontmatter, writeLiveYaml } from './live-frontmatter.js';
+import { LIVE_FRONTMATTER_ORIGIN, readLiveFrontmatter, writeLiveFrontmatter, writeLiveTitle, writeLiveYaml } from './live-frontmatter.js';
 
 const NOTE = '---\n# kept\ntitle: Plan\ntags: [a]\nstatus: draft\n---\n\nBody\n';
 
@@ -43,6 +43,47 @@ describe('readLiveFrontmatter', () => {
     expect(read).toMatchObject({ valid: false, yaml: 'title: x', bodyStart: 0, metadata: {} });
     expect(read.error).toContain('---x');
     expect(readLiveFrontmatter('---\ntitle: x\nBody\n').error).toMatch(/closing/i);
+  });
+});
+
+// lm-visual3: a new note's heading stayed "Untitled" once titled, so check-in discarded it as empty (設了標題就算有內容).
+describe('writeLiveTitle', () => {
+  const NEW = '---\ntitle: Untitled\nstatus: inbox\n---\n# Untitled\n\nWrite your note here.\n';
+
+  it('writes the title and the heading that repeats it, nothing else', () => {
+    const { a } = pair(NEW);
+    expect(writeLiveTitle(a, readLiveFrontmatter(NEW).metadata, 'Plan', 'Untitled')).toBe(true);
+    expect(a.toString()).toBe(NEW.replace('title: Untitled', 'title: Plan').replace('# Untitled', '# Plan'));
+  });
+
+  it('leaves a heading that is not the title, and rewrites the one that names a note without a frontmatter title', () => {
+    const own = '---\ntitle: Untitled\n---\n# Chapter one\r\nBody\n';
+    const { a } = pair(own);
+    writeLiveTitle(a, readLiveFrontmatter(own).metadata, 'Plan', 'Untitled');
+    expect(a.toString()).toBe(own.replace('title: Untitled', 'title: Plan'));
+    const bare = '---\nstatus: inbox\n---\n\n# Draft\r\nBody\n';
+    const { a: b } = pair(bare);
+    writeLiveTitle(b, readLiveFrontmatter(bare).metadata, 'Plan', 'Draft');
+    expect(b.toString()).toBe('---\nstatus: inbox\ntitle: Plan\n---\n\n# Plan\r\nBody\n');
+  });
+
+  it('keeps what another tab typed in the body meanwhile, in one transaction of the panel', () => {
+    const { a, b, one, sync } = pair(NEW);
+    let transactions = 0;
+    one.on('afterTransaction', transaction => void (transaction.origin === LIVE_FRONTMATTER_ORIGIN && transactions++));
+    b.insert(NEW.length, 'typed\n');
+    writeLiveTitle(a, readLiveFrontmatter(NEW).metadata, 'Plan', 'Untitled');
+    sync();
+    expect(transactions).toBe(1);
+    expect(a.toString()).toBe(`${NEW.replace('title: Untitled', 'title: Plan').replace('# Untitled', '# Plan')}typed\n`);
+    expect(b.toString()).toBe(a.toString());
+  });
+
+  it('writes nothing while the block does not parse', () => {
+    const broken = '---\ntitle: [Untitled\n---\n# Untitled\n';
+    const { a } = pair(broken);
+    expect(writeLiveTitle(a, {}, 'Plan', 'Untitled')).toBe(false);
+    expect(a.toString()).toBe(broken);
   });
 });
 

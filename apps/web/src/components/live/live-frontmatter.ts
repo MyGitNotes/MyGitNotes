@@ -82,6 +82,31 @@ export function writeLiveFrontmatter(text: Y.Text, shown: NoteMetadata, next: No
   return true;
 }
 
+/**
+ * Names a pending live note `title`, as a rename retitles a file (core `retitle`): its frontmatter title, and the first
+ * heading where it repeats the `previous` title, or names the note for want of a frontmatter title. Only the heading's
+ * own line is rewritten, so typing elsewhere in the body stays; both writes are one transaction. False while the block
+ * does not parse.
+ */
+export function writeLiveTitle(text: Y.Text, shown: NoteMetadata, title: string, previous: string): boolean {
+  let written = false;
+  const run = () => {
+    if (!writeLiveFrontmatter(text, shown, { ...shown, title })) return;
+    written = true;
+    const current = text.toString();
+    const { bodyStart } = readLiveFrontmatter(current);
+    const heading = /^#[ \t]+([^\r\n]+)/m.exec(current.slice(bodyStart));
+    if (!heading || typeof shown.title === 'string' && heading[1].trim() !== previous.trim()) return;
+    const line = `# ${title}`;
+    if (heading[0] === line) return;
+    text.delete(bodyStart + heading.index, heading[0].length);
+    text.insert(bodyStart + heading.index, line);
+  };
+  if (text.doc) text.doc.transact(run, LIVE_FRONTMATTER_ORIGIN);
+  else run();
+  return written;
+}
+
 /** The map a YAML text holds: `{}` for an empty text, null for one that does not parse to a map. */
 function yamlMap(yaml: string): NoteMetadata | null {
   try {

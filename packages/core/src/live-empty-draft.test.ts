@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { LIVE_DEFAULT_DRAFT_LINES } from './live-default-draft.js';
+import { LIVE_DEFAULT_DRAFT_LINES, LIVE_DEFAULT_DRAFT_TITLES } from './live-default-draft.js';
 import { isEmptyLiveDraft } from './live-notes.js';
 
 /* What counts as an empty draft, which a sweep or 「立即簽回」 discards (docs/specs/2026-11-15-builtin-live-editor §19.1). */
 
-const titled = (body: string) => `---\ntitle: 會議\ntags: [a]\n---\n${body}`;
+/** A draft under the frontmatter the web's new note has: the default title, which names nothing yet. */
+const titled = (body: string) => `---\ntitle: 未命名\ntags: [a]\n---\n${body}`;
 
 describe('isEmptyLiveDraft', () => {
   it('takes a body of whitespace, punctuation, Markdown markers or emoji alone as empty', () => {
@@ -22,10 +23,26 @@ describe('isEmptyLiveDraft', () => {
     }
   });
 
-  it('never counts the frontmatter: a title or template fields alone are empty', () => {
-    expect(isEmptyLiveDraft('---\ntitle: A long title with words 123\ndate: 2026-11-15\n---\n')).toBe(true);
-    expect(isEmptyLiveDraft('---\ntitle: Only frontmatter\n---')).toBe(true);
-    expect(isEmptyLiveDraft('---\r\ntitle: CRLF\r\n---\r\n\r\n  \r\n')).toBe(true);
+  it('counts no frontmatter field but the title: template fields or the default title alone are empty', () => {
+    expect(isEmptyLiveDraft('---\ntitle: Untitled\ndate: 2026-11-15\nstatus: draft\n---\n')).toBe(true);
+    expect(isEmptyLiveDraft('---\ntitle: 未命名\n---')).toBe(true);
+    expect(isEmptyLiveDraft('---\r\ntitle: " Untitled "\r\n---\r\n\r\n  \r\n')).toBe(true);
+    expect(isEmptyLiveDraft('---\ntitle: ""\ndate: 2026-11-15\n---\n')).toBe(true);
+  });
+
+  // Boss decision (0.22.1 follow-ups): 設了標題就算有內容, a note someone gave a title is not discarded as empty.
+  it('takes a title someone set as content: another than the initial text’s, or without one, than the default titles', () => {
+    expect(isEmptyLiveDraft('---\ntitle: A long title with words 123\ndate: 2026-11-15\n---\n')).toBe(false);
+    expect(isEmptyLiveDraft('---\r\ntitle: CRLF\r\n---\r\n\r\n  \r\n')).toBe(false);
+    expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n').replace('title: 未命名', 'title: 週會'))).toBe(false);
+    const created = titled('# Untitled\n\nWrite your note here.\n').replace('title: 未命名', 'title: Untitled');
+    expect(isEmptyLiveDraft(created, created)).toBe(true);
+    expect(isEmptyLiveDraft(created.replace('title: Untitled', 'title: Plan'), created)).toBe(false);
+    // The title a template gave the note is its initial text's, not one someone set.
+    const meeting = '---\ntitle: 週會\n---\n## 待辦\n- \n';
+    expect(isEmptyLiveDraft(meeting, meeting)).toBe(true);
+    expect(isEmptyLiveDraft(meeting.replace('title: 週會', 'title: 週會\nstatus: doing'), meeting)).toBe(true);
+    expect(isEmptyLiveDraft(meeting, '## 待辦\n- \n')).toBe(false);
   });
 
   it('judges only what is left once the lines of the initial body are removed', () => {
@@ -35,8 +52,9 @@ describe('isEmptyLiveDraft', () => {
     expect(isEmptyLiveDraft(titled('# 週會\n\nKind: 週會, room: {{room}}\n   \n## 待辦\n- \n- \n---\n\n'), template)).toBe(true);
     // A line of the template with spaces around it is still the template's line.
     expect(isEmptyLiveDraft(titled('  # 週會  \n\nKind: 週會, room: {{room}}\n\n## 待辦\n- \n'), template)).toBe(true);
-    // The frontmatter may change (a new title) and still nothing was written.
-    expect(isEmptyLiveDraft(template.replace('title: 會議', 'title: 另一個標題'), template)).toBe(true);
+    // Other frontmatter may change and still nothing was written; a new title is content (設了標題就算有內容).
+    expect(isEmptyLiveDraft(template.replace('tags: [a]', 'tags: [a, b]'), template)).toBe(true);
+    expect(isEmptyLiveDraft(template.replace('title: 未命名', 'title: 另一個標題'), template)).toBe(false);
     // Anything written in a line of its own, or into a template line, is content.
     expect(isEmptyLiveDraft(titled('# 週會\n\nKind: 週會, room: {{room}}\n\n## 待辦\n- 買牛奶\n'), template)).toBe(false);
     expect(isEmptyLiveDraft(titled('# 週會\n\nKind: 週會, room: 3F\n\n## 待辦\n- \n'), template)).toBe(false);
@@ -87,7 +105,8 @@ describe('isEmptyLiveDraft', () => {
     expect(isEmptyLiveDraft(titled('# 未命名\n\n在這裡寫下筆記。\n在這裡寫下筆記。\n'), placeholder)).toBe(false);
   });
 
-  it('lists the default lines it takes out', () => {
+  it('lists the default lines it takes out and the default titles', () => {
     expect(LIVE_DEFAULT_DRAFT_LINES).toEqual(expect.arrayContaining(['# 未命名', '在這裡寫下筆記。', '# Untitled', 'Write your note here.']));
+    expect(LIVE_DEFAULT_DRAFT_TITLES).toEqual(expect.arrayContaining(['未命名', 'Untitled']));
   });
 });

@@ -1,4 +1,4 @@
-import { LIVE_DEFAULT_DRAFT_LINES } from '@mygitnotes/core/live-default-draft';
+import { LIVE_DEFAULT_DRAFT_LINES, LIVE_DEFAULT_DRAFT_TITLES } from '@mygitnotes/core/live-default-draft';
 import { describe, expect, it } from 'vitest';
 import type { Language } from './i18n/context.js';
 import { en, type TranslationKey } from './i18n/en.js';
@@ -18,6 +18,8 @@ describe('the untemplated new note core takes as an empty live draft', () => {
       const title = messages['createNote.untitled'];
       const body = messages['createNote.body'];
       expect(LIVE_DEFAULT_DRAFT_LINES).toContain(`# ${title}`);
+      // Its frontmatter title too: one the person has not changed names nothing (設了標題就算有內容).
+      expect(LIVE_DEFAULT_DRAFT_TITLES).toContain(title);
       expect(LIVE_DEFAULT_DRAFT_LINES).toContain(body);
       const { content } = buildNewNoteDraft({ slug: 'untitled', title, tags: [], status: 'inbox', body });
       const lines = content.split('\n').map(line => line.trim()).filter(Boolean);

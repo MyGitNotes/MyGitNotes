@@ -38,7 +38,7 @@ import { LiveEditorFrame } from './live/LiveEditorFrame.js';
 import { useEditorModeRoute } from '../app/editor-mode-route.js';
 import { shownEditorMode } from '../lib/editor-mode-url.js';
 import { LiveCollabEditor, type LiveSession } from './live/LiveCollabEditor.js';
-import { replaceLiveText, useLiveText, writeLiveFrontmatter, writeLiveYaml } from './live/live-frontmatter.js';
+import { replaceLiveText, useLiveText, writeLiveFrontmatter, writeLiveTitle, writeLiveYaml } from './live/live-frontmatter.js';
 import { LiveRestoreDialog } from './live/LiveRestoreDialog.js';
 import { useLiveEdit, useLiveTheme } from './live/useLiveEdit.js';
 
@@ -383,7 +383,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   }
 
   const liveHistory = { target: historyTarget, dirty: true, current: liveCurrent, onRestore: shared?.online ? restoreLive : undefined };
-  const liveRename = givenReadOnly || template ? undefined : liveEdit.checkout?.pending ? (title: string) => setLiveMetadata({ ...liveFrontmatter.metadata, title }) : own?.rename ? (title: string) => void own.rename!(title) : undefined;
+  // A pending note takes its title in its live text, heading included, so the title counts as content at check-in (設了標題就算有內容).
+  const liveRename = givenReadOnly || template ? undefined : liveEdit.checkout?.pending ? (title: string) => void (sharedText && writeLiveTitle(sharedText, liveFrontmatter.metadata, title, liveTitle)) : own?.rename ? (title: string) => void own.rename!(title) : undefined;
   const quickActions = <NoteQuickActions {...footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) })} changes={changes} disabled={session.isSaving} />;
   const history = { target: historyTarget, dirty: session.isDirty, current: currentFile, onRestore: readOnly || session.locked ? undefined : restoreFile, onCommitVersion: onCommitFile && !readOnly ? async (text: VersionText) => void await session.commitNote({ path: note.path, today: today(), ...text }) : undefined };
   const directPanel = { ...docPanel, isMarkdown, history, onRename: readOnly || template ? undefined : onRename, notePath: note.path, content: session.content, lineNumberOffset: session.baseNote.lineNumberOffset || 0, metadata: session.metadata, setMetadata: session.setMetadata, statuses, metadataFields, availableTags, locked: session.locked, notebookId: note.notebookId, readOnly };
