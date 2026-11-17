@@ -305,7 +305,11 @@ describe.skipIf(!url)('the server entry with the built-in editor on, over a real
     tabs.push(opened);
     return opened;
   };
-  /** Ann and Ben sign in, open the note and type a line each; answers the text they left and the repository's id. */
+  /**
+   * Ann and Ben sign in, open the note and type a line each; answers the text they left and the repository's id. The
+   * server stamps typing by the test's clock, and Ann's line is stored and acknowledged before that clock moves on a
+   * second: Ben typed last by that stamp, whatever the wall clock does.
+   */
   const typedByTwo = async () => {
     const [ann, ben] = [await signIn('ann'), await signIn('ben')];
     const opened = await post('/api/live/checkout', note, ann);
@@ -336,7 +340,7 @@ describe.skipIf(!url)('the server entry with the built-in editor on, over a real
     expect(await dropKeys()).toBe(0);
   });
 
-  it("lets two signed-in people type over the socket, and the idle check-in commits with the first editor's stored token: they author it, and the second is a co-author by noreply address", async () => {
+  it('lets two signed-in people type over the socket, and the idle check-in commits with the stored token of whoever typed last: they author it, and the other is a co-author by noreply address', async () => {
     const server = await start();
     const { text, repository } = await typedByTwo();
     // Nothing is due while less than 5 minutes passed since Ben's line.
@@ -350,12 +354,12 @@ describe.skipIf(!url)('the server entry with the built-in editor on, over a real
     expect(fixture.text(note.path)).toBe(text);
     expect(commitsMade()).toHaveLength(1);
     const [{ body: commit }] = commitsMade();
-    expect(commit.author).toEqual({ name: 'ann', email: '101+ann@users.noreply.github.com' });
-    expect(commit.message.split('\n').filter((line: string) => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: ben <102+ben@users.noreply.github.com>']);
+    expect(commit.author).toEqual({ name: 'ben', email: '102+ben@users.noreply.github.com' });
+    expect(commit.message.split('\n').filter((line: string) => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: ann <101+ann@users.noreply.github.com>']);
     expect(commit.message).toMatch(/^docs\(notes\): live edit a\.md\n\nLive-Link: /);
-    // Every provider request of the check-in carried Ann's own token, the one her sign-in stored.
+    // Every provider request of the check-in carried Ben's own token, the one his sign-in stored.
     expect(outbound.length).toBeGreaterThan(0);
-    expect([...new Set(outbound.map(call => call.token))]).toEqual(['token-ann']);
+    expect([...new Set(outbound.map(call => call.token))]).toEqual(['token-ben']);
     expect(await server.live!.service.checkouts(repository)).toEqual([]);
     // The remote cache went to its own Redis, and the records and the live store stayed in the other.
     const [main, cache] = [await keys(0), await keys(1)];
@@ -365,7 +369,7 @@ describe.skipIf(!url)('the server entry with the built-in editor on, over a real
     expect(main.filter(key => key.startsWith(`gh-notes:${namespace}:cache:`))).toEqual([]);
   }, 30_000);
 
-  it("commits with the second editor's token when the first editor's was revoked, credits both, and leaves the text live when nobody's works", async () => {
+  it("commits with the earlier editor's token when the last typer's was revoked, credits both, and leaves the text live when nobody's works", async () => {
     const server = await start();
     const { text, repository } = await typedByTwo();
     now += 5 * 60_000;
@@ -375,16 +379,17 @@ describe.skipIf(!url)('the server entry with the built-in editor on, over a real
     expect(commitsMade()).toEqual([]);
     expect(warned.mock.calls.flat().join('\n')).toMatch(/committed nothing/);
     expect((await server.live!.service.checkouts(repository)).map(row => row.path)).toEqual([note.path]);
-    // Ben may write again: the next tick commits with his token, and Ann is still credited.
-    revoked.delete('token-ben');
+    // Ann may write again: the next tick tries Ben's token first, as he typed last, then commits with hers, and Ben is still credited.
+    revoked.delete('token-ann');
     now += 60_000;
     outbound.length = 0;
     expect(await sweepIdleLive(server.live!, { now: () => now })).toMatchObject({ due: 1, results: [{ committed: true, released: true }] });
     expect(fixture.text(note.path)).toBe(text);
     const [{ body: commit }] = commitsMade();
-    expect(commit.author).toEqual({ name: 'ben', email: '102+ben@users.noreply.github.com' });
-    expect(commit.message).toContain('Co-authored-by: ann <101+ann@users.noreply.github.com>');
-    expect(outbound.filter(call => call.method !== 'GET').every(call => call.token === 'token-ben')).toBe(true);
+    expect(commit.author).toEqual({ name: 'ann', email: '101+ann@users.noreply.github.com' });
+    expect(commit.message.split('\n').filter((line: string) => line.startsWith('Co-authored-by:'))).toEqual(['Co-authored-by: ben <102+ben@users.noreply.github.com>']);
+    expect([...new Set(outbound.map(call => call.token))]).toEqual(['token-ben', 'token-ann']);
+    expect(outbound.filter(call => call.method !== 'GET').every(call => call.token === 'token-ann')).toBe(true);
   }, 30_000);
 
   it('closes its sockets and stops answering when it is told to stop', async () => {
