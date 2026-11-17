@@ -92,6 +92,8 @@ export function createStudyRouter(): Router {
           status = nextStudy.events.at(-1)!.transition!.toStatus;
         }
         const yaml = stringify(nextStudy, { lineWidth: 0 }), updated = replaceNoteStatus(rawNote, status);
+        // A frontmatter block that cannot be read takes no status; the review is refused rather than recorded without it.
+        if (updated === rawNote && (currentNote.status ?? null) !== status) throw new SourceError('This note’s frontmatter cannot be read. Fix it before reviewing.', 409);
         if (Buffer.byteLength(yaml) > STUDY_MAX_BYTES) throw new SourceError('Study data is too large.', 413);
         const parsed = parseNoteContent(updated, body.path);
         let revision: string;

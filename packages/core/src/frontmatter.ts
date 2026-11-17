@@ -126,20 +126,51 @@ function patchNoteMetadata(raw: string, metadata: NoteMetadata): string | null {
 export type NoteFrontmatterSpan =
   /** `end` is just past the closing fence, `bodyStart` past the blank separator line too. */
   | { yaml: string; end: number; bodyStart: number; metadata: NoteMetadata; }
-  /** A block whose YAML does not parse to a map: `parseNoteContent` reads it as body. */
-  | { invalid: true; yaml: string; end: number; bodyStart: number; };
+  /**
+   * A block `parseNoteContent` reads as body: its YAML does not parse to a map, or it has no closing fence. Then
+   * `unclosed` is the line that starts with `---` yet has more on it (`---x`, `----`), through which the block runs,
+   * or `''` when no line does and the block runs to the end of the text.
+   */
+  | { invalid: true; yaml: string; end: number; bodyStart: number; unclosed?: string; };
+
+/** A text's first line is a lone `---`: it opens a frontmatter block, closed or not. */
+const OPENING_FENCE = /^---\r?\n/;
+
+/** The blank line after a block's last line, which separates it from the body. */
+const separatorAt = (text: string, end: number) => text.slice(end).match(/^[ \t]*\r?\n/)?.[0] ?? '';
+
+/**
+ * A block opened by `---` that no fence closes: it runs through the first line that starts with `---`, or to the end
+ * of the text. A lone `---` right after the opening closes an empty block, which does not parse to a map either.
+ */
+function unclosedSpan(text: string): NoteFrontmatterSpan | null {
+  const opening = OPENING_FENCE.exec(text);
+  if (!opening) return null;
+  const start = opening[0].length;
+  for (let at = start; at < text.length;) {
+    const lineEnd = text.indexOf('\n', at);
+    const next = lineEnd === -1 ? text.length : lineEnd + 1;
+    if (text.startsWith('---', at)) {
+      const line = text.slice(at, next).replace(/\r?\n$/, '');
+      const yaml = text.slice(start, at).replace(/\r?\n$/, '');
+      return { invalid: true, yaml, end: next, bodyStart: next + separatorAt(text, next).length, ...(/^---[ \t]*$/.test(line) ? {} : { unclosed: line }) };
+    }
+    at = next;
+  }
+  return { invalid: true, yaml: text.slice(start), end: text.length, bodyStart: text.length, unclosed: '' };
+}
 
 /**
  * Where a text's frontmatter is and what it holds, with the same fence, map check and separator
- * line as `parseNoteContent`; `null` when the text has no block. The collab editor hides
- * `[0, bodyStart)` and its panel reads `metadata` from it.
+ * line as `parseNoteContent`; `null` when the text has no block. A text whose first line opens a
+ * block that no fence closes has an invalid one. The collab editor hides `[0, bodyStart)` and
+ * its panel reads `metadata` from it.
  */
 export function noteFrontmatterSpan(text: string): NoteFrontmatterSpan | null {
   const match = text.match(FRONTMATTER_REGEX);
-  if (!match) return null;
+  if (!match) return unclosedSpan(text);
   const end = match[0].length;
-  const separator = text.slice(end).match(/^[ \t]*\r?\n/)?.[0] ?? '';
-  const bodyStart = end + separator.length;
+  const bodyStart = end + separatorAt(text, end).length;
   const yaml = match[1];
   try {
     const parsed: unknown = YAML.parse(yaml);
@@ -267,7 +298,9 @@ export function replaceNoteStatus(raw: string, status: string | null): string {
     }
     return patch(start, end, !map.flow && map.items.length === 1 ? `{}${newline}` : '');
   }
-  return status === null ? raw : `---\n${YAML.stringify({ status })}---\n${raw}`;
+  // A block that cannot be read keeps the text as it is, rather than a second block going in front of it (CFR2-F001):
+  // the caller compares the result to tell.
+  return status === null || OPENING_FENCE.test(raw) ? raw : `---\n${YAML.stringify({ status })}---\n${raw}`;
 }
 
 /**
@@ -327,6 +360,8 @@ export function fillMissingNoteTimestamps(raw: string, created: string | undefin
     const insertAt = `---${newline}`.length + match[1].length;
     return { raw: `${raw.slice(0, insertAt)}${lines.map(line => `${newline}${line}`).join('')}${raw.slice(insertAt)}`, changed: true };
   }
+  // A block that cannot be read is not filled, nor given a second block in front of it (CFR2-F001).
+  if (OPENING_FENCE.test(raw)) return { raw, changed: false };
 
   const fields: [string, string][] = [];
   if (created) fields.push(['created', created]);
