@@ -283,6 +283,19 @@ Choosing a sort saves it for the current notebook only, and switching notebooks 
 (toolbar, phone filter sheet, mobile list sort, Kanban board and columns) list `metadata.<key>` in both orders,
 labelled by its key, when the notebook's `default_sort` or the sort in force names one.
 
+## Last notebook opened
+
+An address that names no notebook (`/`, `/notes`, `/index.html`, `/notebooks`, the PWA's `start_url`, `/graph`,
+`/files`, `/agent`, and the former `notebook=all` redirect) opens the notebook the person last opened on this
+browser, not the workspace's `default_notebook`. `useWorkspaceSync` resolves it with `openingNotebook`
+(`apps/web/src/lib/last-notebook.ts`): the notebook the route names, else the one remembered while the workspace
+still lists it in `keyedConfig.notebooks`, else `default_notebook`, else the first notebook. Every route that names a
+notebook the workspace lists saves it in `localStorage` under `github-notes:last-notebook:<default repository id>`,
+so each workspace keeps its own. A remembered notebook the workspace no longer lists (removed, or its repository
+unavailable or no longer permitted) falls back silently and is kept, so a repository that is down for a moment
+does not lose it; it opens again once the workspace lists it. A demo workspace remembers nothing. It is a
+view preference of the device: no file is written and no commit made.
+
 ## Notes, files and `exclude`
 
 A note is a Markdown or text file (`.md`, `.markdown`, `.mdx`, `.txt`) in a notebook, outside its assets folder, dot

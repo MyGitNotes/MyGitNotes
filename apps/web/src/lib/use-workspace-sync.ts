@@ -16,6 +16,7 @@ import { sameValue } from './merge-note.js';
 import { invalidateNoteQueries, NOTE_QUERY_KEY } from './use-note-queries.js';
 import { setWorkspaceNotebooks } from './workspace-links.js';
 import { setNotebookPreferences } from './notebook-preferences.js';
+import { openingNotebook, readLastNotebook, rememberLastNotebook } from './last-notebook.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
 import { listLocalDrafts } from './storage.js';
 import { recordOpenedScopes } from './kept-drafts.js';
@@ -82,9 +83,18 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
   const resolveBareNotebook = (localId: string) => resolveBareId(notebookRepositories(repositories), sourceId, localId);
   // A route that still names a bare local id selects the notebook it resolves to while the redirect replaces the URL.
   const routedNotebook = routeNotebook && !isNotebookKey(routeNotebook) ? resolveBareNotebook(routeNotebook) ?? routeNotebook : routeNotebook;
-  const selectedNotebookId = routedNotebook || config?.workspace.default_notebook || config?.notebooks[0]?.id || 'example';
-
   const defaultRepository = repositories.find(repository => repository.id === sourceId);
+  // The notebook last opened is remembered per workspace, by its default repository; a demo starts at its default notebook every visit.
+  const lastNotebookScope = defaultRepository && !defaultRepository.demo ? defaultRepository.id : null;
+  // Read again whenever the route changes, so returning to an address without a notebook finds the one just opened.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `routedNotebook` and `config` only mark when the stored value may have changed.
+  const remembered = useMemo(() => (lastNotebookScope ? readLastNotebook(lastNotebookScope) : null), [lastNotebookScope, routedNotebook, config]);
+  const selectedNotebookId = openingNotebook({ routed: routedNotebook, remembered, config });
+  useEffect(() => {
+    if (!config || !lastNotebookScope) return;
+    if (routedNotebook && config.notebooks.some(notebook => notebook.id === routedNotebook)) rememberLastNotebook(lastNotebookScope, routedNotebook);
+  }, [config, lastNotebookScope, routedNotebook]);
+
   const defaultRepositoryBranch = defaultRepository?.branch ?? '';
   const repositoryFor = (notebookId: string) => repositoryOf(repositories, notebookId);
   // Each note takes the preferences of its own repository; without a notebook, the default repository's, and with

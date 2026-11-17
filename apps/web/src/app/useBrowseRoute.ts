@@ -20,7 +20,7 @@ interface Params {
 }
 
 export function useBrowseRoute({ editorRoute, config, location, queryState, setFileMetadataOpen, loading, loadError, filtersOpen, setFiltersOpen, selectedNotebookId }: Params) {
-  const editorNotebookId = editorRoute.notebook || config?.workspace.default_notebook || config?.notebooks[0]?.id || 'example';
+  const editorNotebookId = editorRoute.notebook || selectedNotebookId;
   const returnTo = noteReturnRoute(location.search, editorNotebookId, editorRoute.folder);
   const route = useMemo(() => {
     if (!editorRoute.note) return { ...editorRoute, ...queryState, tag: queryState.tag[0] || null, tags: queryState.tag };
