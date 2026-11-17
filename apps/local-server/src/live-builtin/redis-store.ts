@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { isLiveUnmovedReason, LiveUnavailableError, type LiveUnmovedReason, type RepositoryId } from '@mygitnotes/core';
+import { isLiveUnmovedReason, type LiveIdentity, LiveUnavailableError, type LiveUnmovedReason, type RepositoryId } from '@mygitnotes/core';
 import { createClient, ErrorReply } from 'redis';
 import { recordKeyPrefix } from '../record-store/index.js';
 import { LIVE_ENDED_MAX_BYTES, LIVE_FORMER_PATHS, LIVE_MERGE_MS, LIVE_PRESENCE_MS, LIVE_TICKET_MS, type LiveStore, type StoredEditor, type StoredLink, type StoredTicket } from './store.js';
@@ -97,7 +97,7 @@ elseif redis.call('HGET', link, 'live') ~= '1' then
   outcome = 'reopened'
   redis.call('HINCRBY', link, 'epoch', 1)
   redis.call('HSET', link, 'contentSeq', redis.call('HGET', link, 'seq'))
-  redis.call('HDEL', link, 'syncedAt', 'syncedHash', 'lastEditAt', 'conflict', 'target', 'unmoved', 'unmovedReason', 'formerPaths')
+  redis.call('HDEL', link, 'syncedAt', 'syncedHash', 'lastEditAt', 'conflict', 'target', 'movedBy', 'unmoved', 'unmovedReason', 'formerPaths')
 end
 if outcome ~= 'joined' then
   redis.call('HMSET', link, 'live', '1', 'notebook', ARGV[5], 'since', ARGV[10], 'gen', '0', 'contentHash', ARGV[8])
@@ -232,7 +232,7 @@ elseif at[7] then
     redis.call('HSET', KEYS[1], 'unmoved', at[7])
     if ARGV[10] == '' then redis.call('HDEL', KEYS[1], 'unmovedReason') else redis.call('HSET', KEYS[1], 'unmovedReason', ARGV[10]) end
   end
-  redis.call('HDEL', KEYS[1], 'target')
+  redis.call('HDEL', KEYS[1], 'target', 'movedBy')
 end
 redis.call('HMSET', KEYS[1], 'base', ARGV[3], 'syncedAt', ARGV[2], 'syncedHash', ARGV[4])
 if ARGV[6] == '' then redis.call('HDEL', KEYS[1], 'conflict') else redis.call('HSET', KEYS[1], 'conflict', ARGV[6]) end
@@ -275,7 +275,7 @@ erase(ARGV[4], at[4], at[3], at[5], at[6])
 redis.call('DEL', KEYS[1], KEYS[7])
 return 'discarded'`;
 
-/** KEYS link, lease. ARGV token, now, kind ('rule' or 'target'), the path rule or target ('' to take the target away). */
+/** KEYS link, lease. ARGV token, now, kind ('rule' or 'target'), the path rule or target ('' to take the target away), who moved it as JSON ('' for nobody named). */
 const RETARGET = `${HOLDER}${FORMER}
 if not holder(ARGV[1], ARGV[2]) then return 'leased' end
 local path = redis.call('HGET', KEYS[1], 'path')
@@ -288,6 +288,7 @@ end
 if not path then return 'not-filed' end
 former(redis.call('HGET', KEYS[1], 'target'), ARGV[4] == '' and path or ARGV[4])
 if ARGV[4] == '' then redis.call('HDEL', KEYS[1], 'target') else redis.call('HSET', KEYS[1], 'target', ARGV[4]) end
+if ARGV[4] == '' or ARGV[5] == '' then redis.call('HDEL', KEYS[1], 'movedBy') else redis.call('HSET', KEYS[1], 'movedBy', ARGV[5]) end
 redis.call('HDEL', KEYS[1], 'unmoved', 'unmovedReason')
 return 'retargeted'`;
 
@@ -376,7 +377,7 @@ function linkOf(reply: unknown): StoredLink | null {
   const number = (name: string) => Number(fields.get(name) ?? 0);
   const time = (name: string) => fields.has(name) ? Number(fields.get(name)) : null;
   const parsed = (name: string) => fields.has(name) ? JSON.parse(fields.get(name)!) : null;
-  return { id, repository: fields.get('repository') ?? '', notebook: fields.get('notebook') ?? '', path: fields.get('path') ?? null, ...(fields.has('pathRule') ? { pathRule: fields.get('pathRule') } : {}), ...(fields.has('target') ? { target: fields.get('target') } : {}), ...(fields.has('unmoved') ? { unmoved: fields.get('unmoved'), ...(isLiveUnmovedReason(fields.get('unmovedReason')) ? { unmovedReason: fields.get('unmovedReason') as LiveUnmovedReason } : {}) } : {}), ...(fields.has('formerPaths') ? { formerPaths: parsed('formerPaths') as string[] } : {}), since: number('since'), epoch: number('epoch'), live: fields.get('live') === '1', base: parsed('base'), syncedAt: time('syncedAt'), syncedHash: fields.get('syncedHash') ?? null, lastEditAt: time('lastEditAt'), conflict: parsed('conflict'), seq: number('seq'), gen: number('gen'), contentHash: fields.get('contentHash') ?? '', contentSeq: number('contentSeq') };
+  return { id, repository: fields.get('repository') ?? '', notebook: fields.get('notebook') ?? '', path: fields.get('path') ?? null, ...(fields.has('pathRule') ? { pathRule: fields.get('pathRule') } : {}), ...(fields.has('target') ? { target: fields.get('target'), ...(fields.has('movedBy') ? { movedBy: parsed('movedBy') as LiveIdentity } : {}) } : {}), ...(fields.has('unmoved') ? { unmoved: fields.get('unmoved'), ...(isLiveUnmovedReason(fields.get('unmovedReason')) ? { unmovedReason: fields.get('unmovedReason') as LiveUnmovedReason } : {}) } : {}), ...(fields.has('formerPaths') ? { formerPaths: parsed('formerPaths') as string[] } : {}), since: number('since'), epoch: number('epoch'), live: fields.get('live') === '1', base: parsed('base'), syncedAt: time('syncedAt'), syncedHash: fields.get('syncedHash') ?? null, lastEditAt: time('lastEditAt'), conflict: parsed('conflict'), seq: number('seq'), gen: number('gen'), contentHash: fields.get('contentHash') ?? '', contentSeq: number('contentSeq') };
 }
 
 /** The prefix of every live store key of this deployment, namespaced as its sessions are. */
@@ -518,8 +519,8 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
     },
     async retarget(id, token, change, now) {
       if (!isLink(id)) return 'leased';
-      const [kind, value] = typeof change === 'string' ? ['rule', change] : ['target', change.target ?? ''];
-      return await script(`retarget ${id}`, RETARGET, [key.link(id), key.lease(id)], [token, now, kind, value]) as 'retargeted' | 'leased' | 'not-pending' | 'not-filed';
+      const [kind, value, mover] = typeof change === 'string' ? ['rule', change, ''] : ['target', change.target ?? '', change.target !== null && change.movedBy ? JSON.stringify({ name: change.movedBy.name, ...(change.movedBy.email ? { email: change.movedBy.email } : {}) }) : ''];
+      return await script(`retarget ${id}`, RETARGET, [key.link(id), key.lease(id)], [token, now, kind, value, mover]) as 'retargeted' | 'leased' | 'not-pending' | 'not-filed';
     },
     async unlease(id, token, now) {
       if (!isLink(id)) return;

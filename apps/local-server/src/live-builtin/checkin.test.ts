@@ -50,7 +50,7 @@ describe('checkInLink over the built-in adapter', () => {
     expect(await f.liveNotes.person(person(1)).filed(repository, id)).toBe(file);
   });
 
-  it("makes one commit: the first person as author, the second as co-author, Agent-Edit for an agent's write, and the live trailers", async () => {
+  it("makes one commit: the person who typed last as author, the others as co-authors, Agent-Edit for an agent's write, and the live trailers", async () => {
     const f = setup();
     const id = await checkout(f);
     await type(f, id, A.replace('two', 'TWO'), 1);
@@ -66,8 +66,8 @@ describe('checkInLink over the built-in adapter', () => {
     expect(f.files.get(file)).toBe(text);
     expect(commits(f)).toHaveLength(1);
     const [commit] = commits(f);
-    expect(commit.author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
-    expect(commit.message).toBe(`docs(notes): live edit a.md\n\nLive-Link: ${id}\nLive-Content: sha256:${liveContentHash(text)}\nAgent-Edit: 2026-11-14\nCo-authored-by: Person 2 <p2@example.test>\nCo-authored-by: Person 3 <p3@example.test>`);
+    expect(commit.author).toEqual({ name: 'Person 2', email: 'p2@example.test' });
+    expect(commit.message).toBe(`docs(notes): live edit a.md\n\nLive-Link: ${id}\nLive-Content: sha256:${liveContentHash(text)}\nAgent-Edit: 2026-11-14\nCo-authored-by: Person 1 <p1@example.test>\nCo-authored-by: Person 3 <p3@example.test>`);
     // The note left the live editor: its document is gone from the store, and its link says where it is.
     expect(await f.store.link(id)).toMatchObject({ live: false, path: file });
     expect(await f.store.document(id, 1)).toBeNull();
@@ -256,8 +256,8 @@ const idleCheckIn = (store: () => LiveStore) => () => {
     const text = A.replace('two', 'TWO').replace('three', 'THREE');
     expect(f.files.get(file)).toBe(text);
     expect(commits(f)).toHaveLength(1);
-    expect(commits(f)[0].author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
-    expect(commits(f)[0].message).toBe(`docs(notes): live edit a.md\n\nLive-Link: ${id}\nLive-Content: sha256:${liveContentHash(text)}\nCo-authored-by: Person 2 <p2@example.test>`);
+    expect(commits(f)[0].author).toEqual({ name: 'Person 2', email: 'p2@example.test' });
+    expect(commits(f)[0].message).toBe(`docs(notes): live edit a.md\n\nLive-Link: ${id}\nLive-Content: sha256:${liveContentHash(text)}\nCo-authored-by: Person 1 <p1@example.test>`);
     expect(await f.liveNotes.service.checkouts(repository)).toEqual([]);
     expect(await f.store.link(id)).toMatchObject({ live: false, path: file });
     f.time.advance(60_000);

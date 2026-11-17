@@ -491,10 +491,11 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       return { liveNotes: wrapped, opens, notices };
     };
 
-    it("commits with the second editor's credential when the first editor's is refused: the second authors it and the first is still a co-author", async () => {
+    it("commits with the credential of the editor who typed before the last when the last one's is refused: they author it and the last is still a co-author", async () => {
       const id = await typedByTwo();
       if (!id) return;
-      const [first, second] = [fixture.person(1), fixture.person(2)];
+      // The last typer's credential is tried first; theirs refused, the other editor's commits.
+      const [first, second] = [fixture.person(2), fixture.person(1)];
       const { liveNotes, opens, notices } = refusing(person => samePerson(person, first.person));
       const result = await checkInLink(liveNotes, fixture.repository, id, { mode: 'manual', sleep: async () => {} });
       expect(result).toMatchObject({ id, committed: true, released: true, commit: expect.stringMatching(/^[0-9a-f]{40,64}$/) });
@@ -516,7 +517,7 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       const result = await checkInLink(liveNotes, fixture.repository, id, { mode: 'scheduled', sleep: async () => {} });
       expect(result).toMatchObject({ id, committed: false, released: false, reason: 'uncommittable' });
       expect(result).not.toHaveProperty('commit');
-      expect(opens.map(open => open.person)).toEqual([fixture.person(1).person, fixture.person(2).person]);
+      expect(opens.map(open => open.person)).toEqual([fixture.person(2).person, fixture.person(1).person]);
       expect(notices).toEqual([expect.objectContaining({ kind: 'uncommittable', repository: fixture.repository, id, editors: [{ name: fixture.person(1).author!.name }, { name: fixture.person(2).author!.name }] })]);
       // Nothing was lost: the text is live, both are still listed, and the next check-in need not wait for the lease.
       expect((await as(1).read(fixture.repository, id)).content).toBe('# Credentials\none\ntwo\n');

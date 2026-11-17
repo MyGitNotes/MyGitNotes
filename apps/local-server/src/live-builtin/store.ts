@@ -1,4 +1,4 @@
-import { LIVE_FORMER_PATHS, LIVE_MAX_BYTES, type LiveConflict, type LiveUnmovedReason, type NotebookKey, type RepositoryId, type WorkspacePerson } from '@mygitnotes/core';
+import { LIVE_FORMER_PATHS, LIVE_MAX_BYTES, type LiveConflict, type LiveIdentity, type LiveUnmovedReason, type NotebookKey, type RepositoryId, type WorkspacePerson } from '@mygitnotes/core';
 
 /*
  * What the built-in live editor keeps between check-ins (docs/specs/2026-11-15-builtin-live-editor §3): the links, each
@@ -40,6 +40,8 @@ export interface StoredLink {
   pathRule?: string;
   /** Filed only: the path the next check-in moves the note to (§20.4); the receipt that names it moves the link there. */
   target?: string;
+  /** With `target`: who moved the note there; it goes with the target. */
+  movedBy?: LiveIdentity;
   /** Filed only: a target the last check-in did not move the note to, since Git held that path; the next move clears it. */
   unmoved?: string;
   /** With `unmoved`, why the note stayed when not because Git held the target (the receipt's `unmovedReason`). */
@@ -100,6 +102,8 @@ export interface MergeRecord {
 /** A filed link's move: the path its next check-in moves it to, or null for none. */
 export interface RetargetTarget {
   target: string | null;
+  /** Who moved it, kept with a target and gone with it. */
+  movedBy?: LiveIdentity;
 }
 
 /** What a created or reopened epoch starts from. */

@@ -74,8 +74,9 @@ const twoProcesses = (name: string, makeStore: () => LiveStore) =>
       expect(result).toMatchObject({ id, path: file, committed: true, released: true });
       expect(one.files.get(file)).toBe(written);
       expect(commits(one)).toHaveLength(1);
-      expect(commits(one)[0].author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
-      expect(commits(one)[0].message).toContain('Co-authored-by: Person 2 <p2@example.test>');
+      // Person 2 typed last; the agent of Person 3 wrote later, but a person comes first.
+      expect(commits(one)[0].author).toEqual({ name: 'Person 2', email: 'p2@example.test' });
+      expect(commits(one)[0].message).toContain('Co-authored-by: Person 1 <p1@example.test>');
       expect(commits(one)[0].message).toContain('Co-authored-by: Person 3 <p3@example.test>');
     });
 
@@ -98,8 +99,9 @@ const twoProcesses = (name: string, makeStore: () => LiveStore) =>
       expect(await checkIn(one, id)).toMatchObject({ committed: true, released: false, reason: 'active', activeEditors: 2 });
       expect(one.files.get(file)).toBe(both);
       expect(commits(one)).toHaveLength(1);
-      expect(commits(one)[0].author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
-      expect(commits(one)[0].message).toContain('Co-authored-by: Person 2 <p2@example.test>');
+      // Both typed at once: whichever the store saw last authors it, and the other is a co-author.
+      const [commit] = commits(one);
+      expect([commit.author?.email, ...commit.message.split('\n').filter(line => line.startsWith('Co-authored-by:')).map(line => /<(.+)>/.exec(line)![1])].sort()).toEqual(['p1@example.test', 'p2@example.test']);
       // Both went idle with their tabs open: the next check-in, through the other process, releases the note under them.
       one.time.advance(10 * 60_000 + 1);
       expect(await checkIn(two, id)).toMatchObject({ committed: false, released: true });

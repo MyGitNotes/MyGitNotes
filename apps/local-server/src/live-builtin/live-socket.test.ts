@@ -136,6 +136,91 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect([one.asked, two.asked, one.refused, one.closes, one.told]).toEqual([1, 1, [], [], []]);
     });
 
+    it('tells every tab how many people have the note open, each person once however many windows, at once as they come, close, go offline and come back', async () => {
+      const server = await serverOver({ store: makeStore() });
+      await server.checkout();
+      const latest = (tab: LiveTab) => tab.people.at(-1);
+      const one = await server.tab(1), two = await server.tab(2);
+      await Promise.all([one.synced(), two.synced()]);
+      await until('both tabs count two people', () => latest(one) === 2 && latest(two) === 2, 1000);
+      // A second window of person 2 is told the count as it opens, and it counts them once: the same in every window.
+      const window = await server.tab(2);
+      await window.synced();
+      await until('the second window counts two people', () => latest(window) === 2, 1000);
+      expect([latest(one), latest(two)]).toEqual([2, 2]);
+      // Closing that window leaves person 2 with the note open in the other.
+      window.destroy();
+      await pause(200);
+      expect([latest(one), latest(two)]).toEqual([2, 2]);
+      // A closing editor takes its awareness state away before its socket closes: it stops counting then. The app's
+      // editor speaks for its client id once it is let in.
+      two.provider.awareness!.setLocalState({ cursor: null });
+      await pause(200);
+      two.provider.awareness!.setLocalState(null);
+      await until('person 1 counts one once person 2 closes the editor', () => latest(one) === 1, 1000);
+      two.provider.awareness!.setLocalState({ cursor: null });
+      await until('person 2 counts again', () => latest(one) === 2 && latest(two) === 2, 1000);
+      // Offline, person 2 stops counting at once; back online, their tab is told the count as it connects.
+      two.offline();
+      await until('person 1 counts one while person 2 is offline', () => latest(one) === 1, 1000);
+      const before = two.people.length;
+      two.online();
+      await two.synced();
+      await until('person 2 is told two people as they come back', () => two.people.length > before && latest(two) === 2 && latest(one) === 2, 1000);
+      // A tab that stays open counts however long it sends nothing: an idle or background tab is still there.
+      two.destroy();
+      await until('person 1 counts one once person 2 left', () => latest(one) === 1, 1000);
+      expect(one.told).toEqual([]);
+    });
+
+    it('tells the others that someone came only once their presence is written, and the one who came at once (FCP-F002)', async () => {
+      const real = makeStore(), slow = gate();
+      let hold = false;
+      const server = await serverOver({
+        store: wrapStore(real, {
+          presence: async (...given) => {
+            if (hold) await slow.opened;
+            return real.presence(...given);
+          },
+        }),
+      });
+      await server.checkout();
+      const latest = (tab: LiveTab) => tab.people.at(-1);
+      const one = await server.tab(1);
+      await one.synced();
+      await until('person 1 counts one', () => latest(one) === 1, 1000);
+      hold = true;
+      const two = await server.tab(2);
+      await two.synced();
+      await until('person 2 is told two at once', () => latest(two) === 2, 1000);
+      await pause(200);
+      // Person 2's presence is not written yet: person 1, whose lists would read it again, is not told yet.
+      expect(latest(one)).toBe(1);
+      slow.open();
+      await until('person 1 counts two once person 2 is written', () => latest(one) === 2, 1000);
+    });
+
+    it('keeps the count of the others as a tab renews its socket: they are never told it went down (FCP-F001)', async () => {
+      const server = await serverOver({ store: makeStore(), limits: { socketMs: 60_000, beatMs: 40 } });
+      const { time } = server.live;
+      await server.checkout();
+      const latest = (tab: LiveTab) => tab.people.at(-1);
+      const one = await server.tab(1);
+      await one.synced();
+      time.advance(30_000);
+      const two = await server.tab(2);
+      await two.synced();
+      await until('both count two', () => latest(one) === 2 && latest(two) === 2, 1000);
+      const told = two.people.length;
+      // Person 1's socket is renewed; person 2's is not due yet.
+      time.advance(30_000);
+      await until('person 1 renewed', () => one.closes.length === 1 && one.asked === 2 && one.provider.isSynced, 2000);
+      await pause(300);
+      expect(one.closes).toEqual([{ code: 4000, reason: 'Live ticket renewal' }]);
+      expect(two.people.slice(told)).toEqual([]);
+      expect(latest(one)).toBe(2);
+    });
+
     it("opens a document only for a ticket of its own: not for none, a malformed, an unknown, a used or an expired one, or another document's", async () => {
       const server = await serverOver({ store: makeStore(), files: twoNotes() });
       const { time } = server.live;

@@ -23,6 +23,7 @@ interface FakeConfig {
   document: Y.Doc;
   onStatus?: (event: { status: string; }) => void;
   onSynced?: (event: { state: boolean; }) => void;
+  onStateless?: (event: { payload: string; }) => void;
 }
 const fake = vi.hoisted(() => ({ providers: [] as { configuration: FakeConfig; }[], handle: { goToLine: [] as number[], reveal: [] as [number, number][] }, lineNumbers: [] as (boolean | undefined)[] }));
 // The history section as its own tests leave it: a version's Restore hands its text to `onRestore` (NoteHistoryPanel.test).
@@ -212,6 +213,21 @@ describe('a note in the collab editor', () => {
     act(() => text().insert(text().length, 'more body\n'));
     await act(() => new Promise(resolve => setTimeout(resolve, 700)));
     expect(onRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  // lm-visual5: a note someone closed kept 「編輯中 · 1」 in the lists until their next minute.
+  it('has the lists read the note again each time the server says someone opened or left it', async () => {
+    const onRefetch = vi.fn();
+    await open({ live: live({ onRefetch }) });
+    const people = (count: number) => act(() => fake.providers[fake.providers.length - 1]!.configuration.onStateless?.({ payload: JSON.stringify({ type: 'people', count }) }));
+    people(2);
+    onRefetch.mockClear();
+    people(1);
+    expect(onRefetch).toHaveBeenCalledTimes(1);
+    people(1);
+    expect(onRefetch).toHaveBeenCalledTimes(1);
+    people(2);
+    expect(onRefetch).toHaveBeenCalledTimes(2);
   });
 
   // CFR-F002: the view's text is what it opened on; a value someone else set since must not be written back.

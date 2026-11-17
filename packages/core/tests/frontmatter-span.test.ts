@@ -51,7 +51,8 @@ describe('noteFrontmatterSpan', () => {
   // CFR2-F001: the writers that add a block in front of a text with none must not add a second one in front of a block they cannot read.
   it.each(['---\ntitle: x\n---a\nBody\n', '---\ntitle: x\n----\nBody\n', '---\ntitle: [x\n---\nBody\n', '---\ntitle: x\nBody\n'])('adds no second block in front of a block it cannot read: %j', raw => {
     expect(replaceNoteStatus(raw, 'done')).toBe(raw);
-    expect(fillMissingNoteTimestamps(raw, '2026-11-17', undefined)).toEqual({ raw, changed: false });
+    // And says it cannot read it, so a backfill reports it rather than counting it complete.
+    expect(fillMissingNoteTimestamps(raw, '2026-11-17', undefined)).toEqual({ raw, changed: false, unreadable: true });
     expect(patchNoteFrontmatter(raw, {}, { status: 'done' })).toBe(raw);
   });
 

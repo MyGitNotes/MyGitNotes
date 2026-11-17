@@ -85,8 +85,10 @@ export interface LiveTab {
   type(next: string): void;
   /** Sends bytes as an update of the tab's document, exactly as given and whatever they are: what no tab of the app does. */
   sendUpdate(update: Uint8Array): void;
-  /** Every stateless message the server sent it, parsed. */
+  /** Every stateless message the server sent it, parsed, but for how many people have the note open. */
   told: unknown[];
+  /** Each count of the people who have the note open the server told it (`{ type: 'people', count }`), in order. */
+  people: number[];
   /** How many tickets it asked for: one each time its socket opened. */
   asked: number;
   /** Why its document was refused, each time it was. */
@@ -207,6 +209,7 @@ export async function liveServer(first: BuiltinFixture): Promise<LiveServer> {
         },
         sendUpdate: update => websocket.send(new OutgoingMessage(name).createSyncMessage().writeUpdate(update).toUint8Array()),
         told: [],
+        people: [],
         asked: 0,
         refused: [],
         closes: [],
@@ -236,7 +239,11 @@ export async function liveServer(first: BuiltinFixture): Promise<LiveServer> {
           first = undefined;
           return given.ticket;
         },
-        onStateless: ({ payload }) => void tab.told.push(JSON.parse(payload)),
+        onStateless: ({ payload }) => {
+          const message = JSON.parse(payload);
+          if (message?.type === 'people') tab.people.push(message.count);
+          else tab.told.push(message);
+        },
         onAuthenticationFailed: ({ reason }) => void tab.refused.push(reason),
         onClose: ({ event }) => void tab.closes.push({ code: event.code, reason: String(event.reason ?? '') }),
       });

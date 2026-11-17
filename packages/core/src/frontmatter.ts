@@ -336,18 +336,20 @@ export function replaceNoteTags(raw: string, tags: string[]): string {
   return raw.slice(0, start) + replacement + raw.slice(end);
 }
 
-/**
- * Fills `created`/`updated` only where missing, from the given fallbacks.
- * Never overwrites an existing value or touches any other frontmatter key
- * or the Markdown body. Used by the one-time backfill command.
- */
 function setQuoted(document: YAML.Document, key: string, value: string): void {
   const node = document.createNode(value) as YAML.Scalar;
   node.type = 'QUOTE_DOUBLE';
   document.set(key, node);
 }
 
-export function fillMissingNoteTimestamps(raw: string, created: string | undefined, updated: string | undefined): { raw: string; changed: boolean; } {
+/**
+ * Fills `created`/`updated` only where missing, from the given fallbacks.
+ * Never overwrites an existing value or touches any other frontmatter key
+ * or the Markdown body. Used by the one-time backfill command. A block it
+ * cannot read (a fence that never closes, YAML that does not parse) is left
+ * as it is and answered `unreadable`.
+ */
+export function fillMissingNoteTimestamps(raw: string, created: string | undefined, updated: string | undefined): { raw: string; changed: boolean; unreadable?: true; } {
   const match = raw.match(FRONTMATTER_REGEX);
   if (match && parseNoteContent(raw).hasFrontmatter) {
     const document = YAML.parseDocument(match[1]);
@@ -360,8 +362,8 @@ export function fillMissingNoteTimestamps(raw: string, created: string | undefin
     const insertAt = `---${newline}`.length + match[1].length;
     return { raw: `${raw.slice(0, insertAt)}${lines.map(line => `${newline}${line}`).join('')}${raw.slice(insertAt)}`, changed: true };
   }
-  // A block that cannot be read is not filled, nor given a second block in front of it (CFR2-F001).
-  if (OPENING_FENCE.test(raw)) return { raw, changed: false };
+  // A block that cannot be read is not filled, nor given a second block in front of it (CFR2-F001), and says so.
+  if (OPENING_FENCE.test(raw)) return { raw, changed: false, unreadable: true };
 
   const fields: [string, string][] = [];
   if (created) fields.push(['created', created]);

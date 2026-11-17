@@ -147,6 +147,31 @@ describe('the bar', () => {
     expect(screen.queryByRole('link', { name: 'Open in a new tab' })).toBeNull();
   });
 
+  it("counts the people the server says have the note open, over awareness, so every window shows the same number and a background tab's lapsed cursor does not drop it", async () => {
+    await open();
+    sync();
+    // The server counts each person once, this tab's person with their other windows included.
+    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'people', count: 2 }) }));
+    expect(screen.getByText('2 editing')).toBeInTheDocument();
+    // Awareness, which also lists another window of this tab's own person, or loses a background tab's lapsed state, no longer counts.
+    emit(config => config.onAwarenessChange?.({ states: [{ clientId: config.document.clientID }, { clientId: 2, user: { name: 'Bo' } }, { clientId: 3, user: { name: 'Me' } }] }));
+    expect(screen.getByText('2 editing')).toBeInTheDocument();
+    emit(config => config.onAwarenessChange?.({ states: [{ clientId: config.document.clientID }] }));
+    expect(screen.getByText('2 editing')).toBeInTheDocument();
+    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'people', count: 1 }) }));
+    expect(screen.getByText('1 editing')).toBeInTheDocument();
+    // A count that is no count is ignored.
+    for (const count of [0, -1, 1.5, '3', 20_000]) emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'people', count }) }));
+    expect(screen.getByText('1 editing')).toBeInTheDocument();
+    // Offline, the tab knows only itself; back online, the server tells it again as it connects.
+    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'people', count: 2 }) }));
+    emit(config => config.onStatus?.({ status: 'disconnected' }));
+    expect(screen.getByText('1 editing')).toBeInTheDocument();
+    emit(config => config.onStatus?.({ status: 'connected' }));
+    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'people', count: 3 }) }));
+    expect(screen.getByText('3 editing')).toBeInTheDocument();
+  });
+
   it('announces the tab in awareness on every connect, so the others count it before it moves a cursor', async () => {
     await open();
     const { awareness, document } = provider().configuration;
@@ -575,6 +600,19 @@ describe('a socket the server closed for a new ticket (4000)', () => {
       config.onClose?.({ event: { code: 1006, reason: '' } });
     });
     expect(screen.getByText('Offline')).toBeInTheDocument();
+  });
+
+  it('keeps the count of the people across the renewal, and resets it on any other close (FCP-F001)', async () => {
+    await open();
+    sync();
+    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'people', count: 2 }) }));
+    renew();
+    expect(screen.getByText('2 editing')).toBeInTheDocument();
+    emit(config => {
+      config.onStatus?.({ status: 'disconnected' });
+      config.onClose?.({ event: { code: 1006, reason: '' } });
+    });
+    expect(screen.getByText('1 editing')).toBeInTheDocument();
   });
 
   it('says offline once a retry after it fails too', async () => {

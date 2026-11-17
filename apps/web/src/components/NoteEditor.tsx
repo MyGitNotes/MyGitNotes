@@ -177,6 +177,16 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     joined.current = joinedText;
     refetchLists.current?.();
   }, [joinedText]);
+  // Someone opened or left the note: the server tells the tab once their presence is stored, and the lists, which count
+  // the same people, read it again rather than at their next minute (lm-visual5, a closed note kept 「編輯中 · 1」).
+  const people = shared?.online ? shared.people : null;
+  const counted = useRef<{ text: LiveSession['text']; people: number; } | null>(null);
+  useEffect(() => {
+    if (!joinedText || people === null) return;
+    const before = counted.current;
+    counted.current = { text: joinedText, people };
+    if (before?.text === joinedText && before.people !== people) refetchLists.current?.();
+  }, [joinedText, people]);
   useEffect(() => {
     if (liveYaml === null) {
       listedYaml.current = null;

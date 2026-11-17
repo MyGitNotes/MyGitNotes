@@ -62,7 +62,7 @@ describe('checkInLink', () => {
     expect(files.get('notes/life/a.md')).toBe(text);
   });
 
-  it('commits the live text on an unmoved head, authored by the earliest person with the others and the live trailers', async () => {
+  it('commits the live text on an unmoved head, authored by the person who typed last with the others and the live trailers', async () => {
     const id = await checkout('notes/life/a.md');
     liveNotes.type(repository, id, '---\ntitle: A\n---\none\nTWO\nthree\nfour\nfive\n', person(1));
     clock.advance(1000);
@@ -75,8 +75,9 @@ describe('checkInLink', () => {
     expect(result).toMatchObject({ id, path: 'notes/life/a.md', committed: true, released: true, commit: expect.stringMatching(/^[0-9a-f]{40}$/) });
     expect(files.get('notes/life/a.md')).toBe(text);
     const [commit] = commits();
-    expect(commit.author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
-    expect(commit.message).toBe(`docs(notes): live edit a.md\n\nLive-Link: ${id}\nLive-Content: sha256:${liveContentHash(text)}\nAgent-Edit: 2026-11-14\nCo-authored-by: Person 2 <p2@example.test>\nCo-authored-by: Person 3 <p3@example.test>`);
+    // The agent wrote last, but a person who typed comes before it.
+    expect(commit.author).toEqual({ name: 'Person 2', email: 'p2@example.test' });
+    expect(commit.message).toBe(`docs(notes): live edit a.md\n\nLive-Link: ${id}\nLive-Content: sha256:${liveContentHash(text)}\nAgent-Edit: 2026-11-14\nCo-authored-by: Person 1 <p1@example.test>\nCo-authored-by: Person 3 <p3@example.test>`);
   });
 
   it('merges Git changes into the live note before committing, so the next check-in keeps them', async () => {
@@ -102,7 +103,7 @@ describe('checkInLink', () => {
     expect(files.get('notes/life/a.md')).toBe('---\ntitle: A\n---\nONE\ntwo\nTHREE\nfour\nFIVE\n');
   });
 
-  it('names someone who typed between the merge-in and the text it commits', async () => {
+  it('names someone who typed between the merge-in and the text it commits, as its author since they typed last', async () => {
     const id = await checkout('notes/life/a.md');
     liveNotes.type(repository, id, '---\ntitle: A\n---\none\ntwo\nthree\nfour\nFIVE\n', person(1));
     await gitCommit('notes/life/a.md', '---\ntitle: A\n---\nONE\ntwo\nthree\nfour\nfive\n');
@@ -116,11 +117,11 @@ describe('checkInLink', () => {
     expect(await run(id)).toMatchObject({ committed: true });
     expect(files.get('notes/life/a.md')).toBe('---\ntitle: A\n---\nONE\ntwo\nthree\nfour\nFIVE\nsix\n');
     const commit = commits().at(-1)!;
-    expect(commit.author).toEqual({ name: 'Person 1', email: 'p1@example.test' });
-    expect(commit.message).toContain('Co-authored-by: Person 2 <p2@example.test>');
+    expect(commit.author).toEqual({ name: 'Person 2', email: 'p2@example.test' });
+    expect(commit.message).toContain('Co-authored-by: Person 1 <p1@example.test>');
   });
 
-  it('authors a merged check-in by the first person to type, even when they typed only after the merge-in', async () => {
+  it('authors a merged check-in by the person who typed last, even when they typed only after the merge-in', async () => {
     const id = await checkout('notes/life/a.md');
     await gitCommit('notes/life/a.md', '---\ntitle: A\n---\nONE\ntwo\nthree\nfour\nfive\n');
     // An agent wrote first, so the live text differs from Git and needs Git's change merged in.

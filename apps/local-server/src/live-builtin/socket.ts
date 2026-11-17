@@ -131,6 +131,8 @@ interface Room {
   dirty: boolean;
   /** When the presence was last written, by the adapter's clock. */
   written: number;
+  /** How many people the seats were last told have the document open. */
+  told?: number;
 }
 
 /** What Hocuspocus carries for a connection: the socket it came on, and from authentication on, its seat. */
@@ -153,6 +155,8 @@ const RETURN_MS = 60_000;
 const RENEW_REASON = 'Live ticket renewal';
 
 const TICKET = /^[A-Za-z0-9_-]{32,128}$/;
+/** What a tab is told of who has its note open: the people with a seat on the document, each once. */
+const PEOPLE = (count: number) => JSON.stringify({ type: 'people', count });
 const REFUSED = (reason: 'too-large' | 'busy' | 'invalid') => JSON.stringify({ type: 'refused', reason });
 const errorName = (error: unknown) => error instanceof Error ? error.constructor.name : 'error';
 
@@ -271,6 +275,40 @@ export function liveSocket({ documents, store, clock, process: processName, read
     background(writing);
     return writing;
   };
+  /**
+   * Tells the seats on a document how many people have it open (connected, their editor not closing), each person once
+   * however many tabs they have, when that number changed (`tellPeople` tells a seat that just opened it). The tabs
+   * show this count, so every window shows the same one, a tab in the background or idle counts as long as its socket
+   * is open, and one that closes, goes offline or comes back is counted at once (awareness states, which
+   * a tab renews only while its timers run and a peer takes again only after its next renewal, are for cursors only).
+   * People on another process are not counted, as their cursors are not shown.
+   */
+  const announce = (name: string) => {
+    const room = rooms.get(name);
+    if (!room) return;
+    const count = peopleOn(room);
+    if (room.told === count) return;
+    room.told = count;
+    for (const seat of room.seats) send(seat, PEOPLE(count));
+  };
+  const peopleOn = (room: Room) => {
+    const people = new Set<string>();
+    for (const seat of room.seats) if (seat.connected && !seat.withdrawn) people.add(seat.editor.key);
+    return people.size;
+  };
+  const send = (seat: Seat, message: string) => {
+    if (!seat.connected || seat.left) return;
+    try {
+      seat.connection?.sendStateless(message);
+    } catch {
+      // A connection closing under the message: its seat leaves, and the others are told again then.
+    }
+  };
+  /** Tells one seat, one that just opened the document, how many people have it open, without telling the others. */
+  const tellPeople = (seat: Seat) => {
+    const room = rooms.get(seat.name);
+    if (room) send(seat, PEOPLE(peopleOn(room)));
+  };
   /** Sends a socket a message, unless it is closing: Hocuspocus then has nobody to tell either. */
   const tell = (socket: WebSocket, message: Uint8Array) => {
     if (socket.readyState === socket.OPEN) socket.send(message);
@@ -307,7 +345,9 @@ export function liveSocket({ documents, store, clock, process: processName, read
       seat.cursor ||= latest.cursor;
       seat.returned = new Set(fresh.map(kept => kept.cursor));
     } else seat.at = clock();
-    void writePresence(seat.link);
+    // The seat that opened is told at once; the others once its presence is written, so a list they read again then counts it.
+    tellPeople(seat);
+    background(writePresence(seat.link).then(() => announce(seat.name)));
   };
   const active = (seat: Seat) => {
     seat.at = clock();
@@ -349,8 +389,15 @@ export function liveSocket({ documents, store, clock, process: processName, read
           kept.push({ at: seat.at, cursor: seat.cursor, left: clock() });
           if (kept.length > DEPARTED_PER_KEY) kept.splice(kept.indexOf(kept.reduce((least, entry) => entry.at < least.at ? entry : least)), 1);
           departed.set(departedKey(seat), kept);
-          // Written at once, so a note someone just left can be checked in and released.
+          // Written at once, so a note someone just left can be checked in and released; the others are told once it is,
+          // so a list they read again then counts them as the tabs do.
           const written = writePresence(link);
+          // A socket closed for a new ticket comes straight back: the others are told only if this person did not
+          // within `leaveMs`, so a renewal leaves the count as it was (a seat that came back meanwhile changed nothing).
+          if (renewing(socket)) {
+            const timer = setTimeout(() => background(written.then(() => announce(name))), limits.leaveMs);
+            timer.unref();
+          } else background(written.then(() => announce(name)));
           // The last one out: the document is compacted and let go now, once Hocuspocus has done with the connection, unless someone came meanwhile.
           if (!rooms.has(name) && !stopping) {
             background(new Promise<void>(resolve => setImmediate(resolve)).then(() => rooms.has(name) ? undefined : documents.unload(link)));
@@ -485,14 +532,14 @@ export function liveSocket({ documents, store, clock, process: processName, read
         seat.returned = undefined;
         if (seat.withdrawn) {
           seat.withdrawn = false;
-          void writePresence(seat.link);
+          background(writePresence(seat.link).then(() => announce(seat.name)));
         }
       }
       for (const client of removedClients) if (room.claims.get(client) !== seat) removedClients.delete(client);
       // Its own state taken away: the person is written out at once, as when the socket closes.
       if (seat.claim !== undefined && removedClients.has(seat.claim) && !seat.withdrawn) {
         seat.withdrawn = true;
-        void writePresence(seat.link);
+        background(writePresence(seat.link).then(() => announce(seat.name)));
       }
     },
     async onDisconnect({ context }) {
