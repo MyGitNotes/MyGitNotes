@@ -21,17 +21,25 @@ interface EditorModalProps {
   renderCompilation: (path: string) => ReactNode;
   /** The zoomed compilation this note was opened from, kept mounted and hidden behind the note's zoom. */
   behind?: NoteRef | null;
+  /**
+   * The page's action error, such as a refused move or rename: the zoom covers the lists where the page says it, so it
+   * is said inside the zoom too.
+   */
+  error?: string;
 }
 
 /** Zoom: the full-screen frame around a note's editor. */
-export const EditorModal: React.FC<EditorModalProps> = ({ note, committed, loading, isOpen, renderCompilation, behind }) => {
+export const EditorModal: React.FC<EditorModalProps> = ({ note, committed, loading, isOpen, renderCompilation, behind, error }) => {
   if (!isOpen) return null;
   const compilation = note && isCompilationPath(note.path) ? note : null;
   // The compilation keeps one place and one key whether it is shown or waits behind a note, so opening a note from it
   // does not unmount its view: editing state, scroll position and a section's editor survive, and zoom can borrow that editor.
   const shown = compilation ?? behind ?? null;
-  return <>{shown && <CompilationFrame key={noteRefKey(shown)} hidden={!compilation}>{renderCompilation(shown.path)}</CompilationFrame>}{!compilation && (note ? <ZoomFrame key={noteRefKey(note)} note={note} committed={committed} /> : loading ? <EditorModalLoading /> : null)}</>;
+  return <>{shown && <CompilationFrame key={noteRefKey(shown)} hidden={!compilation} error={compilation ? error : undefined}>{renderCompilation(shown.path)}</CompilationFrame>}{!compilation && (note ? <ZoomFrame key={noteRefKey(note)} note={note} committed={committed} error={error} /> : loading ? <EditorModalLoading /> : null)}</>;
 };
+
+/** The action error above the zoom's content, where the person sees it. */
+const ZoomError: React.FC<{ error?: string; }> = ({ error }) => error ? <p role='alert' className='shrink-0 px-4 py-2 text-sm text-danger'>{error}</p> : null;
 
 /**
  * The zoom is a modal dialog, except while the assistant dock is open beside it: the dock stays usable, so assistive
@@ -59,7 +67,7 @@ const EditorModalLoading: React.FC = () => {
 };
 
 /** Zoom for a compilation: the same full-screen frame, around its view. */
-const CompilationFrame: React.FC<{ children: ReactNode; hidden?: boolean; }> = ({ children, hidden = false }) => {
+const CompilationFrame: React.FC<{ children: ReactNode; hidden?: boolean; error?: string; }> = ({ children, hidden = false, error }) => {
   const frame = useRef<HTMLDivElement>(null);
   const modal = useModalWithoutDock();
   const opener = useRef<HTMLElement | null>(null);
@@ -75,12 +83,15 @@ const CompilationFrame: React.FC<{ children: ReactNode; hidden?: boolean; }> = (
   }, [hidden]);
   return (
     <div ref={frame} className='note-overlay viewport-overlay dock-edge fixed inset-0 z-50 bg-scrim/60 backdrop-blur-sm flex items-center justify-center p-3 animate-fadeIn' style={hidden ? { visibility: 'hidden' } : undefined} data-behind={hidden || undefined}>
-      <div role='dialog' aria-modal={modal} aria-label='Compilation' className='note-dialog ui-dialog shadow-2xl w-full max-w-none h-full flex flex-col overflow-hidden transition-colors'>{children}</div>
+      <div role='dialog' aria-modal={modal} aria-label='Compilation' className='note-dialog ui-dialog shadow-2xl w-full max-w-none h-full flex flex-col overflow-hidden transition-colors'>
+        <ZoomError error={error} />
+        {children}
+      </div>
     </div>
   );
 };
 
-const ZoomFrame: React.FC<{ note: NoteItem; committed?: NoteItem; }> = ({ note, committed }) => {
+const ZoomFrame: React.FC<{ note: NoteItem; committed?: NoteItem; error?: string; }> = ({ note, committed, error }) => {
   const editing = useNoteEditing();
   const modal = useModalWithoutDock();
   const { setZoom, hosts } = editing;
@@ -97,7 +108,10 @@ const ZoomFrame: React.FC<{ note: NoteItem; committed?: NoteItem; }> = ({ note, 
   const props = editing.editorProps(note, committed);
   return (
     <div className='note-overlay viewport-overlay dock-edge fixed inset-0 z-50 bg-scrim/60 backdrop-blur-sm flex items-center justify-center p-3 animate-fadeIn'>
-      <div role='dialog' aria-modal={modal} aria-label='Note editor' className='note-dialog ui-dialog shadow-2xl w-full max-w-none h-full flex flex-col overflow-hidden transition-colors'>{borrowed ? <div ref={setSlot} className='note-editor-slot' /> : <NoteEditor key={`${props.draftScope}:${key}`} {...props} note={note} frame='zoom' active onClose={editing.closeZoom} onMove={editing.moveNote?.(note)} onRename={editing.renameNote?.(note) && (title => editing.renameNote?.({ ...note, title })?.())} />}</div>
+      <div role='dialog' aria-modal={modal} aria-label='Note editor' className='note-dialog ui-dialog shadow-2xl w-full max-w-none h-full flex flex-col overflow-hidden transition-colors'>
+        <ZoomError error={error} />
+        {borrowed ? <div ref={setSlot} className='note-editor-slot' /> : <NoteEditor key={`${props.draftScope}:${key}`} {...props} note={note} frame='zoom' active onClose={editing.closeZoom} onMove={editing.moveNote?.(note)} onRename={editing.renameNote?.(note) && (title => editing.renameNote?.({ ...note, title })?.())} />}
+      </div>
     </div>
   );
 };

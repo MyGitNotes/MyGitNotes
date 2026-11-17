@@ -116,7 +116,7 @@ it('shows a note that is still loading as a dialog of its own over the hidden co
   expect(screen.getByRole('dialog', { name: 'Loading note…' })).toHaveAttribute('aria-busy', 'true');
 });
 
-it("says a refused move or rename inside zoom, where the person sees it, not behind the overlay", () => {
+it('says a refused move or rename inside zoom, where the person sees it, not behind the overlay', () => {
   const { rerender } = render(modal({ note: alpha, error: 'A note already exists at notes/ideas.md.' }));
   const dialog = screen.getByRole('dialog', { name: 'Note editor' });
   expect(within(dialog).getByRole('alert')).toHaveTextContent('A note already exists at notes/ideas.md.');

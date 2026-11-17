@@ -4,7 +4,7 @@ import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPan
 import type { FocusPageController } from './use-focus-page.js';
 import { noteDemoViewWriteIn, noteDemoWriteIn } from './demo-storage.js';
 import { useNoteLookup } from './use-note-queries.js';
-import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, emptyFocusView, entryView, fillPane, type FocusEntryView, type FocusViewState, readFocusView, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
+import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, emptyFocusView, entryView, fillPane, type FocusEntryView, type FocusViewState, readFocusView, relocateEntryKeys, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
 interface NoteFocusOptions {
   page: FocusPageController;
@@ -306,11 +306,16 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
     return true;
   };
 
-  /** Points the tabs of this browser's (current) Focus at the path `move` gives them, as a file move does for the named Focus it rewrites in the workspace. */
+  /**
+   * Points the tabs of this browser's (current) Focus at the path `move` gives them, as a file move does for the named
+   * Focus it rewrites in the workspace, and the tab each pane of any Focus shows with them, so a moved note stays shown.
+   */
   const relocatePaths = (movedNotebookId: string, move: (path: string) => string) => {
     if (movedNotebookId !== notebookId) return;
     const layout = structuredClone(viewRef.current.current);
-    if (relocateFocusLayout(layout, move)) update(current => ({ ...current, current: layout }), true);
+    const moved = relocateFocusLayout(layout, move);
+    const keyed = relocateEntryKeys(viewRef.current, move);
+    if (moved || keyed !== viewRef.current) update(() => moved ? { ...keyed, current: layout } : keyed, moved);
   };
 
   const canName = namedWritable && page.page.focuses.length < FOCUS_MAX_FOCUSES;

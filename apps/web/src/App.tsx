@@ -304,7 +304,7 @@ export const AppContent: React.FC = () => {
   // Assets are scoped to whichever notebook the open note (or the selected browse notebook) belongs to.
   const { handleUploadAsset, handleDeleteAsset, handleMoveAsset } = useAssetOperations({ editingNote, selectedNotebookId, remote, setAssets, setGitStatus });
 
-  const { beforeFileChange, openFileManager, onFilesChanged, openFileIndex } = useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, setActionError, navigate, location, returnTo, focusNoteRoute: noteLink.inFocus, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex });
+  const { beforeFileChange, openFileManager, onFilesChanged, openFileIndex } = useFileNavigation({ editorRegistry, draftsUnder, remote, readDraft, t, config, setFileDialog, refreshWorkspace, refreshDocuments, editorRoute, editorNotebookId, setEditingNote, setActionError, navigate, location, returnTo, focusNoteRoute: noteLink.inFocus, setFileEditorRevision, selectedFolder, folderRoot, changeFilters, handleOpenFolderIndex, relocateFocus: move => noteFocus.relocatePaths(noteFocus.notebookId, move) });
   /** The unsaved copy an editor keeps in this browser for a note path, which a moved note leaves behind, and the conflicted copy, which follows the note. */
   const forgetDrafts = (notebookId: string, path: string, destination: string) => {
     const repository = repositoryFor(notebookId);
@@ -933,7 +933,7 @@ export const AppContent: React.FC = () => {
                   />
                 )}
                 {/* Note Editor Modal */}
-                <EditorModal key={fileEditorRevision} note={routedNote} committed={routedCommitted && typeof routedCommitted.content === 'string' ? routedCommitted as NoteItem : undefined} loading={routedLoading} isOpen={noteEditorOpen} renderCompilation={renderCompilation} behind={compilationBehind} />
+                <EditorModal key={fileEditorRevision} note={routedNote} committed={routedCommitted && typeof routedCommitted.content === 'string' ? routedCommitted as NoteItem : undefined} loading={routedLoading} isOpen={noteEditorOpen} renderCompilation={renderCompilation} behind={compilationBehind} error={actionError} />
                 {phoneNotes && phoneFilterOpen && <PhoneFilterSheet onClose={() => setPhoneFilterOpen(false)} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} metadataSortFields={metadataSortFields} viewMode={viewMode} setViewMode={setViewMode} showHidden={showHidden} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} onShowHiddenChange={value => changeFilters({ showHidden: value })} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined}>{renderSidebar(true)}</PhoneFilterSheet>}
                 {addingToFocus && (
                   <AddToFocusDialog
