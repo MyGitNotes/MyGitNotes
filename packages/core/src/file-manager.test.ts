@@ -30,6 +30,15 @@ it('retitles by the same rules as the editor: the H1 names a note without a fron
   expect(retitleNoteFile('- # not a heading\n', 'notes/a/old.outline.md', 'Plan', now)).toContain('title: Plan');
 });
 
+// cfu-visual P2-2: a rename put a blank line between the fence and the heading. It changes the title, the heading that
+// repeats it and `updated:`, and leaves every other byte where it was.
+it('retitles in place: only the title, the heading that repeats it and `updated:` change', () => {
+  const now = new Date('2026-01-02T03:04:05.000Z');
+  expect(retitleNoteFile('---\ntitle: Ideas\nstatus: draft # kept\n---\n# Ideas\nBody.\n', 'notes/a/ideas.md', 'Ideas Two', now)).toBe('---\ntitle: Ideas Two\nstatus: draft # kept\nupdated: "2026-01-02T03:04:05.000Z"\n---\n# Ideas Two\nBody.\n');
+  expect(retitleNoteFile('---\ntitle: Old\n---\n\n\n# Old  \n\n  Body  \n\n', 'notes/a/old.md', 'Fresh', now)).toBe('---\ntitle: Fresh\nupdated: "2026-01-02T03:04:05.000Z"\n---\n\n\n# Fresh\n\n  Body  \n\n');
+  expect(retitleNoteFile('---\r\ntitle: Old\r\n---\r\n# Old\r\nBody.\r\n', 'notes/a/old.md', 'Fresh', now)).toMatch(/\r\n---\r\n# Fresh\r\nBody\.\r\n$/);
+});
+
 it('leaves a compilation, a folder and a plain file untouched by the title', () => {
   const files = { 'notes/a/dir/x.png': 'bin', 'notes/a/dir/n.md': '# N\n', 'notes/a/pins.compilation.yml': 'version: 1\nid: row\ntitle: Pins\narrangement: lane\nitems: []\n' };
   const compilation = planFileChange(snapshot(files), { kind: 'move', notebookId: 'a', path: 'notes/a/pins.compilation.yml', destination: 'notes/a/renamed.compilation.yml', title: 'Renamed' });

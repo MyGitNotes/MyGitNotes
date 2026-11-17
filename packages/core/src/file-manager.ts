@@ -74,12 +74,17 @@ export function editableFile(file: string, bytes: Uint8Array): string | undefine
 
 /**
  * The stored form of the note `raw` once renamed `title`: the frontmatter title, or the heading that names the note,
- * follow `retitle`. Not applied to a compilation, which keeps its name in its own file.
+ * follow `retitle`, and `updated` is stamped. Not applied to a compilation, which keeps its name in its own file. A
+ * frontmatter is patched in place and only the heading's own line is rewritten, so the rest of the text keeps its bytes:
+ * no blank line is added after the fence, and the body keeps its whitespace and line endings.
  */
 export function retitleNoteFile(raw: string, file: string, title: string, now: Date = new Date()): string {
   const parsed = parseNoteFile(raw, file);
   const next = retitle(parsed.content, parsed.metadata, title, isOutlinePath(file), parsed.title);
-  return serializeNoteFile(file, next.metadata, next.content, false, now, raw);
+  if (next.content === parsed.content || !raw.endsWith(parsed.content)) return serializeNoteFile(file, next.metadata, next.content, false, now, raw);
+  const head = raw.slice(0, raw.length - parsed.content.length);
+  const body = parsed.content.replace(/^#\s+.+$/m, line => `# ${title}${line.endsWith('\r') ? '\r' : ''}`);
+  return serializeNoteFile(file, next.metadata, body, false, now, head + body);
 }
 
 /**
