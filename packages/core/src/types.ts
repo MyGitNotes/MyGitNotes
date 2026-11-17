@@ -127,6 +127,8 @@ export interface NoteItem {
   kind?: 'compilation' | 'outline';
   /** Why a compilation cannot open: a syntax, schema, scope or duplicate-id problem. */
   invalid?: string;
+  /** The note opens a frontmatter block that cannot be read (it does not parse to a map, or no fence closes it): it has no status or tags until it is fixed. */
+  frontmatterInvalid?: true;
   /** Present while the note is checked out to the live editor: the text above is the live text. */
   live?: LiveNoteState;
 }

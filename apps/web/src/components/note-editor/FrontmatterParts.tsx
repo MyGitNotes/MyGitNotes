@@ -64,7 +64,7 @@ export function FrontmatterYaml({ yamlText, setYamlText, yamlError, setYamlError
   }, [source, sourceError, yamlText, setYamlText, setYamlError]);
   return (
     <div className='flex-1 flex flex-col text-xs space-y-2'>
-      {yamlError && <div className='p-2 rounded bg-danger-soft border border-danger/40 text-danger font-mono text-[11px] break-all'>{yamlError}</div>}
+      {yamlError && <div className='p-2 rounded bg-danger-soft border border-danger/40 text-danger font-mono text-[11px] break-words'>{yamlError}</div>}
       <div className='flex-1 border border-line rounded-md overflow-hidden min-h-[340px]'>
         <Suspense fallback={<LoadingStatus className='p-3'>{t('editor.loadingEditor')}</LoadingStatus>}>
           <FileSourceEditor

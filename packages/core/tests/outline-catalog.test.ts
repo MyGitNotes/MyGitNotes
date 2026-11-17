@@ -42,7 +42,8 @@ describe('native outline kind', () => {
   it.each(['- 研究\n  Annotation\n', '- 研究\r\n  Annotation\r\n', '---\ninvalid: [\n---\n- source\n'])('preserves ordinary Markdown source on read: %j', source => {
     const parsed = parseNoteFile(source, 'notes/ex/研究.v2.outline.md');
     expect(parsed).toMatchObject({ title: '研究.v2', content: source, extra: { kind: 'outline' } });
-    expect(parseNoteFile(source, 'notes/ex/研究.v2.md').extra).toEqual({});
+    // An ordinary note is no outline; one whose frontmatter cannot be read says so.
+    expect(parseNoteFile(source, 'notes/ex/研究.v2.md').extra.kind).toBeUndefined();
   });
 
   it('keeps normal frontmatter and title precedence without adding a type flag', () => {

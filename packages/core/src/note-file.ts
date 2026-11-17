@@ -1,5 +1,5 @@
 import { applyCompilationMetadata, compilationFields, isCompilationPath, replaceCompilationTags } from './compilation.js';
-import { parseNoteContent, replaceNoteTags, serializeNoteContent } from './frontmatter.js';
+import { noteFrontmatterSpan, parseNoteContent, replaceNoteTags, serializeNoteContent } from './frontmatter.js';
 import { isOutlinePath, OUTLINE_SUFFIX } from './outline.js';
 import type { NoteMetadata } from './types.js';
 
@@ -13,8 +13,11 @@ export interface ParsedNoteFile {
   content: string;
   title: string;
   lineNumberOffset: number;
-  /** Specialized kind, leaving an ordinary note's shape unchanged. */
-  extra: { kind?: 'compilation' | 'outline'; invalid?: string; };
+  /**
+   * Specialized kind, leaving an ordinary note's shape unchanged, and `frontmatterInvalid` on a note that opens a
+   * frontmatter block which does not parse to a map or is never closed: its body then holds the block, and it has no status or tags.
+   */
+  extra: { kind?: 'compilation' | 'outline'; invalid?: string; frontmatterInvalid?: true; };
 }
 
 /**
@@ -27,8 +30,11 @@ export function parseNoteFile(raw: string, filePath: string, scope?: readonly st
   if (!isCompilationPath(filePath)) {
     const outline = isOutlinePath(filePath);
     const fallback = outline ? name.slice(0, -OUTLINE_SUFFIX.length) + '.md' : name;
-    const { metadata, content, title, lineNumberOffset } = parseNoteContent(raw, fallback);
-    return { metadata, content, title, lineNumberOffset, extra: outline ? { kind: 'outline' } : {} };
+    const { metadata, content, title, lineNumberOffset, hasFrontmatter } = parseNoteContent(raw, fallback);
+    // A block that parsed needs no second read; only one that did not is told from a note without any.
+    const span = !hasFrontmatter && raw.startsWith('---') ? noteFrontmatterSpan(raw) : null;
+    const unreadable = span !== null && 'invalid' in span;
+    return { metadata, content, title, lineNumberOffset, extra: { ...(outline ? { kind: 'outline' as const } : {}), ...(unreadable ? { frontmatterInvalid: true as const } : {}) } };
   }
   const fields = compilationFields(raw, filePath, scope);
   return { metadata: fields.metadata, content: raw, title: fields.title, lineNumberOffset: 0, extra: { kind: 'compilation', ...(fields.invalid ? { invalid: fields.invalid } : {}) } };

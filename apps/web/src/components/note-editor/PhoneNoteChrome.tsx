@@ -1,5 +1,5 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
+import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import '../phone-notes.css';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -10,13 +10,12 @@ import { usePhoneNotes } from '../../lib/phone-notes.js';
 import type { NoteItem } from '../../lib/types.js';
 import type { MarkdownEditorMode } from '../MarkdownEditor.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
-import { NoteStatusSelect } from '../NoteStatusSelect.js';
+import { FrontmatterInvalid, NoteStatusSelect } from '../NoteStatusSelect.js';
 import { LiveBadge } from '../live/LiveBadge.js';
 import { useLiveLock } from '../live/live-drafts.js';
 import { PhoneSheet } from '../PhoneSheet.js';
 import { PHONE_TOOLS } from './phone-tools.js';
 import type { LiveDraftActions } from './NoteActionsMenu.js';
-import { FrontmatterInvalid } from './NoteRow.js';
 import { NoteRowTags } from './NoteRowTags.js';
 import type { NoteDocumentPanelState } from './useNoteDocumentPanel.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
@@ -90,13 +89,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
         {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
         <div className='phone-note-title' title={title}>{title}</div>
         {liveBadge && <LiveBadge live={props.note.live} title={props.note.title} />}
-        {props.frontmatterInvalid
-          ? (
-            <span role='status' className='inline-flex text-danger' aria-label={t('editor.frontmatterInvalidShort')} title={t('editor.frontmatterInvalidLive')}>
-              <AlertTriangle aria-hidden='true' size={16} />
-            </span>
-          )
-          : <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />}
+        {props.frontmatterInvalid ? <FrontmatterInvalid iconOnly announce /> : <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />}
         {!autoSave && !readOnly && (
           <button type='button' className='ui-icon-button' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave}>
             <Save aria-hidden='true' />
@@ -205,7 +198,7 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
     <PhoneSheet title={title} onClose={onClose} className='phone-note-sheet'>
       {!liveEditing && <p className='phone-sheet-meta' role='status' aria-label={t('phone.saveState')}>{t('editor.words', { count: words })}{' · '}{session.editorStatus}</p>}
       <section className='phone-sheet-section' aria-label={t('phone.noteActions')}>
-        {frontmatterInvalid ? <FrontmatterInvalid /> : (
+        {frontmatterInvalid ? <FrontmatterInvalid announce /> : (
           <>
             <div className='phone-sheet-field'>
               <span>{t('editor.status')}</span>

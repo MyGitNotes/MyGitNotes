@@ -70,6 +70,22 @@ describe('reading checked-out notes', () => {
     expect((await callNoteShell(open(), 'read', { path: 'notes/life/a.md' }, false)).content).toBe(liveA);
   });
 
+  // A list marks a note whose frontmatter cannot be read, from Git or from its live text, as the editor does, and the mark goes once it is fixed.
+  it('marks a note whose frontmatter cannot be read in the index, from Git and from its live text', async () => {
+    const { files, liveNotes, open, checkout } = fixture();
+    files.set('notes/life/c.md', '---\ntitle: C\nstatus: draft\n----\n# C\n');
+    const id = await checkout('notes/life/a.md');
+    liveNotes.type(repository, id, '---\ntitle: Live title\nstatus: review\n---x\nLive body.\n', pat);
+    const index = await open().catalog().index(await life());
+    const at = (path: string) => index.find(item => item.path === path);
+    expect(at('notes/life/c.md')).toMatchObject({ frontmatterInvalid: true, status: undefined });
+    expect(at('notes/life/a.md')).toMatchObject({ frontmatterInvalid: true, status: undefined, live: expect.any(Object) });
+    expect(at('notes/life/b.md')?.frontmatterInvalid).toBeUndefined();
+    liveNotes.type(repository, id, liveA, pat);
+    expect((await open().catalog().index(await life())).find(item => item.path === 'notes/life/a.md')).toMatchObject({ status: 'review' });
+    expect((await open().catalog().index(await life())).find(item => item.path === 'notes/life/a.md')?.frontmatterInvalid).toBeUndefined();
+  });
+
   it('lists pending live notes at their virtual paths', async () => {
     const { liveNotes, open } = fixture();
     const pending = await liveNotes.person(pat).createPending(repository, { notebook: 'notes~life', pathRule: '{{title}}.md', content: '# Meeting\n\nnotes\n' });

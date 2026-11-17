@@ -32,7 +32,7 @@ import { citationLibrary } from './live-markdown/citations.js';
 import { slideNote } from './live-markdown/slide-structure.js';
 import { citationCompletionSource } from './live-markdown/citation-completion-source.js';
 import { useCitationLibrary } from '../lib/typst-preview/use-citation-library.js';
-import { cardBackgroundLayer, theme } from './live-markdown/theme.js';
+import { cardBackgroundLayer, gutterWidth, theme } from './live-markdown/theme.js';
 import { attachGutterLineCopy, blockWidgetLineNumbers } from './live-markdown/gutter-line-copy.js';
 import { collabHeadingGutter, headingGutter } from './live-markdown/heading-gutter.js';
 import { caretPlacedIn, restingCaret } from './live-markdown/resting-caret.js';
@@ -266,7 +266,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           markdownEditorKeymap(),
           drawSelection(),
           restingCaret,
-          continuous ? [] : cardBackgroundLayer,
+          continuous ? [] : [cardBackgroundLayer, gutterWidth],
           collab ? collabHeadingGutter : headingGutter,
           lineNumberGutter.current.of(
             showLineNumbers

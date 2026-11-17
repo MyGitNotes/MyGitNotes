@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fillMissingNoteTimestamps, noteFrontmatterSpan, parseNoteContent, patchNoteFrontmatter, replaceNoteStatus, replaceNoteTags } from '../src/frontmatter.js';
 import { patchFrontmatterField } from '../src/frontmatter-patch.js';
+import { parseNoteFile } from '../src/note-file.js';
 
 describe('noteFrontmatterSpan', () => {
   it('finds the block and its blank separator as parseNoteContent does', () => {
@@ -130,5 +131,25 @@ describe('patchNoteFrontmatter', () => {
 
   it('does not stamp timestamps', () => {
     expect(patchNoteFrontmatter(raw, parseNoteContent(raw).metadata, parseNoteContent(raw).metadata)).toBe(raw);
+  });
+});
+
+// A note whose frontmatter cannot be read is listed as such, as the editor shows it, instead of as a note without a status.
+describe('parseNoteFile frontmatterInvalid', () => {
+  const unreadable = (raw: string, file = 'notes/a.md') => parseNoteFile(raw, file).extra.frontmatterInvalid;
+  it('marks a block no fence closes, one closed by a line with more on it, and one that is not a map', () => {
+    expect(unreadable('---\ntitle: A\nstatus: done\n---x\n# A\n')).toBe(true);
+    expect(unreadable('---\ntitle: A\n----\n# A\n')).toBe(true);
+    expect(unreadable('---\ntitle: A\nstatus: done\n# A\n')).toBe(true);
+    expect(unreadable('---\ntitle: [oops\n---\nBody')).toBe(true);
+    expect(unreadable('---\n- a\n---\nBody')).toBe(true);
+    expect(unreadable('---\ntitle: A\n---x\n', 'notes/a.outline.md')).toBe(true);
+    expect(parseNoteFile('---\ntitle: A\n---x\n', 'notes/a.outline.md').extra.kind).toBe('outline');
+  });
+  it('leaves a note with a readable block, with none, or opening with another dash line unmarked', () => {
+    expect(parseNoteFile('---\ntitle: A\nstatus: done\n---\n# A\n', 'notes/a.md').extra).toEqual({});
+    expect(unreadable('# A\n\n---\n')).toBeUndefined();
+    expect(unreadable('----\nBody\n')).toBeUndefined();
+    expect(unreadable('')).toBeUndefined();
   });
 });

@@ -191,6 +191,13 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 .status-cell-value { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .status-cell-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-cell .select-chevron { color: var(--color-muted); opacity: 0; transition: opacity 120ms ease; }
+/* A note whose frontmatter cannot be read: a warning where its status would be, in every list and the editor, the status chip's size; icon-only where a row has only a dot. */
+.note-frontmatter-invalid { display: inline-flex; flex: none; align-items: center; gap: 4px; min-width: 0; max-width: 100%; min-height: 28px; padding: 2px 6px; color: var(--color-danger); font-size: 12px; font-weight: 500; line-height: 18px; }
+.note-frontmatter-invalid > svg { flex: none; width: 14px; height: 14px; }
+.note-frontmatter-invalid > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-frontmatter-invalid[data-icon-only] { justify-content: center; width: 24px; min-height: 24px; padding: 0; }
+/* The table's status column has room for a status name, not for this one: the sign stays and its words are kept for assistive technology and the tooltip. */
+@media (min-width: 768px) { .note-list td .note-frontmatter-invalid > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
 :is(tr, .note-card):hover .select-trigger.status-cell:not(:disabled), .select-trigger.status-cell:not(:disabled):is(:focus-visible, [data-state='open']) { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
 :is(tr, .note-card):hover .status-cell:not(:disabled) .select-chevron, .status-cell:not(:disabled):is(:focus-visible, [data-state='open']) .select-chevron { opacity: 1; }
 .status-cell:disabled .select-chevron { display: none; }

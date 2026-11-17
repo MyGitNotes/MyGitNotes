@@ -120,6 +120,12 @@ it('keeps each status a select named for its note, with a dot and the status nam
   expect(status.querySelector('.status-dot')).toBeInTheDocument();
 });
 
+it('says a note whose frontmatter cannot be read in its status cell, with no menu', () => {
+  render(createElement(ListView, { ...baseProps, notes: [titled('notes/a.md', 'Alpha', { frontmatterInvalid: true })] }));
+  expect(screen.queryByRole('combobox', { name: 'Status for Alpha' })).toBeNull();
+  expect(screen.getByText('Frontmatter cannot be read')).toBeInTheDocument();
+});
+
 it('lays the tags of a row on one line, and shows a dash for a note without tags', () => {
   const { container } = render(createElement(ListView, { ...baseProps, notes: [titled('notes/a.md', 'Alpha', { tags: ['x', 'y'] }), titled('notes/b.md', 'Beta')] }));
   expect(container.querySelectorAll('.note-tags-one-line')).toHaveLength(1);
