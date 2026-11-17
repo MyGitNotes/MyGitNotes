@@ -1,7 +1,7 @@
 import { createFileUpload } from './createFileUpload.js';
 import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import type { FileCommand } from '@mygitnotes/core';
-import { fetchFiles, type FileEntry, type FileListing, type FileRead, mutateFile, rawFileUrl, readFile } from '../../lib/files-api.js';
+import { fetchFiles, type FileEntry, type FileListing, type FileRead, liveLeftMessage, mutateFile, rawFileUrl, readFile } from '../../lib/files-api.js';
 import { buildFileTree, expandedPathsFor, type FileTreeNode, isMarkdownFile } from '../../lib/file-tree.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { fetchR2, type R2Listing } from '../../lib/r2-api.js';
@@ -197,8 +197,9 @@ export function useFileManager({ notebookId, writable, initialPath, initialOpera
       readSequence.current++;
     }
     await onChanged?.(result);
-    // The move landed; the live notes it could not take along stay where they are, and the person is told.
-    if (result.liveLeft?.length) setError(t('folder.liveLeft', { paths: result.liveLeft.map(entry => entry.path).join(', ') }));
+    // The move landed; the live notes it could not take along stay where they are, or keep their links, and the person is told.
+    const left = liveLeftMessage(result.liveLeft, t);
+    if (left) setError(left);
   };
   const save = () => detail && typeof detail.content === 'string' ? run(() => apply({ kind: 'write', notebookId, path: detail.path, content }, detail.revision)) : Promise.resolve(false);
   const prepareLeave = async () => {

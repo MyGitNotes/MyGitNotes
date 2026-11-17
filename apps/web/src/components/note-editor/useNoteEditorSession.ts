@@ -157,11 +157,12 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     }
     // A note this page just moved is not deleted: the editor of its old path is on its way out.
     if (error instanceof ApiError && error.status === 404 && isNoteMoving(noteRefKey(note))) return;
-    // A live note that lies elsewhere now (filed, or moved by someone else) is followed there: an editor that holds nothing of
-    // the person's own, as a live note's never does, keeps nothing. A pending note gone without saying where is the route's.
+    // A live note that lies elsewhere now (filed, or moved by someone else) is followed there by an editor that holds nothing
+    // of the person's own, as a live note's never does; one that holds text, read-only or not (an offline merge conflict
+    // held), keeps it as a conflict below (review3 F001). A pending note gone without saying where is the route's.
     const state = current.current;
     const untouched = state.content === state.baseNote.content && sameValue(state.metadata, state.baseNote.metadata);
-    if (error instanceof ApiError && error.status === 404 && error.movedTo && (readOnly || untouched)) {
+    if (error instanceof ApiError && error.status === 404 && error.movedTo && untouched) {
       onMovedRef.current?.(error.movedTo);
       return;
     }

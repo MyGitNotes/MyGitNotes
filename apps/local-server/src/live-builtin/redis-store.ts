@@ -10,6 +10,7 @@ import { LIVE_ENDED_MAX_BYTES, LIVE_FORMER_PATHS, LIVE_MERGE_MS, LIVE_PRESENCE_M
  *   P:repos                  set     no TTL   repositories with live links
  *   P:r:<rk>:links           set     no TTL   live link ids of the repository
  *   P:r:<rk>:path:<pk>       string  no TTL   the link id of a path; kept after a release
+ *   P:r:<rk>:left:<pk>       string  no TTL   the id of the link that left a path last (`leftFrom`); kept after a release
  *   P:link:<id>              hash    no TTL   the link's fields and its `rk`; `base` and `conflict` as JSON, an absent field is null
  *   P:doc:<id>:<epoch>       string  no TTL   the epoch's compacted Yjs state, base64
  *   P:doc:<id>:<epoch>:log   list    no TTL   the Yjs updates since the last compaction, base64
@@ -198,7 +199,7 @@ lease.readHash = ARGV[4]
 redis.call('SET', KEYS[2], cjson.encode(lease), 'PX', string.format('%.0f', lease['until'] - tonumber(ARGV[2]) + tonumber(ARGV[5])))
 return 1`;
 
-/** KEYS link, lease, editors, initial. ARGV token, now, base, contentHash, path, conflict, P, pk, old pk, why unmoved ('' for a target Git held). */
+/** KEYS link, lease, editors, initial. ARGV token, now, base, contentHash, path, conflict, P, pk, old pk, why unmoved ('' for a target Git held), old path. */
 const SYNCED = `${HOLDER}${FORMER}
 local lease = holder(ARGV[1], ARGV[2])
 if not lease then return 'leased' end
@@ -225,6 +226,7 @@ elseif at[7] then
     local old = paths .. ARGV[9]
     if redis.call('GET', old) == at[5] then redis.call('DEL', old) end
     former(at[1], ARGV[5])
+    if at[1] == ARGV[11] then redis.call('SET', ARGV[7] .. ':r:' .. tostring(at[6]) .. ':left:' .. ARGV[9], at[5]) end
     redis.call('HSET', KEYS[1], 'path', ARGV[5])
     redis.call('SET', paths .. ARGV[8], at[5])
     redis.call('HDEL', KEYS[1], 'unmoved', 'unmovedReason')
@@ -275,10 +277,14 @@ erase(ARGV[4], at[4], at[3], at[5], at[6])
 redis.call('DEL', KEYS[1], KEYS[7])
 return 'discarded'`;
 
-/** KEYS link, lease. ARGV token, now, kind ('rule' or 'target'), the path rule or target ('' to take the target away), who moved it as JSON ('' for nobody named). */
+/**
+ * KEYS link, lease. ARGV token, now, kind ('rule' or 'target'), the path rule or target ('' to take the target away), P,
+ * the old target as read before ('' for none), its pk, who moved it as JSON ('' for nobody named).
+ */
 const RETARGET = `${HOLDER}${FORMER}
 if not holder(ARGV[1], ARGV[2]) then return 'leased' end
-local path = redis.call('HGET', KEYS[1], 'path')
+local at = redis.call('HMGET', KEYS[1], 'path', 'target', 'id', 'rk')
+local path = at[1]
 redis.call('DEL', KEYS[2])
 if ARGV[3] == 'rule' then
   if path then return 'not-pending' end
@@ -286,9 +292,11 @@ if ARGV[3] == 'rule' then
   return 'retargeted'
 end
 if not path then return 'not-filed' end
-former(redis.call('HGET', KEYS[1], 'target'), ARGV[4] == '' and path or ARGV[4])
+local current = ARGV[4] == '' and path or ARGV[4]
+former(at[2], current)
+if at[2] and at[2] ~= current and at[2] == ARGV[6] then redis.call('SET', ARGV[5] .. ':r:' .. tostring(at[4]) .. ':left:' .. ARGV[7], at[3]) end
 if ARGV[4] == '' then redis.call('HDEL', KEYS[1], 'target') else redis.call('HSET', KEYS[1], 'target', ARGV[4]) end
-if ARGV[4] == '' or ARGV[5] == '' then redis.call('HDEL', KEYS[1], 'movedBy') else redis.call('HSET', KEYS[1], 'movedBy', ARGV[5]) end
+if ARGV[4] == '' or ARGV[8] == '' then redis.call('HDEL', KEYS[1], 'movedBy') else redis.call('HSET', KEYS[1], 'movedBy', ARGV[8]) end
 redis.call('HDEL', KEYS[1], 'unmoved', 'unmovedReason')
 return 'retargeted'`;
 
@@ -296,6 +304,11 @@ return 'retargeted'`;
 const UNLEASE = `${HOLDER}
 if holder(ARGV[1], ARGV[2]) then redis.call('DEL', KEYS[2]) end
 return 'ok'`;
+
+/** KEYS left. ARGV the link id: the record is dropped only while it names that link. */
+const FORGET_LEFT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('DEL', KEYS[1]) end
+return 1`;
 
 /** KEYS link, presence. ARGV process, its entry ('' for none), lifetime. */
 const PRESENCE = `
@@ -394,7 +407,7 @@ export function redisLiveStore({ url, prefix }: { url: string; prefix?: string; 
 /** The Redis live store over any way to send one command and get its reply, which a test fakes. `send` throws on failure. */
 export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>, prefix = liveStorePrefix()): LiveStore {
   const P = prefix;
-  const key = { repos: `${P}:repos`, links: (repository: RepositoryId) => `${P}:r:${digest32(repository)}:links`, path: (repository: RepositoryId, path: string) => `${P}:r:${digest32(repository)}:path:${digest32(path)}`, link: (id: string) => `${P}:link:${id}`, doc: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}`, log: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}:log`, editors: (id: string) => `${P}:editors:${id}`, initial: (id: string) => `${P}:initial:${id}`, lease: (id: string) => `${P}:lease:${id}`, merge: (hash: string) => `${P}:merge:${hash}`, ended: (id: string, epoch: number) => `${P}:ended:${id}:${epoch}`, presence: (id: string) => `${P}:presence:${id}`, ticket: (hash: string) => `${P}:ticket:${hash}`, tickets: (id: string) => `${P}:tickets:${id}` };
+  const key = { repos: `${P}:repos`, links: (repository: RepositoryId) => `${P}:r:${digest32(repository)}:links`, path: (repository: RepositoryId, path: string) => `${P}:r:${digest32(repository)}:path:${digest32(path)}`, left: (repository: RepositoryId, path: string) => `${P}:r:${digest32(repository)}:left:${digest32(path)}`, link: (id: string) => `${P}:link:${id}`, doc: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}`, log: (id: string, epoch: number) => `${P}:doc:${id}:${epoch}:log`, editors: (id: string) => `${P}:editors:${id}`, initial: (id: string) => `${P}:initial:${id}`, lease: (id: string) => `${P}:lease:${id}`, merge: (hash: string) => `${P}:merge:${hash}`, ended: (id: string, epoch: number) => `${P}:ended:${id}:${epoch}`, presence: (id: string) => `${P}:presence:${id}`, ticket: (hash: string) => `${P}:ticket:${hash}`, tickets: (id: string) => `${P}:tickets:${id}` };
   /**
    * One command. A failure is logged by the call and its link id and thrown as an unavailable live editor: a refusal by
    * the server with its first line (a full Redis must be visible), anything else without detail, since a client error
@@ -441,6 +454,14 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
     },
     async link(id) {
       return isLink(id) ? linkOf(await call(`link ${id}`, ['HGETALL', key.link(id)])) : null;
+    },
+    async leftFrom(repository, path) {
+      const id = await call('leftFrom', ['GET', key.left(repository, path)]) as string | null;
+      const link = id && isLink(id) ? linkOf(await call(`leftFrom ${id}`, ['HGETALL', key.link(id)])) : null;
+      return link && link.repository === repository && link.path !== null && link.path !== path && link.target !== path ? link : null;
+    },
+    async forgetLeft(repository, path, id) {
+      if (isLink(id)) await script(`forgetLeft ${id}`, FORGET_LEFT, [key.left(repository, path)], [id]);
     },
     async checkout(repository, { path, notebook, base, contentHash }, state, now) {
       const [outcome, link] = await script('checkout', CHECKOUT, [key.path(repository, path), key.repos, key.links(repository)], [P, randomBytes(16).toString('base64url'), repository, digest32(repository), notebook, path, json(base), contentHash, encode(state), now]) as ['created' | 'joined' | 'reopened', unknown];
@@ -507,7 +528,7 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
       // holding the lease changes a filed link's path, so it is still the one the script finds, which drops that key only
       // when it names this link.
       const old = await call(`synced ${id}`, ['HGET', key.link(id), 'path']) as string | null;
-      return await script(`synced ${id}`, SYNCED, [key.link(id), key.lease(id), key.editors(id), key.initial(id)], [token, now, json(base), receipt.contentHash, receipt.path, json(receipt.conflict), P, digest32(receipt.path), old ? digest32(old) : '', receipt.unmovedReason ?? '']) as 'ok' | 'leased' | 'path-fixed';
+      return await script(`synced ${id}`, SYNCED, [key.link(id), key.lease(id), key.editors(id), key.initial(id)], [token, now, json(base), receipt.contentHash, receipt.path, json(receipt.conflict), P, digest32(receipt.path), old ? digest32(old) : '', receipt.unmovedReason ?? '', old ?? '']) as 'ok' | 'leased' | 'path-fixed';
     },
     async release(id, token, expect, now) {
       if (!isLink(id)) return 'leased';
@@ -520,7 +541,10 @@ export function redisLiveStoreOver(send: (command: string[]) => Promise<unknown>
     async retarget(id, token, change, now) {
       if (!isLink(id)) return 'leased';
       const [kind, value, mover] = typeof change === 'string' ? ['rule', change, ''] : ['target', change.target ?? '', change.target !== null && change.movedBy ? JSON.stringify({ name: change.movedBy.name, ...(change.movedBy.email ? { email: change.movedBy.email } : {}) }) : ''];
-      return await script(`retarget ${id}`, RETARGET, [key.link(id), key.lease(id)], [token, now, kind, value, mover]) as 'retargeted' | 'leased' | 'not-pending' | 'not-filed';
+      // As in `synced`: the key a target it leaves names holds the digest of that target, read first; the script keys it
+      // only when the target is still the one read.
+      const old = typeof change === 'string' ? null : await call(`retarget ${id}`, ['HGET', key.link(id), 'target']) as string | null;
+      return await script(`retarget ${id}`, RETARGET, [key.link(id), key.lease(id)], [token, now, kind, value, P, old ?? '', old ? digest32(old) : '', mover]) as 'retargeted' | 'leased' | 'not-pending' | 'not-filed';
     },
     async unlease(id, token, now) {
       if (!isLink(id)) return;

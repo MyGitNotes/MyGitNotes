@@ -34,8 +34,6 @@ interface Params {
   setNotebookRevision?: (notebookId: string, revision: string) => void;
   /** Drops the unsaved copy this browser keeps of a note path and carries its conflicted copy to `destination`, once the note lies there. */
   forgetDrafts?: (notebookId: string, path: string, destination: string) => void;
-  /** Points the tabs of this browser's (current) Focus at the path a moved note now has. */
-  relocateCurrentFocus?: (notebookId: string, move: (path: string) => string) => void;
   setActionError: WorkspaceState['setActionError'];
   t: I18nContextValue['t'];
   /** Whether the live editor of a notebook's repository can move and rename a pending note (未歸檔); none by default. */
@@ -56,7 +54,7 @@ export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rena
 const isCompilation = (path: string) => noteSuffix(path) === '.compilation.yml';
 
 /** The Move and Rename actions of an open note, outline or compilation, and the dialogs that choose the folder or name. */
-export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote, focus, queryClient, queryScope, flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, relocateCurrentFocus, setActionError, t, retargets, releasesUntouched }: Params) {
+export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, saveNote, focus, queryClient, queryScope, flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, setActionError, t, retargets, releasesUntouched }: Params) {
   const [request, setRequest] = useState<NoteMoveRequest | null>(null);
   const [busy, setBusy] = useState(false);
   // A note being edited live (編輯中) is neither moved nor renamed until it is checked in; a pending one (未歸檔) is, where
@@ -99,10 +97,10 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
       stageWorkingNote(withTitle({ ...plan.draft.note, path: destination }), null);
       updateDraft(note.notebookId, note.path, null);
       forgetDrafts?.(note.notebookId, note.path, destination);
-      // A Focus tab of the draft follows it, as a file move relocates the tabs of a committed note.
+      // A named Focus's tab of the draft follows it, as a file move relocates the tabs of a committed note; this browser's
+      // (current) Focus follows with the files changed, by the path map.
       const page = structuredClone(focus.page);
       if (relocateFocusPaths(page, note.notebookId, path => path === note.path ? destination : path)) focus.change(page);
-      relocateCurrentFocus?.(note.notebookId, path => path === note.path ? destination : path);
       await onFilesChanged({ revision: '', selectedPath: destination, pathMap: { [note.path]: destination }, deletedPaths: [] }, { background: true });
       return;
     }
@@ -139,9 +137,9 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
       updateDraft(note.notebookId, note.path, null);
       updateDraft(note.notebookId, destination, { ...latest, note: withTitle({ ...latest.note, path: destination }), base: latest.base && { ...latest.base, path: destination } });
     }
-    // Nothing is left to recover at the old path, and a Focus of this browser follows the note like the named ones the server rewrote.
+    // Nothing is left to recover at the old path. A Focus of this browser follows the note like the named ones the server
+    // rewrote, once, where the files changed relocate its tabs by the path map (review4 F002).
     forgetDrafts?.(note.notebookId, note.path, destination);
-    relocateCurrentFocus?.(note.notebookId, path => result.pathMap[path] ?? path);
     await onFilesChanged(result, { background: true });
   };
 

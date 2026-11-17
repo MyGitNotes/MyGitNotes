@@ -332,10 +332,11 @@ export async function callNoteShell(reader: RemoteSource, operation: string, arg
       // A folder of live notes alone moves nothing in Git now.
       const moved = merged.size ? await receipt([...merged.values()], 'folders', agentMessage([...merged.values()], 'folders')) : undefined;
       if (!live.kept.size) return moved!;
-      // The commit landed: a live note that cannot follow stays where the links to it lead, and the answer says so.
+      // The commit landed: a live note that cannot follow stays where the links to it lead, one whose links to the notes
+      // moved cannot follow them keeps them, and the answer says so.
       const followed = await reader.followLiveRelocation(live, relocation);
       const pending = followed.moved.map(entry => entry.destination);
-      const hints = [...(pending.length ? [`${pending.length === 1 ? 'A note' : `${pending.length} notes`} being edited live (編輯中) move at their next check-in: ${pending.join(', ')}.`] : []), ...followed.left.map(entry => `${entry.path} is being edited live (編輯中) and stays where it is: ${entry.reason}`)];
+      const hints = [...(pending.length ? [`${pending.length === 1 ? 'A note' : `${pending.length} notes`} being edited live (編輯中) move at their next check-in: ${pending.join(', ')}.`] : []), ...followed.left.map(entry => `${entry.path} is being edited live (編輯中): ${entry.reason}`)];
       return { ...(moved ?? { success: true, committed: false, pushed: false, repository: reader.repository, branch: reader.branch, revision, changedPaths: [] }), live: true, ...(followed.left.length ? { liveLeft: followed.left } : {}), hint: hints.join(' ') };
     }
     return receipt(changes, 'notes', agentMessage(changes, 'notes'));

@@ -677,6 +677,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'folder.failed': '資料夾操作失敗，內容已保留。',
   'folder.reload': '重新載入',
   'folder.liveLeft': '已移動；{paths} 正在協作編輯，沒有跟著移動，仍在原處，可以再移動一次。',
+  'folder.liveLinksBroken': '{paths} 正在協作編輯，裡面連到被移動筆記的連結沒能跟著更新，仍指向原處；請在編輯器裡修正。',
   'folder.draftsHint': '開啟中的筆記有修改沒能儲存，請先處理再調整檔案。',
   'view.flat': '攤開',
   'view.groupByFolder': '依資料夾分組',

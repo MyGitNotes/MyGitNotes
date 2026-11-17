@@ -36,7 +36,7 @@ function controller(): FocusPageController {
 }
 let client: QueryClient;
 const wrapper = ({ children }: { children: ReactNode; }) => createElement(QueryClientProvider, { client }, children);
-const open = () => renderHook(() => useNoteFocus({ page: controller(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+const open = () => renderHook(() => useNoteFocus({ page: controller(), notebookId: NOTEBOOK, notebookRoot: 'notes', repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
 /** The lists are read again (a rename's frontmatter change, a window focus, the live interval): `paths` is what they show now. */
 const refetch = (paths: string[]) => {
   lists.paths = new Set(paths);
@@ -129,7 +129,7 @@ describe('a Focus tab the lists no longer show', () => {
     });
     const renders: { tabs: string[]; shown: string | null | undefined; }[] = [];
     const hook = renderHook(() => {
-      const focus = useNoteFocus({ page: controller(), notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true });
+      const focus = useNoteFocus({ page: controller(), notebookId: NOTEBOOK, notebookRoot: 'notes', repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true });
       renders.push({ tabs: tabPaths(focus.layout), shown: focus.entry?.shown.p1 });
       return focus;
     }, { wrapper });
@@ -168,6 +168,40 @@ describe('a Focus tab the lists no longer show', () => {
     await act(async () => answer(movedTo(RENAMED)));
     await waitFor(() => expect(tabPaths(hook.result.current.layout)).toEqual([RENAMED, OTHER]));
     expect(tabPaths(stored()?.current)).toEqual([RENAMED, OTHER]);
+  });
+
+  it('is hidden as gone, not relocated, when the server says the note moved out of the notebook (R5-F002)', async () => {
+    read.mockImplementation(async () => {
+      throw movedTo('elsewhere/ideas.md');
+    });
+    const hook = open();
+    refetch([OTHER]);
+    hook.rerender();
+    await waitFor(() => expect(tabPaths(hook.result.current.layout)).toEqual([OTHER]));
+    expect(tabPaths(stored()?.current)).toEqual([IDEAS, OTHER]);
+    expect(stored()?.entries[CURRENT_FOCUS].shown.p1).toBe(`note:${IDEAS}`);
+  });
+
+  it('asks about a note the server said is gone only once, not again at each read of the lists, until the lists show it again (R5-F003)', async () => {
+    read.mockRejectedValue(new ApiError('Note not found', 404));
+    const hook = open();
+    refetch([OTHER]);
+    hook.rerender();
+    await waitFor(() => expect(tabPaths(hook.result.current.layout)).toEqual([OTHER]));
+    expect(read).toHaveBeenCalledOnce();
+    for (let n = 0; n < 3; n++) {
+      refetch([OTHER]);
+      hook.rerender();
+      await act(async () => {});
+    }
+    expect(read).toHaveBeenCalledOnce();
+    expect(tabPaths(hook.result.current.layout)).toEqual([OTHER]);
+    // Shown again and then missing again, it is asked about anew.
+    refetch([IDEAS, OTHER]);
+    hook.rerender();
+    refetch([OTHER]);
+    hook.rerender();
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
   });
 
   it('is hidden at once where this browser deleted the note (a draft deletion), without asking', async () => {

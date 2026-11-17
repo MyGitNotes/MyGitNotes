@@ -169,6 +169,24 @@ describe('useNoteEditorSession and a note the remote says moved', () => {
   });
 });
 
+describe('useNoteEditorSession and a note the remote says moved, holding text of its own', () => {
+  it('keeps a read-only session holding text that differs from its base where it is, as a conflict, instead of following without it (review3 F001)', async () => {
+    const onMarkConflict = vi.fn(), onMoved = vi.fn();
+    const moved = new ApiError('This live note was checked in and filed.', 404, undefined, undefined, false, { movedTo: 'notes/archive/idea.md' });
+    const onReadRemote = vi.fn<() => Promise<NoteItem>>().mockResolvedValueOnce(note('Contract')).mockRejectedValue(moved);
+    const base = { readOnly: true, autoSave: false, draftMode: true, propIsDirty: false, branch: 'main', draftScope: 'repo', onSave: vi.fn() as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote, onRestoreFile: vi.fn(async () => Promise.reject(moved)), onCommitFile: undefined, remoteBase: undefined, conflictReason: undefined, onMarkConflict, onMoved } satisfies Omit<UseNoteEditorSessionParams, 'note'>;
+    const hook = renderHook(() => useNoteEditorSession({ ...base, note: note('Contract') }));
+    await vi.waitFor(() => expect(onReadRemote).toHaveBeenCalledOnce());
+    // Held text of its own, as an offline merge conflict a read-only session keeps.
+    act(() => hook.result.current.setContent('# Contract\n\nTyped offline.\n'));
+    await act(() => hook.result.current.pullLatest());
+    expect(onMoved).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(hook.result.current.blocked).toBe(true));
+    expect(onMarkConflict).toHaveBeenCalledOnce();
+    expect(localStorage.getItem('gh_notes_draft:repo:conflict:notes/idea.md')).not.toBeNull();
+  });
+});
+
 describe('useNoteEditorSession and a read that cannot reach the server', () => {
   it('says so in its own words instead of the browser’s, and clears it once the connection is back', async () => {
     const onReadRemote = vi.fn<() => Promise<NoteItem>>().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue(note('Old name'));

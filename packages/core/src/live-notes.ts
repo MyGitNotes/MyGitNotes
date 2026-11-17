@@ -162,6 +162,21 @@ export interface LivePersonCalls {
   /** Where a link that is no longer live was filed; null when unknown. */
   filed(repository: RepositoryId, id: string): Promise<string | null>;
   /**
+   * The id of the link, live or no longer live, that reads knew at the repository path `path` and that left it last:
+   * a target a later move replaced, or the path a check-in moved it from (its {@link LiveCheckout.formerPaths}, also
+   * after its release, a reopen, and beyond the latest few). A tab, address or open editor still at `path` then finds
+   * the note where it is now, live or where it was filed, as long as Git holds no file at `path`. Null for none, and
+   * while that link is read at `path` again. An adapter without it is asked only for its live links' `formerPaths`, and
+   * a path that is no longer live leads nowhere.
+   */
+  leftFrom?(repository: RepositoryId, path: string): Promise<string | null>;
+  /**
+   * Forgets that link `id` left `path`, once Git holds a file there: the path is that file's, and stops leading to the
+   * note for good, also once the file is deleted or moved away. A record another link left there later is kept. Part of
+   * `leftFrom`; an adapter with it has this too.
+   */
+  forgetLeft?(repository: RepositoryId, path: string, id: string): Promise<void>;
+  /**
    * Merges `request.text`, written on `request.base`, into the live note over the typing since, as a three-way merge,
    * and lists the person among its editors; texts come in normal form. A conflict takes nothing. A repeat of the same
    * `mergeId` by the same person for the same link answers what the first answered for at least a day, also after the
@@ -244,6 +259,15 @@ export interface LiveServiceCalls {
   lease(repository: RepositoryId, id: string): Promise<LiveLease>;
   detail(repository: RepositoryId, id: string, lease: LiveLease): Promise<LiveDetail>;
   mergeIn(repository: RepositoryId, id: string, lease: LiveLease, change: { content: string; baseRevision: string; }): Promise<{ liveRevision: string; }>;
+  /**
+   * `mergeIn`, taken at most once per `key` for the link: the merge and the record that `key` was taken are one step,
+   * kept for at least a day, also past a release and a reopen, so a repeat under the same key takes nothing and answers
+   * `repeated`. A check-in writes the rewrite of a moved note's own links back into its live text this way, keyed by the
+   * move, so the check-in after a write-back that failed or lost its answer knows whether to take it (LMR-F001): taken,
+   * it is not taken twice; not taken, it is taken then, on the text as typed since. An adapter without it leaves the
+   * check-in to tell by the text's lines.
+   */
+  mergeInOnce?(repository: RepositoryId, id: string, lease: LiveLease, change: { content: string; baseRevision: string; key: string; }): Promise<{ liveRevision: string; repeated: boolean; }>;
   /**
    * Records a check-in's commit. A receipt for a note moving elsewhere names its target (moved there) or its path (kept
    * there, its target recorded as `unmoved`, with `unmovedReason` when it is not that Git held the target).

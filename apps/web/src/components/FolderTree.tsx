@@ -8,6 +8,7 @@ import { dropPosition, folderDropCommand } from '../lib/folder-drag.js';
 import { TOUCH_NOTE_DROP, TOUCH_NOTE_OVER } from '../lib/touch-note-drag.js';
 import { buildFolderTree, expandedPathsForFolder, type FolderTreeNode } from '../lib/folder-tree.js';
 import { carriesNoteMove, type DraggedNote, droppedNote } from '../lib/note-drag.js';
+import { liveLeftMessage } from '../lib/files-api.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { NavTree, NavTreeChildren, NavTreeRow } from './NavTree.js';
 
@@ -237,8 +238,9 @@ export function FolderTree({ showHeading = false, showRoot = false, onManageFile
       setRevision(data.revision);
       await onChanged?.();
       onSelect(data.selectedPath || null);
-      // The move landed; the live notes it could not take along stay where they are, and the person is told.
-      if (Array.isArray(data.liveLeft) && data.liveLeft.length) setError(t('folder.liveLeft', { paths: data.liveLeft.map((entry: { path: string; }) => entry.path).join(', ') }));
+      // The move landed; the live notes it could not take along stay where they are, or keep their links, and the person is told.
+      const left = liveLeftMessage(data.liveLeft, t);
+      if (left) setError(left);
     } catch (err) {
       setError((err as Error).message);
     } finally {

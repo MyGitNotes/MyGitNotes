@@ -25,6 +25,8 @@ export function memoryLiveStore(): LiveStore {
   const links = new Map<string, StoredLink>();
   /** `<repository>\n<path>` to the link id; kept after a release. */
   const paths = new Map<string, string>();
+  /** `<repository>\n<path>` to the id of the link that left the path last; kept after a release (`leftFrom`). */
+  const lefts = new Map<string, string>();
   /** The document of each link's live epoch. */
   const documents = new Map<string, { state: Uint8Array; log: Uint8Array[]; }>();
   const editors = new Map<string, Map<string, StoredEditor>>();
@@ -64,6 +66,13 @@ export function memoryLiveStore(): LiveStore {
     async link(id) {
       const link = links.get(id);
       return link ? structuredClone(link) : null;
+    },
+    async leftFrom(repository, path) {
+      const link = links.get(lefts.get(pathKey(repository, path)) ?? '');
+      return link && link.repository === repository && link.path !== null && link.path !== path && link.target !== path ? structuredClone(link) : null;
+    },
+    async forgetLeft(repository, path, id) {
+      if (lefts.get(pathKey(repository, path)) === id) lefts.delete(pathKey(repository, path));
     },
     async checkout(repository, { path, notebook, base, contentHash }, state, now) {
       const known = links.get(paths.get(pathKey(repository, path)) ?? '');
@@ -167,6 +176,7 @@ export function memoryLiveStore(): LiveStore {
         if (receipt.path === link.target) {
           if (paths.get(pathKey(link.repository, link.path)) === id) paths.delete(pathKey(link.repository, link.path));
           setFormerPaths(link, withFormerPath(link.formerPaths, link.path, receipt.path));
+          lefts.set(pathKey(link.repository, link.path), id);
           link.path = receipt.path;
           paths.set(pathKey(link.repository, receipt.path), id);
           delete link.unmoved;
@@ -224,6 +234,7 @@ export function memoryLiveStore(): LiveStore {
       if (link.path === null) return 'not-filed';
       setFormerPaths(link, withFormerPath(link.formerPaths, link.target, change.target ?? link.path));
       delete link.movedBy;
+      if (link.target !== undefined && link.target !== (change.target ?? link.path)) lefts.set(pathKey(link.repository, link.target), id);
       if (change.target === null) delete link.target;
       else {
         link.target = change.target;

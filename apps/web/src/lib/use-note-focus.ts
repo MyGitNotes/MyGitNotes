@@ -4,12 +4,14 @@ import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPan
 import type { FocusPageController } from './use-focus-page.js';
 import { noteDemoViewWriteIn, noteDemoWriteIn } from './demo-storage.js';
 import { useNoteLookup } from './use-note-queries.js';
-import { movedPaths, useNoteWhereabouts } from './note-whereabouts.js';
+import { movedPaths, useNoteWhereabouts, whereaboutsIn } from './note-whereabouts.js';
 import { activatePane, adoptedFocusViewKey, browseTarget, collapseRatios, CURRENT_FOCUS, emptyFocusView, entryView, fillPane, type FocusEntryView, type FocusViewState, readFocusView, relocateEntryKeys, retainPanes, shownAfterClose, showTab, sideTarget, splitRatios } from './focus-view.js';
 
 interface NoteFocusOptions {
   page: FocusPageController;
   notebookId: string;
+  /** The notebook's root, repository-relative: a tab follows its note only within it. Unknown, no tab follows yet. */
+  notebookRoot?: string;
   /** The repository serving the notebook; its id scopes where this device keeps the view. */
   repository: string;
   /** The workspace's view-state scope before notebook keys, from which this notebook's earlier view is adopted; null when that view is not this notebook's. */
@@ -44,7 +46,7 @@ const notePaths = (keys: (string | null)[]) => keys.map(notePath).filter((path):
 const noteKeys = (notebookId: string, keys: (string | null)[]) => notePaths(keys).map(path => noteRefKey({ notebookId, path }));
 
 /** Named Focus (Git-synced through the Focus workspace document) and this browser's (current) Focus and view state for one notebook. */
-export function useNoteFocus({ page, notebookId, repository, scope, focusKey, restoreLast = false, writable, splitBeside = false, flushEditors }: NoteFocusOptions) {
+export function useNoteFocus({ page, notebookId, notebookRoot, repository, scope, focusKey, restoreLast = false, writable, splitBeside = false, flushEditors }: NoteFocusOptions) {
   // Until the workspace says which repository serves the notebook the view has no home: it is not read or kept, or it would be filed under no repository at all.
   const key = repository ? adoptedFocusViewKey(repository, scope, notebookId) : '';
   const [stored, setStored] = useState(() => ({ key, view: loadView(key) }));
@@ -91,9 +93,16 @@ export function useNoteFocus({ page, notebookId, repository, scope, focusKey, re
   // person moved or renamed a live note, so the lists show it at its target), and the tab follows it there.
   const storedRefs = storedPaths.map(path => ({ notebookId, path }));
   const whereabouts = useNoteWhereabouts(storedRefs, lookup);
-  const moved = movedPaths(whereabouts, storedRefs);
-  /** A tab is kept until the server says its note or lane is gone; while the question is on its way, and when it could not be asked (offline), it stays. */
-  const present = (tab: FocusTab) => !settled || !storedPaths.includes(tab.path) || notes.has(tab.path) || whereabouts.get(noteRefKey({ notebookId, path: tab.path }))?.kind !== 'gone';
+  const moved = movedPaths(whereabouts, storedRefs, notebookRoot);
+  /**
+   * A tab is kept until the server says its note or lane is gone, or moved out of the notebook; while the question is on
+   * its way, and when it could not be asked (offline), it stays.
+   */
+  const present = (tab: FocusTab) => {
+    if (!settled || !storedPaths.includes(tab.path) || notes.has(tab.path)) return true;
+    const answer = whereabouts.get(noteRefKey({ notebookId, path: tab.path }));
+    return (notebookRoot !== undefined ? whereaboutsIn(answer, notebookRoot) : answer)?.kind !== 'gone';
+  };
   /** A named Focus shows a moved note's tab where it lies now, and its next write keeps it there; this browser's (current) one is relocated at once, below. */
   const followed = (layout: FocusLayout) => {
     if (!moved.size) return layout;

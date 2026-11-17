@@ -304,7 +304,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
       key = unsyncedKey(scope, notebookId, to, owner);
       keptKeys.current = [key];
       // Typing kept under the path the note left goes with it, so a later session where it lies finds it.
-      if (keeping) void store.put(keptEntry()).then(() => store.delete(from)).catch(() => {});
+      if (keeping) void store.move(keptEntry(), from).catch(() => {});
     };
     /** Ends the session: the tab's document is dropped, and its unsaved text merged into the note or offered, whatever ended it. */
     const end = (ending: Ending) => {

@@ -58,6 +58,13 @@ export interface LiveRepository {
   /** Where a link that is no longer live was filed: its repository path, or null when unknown. */
   filed(id: string): Promise<string | null>;
   /**
+   * The id of the link, live or not, that reads knew at the repository path `path` and that left it last (the adapter's
+   * `leftFrom`); null for none, and undefined where the adapter cannot tell, which leaves the live links' `formerPaths`.
+   */
+  leftFrom(path: string): Promise<string | null | undefined>;
+  /** Forgets that link `id` left `path`, which Git holds a file at (the adapter's `forgetLeft`); nothing where it has none. */
+  forgetLeft(path: string, id: string): Promise<void>;
+  /**
    * 「立即簽回」: checks the live note at `path` (a Git path, a moving note's target or Git path, or a pending note's
    * virtual path) in now (spec §5.3), as a manual check-in unless `mode` says otherwise.
    */
@@ -235,6 +242,16 @@ export function liveRepository({ liveNotes, context, repository, alias, notebook
       if (!isLiveId(id)) return null;
       const answer = await call(() => calls().filed(repository, id));
       return typeof answer === 'string' && answer.length <= 1024 && !answer.startsWith('/') && !/[\\\p{Cc}]/u.test(answer) && answer.split('/').every(part => part && part !== '.' && part !== '..') ? answer : null;
+    },
+    async leftFrom(path) {
+      const ask = calls().leftFrom?.bind(calls());
+      if (!ask) return undefined;
+      const answer = await call(() => ask(repository, path));
+      return isLiveId(answer) ? answer : null;
+    },
+    async forgetLeft(path, id) {
+      const forget = calls().forgetLeft?.bind(calls());
+      if (forget && isLiveId(id)) await call(() => forget(repository, path, id));
     },
     async checkIn(path, mode = 'manual') {
       const link = await linkAt(path);

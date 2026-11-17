@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { Router } from 'express';
-import { checkInLink, type EditionSourceConfig, type LiveContext, type LiveEditorInfo, LiveUnavailableError, parseWorkspaceConfig, RemoteSource, sourceIdentity, StaleRevisionError, type WorkspaceConfigSource } from '@mygitnotes/core';
+import { checkInLink, type EditionSourceConfig, type LiveContext, type LiveEditorInfo, LiveStaleError, LiveUnavailableError, parseWorkspaceConfig, RemoteSource, sourceIdentity, StaleRevisionError, type WorkspaceConfigSource } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { type IdentityService } from '../src/identity.js';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
@@ -63,6 +63,12 @@ const gitCommit = async (file: string, content: string) => {
   const snapshot = await source.getSnapshot(true);
   return (await source.commitChanges([{ path: file, content }], snapshot.sha, 'write', 'notes', undefined, snapshot)).revision;
 };
+/** A deletion someone makes in Git directly. */
+const gitDelete = async (file: string) => {
+  const source = new MemoryEditionSource(notes, files, true, memoryCommitCounter(files), undefined, scope);
+  const snapshot = await source.getSnapshot(true);
+  return (await source.commitChanges([{ path: file, sha: null }], snapshot.sha, 'delete', 'notes', undefined, snapshot)).revision;
+};
 const checkout = (file: string) => call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: file });
 const open = async (file: string) => (await checkout(file)).body.checkout.id as string;
 const move = (from: string, destination: string, extra: Record<string, unknown> = {}, who: string | null = 'p1') => call('POST', '/api/files', { command: { kind: 'move', notebookId: 'notes~life', path: from, destination, ...(extra.title ? { title: extra.title } : {}) }, ...(extra.editing ? { editing: true } : {}) }, who);
@@ -70,6 +76,20 @@ const checkIn = (file: string) => call('POST', '/api/live/checkin', { notebookId
 const read = (file: string) => call('GET', `/api/notes/read?notebookId=notes~life&path=${encodeURIComponent(file)}`);
 const listed = async () => ((await call('GET', '/api/notes?notebookId=notes~life')).body.notes as { path: string; live?: Record<string, unknown>; }[]).map(note => note.path).sort();
 const rows = () => liveNotes.service.checkouts(repository);
+/** The texts the check-in merges into the live note from now on, by either merge call. */
+const recordMerges = () => {
+  const merged: string[] = [];
+  const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service), once = liveNotes.service.mergeInOnce!.bind(liveNotes.service);
+  vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
+    merged.push(args[3].content);
+    return mergeIn(...args);
+  });
+  vi.spyOn(liveNotes.service, 'mergeInOnce').mockImplementation(async (...args) => {
+    merged.push(args[3].content);
+    return once(...args);
+  });
+  return merged;
+};
 const make = (editor: LiveEditorInfo = builtin, retarget = true) => memoryLiveNotes({ editor, repositories: [{ source: notes, files }], clock: clock = memoryLiveClock(), discard: true, retarget });
 
 beforeEach(() => {
@@ -221,6 +241,54 @@ describe('moving a live note someone else edits', () => {
     await gitCommit(archived, '# Archived\n');
     expect(await read(archived)).toMatchObject({ status: 200, body: { note: { path: archived, title: 'Archived' } } });
     expect(await read(again)).toMatchObject({ status: 404, body: { movedTo: weekly } });
+  });
+
+  it('keeps leading a path a note left while live to where it was filed once it is checked in and released, until Git holds a file there (fix5 P2-2)', async () => {
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    const again = 'notes/life/archive/週會.md';
+    await move(archived, again);
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(again)).toMatchObject({ status: 200, body: { committed: true, released: true, path: again } });
+    expect(await rows()).toEqual([]);
+    // No longer live, the note still leads a background tab at either path to where it lies in Git.
+    expect(await read(weekly)).toMatchObject({ status: 404, body: { movedTo: again } });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: again } });
+    // Opened again, it is the same note there, and the old paths lead to it still.
+    expect(await checkout(again)).toMatchObject({ status: 200, body: { outcome: 'reopened', checkout: { id, path: again } } });
+    expect(await read(weekly)).toMatchObject({ status: 404, body: { movedTo: again } });
+    // A file Git gets at a path it left is that file's.
+    await gitCommit(weekly, '# New weekly\n');
+    expect(await read(weekly)).toMatchObject({ status: 200, body: { note: { path: weekly, title: 'New weekly' } } });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: again } });
+    // That file deleted in Git later, the path no longer leads to the note that left it before the file was there (FLM-F004).
+    await gitDelete(weekly);
+    expect((await read(weekly)).body).not.toHaveProperty('movedTo');
+    expect(await checkout(weekly)).toMatchObject({ status: 404 });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: again } });
+  });
+
+  it('leads a path two notes left in turn to the one that left it last, live or not (review3 F002)', async () => {
+    await start();
+    const other = 'notes/life/會議/other.md', parked = 'notes/life/parked.md';
+    const first = await open(weekly);
+    liveNotes.setActive(repository, first, 1);
+    await move(weekly, archived);
+    const second = await open(other);
+    liveNotes.setActive(repository, second, 1);
+    // The second note goes where the first went, and then leaves it: the path is a former path of both.
+    await move(weekly, 'notes/life/archive/週會.md');
+    await move(other, archived);
+    await move(archived, parked);
+    expect((await rows()).map(row => row.formerPaths)).toEqual([[archived], [archived]]);
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: parked } });
+    expect(await checkout(archived)).toMatchObject({ status: 200, body: { checkout: { id: second } } });
+    // Released, the second still counts over the first, which left the path earlier.
+    liveNotes.setActive(repository, second, 0);
+    expect(await checkIn(parked)).toMatchObject({ status: 200, body: { released: true, path: parked } });
+    expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: parked } });
   });
 
   it('refuses a destination Git holds or another live note goes to, with 409, and records nothing', async () => {
@@ -414,12 +482,7 @@ describe('moving a live note someone else edits', () => {
     liveNotes.setActive(repository, id, 1);
     await move(weekly, archived);
     liveNotes.setActive(repository, id, 0);
-    const merged: string[] = [];
-    const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service);
-    vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
-      merged.push(args[3].content);
-      return mergeIn(...args);
-    });
+    const merged = recordMerges();
     const commit = RemoteSource.prototype.commitChanges;
     let stale = 1;
     vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function(this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
@@ -441,12 +504,7 @@ describe('moving a live note someone else edits', () => {
     await move(weekly, archived);
     liveNotes.type(repository, id, own.replace('議程', '議程二'), sam);
     liveNotes.setActive(repository, id, 0);
-    const merged: string[] = [];
-    const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service);
-    vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
-      merged.push(args[3].content);
-      return mergeIn(...args);
-    });
+    const merged = recordMerges();
     const commit = RemoteSource.prototype.commitChanges;
     let stale = 1;
     vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function(this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
@@ -470,7 +528,7 @@ describe('moving a live note someone else edits', () => {
     liveNotes.setActive(repository, id, 1);
     await move(weekly, archived);
     liveNotes.setActive(repository, id, 0);
-    vi.spyOn(liveNotes.service, 'mergeIn').mockRejectedValueOnce(new LiveUnavailableError());
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockRejectedValueOnce(new LiveUnavailableError());
     expect((await checkIn(archived)).status).toBe(502);
     expect(files.get(archived)).toBe(own.replace('../archive/old.md', 'old.md'));
     // Typing goes on in the live text, which still holds the links as they were.
@@ -480,6 +538,193 @@ describe('moving a live note someone else edits', () => {
     expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true } });
     expect(files.get(archived)).toBe(own.replace('../archive/old.md', 'old.md').replace('結論', '結論二'));
     expect(files.has(weekly)).toBe(false);
+  });
+
+  it('rewrites a link line the person edited after the write-back of a landed move failed, at the next check-in (LMR-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [o](other.md) [x](../archive/old.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    // The first write-back fails, by whichever call the check-in makes it.
+    vi.spyOn(liveNotes.service, 'mergeIn').mockRejectedValueOnce(new LiveUnavailableError());
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockRejectedValueOnce(new LiveUnavailableError());
+    expect((await checkIn(archived)).status).toBe(502);
+    expect(decodeURIComponent(files.get(archived)!)).toBe('---\ntitle: 公司週會\n---\n議程 [o](../會議/other.md) [x](old.md)\n');
+    // The person types on the link line, which still holds the links as they were before the move.
+    liveNotes.type(repository, id, own.replace('議程', '議程改'), sam);
+    liveNotes.setActive(repository, id, 0);
+    leaseRunsOut();
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true } });
+    expect(decodeURIComponent(files.get(archived)!)).toBe('---\ntitle: 公司週會\n---\n議程改 [o](../會議/other.md) [x](old.md)\n');
+    expect(await rows()).toEqual([]);
+  });
+
+  it('makes a write-back typing refused again on the text as typed, in the same check-in (LMR-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    // Typing on the link line lands between the read and the write-back, which it refuses.
+    const once = liveNotes.service.mergeInOnce!.bind(liveNotes.service);
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockImplementationOnce(async () => {
+      liveNotes.type(repository, id, own.replace('[o]', '[其他]'), sam);
+      throw new LiveStaleError();
+    }).mockImplementation(once);
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true, released: false, reason: 'changed' } });
+    expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toBe('---\ntitle: 公司週會\n---\n議程 [其他](../會議/other.md)\n');
+  });
+
+  for (const once of [true, false]) {
+    it(`never rewrites the links of a landed move twice when its acknowledgement was lost, whatever lines were pasted since (LMR-F002${once ? ', by the write-back record' : ', by the lines'})`, async () => {
+      const own = '---\ntitle: 公司週會\n---\n[x](../archive/old.md)\n[y](../archive/y.md)\n';
+      files.set(weekly, own);
+      if (!once) delete (liveNotes.service as { mergeInOnce?: unknown; }).mergeInOnce;
+      await start();
+      const id = await open(weekly);
+      liveNotes.setActive(repository, id, 1);
+      await move(weekly, archived);
+      liveNotes.setActive(repository, id, 0);
+      vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new LiveUnavailableError());
+      expect((await checkIn(archived)).status).toBe(502);
+      const rewritten = '---\ntitle: 公司週會\n---\n[x](old.md)\n[y](y.md)\n';
+      expect(files.get(archived)).toBe(rewritten);
+      expect((await liveNotes.person(pat).read(repository, id)).content).toBe(rewritten);
+      // More lines in the form the links had before the move than lines the rewrite changed.
+      liveNotes.type(repository, id, `${rewritten}${'[x](../archive/old.md)\n'.repeat(3)}`, sam);
+      liveNotes.setActive(repository, id, 0);
+      leaseRunsOut();
+      expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true } });
+      expect(files.get(archived)).toBe(`${rewritten}${'[x](../archive/old.md)\n'.repeat(3)}`);
+    });
+  }
+
+  it('rewrites the links of a note moved there, back, and there again, each move on its own (FLM-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    const there = own.replace('../archive/old.md', 'old.md');
+    for (const [from, to, text] of [[weekly, archived, there], [archived, weekly, own], [weekly, archived, there]] as const) {
+      await move(from, to);
+      expect(await checkIn(to)).toMatchObject({ status: 200, body: { path: to, committed: true, moved: { from } } });
+      expect(files.get(to)).toBe(text);
+      expect((await liveNotes.person(pat).read(repository, id)).content).toBe(text);
+      // The memory adapter cannot give a lease back: the check-in that left the note live holds it until it runs out.
+      leaseRunsOut();
+    }
+    // Nothing typed since, the next check-in commits nothing and the links still lead where they did.
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: false, released: true } });
+    expect(files.get(archived)).toBe(there);
+  });
+
+  it('never rewrites the links of a landed move twice when its acknowledgement was lost twice, with typing between (FLM-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n\n結論\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new LiveUnavailableError()).mockRejectedValueOnce(new LiveUnavailableError());
+    expect((await checkIn(archived)).status).toBe(502);
+    const rewritten = own.replace('../archive/old.md', 'old.md');
+    expect(files.get(archived)).toBe(rewritten);
+    liveNotes.type(repository, id, rewritten.replace('結論', '結論二'), sam);
+    liveNotes.setActive(repository, id, 0);
+    leaseRunsOut();
+    expect((await checkIn(archived)).status).toBe(502);
+    expect(files.get(archived)).toBe(rewritten.replace('結論', '結論二'));
+    leaseRunsOut();
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: false, released: true } });
+    expect(files.get(archived)).toBe(rewritten.replace('結論', '結論二'));
+  });
+
+  it('leaves a link line the person fixed by hand after the write-back of a landed move failed, and rewrites the rest (FLM-F002)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n[x](../archive/old.md)\n[y](../archive/y.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockRejectedValueOnce(new LiveUnavailableError());
+    expect((await checkIn(archived)).status).toBe(502);
+    const rewritten = '---\ntitle: 公司週會\n---\n[x](old.md)\n[y](y.md)\n';
+    expect(files.get(archived)).toBe(rewritten);
+    // The editor reads the note where it went: the person fixes the first link for that folder.
+    liveNotes.type(repository, id, own.replace('../archive/old.md', 'old.md'), sam);
+    liveNotes.setActive(repository, id, 0);
+    leaseRunsOut();
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, released: true } });
+    expect(files.get(archived)).toBe(rewritten);
+  });
+
+  it('leaves a link line typing fixed when a write-back it refused is made again in the same check-in (FLM-F002)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n[x](../archive/old.md)\n[y](../archive/y.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    const once = liveNotes.service.mergeInOnce!.bind(liveNotes.service);
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockImplementationOnce(async () => {
+      liveNotes.type(repository, id, own.replace('../archive/old.md', 'old.md'), sam);
+      throw new LiveStaleError();
+    }).mockImplementation(once);
+    // The live text holds what the move committed, so it is released with it.
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true, released: true } });
+    expect(files.get(archived)).toBe('---\ntitle: 公司週會\n---\n[x](old.md)\n[y](y.md)\n');
+  });
+
+  it('never rewrites the links of a landed move twice when its acknowledgement was lost for more than a day (FLM-F003)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [x](../archive/old.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new LiveUnavailableError());
+    expect((await checkIn(archived)).status).toBe(502);
+    const rewritten = own.replace('../archive/old.md', 'old.md');
+    expect((await liveNotes.person(pat).read(repository, id)).content).toBe(rewritten);
+    clock.advance(25 * 60 * 60_000);
+    liveNotes.setActive(repository, id, 0);
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, released: true } });
+    expect(files.get(archived)).toBe(rewritten);
+  });
+
+  it("tries a folder move's rewrite of a live note's links again on a fresh read, and says when its links still lead where the notes were (LMR-F003)", async () => {
+    files.set(weekly, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    const person = liveNotes.person.bind(liveNotes);
+    let refusals = 1;
+    vi.spyOn(liveNotes, 'person').mockImplementation(context => {
+      const calls = person(context);
+      return { ...calls, write: async (...args) => refusals-- > 0 ? Promise.reject(new LiveStaleError()) : calls.write(...args) };
+    });
+    // Refused once, the rewrite is made again and holds.
+    expect(await move('notes/life/會議', 'notes/life/past')).toMatchObject({ status: 200, body: { pathMap: { 'notes/life/會議/other.md': 'notes/life/past/other.md' } } });
+    expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toContain('[o](../past/other.md)');
+    expect(await rows()).toMatchObject([{ id, path: weekly, target: 'notes/life/past/2026-11-17 公司週會.md' }]);
+    // Refused twice, the note still moves, and the answer says its links lead where the notes were.
+    leaseRunsOut();
+    refusals = 2;
+    const moved = await move('notes/life/past', 'notes/life/later');
+    expect(moved).toMatchObject({ status: 200, body: { liveLeft: [{ path: 'notes/life/past/2026-11-17 公司週會.md', destination: 'notes/life/later/2026-11-17 公司週會.md', linksBroken: true, moved: true, reason: expect.stringContaining('links') }] } });
+    expect(await rows()).toMatchObject([{ id, path: weekly, target: 'notes/life/later/2026-11-17 公司週會.md' }]);
+    expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toContain('[o](../past/other.md)');
   });
 
   it('commits a note in place, marked unmoved for its size, when its move would change too many files (LM-F005)', async () => {
@@ -546,5 +791,14 @@ describe('moving a live note over the built-in editor', () => {
     expect(await read(weekly)).toMatchObject({ status: 404, body: { movedTo: renamed } });
     expect(await read(archived)).toMatchObject({ status: 404, body: { movedTo: renamed } });
     for (const path of [weekly, archived, renamed]) expect(await call('POST', '/api/live/socket-ticket', { notebookId: 'notes~life', path }), path).toMatchObject({ status: 200, body: { document: expect.stringMatching(new RegExp(`^${id}\\.`)) } });
+  });
+
+  it('keeps leading the paths a note left to where it was filed once it is released (fix5 P2-2)', async () => {
+    const id = await open(weekly);
+    // Nobody else has it open: the move lands now, and the note is released with nobody in it.
+    expect(await move(weekly, archived)).toMatchObject({ status: 200, body: { live: { path: archived, checkIn: { committed: true, released: true } } } });
+    expect(await fixture.liveNotes.service.checkouts(repository)).toEqual([]);
+    expect(await read(weekly)).toMatchObject({ status: 404, body: { movedTo: archived } });
+    expect((await fixture.store.link(id))?.live).toBe(false);
   });
 });

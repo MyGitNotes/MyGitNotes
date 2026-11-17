@@ -1,4 +1,5 @@
 import { noteFollowed } from '../lib/note-follows.js';
+import { inNotebookRoot } from '../lib/note-whereabouts.js';
 import { noteRoute } from '../lib/routes.js';
 
 export interface FollowMovedNote {
@@ -28,7 +29,7 @@ export interface FollowMovedNote {
  * with the person's typing, caret and focus ({@link noteFollowed}). A path outside the note's notebook is not followed.
  */
 export function followMovedNote({ note, to, notebook, routedPath, search, state, link, relocatePaths, navigate, refresh }: FollowMovedNote): void {
-  if (!notebook || notebook.id !== note.notebookId || !to.startsWith(`${notebook.root}/`) || to === note.path) return;
+  if (!notebook || notebook.id !== note.notebookId || !inNotebookRoot(notebook.root, to) || to === note.path) return;
   noteFollowed(note.notebookId, note.path, to);
   relocatePaths(note.notebookId, path => path === note.path ? to : path);
   if (routedPath === note.path) {

@@ -188,3 +188,16 @@ it('keeps its view when the note is followed to another path: the focus, caret a
   expect(view.state.selection.main).toMatchObject({ anchor: 2, head: 8 });
   expect(view.contentDOM.querySelector('[data-workspace-link]')?.getAttribute('data-source-path')).toBe('notes/ex/archive/a.md');
 });
+
+// review6 F003 feared the view kept the old folder's links until the next keystroke. The path effect's outline reconfiguration
+// redraws them: @codemirror/state runs every field's update after a reconfiguration too. This keeps it so.
+it('draws its links from the folder its note was followed to at once, before anyone types (review6 F003)', () => {
+  const { collab } = collabOf('[o](other.md)\n');
+  const client = new QueryClient(), onChange = () => {};
+  const tree = (notePath: string) => createElement(QueryClientProvider, { client }, createElement(I18nProvider, null, createElement(MemoryRouter, {}, createElement(LiveMarkdownEditor, { content: '', notePath, notebookId: 'ex', readOnly: false, onChange, ariaLabel: 'Note content', collab }))));
+  const result = render(tree('notes/ex/a.md'));
+  const sources = () => [...new Set([...result.container.querySelectorAll('[data-workspace-link]')].map(link => link.getAttribute('data-source-path')))];
+  expect(sources()).toEqual(['notes/ex/a.md']);
+  result.rerender(tree('notes/archive/a.md'));
+  expect(sources()).toEqual(['notes/archive/a.md']);
+});

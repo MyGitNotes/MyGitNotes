@@ -201,14 +201,14 @@ describe('useNoteMove', () => {
     expect(drafts.get('notes/plans.md')).toMatchObject({ note: { path: 'notes/plans.md', title: 'Plans', content: '# Plans\n\nEdited.', metadata: { title: 'Plans' } }, base: { path: 'notes/plans.md' } });
   });
 
-  it('forgets the unsaved copies at the old path and lets the current Focus follow the note', async () => {
+  it('forgets the unsaved copies at the old path and lets the current Focus follow the note once, with the files changed (review4 F002)', async () => {
     files.mutateFile.mockResolvedValue({ revision: 'r2', selectedPath: '', pathMap: { 'notes/idea.md': 'notes/plans.md' }, deletedPaths: [] });
     const { params, rename } = setup({});
     await rename('Plans');
     expect(params.forgetDrafts).toHaveBeenCalledWith('nb', 'notes/idea.md', 'notes/plans.md');
-    expect(params.relocateCurrentFocus).toHaveBeenCalledWith('nb', expect.any(Function));
-    const move = params.relocateCurrentFocus.mock.calls[0][1] as (path: string) => string;
-    expect([move('notes/idea.md'), move('notes/other.md')]).toEqual(['notes/plans.md', 'notes/other.md']);
+    // The answer's pathMap relocates the Focus tabs where the files changed; nothing relocates them a second time.
+    expect(params.onFilesChanged).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ pathMap: { 'notes/idea.md': 'notes/plans.md' } }), { background: true });
+    expect(params.relocateCurrentFocus).not.toHaveBeenCalled();
   });
 
   it('takes the revision the move committed before the workspace is read again, in a hosted workspace', async () => {
