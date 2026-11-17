@@ -37,6 +37,8 @@ export interface NoteFrontmatterPanelProps {
   yamlSource?: string;
   /** The note's frontmatter does not parse, with why: the form is disabled and the YAML view opens on the text as written. */
   invalid?: string;
+  /** The sheet around the panel already says Frontmatter: the heading keeps only the Form / YAML switch. */
+  headed?: boolean;
 }
 
 /** The title field: typed freely, then Enter or leaving the field renames the note (title and file name together). Without a rename it edits the field. */
@@ -80,7 +82,7 @@ function TitleField({ metadata, setMetadata, onRename }: Pick<NoteFrontmatterPan
 }
 
 /** A note's frontmatter: title, status, tags with autocomplete, custom metadata fields, and a raw-YAML view; `children` follow it. */
-export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadataFields, availableTags, locked, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, onRename, children, yamlSource, invalid }: NoteFrontmatterPanelProps) {
+export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadataFields, availableTags, locked, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, onRename, children, yamlSource, invalid, headed = false }: NoteFrontmatterPanelProps) {
   const { t } = useTranslation();
   const labelOf = useStatusLabel();
 
@@ -101,6 +103,7 @@ export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadata
   return (
     <div className='note-frontmatter-panel note-panel-scroll flex flex-col h-full'>
       <FrontmatterHeader
+        titled={!headed}
         mode={frontmatterViewMode}
         metadata={metadata}
         yamlSource={yamlSource}
@@ -188,7 +191,7 @@ export function NoteFrontmatterPanel({ metadata, setMetadata, statuses, metadata
             <AddMetadataField metadata={metadata} setMetadata={setMetadata} newFieldKey={newFieldKey} setNewFieldKey={setNewFieldKey} />
           </fieldset>
         )
-        : <FrontmatterYaml yamlText={yamlText} setYamlText={setYamlText} yamlError={yamlError} setYamlError={setYamlError} locked={locked} setMetadata={setMetadata} />}
+        : <FrontmatterYaml yamlText={yamlText} setYamlText={setYamlText} yamlError={yamlError} setYamlError={setYamlError} locked={locked} setMetadata={setMetadata} source={yamlSource} sourceError={invalid} />}
       {children}
     </div>
   );

@@ -37,6 +37,7 @@ export function readLiveFrontmatter(text: string): LiveFrontmatter {
   if (!span) return NONE;
   if ('invalid' in span) {
     let error: string | undefined;
+    if (span.unclosed !== undefined) return { valid: false, metadata: {}, yaml: span.yaml, bodyStart: 0, lineOffset: 0, error: unclosedError(span.unclosed) };
     try {
       const parsed: unknown = YAML.parse(span.yaml);
       error = parsed === null || typeof parsed !== 'object' || Array.isArray(parsed) ? 'not a map' : undefined;
@@ -47,6 +48,9 @@ export function readLiveFrontmatter(text: string): LiveFrontmatter {
   }
   return { valid: true, metadata: span.metadata, yaml: span.yaml, bodyStart: span.bodyStart, lineOffset: (text.slice(0, span.bodyStart).match(/\n/g) ?? []).length };
 }
+
+/** Why a block opened by `---` is not closed, in the words of a YAML parser's error. */
+const unclosedError = (line: string) => line ? `"${line}" does not close the frontmatter: nothing may follow "---" on its line.` : 'The frontmatter has no closing "---" line.';
 
 /** Replaces `text` by `next` as one insertion and one deletion between their common prefix and suffix, in one transaction. */
 export function replaceLiveText(text: Y.Text, next: string): void {
@@ -97,8 +101,9 @@ const sameYaml = (a: string, b: string) => a.replace(/\r\n/g, '\n').trimEnd() ==
  * wrote or opened on; without it the text is written whole. While the live block is still that text, the new text is
  * written as typed, comments and order included; once someone else changed the block since, only the keys this edit
  * changed are patched into the current text (CFR-F002), so their change stays. A block left with no key is taken out, separator line included, instead of being
- * written empty, which would not parse (CFR-F003). An invalid block is replaced by the text; a new block takes the body's
- * line endings (CFR-F005).
+ * written empty, which would not parse (CFR-F003). An invalid block is replaced by the text, through the line that
+ * should have closed it when no fence did; a new block takes the body's line endings (CFR-F005). Where the block the
+ * view was made over is gone, the new block holds only the keys this edit changed, so the removal stays for the rest.
  */
 export function writeLiveYaml(text: Y.Text, yaml: string, shown?: string): { ok: true; } | { ok: false; error: string; } {
   const next = yamlMap(yaml);
@@ -116,6 +121,12 @@ export function writeLiveYaml(text: Y.Text, yaml: string, shown?: string): { ok:
   const newline = (span ? current.slice(0, span.end) : current).includes('\r\n') ? '\r\n' : '\n';
   const fenced = `---${newline}${yaml.trimEnd().replace(/\r?\n/g, newline)}${newline}---${newline}`;
   if (!span) {
+    const before = shown === undefined ? null : yamlMap(shown);
+    if (before && Object.keys(before).length) {
+      const changed = Object.fromEntries(Object.entries(next).filter(([key, value]) => JSON.stringify(before[key]) !== JSON.stringify(value)));
+      replaceLiveText(text, patchNoteFrontmatter(current, {}, changed));
+      return { ok: true };
+    }
     if (!empty) replaceLiveText(text, current ? `${fenced}${newline}${current}` : fenced);
     return { ok: true };
   }
@@ -143,12 +154,15 @@ export function useLiveText(text: Y.Text | null): { text: string; frontmatter: L
   return { text: value, frontmatter };
 }
 
-/** The text up to and including the separator after the frontmatter's closing fence, with core's fence: what the frontmatter reads. */
+/**
+ * The text up to and including the separator after the frontmatter's closing fence, with core's fence: what the
+ * frontmatter reads. A block no fence closes runs through the line that should have closed it, or to the end.
+ */
 function leadingBlock(text: string): string {
   if (!text.startsWith('---')) return '';
   const head = text.slice(0, MAX_FRONTMATTER);
   const fence = FRONTMATTER_REGEX.exec(head);
-  if (!fence) return head;
+  if (!fence) return head.slice(0, noteFrontmatterSpan(head)?.bodyStart ?? 0);
   const separator = text.slice(fence[0].length).match(/^[ \t]*\r?\n/)?.[0] ?? '';
   return text.slice(0, fence[0].length + separator.length);
 }

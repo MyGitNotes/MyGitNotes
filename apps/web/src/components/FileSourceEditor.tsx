@@ -25,7 +25,8 @@ function language(path: string) {
   if (/\.ya?ml$/i.test(path)) return yaml();
   return [];
 }
-export function FileSourceEditor({ path, content, readOnly, label, onChange }: { path: string; content: string; readOnly: boolean; label: string; onChange: (value: string) => void; }) {
+/** A file's text in CodeMirror; `wrap` breaks long lines at the editor's width, as a narrow panel needs, instead of scrolling sideways. */
+export function FileSourceEditor({ path, content, readOnly, label, onChange, wrap = false }: { path: string; content: string; readOnly: boolean; label: string; onChange: (value: string) => void; wrap?: boolean; }) {
   const host = useRef<HTMLDivElement>(null), view = useRef<EditorView>();
   const permissions = useRef(new Compartment());
   const vimBindings = useRef(vimCompartment());
@@ -51,6 +52,7 @@ export function FileSourceEditor({ path, content, readOnly, label, onChange }: {
           codeMirrorTokenTheme,
           permissions.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
           EditorState.lineSeparator.of(initial.current.includes('\r\n') ? '\r\n' : '\n'),
+          wrap ? EditorView.lineWrapping : [],
           EditorView.contentAttributes.of({ 'aria-label': label, 'data-key-scope': 'code-editor' }),
           EditorView.updateListener.of(update => {
             if (update.docChanged) change.current(update.state.sliceDoc());

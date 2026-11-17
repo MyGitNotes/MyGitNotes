@@ -66,10 +66,12 @@ export interface NoteDocumentPanelProps {
   frontmatterInvalid?: string;
   /** The note is in the collab editor. */
   liveNote?: boolean;
+  /** A phone's sheet names the open section above it, so the section does not name itself again. */
+  headed?: boolean;
 }
 
 /** The zoom/pane editor's document panel: its tab strip and the find, outline, frontmatter (with the note's info), view and history sections it switches between. */
-export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFindOpen, isOutlineOpen, showFrontmatter, isViewPanelOpen, isHistoryOpen, history, notePath, content, findQuery, setFindQuery, findIndex, matches, stepFind, findInputRef, outline, lineNumberOffset, outlineIndex, setOutlineIndex, chooseOutline, openOutline, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, metadata, setMetadata, statuses, metadataFields, availableTags, locked, notebookId, readOnly, onRename, yamlSource, frontmatterInvalid, liveNote }: NoteDocumentPanelProps) {
+export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFindOpen, isOutlineOpen, showFrontmatter, isViewPanelOpen, isHistoryOpen, history, notePath, content, findQuery, setFindQuery, findIndex, matches, stepFind, findInputRef, outline, lineNumberOffset, outlineIndex, setOutlineIndex, chooseOutline, openOutline, newFieldKey, setNewFieldKey, frontmatterViewMode, setFrontmatterViewMode, yamlText, setYamlText, yamlError, setYamlError, tagInput, setTagInput, isTagDropdownOpen, setIsTagDropdownOpen, metadata, setMetadata, statuses, metadataFields, availableTags, locked, notebookId, readOnly, onRename, yamlSource, frontmatterInvalid, liveNote, headed = false }: NoteDocumentPanelProps) {
   const { t } = useTranslation();
   // On a phone the section is a sheet over the note, so choosing a heading closes it to show the heading.
   const phone = usePhone();
@@ -150,7 +152,7 @@ export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFin
         </section>
       )}
       {showFrontmatter && (
-        <NoteFrontmatterPanel yamlSource={yamlSource} invalid={frontmatterInvalid} onRename={onRename} metadata={metadata} setMetadata={setMetadata} statuses={statuses} metadataFields={metadataFields} availableTags={availableTags} locked={locked} newFieldKey={newFieldKey} setNewFieldKey={setNewFieldKey} frontmatterViewMode={frontmatterViewMode} setFrontmatterViewMode={setFrontmatterViewMode} yamlText={yamlText} setYamlText={setYamlText} yamlError={yamlError} setYamlError={setYamlError} tagInput={tagInput} setTagInput={setTagInput} isTagDropdownOpen={isTagDropdownOpen} setIsTagDropdownOpen={setIsTagDropdownOpen}>
+        <NoteFrontmatterPanel headed={headed} yamlSource={yamlSource} invalid={frontmatterInvalid} onRename={onRename} metadata={metadata} setMetadata={setMetadata} statuses={statuses} metadataFields={metadataFields} availableTags={availableTags} locked={locked} newFieldKey={newFieldKey} setNewFieldKey={setNewFieldKey} frontmatterViewMode={frontmatterViewMode} setFrontmatterViewMode={setFrontmatterViewMode} yamlText={yamlText} setYamlText={setYamlText} yamlError={yamlError} setYamlError={setYamlError} tagInput={tagInput} setTagInput={setTagInput} isTagDropdownOpen={isTagDropdownOpen} setIsTagDropdownOpen={setIsTagDropdownOpen}>
           <NoteInfoPanel note={{ notebookId, path: notePath }} content={content} metadata={metadata} setMetadata={setMetadata} locked={locked || readOnly} liveNote={liveNote} />
         </NoteFrontmatterPanel>
       )}

@@ -15,7 +15,7 @@ export function NoteEditorDocumentPanel({ frame, target, notePanel, panel }: { f
     return notePanel
       ? (
         <PhoneSheet variant='full' title={t(phoneToolLabel(notePanel))} onClose={() => panel.setNotePanel(null)}>
-          <NoteDocumentPanel includeTabs={false} {...panel} />
+          <NoteDocumentPanel includeTabs={false} headed {...panel} />
         </PhoneSheet>
       )
       : null;
@@ -30,7 +30,8 @@ export function NoteEditorDocumentPanel({ frame, target, notePanel, panel }: { f
   if (!target || !notePanel) return null;
   return createPortal(
     <section className='note-document-panel' data-open='true' data-panel={notePanel} data-frame='rail' aria-label={t('editor.documentPanel')}>
-      <NoteDocumentPanel includeTabs={false} {...panel} />
+      {/* On a phone the rail's target lies in the page's tool sheet, which names the section. */}
+      <NoteDocumentPanel includeTabs={false} headed={phone} {...panel} />
     </section>,
     target,
   );

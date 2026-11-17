@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import YAML from 'yaml';
 import { Code } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -10,12 +10,15 @@ const FileSourceEditor = lazy(() => import('../FileSourceEditor.js').then(module
 export type FrontmatterViewMode = 'form' | 'yaml';
 type Metadata = Record<string, unknown>;
 
-/** The panel's heading with its Form / YAML switch; opening YAML seeds the source from `yamlSource`, or else from the current metadata. */
-export function FrontmatterHeader({ mode, metadata, yamlSource, onMode, onYaml }: { mode: FrontmatterViewMode; metadata: Metadata; yamlSource?: string; onMode: (mode: FrontmatterViewMode) => void; onYaml: (text: string) => void; }) {
+/**
+ * The panel's heading with its Form / YAML switch; opening YAML seeds the source from `yamlSource`, or else from the
+ * current metadata. Without `titled` the heading is the switch alone, where what holds the panel names it.
+ */
+export function FrontmatterHeader({ mode, metadata, yamlSource, onMode, onYaml, titled = true }: { mode: FrontmatterViewMode; metadata: Metadata; yamlSource?: string; onMode: (mode: FrontmatterViewMode) => void; onYaml: (text: string) => void; titled?: boolean; }) {
   const { t } = useTranslation();
   return (
-    <div className='flex items-center justify-between pb-2 mb-3 border-b border-line shrink-0'>
-      <span className='font-semibold text-xs text-fg'>{t('editor.frontmatter')}</span>
+    <div className={`flex items-center ${titled ? 'justify-between' : 'justify-end'} pb-2 mb-3 border-b border-line shrink-0`}>
+      {titled && <span className='font-semibold text-xs text-fg'>{t('editor.frontmatter')}</span>}
       <div className='inline-flex rounded-md p-0.5 bg-sidebar text-[11px]'>
         <button type='button' onClick={() => onMode('form')} className={`px-2 py-0.5 rounded font-medium transition-colors ${mode === 'form' ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg'}`}>{t('editor.formMode')}</button>
         <button
@@ -34,12 +37,17 @@ export function FrontmatterHeader({ mode, metadata, yamlSource, onMode, onYaml }
   );
 }
 
+/** The same YAML text, whatever its line endings and trailing blank lines. */
+const sameYaml = (a: string, b: string) => a.replace(/\r\n/g, '\n').trimEnd() === b.replace(/\r\n/g, '\n').trimEnd();
+
 /**
  * The YAML view: every valid mapping replaces the metadata (with the text it came from, and the text the view last
  * wrote or opened on, which a shared note's write compares with what others changed since), and anything else shows
- * its error and changes nothing.
+ * its error and changes nothing. A shared note's view is given its `source`, the block as it is now (with
+ * `sourceError` while it does not parse): whenever the block changes and nothing typed here waits to be written, the
+ * view shows it, and a text that is the block as it is writes nothing (VQ P2-1).
  */
-export function FrontmatterYaml({ yamlText, setYamlText, yamlError, setYamlError, locked, setMetadata }: { yamlText: string; setYamlText: (value: string) => void; yamlError: string; setYamlError: (value: string) => void; locked: boolean; setMetadata: (metadata: Metadata, text: string, shown: string) => void; }) {
+export function FrontmatterYaml({ yamlText, setYamlText, yamlError, setYamlError, locked, setMetadata, source, sourceError }: { yamlText: string; setYamlText: (value: string) => void; yamlError: string; setYamlError: (value: string) => void; locked: boolean; setMetadata: (metadata: Metadata, text: string, shown: string) => void; source?: string; sourceError?: string; }) {
   const { t } = useTranslation();
   // The text typed in between may not parse: what was last written is what the note's frontmatter was made from.
   const written = useRef(yamlText);
@@ -47,8 +55,15 @@ export function FrontmatterYaml({ yamlText, setYamlText, yamlError, setYamlError
     setMetadata(metadata, text, written.current);
     written.current = text;
   };
+  // Set before the text changes, so the editor's echo of it reads as nothing typed.
+  useEffect(() => {
+    if (source === undefined || yamlText !== written.current || sameYaml(yamlText, source)) return;
+    written.current = source;
+    setYamlText(source);
+    setYamlError(sourceError ?? '');
+  }, [source, sourceError, yamlText, setYamlText, setYamlError]);
   return (
-    <div className='flex-1 flex flex-col min-h-0 text-xs space-y-2'>
+    <div className='flex-1 flex flex-col text-xs space-y-2'>
       {yamlError && <div className='p-2 rounded bg-danger-soft border border-danger/40 text-danger font-mono text-[11px] break-all'>{yamlError}</div>}
       <div className='flex-1 border border-line rounded-md overflow-hidden min-h-[340px]'>
         <Suspense fallback={<LoadingStatus className='p-3'>{t('editor.loadingEditor')}</LoadingStatus>}>
@@ -57,8 +72,15 @@ export function FrontmatterYaml({ yamlText, setYamlText, yamlError, setYamlError
             content={yamlText}
             readOnly={locked}
             label='YAML Metadata'
+            wrap
             onChange={(newYaml) => {
               setYamlText(newYaml);
+              // The block as it is now, such as the text the view opened on or followed: shown here, nothing to write.
+              if (source !== undefined && sameYaml(newYaml, source)) {
+                written.current = newYaml;
+                setYamlError(sourceError ?? '');
+                return;
+              }
               try {
                 const parsed = YAML.parse(newYaml);
                 if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
