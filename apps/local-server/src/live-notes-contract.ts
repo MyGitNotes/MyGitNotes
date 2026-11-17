@@ -193,6 +193,32 @@ export function liveNotesContract(name: string, makeFixture: () => LiveNotesFixt
       await expect(service().release(fixture.repository, id, first, { contentHash: sha256('# Merged\n') })).rejects.toBeInstanceOf(LiveLeasedError);
     });
 
+    it('takes a merge under a key once, over typing since, and answers a repeat under that key as repeated, also after a release and a reopen', async () => {
+      const once = service().mergeInOnce?.bind(service());
+      if (!once) return;
+      const path = notePath();
+      const { id } = await checkout('# Once\nlink\n', path);
+      const read = await as(1).read(fixture.repository, id);
+      await fixture.type(id, '# Once\nlink\ntyped\n', fixture.person(1));
+      const lease = await service().lease(fixture.repository, id);
+      await expect(once(fixture.repository, id, { token: `${lease.token}x`, until: lease.until }, { content: '# Once\nLINK\n', baseRevision: read.liveRevision, key: 'move-1' })).rejects.toBeInstanceOf(LiveLeasedError);
+      expect(await once(fixture.repository, id, lease, { content: '# Once\nLINK\n', baseRevision: read.liveRevision, key: 'move-1' })).toMatchObject({ repeated: false, liveRevision: expect.any(String) });
+      expect((await as(1).read(fixture.repository, id)).content).toBe('# Once\nLINK\ntyped\n');
+      // The same key takes nothing again; another key does.
+      const now = await as(1).read(fixture.repository, id);
+      expect(await once(fixture.repository, id, lease, { content: '# Once\nLINK!\ntyped\n', baseRevision: now.liveRevision, key: 'move-1' })).toMatchObject({ repeated: true });
+      expect((await as(1).read(fixture.repository, id)).content).toBe('# Once\nLINK\ntyped\n');
+      await fixture.advance(LEASE_MS + 1000);
+      expect((await checkIn(id)).release).toEqual({ released: true });
+      const reopened = (await as(2).checkout(fixture.repository, { notebook: fixture.notebook, path, base: base('# Once\nLINK\ntyped\n', 2) })).checkout;
+      expect(reopened.id).toBe(id);
+      const again = await service().lease(fixture.repository, id);
+      const text = await as(1).read(fixture.repository, id);
+      expect(await once(fixture.repository, id, again, { content: '# Once\nLINK!\ntyped\n', baseRevision: text.liveRevision, key: 'move-1' })).toMatchObject({ repeated: true });
+      expect(await once(fixture.repository, id, again, { content: '# Once\nLINK!\ntyped\n', baseRevision: text.liveRevision, key: 'move-2' })).toMatchObject({ repeated: false });
+      expect((await as(1).read(fixture.repository, id)).content).toBe('# Once\nLINK!\ntyped\n');
+    });
+
     it('takes a sync receipt twice without harm, and keeps listing who typed after it', async () => {
       const { id } = await checkout('# Sync\n');
       await fixture.type(id, '# Sync\none\n', fixture.person(1));

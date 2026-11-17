@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { Router } from 'express';
-import { type EditionSourceConfig, type LiveContext, type LiveEditorInfo, LiveUnavailableError, parseWorkspaceConfig, RemoteSource, sourceIdentity, StaleRevisionError, type WorkspaceConfigSource } from '@mygitnotes/core';
+import { type EditionSourceConfig, type LiveContext, type LiveEditorInfo, LiveStaleError, LiveUnavailableError, parseWorkspaceConfig, RemoteSource, sourceIdentity, StaleRevisionError, type WorkspaceConfigSource } from '@mygitnotes/core';
 import { createApp } from '../src/app.js';
 import { type IdentityService } from '../src/identity.js';
 import { memoryCommitCounter, memoryCommits, MemoryEditionSource, memoryEditionSources, type MemoryFiles } from '../src/memory-edition-source.js';
@@ -70,6 +70,20 @@ const checkIn = (file: string) => call('POST', '/api/live/checkin', { notebookId
 const read = (file: string) => call('GET', `/api/notes/read?notebookId=notes~life&path=${encodeURIComponent(file)}`);
 const listed = async () => ((await call('GET', '/api/notes?notebookId=notes~life')).body.notes as { path: string; live?: Record<string, unknown>; }[]).map(note => note.path).sort();
 const rows = () => liveNotes.service.checkouts(repository);
+/** The texts the check-in merges into the live note from now on, by either merge call. */
+const recordMerges = () => {
+  const merged: string[] = [];
+  const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service), once = liveNotes.service.mergeInOnce!.bind(liveNotes.service);
+  vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
+    merged.push(args[3].content);
+    return mergeIn(...args);
+  });
+  vi.spyOn(liveNotes.service, 'mergeInOnce').mockImplementation(async (...args) => {
+    merged.push(args[3].content);
+    return once(...args);
+  });
+  return merged;
+};
 const make = (editor: LiveEditorInfo = builtin, retarget = true) => memoryLiveNotes({ editor, repositories: [{ source: notes, files }], clock: clock = memoryLiveClock(), discard: true, retarget });
 
 beforeEach(() => {
@@ -419,12 +433,7 @@ describe('moving a live note someone else edits', () => {
     liveNotes.setActive(repository, id, 1);
     await move(weekly, archived);
     liveNotes.setActive(repository, id, 0);
-    const merged: string[] = [];
-    const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service);
-    vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
-      merged.push(args[3].content);
-      return mergeIn(...args);
-    });
+    const merged = recordMerges();
     const commit = RemoteSource.prototype.commitChanges;
     let stale = 1;
     vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function(this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
@@ -446,12 +455,7 @@ describe('moving a live note someone else edits', () => {
     await move(weekly, archived);
     liveNotes.type(repository, id, own.replace('議程', '議程二'), sam);
     liveNotes.setActive(repository, id, 0);
-    const merged: string[] = [];
-    const mergeIn = liveNotes.service.mergeIn.bind(liveNotes.service);
-    vi.spyOn(liveNotes.service, 'mergeIn').mockImplementation(async (...args) => {
-      merged.push(args[3].content);
-      return mergeIn(...args);
-    });
+    const merged = recordMerges();
     const commit = RemoteSource.prototype.commitChanges;
     let stale = 1;
     vi.spyOn(RemoteSource.prototype, 'commitChanges').mockImplementation(async function(this: RemoteSource, ...args: Parameters<RemoteSource['commitChanges']>) {
@@ -475,7 +479,7 @@ describe('moving a live note someone else edits', () => {
     liveNotes.setActive(repository, id, 1);
     await move(weekly, archived);
     liveNotes.setActive(repository, id, 0);
-    vi.spyOn(liveNotes.service, 'mergeIn').mockRejectedValueOnce(new LiveUnavailableError());
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockRejectedValueOnce(new LiveUnavailableError());
     expect((await checkIn(archived)).status).toBe(502);
     expect(files.get(archived)).toBe(own.replace('../archive/old.md', 'old.md'));
     // Typing goes on in the live text, which still holds the links as they were.
@@ -485,6 +489,94 @@ describe('moving a live note someone else edits', () => {
     expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true } });
     expect(files.get(archived)).toBe(own.replace('../archive/old.md', 'old.md').replace('結論', '結論二'));
     expect(files.has(weekly)).toBe(false);
+  });
+
+  it('rewrites a link line the person edited after the write-back of a landed move failed, at the next check-in (LMR-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [o](other.md) [x](../archive/old.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    // The first write-back fails, by whichever call the check-in makes it.
+    vi.spyOn(liveNotes.service, 'mergeIn').mockRejectedValueOnce(new LiveUnavailableError());
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockRejectedValueOnce(new LiveUnavailableError());
+    expect((await checkIn(archived)).status).toBe(502);
+    expect(decodeURIComponent(files.get(archived)!)).toBe('---\ntitle: 公司週會\n---\n議程 [o](../會議/other.md) [x](old.md)\n');
+    // The person types on the link line, which still holds the links as they were before the move.
+    liveNotes.type(repository, id, own.replace('議程', '議程改'), sam);
+    liveNotes.setActive(repository, id, 0);
+    leaseRunsOut();
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true } });
+    expect(decodeURIComponent(files.get(archived)!)).toBe('---\ntitle: 公司週會\n---\n議程改 [o](../會議/other.md) [x](old.md)\n');
+    expect(await rows()).toEqual([]);
+  });
+
+  it('makes a write-back typing refused again on the text as typed, in the same check-in (LMR-F001)', async () => {
+    const own = '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n';
+    files.set(weekly, own);
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    await move(weekly, archived);
+    liveNotes.setActive(repository, id, 0);
+    // Typing on the link line lands between the read and the write-back, which it refuses.
+    const once = liveNotes.service.mergeInOnce!.bind(liveNotes.service);
+    vi.spyOn(liveNotes.service, 'mergeInOnce').mockImplementationOnce(async () => {
+      liveNotes.type(repository, id, own.replace('[o]', '[其他]'), sam);
+      throw new LiveStaleError();
+    }).mockImplementation(once);
+    expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true, released: false, reason: 'changed' } });
+    expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toBe('---\ntitle: 公司週會\n---\n議程 [其他](../會議/other.md)\n');
+  });
+
+  for (const once of [true, false]) {
+    it(`never rewrites the links of a landed move twice when its acknowledgement was lost, whatever lines were pasted since (LMR-F002${once ? ', by the write-back record' : ', by the lines'})`, async () => {
+      const own = '---\ntitle: 公司週會\n---\n[x](../archive/old.md)\n[y](../archive/y.md)\n';
+      files.set(weekly, own);
+      if (!once) delete (liveNotes.service as { mergeInOnce?: unknown; }).mergeInOnce;
+      await start();
+      const id = await open(weekly);
+      liveNotes.setActive(repository, id, 1);
+      await move(weekly, archived);
+      liveNotes.setActive(repository, id, 0);
+      vi.spyOn(liveNotes.service, 'synced').mockRejectedValueOnce(new LiveUnavailableError());
+      expect((await checkIn(archived)).status).toBe(502);
+      const rewritten = '---\ntitle: 公司週會\n---\n[x](old.md)\n[y](y.md)\n';
+      expect(files.get(archived)).toBe(rewritten);
+      expect((await liveNotes.person(pat).read(repository, id)).content).toBe(rewritten);
+      // More lines in the form the links had before the move than lines the rewrite changed.
+      liveNotes.type(repository, id, `${rewritten}${'[x](../archive/old.md)\n'.repeat(3)}`, sam);
+      liveNotes.setActive(repository, id, 0);
+      leaseRunsOut();
+      expect(await checkIn(archived)).toMatchObject({ status: 200, body: { path: archived, committed: true } });
+      expect(files.get(archived)).toBe(`${rewritten}${'[x](../archive/old.md)\n'.repeat(3)}`);
+    });
+  }
+
+  it("tries a folder move's rewrite of a live note's links again on a fresh read, and says when its links still lead where the notes were (LMR-F003)", async () => {
+    files.set(weekly, '---\ntitle: 公司週會\n---\n議程 [o](other.md)\n');
+    await start();
+    const id = await open(weekly);
+    liveNotes.setActive(repository, id, 1);
+    const person = liveNotes.person.bind(liveNotes);
+    let refusals = 1;
+    vi.spyOn(liveNotes, 'person').mockImplementation(context => {
+      const calls = person(context);
+      return { ...calls, write: async (...args) => refusals-- > 0 ? Promise.reject(new LiveStaleError()) : calls.write(...args) };
+    });
+    // Refused once, the rewrite is made again and holds.
+    expect(await move('notes/life/會議', 'notes/life/past')).toMatchObject({ status: 200, body: { pathMap: { 'notes/life/會議/other.md': 'notes/life/past/other.md' } } });
+    expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toContain('[o](../past/other.md)');
+    expect(await rows()).toMatchObject([{ id, path: weekly, target: 'notes/life/past/2026-11-17 公司週會.md' }]);
+    // Refused twice, the note still moves, and the answer says its links lead where the notes were.
+    leaseRunsOut();
+    refusals = 2;
+    const moved = await move('notes/life/past', 'notes/life/later');
+    expect(moved).toMatchObject({ status: 200, body: { liveLeft: [{ path: 'notes/life/past/2026-11-17 公司週會.md', destination: 'notes/life/later/2026-11-17 公司週會.md', linksBroken: true, moved: true, reason: expect.stringContaining('links') }] } });
+    expect(await rows()).toMatchObject([{ id, path: weekly, target: 'notes/life/later/2026-11-17 公司週會.md' }]);
+    expect(decodeURIComponent((await liveNotes.person(pat).read(repository, id)).content)).toContain('[o](../past/other.md)');
   });
 
   it('commits a note in place, marked unmoved for its size, when its move would change too many files (LM-F005)', async () => {
