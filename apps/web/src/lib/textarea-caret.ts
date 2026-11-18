@@ -1,34 +1,5 @@
 /** The styles that decide where a textarea's text lies, copied onto the mirror that measures it. */
-const MIRRORED = [
-  'box-sizing',
-  'border-top-width',
-  'border-right-width',
-  'border-bottom-width',
-  'border-left-width',
-  'border-top-style',
-  'border-right-style',
-  'border-bottom-style',
-  'border-left-style',
-  'padding-top',
-  'padding-right',
-  'padding-bottom',
-  'padding-left',
-  'font-family',
-  'font-size',
-  'font-style',
-  'font-variant',
-  'font-weight',
-  'font-stretch',
-  'font-feature-settings',
-  'line-height',
-  'letter-spacing',
-  'word-spacing',
-  'tab-size',
-  'text-indent',
-  'text-transform',
-  'text-align',
-  'direction',
-] as const;
+const MIRRORED = ['box-sizing', 'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'font-family', 'font-size', 'font-style', 'font-variant', 'font-weight', 'font-stretch', 'font-feature-settings', 'line-height', 'letter-spacing', 'word-spacing', 'tab-size', 'text-indent', 'text-transform', 'text-align', 'direction'] as const;
 
 interface CaretDocument {
   caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number; } | null;
@@ -59,20 +30,7 @@ export function textareaOffsetAt(area: HTMLTextAreaElement, x: number, y: number
   const mirror = document.createElement('div');
   for (const name of MIRRORED) mirror.style.setProperty(name, style.getPropertyValue(name));
   const wraps = area.getAttribute('wrap') !== 'off';
-  Object.assign(mirror.style, {
-    position: 'fixed',
-    left: `${box.left}px`,
-    top: `${box.top}px`,
-    width: `${box.width}px`,
-    height: `${box.height}px`,
-    margin: '0',
-    overflow: 'hidden',
-    whiteSpace: wraps ? 'pre-wrap' : 'pre',
-    overflowWrap: wraps ? 'break-word' : 'normal',
-    opacity: '0',
-    zIndex: '2147483647',
-    pointerEvents: 'auto',
-  });
+  Object.assign(mirror.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: '0', overflow: 'hidden', whiteSpace: wraps ? 'pre-wrap' : 'pre', overflowWrap: wraps ? 'break-word' : 'normal', opacity: '0', zIndex: '2147483647', pointerEvents: 'auto' });
   // A trailing newline holds a last empty line open, as the textarea does.
   const text = document.createTextNode(`${area.value}\n`);
   mirror.append(text);

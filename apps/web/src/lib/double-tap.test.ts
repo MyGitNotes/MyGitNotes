@@ -101,10 +101,7 @@ function touch(target: Element, type: 'touchstart' | 'touchmove' | 'touchend' | 
   const event = new Event(type, { bubbles: true, cancelable: true });
   const point = { clientX: x, clientY: y, target };
   const down = type === 'touchend' || type === 'touchcancel' ? fingers - 1 : fingers;
-  Object.defineProperties(event, {
-    touches: { value: Array.from({ length: down }, () => point) },
-    changedTouches: { value: [point] },
-  });
+  Object.defineProperties(event, { touches: { value: Array.from({ length: down }, () => point) }, changedTouches: { value: [point] } });
   target.dispatchEvent(event);
   return event;
 }
