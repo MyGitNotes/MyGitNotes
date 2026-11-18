@@ -400,11 +400,12 @@ export function renderContainerDirective(name: string, label: string | undefined
     return `<div class="custom-directive sidebar-directive" data-type="sidebar" aria-label="${escapeHtml(title.label)}"><p class="directive-title ${titleClass}">${escapeHtml(title.label)}</p><div class="directive-body directive-content">${bodyHtml}</div></div>`;
   }
 
+  // Notes show an optional block open, so its text reads in place; a reader folds it by its summary. The blog renders its own, closed.
   if (normName === 'optional') {
     const title = parseDirectiveTitle(attrs, label, strings['directive.optional.defaultTitle']);
     const bodyHtml = renderMarkdown(bodyMarkdown);
     const titleClass = title.isDefault ? 'directive-title-default' : 'directive-title-custom';
-    return `<details class="custom-directive optional-directive" data-type="optional" aria-label="${escapeHtml(title.label)}"><summary class="optional-summary ${titleClass}">${escapeHtml(title.label)}</summary><div class="directive-body directive-content">${bodyHtml}</div></details>`;
+    return `<details class="custom-directive optional-directive" data-type="optional" open aria-label="${escapeHtml(title.label)}"><summary class="optional-summary ${titleClass}">${escapeHtml(title.label)}</summary><div class="directive-body directive-content">${bodyHtml}</div></details>`;
   }
 
   if (normName === 'comment') {

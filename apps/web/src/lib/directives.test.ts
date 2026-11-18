@@ -217,10 +217,10 @@ describe('directives and MDX Layer 2 preprocessor', () => {
       expect(output).toContain('重點整理');
     });
 
-    it('renders :::optional as details summary', () => {
+    it('renders :::optional as details summary, open by default', () => {
       const input = `:::optional[展開看詳情]\n詳細內容\n:::`;
       const output = transformDirectives(input, dummyRender);
-      expect(output).toContain('<details class="custom-directive optional-directive"');
+      expect(output).toMatch(/<details class="custom-directive optional-directive" data-type="optional" open[ >]/);
       expect(output).toContain('<summary class="optional-summary');
       expect(output).toContain('展開看詳情');
     });
