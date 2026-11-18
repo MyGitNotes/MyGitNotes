@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
-import { createElement, forwardRef, useImperativeHandle } from 'react';
+import { createElement, forwardRef, useEffect, useImperativeHandle } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import * as Y from 'yjs';
+import type { LiveCheckoutView, LiveNoteEditing } from '../lib/live-api.js';
 import { PanelProvider } from '../lib/panel-context.js';
 import type { NoteItem } from '../lib/types.js';
 import { NoteEditor, type NoteEditorHandle, type NoteEditorProps } from './NoteEditor.js';
@@ -18,15 +20,25 @@ vi.mock('./MarkdownEditor.js', () => ({
   }),
 }));
 
-const liveEdit = { current: null as { edit: () => void; } | null };
+// The live editors stand in as plain editable text; the collab one hands the note its live session as the real one does once synced.
+vi.mock('./live/LiveCollabEditor.js', async original => ({
+  ...await original<typeof import('./live/LiveCollabEditor.js')>(),
+  LiveCollabEditor: ({ onLive }: { onLive: (session: { text: Y.Text; online: boolean; people: number; }) => void; }) => {
+    useEffect(() => onLive({ text: new Y.Doc().getText('content'), online: true, people: 1 }), [onLive]);
+    return createElement('textarea', { 'aria-label': 'Live text', defaultValue: '' });
+  },
+}));
+vi.mock('./live/LiveEditorFrame.js', () => ({ LiveEditorFrame: () => createElement('iframe', { title: 'Framed live editor' }) }));
+
+const liveEdit = { current: null as { edit?: () => void; checkout?: LiveCheckoutView; } | null };
 vi.mock('./live/useLiveEdit.js', async original => {
   const actual = await original<typeof import('./live/useLiveEdit.js')>();
   return {
     ...actual,
     useLiveEdit: (options: Parameters<typeof actual.useLiveEdit>[0]) => {
       const real = actual.useLiveEdit(options);
-      // A checked-in live note: read-only here, with the toolbar's Edit checking it out.
-      return liveEdit.current ? { ...real, active: true, edit: liveEdit.current.edit } : real;
+      // A checked-in live note: read-only here, with the toolbar's Edit checking it out; a checked-out one shows its live editor.
+      return liveEdit.current ? { ...real, active: true, edit: liveEdit.current.edit, checkout: liveEdit.current.checkout } : real;
     },
   };
 });
@@ -140,6 +152,37 @@ it('does what Edit does for a checked-in live note: checks it out', () => {
   render(editor());
   doubleTap(content());
   expect(edit).toHaveBeenCalledOnce();
+});
+
+const checkout: LiveCheckoutView = { id: 'c1', notebookId: 'a', path: 'notes/a.md', pending: false, editorUrl: '', since: '2026-11-18T00:00:00Z', activeEditors: 1, conflict: null };
+const live = (kind: 'builtin' | 'framed'): LiveNoteEditing => ({ editor: kind === 'builtin' ? { kind } : { origin: 'https://live.example', messageType: 'live-status' }, onRefetch: () => {} });
+
+it('offers Edit on a phone for a checked-in live note, and it checks the note out', () => {
+  const edit = vi.fn();
+  liveEdit.current = { edit };
+  render(editor({ live: live('builtin') }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  expect(edit).toHaveBeenCalledOnce();
+  expect(content().readOnly).toBe(true);
+});
+
+it('shows no Edit or Done in the toolbar while the built-in collab editor is open on a phone, so nothing flips the hidden direct editor', async () => {
+  liveEdit.current = { checkout };
+  render(editor({ live: live('builtin') }));
+  await act(async () => {});
+  expect(screen.getByLabelText('Live text')).toBeTruthy();
+  expect(screen.queryByLabelText('Note content')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+  expect(doubleTap(screen.getByLabelText('Live text')).defaultPrevented).toBe(false);
+});
+
+it('shows no Edit or Done in the toolbar while the framed live editor is open on a phone', () => {
+  liveEdit.current = { checkout: { ...checkout, embedUrl: 'https://live.example/embed' } };
+  render(editor({ live: live('framed') }));
+  expect(screen.getByTitle('Framed live editor')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
 });
 
 it('switches to editing for an insert made while reading, instead of dropping it', async () => {

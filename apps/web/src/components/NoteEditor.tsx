@@ -276,7 +276,10 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // A phone opens every note for reading: a long press then only selects text instead of raising the keyboard,
   // whose resize moved the page under the selection. Editing starts from the toolbar's Edit button.
   const [editing, setEditing] = useState(false);
-  const reading = phone && !editing && !session.locked;
+  // While a live editor shows a checked-out note it is the one edited: the direct editor is gone, and its reading and
+  // editing are not offered or switched (the collab editor's own bar checks the note in or closes it).
+  const directShown = !liveEdit.checkout;
+  const reading = phone && directShown && !editing && !session.locked;
   const finishEditing = () => {
     setEditing(false);
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -294,7 +297,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     if (!reading) { for (const flush of pendingInserts.current.splice(0)) flush(); }
   }, [reading]);
   // The toolbar's Edit on a phone, or for a live note that is not checked out, its 編輯.
-  const phoneEditing = phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : liveEdit.edit ? { editing: false, onEdit: liveEdit.edit, onDone: liveEdit.edit } : undefined;
+  const phoneEditing = phone && directShown && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : liveEdit.edit ? { editing: false, onEdit: liveEdit.edit, onDone: liveEdit.edit } : undefined;
   // On a phone a double tap on the text does what Edit does. The direct editor turns writable with the caret where the
   // second tap landed and takes focus inside that tap's touch, which is what raises iOS's keyboard; a live note's 編輯
   // checks it out over the network, so its editor opens without the keyboard, as after the button.
