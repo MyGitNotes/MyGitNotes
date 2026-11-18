@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { I18nProvider } from '../lib/i18n/index.js';
-import { type NoteSearchHandle, NoteToolbar } from './NoteToolbar.js';
+import { NoteListTools, type NoteSearchHandle, NoteToolbar } from './NoteToolbar.js';
 
 beforeEach(() => {
   window.matchMedia = ((query: string) => ({ matches: !query.includes('max-width: 767px'), media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
@@ -135,6 +135,40 @@ it('marks a search still in force once the browse region is collapsed, and reope
   rerender(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, browseCollapsed: true, onRevealSearch: reveal, query: 'pnpm' })));
   fireEvent.click(screen.getByRole('button', { name: /: pnpm$/ }));
   expect(reveal).toHaveBeenCalledOnce();
+});
+
+it('leaves the search, sort and display toggles to the browse dock when it holds them, keeping the rest of the toolbar', () => {
+  render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, listToolsDocked: true, groupByFolder: { value: false, onChange: () => {} }, focusControls: createElement('button', { type: 'button' }, 'Focus') })));
+  expect(screen.queryByRole('search')).toBeNull();
+  expect(screen.queryByRole('combobox', { name: /^排序/ })).toBeNull();
+  for (const name of ['顯示隱藏筆記', '依資料夾分組', '搜尋筆記、標籤、內文...']) expect(screen.queryByRole('button', { name })).toBeNull();
+  expect(screen.getByRole('button', { name: '筆記本與篩選' })).toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: '筆記檢視' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Focus' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '新增筆記' })).toBeInTheDocument();
+});
+
+it('in the browse dock shows the search field itself beside the sort and the toggles, and the search command focuses it', async () => {
+  const search = createRef<NoteSearchHandle>();
+  const changes: string[] = [];
+  const hidden: boolean[] = [];
+  const tools = (sortable: boolean) => createElement(I18nProvider, null, createElement(NoteListTools, { placement: 'dock', searchRef: search, query: 'dragon', onQueryChange: value => changes.push(value), sortField: 'updated', sortOrder: 'desc', onSortChange: () => {}, sortable, showHidden: false, hiddenNoteCount: 2, onShowHiddenChange: value => hidden.push(value), groupByFolder: { value: true, onChange: () => {} } }));
+  const { rerender } = render(tools(true));
+  const field = screen.getByRole('searchbox', { name: '搜尋筆記、標籤、內文...' });
+  expect(screen.getByRole('search')).toContainElement(field);
+  // No button stands in for the field and nothing closes it: the dock always has room for it.
+  expect(screen.queryByRole('button', { name: '搜尋筆記、標籤、內文...' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '關閉' })).toBeNull();
+  fireEvent.change(field, { target: { value: 'dragons' } });
+  expect(changes).toEqual(['dragons']);
+  expect(screen.getByRole('combobox', { name: '排序: 更新時間 (由新到舊)' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '顯示隱藏筆記' }));
+  expect(hidden).toEqual([true]);
+  expect(screen.getByRole('button', { name: '依資料夾分組' })).toHaveAttribute('aria-pressed', 'true');
+  act(() => search.current!.focus());
+  await waitFor(() => expect(document.activeElement).toBe(field));
+  rerender(tools(false));
+  expect(screen.queryByRole('combobox')).toBeNull();
 });
 
 const openNewMenu = async () => {

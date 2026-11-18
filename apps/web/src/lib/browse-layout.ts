@@ -4,7 +4,10 @@ import type { ViewMode } from './types.js';
 export interface BrowseLayout {
   /** The filter sidebar folds away on a desktop because the left dock holds the folders and filters; below that breakpoint it stays a drawer. */
   sidebarFolded: boolean;
-  /** What the left dock holds above its list: the folders and filters (`filters`), only the folders (`folders`, a phone's list screen), or no split. */
+  /**
+   * What the left dock holds below its list: the folders and filters, with the list's search and toggles over the list (`filters`), only the
+   * folders (`folders`, a phone's list screen, whose bar keeps the search), or no split.
+   */
   split: 'filters' | 'folders' | null;
   /** Where the chips of the filters in force show: in the phone's bar above the list (`bar`), at the top of the list (`list`), or nowhere. */
   chips: 'bar' | 'list' | null;

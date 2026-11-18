@@ -36,7 +36,7 @@ function column({ narrow, dock, collapsed = false, onCollapsedChange = vi.fn(), 
   const controls = filters(value);
   const sidebar = <Sidebar filters={controls} facets={facets} folders={folders} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} dock={dock} />;
   const browse = (
-    <BrowseSplit label='Directory' top={sidebar} path={<span>Life / Projects</span>} size={55} onSizeChange={() => {}} collapsed={collapsed} onCollapsedChange={onCollapsedChange}>
+    <BrowseSplit label='Directory' filters={sidebar} path={<span>Life / Projects</span>} size={55} onSizeChange={() => {}} collapsed={collapsed} onCollapsedChange={onCollapsedChange}>
       {dock === 'folders' && <FilterChips filters={controls} onAdd={() => {}} />}
       <ul aria-label='Notes'>
         <li>First note</li>
@@ -52,15 +52,16 @@ function column({ narrow, dock, collapsed = false, onCollapsedChange = vi.fn(), 
   );
 }
 
-it('beside a Focus, the left column holds the folders and filters over the list, with no rail', () => {
+it('beside a Focus, the left column holds the list over the folders and filters, with no rail', () => {
   column({ narrow: false, dock: 'filters' });
-  const top = screen.getByRole('region', { name: 'Directory' });
-  expect(within(top).getByRole('navigation', { name: 'Notebooks' })).toHaveTextContent('Projects');
-  expect(within(top).getByRole('group', { name: 'Status' })).toBeInTheDocument();
-  expect(within(top).getByRole('group', { name: 'Tags' })).toBeInTheDocument();
+  const directory = screen.getByRole('region', { name: 'Directory' });
+  expect(within(directory).getByRole('navigation', { name: 'Notebooks' })).toHaveTextContent('Projects');
+  expect(within(directory).getByRole('group', { name: 'Status' })).toBeInTheDocument();
+  expect(within(directory).getByRole('group', { name: 'Tags' })).toBeInTheDocument();
   const list = screen.getByRole('list', { name: 'Notes' });
-  // One column: the folders, the divider and the list share the browse panel beside the Focus.
-  const panel = top.closest('.browse-dock-panel')!;
+  // One column: the list, the divider and the folders share the browse panel beside the Focus, the list first.
+  expect(list.compareDocumentPosition(directory) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const panel = directory.closest('.browse-dock-panel')!;
   expect(panel).toContainElement(list);
   expect(panel).toContainElement(screen.getByRole('separator', { name: 'Resize folders and list' }));
   expect(panel).not.toContainElement(screen.getByText('focus pane'));
@@ -68,21 +69,21 @@ it('beside a Focus, the left column holds the folders and filters over the list,
   expect(screen.queryByRole('toolbar')).toBeNull();
 });
 
-it("on a phone's list screen shows the folders over the chips and the list, and ▾ folds them to the path line", () => {
+it("on a phone's list screen shows the chips and the list over the folders, and ▾ folds them to their heading", () => {
   const onCollapsedChange = vi.fn();
   const { unmount } = column({ narrow: true, dock: 'folders', onCollapsedChange, value: { tags: ['work'] } });
-  const top = screen.getByRole('region', { name: 'Directory' });
-  expect(within(top).getByRole('navigation', { name: 'Notebooks' })).toHaveTextContent('Projects');
-  expect(within(top).queryByRole('group', { name: 'Status' })).toBeNull();
+  const directory = screen.getByRole('region', { name: 'Directory' });
+  expect(within(directory).getByRole('navigation', { name: 'Notebooks' })).toHaveTextContent('Projects');
+  expect(within(directory).queryByRole('group', { name: 'Status' })).toBeNull();
   expect(screen.getByRole('group', { name: 'Active filters' })).toHaveTextContent('#work');
-  expect(top).not.toContainElement(screen.getByRole('group', { name: 'Active filters' }));
+  expect(directory).not.toContainElement(screen.getByRole('group', { name: 'Active filters' }));
   expect(screen.queryByText('focus pane')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Collapse folders' }));
   expect(onCollapsedChange).toHaveBeenCalledWith(true);
   unmount();
 
   column({ narrow: true, dock: 'folders', collapsed: true });
-  expect(screen.queryByRole('region', { name: 'Directory' })).toBeNull();
+  expect(screen.getByRole('navigation', { name: 'Notebooks', hidden: true })).not.toBeVisible();
   expect(screen.getByText('Life / Projects')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Expand folders' })).toBeVisible();
   expect(screen.getByRole('list', { name: 'Notes' })).toBeVisible();

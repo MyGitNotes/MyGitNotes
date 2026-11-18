@@ -8,6 +8,9 @@
    .browse-dock-scroll (or the Focus area's own layout) handles scrolling instead. */
 .browse-dock-panel, .browse-dock-focus-panel { height: 100%; overflow: hidden; }
 
+/* The left dock is the notes sidebar's place beside a Focus, so it keeps the sidebar's background, its tools row included. */
+.browse-dock[data-placement='left'] .browse-dock-panel { background: var(--workspace-rail); }
+
 .browse-dock-panel-content { display: flex; flex-direction: column; height: 100%; min-height: 0; position: relative; }
 
 /* One icon for both states: its arrow (the last path) turns 180° to point where the next click moves the browse region. */

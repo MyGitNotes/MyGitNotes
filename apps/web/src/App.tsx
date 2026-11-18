@@ -80,7 +80,7 @@ import { Header, HeaderUtilities } from './components/Header.js';
 import { PhoneFilterSheet, PhoneListBar } from './components/PhoneListBar.js';
 import { PhoneNotesProvider, phoneNotesScreen } from './lib/phone-notes.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
-import { type NoteSearchHandle, NoteToolbar } from './components/NoteToolbar.js';
+import { NoteListTools, type NoteSearchHandle, NoteToolbar } from './components/NoteToolbar.js';
 import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
 import { PageToolbar, SidebarProvider, WorkspaceSidebarPortal, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
 import { useVisualViewport } from './lib/use-visual-viewport.js';
@@ -486,8 +486,9 @@ export const AppContent: React.FC = () => {
   const browseFocusMode = noteFocus.layout || phone ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, compactRows: phone || (focusCapacity !== 1 && !focusEmpty), openPath: activeNotePath, readNote: readNoteForChange } : undefined;
   // Either dock collapses and reopens from the toolbar's left end.
   const dockToggle = noteFocus.layout && !focusEmpty && focusCapacity !== 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} /> : undefined;
-  // Beside a Focus the list's dock holds the folders and filters above the list (the sidebar folds away on a desktop; below it, it stays a drawer),
-  // and the board above a Focus keeps the sidebar; the chips of the filters in force show where the filters themselves are out of sight.
+  // Beside a Focus the list's dock holds the list's search and toggles, the list, and below it the folders and filters (the sidebar folds away
+  // on a desktop; below it, it stays a drawer), and the board above a Focus keeps the sidebar; the chips of the filters in force show where the
+  // filters themselves are out of sight.
   const layout = browseLayout({ focusShown: activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && !focusEmpty, capacity: focusCapacity, viewMode });
   const openFilters = () => phone ? setPhoneFilterOpen(true) : setFiltersOpen(true);
   // An outline or compilation list offers its own kind; every kind starts at the notebook root, moved from its editor.
@@ -611,7 +612,10 @@ export const AppContent: React.FC = () => {
   // A note opened from a zoomed compilation leaves that compilation mounted behind it.
   const behindPath = trailCompilation(location.state, editorRoute.notebook, config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root ?? '');
   const compilationBehind = behindPath ? { notebookId: selectedNotebookId, path: behindPath } : null;
-  /** The left dock's column beside a Focus: the folders (and filters) above the list, with the path line between them. */
+  /**
+   * The left dock's column beside a Focus: on a desktop the search, sort and display toggles at its top (`dock` is `filters`), then the path
+   * line and the list, and the folders (and filters) below the divider.
+   */
   const browseSplit = (dock: 'filters' | 'folders') => {
     const path = browsePath({ kind: route.kind, notebookTitle: selectedNotebook?.title ?? '', breadcrumbs, labels: { outline: t('outline.list'), compilations: t('sidebar.compilations') } });
     const count = filterProps.count;
@@ -619,15 +623,34 @@ export const AppContent: React.FC = () => {
       <BrowseSplit
         label={t('browseSplit.folders')}
         actions={dock === 'filters' ? <button type='button' className='sidebar-clear-filters browse-split-clear' onClick={filterProps.onClear}>{t('filters.clear')}</button> : undefined}
-        top={renderSidebar(false, dock)}
+        tools={dock === 'filters'
+          ? (
+            <NoteListTools
+              placement='dock'
+              searchRef={browseCollapsed ? undefined : noteSearch}
+              query={searchQuery}
+              onQueryChange={value => changeFilters({ q: value })}
+              sortField={sortField}
+              sortOrder={sortOrder}
+              onSortChange={handleSortChange}
+              metadataSortFields={metadataSortFields}
+              sortable={viewMode !== 'kanban'}
+              showHidden={showHidden}
+              hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null}
+              onShowHiddenChange={value => changeFilters({ showHidden: value })}
+              groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined}
+            />
+          )
+          : undefined}
+        filters={renderSidebar(false, dock)}
         path={
           <>
             <span className='browse-split-path-text' title={path}>{path}</span>
             {count === null ? <LoadingStatus as='span' className='browse-split-count'>{t('notes.countsLoading')}</LoadingStatus> : <span className='browse-split-count'>{t(count === 1 ? 'folder.noteCount' : 'folder.notesCount', { count })}</span>}
           </>
         }
-        size={noteFocus.view.dock.split}
-        onSizeChange={split => noteFocus.setDock({ split })}
+        size={noteFocus.view.dock.filtersShare}
+        onSizeChange={filtersShare => noteFocus.setDock({ filtersShare })}
         collapsed={noteFocus.view.dock.splitCollapsed}
         onCollapsedChange={splitCollapsed => noteFocus.setDock({ splitCollapsed })}
       >
@@ -791,7 +814,7 @@ export const AppContent: React.FC = () => {
                               : (
                                 <PageToolbar>
                                   {dockToggle}
-                                  <NoteToolbar searchRef={browseCollapsed ? undefined : noteSearch} browseCollapsed={browseCollapsed} onRevealSearch={focusNoteSearch} utilities={browseCollapsed ? <HeaderUtilities activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={noteEditorOpen || isCommitOpen} onOpenCommands={() => setShortcutMode('palette')} /> : undefined} onImportLegacy={legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} metadataSortFields={metadataSortFields} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined} readOnly={!canWrite} viewMode={viewMode} setViewMode={setViewMode} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} showHidden={showHidden} onShowHiddenChange={value => changeFilters({ showHidden: value })} onNewNote={() => void createNote()} onNewOutline={() => void createNote({ kind: 'outline' })} onNewCompilation={() => void createUntitledCompilation()} templates={[...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)]} onManageTemplates={selectedNotebook ? () => setManageTemplatesOpen(true) : undefined} onNewFromTemplate={templateId => void createNote({ templateId })} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} focusControls={<FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} />} />
+                                  <NoteToolbar searchRef={browseCollapsed || layout.split === 'filters' ? undefined : noteSearch} listToolsDocked={layout.split === 'filters'} browseCollapsed={browseCollapsed} onRevealSearch={focusNoteSearch} utilities={browseCollapsed ? <HeaderUtilities activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={noteEditorOpen || isCommitOpen} onOpenCommands={() => setShortcutMode('palette')} /> : undefined} onImportLegacy={legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} metadataSortFields={metadataSortFields} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined} readOnly={!canWrite} viewMode={viewMode} setViewMode={setViewMode} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} showHidden={showHidden} onShowHiddenChange={value => changeFilters({ showHidden: value })} onNewNote={() => void createNote()} onNewOutline={() => void createNote({ kind: 'outline' })} onNewCompilation={() => void createUntitledCompilation()} templates={[...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)]} onManageTemplates={selectedNotebook ? () => setManageTemplatesOpen(true) : undefined} onNewFromTemplate={templateId => void createNote({ templateId })} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} focusControls={<FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} />} />
                                 </PageToolbar>
                               )}
                             {noteFocus.layout && !focusEmpty

@@ -40,9 +40,9 @@ export interface FocusViewState {
   last: string | null;
   /**
    * Browse region: left dock width (px), top dock height (px), collapsed flag; and in the left dock, the share (percent) its folders and filters
-   * take above the list (`split`), and whether they are folded to a path line (`splitCollapsed`).
+   * take below the list (`filtersShare`), and whether they are folded to their heading (`splitCollapsed`).
    */
-  dock: { left: number; top: number; collapsed: boolean; split: number; splitCollapsed: boolean; };
+  dock: { left: number; top: number; collapsed: boolean; filtersShare: number; splitCollapsed: boolean; };
 }
 
 /**
@@ -125,11 +125,16 @@ const OLD_DEFAULT_DOCK_LEFTS = [320, 240];
 /** The share of the left dock its folders and filters may take; the divider keeps within it. */
 export const DOCK_SPLIT_MIN = 15;
 export const DOCK_SPLIT_MAX = 85;
+/**
+ * Through 0.23.1 the folders and filters sat above the list and their share was kept as `split`, 55% by default. A share chosen there is
+ * still theirs below the list; one left at that default never chose it, and the list, under its search, now takes the larger part.
+ */
+const OLD_DEFAULT_DOCK_SPLIT = 55;
 /** The top dock was 280 px until a Kanban board above a Focus showed only 101 px of cards, cutting a card with tags off at its action row. */
 const OLD_DEFAULT_DOCK_TOP = 280;
 
 export function emptyFocusView(): FocusViewState {
-  return { current: emptyFocusLayout(), entries: {}, last: null, dock: { left: 288, top: 340, collapsed: false, split: 55, splitCollapsed: false } };
+  return { current: emptyFocusLayout(), entries: {}, last: null, dock: { left: 288, top: 340, collapsed: false, filtersShare: 40, splitCollapsed: false } };
 }
 
 /** Tolerant reader for whatever JSON was stored: never throws, drops or defaults whatever doesn't validate. */
@@ -156,9 +161,10 @@ export function readFocusView(raw: unknown): FocusViewState {
   // Like the old width, a height still at the old default never chose it and takes the new one.
   const top = typeof topRaw === 'number' && Number.isFinite(topRaw) && topRaw >= 0 && topRaw !== OLD_DEFAULT_DOCK_TOP ? topRaw : defaults.top;
   const collapsed = typeof dockRaw.collapsed === 'boolean' ? dockRaw.collapsed : defaults.collapsed;
-  const split = typeof dockRaw.split === 'number' && dockRaw.split >= DOCK_SPLIT_MIN && dockRaw.split <= DOCK_SPLIT_MAX ? dockRaw.split : defaults.split;
+  const share = (value: unknown) => typeof value === 'number' && value >= DOCK_SPLIT_MIN && value <= DOCK_SPLIT_MAX ? value : undefined;
+  const filtersShare = share(dockRaw.filtersShare) ?? (dockRaw.split === OLD_DEFAULT_DOCK_SPLIT ? undefined : share(dockRaw.split)) ?? defaults.filtersShare;
   const splitCollapsed = typeof dockRaw.splitCollapsed === 'boolean' ? dockRaw.splitCollapsed : defaults.splitCollapsed;
-  return { current, entries, last, dock: { left, top, collapsed, split, splitCollapsed } };
+  return { current, entries, last, dock: { left, top, collapsed, filtersShare, splitCollapsed } };
 }
 
 const isLegacyEntry = (entry: FocusEntryView | LegacyFocusEntryView): entry is LegacyFocusEntryView => Array.isArray(entry.shown);

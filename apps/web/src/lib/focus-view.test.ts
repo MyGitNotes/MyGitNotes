@@ -14,7 +14,7 @@ const state = (overrides: Partial<FocusViewState> = {}): FocusViewState => ({ ..
 
 describe('emptyFocusView', () => {
   it('starts with a single empty pane and default dock sizes', () => {
-    expect(emptyFocusView()).toEqual({ current: { root: leaf('p1') }, entries: {}, last: null, dock: { left: 288, top: 340, collapsed: false, split: 55, splitCollapsed: false } });
+    expect(emptyFocusView()).toEqual({ current: { root: leaf('p1') }, entries: {}, last: null, dock: { left: 288, top: 340, collapsed: false, filtersShare: 40, splitCollapsed: false } });
   });
 });
 
@@ -55,8 +55,8 @@ describe('readFocusView', () => {
     expect(readFocusView({}).last).toBeNull();
   });
   it('falls back to each dock default individually', () => {
-    expect(readFocusView({ dock: { left: 'x', top: 200, collapsed: 'yes' } }).dock).toEqual({ left: 288, top: 200, collapsed: false, split: 55, splitCollapsed: false });
-    expect(readFocusView({ dock: { left: -10, top: 200, collapsed: true } }).dock).toEqual({ left: 288, top: 200, collapsed: true, split: 55, splitCollapsed: false });
+    expect(readFocusView({ dock: { left: 'x', top: 200, collapsed: 'yes' } }).dock).toEqual({ left: 288, top: 200, collapsed: false, filtersShare: 40, splitCollapsed: false });
+    expect(readFocusView({ dock: { left: -10, top: 200, collapsed: true } }).dock).toEqual({ left: 288, top: 200, collapsed: true, filtersShare: 40, splitCollapsed: false });
     expect(readFocusView({}).dock).toEqual(emptyFocusView().dock);
   });
 
@@ -71,14 +71,27 @@ describe('readFocusView', () => {
     expect(readFocusView({ dock: { left: 400 } }).dock.left).toBe(400);
   });
 
-  it('keeps the share of the left dock its folders and filters take, and whether they are folded to a path line', () => {
-    expect(readFocusView({ dock: { split: 40, splitCollapsed: true } }).dock).toMatchObject({ split: 40, splitCollapsed: true });
+  it('keeps the share of the left dock its folders and filters take, and whether they are folded to their heading', () => {
+    expect(readFocusView({ dock: { filtersShare: 30, splitCollapsed: true } }).dock).toMatchObject({ filtersShare: 30, splitCollapsed: true });
     // A share outside what the divider allows, or not a number, falls back; so does a flag that is not a boolean.
-    expect(readFocusView({ dock: { split: 5, splitCollapsed: 'yes' } }).dock).toMatchObject({ split: 55, splitCollapsed: false });
-    expect(readFocusView({ dock: { split: 95 } }).dock.split).toBe(55);
-    expect(readFocusView({ dock: { split: 'x' } }).dock.split).toBe(55);
-    expect(readFocusView({ dock: { split: 15 } }).dock.split).toBe(15);
-    expect(readFocusView({ dock: { split: 85 } }).dock.split).toBe(85);
+    expect(readFocusView({ dock: { filtersShare: 5, splitCollapsed: 'yes' } }).dock).toMatchObject({ filtersShare: 40, splitCollapsed: false });
+    expect(readFocusView({ dock: { filtersShare: 95 } }).dock.filtersShare).toBe(40);
+    expect(readFocusView({ dock: { filtersShare: 'x' } }).dock.filtersShare).toBe(40);
+    expect(readFocusView({ dock: { filtersShare: 15 } }).dock.filtersShare).toBe(15);
+    expect(readFocusView({ dock: { filtersShare: 85 } }).dock.filtersShare).toBe(85);
+    // A share chosen below the list is kept, the old layout's default included.
+    expect(readFocusView({ dock: { filtersShare: 55 } }).dock.filtersShare).toBe(55);
+  });
+
+  it('carries the share the folders and filters had above the list over to below it, except the old default nobody chose', () => {
+    expect(readFocusView({ dock: { split: 30 } }).dock.filtersShare).toBe(30);
+    expect(readFocusView({ dock: { split: 70 } }).dock.filtersShare).toBe(70);
+    expect(readFocusView({ dock: { split: 55 } }).dock.filtersShare).toBe(40);
+    expect(readFocusView({ dock: { split: 95 } }).dock.filtersShare).toBe(40);
+    // The share kept below the list wins over one left from above it, and the old key is not written again.
+    const view = readFocusView({ dock: { split: 30, filtersShare: 60 } });
+    expect(view.dock.filtersShare).toBe(60);
+    expect(view.dock).not.toHaveProperty('split');
   });
 
   /** At 280 the Kanban board above a Focus left its columns 101 px for cards, so a card with tags was cut off at its action row; 340 leaves about 160. */
