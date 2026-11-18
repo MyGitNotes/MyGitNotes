@@ -17,9 +17,9 @@
 .note-search-field:focus-within { border-color: var(--color-primary); }
 .note-search-field input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--color-text); font-size: 0.8125rem; }
 .note-search-toggle, .note-search-close { display: none; }
-/* At the top of the left browse dock: the field takes the row, the sort, the toggles and the view menu keep to its right, and wrap below it in a dock too narrow for all of them. */
+/* At the top of the left browse dock: the field takes the row, the sort and the toggles keep to its right, and wrap below it in a dock too narrow for both. */
 .note-list-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
-.note-list-tools-search { display: flex; flex: 1 1 4.5rem; min-width: 4.5rem; }
+.note-list-tools-search { display: flex; flex: 1 1 7rem; min-width: 7rem; }
 .note-list-tools .note-toolbar-sort { flex: none; width: auto; }
 .note-list-tools .note-display-options { padding-right: 0; border-right: 0; }
 /* A collapsed toolbar's mark of the search still in force. */

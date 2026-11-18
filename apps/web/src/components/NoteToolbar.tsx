@@ -3,7 +3,7 @@ import { type ReactNode, type Ref, useId, useImperativeHandle, useRef, useState 
 import { ArrowDownAZ, ArrowDownWideNarrow, ArrowDownZA, ArrowUpWideNarrow, CalendarArrowDown, CalendarArrowUp, ClockArrowDown, ClockArrowUp, Eye, EyeOff, FolderTree, ListOrdered, Search, X } from 'lucide-react';
 import { Select } from './Select.js';
 import { type NewNoteActions, NewNoteMenu } from './NewNoteMenu.js';
-import { ViewModeButtons, ViewModeMenu } from './ViewModeSwitch.js';
+import { ViewModeButtons } from './ViewModeSwitch.js';
 import type { SortField, SortOrder } from '../lib/note-sort.js';
 import { metadataSortOptions } from '../lib/note-sort-options.js';
 import { ViewMode } from '../lib/types.js';
@@ -73,12 +73,10 @@ export interface NoteListToolsProps {
   hiddenNoteCount: number | null;
   onShowHiddenChange: (value: boolean) => void;
   groupByFolder?: { value: boolean; onChange: (value: boolean) => void; };
-  /** In the dock, the view switch as one menu at the end of the tools (the toolbar's own view buttons are gone with it beside the dock). */
-  view?: { mode: ViewMode; onChange: (mode: ViewMode) => void; };
 }
 
 /** The tools that act on the note list: the search, the sort menu, and the hidden-notes and group-by-folder toggles. */
-export function NoteListTools({ placement, query, onQueryChange, searchRef, sortField, sortOrder, onSortChange, metadataSortFields, sortable, showHidden, hiddenNoteCount, onShowHiddenChange, groupByFolder, view }: NoteListToolsProps): JSX.Element {
+export function NoteListTools({ placement, query, onQueryChange, searchRef, sortField, sortOrder, onSortChange, metadataSortFields, sortable, showHidden, hiddenNoteCount, onShowHiddenChange, groupByFolder }: NoteListToolsProps): JSX.Element {
   const { t } = useTranslation();
   const ids = useId();
   // In the toolbar the field may be hidden behind a button (a narrow toolbar) and expands over the toolbar; in the dock it is always shown.
@@ -135,7 +133,6 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
       <div className='note-list-tools' data-placement='dock'>
         <div id={searchId} className='note-list-tools-search' role='search'>{field}</div>
         {tools}
-        {view && <ViewModeMenu viewMode={view.mode} setViewMode={view.onChange} />}
       </div>
     );
   }

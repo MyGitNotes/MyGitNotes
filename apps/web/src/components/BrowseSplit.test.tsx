@@ -125,3 +125,17 @@ it("ends the path line with the dock's own toggle, leaving the tools row to the 
   expect(toggle.parentElement?.lastElementChild).toBe(toggle);
   expect(container.querySelector('.browse-split-tools')).not.toContainElement(toggle);
 });
+
+it('puts the view menu in the path line, just left of the dock toggle, not among the list tools', () => {
+  const { container } = render(
+    <I18nProvider>
+      <BrowseSplit label='Folders' tools={<input type='search' aria-label='Search notes' />} filters={<p>folder tree</p>} path={<span>Projects</span>} viewMenu={<button type='button'>View: Flat</button>} dockToggle={<button type='button'>Collapse dock</button>} size={55} onSizeChange={vi.fn()} collapsed={false} onCollapsedChange={vi.fn()}>
+        <ul aria-label='Notes' />
+      </BrowseSplit>
+    </I18nProvider>,
+  );
+  const menu = screen.getByRole('button', { name: 'View: Flat' });
+  expect(container.querySelector('.browse-split-tools')).not.toContainElement(menu);
+  expect(menu.closest('.browse-split-path')).not.toBeNull();
+  expect(menu.nextElementSibling).toBe(screen.getByRole('button', { name: 'Collapse dock' }));
+});

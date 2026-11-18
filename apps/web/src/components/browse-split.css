@@ -11,6 +11,8 @@
 .browse-split-path-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browse-split-count { flex: none; font-variant-numeric: tabular-nums; }
 /* The dock's own collapse toggle ends the path line, so the search above keeps the tools row's whole width. */
+/* The list's view menu, a compact trigger just left of the dock toggle. */
+.browse-split-path .note-view-menu { flex: none; width: auto; height: 26px; min-height: 0; padding: 0 4px 0 6px; }
 .browse-split-path .browse-dock-toggle { width: 26px; height: 26px; min-width: 0; min-height: 0; padding: 5px; margin: -2px -6px -2px 0; }
 
 .browse-split-list { flex: 1 1 0; min-height: 0; padding-top: 8px; }

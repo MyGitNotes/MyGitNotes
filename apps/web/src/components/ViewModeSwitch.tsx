@@ -38,7 +38,7 @@ export function ViewModeButtons({ viewMode, setViewMode }: ViewModeProps) {
   );
 }
 
-/** The left dock's view switch: one menu showing the current view's icon, at the end of the list tools, since the dock has no room for three buttons. */
+/** The left dock's view switch: one menu showing the current view's icon, in the dock's path line beside its collapse toggle, since the dock has no room for three buttons. */
 export function ViewModeMenu({ viewMode, setViewMode }: ViewModeProps) {
   const { t } = useTranslation();
   const options = viewOptions(t);

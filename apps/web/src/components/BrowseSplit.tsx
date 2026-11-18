@@ -19,6 +19,8 @@ export interface BrowseSplitProps {
   filters: ReactNode;
   /** The line over the list: where the list is and how many notes it holds. */
   path: ReactNode;
+  /** In the path line, just left of the dock toggle: the list's view menu, kept out of the tools row so the search keeps its width. */
+  viewMenu?: ReactNode;
   /** At the path line's end, clear of the search above it: the toggle that collapses the dock itself. */
   dockToggle?: ReactNode;
   /** The share of the column, in percent, the folders part takes. */
@@ -37,7 +39,7 @@ export interface BrowseSplitProps {
  * and filters, which a pointer drags and the arrow keys, Home and End move. The folders part folds to its heading and back; folded, it
  * stays mounted (hidden), so its tree keeps which folders were open.
  */
-export function BrowseSplit({ label, actions, tools, filters, path, dockToggle, size, onSizeChange, collapsed, onCollapsedChange, children }: BrowseSplitProps): JSX.Element {
+export function BrowseSplit({ label, actions, tools, filters, path, viewMenu, dockToggle, size, onSizeChange, collapsed, onCollapsedChange, children }: BrowseSplitProps): JSX.Element {
   const { t } = useTranslation();
   const bodyId = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -82,6 +84,7 @@ export function BrowseSplit({ label, actions, tools, filters, path, dockToggle, 
       {tools && <div className='browse-split-tools'>{tools}</div>}
       <div className='browse-split-path'>
         <div className='browse-split-path-content'>{path}</div>
+        {viewMenu}
         {dockToggle}
       </div>
       <div className='workspace-scroll browse-split-list'>{children}</div>

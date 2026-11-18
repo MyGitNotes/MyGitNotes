@@ -84,6 +84,7 @@ import { NoteListTools, type NoteSearchHandle, NoteToolbar } from './components/
 import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
 import { PageToolbar, SidebarProvider, WorkspaceSidebarPortal, WorkspaceSidebarToggle, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
 import type { NewNoteActions } from './components/NewNoteMenu.js';
+import { ViewModeMenu } from './components/ViewModeSwitch.js';
 import { useVisualViewport } from './lib/use-visual-viewport.js';
 import { Sidebar } from './components/Sidebar.js';
 import { FilterChips } from './components/FilterChips.js';
@@ -653,11 +654,11 @@ export const AppContent: React.FC = () => {
               hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null}
               onShowHiddenChange={value => changeFilters({ showHidden: value })}
               groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined}
-              view={{ mode: viewMode, onChange: setViewMode }}
             />
           )
           : undefined}
         filters={renderSidebar(false, dock)}
+        viewMenu={dock === 'filters' ? <ViewModeMenu viewMode={viewMode} setViewMode={setViewMode} /> : undefined}
         dockToggle={dock === 'filters' ? dockToggle : undefined}
         path={
           <>

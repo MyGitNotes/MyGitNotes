@@ -6,6 +6,7 @@ import '@testing-library/jest-dom/vitest';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { NoteListTools, type NoteSearchHandle, NoteToolbar } from './NoteToolbar.js';
 import { NewNoteMenu } from './NewNoteMenu.js';
+import { ViewModeMenu } from './ViewModeSwitch.js';
 
 beforeEach(() => {
   window.matchMedia = ((query: string) => ({ matches: !query.includes('max-width: 767px'), media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
@@ -154,12 +155,12 @@ it('marks a search still in force once the browse region is collapsed, and reope
   expect(reveal).toHaveBeenCalledOnce();
 });
 
-it('in the browse dock ends the list tools with one view menu, naming the current view, which switches the view', async () => {
+it('gives the browse dock one view menu, naming the current view, which switches the view, and keeps it out of the dock list tools', async () => {
   const modes: string[] = [];
-  const dock = (viewMode: 'flat' | 'list' | 'kanban') => createElement(I18nProvider, null, createElement(NoteListTools, { placement: 'dock', query: '', onQueryChange: () => {}, sortField: 'updated', sortOrder: 'desc', onSortChange: () => {}, sortable: true, showHidden: false, hiddenNoteCount: 0, onShowHiddenChange: () => {}, groupByFolder: { value: false, onChange: () => {} }, view: { mode: viewMode, onChange: mode => modes.push(mode) } }));
+  const dock = (viewMode: 'flat' | 'list' | 'kanban') => createElement(I18nProvider, null, createElement(NoteListTools, { placement: 'dock', query: '', onQueryChange: () => {}, sortField: 'updated', sortOrder: 'desc', onSortChange: () => {}, sortable: true, showHidden: false, hiddenNoteCount: 0, onShowHiddenChange: () => {}, groupByFolder: { value: false, onChange: () => {} } }), createElement(ViewModeMenu, { viewMode, setViewMode: mode => modes.push(mode) }));
   const { rerender } = render(dock('flat'));
   const menu = screen.getByRole('combobox', { name: '筆記檢視: 攤開' });
-  expect(document.querySelector('.note-list-tools')!.lastElementChild).toBe(menu);
+  expect(document.querySelector('.note-list-tools')).not.toContainElement(menu);
   // One menu stands in for the three buttons, which the dock has no room for.
   for (const name of ['攤開', '資料夾檢視', '看板檢視']) expect(screen.queryByRole('button', { name })).toBeNull();
   act(() => menu.focus());

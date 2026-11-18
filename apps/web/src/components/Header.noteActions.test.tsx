@@ -16,8 +16,7 @@ afterEach(() => {
 /** The header row's own controls; the phone navigation's New Note button, hidden on a desktop, stays in the navigation. */
 const account = () => within(document.querySelector<HTMLElement>('.header-account')!);
 const focusControls = createElement('button', { type: 'button' }, 'Focus switcher');
-const header = (activeTab: WorkspaceTab, newNote: Parameters<typeof Header>[0]['newNote'] | null = { onNewNote: vi.fn(), onNewCompilation: vi.fn() }) =>
-  render(createElement(I18nProvider, null, createElement(Header, { workspaceTitle: 'Work', activeTab, setActiveTab: vi.fn(), notebooks: [{ id: 'a', title: 'Alpha', root: 'notes/a' }], selectedNotebookId: 'a', onSelectNotebook: vi.fn(), onCreateNote: vi.fn(), onOpenCommands: vi.fn(), focusControls, newNote: newNote ?? undefined })));
+const header = (activeTab: WorkspaceTab, newNote: Parameters<typeof Header>[0]['newNote'] | null = { onNewNote: vi.fn(), onNewCompilation: vi.fn() }) => render(createElement(I18nProvider, null, createElement(Header, { workspaceTitle: 'Work', activeTab, setActiveTab: vi.fn(), notebooks: [{ id: 'a', title: 'Alpha', root: 'notes/a' }], selectedNotebookId: 'a', onSelectNotebook: vi.fn(), onCreateNote: vi.fn(), onOpenCommands: vi.fn(), focusControls, newNote: newNote ?? undefined })));
 
 it('holds the Focus controls left of the notebook switcher and New right of it on the Notes page, before the utilities', () => {
   header('notes');
