@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createElement, createRef } from 'react';
+import { createElement, createRef, useState } from 'react';
 import fs from 'node:fs';
 import path from 'node:path';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -227,7 +227,14 @@ it('in a browse dock too narrow for the field shows a search button that opens i
   fireEvent.click(toggle);
   fireEvent.pointerDown(document.body);
   expect(region).toHaveAttribute('data-open');
+  // Esc with a search clears it first, keeping the field open; it folds once empty.
   fireEvent.keyDown(field, { key: 'Escape' });
+  expect(region).toHaveAttribute('data-open');
+  fireEvent.click(toggle);
+  rerender(dock(''));
+  fireEvent.keyDown(field, { key: 'Escape' });
+  expect(region).not.toHaveAttribute('data-open');
+  rerender(dock('dragon'));
   // Folded with a search in force, the button is marked and names it.
   const marked = screen.getByRole('button', { name: '搜尋筆記、標籤、內文...: dragon' });
   expect(marked).toBe(toggle);
@@ -237,6 +244,73 @@ it('in a browse dock too narrow for the field shows a search button that opens i
   act(() => search.current!.focus());
   expect(region).toHaveAttribute('data-open');
   await waitFor(() => expect(document.activeElement).toBe(field));
+});
+
+function SearchHarness({ placement, initial = '' }: { placement: 'dock' | 'toolbar'; initial?: string; }) {
+  const [query, setQuery] = useState(initial);
+  return createElement(I18nProvider, null, createElement(NoteListTools, { placement, query, onQueryChange: setQuery, sortField: 'updated', sortOrder: 'desc', onSortChange: () => {}, sortable: true, showHidden: false, hiddenNoteCount: 0, onShowHiddenChange: () => {} }));
+}
+
+for (const placement of ['dock', 'toolbar'] as const) {
+  it(`in the ${placement} the one ✕ first clears a search, keeping the field open, then closes it`, async () => {
+    render(createElement(SearchHarness, { placement }));
+    const toggle = screen.getByRole('button', { name: '搜尋筆記、標籤、內文...' });
+    const region = screen.getByRole('search');
+    const field = screen.getByRole('searchbox');
+    fireEvent.click(toggle);
+    fireEvent.change(field, { target: { value: 'dragon' } });
+    const clear = within(region).getByRole('button', { name: '清除搜尋' });
+    expect(clear).toHaveClass('note-search-close');
+    expect(clear).toHaveAttribute('title', '清除搜尋');
+    fireEvent.click(clear);
+    expect(field).toHaveValue('');
+    expect(region).toHaveAttribute('data-open');
+    expect(document.activeElement).toBe(field);
+    const close = within(region).getByRole('button', { name: '關閉' });
+    expect(close).toBe(clear);
+    expect(close).toHaveAttribute('title', '關閉');
+    fireEvent.click(close);
+    expect(region).not.toHaveAttribute('data-open');
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it(`in the ${placement} Esc first clears a search, then closes the field`, async () => {
+    render(createElement(SearchHarness, { placement }));
+    const toggle = screen.getByRole('button', { name: '搜尋筆記、標籤、內文...' });
+    const region = screen.getByRole('search');
+    const field = screen.getByRole('searchbox');
+    fireEvent.click(toggle);
+    field.focus();
+    fireEvent.change(field, { target: { value: 'dragon' } });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(field).toHaveValue('');
+    expect(region).toHaveAttribute('data-open');
+    expect(document.activeElement).toBe(field);
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(region).not.toHaveAttribute('data-open');
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it(`in the ${placement} marks the search region holding a query, so a field always shown offers its ✕ only then`, () => {
+    render(createElement(SearchHarness, { placement }));
+    const region = screen.getByRole('search');
+    expect(region).not.toHaveAttribute('data-query');
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'dragon' } });
+    expect(region).toHaveAttribute('data-query');
+    fireEvent.click(within(region).getByRole('button', { name: '清除搜尋' }));
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+    expect(region).not.toHaveAttribute('data-query');
+  });
+}
+
+it('hides the browser’s own search clear button on the list-tools field and shows the ✕ in an always-shown field only with a query', () => {
+  const css = fs.readFileSync(path.resolve(__dirname, 'note-toolbar.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  expect(css).toMatch(/\.note-search-input::-webkit-search-cancel-button[^{]*\{[^}]*-webkit-appearance: none/);
+  expect(css).toMatch(/\.note-search-input::-webkit-search-decoration[^{]*\{[^}]*-webkit-appearance: none/);
+  expect(css).toMatch(/\.note-toolbar-search\[data-query\] \.note-search-close, \.note-list-tools-search\[data-query\] \.note-search-close \{[^}]*display: inline-flex; position: absolute/);
+  expect(screen.queryByRole('searchbox')).toBeNull();
+  render(createElement(SearchHarness, { placement: 'toolbar' }));
+  expect(screen.getByRole('searchbox')).toHaveClass('note-search-input');
 });
 
 it('folds the dock search to its button by the dock row’s own width, not the viewport', () => {

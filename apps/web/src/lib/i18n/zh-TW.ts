@@ -871,6 +871,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'compilation.untitled': '未命名合輯',
   'compilation.create': '建立合輯筆記',
   'header.searchPlaceholder': '搜尋筆記、標籤、內文...',
+  'header.clearSearch': '清除搜尋',
   'header.newNote': '新增筆記',
   'header.newFromTemplate': '新增筆記：{template}',
   'template.slides': '投影片',

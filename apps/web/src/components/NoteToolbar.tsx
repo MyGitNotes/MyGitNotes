@@ -93,11 +93,42 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
   }), []);
   const toolbar = placement === 'toolbar';
   const searchId = toolbar ? 'note-toolbar-search' : `${ids}search`;
-  const field = (
-    <label className='note-search-field'>
-      <Search size={15} aria-hidden='true' />
-      <input ref={searchInput} type='search' aria-label={t('header.searchPlaceholder')} placeholder={t('header.searchPlaceholder')} value={query} onChange={event => onQueryChange(event.target.value)} />
-    </label>
+  const toggle = useRef<HTMLButtonElement>(null);
+  const hasQuery = query !== '';
+  // The one ✕ (and Esc) clears a search first, keeping the field and the cursor; on an empty field it closes the field and returns to its
+  // button. Where the field is always shown its button is hidden and cannot take focus, so the cursor stays in the field.
+  const clearOrClose = () => {
+    if (hasQuery) {
+      onQueryChange('');
+      searchInput.current?.focus();
+      return;
+    }
+    setSearchOpen(false);
+    toggle.current?.focus();
+  };
+  const closeLabel = hasQuery ? t('header.clearSearch') : t('common.close');
+  const region = (className: string) => (
+    <div
+      id={searchId}
+      className={className}
+      role='search'
+      data-open={searchOpen || undefined}
+      data-query={hasQuery || undefined}
+      onKeyDown={event => {
+        if (event.key === 'Escape' && (searchOpen || hasQuery)) {
+          event.preventDefault();
+          clearOrClose();
+        }
+      }}
+    >
+      <label className='note-search-field'>
+        <Search size={15} aria-hidden='true' />
+        <input ref={searchInput} className='note-search-input' type='search' aria-label={t('header.searchPlaceholder')} placeholder={t('header.searchPlaceholder')} value={query} onChange={event => onQueryChange(event.target.value)} />
+      </label>
+      <button type='button' className='ui-icon-button note-search-close' aria-label={closeLabel} title={closeLabel} onClick={clearOrClose}>
+        <X size={16} aria-hidden='true' />
+      </button>
+    </div>
   );
   const tools = (
     <>
@@ -130,19 +161,26 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
     </>
   );
   if (!toolbar) {
-    return <DockListTools searchId={searchId} open={searchOpen} onOpenChange={setSearchOpen} query={query} input={searchInput} field={field}>{tools}</DockListTools>;
+    return <DockListTools searchId={searchId} open={searchOpen} onOpenChange={setSearchOpen} query={query} input={searchInput} toggle={toggle} region={region('note-list-tools-search')}>{tools}</DockListTools>;
   }
   return (
     <>
-      <button type='button' className='ui-icon-button note-search-toggle' aria-label={t('header.searchPlaceholder')} aria-expanded={searchOpen} aria-controls={searchId} data-active={query.trim() ? true : undefined} onClick={() => setSearchOpen(true)}>
+      <button
+        ref={toggle}
+        type='button'
+        className='ui-icon-button note-search-toggle'
+        aria-label={t('header.searchPlaceholder')}
+        aria-expanded={searchOpen}
+        aria-controls={searchId}
+        data-active={query.trim() ? true : undefined}
+        onClick={() => {
+          setSearchOpen(true);
+          requestAnimationFrame(() => searchInput.current?.focus());
+        }}
+      >
         <Search size={16} aria-hidden='true' />
       </button>
-      <div id={searchId} className='note-toolbar-search' role='search' data-open={searchOpen || undefined}>
-        {field}
-        <button type='button' className='ui-icon-button note-search-close' aria-label={t('common.close')} onClick={() => setSearchOpen(false)}>
-          <X size={16} aria-hidden='true' />
-        </button>
-      </div>
+      {region('note-toolbar-search')}
       {tools}
     </>
   );
@@ -150,18 +188,13 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
 
 /**
  * The dock's list tools. A dock too narrow for the field beside the sort and the toggles (a container query on the row's width) shows a
- * button in its place, which opens the field over the whole row; the close button and Esc fold it back to the button, and so does a click
- * outside while the field is empty. A search typed there stays open until closed, and the folded button marks a search in force.
+ * button in its place, which opens the field over the whole row; the ✕ and Esc clear a search and then fold it back to the button, and so
+ * does a click outside while the field is empty. A search typed there stays open until closed, and the folded button marks a search in force.
  */
-function DockListTools({ searchId, open, onOpenChange, query, input, field, children }: { searchId: string; open: boolean; onOpenChange: (open: boolean) => void; query: string; input: RefObject<HTMLInputElement | null>; field: JSX.Element; children: ReactNode; }): JSX.Element {
+function DockListTools({ searchId, open, onOpenChange, query, input, toggle, region, children }: { searchId: string; open: boolean; onOpenChange: (open: boolean) => void; query: string; input: RefObject<HTMLInputElement | null>; toggle: RefObject<HTMLButtonElement>; region: JSX.Element; children: ReactNode; }): JSX.Element {
   const { t } = useTranslation();
-  const toggle = useRef<HTMLButtonElement>(null);
   const frame = useRef<HTMLDivElement>(null);
   const active = query.trim();
-  const close = () => {
-    onOpenChange(false);
-    toggle.current?.focus();
-  };
   useEffect(() => {
     if (!open || active) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -190,23 +223,7 @@ function DockListTools({ searchId, open, onOpenChange, query, input, field, chil
         >
           <Search size={16} aria-hidden='true' />
         </button>
-        <div
-          id={searchId}
-          className='note-list-tools-search'
-          role='search'
-          data-open={open || undefined}
-          onKeyDown={event => {
-            if (event.key === 'Escape' && open) {
-              event.preventDefault();
-              close();
-            }
-          }}
-        >
-          {field}
-          <button type='button' className='ui-icon-button note-search-close' aria-label={t('common.close')} onClick={close}>
-            <X size={16} aria-hidden='true' />
-          </button>
-        </div>
+        {region}
         {children}
       </div>
     </div>

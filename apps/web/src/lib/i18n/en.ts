@@ -870,6 +870,7 @@ export const en = {
   'compilation.untitled': 'Untitled compilation',
   'compilation.create': 'Create Compilation Note',
   'header.searchPlaceholder': 'Search notes, tags, content...',
+  'header.clearSearch': 'Clear search',
   'header.newNote': 'New Note',
   'header.newFromTemplate': 'New note: {template}',
   'template.slides': 'Slides',
