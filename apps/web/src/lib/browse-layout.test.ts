@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { browseLayout, browsePath } from './browse-layout.js';
+import { browseLayout, browsePath, notesToolbarRow } from './browse-layout.js';
 
 describe('browseLayout', () => {
   it('leaves normal browsing as it was: the sidebar shown, no split, chips only in the phone bar', () => {
@@ -29,6 +29,25 @@ describe('browseLayout', () => {
     expect(browseLayout({ focusShown: true, capacity: 1, viewMode: 'flat' })).toEqual({ sidebarFolded: false, split: 'folders', chips: 'list' });
     expect(browseLayout({ focusShown: true, capacity: 1, viewMode: 'list' })).toEqual({ sidebarFolded: false, split: 'folders', chips: 'list' });
     expect(browseLayout({ focusShown: true, capacity: 1, viewMode: 'kanban' })).toEqual({ sidebarFolded: false, split: null, chips: 'bar' });
+  });
+});
+
+describe('notesToolbarRow', () => {
+  it('drops the toolbar row while a note is open beside the left dock, on a desktop and a tablet: the dock starts under the header', () => {
+    for (const capacity of ['all', 2] as const) {
+      for (const viewMode of ['list', 'flat'] as const) expect(notesToolbarRow(browseLayout({ focusShown: true, capacity, viewMode }), false)).toBe(false);
+    }
+  });
+
+  it('keeps it on the list page and over the Kanban board docked above a Focus', () => {
+    for (const capacity of ['all', 2] as const) {
+      for (const viewMode of ['list', 'flat', 'kanban'] as const) expect(notesToolbarRow(browseLayout({ focusShown: false, capacity, viewMode }), false)).toBe(true);
+      expect(notesToolbarRow(browseLayout({ focusShown: true, capacity, viewMode: 'kanban' }), false)).toBe(true);
+    }
+  });
+
+  it('keeps it while the header and the browse region are folded away, where it is all that is left of either', () => {
+    for (const viewMode of ['list', 'flat', 'kanban'] as const) expect(notesToolbarRow(browseLayout({ focusShown: true, capacity: 'all', viewMode }), true)).toBe(true);
   });
 });
 

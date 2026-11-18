@@ -82,12 +82,13 @@ import { PhoneNotesProvider, phoneNotesScreen } from './lib/phone-notes.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
 import { NoteListTools, type NoteSearchHandle, NoteToolbar } from './components/NoteToolbar.js';
 import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
-import { PageToolbar, SidebarProvider, WorkspaceSidebarPortal, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
+import { PageToolbar, SidebarProvider, WorkspaceSidebarPortal, WorkspaceSidebarToggle, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
+import type { NewNoteActions } from './components/NewNoteMenu.js';
 import { useVisualViewport } from './lib/use-visual-viewport.js';
 import { Sidebar } from './components/Sidebar.js';
 import { FilterChips } from './components/FilterChips.js';
 import { BrowseSplit } from './components/BrowseSplit.js';
-import { browseLayout, browsePath } from './lib/browse-layout.js';
+import { browseLayout, browsePath, notesToolbarRow } from './lib/browse-layout.js';
 import { NoteCollection } from './components/NoteCollection.js';
 import { noteFolderGrouping } from './lib/note-groups.js';
 import { KanbanView } from './components/KanbanView.js';
@@ -652,6 +653,7 @@ export const AppContent: React.FC = () => {
               hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null}
               onShowHiddenChange={value => changeFilters({ showHidden: value })}
               groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined}
+              view={{ mode: viewMode, onChange: setViewMode }}
             />
           )
           : undefined}
@@ -706,6 +708,15 @@ export const AppContent: React.FC = () => {
   if (loading || loadError) return <ConnectionState loading={loading} error={loadError} onRetry={refreshWorkspace} />;
   if (route.legacyScreen) return <LegacyScreenRedirect laneId={route.legacyLane} notebooks={config?.notebooks || []} onMissing={setActionError} />;
 
+  // The Notes page's Focus controls and New button sit in the header, left and right of the notebook switcher; while the header and the browse
+  // region are folded away they move into the toolbar row that stays, so each is mounted once (the Focus dialogs live in its controls).
+  const notesActions = !notebookUnavailable && activeTab === 'notes' && !route.study && !phone;
+  const focusControls = notesActions ? <FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} /> : undefined;
+  // A read-only notebook shows neither the New button nor its menu.
+  const newNote: NewNoteActions | undefined = notesActions && canWrite ? { onNewNote: () => void createNote(), onNewOutline: () => void createNote({ kind: 'outline' }), onNewCompilation: () => void createUntitledCompilation(), templates: [...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)], onManageTemplates: selectedNotebook ? () => setManageTemplatesOpen(true) : undefined, onNewFromTemplate: templateId => void createNote({ templateId }), onImportLegacy: legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined } : undefined;
+  // Beside the left dock the row would be empty: the dock holds the list's tools and view menu, the header the rest.
+  const notesToolbar = notesToolbarRow(layout, browseCollapsed);
+
   const content = (
     <CompilationActionsProvider value={compilationActions}>
       <LiveDraftsProvider value={liveDrafts}>
@@ -733,7 +744,7 @@ export const AppContent: React.FC = () => {
                 {defaultRepository?.manifest === 'derived' && defaultRepository.config && <DerivedManifestNotice repository={defaultRepository.id} config={defaultRepository.config} configRevision={defaultRepository.configRevision} canWrite={manifestWritable} onCreated={() => refreshWorkspace(true)} />}
                 {/* Top Header */}
                 <div className='workspace-header-fold' data-folded={browseCollapsed || undefined} data-animating={headerFolding || undefined} {...(browseCollapsed ? { inert: '' } : {})}>
-                  <Header unavailableNotebooks={repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks)} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={<AccountControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={canWrite ? () => void createNote() : undefined} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} navOnly={phoneNotes} />
+                  <Header unavailableNotebooks={repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks)} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={<AccountControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={canWrite ? () => void createNote() : undefined} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} navOnly={phoneNotes} focusControls={browseCollapsed ? undefined : focusControls} newNote={browseCollapsed ? undefined : newNote} />
                 </div>
                 <KeyboardShortcuts mode={shortcutMode} onModeChange={setShortcutMode} suspended={isCommitOpen} selectedNotebookId={selectedNotebookId} onOpenNote={note => void handleOpenNote(note)} />
                 {routeError && (
@@ -826,10 +837,50 @@ export const AppContent: React.FC = () => {
                                 </>
                               )
                               : (
-                                <PageToolbar>
-                                  {toolbarDockToggle}
-                                  <NoteToolbar searchRef={browseCollapsed || layout.split === 'filters' ? undefined : noteSearch} listToolsDocked={layout.split === 'filters'} browseCollapsed={browseCollapsed} onRevealSearch={focusNoteSearch} utilities={browseCollapsed ? <HeaderUtilities activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={noteEditorOpen || isCommitOpen} onOpenCommands={() => setShortcutMode('palette')} /> : undefined} onImportLegacy={legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} metadataSortFields={metadataSortFields} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined} readOnly={!canWrite} viewMode={viewMode} setViewMode={setViewMode} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} showHidden={showHidden} onShowHiddenChange={value => changeFilters({ showHidden: value })} onNewNote={() => void createNote()} onNewOutline={() => void createNote({ kind: 'outline' })} onNewCompilation={() => void createUntitledCompilation()} templates={[...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)]} onManageTemplates={selectedNotebook ? () => setManageTemplatesOpen(true) : undefined} onNewFromTemplate={templateId => void createNote({ templateId })} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} focusControls={<FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} />} />
-                                </PageToolbar>
+                                <>
+                                  {!browseCollapsed && (
+                                    <WorkspaceSidebarToggle
+                                      label={t('filters.notebookPanel')}
+                                      open={filtersOpen}
+                                      controlsId='notebook-panel'
+                                      onClick={() => setFiltersOpen(open => !open)}
+                                    />
+                                  )}
+                                  {notesToolbar && (
+                                    <PageToolbar>
+                                      {toolbarDockToggle}
+                                      <NoteToolbar
+                                        searchRef={browseCollapsed || layout.split === 'filters' ? undefined : noteSearch}
+                                        browseCollapsed={browseCollapsed}
+                                        onRevealSearch={focusNoteSearch}
+                                        utilities={browseCollapsed
+                                          ? (
+                                            <HeaderUtilities
+                                              activeTab={activeTab}
+                                              setActiveTab={setActiveTab}
+                                              navigationDisabled={noteEditorOpen || isCommitOpen}
+                                              onOpenCommands={() => setShortcutMode('palette')}
+                                            />
+                                          )
+                                          : undefined}
+                                        focusControls={browseCollapsed ? focusControls : undefined}
+                                        newNote={browseCollapsed ? newNote : undefined}
+                                        sortField={sortField}
+                                        sortOrder={sortOrder}
+                                        onSortChange={handleSortChange}
+                                        metadataSortFields={metadataSortFields}
+                                        groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined}
+                                        viewMode={viewMode}
+                                        setViewMode={setViewMode}
+                                        hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null}
+                                        showHidden={showHidden}
+                                        onShowHiddenChange={value => changeFilters({ showHidden: value })}
+                                        query={searchQuery}
+                                        onQueryChange={value => changeFilters({ q: value })}
+                                      />
+                                    </PageToolbar>
+                                  )}
+                                </>
                               )}
                             {noteFocus.layout && !focusEmpty
                               ? (

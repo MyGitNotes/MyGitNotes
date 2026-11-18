@@ -373,7 +373,8 @@
 .workspace-header-fold[data-folded] > *, .workspace-header-fold[data-animating] > * { overflow: hidden; }
 .workspace-header-fold[data-folded]:not([data-animating]) { display: none; }
 .workspace-header { flex: none; z-index: 22; border-bottom: 1px solid var(--workspace-divider); background: var(--surface-glass); backdrop-filter: var(--surface-blur); }
-.workspace-header .header-layout { display: grid; grid-template-columns: var(--workspace-sidebar-width) minmax(0, 1fr) auto; gap: 0; height: 48px; padding: 0 24px 0 0; }
+/* One row: the brand over the sidebar's width (capped, so a wide sidebar does not crowd the row), the sections at their natural width, then the Notes page's Focus controls, the notebook switcher, New and the utilities in the rest of the row. */
+.workspace-header .header-layout { display: grid; grid-template-columns: min(var(--workspace-sidebar-width), 22vw) auto minmax(0, 1fr); gap: 0; height: 48px; padding: 0 24px 0 0; }
 .workspace-header .header-brand { display: flex; gap: 8px; align-items: center; min-width: 0; padding: 0 20px; }
 .workspace-header .header-brand .min-w-0 { min-width: 0; flex: 0 1 auto; }
 .workspace-header .header-brand #workspace-sidebar-toggle-slot { align-items: center; }
@@ -386,9 +387,8 @@
 .workspace-header .header-nav button:hover { background: var(--workspace-selection); color: var(--color-text); }
 .workspace-header .header-nav button[aria-current='page'] { color: var(--color-text); background: var(--workspace-selection); }
 .workspace-header .header-nav .mobile-nav-create { display: none; }
-/* A docked panel narrows the header without changing the viewport; when the labels no longer fit, the sections show their icons only. */
-@media (min-width: 1101px) { .workspace-header .header-nav { container: header-nav / inline-size; } @container header-nav (max-width: 370px) { .workspace-header .header-nav button > span { display: none; } .workspace-header .header-nav button { padding: 8px 10px; } } }
-.workspace-header .header-account { display: flex; align-items: center; justify-content: end; min-width: 0; }
+/* The sections keep their labels at every width: a header too narrow for them takes its two-row layout (max-width: 1160px) instead. */
+.workspace-header .header-account { container: header-account / inline-size; display: flex; align-items: center; justify-content: end; min-width: 0; }
 .workspace-sidebar { display: flex; flex-direction: column; flex: 0 0 var(--workspace-sidebar-width); width: var(--workspace-sidebar-width); min-width: 0; min-height: 0; height: 100%; padding: 0; border-right: 1px solid var(--workspace-divider); background: var(--workspace-rail); color: var(--color-text); }
 /* Workspace Splitter & Resizable Layout */
 .workspace-splitter { width: 9px; margin-left: -4px; margin-right: -4px; position: relative; z-index: 15; cursor: col-resize; background: transparent; outline: none; flex: none; user-select: none; touch-action: none; }
@@ -430,9 +430,21 @@
 .panel-credit { display: block; margin-top: auto; padding-top: 12px; text-align: center; font-size: 9px; line-height: 14px; color: var(--color-muted); text-decoration: none; }
 .panel-credit:hover span { text-decoration: underline; }
 .workspace-header .header-account { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.workspace-header .header-notebook { display: flex; flex-wrap: nowrap; align-items: center; gap: 7px; width: 210px; min-width: 0; }
+.workspace-header .header-notebook { display: flex; flex: none; flex-wrap: nowrap; align-items: center; gap: 7px; width: 210px; min-width: 0; }
 .header-notebook > svg { width: 16px; height: 16px; flex: none; color: var(--color-muted); }
 .header-notebook .select-trigger { flex: 1; min-width: 0; width: auto; }
+/* The Notes page's Focus controls and New in the header row: the Focus group ends in the divider before the notebook switcher. */
+.workspace-header .header-account > .note-focus-controls, .workspace-header .header-account > .select-button { flex: none; flex-wrap: nowrap; }
+.workspace-header .header-focus-controls { padding-right: 12px; }
+.workspace-header .header-new-note { box-shadow: none; padding: 0 12px; }
+/*
+ * Where the row holding them narrows, by the room left of the sections, these give way in turn: New shows its icon (its name stays its label and
+ * tooltip), then the notebook switcher narrows and truncates the name, then the Focus switcher shows its icon (the Focus's name stays its label
+ * and tooltip). The widths are the row's content at each step with the Default Focus and a local workspace's utilities.
+ */
+@container header-account (max-width: 620px) { .workspace-header .header-new-note > span { display: none; } .workspace-header .header-new-note { padding: 0 8px; } }
+@container header-account (max-width: 545px) { .workspace-header .header-notebook { flex: 0 1 160px; width: 160px; min-width: 112px; } }
+@container header-account (max-width: 495px) { .workspace-header .focus-switcher-label { display: none; } .workspace-header .focus-switcher > .select-button-primary { padding: 0 8px; } }
 .setup-language .select-trigger { width: auto; min-width: 8rem; }
 
 .notes-sidebar .workspace-sidebar-scroll .text-muted { color: var(--color-muted); }
@@ -573,7 +585,9 @@
 .app-shell ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--color-muted) 60%, transparent); }
 @supports not selector(::-webkit-scrollbar) { .workspace-sidebar-scroll, .workspace-scroll, .screen-board-scroll, .screen-lane-strip, .screen-card-content { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--color-muted) 30%, transparent) transparent; } }
 @media (min-width: 1101px) { .app-shell[data-workspace-tab='screen'] #workspace-sidebar-toggle-slot:not(:empty) { display: flex; flex: none; } .app-shell[data-workspace-tab='screen'] .ui-icon-button.workspace-sidebar-toggle, .app-shell[data-workspace-tab='screen'] .workspace-sidebar-toggle { display: inline-flex; align-items: center; justify-content: center; } .app-shell[data-workspace-tab='screen'] .workspace-sidebar-toggle span { display: none; } }
-@media (max-width: 1100px) { .app-shell { --workspace-padding: 24px; } .workspace-header .header-layout { grid-template-columns: minmax(0, 1fr) auto; height: auto; padding: 8px 16px; gap: 6px; } .workspace-header .header-brand { padding: 0; min-height: 40px; } .workspace-header .header-nav { grid-column: 1 / -1; grid-row: 2; padding: 0; } .workspace-header .header-nav button { flex: 1; justify-content: center; min-height: 40px; } .workspace-header .header-account { grid-column: 2; grid-row: 1; max-width: none; } .workspace-header .header-utilities { flex-wrap: nowrap; } .header-notebook .select-trigger { min-height: 44px; } .notes-main .workspace-page-actions { flex: 1 1 100%; } .workspace-page-actions .header-note-actions { max-width: none; } .workspace-page-actions .header-search { max-width: none; } .workspace-page-actions .header-new-note { padding: 8px; } .workspace-responsive-sidebar { display: block; position: absolute; inset: 0 auto 0 0; z-index: 57; width: min(320px, 75%); max-width: calc(100% - 56px); transform: translateX(-100%); visibility: hidden; pointer-events: none; transition: transform 180ms ease, visibility 180ms; box-shadow: 8px 0 24px color-mix(in srgb, var(--color-scrim) 13%, transparent); } .workspace-responsive-sidebar.is-open { transform: translateX(0); visibility: visible; pointer-events: auto; } .workspace-responsive-sidebar.is-dragging { transform: translateX(var(--sidebar-drag)); visibility: visible; pointer-events: auto; transition: none; } .workspace-responsive-sidebar .workspace-sidebar { display: flex; width: 100%; max-width: 100%; height: 100%; } .sidebar-toggle-slot:not(:empty) { display: flex; flex: none; } .ui-icon-button.workspace-sidebar-toggle, .workspace-sidebar-toggle { display: inline-flex; flex: none; width: 44px; height: 44px; padding: 0; justify-content: center; } .workspace-sidebar-toggle span { display: none; } .agent-layout .agent-document-picker { display: none; } .agent-toolbar { padding: 8px var(--workspace-padding); } .agent-document-picker { padding: 8px var(--workspace-padding); } .asset-library .grid { gap: 12px; } }
+/* The header's two rows (the sections on the second) start before the sidebar becomes a drawer: from 1160px down a single row has no room for the sections' labels beside the Notes page's actions. New shows its icon here. */
+@media (max-width: 1160px) { .workspace-header .header-layout { grid-template-columns: minmax(0, auto) minmax(0, 1fr); height: auto; padding: 8px 16px; gap: 6px; } .workspace-header .header-brand { padding: 0; min-height: 40px; } .workspace-header .header-nav { grid-column: 1 / -1; grid-row: 2; padding: 0; } .workspace-header .header-nav button { flex: 1; justify-content: center; min-height: 40px; } .workspace-header .header-account { grid-column: 2; grid-row: 1; max-width: none; } .workspace-header .header-utilities { flex-wrap: nowrap; } .workspace-header .header-new-note > span { display: none; } .workspace-header .header-new-note { padding: 0 8px; } }
+@media (max-width: 1100px) { .app-shell { --workspace-padding: 24px; } .header-notebook .select-trigger { min-height: 44px; } .notes-main .workspace-page-actions { flex: 1 1 100%; } .workspace-page-actions .header-note-actions { max-width: none; } .workspace-page-actions .header-search { max-width: none; } .workspace-page-actions .header-new-note { padding: 8px; } .workspace-responsive-sidebar { display: block; position: absolute; inset: 0 auto 0 0; z-index: 57; width: min(320px, 75%); max-width: calc(100% - 56px); transform: translateX(-100%); visibility: hidden; pointer-events: none; transition: transform 180ms ease, visibility 180ms; box-shadow: 8px 0 24px color-mix(in srgb, var(--color-scrim) 13%, transparent); } .workspace-responsive-sidebar.is-open { transform: translateX(0); visibility: visible; pointer-events: auto; } .workspace-responsive-sidebar.is-dragging { transform: translateX(var(--sidebar-drag)); visibility: visible; pointer-events: auto; transition: none; } .workspace-responsive-sidebar .workspace-sidebar { display: flex; width: 100%; max-width: 100%; height: 100%; } .sidebar-toggle-slot:not(:empty) { display: flex; flex: none; } .ui-icon-button.workspace-sidebar-toggle, .workspace-sidebar-toggle { display: inline-flex; flex: none; width: 44px; height: 44px; padding: 0; justify-content: center; } .workspace-sidebar-toggle span { display: none; } .agent-layout .agent-document-picker { display: none; } .agent-toolbar { padding: 8px var(--workspace-padding); } .agent-document-picker { padding: 8px var(--workspace-padding); } .asset-library .grid { gap: 12px; } }
 @media (max-width: 767px) {
   .keyboard-shortcuts-panel { top: max(12px, var(--safe-top)); }
   .app-shell { --workspace-padding: 16px; }
@@ -603,6 +617,7 @@
   .settings-group { gap: 24px; }
   .settings-panel #settings-theme > .grid { grid-template-columns: 1fr; }
   .workspace-header .header-brand { grid-column: 1; grid-row: 1; }
+  .workspace-header .header-layout { grid-template-columns: minmax(0, 1fr) auto; }
   .workspace-header .header-account { display: contents; }
   .header-utilities { grid-column: 2; grid-row: 1; justify-content: flex-end; }
   .workspace-header .header-notebook { grid-column: 1 / -1; grid-row: 2; width: min(280px, 100%); }

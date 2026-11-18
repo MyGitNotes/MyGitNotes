@@ -1,15 +1,19 @@
 import './note-toolbar.css';
 import { type ReactNode, type Ref, useId, useImperativeHandle, useRef, useState } from 'react';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { ArrowDownAZ, ArrowDownWideNarrow, ArrowDownZA, ArrowUpWideNarrow, CalendarArrowDown, CalendarArrowUp, ChevronDown, ClockArrowDown, ClockArrowUp, Eye, EyeOff, FileText, Folder, FolderTree, GalleryHorizontalEnd, Kanban, LayoutTemplate, List, ListOrdered, ListTree, Plus, Search, X } from 'lucide-react';
-import { WorkspaceSidebarToggle } from './WorkspaceChrome.js';
+import { ArrowDownAZ, ArrowDownWideNarrow, ArrowDownZA, ArrowUpWideNarrow, CalendarArrowDown, CalendarArrowUp, ClockArrowDown, ClockArrowUp, Eye, EyeOff, FolderTree, ListOrdered, Search, X } from 'lucide-react';
 import { Select } from './Select.js';
-import { SelectButtonGroup, SelectButtonPrimary, SelectButtonTrigger } from './SelectButton.js';
+import { type NewNoteActions, NewNoteMenu } from './NewNoteMenu.js';
+import { ViewModeButtons, ViewModeMenu } from './ViewModeSwitch.js';
 import type { SortField, SortOrder } from '../lib/note-sort.js';
 import { metadataSortOptions } from '../lib/note-sort-options.js';
 import { ViewMode } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
 
+/**
+ * The notes toolbar row under the header. On the list page and over the Kanban board it holds the list's tools at its left and the view switch at
+ * its right end; beside the left dock it is not drawn at all (`notesToolbarRow`). While the header and the browse region are folded away
+ * (`browseCollapsed`) only what acts on the Focus stays: the Focus controls, New, and `utilities`. Otherwise the header holds the Focus controls and New.
+ */
 interface NoteToolbarProps {
   showHidden: boolean;
   /** Hidden notes in scope, or null while the counts are still being answered. */
@@ -22,34 +26,17 @@ interface NoteToolbarProps {
   metadataSortFields?: readonly string[];
   /** Present while the list spans subfolders, where it can be grouped by folder. */
   groupByFolder?: { value: boolean; onChange: (value: boolean) => void; };
-  readOnly: boolean;
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
-  onNewNote: () => void;
-  /** Each of these creates at once, with default values, at the notebook root. */
-  onNewCompilation: () => void;
-  onNewOutline?: () => void;
-  /** The notebook's note templates, each a New menu item that creates a note from it. */
-  templates?: { id: string; title: string; }[];
-  onNewFromTemplate?: (templateId: string) => void;
-  /** Opens the notebook's Manage templates dialog from the New menu, which a read-only notebook does not show. */
-  onManageTemplates?: () => void;
   /** The note search, the `q` query parameter. */
   query: string;
   onQueryChange: (query: string) => void;
-  filtersOpen: boolean;
-  onToggleFilters: () => void;
-  /** The Focus switcher and Layout menu. */
+  /** The Focus switcher and Layout menu, given only while the header that otherwise holds them is folded away. */
   focusControls?: ReactNode;
-  /** Opens the legacy bookmark import from the New menu; a read-only notebook reaches it from the recovery notice instead, or from a writable notebook. */
-  onImportLegacy?: () => void;
+  /** The New button's actions, given only while the header is folded away and the notebook is writable. */
+  newNote?: NewNoteActions;
   /** Lets the "Search note text" command reach the field, opening it first on narrow screens. */
   searchRef?: Ref<NoteSearchHandle>;
-  /**
-   * The left browse dock beside a Focus shows the search, the sort and the display toggles at its own top, over the list they act on
-   * (`NoteListTools` placed `dock`), so the toolbar leaves them out.
-   */
-  listToolsDocked?: boolean;
   /** With the browse region and the header folded away only what acts on the Focus stays: the Focus controls, New, and `utilities`. */
   browseCollapsed?: boolean;
   /** The header's assistant and command buttons, shown here while the header is folded away. */
@@ -86,10 +73,12 @@ export interface NoteListToolsProps {
   hiddenNoteCount: number | null;
   onShowHiddenChange: (value: boolean) => void;
   groupByFolder?: { value: boolean; onChange: (value: boolean) => void; };
+  /** In the dock, the view switch as one menu at the end of the tools (the toolbar's own view buttons are gone with it beside the dock). */
+  view?: { mode: ViewMode; onChange: (mode: ViewMode) => void; };
 }
 
 /** The tools that act on the note list: the search, the sort menu, and the hidden-notes and group-by-folder toggles. */
-export function NoteListTools({ placement, query, onQueryChange, searchRef, sortField, sortOrder, onSortChange, metadataSortFields, sortable, showHidden, hiddenNoteCount, onShowHiddenChange, groupByFolder }: NoteListToolsProps): JSX.Element {
+export function NoteListTools({ placement, query, onQueryChange, searchRef, sortField, sortOrder, onSortChange, metadataSortFields, sortable, showHidden, hiddenNoteCount, onShowHiddenChange, groupByFolder, view }: NoteListToolsProps): JSX.Element {
   const { t } = useTranslation();
   const ids = useId();
   // In the toolbar the field may be hidden behind a button (a narrow toolbar) and expands over the toolbar; in the dock it is always shown.
@@ -146,6 +135,7 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
       <div className='note-list-tools' data-placement='dock'>
         <div id={searchId} className='note-list-tools-search' role='search'>{field}</div>
         {tools}
+        {view && <ViewModeMenu viewMode={view.mode} setViewMode={view.onChange} />}
       </div>
     );
   }
@@ -165,87 +155,21 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
   );
 }
 
-export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, sortField, sortOrder, onSortChange, metadataSortFields, groupByFolder, readOnly, viewMode, setViewMode, onNewNote, onNewCompilation, onNewOutline, templates = [], onNewFromTemplate, onManageTemplates, query, onQueryChange, filtersOpen, onToggleFilters, focusControls, onImportLegacy, searchRef, listToolsDocked = false, browseCollapsed = false, utilities, onRevealSearch }: NoteToolbarProps) {
+export function NoteToolbar({ showHidden, hiddenNoteCount, onShowHiddenChange, sortField, sortOrder, onSortChange, metadataSortFields, groupByFolder, viewMode, setViewMode, query, onQueryChange, focusControls, newNote, searchRef, browseCollapsed = false, utilities, onRevealSearch }: NoteToolbarProps) {
   const { t } = useTranslation();
   return (
-    <div className='header-note-actions flex items-center gap-2.5 flex-1 min-w-0 justify-end'>
-      {!browseCollapsed && <WorkspaceSidebarToggle label={t('filters.notebookPanel')} open={filtersOpen} controlsId='notebook-panel' onClick={onToggleFilters} />}
-      {!browseCollapsed && !listToolsDocked && <NoteListTools placement='toolbar' query={query} onQueryChange={onQueryChange} searchRef={searchRef} sortField={sortField} sortOrder={sortOrder} onSortChange={onSortChange} metadataSortFields={metadataSortFields} sortable={viewMode !== 'kanban'} showHidden={showHidden} hiddenNoteCount={hiddenNoteCount} onShowHiddenChange={onShowHiddenChange} groupByFolder={groupByFolder} />}
+    <div className='header-note-actions flex items-center gap-2.5 flex-1 min-w-0' data-collapsed={browseCollapsed || undefined}>
+      {!browseCollapsed && <NoteListTools placement='toolbar' query={query} onQueryChange={onQueryChange} searchRef={searchRef} sortField={sortField} sortOrder={sortOrder} onSortChange={onSortChange} metadataSortFields={metadataSortFields} sortable={viewMode !== 'kanban'} showHidden={showHidden} hiddenNoteCount={hiddenNoteCount} onShowHiddenChange={onShowHiddenChange} groupByFolder={groupByFolder} />}
       {browseCollapsed && query.trim() && onRevealSearch && (
         <button type='button' className='ui-icon-button note-search-active' aria-label={`${t('header.searchPlaceholder')}: ${query.trim()}`} title={query.trim()} onClick={onRevealSearch}>
           <Search size={16} aria-hidden='true' />
         </button>
       )}
       {focusControls && <div className='note-focus-controls' role='group' aria-label={t('focus.title')}>{focusControls}</div>}
-      {/* View Switcher Mobile: in place of the desktop buttons once the toolbar is too narrow for them. */}
-      {!browseCollapsed && <Select aria-label={t('filters.noteView')} value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)} options={[{ value: 'flat', label: t('view.flat') }, { value: 'list', label: t('layout.list') }, { value: 'kanban', label: t('layout.kanban') }]} className='mobile-only note-view-select px-1' />}
-      {/* View Switcher Desktop */}
-      {!browseCollapsed && (
-        <div className='desktop-views flex items-center bg-fg/5 p-1 rounded-lg gap-1 shrink-0'>
-          {([{ mode: 'flat', icon: List }, { mode: 'list', icon: Folder }, { mode: 'kanban', icon: Kanban }] as const).map(({ mode, icon: Icon }) => (
-            <button
-              key={mode}
-              type='button'
-              onClick={() => setViewMode(mode)}
-              title={t(`view.${mode}`)}
-              aria-label={t(`view.${mode}`)}
-              aria-pressed={viewMode === mode}
-              style={viewMode === mode ? { backgroundColor: 'var(--color-surface)', color: 'var(--color-primary)' } : undefined}
-              className={`p-1.5 rounded-md transition ${viewMode === mode ? 'shadow-xs hover:opacity-90' : 'text-muted hover:text-fg hover:bg-fg/5'}`}
-            >
-              <Icon className='w-4 h-4' />
-            </button>
-          ))}
-        </div>
-      )}
-      {/* New Note Button: a read-only notebook shows neither the button nor its menu, which holds only what creates or imports notes and manages templates. */}
-      {!readOnly && (
-        <SelectButtonGroup>
-          <SelectButtonPrimary aria-label={t('header.newNote')} onClick={onNewNote} className='ui-button-primary header-new-note'>
-            <Plus aria-hidden='true' />
-            <span>{t('header.newNote')}</span>
-          </SelectButtonPrimary>
-          <DropdownMenu.Root>
-            <SelectButtonTrigger className='ui-button-primary' aria-label={t('header.newMenu')} title={t('header.newMenu')}>
-              <ChevronDown aria-hidden='true' />
-            </SelectButtonTrigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('header.newMenu')}>
-                <DropdownMenu.Item onSelect={onNewNote}>
-                  <Plus size={14} aria-hidden='true' />
-                  {t('header.newNote')}
-                </DropdownMenu.Item>
-                {onNewFromTemplate && templates.map(template => (
-                  <DropdownMenu.Item
-                    key={template.id}
-                    onSelect={() => onNewFromTemplate(template.id)}
-                  >
-                    <FileText size={14} aria-hidden='true' />
-                    {t('header.newFromTemplate', { template: template.title })}
-                  </DropdownMenu.Item>
-                ))}
-                {onManageTemplates && (
-                  <DropdownMenu.Item onSelect={onManageTemplates}>
-                    <LayoutTemplate size={14} aria-hidden='true' />
-                    {t('templates.manage')}
-                  </DropdownMenu.Item>
-                )}
-                {onNewOutline && (
-                  <DropdownMenu.Item onSelect={onNewOutline}>
-                    <ListTree size={14} aria-hidden='true' />
-                    {t('outline.new')}
-                  </DropdownMenu.Item>
-                )}
-                <DropdownMenu.Item onSelect={onNewCompilation}>
-                  <GalleryHorizontalEnd size={14} aria-hidden='true' />
-                  {t('compilation.new')}
-                </DropdownMenu.Item>
-                {onImportLegacy && <DropdownMenu.Item onSelect={onImportLegacy}>{t('legacyOutline.title')}</DropdownMenu.Item>}
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
-        </SelectButtonGroup>
-      )}
+      {/* The view switch at the right end, where New was before the header took it. */}
+      {!browseCollapsed && <ViewModeButtons viewMode={viewMode} setViewMode={setViewMode} />}
+      {/* A read-only notebook shows neither the button nor its menu. */}
+      {newNote && <NewNoteMenu {...newNote} />}
       {utilities}
     </div>
   );

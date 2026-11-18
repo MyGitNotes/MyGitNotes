@@ -25,6 +25,15 @@ export function browseLayout({ focusShown, capacity, viewMode }: { focusShown: b
   return { sidebarFolded: capacity === 'all', split: 'filters', chips: null };
 }
 
+/**
+ * Whether the Notes page keeps its toolbar row under the header. Beside the left dock (`split` is `filters`) the dock holds the list's tools and
+ * view menu and the header holds the Focus controls and New, so the row would be empty and the dock starts under the header instead. While the
+ * header and the browse region are folded away (`browseCollapsed`) the row stays: it is where the Focus controls, New and the header's buttons remain.
+ */
+export function notesToolbarRow(layout: BrowseLayout, browseCollapsed: boolean): boolean {
+  return layout.split !== 'filters' || browseCollapsed;
+}
+
 /** The path line over the list: the folders below the notebook root, the notebook at its root, or the kind of list (outlines, compilations). */
 export function browsePath({ kind, notebookTitle, breadcrumbs, labels }: { kind?: string; notebookTitle: string; breadcrumbs: readonly { name: string; path: string | null; }[]; labels: { outline: string; compilations: string; }; }): string {
   if (kind === 'outline') return labels.outline;

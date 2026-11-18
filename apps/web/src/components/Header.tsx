@@ -10,6 +10,7 @@ import { bindingsFor, keymapEntry } from '../lib/keyboard/keymap.js';
 import { keyEnvironment } from '../lib/keyboard/platform.js';
 import { AssistantDockToggle } from './assistant/AssistantDockToggle.js';
 import { usePiAgentOffer } from '../lib/pi-agent/session.js';
+import { type NewNoteActions, NewNoteMenu } from './NewNoteMenu.js';
 
 interface HeaderProps {
   /** Notebooks whose repository cannot serve them; the switcher marks them. */
@@ -30,6 +31,10 @@ interface HeaderProps {
   navigationDisabled?: boolean;
   /** A phone's Notes page draws its own bars at the top; the header then keeps only the bottom navigation. */
   navOnly?: boolean;
+  /** The Focus switcher and Layout menu, shown on the Notes page left of the notebook switcher. */
+  focusControls?: React.ReactNode;
+  /** The New button's actions, shown on the Notes page right of the notebook switcher; absent for a read-only notebook, which then shows none. */
+  newNote?: NewNoteActions;
 }
 
 /** The assistant dock's button, the command palette's, and the account controls: the header's right end, and a phone's Notes drawer where there is no header. */
@@ -56,7 +61,7 @@ export function HeaderUtilities({ activeTab, setActiveTab, navigationDisabled = 
   );
 }
 
-export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, onOpenCommands, navigationDisabled = false, navOnly = false }: HeaderProps) {
+export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, onOpenCommands, navigationDisabled = false, navOnly = false, focusControls, newNote }: HeaderProps) {
   const { t } = useTranslation();
   useEffect(() => {
     document.title = `${t(`nav.${activeTab}`)} · MyGitNotes`;
@@ -88,6 +93,8 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
       ))}
     </nav>
   );
+  // The Notes page's own actions; every other page shows only the notebook switcher and the utilities here.
+  const notes = activeTab === 'notes';
   if (navOnly) return <header className='workspace-header' data-nav-only=''>{nav}</header>;
   return (
     <header className='workspace-header'>
@@ -102,6 +109,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
         </div>
         {nav}
         <div className='header-account'>
+          {notes && focusControls && <div className='note-focus-controls header-focus-controls' role='group' aria-label={t('focus.title')}>{focusControls}</div>}
           <div className='header-notebook'>
             <span id='workspace-sidebar-toggle-slot-mobile' className='sidebar-toggle-slot' />
             {notebooks.length > 0 && (
@@ -111,6 +119,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
               </>
             )}
           </div>
+          {notes && newNote && <NewNoteMenu {...newNote} />}
           <HeaderUtilities activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={navigationDisabled} onOpenCommands={onOpenCommands} accountControls={accountControls} />
         </div>
       </div>

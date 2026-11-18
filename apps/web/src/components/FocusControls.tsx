@@ -15,7 +15,7 @@ import { SelectButtonGroup, SelectButtonPrimary, SelectButtonTrigger } from './S
 
 type Dialog = { kind: 'name'; } | { kind: 'rename'; id: string; name: string; } | { kind: 'delete'; id: string; name: string; };
 
-/** The Notes toolbar's Focus switcher and Layout menu, with naming, renaming, closing a named Focus, clearing and deleting. */
+/** The Notes page's Focus switcher and Layout menu (in the header, or in the toolbar left while the header is folded away), with naming, renaming, closing a named Focus, clearing and deleting. */
 export const FocusControls: React.FC<{
   focus: NoteFocus;
   /** Shows a Focus (`current` or an id). */
@@ -39,11 +39,14 @@ export const FocusControls: React.FC<{
 
   return (
     <>
-      {/* A split button: the main part shows the Default Focus (closing a named one), the chevron lists every Focus. */}
+      {
+        /* A split button: the main part shows the Default Focus (closing a named one), the chevron lists every Focus. A narrow header shows only its
+          icon, so the shown Focus is named in its label and tooltip too. */
+      }
       <SelectButtonGroup className='focus-switcher' active>
-        <SelectButtonPrimary title={t(named ? 'focus.close' : 'focus.current')} onClick={() => onShow(CURRENT_FOCUS)}>
+        <SelectButtonPrimary aria-label={label} title={named ? `${label} · ${t('focus.close')}` : label} onClick={() => onShow(CURRENT_FOCUS)}>
           <PanelsTopLeft aria-hidden='true' />
-          <span>{label}</span>
+          <span className='focus-switcher-label'>{label}</span>
         </SelectButtonPrimary>
         <DropdownMenu.Root>
           <SelectButtonTrigger aria-label={t('focus.switch')} title={t('focus.switch')}>

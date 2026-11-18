@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { NoteListTools, type NoteSearchHandle, NoteToolbar } from './NoteToolbar.js';
+import { NewNoteMenu } from './NewNoteMenu.js';
 
 beforeEach(() => {
   window.matchMedia = ((query: string) => ({ matches: !query.includes('max-width: 767px'), media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false })) as unknown as typeof window.matchMedia;
@@ -12,6 +13,8 @@ beforeEach(() => {
   slot.id = 'workspace-sidebar-toggle-slot';
   document.body.appendChild(slot);
   window.localStorage.setItem('github-notes:language', 'zh-TW');
+  // Radix Select scrolls its chosen option into view, which jsdom does not lay out.
+  Element.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => {
   cleanup();
@@ -19,19 +22,33 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const baseProps = { showHidden: false, descendants: false, hiddenNoteCount: 0, onShowHiddenChange: () => {}, onDescendantsChange: () => {}, sortField: 'updated' as const, sortOrder: 'desc' as const, onSortChange: () => {}, readOnly: false, viewMode: 'flat' as const, setViewMode: () => {}, onNewNote: () => {}, onNewCompilation: () => {}, query: '', onQueryChange: () => {}, filtersOpen: false, onToggleFilters: () => {} };
+const baseProps = { showHidden: false, hiddenNoteCount: 0, onShowHiddenChange: () => {}, sortField: 'updated' as const, sortOrder: 'desc' as const, onSortChange: () => {}, viewMode: 'flat' as const, setViewMode: () => {}, query: '', onQueryChange: () => {} };
+const newNote = { onNewNote: () => {}, onNewCompilation: () => {} };
 
-it('labels the notebook-panel toggle and view switcher in Traditional Chinese under the zh-TW locale', () => {
+it('labels the view switcher in Traditional Chinese under the zh-TW locale', () => {
   render(createElement(I18nProvider, null, createElement(NoteToolbar, baseProps)));
-  expect(screen.getByRole('button', { name: '筆記本與篩選' })).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: '筆記檢視' })).toBeInTheDocument();
+  for (const name of ['攤開', '資料夾檢視', '看板檢視']) expect(screen.getByRole('button', { name })).toBeInTheDocument();
+});
+
+it('on the list page holds the list tools, then the view buttons at its right end, and leaves the Focus controls and New to the header', () => {
+  render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, groupByFolder: { value: false, onChange: () => {} } })));
+  const search = screen.getByRole('search'), group = screen.getByRole('button', { name: '依資料夾分組' }), views = screen.getByRole('button', { name: '看板檢視' });
+  expect(search.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(group.compareDocumentPosition(views) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(views.closest('.desktop-views')).toBe(document.querySelector('.header-note-actions')!.lastElementChild);
+  expect(screen.queryByRole('button', { name: '新增筆記' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '新增選單' })).toBeNull();
+  expect(screen.queryByRole('group', { name: 'Focus' })).toBeNull();
+  // The notebook panel's toggle is the page's own, drawn in the header's slot whether or not this row is there.
+  expect(screen.queryByRole('button', { name: '筆記本與篩選' })).toBeNull();
 });
 
 it('offers native outline creation in the New menu and hides creation for read-only notebooks', async () => {
   const create = vi.fn();
   const view = render(
     <I18nProvider>
-      <NoteToolbar {...baseProps} onNewOutline={create} />
+      <NewNoteMenu {...newNote} onNewOutline={create} />
     </I18nProvider>,
   );
   const trigger = screen.getByRole('button', { name: '新增選單' });
@@ -40,16 +57,16 @@ it('offers native outline creation in the New menu and hides creation for read-o
   expect(create).toHaveBeenCalledOnce();
   view.rerender(
     <I18nProvider>
-      <NoteToolbar {...baseProps} readOnly onNewOutline={create} />
+      <NoteToolbar {...baseProps} browseCollapsed />
     </I18nProvider>,
   );
   expect(screen.queryByRole('button', { name: '新增選單' })).not.toBeInTheDocument();
 });
 
-it('renders no New button or menu on a read-only notebook, even where it would offer legacy import or Manage templates', () => {
+it('renders no New button or menu on a read-only notebook, even in the toolbar left while the header is folded away', () => {
   render(
     <I18nProvider>
-      <NoteToolbar {...baseProps} readOnly onImportLegacy={vi.fn()} templates={[{ id: 'reading', title: '讀書筆記' }]} onNewFromTemplate={vi.fn()} onManageTemplates={vi.fn()} onNewOutline={vi.fn()} />
+      <NoteToolbar {...baseProps} browseCollapsed focusControls={<button type='button'>Focus</button>} />
     </I18nProvider>,
   );
   expect(screen.queryByRole('button', { name: '新增選單' })).toBeNull();
@@ -61,7 +78,7 @@ it('keeps legacy import in a writable notebook’s New menu', async () => {
   const open = vi.fn();
   render(
     <I18nProvider>
-      <NoteToolbar {...baseProps} onImportLegacy={open} />
+      <NewNoteMenu {...newNote} onImportLegacy={open} />
     </I18nProvider>,
   );
   expect(screen.getByRole('button', { name: '新增筆記' })).toBeInTheDocument();
@@ -118,7 +135,7 @@ it('names the current order on the icon-only sort menu and offers Group by folde
 });
 
 it('keeps only the Focus controls, New and the header buttons once the browse region is collapsed', () => {
-  render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, browseCollapsed: true, groupByFolder: { value: false, onChange: () => {} }, focusControls: createElement('button', { type: 'button' }, 'Focus'), utilities: createElement('button', { type: 'button' }, 'Commands') })));
+  render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, browseCollapsed: true, newNote, groupByFolder: { value: false, onChange: () => {} }, focusControls: createElement('button', { type: 'button' }, 'Focus'), utilities: createElement('button', { type: 'button' }, 'Commands') })));
   expect(screen.queryByRole('search')).toBeNull();
   expect(screen.queryByRole('combobox')).toBeNull();
   for (const name of ['筆記本與篩選', '顯示隱藏筆記', '依資料夾分組']) expect(screen.queryByRole('button', { name })).toBeNull();
@@ -137,15 +154,20 @@ it('marks a search still in force once the browse region is collapsed, and reope
   expect(reveal).toHaveBeenCalledOnce();
 });
 
-it('leaves the search, sort and display toggles to the browse dock when it holds them, keeping the rest of the toolbar', () => {
-  render(createElement(I18nProvider, null, createElement(NoteToolbar, { ...baseProps, listToolsDocked: true, groupByFolder: { value: false, onChange: () => {} }, focusControls: createElement('button', { type: 'button' }, 'Focus') })));
-  expect(screen.queryByRole('search')).toBeNull();
-  expect(screen.queryByRole('combobox', { name: /^排序/ })).toBeNull();
-  for (const name of ['顯示隱藏筆記', '依資料夾分組', '搜尋筆記、標籤、內文...']) expect(screen.queryByRole('button', { name })).toBeNull();
-  expect(screen.getByRole('button', { name: '筆記本與篩選' })).toBeInTheDocument();
-  expect(screen.getByRole('combobox', { name: '筆記檢視' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Focus' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: '新增筆記' })).toBeInTheDocument();
+it('in the browse dock ends the list tools with one view menu, naming the current view, which switches the view', async () => {
+  const modes: string[] = [];
+  const dock = (viewMode: 'flat' | 'list' | 'kanban') => createElement(I18nProvider, null, createElement(NoteListTools, { placement: 'dock', query: '', onQueryChange: () => {}, sortField: 'updated', sortOrder: 'desc', onSortChange: () => {}, sortable: true, showHidden: false, hiddenNoteCount: 0, onShowHiddenChange: () => {}, groupByFolder: { value: false, onChange: () => {} }, view: { mode: viewMode, onChange: mode => modes.push(mode) } }));
+  const { rerender } = render(dock('flat'));
+  const menu = screen.getByRole('combobox', { name: '筆記檢視: 攤開' });
+  expect(document.querySelector('.note-list-tools')!.lastElementChild).toBe(menu);
+  // One menu stands in for the three buttons, which the dock has no room for.
+  for (const name of ['攤開', '資料夾檢視', '看板檢視']) expect(screen.queryByRole('button', { name })).toBeNull();
+  act(() => menu.focus());
+  fireEvent.keyDown(menu, { key: 'Enter' });
+  fireEvent.click(await screen.findByRole('option', { name: '看板' }));
+  expect(modes).toEqual(['kanban']);
+  rerender(dock('list'));
+  expect(screen.getByRole('combobox', { name: '筆記檢視: 資料夾' })).toBeInTheDocument();
 });
 
 it('in the browse dock shows the search field itself beside the sort and the toggles, and the search command focuses it', async () => {
@@ -182,7 +204,7 @@ it('lists the notebook’s templates in the New menu, then Manage templates', as
   const fromTemplate = vi.fn(), manage = vi.fn();
   const toolbar = (
     <I18nProvider>
-      <NoteToolbar {...baseProps} templates={[{ id: 'registered', title: 'Registered' }, { id: 'reading', title: '讀書筆記' }, { id: 'builtin:slides', title: '投影片' }]} onNewFromTemplate={fromTemplate} onManageTemplates={manage} />
+      <NewNoteMenu {...newNote} templates={[{ id: 'registered', title: 'Registered' }, { id: 'reading', title: '讀書筆記' }, { id: 'builtin:slides', title: '投影片' }]} onNewFromTemplate={fromTemplate} onManageTemplates={manage} />
     </I18nProvider>
   );
   const first = render(toolbar);
