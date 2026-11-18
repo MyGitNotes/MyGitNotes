@@ -8,7 +8,7 @@
 
 import { matchDirectiveClose, parseDirectiveOpen } from '../directives.js';
 
-export const INFOGRAPHIC_KINDS = ['key-numbers', 'bars', 'parts', 'line', 'timeline', 'status-board', 'map'] as const;
+export const INFOGRAPHIC_KINDS = ['key-numbers', 'bars', 'parts', 'line', 'timeline', 'status-board', 'map', 'ladder'] as const;
 export type InfographicKind = typeof INFOGRAPHIC_KINDS[number];
 
 export const FIELD_SEPARATOR = '｜';
@@ -40,9 +40,9 @@ export function mapBase(name: string): MapBase | undefined {
 
 /**
  * What a cell holds: free inline Markdown, one number, a number or a `low–high` range, a year or a `from–to` span,
- * `lat, lon`, or a map row's name, which is a point's name or a route `start → end`.
+ * `lat, lon`, a map row's name, which is a point's name or a route `start → end`, or a link target.
  */
-export type ColumnType = 'text' | 'number' | 'number-or-range' | 'year-or-range' | 'lat-lon' | 'point-or-route';
+export type ColumnType = 'text' | 'number' | 'number-or-range' | 'year-or-range' | 'lat-lon' | 'point-or-route' | 'link';
 
 export interface ColumnSpec {
   key: string;
@@ -71,6 +71,8 @@ export interface KindSpec {
   /** Attributes besides the common ones, in the order an editor shows them. */
   attrs: AttrSpec[];
   child?: ChildSpec;
+  /** Optional containers besides `child`, at most one of each (the ladder's `span` and `footer`). */
+  extraChildren?: ChildSpec[];
   columns: ColumnSpec[];
 }
 
@@ -78,13 +80,13 @@ export const COMMON_ATTRS: AttrSpec[] = [{ key: 'title', type: 'text' }, { key: 
 
 const text = (key: string): ColumnSpec => ({ key, type: 'text' });
 
-export const KIND_SPECS: Record<InfographicKind, KindSpec> = { 'key-numbers': { kind: 'key-numbers', attrs: [], columns: [text('value'), text('label'), text('note')] }, bars: { kind: 'bars', attrs: [{ key: 'unit', type: 'text' }, { key: 'reference', type: 'number' }, { key: 'reference-label', type: 'text' }, { key: 'max', type: 'number' }], child: { name: 'scenario', required: false, max: MAX_SCENARIOS, attrs: [{ key: 'label', type: 'text' }, { key: 'note', type: 'text' }, { key: 'reference', type: 'number' }, { key: 'reference-label', type: 'text' }] }, columns: [text('label'), { key: 'value', type: 'number-or-range' }, text('note')] }, parts: { kind: 'parts', attrs: [{ key: 'unit', type: 'text' }, { key: 'total', type: 'number' }], columns: [text('label'), { key: 'value', type: 'number' }, text('note')] }, line: { kind: 'line', attrs: [{ key: 'unit', type: 'text' }, { key: 'ticks', type: 'numbers' }, { key: 'from', type: 'number' }, { key: 'to', type: 'number' }, { key: 'min', type: 'number' }, { key: 'max', type: 'number' }], child: { name: 'series', required: true, attrs: [{ key: 'title', type: 'text' }, { key: 'highlight', type: 'flag' }, { key: 'dashed', type: 'flag' }] }, columns: [{ key: 'x', type: 'number' }, { key: 'y', type: 'number' }, text('note')] }, timeline: { kind: 'timeline', attrs: [{ key: 'from', type: 'number' }, { key: 'to', type: 'number' }, { key: 'ticks', type: 'numbers' }], child: { name: 'lane', required: true, attrs: [{ key: 'title', type: 'text' }, { key: 'highlight', type: 'flag' }] }, columns: [{ key: 'when', type: 'year-or-range' }, text('event')] }, 'status-board': { kind: 'status-board', attrs: [], child: { name: 'group', required: true, attrs: [{ key: 'status', type: 'select', options: STATUS_VALUES }, { key: 'title', type: 'text' }] }, columns: [text('item'), text('detail')] }, map: { kind: 'map', attrs: [{ key: 'base', type: 'select', options: Object.keys(MAP_BASES) }], columns: [{ key: 'name', type: 'point-or-route' }, { key: 'position', type: 'lat-lon' }, text('note')] } };
+export const KIND_SPECS: Record<InfographicKind, KindSpec> = { 'key-numbers': { kind: 'key-numbers', attrs: [], columns: [text('value'), text('label'), text('note')] }, bars: { kind: 'bars', attrs: [{ key: 'unit', type: 'text' }, { key: 'reference', type: 'number' }, { key: 'reference-label', type: 'text' }, { key: 'max', type: 'number' }], child: { name: 'scenario', required: false, max: MAX_SCENARIOS, attrs: [{ key: 'label', type: 'text' }, { key: 'note', type: 'text' }, { key: 'reference', type: 'number' }, { key: 'reference-label', type: 'text' }] }, columns: [text('label'), { key: 'value', type: 'number-or-range' }, text('note')] }, parts: { kind: 'parts', attrs: [{ key: 'unit', type: 'text' }, { key: 'total', type: 'number' }], columns: [text('label'), { key: 'value', type: 'number' }, text('note')] }, line: { kind: 'line', attrs: [{ key: 'unit', type: 'text' }, { key: 'ticks', type: 'numbers' }, { key: 'from', type: 'number' }, { key: 'to', type: 'number' }, { key: 'min', type: 'number' }, { key: 'max', type: 'number' }], child: { name: 'series', required: true, attrs: [{ key: 'title', type: 'text' }, { key: 'highlight', type: 'flag' }, { key: 'dashed', type: 'flag' }] }, columns: [{ key: 'x', type: 'number' }, { key: 'y', type: 'number' }, text('note')] }, timeline: { kind: 'timeline', attrs: [{ key: 'from', type: 'number' }, { key: 'to', type: 'number' }, { key: 'ticks', type: 'numbers' }], child: { name: 'lane', required: true, attrs: [{ key: 'title', type: 'text' }, { key: 'highlight', type: 'flag' }] }, columns: [{ key: 'when', type: 'year-or-range' }, text('event')] }, 'status-board': { kind: 'status-board', attrs: [], child: { name: 'group', required: true, attrs: [{ key: 'status', type: 'select', options: STATUS_VALUES }, { key: 'title', type: 'text' }] }, columns: [text('item'), text('detail')] }, map: { kind: 'map', attrs: [{ key: 'base', type: 'select', options: Object.keys(MAP_BASES) }], columns: [{ key: 'name', type: 'point-or-route' }, { key: 'position', type: 'lat-lon' }, text('note')] }, ladder: { kind: 'ladder', attrs: [], child: { name: 'rung', required: true, attrs: [{ key: 'title', type: 'text' }, { key: 'formula', type: 'text' }, { key: 'note', type: 'text' }] }, extraChildren: [{ name: 'span', required: false, max: 1, attrs: [] }, { name: 'footer', required: false, max: 1, attrs: [{ key: 'title', type: 'text' }] }], columns: [text('number'), text('name'), { key: 'link', type: 'link' }] } };
 
 /** The attributes each kind shows up front, besides the title; every other attribute sits under "More settings". */
-const ESSENTIAL_ATTRS: Record<InfographicKind, readonly string[]> = { 'key-numbers': [], bars: ['unit', 'reference', 'reference-label'], parts: ['unit'], line: ['unit'], timeline: ['from', 'to'], 'status-board': [], map: ['base'] };
+const ESSENTIAL_ATTRS: Record<InfographicKind, readonly string[]> = { 'key-numbers': [], bars: ['unit', 'reference', 'reference-label'], parts: ['unit'], line: ['unit'], timeline: ['from', 'to'], 'status-board': [], map: ['base'], ladder: [] };
 
 /** The child container attributes shown up front, for a kind whose container has more than two attributes. */
-const ESSENTIAL_CHILD_ATTRS: Partial<Record<InfographicKind, readonly string[]>> = { bars: ['label', 'reference', 'reference-label'], line: ['title', 'highlight', 'dashed'] };
+const ESSENTIAL_CHILD_ATTRS: Partial<Record<InfographicKind, readonly string[]>> = { bars: ['label', 'reference', 'reference-label'], line: ['title', 'highlight', 'dashed'], ladder: ['title', 'formula', 'note'] };
 
 export interface AttrGroups {
   essential: AttrSpec[];
@@ -98,10 +100,11 @@ export function blockAttrGroups(kind: InfographicKind): AttrGroups {
   return { essential: all.filter(attr => keep.includes(attr.key)), more: all.filter(attr => !keep.includes(attr.key)) };
 }
 
-/** The attributes of a child container; a container with two or fewer shows them all. */
-export function childAttrGroups(kind: InfographicKind): AttrGroups {
-  const attrs = KIND_SPECS[kind].child?.attrs ?? [];
-  const keep = attrs.length > 2 ? ESSENTIAL_CHILD_ATTRS[kind] ?? attrs.slice(0, 2).map(attr => attr.key) : attrs.map(attr => attr.key);
+/** The attributes of a child container (the kind's main one unless `name` says otherwise); one with two or fewer shows them all. */
+export function childAttrGroups(kind: InfographicKind, name?: string): AttrGroups {
+  const spec = name === undefined ? KIND_SPECS[kind].child : childSpecOf(kind, name);
+  const attrs = spec?.attrs ?? [];
+  const keep = spec !== KIND_SPECS[kind].child ? attrs.map(attr => attr.key) : attrs.length > 2 ? ESSENTIAL_CHILD_ATTRS[kind] ?? attrs.slice(0, 2).map(attr => attr.key) : attrs.map(attr => attr.key);
   return { essential: attrs.filter(attr => keep.includes(attr.key)), more: attrs.filter(attr => !keep.includes(attr.key)) };
 }
 
@@ -112,6 +115,31 @@ export function isInfographicKind(name: string): name is InfographicKind {
 /** The child container name of `kind`, if it takes one. */
 export function childNameOf(kind: InfographicKind): string | undefined {
   return KIND_SPECS[kind].child?.name;
+}
+
+/** The spec of the child container `name` of `kind`: its main one or one of its extra ones. */
+export function childSpecOf(kind: InfographicKind, name: string): ChildSpec | undefined {
+  const spec = KIND_SPECS[kind];
+  return [...spec.child ? [spec.child] : [], ...spec.extraChildren ?? []].find(child => child.name === name);
+}
+
+/** A ladder row that is an order arrow `- →` between two cards. */
+export function isLadderArrow(fields: readonly string[]): boolean {
+  return fields.length === 1 && plainField(fields[0] ?? '').replaceAll('*', '').trim() === ROUTE_ARROW;
+}
+
+/** A ladder row `- bridge｜說明` that starts a bridge line. */
+export function isLadderBridge(fields: readonly string[]): boolean {
+  return plainField(fields[0] ?? '').replaceAll('*', '').trim() === 'bridge';
+}
+
+/**
+ * A ladder card's link as a note can follow it: a `/path` from the workspace root, a path relative to the note, a
+ * `#heading`, or an http(s) URL. The blog takes only `/path` and http(s); notes resolve relative paths too, as they
+ * do for every other link. Anything with whitespace or another scheme (`javascript:`, `mailto:`) is no link.
+ */
+export function isLadderLink(value: string): boolean {
+  return /^https?:\/\/\S+$/i.test(value) || /^(?![a-z][a-z\d+.-]*:)\S+$/i.test(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -283,7 +311,6 @@ export function parseInfographic(source: string): InfographicBlock | null {
     body[body.length - 1] = last.trailing;
   } else body.pop();
 
-  const childName = childNameOf(open.name);
   const children: InfographicChild[] = [];
   const looseLines: string[] = [];
   const looseIndex: number[] = [];
@@ -313,9 +340,10 @@ export function parseInfographic(source: string): InfographicBlock | null {
       }
     }
     if (close >= body.length) problems.push({ code: 'unclosed', line: i + 1 });
-    if (childOpen.name !== childName || childOpen.label !== undefined) problems.push({ code: 'unknown-container', line: i + 1 });
-    else if (hasUnknownBareAttr(childOpen.attrs, KIND_SPECS[open.name].child?.attrs ?? [])) problems.push({ code: 'unknown-attribute', line: i + 1 });
-    if (childOpen.name === childName) children.push({ name: childOpen.name, attrs: childOpen.attrs, rows: readRows(body.slice(i + 1, close), i + 2, problems) });
+    const childSpec = childSpecOf(open.name, childOpen.name);
+    if (!childSpec || childOpen.label !== undefined) problems.push({ code: 'unknown-container', line: i + 1 });
+    else if (hasUnknownBareAttr(childOpen.attrs, childSpec.attrs)) problems.push({ code: 'unknown-attribute', line: i + 1 });
+    if (childSpec) children.push({ name: childOpen.name, attrs: childOpen.attrs, rows: readRows(body.slice(i + 1, close), i + 2, problems) });
     i = close;
   }
 
@@ -335,9 +363,8 @@ function hasUnknownBareAttr(attrs: Record<string, string>, known: readonly AttrS
   return Object.entries(attrs).some(([key, value]) => value === '' && !known.some(attr => attr.key === key));
 }
 
-/** A `}` would end the attribute list early (`parseDirectiveOpen` reads up to the first one), so it becomes `｝`. */
-function quoteAttr(raw: string): string {
-  const value = raw.replaceAll('}', '｝');
+/** A value in quotes; `parseDirectiveOpen` reads a `}` inside them as part of the value, as the blog does. */
+function quoteAttr(value: string): string {
   if (!value.includes('"')) return `"${value}"`;
   return value.includes("'") ? `"${value.replaceAll('"', '”')}"` : `'${value}'`;
 }
@@ -371,7 +398,7 @@ export function serializeInfographic(block: InfographicBlock): string {
   const lines = [`${fence}${block.kind}${label}${serializeAttrs(block.attrs, flags(spec.attrs))}`];
   if (block.children.length) {
     for (const child of block.children) {
-      lines.push(`:::${child.name}${serializeAttrs(child.attrs, flags(spec.child?.attrs ?? []))}`, ...serializeRows(child.rows), ':::');
+      lines.push(`:::${child.name}${serializeAttrs(child.attrs, flags(childSpecOf(block.kind, child.name)?.attrs ?? []))}`, ...serializeRows(child.rows), ':::');
     }
   } else {
     lines.push(...serializeRows(block.rows));
@@ -383,7 +410,7 @@ export function serializeInfographic(block: InfographicBlock): string {
 // ---------------------------------------------------------------------------
 // Cell checks
 
-export type CellIssueCode = 'not-a-number' | 'not-a-range' | 'not-a-position' | 'outside-map' | 'unknown-point' | 'route-needs-two-points';
+export type CellIssueCode = 'not-a-number' | 'not-a-range' | 'not-a-position' | 'outside-map' | 'unknown-point' | 'route-needs-two-points' | 'not-a-link';
 
 export interface CellIssue {
   /** Index into `children`, or undefined for the block's own rows. */
@@ -408,7 +435,9 @@ export function checkCells(block: InfographicBlock): CellIssue[] {
         const cell = plainField(cells[columnIndex] ?? '');
         const found = numbers(cell);
         const issue = (code: CellIssueCode) => issues.push({ child: group.child, row: rowIndex, column: columnIndex, code });
-        if (column.type === 'number' && found.length !== 1) issue('not-a-number');
+        if (column.type === 'link') {
+          if (cell && !isLadderBridge(cells) && !isLadderLink(cell)) issue('not-a-link');
+        } else if (column.type === 'number' && found.length !== 1) issue('not-a-number');
         else if ((column.type === 'number-or-range' || column.type === 'year-or-range') && (found.length < 1 || found.length > 2)) issue(found.length ? 'not-a-range' : 'not-a-number');
         else if (column.type === 'lat-lon' && !isRouteRow(cells)) {
           if (found.length !== 2) issue('not-a-position');

@@ -4,7 +4,7 @@
  * shared input until it is committed, so typing never goes through here.
  */
 
-import { addChild, cellMatrix, type CellPos, clampSelection, cleanCell, clearRange, deleteRow, type Direction, duplicateRow, gridDims, type GridSelection, insertRow, isCellEditable, moveChild, moveRow, moveSelection, pasteMatrix, rangeOf, removeChild, rowsOf, setCell, single, stepCell, toggleRowHighlight } from './grid.js';
+import { addChild, addExtraChild, cellMatrix, type CellPos, clampSelection, cleanCell, clearRange, deleteRow, type Direction, duplicateRow, gridDims, type GridSelection, insertRow, isCellEditable, moveChild, moveRow, moveSelection, pasteMatrix, rangeOf, removeChild, rowsOf, setCell, single, stepCell, toggleRowHighlight } from './grid.js';
 import type { InfographicBlock } from './model.js';
 
 export interface EditorSnapshot {
@@ -149,4 +149,8 @@ export const childEdits = {
     return { block, tab: Math.max(0, Math.min(active, block.children.length - 1)), sel: single({ row: 0, col: 0 }) };
   },
   move: (from: number, to: number): Edit => snapshot => ({ block: moveChild(snapshot.block, from, to), tab: to }),
+  addExtra: (name: string): Edit => snapshot => {
+    const block = addExtraChild(snapshot.block, name);
+    return { block, tab: Math.max(0, block.children.length - 1), sel: single({ row: 0, col: 0 }) };
+  },
 };

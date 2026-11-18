@@ -34,9 +34,24 @@ export function childName(t: Translate, kind: InfographicKind): string {
   return name ? t(`infographic.editor.child.${name}` as TranslationKey) : '';
 }
 
-/** What a child's tab says: its name attribute, or "Scenario 2" when it has none. */
+/** The singular name of a child container called `name` (a ladder's rung, span bar or footer). */
+export function childNameFor(t: Translate, name: string): string {
+  const key = `infographic.editor.child.${name}`;
+  return known(key) ? t(key) : name;
+}
+
+/**
+ * What a child's tab says: its name attribute, or "Scenario 2" when it has none. An extra container (a ladder's span
+ * bar or footer) is counted by itself, as there is only one of it.
+ */
 export function childTabLabel(t: Translate, block: InfographicBlock, index: number): string {
-  return block.children[index]?.attrs[childNameKey(block.kind)]?.trim() || t('infographic.editor.childTitle', { name: childName(t, block.kind), number: index + 1 });
+  const child = block.children[index];
+  const main = childNameOf(block.kind);
+  const named = child?.attrs[childNameKey(block.kind)]?.trim();
+  if (named) return named;
+  if (child && main && child.name !== main) return childNameFor(t, child.name);
+  const number = block.children.slice(0, index + 1).filter(other => !main || other.name === main).length;
+  return t('infographic.editor.childTitle', { name: childName(t, block.kind), number });
 }
 
 /** A problem in words; `firstLine` is the document line the block starts on, so the message names the line the writer sees. */

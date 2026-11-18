@@ -1,10 +1,10 @@
 import { type Dispatch, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Pencil, Plus, X } from 'lucide-react';
-import { canAddChild, childNameKey } from '../../lib/infographics/grid.js';
+import { addableExtraChildren, canAddChild, childNameKey } from '../../lib/infographics/grid.js';
 import { childEdits, type EditorAction, type EditorState } from '../../lib/infographics/editor-state.js';
-import { KIND_SPECS } from '../../lib/infographics/model.js';
+import { childSpecOf, KIND_SPECS } from '../../lib/infographics/model.js';
 import { withAttr } from '../../lib/infographics/grid.js';
-import { childName, childTabLabel, type Translate } from './labels.js';
+import { childName, childNameFor, childTabLabel, type Translate } from './labels.js';
 
 interface Props {
   state: EditorState;
@@ -23,6 +23,9 @@ export function ChildTabs({ state, dispatch, t }: Props) {
   const nameKey = childNameKey(block.kind);
   const nameSpec = spec.attrs.find(attr => attr.key === nameKey) ?? { key: nameKey, type: 'text' as const };
   const addable = canAddChild(block);
+  const extras = addableExtraChildren(block);
+  const activeSpec = block.children[tab] ? childSpecOf(block.kind, block.children[tab].name) : undefined;
+  const renamable = Boolean(activeSpec?.attrs.some(attr => attr.key === nameKey));
 
   const rename = (index: number, value: string) => {
     setRenaming(null);
@@ -53,11 +56,17 @@ export function ChildTabs({ state, dispatch, t }: Props) {
                 }}
               />
             )
-            : <button key={index} type='button' role='tab' className='ig-tab' aria-selected={index === tab} tabIndex={index === tab ? 0 : -1} onClick={() => dispatch({ type: 'tab', tab: index })} onDoubleClick={() => setRenaming(index)}>{childTabLabel(t, block, index)}</button>
+            : <button key={index} type='button' role='tab' className='ig-tab' aria-selected={index === tab} tabIndex={index === tab ? 0 : -1} onClick={() => dispatch({ type: 'tab', tab: index })} onDoubleClick={() => childSpecOf(block.kind, block.children[index].name)?.attrs.some(attr => attr.key === nameKey) && setRenaming(index)}>{childTabLabel(t, block, index)}</button>
         )}
         <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.addChild', { name })} title={addable ? t('infographic.editor.addChild', { name }) : t('infographic.editor.childLimit', { count: spec.max ?? 0 })} disabled={!addable} onClick={() => dispatch({ type: 'change', apply: childEdits.add() })}>
           <Plus aria-hidden='true' />
         </button>
+        {extras.map(extra => (
+          <button key={extra} type='button' className='ig-tab-tool ig-tab-add-extra' title={t('infographic.editor.addChild', { name: childNameFor(t, extra) })} onClick={() => dispatch({ type: 'change', apply: childEdits.addExtra(extra) })}>
+            <Plus aria-hidden='true' />
+            {childNameFor(t, extra)}
+          </button>
+        ))}
       </div>
       {block.children.length > 0 && (
         <div className='ig-tab-tools' role='group' aria-label={childTabLabel(t, block, tab)}>
@@ -67,9 +76,11 @@ export function ChildTabs({ state, dispatch, t }: Props) {
           <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.moveChildRight', { name })} title={t('infographic.editor.moveChildRight', { name })} disabled={tab >= block.children.length - 1} onClick={() => dispatch({ type: 'change', apply: childEdits.move(tab, tab + 1) })}>
             <ChevronRight aria-hidden='true' />
           </button>
-          <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.renameChild', { name })} title={t('infographic.editor.renameChild', { name })} onClick={() => setRenaming(tab)}>
-            <Pencil aria-hidden='true' />
-          </button>
+          {renamable && (
+            <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.renameChild', { name })} title={t('infographic.editor.renameChild', { name })} onClick={() => setRenaming(tab)}>
+              <Pencil aria-hidden='true' />
+            </button>
+          )}
           <button type='button' className='ig-tab-tool' data-danger aria-label={t('infographic.editor.removeChild', { name })} title={t('infographic.editor.removeChild', { name })} onClick={() => dispatch({ type: 'change', apply: childEdits.remove(tab) })}>
             <X aria-hidden='true' />
           </button>

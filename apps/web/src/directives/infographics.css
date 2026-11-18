@@ -206,6 +206,37 @@ dl.ig-numbers .ig-number-note { margin-top: 0.25rem; font-size: 0.75rem; color: 
 .ig-legend-item.is-route .ig-legend-label::before { content: '→ '; color: var(--color-accent-5); }
 .ig-legend-item.is-route.is-highlight .ig-legend-label::before { color: var(--ig-hl); }
 
+/* ----- ladder: :::rung{title formula note} - 編號｜名稱｜連結, :::span, :::footer{title} ----- */
+
+.ig-figure { --ig-card-line: color-mix(in srgb, var(--color-text) 22%, transparent); }
+.ig-ladder-frame { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 0.75rem; }
+.ig-ladder-frame.has-span { grid-template-columns: 2.75rem minmax(0, 1fr); }
+.ig-figure .ig-rungs { display: grid; grid-column: 1; grid-row: 1; }
+.ig-ladder-frame.has-span .ig-rungs { grid-column: 2; }
+/* One bar across every rung, for what no single level settles. */
+.ig-figure .ig-ladder-span { display: flex; grid-column: 1; grid-row: 1; align-items: center; justify-content: center; border: 1px dashed var(--ig-neutral); border-radius: 0.375rem; padding: 0.5rem 0.25rem; font-size: 0.85rem; font-weight: 400; letter-spacing: 0.1em; text-decoration: none; color: var(--color-text); writing-mode: vertical-rl; }
+.ig-figure .ig-ladder-span .ig-card-num { margin: 0 0 0.4rem; }
+.ig-figure .ig-rung { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 0.5rem 0.75rem; align-items: start; border-top: 1px solid var(--ig-line); padding: 0.75rem 0 0.875rem; }
+.ig-figure .ig-rung:last-child { border-bottom: 1px solid var(--ig-line); }
+.ig-figure .ig-rung-title { font-weight: 700; }
+.ig-figure :is(.ig-rung-formula, .ig-rung-need) { margin-top: 0.125rem; font-size: 0.8rem; color: var(--color-muted); }
+.ig-figure .ig-rung-formula { font-family: var(--font-mono, ui-monospace, 'SFMono-Regular', Menlo, monospace); }
+.ig-rung-cards { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.ig-rung-bridge { display: flex; flex-wrap: wrap; gap: 0.4rem 0.5rem; align-items: center; width: 100%; }
+.ig-bridge-label { font-size: 0.8rem; color: var(--color-muted); }
+.ig-bridge-label::before { content: '↑ '; color: var(--ig-hl); }
+.ig-bridge-label::after { content: '：'; }
+.ig-figure:lang(en) .ig-bridge-label::after { content: ':'; }
+.ig-figure .ig-card { display: inline-flex; gap: 0.4rem; align-items: baseline; border: 1px solid var(--ig-card-line); border-radius: 0.375rem; padding: 0.3rem 0.6rem; font-size: 0.9rem; font-weight: 400; line-height: 1.35; text-decoration: none; color: var(--color-text); background: var(--color-surface); }
+.ig-figure .ig-card.is-highlight { border-color: var(--ig-hl); }
+.ig-figure :is(a.ig-card, a.ig-ladder-span):is(:hover, :focus-visible) { border-color: var(--ig-hl); color: var(--color-text); }
+.ig-card-num { font-family: var(--font-mono, ui-monospace, 'SFMono-Regular', Menlo, monospace); font-size: 0.75rem; color: var(--color-muted); }
+.ig-card.is-highlight .ig-card-num { color: var(--ig-hl); }
+.ig-ladder-arrow { font-size: 0.8rem; color: var(--color-muted); }
+.ig-ladder-footer { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.75rem; }
+.ig-footer-title { font-size: 0.8rem; color: var(--color-muted); }
+@container (max-width: 32rem) { .ig-ladder-frame.has-span { grid-template-columns: 1.75rem minmax(0, 1fr); } .ig-figure .ig-ladder-span { font-size: 0.75rem; letter-spacing: 0.05em; } .ig-figure .ig-rung { grid-template-columns: minmax(0, 1fr); } }
+
 /* ----- the error box that stands in for a figure that cannot be drawn ----- */
 
 .ig-error { margin: 1.5rem 0; border: 1px solid color-mix(in srgb, var(--color-danger) 40%, transparent); border-radius: var(--radius-panel, 10px); background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface)); padding: 0.75rem 1rem; font-size: 0.875rem; }
@@ -251,8 +282,8 @@ dl.ig-numbers .ig-number-note { margin-top: 0.25rem; font-size: 0.75rem; color: 
 
   /* Timed, once when the figure appears: a scroll-driven timeline never finishes for a figure at the end of a note,
      which cannot scroll far enough, and left its marks half drawn. */
-  .ig-figure :is(.ig-number, .ig-status-item, .ig-bar-fill, .ig-bar-value, .ig-parts-bar, .ig-span, .ig-event, .ig-line-svg, .ig-point, .ig-map-point) { animation-duration: 0.6s; animation-delay: calc(var(--ig-i, 0) * 50ms); animation-fill-mode: both; animation-timing-function: ease-out; }
-  .ig-number, .ig-status-item { animation-name: ig-rise; }
+  .ig-figure :is(.ig-number, .ig-status-item, .ig-rung, .ig-bar-fill, .ig-bar-value, .ig-parts-bar, .ig-span, .ig-event, .ig-line-svg, .ig-point, .ig-map-point) { animation-duration: 0.6s; animation-delay: calc(var(--ig-i, 0) * 50ms); animation-fill-mode: both; animation-timing-function: ease-out; }
+  .ig-number, .ig-status-item, .ig-rung { animation-name: ig-rise; }
   .ig-bar-fill, .ig-span { animation-name: ig-grow-x; }
   .ig-bar-value, .ig-point { animation-name: ig-fade; }
   .ig-point { animation-delay: 0.35s; }

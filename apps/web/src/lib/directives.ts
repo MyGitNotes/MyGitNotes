@@ -44,9 +44,12 @@ export function parseDirectiveAttributes(rawAttrs?: string): Record<string, stri
   return result;
 }
 
-/** An opening container fence `:::name[label]{attrs}`, allowing `>` blockquote prefixes; `rawAttrs` is the text between its braces. */
+/**
+ * An opening container fence `:::name[label]{attrs}`, allowing `>` blockquote prefixes; `rawAttrs` is the text between its braces.
+ * As in the blog's micromark, a `}` inside a quoted value (`formula="P(y_{xz})"`) does not end the attributes.
+ */
 export function parseDirectiveOpen(line: string): { fenceLength: number; name: string; label?: string; attrs: Record<string, string>; rawAttrs?: string; } | null {
-  const match = /^(\s*(?:>\s*)*)(:{3,})([a-zA-Z0-9_-]+)(?:\[([^\]]*)\])?(?:\{([^}]*)\})?\s*$/.exec(line);
+  const match = /^(\s*(?:>\s*)*)(:{3,})([a-zA-Z0-9_-]+)(?:\[([^\]]*)\])?(?:\{((?:"[^"\n]*"|'[^'\n]*'|[^}])*?)\})?\s*$/.exec(line);
   return match ? { fenceLength: match[2].length, name: match[3], label: match[4], attrs: parseDirectiveAttributes(match[5]), rawAttrs: match[5] } : null;
 }
 

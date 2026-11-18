@@ -49,6 +49,7 @@
 .ig-tab-tools { display: flex; gap: 2px; }
 .ig-tab-tool { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: var(--radius-control); background: transparent; color: var(--color-muted); cursor: pointer; }
 .ig-tab-tool svg { width: 14px; height: 14px; }
+.ig-tab-tool.ig-tab-add-extra { display: inline-flex; gap: 3px; width: auto; padding: 0 6px; font-size: 12px; }
 .ig-tab-tool:hover:not(:disabled) { background: color-mix(in srgb, var(--color-text) 7%, var(--color-surface)); color: var(--color-text); }
 .ig-tab-tool[data-danger]:hover:not(:disabled) { background: var(--color-danger-soft); color: var(--color-danger); }
 .ig-tab-tool:disabled { opacity: 0.35; cursor: not-allowed; }

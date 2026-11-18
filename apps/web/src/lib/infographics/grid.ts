@@ -4,7 +4,7 @@
  * returns a new block and leaves the one it was given alone, so the editor can keep a history of drafts.
  */
 
-import { type AttrSpec, cellsToFields, type ColumnSpec, type InfographicBlock, type InfographicChild, type InfographicRow, isRouteRow, isStrongField, KIND_SPECS, rowCells, splitFields, toggleHighlight } from './model.js';
+import { type AttrSpec, cellsToFields, childSpecOf, type ColumnSpec, type InfographicBlock, type InfographicChild, type InfographicRow, isRouteRow, isStrongField, KIND_SPECS, rowCells, splitFields, toggleHighlight } from './model.js';
 
 export interface CellPos {
   row: number;
@@ -246,6 +246,17 @@ export function removeChild(block: InfographicBlock, index: number): Infographic
   if (!spec || !removed) return block;
   const children = block.children.filter((_child, i) => i !== index);
   return { ...block, children, rows: !children.length && !spec.required ? removed.rows : block.rows };
+}
+
+/** The optional containers (a ladder's `span` and `footer`) the block does not hold yet, which the editor can add. */
+export function addableExtraChildren(block: InfographicBlock): string[] {
+  return (KIND_SPECS[block.kind].extraChildren ?? []).filter(spec => block.children.filter(child => child.name === spec.name).length < (spec.max ?? Infinity)).map(spec => spec.name);
+}
+
+/** Adds the optional container `name` after the last child, with one empty row. */
+export function addExtraChild(block: InfographicBlock, name: string): InfographicBlock {
+  if (!childSpecOf(block.kind, name) || !addableExtraChildren(block).includes(name)) return block;
+  return { ...block, rows: [], children: [...block.children, { name, attrs: {}, rows: [{ fields: [''] }] }] };
 }
 
 export function moveChild(block: InfographicBlock, from: number, to: number): InfographicBlock {

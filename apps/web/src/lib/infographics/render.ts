@@ -1,5 +1,5 @@
 /**
- * Renders the infographic directives (`key-numbers`, `bars`, `parts`, `line`, `timeline`, `status-board`, `map`) to
+ * Renders the infographic directives (`key-numbers`, `bars`, `parts`, `line`, `timeline`, `status-board`, `map`, `ladder`) to
  * the figure HTML of the blog's `remark-infographics` plugin (wayne930242/knowledge-base, `blog/src/plugins`,
  * commit a17b573e): the same element tree, `ig-*` classes, numbers and zh-TW formatting. The blog's CSS is not
  * used; the app styles the figures from its theme tokens (`directives/infographics.css`).
@@ -7,7 +7,7 @@
 
 import { escapeHtml, fill, type NoteLanguage, stringsFor } from '../directives.js';
 import type { TranslationKey } from '../i18n/en.js';
-import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicKind, type InfographicRow, isStrongField, mapBase, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
+import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicChild, type InfographicKind, type InfographicRow, isLadderArrow, isLadderBridge, isLadderLink, isStrongField, mapBase, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
 
 /** A whole-figure error the blog fails its build on; the caller shows it in the figure's place. */
 export class InfographicError extends Error {
@@ -117,7 +117,7 @@ function renderer(context: InfographicContext): Renderer {
 // ---------------------------------------------------------------------------
 // Figure frame
 
-function frame(kind: InfographicKind, attrs: Record<string, string>, body: string, palette: string | undefined, r: Renderer): string {
+function frame(kind: InfographicKind, attrs: Record<string, string>, body: string, palette: string | undefined, r: Renderer, lang?: string): string {
   const title = attrOf(attrs, 'title');
   const subtitle = attrOf(attrs, 'subtitle');
   const note = attrOf(attrs, 'note');
@@ -132,7 +132,7 @@ function frame(kind: InfographicKind, attrs: Record<string, string>, body: strin
     if (source) caption.push(tag('p', {}, text(`${r.strings['infographic.render.caption.source']}${source}`)));
     children.push(tag('figcaption', { class: 'ig-caption' }, caption));
   }
-  return tag('figure', { class: ['ig-figure', `ig-${kind}`], 'data-palette': palette }, children);
+  return tag('figure', { class: ['ig-figure', `ig-${kind}`], 'data-palette': palette, lang }, children);
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +519,110 @@ function map(block: InfographicBlock, r: Renderer): string {
 }
 
 // ---------------------------------------------------------------------------
+// ladder: :::rung{title="" formula="" note=""} - 編號｜名稱｜連結
+// Rungs are written top to bottom as displayed. Inside a rung, a lone `→` marks order between two cards and
+// `bridge｜說明` starts a bridge line that holds the cards after it. :::span is one dashed bar across every rung,
+// :::footer a row of cards below them. A card's link goes out as a plain `<a href>`, which the note's link handling
+// resolves as it does every other link in the note.
+
+/** `編號｜名稱｜連結`; the card is a link when the third field is set. */
+function ladderCard(item: Item, className: string, r: Renderer): string {
+  const [number, name, link] = item.fields;
+  if (!plain(number).trim() || !plain(name).trim()) fail('every ladder item needs 編號｜名稱 (and optionally ｜連結)');
+  if (item.fields.length > 3) fail('a ladder item has at most 編號｜名稱｜連結');
+  const href = plain(link).trim();
+  if (href && !isLadderLink(href)) fail(`ladder link "${href}" must be a path or an http(s) URL`);
+  return tag(href ? 'a' : 'span', { class: [className, ...highlightClass(item.highlight)], href: href || undefined }, [tag('span', { class: 'ig-card-num' }, r.inline(number)), tag('span', { class: 'ig-card-name' }, r.inline(name))]);
+}
+
+/** `y_x` and `y_{xz}` in a formula become subscripts. */
+function formulaHtml(value: string): string {
+  let html = '';
+  let last = 0;
+  for (const match of value.matchAll(/_\{([^}]*)\}|_(\w)/g)) {
+    html += text(value.slice(last, match.index));
+    html += tag('sub', {}, text(match[1] ?? match[2]));
+    last = match.index + match[0].length;
+  }
+  return html + text(value.slice(last));
+}
+
+/** Cards and order arrows of one group; an arrow needs a card on both sides. */
+function ladderGroup(items: readonly Item[], r: Renderer): { nodes: string[]; cards: number; } {
+  const nodes: string[] = [];
+  let cards = 0;
+  items.forEach((item, index) => {
+    if (isLadderArrow(item.fields)) {
+      const [before, after] = [items[index - 1], items[index + 1]];
+      if (!before || !after || isLadderArrow(before.fields) || isLadderArrow(after.fields)) fail('a ladder arrow → must sit between two cards');
+      nodes.push(tag('span', { class: 'ig-ladder-arrow', 'aria-hidden': 'true' }, text('→')));
+      return;
+    }
+    cards += 1;
+    nodes.push(ladderCard(item, 'ig-card', r));
+  });
+  return { nodes, cards };
+}
+
+function ladderRung(rung: InfographicChild, index: number, r: Renderer): string {
+  const title = attrOf(rung.attrs, 'title');
+  if (!title) fail('every ladder rung needs a title');
+  const formula = attrOf(rung.attrs, 'formula');
+  const need = attrOf(rung.attrs, 'note');
+  const head = [tag('p', { class: 'ig-rung-title' }, text(title))];
+  if (formula) head.push(tag('p', { class: 'ig-rung-formula' }, formulaHtml(formula)));
+  if (need) head.push(tag('p', { class: 'ig-rung-need' }, text(need)));
+
+  const items = itemsOf(rung.rows);
+  const split = items.findIndex(item => isLadderBridge(item.fields));
+  const main = ladderGroup(split === -1 ? items : items.slice(0, split), r);
+  const body = [...main.nodes];
+  let cards = main.cards;
+  // Each `bridge｜說明` starts a bridge line holding the items up to the next.
+  const bridges: Item[][] = [];
+  for (const item of split === -1 ? [] : items.slice(split)) {
+    if (isLadderBridge(item.fields)) bridges.push([item]);
+    else bridges[bridges.length - 1].push(item);
+  }
+  for (const [marker, ...bridged] of bridges) {
+    const label = marker.fields[1];
+    if (!label?.trim() || marker.fields.length > 2) fail('a ladder bridge needs exactly bridge｜說明');
+    const group = ladderGroup(bridged, r);
+    if (!group.cards) fail('a ladder bridge needs cards after it');
+    cards += group.cards;
+    body.push(tag('div', { class: 'ig-rung-bridge' }, [tag('span', { class: 'ig-bridge-label' }, r.inline(label)), ...group.nodes]));
+  }
+  if (!cards) fail(`ladder rung "${title}" needs at least one item`);
+  return tag('li', { class: 'ig-rung', style: `--ig-i:${index}` }, [tag('div', { class: 'ig-rung-head' }, head), tag('div', { class: 'ig-rung-cards' }, body)]);
+}
+
+function ladder(block: InfographicBlock, r: Renderer): string {
+  if (block.rows.length || block.problems.some(problem => problem.code === 'unknown-container')) fail('ladder takes only :::rung, :::span and :::footer children');
+  const of = (name: string) => block.children.filter(child => child.name === name);
+  const rungs = of('rung');
+  if (!rungs.length) fail('ladder needs :::rung children');
+  const [spans, footers] = [of('span'), of('footer')];
+  if (spans.length > 1) fail('ladder takes at most one :::span');
+  if (footers.length > 1) fail('ladder takes at most one :::footer');
+
+  const frameChildren: string[] = [];
+  if (spans.length) {
+    const items = itemsOf(spans[0].rows);
+    if (items.length !== 1) fail('ladder :::span needs exactly one item');
+    frameChildren.push(ladderCard(items[0], 'ig-ladder-span', r));
+  }
+  frameChildren.push(tag('ol', { class: 'ig-rungs' }, rungs.map((rung, index) => ladderRung(rung, index, r))));
+  let html = tag('div', { class: ['ig-ladder-frame', ...spans.length ? ['has-span'] : []] }, frameChildren);
+  if (footers.length) {
+    const group = ladderGroup(itemsOf(footers[0].rows), r);
+    if (!group.cards) fail('ladder :::footer needs at least one item');
+    const title = attrOf(footers[0].attrs, 'title');
+    html += tag('div', { class: 'ig-ladder-footer' }, title ? [tag('span', { class: 'ig-footer-title' }, text(title)), ...group.nodes] : group.nodes);
+  }
+  return html;
+}
+
+// ---------------------------------------------------------------------------
 
 /** Every figure's radio group and ids carry this number, so they stay unique in a page however often a note renders. */
 let figureCount = 0;
@@ -535,10 +639,11 @@ export function renderInfographic(source: string, context: InfographicContext): 
   if (palette && !INFOGRAPHIC_PALETTES.includes(palette)) fail(`unknown palette "${palette}"`);
 
   const r = renderer(context);
-  const body = block.kind === 'key-numbers' ? keyNumbers(block, r) : block.kind === 'bars' ? bars(block, id, r) : block.kind === 'parts' ? parts(block, r) : block.kind === 'line' ? line(block, r) : block.kind === 'timeline' ? timeline(block, r) : block.kind === 'status-board' ? statusBoard(block, r) : map(block, r);
+  const body = block.kind === 'key-numbers' ? keyNumbers(block, r) : block.kind === 'bars' ? bars(block, id, r) : block.kind === 'parts' ? parts(block, r) : block.kind === 'line' ? line(block, r) : block.kind === 'timeline' ? timeline(block, r) : block.kind === 'status-board' ? statusBoard(block, r) : block.kind === 'ladder' ? ladder(block, r) : map(block, r);
   // Only the data palettes draw differently; the blog's section palettes give the theme default.
   const dataPalette = palette && (['categorical', 'diverging', 'sequential'] as readonly string[]).includes(palette) ? palette : undefined;
-  return frame(block.kind, block.attrs, body, dataPalette, r);
+  // The bridge label's colon follows the note's language (full-width in Chinese, `:lang(en)` half-width).
+  return frame(block.kind, block.attrs, body, dataPalette, r, block.kind === 'ladder' ? context.language : undefined);
 }
 
 /**

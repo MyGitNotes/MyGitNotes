@@ -124,11 +124,11 @@ describe('infographic blocks', () => {
     expect(serializeInfographic(block)).toBe(`::::line{unit="%"}\n:::series{title='A "quoted"' highlight dashed="x"}\n- 2020｜1\n:::\n::::\n`);
   });
 
-  it('writes a } in a value as ｝, which keeps the attribute list readable as a directive', () => {
+  it('keeps a } in a quoted value, which the blog reads as part of it (formula="P(y_{xz})")', () => {
     const block = parseInfographic(':::parts\n- a｜1\n:::')!;
     block.attrs.title = 'A}B';
     const again = parseInfographic(serializeInfographic(block));
-    expect(again?.attrs.title).toBe('A｝B');
+    expect(again?.attrs.title).toBe('A}B');
     expect(again?.rows).toHaveLength(1);
   });
 

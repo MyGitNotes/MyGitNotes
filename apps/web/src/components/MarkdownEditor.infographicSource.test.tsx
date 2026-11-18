@@ -23,7 +23,7 @@ it('inserts an infographic from the source toolbar as a block of its own and lis
   fireEvent.keyDown(screen.getByRole('button', { name: 'Insert infographic' }), { key: 'Enter' });
   const menu = await screen.findByRole('menu');
   const items = within(menu).getAllByRole('menuitem');
-  expect(items.map(item => item.querySelector('.infographic-insert-name')?.textContent)).toEqual(['Key numbers', 'Bars', 'Parts of a whole', 'Line chart', 'Timeline', 'Status board', 'Map']);
+  expect(items.map(item => item.querySelector('.infographic-insert-name')?.textContent)).toEqual(['Key numbers', 'Bars', 'Parts of a whole', 'Line chart', 'Timeline', 'Status board', 'Map', 'Ladder']);
   for (const item of items) expect(item.querySelector('.infographic-insert-purpose')?.textContent).toBeTruthy();
 
   fireEvent.click(within(menu).getByRole('menuitem', { name: /Timeline/ }));

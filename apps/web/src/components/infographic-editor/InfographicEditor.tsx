@@ -89,6 +89,7 @@ export function InfographicEditor({ source, t, renderFigure, onSave, onClose, au
 
   const setBlockAttr = (attr: AttrSpec) => (value: string | boolean) => dispatch({ type: 'change', merge: `attr:${attr.key}`, apply: snapshot => ({ block: setAttr(snapshot.block, attr, value) }) });
   const setChild = (attr: AttrSpec) => (value: string | boolean) => dispatch({ type: 'change', merge: `child:${tab}:${attr.key}`, apply: snapshot => ({ block: setChildAttr(snapshot.block, snapshot.tab, attr, value) }) });
+  const childGroups = childAttrGroups(block.kind, block.children[tab]?.name);
   const needsChild = Boolean(spec.child?.required) && block.children.length === 0 && block.rows.length === 0;
 
   return (
@@ -103,10 +104,10 @@ export function InfographicEditor({ source, t, renderFigure, onSave, onClose, au
       <div className='ig-data'>
         <h4 className='ig-section'>{t('infographic.editor.data')}</h4>
         <ChildTabs state={state} dispatch={dispatch} t={t} />
-        {spec.child && block.children.length > 0 && (
+        {spec.child && block.children.length > 0 && childGroups.essential.length + childGroups.more.length > 0 && (
           <fieldset className='ig-attrs ig-child-attrs'>
             <legend>{t('infographic.editor.childAttrs', { name: childTabLabel(t, block, tab) })}</legend>
-            <AttrGroup key={tab} groups={childAttrGroups(block.kind)} values={block.children[tab]?.attrs} t={t} onChange={setChild} />
+            <AttrGroup key={tab} groups={childGroups} values={block.children[tab]?.attrs} t={t} onChange={setChild} />
           </fieldset>
         )}
         {needsChild ? <p className='ig-empty'>{t('infographic.editor.noChild', { name: childName(t, block.kind) })}</p> : <DataGrid state={state} dispatch={dispatch} t={t} issues={tabIssues} inputRef={inputRef} onDraft={onDraft} onSave={save} onClose={onClose} autoFocus={autoFocus} />}
