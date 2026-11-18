@@ -1,5 +1,5 @@
 import './note-toolbar.css';
-import { type ReactNode, type Ref, useId, useImperativeHandle, useRef, useState } from 'react';
+import { type ReactNode, type Ref, type RefObject, useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
 import { ArrowDownAZ, ArrowDownWideNarrow, ArrowDownZA, ArrowUpWideNarrow, CalendarArrowDown, CalendarArrowUp, ClockArrowDown, ClockArrowUp, Eye, EyeOff, FolderTree, ListOrdered, Search, X } from 'lucide-react';
 import { Select } from './Select.js';
 import { type NewNoteActions, NewNoteMenu } from './NewNoteMenu.js';
@@ -55,7 +55,8 @@ export interface NoteSearchHandle {
 export interface NoteListToolsProps {
   /**
    * `toolbar`: in the notes toolbar, where a narrow toolbar hides the field behind a button that opens it over the toolbar. `dock`: at the
-   * top of the left browse dock beside a Focus, the field always shown and the toggles beside it.
+   * top of the left browse dock beside a Focus, the field shown beside the toggles, or behind a button that opens it over the row when
+   * the dock is too narrow for both.
    */
   placement: 'toolbar' | 'dock';
   /** The note search, the `q` query parameter. */
@@ -79,7 +80,7 @@ export interface NoteListToolsProps {
 export function NoteListTools({ placement, query, onQueryChange, searchRef, sortField, sortOrder, onSortChange, metadataSortFields, sortable, showHidden, hiddenNoteCount, onShowHiddenChange, groupByFolder }: NoteListToolsProps): JSX.Element {
   const { t } = useTranslation();
   const ids = useId();
-  // In the toolbar the field may be hidden behind a button (a narrow toolbar) and expands over the toolbar; in the dock it is always shown.
+  // In the toolbar the field may be hidden behind a button (a narrow toolbar) and expands over the toolbar; in the dock likewise when the dock is too narrow.
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
   const sortOptions = noteSortOptions(t, metadataSortFields);
@@ -129,12 +130,7 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
     </>
   );
   if (!toolbar) {
-    return (
-      <div className='note-list-tools' data-placement='dock'>
-        <div id={searchId} className='note-list-tools-search' role='search'>{field}</div>
-        {tools}
-      </div>
-    );
+    return <DockListTools searchId={searchId} open={searchOpen} onOpenChange={setSearchOpen} query={query} input={searchInput} field={field}>{tools}</DockListTools>;
   }
   return (
     <>
@@ -149,6 +145,71 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
       </div>
       {tools}
     </>
+  );
+}
+
+/**
+ * The dock's list tools. A dock too narrow for the field beside the sort and the toggles (a container query on the row's width) shows a
+ * button in its place, which opens the field over the whole row; the close button and Esc fold it back to the button, and so does a click
+ * outside while the field is empty. A search typed there stays open until closed, and the folded button marks a search in force.
+ */
+function DockListTools({ searchId, open, onOpenChange, query, input, field, children }: { searchId: string; open: boolean; onOpenChange: (open: boolean) => void; query: string; input: RefObject<HTMLInputElement | null>; field: JSX.Element; children: ReactNode; }): JSX.Element {
+  const { t } = useTranslation();
+  const toggle = useRef<HTMLButtonElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
+  const active = query.trim();
+  const close = () => {
+    onOpenChange(false);
+    toggle.current?.focus();
+  };
+  useEffect(() => {
+    if (!open || active) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!frame.current?.contains(event.target as Node)) onOpenChange(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open, active, onOpenChange]);
+  const label = active ? `${t('header.searchPlaceholder')}: ${active}` : t('header.searchPlaceholder');
+  return (
+    <div ref={frame} className='note-list-tools-frame'>
+      <div className='note-list-tools' data-placement='dock'>
+        <button
+          ref={toggle}
+          type='button'
+          className='ui-icon-button note-search-toggle'
+          aria-label={label}
+          title={label}
+          aria-expanded={open}
+          aria-controls={searchId}
+          data-active={active ? true : undefined}
+          onClick={() => {
+            onOpenChange(true);
+            requestAnimationFrame(() => input.current?.focus());
+          }}
+        >
+          <Search size={16} aria-hidden='true' />
+        </button>
+        <div
+          id={searchId}
+          className='note-list-tools-search'
+          role='search'
+          data-open={open || undefined}
+          onKeyDown={event => {
+            if (event.key === 'Escape' && open) {
+              event.preventDefault();
+              close();
+            }
+          }}
+        >
+          {field}
+          <button type='button' className='ui-icon-button note-search-close' aria-label={t('common.close')} onClick={close}>
+            <X size={16} aria-hidden='true' />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
 

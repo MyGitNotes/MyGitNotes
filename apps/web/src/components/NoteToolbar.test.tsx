@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { createElement, createRef } from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import fs from 'node:fs';
+import path from 'node:path';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { I18nProvider } from '../lib/i18n/index.js';
@@ -179,9 +181,6 @@ it('in the browse dock shows the search field itself beside the sort and the tog
   const { rerender } = render(tools(true));
   const field = screen.getByRole('searchbox', { name: '搜尋筆記、標籤、內文...' });
   expect(screen.getByRole('search')).toContainElement(field);
-  // No button stands in for the field and nothing closes it: the dock always has room for it.
-  expect(screen.queryByRole('button', { name: '搜尋筆記、標籤、內文...' })).toBeNull();
-  expect(screen.queryByRole('button', { name: '關閉' })).toBeNull();
   fireEvent.change(field, { target: { value: 'dragons' } });
   expect(changes).toEqual(['dragons']);
   expect(screen.getByRole('combobox', { name: '排序: 更新時間 (由新到舊)' })).toBeInTheDocument();
@@ -192,6 +191,62 @@ it('in the browse dock shows the search field itself beside the sort and the tog
   await waitFor(() => expect(document.activeElement).toBe(field));
   rerender(tools(false));
   expect(screen.queryByRole('combobox')).toBeNull();
+});
+
+it('in a browse dock too narrow for the field shows a search button that opens it over the row, closed by ✕, Esc, or a click outside while empty', async () => {
+  const search = createRef<NoteSearchHandle>();
+  const dock = (query: string) => createElement(I18nProvider, null, createElement(NoteListTools, { placement: 'dock', searchRef: search, query, onQueryChange: () => {}, sortField: 'updated', sortOrder: 'desc', onSortChange: () => {}, sortable: true, showHidden: false, hiddenNoteCount: 0, onShowHiddenChange: () => {}, groupByFolder: { value: false, onChange: () => {} } }));
+  const { rerender } = render(dock(''));
+  const toggle = screen.getByRole('button', { name: '搜尋筆記、標籤、內文...' });
+  const region = screen.getByRole('search');
+  const field = screen.getByRole('searchbox');
+  // Folded: the button controls the field's region, which is not open; the CSS hides it until the row is narrow.
+  expect(toggle).toHaveClass('note-search-toggle');
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(toggle).toHaveAttribute('aria-controls', region.id);
+  expect(toggle).not.toHaveAttribute('data-active');
+  expect(region).not.toHaveAttribute('data-open');
+  expect(document.querySelectorAll(`#${CSS.escape(region.id)}`)).toHaveLength(1);
+  fireEvent.click(toggle);
+  expect(region).toHaveAttribute('data-open');
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await waitFor(() => expect(document.activeElement).toBe(field));
+  fireEvent.click(within(region).getByRole('button', { name: '關閉' }));
+  expect(region).not.toHaveAttribute('data-open');
+  expect(document.activeElement).toBe(toggle);
+  fireEvent.click(toggle);
+  await waitFor(() => expect(document.activeElement).toBe(field));
+  fireEvent.keyDown(field, { key: 'Escape' });
+  expect(region).not.toHaveAttribute('data-open');
+  expect(document.activeElement).toBe(toggle);
+  // An empty field folds on a click outside; one holding a search stays open until closed.
+  fireEvent.click(toggle);
+  fireEvent.pointerDown(document.body);
+  expect(region).not.toHaveAttribute('data-open');
+  rerender(dock('dragon'));
+  fireEvent.click(toggle);
+  fireEvent.pointerDown(document.body);
+  expect(region).toHaveAttribute('data-open');
+  fireEvent.keyDown(field, { key: 'Escape' });
+  // Folded with a search in force, the button is marked and names it.
+  const marked = screen.getByRole('button', { name: '搜尋筆記、標籤、內文...: dragon' });
+  expect(marked).toBe(toggle);
+  expect(marked).toHaveAttribute('data-active', 'true');
+  expect(marked).toHaveAttribute('title', '搜尋筆記、標籤、內文...: dragon');
+  // The search command opens the folded field and focuses it.
+  act(() => search.current!.focus());
+  expect(region).toHaveAttribute('data-open');
+  await waitFor(() => expect(document.activeElement).toBe(field));
+});
+
+it('folds the dock search to its button by the dock row’s own width, not the viewport', () => {
+  const css = fs.readFileSync(path.resolve(__dirname, 'note-toolbar.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  expect(css).toMatch(/\.note-list-tools-frame \{[^}]*container: dock-tools \/ inline-size/);
+  const rule = css.match(/@container dock-tools \(max-width: 279px\) \{(.*)\}/)?.[1] ?? '';
+  expect(rule).toMatch(/\.note-list-tools \.note-search-toggle \{ display: inline-flex/);
+  expect(rule).toMatch(/\.note-list-tools-search \{ display: none; \}/);
+  expect(rule).toMatch(/\.note-list-tools-search\[data-open\] \{ position: absolute; z-index: 20; inset: 0;/);
+  expect(rule).toMatch(/\.note-list-tools \.note-search-close \{ display: inline-flex/);
 });
 
 const openNewMenu = async () => {

@@ -17,11 +17,15 @@
 .note-search-field:focus-within { border-color: var(--color-primary); }
 .note-search-field input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--color-text); font-size: 0.8125rem; }
 .note-search-toggle, .note-search-close { display: none; }
-/* At the top of the left browse dock: the field takes the row, the sort and the toggles keep to its right, and wrap below it in a dock too narrow for both. */
-.note-list-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
-.note-list-tools-search { display: flex; flex: 1 1 7rem; min-width: 7rem; }
+/* At the top of the left browse dock: the field takes the row and the sort and the toggles keep to its right. A dock too narrow for all four
+   (its row narrower than 280px: the four need 244px with the field at its 7rem least, and 280px keeps it 148px wide) shows a search button instead, which opens the field over the whole row. */
+.note-list-tools-frame { container: dock-tools / inline-size; min-width: 0; }
+.note-list-tools { position: relative; display: flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; }
+.note-list-tools-search { display: flex; flex: 1 1 7rem; align-items: center; gap: 4px; min-width: 7rem; }
+.note-list-tools .note-search-toggle, .note-list-tools .note-search-close { display: none; }
 .note-list-tools .note-toolbar-sort { flex: none; width: auto; }
 .note-list-tools .note-display-options { padding-right: 0; border-right: 0; }
+@container dock-tools (max-width: 279px) { .note-list-tools .note-search-toggle { display: inline-flex; flex: none; margin-right: auto; } .note-list-tools .note-search-toggle[data-active] { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent); } .note-list-tools-search { display: none; } .note-list-tools-search[data-open] { position: absolute; z-index: 20; inset: 0; display: flex; min-width: 0; background: var(--color-surface); } .note-list-tools .note-search-close { display: inline-flex; flex: none; } }
 /* A collapsed toolbar's mark of the search still in force. */
 .note-search-active { color: var(--color-primary); }
 /* The notes toolbar also gives way by its own width, since a docked panel narrows it without changing the viewport: the search becomes a button first, then the view buttons a menu and New note its icon, and at last the toolbar wraps (spec 2026-10-17-browse-views §4). */
