@@ -111,3 +111,17 @@ it('folds the folders and filters to their heading at the foot and opens them ag
   expect(tree).toBeVisible();
   expect(screen.getByRole('region', { name: 'Folders' })).toContainElement(tree);
 });
+
+it("ends the path line with the dock's own toggle, leaving the tools row to the search", () => {
+  const { container } = render(
+    <I18nProvider>
+      <BrowseSplit label='Folders' tools={<input type='search' aria-label='Search notes' />} filters={<p>folder tree</p>} path={<span>Projects / Thesis</span>} dockToggle={<button type='button'>Collapse browse panel</button>} size={40} onSizeChange={vi.fn()} collapsed={false} onCollapsedChange={vi.fn()}>
+        <ul aria-label='Notes' />
+      </BrowseSplit>
+    </I18nProvider>,
+  );
+  const toggle = screen.getByRole('button', { name: 'Collapse browse panel' });
+  expect(toggle.parentElement).toHaveClass('browse-split-path');
+  expect(toggle.parentElement?.lastElementChild).toBe(toggle);
+  expect(container.querySelector('.browse-split-tools')).not.toContainElement(toggle);
+});

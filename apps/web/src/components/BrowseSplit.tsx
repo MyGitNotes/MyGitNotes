@@ -19,6 +19,8 @@ export interface BrowseSplitProps {
   filters: ReactNode;
   /** The line over the list: where the list is and how many notes it holds. */
   path: ReactNode;
+  /** At the path line's end, clear of the search above it: the toggle that collapses the dock itself. */
+  dockToggle?: ReactNode;
   /** The share of the column, in percent, the folders part takes. */
   size: number;
   /** Called once a drag settles, and on each arrow key, Home or End. */
@@ -35,7 +37,7 @@ export interface BrowseSplitProps {
  * and filters, which a pointer drags and the arrow keys, Home and End move. The folders part folds to its heading and back; folded, it
  * stays mounted (hidden), so its tree keeps which folders were open.
  */
-export function BrowseSplit({ label, actions, tools, filters, path, size, onSizeChange, collapsed, onCollapsedChange, children }: BrowseSplitProps): JSX.Element {
+export function BrowseSplit({ label, actions, tools, filters, path, dockToggle, size, onSizeChange, collapsed, onCollapsedChange, children }: BrowseSplitProps): JSX.Element {
   const { t } = useTranslation();
   const bodyId = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -80,6 +82,7 @@ export function BrowseSplit({ label, actions, tools, filters, path, size, onSize
       {tools && <div className='browse-split-tools'>{tools}</div>}
       <div className='browse-split-path'>
         <div className='browse-split-path-content'>{path}</div>
+        {dockToggle}
       </div>
       <div className='workspace-scroll browse-split-list'>{children}</div>
       {!collapsed && <div role='separator' tabIndex={0} aria-orientation='horizontal' aria-label={t('browseSplit.resize')} aria-controls={bodyId} aria-valuenow={shown} aria-valuemin={DOCK_SPLIT_MIN} aria-valuemax={DOCK_SPLIT_MAX} className='browse-split-divider' onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={onKeyDown} />}

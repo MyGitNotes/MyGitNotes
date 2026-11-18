@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { createElement, useEffect } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { FOLD_MS } from '../lib/use-fold-animation.js';
@@ -124,4 +124,54 @@ it('toggle collapses an expanded dock and reopens a collapsed one', () => {
   rerender(createElement(BrowseDockToggle, { placement: 'left', collapsed: true, onCollapsedChange }));
   fireEvent.click(screen.getByLabelText('Expand browse panel and header'));
   expect(onCollapsedChange).toHaveBeenLastCalledWith(false);
+});
+
+it('toggle reports whether the browse region is expanded', () => {
+  const { rerender } = render(createElement(BrowseDockToggle, { placement: 'left', collapsed: false, onCollapsedChange: vi.fn() }));
+  expect(screen.getByRole('button', { name: 'Collapse browse panel and header' })).toHaveAttribute('aria-expanded', 'true');
+  rerender(createElement(BrowseDockToggle, { placement: 'left', collapsed: true, onCollapsedChange: vi.fn() }));
+  expect(screen.getByRole('button', { name: 'Expand browse panel and header' })).toHaveAttribute('aria-expanded', 'false');
+});
+
+/** A left dock that carries its own toggle while open, and a toolbar that shows one only to reopen it, as the Notes page lays them out. */
+function MovingToggle() {
+  const [collapsed, setCollapsed] = useState(false);
+  const waiting = useRef(false);
+  const focusHandoff = useMemo(() => ({
+    request: () => {
+      waiting.current = true;
+    },
+    claim: () => {
+      const claimed = waiting.current;
+      waiting.current = false;
+      return claimed;
+    },
+  }), []);
+  const toggle = <BrowseDockToggle placement='left' collapsed={collapsed} onCollapsedChange={setCollapsed} focusHandoff={focusHandoff} />;
+  return (
+    <div>
+      <div role='toolbar' aria-label='Notes toolbar'>{collapsed ? toggle : null}</div>
+      <BrowseDock {...baseProps} collapsed={collapsed} narrow={false} narrowView='browse' browse={<div data-testid='dock'>{toggle}</div>}>
+        <div>focus-content</div>
+      </BrowseDock>
+    </div>
+  );
+}
+
+it('a toggle that moves between the dock and the toolbar keeps the keyboard on it, and the collapsed dock reopens from the toolbar', () => {
+  render(<MovingToggle />);
+  const toolbar = screen.getByRole('toolbar', { name: 'Notes toolbar' });
+  expect(within(toolbar).queryByRole('button')).not.toBeInTheDocument();
+  const inDock = within(screen.getByTestId('dock')).getByRole('button', { name: 'Collapse browse panel and header' });
+  inDock.focus();
+  fireEvent.click(inDock);
+  const reopen = within(toolbar).getByRole('button', { name: 'Expand browse panel and header' });
+  expect(reopen).toHaveAttribute('aria-expanded', 'false');
+  expect(reopen).toHaveFocus();
+  expect(screen.getByTestId('dock').closest('[inert]')).not.toBeNull();
+  fireEvent.click(reopen);
+  expect(within(toolbar).queryByRole('button')).not.toBeInTheDocument();
+  const back = within(screen.getByTestId('dock')).getByRole('button', { name: 'Collapse browse panel and header' });
+  expect(back).toHaveAttribute('aria-expanded', 'true');
+  expect(back).toHaveFocus();
 });

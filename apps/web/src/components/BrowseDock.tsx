@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, type RefObject, useLayoutEffect, useRef } from 'react';
+import { type CSSProperties, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef } from 'react';
 import { Group, Panel, type PanelImperativeHandle, Separator, usePanelRef } from 'react-resizable-panels';
 import { PanelLeftClose, PanelTopClose } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -28,14 +28,44 @@ const MAX_LEFT_RATIO = 0.6;
 const MIN_TOP_HEIGHT = 120;
 const MAX_TOP_RATIO = 0.7;
 
-/** Collapses and reopens the browse region from the Notes toolbar's left end. */
-export function BrowseDockToggle({ placement, collapsed, onCollapsedChange }: { placement: BrowseDockPlacement; collapsed: boolean; onCollapsedChange: (collapsed: boolean) => void; }): JSX.Element {
+/** Hands the keyboard from one place of a dock's toggle to the other as the dock turns. */
+export interface DockToggleFocusHandoff {
+  /** Called on a click: the toggle that can take focus once the dock has turned should take it. */
+  request: () => void;
+  /** Whether a request is waiting; answering true clears it. */
+  claim: () => boolean;
+}
+
+export interface BrowseDockToggleProps {
+  placement: BrowseDockPlacement;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+  /**
+   * Shared by the toggles of a dock that moves its toggle (inside the left dock while it is open, in the Notes toolbar while it is
+   * collapsed): after a click, the toggle that can take focus (one not inside an inert region) takes it, so the keyboard stays on the
+   * control that turns the dock back.
+   */
+  focusHandoff?: DockToggleFocusHandoff;
+}
+
+/** Collapses and reopens the browse region: from the Notes toolbar's left end, or from inside the left dock while it holds the list's search. */
+export function BrowseDockToggle({ placement, collapsed, onCollapsedChange, focusHandoff }: BrowseDockToggleProps): JSX.Element {
   const { t } = useTranslation();
+  const button = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const element = button.current;
+    if (!focusHandoff || !element || element.closest('[inert]')) return;
+    if (focusHandoff.claim()) element.focus();
+  }, [collapsed, focusHandoff]);
   // The browse region sits left of or above the Focus; browse-dock.css turns the icon's arrow as it collapses.
   const Icon = placement === 'left' ? PanelLeftClose : PanelTopClose;
   const label = t(collapsed ? 'focus.expandBrowseAndHeader' : 'focus.collapseBrowseAndHeader');
+  const toggle = () => {
+    focusHandoff?.request();
+    onCollapsedChange(!collapsed);
+  };
   return (
-    <button type='button' className='ui-icon-button browse-dock-toggle' data-collapsed={collapsed || undefined} aria-label={label} title={label} onClick={() => onCollapsedChange(!collapsed)}>
+    <button ref={button} type='button' className='ui-icon-button browse-dock-toggle' data-collapsed={collapsed || undefined} aria-label={label} title={label} aria-expanded={!collapsed} onClick={toggle}>
       <Icon size={16} />
     </button>
   );

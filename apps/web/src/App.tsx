@@ -109,7 +109,7 @@ import { CompilationActionsProvider } from './lib/compilation-actions.js';
 import { StatusColorProvider } from './lib/status-color.js';
 import { statusLabel } from '@mygitnotes/core/note-status';
 import { useCompilationActionsValue } from './app/useCompilationActionsValue.js';
-import { BrowseDock, BrowseDockToggle } from './components/BrowseDock.js';
+import { BrowseDock, BrowseDockToggle, type DockToggleFocusHandoff } from './components/BrowseDock.js';
 import { RightPanel } from './components/RightPanel.js';
 import { FileManager, FileManagerDialog, FileMetadata } from './components/files/index.js';
 import { AgentSystemView } from './components/AgentSystemView.js';
@@ -484,12 +484,25 @@ export const AppContent: React.FC = () => {
   // With a Focus displayed, the browse region docks beside it (flat, folder) or above it (kanban).
   const topDock = viewMode === 'kanban';
   const browseFocusMode = noteFocus.layout || phone ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, compactRows: phone || (focusCapacity !== 1 && !focusEmpty), openPath: activeNotePath, readNote: readNoteForChange } : undefined;
-  // Either dock collapses and reopens from the toolbar's left end.
-  const dockToggle = noteFocus.layout && !focusEmpty && focusCapacity !== 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} /> : undefined;
   // Beside a Focus the list's dock holds the list's search and toggles, the list, and below it the folders and filters (the sidebar folds away
   // on a desktop; below it, it stays a drawer), and the board above a Focus keeps the sidebar; the chips of the filters in force show where the
   // filters themselves are out of sight.
   const layout = browseLayout({ focusShown: activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && !focusEmpty, capacity: focusCapacity, viewMode });
+  // Either dock collapses and reopens from the toolbar's left end, except that the left dock holding the list's search carries its own
+  // toggle at the end of its path line while it is open, and the toolbar shows one only to reopen it; the keyboard follows the toggle.
+  const dockToggleFocus = useRef(false);
+  const dockToggleHandoff = useMemo<DockToggleFocusHandoff>(() => ({
+    request: () => {
+      dockToggleFocus.current = true;
+    },
+    claim: () => {
+      const waiting = dockToggleFocus.current;
+      dockToggleFocus.current = false;
+      return waiting;
+    },
+  }), []);
+  const dockToggle = noteFocus.layout && !focusEmpty && focusCapacity !== 1 ? <BrowseDockToggle placement={topDock ? 'top' : 'left'} collapsed={noteFocus.view.dock.collapsed} onCollapsedChange={collapsed => noteFocus.setDock({ collapsed })} focusHandoff={layout.split === 'filters' ? dockToggleHandoff : undefined} /> : undefined;
+  const toolbarDockToggle = layout.split !== 'filters' || noteFocus.view.dock.collapsed ? dockToggle : undefined;
   const openFilters = () => phone ? setPhoneFilterOpen(true) : setFiltersOpen(true);
   // An outline or compilation list offers its own kind; every kind starts at the notebook root, moved from its editor.
   const newKind = route.kind === 'outline' || route.kind === 'compilation' ? route.kind : 'note';
@@ -643,6 +656,7 @@ export const AppContent: React.FC = () => {
           )
           : undefined}
         filters={renderSidebar(false, dock)}
+        dockToggle={dock === 'filters' ? dockToggle : undefined}
         path={
           <>
             <span className='browse-split-path-text' title={path}>{path}</span>
@@ -813,7 +827,7 @@ export const AppContent: React.FC = () => {
                               )
                               : (
                                 <PageToolbar>
-                                  {dockToggle}
+                                  {toolbarDockToggle}
                                   <NoteToolbar searchRef={browseCollapsed || layout.split === 'filters' ? undefined : noteSearch} listToolsDocked={layout.split === 'filters'} browseCollapsed={browseCollapsed} onRevealSearch={focusNoteSearch} utilities={browseCollapsed ? <HeaderUtilities activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={noteEditorOpen || isCommitOpen} onOpenCommands={() => setShortcutMode('palette')} /> : undefined} onImportLegacy={legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} metadataSortFields={metadataSortFields} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined} readOnly={!canWrite} viewMode={viewMode} setViewMode={setViewMode} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} showHidden={showHidden} onShowHiddenChange={value => changeFilters({ showHidden: value })} onNewNote={() => void createNote()} onNewOutline={() => void createNote({ kind: 'outline' })} onNewCompilation={() => void createUntitledCompilation()} templates={[...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)]} onManageTemplates={selectedNotebook ? () => setManageTemplatesOpen(true) : undefined} onNewFromTemplate={templateId => void createNote({ templateId })} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} focusControls={<FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} />} />
                                 </PageToolbar>
                               )}

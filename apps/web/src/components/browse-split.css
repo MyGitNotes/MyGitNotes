@@ -10,6 +10,8 @@
 .browse-split-path-content { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .browse-split-path-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browse-split-count { flex: none; font-variant-numeric: tabular-nums; }
+/* The dock's own collapse toggle ends the path line, so the search above keeps the tools row's whole width. */
+.browse-split-path .browse-dock-toggle { width: 26px; height: 26px; min-width: 0; min-height: 0; padding: 5px; margin: -2px -6px -2px 0; }
 
 .browse-split-list { flex: 1 1 0; min-height: 0; padding-top: 8px; }
 
@@ -33,4 +35,4 @@
 .browse-dock-scroll:has(> .browse-split) { display: flex; flex-direction: column; overflow: hidden; padding: 0; scrollbar-gutter: auto; }
 
 @media (prefers-reduced-motion: reduce) { .browse-split-divider::after { transition: none; } }
-@media (pointer: coarse) { .browse-split-divider { height: 17px; margin: -8px 0; } .browse-split-divider::after { top: 8px; } .browse-split-divider::before { top: 7px; } .browse-split-divider:hover::after, .browse-split-divider:focus-visible::after { top: 7px; } .browse-split-toggle { width: 36px; height: 36px; } }
+@media (pointer: coarse) { .browse-split-divider { height: 17px; margin: -8px 0; } .browse-split-divider::after { top: 8px; } .browse-split-divider::before { top: 7px; } .browse-split-divider:hover::after, .browse-split-divider:focus-visible::after { top: 7px; } .browse-split-toggle, .browse-split-path .browse-dock-toggle { width: 36px; height: 36px; } }
