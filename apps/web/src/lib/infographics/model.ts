@@ -136,10 +136,17 @@ export function isLadderBridge(fields: readonly string[]): boolean {
 /**
  * A ladder card's link as a note can follow it: a `/path` from the workspace root, a path relative to the note, a
  * `#heading`, or an http(s) URL. The blog takes only `/path` and http(s); notes resolve relative paths too, as they
- * do for every other link. Anything with whitespace or another scheme (`javascript:`, `mailto:`) is no link.
+ * do for every other link. Anything with whitespace, a control character or another scheme (`javascript:`, `mailto:`)
+ * is no link.
  */
 export function isLadderLink(value: string): boolean {
-  return /^https?:\/\/\S+$/i.test(value) || /^(?![a-z][a-z\d+.-]*:)\S+$/i.test(value);
+  return /^https?:\/\/[^\s\p{Cc}]+$/iu.test(value) || /^(?![a-z][a-z\d+.-]*:)[^\s\p{Cc}]+$/iu.test(value);
+}
+
+/** A ladder card's link field as written, without the `**…**` or `__…__` that highlights its card; `_` and `*` in a path stay. */
+export function ladderLinkField(field: string): string {
+  const trimmed = field.trim();
+  return (/^\*\*([\s\S]+)\*\*$/.exec(trimmed) ?? /^__([\s\S]+)__$/.exec(trimmed))?.[1].trim() ?? trimmed;
 }
 
 // ---------------------------------------------------------------------------
@@ -432,7 +439,7 @@ export function checkCells(block: InfographicBlock): CellIssue[] {
     group.rows.forEach((row, rowIndex) => {
       const cells = rowCells(block.kind, row.fields);
       spec.columns.forEach((column, columnIndex) => {
-        const cell = plainField(cells[columnIndex] ?? '');
+        const cell = column.type === 'link' ? ladderLinkField(cells[columnIndex] ?? '') : plainField(cells[columnIndex] ?? '');
         const found = numbers(cell);
         const issue = (code: CellIssueCode) => issues.push({ child: group.child, row: rowIndex, column: columnIndex, code });
         if (column.type === 'link') {

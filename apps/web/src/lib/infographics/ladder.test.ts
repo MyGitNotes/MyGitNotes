@@ -124,6 +124,10 @@ describe('ladder (the blog plugin cases)', () => {
     bad(':::rung{title="一"}\n- 01\n:::', /every ladder item needs 編號｜名稱/);
     bad(':::rung{title="一"}\n- 01｜機率｜javascript:alert(1)\n:::', /must be a path or an http/);
     bad(':::rung{title="一"}\n- 01｜機率｜a b\n:::', /must be a path or an http/);
+    for (const control of ['\u0000', '\u0001', '\u001f', '\u007f']) {
+      bad(`:::rung{title="一"}\n- 01｜機率｜${control}javascript:alert(1)\n:::`, /must be a path or an http/);
+      bad(`:::rung{title="一"}\n- 01｜機率｜/notes/a${control}b.md\n:::`, /must be a path or an http/);
+    }
     bad(':::rung{title="一"}\n- →\n- 01｜機率\n:::', /arrow → must sit between two cards/);
     bad(':::rung{title="一"}\n- 01｜機率\n- →\n:::', /arrow → must sit between two cards/);
     bad(':::rung{title="一"}\n- bridge｜說明\n:::', /bridge needs cards/);
@@ -135,6 +139,14 @@ describe('ladder (the blog plugin cases)', () => {
 describe('ladder in notes', () => {
   it('takes a path relative to the note as a link, which the blog does not', () => {
     expect(render(`::::ladder\n:::rung{title="一"}\n- 01｜機率｜../lessons/01.md\n:::\n::::`)).toMatch(/<a class="ig-card" href="\.\.\/lessons\/01\.md">/);
+  });
+
+  it('keeps _ and * in a link as written', () => {
+    const output = render(`::::ladder\n:::rung{title="一"}\n- 01｜a｜/notes/_draft.md\n- 02｜b｜/a/__init__.md\n- 03｜c｜/a/*b*.md\n- **04**｜d｜**/notes/_x.md**\n:::\n::::`);
+    expect(output).toContain('href="/notes/_draft.md"');
+    expect(output).toContain('href="/a/__init__.md"');
+    expect(output).toContain('href="/a/*b*.md"');
+    expect(output).toMatch(/<a class="ig-card is-highlight" href="\/notes\/_x\.md">/);
   });
 
   it('marks the figure with the note language, so the bridge colon is half-width in English', () => {
@@ -184,6 +196,11 @@ describe('ladder model', () => {
   it('checks the link column and leaves arrows and bridges alone', () => {
     const block = parseInfographic('::::ladder\n:::rung{title="一"}\n- 01｜a｜a b\n- →\n- 02｜b｜/x\n- bridge｜說明\n- 03｜c｜mailto:x@y\n:::\n::::\n')!;
     expect(checkCells(block)).toEqual([{ child: 0, row: 0, column: 2, code: 'not-a-link' }, { child: 0, row: 4, column: 2, code: 'not-a-link' }]);
+  });
+
+  it('checks a link as written, rejecting control characters and keeping _ and *', () => {
+    const block = parseInfographic('::::ladder\n:::rung{title="一"}\n- 01｜a｜\u0001javascript:alert(1)\n- 02｜b｜/notes/_draft.md\n- 03｜c｜/a/*b*.md\n:::\n::::\n')!;
+    expect(checkCells(block)).toEqual([{ child: 0, row: 0, column: 2, code: 'not-a-link' }]);
   });
 
   it('gives each container its own attributes', () => {

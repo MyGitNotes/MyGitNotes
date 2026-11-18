@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { blockInsertion, DIRECTIVE_TEMPLATES, findDirectiveBlocks, GRID_COLUMN_OPTIONS, gridColumnCount, localizedDirectiveLabel, localizedDirectiveSnippet, parseDirectiveModel, serializeDirectiveModel, setGridColumns, updateDirectiveType, updateDirectiveVariant } from './directive-editing.js';
-import { fencedCodeLines, indentedCodeLines, localizedHandoutVariants, parseDirectiveAttributes, parseDirectiveTitle, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
+import { fencedCodeLines, indentedCodeLines, localizedHandoutVariants, parseDirectiveAttributes, parseDirectiveOpen, parseDirectiveTitle, stripMdxImports, transformDirectives, transformMdxComponents } from './directives.js';
 import { en, type TranslationKey } from './i18n/en.js';
 import { marked } from 'marked';
 
@@ -572,5 +572,31 @@ describe('fenced code lines', () => {
     fenced(`${'>'.repeat(32000)} \`\`\``);
     for (let i = 0; i < 5; i++) fenced(`${'>'.repeat(32000)} x`);
     expect(performance.now() - started).toBeLessThan(250);
+  });
+});
+
+describe('directive opening fences', () => {
+  // The parser before quoted values could hold `}` (cb95f12a): every line it accepted must parse the same way.
+  const legacy = (line: string) => {
+    const match = /^(\s*(?:>\s*)*)(:{3,})([a-zA-Z0-9_-]+)(?:\[([^\]]*)\])?(?:\{([^}]*)\})?\s*$/.exec(line);
+    return match ? { fenceLength: match[2].length, name: match[3], label: match[4], attrs: parseDirectiveAttributes(match[5]), rawAttrs: match[5] } : null;
+  };
+
+  it.each([':::note', '::::ladder', ':::note ', '> > :::tip[Title]{a=b}', ':::x{}', ':::x[]{}', ':::x{a="b" c=\'d\' e=f g}', ':::x{t="unbal}', ":::x{title=it's}", ':::x{a="b" c=\'d}', ':::x[l}]{a=b}', ':::x[label]{a="x\' y"}  ', ':::x{a=b}}', ':::x{a={b}', ':::x{a="{b"}', ':::x{a=b} trailing', ':::x{a="b"', '::x{a=b}', ':::rung{title="第三層" formula="已知 x′，求 P(y_x)" note="要知道"}', ':::grid{columns="3"}', ':::handout{variant=exercise title="練習"}'])('parses %s as the earlier parser did', line => {
+    expect(parseDirectiveOpen(line)).toEqual(legacy(line));
+  });
+
+  it.each([[':::rung{title="一" formula="P(y_{xz})"}', 'title="一" formula="P(y_{xz})"', { title: '一', formula: 'P(y_{xz})' }], [':::x{a=\'}\' b="{c}"}', 'a=\'}\' b="{c}"', { a: '}', b: '{c}' }], [':::x[l}]{a="}"}', 'a="}"', { a: '}' }]])('keeps a } inside quotes in %s', (line, rawAttrs, attrs) => {
+    expect(parseDirectiveOpen(line)).toMatchObject({ rawAttrs, attrs });
+  });
+
+  it('reads long quoted attribute lists in linear time', () => {
+    const attrs = Array.from({ length: 40 }, (_, i) => `k${i}="v"`).join(' ');
+    const started = performance.now();
+    expect(parseDirectiveOpen(`:::note{${attrs}} trailing`)).toBeNull();
+    expect(parseDirectiveOpen(`:::note{${attrs}`)).toBeNull();
+    expect(parseDirectiveOpen(`:::note{${'"" '.repeat(40)}}x`)).toBeNull();
+    expect(parseDirectiveOpen(`:::note{${attrs}}`)?.attrs.k39).toBe('v');
+    expect(performance.now() - started).toBeLessThan(50);
   });
 });

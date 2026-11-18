@@ -7,7 +7,7 @@
 
 import { escapeHtml, fill, type NoteLanguage, stringsFor } from '../directives.js';
 import type { TranslationKey } from '../i18n/en.js';
-import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicChild, type InfographicKind, type InfographicRow, isLadderArrow, isLadderBridge, isLadderLink, isStrongField, mapBase, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
+import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicChild, type InfographicKind, type InfographicRow, isLadderArrow, isLadderBridge, isLadderLink, isStrongField, ladderLinkField, mapBase, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
 
 /** A whole-figure error the blog fails its build on; the caller shows it in the figure's place. */
 export class InfographicError extends Error {
@@ -530,7 +530,7 @@ function ladderCard(item: Item, className: string, r: Renderer): string {
   const [number, name, link] = item.fields;
   if (!plain(number).trim() || !plain(name).trim()) fail('every ladder item needs 編號｜名稱 (and optionally ｜連結)');
   if (item.fields.length > 3) fail('a ladder item has at most 編號｜名稱｜連結');
-  const href = plain(link).trim();
+  const href = ladderLinkField(link ?? '');
   if (href && !isLadderLink(href)) fail(`ladder link "${href}" must be a path or an http(s) URL`);
   return tag(href ? 'a' : 'span', { class: [className, ...highlightClass(item.highlight)], href: href || undefined }, [tag('span', { class: 'ig-card-num' }, r.inline(number)), tag('span', { class: 'ig-card-name' }, r.inline(name))]);
 }

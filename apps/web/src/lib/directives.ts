@@ -44,12 +44,18 @@ export function parseDirectiveAttributes(rawAttrs?: string): Record<string, stri
   return result;
 }
 
+// Each character of the attributes can be read only one way, a quote only as the start of a quoted value, so a line
+// that fails to match fails in linear time; letting a bare character also take a quote makes that exponential.
+const QUOTED_DIRECTIVE_OPEN = /^(\s*(?:>\s*)*)(:{3,})([a-zA-Z0-9_-]+)(?:\[([^\]]*)\])?(?:\{((?:"[^"\n]*"|'[^'\n]*'|[^}"'])*)\})?\s*$/;
+const DIRECTIVE_OPEN = /^(\s*(?:>\s*)*)(:{3,})([a-zA-Z0-9_-]+)(?:\[([^\]]*)\])?(?:\{([^}]*)\})?\s*$/;
+
 /**
  * An opening container fence `:::name[label]{attrs}`, allowing `>` blockquote prefixes; `rawAttrs` is the text between its braces.
- * As in the blog's micromark, a `}` inside a quoted value (`formula="P(y_{xz})"`) does not end the attributes.
+ * As in the blog's micromark, a `}` inside a quoted value (`formula="P(y_{xz})"`) does not end the attributes. A line whose
+ * quotes do not pair up (`{title=it's}`) is read as before quoted `}` were allowed: up to the first `}`.
  */
 export function parseDirectiveOpen(line: string): { fenceLength: number; name: string; label?: string; attrs: Record<string, string>; rawAttrs?: string; } | null {
-  const match = /^(\s*(?:>\s*)*)(:{3,})([a-zA-Z0-9_-]+)(?:\[([^\]]*)\])?(?:\{((?:"[^"\n]*"|'[^'\n]*'|[^}])*?)\})?\s*$/.exec(line);
+  const match = QUOTED_DIRECTIVE_OPEN.exec(line) ?? DIRECTIVE_OPEN.exec(line);
   return match ? { fenceLength: match[2].length, name: match[3], label: match[4], attrs: parseDirectiveAttributes(match[5]), rawAttrs: match[5] } : null;
 }
 
