@@ -12,6 +12,7 @@ import { MarkdownEditor, type MarkdownEditorHandle, type MarkdownEditorMode } fr
 import type { NoteItem } from '../lib/types.js';
 import { usePanelContext } from '../lib/panel-context.js';
 import { usePhone } from '../lib/use-phone.js';
+import { useDoubleTap } from '../lib/double-tap.js';
 import { type NoteEditorSessionState, useNoteEditorSession } from './note-editor/useNoteEditorSession.js';
 import { useNoteDocumentPanel } from './note-editor/useNoteDocumentPanel.js';
 import { NoteCompactFrame } from './note-editor/NoteCompactFrame.js';
@@ -292,6 +293,21 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   useEffect(() => {
     if (!reading) { for (const flush of pendingInserts.current.splice(0)) flush(); }
   }, [reading]);
+  // The toolbar's Edit on a phone, or for a live note that is not checked out, its 編輯.
+  const phoneEditing = phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : liveEdit.edit ? { editing: false, onEdit: liveEdit.edit, onDone: liveEdit.edit } : undefined;
+  // On a phone a double tap on the text does what Edit does. The direct editor turns writable with the caret where the
+  // second tap landed and takes focus inside that tap's touch, which is what raises iOS's keyboard; a live note's 編輯
+  // checks it out over the network, so its editor opens without the keyboard, as after the button.
+  const [body, setBody] = useState<HTMLDivElement | null>(null);
+  useDoubleTap(
+    body,
+    phone && phoneEditing && !phoneEditing.editing
+      ? (x, y) => {
+        if (reading) editorRef.current?.editAt?.(x, y);
+        phoneEditing.onEdit();
+      }
+      : undefined,
+  );
 
   useImperativeHandle(ref, () => ({ insert }));
 
@@ -410,7 +426,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
       <div className='editor-notices'>{liveEdit.notices}</div>
-      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} editorModes={editorModes} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phone && !session.locked ? { editing, onEdit: () => setEditing(true), onDone: finishEditing } : liveEdit.edit ? { editing: false, onEdit: liveEdit.edit, onDone: liveEdit.edit } : undefined} onRefresh={refresh} onClose={onClose} onMove={moveNote} onRename={shared ? liveRename : directPanel.onRename} liveDraft={liveDraft} frontmatterInvalid={shared ? !liveFrontmatter.valid : unreadable} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
+      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} editorModes={editorModes} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phoneEditing} onRefresh={refresh} onClose={onClose} onMove={moveNote} onRename={shared ? liveRename : directPanel.onRename} liveDraft={liveDraft} frontmatterInvalid={shared ? !liveFrontmatter.valid : unreadable} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
       {awaitingRecovery && (
         <p role='status'>
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
@@ -419,7 +435,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
       {live && liveEdit.checkout && (live.editor.kind === 'builtin' ? <LiveCollabEditor checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} showLineNumbers={lineNumbersShown} mode={isMarkdown ? editorMode : 'raw'} body={liveBody}>{shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}</LiveCollabEditor> : <LiveEditorFrame checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} />)}
       {formatToolbarShown && !liveEdit.checkout && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       {!liveEdit.checkout && (
-        <div className='note-editor-body'>
+        <div ref={setBody} className='note-editor-body'>
           <MarkdownEditor
             ref={editorRef}
             content={session.content}

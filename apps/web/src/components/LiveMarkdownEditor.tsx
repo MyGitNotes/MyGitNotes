@@ -64,6 +64,12 @@ export interface LiveMarkdownHandle {
   getSelection: () => { from: number; to: number; } | null;
   ready: () => boolean;
   focus: () => void;
+  /**
+   * Makes a read-only view editable at once, puts the caret at the text nearest the viewport point, and focuses it, all
+   * before returning, so that a touch handler calling it raises a phone's keyboard; the `readOnly` prop that follows
+   * keeps it editable. A view that is always editable leaves it out.
+   */
+  editAt?: (x: number, y: number) => void;
   format: (format: MarkdownFormat) => void;
   outline: (command: OutlineCommand) => void;
 }
@@ -173,6 +179,14 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   useImperativeHandle(ref, () => ({
     ready: () => Boolean(editor.current),
     focus: () => editor.current?.focus(),
+    editAt(x, y) {
+      const view = editor.current;
+      if (!view) return;
+      const anchor = view.posAtCoords({ x, y }, false);
+      // The attributes follow the update at once: the content is `contenteditable` before it takes focus.
+      view.dispatch({ effects: permission.current.reconfigure([EditorState.readOnly.of(false), EditorView.editable.of(true)]), selection: { anchor } });
+      view.focus();
+    },
     getSelection: () => {
       const selection = editor.current?.state.selection.main;
       return selection ? { from: selection.from, to: selection.to } : null;

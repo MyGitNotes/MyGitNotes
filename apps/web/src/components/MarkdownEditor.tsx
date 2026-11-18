@@ -24,6 +24,7 @@ import { isOutlinePath } from '@mygitnotes/core/outline';
 import { editOutline, type OutlineCommand } from '../lib/outline-editing.js';
 import { OutlineRawHistory, type OutlineRawSnapshot } from '../lib/outline-raw-history.js';
 import { textChange } from '../lib/text-change.js';
+import { textareaOffsetAt } from '../lib/textarea-caret.js';
 import { formatKeys } from '../lib/keyboard/keys.js';
 import { bindingsFor, keymapEntry, matchesCommand } from '../lib/keyboard/keymap.js';
 import { keyEnvironment } from '../lib/keyboard/platform.js';
@@ -46,6 +47,12 @@ export interface MarkdownEditorHandle {
   ready: () => boolean;
   /** Puts the cursor in the editor where its selection already is, without scrolling to it. */
   focus: () => void;
+  /**
+   * Turns a read-only editor writable before returning, puts the caret at the text nearest the viewport point and
+   * focuses it: a phone's double tap calls it from its touch, which a focus must happen in to raise the keyboard. The
+   * `readOnly` prop the caller then sets to false keeps it writable.
+   */
+  editAt?: (x: number, y: number) => void;
 }
 interface Props {
   content: string;
@@ -550,6 +557,17 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
     focus() {
       if (mode === 'live' && isMarkdown) live.current?.focus();
       else source.current?.focus({ preventScroll: true });
+    },
+    editAt(x, y) {
+      if (mode === 'live' && isMarkdown) return live.current?.editAt?.(x, y);
+      const area = source.current;
+      if (!area) return;
+      const at = textareaOffsetAt(area, x, y);
+      area.readOnly = false;
+      // iOS raises no keyboard for a focus on the element that already has it, as a read-only textarea a tap focused does.
+      if (area.ownerDocument.activeElement === area) area.blur();
+      area.focus({ preventScroll: true });
+      if (at !== null) area.setSelectionRange(at, at);
     },
     getSelection() {
       if (mode === 'live' && isMarkdown) {
