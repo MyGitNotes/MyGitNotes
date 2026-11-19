@@ -69,9 +69,10 @@ export interface AgentTarget {
 
 /**
  * Runs one of the agent's note tools on this page and answers its result; a thrown error is the agent's to read.
- * `scope` is what the agent may change at the moment the call arrives (see `WriteScope`); reads ignore it.
+ * `scope` is what the agent may change at the moment the call arrives (see `WriteScope`); reads ignore it. `keep` adds a
+ * note the call created to the notes kept editable for this session in this tab, so the agent may go on changing it.
  */
-export type WebToolHandler = (tool: string, args: Record<string, unknown>, scope: WriteScope) => Promise<unknown>;
+export type WebToolHandler = (tool: string, args: Record<string, unknown>, scope: WriteScope, keep?: (note: ScopedNote) => void) => Promise<unknown>;
 
 /** A model Pi has credentials for; `value` is `provider/id`, the key the panel selects it by. */
 export interface PiModelOption {
@@ -163,7 +164,7 @@ export interface PiAgentValue {
   session: PiSessionInfo | null;
   /** What the panel can name to Pi right now; null on the notebook list or an empty pane. */
   target: AgentTarget | null;
-  /** Notes the person has kept editable for the agent beyond the open one; empty unless the agent edits notes through the page. */
+  /** Notes the person has kept editable for the agent beyond the open one, and the notes the agent created through the page in this session; empty unless the agent edits notes through the page. */
   editable: ScopedNote[];
   /** Keeps `note` editable for the agent (or stops), so it may change it after the person opens another note. */
   setEditable: (note: ScopedNote, on: boolean) => void;
@@ -365,7 +366,7 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
   /** The socket the live session named, kept here because `connect` also runs from timers that have only the ref. */
   const socketInfo = useRef<PiSessionInfo['socket']>(undefined);
   const sessionId = useRef<string | null>(null);
-  // Notes the person kept editable for the agent. They belong to the session they were kept in: another session starts with none.
+  // Notes the person kept editable for the agent, and those the agent created. They belong to the session they were kept in: another session starts with none.
   const [kept, setKept] = useState<{ session: string; notes: ScopedNote[]; } | null>(null);
   const keptRef = useRef(kept);
   const keptNotes = (own: typeof kept, session: string | null) => own && own.session === session ? own.notes : [];
@@ -433,7 +434,12 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
           // Read when the call arrives, not when the agent started: the note open now and the notes kept editable now.
           const open = targets.current.at(-1);
           const scope: WriteScope = { open: open ? { notebookId: open.notebookId, path: open.path } : null, allowed: keptNotes(keptRef.current, sessionId.current) };
-          handler(String(record.tool), (record.arguments ?? {}) as Record<string, unknown>, scope).then(result => reply({ result }), (error: Error) => reply({ error: error.message }));
+          // A note this call creates is kept for the session the call arrived in; a call that outlives its session keeps nothing.
+          const calledIn = sessionId.current;
+          const keep = (note: ScopedNote) => {
+            if (calledIn !== null && sessionId.current === calledIn) setEditable(note, true);
+          };
+          handler(String(record.tool), (record.arguments ?? {}) as Record<string, unknown>, scope, keep).then(result => reply({ result }), (error: Error) => reply({ error: error.message }));
         }
         return;
       }
@@ -510,7 +516,7 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
         }).catch((reason: Error) => setError(reason.message));
       }, RECONNECT_MS);
     };
-  }, [releaseHeld]);
+  }, [releaseHeld, setEditable]);
 
   const attach = useCallback((info: PiSessionInfo | null) => {
     if (info?.id !== sessionId.current) {

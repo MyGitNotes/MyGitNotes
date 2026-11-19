@@ -2271,7 +2271,7 @@ export const en = {
   'piAgent.scope': 'Pi may edit',
   'piAgent.scope.open': '(open)',
   'piAgent.scope.openHint': 'The open note is always editable for Pi. Check it to keep it editable after you open another note.',
-  'piAgent.scope.hint': 'Pi may change only the open note and the notes checked here. For any other note it proposes the change as text for you to apply.',
+  'piAgent.scope.hint': 'Pi may change only the open note and the notes checked here, and may create new notes in their notebooks (they are added here, so uncheck one to stop). For any other note it proposes the change as text for you to apply.',
   'piAgent.extensionInfo': 'Extension status',
   'piAgent.model': 'Model',
   'piAgent.thinkingLevel': 'Thinking level',

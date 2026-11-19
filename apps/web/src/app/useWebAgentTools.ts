@@ -13,7 +13,7 @@ import { draftScope } from '../lib/workspace-repositories.js';
 import { isNotebookKey } from '../lib/notebook-keys.js';
 import type { NoteItem } from '../lib/types.js';
 import type { WebToolHandler } from '../lib/pi-agent/session.js';
-import { assertInWriteScope, NO_WRITE_SCOPE } from '../lib/pi-agent/write-scope.js';
+import { assertInWriteScope, inWriteNotebook, inWriteScope, NO_WRITE_SCOPE, writeScopeRefusal } from '../lib/pi-agent/write-scope.js';
 import type { WorkspaceState } from './workspace-state.js';
 import type { useWorkspaceNotes } from './useWorkspaceNotes.js';
 
@@ -70,9 +70,11 @@ const AGENT_FILE = /(?:^|\/)AGENTS\.md$|(?:^|\/)\.agents\/skills\//;
 /**
  * The agent's note tools for a remote workspace: reads see the person's working changes, and writes become
  * working changes of this page, which the person commits. Nothing here commits or reaches the repository host.
+ * A write is limited to the notes in `scope`, except that a note that does not exist yet may be created in a notebook
+ * of the notes in scope; `keep` then adds the created note to the notes the person kept for this session.
  */
 export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, canWriteNotebook, revisionFor, readDraft, updateDraft, stageWorkingNote, findCommittedNote, resolveBareNotebook }: Params): WebToolHandler {
-  return useCallback<WebToolHandler>(async (tool, args, scope = NO_WRITE_SCOPE) => {
+  return useCallback<WebToolHandler>(async (tool, args, scope = NO_WRITE_SCOPE, keep) => {
     // A bare local id, as tool calls written before notebook keys name one, resolves as an MCP tool argument does.
     const named = typeof args.notebookId === 'string' ? isNotebookKey(args.notebookId) ? args.notebookId : resolveBareNotebook(args.notebookId) ?? args.notebookId : undefined;
     /** The notebook a repository-relative path belongs to; `notebookId` tells repositories with the same path apart. */
@@ -96,6 +98,21 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
     };
     /** Refuses a change to a note the person has not put in scope; it runs before anything else looks at the note. Reads are not limited. */
     const assertInScope = (notebookId: string, path: string) => assertInWriteScope(scope, { notebookId, path });
+    /** Whether the person's editor holds typing for the note that is not a working change yet. */
+    const hasTyping = (notebookId: string, path: string) => {
+      const repository = repositoryFor(notebookId);
+      return Boolean(repository && getLocalDraft(draftScope(repository), path));
+    };
+    /**
+     * How a write to `path` stands: `scoped` when the note is in scope, `created` when nothing exists at the path (not in the
+     * repository, not as a working change, deleted ones included, and not as typing in an editor) and a note in scope
+     * belongs to its notebook; any other write is refused, an existing note outside the scope included.
+     */
+    const writeKind = async (notebookId: string, path: string): Promise<'scoped' | 'created'> => {
+      if (inWriteScope(scope, { notebookId, path })) return 'scoped';
+      if (inWriteNotebook(scope, notebookId) && !readDraft(notebookId, path) && !hasTyping(notebookId, path) && !await findCommittedNote({ notebookId, path }, { fresh: true })) return 'created';
+      throw writeScopeRefusal(scope, { notebookId, path });
+    };
     const assertWritable = (notebookId: string) => {
       if (!canWriteNotebook(notebookId)) throw new Error('This notebook is read-only for the person.');
     };
@@ -108,20 +125,26 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       return { draft: undefined, note: committed, base: committed };
     };
     const describe = (note: NoteItem, source: 'working' | 'committed') => ({ path: note.path, notebookId: note.notebookId, source, metadata: note.metadata, content: note.content });
-    /** Stages `content` and `metadata` for the note, created when it does not exist, and shows it in an open editor. */
-    const stage = async (notebookId: string, path: string, content: string, metadata: Record<string, unknown> | undefined) => {
-      assertInScope(notebookId, path);
+    /**
+     * Stages `content` and `metadata` for the note, created when it does not exist, and shows it in an open editor. A note
+     * made by `creating` (outside the scope, in a notebook of it) is added to the notes kept for the session once staged; it
+     * never replaces anything, so a note that appeared at its path since `writeKind` looked is refused.
+     */
+    const stage = async (notebookId: string, path: string, content: string, metadata: Record<string, unknown> | undefined, creating = false) => {
+      if (creating ? !inWriteNotebook(scope, notebookId) : !inWriteScope(scope, { notebookId, path })) throw writeScopeRefusal(scope, { notebookId, path });
       assertWritable(notebookId);
       const draft = readDraft(notebookId, path);
       assertNotEditing(notebookId, path, draft);
       await assertNotLive(notebookId, path);
       // A deleted note written again is a change of the committed note it deleted.
       const base = draft ? draft.base : await findCommittedNote({ notebookId, path });
+      if (creating && (base || readDraft(notebookId, path) || hasTyping(notebookId, path))) throw writeScopeRefusal(scope, { notebookId, path });
       const original = draft && !draft.deleted ? draft.note : base;
       const merged = { ...original?.metadata, ...metadata };
       const note: NoteItem = original ? { ...original, content, metadata: merged, revision: base?.revision || original.revision } : { id: path, path, notebookId, title: path.split('/').pop() || path, content, metadata: merged, tags: [], revision: revisionFor(notebookId) };
       stageWorkingNote(note, base);
       noteExternalEdit(noteRefKey({ notebookId, path }));
+      if (creating) keep?.({ notebookId, path });
       return { path, notebookId, source: 'working' as const, created: !base };
     };
 
@@ -174,6 +197,10 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       return { notebook, templates: overlayDraftTemplates(await fetchNoteTemplates(notebookId), notebook, activeWorkingNotes).map(template => ({ ...template, lastUsed: newest(template.lastUsed ?? null, lastUseOf(drafted, template.id) ?? undefined) })) };
     };
     const noTemplate = (notebookId: string, id: string, templates: { id: string; }[]) => new Error(`Notebook ${notebookId} has no template '${id}'. Its templates: ${templates.map(candidate => candidate.id).join(', ') || 'none'}.`);
+    /** Whether `path` is a note path of the notebook that a new note may take: not a hidden folder's or file's, and not one with a backslash or a NUL. */
+    const assertNewNotePath = (notebook: { id: string; root: string; }, path: string) => {
+      if (!isNoteFile(path) || path.includes('\\') || path.includes('\0') || !path.startsWith(`${notebook.root}/`) || path.slice(notebook.root.length + 1).split('/').some(part => !part || part.startsWith('.'))) throw new Error(`${path} is not a note path of notebook ${notebook.id}.`);
+    };
     /** Stages a new note made from a template of its notebook, filled by name; an existing note at the path is refused. */
     const stageFromTemplate = async () => {
       const id = text(args.template, 'template');
@@ -189,9 +216,10 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       const metadata = args.metadata === undefined ? undefined : args.metadata;
       if (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))) throw new Error('metadata must be an object.');
       const made = noteFromTemplate(notebook, file, { templateId: template.id, path: given, title: args.title === undefined ? undefined : text(args.title, 'title'), values: args.values, content: args.content === undefined ? undefined : text(args.content, 'content'), metadata: metadata as Record<string, unknown> | undefined, clock: localTemplateClock() });
-      if (!isNoteFile(made.path) || !made.path.startsWith(`${notebook.root}/`) || made.path.slice(notebook.root.length + 1).split('/').some(part => !part || part.startsWith('.'))) throw new Error(`${made.path} is not a note path of notebook ${notebookId}.`);
+      assertNewNotePath(notebook, made.path);
       if ((await current(notebookId, made.path)).note) throw new Error(`A note already exists at ${made.path}.`);
-      return { ...await stage(notebookId, made.path, made.content, made.metadata), template: template.id, unfilled: made.unfilled };
+      // A path the person did not put in scope is a creation: it is allowed in a notebook of the notes in scope, and refused elsewhere.
+      return { ...await stage(notebookId, made.path, made.content, made.metadata, !inWriteScope(scope, { notebookId, path: made.path })), template: template.id, unfilled: made.unfilled };
     };
 
     switch (tool) {
@@ -240,10 +268,11 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
         if (args.template !== undefined) return stageFromTemplate();
         if (args.values !== undefined) throw new Error('values fill a template: name one as template.');
         const { path, notebookId } = locate();
-        assertInScope(notebookId, path);
+        const creating = await writeKind(notebookId, path) === 'created';
+        if (creating) assertNewNotePath((config?.notebooks ?? []).find(notebook => notebook.id === notebookId)!, path);
         const metadata = args.metadata === undefined ? undefined : args.metadata;
         if (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))) throw new Error('metadata must be an object.');
-        return stage(notebookId, path, text(args.content, 'content'), metadata as Record<string, unknown> | undefined);
+        return stage(notebookId, path, text(args.content, 'content'), metadata as Record<string, unknown> | undefined, creating);
       }
       case 'edit_note': {
         const { path, notebookId } = locate();

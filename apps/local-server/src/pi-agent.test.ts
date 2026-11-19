@@ -526,13 +526,18 @@ describe('web agent note tools', () => {
     expect(await answered).toEqual({ status: 200, body: { result: { source: 'working', content: '# A' } } });
   });
 
-  it('tells Pi that it may change only the open note and the notes marked editable, and to propose any other change as text', async () => {
+  it('tells Pi that it may change only the open note and the notes marked editable, create notes in their notebooks, and propose any other change as text', async () => {
     expect(WEB_TOOLS_PROMPT).toContain('You may change only the note the person has open in their editor');
-    expect(WEB_TOOLS_PROMPT).toContain('the page refuses mygitnotes_write_note, mygitnotes_edit_note and mygitnotes_delete_note on any other note');
+    expect(WEB_TOOLS_PROMPT).toContain('You may also create a note that does not exist yet, with mygitnotes_write_note (a new path, or a template) in the notebook of one of those notes, and the note you create stays editable for you for the session');
+    expect(WEB_TOOLS_PROMPT).toContain('The page refuses mygitnotes_edit_note and mygitnotes_delete_note on any other note, mygitnotes_write_note on a note that already exists outside that list, and creating a note in any other notebook');
     expect(WEB_TOOLS_PROMPT).toContain('write the proposed change as text in your reply');
     // The extension imports typebox, which Pi supplies when it loads it, so its tool descriptions are read from the source.
     const source = fs.readFileSync(WEB_TOOLS_EXTENSION, 'utf8');
-    for (const label of ['Write note', 'Edit note', 'Delete note']) expect(source).toMatch(new RegExp(`label: '${label}', description: (?:(?!parameters:)[^])*?\\$\\{SCOPE_GUIDANCE\\}(?:(?!parameters:)[^])*?parameters:`));
+    const described = (label: string, guidance: string) => new RegExp(`label: '${label}', description: (?:(?!parameters:)[^])*?\\$\\{${guidance}\\}(?:(?!parameters:)[^])*?parameters:`);
+    for (const label of ['Edit note', 'Delete note']) expect(source).toMatch(described(label, 'SCOPE_GUIDANCE'));
+    // Writing says it may also create, in the notebook of a note in scope; the guidance for changing an existing note does not promise that.
+    expect(source).toMatch(described('Write note', 'WRITE_SCOPE_GUIDANCE'));
+    expect(source).toMatch(/const WRITE_SCOPE_GUIDANCE = "[^"]*a note that does not exist yet in the notebook of one of those \(a note you create stays editable for you this session\)[^"]*never replaces an existing note outside that scope[^"]*refuses a new note in another notebook/);
     expect(source).toMatch(/label: 'Read note', description: '[^`]*?', parameters/);
   });
 

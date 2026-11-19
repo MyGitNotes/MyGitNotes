@@ -111,7 +111,7 @@ Keep those log files readable only by you, and run `--rotate-secret` if one is e
   The bridge starts Pi with the MyGitNotes tools (five note tools, and two read-only tools for the workspace's `AGENTS.md` and skills) and the tools of the MCP servers configured in your Pi (its `mcp` tool and `mcp__<server>__<tool>` tools).
   Pi's file and command tools (`read`, `write`, `edit`, `bash` and the others) are off, and other extensions' tools are not offered.
   The note tools change your notes only as working changes in your browser, which you review and commit.
-  They write, edit or delete only the note open in the editor of the page you prompt from, and notes you marked editable in the agent panel's context menu for this session in this tab; any other change is refused and comes back as text for you to apply.
+  They write, edit or delete only the note open in the editor of the page you prompt from, and notes you marked editable in the agent panel's context menu for this session in this tab; they may also create a note that does not exist yet in the notebook of one of those notes, and that note then stays editable for the session in this tab. Any other change is refused and comes back as text for you to apply.
   Pi's working folder is empty; the `AGENTS.md` files and skill list of the agent workspace you chose are read from the repository and added to Pi's system prompt.
   This choice is fixed by the bridge: it comes after anything you pass to Pi, which is why `-- --tools …` is refused.
   **Your own MCP servers are reachable.**

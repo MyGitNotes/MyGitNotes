@@ -10,7 +10,7 @@ import { externalEditCount } from '../lib/external-note-edits.js';
 import { saveLocalDraft } from '../lib/storage.js';
 import type { NoteItem } from '../lib/types.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
-import type { WriteScope } from '../lib/pi-agent/write-scope.js';
+import type { ScopedNote, WriteScope } from '../lib/pi-agent/write-scope.js';
 
 vi.mock('../lib/api.js', () => ({ fetchAgentResources: vi.fn(), readAgentResource: vi.fn(), fetchNoteTemplates: vi.fn(async () => []) }));
 
@@ -26,7 +26,14 @@ const note = (path: string, notebookId = 'notes~life') => ({ notebookId, path })
 /** The plan is open in the editor; the other notes the tests change are marked editable, so only the scope tests narrow it. */
 const WIDE: WriteScope = { open: note('notes/plan.md'), allowed: ['notes/new.md', 'notes/other.md', 'notes/reading/Dune.md', 'notes/live.md', 'notes/own.md', 'notes/sync.md', 'notes/x.md', 'notes/.hidden/x.md'].map(path => note(path)) };
 
-function tools({ writable = true, scope = WIDE }: { writable?: boolean; scope?: WriteScope; } = {}) {
+/** What a test changes in the page's state between the checks of one call, as another tab or the person's own typing could. */
+interface Hooks {
+  /** Answers the lookup of a committed note in place of the `server` notes (undefined: the server's); `count` is how many lookups were made. */
+  lookup?: (path: string, count: number) => NoteItem | null | undefined;
+}
+
+/** `blog` adds a second notebook of the repository, `notes~blog`, for the tests that cross notebooks. */
+function tools({ writable = true, scope = WIDE, hooks = {}, blog = false }: { writable?: boolean; scope?: WriteScope; hooks?: Hooks; blog?: boolean; } = {}) {
   const readDraft = (_notebookId: string, path: string) => readWorkingNotes(store)[path];
   const updateDraft = (_notebookId: string, path: string, entry: WorkingNote | null) => {
     updateWorkingNote(store, path, entry);
@@ -36,8 +43,16 @@ function tools({ writable = true, scope = WIDE }: { writable?: boolean; scope?: 
     return note;
   });
   const active = (): WorkingNotes => Object.fromEntries(Object.values(readWorkingNotes(store)).map(entry => [noteRefKey(entry.note), entry]));
-  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: active(), repositoryFor: () => repository, canWriteNotebook: () => writable, revisionFor: () => repository.revision, readDraft, updateDraft, stageWorkingNote, findCommittedNote: async (ref, options) => cachedWithoutLive(server.get(ref.path) ?? null, options?.fresh), resolveBareNotebook: localId => localId === 'life' ? 'notes~life' : null }));
-  return { call: (tool: string, args: Record<string, unknown>) => result.current(tool, args, scope), stageWorkingNote };
+  let lookups = 0;
+  const findCommittedNote = async (ref: { path: string; }, options?: { fresh?: boolean; }) => {
+    const answered = hooks.lookup?.(ref.path, ++lookups);
+    return cachedWithoutLive(answered !== undefined ? answered : server.get(ref.path) ?? null, options?.fresh);
+  };
+  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }, ...blog ? [{ id: 'notes~blog', title: 'Blog', root: 'blog' }] : []] } as never, activeWorkingNotes: active(), repositoryFor: () => repository, canWriteNotebook: () => writable, revisionFor: () => repository.revision, readDraft, updateDraft, stageWorkingNote, findCommittedNote, resolveBareNotebook: localId => localId === 'life' ? 'notes~life' : null }));
+  // The page keeps the notes a call creates, as the session does: they are in the scope of every call after it.
+  const kept: ScopedNote[] = [];
+  const keep = vi.fn((created: ScopedNote) => void kept.push(created));
+  return { call: (tool: string, args: Record<string, unknown>) => result.current(tool, args, { open: scope.open, allowed: [...scope.allowed, ...kept] }, keep), stageWorkingNote, keep, kept };
 }
 
 beforeEach(() => {
@@ -272,10 +287,8 @@ it('refuses to write, edit or delete another note, tells the agent to propose th
   // A delete outside the scope never reaches the trash.
   await expect(call('delete_note', { path: 'notes/other.md' })).rejects.toThrow(REFUSED);
   await expect(call('delete_note', { path: 'notes/other.md' })).rejects.toThrow('You may change only notes/plan.md.');
-  // Creating a note is a change of a path outside the scope as well, by path or from a template.
-  await expect(call('write_note', { path: 'notes/brand-new.md', content: 'x' })).rejects.toThrow(REFUSED);
-  withTemplates();
-  await expect(call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Dune' } })).rejects.toThrow(REFUSED);
+  // Neither edit nor delete creates anything: a note that does not exist yet is outside the scope for them.
+  await expect(call('delete_note', { path: 'notes/brand-new.md' })).rejects.toThrow(REFUSED);
   expect(stageWorkingNote).not.toHaveBeenCalled();
   expect(readWorkingNotes(store)).toEqual({});
   // The refusal is the guard's, not the missing note's: it comes before any lookup of the note.
@@ -306,16 +319,21 @@ it('allows a note the person kept editable beside the open one, but only that no
 });
 
 it('matches a path to the note exactly: another case, a leading slash, a traversal, a dot segment or a doubled slash never reaches another note', async () => {
-  const { call, stageWorkingNote } = tools({ scope: OPEN_PLAN });
-  // Another case is another note in a repository, so it is outside the scope.
-  await expect(call('write_note', { path: 'notes/Plan.md', content: 'x' })).rejects.toThrow(REFUSED);
+  const { call, stageWorkingNote, keep } = tools({ scope: OPEN_PLAN });
+  // Another case is another note in a repository, so it is outside the scope: it cannot be deleted, and writing it creates a new note beside the open one.
   await expect(call('delete_note', { path: 'notes/PLAN.md' })).rejects.toThrow(REFUSED);
-  // The rest are not note paths at all, so no spelling of the open note's path reaches around the exact match, nor out of the notebook.
-  for (const path of ['/notes/plan.md', 'notes/../notes/plan.md', 'notes/../plan.md', 'notes/./plan.md', 'notes//plan.md', '../notes/plan.md', 'notes\\plan.md']) {
-    await expect(call('write_note', { path, content: 'x' })).rejects.toThrow();
-    await expect(call('delete_note', { path })).rejects.toThrow();
+  expect(readWorkingNotes(store)['notes/plan.md']).toBeUndefined();
+  expect(await call('write_note', { path: 'notes/Plan.md', content: 'x' })).toMatchObject({ path: 'notes/Plan.md', created: true });
+  expect(keep).toHaveBeenCalledOnce();
+  stageWorkingNote.mockClear();
+  // The rest are not note paths at all, so no spelling of the open note's path reaches around the exact match, nor out of the notebook;
+  // a creation takes no path with a backslash, a hidden folder or file, or an empty or dot segment either.
+  for (const path of ['/notes/plan.md', 'notes/../notes/plan.md', 'notes/../plan.md', 'notes/./plan.md', 'notes//plan.md', '../notes/plan.md', 'notes\\plan.md', 'notes/a\\b.md', 'notes/.hidden/new.md', 'notes/.templates/new.md', 'notes/.new.md']) {
+    await expect(call('write_note', { path, content: 'x' }), path).rejects.toThrow();
+    await expect(call('delete_note', { path }), path).rejects.toThrow();
   }
   expect(stageWorkingNote).not.toHaveBeenCalled();
+  expect(keep).toHaveBeenCalledOnce();
 });
 
 it('follows a note the person moved: the open note is the new path, and the old path or a kept old path no longer is', async () => {
@@ -334,4 +352,118 @@ it('follows a note the person moved: the open note is the new path, and the old 
 it('refuses a change when the call arrives without a scope', async () => {
   const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: {}, repositoryFor: () => repository, canWriteNotebook: () => true, revisionFor: () => repository.revision, readDraft: () => undefined, updateDraft: vi.fn(), stageWorkingNote: vi.fn(), findCommittedNote: async () => null, resolveBareNotebook: () => null }));
   await expect((result.current as (tool: string, args: Record<string, unknown>) => Promise<unknown>)('write_note', { path: 'notes/plan.md', content: 'x' })).rejects.toThrow(REFUSED);
+});
+
+// Creating: a note that does not exist yet may be made in the notebook of a note in scope, and then stays in scope.
+it('creates a note that does not exist yet in the notebook of the open note, and keeps it for the session', async () => {
+  const { call, keep, kept, stageWorkingNote } = tools({ scope: OPEN_PLAN });
+  expect(await call('write_note', { path: 'notes/ideas/new.md', content: '# New\n', metadata: { title: 'New' } })).toEqual({ path: 'notes/ideas/new.md', notebookId: 'notes~life', source: 'working', created: true });
+  expect(readWorkingNotes(store)['notes/ideas/new.md']).toMatchObject({ base: null, note: { content: '# New\n', metadata: { title: 'New' } } });
+  expect(stageWorkingNote).toHaveBeenCalledOnce();
+  expect(keep).toHaveBeenCalledWith({ notebookId: 'notes~life', path: 'notes/ideas/new.md' });
+  expect(kept).toEqual([{ notebookId: 'notes~life', path: 'notes/ideas/new.md' }]);
+});
+
+it('creates in the notebook of a kept note when the open note lies in another, and nowhere else', async () => {
+  const { call, kept } = tools({ blog: true, scope: { open: note('blog/draft.md', 'notes~blog'), allowed: [note('notes/other.md')] } });
+  expect(await call('write_note', { path: 'notes/brand-new.md', content: 'x' })).toMatchObject({ created: true, notebookId: 'notes~life' });
+  expect(await call('write_note', { path: 'blog/brand-new.md', content: 'x' })).toMatchObject({ created: true, notebookId: 'notes~blog' });
+  expect(kept.map(created => created.path)).toEqual(['notes/brand-new.md', 'blog/brand-new.md']);
+});
+
+it('refuses to create a note in a notebook that holds no note in scope, and names where the agent may create', async () => {
+  const { call, keep, stageWorkingNote } = tools({ blog: true, scope: OPEN_PLAN });
+  await expect(call('write_note', { path: 'blog/post.md', content: 'x' })).rejects.toThrow(REFUSED);
+  await expect(call('write_note', { path: 'blog/post.md', content: 'x' })).rejects.toThrow('You may also create a note that does not exist yet in notebook notes~life.');
+  // Naming the notebook changes nothing: the notebook of the note is what counts.
+  await expect(call('write_note', { path: 'blog/post.md', content: 'x', notebookId: 'notes~blog' })).rejects.toThrow(REFUSED);
+  expect(stageWorkingNote).not.toHaveBeenCalled();
+  expect(keep).not.toHaveBeenCalled();
+  expect(readWorkingNotes(store)).toEqual({});
+});
+
+it('refuses to write a note that exists already outside the scope, wherever it exists, and changes nothing', async () => {
+  server.set('notes/other.md', committed('notes/other.md', 'other body'));
+  server.set('notes/trashed.md', committed('notes/trashed.md', 'trashed body'));
+  updateWorkingNote(store, 'notes/trashed.md', { note: committed('notes/trashed.md', 'trashed body'), base: committed('notes/trashed.md', 'trashed body'), deleted: true });
+  updateWorkingNote(store, 'notes/added.md', { note: committed('notes/added.md', 'added by the person'), base: null });
+  saveLocalDraft(scope, 'notes/typed.md', 'typing not yet saved', {});
+  const { call, keep, stageWorkingNote } = tools({ scope: OPEN_PLAN });
+  // In the repository, as the person's working change (added or deleted), and as typing in an editor.
+  for (const path of ['notes/other.md', 'notes/trashed.md', 'notes/added.md', 'notes/typed.md']) await expect(call('write_note', { path, content: 'overwritten' }), path).rejects.toThrow(REFUSED);
+  expect(stageWorkingNote).not.toHaveBeenCalled();
+  expect(keep).not.toHaveBeenCalled();
+  expect(readWorkingNotes(store)['notes/added.md'].note.content).toBe('added by the person');
+  expect(readWorkingNotes(store)['notes/trashed.md']).toMatchObject({ deleted: true });
+});
+
+it('lets the agent edit, overwrite and delete the note it created, and no other note beside it', async () => {
+  server.set('notes/other.md', committed('notes/other.md', 'other body'));
+  const { call } = tools({ scope: OPEN_PLAN });
+  await call('write_note', { path: 'notes/made.md', content: 'first draft' });
+  await call('edit_note', { path: 'notes/made.md', oldText: 'first', newText: 'second' });
+  expect(readWorkingNotes(store)['notes/made.md'].note.content).toBe('second draft');
+  expect(await call('write_note', { path: 'notes/made.md', content: 'third draft' })).toMatchObject({ created: true });
+  expect(readWorkingNotes(store)['notes/made.md'].note.content).toBe('third draft');
+  expect(await call('delete_note', { path: 'notes/made.md' })).toEqual({ path: 'notes/made.md', notebookId: 'notes~life', deleted: true, trashed: false });
+  expect(readWorkingNotes(store)['notes/made.md']).toBeUndefined();
+  // Creating a note grants nothing over the others in its notebook.
+  await expect(call('edit_note', { path: 'notes/other.md', oldText: 'other', newText: 'x' })).rejects.toThrow(REFUSED);
+  await expect(call('delete_note', { path: 'notes/other.md' })).rejects.toThrow(REFUSED);
+  await expect(call('write_note', { path: 'notes/other.md', content: 'x' })).rejects.toThrow(REFUSED);
+});
+
+it('refuses a creation that finds a note at its path by the time it stages, whether the note is committed or the person staged it meanwhile', async () => {
+  // The first lookup sees nothing; the next ones (the live check and the base) see a note another tab committed.
+  const committedMeanwhile = tools({ scope: OPEN_PLAN, hooks: { lookup: (path, count) => path === 'notes/race.md' && count > 1 ? committed('notes/race.md', 'someone else wrote this') : undefined } });
+  await expect(committedMeanwhile.call('write_note', { path: 'notes/race.md', content: 'overwrite' })).rejects.toThrow(REFUSED);
+  expect(committedMeanwhile.stageWorkingNote).not.toHaveBeenCalled();
+  expect(committedMeanwhile.keep).not.toHaveBeenCalled();
+  // The person's working change appears while the agent's call is awaiting.
+  const stagedMeanwhile = tools({
+    scope: OPEN_PLAN,
+    hooks: {
+      lookup: (path, count) => {
+        if (path === 'notes/race2.md' && count === 2) updateWorkingNote(store, 'notes/race2.md', { note: committed('notes/race2.md', 'the person was faster'), base: null });
+        return undefined;
+      },
+    },
+  });
+  await expect(stagedMeanwhile.call('write_note', { path: 'notes/race2.md', content: 'overwrite' })).rejects.toThrow(REFUSED);
+  expect(stagedMeanwhile.stageWorkingNote).not.toHaveBeenCalled();
+  expect(readWorkingNotes(store)['notes/race2.md'].note.content).toBe('the person was faster');
+});
+
+it('creates a note from a template in the notebook of a note in scope, keeps it, and refuses the other notebooks and the notes that exist', async () => {
+  withTemplates();
+  server.set('notes/reading/Emma.md', committed('notes/reading/Emma.md', 'Emma'));
+  const { call, keep, kept } = tools({ blog: true, scope: OPEN_PLAN });
+  expect(await call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Dune' } })).toMatchObject({ path: 'notes/reading/Dune.md', notebookId: 'notes~life', created: true, template: 'reading' });
+  expect(kept).toEqual([{ notebookId: 'notes~life', path: 'notes/reading/Dune.md' }]);
+  // A note made from a template is as editable afterwards as any the agent created.
+  await call('edit_note', { path: 'notes/reading/Dune.md', oldText: '{{takeaway}}', newText: 'spice' });
+  expect(readWorkingNotes(store)['notes/reading/Dune.md'].note.content).toBe('# Dune\n\n> spice\n');
+  // An existing note is refused by the template's own rule, and a note the template makes in another notebook by the scope.
+  await expect(call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Emma' } })).rejects.toThrow('A note already exists at notes/reading/Emma.md');
+  await expect(call('write_note', { notebookId: 'notes~blog', template: 'reading', path: 'blog/Dune.md' })).rejects.toThrow(REFUSED);
+  expect(keep).toHaveBeenCalledOnce();
+  expect(readWorkingNotes(store)['blog/Dune.md']).toBeUndefined();
+  // Without a note in scope, no template creates.
+  await expect(tools({ scope: { open: null, allowed: [] } }).call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Ulysses' } })).rejects.toThrow('You may change no note now');
+});
+
+it('takes the notes in scope from the call, so a creation one page may make is refused on another that has no note in the notebook', async () => {
+  const first = tools({ blog: true, scope: { open: note('notes/plan.md'), allowed: [] } });
+  const second = tools({ blog: true, scope: { open: note('blog/draft.md', 'notes~blog'), allowed: [] } });
+  expect(await first.call('write_note', { path: 'notes/page-one.md', content: 'x' })).toMatchObject({ created: true });
+  await expect(second.call('write_note', { path: 'notes/page-two.md', content: 'x' })).rejects.toThrow(REFUSED);
+  expect(second.keep).not.toHaveBeenCalled();
+  expect(first.keep).toHaveBeenCalledOnce();
+});
+
+it('refuses a creation in a read-only notebook, and keeps nothing', async () => {
+  const { call, keep, stageWorkingNote } = tools({ writable: false, scope: OPEN_PLAN });
+  await expect(call('write_note', { path: 'notes/new.md', content: 'x' })).rejects.toThrow('read-only');
+  expect(stageWorkingNote).not.toHaveBeenCalled();
+  expect(keep).not.toHaveBeenCalled();
 });

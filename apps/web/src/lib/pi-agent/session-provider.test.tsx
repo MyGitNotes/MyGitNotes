@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { NotebookConfig } from '../types.js';
 import { type WebFeature, WebFeaturesProvider } from '../web-features.js';
 import { agentSocketTarget, PiAgentProvider, type PiAgentValue, type PiSessionInfo, usePiAgent, usePublishAgentTarget, type WebToolHandler } from './session.js';
+import type { ScopedNote, WriteScope } from './write-scope.js';
 
 /** A socket that never reaches Pi; tests push bridge records into it. */
 class FakeSocket {
@@ -511,6 +512,69 @@ it('hands the page handler the scope at the moment a call arrives: the open note
   });
   expect(scopes).toHaveLength(5);
   expect(scopes.at(-1)).toMatchObject({ allowed: [] });
+});
+
+/** One page of the workspace: its own provider and socket, an open note, and a handler that creates the note a call names. */
+async function page(open: string) {
+  const calls: { tool: string; scope: WriteScope; }[] = [];
+  const keeps: ((note: ScopedNote) => void)[] = [];
+  const handler: WebToolHandler = vi.fn(async (tool, args, scope, keep) => {
+    calls.push({ tool, scope });
+    if (typeof args.created === 'string') keep?.({ notebookId: 'nb', path: args.created });
+    if (keep) keeps.push(keep);
+    return {};
+  });
+  const seen: { current?: PiAgentValue; } = {};
+  const before = FakeSocket.last;
+  render(
+    <WebFeaturesProvider features={[]}>
+      <PiAgentProvider enabled defaultRepository={home} notebooks={notebooks} repositories={[{ id: home, notebooks: ['nb'], title: 'Knowledge Base' }]} webTools={handler}>
+        <Probe opened onValue={value => void (seen.current = value)} />
+        <OpenNote path={open} />
+      </PiAgentProvider>
+    </WebFeaturesProvider>,
+  );
+  await waitFor(() => expect(FakeSocket.last).not.toBe(before));
+  const socket = FakeSocket.last!;
+  act(() => {
+    socket.readyState = FakeSocket.OPEN;
+    socket.onopen?.();
+  });
+  await waitFor(() => expect(seen.current?.noteTools).toBe(true));
+  return { seen, socket, calls, keeps, ask: (id: string, args: Record<string, unknown> = {}) => act(() => socket.receive({ type: 'web_tool_request', id, tool: 'write_note', arguments: args })) };
+}
+
+it("keeps a note a call creates among the notes kept editable on the page that answered it, with the next call's scope, and on no other page", async () => {
+  const first = await page('notes/a.md');
+  const second = await page('notes/b.md');
+  // The page the person prompted from answers: the note it creates is kept there, and listed in that page's menu.
+  await second.ask('w1', { created: 'notes/made-on-b.md' });
+  await waitFor(() => expect(second.seen.current?.editable).toEqual([{ notebookId: 'nb', path: 'notes/made-on-b.md' }]));
+  expect(first.seen.current?.editable).toEqual([]);
+  expect(second.calls.at(-1)?.scope).toEqual({ open: { notebookId: 'nb', path: 'notes/b.md' }, allowed: [] });
+  // Its next call has the created note in scope; the other page's scope is its own.
+  await second.ask('w2');
+  expect(second.calls.at(-1)?.scope).toEqual({ open: { notebookId: 'nb', path: 'notes/b.md' }, allowed: [{ notebookId: 'nb', path: 'notes/made-on-b.md' }] });
+  await first.ask('w3');
+  expect(first.calls.at(-1)?.scope).toEqual({ open: { notebookId: 'nb', path: 'notes/a.md' }, allowed: [] });
+  // A note kept by creation is kept like any other: the person can stop it, and the same note again is kept once.
+  await second.ask('w4', { created: 'notes/made-on-b.md' });
+  expect(second.seen.current?.editable).toEqual([{ notebookId: 'nb', path: 'notes/made-on-b.md' }]);
+  act(() => second.seen.current!.setEditable({ notebookId: 'nb', path: 'notes/made-on-b.md' }, false));
+  await second.ask('w5');
+  expect(second.calls.at(-1)?.scope.allowed).toEqual([]);
+});
+
+it('keeps nothing for a call that outlives its session', async () => {
+  const only = await page('notes/a.md');
+  await only.ask('w1');
+  const keep = only.keeps.at(-1)!;
+  await act(async () => {
+    await only.seen.current!.switchWorkspace({ repository: home, folder: 'blog' });
+  });
+  await waitFor(() => expect(only.seen.current?.session?.id).toBe('s2'));
+  act(() => keep({ notebookId: 'nb', path: 'notes/late.md' }));
+  expect(only.seen.current?.editable).toEqual([]);
 });
 
 it('checks the models again by ending the session and starting a fresh one, since Pi reads keys only at start', async () => {
