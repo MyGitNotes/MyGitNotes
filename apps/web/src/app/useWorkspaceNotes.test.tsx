@@ -59,3 +59,16 @@ it("says the repository changed in the reader's language, not the server's words
   });
   expect(result.current.staleNotice).toBe('notes.repositoryChanged');
 });
+
+it('lists every committed entry kind afresh, so a twin of an outline or compilation is seen too', async () => {
+  const { result } = notes(false);
+  const outline = { id: 'notes/life/Plan.outline.yml', notebookId: 'notes~life', path: 'notes/life/Plan.outline.yml', title: 'Plan', tags: [], metadata: {} };
+  fetchMock.mockImplementation(async () => new Response(JSON.stringify({ revisions: { 'github:me/notes@main': REVISION }, notes: [outline], uncommitted: [] }), { headers: { 'Content-Type': 'application/json' } }));
+  expect(await act(() => result.current.listCommittedPaths('notes~life'))).toEqual([outline.path]);
+  const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://localhost');
+  expect(url.searchParams.get('kind')).toBe('all');
+  expect(url.searchParams.get('select')).toBe('paths');
+  // Read afresh: a second call asks the server again.
+  await act(() => result.current.listCommittedPaths('notes~life'));
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});

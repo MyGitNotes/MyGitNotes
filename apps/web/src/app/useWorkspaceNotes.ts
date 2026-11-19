@@ -74,9 +74,9 @@ export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, 
     const note = result.notes[0];
     return note && typeof note.content === 'string' ? note as NoteItem : null;
   };
-  /** The paths of the committed notes of a notebook, hidden ones included, read afresh. */
+  /** The paths of every committed entry of a notebook (notes, outlines, compilations, hidden ones included), read afresh. */
   const listCommittedPaths = async (notebookId: string): Promise<string[]> => {
-    const result = await queryClient.fetchQuery({ ...notePathsOptions(queryScope, { notebookId, showHidden: true }), staleTime: 0 });
+    const result = await queryClient.fetchQuery({ ...notePathsOptions(queryScope, { notebookId, showHidden: true, kind: 'all' }), staleTime: 0 });
     return result.notes.map(note => note.path);
   };
   const readCommittedNote = async (ref: NoteRef): Promise<NoteItem> => {
