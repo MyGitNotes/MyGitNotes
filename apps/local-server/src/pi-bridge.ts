@@ -157,16 +157,17 @@ export function startPiBridge(options: PiBridgeOptions): Promise<PiBridge> {
     if (allowedOrigins.length && (!origin || !allowedOrigins.includes(origin))) return refuse('403 Forbidden');
     if (!session) return refuse('409 Conflict');
     sockets.handleUpgrade(req, duplex, head, ws => {
-      const detach = session.attach({
-        send: text => {
+      const client = {
+        send: (text: string) => {
           active();
           ws.send(text);
         },
         close: () => ws.close(1000, 'Pi session ended'),
-      });
+      };
+      const detach = session.attach(client);
       ws.on('message', (data, isBinary) => {
         active();
-        const problem = isBinary ? 'Commands must be text frames.' : session.forward(data.toString());
+        const problem = isBinary ? 'Commands must be text frames.' : session.forward(data.toString(), client);
         if (problem) ws.send(JSON.stringify({ type: 'bridge_error', error: problem }));
       });
       ws.on('close', detach);

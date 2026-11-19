@@ -280,9 +280,10 @@ export function createPiAgent({ command, resolveFolder = workspaceFolder, webToo
     else if (!session) refuse('409 Conflict');
     else {
       sockets.handleUpgrade(req, socket, head, ws => {
-        const detach = session.attach({ send: text => ws.send(text), close: () => ws.close(1000, 'Pi session ended') });
+        const client = { send: (text: string) => ws.send(text), close: () => ws.close(1000, 'Pi session ended') };
+        const detach = session.attach(client);
         ws.on('message', (data, isBinary) => {
-          const problem = isBinary ? 'Commands must be text frames.' : session.forward(data.toString());
+          const problem = isBinary ? 'Commands must be text frames.' : session.forward(data.toString(), client);
           if (problem) ws.send(JSON.stringify({ type: 'bridge_error', error: problem }));
         });
         ws.on('close', detach);

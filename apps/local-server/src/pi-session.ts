@@ -60,6 +60,8 @@ export interface PiSessionListener {
 const CLIENT_COMMANDS = new Set(['prompt', 'steer', 'follow_up', 'abort', 'clear_queue', 'new_session', 'get_state', 'get_messages', 'extension_ui_response', 'get_available_models', 'set_model', 'get_available_thinking_levels', 'set_thinking_level', 'get_commands', 'compact', 'set_session_name', 'get_session_stats', 'bash', 'abort_bash']);
 /** The commands that run a shell, which a session started with `shell: false` refuses. */
 const SHELL_COMMANDS = new Set(['bash', 'abort_bash']);
+/** The commands that put words in front of Pi: the client that sent the latest of them is the one whose page answers Pi's note tools. */
+const PROMPT_COMMANDS = new Set(['prompt', 'steer', 'follow_up']);
 const DIALOG_METHODS = new Set(['select', 'confirm', 'input', 'editor']);
 /** Fire-and-forget UI state keyed by extension; the latest of each is replayed to a client that attaches later. */
 const STATE_KEYS: Record<string, string> = { setStatus: 'statusKey', setWidget: 'widgetKey' };
@@ -186,6 +188,8 @@ export class PiSession {
   private readonly uiState = new Map<string, string>();
   /** Pi's latest pending steering and follow-up queue, replayed to a client that attaches while messages wait. */
   private queue: string | undefined;
+  /** The client that sent the latest prompt, steer or follow-up; it holds the panel the person is typing into. */
+  private prompter: PiSessionListener | undefined;
   private readonly exited: Promise<void>;
   private stderr = '';
 
@@ -221,6 +225,7 @@ export class PiSession {
         this.info.status = 'exited';
         this.info.exit = { code, signal, stderr: failure ? `${failure.message}\n${this.stderr}`.trim() : this.stderr };
         this.openDialogs.clear();
+        this.prompter = undefined;
         for (const [id, call] of this.webToolCalls) this.settleWebTool(id, () => call.reject(new WebToolError('The Pi session has ended.')));
         this.broadcastStatus();
         for (const listener of this.listeners) listener.close();
@@ -251,6 +256,7 @@ export class PiSession {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
+      if (this.prompter === listener) this.prompter = undefined;
       for (const [id, call] of this.webToolCalls) if (call.listener === listener) this.settleWebTool(id, () => call.reject(new WebToolError('The page holding the agent panel closed before it answered. Ask the person to keep MyGitNotes open.')));
     };
   }
@@ -263,11 +269,13 @@ export class PiSession {
   }
 
   /**
-   * Asks the page that attached last, the one holding the panel, to run a note tool, and resolves with its answer.
+   * Asks a page to run a note tool, and resolves with its answer: the page that sent the latest prompt, steer or
+   * follow-up, since its person is the one whose editor and permissions the tool applies to; while that page is not
+   * attached (it left, or nothing was sent yet), the page that attached last.
    * Fails without a page, when the page leaves first, and after WEB_TOOL_TIMEOUT_MS.
    */
   callWebTool(tool: string, args: unknown, timeoutMs = WEB_TOOL_TIMEOUT_MS): Promise<unknown> {
-    const listener = [...this.listeners].at(-1);
+    const listener = this.prompter && this.listeners.has(this.prompter) ? this.prompter : [...this.listeners].at(-1);
     if (!listener) return Promise.reject(new WebToolError('Open MyGitNotes in a browser to let the agent edit notes.', 503));
     const id = randomUUID();
     return new Promise((resolve, reject) => {
@@ -285,8 +293,8 @@ export class PiSession {
     settle();
   }
 
-  /** Forwards one client frame; returns an error message when the frame is not an allowed command. */
-  forward(text: string): string | undefined {
+  /** Forwards one frame sent by the attached client `from`; returns an error message when the frame is not an allowed command. */
+  forward(text: string, from: PiSessionListener): string | undefined {
     let command: unknown;
     try {
       command = JSON.parse(text);
@@ -304,6 +312,7 @@ export class PiSession {
     if (command.type === 'extension_ui_response' && typeof command.id === 'string' && this.openDialogs.delete(command.id)) {
       this.broadcast(JSON.stringify({ type: 'bridge_ui_resolved', id: command.id }));
     }
+    if (PROMPT_COMMANDS.has(command.type) && this.listeners.has(from)) this.prompter = from;
     this.write(command);
     return undefined;
   }

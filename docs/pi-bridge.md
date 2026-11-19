@@ -111,11 +111,14 @@ Keep those log files readable only by you, and run `--rotate-secret` if one is e
   The bridge starts Pi with the MyGitNotes tools (five note tools, and two read-only tools for the workspace's `AGENTS.md` and skills) and the tools of the MCP servers configured in your Pi (its `mcp` tool and `mcp__<server>__<tool>` tools).
   Pi's file and command tools (`read`, `write`, `edit`, `bash` and the others) are off, and other extensions' tools are not offered.
   The note tools change your notes only as working changes in your browser, which you review and commit.
+  They write, edit or delete only the note open in the editor of the page you prompt from, and notes you marked editable in the agent panel's context menu for this session in this tab; any other change is refused and comes back as text for you to apply.
   Pi's working folder is empty; the `AGENTS.md` files and skill list of the agent workspace you chose are read from the repository and added to Pi's system prompt.
   This choice is fixed by the bridge: it comes after anything you pass to Pi, which is why `-- --tools …` is refused.
   **Your own MCP servers are reachable.**
   Whatever MCP servers you set up in Pi (`pi mcp list` shows them) are available to the agent, with the access they have; a server that can read your files or call a service as you does so for the agent too.
   Remove a server you do not want the agent to use, or start the bridge in an account where it is not configured.
+  MCP tools are also outside the limit on which notes the note tools may change, because they never go through the page.
+  Do not set up MyGitNotes' own `/mcp` connector, or any other MCP server that can write notes, in the Pi this bridge starts: it commits every write to any note, with no review in your browser.
 - **`--allow-local-tools` gives Pi your computer.**
   It restores all of Pi's tools, and the bridge prints a warning when it starts.
   Pi then runs as you and can read files, write files and run commands.

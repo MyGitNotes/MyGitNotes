@@ -574,6 +574,69 @@ describe('web agent note tools', () => {
     await expect(pending).rejects.toThrow('closed before it answered');
   });
 
+  describe('with two pages attached', () => {
+    type Client = ReturnType<typeof connect>;
+    const marked = (marker: string) => (record: Record<string, unknown>) => record.type === 'web_tool_request' && (record.arguments as { marker?: string; }).marker === marker;
+    const attachTwo = async () => {
+      const { base, port } = await start({ webTools: true });
+      await post(base, 'POST');
+      const first = connect(port, base);
+      await first.opened;
+      await first.next(record => record.type === 'bridge_status');
+      const second = connect(port, base);
+      await second.opened;
+      await second.next(record => record.type === 'bridge_status');
+      return { first, second, session: agent!.manager.session! };
+    };
+    /** Waits until Pi's session has handled everything `client` sent before, which it answers in order. */
+    const handled = async (client: Client) => {
+      const id = `handled-${Math.random()}`;
+      client.send({ id, type: 'get_state' });
+      await client.next(record => record.id === id);
+    };
+
+    it('relays a note tool call to the page that sent the latest prompt, steer or follow-up, and before any to the page that attached last', async () => {
+      const { first, second, session } = await attachTwo();
+      const route = async (marker: string, expected: Client, other: Client) => {
+        const pending = session.callWebTool('read_note', { marker }, 2000);
+        const request = await expected.next(marked(marker));
+        expected.send({ type: 'web_tool_response', id: request.id, result: marker });
+        await expect(pending).resolves.toBe(marker);
+        expect(other.records.some(marked(marker))).toBe(false);
+      };
+      await route('before any message', second, first);
+      first.send({ type: 'prompt', message: 'hello' });
+      await handled(first);
+      await route('after a prompt', first, second);
+      // Only a message to Pi moves the answering page: the other page asking for its state or answering a dialog does not.
+      await handled(second);
+      second.send({ type: 'extension_ui_response', id: 'nothing-open', value: 'A' });
+      await handled(second);
+      await route('after the other page spoke without prompting', first, second);
+      second.send({ type: 'steer', message: 'also this' });
+      await handled(second);
+      await route('after a steer', second, first);
+      first.send({ type: 'follow_up', message: 'then this' });
+      await handled(first);
+      await route('after a follow-up', first, second);
+    });
+
+    it('fails a call when the prompting page leaves mid-run, and sends the next one to the page that attached last instead of waiting', async () => {
+      const { first, second, session } = await attachTwo();
+      first.send({ id: 'tool gone', type: 'prompt', message: 'tool gone' });
+      await first.next(record => record.type === 'web_tool_request');
+      expect(second.records.some(record => record.type === 'web_tool_request')).toBe(false);
+      first.socket.close();
+      const outcome = JSON.parse(assistantText(await second.next(record => record.type === 'message_end' && assistantText(record).includes('"message":"tool gone","status"')))) as { status: number; body: { error: string; }; };
+      expect(outcome.status).toBe(409);
+      expect(outcome.body.error).toContain('closed before it answered');
+      const pending = session.callWebTool('read_note', { marker: 'after it left' }, 2000);
+      const request = await second.next(marked('after it left'));
+      second.send({ type: 'web_tool_response', id: request.id, result: 'answered' });
+      await expect(pending).resolves.toBe('answered');
+    });
+  });
+
   it('offers neither the tools nor their route without webTools', async () => {
     const { base, port } = await start();
     await post(base, 'POST');
