@@ -1,6 +1,7 @@
 import { splitAgentSkillContent } from '@mygitnotes/core/agent-skill-metadata';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { isNoteFile } from '@mygitnotes/core/note-file';
+import { differsOnlyInCase } from '@mygitnotes/core/case-collision';
 import { useCallback } from 'react';
 import YAML from 'yaml';
 import { lastUseOf, type ListedNoteTemplate, listTemplates, localTemplateClock, noteFromTemplate, templateLastUse } from '@mygitnotes/core/note-template';
@@ -27,6 +28,7 @@ interface Params {
   updateDraft: WorkspaceState['updateDraft'];
   stageWorkingNote: WorkspaceState['stageWorkingNote'];
   findCommittedNote: ReturnType<typeof useWorkspaceNotes>['findCommittedNote'];
+  listCommittedPaths: (notebookId: string) => Promise<string[]>;
   resolveBareNotebook: WorkspaceState['resolveBareNotebook'];
 }
 
@@ -66,6 +68,8 @@ function skillDescription(content: string): string {
 }
 
 const AGENT_FILE = /(?:^|\/)AGENTS\.md$|(?:^|\/)\.agents\/skills\//;
+/** Instruction files of coding agents: a new note never takes their name, in any folder. */
+const AGENT_INSTRUCTION_FILE = /(?:^|\/)(?:AGENTS|CLAUDE)\.md$/i;
 
 /**
  * The agent's note tools for a remote workspace: reads see the person's working changes, and writes become
@@ -73,7 +77,7 @@ const AGENT_FILE = /(?:^|\/)AGENTS\.md$|(?:^|\/)\.agents\/skills\//;
  * A write is limited to the notes in `scope`, except that a note that does not exist yet may be created in a notebook
  * of the notes in scope; `keep` then adds the created note to the notes the person kept for this session.
  */
-export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, canWriteNotebook, revisionFor, readDraft, updateDraft, stageWorkingNote, findCommittedNote, resolveBareNotebook }: Params): WebToolHandler {
+export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, canWriteNotebook, revisionFor, readDraft, updateDraft, stageWorkingNote, findCommittedNote, listCommittedPaths, resolveBareNotebook }: Params): WebToolHandler {
   return useCallback<WebToolHandler>(async (tool, args, scope = NO_WRITE_SCOPE, keep) => {
     // A bare local id, as tool calls written before notebook keys name one, resolves as an MCP tool argument does.
     const named = typeof args.notebookId === 'string' ? isNotebookKey(args.notebookId) ? args.notebookId : resolveBareNotebook(args.notebookId) ?? args.notebookId : undefined;
@@ -108,9 +112,17 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
      * repository, not as a working change, deleted ones included, and not as typing in an editor) and a note in scope
      * belongs to its notebook; any other write is refused, an existing note outside the scope included.
      */
+    /** Refuses a creation whose name a committed or working note already takes in another letter case or Unicode form: on a case-insensitive file system it would overwrite that note. */
+    const assertNoTwin = async (notebookId: string, path: string) => {
+      const paths = [...Object.values(activeWorkingNotes).filter(entry => entry.note.notebookId === notebookId).map(entry => entry.note.path), ...await listCommittedPaths(notebookId)];
+      if (differsOnlyInCase(paths, path)) throw new Error(`${path} differs only in letter case or Unicode form from another note; choose a different name.`);
+    };
     const writeKind = async (notebookId: string, path: string): Promise<'scoped' | 'created'> => {
       if (inWriteScope(scope, { notebookId, path })) return 'scoped';
-      if (inWriteNotebook(scope, notebookId) && !readDraft(notebookId, path) && !hasTyping(notebookId, path) && !await findCommittedNote({ notebookId, path }, { fresh: true })) return 'created';
+      if (inWriteNotebook(scope, notebookId) && !readDraft(notebookId, path) && !hasTyping(notebookId, path) && !await findCommittedNote({ notebookId, path }, { fresh: true })) {
+        await assertNoTwin(notebookId, path);
+        return 'created';
+      }
       throw writeScopeRefusal(scope, { notebookId, path });
     };
     const assertWritable = (notebookId: string) => {
@@ -138,6 +150,7 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       await assertNotLive(notebookId, path);
       // A deleted note written again is a change of the committed note it deleted.
       const base = draft ? draft.base : await findCommittedNote({ notebookId, path });
+      if (creating) await assertNoTwin(notebookId, path);
       if (creating && (base || readDraft(notebookId, path) || hasTyping(notebookId, path))) throw writeScopeRefusal(scope, { notebookId, path });
       const original = draft && !draft.deleted ? draft.note : base;
       const merged = { ...original?.metadata, ...metadata };
@@ -200,6 +213,7 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
     /** Whether `path` is a note path of the notebook that a new note may take: not a hidden folder's or file's, and not one with a backslash or a NUL. */
     const assertNewNotePath = (notebook: { id: string; root: string; }, path: string) => {
       if (!isNoteFile(path) || path.includes('\\') || path.includes('\0') || !path.startsWith(`${notebook.root}/`) || path.slice(notebook.root.length + 1).split('/').some(part => !part || part.startsWith('.'))) throw new Error(`${path} is not a note path of notebook ${notebook.id}.`);
+      if (AGENT_INSTRUCTION_FILE.test(path)) throw new Error(`${path} is an agent instruction file; a new note never takes that name.`);
     };
     /** Stages a new note made from a template of its notebook, filled by name; an existing note at the path is refused. */
     const stageFromTemplate = async () => {
@@ -295,6 +309,8 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
         // A note that exists only as a working change has nothing to keep: its change goes.
         if (draft && !draft.base) {
           updateDraft(notebookId, path, null);
+          // A creation that was kept for the session goes with it.
+          keep?.({ notebookId, path }, false);
           return { path, notebookId, deleted: true, trashed: false };
         }
         const base = draft?.base ?? await findCommittedNote({ notebookId, path });
@@ -307,5 +323,5 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       default:
         throw new Error(`Unknown note tool ${tool}.`);
     }
-  }, [config, activeWorkingNotes, repositoryFor, canWriteNotebook, revisionFor, readDraft, updateDraft, stageWorkingNote, findCommittedNote, resolveBareNotebook]);
+  }, [config, activeWorkingNotes, repositoryFor, canWriteNotebook, revisionFor, readDraft, updateDraft, stageWorkingNote, findCommittedNote, listCommittedPaths, resolveBareNotebook]);
 }

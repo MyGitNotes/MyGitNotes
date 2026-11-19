@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { invalidateNoteQueries, noteLookupOptions, resetStaleNoteQueries, setNoteQueryScope, useNoteQueryScope, useStaleNoteQueries } from '../lib/use-note-queries.js';
+import { invalidateNoteQueries, noteLookupOptions, notePathsOptions, resetStaleNoteQueries, setNoteQueryScope, useNoteQueryScope, useStaleNoteQueries } from '../lib/use-note-queries.js';
 import { notebookRepositories, revisionSet } from '../lib/workspace-repositories.js';
 import { composeCommitted } from '../lib/draft-overlay.js';
 import { LIVE_MERGE_CONFLICT } from '../lib/live-handover.js';
@@ -74,6 +74,11 @@ export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, 
     const note = result.notes[0];
     return note && typeof note.content === 'string' ? note as NoteItem : null;
   };
+  /** The paths of the committed notes of a notebook, hidden ones included, read afresh. */
+  const listCommittedPaths = async (notebookId: string): Promise<string[]> => {
+    const result = await queryClient.fetchQuery({ ...notePathsOptions(queryScope, { notebookId, showHidden: true }), staleTime: 0 });
+    return result.notes.map(note => note.path);
+  };
   const readCommittedNote = async (ref: NoteRef): Promise<NoteItem> => {
     const note = await findCommittedNote(ref);
     if (!note) throw new Error(t('notes.readFailed', { path: ref.path }));
@@ -85,5 +90,5 @@ export function useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, 
     return pending ? pending.note : readCommittedNote(ref);
   };
 
-  return { queryClient, queryScope, invalidateNotes, refreshNotes, staleNotice, findCommittedNote, readCommittedNote, readNoteForChange };
+  return { queryClient, queryScope, invalidateNotes, refreshNotes, staleNotice, findCommittedNote, listCommittedPaths, readCommittedNote, readNoteForChange };
 }

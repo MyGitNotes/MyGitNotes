@@ -72,7 +72,7 @@ export interface AgentTarget {
  * `scope` is what the agent may change at the moment the call arrives (see `WriteScope`); reads ignore it. `keep` adds a
  * note the call created to the notes kept editable for this session in this tab, so the agent may go on changing it.
  */
-export type WebToolHandler = (tool: string, args: Record<string, unknown>, scope: WriteScope, keep?: (note: ScopedNote) => void) => Promise<unknown>;
+export type WebToolHandler = (tool: string, args: Record<string, unknown>, scope: WriteScope, keep?: (note: ScopedNote, on?: boolean) => void) => Promise<unknown>;
 
 /** A model Pi has credentials for; `value` is `provider/id`, the key the panel selects it by. */
 export interface PiModelOption {
@@ -436,8 +436,8 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
           const scope: WriteScope = { open: open ? { notebookId: open.notebookId, path: open.path } : null, allowed: keptNotes(keptRef.current, sessionId.current) };
           // A note this call creates is kept for the session the call arrived in; a call that outlives its session keeps nothing.
           const calledIn = sessionId.current;
-          const keep = (note: ScopedNote) => {
-            if (calledIn !== null && sessionId.current === calledIn) setEditable(note, true);
+          const keep = (note: ScopedNote, on = true) => {
+            if (calledIn !== null && sessionId.current === calledIn) setEditable(note, on);
           };
           handler(String(record.tool), (record.arguments ?? {}) as Record<string, unknown>, scope, keep).then(result => reply({ result }), (error: Error) => reply({ error: error.message }));
         }

@@ -1283,6 +1283,13 @@ export abstract class RemoteSource {
       if (note.createOnly && snapshot.entries.some(entry => entry.path === note.path)) throw new SourceError(`A note already exists at ${note.path}.`, 409);
       if (!note.createOnly && !snapshot.entries.some(entry => entry.path === note.path)) throw new SourceError(`Note moved or deleted: ${note.path}.`, 409);
     }
+    // A creation never takes the name of another entry in different letter case or Unicode form, nor the name of another creation of this batch: a case-insensitive file system would make them one.
+    const removed = new Set(removals.map(note => note.path));
+    const created = writes.filter(note => note.createOnly).map(note => note.path);
+    for (const path of created) {
+      if (differsOnlyInCase(snapshot.entries.map(entry => entry.path), path, entry => removed.has(entry))) throw new SourceError(CASE_COLLISION_ERROR, 409);
+      if (differsOnlyInCase(created, path)) throw new SourceError(CASE_COLLISION_ERROR, 409);
+    }
     // Bounds concurrent blob reads the same way `contents()` does, so a 200-note batch cannot burst 200 uncached platform reads at once.
     await this.prefetchFiles(writes.filter(note => !note.createOnly).map(note => note.path));
     const changes: RemoteChange[] = [];

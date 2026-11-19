@@ -48,10 +48,17 @@ function tools({ writable = true, scope = WIDE, hooks = {}, blog = false }: { wr
     const answered = hooks.lookup?.(ref.path, ++lookups);
     return cachedWithoutLive(answered !== undefined ? answered : server.get(ref.path) ?? null, options?.fresh);
   };
-  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }, ...blog ? [{ id: 'notes~blog', title: 'Blog', root: 'blog' }] : []] } as never, activeWorkingNotes: active(), repositoryFor: () => repository, canWriteNotebook: () => writable, revisionFor: () => repository.revision, readDraft, updateDraft, stageWorkingNote, findCommittedNote, resolveBareNotebook: localId => localId === 'life' ? 'notes~life' : null }));
+  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }, ...blog ? [{ id: 'notes~blog', title: 'Blog', root: 'blog' }] : []] } as never, activeWorkingNotes: active(), repositoryFor: () => repository, canWriteNotebook: () => writable, revisionFor: () => repository.revision, readDraft, updateDraft, stageWorkingNote, findCommittedNote, listCommittedPaths: async () => [...server.keys()], resolveBareNotebook: localId => localId === 'life' ? 'notes~life' : null }));
   // The page keeps the notes a call creates, as the session does: they are in the scope of every call after it.
   const kept: ScopedNote[] = [];
-  const keep = vi.fn((created: ScopedNote) => void kept.push(created));
+  const keep = vi.fn((created: ScopedNote, on = true) => {
+    const at = kept.findIndex(entry => entry.notebookId === created.notebookId && entry.path === created.path);
+    if (!on) {
+      if (at >= 0) kept.splice(at, 1);
+      return;
+    }
+    kept.push(created);
+  });
   return { call: (tool: string, args: Record<string, unknown>) => result.current(tool, args, { open: scope.open, allowed: [...scope.allowed, ...kept] }, keep), stageWorkingNote, keep, kept };
 }
 
@@ -121,7 +128,7 @@ const agentContents: Record<string, string> = { 'AGENTS.md': 'Root rules.\n', 'b
 function agentTools() {
   const config = { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }, { id: 'blog~posts', title: 'Posts', root: 'blog/posts' }, { id: 'docs~all', title: 'Docs', root: 'notes' }] } as never;
   const repositoryFor = (notebookId: string) => notebookId === 'docs~all' ? other : notebookId === 'notes~life' || notebookId === 'blog~posts' ? repository : undefined;
-  const { result } = renderHook(() => useWebAgentTools({ config, activeWorkingNotes: {}, repositoryFor, canWriteNotebook: () => true, revisionFor: () => repository.revision, readDraft: () => undefined, updateDraft: vi.fn(), stageWorkingNote: vi.fn(), findCommittedNote: async () => null, resolveBareNotebook: () => null }));
+  const { result } = renderHook(() => useWebAgentTools({ config, activeWorkingNotes: {}, repositoryFor, canWriteNotebook: () => true, revisionFor: () => repository.revision, readDraft: () => undefined, updateDraft: vi.fn(), stageWorkingNote: vi.fn(), findCommittedNote: async () => null, listCommittedPaths: async () => [], resolveBareNotebook: () => null }));
   // The agent-system tools only read, and reads need no note in scope.
   return (tool: string, args: Record<string, unknown>) => result.current(tool, args, { open: null, allowed: [] });
 }
@@ -323,8 +330,9 @@ it('matches a path to the note exactly: another case, a leading slash, a travers
   // Another case is another note in a repository, so it is outside the scope: it cannot be deleted, and writing it creates a new note beside the open one.
   await expect(call('delete_note', { path: 'notes/PLAN.md' })).rejects.toThrow(REFUSED);
   expect(readWorkingNotes(store)['notes/plan.md']).toBeUndefined();
-  expect(await call('write_note', { path: 'notes/Plan.md', content: 'x' })).toMatchObject({ path: 'notes/Plan.md', created: true });
-  expect(keep).toHaveBeenCalledOnce();
+  // Another case is the same entry on a case-insensitive file system, so creating it is refused: it would overwrite the open note.
+  await expect(call('write_note', { path: 'notes/Plan.md', content: 'x' })).rejects.toThrow('differs only in letter case');
+  expect(keep).not.toHaveBeenCalled();
   stageWorkingNote.mockClear();
   // The rest are not note paths at all, so no spelling of the open note's path reaches around the exact match, nor out of the notebook;
   // a creation takes no path with a backslash, a hidden folder or file, or an empty or dot segment either.
@@ -333,7 +341,29 @@ it('matches a path to the note exactly: another case, a leading slash, a travers
     await expect(call('delete_note', { path }), path).rejects.toThrow();
   }
   expect(stageWorkingNote).not.toHaveBeenCalled();
+  expect(keep).not.toHaveBeenCalled();
+});
+
+it('refuses to create a twin of a committed or working note that differs only in case or Unicode form, and an agent instruction file', async () => {
+  server.set('notes/caf\u00e9.md', committed('notes/caf\u00e9.md', '# Cafe\n'));
+  const { call, keep, stageWorkingNote } = tools({ scope: OPEN_PLAN });
+  await expect(call('write_note', { path: 'notes/cafe\u0301.md', content: 'x' })).rejects.toThrow('differs only in letter case or Unicode form');
+  await expect(call('write_note', { path: 'notes/CAF\u00c9.md', content: 'x' })).rejects.toThrow('differs only in letter case');
+  // A note the agent just created is a twin too.
+  await call('write_note', { path: 'notes/fresh.md', content: 'x' });
+  await expect(tools({ scope: OPEN_PLAN }).call('write_note', { path: 'notes/Fresh.md', content: 'x' })).rejects.toThrow('differs only in letter case');
+  for (const path of ['notes/AGENTS.md', 'notes/sub/agents.md', 'notes/CLAUDE.md', 'notes/sub/Claude.md']) await expect(call('write_note', { path, content: 'x' }), path).rejects.toThrow('agent instruction file');
+  expect(stageWorkingNote).toHaveBeenCalledOnce();
   expect(keep).toHaveBeenCalledOnce();
+});
+
+it('drops a created note from the kept notes when the agent deletes it', async () => {
+  const { call, keep, kept } = tools({ scope: OPEN_PLAN });
+  await call('write_note', { path: 'notes/scratch.md', content: 'x' });
+  expect(kept).toHaveLength(1);
+  await call('delete_note', { path: 'notes/scratch.md' });
+  expect(keep).toHaveBeenLastCalledWith({ notebookId: 'notes~life', path: 'notes/scratch.md' }, false);
+  expect(kept).toHaveLength(0);
 });
 
 it('follows a note the person moved: the open note is the new path, and the old path or a kept old path no longer is', async () => {
@@ -350,7 +380,7 @@ it('follows a note the person moved: the open note is the new path, and the old 
 });
 
 it('refuses a change when the call arrives without a scope', async () => {
-  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: {}, repositoryFor: () => repository, canWriteNotebook: () => true, revisionFor: () => repository.revision, readDraft: () => undefined, updateDraft: vi.fn(), stageWorkingNote: vi.fn(), findCommittedNote: async () => null, resolveBareNotebook: () => null }));
+  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: {}, repositoryFor: () => repository, canWriteNotebook: () => true, revisionFor: () => repository.revision, readDraft: () => undefined, updateDraft: vi.fn(), stageWorkingNote: vi.fn(), findCommittedNote: async () => null, listCommittedPaths: async () => [], resolveBareNotebook: () => null }));
   await expect((result.current as (tool: string, args: Record<string, unknown>) => Promise<unknown>)('write_note', { path: 'notes/plan.md', content: 'x' })).rejects.toThrow(REFUSED);
 });
 
