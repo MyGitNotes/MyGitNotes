@@ -29,7 +29,7 @@ const repositories = [{ id: home, notebooks: ['nb', 'blog'], title: 'Knowledge B
 const workspaces = [{ repository: home, folder: '', hasInstructions: true, parents: [] }, { repository: home, folder: 'blog', hasInstructions: true, parents: [''] }];
 
 function agent(overrides: Partial<PiAgentValue> = {}): PiAgentValue {
-  return { available: true, session: { id: 's1', cwd: '/home/me/workspace', location: { repository: home, folder: '' }, trusted: true, status: 'ready', startedAt: '' }, target: null, notebooks, repositories, defaultRepository: home, workspaces, loadWorkspaces: vi.fn(async () => {}), connected: true, historyLoaded: true, transcript: emptyTranscript, modelState: { models: [], levels: [] }, checkModels: vi.fn(), setModel: vi.fn(), setThinking: vi.fn(), error: '', starting: false, start: vi.fn(async () => {}), wake: vi.fn(), send: vi.fn(() => true), held: null, commands: [], loadCommands: vi.fn(), editorText: null, takeEditorText: vi.fn(), abort: vi.fn(async () => ({ text: '', files: [] })), answer: vi.fn(), newConversation: vi.fn(), end: vi.fn(async () => {}), switchWorkspace: vi.fn(async () => {}), locate: vi.fn(async (path: string) => `/home/me/workspace/${path}`), noteTools: false, ...overrides };
+  return { available: true, session: { id: 's1', cwd: '/home/me/workspace', location: { repository: home, folder: '' }, trusted: true, status: 'ready', startedAt: '' }, target: null, notebooks, repositories, defaultRepository: home, workspaces, loadWorkspaces: vi.fn(async () => {}), connected: true, historyLoaded: true, transcript: emptyTranscript, modelState: { models: [], levels: [] }, checkModels: vi.fn(), setModel: vi.fn(), setThinking: vi.fn(), error: '', starting: false, start: vi.fn(async () => {}), wake: vi.fn(), send: vi.fn(() => true), held: null, commands: [], loadCommands: vi.fn(), editorText: null, takeEditorText: vi.fn(), abort: vi.fn(async () => ({ text: '', files: [] })), answer: vi.fn(), newConversation: vi.fn(), end: vi.fn(async () => {}), switchWorkspace: vi.fn(async () => {}), locate: vi.fn(async (path: string) => `/home/me/workspace/${path}`), noteTools: false, editable: [], setEditable: vi.fn(), ...overrides };
 }
 
 function noteTarget(caret = createCaretStore()): AgentTarget {
@@ -83,6 +83,36 @@ it("names the note by its path and notebook, without locating a file, when Pi re
   fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message to Pi' }), { key: 'Enter' });
   expect(value.locate).not.toHaveBeenCalled();
   expect(value.send).toHaveBeenCalledWith('Explain this', { file: 'notes/plan.md', notebookId: 'nb', line: 5, column: 5 });
+});
+
+it('lists, in the context menu, the open note and the notes kept editable, and keeps or drops a note on a click', async () => {
+  const setEditable = vi.fn();
+  panel(agent({ target: noteTarget(), noteTools: true, editable: [{ notebookId: 'nb', path: 'notes/kept.md' }], setEditable }));
+  contextChip().focus();
+  await act(async () => {
+    fireEvent.keyDown(contextChip(), { key: 'Enter' });
+  });
+  const open = screen.getByRole('menuitemcheckbox', { name: 'plan.md (open)' });
+  const kept = screen.getByRole('menuitemcheckbox', { name: 'kept.md' });
+  expect(open.getAttribute('aria-checked')).toBe('false');
+  expect(kept.getAttribute('aria-checked')).toBe('true');
+  await act(async () => {
+    fireEvent.click(open);
+  });
+  expect(setEditable).toHaveBeenCalledWith({ notebookId: 'nb', path: 'notes/plan.md' }, true);
+  await act(async () => {
+    fireEvent.click(kept);
+  });
+  expect(setEditable).toHaveBeenCalledWith({ notebookId: 'nb', path: 'notes/kept.md' }, false);
+});
+
+it('offers no edit permission when Pi edits its own files instead of the page notes', async () => {
+  panel(agent({ target: noteTarget(), noteTools: false }));
+  contextChip().focus();
+  await act(async () => {
+    fireEvent.keyDown(contextChip(), { key: 'Enter' });
+  });
+  expect(screen.queryByRole('menuitemcheckbox')).toBeNull();
 });
 
 it('asks once for the file of a note the server refuses to locate, however the agent value and target change meanwhile', async () => {

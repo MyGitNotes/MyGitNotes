@@ -526,6 +526,16 @@ describe('web agent note tools', () => {
     expect(await answered).toEqual({ status: 200, body: { result: { source: 'working', content: '# A' } } });
   });
 
+  it('tells Pi that it may change only the open note and the notes marked editable, and to propose any other change as text', async () => {
+    expect(WEB_TOOLS_PROMPT).toContain('You may change only the note the person has open in their editor');
+    expect(WEB_TOOLS_PROMPT).toContain('the page refuses mygitnotes_write_note, mygitnotes_edit_note and mygitnotes_delete_note on any other note');
+    expect(WEB_TOOLS_PROMPT).toContain('write the proposed change as text in your reply');
+    // The extension imports typebox, which Pi supplies when it loads it, so its tool descriptions are read from the source.
+    const source = fs.readFileSync(WEB_TOOLS_EXTENSION, 'utf8');
+    for (const label of ['Write note', 'Edit note', 'Delete note']) expect(source).toMatch(new RegExp(`label: '${label}', description: (?:(?!parameters:)[^])*?\\$\\{SCOPE_GUIDANCE\\}(?:(?!parameters:)[^])*?parameters:`));
+    expect(source).toMatch(/label: 'Read note', description: '[^`]*?', parameters/);
+  });
+
   it('tells the tools extension which agent workspace the session runs in', async () => {
     const { base, port, workspace } = await start({ webTools: true });
     fs.mkdirSync(path.join(workspace, 'blog'));

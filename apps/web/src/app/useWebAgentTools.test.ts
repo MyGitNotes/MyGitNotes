@@ -10,6 +10,7 @@ import { externalEditCount } from '../lib/external-note-edits.js';
 import { saveLocalDraft } from '../lib/storage.js';
 import type { NoteItem } from '../lib/types.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
+import type { WriteScope } from '../lib/pi-agent/write-scope.js';
 
 vi.mock('../lib/api.js', () => ({ fetchAgentResources: vi.fn(), readAgentResource: vi.fn(), fetchNoteTemplates: vi.fn(async () => []) }));
 
@@ -21,7 +22,11 @@ const server = new Map<string, NoteItem>();
 /** A cached lookup answers as it was before the note was checked out; only a fresh read sees the checkout. */
 const cachedWithoutLive = (note: NoteItem | null, fresh?: boolean): NoteItem | null => note?.live && !fresh ? { ...note, live: undefined } : note;
 
-function tools({ writable = true } = {}) {
+const note = (path: string, notebookId = 'notes~life') => ({ notebookId, path });
+/** The plan is open in the editor; the other notes the tests change are marked editable, so only the scope tests narrow it. */
+const WIDE: WriteScope = { open: note('notes/plan.md'), allowed: ['notes/new.md', 'notes/other.md', 'notes/reading/Dune.md', 'notes/live.md', 'notes/own.md', 'notes/sync.md', 'notes/x.md', 'notes/.hidden/x.md'].map(path => note(path)) };
+
+function tools({ writable = true, scope = WIDE }: { writable?: boolean; scope?: WriteScope; } = {}) {
   const readDraft = (_notebookId: string, path: string) => readWorkingNotes(store)[path];
   const updateDraft = (_notebookId: string, path: string, entry: WorkingNote | null) => {
     updateWorkingNote(store, path, entry);
@@ -32,7 +37,7 @@ function tools({ writable = true } = {}) {
   });
   const active = (): WorkingNotes => Object.fromEntries(Object.values(readWorkingNotes(store)).map(entry => [noteRefKey(entry.note), entry]));
   const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: active(), repositoryFor: () => repository, canWriteNotebook: () => writable, revisionFor: () => repository.revision, readDraft, updateDraft, stageWorkingNote, findCommittedNote: async (ref, options) => cachedWithoutLive(server.get(ref.path) ?? null, options?.fresh), resolveBareNotebook: localId => localId === 'life' ? 'notes~life' : null }));
-  return { call: result.current, stageWorkingNote };
+  return { call: (tool: string, args: Record<string, unknown>) => result.current(tool, args, scope), stageWorkingNote };
 }
 
 beforeEach(() => {
@@ -102,7 +107,8 @@ function agentTools() {
   const config = { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }, { id: 'blog~posts', title: 'Posts', root: 'blog/posts' }, { id: 'docs~all', title: 'Docs', root: 'notes' }] } as never;
   const repositoryFor = (notebookId: string) => notebookId === 'docs~all' ? other : notebookId === 'notes~life' || notebookId === 'blog~posts' ? repository : undefined;
   const { result } = renderHook(() => useWebAgentTools({ config, activeWorkingNotes: {}, repositoryFor, canWriteNotebook: () => true, revisionFor: () => repository.revision, readDraft: () => undefined, updateDraft: vi.fn(), stageWorkingNote: vi.fn(), findCommittedNote: async () => null, resolveBareNotebook: () => null }));
-  return result.current;
+  // The agent-system tools only read, and reads need no note in scope.
+  return (tool: string, args: Record<string, unknown>) => result.current(tool, args, { open: null, allowed: [] });
 }
 
 const session = { repository: repository.id, folder: 'blog' };
@@ -243,4 +249,89 @@ it('refuses to write, edit or delete a note being edited live (編輯中)', asyn
   const { call, stageWorkingNote } = tools();
   for (const [tool, args] of [['write_note', { path: 'notes/live.md', content: 'x' }], ['edit_note', { path: 'notes/live.md', oldText: 'Live', newText: 'Gone' }], ['delete_note', { path: 'notes/live.md' }]] as const) await expect(call(tool, args), tool).rejects.toThrow('notes/live.md is being edited live (編輯中)');
   expect(stageWorkingNote).not.toHaveBeenCalled();
+});
+
+// The write scope: only the note open in the editor, and the notes the person kept editable, may change.
+const REFUSED = /^Refused: .* is not a note the person has put in scope for you\..*propose the change as text in your reply/;
+const OPEN_PLAN: WriteScope = { open: note('notes/plan.md'), allowed: [] };
+
+it('lets the agent write, edit and delete the open note, and nothing else changes', async () => {
+  const { call, stageWorkingNote } = tools({ scope: OPEN_PLAN });
+  await call('write_note', { path: 'notes/plan.md', content: '# Plan\n\nwritten\n' });
+  await call('edit_note', { path: 'notes/plan.md', oldText: 'written', newText: 'edited' });
+  expect(await call('delete_note', { path: 'notes/plan.md' })).toMatchObject({ deleted: true });
+  expect(stageWorkingNote).toHaveBeenCalledTimes(3);
+  expect(Object.keys(readWorkingNotes(store))).toEqual(['notes/plan.md']);
+});
+
+it('refuses to write, edit or delete another note, tells the agent to propose the change as text, and changes nothing', async () => {
+  server.set('notes/other.md', committed('notes/other.md', 'other body'));
+  const { call, stageWorkingNote } = tools({ scope: OPEN_PLAN });
+  await expect(call('write_note', { path: 'notes/other.md', content: 'x' })).rejects.toThrow(REFUSED);
+  await expect(call('edit_note', { path: 'notes/other.md', oldText: 'other', newText: 'x' })).rejects.toThrow(REFUSED);
+  // A delete outside the scope never reaches the trash.
+  await expect(call('delete_note', { path: 'notes/other.md' })).rejects.toThrow(REFUSED);
+  await expect(call('delete_note', { path: 'notes/other.md' })).rejects.toThrow('You may change only notes/plan.md.');
+  // Creating a note is a change of a path outside the scope as well, by path or from a template.
+  await expect(call('write_note', { path: 'notes/brand-new.md', content: 'x' })).rejects.toThrow(REFUSED);
+  withTemplates();
+  await expect(call('write_note', { notebookId: 'life', template: 'reading', values: { book: 'Dune' } })).rejects.toThrow(REFUSED);
+  expect(stageWorkingNote).not.toHaveBeenCalled();
+  expect(readWorkingNotes(store)).toEqual({});
+  // The refusal is the guard's, not the missing note's: it comes before any lookup of the note.
+  await expect(call('edit_note', { path: 'notes/missing.md', oldText: 'a', newText: 'b' })).rejects.toThrow(REFUSED);
+});
+
+it('leaves reads unrestricted, whatever the scope', async () => {
+  server.set('notes/other.md', committed('notes/other.md', 'other body'));
+  const { call } = tools({ scope: { open: null, allowed: [] } });
+  expect(await call('read_note', { path: 'notes/other.md' })).toMatchObject({ content: 'other body' });
+  expect(await call('list_changes', {})).toEqual({ changes: [] });
+});
+
+it('refuses every change when no note is open and none is kept editable', async () => {
+  const { call, stageWorkingNote } = tools({ scope: { open: null, allowed: [] } });
+  await expect(call('write_note', { path: 'notes/plan.md', content: 'x' })).rejects.toThrow('You may change no note now: none is open');
+  await expect(call('delete_note', { path: 'notes/plan.md' })).rejects.toThrow(REFUSED);
+  expect(stageWorkingNote).not.toHaveBeenCalled();
+});
+
+it('allows a note the person kept editable beside the open one, but only that note', async () => {
+  server.set('notes/other.md', committed('notes/other.md', 'other body'));
+  server.set('notes/third.md', committed('notes/third.md', 'third body'));
+  const { call } = tools({ scope: { open: note('notes/plan.md'), allowed: [note('notes/other.md')] } });
+  await call('edit_note', { path: 'notes/other.md', oldText: 'other', newText: 'kept' });
+  await call('edit_note', { path: 'notes/plan.md', oldText: 'ship it', newText: 'shipped' });
+  await expect(call('edit_note', { path: 'notes/third.md', oldText: 'third', newText: 'x' })).rejects.toThrow('You may change only notes/plan.md, notes/other.md.');
+});
+
+it('matches a path to the note exactly: another case, a leading slash, a traversal, a dot segment or a doubled slash never reaches another note', async () => {
+  const { call, stageWorkingNote } = tools({ scope: OPEN_PLAN });
+  // Another case is another note in a repository, so it is outside the scope.
+  await expect(call('write_note', { path: 'notes/Plan.md', content: 'x' })).rejects.toThrow(REFUSED);
+  await expect(call('delete_note', { path: 'notes/PLAN.md' })).rejects.toThrow(REFUSED);
+  // The rest are not note paths at all, so no spelling of the open note's path reaches around the exact match, nor out of the notebook.
+  for (const path of ['/notes/plan.md', 'notes/../notes/plan.md', 'notes/../plan.md', 'notes/./plan.md', 'notes//plan.md', '../notes/plan.md', 'notes\\plan.md']) {
+    await expect(call('write_note', { path, content: 'x' })).rejects.toThrow();
+    await expect(call('delete_note', { path })).rejects.toThrow();
+  }
+  expect(stageWorkingNote).not.toHaveBeenCalled();
+});
+
+it('follows a note the person moved: the open note is the new path, and the old path or a kept old path no longer is', async () => {
+  server.set('notes/archive/plan.md', committed('notes/archive/plan.md', '# Plan\n\nship it\n'));
+  // The person renamed the open note: the editor now names the new path.
+  const moved = tools({ scope: { open: note('notes/archive/plan.md'), allowed: [] } });
+  await expect(moved.call('write_note', { path: 'notes/plan.md', content: 'x' })).rejects.toThrow(REFUSED);
+  await expect(moved.call('delete_note', { path: 'notes/plan.md' })).rejects.toThrow(REFUSED);
+  await moved.call('edit_note', { path: 'notes/archive/plan.md', oldText: 'ship it', newText: 'moved' });
+  // A permission kept for the old path does not carry over to the new one.
+  const kept = tools({ scope: { open: note('notes/other.md'), allowed: [note('notes/plan.md')] } });
+  await expect(kept.call('edit_note', { path: 'notes/archive/plan.md', oldText: 'ship it', newText: 'x' })).rejects.toThrow(REFUSED);
+  expect(readWorkingNotes(store)['notes/archive/plan.md'].note.content).toContain('moved');
+});
+
+it('refuses a change when the call arrives without a scope', async () => {
+  const { result } = renderHook(() => useWebAgentTools({ config: { workspace: { title: 'Notes' }, notebooks: [{ id: 'notes~life', title: 'Life', root: 'notes' }] } as never, activeWorkingNotes: {}, repositoryFor: () => repository, canWriteNotebook: () => true, revisionFor: () => repository.revision, readDraft: () => undefined, updateDraft: vi.fn(), stageWorkingNote: vi.fn(), findCommittedNote: async () => null, resolveBareNotebook: () => null }));
+  await expect((result.current as (tool: string, args: Record<string, unknown>) => Promise<unknown>)('write_note', { path: 'notes/plan.md', content: 'x' })).rejects.toThrow(REFUSED);
 });

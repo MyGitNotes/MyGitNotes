@@ -7,6 +7,7 @@ import type { AgentWorkspace } from '../agent-workspaces.js';
 import { FEATURE_IDS, useFeatureGate } from '../web-features.js';
 import { frameBytes, imagesWithinLimits, MAX_FRAME_BYTES, type PiImage } from './attachments.js';
 import type { CaretStore } from './caret-store.js';
+import { type ScopedNote, scopedNoteKey, type WriteScope } from './write-scope.js';
 import { commandsFromResponse, commandWithFocus, isSkillCommand, parseComposerInput, type PiCommand } from './commands.js';
 import { type AgentDialog, type AgentFocus, applyRecord, type AttachedFile, emptyTranscript, queuedText, startShell, takeFiles, transcriptFromMessages, type TranscriptState, withFiles, withFocus } from './transcript.js';
 
@@ -66,8 +67,11 @@ export interface AgentTarget {
   focusEditor?: () => void;
 }
 
-/** Runs one of the agent's note tools on this page and answers its result; a thrown error is the agent's to read. */
-export type WebToolHandler = (tool: string, args: Record<string, unknown>) => Promise<unknown>;
+/**
+ * Runs one of the agent's note tools on this page and answers its result; a thrown error is the agent's to read.
+ * `scope` is what the agent may change at the moment the call arrives (see `WriteScope`); reads ignore it.
+ */
+export type WebToolHandler = (tool: string, args: Record<string, unknown>, scope: WriteScope) => Promise<unknown>;
 
 /** A model Pi has credentials for; `value` is `provider/id`, the key the panel selects it by. */
 export interface PiModelOption {
@@ -159,6 +163,10 @@ export interface PiAgentValue {
   session: PiSessionInfo | null;
   /** What the panel can name to Pi right now; null on the notebook list or an empty pane. */
   target: AgentTarget | null;
+  /** Notes the person has kept editable for the agent beyond the open one; empty unless the agent edits notes through the page. */
+  editable: ScopedNote[];
+  /** Keeps `note` editable for the agent (or stops), so it may change it after the person opens another note. */
+  setEditable: (note: ScopedNote, on: boolean) => void;
   notebooks: NotebookConfig[];
   repositories: Pick<RepositoryStatus, 'id' | 'repository' | 'notebooks' | 'title'>[];
   /** The default repository, whose root workspace Pi starts in by default. */
@@ -357,6 +365,19 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
   /** The socket the live session named, kept here because `connect` also runs from timers that have only the ref. */
   const socketInfo = useRef<PiSessionInfo['socket']>(undefined);
   const sessionId = useRef<string | null>(null);
+  // Notes the person kept editable for the agent. They belong to the session they were kept in: another session starts with none.
+  const [kept, setKept] = useState<{ session: string; notes: ScopedNote[]; } | null>(null);
+  const keptRef = useRef(kept);
+  const keptNotes = (own: typeof kept, session: string | null) => own && own.session === session ? own.notes : [];
+  const setEditable = useCallback((note: ScopedNote, on: boolean) => {
+    const session = sessionId.current;
+    if (!session) return;
+    const key = scopedNoteKey(note);
+    const others = keptNotes(keptRef.current, session).filter(candidate => scopedNoteKey(candidate) !== key);
+    keptRef.current = { session, notes: on ? [...others, { notebookId: note.notebookId, path: note.path }] : others };
+    setKept(keptRef.current);
+  }, []);
+  const editable = keptNotes(kept, session?.id ?? null);
   const pending = useRef(new Map<string, 'messages' | 'state'>());
   /** `clear_queue` requests waiting for the queued text they take back. */
   const takenBack = useRef(new Map<string, (taken: TakenBack) => void>());
@@ -408,7 +429,12 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
           if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'web_tool_response', id, ...answer }));
         };
         if (!handler) reply({ error: 'This page cannot edit notes for the agent.' });
-        else handler(String(record.tool), (record.arguments ?? {}) as Record<string, unknown>).then(result => reply({ result }), (error: Error) => reply({ error: error.message }));
+        else {
+          // Read when the call arrives, not when the agent started: the note open now and the notes kept editable now.
+          const open = targets.current.at(-1);
+          const scope: WriteScope = { open: open ? { notebookId: open.notebookId, path: open.path } : null, allowed: keptNotes(keptRef.current, sessionId.current) };
+          handler(String(record.tool), (record.arguments ?? {}) as Record<string, unknown>, scope).then(result => reply({ result }), (error: Error) => reply({ error: error.message }));
+        }
         return;
       }
       if (record.type === 'bridge_status') {
@@ -713,8 +739,10 @@ export function PiAgentProvider({ enabled, defaultRepository, notebooks, reposit
       }
     },
     noteTools,
+    editable,
+    setEditable,
     locate,
-  }), [enabled, piAvailable, probed, noteTools, locate, session, target, notebooks, repositories, defaultRepository, workspaces, loadWorkspaces, connected, historyLoaded, transcript, error, starting, ready, wake, held, modelState, commands, contextUsage, editorText, takeEditorText, loadCommands, start, command, attach]);
+  }), [editable, setEditable, enabled, piAvailable, probed, noteTools, locate, session, target, notebooks, repositories, defaultRepository, workspaces, loadWorkspaces, connected, historyLoaded, transcript, error, starting, ready, wake, held, modelState, commands, contextUsage, editorText, takeEditorText, loadCommands, start, command, attach]);
 
   return (
     <PiAgentTargetContext.Provider value={registerTarget}>

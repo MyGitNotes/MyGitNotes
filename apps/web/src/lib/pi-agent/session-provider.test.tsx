@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { NotebookConfig } from '../types.js';
 import { type WebFeature, WebFeaturesProvider } from '../web-features.js';
-import { agentSocketTarget, PiAgentProvider, type PiAgentValue, type PiSessionInfo, usePiAgent, type WebToolHandler } from './session.js';
+import { agentSocketTarget, PiAgentProvider, type PiAgentValue, type PiSessionInfo, usePiAgent, usePublishAgentTarget, type WebToolHandler } from './session.js';
 
 /** A socket that never reaches Pi; tests push bridge records into it. */
 class FakeSocket {
@@ -449,6 +449,68 @@ it("answers the agent's note tools with the page's handler, its errors included,
     bare.receive({ type: 'web_tool_request', id: 'w3', tool: 'read_note', arguments: {} });
   });
   expect(bare.sent).toContainEqual({ type: 'web_tool_response', id: 'w3', error: 'This page cannot edit notes for the agent.' });
+});
+
+/** Publishes `path` as the open note while mounted, as a note editor does. */
+function OpenNote({ path }: { path: string; }) {
+  usePublishAgentTarget({ notebookId: 'nb', path }, true);
+  return null;
+}
+
+it('hands the page handler the scope at the moment a call arrives: the open note and the notes kept editable', async () => {
+  const scopes: unknown[] = [];
+  const handler = vi.fn(async (_tool: string, _args: Record<string, unknown>, scope: unknown) => {
+    scopes.push(scope);
+    return {};
+  });
+  const seen: { current?: PiAgentValue; } = {};
+  const tree = (open: string | null) => (
+    <WebFeaturesProvider features={[]}>
+      <PiAgentProvider enabled defaultRepository={home} notebooks={notebooks} repositories={[{ id: home, notebooks: ['nb'], title: 'Knowledge Base' }]} webTools={handler}>
+        <Probe opened onValue={value => void (seen.current = value)} />
+        {open && <OpenNote path={open} />}
+      </PiAgentProvider>
+    </WebFeaturesProvider>
+  );
+  const view = render(tree('notes/a.md'));
+  await waitFor(() => expect(FakeSocket.last).toBeDefined());
+  const socket = FakeSocket.last!;
+  const ask = (id: string) => socket.receive({ type: 'web_tool_request', id, tool: 'write_note', arguments: {} });
+  act(() => {
+    socket.readyState = FakeSocket.OPEN;
+    socket.onopen?.();
+  });
+  await waitFor(() => expect(seen.current?.noteTools).toBe(true));
+  act(() => ask('w1'));
+  expect(scopes.at(-1)).toEqual({ open: { notebookId: 'nb', path: 'notes/a.md' }, allowed: [] });
+  // Keeping the open note editable, then opening another: the first stays in scope beside the new open note.
+  act(() => seen.current!.setEditable({ notebookId: 'nb', path: 'notes/a.md' }, true));
+  view.rerender(tree('notes/b.md'));
+  act(() => ask('w2'));
+  expect(scopes.at(-1)).toEqual({ open: { notebookId: 'nb', path: 'notes/b.md' }, allowed: [{ notebookId: 'nb', path: 'notes/a.md' }] });
+  // Closing the editor leaves no open note; stopping the permission leaves nothing.
+  view.rerender(tree(null));
+  act(() => seen.current!.setEditable({ notebookId: 'nb', path: 'notes/a.md' }, false));
+  act(() => ask('w3'));
+  expect(scopes.at(-1)).toEqual({ open: null, allowed: [] });
+  // A kept note belongs to its session: a new session starts with none.
+  act(() => seen.current!.setEditable({ notebookId: 'nb', path: 'notes/a.md' }, true));
+  act(() => ask('w4'));
+  expect(scopes.at(-1)).toMatchObject({ allowed: [{ path: 'notes/a.md' }] });
+  await act(async () => {
+    await seen.current!.switchWorkspace({ repository: home, folder: 'blog' });
+  });
+  await waitFor(() => expect(seen.current?.session?.id).toBe('s2'));
+  expect(seen.current!.editable).toEqual([]);
+  await waitFor(() => expect(FakeSocket.last).not.toBe(socket));
+  const next = FakeSocket.last!;
+  act(() => {
+    next.readyState = FakeSocket.OPEN;
+    next.onopen?.();
+    next.receive({ type: 'web_tool_request', id: 'w5', tool: 'write_note', arguments: {} });
+  });
+  expect(scopes).toHaveLength(5);
+  expect(scopes.at(-1)).toMatchObject({ allowed: [] });
 });
 
 it('checks the models again by ending the session and starting a fresh one, since Pi reads keys only at start', async () => {

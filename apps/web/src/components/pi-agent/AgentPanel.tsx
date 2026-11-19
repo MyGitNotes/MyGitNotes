@@ -378,6 +378,13 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
   };
 
   const statusLabel = t(initialized ? `piAgent.status.${session!.status}` as const : loading ? 'piAgent.status.starting' : 'piAgent.status.none');
+  // The notes the agent may change: the open one (always, listed first; checking it keeps it after another note opens) and those kept.
+  const scopeItems = useMemo(() => {
+    if (!noteTools) return [];
+    const kept = agent.editable.map(note => ({ ...note, open: false, kept: true }));
+    const opened = target ? [{ notebookId: target.notebookId, path: target.path, open: true, kept: agent.editable.some(note => note.notebookId === target.notebookId && note.path === target.path) }] : [];
+    return [...opened, ...kept.filter(note => !opened.some(item => item.notebookId === note.notebookId && item.path === note.path))];
+  }, [noteTools, agent.editable, target]);
   const chipText = focus ? focusLabel(focus) : effectiveMode === 'none' ? t('piAgent.context.noFile') : target ? target.path.slice(target.path.lastIndexOf('/') + 1) : '';
 
   return (
@@ -478,6 +485,20 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                           </DropdownMenu.RadioItem>
                         ))}
                       </DropdownMenu.RadioGroup>
+                      {noteTools && (
+                        <>
+                          <DropdownMenu.Separator />
+                          <DropdownMenu.Label className='pi-agent-scope-label' title={t('piAgent.scope.hint')}>{t('piAgent.scope')}</DropdownMenu.Label>
+                          {scopeItems.map(item => (
+                            <DropdownMenu.CheckboxItem key={`${item.notebookId}\0${item.path}`} checked={item.kept} title={item.open ? t('piAgent.scope.openHint') : item.path} onSelect={event => event.preventDefault()} onCheckedChange={on => agent.setEditable({ notebookId: item.notebookId, path: item.path }, on === true)}>
+                              <span>{item.path.slice(item.path.lastIndexOf('/') + 1)}{item.open ? ` ${t('piAgent.scope.open')}` : ''}</span>
+                              <DropdownMenu.ItemIndicator className='pi-agent-context-check'>
+                                <Check aria-hidden='true' />
+                              </DropdownMenu.ItemIndicator>
+                            </DropdownMenu.CheckboxItem>
+                          ))}
+                        </>
+                      )}
                     </DropdownMenu.Content>
                   </DropdownMenu.Portal>
                 </DropdownMenu.Root>

@@ -13,6 +13,7 @@ import { draftScope } from '../lib/workspace-repositories.js';
 import { isNotebookKey } from '../lib/notebook-keys.js';
 import type { NoteItem } from '../lib/types.js';
 import type { WebToolHandler } from '../lib/pi-agent/session.js';
+import { assertInWriteScope, NO_WRITE_SCOPE } from '../lib/pi-agent/write-scope.js';
 import type { WorkspaceState } from './workspace-state.js';
 import type { useWorkspaceNotes } from './useWorkspaceNotes.js';
 
@@ -71,7 +72,7 @@ const AGENT_FILE = /(?:^|\/)AGENTS\.md$|(?:^|\/)\.agents\/skills\//;
  * working changes of this page, which the person commits. Nothing here commits or reaches the repository host.
  */
 export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, canWriteNotebook, revisionFor, readDraft, updateDraft, stageWorkingNote, findCommittedNote, resolveBareNotebook }: Params): WebToolHandler {
-  return useCallback<WebToolHandler>(async (tool, args) => {
+  return useCallback<WebToolHandler>(async (tool, args, scope = NO_WRITE_SCOPE) => {
     // A bare local id, as tool calls written before notebook keys name one, resolves as an MCP tool argument does.
     const named = typeof args.notebookId === 'string' ? isNotebookKey(args.notebookId) ? args.notebookId : resolveBareNotebook(args.notebookId) ?? args.notebookId : undefined;
     /** The notebook a repository-relative path belongs to; `notebookId` tells repositories with the same path apart. */
@@ -93,6 +94,8 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
     const assertNotLive = async (notebookId: string, path: string) => {
       if ((await findCommittedNote({ notebookId, path }, { fresh: true }))?.live) throw new Error(`${path} is being edited live (編輯中); ask the person to check it in (「立即簽回」) first.`);
     };
+    /** Refuses a change to a note the person has not put in scope; it runs before anything else looks at the note. Reads are not limited. */
+    const assertInScope = (notebookId: string, path: string) => assertInWriteScope(scope, { notebookId, path });
     const assertWritable = (notebookId: string) => {
       if (!canWriteNotebook(notebookId)) throw new Error('This notebook is read-only for the person.');
     };
@@ -107,6 +110,7 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
     const describe = (note: NoteItem, source: 'working' | 'committed') => ({ path: note.path, notebookId: note.notebookId, source, metadata: note.metadata, content: note.content });
     /** Stages `content` and `metadata` for the note, created when it does not exist, and shows it in an open editor. */
     const stage = async (notebookId: string, path: string, content: string, metadata: Record<string, unknown> | undefined) => {
+      assertInScope(notebookId, path);
       assertWritable(notebookId);
       const draft = readDraft(notebookId, path);
       assertNotEditing(notebookId, path, draft);
@@ -236,12 +240,14 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
         if (args.template !== undefined) return stageFromTemplate();
         if (args.values !== undefined) throw new Error('values fill a template: name one as template.');
         const { path, notebookId } = locate();
+        assertInScope(notebookId, path);
         const metadata = args.metadata === undefined ? undefined : args.metadata;
         if (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))) throw new Error('metadata must be an object.');
         return stage(notebookId, path, text(args.content, 'content'), metadata as Record<string, unknown> | undefined);
       }
       case 'edit_note': {
         const { path, notebookId } = locate();
+        assertInScope(notebookId, path);
         const oldText = text(args.oldText, 'oldText'), newText = text(args.newText, 'newText');
         const { note } = await current(notebookId, path);
         if (!note) throw new Error(`No note at ${path}.`);
@@ -251,6 +257,7 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
       }
       case 'delete_note': {
         const { path, notebookId } = locate();
+        assertInScope(notebookId, path);
         assertWritable(notebookId);
         const draft = readDraft(notebookId, path);
         assertNotEditing(notebookId, path, draft);
