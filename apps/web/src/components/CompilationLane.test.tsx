@@ -78,7 +78,7 @@ afterEach(() => {
 const Editing = ({ children }: { children: ReactNode; }) => createElement(CompilationEditingProvider, { value: useCompilationEditing() }, children);
 const wrapper = ({ children }: { children: ReactNode; }) => createElement(QueryClientProvider, { client }, createElement(Editing, null, children));
 
-const lane = (props: Partial<Parameters<typeof CompilationLane>[0]> = {}) => createElement(CompilationLane, { row, reorder: false, disabled: false, study, notebooks, assets: [], onOpen: () => {}, ...props });
+const lane = (props: Partial<Parameters<typeof CompilationLane>[0]> = {}) => createElement(CompilationLane, { row, disabled: false, study, notebooks, assets: [], onOpen: () => {}, ...props });
 
 it('read-only: renders cards and scroll buttons but no editing controls', async () => {
   render(lane({ readOnly: true }), { wrapper });
@@ -124,7 +124,7 @@ const altWheel = (target: Element) => {
 const sortableStrategy = () => vi.mocked(SortableContext).mock.calls.at(-1)?.[0].strategy;
 
 it('keeps the strip, its scroll buttons and Alt+wheel at 560px of compilation width', async () => {
-  render(compilationView('560px', { reorder: true }), { wrapper });
+  render(compilationView('560px'), { wrapper });
   await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
   expect(document.querySelector('.screen-lane')).toHaveAttribute('data-orientation', 'horizontal');
   expect(screen.getByLabelText('Scroll left: Pinned')).toBeInTheDocument();
@@ -134,7 +134,7 @@ it('keeps the strip, its scroll buttons and Alt+wheel at 560px of compilation wi
 });
 
 it('lists cards top to bottom under 560px: no scroll buttons, no Alt+wheel, a vertical sorting strategy', async () => {
-  render(compilationView('559px', { reorder: true }), { wrapper });
+  render(compilationView('559px'), { wrapper });
   await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
   expect(document.querySelector('.screen-lane')).toHaveAttribute('data-orientation', 'vertical');
   expect(screen.queryByLabelText('Scroll left: Pinned')).not.toBeInTheDocument();
@@ -146,7 +146,7 @@ it('lists cards top to bottom under 560px: no scroll buttons, no Alt+wheel, a ve
 
 it('switches layout when the compilation is resized across 560px without writing anything', async () => {
   const onView = vi.fn(), onSort = vi.fn(), onRemove = vi.fn(), onStudyChange = vi.fn();
-  render(compilationView('900px', { reorder: true, onView, onSort, onRemove, onStudyChange }), { wrapper });
+  render(compilationView('900px', { onView, onSort, onRemove, onStudyChange }), { wrapper });
   await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
   const requests = vi.mocked(fetch).mock.calls.length;
   resizeTo(400);
@@ -243,23 +243,23 @@ it('keeps asset and folder cards as they are, with no Edit control (E14)', async
   expect(screen.getAllByRole('button', { name: /^Edit / })).toHaveLength(1);
 });
 
-it('hides Edit and ignores body clicks in reorder mode, and takes the editing card out of the sortable list (E12)', async () => {
+it('takes only the editing card out of the sortable list and restores its handle on Done (E12)', async () => {
   const onOpen = vi.fn();
-  const { rerender } = render(lane({ row: two, onOpen }), { wrapper });
-  fireEvent.click(await screen.findByRole('button', { name: 'Edit Note A' }));
+  render(lane({ row: two, onOpen, onRemove: vi.fn() }), { wrapper });
+  expect(await screen.findByRole('button', { name: 'Move item: Note A' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Note A' }));
   await waitFor(() => expect(card('item-1')).toHaveAttribute('data-editing'));
   const sortable = (id: string) => vi.mocked(useSortable).mock.calls.filter(([args]) => args.id === id).at(-1)?.[0];
-  rerender(lane({ row: two, onOpen, reorder: true }));
-  expect(sortable('item-1')?.disabled).toBe(true);
-  expect(sortable('item-2')?.disabled).toBe(false);
+  expect(sortable('item-1')?.disabled).toEqual({ draggable: true, droppable: true });
+  expect(sortable('item-2')?.disabled).toEqual({ draggable: false, droppable: false });
+  expect(screen.queryByRole('button', { name: 'Move item: Note A' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Move item: Note B' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Unpin: Note A' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Finish editing Note A' }));
-  await waitFor(() => expect(card('item-1')).not.toHaveAttribute('data-editing'));
-  expect(screen.queryByRole('button', { name: /^Edit Note/ })).toBeNull();
+  expect(await screen.findByRole('button', { name: 'Move item: Note A' })).toBeInTheDocument();
   mouseClick(screen.getByText('Body of B'));
-  expect(card('item-2')).not.toHaveAttribute('data-editing');
-  expect(onOpen).toHaveBeenCalledTimes(1);
-  expect(sortable('item-1')?.disabled).toBe(false);
-  expect(screen.getByLabelText('Unpin: Note A')).toBeInTheDocument();
+  await waitFor(() => expect(card('item-2')).toHaveAttribute('data-editing'));
+  expect(onOpen).not.toHaveBeenCalled();
 });
 
 it('holds the card order while one edits and applies the live order afterwards (E11)', async () => {
@@ -392,7 +392,7 @@ function DragHarness({ start, onMoved }: { start: CompilationRow; onMoved: (ids:
       const moved = moveCompilationItem({ rows: [start] }, String(active.id), start.id, start.items.findIndex(item => item.id === over.id)).rows[0];
       if (moved.kind === 'custom') onMoved(moved.items.map(item => item.id));
     },
-  }, lane({ row: start, reorder: true }));
+  }, lane({ row: start }));
 }
 
 it('moves a card across a divider into the next chapter, and a divider alone, with the keyboard', async () => {

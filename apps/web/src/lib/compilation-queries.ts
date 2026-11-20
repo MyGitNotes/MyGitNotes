@@ -1,9 +1,11 @@
 import { useRef } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { type QueryClient, useQueries } from '@tanstack/react-query';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import type { NoteListItem, NotePaths, NoteQuery } from '@mygitnotes/core/note-query';
+import { overlayDraftLookup, overlayDraftPaths } from './draft-overlay.js';
 import { sameValue } from './merge-note.js';
-import { notePathsOptions, useNoteList, useNoteLookup, useNotePaths, useNoteQueryScope } from './use-note-queries.js';
+import { noteDrafts } from './note-templates.js';
+import { noteLookupOptions, notePathsOptions, noteQueryInput, type NoteQueryScope, useNoteList, useNoteLookup, useNotePaths, useNoteQueryScope } from './use-note-queries.js';
 
 /** Whether a dynamic lane follows the order the user set by hand. */
 function isManual(row: CompilationRow | undefined): boolean {
@@ -15,6 +17,18 @@ export function laneNoteQuery(row: CompilationRow): Partial<NoteQuery> | null {
   if (row.kind !== 'dynamic') return null;
   const source = row.source;
   return { notebookId: source.notebookId, tags: source.kind === 'tag' ? [source.tag] : [], folders: source.kind === 'folder' ? [source.path] : [], descendants: source.kind === 'folder' ? source.recursive : true, status: row.study?.status || null, showHidden: false, sort: !row.sort || row.sort.field === 'manual' ? 'title' : row.sort.field, order: row.sort?.order || 'asc', ...(row.group ? { group: row.group } : {}) };
+}
+
+/** Reads the full, unfiltered membership on demand, with the same paths → lookup and draft overlay as the order dialog. */
+export async function readLaneMembers(client: QueryClient, scope: NoteQueryScope, row: Extract<CompilationRow, { kind: 'dynamic'; }>): Promise<NoteListItem[] | null> {
+  const input = noteQueryInput(laneNoteQuery({ ...row, study: undefined })!);
+  const { notes: paths } = await client.fetchQuery(notePathsOptions(scope, input));
+  const refs = overlayDraftPaths(paths, input, noteDrafts(scope.drafts));
+  if (!refs.length) return [];
+  const { notes } = await client.fetchQuery(noteLookupOptions(scope, refs, false));
+  const members = overlayDraftLookup(refs, notes, scope.drafts);
+  // A live note may disappear between the paths read and the lookup. Do not save a partial snapshot.
+  return members.length === refs.length ? members : null;
 }
 
 export interface LaneNotes {

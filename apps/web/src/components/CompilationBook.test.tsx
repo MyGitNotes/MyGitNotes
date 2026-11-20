@@ -154,7 +154,7 @@ it("edits a note section in place, saves it for the next one, and follows the ed
   fireEvent.click(within(section).getByRole('button', { name: /^Finish editing/ }));
   await waitFor(() => expect(section).not.toHaveAttribute('data-editing'));
   expect(flushEditors).toHaveBeenCalledWith(['nb1:notes/nb1/a.md']);
-  expect(within(screen.getByRole('navigation', { name: 'Contents' })).getByRole('button', { name: /Note A/ })).toBeInTheDocument();
+  expect(within(screen.getByRole('navigation', { name: 'Contents' })).getByRole('button', { name: 'Note A' })).toBeInTheDocument();
 });
 
 it('highlights the chapter that edits in the contents wherever the book is scrolled, and scrolling decides again once editing ends (B12)', async () => {
@@ -309,7 +309,7 @@ const next = () => within(pager()).getByRole('button', { name: 'Next' });
 const previous = () => within(pager()).getByRole('button', { name: 'Previous' });
 const count = () => within(pager()).getByRole('status').textContent;
 const pageTitle = () => chapters().map(chapter => within(chapter).getByRole('heading', { level: 2 }).textContent);
-const contentsButtons = () => within(screen.getByRole('navigation', { name: 'Contents' })).getAllByRole('button');
+const contentsButtons = () => within(screen.getByRole('navigation', { name: 'Contents' })).getAllByRole('button').filter(button => button.classList.contains('compilation-book-jump'));
 const touch = (element: Element, type: 'touchStart' | 'touchEnd', x: number, y = 100) => fireEvent[type](element, type === 'touchStart' ? { touches: [{ clientX: x, clientY: y }] } : { changedTouches: [{ clientX: x, clientY: y }], touches: [] });
 const noteB = { ...noteA, id: 'notes/nb1/b.md', path: 'notes/nb1/b.md', title: 'Note B', content: '# Chapter Two\n\nThe body of note B.' };
 const pairRow: CompilationRow = { ...row, items: [{ id: 'item-1', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/a.md' }, { id: 'item-2', kind: 'note', notebookId: 'nb1', path: 'notes/nb1/b.md' }] };
@@ -627,7 +627,7 @@ it('lets the contents drawer leave the reader where it opened from when the page
   flushEditors.mockResolvedValueOnce(false);
   const open = screen.getByRole('button', { name: 'Show contents' });
   fireEvent.click(open);
-  fireEvent.click(within(screen.getByRole('dialog', { name: 'Contents' })).getByRole('button', { name: /A talk/ }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Contents' })).getByRole('button', { name: 'A talk' }));
   await waitFor(() => expect(flushEditors).toHaveBeenCalled());
   await waitFor(() => expect(open).toHaveFocus());
   expect(chapters()[0]).toHaveAttribute('data-editing');

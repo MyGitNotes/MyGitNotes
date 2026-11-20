@@ -10,6 +10,7 @@ import { useCompilationEditingContext, useHeldNotes, useHeldOrder } from '../lib
 import { useLaneNotes } from '../lib/compilation-queries.js';
 import type { StudyController } from '../lib/use-study-workspace.js';
 import { compilationRowItems, studyRowItems } from '../lib/compilation-content.js';
+import { dragChapters } from '../lib/compilation-drag.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { Button } from './Button.js';
 import { CompilationHeader } from './CompilationHeader.js';
@@ -36,31 +37,35 @@ export function createLaneNoteContext(row: CompilationRow, notebooks: NotebookCo
   return null;
 }
 
-export function MovableCard({ item, row, reorder, disabled, editable, remove, ...content }: CompilationContentProps & { item: CompilationItem; row: CompilationRow; reorder: boolean; disabled: boolean; /** Whether its note can edit in place. */ editable: boolean; remove: () => void; }) {
+function MovableCard({ item, row, dragDisabled, chapterId, editable, remove, ...content }: CompilationContentProps & { item: CompilationItem; row: CompilationRow; dragDisabled: boolean; chapterId?: string; /** Whether its note can edit in place. */ editable: boolean; remove?: () => void; }) {
   const { t } = useTranslation();
   // A card that edits stays out of the sortable list, so a drag cannot start from inside its editor (E12).
   const editing = useCompilationEditingContext().editing?.slot === item.id;
-  const sort = useSortable({ id: item.id, disabled: disabled || !reorder || editing, data: { rowId: row.id } });
+  const canDrag = !dragDisabled && !editing;
+  const title = compilationItemTitle(item, content.notes, content.assets);
+  const sort = useSortable({ id: item.id, disabled: { draggable: !canDrag, droppable: !canDrag }, data: { chapterId, title } });
   /* eslint-disable react/refs -- dnd-kit sortable bindings are callback refs and render state, forwarded to the card and drag handle. */
   return (
-    <div ref={sort.setNodeRef} className='screen-card-slot' style={{ transform: CSS.Transform.toString(sort.transform), transition: sort.transition, opacity: sort.isDragging ? .3 : undefined }}>
+    <div ref={sort.setNodeRef} className='screen-card-slot' data-dragging={sort.isDragging || undefined} style={{ transform: CSS.Transform.toString(sort.transform), transition: sort.transition, opacity: sort.isDragging ? .3 : undefined }}>
       <CompilationCard
         {...content}
         item={item}
         view={row.view}
         writable={editable}
-        controls={!disabled && (
+        controls={
           <>
-            {reorder && (
-              <Button type='button' ref={sort.setActivatorNodeRef} {...sort.attributes} {...sort.listeners} size='icon' className='screen-drag-handle' aria-label={`${t('screen.moveItem')}: ${compilationItemTitle(item, content.notes, content.assets)}`}>
-                <GripVertical size={14} />
+            {canDrag && (
+              <Button type='button' ref={sort.setActivatorNodeRef} {...sort.attributes} {...sort.listeners} size='icon' className='screen-drag-handle' aria-label={`${t('screen.moveItem')}: ${title}`}>
+                <GripVertical size={14} aria-hidden='true' />
               </Button>
             )}
-            <Button type='button' size='icon' className='screen-remove' aria-label={`${t('screen.unpin')}: ${compilationItemTitle(item, content.notes, content.assets)}`} onClick={remove}>
-              <X size={12} />
-            </Button>
+            {remove && (
+              <Button type='button' size='icon' className='screen-remove' aria-label={`${t('screen.unpin')}: ${title}`} onClick={remove}>
+                <X size={12} />
+              </Button>
+            )}
           </>
-        )}
+        }
       />
     </div>
   );
@@ -77,25 +82,27 @@ function ChapterDivider({ item, controls }: { item: CompilationHeadingItem; cont
   );
 }
 
-/** A divider in reorder mode moves alone, which shifts the chapter boundary; removing it removes the heading only, and its items join the chapter before. */
-export function MovableDivider({ item, row, reorder, disabled, remove }: { item: CompilationHeadingItem; row: CompilationRow; reorder: boolean; disabled: boolean; remove: () => void; }) {
+/** A custom divider moves alone, shifting the chapter boundary. Removing it removes only the heading. */
+function MovableDivider({ item, dragDisabled, remove }: { item: CompilationHeadingItem; dragDisabled: boolean; remove?: () => void; }) {
   const { t } = useTranslation();
-  const sort = useSortable({ id: item.id, disabled: disabled || !reorder, data: { rowId: row.id } });
+  const sort = useSortable({ id: item.id, disabled: { draggable: dragDisabled, droppable: dragDisabled }, data: { title: item.title } });
   /* eslint-disable react/refs -- dnd-kit sortable bindings are callback refs and render state, forwarded to the divider and drag handle. */
   return (
-    <div ref={sort.setNodeRef} className='screen-card-slot screen-chapter-slot' style={{ transform: CSS.Transform.toString(sort.transform), transition: sort.transition, opacity: sort.isDragging ? .3 : undefined }}>
+    <div ref={sort.setNodeRef} className='screen-card-slot screen-chapter-slot' data-dragging={sort.isDragging || undefined} style={{ transform: CSS.Transform.toString(sort.transform), transition: sort.transition, opacity: sort.isDragging ? .3 : undefined }}>
       <ChapterDivider
         item={item}
-        controls={!disabled && (
+        controls={(!dragDisabled || remove) && (
           <span className='screen-chapter-controls'>
-            {reorder && (
+            {!dragDisabled && (
               <Button type='button' ref={sort.setActivatorNodeRef} {...sort.attributes} {...sort.listeners} size='icon' className='screen-drag-handle' aria-label={`${t('compilation.moveChapter')}: ${item.title}`}>
-                <GripVertical size={14} />
+                <GripVertical size={14} aria-hidden='true' />
               </Button>
             )}
-            <Button type='button' size='icon' className='screen-remove' aria-label={`${t('compilation.removeChapter')}: ${item.title}`} title={t('compilation.removeChapter')} onClick={remove}>
-              <X size={12} />
-            </Button>
+            {remove && (
+              <Button type='button' size='icon' className='screen-remove' aria-label={`${t('compilation.removeChapter')}: ${item.title}`} title={t('compilation.removeChapter')} onClick={remove}>
+                <X size={12} />
+              </Button>
+            )}
           </span>
         )}
       />
@@ -104,7 +111,7 @@ export function MovableDivider({ item, row, reorder, disabled, remove }: { item:
   /* eslint-enable react/refs */
 }
 
-export function CompilationLane({ row, graph, reorder, disabled, study, facets, notebooks, assets, folders = [], onOpen, onStudy, onStudyChange, onView, onSort, onEditOrder, onRename, onAdd, onRemove, onCreateNote, onArrange, readOnly, extra }: Omit<CompilationContentProps, 'notes'> & { graph?: ReactNode; extra?: ReactNode; facets?: Record<string, NotebookFacets>; /** Names and orders the chapters of a dynamic compilation grouped by folder. */ folders?: FolderItem[]; row: CompilationRow; reorder: boolean; disabled: boolean; study: StudyController; readOnly?: boolean; onStudy?: () => void; onView?: (view: CompilationRow['view']) => void; onAdd?: () => void; onRemove?: (id: string) => void; onSort?: (sort: CompilationSort) => void; onEditOrder?: () => void; onArrange?: () => void; onRename?: () => void; onStudyChange?: (study: NonNullable<CompilationRow['study']>) => void; onCreateNote?: (context?: { notebookId?: string; folder?: string; tag?: string; }) => void; }) {
+export function CompilationLane({ row, graph, dragDisabled, disabled, study, facets, notebooks, assets, folders = [], onOpen, onStudy, onStudyChange, onView, onSort, onEditOrder, onRename, onAdd, onRemove, onCreateNote, onArrange, readOnly, extra }: Omit<CompilationContentProps, 'notes'> & { graph?: ReactNode; extra?: ReactNode; facets?: Record<string, NotebookFacets>; /** Names and orders the chapters of a dynamic compilation grouped by folder. */ folders?: FolderItem[]; row: CompilationRow; dragDisabled?: boolean; disabled: boolean; study: StudyController; readOnly?: boolean; onStudy?: () => void; onView?: (view: CompilationRow['view']) => void; onAdd?: () => void; onRemove?: (id: string) => void; onSort?: (sort: CompilationSort) => void; onEditOrder?: () => void; onArrange?: () => void; onRename?: () => void; onStudyChange?: (study: NonNullable<CompilationRow['study']>) => void; onCreateNote?: (context?: { notebookId?: string; folder?: string; tag?: string; }) => void; }) {
   const { t } = useTranslation();
   const host = useRef<HTMLElement>(null), strip = useRef<HTMLDivElement>(null);
   const [clock, setClock] = useState(() => new Date());
@@ -119,10 +126,12 @@ export function CompilationLane({ row, graph, reorder, disabled, study, facets, 
   const content: CompilationContentProps = { notebooks, assets, onOpen, notes };
   const ordinaryRow = { ...row, study: { ...row.study, filter: 'all' as const, dueFirst: false } };
   const items = useHeldOrder(studyRowItems(compilationRowItems(row, content.notes, content.assets, content.notebooks, folders), ordinaryRow, content.notes, study.study, clock));
-  // Reorder mode and a read-only compilation offer no editing (E12, E13).
-  const editable = !readOnly && !disabled && !reorder;
-  const filtered = Boolean(row.study?.status);
-  const drop = useDroppable({ id: `lane:${row.id}`, disabled: readOnly || disabled || !reorder || filtered || row.kind !== 'custom', data: { rowId: row.id, empty: row.kind === 'custom' && !row.items.length } });
+  const editable = !readOnly && !disabled;
+  const canDrag = editable && !row.study?.status && !dragDisabled;
+  const custom = row.kind === 'custom';
+  const chapters = dragChapters(items, !custom && row.group === 'folder');
+  const drop = useDroppable({ id: `lane:${row.id}`, disabled: !canDrag || !custom || row.view === 'graph', data: { empty: custom && !row.items.length } });
+  const remove = (id: string) => editable && custom && !row.study?.status && onRemove ? () => onRemove(id) : undefined;
   // A narrow compilation lists its cards top to bottom: nothing scrolls sideways, and cards sort along the column.
   const vertical = useLaneOrientation(host) === 'vertical';
   useAltWheelHorizontalScroll(host, strip, undefined, row.view !== 'graph' && !vertical);
@@ -146,7 +155,17 @@ export function CompilationLane({ row, graph, reorder, disabled, study, facets, 
       {row.view === 'graph' ? graph : (
         <div ref={readOnly ? undefined : drop.setNodeRef} className={!readOnly && drop.isOver ? 'screen-drop-target' : ''}>
           <div ref={strip} className='screen-lane-strip' tabIndex={0} aria-label={`${row.name} · ${t('screen.items')}`}>
-            {!readOnly && row.kind === 'custom' ? <SortableContext items={items.map(item => item.id)} strategy={vertical ? verticalListSortingStrategy : horizontalListSortingStrategy}>{items.map(item => item.kind === 'heading' ? <MovableDivider key={item.id} item={item} row={row} reorder={reorder} disabled={disabled || filtered} remove={() => onRemove?.(item.id)} /> : <MovableCard reorder={reorder} editable={editable} key={item.id} {...content} item={item} row={row} disabled={disabled || filtered} remove={() => onRemove?.(item.id)} />)}</SortableContext> : items.map(item => <div className={item.kind === 'heading' ? 'screen-card-slot screen-chapter-slot' : 'screen-card-slot'} key={item.id}>{item.kind === 'heading' ? <ChapterDivider item={item} /> : <CompilationCard {...content} item={item} view={row.view} writable={editable} />}</div>)}
+            <SortableContext items={items.map(item => item.id)} strategy={vertical ? verticalListSortingStrategy : horizontalListSortingStrategy}>
+              {items.map(item =>
+                item.kind === 'heading'
+                  ? custom ? <MovableDivider key={item.id} item={item} dragDisabled={!canDrag} remove={remove(item.id)} /> : (
+                    <div key={item.id} className='screen-card-slot screen-chapter-slot'>
+                      <ChapterDivider item={item} />
+                    </div>
+                  )
+                  : <MovableCard key={item.id} {...content} item={item} row={row} editable={editable} dragDisabled={!canDrag} chapterId={chapters.get(item.id)} remove={remove(item.id)} />
+              )}
+            </SortableContext>
             {laneNotes.error && <p role='alert' className='screen-error'>{laneNotes.error}</p>}
             {laneNotes.loading && <LoadingStatus className='screen-lane-empty'>{t('notes.loading')}</LoadingStatus>}
             <NoteListSentinel hasMore={laneNotes.hasMore} loading={laneNotes.loadingMore} error={laneNotes.error} onLoadMore={laneNotes.loadMore} className='screen-lane-sentinel' />

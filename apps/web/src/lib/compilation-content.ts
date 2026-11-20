@@ -53,7 +53,8 @@ export const ungrouped = (row: CompilationRow): CompilationRow => row.kind === '
  * Splits sorted members into one chapter per folder, keeping their order within each chapter, so a manual order
  * counts only against the members of its own chapter. Chapters follow the server's `group=folder` order: the root's
  * members, then folders in the sidebar's order, then folders it does not list by path; a folder's assets follow its
- * notes, and folders holding only assets come after the note chapters. The headings live only in the browser.
+ * notes until a manual order places them elsewhere, and folders holding only assets come after the note chapters.
+ * The headings live only in the browser.
  */
 function folderChapters(row: Extract<CompilationRow, { kind: 'dynamic'; }>, members: CompilationItem[], notebooks: NotebookConfig[], folders: FolderItem[]): CompilationItem[] {
   const source = row.source;
@@ -65,20 +66,22 @@ function folderChapters(row: Extract<CompilationRow, { kind: 'dynamic'; }>, memb
   const selectedLabel = selected ? titles.find(folder => folder.path === selected)?.title ?? selected.split('/').pop()! : notebook?.title ?? source.notebookId;
   const groupOf = noteFolderGrouping({ notebookRoot: root, selectedFolder: selected, folders: titles, notebookId: source.notebookId, selectedLabel });
   const rank = new Map(titles.map((folder, index) => [folder.path, index + 1]));
-  const chapters = new Map<string, { label: string; notes: CompilationItem[]; assets: CompilationItem[]; }>();
+  const chapters = new Map<string, { label: string; members: CompilationItem[]; hasNotes: boolean; }>();
   for (const item of members) {
     if (item.kind !== 'note' && item.kind !== 'asset') continue;
     const { key, label } = groupOf({ path: item.path } as NoteListItem);
-    const chapter = chapters.get(key) ?? { label, notes: [], assets: [] };
+    const chapter = chapters.get(key) ?? { label, members: [], hasNotes: false };
     chapters.set(key, chapter);
-    (item.kind === 'note' ? chapter.notes : chapter.assets).push(item);
+    chapter.members.push(item);
+    chapter.hasNotes ||= item.kind === 'note';
   }
   const order = (key: string) => key === '' ? 0 : rank.get(key) ?? Number.MAX_SAFE_INTEGER;
-  const noteless = (key: string) => !chapters.get(key)!.notes.length;
+  const noteless = (key: string) => !chapters.get(key)!.hasNotes;
   const keys = [...chapters.keys()].sort((a, b) => Number(noteless(a)) - Number(noteless(b)) || (noteless(a) ? a.localeCompare(b) : order(a) - order(b) || (order(a) === Number.MAX_SAFE_INTEGER ? a.localeCompare(b) : 0)));
   return keys.flatMap(key => {
     const chapter = chapters.get(key)!;
-    return [{ id: `group:${key}`, kind: 'heading' as const, title: chapter.label }, ...chapter.notes, ...chapter.assets];
+    const ordered = row.sort?.field === 'manual' ? chapter.members : [...chapter.members.filter(item => item.kind === 'note'), ...chapter.members.filter(item => item.kind === 'asset')];
+    return [{ id: `group:${key}`, kind: 'heading' as const, title: chapter.label }, ...ordered];
   });
 }
 

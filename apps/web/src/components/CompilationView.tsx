@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { DndContext, type DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { useQueryClient } from '@tanstack/react-query';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Copy, FolderInput, GripVertical, LayoutGrid, ListTree, MoreHorizontal, Pencil, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { insideAssistantDock } from '../lib/assistant-dock.js';
-import { type CompilationItem, type CompilationRow, moveCompilationItem } from '@mygitnotes/core/compilation';
+import { COMPILATION_MAX_ORDER, type CompilationItem, type CompilationRow, moveCompilationItem } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { useNoteEditing } from '../lib/note-editing.js';
 import { useCompilationActions } from '../lib/compilation-actions.js';
@@ -12,23 +13,23 @@ import { CompilationEditingProvider, useCompilationEditing } from '../lib/compil
 import { useOutlineActions } from '../lib/outline-actions.js';
 import { planCompilationCopy } from '../lib/compilation-copy.js';
 import { initialCompilationStatus } from '../lib/compilation-status.js';
-import { screenCollision, screenKeyboardCoordinates } from '../lib/compilation-drag.js';
-import { useLaneNotes } from '../lib/compilation-queries.js';
+import { compilationRowItems } from '../lib/compilation-content.js';
+import { dynamicOrderAfterDrop, screenCollision, screenKeyboardCoordinates } from '../lib/compilation-drag.js';
+import { readLaneMembers } from '../lib/compilation-queries.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { usePanelContext } from '../lib/panel-context.js';
 import { compilationStudyRoute } from '../lib/routes.js';
 import type { FolderItem, NotebookConfig } from '../lib/types.js';
-import { useNoteFacets } from '../lib/use-note-queries.js';
+import { useNoteFacets, useNoteQueryScope } from '../lib/use-note-queries.js';
 import { useCompilation } from '../lib/use-compilation.js';
 import { useStudyWorkspace } from '../lib/use-study-workspace.js';
 import { Button } from './Button.js';
-import { type CompilationContentProps, compilationItemTitle } from './CompilationCard.js';
+import type { CompilationContentProps } from './CompilationCard.js';
 import { CompilationAddItem, CompilationEditRow } from './CompilationDialogs.js';
 import { CompilationLane } from './CompilationLane.js';
 import { CompilationOrderDialog } from './CompilationOrderDialog.js';
 import { CompilationBook } from './CompilationBook.js';
 import { LoadingStatus } from './LoadingStatus.js';
-import { ReorderToggle } from './ReorderToggle.js';
 import { useCompilationAssets, useCompilationItemOpen } from './useCompilationItemOpen.js';
 import { compilationNotebookIds } from '../lib/compilation-rows.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
@@ -61,18 +62,29 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   const outlines = useOutlineActions();
   const compilation = useCompilation({ notebookId, path }, notebooks);
   const study = useStudyWorkspace(actions.repository(notebookId), ignoreSaved);
-  const { assets, error: assetError } = useCompilationAssets(notebooks, compilationNotebookIds(compilation.page.rows[0] as CompilationRow | undefined, notebookId));
+  const { assets, error: assetError, loading: assetsLoading } = useCompilationAssets(notebooks, compilationNotebookIds(compilation.page.rows[0] as CompilationRow | undefined, notebookId));
   const facets = useNoteFacets(false);
   const [dialog, setDialog] = useState<'edit' | 'add' | 'delete' | 'order' | 'arrange' | null>(null);
-  const [reorder, setReorder] = useState(false);
-  const [dragging, setDragging] = useState<CompilationItem>();
+  const [dragging, setDragging] = useState<string>();
+  const [readingOrder, setReadingOrder] = useState(false);
+  const pendingDrop = useRef(false);
+  const queryClient = useQueryClient();
+  const scope = useNoteQueryScope();
   const [missing, setMissing] = useState(false);
   const [notice, setNotice] = useState('');
   const row = compilation.page.rows[0] as CompilationRow | undefined;
   const itemOpen = useCompilationItemOpen({ notebooks, assets, onOpenNote, onMissing: () => setMissing(true) });
-  const draggedNotes = useLaneNotes(dragging ? row : undefined);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: screenKeyboardCoordinates }));
   const disabled = !compilation.writable || compilation.loading;
+  // A folder source includes assets, so an incomplete asset read must not become a saved manual order.
+  const dragDisabled = row?.kind === 'dynamic' && row.source.kind === 'folder' && (assetsLoading || assetError);
+  const latest = useRef<{ row: CompilationRow | undefined; scope: typeof scope; assets: typeof assets; blocked: boolean; } | null>(null);
+  useLayoutEffect(() => {
+    latest.current = { row, scope, assets, blocked: disabled || dragDisabled };
+    return () => {
+      latest.current = null;
+    };
+  }, [row, scope, assets, disabled, dragDisabled]);
   const { setHasOpenNote } = usePanelContext();
   // Like a zoomed note, a zoomed compilation hides the workspace rail before the first paint, so both dialogs share the same edges.
   useLayoutEffect(() => {
@@ -86,12 +98,12 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
     if (frame !== 'zoom' || !onClose) return;
     const close = (event: KeyboardEvent) => {
       // Escape typed in the assistant dock beside the view belongs to the dock.
-      if (event.key !== 'Escape' || event.defaultPrevented || insideAssistantDock(event.target) || document.querySelectorAll('[role="dialog"]').length > 1) return;
+      if (event.key !== 'Escape' || event.defaultPrevented || dragging !== undefined || insideAssistantDock(event.target) || document.querySelectorAll('[role="dialog"]').length > 1) return;
       void editing.flushEditors().then(saved => saved && onClose());
     };
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
-  }, [frame, onClose, editing]);
+  }, [frame, onClose, editing, dragging]);
 
   const open: CompilationContentProps['onOpen'] = (item, note) => {
     setMissing(false);
@@ -122,6 +134,40 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
     if (await editing.flushEditors()) navigate(compilationStudyRoute(notebookId, path));
   };
   const change = (next: CompilationRow) => compilation.change({ rows: [next] });
+  const dropItem = async ({ active, over }: DragEndEvent) => {
+    setDragging(undefined);
+    if (!row || !over || active.id === over.id || disabled || dragDisabled || row.study?.status || pendingDrop.current) return;
+    const id = String(active.id), target = String(over.id);
+    if (slots.editing?.slot === id) return;
+    if (row.kind === 'custom') {
+      // A heading moves alone, shifting the chapter boundary. A card lands in the chapter its drop index falls in.
+      const from = row.items.findIndex(item => item.id === id);
+      const to = target === `lane:${row.id}` ? row.items.length - 1 : row.items.findIndex(item => item.id === target);
+      if (from < 0 || to < 0 || from === to) return;
+      compilation.change(moveCompilationItem(compilation.page, id, row.id, to));
+      void compilation.save();
+      return;
+    }
+    pendingDrop.current = true;
+    setReadingOrder(true);
+    try {
+      const notes = await readLaneMembers(queryClient, scope, row);
+      const current = latest.current;
+      if (!current || current.row !== row || current.blocked) return;
+      if (!notes || current.scope !== scope || current.assets !== assets) throw new Error(t('compilation.orderChanged'));
+      const items = compilationRowItems(row, notes, assets, notebooks, folders);
+      const manualOrder = dynamicOrderAfterDrop(items, row.group === 'folder', id, target);
+      if (!manualOrder) return;
+      if (manualOrder.length > COMPILATION_MAX_ORDER) throw new Error(t('compilation.orderTooLong', { limit: COMPILATION_MAX_ORDER }));
+      change({ ...row, sort: { field: 'manual', order: 'asc' }, manualOrder });
+      void compilation.save();
+    } catch (error) {
+      if (latest.current?.row === row) compilation.setError((error as Error).message);
+    } finally {
+      pendingDrop.current = false;
+      if (latest.current) setReadingOrder(false);
+    }
+  };
   // A change of arrangement unmounts the slot being edited, so its note is saved first and a failed save keeps everything as it is (E8).
   const rearrange = (current: CompilationRow, next: CompilationRow) => {
     if (next.view === current.view) return change(next);
@@ -140,6 +186,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       folders,
       onOpen: open,
       disabled,
+      dragDisabled,
       readOnly: !compilation.writable,
       study,
       facets: facets.facets,
@@ -161,7 +208,6 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
               <ListTree aria-hidden='true' />
             </button>
           )}
-          {!disabled && current.kind === 'custom' && current.view !== 'book' && current.view !== 'graph' && <ReorderToggle active={reorder} disabled={disabled} onToggle={() => void slots.finish().then(saved => saved && setReorder(value => !value))} />}
           {(compilation.writable || addToFocus) && (
             // Secondary actions share one menu so the header stays on one line in a narrow Focus pane.
             <DropdownMenu.Root>
@@ -178,7 +224,10 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
                   )}
                   {compilation.writable && (
                     <>
-                      <DropdownMenu.Item disabled={disabled} onSelect={() => setDialog('edit')}>
+                      <DropdownMenu.Item
+                        disabled={disabled}
+                        onSelect={() => setDialog('edit')}
+                      >
                         <Pencil size={14} aria-hidden='true' />
                         <span>{t('screen.editRow')}</span>
                       </DropdownMenu.Item>
@@ -210,55 +259,23 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       onRename: rename(current),
       onCreateNote: actions.createNote,
     };
-    if (current.view === 'book') return <CompilationBook {...common} />;
-    return (
-      <DndContext
-        sensors={sensors}
-        collisionDetection={screenCollision}
-        onDragStart={({ active }) =>
-          setDragging(
-            current.kind === 'custom'
-              ? current.items.find(item => item.id === active.id)
-              : undefined,
-          )}
-        onDragCancel={() => setDragging(undefined)}
-        onDragEnd={({ active, over }) => {
-          setDragging(undefined);
-          if (!over || active.id === over.id || disabled || !reorder || current.kind !== 'custom' || current.study?.status) return;
-          // A content item lands in the chapter its drop index falls in; a heading moves alone, shifting the chapter boundary.
-          try {
-            compilation.change(moveCompilationItem(compilation.page, String(active.id), current.id, over.id === `lane:${current.id}` ? current.items.length : current.items.findIndex(item => item.id === over.id)));
-          } catch (error) {
-            setNotice((error as Error).message === 'Chapter headings stay in their compilation' ? t('compilation.chapterStaysHere') : (error as Error).message);
-          }
+    return current.view === 'book' ? <CompilationBook {...common} /> : (
+      <CompilationLane
+        {...common}
+        onRemove={id => {
+          if (current.kind !== 'custom') return;
+          const next = { ...current, items: current.items.filter(item => item.id !== id) };
+          if (slots.editing?.slot === id) void slots.finish().then(saved => saved && change(next));
+          else change(next);
         }}
-      >
-        <CompilationLane
-          {...common}
-          reorder={reorder}
-          onRemove={id => {
-            if (current.kind !== 'custom') return;
-            const next = { ...current, items: current.items.filter(item => item.id !== id) };
-            if (slots.editing?.slot === id) void slots.finish().then(saved => saved && change(next));
-            else change(next);
-          }}
-          graph={current.view === 'graph'
-            ? (
-              <Suspense fallback={<p role='status'>{t('graph.title')}</p>}>
-                <GraphPage notebooks={notebooks} lane={current} screen={compilation} />
-              </Suspense>
-            )
-            : undefined}
-        />
-        <DragOverlay>
-          {dragging && (
-            <div className='screen-drag-overlay'>
-              <GripVertical size={16} />
-              {compilationItemTitle(dragging, draggedNotes.notes, assets)}
-            </div>
-          )}
-        </DragOverlay>
-      </DndContext>
+        graph={current.view === 'graph'
+          ? (
+            <Suspense fallback={<p role='status'>{t('graph.title')}</p>}>
+              <GraphPage notebooks={notebooks} lane={current} screen={compilation} />
+            </Suspense>
+          )
+          : undefined}
+      />
     );
   };
 
@@ -277,6 +294,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
           {assetError && <p role='alert' className='screen-error'>{t('screen.assetsError')}</p>}
           {missing && <p role='alert' className='screen-error'>{t('screen.missing')}</p>}
           {notice && <p role='status' className='screen-dialog-hint'>{notice}</p>}
+          {readingOrder && <p role='status' className='screen-dialog-hint'>{t('compilation.loadingOrder')}</p>}
           {compilation.loading ? <LoadingStatus>{t('screen.loading')}</LoadingStatus> : compilation.missing ? <p role='alert' className='screen-error'>{t('compilation.notFound')}</p> : !row
             ? (
               <div className='screen-board-empty' role='alert'>
@@ -285,7 +303,21 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
                 <p className='screen-form-error'>{compilation.invalid[0]?.error}</p>
               </div>
             )
-            : view(row)}
+            : (
+              <DndContext sensors={sensors} collisionDetection={screenCollision} onDragStart={({ active }) => setDragging(String(active.data.current?.title ?? active.id))} onDragCancel={() => setDragging(undefined)} onDragEnd={event => void dropItem(event)}>
+                {view(row)}
+                <DragOverlay dropAnimation={null} style={{ pointerEvents: 'none' }}>
+                  {dragging !== undefined && (
+                    // Keep the measured drag rectangle as large as the source, even though the label is compact.
+                    <div className='screen-drag-overlay-frame'>
+                      <div className='screen-drag-overlay'>
+                        <GripVertical size={16} aria-hidden='true' /> {dragging}
+                      </div>
+                    </div>
+                  )}
+                </DragOverlay>
+              </DndContext>
+            )}
         </div>
         {row && dialog === 'edit' && <CompilationEditRow row={row} disabled={disabled} notebooks={notebooks} assets={assets} folders={folders} selectedNotebookId={notebookId} onClose={() => setDialog(null)} onApply={next => rearrange(row, next)} onRemove={() => setDialog('delete')} />}
         {row?.kind === 'custom' && dialog === 'add' && <CompilationAddItem notebooks={notebooks} assets={assets} folders={folders} rowName={row.name} notebookId={row.notebookId} items={row.items} onClose={() => setDialog(null)} onAdd={items => change({ ...row, items })} />}

@@ -34,7 +34,7 @@ export function compilationItemTitle(item: CompilationItem, notes: NoteListItem[
 /** Where a click on a note card's chrome opens the note in zoom: not on a control, and not on the body, which its note slot handles. */
 const CHROME_SKIPPED = 'a,button,input,select,textarea,summary,[role="button"],.compilation-inline-reading,.compilation-inline-editor';
 
-export function CompilationCard({ item, view, controls, writable = false, ...content }: CompilationContentProps & { item: CompilationItem; view: CompilationRow['view']; controls?: ReactNode; /** Whether a note card offers editing in place: write access, and not reorder mode. */ writable?: boolean; }) {
+export function CompilationCard({ item, view, controls, writable = false, ...content }: CompilationContentProps & { item: CompilationItem; view: CompilationRow['view']; controls?: ReactNode; /** Whether a note card offers editing in place. */ writable?: boolean; }) {
   const { t } = useTranslation();
   const { editorProps } = useNoteEditing();
   const [playing, setPlaying] = useState(false);

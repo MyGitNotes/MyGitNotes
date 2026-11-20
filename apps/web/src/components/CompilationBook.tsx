@@ -7,6 +7,7 @@ import { chapterOfAnchor, type PageStep, resolvePage } from '../lib/book-paging.
 import { useBookReadingMode, writeBookReadingMode } from '../lib/book-reading.js';
 import { useCompilationEditingContext, useHeldNotes, useHeldOrder } from '../lib/compilation-editing.js';
 import { compilationRowItems, studyRowItems } from '../lib/compilation-content.js';
+import { dragChapters } from '../lib/compilation-drag.js';
 import { useLaneNotes } from '../lib/compilation-queries.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useScrollSpy } from '../lib/scroll-spy.js';
@@ -36,7 +37,7 @@ const headings = (root: HTMLElement | null, anchor: string) => [...(root?.queryS
  * full Markdown and edit in place; assets show a preview, YouTube the player and folders their notes as
  * sub-sections. The body scrolls inside the compilation and the contents follow it.
  */
-export function CompilationBook({ row, notebooks, assets, folders = [], onOpen, study, facets, extra, ...header }: Omit<CompilationContentProps, 'notes'> & BookHeader & { row: CompilationRow; study: StudyController; facets?: Record<string, NotebookFacets>; extra?: ReactNode; /** Names and orders the chapters of a dynamic compilation grouped by folder. */ folders?: FolderItem[]; }) {
+export function CompilationBook({ row, notebooks, assets, folders = [], onOpen, study, facets, extra, dragDisabled, ...header }: Omit<CompilationContentProps, 'notes'> & BookHeader & { row: CompilationRow; study: StudyController; dragDisabled?: boolean; facets?: Record<string, NotebookFacets>; extra?: ReactNode; /** Names and orders the chapters of a dynamic compilation grouped by folder. */ folders?: FolderItem[]; }) {
   const { t } = useTranslation();
   const laneNotes = useLaneNotes(row, { content: true });
   const ordinaryRow = { ...row, study: { ...row.study, filter: 'all' as const, dueFirst: false } };
@@ -44,6 +45,7 @@ export function CompilationBook({ row, notebooks, assets, folders = [], onOpen, 
   const notes = useHeldNotes(laneNotes.notes);
   const items = useHeldOrder(studyRowItems(compilationRowItems(row, notes, assets, notebooks, folders), ordinaryRow, notes, study.study));
   const chapters = bookChapters(items, notes, assets, laneNotes.loading, notebooks);
+  const itemChapters = allChapters(chapters);
   const [sections, setSections] = useState<ReadonlyMap<string, readonly BookEntry[]>>(new Map());
   const [liveTitles, setLiveTitles] = useState<ReadonlyMap<string, string>>(new Map());
   const entries = bookEntries(chapters, sections, liveTitles);
@@ -112,7 +114,7 @@ export function CompilationBook({ row, notebooks, assets, folders = [], onOpen, 
     });
   }, []);
   // Members too: a folder under a chapter heading reports its notes under its own id.
-  const chapterIds = allChapters(chapters).map(chapter => chapter.id).join('\n');
+  const chapterIds = itemChapters.map(chapter => chapter.id).join('\n');
   useEffect(() => {
     const present = new Set(chapterIds.split('\n'));
     setSections(current => {
@@ -227,7 +229,10 @@ export function CompilationBook({ row, notebooks, assets, folders = [], onOpen, 
     observer.observe(book);
     return () => observer.disconnect();
   }, [drawer, book]);
-  const contents = { entries, active, hasMore: laneNotes.hasMore, loadingMore: laneNotes.loadingMore, onLoadMore: laneNotes.loadMore };
+  const grouped = row.kind === 'dynamic' && row.group === 'folder';
+  const dragChapter = dragChapters(items, grouped);
+  const dragItems = writable && !header.disabled && !dragDisabled && !row.study?.status ? new Map(itemChapters.flatMap(({ id, anchor, kind }) => (grouped && kind === 'heading') || editingEntry === anchor || editingEntry?.startsWith(`${anchor}/`) ? [] : [[anchor, { id, chapterId: dragChapter.get(id) }] as const])) : undefined;
+  const contents = { entries, dragItems, active, hasMore: laneNotes.hasMore, loadingMore: laneNotes.loadingMore, onLoadMore: laneNotes.loadMore };
 
   return (
     <section ref={setBook} id={`screen-lane-${row.id}`} className='screen-lane compilation-book-view' data-reading={readingMode} aria-label={row.name}>
@@ -240,7 +245,7 @@ export function CompilationBook({ row, notebooks, assets, folders = [], onOpen, 
         <BookReadingToggle mode={readingMode} onChange={writeBookReadingMode} />
       </div>
       <div className='compilation-book-layout'>
-        <BookContents {...contents} onJump={anchor => void jumpTo(anchor)} />
+        {!drawer && <BookContents {...contents} onJump={anchor => void jumpTo(anchor)} />}
         <div {...swipe} ref={setBody} className='compilation-book' aria-label={`${row.name} · ${t('screen.items')}`}>{shown.map(chapter => <BookChapter key={chapter.id} chapter={chapter} assets={assets} writable={writable} onOpen={onOpen} onLiveTitle={onLiveTitle} onEntries={onEntries} />)} {laneNotes.error && <p role='alert' className='screen-error'>{laneNotes.error}</p>} {laneNotes.loading && <LoadingStatus className='screen-lane-empty'>{t('notes.loading')}</LoadingStatus>} {!paged && <NoteListSentinel hasMore={laneNotes.hasMore} loading={laneNotes.loadingMore} error={laneNotes.error} onLoadMore={laneNotes.loadMore} className='screen-lane-sentinel' />} {!chapters.length && !laneNotes.loading && <div className='screen-lane-empty'>{t(row.kind === 'custom' ? 'screen.emptyCustom' : 'screen.emptyDynamic')}</div>}</div>
       </div>
       {paged && chapters.length > 0 && <BookPager index={pageIndex} total={chapters.length} hasMore={laneNotes.hasMore} loadingMore={laneNotes.loadingMore} onStep={step} />}

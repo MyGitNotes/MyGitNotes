@@ -1,5 +1,6 @@
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useDndContext } from '@dnd-kit/core';
 import { X } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
 import { BookContents, type BookContentsProps } from './BookContents.js';
@@ -21,14 +22,17 @@ export function BookDrawer({ container, onClose, ...contents }: BookDrawerProps)
   const { t } = useTranslation();
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
-  /* eslint-disable react/refs -- Keep the current callback in a ref for an imperative listener without recreating its subscription. */
+  const { active } = useDndContext();
+  const dragging = useRef(false);
+  /* eslint-disable react/refs -- Keep the current callback and drag state for the imperative Escape listener. */
   close.current = onClose;
+  dragging.current = Boolean(active);
   /* eslint-enable react/refs */
   useEffect(() => {
     panel.current?.querySelector<HTMLElement>('.compilation-book-drawer-close')?.focus();
     // Capture phase, so the drawer takes this Escape before the compilation behind it can.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.isComposing) return;
+      if (event.key !== 'Escape' || event.isComposing || dragging.current) return;
       event.preventDefault();
       event.stopPropagation();
       close.current();

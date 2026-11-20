@@ -31,7 +31,7 @@ export interface InlineNoteSlotProps {
   notebookId: string;
   path: string;
   title: string;
-  /** Whether the note can be edited here: write access, and not a state such as reorder mode that rules editing out. */
+  /** Whether the host allows editing the note here. */
   writable: boolean;
   /** `grow`: the editor takes its content's height (a Book section). `fill`: it fills the card's content area and scrolls inside. */
   layout: 'grow' | 'fill';
