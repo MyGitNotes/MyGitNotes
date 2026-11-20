@@ -5,7 +5,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import type { SortField, SortOrder } from '../lib/note-sort.js';
 import type { NotebookConfig } from '../lib/types.js';
 import { ViewMode } from '../lib/types.js';
-import { type NoteSearchHandle, noteSortOptions } from './NoteToolbar.js';
+import { type NoteSearchHandle, noteSortOptions, useClearOrClose } from './NoteToolbar.js';
 import { PhoneSheet } from './PhoneSheet.js';
 import { Select } from './Select.js';
 import { SidebarLinks } from './SidebarLinks.js';
@@ -34,6 +34,9 @@ export function PhoneListBar({ notebooks, selectedNotebookId, onSelectNotebook, 
   const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  // The same one ✕ as the desktop search: it clears a search, then closes the field.
+  const { hasQuery, clearOrClose, closeLabel, onKeyDown } = useClearOrClose({ query, onQueryChange, open: searchOpen, setOpen: setSearchOpen, input: searchInput, toggle });
   useImperativeHandle(searchRef, () => ({
     focus: () => {
       setSearchOpen(true);
@@ -46,15 +49,15 @@ export function PhoneListBar({ notebooks, selectedNotebookId, onSelectNotebook, 
         <PanelLeft aria-hidden='true' />
       </button>
       {notebooks.length > 0 && <Select className='phone-list-notebook' aria-label={t('sidebar.notebooks')} value={selectedNotebookId} title={notebooks.find(nb => nb.id === selectedNotebookId)?.title} disabled={notebookDisabled} onValueChange={onSelectNotebook} groups={notebookGroups?.map(group => ({ label: group.label, values: group.notebooks }))} options={notebooks.map(nb => ({ value: nb.id, label: unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title }))} />}
-      <button type='button' className='ui-icon-button note-search-toggle' aria-label={t('header.searchPlaceholder')} aria-expanded={searchOpen} aria-controls='note-toolbar-search' data-active={query.trim() ? true : undefined} onClick={() => setSearchOpen(true)}>
+      <button ref={toggle} type='button' className='ui-icon-button note-search-toggle' aria-label={t('header.searchPlaceholder')} aria-expanded={searchOpen} aria-controls='note-toolbar-search' data-active={query.trim() ? true : undefined} onClick={() => setSearchOpen(true)}>
         <Search aria-hidden='true' />
       </button>
-      <div id='note-toolbar-search' className='note-toolbar-search' role='search' data-open={searchOpen || undefined}>
+      <div id='note-toolbar-search' className='note-toolbar-search' role='search' data-open={searchOpen || undefined} data-query={hasQuery || undefined} onKeyDown={onKeyDown}>
         <label className='note-search-field'>
           <Search size={15} aria-hidden='true' />
-          <input ref={searchInput} type='search' aria-label={t('header.searchPlaceholder')} placeholder={t('header.searchPlaceholder')} value={query} onChange={event => onQueryChange(event.target.value)} />
+          <input ref={searchInput} className='note-search-input' type='search' aria-label={t('header.searchPlaceholder')} placeholder={t('header.searchPlaceholder')} value={query} onChange={event => onQueryChange(event.target.value)} />
         </label>
-        <button type='button' className='ui-icon-button note-search-close' aria-label={t('common.close')} onClick={() => setSearchOpen(false)}>
+        <button type='button' className='ui-icon-button note-search-close' aria-label={closeLabel} title={closeLabel} onClick={clearOrClose}>
           <X size={16} aria-hidden='true' />
         </button>
       </div>

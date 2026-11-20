@@ -11,6 +11,8 @@
   .phone-list-bar .phone-list-notebook { flex: 1 1 0; min-width: 0; height: 44px; border-color: transparent; background: transparent; font-size: 15px; font-weight: 600; }
   .phone-list-bar .note-search-field { height: 44px; }
   .phone-list-bar .note-toolbar-search[data-open] { height: 44px; }
+  /* The field's one ✕ (clear, then close) stays a full touch target beside the field, with or without a search. */
+  .phone-list-bar .note-toolbar-search .note-search-close, .phone-list-bar .note-toolbar-search[data-query] .note-search-close { position: static; flex: none; width: 44px; height: 44px; transform: none; }
 
   /* The note screen's bar. Over the text it slides away as the text scrolls down; above a notice it stays in the page. */
   .phone-note-bar { position: relative; flex: none; display: flex; align-items: center; gap: 2px; height: 44px; padding: 0 4px; border-bottom: 1px solid var(--color-line); background: var(--color-surface); }

@@ -1,5 +1,5 @@
 import './note-toolbar.css';
-import { type ReactNode, type Ref, type RefObject, useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, type Ref, type RefObject, useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
 import { ArrowDownAZ, ArrowDownWideNarrow, ArrowDownZA, ArrowUpWideNarrow, CalendarArrowDown, CalendarArrowUp, ClockArrowDown, ClockArrowUp, Eye, EyeOff, FolderTree, ListOrdered, Search, X } from 'lucide-react';
 import { Select } from './Select.js';
 import { type NewNoteActions, NewNoteMenu } from './NewNoteMenu.js';
@@ -94,33 +94,9 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
   const toolbar = placement === 'toolbar';
   const searchId = toolbar ? 'note-toolbar-search' : `${ids}search`;
   const toggle = useRef<HTMLButtonElement>(null);
-  const hasQuery = query !== '';
-  // The one ✕ (and Esc) clears a search first, keeping the field and the cursor; on an empty field it closes the field and returns to its
-  // button. Where the field is always shown its button is hidden and cannot take focus, so the cursor stays in the field.
-  const clearOrClose = () => {
-    if (hasQuery) {
-      onQueryChange('');
-      searchInput.current?.focus();
-      return;
-    }
-    setSearchOpen(false);
-    toggle.current?.focus();
-  };
-  const closeLabel = hasQuery ? t('header.clearSearch') : t('common.close');
+  const { hasQuery, clearOrClose, closeLabel, onKeyDown } = useClearOrClose({ query, onQueryChange, open: searchOpen, setOpen: setSearchOpen, input: searchInput, toggle });
   const region = (className: string) => (
-    <div
-      id={searchId}
-      className={className}
-      role='search'
-      data-open={searchOpen || undefined}
-      data-query={hasQuery || undefined}
-      onKeyDown={event => {
-        if (event.key === 'Escape' && (searchOpen || hasQuery)) {
-          event.preventDefault();
-          clearOrClose();
-        }
-      }}
-    >
+    <div id={searchId} className={className} role='search' data-open={searchOpen || undefined} data-query={hasQuery || undefined} onKeyDown={onKeyDown}>
       <label className='note-search-field'>
         <Search size={15} aria-hidden='true' />
         <input ref={searchInput} className='note-search-input' type='search' aria-label={t('header.searchPlaceholder')} placeholder={t('header.searchPlaceholder')} value={query} onChange={event => onQueryChange(event.target.value)} />
@@ -184,6 +160,31 @@ export function NoteListTools({ placement, query, onQueryChange, searchRef, sort
       {tools}
     </>
   );
+}
+
+/**
+ * A note search's one ✕ (and Esc): it clears a search first, keeping the field and the cursor; on an empty field it closes the field and
+ * returns to its button. Where the field is always shown its button is hidden and cannot take focus, so the cursor stays in the field.
+ */
+export function useClearOrClose({ query, onQueryChange, open, setOpen, input, toggle }: { query: string; onQueryChange: (query: string) => void; open: boolean; setOpen: (open: boolean) => void; input: RefObject<HTMLInputElement | null>; toggle: RefObject<HTMLButtonElement | null>; }) {
+  const { t } = useTranslation();
+  const hasQuery = query !== '';
+  const clearOrClose = () => {
+    if (hasQuery) {
+      onQueryChange('');
+      input.current?.focus();
+      return;
+    }
+    setOpen(false);
+    toggle.current?.focus();
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && (open || hasQuery)) {
+      event.preventDefault();
+      clearOrClose();
+    }
+  };
+  return { hasQuery, clearOrClose, closeLabel: hasQuery ? t('header.clearSearch') : t('common.close'), onKeyDown };
 }
 
 /**

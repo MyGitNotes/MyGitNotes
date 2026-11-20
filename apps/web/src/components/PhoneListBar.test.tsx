@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { createElement, createRef } from 'react';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createElement, createRef, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
@@ -46,6 +48,52 @@ it('opens the search over the bar, which sends what is typed, and the command th
   expect(search).not.toHaveAttribute('data-open');
   act(() => searchRef.current!.focus());
   expect(search).toHaveAttribute('data-open');
+});
+
+function SearchingBar() {
+  const [query, setQuery] = useState('');
+  return createElement(PhoneListBar, props({ query, onQueryChange: setQuery }));
+}
+
+it('keeps one ✕: with a search it clears and keeps the cursor, pressed again it closes and returns to the button', () => {
+  render(createElement(I18nProvider, null, createElement(SearchingBar)));
+  const search = document.getElementById('note-toolbar-search')!;
+  const toggle = screen.getByRole('button', { name: 'Search notes, tags, content...', expanded: false });
+  fireEvent.click(toggle);
+  const input = within(search).getByRole('searchbox');
+  expect(input).toHaveClass('note-search-input');
+  fireEvent.change(input, { target: { value: 'plan' } });
+  expect(within(search).getAllByRole('button')).toHaveLength(1);
+  const clear = within(search).getByRole('button', { name: 'Clear search' });
+  expect(clear).toHaveAttribute('title', 'Clear search');
+  fireEvent.click(clear);
+  expect(input).toHaveValue('');
+  expect(input).toHaveFocus();
+  expect(search).toHaveAttribute('data-open');
+  const close = within(search).getByRole('button', { name: 'Close' });
+  expect(close).toHaveAttribute('title', 'Close');
+  fireEvent.click(close);
+  expect(search).not.toHaveAttribute('data-open');
+  expect(toggle).toHaveFocus();
+});
+
+it('takes Esc the same two steps: clear, then close', () => {
+  render(createElement(I18nProvider, null, createElement(SearchingBar)));
+  const search = document.getElementById('note-toolbar-search')!;
+  fireEvent.click(screen.getByRole('button', { name: 'Search notes, tags, content...' }));
+  const input = within(search).getByRole('searchbox');
+  fireEvent.change(input, { target: { value: 'plan' } });
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(input).toHaveValue('');
+  expect(search).toHaveAttribute('data-open');
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(search).not.toHaveAttribute('data-open');
+});
+
+it("hides the browser's own clear on the phone field and keeps the ✕ a 44px target", () => {
+  const css = (file: string) => fs.readFileSync(path.resolve(__dirname, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  expect(css('note-toolbar.css')).toMatch(/\.note-search-input::-webkit-search-cancel-button[^{]*\{[^}]*-webkit-appearance: none/);
+  expect(css('phone-notes.css')).toMatch(/\.phone-list-bar \.note-toolbar-search\[data-query\] \.note-search-close \{[^}]*width: 44px; height: 44px/);
 });
 
 it("holds the list's view, order and hidden notes in the filter sheet, above the filter sections", () => {
