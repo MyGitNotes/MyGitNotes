@@ -46,6 +46,7 @@ import type { MarkdownFormat } from '../lib/markdown-format.js';
 import { isOutlinePath } from '@mygitnotes/core/outline';
 import { applyOutlineCommand, outlineKeymap } from './live-markdown/outline-commands.js';
 import { outlineDrag } from './live-markdown/outline-drag.js';
+import { scrollbarPressGuard } from './live-markdown/scrollbar-press.js';
 import type { OutlineCommand } from '../lib/outline-editing.js';
 import { textChange } from '../lib/text-change.js';
 import { blockInsertion } from '../lib/directive-editing.js';
@@ -326,6 +327,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           }),
           inlineIconAtomicRanges(view => view.state.field(field).decorations),
           EditorView.atomicRanges.of(view => view.state.field(field).decorations.update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof LiveMarkdownTable })),
+          scrollbarPressGuard,
           collab
             ? collabFrontmatterGuard(view => view.state.field(field).decorations)
             : [],
