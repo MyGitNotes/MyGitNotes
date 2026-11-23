@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { agentEditMessage, DEFAULT_NOTE_STATUSES, withEditDate, deleteNoteFile, isNotebookContent, keptNoteMetadata, listedNoteTemplates, listTemplates, loadNoteTemplate, loadWorkspaceConfig, type NotebookConfig, noteFromTemplate, NoteItem, noteStatusNames, noteSummary, readNoteFile, resolveNoteStatuses, resolveSafePath, scanNotebookNotes, versionFilePath, withNoteEdits, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
+import { agentEditMessage, DEFAULT_NOTE_STATUSES, deleteNoteFile, isNotebookContent, keptNoteMetadata, listedNoteTemplates, listTemplates, loadNoteTemplate, loadWorkspaceConfig, type NotebookConfig, noteFromTemplate, NoteItem, noteStatusNames, noteSummary, readNoteFile, resolveNoteStatuses, resolveSafePath, scanNotebookNotes, versionFilePath, withEditDate, withNoteEdits, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
 import { generateCommitMessage, noteEditFacts, stageAndCommit } from '@mygitnotes/git';
 import { isNoteFile } from '@mygitnotes/core/note-file';
 import { assertNoteResource, assertUserWorkspaceBranch } from '../guards.js';

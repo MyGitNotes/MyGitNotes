@@ -179,9 +179,11 @@ export class RemoteEditDates {
     const { inflight } = this.shared;
     const fresh = missing.filter(file => !inflight.has(file.key));
     if (fresh.length) this.date(head, fresh);
-    const waits = missing.map(file => inflight.get(file.key)!.then(date => {
-      if (date) dates.set(file.path, date);
-    }));
+    const waits = missing.map(file =>
+      inflight.get(file.key)!.then(date => {
+        if (date) dates.set(file.path, date);
+      })
+    );
     await Promise.race([Promise.all(waits), delay(this.wait)]);
     // A copy, so dates that land after the wait do not change an answer already given.
     return new Map(dates);

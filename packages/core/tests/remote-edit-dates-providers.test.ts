@@ -25,10 +25,12 @@ function gitlabHistory(graphql = true) {
       if (!graphql) return json({ data: { project: null } });
       expect(variables.project).toBe('group/subgroup/project');
       expect(query).toContain('lastCommit { sha authoredDate }');
-      const repository = Object.fromEntries(Object.keys(variables).filter(key => /^p\d+$/.test(key)).map(key => {
-        const commit = last(variables.ref, variables[key]);
-        return [`f${key.slice(1)}`, { lastCommit: commit && { sha: commit.sha, authoredDate: commit.date } }];
-      }));
+      const repository = Object.fromEntries(
+        Object.keys(variables).filter(key => /^p\d+$/.test(key)).map(key => {
+          const commit = last(variables.ref, variables[key]);
+          return [`f${key.slice(1)}`, { lastCommit: commit && { sha: commit.sha, authoredDate: commit.date } }];
+        }),
+      );
       return json({ data: { project: { repository } } });
     }
     const endpoint = url.slice(prefix.length), query = new URL(url).searchParams;

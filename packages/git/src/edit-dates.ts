@@ -130,7 +130,7 @@ async function dateTree(top: string, head: string, pathspecs: string[], scope: s
   // What the commits since the earlier head left unchanged keeps its earlier date, under the path it had then.
   for (const [from, heads] of searching) {
     const known = since?.dates.get(from);
-    if (known) for (const file of heads) dates.set(file, known);
+    if (known) { for (const file of heads) dates.set(file, known); }
   }
   return { head, scope, dates };
 }

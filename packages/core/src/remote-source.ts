@@ -687,10 +687,12 @@ export abstract class RemoteSource {
   protected async lastCommits(head: string, paths: string[]): Promise<Map<string, LastCommit | null>> {
     const found = new Map<string, LastCommit | null>();
     for (let i = 0; i < paths.length; i += 6) {
-      await Promise.all(paths.slice(i, i + 6).map(async file => {
-        const [commit] = (await this.historyPage(file, head, 1, 1)).commits;
-        found.set(file, commit ? { sha: commit.sha, date: commit.date } : null);
-      }));
+      await Promise.all(
+        paths.slice(i, i + 6).map(async file => {
+          const [commit] = (await this.historyPage(file, head, 1, 1)).commits;
+          found.set(file, commit ? { sha: commit.sha, date: commit.date } : null);
+        }),
+      );
     }
     return found;
   }

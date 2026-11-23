@@ -12,31 +12,14 @@ const life = [item('notes/life/plain.md', 'life', '2026-07-01')];
 const facts: Record<string, NoteEditFact> = { 'notes/work/old-commit.md': { lastCommitAt: '2026-02-01T00:00:00Z' }, 'notes/work/new-commit.md': { lastCommitAt: '2026-10-01T00:00:00+08:00' } };
 
 async function catalog(asked: string[][] = []) {
-  const repository = (id: string, alias: string, notebook: string, notes: NoteListItem[], dated: boolean): CatalogRepository => ({
-    id,
-    alias,
-    notebooks: config.notebooks.filter(candidate => candidate.id === notebook),
-    catalog: {
-      revision: async () => '',
-      index: async () => notes,
-      contents: async () => new Map(),
-      memo: (_kind, _notebooks, compute) => compute(),
-      folders: async () => [],
-      ...(dated ? { dates: async (listed: NoteListItem[]) => (asked.push(listed.map(note => note.path)), new Map(listed.flatMap(note => facts[note.path] ? [[note.path, facts[note.path]]] : []))) } : {}),
-    },
-  });
+  const repository = (id: string, alias: string, notebook: string, notes: NoteListItem[], dated: boolean): CatalogRepository => ({ id, alias, notebooks: config.notebooks.filter(candidate => candidate.id === notebook), catalog: { revision: async () => '', index: async () => notes, contents: async () => new Map(), memo: (_kind, _notebooks, compute) => compute(), folders: async () => [], ...(dated ? { dates: async (listed: NoteListItem[]) => (asked.push(listed.map(note => note.path)), new Map(listed.flatMap(note => facts[note.path] ? [[note.path, facts[note.path]]] : []))) } : {}) } });
   return workspaceCatalog(config, [repository('github:o/work@main', 'w', 'work', work, true), repository('github:o/life@main', 'l', 'life', life, false)]);
 }
 
 it('sorts a query by the Git edit date and lists both dates, falling back to the frontmatter where Git has none', async () => {
   const asked: string[][] = [];
   const page = await queryNotes(await catalog(asked), { ...DEFAULT_NOTE_QUERY, notebookId: 'all', sort: 'updated', order: 'desc' }, { limit: 10, content: false });
-  expect(page.notes.map(note => [note.path, note.lastCommitAt, note.updated])).toEqual([
-    ['notes/work/new-commit.md', '2026-09-30T16:00:00.000Z', '2026-09-30T16:00:00.000Z'],
-    ['notes/life/plain.md', undefined, '2026-07-01T00:00:00.000Z'],
-    ['notes/work/untracked.md', undefined, '2026-06-01T00:00:00.000Z'],
-    ['notes/work/old-commit.md', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z'],
-  ]);
+  expect(page.notes.map(note => [note.path, note.lastCommitAt, note.updated])).toEqual([['notes/work/new-commit.md', '2026-09-30T16:00:00.000Z', '2026-09-30T16:00:00.000Z'], ['notes/life/plain.md', undefined, '2026-07-01T00:00:00.000Z'], ['notes/work/untracked.md', undefined, '2026-06-01T00:00:00.000Z'], ['notes/work/old-commit.md', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z']]);
   // The repository is asked once for every note the query matched, under its own notebook ids.
   expect(asked).toEqual([work.map(note => note.path)]);
   const paths = await queryNotePaths(await catalog(), { ...DEFAULT_NOTE_QUERY, notebookId: 'w~work', sort: 'updated', order: 'asc' });

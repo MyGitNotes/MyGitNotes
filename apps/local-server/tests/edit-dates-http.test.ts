@@ -49,11 +49,7 @@ afterEach(async () => {
 
 it('sorts and lists notes by their Git edit date, the frontmatter standing in for a note Git does not hold', async () => {
   const page = await json(`/api/notes/query?notebookId=${encodeURIComponent(nb('a'))}&sort=updated&order=desc`);
-  expect(page.notes.map((note: { path: string; lastCommitAt?: string; updated?: string; }) => [note.path, note.lastCommitAt, note.updated])).toEqual([
-    ['notes/a/new.md', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z'],
-    ['notes/a/draft.md', undefined, '2026-02-01T00:00:00.000Z'],
-    ['notes/a/moved.md', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'],
-  ]);
+  expect(page.notes.map((note: { path: string; lastCommitAt?: string; updated?: string; }) => [note.path, note.lastCommitAt, note.updated])).toEqual([['notes/a/new.md', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z'], ['notes/a/draft.md', undefined, '2026-02-01T00:00:00.000Z'], ['notes/a/moved.md', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z']]);
   const looked = await json('/api/notes/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notes: [{ notebookId: nb('a'), path: 'notes/a/moved.md' }] }) });
   expect(looked.notes[0]).toMatchObject({ lastCommitAt: '2026-01-01T00:00:00.000Z', updated: '2026-01-01T00:00:00.000Z' });
 });

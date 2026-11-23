@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { classifyResource, deleteNoteFile, type NoteEditFact, withEditDate, isTemplateFile, keyedItem, lookupNotes, NOTE_RESOURCE_TYPES, noteAgenda, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
+import { classifyResource, deleteNoteFile, isTemplateFile, keyedItem, lookupNotes, NOTE_RESOURCE_TYPES, noteAgenda, type NoteEditFact, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, withEditDate, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
 import { changeFile, generateCommitMessage, listChanges, noteEditFacts, stageAndCommit } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { asLocal, eachRepository, type LocalHandle, notebookRepository, noteRepository, requestCatalog } from './request-workspace.js';
