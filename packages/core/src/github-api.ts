@@ -202,6 +202,33 @@ export class GitHubApi {
     return output;
   }
 
+  /**
+   * The newest commit from `head` that changed each of `paths`, in one GraphQL request (GitHub GraphQL requires a token);
+   * null for a path no commit changed.
+   */
+  async lastCommits(head: string, paths: string[]): Promise<Map<string, { sha: string; date: string; } | null>> {
+    const [owner, name] = this.repository.split('/');
+    const variables = Object.fromEntries(paths.map((path, i) => [`p${i}`, path]));
+    const fields = paths.map((_, i) => `f${i}: history(first: 1, path: $p${i}) { nodes { oid authoredDate } }`).join('\n');
+    const declared = paths.map((_, i) => `, $p${i}: String!`).join('');
+    const response = await this.send(this.site.graphql, { method: 'POST', redirect: 'error', body: JSON.stringify({ query: `query($owner: String!, $name: String!, $head: GitObjectID!${declared}) { repository(owner: $owner, name: $name) { object(oid: $head) { ... on Commit { ${fields} } } } }`, variables: { owner, name, head, ...variables } }) });
+    if (!response.ok) {
+      if ([401, 403, 404].includes(response.status)) this.invalidate();
+      throw this.error(response.status);
+    }
+    const result = await response.json() as { data?: { repository?: { object?: Record<string, { nodes?: { oid?: string; authoredDate?: string; }[]; } | null> | null; } | null; }; errors?: { type?: string; }[]; };
+    if (result.errors?.some(error => error.type === 'RATE_LIMITED')) {
+      this.lane.blockedUntil = Math.max(this.lane.blockedUntil, Date.now() + 60_000);
+      this.cooldown();
+    }
+    const commit = result.data?.repository?.object;
+    if (!commit) throw new SourceError('GitHub GraphQL history request failed.', 502);
+    return new Map(paths.map((path, i) => {
+      const [node] = commit[`f${i}`]?.nodes ?? [];
+      return [path, node?.oid && node.authoredDate ? { sha: node.oid, date: node.authoredDate } : null];
+    }));
+  }
+
   async archive(sha: string): Promise<Response> {
     const response = await this.send(`${this.site.api}/repos/${this.repository}/tarball/${encodeURIComponent(sha)}`, { redirect: 'manual' });
     if (response.status !== 302) {

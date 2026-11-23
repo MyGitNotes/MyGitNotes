@@ -7,6 +7,7 @@ import { hashJson, REMOTE_CACHE_MAX_VALUE, REMOTE_CACHE_TTL, type RemoteCache } 
 import { reaching, type RepositoryScope } from './repository.js';
 import { sourceIdentity } from './source-config.js';
 import type { CommitAuthor } from './commit-author.js';
+import type { CommitRenames, LastCommit } from './remote-edit-dates.js';
 export { SourceError } from './github-api.js';
 export type { RepositoryInfo } from './remote-source.js';
 export type GitHubEntry = RemoteEntry;
@@ -252,6 +253,42 @@ export class GitHubSource extends RemoteSource {
   /** Readers on one `fetch` share what history they learned, as they share the provider's runtime. */
   protected override historyMemoOwner() {
     return this.request;
+  }
+  /**
+   * With a token, GitHub's GraphQL names the last commits of fifty paths per request; without one, or where GraphQL
+   * fails short of lost access or a cooldown, each path is asked over REST.
+   */
+  protected override async lastCommits(head: string, paths: string[]): Promise<Map<string, LastCommit | null>> {
+    if (!this.token) return super.lastCommits(head, paths);
+    const found = new Map<string, LastCommit | null>();
+    try {
+      for (let i = 0; i < paths.length; i += 50) {
+        for (const [path, commit] of await this.client.lastCommits(head, paths.slice(i, i + 50))) found.set(path, commit);
+      }
+    } catch (error) {
+      if (error instanceof SourceError && [401, 403, 429].includes(error.status)) throw error;
+      for (const [path, commit] of await super.lastCommits(head, paths.filter(path => !found.has(path)))) found.set(path, commit);
+    }
+    return found;
+  }
+  /** A commit's renames that changed nothing in the file, from its file list (at most 3,000 files), with its first parent. */
+  protected override async pureRenames(commit: string): Promise<CommitRenames> {
+    const renames = new Map<string, string>();
+    let parent: string | null = null;
+    for (let page = 1; page <= 30; page++) {
+      let found: { parents?: { sha: string; }[]; files?: { filename: string; status: string; previous_filename?: string; changes?: number; }[]; };
+      try {
+        found = await this.api(`/commits/${commit}?per_page=100&page=${page}`);
+      } catch (error) {
+        if (error instanceof SourceError && [404, 422].includes(error.status)) break;
+        throw error;
+      }
+      parent ??= found.parents?.[0]?.sha ?? null;
+      const files = found.files || [];
+      for (const file of files) if (file.status === 'renamed' && file.previous_filename && file.changes === 0) renames.set(file.filename, file.previous_filename);
+      if (files.length < 100) break;
+    }
+    return { parent, renames };
   }
   /** GitHub lists a commit's files a page at a time, at most 3,000 of them, a rename with its former name. */
   protected async renamedFrom(commit: string, file: string): Promise<string | null> {

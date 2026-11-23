@@ -30,6 +30,8 @@ import { CheckedOutError, isLiveNotePath, LIVE_MAX_BYTES, liveContentHash, LiveN
 import type { LiveCheckInResult } from './live-checkin.js';
 import { editedLiveError, type LiveLink, liveNoteState, type LiveRecord, type LiveRepository, parseLiveBase } from './live-repository.js';
 import { notebookOfPath } from './workspace-links.js';
+import { type CommitRenames, type LastCommit, RemoteEditDates } from './remote-edit-dates.js';
+import { type EditDated, type NoteEditFact, withEditDate } from './edit-dates.js';
 
 export { SourceError } from './github-api.js';
 const CACHEABLE_FILE = /\.(md|markdown|mdx|txt|ya?ml)$/i;
@@ -681,6 +683,43 @@ export abstract class RemoteSource {
   protected renamedFrom(_commit: string, _file: string): Promise<string | null> {
     return Promise.resolve(null);
   }
+  /** The newest commit from `head` that changed each of `paths`; a provider may batch them, the default asks per path. */
+  protected async lastCommits(head: string, paths: string[]): Promise<Map<string, LastCommit | null>> {
+    const found = new Map<string, LastCommit | null>();
+    for (let i = 0; i < paths.length; i += 6) {
+      await Promise.all(paths.slice(i, i + 6).map(async file => {
+        const [commit] = (await this.historyPage(file, head, 1, 1)).commits;
+        found.set(file, commit ? { sha: commit.sha, date: commit.date } : null);
+      }));
+    }
+    return found;
+  }
+  /** The renames `commit` made that kept the text, with its first parent; by default none are known, so a move dates a note. */
+  protected async pureRenames(_commit: string): Promise<CommitRenames> {
+    return { parent: null, renames: new Map() };
+  }
+  private editDating?: RemoteEditDates;
+  /**
+   * What Git tells of the edit dates of `files` as reads know them (`edit-dates.ts`), by path. A checked-out note is
+   * dated by its Git file, with the live editor's typing as uncommitted changes; a pending note has no Git date.
+   */
+  async editFacts(files: string[]): Promise<Map<string, NoteEditFact>> {
+    const snapshot = await this.getSnapshot();
+    const links = new Map((this.live ? await this.live.links() : []).map(link => [link.path, link]));
+    const blobs = new Map(snapshot.entries.filter(entry => entry.type === 'blob').map(entry => [entry.path, entry.sha]));
+    const wanted = files.flatMap(file => {
+      const link = links.get(file), path = link ? link.checkout.path : file, blob = path === null ? undefined : blobs.get(path);
+      return blob ? [{ file, path: path!, blob, uncommitted: Boolean(link && liveNoteState(link.checkout).changed) }] : [];
+    });
+    this.editDating ??= new RemoteEditDates(this.id, { lastCommits: (head, paths) => this.lastCommits(head, paths), pureRenames: commit => this.pureRenames(commit) }, this.cache, this.historyMemoOwner() ?? this);
+    const dates = await this.editDating.dates(snapshot.sha, wanted);
+    return new Map(wanted.flatMap(({ file, path, uncommitted }) => dates.has(path) ? [[file, { lastCommitAt: dates.get(path), ...(uncommitted ? { uncommitted } : {}) }]] : []));
+  }
+  /** The notes with their edit dates resolved (`withEditDate`), as reads answer them. */
+  async dated<T extends { path: string; metadata: Record<string, unknown>; }>(notes: T[]): Promise<(Omit<T, keyof EditDated> & EditDated)[]> {
+    const facts = await this.editFacts(notes.map(note => note.path));
+    return notes.map(note => withEditDate(note, facts.get(note.path)));
+  }
   /**
    * The backend whose readers share what this process learned of history, such as a provider's `fetch`; undefined for a
    * reader that remembers only for itself.
@@ -937,6 +976,7 @@ export abstract class RemoteSource {
     return {
       folders: async nb => (await (folders ??= this.folders())).filter(folder => folder.notebookId === nb.id),
       revision: async (fresh = false) => (await this.getSnapshot(fresh)).sha,
+      dates: notes => this.editFacts(notes.map(note => note.path)),
       template: async (nb, file) => {
         const { entries } = await this.getSnapshot();
         if (!isTemplateFile(file.slice(nb.root.length + 1), nb) || !entries.some(entry => entry.path === file && entry.type === 'blob' && entry.mode !== '120000')) return undefined;

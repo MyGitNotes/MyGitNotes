@@ -24,7 +24,7 @@ export function githubFixture(extra: Record<string, string> = {}, options: { hex
   const parents = new Map<string, string[]>();
   const messages = new Map<string, { message: string; date: string; }>([[head, { message: 'Start', date: '2026-01-01T00:00:00Z' }]]);
   /** The files whose blob differs between a commit and its first parent; an added file with a removed file's blob is a rename, as GitHub detects one. */
-  const changed = (sha: string): { filename: string; status: string; previous_filename?: string; }[] => {
+  const changed = (sha: string): { filename: string; status: string; previous_filename?: string; changes?: number; }[] => {
     const tree = trees.get(commits.get(sha)!)!, parent = parents.get(sha)?.[0], before = parent ? trees.get(commits.get(parent)!)! : new Map<string, string>();
     const files = [...new Set([...tree.keys(), ...before.keys()])].filter(file => tree.get(file) !== before.get(file)).map(file => ({ filename: file, status: tree.has(file) ? before.has(file) ? 'modified' : 'added' : 'removed' }));
     const renamed = new Map<string, string>();
@@ -32,7 +32,8 @@ export function githubFixture(extra: Record<string, string> = {}, options: { hex
       const from = file.status === 'added' && files.find(gone => gone.status === 'removed' && before.get(gone.filename) === tree.get(file.filename) && ![...renamed.values()].includes(gone.filename));
       if (from) renamed.set(file.filename, from.filename);
     }
-    return files.filter(file => ![...renamed.values()].includes(file.filename)).map(file => renamed.has(file.filename) ? { filename: file.filename, status: 'renamed', previous_filename: renamed.get(file.filename) } : file);
+    // A rename detected by its blob changed no line; every other entry counts one.
+    return files.filter(file => ![...renamed.values()].includes(file.filename)).map(file => renamed.has(file.filename) ? { filename: file.filename, status: 'renamed', previous_filename: renamed.get(file.filename), changes: 0 } : { ...file, changes: 1 });
   };
   const listed = (sha: string) => ({ sha, parents: (parents.get(sha) ?? []).map(parent => ({ sha: parent })), commit: { tree: { sha: commits.get(sha) }, message: messages.get(sha)?.message ?? '', author: { name: 'Tester', date: messages.get(sha)?.date ?? '2026-01-01T00:00:00Z' } } });
   const calls: { endpoint: string; method?: string; body: any; }[] = [];

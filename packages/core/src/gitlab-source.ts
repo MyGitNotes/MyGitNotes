@@ -7,6 +7,7 @@ import { gitListing, inGitOrder } from './git-tree.js';
 import { normalizeGitLabUrl, sourceIdentity } from './source-config.js';
 import { gitBlobId, REMOTE_CACHE_MAX_VALUE, REMOTE_CACHE_TTL, type RemoteCache } from './remote-cache.js';
 import { reaching, type RepositoryScope } from './repository.js';
+import type { CommitRenames, LastCommit } from './remote-edit-dates.js';
 
 /** The entries of one commit's tree. */
 interface Listing {
@@ -29,6 +30,10 @@ const LISTING_PART = REMOTE_CACHE_MAX_VALUE - 1024;
 const LISTING_MAX_BYTES = 64 * 1024 * 1024;
 /** How long a save waits for the listing of its own commit before it answers without it. */
 const ADOPT_WAIT = 4000;
+/** Paths per GraphQL request for their last commits; GitLab's default query complexity takes about twenty. */
+const LAST_COMMIT_BATCH = 20;
+/** GraphQL requests in flight at once for one dating step. */
+const LAST_COMMIT_REQUESTS = 4;
 
 /** Whether two entries name one object at one path, as one kind and mode. */
 const sameEntry = (a: RemoteEntry, b: RemoteEntry | undefined) => a.path === b?.path && a.sha === b.sha && a.type === b.type && a.mode === b.mode;
@@ -390,6 +395,62 @@ export class GitLabSource extends RemoteSource {
   /** Readers on one `fetch` share what history they learned, as they share the provider's runtime. */
   protected override historyMemoOwner() {
     return this.request;
+  }
+  /**
+   * The last commits of twenty paths per GraphQL request (`tree(path).lastCommit`). A site or project path GraphQL does
+   * not answer, such as a project named by its numeric id, asks per path over REST instead.
+   */
+  protected override async lastCommits(head: string, paths: string[]): Promise<Map<string, LastCommit | null>> {
+    const found = new Map<string, LastCommit | null>();
+    const batches: string[][] = [];
+    for (let i = 0; i < paths.length; i += LAST_COMMIT_BATCH) batches.push(paths.slice(i, i + LAST_COMMIT_BATCH));
+    try {
+      for (let i = 0; i < batches.length; i += LAST_COMMIT_REQUESTS) await Promise.all(batches.slice(i, i + LAST_COMMIT_REQUESTS).map(batch => this.graphLastCommits(head, batch, found)));
+    } catch (error) {
+      // Lost access or a cooldown stops the dating; REST answers whatever else GraphQL did not.
+      if (error instanceof SourceError && [401, 403, 429].includes(error.status)) throw error;
+      for (const [path, commit] of await super.lastCommits(head, paths.filter(path => !found.has(path)))) found.set(path, commit);
+    }
+    return found;
+  }
+  private async graphLastCommits(head: string, paths: string[], found: Map<string, LastCommit | null>) {
+    const query = `query($project: ID!, $ref: String!${paths.map((_, i) => `, $p${i}: String!`).join('')}) { project(fullPath: $project) { repository { ${paths.map((_, i) => `f${i}: tree(ref: $ref, path: $p${i}) { lastCommit { sha authoredDate } }`).join(' ')} } } }`;
+    let response: Response;
+    try {
+      response = await this.request(`${this.url}/api/graphql`, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000), headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'MyGitNotes', ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: JSON.stringify({ query, variables: { project: this.repository, ref: head, ...Object.fromEntries(paths.map((path, i) => [`p${i}`, path])) } }) });
+    } catch {
+      throw new Error('GitLab GraphQL could not be reached.');
+    }
+    if (response.status === 429) throw new SourceError('GitLab rate limit reached. Retry later.', 429, 60);
+    if (response.status === 401) throw new SourceError('Sign in again to authorize GitLab access.', 401);
+    const result = await response.json().catch(() => undefined) as { data?: { project?: { repository?: Record<string, { lastCommit?: { sha?: string; authoredDate?: string; } | null; } | null> | null; } | null; }; errors?: unknown[]; } | undefined;
+    const repository = result?.data?.project?.repository;
+    // Anything else GraphQL refuses or does not answer is asked over REST.
+    if (!response.ok || result?.errors?.length || !repository) throw new Error('GitLab GraphQL did not answer last commits.');
+    paths.forEach((path, i) => {
+      const commit = repository[`f${i}`]?.lastCommit;
+      found.set(path, commit?.sha && commit.authoredDate ? { sha: commit.sha, date: commit.authoredDate } : null);
+    });
+  }
+  /** A commit's renames whose diff is empty, the text unchanged, with its first parent; at most 3,000 changed files are read. */
+  protected override async pureRenames(commit: string): Promise<CommitRenames> {
+    let parent: string | null;
+    try {
+      parent = (await this.json(`/repository/commits/${commit}`) as { parent_ids?: string[]; }).parent_ids?.[0] ?? null;
+    } catch (error) {
+      if (error instanceof SourceError && error.status === 404) return { parent: null, renames: new Map() };
+      throw error;
+    }
+    const renames = new Map<string, string>();
+    for (let page = 1; page <= 30; page++) {
+      const diff = await this.json(`/repository/commits/${commit}/diff?per_page=100&page=${page}`) as { old_path?: string; new_path?: string; renamed_file?: boolean; diff?: string; too_large?: boolean; collapsed?: boolean; }[];
+      if (!Array.isArray(diff)) break;
+      for (const entry of diff) {
+        if (entry.renamed_file && entry.old_path && entry.new_path && entry.old_path !== entry.new_path && entry.diff === '' && !entry.too_large && !entry.collapsed) renames.set(entry.new_path, entry.old_path);
+      }
+      if (diff.length < 100) break;
+    }
+    return { parent, renames };
   }
   /** GitLab lists a commit's diff a page at a time, a rename as one entry with both paths. */
   protected async renamedFrom(commit: string, file: string): Promise<string | null> {
