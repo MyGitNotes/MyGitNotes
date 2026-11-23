@@ -1,13 +1,20 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { agentEditMessage, DEFAULT_NOTE_STATUSES, deleteNoteFile, isNotebookContent, keptNoteMetadata, listedNoteTemplates, listTemplates, loadNoteTemplate, loadWorkspaceConfig, type NotebookConfig, noteFromTemplate, NoteItem, noteStatusNames, noteSummary, readNoteFile, resolveNoteStatuses, resolveSafePath, scanNotebookNotes, versionFilePath, withNoteEdits, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
-import { generateCommitMessage, stageAndCommit } from '@mygitnotes/git';
+import { agentEditMessage, DEFAULT_NOTE_STATUSES, withEditDate, deleteNoteFile, isNotebookContent, keptNoteMetadata, listedNoteTemplates, listTemplates, loadNoteTemplate, loadWorkspaceConfig, type NotebookConfig, noteFromTemplate, NoteItem, noteStatusNames, noteSummary, readNoteFile, resolveNoteStatuses, resolveSafePath, scanNotebookNotes, versionFilePath, withNoteEdits, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
+import { generateCommitMessage, noteEditFacts, stageAndCommit } from '@mygitnotes/git';
 import { isNoteFile } from '@mygitnotes/core/note-file';
 import { assertNoteResource, assertUserWorkspaceBranch } from '../guards.js';
 import type { ToolContext } from './context.js';
 
 /** The absolute path of a note a tool may read or change, judged against the manifest of its repository. */
 const noteResource = (ctx: ToolContext, file: string) => assertNoteResource(ctx.repoRoot, file, ctx.config ?? loadWorkspaceConfig(ctx.repoRoot));
+
+/** The note with its edit dates from the worktree's Git history (`noteEditFacts`), the frontmatter standing in where Git has none. */
+async function dated<T extends NoteItem>(ctx: ToolContext, notes: T[]) {
+  const config = ctx.config ?? loadWorkspaceConfig(ctx.repoRoot);
+  const facts = await noteEditFacts(ctx.repoRoot, config?.notebooks.map(nb => nb.root) ?? []);
+  return notes.map(note => withEditDate(note, facts.get(note.path)));
+}
 
 export async function handleGetWorkspaceConfig(ctx: ToolContext) {
   const config = ctx.config ?? loadWorkspaceConfig(ctx.repoRoot);
@@ -40,7 +47,7 @@ export async function handleListNotes(ctx: ToolContext, args: { notebookId?: str
     all.push(...scanNotebookNotes(ctx.repoRoot, nb).sort((a, b) => a.path.localeCompare(b.path)));
   }
 
-  const notes = all.slice(offset, offset + limit).map(noteSummary);
+  const notes = (await dated(ctx, all.slice(offset, offset + limit))).map(noteSummary);
   const next = offset + notes.length;
   return { count: notes.length, total: all.length, nextOffset: next < all.length ? next : null, notes };
 }
@@ -51,7 +58,7 @@ export async function handleReadNote(ctx: ToolContext, args: { path: string; not
     return handleGetNoteMetadata(ctx, { path: args.path });
   }
   const notebookId = args.notebookId || 'default';
-  const note = readNoteFile(ctx.repoRoot, args.path, notebookId);
+  const [note] = await dated(ctx, [readNoteFile(ctx.repoRoot, args.path, notebookId)]);
   return { note };
 }
 
@@ -177,9 +184,9 @@ export async function handleGetNoteMetadata(ctx: ToolContext, args: { path: stri
   const located = locateNote(ctx, config, args.path);
   if ('error' in located) return located;
   const { nb, notebookId } = located;
-  const note = readNoteFile(ctx.repoRoot, args.path, notebookId);
+  const [note] = await dated(ctx, [readNoteFile(ctx.repoRoot, args.path, notebookId)]);
 
-  return { path: note.path, notebookId, title: note.title, status: note.status, tags: note.tags, metadata: note.metadata, availableStatuses: availableStatuses(ctx, nb) };
+  return { path: note.path, notebookId, title: note.title, status: note.status, tags: note.tags, metadata: note.metadata, ...(note.lastCommitAt ? { lastCommitAt: note.lastCommitAt } : {}), ...(note.updated ? { updated: note.updated } : {}), availableStatuses: availableStatuses(ctx, nb) };
 }
 
 export async function handleUpdateNoteMetadata(ctx: ToolContext, args: { path: string; metadata?: Record<string, unknown>; status?: string; tags?: string[]; title?: string; commitMessage?: string; }) {

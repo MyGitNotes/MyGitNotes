@@ -53,12 +53,13 @@ const json = async (url: string, init?: RequestInit) => {
 
 describe('note query routes', () => {
   it('pages a notebook and continues with its cursor', async () => {
+    // Both notes were edited last in the fixture commit, whose date sorts them before their frontmatter would; the title breaks the tie.
     const first = await json(`/api/notes/query?notebookId=${nb('example')}&limit=1`);
     expect(first.body.total).toBe(2);
-    expect(first.body.notes.map((note: any) => note.path)).toEqual(['notes/example/deep/beta.md']);
+    expect(first.body.notes.map((note: any) => note.path)).toEqual(['notes/example/alpha.md']);
     expect(first.body.notes[0].content).toBeUndefined();
     const second = await json(`/api/notes/query?notebookId=${nb('example')}&limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`);
-    expect(second.body.notes.map((note: any) => note.path)).toEqual(['notes/example/alpha.md']);
+    expect(second.body.notes.map((note: any) => note.path)).toEqual(['notes/example/deep/beta.md']);
     expect(second.body.nextCursor).toBeNull();
     expect((await json(`/api/notes/query?notebookId=${nb('other')}&limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`)).status).toBe(400);
   });

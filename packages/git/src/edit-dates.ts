@@ -9,7 +9,7 @@ interface DatedTree {
   dates: Map<string, string>;
 }
 
-/** The dated tree each repository was last asked for, by its top level; one per repository, replaced as its head moves. */
+/** The dated tree each repository was last asked for, by its top level and scope; replaced as the head moves. */
 const trees = new Map<string, DatedTree>();
 /** Datings in flight, by top level, head and scope, so requests that arrive together wait for one walk. */
 const dating = new Map<string, Promise<DatedTree>>();
@@ -116,7 +116,7 @@ async function trackedFiles(top: string, head: string, pathspecs: string[]): Pro
 async function dateTree(top: string, head: string, pathspecs: string[], scope: string): Promise<DatedTree> {
   const files = await trackedFiles(top, head, pathspecs);
   const searching: Searching = new Map(files.map(file => [file, [file]]));
-  const previous = trees.get(top);
+  const previous = trees.get(JSON.stringify([top, scope]));
   let since: DatedTree | undefined;
   if (previous && previous.scope === scope && previous.head !== head) {
     try {
@@ -151,13 +151,13 @@ export async function noteEditFacts(repoRoot: string, roots: readonly string[]):
   const { top, prefix, head } = where;
   const pathspecs = [...new Set(roots.map(root => `${prefix}${root}`.replace(/\/+$/, '')))].sort();
   const scope = JSON.stringify(pathspecs);
-  const key = JSON.stringify([top, head, scope]);
-  let tree = trees.get(top);
-  if (tree?.head !== head || tree.scope !== scope) {
+  const at = JSON.stringify([top, scope]), key = JSON.stringify([top, head, scope]);
+  let tree = trees.get(at);
+  if (tree?.head !== head) {
     let pending = dating.get(key);
     if (!pending) {
       pending = dateTree(top, head, pathspecs, scope).then(dated => {
-        trees.set(top, dated);
+        trees.set(at, dated);
         return dated;
       }).finally(() => dating.delete(key));
       dating.set(key, pending);

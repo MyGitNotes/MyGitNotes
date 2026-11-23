@@ -1,8 +1,8 @@
 import { Request, Response, Router } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { classifyResource, deleteNoteFile, isTemplateFile, keyedItem, lookupNotes, NOTE_RESOURCE_TYPES, noteAgenda, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
-import { changeFile, generateCommitMessage, listChanges, stageAndCommit } from '@mygitnotes/git';
+import { classifyResource, deleteNoteFile, type NoteEditFact, withEditDate, isTemplateFile, keyedItem, lookupNotes, NOTE_RESOURCE_TYPES, noteAgenda, noteFacets, noteGraph, type NoteItem, parseNoteQuery, queryNotePaths, queryNotes, readNoteFile, type RepositoryCatalog, resolveSafePath, scanNotebookEntries, scanNotebookFolders, scanNotebookNotes, SourceError, StaleRevisionError, type WorkspaceConfig, writeNoteFile } from '@mygitnotes/core';
+import { changeFile, generateCommitMessage, listChanges, noteEditFacts, stageAndCommit } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { asLocal, eachRepository, type LocalHandle, notebookRepository, noteRepository, requestCatalog } from './request-workspace.js';
 import { moveLocalVersionFiles, restoreLocalVersionFile } from './version-files.js';
@@ -18,6 +18,9 @@ function assertNote(file: string, config: WorkspaceConfig): void {
   if (!NOTE_RESOURCE_TYPES.includes(classifyResource(file, config).type)) throw new SourceError('Path is not a configured note.', 403);
 }
 
+/** What Git tells of the edit dates of the notes under `notebooks` in the worktree at `root`, by repository-relative path. */
+const editFacts = (root: string, notebooks: { root: string; }[]): Promise<Map<string, NoteEditFact>> => noteEditFacts(root, notebooks.map(notebook => notebook.root));
+
 export function createLocalNotesRouter(): Router {
   const router = Router();
 
@@ -32,7 +35,7 @@ export function createLocalNotesRouter(): Router {
       }
       return notes;
     };
-    return { revision: async () => '', index: async notebook => scan(notebook).map(({ content: _content, ...note }) => note), contents: async notes => new Map(notes.map(note => [note.path, scans.get(note.notebookId)?.find(item => item.path === note.path)?.content ?? ''])), memo: (_kind, _notebooks, compute) => compute(), folders: async notebook => scanNotebookFolders(repoRoot, notebook), template: async (notebook, file) => isTemplateFile(file.slice(notebook.root.length + 1), notebook) && fs.lstatSync(regularPath(repoRoot, file), { throwIfNoEntry: false })?.isFile() ? readNoteFile(repoRoot, file, notebook.id, scope) : undefined };
+    return { revision: async () => '', index: async notebook => scan(notebook).map(({ content: _content, ...note }) => note), contents: async notes => new Map(notes.map(note => [note.path, scans.get(note.notebookId)?.find(item => item.path === note.path)?.content ?? ''])), memo: (_kind, _notebooks, compute) => compute(), folders: async notebook => scanNotebookFolders(repoRoot, notebook), template: async (notebook, file) => isTemplateFile(file.slice(notebook.root.length + 1), notebook) && fs.lstatSync(regularPath(repoRoot, file), { throwIfNoEntry: false })?.isFile() ? readNoteFile(repoRoot, file, notebook.id, scope) : undefined, dates: () => noteEditFacts(repoRoot, scope) };
   }
 
   const catalogOf = (res: Response) => requestCatalog(res, undefined, (handle, notebooks) => localCatalog((handle as LocalHandle).root, notebooks.map(notebook => notebook.root)));
@@ -84,7 +87,11 @@ export function createLocalNotesRouter(): Router {
     try {
       const notebookId = req.query.notebookId;
       const repositories = notebookId ? [await notebookRepository(res, notebookId)].map(({ handle, alias, notebook }) => ({ handle, alias, notebooks: [notebook] })) : (await eachRepository(res)).map(({ handle, alias, config }) => ({ handle, alias, notebooks: config.notebooks }));
-      res.json({ notes: repositories.flatMap(({ handle, alias, notebooks }) => notebooks.flatMap(notebook => scanNotebookNotes(asLocal(handle).root, notebook).map(keyedItem(alias)))) });
+      const listed = await Promise.all(repositories.map(async ({ handle, alias, notebooks }) => {
+        const root = asLocal(handle).root, facts = await editFacts(root, notebooks);
+        return notebooks.flatMap(notebook => scanNotebookNotes(root, notebook).map(note => keyedItem(alias)(withEditDate(note, facts.get(note.path)))));
+      }));
+      res.json({ notes: listed.flat() });
     } catch (err: unknown) {
       res.status(err instanceof SourceError ? err.status : 500).json({ error: err instanceof Error ? err.message : String(err) });
     }
@@ -99,8 +106,9 @@ export function createLocalNotesRouter(): Router {
       }
       const { handle, alias, notebook, config } = await noteRepository(res, relPath, req.query.notebookId);
       assertNote(relPath, config);
-      const note = readNoteFile(asLocal(handle).root, relPath, notebook.id, config.notebooks.map(item => item.root));
-      res.json({ note: keyedItem(alias)(note) });
+      const root = asLocal(handle).root;
+      const note = readNoteFile(root, relPath, notebook.id, config.notebooks.map(item => item.root));
+      res.json({ note: keyedItem(alias)(withEditDate(note, (await editFacts(root, config.notebooks)).get(note.path))) });
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return res.status(404).json({ error: 'Note not found.' });
       res.status(err instanceof SourceError ? err.status : 400).json({ error: err instanceof Error ? err.message : String(err) });
