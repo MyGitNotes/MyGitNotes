@@ -4,6 +4,7 @@ import type { CoreStatus, CoreUpdateReceipt, CoreUpdateRun } from '@mygitnotes/c
 import { CoreUpdateApiError, fetchCoreStatus, fetchCoreUpdateRun, installCoreSyncWorkflow, runCoreUpdate } from '../lib/api.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { Button } from './Button.js';
+import { rememberSignInReturn } from '../lib/sign-in-return.js';
 
 export function CoreUpdates({ local }: { local: boolean; }) {
   const { t } = useTranslation();
@@ -145,7 +146,7 @@ export function CoreUpdates({ local }: { local: boolean; }) {
       </div>
       {error && <p role='alert' className='text-xs text-danger'>{error}</p>}
       <div className='flex flex-wrap gap-2'>
-        {state === 'reauthorization_required' && <a className='text-primary underline' href='/api/auth/github'>{t('coreUpdate.reauthorize')}</a>}
+        {state === 'reauthorization_required' && <a className='text-primary underline' href='/api/auth/github' onClick={() => rememberSignInReturn()}>{t('coreUpdate.reauthorize')}</a>}
         {state === 'workflow_missing' && <Button type='button' onClick={install} disabled={working}>{t('coreUpdate.install')}</Button>}
         <Button type='button' variant='primary' onClick={update} disabled={working || !status?.canUpdate || Boolean(blockedState)} data-core-update>
           <RefreshCw className={`w-3.5 h-3.5 ${working ? 'animate-spin' : ''}`} aria-hidden='true' />

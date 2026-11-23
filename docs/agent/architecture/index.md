@@ -308,6 +308,16 @@ unavailable or no longer permitted) falls back silently and is kept, so a reposi
 does not lose it; it opens again once the workspace lists it. A demo workspace remembers nothing. It is a
 view preference of the device: no file is written and no commit made.
 
+## Returning after sign-in
+
+Every sign-in callback (`providerIdentity`'s, and an edition identity's such as an OIDC one) redirects to `/`. So that
+a person who opened a link, was asked to sign in and did lands on that page, each sign-in link of the web app
+(`AuthControls`, the reauthorize links) keeps the page it was clicked on in `sessionStorage`
+(`rememberSignInReturn`, `apps/web/src/lib/sign-in-return.ts`), and `createWebApp` calls `resumeSignInReturn` before
+it renders: a tab on the bare `/` replaces its address with a page kept within the last 30 minutes, once. Only a
+path of this site the app routes is kept (not `/`, not `//…`, not `/api/…`). The server is unchanged, so an edition's
+identity gets it without a change of its own.
+
 ## Notes, files and `exclude`
 
 A note is a Markdown or text file (`.md`, `.markdown`, `.mdx`, `.txt`) in a notebook, outside its assets folder, dot

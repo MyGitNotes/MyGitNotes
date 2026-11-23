@@ -40,6 +40,7 @@ import { DEMO_BASE, DemoProvider, parseDemoPath } from '../lib/demo.js';
 import { expireDemoData } from '../lib/demo-storage.js';
 import { registerThemes, setEReaderDetected, type ThemeRegistration } from '../lib/themes.js';
 import { detectEReader } from '../lib/e-reader.js';
+import { resumeSignInReturn } from '../lib/sign-in-return.js';
 
 export { PALETTE_FAMILIES, type PaletteFamily, type PaletteMode, type PaletteVariant } from '../lib/palettes.js';
 export type { ThemeRegistration } from '../lib/themes.js';
@@ -110,6 +111,8 @@ export function WebApp({ features = [] }: Omit<WebAppOptions, 'themes'>) {
 
 /** Renders the web app into `root`; an edition's entry calls it with its features and themes. A `themes.defaultFamily` that names no known family throws before anything renders. */
 export function createWebApp(root: HTMLElement, { themes, ...options }: WebAppOptions = {}) {
+  // A sign-in lands on `/`: the tab goes on to the page it was on when the person chose to sign in, before anything routes.
+  resumeSignInReturn();
   registerThemes(themes ?? {});
   // Once per start, in the browser only: an e-reader's model picks E-ink for a visitor who has chosen no theme.
   void detectEReader().then(setEReaderDetected);

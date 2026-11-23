@@ -15,6 +15,7 @@ import { clearAgentDrafts } from '../lib/pi-agent/draft.js';
 import { clearOpenedScopes } from '../lib/kept-drafts.js';
 import { useDemo } from '../lib/demo.js';
 import { useAccountControls, useAccountMenuItems, useSignInNotice } from '../lib/web-features.js';
+import { rememberSignInReturn } from '../lib/sign-in-return.js';
 
 class GrantRequestError extends Error {
   constructor(public key: TranslationKey) {
@@ -127,7 +128,7 @@ function signInLink(option: SignInOption, connection: boolean, t: ReturnType<typ
   const mark = option.id === 'google' ? <GoogleMark /> : option.id === 'gitlab' ? <GitlabMark /> : option.id === 'github' ? <GithubMark /> : <LogIn size={16} />;
   const label = option.id === 'gitlab' ? t('auth.signInWithGitlab') : option.id === 'github' ? t('auth.signInWithGithub') : t('auth.signInWithProvider', { provider: option.label });
   return (
-    <a key={option.id} href={option.url} className={connection ? `${connectionActionClass} ui-button w-full` : 'header-login'}>
+    <a key={option.id} href={option.url} onClick={() => rememberSignInReturn()} className={connection ? `${connectionActionClass} ui-button w-full` : 'header-login'}>
       {mark}
       <span>{label}</span>
     </a>
@@ -232,7 +233,13 @@ export function AgentAccessSettings({ local = false }: { local?: boolean; }) {
           {signInOptionsOf(session).map((option, index) => (
             <span key={option.id}>
               {index > 0 && ' · '}
-              <a className='underline' href={option.url}>{option.id === 'gitlab' ? t('auth.signInWithGitlab') : option.id === 'github' ? t('auth.signInWithGithub') : t('auth.signInWithProvider', { provider: option.label })}</a>
+              <a
+                className='underline'
+                href={option.url}
+                onClick={() => rememberSignInReturn()}
+              >
+                {option.id === 'gitlab' ? t('auth.signInWithGitlab') : option.id === 'github' ? t('auth.signInWithGithub') : t('auth.signInWithProvider', { provider: option.label })}
+              </a>
             </span>
           ))}
           {t('auth.signInToManage')}

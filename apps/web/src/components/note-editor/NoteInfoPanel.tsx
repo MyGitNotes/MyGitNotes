@@ -6,6 +6,7 @@ import { forgetCreatedGist, rememberCreatedGist } from '../../lib/created-gists.
 import { useTranslation } from '../../lib/i18n/index.js';
 import { useNoteLocation } from '../../lib/note-location.js';
 import { useNotePublish } from '../../lib/web-features.js';
+import { rememberSignInReturn } from '../../lib/sign-in-return.js';
 
 interface GistProps {
   /** The editor's current body and frontmatter; the Gist holds the body. */
@@ -86,7 +87,7 @@ function NoteGist({ path, repository, content, metadata, setMetadata, locked, li
         {id ? <a href={`/api/gists/${encodeURIComponent(id)}/open`} target='_blank' rel='noreferrer'>{t('editor.gistOpen')}</a> : <span>{t('editor.gistNotPublished')}</span>}
         <Button size='small' variant={id ? 'danger' : 'default'} disabled={busy || locked || liveNote || (!id && !content.trim())} onClick={() => void (id ? unpublish() : publish())}>{t(id ? 'editor.gistUnpublish' : 'editor.gistPublish')}</Button>
         <span className='note-info-hint'>{t(liveNote ? 'editor.gistLiveHint' : id ? 'editor.gistSyncHint' : 'editor.gistPublishHint')}</span>
-        {error && <span role='alert' className='text-danger'>{error.message} {error.reauthorize && <a className='underline' href='/api/auth/github'>{t('auth.signInWithGithub')}</a>}</span>}
+        {error && <span role='alert' className='text-danger'>{error.message} {error.reauthorize && <a className='underline' href='/api/auth/github' onClick={() => rememberSignInReturn()}>{t('auth.signInWithGithub')}</a>}</span>}
       </dd>
     </div>
   );
