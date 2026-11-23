@@ -399,7 +399,8 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         // A pending live note's virtual path, once checked in, says where the note was filed.
         const movedTo = await reader.liveFiled(String(req.query.path));
         if (movedTo !== undefined) return res.status(404).json({ error: 'This live note was checked in and filed.', movedTo });
-        res.json({ note: keyedItem(alias)(await reader.note(String(req.query.path))) });
+        const [note] = await reader.dated([await reader.note(String(req.query.path))]);
+        res.json({ note: keyedItem(alias)(note) });
       } catch (error) {
         fail(res, error);
       }

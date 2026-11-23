@@ -19,12 +19,14 @@ const revisionField = str('Opaque workspace revision returned by reads (or a bar
 const contentField = str('UTF-8 file text. Shell tools include YAML frontmatter in file content and line numbers.', { maxLength: 5 * 1024 * 1024 });
 const patternField = str('Repository-relative Bash glob, e.g. notes/example/**/*.md. Supports *, **, ?, brackets and braces.', { maxLength: 256, minLength: 1 });
 const metadata: Schema = { type: 'object', additionalProperties: true };
+/** The edit dates a note read or listing carries (`edit-dates.ts` in core). */
+const editDates: Record<string, Schema> = { lastCommitAt: str('ISO 8601 UTC author date of the newest commit that changed the note text; a commit that only moved or renamed it does not count. Absent for a note Git does not hold yet, or while the server is still dating the repository.'), updated: str('ISO 8601 UTC edit date of the note: lastCommitAt; while the note has uncommitted live typing, the later of it and the frontmatter updated; without lastCommitAt, the frontmatter updated. Absent when none is known. Sort by and judge staleness with this.') };
 /** The note, summary and receipt schemas: as they were before live notes, or with what the live editor adds. */
 function noteSchemas(live: boolean) {
   const liveNote: Record<string, Schema> = live ? { live: { type: 'object', additionalProperties: true, description: 'Present while the note is 編輯中: the text is the live text.' } } : {};
-  const noteSchema = object({ id: str('Note identifier'), path: pathField, notebookId: str('Notebook key'), title: str('Title'), content: str('Markdown body'), metadata, tags: array(str('Tag')), revision: str('Read commit SHA'), ...liveNote }, ['path', 'title', 'content', 'metadata', 'revision'], true);
+  const noteSchema = object({ id: str('Note identifier'), path: pathField, notebookId: str('Notebook key'), title: str('Title'), content: str('Markdown body'), metadata, tags: array(str('Tag')), revision: str('Read commit SHA'), ...editDates, ...liveNote }, ['path', 'title', 'content', 'metadata', 'revision'], true);
   const liveSummary: Record<string, Schema> = live ? { live: { type: 'object', additionalProperties: true, description: 'Present while the note is 編輯中 (checked out to the live editor).' } } : {};
-  const noteSummarySchema = object({ id: str('Note identifier'), path: pathField, notebookId: str('Notebook key'), title: str('Title'), description: str(`Frontmatter description, else the opening body line, at most ${NOTE_DESCRIPTION_LIMIT} characters`), status: { type: ['string', 'null'], description: 'Note status' }, tags: array(str('Tag')), metadata, size: int('Bytes of the file', 0, Number.MAX_SAFE_INTEGER), ...liveSummary }, ['path', 'title', 'notebookId', 'description', 'tags', 'metadata'], true);
+  const noteSummarySchema = object({ id: str('Note identifier'), path: pathField, notebookId: str('Notebook key'), title: str('Title'), description: str(`Frontmatter description, else the opening body line, at most ${NOTE_DESCRIPTION_LIMIT} characters`), status: { type: ['string', 'null'], description: 'Note status' }, tags: array(str('Tag')), metadata, size: int('Bytes of the file', 0, Number.MAX_SAFE_INTEGER), ...editDates, ...liveSummary }, ['path', 'title', 'notebookId', 'description', 'tags', 'metadata'], true);
   const receiptSchema = live ? object({ success: { const: true }, committed: bool('Whether a Git commit was made; false when the text landed in the live editor'), pushed: bool('Whether the remote branch moved'), live: { const: true, description: 'Present when the text landed in the live editor of a note that is 編輯中 (checked out); check_in_note commits it.' }, liveRevision: str('The live editor revision after the write; present with live'), repository: str('Repository project path'), branch: str('Updated branch'), revision: str('Resulting commit SHA, or the unchanged branch head for a live write'), changedPaths: array(pathField), commit: object({ commitHash: str('Resulting commit SHA'), message: str('Program-generated commit message') }) }, ['success', 'committed', 'pushed', 'repository', 'branch', 'revision', 'changedPaths'], true) : object({ success: { const: true }, committed: { const: true }, pushed: { const: true }, repository: str('Repository project path'), branch: str('Updated branch'), revision: str('Resulting commit SHA'), changedPaths: array(pathField), commit: object({ commitHash: str('Resulting commit SHA'), message: str('Program-generated commit message') }) }, undefined, true);
   const noteReceiptSchema = object({ ...receiptSchema.properties, path: pathField, url: str('Web page of the note; present when the app URL is configured.') }, [...receiptSchema.required || [], 'path'], true);
   return { noteSchema, noteSummarySchema, receiptSchema, noteReceiptSchema };
@@ -178,14 +180,20 @@ async function findFolder(reader: RemoteSource, requested: unknown) {
 }
 
 /** A note with its configured statuses, as returned by the metadata tools. */
-async function noteMetadata(reader: RemoteSource, file: unknown) {
-  const note = await reader.note(String(file));
+/** Notes with their Git edit dates (`lastCommitAt`, `updated`); a reader that is not a `RemoteSource`, such as a test double, dates none. */
+async function datedNotes(reader: RemoteSource, notes: NoteItem[]): Promise<NoteItem[]> {
+  return reader.dated ? reader.dated(notes) : notes;
+}
+
+async function noteMetadata(reader: RemoteSource, file: unknown, dated = false) {
+  const read = await reader.note(String(file));
+  const note = dated ? (await datedNotes(reader, [read]))[0] : read;
   const nb = (await reader.config()).notebooks.find((n) => n.id === note.notebookId);
   return { note, availableStatuses: configuredNoteStatuses(nb) };
 }
 
 function metadataResult({ note, availableStatuses }: Awaited<ReturnType<typeof noteMetadata>>) {
-  return { path: note.path, notebookId: note.notebookId, title: note.title, status: note.status || null, tags: note.tags, metadata: note.metadata, revision: note.revision, availableStatuses, ...liveField(note.live) };
+  return { path: note.path, notebookId: note.notebookId, title: note.title, status: note.status || null, tags: note.tags, metadata: note.metadata, ...(note.lastCommitAt ? { lastCommitAt: note.lastCommitAt } : {}), ...(note.updated ? { updated: note.updated } : {}), revision: note.revision, availableStatuses, ...liveField(note.live) };
 }
 
 /** Rewrites a note's metadata without resending its body; `hidden` is honored only when `allowHidden`. */
@@ -249,10 +257,10 @@ async function runRemoteTool(reader: RemoteSource, name: string, args: Record<st
       const read: NoteItem[] = [];
       for (let i = 0; i < listed.length; i += 6) read.push(...await Promise.all(listed.slice(i, i + 6).map((file) => reader.note(file))));
       const next = offset + read.length;
-      return { revision: (await reader.getSnapshot()).sha, notes: read.map(noteSummary), count: read.length, total: paths.length, nextOffset: next < paths.length ? next : null };
+      return { revision: (await reader.getSnapshot()).sha, notes: (await datedNotes(reader, read)).map(noteSummary), count: read.length, total: paths.length, nextOffset: next < paths.length ? next : null };
     }
     case 'read_note':
-      return args.metadataOnly ? metadataResult(await noteMetadata(reader, args.path)) : { note: await reader.note(String(args.path)) };
+      return args.metadataOnly ? metadataResult(await noteMetadata(reader, args.path, true)) : { note: (await datedNotes(reader, [await reader.note(String(args.path))]))[0] };
     case 'save_note': {
       if (args.template !== undefined) return saveNoteFromTemplate(reader, args);
       if (args.values !== undefined) throw new Error('values fill a template: name one as template.');
