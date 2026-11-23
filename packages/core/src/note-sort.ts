@@ -86,7 +86,10 @@ export function sortNotes<T extends SortableNote>(notes: T[], field: SortField, 
   const key = metadataSortKey(field);
   if (key !== undefined) {
     // Notes without a usable value stay last in either order; equal values fall back to the newest update.
-    const values = new Map(notes.map(note => [note, metadataSortValue(note.metadata?.[key])]));
+    // A note without a `date` sorts by when it was created, as a `created` sort falls back to `date`: a note just made from a
+    // template that sets no date (a pending live note among them) sorts as the newest, not among the notes nobody dated.
+    const valueOf = (note: T) => metadataSortValue(note.metadata?.[key]) ?? (key === 'date' ? metadataSortValue(note.metadata?.created) : undefined);
+    const values = new Map(notes.map(note => [note, valueOf(note)]));
     return [...notes].sort((a, b) => {
       const valueA = values.get(a), valueB = values.get(b);
       const byValue = valueA && valueB ? factor * compareMetadataValues(valueA, valueB) : valueA ? -1 : valueB ? 1 : 0;

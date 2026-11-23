@@ -41,6 +41,13 @@ describe('sorting by a metadata key', () => {
     expect(sortNotes(notes, 'metadata.date', 'asc').map(n => n.title).slice(0, 2)).toEqual(['dated', 'newer']);
     for (const order of ['asc', 'desc'] as const) expect(new Set(sortNotes(notes, 'metadata.date', order).map(n => n.title).slice(2))).toEqual(new Set(['none', 'empty', 'null', 'object']));
   });
+  it('sorts a note without a date by when it was created, so a note just made from a template without one comes first, not among the undated', () => {
+    const notes = [note('dated', { date: '2026-11-17' }), note('older', { date: '2026-11-10' }), note('new', { created: '2026-11-23T02:10:21.721Z' }), note('undated', {})];
+    expect(sortNotes(notes, 'metadata.date', 'desc').map(n => n.title)).toEqual(['new', 'dated', 'older', 'undated']);
+    expect(sortNotes(notes, 'metadata.date', 'asc').map(n => n.title)).toEqual(['older', 'dated', 'new', 'undated']);
+    // Only `date` falls back: another key is not taken from `created`.
+    expect(sortNotes([note('a', { created: '2026-01-01' }), note('b', { day: '2025-01-01' })], 'metadata.day', 'desc').map(n => n.title)).toEqual(['b', 'a']);
+  });
   it('breaks ties by updated, newest first, in both orders, also among notes without the key', () => {
     const notes = [note('old', { date: '2026-05-01', updated: '2026-05-02T00:00:00Z' }), note('new', { date: '2026-05-01', updated: '2026-06-02T00:00:00Z' }), note('gone-old', { updated: '2026-01-01T00:00:00Z' }), note('gone-new', { updated: '2026-02-01T00:00:00Z' })];
     for (const order of ['asc', 'desc'] as const) expect(sortNotes(notes, 'metadata.date', order).map(n => n.title)).toEqual(['new', 'old', 'gone-new', 'gone-old']);
