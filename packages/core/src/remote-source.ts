@@ -3,7 +3,7 @@ import { STUDY_FILE } from './study.js';
 import { BookmarkError } from './bookmark-error.js';
 import { managedNotebook, retitleNoteFile } from './file-manager.js';
 import { relocateLinks } from './folder-plan.js';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { assetInfo, assetPath, assetRoot, decodeAsset, isAssetPath } from './assets.js';
 import { MANIFEST_FILES } from './remote-manifest.js';
@@ -713,7 +713,9 @@ export abstract class RemoteSource {
       const link = links.get(file), path = link ? link.checkout.path : file, blob = path === null ? undefined : blobs.get(path);
       return blob ? [{ file, path: path!, blob, uncommitted: Boolean(link && liveNoteState(link.checkout).changed) }] : [];
     });
-    this.editDating ??= new RemoteEditDates(this.id, { lastCommits: (head, paths) => this.lastCommits(head, paths), pureRenames: commit => this.pureRenames(commit) }, this.cache, this.historyMemoOwner() ?? this);
+    // A provider counts its limits per token, or per address without one, so a failure pauses only this caller's dating.
+    const caller = this.token ? createHash('sha256').update(this.token).digest('hex') : 'anonymous';
+    this.editDating ??= new RemoteEditDates(this.id, { caller, lastCommits: (head, paths) => this.lastCommits(head, paths), pureRenames: commit => this.pureRenames(commit) }, this.cache, this.historyMemoOwner() ?? this);
     const dates = await this.editDating.dates(snapshot.sha, wanted);
     return new Map(wanted.flatMap(({ file, path, uncommitted }) => dates.has(path) ? [[file, { lastCommitAt: dates.get(path), ...(uncommitted ? { uncommitted } : {}) }]] : []));
   }

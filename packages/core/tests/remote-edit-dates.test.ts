@@ -9,11 +9,12 @@ import { SourceError } from '../src/github-api.js';
  * unchanged. Each call is recorded.
  */
 function history(options: { slow?: Set<string>; fail?: Error; } = {}) {
-  const asked: string[][] = [], renamesAsked: string[] = [];
+  const asked: string[][] = [], renamesAsked: string[] = [], tries: string[][] = [];
   const last: Record<string, LastCommit> = { 'head:a.md': { sha: 'edit', date: '2026-03-01T08:00:00+08:00' }, 'head:new.md': { sha: 'move', date: '2026-04-01T00:00:00Z' }, 'start:old.md': { sha: 'start', date: '2026-01-01T00:00:00Z' }, 'head:edited-move.md': { sha: 'move', date: '2026-04-01T00:00:00Z' } };
   const renames: Record<string, CommitRenames> = { move: { parent: 'start', renames: new Map([['new.md', 'old.md']]) }, edit: { parent: 'start', renames: new Map() }, start: { parent: null, renames: new Map() } };
   const source: EditDateHistory = {
     async lastCommits(head, paths) {
+      tries.push(paths);
       if (options.fail) throw options.fail;
       asked.push(paths.map(path => `${head}:${path}`));
       if (paths.some(path => options.slow?.has(path))) await new Promise(resolve => setTimeout(resolve, 200));
@@ -24,7 +25,7 @@ function history(options: { slow?: Set<string>; fail?: Error; } = {}) {
       return renames[commit];
     },
   };
-  return { source, asked, renamesAsked };
+  return { source, asked, renamesAsked, tries };
 }
 const files = [{ path: 'a.md', blob: 'blob-a2' }, { path: 'new.md', blob: 'blob-old' }, { path: 'edited-move.md', blob: 'blob-x' }];
 const signed = () => Object.assign(new MemoryRemoteCache(), { sign: (text: string) => createHmac('sha256', 'secret').update(text).digest('hex') });
@@ -95,4 +96,48 @@ it('leaves notes undated, without failing, when the provider refuses or has no h
   } finally {
     warn.mockRestore();
   }
+});
+
+it('pauses dating after a failure for the time the provider asks, else a minute, and resumes after it', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const now = vi.spyOn(Date, 'now');
+  try {
+    let clock = Date.parse('2026-11-24T00:00:00Z');
+    now.mockImplementation(() => clock);
+    const limited = history({ fail: new SourceError('GitLab rate limit reached. Retry later.', 429, 120) }), owner = {};
+    const dating = () => new RemoteEditDates('repo', limited.source, undefined, owner).dates('head', files);
+    await dating();
+    expect(limited.tries.length).toBe(1);
+    clock += 119_000;
+    await dating();
+    expect(limited.tries.length).toBe(1);
+    clock += 2_000;
+    await dating();
+    expect(limited.tries.length).toBe(2);
+    // A failure that names no wait pauses for a minute.
+    const down = history({ fail: new Error('GitLab GraphQL could not be reached.') }), other = {};
+    const again = () => new RemoteEditDates('repo', down.source, undefined, other).dates('head', files);
+    await again();
+    clock += 59_000;
+    await again();
+    expect(down.tries.length).toBe(1);
+    clock += 2_000;
+    await again();
+    expect(down.tries.length).toBe(2);
+  } finally {
+    now.mockRestore();
+    warn.mockRestore();
+  }
+});
+
+it('remembers that no commit holds a path and text, and does not ask again', async () => {
+  const { source, tries } = history(), owner = {}, cache = signed();
+  const file = [{ path: 'untracked.md', blob: 'blob-u' }];
+  expect((await new RemoteEditDates('repo', source, cache, owner).dates('head', file)).size).toBe(0);
+  expect(tries.length).toBe(1);
+  expect((await new RemoteEditDates('repo', source, cache, owner).dates('head', file)).size).toBe(0);
+  // Nor does another process sharing the cache.
+  const other = history();
+  expect((await new RemoteEditDates('repo', other.source, cache, {}).dates('head', file)).size).toBe(0);
+  expect([tries.length, other.tries.length]).toEqual([1, 0]);
 });

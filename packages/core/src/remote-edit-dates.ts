@@ -14,6 +14,8 @@ export interface CommitRenames {
 }
 /** What a hosted source answers to date its notes (`RemoteSource` implements it over its provider's history). */
 export interface EditDateHistory {
+  /** Whose limits the provider counts these questions against, such as a token's hash; a failure pauses its dating. */
+  readonly caller?: string;
   /** The newest commit from `head` that changed each of `paths`, by path; null where none did. */
   lastCommits(head: string, paths: string[]): Promise<Map<string, LastCommit | null>>;
   /** The renames `commit` made with the text unchanged; none for a provider that cannot tell. */
@@ -41,6 +43,12 @@ const RENAMES_AT_ONCE = 6;
 const MEMO_ENTRIES = 100_000;
 /** Keys per shared-cache read. */
 const CACHE_BATCH = 500;
+/** How long dating pauses after a provider failure that names no wait of its own. */
+const FAILURE_PAUSE_MS = 60_000;
+/** How long the shared cache keeps that no commit holds a path and text, in seconds: a provider that missed one asks again. */
+const UNDATED_TTL = 24 * 60 * 60;
+/** The value a fact takes when no commit changed the path to its text. */
+const UNDATED = '';
 
 /** What the readers of one backend share in this process: facts, datings in flight and commits' renames being read. */
 interface Shared {
@@ -48,6 +56,8 @@ interface Shared {
   /** Each file's dating in flight, with when the request that started it stops waiting for it. */
   inflight: Map<string, { date: Promise<string | undefined>; until: number; }>;
   renames: Map<string, Promise<CommitRenames>>;
+  /** Until when dating pauses after a provider failure, by repository and caller. */
+  paused: Map<string, number>;
 }
 const sharedState = new WeakMap<object, Shared>();
 
@@ -76,10 +86,14 @@ export class RemoteEditDates {
   private readonly shared: Shared;
   constructor(private readonly repository: string, private readonly history: EditDateHistory, private readonly cache: RemoteCache | undefined, owner: object, private readonly wait = EDIT_DATE_WAIT_MS) {
     let shared = sharedState.get(owner);
-    if (!shared) sharedState.set(owner, shared = { memo: new Map(), inflight: new Map(), renames: new Map() });
+    if (!shared) sharedState.set(owner, shared = { memo: new Map(), inflight: new Map(), renames: new Map(), paused: new Map() });
     this.shared = shared;
   }
 
+  /** What a pause after a failure applies to: this repository as this caller asks it. */
+  private get pauseKey() {
+    return JSON.stringify([this.repository, this.history.caller ?? '']);
+  }
   private key(kind: 'date' | 'renames', ...parts: string[]) {
     return `mgn:edit-${kind}:${FACTS_VERSION}:${JSON.stringify([this.repository, ...parts])}`;
   }
@@ -123,11 +137,14 @@ export class RemoteEditDates {
     for (const [key, value] of entries) this.remember(key, value);
     const sign = this.cache?.sign?.bind(this.cache);
     if (!sign || !entries.length) return;
-    const sealed = entries.flatMap(([key, value]): [string, string][] => {
-      const seal = sign(JSON.stringify([key, value]));
-      return seal ? [[key, JSON.stringify({ value, seal })]] : [];
-    });
-    if (sealed.length) await this.cache!.set(sealed, REMOTE_CACHE_TTL);
+    const sealed = (wanted: [string, string][]) =>
+      wanted.flatMap(([key, value]): [string, string][] => {
+        const seal = sign(JSON.stringify([key, value]));
+        return seal ? [[key, JSON.stringify({ value, seal })]] : [];
+      });
+    const dated = sealed(entries.filter(([, value]) => value !== UNDATED)), undated = sealed(entries.filter(([, value]) => value === UNDATED));
+    if (dated.length) await this.cache!.set(dated, REMOTE_CACHE_TTL);
+    if (undated.length) await this.cache!.set(undated, UNDATED_TTL);
   }
 
   /** The renames of `commit` that kept the text, read once per process and kept, since a commit never changes. */
@@ -155,14 +172,15 @@ export class RemoteEditDates {
 
   /**
    * The dates of `files` at `head`, by path, as ISO timestamps from the provider; a file not dated within the wait, or
-   * that the provider could not date, is left out.
+   * that the provider could not date, is left out. After a provider failure nothing new is dated for this caller until
+   * the pause the failure set is over.
    */
   async dates(head: string, files: DatedFile[]): Promise<Map<string, string>> {
     const dates = new Map<string, string>();
     const keyed = files.map(file => ({ ...file, key: this.key('date', file.path, file.blob) }));
     const unknown = keyed.filter(file => {
       const known = this.remembered(file.key);
-      if (known !== undefined) dates.set(file.path, known);
+      if (known) dates.set(file.path, known);
       return known === undefined;
     });
     let missing = unknown;
@@ -170,22 +188,29 @@ export class RemoteEditDates {
       const stored = await this.stored(unknown.map(file => file.key));
       missing = unknown.filter(file => {
         const known = stored.get(file.key);
-        if (known !== undefined) dates.set(file.path, known);
+        if (known) dates.set(file.path, known);
         return known === undefined;
       });
     } catch (error) {
       console.warn(`[edit-dates] shared cache read failed: ${(error as Error).message}`);
     }
     if (!missing.length) return dates;
-    const { inflight } = this.shared;
-    const fresh = missing.filter(file => !inflight.has(file.key));
-    if (fresh.length) this.date(head, fresh, Date.now() + this.wait);
+    const { inflight, paused } = this.shared;
+    const pausedUntil = paused.get(this.pauseKey) ?? 0;
+    if (pausedUntil <= Date.now()) {
+      paused.delete(this.pauseKey);
+      const fresh = missing.filter(file => !inflight.has(file.key));
+      if (fresh.length) this.date(head, fresh, Date.now() + this.wait);
+    }
     // A file another request is dating is waited for only as long as that request waits, so the requests that come
     // while a large repository is dated in the background answer at once with what is known.
-    const joined = missing.map(file => inflight.get(file.key)!);
-    const waits = joined.map(({ date }, index) =>
+    const joined = missing.flatMap(file => {
+      const dating = inflight.get(file.key);
+      return dating ? [{ ...dating, path: file.path }] : [];
+    });
+    const waits = joined.map(({ date, path }) =>
       date.then(found => {
-        if (found) dates.set(missing[index].path, found);
+        if (found) dates.set(path, found);
       })
     );
     await Promise.race([Promise.all(waits), delay(Math.max(0, ...joined.map(({ until }) => until)) - Date.now())]);
@@ -211,10 +236,15 @@ export class RemoteEditDates {
       try {
         const found = await this.step(head, step);
         await this.keep(step.flatMap(file => found.has(file.key) ? [[file.key, found.get(file.key)!] as [string, string]] : [])).catch(error => console.warn(`[edit-dates] shared cache write failed: ${(error as Error).message}`));
-        for (const file of step) done(file, found.get(file.key));
+        for (const file of step) done(file, found.get(file.key) || undefined);
       } catch (error) {
-        // Lost access, a cooldown or a provider without history: what is left stays undated, and the next request asks again.
+        // Lost access, a cooldown, a provider failure or one without history: what is left stays undated, and no
+        // request asks again until the pause is over, the provider's own wait or a minute.
         failed = true;
+        const wait = error instanceof SourceError && error.retryAfter ? error.retryAfter * 1000 : FAILURE_PAUSE_MS;
+        const { paused } = this.shared;
+        paused.set(this.pauseKey, Math.max(paused.get(this.pauseKey) ?? 0, Date.now() + wait));
+        while (paused.size > 10_000) paused.delete(paused.keys().next().value!);
         if (!(error instanceof SourceError && error.status === 501)) console.warn(`[edit-dates] ${this.repository}: ${(error as Error).message}`);
         for (const file of step) done(file, undefined);
       }
@@ -223,7 +253,10 @@ export class RemoteEditDates {
     });
   }
 
-  /** Dates one step of files: the last commit at each path, followed back through each commit that only moved it there. */
+  /**
+   * Dates one step of files: the last commit at each path, followed back through each commit that only moved it there.
+   * A file no commit holds is answered `UNDATED`, so it is not asked again.
+   */
   private async step(head: string, files: (DatedFile & { key: string; })[]): Promise<Map<string, string>> {
     const found = new Map<string, string>();
     let work = files.map(file => ({ file, path: file.path, head }));
@@ -243,7 +276,10 @@ export class RemoteEditDates {
       const next: typeof work = [];
       for (const item of work) {
         const commit = last.get(item)!;
-        if (!commit) continue;
+        if (!commit) {
+          found.set(item.file.key, UNDATED);
+          continue;
+        }
         const moved = renames.get(commit.sha);
         const from = moved?.renames.get(item.path);
         if (from && moved!.parent && move < MAX_MOVES) next.push({ file: item.file, path: from, head: moved!.parent });

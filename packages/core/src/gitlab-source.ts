@@ -35,6 +35,9 @@ const LAST_COMMIT_BATCH = 20;
 /** GraphQL requests in flight at once for one dating step. */
 const LAST_COMMIT_REQUESTS = 4;
 
+/** GitLab's GraphQL does not answer the last-commit query for this site or project, so each path is asked over REST. */
+class GraphUnsupported extends Error {}
+
 /** Whether two entries name one object at one path, as one kind and mode. */
 const sameEntry = (a: RemoteEntry, b: RemoteEntry | undefined) => a.path === b?.path && a.sha === b.sha && a.type === b.type && a.mode === b.mode;
 /** Freezing keeps one request from changing a listing another one reads. */
@@ -398,7 +401,9 @@ export class GitLabSource extends RemoteSource {
   }
   /**
    * The last commits of twenty paths per GraphQL request (`tree(path).lastCommit`). A site or project path GraphQL does
-   * not answer, such as a project named by its numeric id, asks per path over REST instead.
+   * not answer, such as a project named by its numeric id, asks per path over REST instead. Any other failure (lost
+   * access, a rate limit, a server error, a timeout) fails the dating, which pauses it (`RemoteEditDates`), so a GitLab
+   * in trouble is not asked once per path.
    */
   protected override async lastCommits(head: string, paths: string[]): Promise<Map<string, LastCommit | null>> {
     const found = new Map<string, LastCommit | null>();
@@ -407,8 +412,7 @@ export class GitLabSource extends RemoteSource {
     try {
       for (let i = 0; i < batches.length; i += LAST_COMMIT_REQUESTS) await Promise.all(batches.slice(i, i + LAST_COMMIT_REQUESTS).map(batch => this.graphLastCommits(head, batch, found)));
     } catch (error) {
-      // Lost access or a cooldown stops the dating; REST answers whatever else GraphQL did not.
-      if (error instanceof SourceError && [401, 403, 429].includes(error.status)) throw error;
+      if (!(error instanceof GraphUnsupported)) throw error;
       for (const [path, commit] of await super.lastCommits(head, paths.filter(path => !found.has(path)))) found.set(path, commit);
     }
     return found;
@@ -419,14 +423,27 @@ export class GitLabSource extends RemoteSource {
     try {
       response = await this.request(`${this.url}/api/graphql`, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000), headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'MyGitNotes', ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) }, body: JSON.stringify({ query, variables: { project: this.repository, ref: head, ...Object.fromEntries(paths.map((path, i) => [`p${i}`, path])) } }) });
     } catch {
-      throw new Error('GitLab GraphQL could not be reached.');
+      throw new SourceError('GitLab GraphQL could not be reached.', 502);
     }
-    if (response.status === 429) throw new SourceError('GitLab rate limit reached. Retry later.', 429, 60);
+    if (response.status === 429) {
+      const retry = response.headers.get('retry-after');
+      throw new SourceError('GitLab rate limit reached. Retry later.', 429, retry && /^\d+$/.test(retry) ? Math.max(1, Number(retry)) : 60);
+    }
     if (response.status === 401) throw new SourceError('Sign in again to authorize GitLab access.', 401);
-    const result = await response.json().catch(() => undefined) as { data?: { project?: { repository?: Record<string, { lastCommit?: { sha?: string; authoredDate?: string; } | null; } | null> | null; } | null; }; errors?: unknown[]; } | undefined;
+    if (response.status === 403) throw new SourceError('GitLab permission denied.', 403);
+    // A site without GraphQL answers 404; one that rejects the query, 400.
+    if (response.status === 400 || response.status === 404) throw new GraphUnsupported();
+    if (!response.ok) throw new SourceError(`GitLab GraphQL request failed (${response.status}).`, 502);
+    let result: { data?: { project?: { repository?: Record<string, { lastCommit?: { sha?: string; authoredDate?: string; } | null; } | null> | null; } | null; }; errors?: unknown[]; } | undefined;
+    try {
+      result = await response.json();
+    } catch {
+      // A body cut off on the way, unlike a GraphQL answer that lacks the query, is a failure.
+      throw new SourceError('GitLab GraphQL returned an unreadable answer.', 502);
+    }
     const repository = result?.data?.project?.repository;
-    // Anything else GraphQL refuses or does not answer is asked over REST.
-    if (!response.ok || result?.errors?.length || !repository) throw new Error('GitLab GraphQL did not answer last commits.');
+    // A GraphQL answer with errors or without the project's repository does not support the query here.
+    if (result?.errors?.length || !repository) throw new GraphUnsupported();
     paths.forEach((path, i) => {
       const commit = repository[`f${i}`]?.lastCommit;
       found.set(path, commit?.sha && commit.authoredDate ? { sha: commit.sha, date: commit.authoredDate } : null);

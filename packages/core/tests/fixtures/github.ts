@@ -37,9 +37,13 @@ export function githubFixture(extra: Record<string, string> = {}, options: { hex
   };
   const listed = (sha: string) => ({ sha, parents: (parents.get(sha) ?? []).map(parent => ({ sha: parent })), commit: { tree: { sha: commits.get(sha) }, message: messages.get(sha)?.message ?? '', author: { name: 'Tester', date: messages.get(sha)?.date ?? '2026-01-01T00:00:00Z' } } });
   const calls: { endpoint: string; method?: string; body: any; }[] = [];
+  let graphql = 0;
   const request: typeof fetch = async (input, init) => {
     // Batched blob reads are optional: a failing GraphQL endpoint makes the reader fall back to single blob reads.
-    if (String(input).endsWith('/graphql')) return new Response('{}', { status: 500 });
+    if (String(input).endsWith('/graphql')) {
+      graphql++;
+      return new Response('{}', { status: 500 });
+    }
     const endpoint = String(input).replace('https://api.github.com/repos/owner/repo', '');
     const body = init?.body ? JSON.parse(String(init.body)) : {};
     calls.push({ endpoint, method: init?.method, body });
@@ -113,5 +117,5 @@ export function githubFixture(extra: Record<string, string> = {}, options: { hex
     } else return new Response('{}', { status: 404 });
     return new Response(JSON.stringify(result));
   };
-  return { request, reader: () => openRemoteRepository({ type: 'github', repository: 'owner/repo', branch: 'main' }, 'test-token', request).reader, calls, head: () => head, text: (file: string) => objects.get(files.get(file)!), files: () => [...files.keys()], message: (sha: string) => messages.get(sha)?.message };
+  return { request, reader: () => openRemoteRepository({ type: 'github', repository: 'owner/repo', branch: 'main' }, 'test-token', request).reader, calls, graphql: () => graphql, head: () => head, text: (file: string) => objects.get(files.get(file)!), files: () => [...files.keys()], message: (sha: string) => messages.get(sha)?.message };
 }

@@ -8,12 +8,15 @@ export class SourceError extends Error {
 }
 
 type Cached = { value: any; expires: number; etag?: string; bytes: number; immutable: boolean; };
-type Lane = { tail: Promise<unknown>; queued: number; blockedUntil: number; lastWrite: number; };
+/** A token's (or the anonymous) request queue, cooldown, and until when each rate-limit resource is low (`LOW_SHARE`). */
+type Lane = { tail: Promise<unknown>; queued: number; blockedUntil: number; lastWrite: number; low: Map<string, number>; };
 type Runtime = { cache: Map<string, Cached>; pending: Map<string, Promise<any>>; lanes: Map<string, Lane>; bytes: number; generation: Map<string, number>; oauthScopes: Map<string, string[]>; };
 const runtimes = new WeakMap<typeof fetch, Runtime>();
 const MAX_BYTES = 64 * 1024 * 1024;
 const IMMUTABLE_TTL = 60 * 60 * 1000;
 const FRESH_TTL = 60 * 1000;
+/** The share of a rate limit below which background work such as dating notes stops, leaving the rest for reads. */
+const LOW_SHARE = 0.2;
 
 /** Process-local optimization. Authorization scopes never share this cache; shared content-addressed reads use RemoteCache. */
 export class GitHubApi {
@@ -49,7 +52,7 @@ export class GitHubApi {
         }
       }
       if (runtime.lanes.size >= 1000) throw new SourceError('GitHub service is busy. Retry later.', 503, 60);
-      lane = { tail: Promise.resolve(), queued: 0, blockedUntil: 0, lastWrite: 0 };
+      lane = { tail: Promise.resolve(), queued: 0, blockedUntil: 0, lastWrite: 0, low: new Map() };
       runtime.lanes.set(this.scope, lane);
     }
     this.lane = lane;
@@ -112,6 +115,16 @@ export class GitHubApi {
       if (this.runtime.pending.get(id) === result) this.runtime.pending.delete(id);
     }
   }
+  /**
+   * Throws a rate-limit error, with the seconds until the limit resets, while this token's cooldown lasts or either of
+   * the limits dating spends (REST `core`, `graphql`) is low, so dating stops before reads run out.
+   */
+  spareForDating() {
+    this.cooldown();
+    const until = Math.max(0, ...['core', 'graphql'].map(resource => this.lane.low.get(resource) ?? 0));
+    const seconds = Math.ceil((until - Date.now()) / 1000);
+    if (seconds > 0) throw new SourceError(`GitHub API rate limit is low. Dating resumes in ${seconds} seconds.`, 429, seconds);
+  }
   private cooldown() {
     const seconds = Math.ceil((this.lane.blockedUntil - Date.now()) / 1000);
     if (seconds > 0) throw new SourceError(`GitHub API is temporarily rate limited. Retry in ${seconds} seconds.`, 429, seconds);
@@ -135,6 +148,12 @@ export class GitHubApi {
       const remaining = response.headers.get('x-ratelimit-remaining');
       const reset = Number(response.headers.get('x-ratelimit-reset')) * 1000;
       if (remaining === '0') this.lane.blockedUntil = Math.max(this.lane.blockedUntil, reset || Date.now() + 60_000);
+      const limit = Number(response.headers.get('x-ratelimit-limit'));
+      if (remaining !== null && limit > 0) {
+        const resource = response.headers.get('x-ratelimit-resource') || (url === this.site.graphql ? 'graphql' : 'core');
+        if (Number(remaining) < limit * LOW_SHARE) this.lane.low.set(resource, reset || Date.now() + 60_000);
+        else this.lane.low.delete(resource);
+      }
       if (response.status === 403 || response.status === 429) {
         const message = await response.clone().text();
         const retry = response.headers.get('retry-after');

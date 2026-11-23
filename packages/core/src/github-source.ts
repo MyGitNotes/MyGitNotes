@@ -255,19 +255,17 @@ export class GitHubSource extends RemoteSource {
     return this.request;
   }
   /**
-   * With a token, GitHub's GraphQL names the last commits of fifty paths per request; without one, or where GraphQL
-   * fails short of lost access or a cooldown, each path is asked over REST.
+   * With a token, GitHub's GraphQL names the last commits of fifty paths per request. Without one GitHub has no
+   * GraphQL, and asking each path over REST would spend the hourly limit every anonymous reader of this server shares,
+   * so an anonymous reader dates nothing. A GraphQL failure fails the dating, which pauses it (`RemoteEditDates`), and
+   * so does a rate limit with a fifth or less left, which keeps the rest for reading notes.
    */
   protected override async lastCommits(head: string, paths: string[]): Promise<Map<string, LastCommit | null>> {
-    if (!this.token) return super.lastCommits(head, paths);
+    if (!this.token) throw new SourceError('GitHub dates notes only for a signed-in reader.', 501);
     const found = new Map<string, LastCommit | null>();
-    try {
-      for (let i = 0; i < paths.length; i += 50) {
-        for (const [path, commit] of await this.client.lastCommits(head, paths.slice(i, i + 50))) found.set(path, commit);
-      }
-    } catch (error) {
-      if (error instanceof SourceError && [401, 403, 429].includes(error.status)) throw error;
-      for (const [path, commit] of await super.lastCommits(head, paths.filter(path => !found.has(path)))) found.set(path, commit);
+    for (let i = 0; i < paths.length; i += 50) {
+      this.client.spareForDating();
+      for (const [path, commit] of await this.client.lastCommits(head, paths.slice(i, i + 50))) found.set(path, commit);
     }
     return found;
   }
@@ -276,6 +274,7 @@ export class GitHubSource extends RemoteSource {
     const renames = new Map<string, string>();
     let parent: string | null = null;
     for (let page = 1; page <= 30; page++) {
+      this.client.spareForDating();
       let found: { parents?: { sha: string; }[]; files?: { filename: string; status: string; previous_filename?: string; changes?: number; }[]; };
       try {
         found = await this.api(`/commits/${commit}?per_page=100&page=${page}`);
