@@ -297,3 +297,26 @@ describe('Notebook default_sort', () => {
     expect(() => parseWorkspaceConfig(withSort(sort))).toThrow(/default_sort/);
   });
 });
+
+describe('Notebook icon and color', () => {
+  const withMark = (mark: string) => `schema_version: 4\nworkspace:\n  title: T\n  default_notebook: campaign\nnotebooks:\n  - id: campaign\n    title: Campaign\n    root: notes/campaign\n${mark}`;
+
+  it('keeps a Lucide icon name, kebab-case or PascalCase, and a palette color', () => {
+    expect(parseWorkspaceConfig(withMark('    icon: dice-5\n    color: red\n')).notebooks[0]).toMatchObject({ icon: 'dice-5', color: 'red' });
+    expect(parseWorkspaceConfig(withMark('    icon: BookOpen\n')).notebooks[0]).toMatchObject({ icon: 'BookOpen' });
+    expect(parseWorkspaceConfig(withMark('    color: gray\n')).notebooks[0]).toMatchObject({ color: 'gray' });
+  });
+
+  it('leaves both out where the manifest sets none, and writes them back on save', () => {
+    const plain = parseWorkspaceConfig(withMark('')).notebooks[0];
+    expect(plain).not.toHaveProperty('icon');
+    expect(plain).not.toHaveProperty('color');
+    const config = parseWorkspaceConfig(withMark('    icon: leaf\n    color: green\n'));
+    expect(parseWorkspaceConfig(serializeWorkspaceConfig(config)).notebooks[0]).toMatchObject({ icon: 'leaf', color: 'green' });
+  });
+
+  it.each([['an unknown color', '    color: orange\n', /color/], ['a hex color', '    color: "#ff0000"\n', /color/], ['an empty color', '    color:\n', /color/], ['a color of another case', '    color: Red\n', /color/], ['a number icon', '    icon: 5\n', /icon/], ['an empty icon', '    icon: ""\n', /icon/], ['an icon with spaces', '    icon: book open\n', /icon/], ['an icon with a path', '    icon: ../x\n', /icon/], ['an icon too long', `    icon: ${'a'.repeat(65)}\n`, /icon/]])('rejects %s', (_name, mark, message) => {
+    expect(() => parseWorkspaceConfig(withMark(mark))).toThrow(ConfigValidationError);
+    expect(() => parseWorkspaceConfig(withMark(mark))).toThrow(message);
+  });
+});

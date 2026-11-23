@@ -111,6 +111,22 @@ function validateStatuses(notebookId: string, statuses: unknown): NotebookStatus
   return validated;
 }
 
+/** A Lucide icon name as Lucide spells it in kebab-case (`dice-5`) or PascalCase (`Dice5`): letters and digits, words joined by single hyphens. */
+const ICON_NAME = /^[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*$/;
+const ICON_NAME_MAX_LENGTH = 64;
+
+/** Validates a notebook's mark: `icon` names a Lucide icon, `color` is a palette name; each is optional. */
+function validateMark(notebookId: string, item: Record<string, unknown>): Pick<NotebookConfig, 'icon' | 'color'> {
+  const { icon, color } = item;
+  if ('icon' in item && (typeof icon !== 'string' || icon.length > ICON_NAME_MAX_LENGTH || !ICON_NAME.test(icon))) {
+    throw new ConfigValidationError(`Notebook '${notebookId}' has an invalid icon ${JSON.stringify(icon)}; use a Lucide icon name such as dice-5 or book-open`);
+  }
+  if ('color' in item && (typeof color !== 'string' || !(STATUS_COLOR_NAMES as readonly string[]).includes(color))) {
+    throw new ConfigValidationError(`Notebook '${notebookId}' has an unknown color ${JSON.stringify(color)}; use one of ${STATUS_COLOR_NAMES.join(', ')}`);
+  }
+  return { ...('icon' in item ? { icon: icon as string } : {}), ...('color' in item ? { color: color as StatusColorName } : {}) };
+}
+
 /**
  * Validates a parsed WorkspaceConfig object according to project invariants.
  */
@@ -200,6 +216,7 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
     }
 
     const validatedDefaultSort = item.default_sort === undefined ? undefined : validateDefaultSort(item.id, item.default_sort);
+    const mark = validateMark(item.id, item);
 
     let validatedTemplates: NoteTemplate[] | undefined;
     if (item.templates !== undefined) {
@@ -291,7 +308,7 @@ export function validateWorkspaceConfig(config: unknown): WorkspaceConfig {
     const appliedProblem = excludeListError(applied);
     if (appliedProblem !== undefined) throw new ConfigValidationError(`Notebook '${item.id}' exclude, with the workspace exclude, is too large: ${appliedProblem}`);
 
-    validatedNotebooks.push({ id: item.id, title: item.title, root: normalizedRoot, assets: assetPath, default_view: (item.default_view as 'list' | 'card' | 'kanban' | 'flat') || 'list', ...(validatedDefaultSort !== undefined ? { default_sort: validatedDefaultSort } : {}), ...(validatedStatuses !== undefined ? { statuses: validatedStatuses } : {}), ...(validatedTemplates !== undefined ? { templates: validatedTemplates } : {}), ...(validatedMetadata !== undefined ? { metadata: validatedMetadata } : {}), ...(validatedPathAliases !== undefined ? { pathAliases: validatedPathAliases } : {}), ...(validatedExclude !== undefined ? { exclude: validatedExclude } : {}), ...(applied.length ? { excluded: applied } : {}) });
+    validatedNotebooks.push({ id: item.id, title: item.title, root: normalizedRoot, assets: assetPath, default_view: (item.default_view as 'list' | 'card' | 'kanban' | 'flat') || 'list', ...(validatedDefaultSort !== undefined ? { default_sort: validatedDefaultSort } : {}), ...(validatedStatuses !== undefined ? { statuses: validatedStatuses } : {}), ...mark, ...(validatedTemplates !== undefined ? { templates: validatedTemplates } : {}), ...(validatedMetadata !== undefined ? { metadata: validatedMetadata } : {}), ...(validatedPathAliases !== undefined ? { pathAliases: validatedPathAliases } : {}), ...(validatedExclude !== undefined ? { exclude: validatedExclude } : {}), ...(applied.length ? { excluded: applied } : {}) });
   }
 
   // Ensure default_notebook exists

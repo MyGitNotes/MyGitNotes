@@ -71,6 +71,10 @@ export interface NotebookConfig {
   /** How the notebook's lists are ordered until a person picks another order for it. */
   default_sort?: NotebookDefaultSort;
   statuses?: NotebookStatus[];
+  /** The Lucide icon its mark draws, by name (`dice-5`, `BookOpen`); a name Lucide lacks draws the initial. */
+  icon?: string;
+  /** The palette colour its mark wears, painted through the theme's tokens like a status dot. */
+  color?: StatusColorName;
   templates?: NoteTemplate[];
   metadata?: NotebookMetadataField[];
   pathAliases?: Record<string, string>;
