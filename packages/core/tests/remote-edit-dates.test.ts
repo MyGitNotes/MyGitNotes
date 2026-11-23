@@ -73,6 +73,18 @@ it('answers within its wait and leaves the rest to the background, where a later
   expect((await new RemoteEditDates('repo', source, undefined, owner, 50).dates('head', [{ path: 'new.md', blob: 'blob-old' }])).get('new.md')).toBe('2026-01-01T00:00:00.000Z');
 });
 
+it('waits for a dating another request started only as long as that request waits', async () => {
+  const { source } = history({ slow: new Set(['new.md']) });
+  const owner = {}, file = [{ path: 'new.md', blob: 'blob-old' }];
+  const first = new RemoteEditDates('repo', source, undefined, owner, 100).dates('head', file);
+  await new Promise(resolve => setTimeout(resolve, 120));
+  expect((await first).size).toBe(0);
+  // The dating is still running past the first request's wait: a request joining it answers at once.
+  const start = Date.now();
+  expect((await new RemoteEditDates('repo', source, undefined, owner, 100).dates('head', file)).size).toBe(0);
+  expect(Date.now() - start).toBeLessThan(60);
+});
+
 it('leaves notes undated, without failing, when the provider refuses or has no history', async () => {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   try {

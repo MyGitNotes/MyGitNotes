@@ -45,7 +45,8 @@ const CACHE_BATCH = 500;
 /** What the readers of one backend share in this process: facts, datings in flight and commits' renames being read. */
 interface Shared {
   memo: Map<string, string>;
-  inflight: Map<string, Promise<string | undefined>>;
+  /** Each file's dating in flight, with when the request that started it stops waiting for it. */
+  inflight: Map<string, { date: Promise<string | undefined>; until: number; }>;
   renames: Map<string, Promise<CommitRenames>>;
 }
 const sharedState = new WeakMap<object, Shared>();
@@ -178,22 +179,25 @@ export class RemoteEditDates {
     if (!missing.length) return dates;
     const { inflight } = this.shared;
     const fresh = missing.filter(file => !inflight.has(file.key));
-    if (fresh.length) this.date(head, fresh);
-    const waits = missing.map(file =>
-      inflight.get(file.key)!.then(date => {
-        if (date) dates.set(file.path, date);
+    if (fresh.length) this.date(head, fresh, Date.now() + this.wait);
+    // A file another request is dating is waited for only as long as that request waits, so the requests that come
+    // while a large repository is dated in the background answer at once with what is known.
+    const joined = missing.map(file => inflight.get(file.key)!);
+    const waits = joined.map(({ date }, index) =>
+      date.then(found => {
+        if (found) dates.set(missing[index].path, found);
       })
     );
-    await Promise.race([Promise.all(waits), delay(this.wait)]);
+    await Promise.race([Promise.all(waits), delay(Math.max(0, ...joined.map(({ until }) => until)) - Date.now())]);
     // A copy, so dates that land after the wait do not change an answer already given.
     return new Map(dates);
   }
 
   /** Starts dating `files` in steps, each file's dating in flight until its date is kept or found unknown. */
-  private date(head: string, files: (DatedFile & { key: string; })[]) {
+  private date(head: string, files: (DatedFile & { key: string; })[], until: number) {
     const { inflight } = this.shared;
     const settle = new Map<string, (date: string | undefined) => void>();
-    for (const file of files) inflight.set(file.key, new Promise(resolve => settle.set(file.key, resolve)));
+    for (const file of files) inflight.set(file.key, { date: new Promise(resolve => settle.set(file.key, resolve)), until });
     const done = (file: DatedFile & { key: string; }, date: string | undefined) => {
       settle.get(file.key)?.(date);
       settle.delete(file.key);
