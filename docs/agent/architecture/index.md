@@ -331,15 +331,28 @@ Where the dates come from:
   (`/api/notes/read`, `GET /api/notes`) and the stdio MCP tools use it too.
 - **A hosted source** (`RemoteEditDates` in `packages/core/src/remote-edit-dates.ts`, through
   `RemoteSource.editFacts` and `dated`): the provider names the last commit of each path (GitLab GraphQL
-  `tree(path).lastCommit`, twenty paths a request; GitHub GraphQL `history(first: 1, path)`, fifty a request with a
-  token; per path over REST where GraphQL is unavailable or refuses), and a commit's renames whose diff is empty
+  `tree(path).lastCommit`, twenty paths a request, per path over REST only where GraphQL lacks the query: a 400 or
+  404, an `errors` array, or no project; GitHub GraphQL `history(first: 1, path)`, fifty a request, with a token
+  only: an anonymous GitHub reader dates nothing, since per-path REST would spend the hourly limit every anonymous
+  reader of the server shares), and a commit's renames whose diff is empty
   (GitLab `diff: ''`, GitHub `changes: 0`) send the note back to its former path from the commit's first parent. A
   date is kept per path and blob, in the process and sealed in the shared cache, so a later head where the note is
   unchanged asks nothing. A text restored byte for byte to one dated before keeps that earlier date. A request waits
   at most five seconds (`EDIT_DATE_WAIT_MS`), and one that finds its notes already being dated waits only for what is
   left of the wait of the request that started it; notes not dated by then are answered without `lastCommitAt` and
   dated in the background, so the first lists after a start on a large repository fall back to frontmatter dates for
-  a while. A provider failure leaves notes undated and never fails a read. An edition source dates through its
+  a while. A provider failure leaves notes undated and never fails a read, and pauses dating for that repository and
+  caller (token or anonymous) for the wait the provider names, else a minute; a GitLab server error or timeout is
+  such a failure, not a reason to ask each path over REST. With a GitHub token, dating also stops while the REST or
+  GraphQL rate limit has a fifth or less left, until it resets, so reads keep the rest. A path whose text no commit
+  holds is remembered as undated (a day in the shared cache) and not asked again. Since a background dating fills
+  `updated` in as it goes, a list sorted by `sort=updated` may order the same notes differently from one request to
+  the next until the repository is dated, so pages read by `offset` meanwhile can repeat or skip a note. The facts
+  outlive a restart and are shared between instances only in a sealed shared cache: a Redis
+  (`MYGITNOTES_CACHE_REDIS_URL`, else `REDIS_URL`, or the REST pair `UPSTASH_REDIS_REST_URL` and
+  `UPSTASH_REDIS_REST_TOKEN`, else `KV_REST_API_URL` and `KV_REST_API_TOKEN`) and a `SESSION_SECRET` of at least 32
+  characters, kept the same across restarts; otherwise each process dates the repository again after it starts. An
+  edition source dates through its
   `historyPage` and knows no renames unless it overrides `pureRenames`; one without history dates nothing.
   A checked-out live note is dated by its Git file, a pending one by its frontmatter.
 

@@ -36,8 +36,10 @@ Default transport is **stdio** for local agent integration (e.g. Claude Desktop,
 
 `list_notes` entries, `read_note` (with or without `metadataOnly`) and `get_note_metadata`, stdio and hosted alike, carry a note's edit dates, as do the HTTP routes `/api/notes/query`, `/api/notes/lookup` and `/api/notes/read` (see [Note edit dates](../architecture/index.md#note-edit-dates)). Both are ISO 8601 timestamps in UTC:
 
-- `lastCommitAt`: the author date of the newest commit that changed the note's text. A commit that only moved or renamed the note does not count. It is absent for a note Git does not hold yet (an uncommitted new file, a pending live note) and, on a hosted server, for a note it has not dated yet: the first listing after a start dates a large repository in the background for a while.
+- `lastCommitAt`: the author date of the newest commit that changed the note's text. A commit that only moved or renamed the note does not count. It is absent for a note Git does not hold yet (an uncommitted new file, a pending live note) and, on a hosted server, for a note it has not dated yet: the first listing after a start dates a large repository in the background for a while. An anonymous reader of a GitHub repository gets no `lastCommitAt`, and a hosted server that hit a provider failure or a low GitHub rate limit leaves notes undated until it may ask again.
 - `updated`: the date to sort by and to judge staleness with. It is `lastCommitAt`; while the note has uncommitted changes (a dirty file in a worktree, live typing that is not checked in) the later of `lastCommitAt` and the frontmatter `updated`; without `lastCommitAt`, the frontmatter `updated`. It is absent when none is known.
+
+While a hosted server is still dating a repository, notes gain `lastCommitAt` from one request to the next, so a listing sorted by `updated` can reorder between pages: paging by `offset` then may repeat or skip a note. Read the pages again once a repeated listing gains no more `lastCommitAt`, or page in another order.
 
 `metadata.updated` is the frontmatter value as written and may be stale or missing; nothing stamps it for these dates. A client that read `metadata.updated` before should read `updated`. Example `list_notes` entry:
 
