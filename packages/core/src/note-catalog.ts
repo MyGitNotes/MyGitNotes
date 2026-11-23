@@ -5,6 +5,7 @@ import { safeFilterPath } from './note-filters.js';
 import { isSortField, type SortField, sortNotes, type SortOrder } from './note-sort.js';
 import { extractTodoTasks, getNoteMilestone } from './note-agenda.js';
 import { buildNoteGraph } from './note-graph.js';
+import { type NoteEditFact, withEditDate } from './edit-dates.js';
 import { hashJson } from './remote-cache.js';
 import { type NotebookKey, notebookKey } from './notebook-key.js';
 import { type RepositoryId, type RevisionSet, StaleRevisionError } from './repository.js';
@@ -25,6 +26,11 @@ export interface RepositoryCatalog {
   folders(notebook: NotebookConfig): Promise<FolderItem[]>;
   /** A template file of the notebook as a note with its body, which no index lists; undefined when `path` names none. */
   template?(notebook: NotebookConfig, path: string): Promise<(NoteListItem & { content: string; }) | undefined>;
+  /**
+   * What Git tells of the given notes' edit dates, by path (`edit-dates.ts`); a note left out is dated from its
+   * frontmatter. A catalog without it knows no history.
+   */
+  dates?(notes: NoteListItem[]): Promise<Map<string, NoteEditFact>>;
 }
 
 /** Read model behind the note query routes, over every repository of a workspace. */
@@ -45,6 +51,8 @@ export interface NoteCatalog {
   folders(notebook: NotebookConfig): Promise<FolderItem[]>;
   /** A template file of the notebook as a note with its body, so its editor opens it by path; no index or query lists one. */
   template(notebook: NotebookConfig, path: string): Promise<(NoteListItem & { content: string; }) | undefined>;
+  /** The notes with their edit dates (`lastCommitAt`, `updated`) resolved from their repositories' Git history. */
+  dated(notes: NoteListItem[]): Promise<NoteListItem[]>;
 }
 
 export interface NoteQueryOptions {
@@ -161,6 +169,22 @@ export async function workspaceCatalog(config: WorkspaceConfig, repositories: Ca
       const found = await repository.catalog.template?.(local, path);
       return found && toKey(repository)(found);
     },
+    dated: async notes => {
+      const groups = new Map<CatalogRepository, NoteListItem[]>();
+      for (const note of notes) {
+        const { repository } = notebookOf(note.notebookId);
+        groups.set(repository, [...(groups.get(repository) ?? []), note]);
+      }
+      const facts = new Map<NoteListItem, NoteEditFact>();
+      await Promise.all([...groups].map(async ([repository, group]) => {
+        const known = await repository.catalog.dates?.(group.map(toLocal));
+        for (const note of group) {
+          const fact = known?.get(note.path);
+          if (fact) facts.set(note, fact);
+        }
+      }));
+      return notes.map(note => withEditDate(note, facts.get(note)));
+    },
     // A result spanning several repositories has no single content key to cache it under. A remembered result names
     // notebooks by key, so the alias joins its kind.
     memo: (kind, list, compute) => {
@@ -230,7 +254,8 @@ async function scope(catalog: NoteCatalog, notebookId: string) {
 
 async function matching(catalog: NoteCatalog, query: NoteQuery) {
   const { config, notes } = await scope(catalog, query.notebookId);
-  let matches = notes.filter(note => noteMatchesFilters(note, query));
+  // Only the notes a query matched are dated, before the sort and the page that read their dates.
+  let matches = await catalog.dated(notes.filter(note => noteMatchesFilters(note, query)));
   // The free text, without the search's live tokens, which the filters above already applied.
   const { text, parts } = noteSearchTerms(query.q);
   if (text.trim() && query.match === 'all') {
@@ -346,7 +371,7 @@ export async function lookupNotes(catalog: NoteCatalog, notes: unknown, content:
   for (const notebook of involved) {
     for (const note of await catalog.index(notebook)) byKey.set(noteRefKey(note), note);
   }
-  const found = refs.map(ref => byKey.get(noteRefKey(ref))).filter(Boolean) as NoteListItem[];
+  const found = await catalog.dated(refs.map(ref => byKey.get(noteRefKey(ref))).filter(Boolean) as NoteListItem[]);
   const contents = content ? await catalog.contents(found) : undefined;
   // A template file is in no index: one named by path is read where it lies, so its editor opens it like a note.
   const templates: NoteListItem[] = [];

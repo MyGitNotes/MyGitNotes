@@ -73,6 +73,7 @@ export * from './r2-local.js';
 export * from './r2-references.js';
 export * from './r2-storage.js';
 export * from './note-sort.js';
+export * from './edit-dates.js';
 export * from './note-agenda.js';
 export * from './note-query.js';
 export * from './remote-cache.js';

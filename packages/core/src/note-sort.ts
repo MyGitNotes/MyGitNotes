@@ -25,6 +25,8 @@ export interface SortableNote {
   status?: string;
   metadata: Record<string, unknown>;
   mtime?: number;
+  /** The edit date a source resolved from Git (`edit-dates.ts`), which goes before the frontmatter `updated`. */
+  updated?: string;
 }
 
 function getTimestamp(value: unknown, fallback = 0): number {
@@ -36,9 +38,12 @@ function getTimestamp(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-/** The time a note was last modified: its `updated` field, else its file mtime; 0 when neither is known. */
-export function noteUpdatedTime(note: Pick<SortableNote, 'metadata' | 'mtime'>): number {
-  return getTimestamp(note.metadata?.updated, note.mtime || 0);
+/**
+ * The time a note was last modified: the edit date its source resolved (`updated`, from Git), else its frontmatter
+ * `updated` field, else its file mtime; 0 when none is known.
+ */
+export function noteUpdatedTime(note: Pick<SortableNote, 'metadata' | 'mtime' | 'updated'>): number {
+  return getTimestamp(note.updated ?? note.metadata?.updated, note.mtime || 0);
 }
 
 /** The time a note was created: its `created` (else `date`) field, else its file mtime; 0 when none is known. */

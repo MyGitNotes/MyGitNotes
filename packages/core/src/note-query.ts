@@ -17,7 +17,7 @@ export function noteDescription(note: { metadata: Record<string, unknown>; conte
 
 /** A listing entry: identity, frontmatter and a bounded description in place of the body. */
 export function noteSummary(note: NoteItem) {
-  return { id: note.id, path: note.path, notebookId: note.notebookId, title: note.title, description: noteDescription(note), status: note.status ?? null, tags: note.tags, metadata: note.metadata, size: note.size, ...(note.live ? { live: note.live } : {}) };
+  return { id: note.id, path: note.path, notebookId: note.notebookId, title: note.title, description: noteDescription(note), status: note.status ?? null, tags: note.tags, metadata: note.metadata, size: note.size, ...(note.lastCommitAt ? { lastCommitAt: note.lastCommitAt } : {}), ...(note.updated ? { updated: note.updated } : {}), ...(note.live ? { live: note.live } : {}) };
 }
 
 /** A note's identity across repositories: its notebook and its repository-relative path. */
@@ -41,6 +41,10 @@ export interface NoteListItem {
   metadata: Record<string, unknown>;
   mtime?: number;
   size?: number;
+  /** The author date of the newest commit that changed the note's text (`edit-dates.ts`); absent when no commit holds it. */
+  lastCommitAt?: string;
+  /** The note's edit date: `lastCommitAt`, or the frontmatter `updated` where Git does not hold the note's text (`withEditDate`). */
+  updated?: string;
   content?: string;
   /** Body excerpt around a search query's match, present only when the query matched inside content. */
   matchSnippet?: string;

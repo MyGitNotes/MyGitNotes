@@ -127,6 +127,10 @@ export interface NoteItem {
   lineNumberOffset?: number;
   mtime?: number;
   size?: number;
+  /** The author date of the newest commit that changed the note's text (`edit-dates.ts`); absent when no commit holds it. */
+  lastCommitAt?: string;
+  /** The note's edit date: `lastCommitAt`, or the frontmatter `updated` where Git does not hold the note's text (`withEditDate`). */
+  updated?: string;
   /** Filename-derived specialized note kind; absent means an ordinary note. */
   kind?: 'compilation' | 'outline';
   /** Why a compilation cannot open: a syntax, schema, scope or duplicate-id problem. */
