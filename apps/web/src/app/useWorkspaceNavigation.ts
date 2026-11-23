@@ -100,8 +100,9 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
       if (activeTab === 'agent' && !await agentSystemRef.current?.prepareNotebookChange(id)) return;
       if (activeTab === 'assets' && !await fileManagerRef.current?.prepareLeave()) return;
       if (activeTab === 'notes' && !await editorRegistry.flushEditors()) return;
-      // A sort in the URL belongs to the notebook it was chosen in; the next notebook starts with its own.
-      const query = currentFilterSearch({ folders: [], kind: 'note', sortField: null, sortOrder: null });
+      // A sort, tags and a status in the URL belong to the notebook they were chosen in (its tags and statuses are its own, and kept they
+      // would leave the next notebook listing nothing); the next notebook starts without them. The search carries over.
+      const query = currentFilterSearch({ folders: [], kind: 'note', sortField: null, sortOrder: null, tag: [], tagMode: 'any', status: null });
       query.delete('focus');
       query.set('notebook', id);
       await navigateFiltered(activeTab === 'notes' ? notebookRoute(id) : `/${activeTab}`, query);
