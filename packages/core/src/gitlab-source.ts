@@ -365,6 +365,8 @@ export class GitLabSource extends RemoteSource {
         return Buffer.from(blob.content, 'base64');
       })();
       this.blobs.set(sha, pending);
+      // A failed read is not remembered, so a later request reads the blob again.
+      pending.catch(() => this.blobs.delete(sha));
     }
     return pending;
   }

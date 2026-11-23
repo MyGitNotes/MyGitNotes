@@ -72,23 +72,85 @@ function ignoredKey(ignored: readonly string[]): string[] {
   return revs.length ? [`ignore:${createHash('sha256').update(revs.join('\n')).digest('hex').slice(0, 32)}`] : [];
 }
 
-/** The commits ignore-revs files list, by the file's object id, per history backend; a blob never changes. */
-const ignoreLists = new WeakMap<object, Map<string, string[]>>();
+/** What one history backend knows of ignore-revs files: lists by blob, reads in flight, and failed reads paused until when. */
+interface IgnoreLists {
+  lists: Map<string, string[]>;
+  inflight: Map<string, Promise<string[]>>;
+  paused: Map<string, number>;
+}
+const ignoreLists = new WeakMap<object, IgnoreLists>();
+
+/** One read of a repository's `.git-blame-ignore-revs`. */
+export interface IgnoreListRead {
+  /** The history backend whose readers share what is learned, as `RemoteEditDates` shares its facts. */
+  owner: object;
+  /** Who asks of which repository, such as its id and the caller's token hash; a failed read pauses only that one. */
+  scope: string;
+  /** The file's object id at the head. */
+  blob: string;
+  /** Its bytes, from the provider. */
+  read: () => Promise<Buffer>;
+  /** The shared cache, where a list is kept sealed by blob so other processes do not read it again. */
+  cache?: RemoteCache;
+  /** How long a request waits for a read before it answers without the list; the read goes on for later requests. */
+  wait?: number;
+}
+
+const ignoreListKey = (blob: string) => `mgn:ignore-revs:${FACTS_VERSION}:${JSON.stringify([blob])}`;
 
 /**
- * The commits a repository's `.git-blame-ignore-revs` (blob `blob`, its bytes from `read`) lists, read once per text
- * and backend (`owner`, as `RemoteEditDates` shares its facts).
+ * The commits a repository's `.git-blame-ignore-revs` lists, read once per text and backend and kept, sealed, in the
+ * shared cache. Undefined when the list is not known within `wait`: a read that failed, which is not asked again by
+ * this scope for a minute (or the provider's own wait), or one still running. Without the list no note can be dated
+ * right, since a date is kept under the list it skipped, so the caller dates nothing then.
  */
-export async function ignoredRevs(owner: object, blob: string, read: () => Promise<Buffer>): Promise<string[]> {
-  let lists = ignoreLists.get(owner);
-  if (!lists) ignoreLists.set(owner, lists = new Map());
-  let revs = lists.get(blob);
-  if (!revs) {
-    revs = parseIgnoreRevs((await read()).toString('utf8'));
-    lists.set(blob, revs);
-    while (lists.size > 100) lists.delete(lists.keys().next().value!);
+export async function ignoredRevs({ owner, scope, blob, read, cache, wait = EDIT_DATE_WAIT_MS }: IgnoreListRead): Promise<string[] | undefined> {
+  let known = ignoreLists.get(owner);
+  if (!known) ignoreLists.set(owner, known = { lists: new Map(), inflight: new Map(), paused: new Map() });
+  const { lists, inflight, paused } = known,
+    remember = (revs: string[]) => {
+      lists.delete(blob);
+      lists.set(blob, revs);
+      while (lists.size > 100) lists.delete(lists.keys().next().value!);
+    };
+  const listed = lists.get(blob);
+  if (listed) return listed;
+  const pauseKey = JSON.stringify([scope, blob]);
+  if ((paused.get(pauseKey) ?? 0) > Date.now()) return undefined;
+  paused.delete(pauseKey);
+  let pending = inflight.get(blob);
+  if (!pending) {
+    pending = (async () => {
+      const key = ignoreListKey(blob), sign = cache?.sign?.bind(cache);
+      if (sign) {
+        try {
+          const [stored] = await cache!.get([key]);
+          const slot = JSON.parse(stored ?? 'null') as { value?: unknown; seal?: unknown; } | null;
+          if (slot && typeof slot.value === 'string' && typeof slot.seal === 'string') {
+            const expected = Buffer.from(sign(JSON.stringify([key, slot.value])) ?? ''), given = Buffer.from(slot.seal);
+            if (expected.length && expected.length === given.length && timingSafeEqual(expected, given)) {
+              const revs = JSON.parse(slot.value) as unknown;
+              if (Array.isArray(revs) && revs.every(rev => typeof rev === 'string')) return revs as string[];
+            }
+          }
+        } catch (error) {
+          console.warn(`[edit-dates] shared cache read failed: ${(error as Error).message}`);
+        }
+      }
+      const revs = parseIgnoreRevs((await read()).toString('utf8'));
+      const value = JSON.stringify(revs), seal = sign?.(JSON.stringify([key, value]));
+      if (seal) await cache!.set([[key, JSON.stringify({ value, seal })]], REMOTE_CACHE_TTL).catch(error => console.warn(`[edit-dates] shared cache write failed: ${(error as Error).message}`));
+      return revs;
+    })();
+    inflight.set(blob, pending);
+    pending.then(remember, (error: unknown) => {
+      const pause = error instanceof SourceError && error.retryAfter ? error.retryAfter * 1000 : FAILURE_PAUSE_MS;
+      paused.set(pauseKey, Math.max(paused.get(pauseKey) ?? 0, Date.now() + pause));
+      while (paused.size > 10_000) paused.delete(paused.keys().next().value!);
+      console.warn(`[edit-dates] ${scope}: .git-blame-ignore-revs could not be read: ${(error as Error).message}`);
+    }).finally(() => inflight.delete(blob));
   }
-  return revs;
+  return Promise.race([pending.catch(() => undefined), delay(wait).then(() => undefined)]);
 }
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms).unref?.());

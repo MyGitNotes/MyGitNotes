@@ -337,7 +337,8 @@ Where the dates come from:
   notebook roots dates every file Git tracks there, and stops once each is dated; a listed commit leaves the file
   searched for in the commits before it. The result is kept per repository, notebook roots and head; when the head
   moves on, only the new commits are read, and a head that went back, or one whose ignore list differs, is dated
-  again. `git status` marks the files with uncommitted changes on every call. A Git failure is logged and dates
+  again. `git status` marks the files with uncommitted changes on every call. A head without the list skips
+  nothing; a list path that cannot be read (no file there, a Git error) is a failure. A Git failure is logged and dates
   nothing, so reads fall back to frontmatter dates. The local note routes
   (`/api/notes/read`, `GET /api/notes`) and the stdio MCP tools use it too.
 - **A hosted source** (`RemoteEditDates` in `packages/core/src/remote-edit-dates.ts`, through
@@ -349,8 +350,11 @@ Where the dates come from:
   (GitLab `diff: ''`, GitHub `changes: 0`) send the note back to its former path from the commit's first parent. A
   listed commit sends the note back to the same path from its first parent (`pureRenames` names the parent), so the
   notes one commit changed are asked again together, one batch per parent and step; a listed commit without a
-  parent, or more than twenty moves and listed commits back (`MAX_MOVES`), leaves the note undated. The list is read
-  once per blob and backend, and a list that cannot be read dates nothing that request. A date is kept per path and
+  parent, or more than twenty moves and listed commits back (`MAX_MOVES`), leaves the note undated. The list
+  (`ignoredRevs`) is read once per blob and backend and kept sealed in the shared cache by blob, so another instance
+  reads it no more. While it is unknown nothing is dated, since a date is kept under the list it skipped: a request
+  waits for its read at most `EDIT_DATE_WAIT_MS` (the read goes on for later requests), and a read that failed is not
+  asked again by that repository and caller for the wait the provider names, else a minute. A date is kept per path and
   blob and, when the head lists commits, a hash of the sorted list, in the process and sealed in the shared cache, so
   a later head where the note and the list are unchanged asks nothing and a changed list dates the notes again; a
   repository without the file keeps the keys it had. A text restored byte for byte to one dated before keeps that earlier date. A request waits

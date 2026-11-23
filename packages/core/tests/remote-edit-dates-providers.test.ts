@@ -3,6 +3,7 @@ import { openRemoteRepository } from '../src/remote-factory.js';
 import { gitlabFixture } from './fixtures/gitlab.js';
 import { githubFixture } from './fixtures/github.js';
 import type { RemoteSource } from '../src/remote-source.js';
+import { gitBlobId } from '../src/remote-cache.js';
 
 const site = 'https://gitlab.example.test/gitlab';
 const prefix = `${site}/api/v4/projects/group%2Fsubgroup%2Fproject`;
@@ -13,13 +14,14 @@ const edit = 'e'.repeat(40), move = 'd'.repeat(40), start = 'c'.repeat(40);
  * old-b.md to folder/b.md unchanged. GraphQL answers last commits (`ok`), lacks the query (`unsupported`), fails
  * (`down`, a 503) or is rate limited (`limited`, a 429 asking for 30 seconds).
  */
-function gitlabHistory(graphql: 'ok' | 'unsupported' | 'down' | 'limited' = 'ok', extra: Record<string, string> = {}) {
+function gitlabHistory(graphql: 'ok' | 'unsupported' | 'down' | 'limited' = 'ok', extra: Record<string, string> = {}, intercept?: (url: string) => Response | undefined) {
   const f = gitlabFixture(site, extra);
   const calls: string[] = [];
   const last = (ref: string, path: string) => ref === f.head ? path === 'notes/ex/a.md' ? { sha: edit, date: '2026-03-01T08:00:00+08:00' } : path === 'notes/ex/folder/b.md' ? { sha: move, date: '2026-04-01T00:00:00Z' } : null : ref === start && ['notes/ex/old-b.md', 'notes/ex/a.md'].includes(path) ? { sha: start, date: '2026-01-01T00:00:00Z' } : null;
   const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', 'x-next-page': '' } });
   const request = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = String(input);
+    const url = String(input), intercepted = intercept?.(url);
+    if (intercepted) return intercepted;
     if (url === `${site}/api/graphql`) {
       const { query, variables } = JSON.parse(String(init!.body));
       calls.push(`graphql ${variables.ref.slice(0, 1)} ${Object.keys(variables).filter(key => /^p\d+$/.test(key)).map(key => variables[key]).join(',')}`);
@@ -208,3 +210,32 @@ it('dates GitHub notes past the commits .git-blame-ignore-revs lists at the head
   await later.getSnapshot(true);
   expect((await datesOf(later, ['notes/ex/a.md']))['notes/ex/a.md'][0]).toBe(await dateOf(backfill));
 }, 20_000);
+
+it('dates no GitLab note while .git-blame-ignore-revs cannot be read, and dates past the list once it can', async () => {
+  const content = `# Frontmatter backfill\n${edit}\n`, listBlob = gitBlobId(Buffer.from(content), 40);
+  let down = true, reads = 0;
+  const { calls, reader } = gitlabHistory('ok', { '.git-blame-ignore-revs': content }, url => {
+    if (!url.includes(`/repository/blobs/${listBlob}`)) return undefined;
+    reads++;
+    return down ? new Response('{}', { status: 503 }) : undefined;
+  });
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    const base = reader();
+    expect(await datesOf(base, ['notes/ex/a.md'])).toEqual({ 'notes/ex/a.md': [undefined, undefined] });
+    expect(await datesOf(base, ['notes/ex/a.md'])).toEqual({ 'notes/ex/a.md': [undefined, undefined] });
+    // The failed list is not read again by every request, and nothing was asked of the history.
+    expect(reads).toBe(1);
+    expect(calls.filter(call => call.startsWith('graphql'))).toEqual([]);
+    down = false;
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 61_000 });
+    try {
+      expect((await datesOf(base, ['notes/ex/a.md']))['notes/ex/a.md'][0]).toBe('2026-01-01T00:00:00.000Z');
+      expect(reads).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  } finally {
+    warn.mockRestore();
+  }
+});

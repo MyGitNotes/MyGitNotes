@@ -704,28 +704,25 @@ export abstract class RemoteSource {
   /**
    * What Git tells of the edit dates of `files` as reads know them (`edit-dates.ts`), by path. A checked-out note is
    * dated by its Git file, with the live editor's typing as uncommitted changes; a pending note has no Git date. The
-   * commits the head's `.git-blame-ignore-revs` lists date no note; a list that cannot be read dates nothing this time.
+   * commits the head's `.git-blame-ignore-revs` lists date no note; while that list is unknown (a read that failed,
+   * paused a while, or one slower than `EDIT_DATE_WAIT_MS`) no note is dated.
    */
   async editFacts(files: string[]): Promise<Map<string, NoteEditFact>> {
     const snapshot = await this.getSnapshot();
     const list = snapshot.entries.find(entry => entry.path === IGNORE_REVS_FILE && entry.type === 'blob' && entry.mode !== '120000');
-    let ignored: string[];
-    try {
-      ignored = list ? await ignoredRevs(this.historyMemoOwner() ?? this, list.sha, () => this.readSnapshotFile(snapshot, IGNORE_REVS_FILE)) : [];
-    } catch (error) {
-      // Dating without the list would remember dates it skips; the notes fall back to their frontmatter instead.
-      console.warn(`[edit-dates] ${this.id}: ${IGNORE_REVS_FILE} could not be read: ${(error as Error).message}`);
-      return new Map();
-    }
+    // A provider counts its limits per token, or per address without one, so a failure pauses only this caller's dating.
+    const caller = this.token ? createHash('sha256').update(this.token).digest('hex') : 'anonymous';
+    const owner = this.historyMemoOwner() ?? this;
+    const ignored = list ? await ignoredRevs({ owner, scope: JSON.stringify([this.id, caller]), blob: list.sha, read: () => this.readSnapshotFile(snapshot, IGNORE_REVS_FILE), cache: this.cache }) : [];
+    // Dating without the list would remember dates it skips; the notes fall back to their frontmatter instead.
+    if (!ignored) return new Map();
     const links = new Map((this.live ? await this.live.links() : []).map(link => [link.path, link]));
     const blobs = new Map(snapshot.entries.filter(entry => entry.type === 'blob').map(entry => [entry.path, entry.sha]));
     const wanted = files.flatMap(file => {
       const link = links.get(file), path = link ? link.checkout.path : file, blob = path === null ? undefined : blobs.get(path);
       return blob ? [{ file, path: path!, blob, uncommitted: Boolean(link && liveNoteState(link.checkout).changed) }] : [];
     });
-    // A provider counts its limits per token, or per address without one, so a failure pauses only this caller's dating.
-    const caller = this.token ? createHash('sha256').update(this.token).digest('hex') : 'anonymous';
-    this.editDating ??= new RemoteEditDates(this.id, { caller, lastCommits: (head, paths) => this.lastCommits(head, paths), pureRenames: commit => this.pureRenames(commit) }, this.cache, this.historyMemoOwner() ?? this);
+    this.editDating ??= new RemoteEditDates(this.id, { caller, lastCommits: (head, paths) => this.lastCommits(head, paths), pureRenames: commit => this.pureRenames(commit) }, this.cache, owner);
     const dates = await this.editDating.dates(snapshot.sha, wanted, ignored);
     return new Map(wanted.flatMap(({ file, path, uncommitted }) => dates.has(path) ? [[file, { lastCommitAt: dates.get(path), ...(uncommitted ? { uncommitted } : {}) }]] : []));
   }

@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
-import { expect, it, vi } from 'vitest';
-import { type CommitRenames, type EditDateHistory, type LastCommit, RemoteEditDates } from '../src/remote-edit-dates.js';
+import { describe, expect, it, vi } from 'vitest';
+import { type CommitRenames, type EditDateHistory, ignoredRevs, type LastCommit, RemoteEditDates } from '../src/remote-edit-dates.js';
 import { MemoryRemoteCache } from '../src/remote-cache.js';
 import { SourceError } from '../src/github-api.js';
 
@@ -189,4 +189,35 @@ it('keeps dates per ignore list, so a changed list dates the notes again and an 
   const other = backfilled();
   await new RemoteEditDates('repo', other.source, cache, owner).dates('head', backfillFiles, ['backfill', 'f'.repeat(40)]);
   expect(other.asked.length).toBe(2);
+});
+
+describe('ignoredRevs', () => {
+  const list = Buffer.from(`# backfill\n${'a'.repeat(40)}\n`);
+  it('answers no list for a read that fails or hangs past the wait, keeps nothing, and pauses that read', async () => {
+    const owner = {}, cache = signed();
+    let reads = 0;
+    const failing = () => (reads++, Promise.reject(new SourceError('upstream', 503)));
+    expect(await ignoredRevs({ owner, scope: 'repo', blob: 'blob-1', read: failing, cache, wait: 50 })).toBeUndefined();
+    // The failure is not asked again during its pause, however often requests come.
+    expect(await ignoredRevs({ owner, scope: 'repo', blob: 'blob-1', read: failing, cache, wait: 50 })).toBeUndefined();
+    expect(reads).toBe(1);
+    expect(await cache.get([`mgn:ignore-revs:v1:${JSON.stringify(['blob-1'])}`])).toEqual([null]);
+    // A read that hangs answers within the wait.
+    const started = Date.now();
+    expect(await ignoredRevs({ owner, scope: 'repo', blob: 'blob-2', read: () => new Promise<Buffer>(() => {}), cache, wait: 50 })).toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+  it('keeps a list read, sealed in the shared cache by blob, so a cold process reads it no more', async () => {
+    const cache = signed();
+    expect(await ignoredRevs({ owner: {}, scope: 'repo', blob: 'blob-3', read: async () => list, cache })).toEqual(['a'.repeat(40)]);
+    const read = vi.fn(async () => list);
+    expect(await ignoredRevs({ owner: {}, scope: 'repo', blob: 'blob-3', read, cache })).toEqual(['a'.repeat(40)]);
+    expect(read).not.toHaveBeenCalled();
+    // A forged value is not trusted.
+    const forged = Object.assign(new MemoryRemoteCache(), { sign: (text: string) => createHmac('sha256', 'other').update(text).digest('hex') });
+    await forged.set([[`mgn:ignore-revs:v1:${JSON.stringify(['blob-3'])}`, (await cache.get([`mgn:ignore-revs:v1:${JSON.stringify(['blob-3'])}`]))[0]!]], 60);
+    const third = vi.fn(async () => Buffer.from(''));
+    expect(await ignoredRevs({ owner: {}, scope: 'repo', blob: 'blob-3', read: third, cache: forged })).toEqual([]);
+    expect(third).toHaveBeenCalledOnce();
+  });
 });

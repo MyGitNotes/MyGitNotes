@@ -106,6 +106,19 @@ it('skips the commits .git-blame-ignore-revs lists, dating each note by its newe
   expect(await dates()).toMatchObject({ 'notes/a/one.md': '2026-03-01T00:00:00.000Z', 'notes/b/added.md': '2026-03-01T00:00:00.000Z' });
 });
 
+it('dates nothing when .git-blame-ignore-revs is at the head but cannot be read as a list', async () => {
+  fs.mkdirSync(path.join(root, '.git-blame-ignore-revs'));
+  write('.git-blame-ignore-revs/list', 'not a list file\n');
+  await commit('2026-03-03T00:00:00Z', 'A folder where the list goes', '.git-blame-ignore-revs/list');
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    expect(await dates()).toEqual({});
+    expect(warn).toHaveBeenCalled();
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 it('marks a note with uncommitted changes and leaves out one Git does not hold', async () => {
   write('notes/a/one.md', 'one, typed and saved\n');
   write('notes/b/three.md', 'three, staged\n');

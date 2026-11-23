@@ -61,14 +61,15 @@ async function status(top: string, pathspecs: string[]): Promise<{ head?: string
   return { head, changed };
 }
 
-/** The commits `head`'s ignore-revs file (`IGNORE_REVS_FILE` at the top level) lists; none without a readable one. */
+/**
+ * The commits `head`'s ignore-revs file (`IGNORE_REVS_FILE` at the top level) lists; none when the head holds no such
+ * path. Any other failure (a path that is no file, a Git error) is thrown, so the dating stops instead of dating past
+ * commits the list may skip.
+ */
 async function ignoredRevs(top: string, head: string): Promise<string[]> {
-  try {
-    return parseIgnoreRevs((await runGit(['cat-file', 'blob', `${head}:${IGNORE_REVS_FILE}`], top)).stdout);
-  } catch {
-    // No such file at the head: no commit is skipped.
-    return [];
-  }
+  const { stdout } = await runGit(['--literal-pathspecs', 'ls-tree', '-z', '--full-tree', head, '--', IGNORE_REVS_FILE], top);
+  if (!stdout) return [];
+  return parseIgnoreRevs((await runGit(['cat-file', 'blob', `${head}:${IGNORE_REVS_FILE}`], top)).stdout);
 }
 
 /** The searched paths a walk still looks for, each with the head paths whose text it holds. */
