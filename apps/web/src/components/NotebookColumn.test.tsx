@@ -132,6 +132,19 @@ it("turns the rail's outline and compilation buttons off again, back to the note
   expect(onSelectKind).toHaveBeenLastCalledWith('outline');
 });
 
+// Boss: on the rail the outline and compilation buttons sat under every notebook as if global; they belong to the open notebook.
+it("groups the rail's outline and compilation buttons with the open notebook, and moves them with it", () => {
+  const { rerender } = render(wrap(column({ mode: 'rail', selectedNotebookId: 'work' }), true));
+  const group = () => screen.getByRole('button', { name: 'Work' }).closest('.browse-rail-current')!;
+  expect(group()).not.toBeNull();
+  expect(group()).toContainElement(screen.getByRole('button', { name: 'Outlines' }));
+  expect(group()).toContainElement(screen.getByRole('button', { name: 'Compilations' }));
+  expect(screen.getByRole('button', { name: 'Life notes' }).closest('.browse-rail-current')).toBeNull();
+  rerender(wrap(column({ mode: 'rail', selectedNotebookId: 'thesis' }), true));
+  expect(screen.getByRole('button', { name: 'Thesis' }).closest('.browse-rail-current')).toContainElement(screen.getByRole('button', { name: 'Outlines' }));
+  expect(document.querySelectorAll('.browse-rail-divider')).toHaveLength(1);
+});
+
 const marked = [{ id: 'life', title: 'Life notes', root: 'notes/life', icon: 'leaf', color: 'green' as const }, { id: 'work', title: 'Work', root: 'notes/work', color: 'red' as const }, { id: 'thesis', title: 'Thesis', root: 'thesis' }];
 const hoverTip = async (element: Element) => {
   fireEvent.pointerEnter(element, { pointerType: 'mouse' });

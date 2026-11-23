@@ -40,6 +40,8 @@
 .browse-rail { display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 0; flex: 1; padding: 10px 0; overflow-x: hidden; overflow-y: auto; }
 .browse-rail-divider { flex: none; width: 32px; height: 1px; margin: 4px 0; background: var(--workspace-divider); }
 .browse-rail-notebooks { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+/* The open notebook with its outline and compilation buttons under it, framed as one group because those lists are its own. */
+.browse-rail-current { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 3px 4px; border-radius: 12px; background: var(--workspace-selection); }
 .browse-rail-notebook { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); color: var(--color-text); font-size: 15px; font-weight: 600; }
 /* The open notebook's tile keeps the accent under the pointer: its text is the accent's dark, unreadable on the hover grey. */
 .browse-rail-notebook:hover:not(:disabled):not([aria-current='true']) { background: var(--workspace-selection); }

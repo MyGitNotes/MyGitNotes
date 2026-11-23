@@ -87,24 +87,30 @@ export function NotebookColumn({ mode, columnId, notebooks, groups, unavailableN
         <nav className='browse-rail-notebooks' aria-label={t('sidebar.notebooks')}>
           {sections.flatMap(section => section.notebooks).map(nb => {
             const current = nb.id === selectedNotebookId;
-            return (
+            const tile = (
               <Tooltip key={nb.id} label={titleOf(nb)} detail={counts?.[nb.id]} side='right'>
                 <button type='button' className='browse-rail-notebook' aria-label={titleOf(nb)} aria-current={current ? 'true' : undefined} data-marked={hasNotebookMark(nb) ? '' : undefined} disabled={switchDisabled && !current} onClick={() => onSelectNotebook(nb.id)} onContextMenu={onNotebookContextMenu && (event => onNotebookContextMenu(event, nb.id))}>{hasNotebookMark(nb) ? <NotebookMark notebook={nb} size='rail' selected={current} /> : <span aria-hidden='true'>{notebookInitial(nb.title)}</span>}</button>
               </Tooltip>
             );
+            if (!current) return tile;
+            // The outline and compilation lists are the open notebook's, so their buttons sit with its tile and move with it.
+            return (
+              <div key={nb.id} className='browse-rail-current'>
+                {tile}
+                <Tooltip label={t('outline.list')} side='right'>
+                  <button type='button' className='ui-icon-button' aria-label={t('outline.list')} aria-pressed={kind === 'outline'} onClick={() => onSelectKind(kind === 'outline' ? 'note' : 'outline')}>
+                    <ListTree size={16} aria-hidden='true' />
+                  </button>
+                </Tooltip>
+                <Tooltip label={t('sidebar.compilations')} side='right'>
+                  <button type='button' className='ui-icon-button' aria-label={t('sidebar.compilations')} aria-pressed={kind === 'compilation'} onClick={() => onSelectKind(kind === 'compilation' ? 'note' : 'compilation')}>
+                    <GalleryHorizontalEnd size={16} aria-hidden='true' />
+                  </button>
+                </Tooltip>
+              </div>
+            );
           })}
         </nav>
-        <span className='browse-rail-divider' aria-hidden='true' />
-        <Tooltip label={t('outline.list')} side='right'>
-          <button type='button' className='ui-icon-button' aria-label={t('outline.list')} aria-pressed={kind === 'outline'} onClick={() => onSelectKind(kind === 'outline' ? 'note' : 'outline')}>
-            <ListTree size={16} aria-hidden='true' />
-          </button>
-        </Tooltip>
-        <Tooltip label={t('sidebar.compilations')} side='right'>
-          <button type='button' className='ui-icon-button' aria-label={t('sidebar.compilations')} aria-pressed={kind === 'compilation'} onClick={() => onSelectKind(kind === 'compilation' ? 'note' : 'compilation')}>
-            <GalleryHorizontalEnd size={16} aria-hidden='true' />
-          </button>
-        </Tooltip>
         {links.length > 0 && <SidebarLinks links={links} variant='sidebar' />}
       </div>
     );
