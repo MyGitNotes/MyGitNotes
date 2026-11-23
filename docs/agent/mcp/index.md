@@ -10,8 +10,8 @@ Default transport is **stdio** for local agent integration (e.g. Claude Desktop,
 
 1. `get_workspace_config`: Returns parsed `.mygitnotes.yaml` (or legacy `.github-notes.yaml`) workspace manifest. A notebook's `statuses` entries are returned as written: a bare name or `{ name, color, label }`, so a client must read `entry.name` when an entry is an object. `label` is display-only (a string or a map of UI language to string); agents must write `name` to a note's `status:`, never a label.
 2. `list_notebooks`: Lists all configured notebooks and their root directories.
-3. `list_notes`: Lists note summaries within a notebook, paged by `offset` and `limit` (default 100), returning `total` and `nextOffset`. Each entry carries frontmatter, a file path and a bounded `description` in place of the Markdown body.
-4. `read_note`: Reads a note file and parses its frontmatter and raw Markdown body (supports `metadataOnly: true` to return metadata without the markdown body).
+3. `list_notes`: Lists note summaries within a notebook, paged by `offset` and `limit` (default 100), returning `total` and `nextOffset`. Each entry carries frontmatter, a file path, a bounded `description` in place of the Markdown body, and the note's edit dates `lastCommitAt` and `updated` (see Edit dates below).
+4. `read_note`: Reads a note file and parses its frontmatter and raw Markdown body (supports `metadataOnly: true` to return metadata without the markdown body). Both forms carry `lastCommitAt` and `updated`.
 5. `save_note`: Atomically creates or updates a note file with path traversal and branch checks, and commits to Git. A compilation (`*.compilation.yml`) is saved as its YAML like any note; its items are repository-relative paths in any notebook of the same repository, and a folder source must lie in one of them. A custom compilation's `items` may hold `{ id, kind: heading, title }` entries, each starting a chapter of the items after it up to the next heading. A note item may carry `anchor: <heading text>` and then shows only that heading's section, matched like a `#heading` link. A dynamic compilation may set `group: folder` for one chapter per folder. If `content` is omitted, updates frontmatter metadata only. On an existing note, frontmatter keys left out of `metadata` keep their values, so a save without `metadata` keeps the frontmatter. The commit is marked as an agent edit (see below). Returns the note `path`. A creation (`createOnly`, as the web page's commit sends it) is refused with 409 when its name differs only in letter case or Unicode form (NFC, lower case) from another entry of the repository, or from another creation of the same commit, because a case-insensitive file system would make them one; the web chat agent's creations also refuse `AGENTS.md` and `CLAUDE.md` names in any folder. With `template` (a template id of the note's notebook) it creates a note from that template instead; see Note templates below.
 6. `delete_note`: Removes a note file, together with its version file, and creates a corresponding deletion commit. Paths that are not notes, such as version files under `.mygitnotes/versions`, are refused.
 7. `read_agent_resource`: Reads an agent instruction or doc file safely; lists available agent resources (`AGENTS.md`, `docs/agent/**`) if `path` is omitted.
@@ -31,6 +31,31 @@ Default transport is **stdio** for local agent integration (e.g. Claude Desktop,
 
 > [!NOTE]
 > Backward Compatibility: Redundant endpoints (`get_note_metadata`, `update_note_metadata`, `get_folder_metadata`, `update_folder_metadata`, `list_agent_resources`, `check_core_update`) remain supported via tool dispatch aliases for backward compatibility with existing callers.
+
+## Edit dates
+
+`list_notes` entries, `read_note` (with or without `metadataOnly`) and `get_note_metadata`, stdio and hosted alike, carry a note's edit dates, as do the HTTP routes `/api/notes/query`, `/api/notes/lookup` and `/api/notes/read` (see [Note edit dates](../architecture/index.md#note-edit-dates)). Both are ISO 8601 timestamps in UTC:
+
+- `lastCommitAt`: the author date of the newest commit that changed the note's text. A commit that only moved or renamed the note does not count. It is absent for a note Git does not hold yet (an uncommitted new file, a pending live note) and, on a hosted server, for a note it has not dated yet: the first listing after a start dates a large repository in the background for a while.
+- `updated`: the date to sort by and to judge staleness with. It is `lastCommitAt`; while the note has uncommitted changes (a dirty file in a worktree, live typing that is not checked in) the later of `lastCommitAt` and the frontmatter `updated`; without `lastCommitAt`, the frontmatter `updated`. It is absent when none is known.
+
+`metadata.updated` is the frontmatter value as written and may be stale or missing; nothing stamps it for these dates. A client that read `metadata.updated` before should read `updated`. Example `list_notes` entry:
+
+```json
+{
+  "id": "meeting-2026-11-20",
+  "path": "notes/work/meeting-2026-11-20.md",
+  "notebookId": "docs~work",
+  "title": "Weekly meeting",
+  "description": "Decisions on the docs reorganization.",
+  "status": "done",
+  "tags": ["meeting"],
+  "metadata": { "status": "done", "tags": ["meeting"], "updated": "2026-11-01" },
+  "size": 2048,
+  "lastCommitAt": "2026-11-23T16:37:17.000Z",
+  "updated": "2026-11-23T16:37:17.000Z"
+}
+```
 
 ## Note templates
 
@@ -100,7 +125,8 @@ list notes). Each match carries status, tags, matched terms and a snippet;
 `limit` defaults to 20. Hosted `list_notes` pages note summaries with `offset`
 and `limit` (default 100, maximum 500) and returns `total` and `nextOffset`; each
 entry carries the frontmatter `description`, or the opening body line, capped at
-240 characters, in place of the Markdown body. Hosted reads return an opaque
+240 characters, in place of the Markdown body, and the edit dates `lastCommitAt`
+and `updated` (see Edit dates above). Hosted reads return an opaque
 `revision` for the repositories they cover: `v1.` followed by unpadded base64url
 of a UTF-8 JSON object mapping repository identity to 40- or 64-hex commit SHA.
 Writes decode this token, require the target repository's entry and check only

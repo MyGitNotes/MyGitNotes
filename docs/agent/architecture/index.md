@@ -298,6 +298,49 @@ as titles do, and a date sorts before text where one list holds both. A note wit
 or non-scalar value, sorts last in both orders. Ties, including notes that all lack the key, fall back to
 `updated` newest first, then title. The MCP `list_notes` order is not affected.
 
+## Note edit dates
+
+A note's edit date comes from Git: the author date of the newest commit that changed the note's text. A commit
+that only moved or renamed the note, its text unchanged (the same blob on both sides), does not count; the date
+follows the note back through it, so a reorganization of folders keeps every note's date. Nothing stamps the
+frontmatter for it: `updated` in the frontmatter is only a fallback (`packages/core/src/edit-dates.ts`).
+
+Every listed and read note carries two fields beside `metadata`, both ISO 8601 timestamps in UTC:
+
+- `lastCommitAt`: the Git date above. It is absent for a note no commit holds (an untracked file, a pending live
+  note), for a source without history, and on a hosted source while the server is still dating the repository.
+- `updated`: the edit date lists show and sort by. It is `lastCommitAt`; for a note with uncommitted changes (an
+  edited working-tree file, or a checked-out live note someone typed in) the later of `lastCommitAt` and the
+  frontmatter `updated`; without `lastCommitAt`, the frontmatter `updated`. It is absent when none is known.
+
+`metadata.updated` stays the frontmatter value as written, so existing readers of it and every write path that
+sends metadata back are unchanged. `noteUpdatedTime` in `note-sort.ts` reads `updated` before `metadata.updated`
+and the file's mtime, so `sort=updated` on `/api/notes/query`, the tie-break of a `metadata.<key>` sort, and every
+web list's date (the list column's row meta, table, cards, board, hover card) use the same date.
+
+Where the dates come from:
+
+- **Query routes.** `NoteCatalog.dated` dates the notes a query matched (`/api/notes/query`, its path selection and
+  `/api/notes/lookup`) through each repository catalog's optional `dates`; facets, the agenda and the graph read no
+  dates. A catalog without `dates` dates its notes from the frontmatter alone.
+- **A worktree** (`noteEditFacts` in `packages/git/src/edit-dates.ts`): one `git log -M --raw` pass over the
+  notebook roots dates every file Git tracks there, and stops once each is dated. The result is kept per repository,
+  notebook roots and head; when the head moves on, only the new commits are read, and a head that went back is dated
+  again. `git status` marks the files with uncommitted changes on every call. The local note routes
+  (`/api/notes/read`, `GET /api/notes`) and the stdio MCP tools use it too.
+- **A hosted source** (`RemoteEditDates` in `packages/core/src/remote-edit-dates.ts`, through
+  `RemoteSource.editFacts` and `dated`): the provider names the last commit of each path (GitLab GraphQL
+  `tree(path).lastCommit`, twenty paths a request; GitHub GraphQL `history(first: 1, path)`, fifty a request with a
+  token; per path over REST where GraphQL is unavailable or refuses), and a commit's renames whose diff is empty
+  (GitLab `diff: ''`, GitHub `changes: 0`) send the note back to its former path from the commit's first parent. A
+  date is kept per path and blob, in the process and sealed in the shared cache, so a later head where the note is
+  unchanged asks nothing. A text restored byte for byte to one dated before keeps that earlier date. A request waits
+  at most five seconds (`EDIT_DATE_WAIT_MS`); notes not dated by then are answered without `lastCommitAt` and dated
+  in the background, so the first lists after a start on a large repository fall back to frontmatter dates for a
+  while. A provider failure leaves notes undated and never fails a read. An edition source dates through its
+  `historyPage` and knows no renames unless it overrides `pureRenames`; one without history dates nothing.
+  A checked-out live note is dated by its Git file, a pending one by its frontmatter.
+
 The web app resolves a notebook's sort (`useNoteSort(notebookKey, notebook)`, `resolveNoteSort`) in this order:
 a `sortField`/`sortOrder` in the URL, the sort the person chose for that notebook (saved per notebook key in
 `github-notes:sort:<notebookKey>`), the notebook's `default_sort`, the browser-wide sort saved before notebooks
