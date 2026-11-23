@@ -14,16 +14,49 @@ const trees = new Map<string, DatedTree>();
 /** Datings in flight, by top level, head and scope, so requests that arrive together wait for one walk. */
 const dating = new Map<string, Promise<DatedTree>>();
 
+/** Where each worktree lies in its repository, by the path it was asked as: a repository's top level does not move. */
+const locations = new Map<string, { top: string; prefix: string; }>();
+
 /** Where `repoRoot` lies in its repository: the top level and the prefix of `repoRoot` in it; undefined outside one. */
-async function located(repoRoot: string): Promise<{ top: string; prefix: string; head: string; } | undefined> {
+async function located(repoRoot: string): Promise<{ top: string; prefix: string; } | undefined> {
+  const known = locations.get(repoRoot);
+  if (known) return known;
+  let found: { top: string; prefix: string; };
   try {
-    // A repository without a commit fails on HEAD.
-    const [top, prefix, head] = (await runGit(['rev-parse', '--show-toplevel', '--show-prefix', 'HEAD^{commit}'], repoRoot)).stdout.split('\n');
-    return /^[0-9a-f]{40,64}$/.test(head ?? '') ? { top, prefix, head } : undefined;
+    const [top, prefix = ''] = (await runGit(['rev-parse', '--show-toplevel', '--show-prefix'], repoRoot)).stdout.split('\n');
+    found = { top, prefix };
   } catch {
-    // Not a repository, or one without a commit: nothing is dated from Git.
+    // Not a repository (not yet, perhaps): nothing is dated from Git, and the next call looks again.
     return undefined;
   }
+  locations.set(repoRoot, found);
+  return found;
+}
+
+/**
+ * The head commit and the files under `pathspecs` with changes the index or the working tree holds, in one `git status`
+ * (porcelain v2 names the head); no head in a repository without a commit.
+ */
+async function status(top: string, pathspecs: string[]): Promise<{ head?: string; changed: Set<string>; }> {
+  const { stdout } = await runGit(['--no-optional-locks', '--literal-pathspecs', 'status', '--porcelain=v2', '--branch', '-z', '--untracked-files=no', '--', ...pathspecs], top);
+  const tokens = stdout.split('\0');
+  const changed = new Set<string>();
+  let head: string | undefined;
+  /** The path of an entry follows its fixed fields: eight for an ordinary change, nine for a rename, ten for a conflict. */
+  const pathAfter = (token: string, fields: number) => token.split(' ').slice(fields).join(' ');
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token.startsWith('# branch.oid ')) {
+      const oid = token.slice('# branch.oid '.length);
+      if (/^[0-9a-f]{40,64}$/.test(oid)) head = oid;
+    } else if (token.startsWith('1 ')) changed.add(pathAfter(token, 8));
+    else if (token.startsWith('2 ')) {
+      changed.add(pathAfter(token, 9));
+      // A rename names its original path next.
+      index++;
+    } else if (token.startsWith('u ')) changed.add(pathAfter(token, 10));
+  }
+  return { head, changed };
 }
 
 /** The searched paths a walk still looks for, each with the head paths whose text it holds. */
@@ -158,8 +191,10 @@ async function editFacts(repoRoot: string, roots: readonly string[]): Promise<Ma
   const where = await located(repoRoot);
   const facts = new Map<string, NoteEditFact>();
   if (!where || !roots.length) return facts;
-  const { top, prefix, head } = where;
+  const { top, prefix } = where;
   const pathspecs = [...new Set(roots.map(root => `${prefix}${root}`.replace(/\/+$/, '')))].sort();
+  const { head, changed } = await status(top, pathspecs);
+  if (!head) return facts;
   const scope = JSON.stringify(pathspecs);
   const at = JSON.stringify([top, scope]), key = JSON.stringify([top, head, scope]);
   let tree = trees.get(at);
@@ -173,16 +208,6 @@ async function editFacts(repoRoot: string, roots: readonly string[]): Promise<Ma
       dating.set(key, pending);
     }
     tree = await pending;
-  }
-  const { stdout } = await runGit(['--no-optional-locks', '--literal-pathspecs', 'status', '--porcelain=v1', '-z', '--untracked-files=no', '--', ...pathspecs], top);
-  const changed = new Set<string>();
-  const entries = stdout.split('\0');
-  for (let index = 0; index < entries.length; index++) {
-    const entry = entries[index];
-    if (entry.length < 4) continue;
-    changed.add(entry.slice(3));
-    // A rename or copy names its original path next.
-    if (/[RC]/.test(entry.slice(0, 2))) index++;
   }
   for (const [file, lastCommitAt] of tree.dates) {
     if (!file.startsWith(prefix)) continue;
