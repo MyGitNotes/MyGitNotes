@@ -6,3 +6,4 @@ export * from './change-management.js';
 export * from './sync.js';
 export * from './core-status.js';
 export * from './file-history.js';
+export * from './edit-dates.js';
