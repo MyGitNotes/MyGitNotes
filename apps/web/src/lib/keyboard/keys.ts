@@ -83,7 +83,8 @@ const isAsciiCharacter = (key: string) => key.length === 1 && key >= '!' && key 
  * Letters and punctuation compare `event.key`, so a layout's own characters work; letters case-insensitively, since
  * macOS reports the lower-case letter with Shift held and Linux the upper-case one. A chord with a modifier falls back
  * to `event.code` when `event.key` is not ASCII (an IME's `Process`, `Unidentified`, another script, an Option
- * character). Shift is ignored for punctuation that does not ask for it, since the layout may need Shift to type it.
+ * character). Shift is ignored for punctuation that does not ask for it, since the layout may need Shift to type it; punctuation that asks for
+ * Shift also matches its physical key, since Shift changes the character it types.
  */
 export function matchesChord(event: KeyboardEvent, chord: Chord, env: KeyEnvironment): boolean {
   if (env.platform === 'mac') {
@@ -100,6 +101,8 @@ export function matchesChord(event: KeyboardEvent, chord: Chord, env: KeyEnviron
   }
   if (chord.shift && !event.shiftKey) return false;
   if (key === chord.key) return true;
+  // A chord that asks for Shift on punctuation gets the shifted character (Shift+\ types | on a US layout), so it matches the physical key.
+  if (chord.shift && chord.code && event.code === chord.code) return true;
   return modified && !isAsciiCharacter(key) && Boolean(chord.code) && event.code === chord.code;
 }
 

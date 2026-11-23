@@ -1,3 +1,4 @@
+import './note-search.css';
 import './phone-notes.css';
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
 import { Eye, EyeOff, FolderTree, PanelLeft, Search, X } from 'lucide-react';
@@ -5,7 +6,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import type { SortField, SortOrder } from '../lib/note-sort.js';
 import type { NotebookConfig } from '../lib/types.js';
 import { ViewMode } from '../lib/types.js';
-import { type NoteSearchHandle, noteSortOptions, useClearOrClose } from './NoteToolbar.js';
+import { type NoteSearchHandle, noteSortOptions, useClearOrClose } from './note-list-search.js';
 import { PhoneSheet } from './PhoneSheet.js';
 import { Select } from './Select.js';
 import { SidebarLinks } from './SidebarLinks.js';

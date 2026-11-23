@@ -3,6 +3,8 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { FocusLayout } from '@mygitnotes/core/focus-page';
 import { useShortcutSurface } from './useShortcutSurface.js';
+import { browseColumnCommands } from './useBrowseColumns.js';
+import { keymapEntry } from '../lib/keyboard/keymap.js';
 
 const layout: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.compilation.yml' }] } };
 const noteFocus = { shown: 'current', editable: true, layout, entry: { activePane: 'p1', shown: { p1: 'note:notes/a.compilation.yml' }, recent: ['p1'], history: {}, ratios: {}, hideToolbar: {} }, view: { last: null }, focuses: [] };
@@ -33,23 +35,21 @@ describe('Close Focus in the palette', () => {
   });
 });
 
-describe('Collapse browse panel and header in the palette', () => {
-  const toggleCommand = (browseDock?: { collapsed: boolean; toggle: () => void; }) => {
-    const { result } = renderHook(() => useShortcutSurface({ noteFocus, focusDisplay, t: (key: string) => key, showFocus: async () => {}, requestClear: () => {}, zoomFocusNote: () => {}, focusCapacity: 'all', browseDock } as never));
-    return result.current.focusCommands.find(command => command.id === 'focus-toggle-browse')!;
-  };
-
-  it('is available only where the Notes toolbar shows the browse toggle', () => {
-    expect(toggleCommand().availability!()).toMatchObject({ enabled: false });
-    expect(toggleCommand({ collapsed: false, toggle: () => {} }).availability!()).toEqual({ enabled: true });
+describe('Folding the columns from the palette and the keyboard', () => {
+  it('leaves the Focus commands without a browse toggle: the columns have their own commands', () => {
+    const { result } = renderHook(() => useShortcutSurface({ noteFocus, focusDisplay, t: (key: string) => key, showFocus: async () => {}, requestClear: () => {}, zoomFocusNote: () => {}, focusCapacity: 'all' } as never));
+    expect(result.current.focusCommands.map(command => command.id)).not.toContain('focus-toggle-browse');
   });
 
-  it('is titled for what it does next and runs the toggle', () => {
-    const toggle = vi.fn();
-    expect(toggleCommand({ collapsed: false, toggle }).title).toBe('focus.collapseBrowseAndHeader');
-    const collapsed = toggleCommand({ collapsed: true, toggle });
-    expect(collapsed.title).toBe('focus.expandBrowseAndHeader');
-    void collapsed.run({} as never);
-    expect(toggle).toHaveBeenCalledTimes(1);
+  it('folds every column with Mod+\\ and the list alone with Mod+Shift+\\', () => {
+    const columns = { layout: { notebooks: 'open' as const, list: true }, measure: () => {}, toggleNotebooks: vi.fn(), toggleList: vi.fn(), toggleColumns: vi.fn() };
+    const commands = browseColumnCommands(columns, ((key: string) => key) as never);
+    expect(commands.map(command => [command.id, command.title])).toEqual([['browse.toggleColumns', 'command.browse.toggleColumns'], ['browse.toggleList', 'command.browse.toggleList']]);
+    void commands[0].run({} as never);
+    expect(columns.toggleColumns).toHaveBeenCalledOnce();
+    void commands[1].run({} as never);
+    expect(columns.toggleList).toHaveBeenCalledOnce();
+    expect(keymapEntry('browse.toggleColumns').bindings.map(binding => binding.keys)).toEqual(['Mod+\\']);
+    expect(keymapEntry('browse.toggleList').bindings.map(binding => binding.keys)).toEqual(['Mod+Shift+\\']);
   });
 });

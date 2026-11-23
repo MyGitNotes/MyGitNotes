@@ -12,6 +12,7 @@ import { I18nProvider } from '../lib/i18n/index.js';
 import { type WebFeature, WebFeaturesProvider } from '../lib/web-features.js';
 import { PhoneFilterSheet } from './PhoneListBar.js';
 import { Sidebar } from './Sidebar.js';
+import { NotebookColumn } from './NotebookColumn.js';
 
 const kind = { total: 0, statuses: {}, tags: {} };
 const facets: Record<string, NotebookFacets> = { life: { total: 7, hidden: 0, statuses: { todo: 3 }, tags: { work: 2 }, directories: {}, outlines: kind, compilations: kind } };
@@ -44,7 +45,8 @@ function app(features: WebFeature[], children: ReactNode) {
   );
 }
 
-const sidebar = (dock?: 'filters' | 'folders') => <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} dock={dock} />;
+const sidebar = (dock?: 'folders') => <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} dock={dock} />;
+const notebookColumn = (mode: 'open' | 'rail') => <NotebookColumn mode={mode} columnId='browse-notebooks' notebooks={filters.notebooks} selectedNotebookId='life' onSelectNotebook={() => {}} current={<p>Life</p>} query='' onQueryChange={() => {}} onOpenSearch={() => {}} onToggle={() => {}} kind='note' onSelectKind={() => {}} />;
 const sheet = (onClose = vi.fn()) => (
   <PhoneFilterSheet onClose={onClose} sortField='updated' sortOrder='desc' onSortChange={vi.fn()} viewMode='flat' setViewMode={vi.fn()} showHidden={false} hiddenNoteCount={0} onShowHiddenChange={vi.fn()}>
     <p>filters</p>
@@ -74,12 +76,16 @@ it("shows an edition's links at the bottom of the sidebar and opens a path in th
   expect(screen.getByRole('heading', { name: 'Help page' })).toBeInTheDocument();
 });
 
-it('shows the links under the filters in the browse dock beside a Focus, and opens a path in the app', () => {
-  app([archive], sidebar('filters'));
+it('shows the links at the foot of the notebooks column, open or folded to its rail, and opens a path in the app', () => {
+  const open = app([archive], notebookColumn('open'));
   const group = screen.getByRole('navigation', { name: 'Links' });
-  expect(group.closest('.browse-dock-filters')).not.toBeNull();
-  expect(document.querySelector('.sidebar-rail')).toBeNull();
-  fireEvent.click(expectLinks(group));
+  expect(group.closest('.browse-notebooks-footer')).not.toBeNull();
+  expectLinks(group);
+  open.unmount();
+  app([archive], notebookColumn('rail'));
+  const rail = screen.getByRole('navigation', { name: 'Links' });
+  expect(rail.closest('.browse-rail')).not.toBeNull();
+  fireEvent.click(expectLinks(rail));
   expect(screen.getByRole('heading', { name: 'Help page' })).toBeInTheDocument();
 });
 
@@ -104,10 +110,10 @@ it("leaves the links out of the sidebar's filters inside the phone sheet, which 
 it('adds nothing when no feature registers a link, or only unsafe ones', () => {
   const unsafe: WebFeature = { id: 'unsafe', sidebarLinks: () => [{ id: 'x', label: 'X', href: 'javascript:void 0' }, { id: 'y', label: 'Y', href: 'data:text/html,hi' }, { id: 'z', label: 'Z', href: '//evil.example.com' }] };
   for (const features of [[], [{ id: 'plain' }], [unsafe]]) {
-    for (const view of [sidebar(), sidebar('filters'), sheet()]) {
+    for (const view of [sidebar(), notebookColumn('open'), notebookColumn('rail'), sheet()]) {
       const { unmount } = app(features, view);
       expect(screen.queryByRole('navigation', { name: 'Links' })).toBeNull();
-      expect(document.querySelector('.workspace-sidebar-footer')).toBeNull();
+      expect(document.querySelector('.workspace-sidebar-footer, .browse-notebooks-footer')).toBeNull();
       expect(screen.queryAllByRole('link')).toHaveLength(0);
       unmount();
     }

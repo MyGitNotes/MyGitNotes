@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { PhoneFilterSheet, PhoneListBar, type PhoneListBarProps } from './PhoneListBar.js';
-import type { NoteSearchHandle } from './NoteToolbar.js';
+import type { NoteSearchHandle } from './note-list-search.js';
 
 beforeAll(() => {
   // Radix Select measures and captures the pointer, which jsdom does not implement.
@@ -92,7 +92,7 @@ it('takes Esc the same two steps: clear, then close', () => {
 
 it("hides the browser's own clear on the phone field and keeps the ✕ a 44px target", () => {
   const css = (file: string) => fs.readFileSync(path.resolve(__dirname, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  expect(css('note-toolbar.css')).toMatch(/\.note-search-input::-webkit-search-cancel-button[^{]*\{[^}]*-webkit-appearance: none/);
+  expect(css('note-search.css')).toMatch(/\.note-search-input::-webkit-search-cancel-button[^{]*\{[^}]*-webkit-appearance: none/);
   expect(css('phone-notes.css')).toMatch(/\.phone-list-bar \.note-toolbar-search\[data-query\] \.note-search-close \{[^}]*width: 44px; height: 44px/);
 });
 

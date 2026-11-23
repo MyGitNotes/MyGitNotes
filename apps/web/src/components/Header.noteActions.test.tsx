@@ -18,11 +18,13 @@ const account = () => within(document.querySelector<HTMLElement>('.header-accoun
 const focusControls = createElement('button', { type: 'button' }, 'Focus switcher');
 const header = (activeTab: WorkspaceTab, newNote: Parameters<typeof Header>[0]['newNote'] | null = { onNewNote: vi.fn(), onNewCompilation: vi.fn() }) => render(createElement(I18nProvider, null, createElement(Header, { workspaceTitle: 'Work', activeTab, setActiveTab: vi.fn(), notebooks: [{ id: 'a', title: 'Alpha', root: 'notes/a' }], selectedNotebookId: 'a', onSelectNotebook: vi.fn(), onCreateNote: vi.fn(), onOpenCommands: vi.fn(), focusControls, newNote: newNote ?? undefined })));
 
-it('holds the Focus controls left of the notebook switcher and New right of it on the Notes page, before the utilities', () => {
+it('holds the Focus controls, then New, on the Notes page, before the utilities, with no notebook switcher', () => {
   header('notes');
   const group = screen.getByRole('group', { name: 'Focus' });
   expect(group).toContainElement(screen.getByRole('button', { name: 'Focus switcher' }));
-  const order = [group, screen.getByRole('combobox', { name: 'Notebooks' }), account().getByRole('button', { name: 'New Note' }), screen.getByRole('button', { name: 'New menu' }), screen.getByRole('button', { name: 'Quick open' })];
+  // The notebooks column switches notebooks on this page.
+  expect(screen.queryByRole('combobox', { name: 'Notebooks' })).toBeNull();
+  const order = [group, account().getByRole('button', { name: 'New Note' }), screen.getByRole('button', { name: 'New menu' }), screen.getByRole('button', { name: 'Quick open' })];
   for (let index = 1; index < order.length; index++) expect(order[index - 1]!.compareDocumentPosition(order[index]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 

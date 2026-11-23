@@ -1,53 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { browseLayout, browsePath, notesToolbarRow } from './browse-layout.js';
+import { browsePath, phoneBrowseLayout } from './browse-layout.js';
 
-describe('browseLayout', () => {
-  it('leaves normal browsing as it was: the sidebar shown, no split, chips only in the phone bar', () => {
+describe('phoneBrowseLayout', () => {
+  it('lays out nothing wider than a phone, beside a Focus or not: the notebooks column holds the folders and the list column the filters', () => {
     for (const viewMode of ['list', 'flat', 'kanban'] as const) {
-      expect(browseLayout({ focusShown: false, capacity: 'all', viewMode })).toEqual({ sidebarFolded: false, split: null, chips: null });
-      expect(browseLayout({ focusShown: false, capacity: 2, viewMode })).toEqual({ sidebarFolded: false, split: null, chips: null });
-      expect(browseLayout({ focusShown: false, capacity: 1, viewMode })).toEqual({ sidebarFolded: false, split: null, chips: 'bar' });
+      for (const focusShown of [false, true]) expect(phoneBrowseLayout({ phone: false, focusShown, viewMode })).toEqual({ split: null, chips: null });
     }
   });
 
-  it('beside a Focus on a desktop, folds the sidebar away and puts the folders and filters over the list in the left dock, with no rail and no chips', () => {
-    for (const viewMode of ['list', 'flat'] as const) {
-      expect(browseLayout({ focusShown: true, capacity: 'all', viewMode })).toEqual({ sidebarFolded: true, split: 'filters', chips: null });
-    }
+  it("keeps a phone's list screen with no Focus as it was: no split, chips in the bar", () => {
+    for (const viewMode of ['list', 'flat', 'kanban'] as const) expect(phoneBrowseLayout({ phone: true, focusShown: false, viewMode })).toEqual({ split: null, chips: 'bar' });
   });
 
-  it('keeps the sidebar, holding only folders and filters, when the cards or Kanban board dock above the Focus', () => {
-    expect(browseLayout({ focusShown: true, capacity: 'all', viewMode: 'kanban' })).toEqual({ sidebarFolded: false, split: null, chips: null });
-  });
-
-  it('below the desktop breakpoint splits the left dock too, and keeps the drawer; a board above the Focus keeps its chips', () => {
-    expect(browseLayout({ focusShown: true, capacity: 2, viewMode: 'list' })).toEqual({ sidebarFolded: false, split: 'filters', chips: null });
-    expect(browseLayout({ focusShown: true, capacity: 2, viewMode: 'kanban' })).toEqual({ sidebarFolded: false, split: null, chips: 'list' });
-  });
-
-  it("on a phone's list screen beside a Focus, puts the folders over the chips and the list", () => {
-    expect(browseLayout({ focusShown: true, capacity: 1, viewMode: 'flat' })).toEqual({ sidebarFolded: false, split: 'folders', chips: 'list' });
-    expect(browseLayout({ focusShown: true, capacity: 1, viewMode: 'list' })).toEqual({ sidebarFolded: false, split: 'folders', chips: 'list' });
-    expect(browseLayout({ focusShown: true, capacity: 1, viewMode: 'kanban' })).toEqual({ sidebarFolded: false, split: null, chips: 'bar' });
-  });
-});
-
-describe('notesToolbarRow', () => {
-  it('drops the toolbar row while a note is open beside the left dock, on a desktop and a tablet: the dock starts under the header', () => {
-    for (const capacity of ['all', 2] as const) {
-      for (const viewMode of ['list', 'flat'] as const) expect(notesToolbarRow(browseLayout({ focusShown: true, capacity, viewMode }), false)).toBe(false);
-    }
-  });
-
-  it('keeps it on the list page and over the Kanban board docked above a Focus', () => {
-    for (const capacity of ['all', 2] as const) {
-      for (const viewMode of ['list', 'flat', 'kanban'] as const) expect(notesToolbarRow(browseLayout({ focusShown: false, capacity, viewMode }), false)).toBe(true);
-      expect(notesToolbarRow(browseLayout({ focusShown: true, capacity, viewMode: 'kanban' }), false)).toBe(true);
-    }
-  });
-
-  it('keeps it while the header and the browse region are folded away, where it is all that is left of either', () => {
-    for (const viewMode of ['list', 'flat', 'kanban'] as const) expect(notesToolbarRow(browseLayout({ focusShown: true, capacity: 'all', viewMode }), true)).toBe(true);
+  it("on a phone's list screen beside a Focus, puts the folders under the list and the chips over it; the board keeps them in the bar", () => {
+    expect(phoneBrowseLayout({ phone: true, focusShown: true, viewMode: 'flat' })).toEqual({ split: 'folders', chips: 'list' });
+    expect(phoneBrowseLayout({ phone: true, focusShown: true, viewMode: 'list' })).toEqual({ split: 'folders', chips: 'list' });
+    expect(phoneBrowseLayout({ phone: true, focusShown: true, viewMode: 'kanban' })).toEqual({ split: null, chips: 'bar' });
   });
 });
 

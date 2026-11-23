@@ -11,18 +11,10 @@ const clampSplit = (value: number) => Math.min(DOCK_SPLIT_MAX, Math.max(DOCK_SPL
 export interface BrowseSplitProps {
   /** The heading of the folders part, which also names it as a region. */
   label: string;
-  /** Beside the heading, such as "Clear all". */
-  actions?: ReactNode;
-  /** At the column's top, over the list they act on: the search, the sort and the display toggles. */
-  tools?: ReactNode;
-  /** The folders (and filters) below the divider. */
+  /** The folders below the divider. */
   filters: ReactNode;
   /** The line over the list: where the list is and how many notes it holds. */
   path: ReactNode;
-  /** In the path line, just left of the dock toggle: the list's view menu, kept out of the tools row so the search keeps its width. */
-  viewMenu?: ReactNode;
-  /** At the path line's end, clear of the search above it: the toggle that collapses the dock itself. */
-  dockToggle?: ReactNode;
   /** The share of the column, in percent, the folders part takes. */
   size: number;
   /** Called once a drag settles, and on each arrow key, Home or End. */
@@ -35,11 +27,11 @@ export interface BrowseSplitProps {
 }
 
 /**
- * The browse dock's column beside a Focus: the list's tools at the top, then the path line and the list, and below a divider the folders
- * and filters, which a pointer drags and the arrow keys, Home and End move. The folders part folds to its heading and back; folded, it
- * stays mounted (hidden), so its tree keeps which folders were open.
+ * A phone's list screen beside a Focus: the path line and the list, and below a divider the notebook's folders, which a pointer drags and the
+ * arrow keys, Home and End move. The folders part folds to its heading and back; folded, it stays mounted (hidden), so its tree keeps which
+ * folders were open.
  */
-export function BrowseSplit({ label, actions, tools, filters, path, viewMenu, dockToggle, size, onSizeChange, collapsed, onCollapsedChange, children }: BrowseSplitProps): JSX.Element {
+export function BrowseSplit({ label, filters, path, size, onSizeChange, collapsed, onCollapsedChange, children }: BrowseSplitProps): JSX.Element {
   const { t } = useTranslation();
   const bodyId = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -81,18 +73,14 @@ export function BrowseSplit({ label, actions, tools, filters, path, viewMenu, do
 
   return (
     <div ref={root} className='browse-split' data-collapsed={collapsed || undefined} data-dragging={dragSize !== null || undefined}>
-      {tools && <div className='browse-split-tools'>{tools}</div>}
       <div className='browse-split-path'>
         <div className='browse-split-path-content'>{path}</div>
-        {viewMenu}
-        {dockToggle}
       </div>
       <div className='workspace-scroll browse-split-list'>{children}</div>
       {!collapsed && <div role='separator' tabIndex={0} aria-orientation='horizontal' aria-label={t('browseSplit.resize')} aria-controls={bodyId} aria-valuenow={shown} aria-valuemin={DOCK_SPLIT_MIN} aria-valuemax={DOCK_SPLIT_MAX} className='browse-split-divider' onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={onKeyDown} />}
       <section aria-label={label} className='browse-split-filters' style={collapsed ? undefined : { flexBasis: `${shown}%` }}>
         <header className='browse-split-header'>
           <h2 className='browse-split-heading'>{label}</h2>
-          {actions}
           <button type='button' className='ui-icon-button browse-split-toggle' aria-label={toggleLabel} title={toggleLabel} aria-expanded={!collapsed} aria-controls={bodyId} onClick={() => onCollapsedChange(!collapsed)}>{collapsed ? <ChevronUp size={15} aria-hidden='true' /> : <ChevronDown size={15} aria-hidden='true' />}</button>
         </header>
         <div id={bodyId} className='browse-split-filters-body' hidden={collapsed}>{filters}</div>

@@ -73,21 +73,5 @@
 .note-tags:has(.sidebar-tag-action-form) { width: 100%; }
 @media (hover: none), (pointer: coarse) { .note-tags .sidebar-tag-row .sidebar-tag-chip > span { padding-right: 0.5rem; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
 
-/* The browse dock's top part beside a Focus (Sidebar `dock`): the folder tree, then the filters as chips. */
-.browse-dock-filters { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.dock-filter-group { display: flex; flex-direction: column; gap: 6px; padding: 8px 6px 0; border-top: 1px solid var(--workspace-divider); }
-.dock-filter-heading { margin: 0; font-size: 12px; line-height: 18px; font-weight: 500; color: var(--color-muted); }
-.dock-filter-subheading { flex-basis: 100%; margin: 2px 0 0; font-size: 11px; color: var(--color-muted); }
-.dock-filter-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-.dock-filter-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0; min-height: 26px; padding: 0 9px; border: 1px solid var(--color-line-strong); border-radius: 9999px; background: transparent; color: var(--color-muted); font-size: 12px; line-height: 1; white-space: nowrap; transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease; }
-.dock-filter-chip:hover { color: var(--color-text); background: var(--workspace-selection); }
-.dock-filter-chip[aria-pressed='true'] { border-color: color-mix(in srgb, var(--color-primary) 55%, transparent); background: color-mix(in srgb, var(--color-primary) 14%, transparent); color: var(--color-text); font-weight: 600; }
-.dock-filter-chip:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
-.dock-filter-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.dock-filter-chip-count { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; opacity: 0.8; }
-.dock-filter-chip-icon { width: 13px; height: 13px; flex: none; }
-.dock-filter-more { border-style: dashed; }
-.dock-filter-tag { display: inline-flex; max-width: 100%; }
-.browse-dock-filters .sidebar-links { margin: 0 6px; }
-.browse-split-clear { flex: none; font-size: 11px; color: var(--color-muted); }
-.browse-split-clear:hover { color: var(--color-text); }
+/* A phone's folders under its list beside a Focus (Sidebar `dock`). */
+.phone-folders { display: flex; flex-direction: column; gap: 10px; min-width: 0; }

@@ -1,40 +1,25 @@
 import type { ViewMode } from './types.js';
 
-/** How the Notes page lays out its folders, filters and list: the same as normal browsing unless a Focus is showing beside the browse region. */
+/** How a phone's list screen lays out the folders and the filters in force; wider screens keep the three columns (`BrowseColumns`). */
 export interface BrowseLayout {
-  /** The filter sidebar folds away on a desktop because the left dock holds the folders and filters; below that breakpoint it stays a drawer. */
-  sidebarFolded: boolean;
-  /**
-   * What the left dock holds below its list: the folders and filters, with the list's search and toggles over the list (`filters`), only the
-   * folders (`folders`, a phone's list screen, whose bar keeps the search), or no split.
-   */
-  split: 'filters' | 'folders' | null;
+  /** The notebook's folders under the list (`folders`), on a phone's list screen beside a Focus whose bar keeps the search; or none. */
+  split: 'folders' | null;
   /** Where the chips of the filters in force show: in the phone's bar above the list (`bar`), at the top of the list (`list`), or nowhere. */
   chips: 'bar' | 'list' | null;
 }
 
 /**
- * `focusShown`: a Focus with a note shows on the Notes page. `capacity` is the pane capacity: `all` on a desktop, 1 on a phone. The list and
- * flat views dock left of a Focus and split; the Kanban board docks above it, beside the usual sidebar.
+ * `focusShown`: a Focus with a note shows on the Notes page. On a phone the list and flat views beside such a Focus take the folders under
+ * the list and show the filters in force at its top; the board, and the list with no Focus, keep the chips in the bar. Wider screens have
+ * neither: the notebooks column holds the folders and the list's own buttons show the filters.
  */
-export function browseLayout({ focusShown, capacity, viewMode }: { focusShown: boolean; capacity: 1 | 2 | 'all'; viewMode: ViewMode; }): BrowseLayout {
-  const phone = capacity === 1;
-  if (!focusShown) return { sidebarFolded: false, split: null, chips: phone ? 'bar' : null };
-  if (viewMode === 'kanban') return { sidebarFolded: false, split: null, chips: phone ? 'bar' : capacity === 'all' ? null : 'list' };
-  if (phone) return { sidebarFolded: false, split: 'folders', chips: 'list' };
-  return { sidebarFolded: capacity === 'all', split: 'filters', chips: null };
+export function phoneBrowseLayout({ phone, focusShown, viewMode }: { phone: boolean; focusShown: boolean; viewMode: ViewMode; }): BrowseLayout {
+  if (!phone) return { split: null, chips: null };
+  if (!focusShown || viewMode === 'kanban') return { split: null, chips: 'bar' };
+  return { split: 'folders', chips: 'list' };
 }
 
-/**
- * Whether the Notes page keeps its toolbar row under the header. Beside the left dock (`split` is `filters`) the dock holds the list's tools and
- * view menu and the header holds the Focus controls and New, so the row would be empty and the dock starts under the header instead. While the
- * header and the browse region are folded away (`browseCollapsed`) the row stays: it is where the Focus controls, New and the header's buttons remain.
- */
-export function notesToolbarRow(layout: BrowseLayout, browseCollapsed: boolean): boolean {
-  return layout.split !== 'filters' || browseCollapsed;
-}
-
-/** The path line over the list: the folders below the notebook root, the notebook at its root, or the kind of list (outlines, compilations). */
+/** The path line over a phone's list: the folders below the notebook root, the notebook at its root, or the kind of list (outlines, compilations). */
 export function browsePath({ kind, notebookTitle, breadcrumbs, labels }: { kind?: string; notebookTitle: string; breadcrumbs: readonly { name: string; path: string | null; }[]; labels: { outline: string; compilations: string; }; }): string {
   if (kind === 'outline') return labels.outline;
   if (kind === 'compilation') return labels.compilations;

@@ -64,6 +64,13 @@ describe('matchesChord', () => {
     expect(matchesChord(key({ key: 'Process', code: 'Slash', metaKey: true }), chord('Mod+/'), MAC)).toBe(true);
   });
 
+  it('matches punctuation that asks for Shift by its physical key, since Shift types another character there', () => {
+    // Cmd+Shift+\ reports | on a US layout.
+    expect(matchesChord(key({ key: '|', code: 'Backslash', shiftKey: true, metaKey: true }), chord('Mod+Shift+\\'), MAC)).toBe(true);
+    expect(matchesChord(key({ key: '|', code: 'Backslash', shiftKey: true, metaKey: true }), chord('Mod+\\'), MAC)).toBe(false);
+    expect(matchesChord(key({ key: '\\', code: 'Backslash', metaKey: true }), chord('Mod+Shift+\\'), MAC)).toBe(false);
+  });
+
   it('requires the exact Shift and Alt state for letters and named keys', () => {
     expect(matchesChord(key({ key: 'F6', shiftKey: true }), chord('F6'), LINUX)).toBe(false);
     expect(matchesChord(key({ key: 'F6', shiftKey: true }), chord('Shift+F6'), LINUX)).toBe(true);

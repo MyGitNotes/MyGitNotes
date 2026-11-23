@@ -271,7 +271,7 @@ describe('WorkspaceSplitLayout and WorkspaceSidebarPortal', () => {
     expect(container.querySelector('.workspace-splitter')).toBeInTheDocument();
   });
 
-  it('keeps the sidebar mounted but inert while sidebarCollapsed, so it keeps its state', () => {
+  it('keeps a shown sidebar reachable and mounted across renders, with no folded state: the Notes page folds its own columns instead', () => {
     const mounted = vi.fn();
     const Sidebar = () => {
       useEffect(() => {
@@ -279,27 +279,23 @@ describe('WorkspaceSplitLayout and WorkspaceSidebarPortal', () => {
       }, []);
       return <div data-testid='sidebar-content'>Navigation Tree</div>;
     };
-    const layout = (collapsed: boolean) => (
+    const layout = (page: string) => (
       <SidebarProvider>
-        <WorkspaceSplitLayout hasSidebar sidebarCollapsed={collapsed} sidebarDomId='custom-sidebar-panel'>
+        <WorkspaceSplitLayout hasSidebar sidebarDomId='custom-sidebar-panel'>
           <WorkspaceSidebarPortal>
             <Sidebar />
           </WorkspaceSidebarPortal>
-          <div data-testid='main-content'>Main Notes Content</div>
+          <div data-testid='main-content'>{page}</div>
         </WorkspaceSplitLayout>
       </SidebarProvider>
     );
-    const { container, rerender } = render(layout(false));
+    const { container, rerender } = render(layout('Files'));
     const sidebar = screen.getByTestId('sidebar-content');
-    expect(container.querySelector('[inert]')).toBeNull();
-    rerender(layout(true));
-    expect(screen.getByTestId('sidebar-content')).toBe(sidebar);
-    expect(sidebar.closest('[inert]')).not.toBeNull();
-    expect(screen.getByTestId('main-content').closest('[inert]')).toBeNull();
-    expect(container.querySelector('.workspace-split-group')).toHaveAttribute('data-sidebar-collapsed', 'true');
-    rerender(layout(false));
+    rerender(layout('Files, another folder'));
     expect(screen.getByTestId('sidebar-content')).toBe(sidebar);
     expect(container.querySelector('[inert]')).toBeNull();
+    expect(container.querySelector('.workspace-split-group')).not.toHaveAttribute('data-sidebar-collapsed');
+    expect(container.querySelector('.workspace-split-group')).not.toHaveAttribute('data-sidebar-folding');
     expect(mounted).toHaveBeenCalledTimes(1);
   });
 

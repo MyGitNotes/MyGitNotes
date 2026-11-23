@@ -15,7 +15,7 @@ afterEach(cleanup);
 function split({ size = 55, collapsed = false, onSizeChange = vi.fn(), onCollapsedChange = vi.fn(), filters = <p>folder tree</p> }: { size?: number; collapsed?: boolean; onSizeChange?: (size: number) => void; onCollapsedChange?: (collapsed: boolean) => void; filters?: ReactNode; } = {}) {
   const view = (props: { size: number; collapsed: boolean; }) => (
     <I18nProvider>
-      <BrowseSplit label='Folders' actions={<button type='button'>Clear all</button>} tools={<input type='search' aria-label='Search notes' />} filters={filters} path={<span>Projects / Thesis</span>} size={props.size} onSizeChange={onSizeChange} collapsed={props.collapsed} onCollapsedChange={onCollapsedChange}>
+      <BrowseSplit label='Folders' filters={filters} path={<span>Projects / Thesis</span>} size={props.size} onSizeChange={onSizeChange} collapsed={props.collapsed} onCollapsedChange={onCollapsedChange}>
         <ul aria-label='Notes'>
           <li>First note</li>
         </ul>
@@ -26,7 +26,7 @@ function split({ size = 55, collapsed = false, onSizeChange = vi.fn(), onCollaps
   return { ...result, onSizeChange, onCollapsedChange, rerenderWith: (props: { size: number; collapsed: boolean; }) => result.rerender(view(props)) };
 }
 
-it('shows the list tools, the path line and the list, then a divider and the folders and filters below them', () => {
+it("shows a phone's path line and the list, then a divider and the folders below them", () => {
   const { container } = split();
   const filters = screen.getByRole('region', { name: 'Folders' });
   expect(filters).toHaveTextContent('folder tree');
@@ -40,9 +40,8 @@ it('shows the list tools, the path line and the list, then a divider and the fol
   expect(divider).toHaveAttribute('tabindex', '0');
   expect(screen.getByText('Projects / Thesis')).toBeVisible();
   expect(screen.getByRole('list', { name: 'Notes' })).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Clear all' })).toBeVisible();
-  // Top to bottom: the search, the path line, the list, the divider, the folders.
-  const order = [screen.getByRole('searchbox', { name: 'Search notes' }), screen.getByText('Projects / Thesis'), screen.getByRole('list', { name: 'Notes' }), divider, filters];
+  // Top to bottom: the path line, the list, the divider, the folders.
+  const order = [screen.getByText('Projects / Thesis'), screen.getByRole('list', { name: 'Notes' }), divider, filters];
   for (let index = 1; index < order.length; index++) expect(order[index - 1].compareDocumentPosition(order[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(container.querySelector('.browse-split')!.firstElementChild).toContainElement(order[0]);
 });
@@ -112,30 +111,10 @@ it('folds the folders and filters to their heading at the foot and opens them ag
   expect(screen.getByRole('region', { name: 'Folders' })).toContainElement(tree);
 });
 
-it("ends the path line with the dock's own toggle, leaving the tools row to the search", () => {
-  const { container } = render(
-    <I18nProvider>
-      <BrowseSplit label='Folders' tools={<input type='search' aria-label='Search notes' />} filters={<p>folder tree</p>} path={<span>Projects / Thesis</span>} dockToggle={<button type='button'>Collapse browse panel</button>} size={40} onSizeChange={vi.fn()} collapsed={false} onCollapsedChange={vi.fn()}>
-        <ul aria-label='Notes' />
-      </BrowseSplit>
-    </I18nProvider>,
-  );
-  const toggle = screen.getByRole('button', { name: 'Collapse browse panel' });
-  expect(toggle.parentElement).toHaveClass('browse-split-path');
-  expect(toggle.parentElement?.lastElementChild).toBe(toggle);
-  expect(container.querySelector('.browse-split-tools')).not.toContainElement(toggle);
-});
-
-it('puts the view menu in the path line, just left of the dock toggle, not among the list tools', () => {
-  const { container } = render(
-    <I18nProvider>
-      <BrowseSplit label='Folders' tools={<input type='search' aria-label='Search notes' />} filters={<p>folder tree</p>} path={<span>Projects</span>} viewMenu={<button type='button'>View: Flat</button>} dockToggle={<button type='button'>Collapse dock</button>} size={55} onSizeChange={vi.fn()} collapsed={false} onCollapsedChange={vi.fn()}>
-        <ul aria-label='Notes' />
-      </BrowseSplit>
-    </I18nProvider>,
-  );
-  const menu = screen.getByRole('button', { name: 'View: Flat' });
-  expect(container.querySelector('.browse-split-tools')).not.toContainElement(menu);
-  expect(menu.closest('.browse-split-path')).not.toBeNull();
-  expect(menu.nextElementSibling).toBe(screen.getByRole('button', { name: 'Collapse dock' }));
+it("holds only the path in a phone's path line: the search, the view switch and the column toggles live in the wider page's list column", () => {
+  const { container } = split();
+  const line = container.querySelector('.browse-split-path')!;
+  expect(line).toHaveTextContent('Projects / Thesis');
+  expect(line.querySelectorAll('button, input')).toHaveLength(0);
+  expect(container.querySelector('.browse-split-tools')).toBeNull();
 });

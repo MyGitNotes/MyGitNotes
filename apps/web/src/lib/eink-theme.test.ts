@@ -80,10 +80,11 @@ describe('e-ink family', () => {
     expect(css).toMatch(/\[data-theme='eink'\] (?:\*)?::placeholder[^{]*\{[^}]*color: var\(--color-text\) !important;[^}]*opacity: 1 !important/);
   });
 
-  it('shows the disabled light and dark choice solid, not faded, and the filter chip counts in full black', () => {
+  it('shows the disabled light and dark choice solid, not faded; the list filter buttons hold no softened counts to restore', () => {
     const css = fs.readFileSync(path.resolve('apps/web/src/eink.css'), 'utf8');
     expect(css).toMatch(/\[data-theme='eink'\] \.theme-mode-option:disabled[^{]*\{[^}]*opacity: 1 !important/);
-    expect(css).toMatch(/\[data-theme='eink'\] \.dock-filter-chip-count[^{]*\{[^}]*opacity: 1/);
+    const columns = fs.readFileSync(path.resolve('apps/web/src/components/browse-columns.css'), 'utf8');
+    expect(columns).not.toMatch(/\.list-filter-button[^{]*\{[^}]*opacity/);
   });
 });
 

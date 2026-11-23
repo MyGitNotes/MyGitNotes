@@ -53,7 +53,7 @@ const CODE: readonly KeyScope[] = ['code-editor'];
 export const KEYMAP: readonly KeymapEntry[] = [
   // General
   entry('help.open', 'general', ['global'], 'dispatcher', [{ keys: 'Mod+/', when: { exceptScopes: ['code-editor'] } }], { phase: 'capture', description: 'command.help.open.describe' }),
-  entry('note.searchList', 'general', ['global'], 'dispatcher', ['Mod+Shift+F'], { phase: 'capture', description: 'command.note.searchList.describe' }),
+  entry('note.searchList', 'general', ['global'], 'dispatcher', ['Mod+K', 'Mod+Shift+F'], { phase: 'capture', description: 'command.note.searchList.describe' }),
   entry('help.close', 'general', ['help'], 'widget', ['Escape']),
   entry('drawer.close', 'panes', ['drawer'], 'widget', ['Escape']),
   entry('compilation.close', 'general', ['compilation'], 'widget', ['Escape']),
@@ -100,7 +100,8 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('editor.indentTab', 'editor', EDITORS, 'codemirror', ['Tab'], { description: 'command.editor.indentTab.describe' }),
   entry('editor.outdentTab', 'editor', EDITORS, 'codemirror', ['Shift+Tab'], { description: 'command.editor.outdentTab.describe' }),
   entry('editor.deleteLine', 'editor', EDITORS, 'codemirror', ['Mod+Shift+K']),
-  entry('editor.matchingBracket', 'editor', EDITORS, 'codemirror', ['Mod+Shift+\\']),
+  // The note list's toggle takes Mod+Shift+\ in a note's editor, where people write; the code-file editor keeps it for brackets.
+  entry('editor.matchingBracket', 'editor', CODE, 'codemirror', ['Mod+Shift+\\']),
   entry('editor.toggleLineComment', 'editor', CODE, 'codemirror', ['Mod+/']),
   entry('editor.toggleComment', 'editor', EDITORS, 'codemirror', [mac('Ctrl+Shift+A'), other('Shift+Alt+A')]),
   entry('editor.tabFocusMode', 'editor', EDITORS, 'codemirror', [mac('Shift+Alt+M'), other('Ctrl+M')]),
@@ -122,6 +123,10 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('assistant.complete', 'panes', ['assistant-input'], 'widget', ['Tab']),
   entry('assistant.menu', 'panes', ['assistant-input'], 'widget', ['ArrowUp', 'ArrowDown']),
   entry('assistant.dismiss', 'panes', ['assistant-input'], 'widget', ['Escape']),
+  // The Notes page's columns: the note list alone, or every column. The list's chord comes first, since Mod+\ also takes Shift (some
+  // layouts need Shift for punctuation).
+  entry('browse.toggleList', 'panes', ['global'], 'dispatcher', [{ keys: 'Mod+Shift+\\', when: { exceptScopes: CODE } }], { phase: 'capture', description: 'command.browse.toggleList.describe' }),
+  entry('browse.toggleColumns', 'panes', ['global'], 'dispatcher', ['Mod+\\'], { phase: 'capture', description: 'command.browse.toggleColumns.describe' }),
   // On macOS Cmd+` switches windows before the page sees it, and Ctrl+` belongs to the terminal, so the Mac takes Cmd+'.
   entry('assistant.toggleFocus', 'panes', ['global'], 'dispatcher', [mac("Mod+'"), other('Ctrl+`')], { phase: 'capture', description: 'command.assistant.toggleFocus.describe' }),
   // Focus

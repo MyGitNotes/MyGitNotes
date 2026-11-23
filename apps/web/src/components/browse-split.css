@@ -1,19 +1,12 @@
-/* BrowseSplit: the left browse dock's column beside a Focus, the list's tools and the list above, its folders and filters below. */
+/* BrowseSplit: a phone's list screen beside a Focus, the list above and the notebook's folders below. */
 
 .browse-split { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; }
 .browse-split[data-dragging] { cursor: row-resize; user-select: none; }
-
-/* The search, the sort and the display toggles, on the dock's own background right over the list. */
-.browse-split-tools { flex: none; padding: 8px 8px 6px 10px; }
 
 .browse-split-path { display: flex; align-items: center; gap: 4px; flex: none; min-height: 30px; padding: 2px 12px 4px 14px; border-bottom: 1px solid var(--workspace-divider); color: var(--color-muted); font-size: 12px; }
 .browse-split-path-content { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .browse-split-path-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browse-split-count { flex: none; font-variant-numeric: tabular-nums; }
-/* The dock's own collapse toggle ends the path line, so the search above keeps the tools row's whole width. */
-/* The list's view menu, a compact trigger just left of the dock toggle. */
-.browse-split-path .note-view-menu { flex: none; width: auto; height: 26px; min-height: 0; padding: 0 4px 0 6px; }
-.browse-split-path .browse-dock-toggle { width: 26px; height: 26px; min-width: 0; min-height: 0; padding: 5px; margin: -2px -6px -2px 0; }
 
 .browse-split-list { flex: 1 1 0; min-height: 0; padding-top: 8px; }
 
@@ -33,8 +26,8 @@
 .browse-split-divider::before { content: ''; position: absolute; left: 50%; top: 3px; width: 28px; height: 3px; margin-left: -14px; border-radius: 9999px; background: var(--color-line-strong); }
 .browse-split-divider:hover::after, .browse-split-divider:focus-visible::after, .browse-split[data-dragging] .browse-split-divider::after { top: 3px; height: 2px; background: var(--color-primary); }
 
-/* The dock's own scroll container gives way: each part scrolls on its own. */
-.browse-dock-scroll:has(> .browse-split) { display: flex; flex-direction: column; overflow: hidden; padding: 0; scrollbar-gutter: auto; }
+/* The screen's own scroll container gives way: each part scrolls on its own. */
+.phone-notes-scroll:has(> .browse-split) { display: flex; flex-direction: column; overflow: hidden; padding: 0; scrollbar-gutter: auto; }
 
 @media (prefers-reduced-motion: reduce) { .browse-split-divider::after { transition: none; } }
-@media (pointer: coarse) { .browse-split-divider { height: 17px; margin: -8px 0; } .browse-split-divider::after { top: 8px; } .browse-split-divider::before { top: 7px; } .browse-split-divider:hover::after, .browse-split-divider:focus-visible::after { top: 7px; } .browse-split-toggle, .browse-split-path .browse-dock-toggle { width: 36px; height: 36px; } }
+@media (pointer: coarse) { .browse-split-divider { height: 17px; margin: -8px 0; } .browse-split-divider::after { top: 8px; } .browse-split-divider::before { top: 7px; } .browse-split-divider:hover::after, .browse-split-divider:focus-visible::after { top: 7px; } .browse-split-toggle { width: 36px; height: 36px; } }

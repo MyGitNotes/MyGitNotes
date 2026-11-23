@@ -13,7 +13,7 @@ export interface HoverCardTarget {
   row: HTMLElement;
   /** Where the row sits, which places the card at the row's height. */
   rowRect: DOMRect;
-  /** The dock the row lives in, if any: the card opens beside it rather than over the list. */
+  /** The note list column the row lives in, if any: the card opens beside it rather than over the list. */
   dockRect?: DOMRect;
 }
 
@@ -57,7 +57,7 @@ export function useNoteHoverCard() {
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
-  const place = (note: NoteListItem, row: HTMLElement): HoverCardTarget => ({ note, row, rowRect: row.getBoundingClientRect(), dockRect: row.closest('.browse-dock-panel')?.getBoundingClientRect() });
+  const place = (note: NoteListItem, row: HTMLElement): HoverCardTarget => ({ note, row, rowRect: row.getBoundingClientRect(), dockRect: row.closest('.browse-column-list')?.getBoundingClientRect() });
   const open = (note: NoteListItem, row: HTMLElement, delay: number) => {
     clearTimer();
     const show = () => {

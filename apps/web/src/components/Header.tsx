@@ -31,9 +31,9 @@ interface HeaderProps {
   navigationDisabled?: boolean;
   /** A phone's Notes page draws its own bars at the top; the header then keeps only the bottom navigation. */
   navOnly?: boolean;
-  /** The Focus switcher and Layout menu, shown on the Notes page left of the notebook switcher. */
+  /** The Focus switcher and Layout menu, shown on the Notes page left of New. */
   focusControls?: React.ReactNode;
-  /** The New button's actions, shown on the Notes page right of the notebook switcher; absent for a read-only notebook, which then shows none. */
+  /** The New button's actions, shown on the Notes page right of the Focus controls; absent for a read-only notebook, which then shows none. */
   newNote?: NewNoteActions;
 }
 
@@ -112,7 +112,8 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
           {notes && focusControls && <div className='note-focus-controls header-focus-controls' role='group' aria-label={t('focus.title')}>{focusControls}</div>}
           <div className='header-notebook'>
             <span id='workspace-sidebar-toggle-slot-mobile' className='sidebar-toggle-slot' />
-            {notebooks.length > 0 && (
+            {/* The Notes page switches notebooks from its notebooks column; the other pages keep the switcher here. */}
+            {!notes && notebooks.length > 0 && (
               <>
                 <BookOpen aria-hidden='true' />
                 <Select aria-label={t('sidebar.notebooks')} value={selectedNotebookId} title={notebooks.find(nb => nb.id === selectedNotebookId)?.title} disabled={notebookDisabled || navigationDisabled} onValueChange={onSelectNotebook} groups={notebookGroups?.map(group => ({ label: group.label, values: group.notebooks }))} options={notebooks.map(nb => ({ value: nb.id, label: unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title }))} />

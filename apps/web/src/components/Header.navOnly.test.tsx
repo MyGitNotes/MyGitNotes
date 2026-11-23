@@ -31,9 +31,9 @@ it('leaves the New Note button out of the bottom navigation when the notebook is
   expect(nav.querySelectorAll('button')).toHaveLength(4);
 });
 
-it('shows the brand, the notebook switcher and the utilities as before', () => {
+it('shows the brand and the utilities wider than a phone, the notebooks column holding the switcher on the Notes page', () => {
   header(false);
   expect(screen.getByRole('heading', { name: 'Work' })).toBeInTheDocument();
-  expect(screen.getByRole('combobox', { name: 'Notebooks' })).toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Notebooks' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Quick open' })).toBeInTheDocument();
 });
