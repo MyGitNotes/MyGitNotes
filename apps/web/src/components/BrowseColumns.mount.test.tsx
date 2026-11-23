@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { useEffect } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import type { BrowseColumnsLayout } from '../lib/browse-columns.js';
@@ -139,10 +139,8 @@ describe('the list sliding', () => {
     // Shown at no width first, so the width has somewhere to slide from.
     expect(list).not.toHaveAttribute('hidden');
     expect(root).toHaveAttribute('data-list', 'closed');
-    await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 50));
-    });
-    expect(root).toHaveAttribute('data-list', 'open');
+    // It opens two animation frames later; a fixed wait raced those frames on a loaded machine.
+    await waitFor(() => expect(root).toHaveAttribute('data-list', 'open'));
   });
 
   it('folds and opens at once where motion is reduced', () => {
