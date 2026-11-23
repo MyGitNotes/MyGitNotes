@@ -71,7 +71,11 @@ export function NotebookColumn({ mode, columnId, notebooks, groups, unavailableN
       <PanelLeft size={16} aria-hidden='true' />
     </button>
   );
-  const footer = links.length > 0 && <div className='browse-notebooks-footer'><SidebarLinks links={links} variant='sidebar' /></div>;
+  const footer = links.length > 0 && (
+    <div className='browse-notebooks-footer'>
+      <SidebarLinks links={links} variant='sidebar' />
+    </div>
+  );
 
   if (mode === 'rail') {
     return (
@@ -106,18 +110,33 @@ export function NotebookColumn({ mode, columnId, notebooks, groups, unavailableN
       <div key='top' className='browse-notebooks-top'>
         <label className='browse-search' role='search'>
           <Search size={15} aria-hidden='true' />
-          <input ref={input} type='search' aria-label={t('header.searchPlaceholder')} placeholder={t('browse.searchShort')} aria-keyshortcuts={searchKeys && ariaKeyShortcuts(searchKeys, keyEnvironment)} value={query} onChange={event => onQueryChange(event.target.value)} onKeyDown={event => {
-            if (event.key === 'Escape' && query) {
-              event.preventDefault();
-              onQueryChange('');
-            }
-          }} />
+          <input
+            ref={input}
+            type='search'
+            aria-label={t('header.searchPlaceholder')}
+            placeholder={t('browse.searchShort')}
+            aria-keyshortcuts={searchKeys && ariaKeyShortcuts(searchKeys, keyEnvironment)}
+            value={query}
+            onChange={event => onQueryChange(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Escape' && query) {
+                event.preventDefault();
+                onQueryChange('');
+              }
+            }}
+          />
           {query
             ? (
-              <button type='button' className='browse-search-clear' aria-label={t('header.clearSearch')} title={t('header.clearSearch')} onClick={() => {
-                onQueryChange('');
-                input.current?.focus();
-              }}>
+              <button
+                type='button'
+                className='browse-search-clear'
+                aria-label={t('header.clearSearch')}
+                title={t('header.clearSearch')}
+                onClick={() => {
+                  onQueryChange('');
+                  input.current?.focus();
+                }}
+              >
                 <X size={14} aria-hidden='true' />
               </button>
             )

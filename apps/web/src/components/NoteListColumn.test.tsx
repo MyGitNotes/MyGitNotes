@@ -26,12 +26,22 @@ function controls(value: Partial<NoteFilters> = {}, onChange: FilterControls['on
 
 function buttons(props: Partial<ListFilterButtonsProps> = {}, filters = controls()) {
   const all: ListFilterButtonsProps = { filters, counts: listFacets(filters, facets), notebookId: 'life', sortField: 'updated', sortOrder: 'desc', onSortChange: () => {}, sortable: true, showHidden: false, hiddenNoteCount: 2, onShowHiddenChange: () => {}, ...props };
-  return render(<I18nProvider><ListFilterButtons {...all} /></I18nProvider>);
+  return render(
+    <I18nProvider>
+      <ListFilterButtons {...all} />
+    </I18nProvider>,
+  );
 }
 
 function column(props: Partial<Omit<NoteListColumnProps, 'children'>> = {}) {
   const all: Omit<NoteListColumnProps, 'children'> = { columnId: 'browse-list', notebookTitle: 'Life', path: ['tech'], count: 28, presentation: 'list', onPresentationChange: () => {}, onCollapse: () => {}, chips: <span>chips</span>, ...props };
-  return render(<I18nProvider><NoteListColumn {...all}><p>rows</p></NoteListColumn></I18nProvider>);
+  return render(
+    <I18nProvider>
+      <NoteListColumn {...all}>
+        <p>rows</p>
+      </NoteListColumn>
+    </I18nProvider>,
+  );
 }
 
 describe('the list header', () => {
@@ -66,6 +76,15 @@ describe('the list header', () => {
     column({ folderMenu: { folders: [{ value: '', label: 'Life' }, { value: 'tech', label: 'tech' }, { value: 'trpg', label: 'trpg' }], value: 'tech', onChange } });
     const menu = screen.getByRole('combobox', { name: 'Folder' });
     expect(menu).toHaveTextContent('tech');
+  });
+
+  // Boss review (A2): beside the notebook name the picker was cut to 「All fold…」; the picker alone fills the path, its root named after the notebook.
+  it('gives the folder picker the whole path beside the rail, the notebook root named by the notebook', () => {
+    column({ folderMenu: { folders: [{ value: '', label: 'Life' }, { value: 'tech', label: 'tech' }], value: '', onChange: vi.fn() } });
+    const path = screen.getByRole('heading', { level: 2 });
+    expect(path.querySelector('.browse-list-separator')).toBeNull();
+    expect(path.children).toHaveLength(1);
+    expect(screen.getByRole('combobox', { name: 'Folder' })).toHaveTextContent('Life');
   });
 });
 

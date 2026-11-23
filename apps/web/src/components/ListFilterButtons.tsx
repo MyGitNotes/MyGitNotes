@@ -53,9 +53,15 @@ function FilterPopover({ label, title, active = false, face, children }: { label
   useEffect(() => {
     if (open) panel.current?.focus();
   }, [open]);
+  // Each close the panel asks for puts the keyboard back on the button once the panel is gone; the panel's body is handed `close` while it
+  // renders, so `close` itself touches no ref.
+  const [closes, setCloses] = useState(0);
+  useEffect(() => {
+    if (closes > 0) button.current?.focus();
+  }, [closes]);
   const close = () => {
     setOpen(false);
-    button.current?.focus();
+    setCloses(count => count + 1);
   };
   return (
     <div ref={anchor} className='list-filter-anchor'>
@@ -95,7 +101,12 @@ export function ListFilterButtons({ filters, counts, notebookId, tagManagement, 
   const currentSort = sortOptions.find(option => option.value === `${sortField}:${sortOrder}`) ?? sortOptions[0];
   const [currentField = 'updated'] = currentSort.value.split(':');
   // The button shows the field and the order's icon, so Status, Tags and Sort fit one row of the list column; its name says the order in full.
-  const sortFace = <><currentSort.Icon aria-hidden='true' /><span>{metadataSortKey(currentField as SortField) ?? t(SHORT_SORT[currentField] ?? 'browse.sortUpdated')}</span></>;
+  const sortFace = (
+    <>
+      <currentSort.Icon aria-hidden='true' />
+      <span>{metadataSortKey(currentField as SortField) ?? t(SHORT_SORT[currentField] ?? 'browse.sortUpdated')}</span>
+    </>
+  );
   const live = value.live ?? [];
   const statusValue = [value.status ? labelOf(value.status) : null, ...live.map(state => t(state === 'editing' ? 'filters.liveEditing' : 'filters.livePending'))].filter(Boolean).join(', ') || t('browse.statusAll');
   const statusActive = Boolean(value.status) || live.length > 0;
@@ -130,7 +141,7 @@ export function ListFilterButtons({ filters, counts, notebookId, tagManagement, 
                 checked={showHidden}
                 onChange={event => onShowHiddenChange(event.target.checked)}
               />
-              <span>{t('filters.hidden')} ({hiddenNoteCount ?? '—'})</span>
+              <span>{t('filters.hidden')}{' ('}{hiddenNoteCount ?? '—'})</span>
             </label>
             {groupByFolder && (
               <label className='list-display-option'>

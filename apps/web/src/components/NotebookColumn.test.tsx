@@ -30,22 +30,7 @@ function controls(value: Partial<NoteFilters> = {}, onChange: FilterControls['on
 }
 
 function column(props: Partial<NotebookColumnProps> = {}, filters = controls()) {
-  const all: NotebookColumnProps = {
-    mode: 'open',
-    columnId: 'browse-notebooks',
-    notebooks,
-    selectedNotebookId: 'life',
-    onSelectNotebook: () => {},
-    counts: { life: 7, work: 1, thesis: 4 },
-    current: <NotebookTree notebook={notebooks[0]} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={null} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />,
-    query: '',
-    onQueryChange: () => {},
-    onOpenSearch: () => {},
-    onToggle: () => {},
-    kind: 'note',
-    onSelectKind: () => {},
-    ...props,
-  };
+  const all: NotebookColumnProps = { mode: 'open', columnId: 'browse-notebooks', notebooks, selectedNotebookId: 'life', onSelectNotebook: () => {}, counts: { life: 7, work: 1, thesis: 4 }, current: <NotebookTree notebook={notebooks[0]} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={null} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />, query: '', onQueryChange: () => {}, onOpenSearch: () => {}, onToggle: () => {}, kind: 'note', onSelectKind: () => {}, ...props };
   return <NotebookColumn {...all} />;
 }
 

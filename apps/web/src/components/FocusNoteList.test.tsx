@@ -68,6 +68,23 @@ it('lists each note as a status dot and a title that is clamped to two lines, wi
   expect(css).toMatch(/\.focus-row-title \{[^}]*min-height: calc\(var\(--title-lines, 2\) \* 1\.375em\)/);
 });
 
+// Boss review of the three-column list (A1): each row also shows its updated date and tags on a second line, with the title on one.
+it('adds a second line with the updated date and the tags when the list column asks for row meta', () => {
+  setup({ focusMode: { onZoomNote: vi.fn(), canDrag: () => true, compactRows: true, rowMeta: true } });
+  const [tagged, untagged] = document.querySelectorAll<HTMLElement>('[data-focus-row]');
+  const title = tagged.querySelector('.focus-row-title') as HTMLElement;
+  expect(title.style.getPropertyValue('--title-lines')).toBe('1');
+  const meta = tagged.querySelector('.focus-row-meta') as HTMLElement;
+  const date = new Date('2026-10-20T10:30:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  expect(meta.textContent).toBe(`${date} · alpha · beta · gamma · delta`);
+  expect(untagged.querySelector('.focus-row-meta')!.textContent).toBe(date);
+});
+
+it('keeps the two-line title and no meta line where row meta is not asked for (the phone list)', () => {
+  setup();
+  expect(document.querySelector('.focus-row-meta')).toBeNull();
+});
+
 // FU P3: a broken frontmatter read as "no status" in the list while the editor said it could not be read.
 it('marks a row whose frontmatter cannot be read with the warning sign in place of its status dot', () => {
   setup({ notes: [note('a'), note('b', { status: undefined, frontmatterInvalid: true })] });

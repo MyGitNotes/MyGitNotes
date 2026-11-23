@@ -17,6 +17,8 @@
 
 /* Two lines of the card title's face (text-sm, leading-snug) are always reserved, so every row is as tall as the next. */
 .focus-row-title { flex: 1; min-width: 0; min-height: calc(var(--title-lines, 2) * 1.375em); font-size: 14px; font-weight: 600; line-height: 1.375; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--title-lines, 2); line-clamp: var(--title-lines, 2); overflow-wrap: anywhere; }
+.focus-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.focus-row-meta { font-size: 12px; line-height: 1.4; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .focus-row-kind { display: inline-block; width: 14px; height: 14px; margin: 0 4px -2px 0; color: var(--color-primary); }
 .focus-row-check { margin: 3px 4px 0 4px; }
 

@@ -59,23 +59,7 @@ function Page({ layout = { notebooks: 'open', list: true }, presentation = 'list
         layout={layout}
         measure={measure}
         merged={presentation !== 'list'}
-        notebooks={layout.notebooks === 'hidden' ? null : (
-          <NotebookColumn
-            mode={layout.notebooks}
-            columnId={NOTEBOOK_COLUMN_ID}
-            notebooks={notebooks}
-            selectedNotebookId={notebookId}
-            onSelectNotebook={() => {}}
-            counts={{ life: 7, work: 1 }}
-            current={<NotebookTree notebook={notebook} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={folder} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />}
-            query=''
-            onQueryChange={() => {}}
-            onOpenSearch={() => {}}
-            onToggle={onToggleNotebooks}
-            kind='note'
-            onSelectKind={() => {}}
-          />
-        )}
+        notebooks={layout.notebooks === 'hidden' ? null : <NotebookColumn mode={layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={notebooks} selectedNotebookId={notebookId} onSelectNotebook={() => {}} counts={{ life: 7, work: 1 }} current={<NotebookTree notebook={notebook} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={folder} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />} query='' onQueryChange={() => {}} onOpenSearch={() => {}} onToggle={onToggleNotebooks} kind='note' onSelectKind={() => {}} />}
         list={
           <NoteListColumn columnId={LIST_COLUMN_ID} notebookTitle={notebook.title} path={folder ? [folder] : []} count={folder ? 2 : 7} presentation={presentation} onPresentationChange={() => {}} onCollapse={presentation === 'list' ? onToggleList : undefined} chips={<ListFilterButtons filters={filters} counts={listFacets(filters, facets)} notebookId={notebookId} sortField='updated' sortOrder='desc' onSortChange={() => {}} sortable showHidden={false} hiddenNoteCount={1} onShowHiddenChange={() => {}} />}>
             <ul>
@@ -84,7 +68,7 @@ function Page({ layout = { notebooks: 'open', list: true }, presentation = 'list
             </ul>
           </NoteListColumn>
         }
-        note={note ? <article>Note {note}</article> : <p>No note open</p>}
+        note={note ? <article>{'Note '}{note}</article> : <p>No note open</p>}
         restore={<button type='button' data-column-toggle='' aria-controls={layout.notebooks === 'hidden' ? NOTEBOOK_COLUMN_ID : LIST_COLUMN_ID} aria-expanded='false' onClick={layout.notebooks === 'hidden' ? onToggleColumns : onToggleList}>Show columns</button>}
       />
     </I18nProvider>
@@ -202,7 +186,7 @@ describe('folding by hand', () => {
     expect(listColumn()).toBeVisible();
   });
 
-  it('moves the keyboard to the rail\'s own toggle when the notebooks column folds to its rail, and back when it opens', () => {
+  it("moves the keyboard to the rail's own toggle when the notebooks column folds to its rail, and back when it opens", () => {
     render(<Stateful />);
     const collapse = screen.getByRole('button', { name: 'Collapse notebooks' });
     collapse.focus();
@@ -274,7 +258,13 @@ it('runs the column toggles from the keyboard: Mod+\\ folds every column, Mod+Sh
     useRegisterCommands(browseColumnCommands(columns, t));
     return <Page note='a' layout={columns.layout} onToggleList={columns.toggleList} onToggleNotebooks={columns.toggleNotebooks} onToggleColumns={columns.toggleColumns} />;
   }
-  render(<I18nProvider><KeyboardRoot><WithKeys /></KeyboardRoot></I18nProvider>);
+  render(
+    <I18nProvider>
+      <KeyboardRoot>
+        <WithKeys />
+      </KeyboardRoot>
+    </I18nProvider>,
+  );
   const press = (init: KeyboardEventInit) => {
     const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: '\\', code: 'Backslash', ctrlKey: true, ...init });
     act(() => {

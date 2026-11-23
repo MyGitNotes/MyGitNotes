@@ -5,6 +5,7 @@ import { isCompilationPath } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useTranslation } from '../lib/i18n/index.js';
+import { noteUpdatedTime } from '../lib/note-sort.js';
 import { pointerMovesNotes, startNoteDrag } from '../lib/note-drag.js';
 import { useDeleteConfirm } from '../lib/use-delete-confirm.js';
 import { useNoteHoverCard } from '../lib/use-note-hover-card.js';
@@ -20,8 +21,15 @@ import { NotesEmptyState } from './NotesEmptyState.js';
 import type { ListViewProps } from './ListView.js';
 import './focus-list.css';
 
-/** A row stays one height whatever its title: the title always reserves two lines. */
+/** A row stays one height whatever its title: the title always reserves two lines, or one above the meta line. */
 const TITLE_LINES = 2;
+
+/** A row's second line in the list column: the note's updated date, then its tags. */
+function rowMetaText(note: NoteListItem): string {
+  const updated = noteUpdatedTime(note);
+  const date = updated ? new Date(updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
+  return [date, ...note.tags].join(' · ');
+}
 
 /**
  * The notes of a list that sits in the narrow dock beside a Focus: a status dot and a title of up to two lines per row, the rest of
@@ -43,6 +51,7 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
   }
 
   const movable = !readOnly && Boolean(onMoveNote) && pointerMovesNotes();
+  const rowMeta = Boolean(focusMode?.rowMeta);
   const selectionActive = Boolean(selectedKeys?.size);
 
   /** Arrow keys move between rows; Enter or Space opens the one focused. */
@@ -94,9 +103,12 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
       >
         {selectionActive && !draft && <NoteSelectBox title={note.title} checked={selected} onToggle={() => onToggleSelect?.(note)} className='focus-row-check' />}
         <NoteStatusSelect unreadable={note.frontmatterInvalid} dotOnly statuses={statuses} status={note.status} readOnly={readOnly || draft} lockedReason={liveLock(note, 'other')} label={t('notes.statusFor', { title: note.title })} onChange={status => onUpdateNoteStatus(note, status)} />
-        <span className='focus-row-title' style={{ ['--title-lines' as string]: TITLE_LINES }}>
-          {isCompilationPath(note.path) && <GalleryHorizontalEnd className='focus-row-kind' aria-hidden='true' />}
-          <HighlightText text={note.title} query={highlightQuery} />
+        <span className='focus-row-text'>
+          <span className='focus-row-title' style={{ ['--title-lines' as string]: rowMeta ? 1 : TITLE_LINES }}>
+            {isCompilationPath(note.path) && <GalleryHorizontalEnd className='focus-row-kind' aria-hidden='true' />}
+            <HighlightText text={note.title} query={highlightQuery} />
+          </span>
+          {rowMeta && <span className='focus-row-meta'>{rowMetaText(note)}</span>}
         </span>
         <LiveBadge live={note.live} title={note.title} />
       </div>

@@ -57,19 +57,10 @@ export function useBrowseColumns({ panes }: { panes: number; }): BrowseColumns {
     saveBrowseColumns(change.stored);
   };
   const measure = useCallback((next: HTMLElement | null) => setElement(next), []);
-  return {
-    layout,
-    measure,
-    toggleNotebooks: () => apply(toggleNotebooks(layout, stored, cramped)),
-    toggleList: () => apply(toggleList(layout, stored, heldOpen)),
-    toggleColumns: () => apply(toggleColumns(layout, cramped)),
-  };
+  return { layout, measure, toggleNotebooks: () => apply(toggleNotebooks(layout, stored, cramped)), toggleList: () => apply(toggleList(layout, stored, heldOpen)), toggleColumns: () => apply(toggleColumns(layout, cramped)) };
 }
 
 /** ⌘\ and ⌘⇧\: the palette's and the keyboard's way to fold the columns. */
 export function browseColumnCommands(columns: BrowseColumns, t: I18nContextValue['t']): CommandSpec[] {
-  return [
-    { id: 'browse.toggleColumns', group: 'panes', title: t('command.browse.toggleColumns'), description: t('command.browse.toggleColumns.describe'), run: columns.toggleColumns },
-    { id: 'browse.toggleList', group: 'panes', title: t('command.browse.toggleList'), description: t('command.browse.toggleList.describe'), run: columns.toggleList },
-  ];
+  return [{ id: 'browse.toggleColumns', group: 'panes', title: t('command.browse.toggleColumns'), description: t('command.browse.toggleColumns.describe'), run: columns.toggleColumns }, { id: 'browse.toggleList', group: 'panes', title: t('command.browse.toggleList'), description: t('command.browse.toggleList.describe'), run: columns.toggleList }];
 }

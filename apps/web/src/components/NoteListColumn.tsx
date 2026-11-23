@@ -44,24 +44,29 @@ export function NoteListColumn({ columnId, notebookTitle, path, count, presentat
     <>
       <header className='browse-list-header'>
         <h2 className='browse-list-path' data-browse-content='' title={[notebookTitle, ...path].join(' › ')}>
-          <span>{notebookTitle}</span>
-          {folderMenu
-            ? (
-              <>
-                <span className='browse-list-separator' aria-hidden='true'>›</span>
-                <Select aria-label={t('browse.folder')} value={folderMenu.value} onValueChange={folderMenu.onChange} options={folderMenu.folders} />
-              </>
-            )
-            : path.map((segment, index) => (
-              <span key={`${index}:${segment}`} className='browse-list-segment'>
-                <span className='browse-list-separator' aria-hidden='true'>›</span> {segment}
-              </span>
-            ))}
+          {/* Beside the rail the folder picker takes the whole path, its root choice named after the notebook, so it is never cut short. */}
+          {folderMenu ? <Select aria-label={t('browse.folder')} value={folderMenu.value} onValueChange={folderMenu.onChange} options={folderMenu.folders} /> : (
+            <>
+              <span>{notebookTitle}</span>
+              {path.map((segment, index) => (
+                <span key={`${index}:${segment}`} className='browse-list-segment'>
+                  <span className='browse-list-separator' aria-hidden='true'>›</span> {segment}
+                </span>
+              ))}
+            </>
+          )}
         </h2>
         <span className='browse-list-count' data-browse-content=''>{count === null ? <LoadingStatus as='span'>{t('notes.countsLoading')}</LoadingStatus> : t(count === 1 ? 'folder.noteCount' : 'folder.notesCount', { count })}</span>
         <div className='browse-view-switch' role='group' aria-label={t('browse.view')}>
           {PRESENTATIONS.map(({ value, label, Icon }) => (
-            <button key={value} type='button' aria-label={t(label)} title={t(label)} aria-pressed={presentation === value} onClick={() => onPresentationChange(value)}>
+            <button
+              key={value}
+              type='button'
+              aria-label={t(label)}
+              title={t(label)}
+              aria-pressed={presentation === value}
+              onClick={() => onPresentationChange(value)}
+            >
               <Icon size={16} aria-hidden='true' />
             </button>
           ))}

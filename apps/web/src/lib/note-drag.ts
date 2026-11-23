@@ -20,6 +20,8 @@ export interface NoteBrowseFocusMode {
   canDrag: (note: NoteListItem) => boolean;
   /** The list sits in the narrow left dock, so it lists two-line rows that open a hover card instead of cards. */
   compactRows?: boolean;
+  /** The compact rows sit in the desktop list column: each adds a second line with its updated date and tags, its title kept to one line. */
+  rowMeta?: boolean;
   /** Path of the note the active pane shows, which the rows mark as open. */
   openPath?: string;
   /** Reads a note's body, for the hover card's excerpt. */
