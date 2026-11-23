@@ -69,28 +69,26 @@ export const IconGrid = forwardRef<IconGridHandle, IconGridProps>(function IconG
   return (
     <div className={`icon-picker-grid ${className}`} role='listbox' aria-label={label} onKeyDown={onKey}>
       {names.map((name, index) => {
-        const option = (
-          <button
-            key={name}
-            ref={element => {
-              options.current[index] = element;
-            }}
-            type='button'
-            role='option'
-            aria-selected={selectedKey === undefined ? index === active : iconKey(name) === selectedKey}
-            aria-label={showNames ? undefined : name}
-            title={showNames ? name : undefined}
-            tabIndex={index === active ? 0 : -1}
-            data-active={index === active || undefined}
-            onFocus={() => setFocused(index)}
-            onClick={() => onPick(name)}
-          >
-            <LucideGlyph icon={lucideIcon(name)} />
-            {showNames && <span>{name}</span>}
-          </button>
+        return (
+          <Tooltip key={name} label={name} side='top'>
+            <button
+              ref={element => {
+                options.current[index] = element;
+              }}
+              type='button'
+              role='option'
+              aria-selected={selectedKey === undefined ? index === active : iconKey(name) === selectedKey}
+              aria-label={showNames ? undefined : name}
+              tabIndex={index === active ? 0 : -1}
+              data-active={index === active || undefined}
+              onFocus={() => setFocused(index)}
+              onClick={() => onPick(name)}
+            >
+              <LucideGlyph icon={lucideIcon(name)} />
+              {showNames && <span>{name}</span>}
+            </button>
+          </Tooltip>
         );
-        // Without the names under the icons, the name shows above the one under the pointer or the keyboard.
-        return showNames ? option : <Tooltip key={name} label={name} side='top'>{option}</Tooltip>;
       })}
     </div>
   );

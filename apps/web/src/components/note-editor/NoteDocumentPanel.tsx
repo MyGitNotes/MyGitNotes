@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { Braces, ChevronDown, ChevronUp, History, ListTree, PanelRightClose, Search, SlidersHorizontal } from 'lucide-react';
 import { NoteHistoryPanel, type NoteHistoryPanelProps } from '../NoteHistoryPanel.js';
 import { Button } from '../Button.js';
@@ -8,6 +9,7 @@ import type { OutlineHeading } from '../../lib/note-navigation.js';
 import type { NotebookMetadataField } from '../../lib/types.js';
 import type { NotePanelMode } from './types.js';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { primaryShortcutHint } from '../../lib/keyboard/keymap.js';
 import { usePhone } from '../../lib/use-phone.js';
 
 export interface NoteDocumentPanelProps {
@@ -129,22 +131,22 @@ export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFin
             ? (
               <nav aria-label={t('editor.outline')}>
                 {outline.map((heading, index) => (
-                  <button
-                    type='button'
-                    key={`${heading.from}-${index}`}
-                    data-outline-index={index}
-                    aria-current={index === outlineIndex ? 'true' : undefined}
-                    style={{ paddingInlineStart: `${12 + (heading.depth - 1) * 14}px` }}
-                    title={heading.label}
-                    onFocus={() => setOutlineIndex(index)}
-                    onClick={() => {
-                      chooseOutline(index);
-                      if (phone) setNotePanel(null);
-                    }}
-                  >
-                    <span>{heading.label}</span>
-                    <small>{heading.line + lineNumberOffset}</small>
-                  </button>
+                  <Tooltip key={`${heading.from}-${index}`} label={heading.label}>
+                    <button
+                      type='button'
+                      data-outline-index={index}
+                      aria-current={index === outlineIndex ? 'true' : undefined}
+                      style={{ paddingInlineStart: `${12 + (heading.depth - 1) * 14}px` }}
+                      onFocus={() => setOutlineIndex(index)}
+                      onClick={() => {
+                        chooseOutline(index);
+                        if (phone) setNotePanel(null);
+                      }}
+                    >
+                      <span>{heading.label}</span>
+                      <small>{heading.line + lineNumberOffset}</small>
+                    </button>
+                  </Tooltip>
                 ))}
               </nav>
             )
@@ -179,29 +181,41 @@ export function NoteDocumentPanel({ includeTabs, isMarkdown, setNotePanel, isFin
             tabs[(target + tabs.length) % tabs.length].focus();
           }}
         >
-          <Button type='button' role='tab' aria-selected={isFindOpen} tabIndex={isFindOpen || !((isMarkdown && isOutlineOpen) || showFrontmatter || isViewPanelOpen || (history && isHistoryOpen)) ? 0 : -1} aria-label={t('editor.findInNote')} title={t('editor.findInNote')} onClick={() => setNotePanel(isFindOpen ? null : 'find')}>
-            <Search aria-hidden='true' />
-          </Button>
+          <Tooltip label={t('editor.findInNote')} detail={primaryShortcutHint('editor.leaderFind')}>
+            <Button type='button' role='tab' aria-selected={isFindOpen} tabIndex={isFindOpen || !((isMarkdown && isOutlineOpen) || showFrontmatter || isViewPanelOpen || (history && isHistoryOpen)) ? 0 : -1} aria-label={t('editor.findInNote')} onClick={() => setNotePanel(isFindOpen ? null : 'find')}>
+              <Search aria-hidden='true' />
+            </Button>
+          </Tooltip>
           {isMarkdown && (
-            <Button type='button' role='tab' aria-selected={isOutlineOpen} tabIndex={isOutlineOpen ? 0 : -1} aria-label={t('editor.outline')} title={t('editor.outline')} onClick={() => isOutlineOpen ? setNotePanel(null) : openOutline()}>
-              <ListTree aria-hidden='true' />
-            </Button>
+            <Tooltip label={t('editor.outline')} detail={primaryShortcutHint('editor.leaderOutline')}>
+              <Button type='button' role='tab' aria-selected={isOutlineOpen} tabIndex={isOutlineOpen ? 0 : -1} aria-label={t('editor.outline')} onClick={() => isOutlineOpen ? setNotePanel(null) : openOutline()}>
+                <ListTree aria-hidden='true' />
+              </Button>
+            </Tooltip>
           )}
-          <Button type='button' role='tab' aria-selected={showFrontmatter} tabIndex={showFrontmatter ? 0 : -1} aria-label={t('editor.frontmatter')} title={t('editor.frontmatter')} onClick={() => setNotePanel(showFrontmatter ? null : 'frontmatter')}>
-            <Braces aria-hidden='true' />
-          </Button>
-          <Button type='button' role='tab' aria-selected={isViewPanelOpen} tabIndex={isViewPanelOpen ? 0 : -1} aria-label={t('editor.viewSettings')} title={t('editor.viewSettings')} onClick={() => setNotePanel(isViewPanelOpen ? null : 'view')}>
-            <SlidersHorizontal aria-hidden='true' />
-          </Button>
-          {history && (
-            <Button type='button' role='tab' aria-selected={isHistoryOpen} tabIndex={isHistoryOpen ? 0 : -1} aria-label={t('history.open')} title={t('history.open')} onClick={() => setNotePanel(isHistoryOpen ? null : 'history')}>
-              <History aria-hidden='true' />
+          <Tooltip label={t('editor.frontmatter')}>
+            <Button type='button' role='tab' aria-selected={showFrontmatter} tabIndex={showFrontmatter ? 0 : -1} aria-label={t('editor.frontmatter')} onClick={() => setNotePanel(showFrontmatter ? null : 'frontmatter')}>
+              <Braces aria-hidden='true' />
             </Button>
+          </Tooltip>
+          <Tooltip label={t('editor.viewSettings')}>
+            <Button type='button' role='tab' aria-selected={isViewPanelOpen} tabIndex={isViewPanelOpen ? 0 : -1} aria-label={t('editor.viewSettings')} onClick={() => setNotePanel(isViewPanelOpen ? null : 'view')}>
+              <SlidersHorizontal aria-hidden='true' />
+            </Button>
+          </Tooltip>
+          {history && (
+            <Tooltip label={t('history.open')}>
+              <Button type='button' role='tab' aria-selected={isHistoryOpen} tabIndex={isHistoryOpen ? 0 : -1} aria-label={t('history.open')} onClick={() => setNotePanel(isHistoryOpen ? null : 'history')}>
+                <History aria-hidden='true' />
+              </Button>
+            </Tooltip>
           )}
         </div>
-        <button type='button' className='note-panel-collapse ui-icon-button' aria-label={t('editor.collapseDocumentPanel')} title={t('editor.collapseDocumentPanel')} onClick={() => setNotePanel(null)}>
-          <PanelRightClose aria-hidden='true' />
-        </button>
+        <Tooltip label={t('editor.collapseDocumentPanel')}>
+          <button type='button' className='note-panel-collapse ui-icon-button' aria-label={t('editor.collapseDocumentPanel')} onClick={() => setNotePanel(null)}>
+            <PanelRightClose aria-hidden='true' />
+          </button>
+        </Tooltip>
       </div>
       {sections}
     </>

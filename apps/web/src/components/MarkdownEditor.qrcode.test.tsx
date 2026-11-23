@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from './tooltip-test-helpers.js';
 import { createElement, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -25,8 +26,8 @@ const renderSource = (initial: string) => {
 it('turns the selected text into a QR code from the toolbar, naming its key', () => {
   const textarea = renderSource('Scan https://example.com/talk now');
   textarea.setSelectionRange(5, 5 + 'https://example.com/talk'.length);
-  const button = screen.getByRole('button', { name: /^Turn into QR code \(/ });
-  expect(button.getAttribute('aria-label')).toMatch(/L\)$/);
+  const button = screen.getByRole('button', { name: 'Turn into QR code' });
+  expect(tooltipText(button)).toMatch(/^Turn into QR code .+L$/);
   fireEvent.click(button);
   expect(textarea.value).toBe('Scan :qrcode{url="https://example.com/talk"} now');
 });

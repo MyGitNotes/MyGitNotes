@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { User } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
 import { PRIORITY_ICON } from '../lib/task-icons.js';
@@ -11,10 +12,12 @@ export function TaskMetaChips({ task }: { task: TodoTask; }) {
   return (
     <>
       {(task.assignees ?? []).map(name => (
-        <li key={`@${name}`} className='todo-task-date-chip todo-task-assignee-chip' title={t('panel.todoAssignedTo')}>
-          <User aria-hidden='true' />
-          {name}
-        </li>
+        <Tooltip key={`@${name}`} label={t('panel.todoAssignedTo')}>
+          <li className='todo-task-date-chip todo-task-assignee-chip'>
+            <User aria-hidden='true' />
+            {name}
+          </li>
+        </Tooltip>
       ))}
       {task.priority && PriorityIcon && (
         <li key='priority' className='todo-task-date-chip todo-task-priority-chip' data-priority={task.priority}>

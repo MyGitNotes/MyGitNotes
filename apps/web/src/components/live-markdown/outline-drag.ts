@@ -24,7 +24,7 @@ class ItemHandle extends WidgetType {
     button.className = 'ui-icon-button outline-drag-handle';
     button.dataset.outlineHandle = String(this.from);
     button.setAttribute('aria-label', this.label);
-    button.title = this.label;
+    button.dataset.t1Label = this.label;
     button.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>';
     button.addEventListener('pointerdown', this.start);
     const anchor = document.createElement('span');

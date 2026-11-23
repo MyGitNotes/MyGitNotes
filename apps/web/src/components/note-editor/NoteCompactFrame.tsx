@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import type { MutableRefObject, RefObject } from 'react';
 import { ListOrdered } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -32,11 +33,15 @@ export function NoteCompactFrame({ note, session, editorRef, isMarkdown, editorM
       </div>
       <div className='note-compact-bar'>
         {isMarkdown && <EditorModeToggle mode={editorMode} onChange={setEditorMode} className='ui-icon-button' iconSize={14} />}
-        <button type='button' className='ui-icon-button' aria-pressed={showLineNumbers} title={t('editor.lineNumbers')} aria-label={t('editor.lineNumbers')} onClick={toggleLineNumbers}>
-          <ListOrdered size={14} aria-hidden='true' />
-        </button>
+        <Tooltip label={t('editor.lineNumbers')}>
+          <button type='button' className='ui-icon-button' aria-pressed={showLineNumbers} aria-label={t('editor.lineNumbers')} onClick={toggleLineNumbers}>
+            <ListOrdered size={14} aria-hidden='true' />
+          </button>
+        </Tooltip>
         <NoteExportMenu className='ui-icon-button' iconSize={14} path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} />
-        <span className='note-compact-path' title={note.path}>{note.notebookId}{' · '}{note.path.split('/').pop()}</span>
+        <Tooltip label={note.path}>
+          <span className='note-compact-path'>{note.notebookId}{' · '}{note.path.split('/').pop()}</span>
+        </Tooltip>
         <span role='status' className='note-compact-status' data-state={session.editorState}>
           <span className={`note-compact-dot ${session.editorState === 'saving' ? 'animate-pulse' : ''}`} aria-hidden='true' />
           {session.editorStatus}

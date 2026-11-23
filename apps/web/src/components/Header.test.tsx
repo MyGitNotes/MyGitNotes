@@ -29,7 +29,8 @@ describe('Header notebook selector', () => {
     const html = renderToStaticMarkup(createElement(Header, { workspaceTitle: 'Notes', activeTab: 'notes', setActiveTab: () => {}, selectedNotebookId: 'work', notebooks: [], onSelectNotebook: () => {}, onCreateNote: () => {}, onOpenCommands: () => {} }));
     const button = html.match(/<button[^>]*data-header-command[^>]*>/)![0];
     expect(button).toContain('aria-keyshortcuts="Control+P"');
-    expect(button).toContain('title="Quick open (Ctrl+P)"');
+    expect(button).toContain('data-t1-trigger');
+    expect(button).not.toContain('title=');
   });
 
   it("names the notebooks column's toggle and its chord in a tooltip, not a native title", () => {

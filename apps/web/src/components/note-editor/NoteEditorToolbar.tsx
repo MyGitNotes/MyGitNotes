@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Check, ListOrdered, PanelRight, Pencil, Play, Save, ScrollText, Type } from 'lucide-react';
@@ -89,33 +90,43 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
     <div className='note-controls flex items-center gap-2'>
       {zoom && onRefresh && <NoteRefreshAction iconOnly onRefresh={onRefresh} disabled={session.isSaving} />}
       {!autoSave && !readOnly && (
-        <Button variant='primary' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave} className='note-save editor-action'>
-          <Save className='editor-mobile-icon w-5 h-5' />
-          <span>{t(session.isSaving ? 'editor.saving' : 'editor.saveToGitHub')}</span>
-        </Button>
+        <Tooltip label={t('editor.saveToGitHub')}>
+          <Button variant='primary' aria-label={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave} className='note-save editor-action'>
+            <Save className='editor-mobile-icon w-5 h-5' />
+            <span>{t(session.isSaving ? 'editor.saving' : 'editor.saveToGitHub')}</span>
+          </Button>
+        </Tooltip>
       )}
       {!zoom && phoneEditing && <PhoneEditToggle {...phoneEditing} />}
       {onPlaySlides && (
         <div role='group' className='note-controls-group' aria-label={t('slides.playTitle')}>
-          <button type='button' aria-label={t('slides.play')} title={t('slides.playTitle')} onClick={event => onPlaySlides('deck', event.currentTarget)} className='ui-icon-button toolbar-icon-button editor-slides-play-action'>
-            <Play aria-hidden='true' />
-          </button>
-          <button type='button' aria-label={t('slides.notesView')} title={t('slides.notesViewTitle')} onClick={event => onPlaySlides('notes', event.currentTarget)} className='ui-icon-button toolbar-icon-button editor-slides-notes-action'>
-            <ScrollText aria-hidden='true' />
-          </button>
+          <Tooltip label={t('slides.playTitle')}>
+            <button type='button' aria-label={t('slides.play')} onClick={event => onPlaySlides('deck', event.currentTarget)} className='ui-icon-button toolbar-icon-button editor-slides-play-action'>
+              <Play aria-hidden='true' />
+            </button>
+          </Tooltip>
+          <Tooltip label={t('slides.notesViewTitle')}>
+            <button type='button' aria-label={t('slides.notesView')} onClick={event => onPlaySlides('notes', event.currentTarget)} className='ui-icon-button toolbar-icon-button editor-slides-notes-action'>
+              <ScrollText aria-hidden='true' />
+            </button>
+          </Tooltip>
         </div>
       )}
       {/* The mode leads the view, in a group of its own so it reads at a glance. */}
       {isMarkdown && <EditorModeGroup mode={editorMode} modes={editorModes} onChange={setEditorMode} />}
       {/* Two groups in zoom, set apart by a thin separator: the view with the "⋯" menu, and the panels. */}
       <div role='group' className='note-controls-group' aria-label={t('editor.controlsView')}>
-        <button type='button' aria-pressed={showLineNumbers} aria-label={t('editor.lineNumbers')} title={t('editor.lineNumbers')} onClick={toggleLineNumbers} className='ui-icon-button toolbar-icon-button editor-line-numbers-action'>
-          <ListOrdered aria-hidden='true' />
-        </button>
-        {toggleFormatToolbar && (
-          <button type='button' aria-pressed={showFormatToolbar} aria-label={t('editor.formatToolbar')} title={t('editor.formatToolbar')} onClick={toggleFormatToolbar} className='ui-icon-button toolbar-icon-button editor-format-toolbar-action'>
-            <Type aria-hidden='true' />
+        <Tooltip label={t('editor.lineNumbers')}>
+          <button type='button' aria-pressed={showLineNumbers} aria-label={t('editor.lineNumbers')} onClick={toggleLineNumbers} className='ui-icon-button toolbar-icon-button editor-line-numbers-action'>
+            <ListOrdered aria-hidden='true' />
           </button>
+        </Tooltip>
+        {toggleFormatToolbar && (
+          <Tooltip label={t('editor.formatToolbar')}>
+            <button type='button' aria-pressed={showFormatToolbar} aria-label={t('editor.formatToolbar')} onClick={toggleFormatToolbar} className='ui-icon-button toolbar-icon-button editor-format-toolbar-action'>
+              <Type aria-hidden='true' />
+            </button>
+          </Tooltip>
         )}
         {isMarkdown && <TypstPreviewToggle note={note} className='toolbar-icon-button editor-typst-preview-action' />}
         <NoteActionsMenu className='ui-icon-button toolbar-icon-button editor-more-action' path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} locked={session.locked} onAddToOutline={onAddToOutline} onMove={onMove} onSaveAsTemplate={onSaveAsTemplate} liveDraft={liveDraft} />
@@ -123,9 +134,11 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
       {/* A Focus pane leaves the document panel to its rail and the assistant to the window's own toggle, so several panes do not repeat them. */}
       {zoom && (
         <div role='group' className='note-controls-group' aria-label={t('editor.controlsPanels')}>
-          <button type='button' aria-label={t('editor.documentPanel')} title={t('editor.documentPanel')} aria-pressed={Boolean(docPanel.notePanel)} onClick={() => togglePanel(docPanel, isMarkdown)} className='ui-icon-button toolbar-icon-button editor-panel-action'>
-            <PanelRight aria-hidden='true' />
-          </button>
+          <Tooltip label={t('editor.documentPanel')}>
+            <button type='button' aria-label={t('editor.documentPanel')} aria-pressed={Boolean(docPanel.notePanel)} onClick={() => togglePanel(docPanel, isMarkdown)} className='ui-icon-button toolbar-icon-button editor-panel-action'>
+              <PanelRight aria-hidden='true' />
+            </button>
+          </Tooltip>
           <AssistantDockToggle className='toolbar-icon-button editor-assistant-action' />
         </div>
       )}
@@ -150,9 +163,11 @@ export function NoteEditorToolbar({ onClose, onRename, template = false, frontma
     <div className='note-toolbar relative shrink-0 px-4 py-2 border-b border-line flex items-center justify-between gap-4 bg-sidebar/60' data-actions={actionsSlot ? 'bar' : zoom || frame === 'pane' ? 'row' : 'inline'}>
       {zoom && (onClose
         ? (
-          <button type='button' aria-label={t('editor.closeNote')} title={t('editor.closeNote')} onClick={session.close} className='note-close ui-icon-button toolbar-icon-button shrink-0'>
-            <ArrowLeft aria-hidden='true' />
-          </button>
+          <Tooltip label={t('editor.closeNote')}>
+            <button type='button' aria-label={t('editor.closeNote')} onClick={session.close} className='note-close ui-icon-button toolbar-icon-button shrink-0'>
+              <ArrowLeft aria-hidden='true' />
+            </button>
+          </Tooltip>
         )
         : null)}
       <NoteRow path={note.path} session={session} docPanel={docPanel} statuses={statuses} availableTags={availableTags} onRename={onRename} template={template} frontmatterInvalid={frontmatterInvalid} trailing={zoom && phoneEditing ? <PhoneEditToggle {...phoneEditing} /> : undefined} />

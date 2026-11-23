@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useId, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -81,7 +82,9 @@ export function BrowseSplit({ label, filters, path, size, onSizeChange, collapse
       <section aria-label={label} className='browse-split-filters' style={collapsed ? undefined : { flexBasis: `${shown}%` }}>
         <header className='browse-split-header'>
           <h2 className='browse-split-heading'>{label}</h2>
-          <button type='button' className='ui-icon-button browse-split-toggle' aria-label={toggleLabel} title={toggleLabel} aria-expanded={!collapsed} aria-controls={bodyId} onClick={() => onCollapsedChange(!collapsed)}>{collapsed ? <ChevronUp size={15} aria-hidden='true' /> : <ChevronDown size={15} aria-hidden='true' />}</button>
+          <Tooltip label={toggleLabel}>
+            <button type='button' className='ui-icon-button browse-split-toggle' aria-label={toggleLabel} aria-expanded={!collapsed} aria-controls={bodyId} onClick={() => onCollapsedChange(!collapsed)}>{collapsed ? <ChevronUp size={15} aria-hidden='true' /> : <ChevronDown size={15} aria-hidden='true' />}</button>
+          </Tooltip>
         </header>
         <div id={bodyId} className='browse-split-filters-body' hidden={collapsed}>{filters}</div>
       </section>

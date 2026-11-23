@@ -403,7 +403,7 @@ export class AnnotateController {
   private button(className: string, label: string, title: string, run: () => void): HTMLButtonElement {
     const button = element('button', className, { type: 'button', 'aria-label': title || label });
     button.textContent = label;
-    if (title) button.title = title;
+    if (title) button.dataset.t1Label = title;
     // Pressing a button must not move focus out of a comment being written before the click lands.
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('click', event => {

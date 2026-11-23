@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { Info, Plug, ShieldCheck, ShieldOff, X } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '../Button.js';
@@ -54,7 +55,11 @@ export function InfoToggles({ section, onToggle }: { section: InfoSection | null
   const servers = session?.mcpServers ?? [];
   const labels: Record<InfoSection, string> = { trust: t(session?.trusted ? 'piAgent.trusted' : 'piAgent.untrusted'), mcp: t('piAgent.mcp.label', { enabled: servers.filter(server => !off(server)).length, total: servers.length }), extensions: t('piAgent.extensionInfo') };
   const icon = (key: InfoSection) => key === 'trust' ? session?.trusted ? <ShieldCheck aria-hidden='true' /> : <ShieldOff aria-hidden='true' /> : key === 'mcp' ? <Plug aria-hidden='true' /> : <Info aria-hidden='true' />;
-  return sections.map(key => <Button key={key} size='icon' className='pi-agent-info-toggle' data-section={key} data-trusted={key === 'trust' ? session?.trusted : undefined} title={labels[key]} aria-label={labels[key]} aria-pressed={section === key} onClick={() => onToggle(section === key ? null : key)}>{icon(key)}</Button>);
+  return sections.map(key => (
+    <Tooltip key={key} label={labels[key]}>
+      <Button size='icon' className='pi-agent-info-toggle' data-section={key} data-trusted={key === 'trust' ? session?.trusted : undefined} aria-label={labels[key]} aria-pressed={section === key} onClick={() => onToggle(section === key ? null : key)}>{icon(key)}</Button>
+    </Tooltip>
+  ));
 }
 
 /** A status report that clamps to two lines until clicked, since some extensions report long ones. */
@@ -63,7 +68,9 @@ function StatusLine({ name, text }: { name: string; text: string; }) {
   return (
     <li className='pi-agent-info-row'>
       <span className='pi-agent-badge'>{name}</span>
-      <button type='button' className='pi-agent-info-text' aria-expanded={expanded} title={expanded ? undefined : text} onClick={() => setExpanded(current => !current)}>{text}</button>
+      <Tooltip label={expanded ? undefined : text}>
+        <button type='button' className='pi-agent-info-text' aria-expanded={expanded} onClick={() => setExpanded(current => !current)}>{text}</button>
+      </Tooltip>
     </li>
   );
 }
@@ -81,7 +88,11 @@ export function InfoDrawer({ section, onClose }: { section: InfoSection | null; 
   const serverRow = (server: PiMcpServer) => (
     <li key={server.name} className='pi-agent-info-row'>
       <span className='pi-agent-info-name'>{server.name}</span>
-      {(server.status !== 'disabled') && <span className='pi-agent-badge' data-tone={MCP_TONES[server.status] ?? 'muted'} title={server.blockedReason}>{status(server)}</span>}
+      {(server.status !== 'disabled') && (
+        <Tooltip label={server.blockedReason}>
+          <span className='pi-agent-badge' data-tone={MCP_TONES[server.status] ?? 'muted'}>{status(server)}</span>
+        </Tooltip>
+      )}
       {server.toolCount > 0 && <span className='pi-agent-badge'>{t(server.toolCount === 1 ? 'piAgent.mcp.tool' : 'piAgent.mcp.tools', { count: server.toolCount })}</span>}
     </li>
   );
@@ -90,9 +101,11 @@ export function InfoDrawer({ section, onClose }: { section: InfoSection | null; 
     <section className='pi-agent-info-drawer' aria-label={titles[section]}>
       <header>
         <h3>{titles[section]}</h3>
-        <Button size='icon' title={t('piAgent.info.close')} aria-label={t('piAgent.info.close')} onClick={onClose}>
-          <X aria-hidden='true' />
-        </Button>
+        <Tooltip label={t('piAgent.info.close')}>
+          <Button size='icon' aria-label={t('piAgent.info.close')} onClick={onClose}>
+            <X aria-hidden='true' />
+          </Button>
+        </Tooltip>
       </header>
       <div className='pi-agent-info-body'>
         {section === 'trust' && (

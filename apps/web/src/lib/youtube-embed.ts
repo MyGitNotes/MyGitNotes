@@ -84,8 +84,8 @@ export function createYouTubeIframe(videoId: string, start: number, title: strin
 const escapeAttribute = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export function youtubeEmbedMarkup(videoId: string, labels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS) {
-  const button = (mode: YouTubeDisplayMode, label: string) => `<button type="button" data-youtube-mode-option="${mode}" title="${escapeAttribute(label)}" aria-label="${escapeAttribute(label)}">${escapeAttribute(label)}</button>`;
-  return `<div class="note-youtube-mode-control" role="group" aria-label="${escapeAttribute(labels.modes)}">${button('thumbnail', labels.thumbnail)}${button('medium', labels.medium)}${button('theater', labels.theater)}<button type="button" class="note-youtube-copy" data-youtube-copy aria-label="${escapeAttribute(labels.copy)}" title="${escapeAttribute(labels.copy)}" data-copy-label="${escapeAttribute(labels.copy)}" data-copied-label="${escapeAttribute(labels.copied)}" data-copy-failed-label="${escapeAttribute(labels.copyFailed)}">${copyIcon}</button></div><button type="button" class="note-youtube-poster" aria-label="${escapeAttribute(labels.play)}" data-youtube-player-label="${escapeAttribute(labels.player)}"><img src="https://img.youtube.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg" alt="" loading="lazy"><span class="note-youtube-play-btn" aria-hidden="true"><svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg></span></button>`;
+  const button = (mode: YouTubeDisplayMode, label: string) => `<button type="button" data-youtube-mode-option="${mode}" data-t1-label="${escapeAttribute(label)}" aria-label="${escapeAttribute(label)}">${escapeAttribute(label)}</button>`;
+  return `<div class="note-youtube-mode-control" role="group" aria-label="${escapeAttribute(labels.modes)}">${button('thumbnail', labels.thumbnail)}${button('medium', labels.medium)}${button('theater', labels.theater)}<button type="button" class="note-youtube-copy" data-youtube-copy aria-label="${escapeAttribute(labels.copy)}" data-t1-label="${escapeAttribute(labels.copy)}" data-copy-label="${escapeAttribute(labels.copy)}" data-copied-label="${escapeAttribute(labels.copied)}" data-copy-failed-label="${escapeAttribute(labels.copyFailed)}">${copyIcon}</button></div><button type="button" class="note-youtube-poster" aria-label="${escapeAttribute(labels.play)}" data-youtube-player-label="${escapeAttribute(labels.player)}"><img src="https://img.youtube.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg" alt="" loading="lazy"><span class="note-youtube-play-btn" aria-hidden="true"><svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg></span></button>`;
 }
 
 const copyIcon = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
@@ -104,14 +104,14 @@ export async function copyYouTubeUrl(button: HTMLElement) {
   button.dataset.copyState = ok ? 'copied' : 'error';
   button.innerHTML = ok ? copiedIcon : failedIcon;
   button.setAttribute('aria-label', label);
-  button.title = label;
+  button.dataset.t1Label = label;
   window.setTimeout(() => {
     if (!button.isConnected) return;
     button.dataset.copyState = 'idle';
     button.innerHTML = copyIcon;
     const idle = button.dataset.copyLabel || '';
     button.setAttribute('aria-label', idle);
-    button.title = idle;
+    button.dataset.t1Label = idle;
   }, 2000);
   return ok;
 }

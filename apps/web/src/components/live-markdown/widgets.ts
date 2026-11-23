@@ -20,7 +20,7 @@ function externalLinkIcon(href: string, label: string, sourcePath: string): HTML
   anchor.href = href;
   anchor.target = '_blank';
   anchor.rel = 'noopener noreferrer';
-  anchor.title = label;
+  anchor.dataset.t1Label = label;
   anchor.setAttribute('aria-label', `${label}: ${href}`);
   anchor.dataset.workspaceLink = href;
   anchor.dataset.sourcePath = sourcePath;
@@ -229,7 +229,7 @@ export class TokenChip extends WidgetType {
     if (!this.readonly) {
       span.setAttribute('role', 'button');
       span.tabIndex = 0;
-      span.title = 'Click to change or clear this date';
+      span.dataset.t1Label = 'Click to change or clear this date';
       const open = (event: Event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -304,7 +304,7 @@ export class DateAdder extends WidgetType {
     button.type = 'button';
     button.className = 'live-md-due-adder';
     button.innerHTML = `<span aria-hidden="true">+</span>${TASK_TOKEN_ICON_SVG[this.emoji] ?? ''}`;
-    button.title = this.label;
+    button.dataset.t1Label = this.label;
     button.setAttribute('aria-label', this.label);
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('click', event => {
@@ -325,7 +325,7 @@ export class MdxImportWidget extends WidgetType {
   toDOM(view: EditorView) {
     const span = document.createElement('span');
     span.className = 'live-md-mdx-import-chip';
-    span.title = `${this.rawText} (點擊編輯)`;
+    span.dataset.t1Label = `${this.rawText} (點擊編輯)`;
     const match = /import\s+([\w{},\s*]+)\s+from\s+['"]([^'"]+)['"]/.exec(this.rawText);
     const identifier = match ? match[1].trim() : 'component';
     const source = match ? match[2].split('/').pop()?.replace(/\.\w+$/, '') || match[2] : '';

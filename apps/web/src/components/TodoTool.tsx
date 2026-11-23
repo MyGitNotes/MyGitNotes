@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import type { NoteRef } from '@mygitnotes/core/note-query';
 import { Button } from './Button.js';
 import { TodoGanttChart } from './TodoGanttChart.js';
@@ -212,7 +213,9 @@ export function TodoTool({ notebooks, selectedNotebookId, currentFolder, onOpenN
       {groupMode === 'note' && noteGroups.map(([path, { title, tasks: noteTasks }]) => (
         <section key={path} className='todo-group'>
           <h4>
-            <Button type='button' className='todo-group-note-link' title={t('panel.todoOpenNote')} onClick={() => onOpenNote(taskNote(noteTasks[0]))}>{title}</Button>
+            <Tooltip label={t('panel.todoOpenNote')}>
+              <Button type='button' className='todo-group-note-link' onClick={() => onOpenNote(taskNote(noteTasks[0]))}>{title}</Button>
+            </Tooltip>
             <span className='todo-group-count'>{noteTasks.length}</span>
           </h4>
           <ul>{noteTasks.map(task => renderTask(task))}</ul>

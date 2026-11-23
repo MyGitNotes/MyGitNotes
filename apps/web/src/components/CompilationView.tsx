@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DndContext, type DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { useQueryClient } from '@tanstack/react-query';
@@ -197,23 +198,26 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       extra: (
         <>
           {outlines?.canAdd(notebookId) && compilation.writable && compilation.note && (
-            <button
-              type='button'
-              className='ui-icon-button'
-              disabled={disabled}
-              aria-label={t('outline.add')}
-              title={t('outline.add')}
-              onClick={() => outlines.add({ ...compilation.note!, content: compilation.note!.content ?? '' })}
-            >
-              <ListTree aria-hidden='true' />
-            </button>
+            <Tooltip label={t('outline.add')}>
+              <button
+                type='button'
+                className='ui-icon-button'
+                disabled={disabled}
+                aria-label={t('outline.add')}
+                onClick={() => outlines.add({ ...compilation.note!, content: compilation.note!.content ?? '' })}
+              >
+                <ListTree aria-hidden='true' />
+              </button>
+            </Tooltip>
           )}
           {(compilation.writable || addToFocus) && (
             // Secondary actions share one menu so the header stays on one line in a narrow Focus pane.
             <DropdownMenu.Root>
-              <DropdownMenu.Trigger className='ui-icon-button' aria-label={`${t('compilation.more')}: ${current.name}`} title={t('compilation.more')}>
-                <MoreHorizontal size={16} aria-hidden='true' />
-              </DropdownMenu.Trigger>
+              <Tooltip label={t('compilation.more')}>
+                <DropdownMenu.Trigger className='ui-icon-button' aria-label={`${t('compilation.more')}: ${current.name}`}>
+                  <MoreHorizontal size={16} aria-hidden='true' />
+                </DropdownMenu.Trigger>
+              </Tooltip>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} onEscapeKeyDown={event => event.stopPropagation()}>
                   {addToFocus && (
@@ -241,7 +245,10 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
                           <span>{t('compilation.move')}</span>
                         </DropdownMenu.Item>
                       )}
-                      <DropdownMenu.Item disabled={disabled} onSelect={() => setDialog('delete')}>
+                      <DropdownMenu.Item
+                        disabled={disabled}
+                        onSelect={() => setDialog('delete')}
+                      >
                         <Trash2 size={14} aria-hidden='true' />
                         <span>{t('compilation.delete')}</span>
                       </DropdownMenu.Item>
@@ -284,9 +291,11 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       <div className='compilation-view' data-frame={frame} data-arrangement={row?.view}>
         {frame === 'zoom' && onClose && (
           <div className='compilation-frame-bar'>
-            <Button type='button' size='icon' aria-label={t('common.close')} title={t('common.close')} onClick={() => void editing.flushEditors().then(saved => saved && onClose())}>
-              <X size={18} />
-            </Button>
+            <Tooltip label={t('common.close')}>
+              <Button type='button' size='icon' aria-label={t('common.close')} onClick={() => void editing.flushEditors().then(saved => saved && onClose())}>
+                <X size={18} />
+              </Button>
+            </Tooltip>
           </div>
         )}
         <div className='compilation-body'>

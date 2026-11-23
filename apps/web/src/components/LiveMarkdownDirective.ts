@@ -120,7 +120,7 @@ export class LiveMarkdownDirective extends WidgetType {
       // Format Select
       const typeSelect = document.createElement('select');
       typeSelect.className = 'live-directive-type-select';
-      typeSelect.title = this.tt('directive.editor.changeFormat', '更換區塊格式');
+      typeSelect.dataset.t1Label = this.tt('directive.editor.changeFormat', '更換區塊格式');
       typeSelect.setAttribute('aria-label', this.tt('directive.editor.changeFormat', '更換區塊格式'));
       this.typeOptions(typeSelect, model.type);
       typeSelect.addEventListener('mousedown', event => event.stopPropagation());
@@ -136,7 +136,7 @@ export class LiveMarkdownDirective extends WidgetType {
       if (model.type === 'handout') {
         const variantSelect = document.createElement('select');
         variantSelect.className = 'live-directive-variant-select';
-        variantSelect.title = this.tt('directive.editor.changeVariant', '更換文件樣式');
+        variantSelect.dataset.t1Label = this.tt('directive.editor.changeVariant', '更換文件樣式');
         variantSelect.setAttribute('aria-label', this.tt('directive.editor.changeVariant', '更換文件樣式'));
         for (const [vKey, vLabel] of Object.entries(localizedHandoutVariants(this.t))) {
           const option = document.createElement('option');
@@ -158,7 +158,7 @@ export class LiveMarkdownDirective extends WidgetType {
       if (model.type === 'grid') {
         const gridSelect = this.gridColumnSelect(model);
         gridSelect.className = 'live-directive-grid-select';
-        gridSelect.title = this.tt('directive.editor.gridColumns', '欄數');
+        gridSelect.dataset.t1Label = this.tt('directive.editor.gridColumns', '欄數');
         gridSelect.setAttribute('aria-label', this.tt('directive.editor.gridColumns', '欄數'));
         gridSelect.addEventListener('mousedown', event => event.stopPropagation());
         gridSelect.addEventListener('change', () => saveChanges(this.withGridColumns(model, Number(gridSelect.value))));
@@ -170,7 +170,7 @@ export class LiveMarkdownDirective extends WidgetType {
       titleInput.type = 'text';
       titleInput.className = 'live-directive-title-input';
       titleInput.placeholder = model.type === 'coc-stat' ? this.tt('directive.editor.namePlaceholder', '人物名稱...') : this.tt('directive.editor.titlePlaceholder', '自訂標題...');
-      titleInput.title = this.tt('directive.editor.customTitle', '自訂標題');
+      titleInput.dataset.t1Label = this.tt('directive.editor.customTitle', '自訂標題');
       titleInput.value = model.title;
       titleInput.setAttribute('aria-label', this.tt('directive.editor.customTitle', '自訂標題'));
 
@@ -200,7 +200,7 @@ export class LiveMarkdownDirective extends WidgetType {
       editBtn.type = 'button';
       editBtn.className = 'live-directive-edit-btn';
       editBtn.textContent = this.tt('directive.editor.editBody', '編輯內文');
-      editBtn.title = this.tt('directive.editor.openEditForm', '開啟完整編輯表單');
+      editBtn.dataset.t1Label = this.tt('directive.editor.openEditForm', '開啟完整編輯表單');
       editBtn.setAttribute('aria-label', this.tt('directive.editor.openEditForm', '開啟完整編輯表單'));
 
       editBtn.addEventListener('mousedown', event => event.preventDefault());

@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { type Dispatch, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Pencil, Plus, X } from 'lucide-react';
 import { addableExtraChildren, canAddChild, childNameKey } from '../../lib/infographics/grid.js';
@@ -58,32 +59,44 @@ export function ChildTabs({ state, dispatch, t }: Props) {
             )
             : <button key={index} type='button' role='tab' className='ig-tab' aria-selected={index === tab} tabIndex={index === tab ? 0 : -1} onClick={() => dispatch({ type: 'tab', tab: index })} onDoubleClick={() => childSpecOf(block.kind, block.children[index].name)?.attrs.some(attr => attr.key === nameKey) && setRenaming(index)}>{childTabLabel(t, block, index)}</button>
         )}
-        <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.addChild', { name })} title={addable ? t('infographic.editor.addChild', { name }) : t('infographic.editor.childLimit', { count: spec.max ?? 0 })} disabled={!addable} onClick={() => dispatch({ type: 'change', apply: childEdits.add() })}>
-          <Plus aria-hidden='true' />
-        </button>
-        {extras.map(extra => (
-          <button key={extra} type='button' className='ig-tab-tool ig-tab-add-extra' title={t('infographic.editor.addChild', { name: childNameFor(t, extra) })} onClick={() => dispatch({ type: 'change', apply: childEdits.addExtra(extra) })}>
+        <Tooltip label={addable ? t('infographic.editor.addChild', { name }) : t('infographic.editor.childLimit', { count: spec.max ?? 0 })}>
+          <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.addChild', { name })} disabled={!addable} onClick={() => dispatch({ type: 'change', apply: childEdits.add() })}>
             <Plus aria-hidden='true' />
-            {childNameFor(t, extra)}
           </button>
+        </Tooltip>
+        {extras.map(extra => (
+          <Tooltip key={extra} label={t('infographic.editor.addChild', { name: childNameFor(t, extra) })}>
+            <button type='button' className='ig-tab-tool ig-tab-add-extra' onClick={() => dispatch({ type: 'change', apply: childEdits.addExtra(extra) })}>
+              <Plus aria-hidden='true' />
+              {childNameFor(t, extra)}
+            </button>
+          </Tooltip>
         ))}
       </div>
       {block.children.length > 0 && (
         <div className='ig-tab-tools' role='group' aria-label={childTabLabel(t, block, tab)}>
-          <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.moveChildLeft', { name })} title={t('infographic.editor.moveChildLeft', { name })} disabled={tab === 0} onClick={() => dispatch({ type: 'change', apply: childEdits.move(tab, tab - 1) })}>
-            <ChevronLeft aria-hidden='true' />
-          </button>
-          <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.moveChildRight', { name })} title={t('infographic.editor.moveChildRight', { name })} disabled={tab >= block.children.length - 1} onClick={() => dispatch({ type: 'change', apply: childEdits.move(tab, tab + 1) })}>
-            <ChevronRight aria-hidden='true' />
-          </button>
-          {renamable && (
-            <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.renameChild', { name })} title={t('infographic.editor.renameChild', { name })} onClick={() => setRenaming(tab)}>
-              <Pencil aria-hidden='true' />
+          <Tooltip label={t('infographic.editor.moveChildLeft', { name })}>
+            <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.moveChildLeft', { name })} disabled={tab === 0} onClick={() => dispatch({ type: 'change', apply: childEdits.move(tab, tab - 1) })}>
+              <ChevronLeft aria-hidden='true' />
             </button>
+          </Tooltip>
+          <Tooltip label={t('infographic.editor.moveChildRight', { name })}>
+            <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.moveChildRight', { name })} disabled={tab >= block.children.length - 1} onClick={() => dispatch({ type: 'change', apply: childEdits.move(tab, tab + 1) })}>
+              <ChevronRight aria-hidden='true' />
+            </button>
+          </Tooltip>
+          {renamable && (
+            <Tooltip label={t('infographic.editor.renameChild', { name })}>
+              <button type='button' className='ig-tab-tool' aria-label={t('infographic.editor.renameChild', { name })} onClick={() => setRenaming(tab)}>
+                <Pencil aria-hidden='true' />
+              </button>
+            </Tooltip>
           )}
-          <button type='button' className='ig-tab-tool' data-danger aria-label={t('infographic.editor.removeChild', { name })} title={t('infographic.editor.removeChild', { name })} onClick={() => dispatch({ type: 'change', apply: childEdits.remove(tab) })}>
-            <X aria-hidden='true' />
-          </button>
+          <Tooltip label={t('infographic.editor.removeChild', { name })}>
+            <button type='button' className='ig-tab-tool' data-danger aria-label={t('infographic.editor.removeChild', { name })} onClick={() => dispatch({ type: 'change', apply: childEdits.remove(tab) })}>
+              <X aria-hidden='true' />
+            </button>
+          </Tooltip>
         </div>
       )}
     </div>

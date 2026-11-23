@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { NOTE_CONTENT_WIDTHS, NOTE_FONT_SIZES, type NoteContentWidth, useNoteViewPreferences, writeNoteViewPreferences } from '../../lib/editor-preferences.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { getFamily, listFamilies, setThemeChoice, type ThemeMode } from '../../lib/themes.js';
@@ -20,12 +21,24 @@ export function NoteViewPanel() {
         <legend>{t('editor.theme')}</legend>
         <div className='note-view-theme'>
           <Select aria-label={t('settings.theme')} value={auto ? shownFamily : theme.familyId} onValueChange={familyId => setThemeChoice({ ...theme, familyId })} options={listFamilies().map(family => ({ value: family.id, label: familyLabel(family, t) }))} />
-          <Select aria-label={t('theme.mode')} disabled={Boolean(fixedMode)} title={fixedMode ? t('theme.fixedMode') : undefined} value={theme.mode} onValueChange={mode => setThemeChoice({ ...theme, mode: mode as ThemeMode })} options={THEME_MODES.map(mode => ({ value: mode, label: t(`theme.${mode}`) }))} />
+          <Select aria-label={t('theme.mode')} disabled={Boolean(fixedMode)} tooltip={fixedMode ? t('theme.fixedMode') : undefined} value={theme.mode} onValueChange={mode => setThemeChoice({ ...theme, mode: mode as ThemeMode })} options={THEME_MODES.map(mode => ({ value: mode, label: t(`theme.${mode}`) }))} />
         </div>
       </fieldset>
       <fieldset className='note-view-group'>
         <legend>{t('editor.fontSize')}</legend>
-        <div className='note-view-options'>{NOTE_FONT_SIZES.map(size => <button key={size} type='button' aria-pressed={fontSize === size} title={`${size}px`} onClick={() => writeNoteViewPreferences({ fontSize: size })}>{t(`editor.fontSize${size}`)}</button>)}</div>
+        <div className='note-view-options'>
+          {NOTE_FONT_SIZES.map(size => (
+            <Tooltip key={size} label={`${size}px`}>
+              <button
+                type='button'
+                aria-pressed={fontSize === size}
+                onClick={() => writeNoteViewPreferences({ fontSize: size })}
+              >
+                {t(`editor.fontSize${size}`)}
+              </button>
+            </Tooltip>
+          ))}
+        </div>
       </fieldset>
       <fieldset className='note-view-group note-view-width'>
         <legend>{t('editor.pageWidth')}</legend>

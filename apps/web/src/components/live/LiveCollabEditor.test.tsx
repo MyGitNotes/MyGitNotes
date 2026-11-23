@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from '../tooltip-test-helpers.js';
 import { createElement, forwardRef } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -815,7 +816,7 @@ describe('an ending the person chooses while typing is unsaved', () => {
     expect(discardButton()).toBeEnabled();
     typeOffline();
     expect(discardButton()).toBeDisabled();
-    expect(discardButton()).toHaveAttribute('title', 'Discarding the draft needs the connection to the server; it is possible again once the editor is back online.');
+    expect(tooltipText(discardButton())).toEqual('Discarding the draft needs the connection to the server; it is possible again once the editor is back online.');
     // Nothing typed is left behind for the next test's editor of the same note to offer.
     emit(config => config.onDirty?.({ dirty: false }));
   });

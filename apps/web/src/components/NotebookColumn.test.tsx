@@ -185,7 +185,7 @@ it('names a rail notebook and its note count in a tooltip instead of a native ti
   const tip = await hoverTip(work);
   expect(tip).toHaveTextContent('Work1');
   expect(tip.querySelector('.tooltip-detail')).toHaveTextContent('1');
-  expect(work.getAttribute('aria-describedby')).toBe(tip.id);
+  expect(work.getAttribute('aria-describedby')).toBe(tip.querySelector('.tooltip-detail')?.id);
   fireEvent.pointerLeave(work, { pointerType: 'mouse' });
   const search = screen.getByRole('button', { name: /Search notes/ });
   expect(search).not.toHaveAttribute('title');

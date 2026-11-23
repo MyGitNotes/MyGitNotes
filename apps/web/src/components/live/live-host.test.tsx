@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from '../tooltip-test-helpers.js';
 import { createElement, forwardRef } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -123,7 +124,7 @@ describe('lists', () => {
     for (const note of [checkedOut, pending]) {
       expect(within(row(note)).getByRole('combobox')).toBeDisabled();
       expect(within(row(note)).getByRole('button', { name: 'Move note' })).toBeDisabled();
-      expect(within(row(note)).getByRole('button', { name: 'Move note' })).toHaveAttribute('title', 'Being edited live; check it in first');
+      expect(tooltipText(within(row(note)).getByRole('button', { name: 'Move note' }))).toEqual('Being edited live; check it in first');
       expect(within(row(note)).getByRole('button', { name: 'Delete note' })).toBeDisabled();
     }
     expect(within(row(plain)).getByRole('combobox')).toBeEnabled();
@@ -504,10 +505,10 @@ describe('a pending note in the lists, where the adapter can discard and retarge
     const onDeleteNote = vi.fn(), onMoveNote = vi.fn();
     render(inDrafts(createElement(ListView, { ...listProps, onDeleteNote, onMoveNote, notes: [filing, checkedOut] })));
     const row = (item: NoteListItem) => screen.getByText(item.title).closest('tr')!;
-    expect(within(row(filing)).getByText('Not filed').closest('.live-badge')).toHaveAttribute('title', 'Files to: projects/Untitled.md (the name follows the title)');
+    expect(tooltipText(within(row(filing)).getByText('Not filed').closest('.live-badge'))).toEqual('Files to: projects/Untitled.md (the name follows the title)');
     const remove = within(row(filing)).getByRole('button', { name: 'Delete note' });
     expect(remove).toBeEnabled();
-    expect(remove).toHaveAttribute('title', 'Discard draft');
+    expect(tooltipText(remove)).toEqual('Discard draft');
     fireEvent.click(remove);
     expect(onDeleteNote).toHaveBeenCalledWith(filing);
     fireEvent.click(within(row(filing)).getByRole('button', { name: 'Move note' }));

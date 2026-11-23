@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { AlertTriangle, ChevronRight, CircleCheck, CircleX, Info, LoaderCircle, SquareTerminal, Wrench } from 'lucide-react';
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { NoteHtml } from '../NoteHtml.js';
@@ -36,7 +37,9 @@ function ToolCall({ block, transcript }: { block: ToolBlock; transcript: Transcr
       <summary>
         <Wrench aria-hidden='true' />
         <span className='pi-agent-tool-name'>{block.name}</span>
-        <span className='pi-agent-tool-args' title={argsSummary(block.args)}>{argsSummary(block.args)}</span>
+        <Tooltip label={argsSummary(block.args)}>
+          <span className='pi-agent-tool-args'>{argsSummary(block.args)}</span>
+        </Tooltip>
         <Icon aria-label={t(`piAgent.tool.${state}`)} className='pi-agent-tool-state' />
       </summary>
       {block.args !== undefined && <pre className='pi-agent-pre'>{JSON.stringify(block.args, null, 2)}</pre>}
@@ -91,8 +94,14 @@ function ShellRun({ entry }: { entry: ShellEntry; }) {
       <summary>
         <SquareTerminal aria-hidden='true' />
         <span className='pi-agent-tool-name'>{entry.excluded ? '!!' : '!'}</span>
-        <span className='pi-agent-tool-args' title={entry.command}>{entry.command}</span>
-        {entry.excluded && <span className='pi-agent-badge' title={t('piAgent.shell.excludedHint')}>{t('piAgent.shell.excluded')}</span>}
+        <Tooltip label={entry.command}>
+          <span className='pi-agent-tool-args'>{entry.command}</span>
+        </Tooltip>
+        {entry.excluded && (
+          <Tooltip label={t('piAgent.shell.excludedHint')}>
+            <span className='pi-agent-badge'>{t('piAgent.shell.excluded')}</span>
+          </Tooltip>
+        )}
         <Icon aria-label={label} className='pi-agent-tool-state' />
       </summary>
       {entry.output && <pre className='pi-agent-pre'>{clip(entry.output)}</pre>}
@@ -174,7 +183,30 @@ export function AgentTranscript({ transcript, links, children }: { transcript: T
         {transcript.entries.length === 0 && !transcript.streaming && <p className='pi-agent-empty'>{t('piAgent.empty')}</p>}
         {transcript.entries.map(entry => {
           if (entry.kind === 'user') {
-            return <div key={entry.key} className='pi-agent-message' data-role='user'>{(entry.skill || entry.focus || entry.files) && <span className='pi-agent-chips'>{entry.skill && <span className='pi-agent-focus-chip' data-kind='skill' title={t('piAgent.skillChip')}>/skill:{entry.skill}</span>}{entry.focus && <span className='pi-agent-focus-chip' title={entry.focus.file}>{focusLabel(entry.focus)}</span>}{entry.files?.map((file, index) => <span key={index} className='pi-agent-focus-chip' data-kind='file' title={t('piAgent.fileChip', { name: file })}>{file}</span>)}</span>}{entry.text && <p className='pi-agent-text'>{entry.text}</p>}</div>;
+            return (
+              <div key={entry.key} className='pi-agent-message' data-role='user'>
+                {(entry.skill || entry.focus || entry.files) && (
+                  <span className='pi-agent-chips'>
+                    {entry.skill && (
+                      <Tooltip label={t('piAgent.skillChip')}>
+                        <span className='pi-agent-focus-chip' data-kind='skill'>/skill:{entry.skill}</span>
+                      </Tooltip>
+                    )}
+                    {entry.focus && (
+                      <Tooltip label={entry.focus.file}>
+                        <span className='pi-agent-focus-chip'>{focusLabel(entry.focus)}</span>
+                      </Tooltip>
+                    )}
+                    {entry.files?.map((file, index) => (
+                      <Tooltip key={index} label={t('piAgent.fileChip', { name: file })}>
+                        <span className='pi-agent-focus-chip' data-kind='file'>{file}</span>
+                      </Tooltip>
+                    ))}
+                  </span>
+                )}
+                {entry.text && <p className='pi-agent-text'>{entry.text}</p>}
+              </div>
+            );
           }
           if (entry.kind === 'assistant') {
             return (

@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { Minus, Pencil, Plus, Save, X } from 'lucide-react';
 import type { CompilationController } from '../../lib/use-compilation.js';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
@@ -25,7 +26,9 @@ export function GraphLanePanel({ t, activeLane, onClose, laneRows, onSelectLane,
     <section className='graph-lane-panel' aria-label={t('graph.chooseLane')}>
       <header>
         <strong>{activeLane?.name || t('graph.lanes')}</strong>
-        <button aria-label={t(activeLane ? 'graph.minimizeLane' : 'common.close')} title={t(activeLane ? 'graph.minimizeLane' : 'common.close')} onClick={onClose}>{activeLane ? <Minus size={16} /> : <X size={16} />}</button>
+        <Tooltip label={t(activeLane ? 'graph.minimizeLane' : 'common.close')}>
+          <button aria-label={t(activeLane ? 'graph.minimizeLane' : 'common.close')} onClick={onClose}>{activeLane ? <Minus size={16} /> : <X size={16} />}</button>
+        </Tooltip>
       </header>
       <select aria-label={t('graph.chooseLane')} value={activeLane?.id || ''} onChange={event => onSelectLane(event.target.value)}>
         <option value=''>{t('graph.allLanes')}</option>
@@ -38,14 +41,18 @@ export function GraphLanePanel({ t, activeLane, onClose, laneRows, onSelectLane,
             {t('graph.showOutsideLane')}
           </label>
           {showOutside && <p>{t('graph.outsideLaneHint')}</p>}
-          <button className='ui-button' disabled={!screen?.writable} title={t('screen.editRow')} onClick={onEditLane}>
-            <Pencil size={14} />
-            {t('screen.editRow')}
-          </button>
-          <button className='ui-button graph-save-lane' disabled={!screen?.writable || screen.saving || Boolean(screen.error)} title={t('graph.saveLayoutHint')} onClick={onSaveCurrentLane}>
-            <Save size={14} />
-            {t(screen?.saving ? 'editor.saving' : 'graph.saveCurrentLane')}
-          </button>
+          <Tooltip label={t('screen.editRow')}>
+            <button className='ui-button' disabled={!screen?.writable} onClick={onEditLane}>
+              <Pencil size={14} />
+              {t('screen.editRow')}
+            </button>
+          </Tooltip>
+          <Tooltip label={t('graph.saveLayoutHint')}>
+            <button className='ui-button graph-save-lane' disabled={!screen?.writable || screen.saving || Boolean(screen.error)} onClick={onSaveCurrentLane}>
+              <Save size={14} />
+              {t(screen?.saving ? 'editor.saving' : 'graph.saveCurrentLane')}
+            </button>
+          </Tooltip>
           <p className='graph-save-hint'>{t('graph.saveLayoutHint')}</p>
           {activeLane.kind === 'custom'
             ? (

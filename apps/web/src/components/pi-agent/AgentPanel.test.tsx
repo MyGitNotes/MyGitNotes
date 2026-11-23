@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from '../tooltip-test-helpers.js';
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -61,7 +62,7 @@ it('sends a message with the note path from the folder Pi runs in and the live c
   expect(screen.getByText('Knowledge Base')).toBeTruthy();
   await waitFor(() => expect(value.locate).toHaveBeenCalledWith('notes/plan.md', 'nb'));
   act(() => target.caret!.set(8));
-  await waitFor(() => expect(screen.getByText('plan.md:5:5').closest('button')!.getAttribute('title')).toBe('/home/me/workspace/notes/plan.md'));
+  expect(tooltipText((await screen.findByText('plan.md:5:5')).closest('button'))).toBe('/home/me/workspace/notes/plan.md');
   write('Explain this');
   fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message to Pi' }), { key: 'Enter' });
   expect(value.send).toHaveBeenCalledWith('Explain this', { file: 'notes/plan.md', line: 5, column: 5 });
@@ -250,7 +251,7 @@ it("lists Pi's MCP servers in the drawer, enabled ones and disabled ones apart, 
   const rows = [...screen.getByRole('region', { name: 'MCP servers' }).querySelectorAll('h4, li')].map(row => row.textContent);
   expect(rows).toEqual(['Enabled (2)', 'linearconnected12 tools', 'figmanot started yet1 tool', 'Disabled (2)', 'trello', 'localblocked']);
   expect(screen.getByText('connected').getAttribute('data-tone')).toBe('ok');
-  expect(screen.getByText('blocked').getAttribute('title')).toBe('untrusted');
+  expect(tooltipText(screen.getByText('blocked'))).toBe('untrusted');
   cleanup();
   // Without pi-mcp-adapter's report there is no toggle.
   panel(agent({ session }));
@@ -321,7 +322,7 @@ const sessionControls = () => ['New conversation', 'End session'].filter(name =>
 it('shows a start under way as loading, not as a button, until the session answers', () => {
   panel(agent({ session: null, connected: false, historyLoaded: false, starting: true }));
   expect(screen.getByRole('status').textContent).toBe('Starting Pi…');
-  expect(screen.getByRole('img', { name: 'Starting' }).getAttribute('title')).toBe('Starting');
+  expect(tooltipText(screen.getByRole('img', { name: 'Starting' }))).toBe('Starting');
   expect(screen.queryByRole('button', { name: 'Start session' })).toBeNull();
   expect(screen.queryByRole('textbox', { name: 'Message to Pi' })).toBeNull();
   expect(sessionControls()).toEqual([]);
@@ -500,7 +501,7 @@ it('puts the model and thinking selects beside Send in the message box, and the 
   expect(bar.contains(screen.getByRole('combobox', { name: 'Thinking level' }))).toBe(true);
   // The button names the model alone; its tooltip keeps the provider.
   expect(model.textContent).toBe('Claude Opus');
-  expect(model.getAttribute('title')).toBe('Model: Claude Opus (anthropic)');
+  expect(tooltipText(model)).toBe('Model: Claude Opus (anthropic)');
   expect(bar.contains(screen.getByRole('button', { name: 'Trusted' }))).toBe(false);
   expect(screen.getByRole('button', { name: 'Trusted' }).closest('.pi-agent-composer-card')).toBe(bar.closest('.pi-agent-composer-card'));
   expect(screen.getByRole('textbox', { name: 'Message to Pi' }).closest('.pi-agent-composer-card')).toBe(bar.closest('.pi-agent-composer-card'));
@@ -629,7 +630,7 @@ it('attaches a text file by name with a remove button, and sends its text as a f
 it('shows the files a sent message carried as chips beside its text', () => {
   panel(agent({ transcript: { ...emptyTranscript, entries: [{ kind: 'user', key: 0, text: 'Compare', files: ['plan.md', 'report.pdf'] }], nextKey: 1 } }));
   const message = document.querySelector('.pi-agent-message[data-role="user"]')!;
-  expect([...message.querySelectorAll('.pi-agent-focus-chip[data-kind="file"]')].map(chip => [chip.textContent, chip.getAttribute('title')])).toEqual([['plan.md', 'plan.md went with the message as text'], ['report.pdf', 'report.pdf went with the message as text']]);
+  expect([...message.querySelectorAll('.pi-agent-focus-chip[data-kind="file"]')].map(chip => [chip.textContent, tooltipText(chip)])).toEqual([['plan.md', 'plan.md went with the message as text'], ['report.pdf', 'report.pdf went with the message as text']]);
   expect(message.querySelector('.pi-agent-text')!.textContent).toBe('Compare');
 });
 

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from './tooltip-test-helpers.js';
 import { createElement } from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -48,7 +49,7 @@ it('collapses the tags that do not fit into a +N chip whose tooltip lists them',
   expect(shown(container)).toEqual(['alpha', 'beta']);
   const more = container.querySelector<HTMLElement>('[data-tag-more]:not([data-overflow])')!;
   expect(more).toHaveTextContent('+1');
-  expect(more).toHaveAttribute('title', 'gamma');
+  expect(tooltipText(more)).toEqual('gamma');
   expect(more).toHaveAttribute('aria-label', '1 more tags: gamma');
   // The collapsed chip stays rendered, but out of sight and out of reach.
   const hidden = container.querySelector('[data-tag-chip][data-overflow]')!;
@@ -68,7 +69,7 @@ it('shows every tag with no +N chip when the row is wide enough, and re-fits whe
   expect(shown(container)).toEqual(['alpha']);
   const more = container.querySelector<HTMLElement>('[data-tag-more]:not([data-overflow])')!;
   expect(more).toHaveTextContent('+3');
-  expect(more).toHaveAttribute('title', 'beta, gamma, delta');
+  expect(tooltipText(more)).toEqual('beta, gamma, delta');
 });
 
 it('keeps the single-line row free of an icon on each chip', () => {

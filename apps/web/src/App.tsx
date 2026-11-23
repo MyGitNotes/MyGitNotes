@@ -1,3 +1,4 @@
+import { Tooltip } from './components/Tooltip.js';
 import { useNoteSort } from './app/useNoteSort.js';
 import { LegacyOutlineDialog } from './components/LegacyOutlineDialog.js';
 import { useLegacyBookmarkRecovery } from './lib/use-legacy-bookmark-recovery.js';
@@ -661,7 +662,9 @@ export const AppContent: React.FC = () => {
         filters={renderSidebar(false, 'folders')}
         path={
           <>
-            <span className='browse-split-path-text' title={path}>{path}</span>
+            <Tooltip label={path}>
+              <span className='browse-split-path-text'>{path}</span>
+            </Tooltip>
             {count === null ? <LoadingStatus as='span' className='browse-split-count'>{t('notes.countsLoading')}</LoadingStatus> : <span className='browse-split-count'>{t(count === 1 ? 'folder.noteCount' : 'folder.notesCount', { count })}</span>}
           </>
         }
@@ -741,9 +744,11 @@ export const AppContent: React.FC = () => {
   // At the note's top left while the list is folded away: the list back. The notebooks column has its own toggle, left of the logo.
   const restoreLabel = t('browse.expandList');
   const restoreColumns = (
-    <button type='button' className='ui-icon-button browse-column-toggle' data-column-toggle='' aria-label={restoreLabel} title={restoreLabel} aria-expanded='false' aria-controls={LIST_COLUMN_ID} onClick={columns.toggleList}>
-      <PanelLeft size={16} aria-hidden='true' />
-    </button>
+    <Tooltip label={restoreLabel}>
+      <button type='button' className='ui-icon-button browse-column-toggle' data-column-toggle='' aria-label={restoreLabel} aria-expanded='false' aria-controls={LIST_COLUMN_ID} onClick={columns.toggleList}>
+        <PanelLeft size={16} aria-hidden='true' />
+      </button>
+    </Tooltip>
   );
 
   const content = (

@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ExternalLink, Maximize, Minus, Plus, X } from 'lucide-react';
@@ -148,12 +149,16 @@ function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => v
           <strong>{image.alt || t('lightbox.title')}</strong>
           {ready && <span>{size.width}{' × '}{size.height}</span>}
         </div>
-        <a href={image.src} target='_blank' rel={newTabRel(image.src)} aria-label={t('lightbox.original')} title={t('lightbox.original')}>
-          <ExternalLink size={18} />
-        </a>
-        <button type='button' autoFocus onClick={onClose} aria-label={t('lightbox.close')} title={t('lightbox.close')}>
-          <X size={22} />
-        </button>
+        <Tooltip label={t('lightbox.original')}>
+          <a href={image.src} target='_blank' rel={newTabRel(image.src)} aria-label={t('lightbox.original')}>
+            <ExternalLink size={18} />
+          </a>
+        </Tooltip>
+        <Tooltip label={t('lightbox.close')}>
+          <button type='button' autoFocus onClick={onClose} aria-label={t('lightbox.close')}>
+            <X size={22} />
+          </button>
+        </Tooltip>
       </header>
       <div
         ref={stage}
@@ -204,29 +209,36 @@ function ImagePreview({ image, onClose }: { image: ImageSource; onClose: () => v
       </div>
       <footer className='image-lightbox-footer'>
         <div className='image-lightbox-controls' role='group' aria-label={t('lightbox.title')}>
-          <button type='button' disabled={!ready || scale <= .05} onClick={() => changeZoom(1 / 1.25)} aria-label={t('lightbox.zoomOut')} title={t('lightbox.zoomOut')}>
-            <Minus size={18} />
-          </button>
-          <button
-            type='button'
-            className='image-lightbox-scale'
-            disabled={!ready}
-            onClick={() => {
-              setZoom(1);
-              setPosition({ x: 0, y: 0 });
-            }}
-            title={t('lightbox.actual')}
-            aria-label={t('lightbox.actual')}
-          >
-            {ready ? `${Math.round(scale * 100)}%` : '—'}
-          </button>
-          <button type='button' disabled={!ready || scale >= Math.max(8, fit * 4)} onClick={() => changeZoom(1.25)} aria-label={t('lightbox.zoomIn')} title={t('lightbox.zoomIn')}>
-            <Plus size={18} />
-          </button>
+          <Tooltip label={t('lightbox.zoomOut')}>
+            <button type='button' disabled={!ready || scale <= .05} onClick={() => changeZoom(1 / 1.25)} aria-label={t('lightbox.zoomOut')}>
+              <Minus size={18} />
+            </button>
+          </Tooltip>
+          <Tooltip label={t('lightbox.actual')}>
+            <button
+              type='button'
+              className='image-lightbox-scale'
+              disabled={!ready}
+              onClick={() => {
+                setZoom(1);
+                setPosition({ x: 0, y: 0 });
+              }}
+              aria-label={t('lightbox.actual')}
+            >
+              {ready ? `${Math.round(scale * 100)}%` : '—'}
+            </button>
+          </Tooltip>
+          <Tooltip label={t('lightbox.zoomIn')}>
+            <button type='button' disabled={!ready || scale >= Math.max(8, fit * 4)} onClick={() => changeZoom(1.25)} aria-label={t('lightbox.zoomIn')}>
+              <Plus size={18} />
+            </button>
+          </Tooltip>
           <span className='image-lightbox-divider' />
-          <button type='button' disabled={!ready} onClick={reset} aria-label={t('lightbox.fit')} title={t('lightbox.fit')} aria-pressed={zoom === null}>
-            <Maximize size={18} />
-          </button>
+          <Tooltip label={t('lightbox.fit')}>
+            <button type='button' disabled={!ready} onClick={reset} aria-label={t('lightbox.fit')} aria-pressed={zoom === null}>
+              <Maximize size={18} />
+            </button>
+          </Tooltip>
         </div>
         {annotation && <div ref={toolbarSlot} className='image-lightbox-annotate-toolbar' />}
         <p className='image-lightbox-help'>{t(annotation ? editable ? 'lightbox.helpAnnotate' : 'lightbox.helpAnnotated' : 'lightbox.help')}</p>

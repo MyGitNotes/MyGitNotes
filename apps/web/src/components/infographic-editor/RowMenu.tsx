@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { EllipsisVertical } from 'lucide-react';
@@ -71,9 +72,11 @@ export function RowMenu({ label, items, onDone }: Props) {
 
   return (
     <>
-      <button ref={button} type='button' className='ig-row-menu-button' aria-label={label} title={label} aria-haspopup='menu' aria-expanded={open} onClick={() => open ? close() : setOpen(true)}>
-        <EllipsisVertical aria-hidden='true' />
-      </button>
+      <Tooltip label={label}>
+        <button ref={button} type='button' className='ig-row-menu-button' aria-label={label} aria-haspopup='menu' aria-expanded={open} onClick={() => open ? close() : setOpen(true)}>
+          <EllipsisVertical aria-hidden='true' />
+        </button>
+      </Tooltip>
       {open && createPortal(
         <div ref={menu} role='menu' aria-label={label} className='ig-row-menu' style={place ? { top: place.top, left: place.left } : { top: 0, left: 0, visibility: 'hidden' }} onKeyDown={onKeyDown}>
           {items.map(item => (

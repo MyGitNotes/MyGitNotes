@@ -68,7 +68,7 @@ export class LiveMarkdownArgumentMap extends WidgetType {
     markdown.type = 'button';
     markdown.className = 'live-infographic-markdown-btn';
     markdown.textContent = t('argumentMap.editor.markdown');
-    markdown.title = t('argumentMap.editor.markdownHint');
+    markdown.dataset.t1Label = t('argumentMap.editor.markdownHint');
     markdown.setAttribute('aria-label', t('argumentMap.editor.markdownHint'));
     markdown.addEventListener('mousedown', event => event.preventDefault());
     markdown.addEventListener('click', event => {

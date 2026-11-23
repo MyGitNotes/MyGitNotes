@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { AlertTriangle, Check, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, PencilLine } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -39,9 +40,11 @@ export function NoteActionsMenu({ path, notebookId, title, content, copyState, o
   const Icon = copyState === 'copied' ? Check : copyState === 'error' ? AlertTriangle : MoreHorizontal;
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger className={className} aria-label={label} title={label}>
-        <Icon aria-hidden='true' />
-      </DropdownMenu.Trigger>
+      <Tooltip label={label}>
+        <DropdownMenu.Trigger className={className} aria-label={label}>
+          <Icon aria-hidden='true' />
+        </DropdownMenu.Trigger>
+      </Tooltip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('editor.moreActions')} onEscapeKeyDown={event => event.stopPropagation()}>
           {onAddToOutline && (

@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import YAML from 'yaml';
 import { Code } from 'lucide-react';
@@ -152,18 +153,19 @@ export function MetadataFieldList({ fields, metadata, setMetadata }: { fields: M
             <div className='flex items-center justify-between mb-1'>
               <label className='text-muted font-semibold'>{field.label}</label>
               {!field.isConfigured && (
-                <button
-                  type='button'
-                  onClick={() => {
-                    const next = { ...metadata };
-                    delete next[field.key];
-                    setMetadata(next);
-                  }}
-                  className='text-[10px] text-muted hover:text-danger'
-                  title='Remove field'
-                >
-                  ×
-                </button>
+                <Tooltip label='Remove field'>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      const next = { ...metadata };
+                      delete next[field.key];
+                      setMetadata(next);
+                    }}
+                    className='text-[10px] text-muted hover:text-danger'
+                  >
+                    ×
+                  </button>
+                </Tooltip>
               )}
             </div>
             <input

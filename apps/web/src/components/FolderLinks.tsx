@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { ChevronRight, Folder } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { SubfolderInfo } from '../lib/folder-tree.js';
@@ -10,20 +11,20 @@ export function FolderLinks({ folders, onSelect, children }: { folders: Subfolde
     <div className='folder-links' aria-label={t('folder.folders')}>
       {children}
       {folders.map(folder => (
-        <button
-          key={folder.path}
-          type='button'
-          title={folder.path}
-          onClick={() => onSelect?.(folder.path)}
-          className='folder-link'
-        >
-          <Folder aria-hidden='true' />
-          <span>
-            <span className='folder-link-title'>{folder.title}</span>
-            <span className='folder-link-count'>{t(folder.noteCount === 1 ? 'folder.noteCount' : 'folder.notesCount', { count: folder.noteCount })}</span>
-          </span>
-          <ChevronRight aria-hidden='true' className='folder-link-arrow' />
-        </button>
+        <Tooltip key={folder.path} label={folder.path}>
+          <button
+            type='button'
+            onClick={() => onSelect?.(folder.path)}
+            className='folder-link'
+          >
+            <Folder aria-hidden='true' />
+            <span>
+              <span className='folder-link-title'>{folder.title}</span>
+              <span className='folder-link-count'>{t(folder.noteCount === 1 ? 'folder.noteCount' : 'folder.notesCount', { count: folder.noteCount })}</span>
+            </span>
+            <ChevronRight aria-hidden='true' className='folder-link-arrow' />
+          </button>
+        </Tooltip>
       ))}
     </div>
   );

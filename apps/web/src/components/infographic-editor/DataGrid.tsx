@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { type ClipboardEvent, type CSSProperties, type Dispatch, type KeyboardEvent as ReactKeyboardEvent, memo, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GripVertical, Plus, Star } from 'lucide-react';
 import { type CellIssue, isRouteRow } from '../../lib/infographics/model.js';
@@ -285,9 +286,11 @@ export const DataGrid = memo(function DataGrid({ state, dispatch, t, issues, inp
           <div className='ig-grid-row ig-grid-head' role='row'>
             <div role='presentation' className='ig-grip-cell' />
             <div role='presentation' className='ig-num-cell' />
-            <div role='columnheader' className='ig-star-cell' title={t('infographic.editor.highlightColumn')}>
-              <Star aria-label={t('infographic.editor.highlightColumn')} />
-            </div>
+            <Tooltip label={t('infographic.editor.highlightColumn')}>
+              <div role='columnheader' className='ig-star-cell'>
+                <Star aria-label={t('infographic.editor.highlightColumn')} />
+              </div>
+            </Tooltip>
             {columns.map((column, index) => <div key={`${column.key}${index}`} role='columnheader' className='ig-head-cell'>{columnLabel(t, block.kind, index)}</div>)}
             <div role='presentation' className='ig-menu-cell' />
           </div>
@@ -297,24 +300,32 @@ export const DataGrid = memo(function DataGrid({ state, dispatch, t, issues, inp
             return (
               <div key={rowIndex} className='ig-grid-row' role='row' aria-rowindex={rowIndex + 2} data-grid-row data-row-index={rowIndex} data-dragging={rowDrag?.from === rowIndex || undefined} data-drop-target={rowDrag && rowDrag.over === rowIndex && rowDrag.from !== rowIndex ? rowDrag.over > rowDrag.from ? 'after' : 'before' : undefined}>
                 <div role='gridcell' className='ig-grip-cell'>
-                  <button type='button' className='ig-grip' aria-label={t('infographic.editor.dragRow', { row: rowIndex + 1 })} title={t('infographic.editor.dragRow', { row: rowIndex + 1 })} onPointerDown={event => startRowDrag(event, rowIndex)} onPointerMove={moveRowDrag} onPointerUp={event => endRowDrag(event, true)} onPointerCancel={event => endRowDrag(event, false)}>
-                    <GripVertical aria-hidden='true' />
-                  </button>
+                  <Tooltip label={t('infographic.editor.dragRow', { row: rowIndex + 1 })}>
+                    <button type='button' className='ig-grip' aria-label={t('infographic.editor.dragRow', { row: rowIndex + 1 })} onPointerDown={event => startRowDrag(event, rowIndex)} onPointerMove={moveRowDrag} onPointerUp={event => endRowDrag(event, true)} onPointerCancel={event => endRowDrag(event, false)}>
+                      <GripVertical aria-hidden='true' />
+                    </button>
+                  </Tooltip>
                 </div>
                 <div role='gridcell' className='ig-num-cell'>
                   <button type='button' className='ig-row-number' aria-label={t('infographic.editor.selectRow', { row: rowIndex + 1 })} onClick={() => send({ type: 'select', sel: rowSelection(rowIndex, dims) })}>{rowIndex + 1}</button>
                 </div>
                 <div role='gridcell' className='ig-star-cell'>
-                  <button type='button' className='ig-star' aria-label={t('infographic.editor.highlightRow', { row: rowIndex + 1 })} title={t('infographic.editor.highlightRow', { row: rowIndex + 1 })} aria-pressed={highlighted} onClick={() => change(rowEdits.highlight(rowIndex))}>
-                    <Star aria-hidden='true' />
-                  </button>
+                  <Tooltip label={t('infographic.editor.highlightRow', { row: rowIndex + 1 })}>
+                    <button type='button' className='ig-star' aria-label={t('infographic.editor.highlightRow', { row: rowIndex + 1 })} aria-pressed={highlighted} onClick={() => change(rowEdits.highlight(rowIndex))}>
+                      <Star aria-hidden='true' />
+                    </button>
+                  </Tooltip>
                 </div>
                 {columns.map((_column, col) => {
                   const issue = issueAt.get(`${rowIndex}:${col}`);
                   const disabled = route && col === 1;
                   const selected = inRange(range, { row: rowIndex, col });
                   const isActive = active.row === rowIndex && active.col === col;
-                  return <div key={col} role='gridcell' className='ig-cell' data-cell data-row={rowIndex} data-col={col} data-selected={selected || undefined} data-active={isActive || undefined} data-invalid={issue ? 'true' : undefined} data-disabled={disabled || undefined} aria-selected={selected} aria-invalid={issue ? true : undefined} title={issue ? issueText(t, block, { ...issue, child: undefined }) : disabled ? t('infographic.editor.routeNoPosition') : undefined}>{disabled ? '—' : matrix[rowIndex]?.[col]}</div>;
+                  return (
+                    <Tooltip key={col} label={issue ? issueText(t, block, { ...issue, child: undefined }) : disabled ? t('infographic.editor.routeNoPosition') : undefined}>
+                      <div role='gridcell' className='ig-cell' data-cell data-row={rowIndex} data-col={col} data-selected={selected || undefined} data-active={isActive || undefined} data-invalid={issue ? 'true' : undefined} data-disabled={disabled || undefined} aria-selected={selected} aria-invalid={issue ? true : undefined}>{disabled ? '—' : matrix[rowIndex]?.[col]}</div>
+                    </Tooltip>
+                  );
                 })}
                 <div role='gridcell' className='ig-menu-cell'>
                   <RowMenu label={t('infographic.editor.rowMenu', { row: rowIndex + 1 })} onDone={focusInput} items={[{ id: 'above', label: t('infographic.editor.insertAbove'), run: () => change(rowEdits.insert(rowIndex)) }, { id: 'below', label: t('infographic.editor.insertBelow'), run: () => change(rowEdits.insert(rowIndex + 1)) }, { id: 'duplicate', label: t('infographic.editor.duplicateRow'), run: () => change(rowEdits.duplicate(rowIndex)) }, { id: 'up', label: t('infographic.editor.moveUp'), disabled: rowIndex === 0, run: () => change(rowEdits.move(rowIndex, rowIndex - 1)) }, { id: 'down', label: t('infographic.editor.moveDown'), disabled: rowIndex === rows.length - 1, run: () => change(rowEdits.move(rowIndex, rowIndex + 1)) }, { id: 'delete', label: t('infographic.editor.deleteRow'), danger: true, run: () => change(rowEdits.remove(rowIndex)) }]} />

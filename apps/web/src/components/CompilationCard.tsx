@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useMemo, useState } from 'react';
 import { ExternalLink, FileText, Folder, Image as ImageIcon, Play, Youtube } from 'lucide-react';
 import { type CompilationItem, type CompilationRow, isFileItem } from '@mygitnotes/core/compilation';
@@ -83,7 +84,9 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
         <header className='screen-card-header'>
           {controls}
           {icon}
-          <button type='button' className='screen-card-title' title={slot?.title ?? title} onClick={() => content.onOpen(item, note)}>{slot?.title ?? title}</button>
+          <Tooltip label={slot?.title ?? title}>
+            <button type='button' className='screen-card-title' onClick={() => content.onOpen(item, note)}>{slot?.title ?? title}</button>
+          </Tooltip>
           {slot?.controls}
           {item.kind !== 'note' && (
             <button type='button' className='screen-open ui-icon-button' aria-label={`${t('links.open')}: ${title}`} onClick={() => content.onOpen(item, note)}>
@@ -140,9 +143,11 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
             )
             : <p className='screen-missing'>{t('screen.missing')}</p>}
         </div>
-        <footer className='screen-card-footer' title={item.kind === 'youtube' ? item.videoId : isFileItem(item) ? item.path : undefined}>
-          <span>{notebook?.title || (item.kind === 'youtube' ? 'YouTube' : t('screen.missing'))}</span>
-        </footer>
+        <Tooltip label={item.kind === 'youtube' ? item.videoId : isFileItem(item) ? item.path : undefined}>
+          <footer className='screen-card-footer'>
+            <span>{notebook?.title || (item.kind === 'youtube' ? 'YouTube' : t('screen.missing'))}</span>
+          </footer>
+        </Tooltip>
       </article>
     );
   };

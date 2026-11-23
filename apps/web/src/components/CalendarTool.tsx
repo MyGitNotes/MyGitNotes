@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { Button } from './Button.js';
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Diamond, FileText, ListTodo } from 'lucide-react';
@@ -133,10 +134,12 @@ export function CalendarTool({ notebooks, selectedNotebookId, currentFolder, onO
         >
           <ChevronRight aria-hidden='true' />
         </Button>
-        <span className='calendar-month-count' title={t('panel.calendarNotes')} aria-label={`${t('panel.calendarNotes')}: ${monthNoteCount}`}>
-          <FileText aria-hidden='true' />
-          {monthNoteCount}
-        </span>
+        <Tooltip label={t('panel.calendarNotes')}>
+          <span className='calendar-month-count' aria-label={`${t('panel.calendarNotes')}: ${monthNoteCount}`}>
+            <FileText aria-hidden='true' />
+            {monthNoteCount}
+          </span>
+        </Tooltip>
       </div>
       <div className='calendar-grid'>
         {weekdayLabels.map(label => <div key={label} className='calendar-weekday'>{label}</div>)}

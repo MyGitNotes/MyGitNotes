@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { useRef, useState } from 'react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { noteStem, renamedPath } from '../../lib/note-move.js';
@@ -21,22 +22,29 @@ export function NoteTitleEdit({ title, path, locked, onRename }: NoteTitleEditPr
   const cancelled = useRef(false);
   const shown = pending ?? title;
   const label = shown || t('editor.untitled');
-  if (!onRename) return <div className='note-title font-semibold text-fg text-sm truncate' title={path}>{label}</div>;
+  if (!onRename) {
+    return (
+      <Tooltip label={path}>
+        <div className='note-title font-semibold text-fg text-sm truncate'>{label}</div>
+      </Tooltip>
+    );
+  }
   if (draft === null) {
     return (
-      <button
-        type='button'
-        className='note-title title-rename font-semibold text-fg text-sm'
-        disabled={locked || pending !== null}
-        title={`${t('files.rename')} · ${path}`}
-        aria-label={t('editor.editTitle', { title: label })}
-        onClick={() => {
-          cancelled.current = false;
-          setDraft(shown);
-        }}
-      >
-        {label}
-      </button>
+      <Tooltip label={`${t('files.rename')} · ${path}`}>
+        <button
+          type='button'
+          className='note-title title-rename font-semibold text-fg text-sm'
+          disabled={locked || pending !== null}
+          aria-label={t('editor.editTitle', { title: label })}
+          onClick={() => {
+            cancelled.current = false;
+            setDraft(shown);
+          }}
+        >
+          {label}
+        </button>
+      </Tooltip>
     );
   }
   const next = draft.trim();

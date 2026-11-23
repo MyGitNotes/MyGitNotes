@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../lib/i18n/index.js';
 import { stripTaskTokens } from '../lib/task-tokens.js';
@@ -76,7 +77,9 @@ export function TodoGanttChart({ tasks, allTasks, milestones, today, onOpenTask,
           <div className='todo-gantt-label-cell' />
           <div className='todo-gantt-track' style={{ width: trackWidth }}>
             {ticks.map(tick => <span key={tick.offset} className='todo-gantt-tick' style={{ left: tick.offset * dayWidth }}>{tickLabel(tick.date, scale, language)}</span>)}
-            <span className='todo-gantt-today-line' style={{ left: range.todayOffset * dayWidth }} title={t('panel.todoGanttToday')} aria-hidden='true' />
+            <Tooltip label={t('panel.todoGanttToday')}>
+              <span className='todo-gantt-today-line' style={{ left: range.todayOffset * dayWidth }} aria-hidden='true' />
+            </Tooltip>
           </div>
         </div>
         {rows.map(entry => {
@@ -84,10 +87,14 @@ export function TodoGanttChart({ tasks, allTasks, milestones, today, onOpenTask,
             const label = `${t('panel.todoGanttMilestone')}: ${entry.note.title} · ${entry.date}`;
             return (
               <div className='todo-gantt-row todo-gantt-milestone-row' key={`milestone:${entry.note.notebookId}:${entry.note.path}`}>
-                <button type='button' className='todo-gantt-label-cell todo-gantt-label-button' title={label} onClick={() => onOpenMilestone(entry.note)}>{entry.note.title}</button>
+                <Tooltip label={label}>
+                  <button type='button' className='todo-gantt-label-cell todo-gantt-label-button' onClick={() => onOpenMilestone(entry.note)}>{entry.note.title}</button>
+                </Tooltip>
                 <div className='todo-gantt-track' style={{ width: trackWidth }}>
                   <span className='todo-gantt-today-line' style={{ left: range.todayOffset * dayWidth }} aria-hidden='true' />
-                  <button type='button' className='todo-gantt-milestone' style={{ left: (entry.offset + 0.5) * dayWidth }} title={label} aria-label={label} onClick={() => onOpenMilestone(entry.note)} />
+                  <Tooltip label={label}>
+                    <button type='button' className='todo-gantt-milestone' style={{ left: (entry.offset + 0.5) * dayWidth }} aria-label={label} onClick={() => onOpenMilestone(entry.note)} />
+                  </Tooltip>
                   <span className='todo-gantt-milestone-title' style={{ left: (entry.offset + 0.5) * dayWidth }} aria-hidden='true'>{entry.note.title}</span>
                 </div>
               </div>
@@ -99,10 +106,14 @@ export function TodoGanttChart({ tasks, allTasks, milestones, today, onOpenTask,
           const priorityLabel = priority ? t(PRIORITY_LABEL_KEY[priority]) : undefined;
           return (
             <div className='todo-gantt-row' key={row.task.id}>
-              <button type='button' className='todo-gantt-label-cell todo-gantt-label-button' title={`${stripTaskTokens(row.task.lineText)} · ${row.task.noteTitle}`} onClick={() => onOpenTask(row.task)}>{PriorityIcon && <PriorityIcon aria-label={priorityLabel} className='todo-gantt-priority-icon' data-priority={priority} />}{stripTaskTokens(row.task.lineText)}</button>
+              <Tooltip label={`${stripTaskTokens(row.task.lineText)} · ${row.task.noteTitle}`}>
+                <button type='button' className='todo-gantt-label-cell todo-gantt-label-button' onClick={() => onOpenTask(row.task)}>{PriorityIcon && <PriorityIcon aria-label={priorityLabel} className='todo-gantt-priority-icon' data-priority={priority} />}{stripTaskTokens(row.task.lineText)}</button>
+              </Tooltip>
               <div className='todo-gantt-track' style={{ width: trackWidth }}>
                 <span className='todo-gantt-today-line' style={{ left: range.todayOffset * dayWidth }} aria-hidden='true' />
-                <span className={`todo-gantt-bar todo-gantt-bar-${row.kind}`} style={{ left: row.offset * dayWidth, width: row.span * dayWidth }} data-priority={priority} title={barTitle(row, priorityLabel)} />
+                <Tooltip label={barTitle(row, priorityLabel)}>
+                  <span className={`todo-gantt-bar todo-gantt-bar-${row.kind}`} style={{ left: row.offset * dayWidth, width: row.span * dayWidth }} data-priority={priority} />
+                </Tooltip>
                 {(row.task.assignees ?? []).length > 0 && <span className='todo-gantt-owners' style={{ left: (row.offset + row.span) * dayWidth }}>{row.task.assignees.map(name => `@${name}`).join(' ')}</span>}
               </div>
             </div>

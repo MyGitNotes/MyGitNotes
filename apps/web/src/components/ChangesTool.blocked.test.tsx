@@ -34,7 +34,7 @@ describe('A remote change the repository refuses, in the Changes rail', () => {
   });
   it('shows the draft it would throw away instead of only the reason it is refused', async () => {
     mount(vi.fn());
-    fireEvent.click(screen.getByTitle('notes/gone.md'));
+    fireEvent.click(screen.getByRole('button', { name: /^gone\.md/ }));
     await screen.findByText('+draft line');
   });
 });

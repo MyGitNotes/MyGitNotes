@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from '../tooltip-test-helpers.js';
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest';
@@ -156,7 +157,7 @@ it('puts Refresh first in the zoom controls as a ghost icon button with a toolti
   const { container } = render(toolbar(undefined, { onRefresh }));
   const refresh = screen.getByRole('button', { name: 'Refresh' });
   expect(refresh).toHaveClass('ui-icon-button');
-  expect(refresh).toHaveAttribute('title', expect.stringContaining('latest version'));
+  expect(tooltipText(refresh)).toEqual(expect.stringContaining('latest version'));
   expect(refresh.textContent).toBe('');
   expect(container.querySelector('.note-controls')!.firstElementChild).toBe(refresh);
   expect(container.querySelector('.note-row')).not.toContainElement(refresh);
@@ -213,9 +214,9 @@ it('switches the mode from a group of icon buttons, one per mode offered, the on
   expect(buttons.map(button => button.getAttribute('data-mode'))).toEqual(['live', 'raw', 'split']);
   expect(buttons.map(button => button.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
   for (const button of buttons) expect(button.textContent).toBe('');
-  expect(buttons[0]).toHaveAttribute('title', expect.stringMatching(/^Live Preview \(.+ M\)$/));
-  expect(buttons[1]).toHaveAttribute('title', expect.stringMatching(/^Source \(.+ M\)$/));
-  expect(buttons[2]).toHaveAttribute('title', 'Split view');
+  expect(tooltipText(buttons[0])).toEqual(expect.stringMatching(/^Live Preview .+ M$/));
+  expect(tooltipText(buttons[1])).toEqual(expect.stringMatching(/^Source .+ M$/));
+  expect(tooltipText(buttons[2])).toEqual('Split view');
   fireEvent.click(buttons[2]);
   expect(setEditorMode).toHaveBeenCalledWith('split');
   fireEvent.click(buttons[1]);
@@ -226,7 +227,7 @@ it('switches the mode from a group of icon buttons, one per mode offered, the on
   expect(setEditorMode).toHaveBeenLastCalledWith('live');
   // A Focus pane answers the leader too.
   rerender(toolbar(undefined, { isMarkdown: true, setEditorMode, frame: 'pane', editorModes: ['live', 'raw', 'split'] }));
-  expect(screen.getByRole('button', { name: /^Source/ })).toHaveAttribute('title', expect.stringMatching(/^Source \(.+ M\)$/));
+  expect(tooltipText(screen.getByRole('button', { name: /^Source/ }))).toEqual(expect.stringMatching(/^Source .+ M$/));
 });
 
 it('offers the assistant toggle in zoom only, leaving a Focus pane to the header toggle', () => {

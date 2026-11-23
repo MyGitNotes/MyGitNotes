@@ -75,6 +75,19 @@ it("opens 外觀… from the notebook's context menu and commits the colour to i
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 });
 
+it('closes after saving even if refreshing the workspace fails', async () => {
+  const { refresh, row } = setup();
+  refresh.mockRejectedValueOnce(new Error('offline'));
+  row.focus();
+  fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Appearance…' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Notebook appearance' });
+  fireEvent.click(within(within(dialog).getByRole('radiogroup')).getByRole('radio', { name: 'Purple' }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Done' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(refresh).toHaveBeenCalledWith(true);
+});
+
 it('keeps the browser menu where the manifest cannot be written', () => {
   for (const repo of [repository({ write: false }), repository({ manifest: 'derived' }), repository({ branch: 'core' })]) {
     const { row } = setup(repo);

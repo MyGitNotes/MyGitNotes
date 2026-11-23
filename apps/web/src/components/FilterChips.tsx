@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { Plus, X } from 'lucide-react';
 import type { FilterControls } from '../lib/filter-controls.js';
 import { filterChips } from '../lib/filter-chips.js';
@@ -27,16 +28,20 @@ export function FilterChips({ filters, onAdd }: { filters: FilterControls; onAdd
         chip.remove
           ? (
             <span key={chip.id} className='filter-chip' data-filter-chip={chip.id}>
-              <span className='filter-chip-label' title={chip.label}>{chip.label}</span>
+              <Tooltip label={chip.label}>
+                <span className='filter-chip-label'>{chip.label}</span>
+              </Tooltip>
               <button type='button' className='filter-chip-remove' aria-label={t('filters.remove', { value: chip.label })} onClick={chip.remove}>
                 <X aria-hidden='true' />
               </button>
             </span>
           )
           : (
-            <button key={chip.id} type='button' className='filter-chip filter-chip-context' data-filter-chip={chip.id} title={chip.label} onClick={onAdd}>
-              <span className='filter-chip-label'>{chip.label}</span>
-            </button>
+            <Tooltip key={chip.id} label={chip.label}>
+              <button type='button' className='filter-chip filter-chip-context' data-filter-chip={chip.id} onClick={onAdd}>
+                <span className='filter-chip-label'>{chip.label}</span>
+              </button>
+            </Tooltip>
           )
       )}
       {add}

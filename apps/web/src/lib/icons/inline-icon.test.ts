@@ -66,7 +66,7 @@ describe('inline icons in rendered notes', () => {
     const html = render('x :icon{name="NoSuchIcon9"} y');
     const holder = new JSDOM(html).window.document.querySelector('.lucide-icon')!;
     expect(holder.classList.contains('lucide-icon-missing')).toBe(true);
-    expect(holder.getAttribute('title')).toBe('NoSuchIcon9');
+    expect(holder.getAttribute('data-t1-label')).toBe('NoSuchIcon9');
     expect(holder.querySelector('svg')!.children.length).toBeGreaterThan(0);
     expect(holder.classList.contains('lucide-icon-pending')).toBe(false);
   });

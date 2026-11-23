@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useEffect } from 'react';
 import { ExternalLink, Image as ImageIcon } from 'lucide-react';
 import type { CompilationItem } from '@mygitnotes/core/compilation';
@@ -45,7 +46,9 @@ export function BookFolder({ item, anchor, title, level = 2, assets, writable, o
     <>
       <div className='compilation-book-heading-row'>
         <Heading className='compilation-book-heading' data-book-anchor={anchor} tabIndex={-1}>
-          <button type='button' className='compilation-book-title' title={title} onClick={() => onOpen(item)}>{title}</button>
+          <Tooltip label={title}>
+            <button type='button' className='compilation-book-title' onClick={() => onOpen(item)}>{title}</button>
+          </Tooltip>
         </Heading>
         <button type='button' className='screen-open ui-icon-button' aria-label={`${t('links.open')}: ${title}`} onClick={() => onOpen(item)}>
           <ExternalLink size={13} />

@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { List } from 'lucide-react';
 import { type CompilationRow, contentItems } from '@mygitnotes/core/compilation';
@@ -238,10 +239,12 @@ export function CompilationBook({ row, notebooks, assets, folders = [], onOpen, 
     <section ref={setBook} id={`screen-lane-${row.id}`} className='screen-lane compilation-book-view' data-reading={readingMode} aria-label={row.name}>
       <CompilationHeader row={row} count={contentItems(items).length} notebooks={notebooks} facets={facets} extra={extra} {...header} />
       <div className='compilation-book-bar'>
-        <Button ref={opener} type='button' className='compilation-book-contents-button' aria-label={t('book.showContents')} title={t('book.showContents')} aria-haspopup='dialog' aria-expanded={drawer} onClick={() => setDrawer(true)}>
-          <List size={14} aria-hidden='true' />
-          <span>{t('book.contents')}</span>
-        </Button>
+        <Tooltip label={t('book.showContents')}>
+          <Button ref={opener} type='button' className='compilation-book-contents-button' aria-label={t('book.showContents')} aria-haspopup='dialog' aria-expanded={drawer} onClick={() => setDrawer(true)}>
+            <List size={14} aria-hidden='true' />
+            <span>{t('book.contents')}</span>
+          </Button>
+        </Tooltip>
         <BookReadingToggle mode={readingMode} onChange={writeBookReadingMode} />
       </div>
       <div className='compilation-book-layout'>

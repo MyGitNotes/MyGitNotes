@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, GitCompare, Pencil, RefreshCw, RotateCcw, Tag, Trash2 } from 'lucide-react';
 import { type HistoryEntry, nextVersionNumbers, type NoteVersion, placeVersions, versionFilePath } from '@mygitnotes/core/note-versions';
@@ -226,9 +227,11 @@ export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, curre
             {t('history.commitVersion')}
           </Button>
         )}
-        <Button size='icon' aria-label={t('history.refresh')} title={t('history.refresh')} disabled={loading} onClick={() => void load(1)}>
-          <RefreshCw aria-hidden='true' />
-        </Button>
+        <Tooltip label={t('history.refresh')}>
+          <Button size='icon' aria-label={t('history.refresh')} disabled={loading} onClick={() => void load(1)}>
+            <RefreshCw aria-hidden='true' />
+          </Button>
+        </Tooltip>
       </div>
       {dirty && <p className='note-history-hint'>{t('history.dirtyHint')}</p>}
       {error && <p role='alert' className='note-history-hint note-history-error'>{error}</p>}
@@ -267,14 +270,11 @@ export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, curre
               row(
                 `s:${stashed.id}`,
                 <span className='history-subject'>{dates.format(new Date(stashed.saved))}</span>,
-                <Button
-                  size='icon'
-                  aria-label={t('history.discardStash')}
-                  title={t('history.discardStash')}
-                  onClick={() => setDiscarding(stashed)}
-                >
-                  <Trash2 aria-hidden='true' />
-                </Button>,
+                <Tooltip label={t('history.discardStash')}>
+                  <Button size='icon' aria-label={t('history.discardStash')} onClick={() => setDiscarding(stashed)}>
+                    <Trash2 aria-hidden='true' />
+                  </Button>
+                </Tooltip>,
               )
             )}
           </ul>
@@ -291,7 +291,9 @@ export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, curre
                 <>
                   <span className='history-version'>
                     <b>{first}</b>
-                    <small title={second}>{second}</small>
+                    <Tooltip label={second}>
+                      <small>{second}</small>
+                    </Tooltip>
                     {version.name && <span>{version.name}</span>}
                   </span>
                   {version.note && <small className='history-note'>{version.note}</small>}
@@ -299,22 +301,24 @@ export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, curre
                 </>,
                 canWrite && (
                   <>
-                    <Button
-                      size='icon'
-                      aria-label={t('history.editVersion', { version: first })}
-                      title={t('history.editVersion', { version: first })}
-                      onClick={() => setDialog({ mode: 'edit', version })}
-                    >
-                      <Pencil aria-hidden='true' />
-                    </Button>
-                    <Button
-                      size='icon'
-                      aria-label={t('history.deleteVersion', { version: first })}
-                      title={t('history.deleteVersion', { version: first })}
-                      onClick={() => setDeleting(version)}
-                    >
-                      <Trash2 aria-hidden='true' />
-                    </Button>
+                    <Tooltip label={t('history.editVersion', { version: first })}>
+                      <Button
+                        size='icon'
+                        aria-label={t('history.editVersion', { version: first })}
+                        onClick={() => setDialog({ mode: 'edit', version })}
+                      >
+                        <Pencil aria-hidden='true' />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip label={t('history.deleteVersion', { version: first })}>
+                      <Button
+                        size='icon'
+                        aria-label={t('history.deleteVersion', { version: first })}
+                        onClick={() => setDeleting(version)}
+                      >
+                        <Trash2 aria-hidden='true' />
+                      </Button>
+                    </Tooltip>
                   </>
                 ),
               );
@@ -333,42 +337,56 @@ export function NoteHistoryPanel({ target, dirty = false, onCommitVersion, curre
           return row(
             `c:${entry.commit}`,
             <>
-              <span className='history-subject' title={entry.subject}>{plainSubject(entry.subject)}</span>
+              <Tooltip label={entry.subject}>
+                <span className='history-subject'>{plainSubject(entry.subject)}</span>
+              </Tooltip>
               <small className='history-meta'>
                 {index === 0 && <span className='history-badge'>{t('history.latest')}</span>}
-                {entry.local && <span className='history-badge' title={t('demo.commitLocalHint')}>{t('demo.localBadge')}</span>}
+                {entry.local && (
+                  <Tooltip label={t('demo.commitLocalHint')}>
+                    <span className='history-badge'>{t('demo.localBadge')}</span>
+                  </Tooltip>
+                )}
                 {entry.agent && (
-                  <span className='history-badge' title={t('history.agentTitle')}>
-                    <Bot aria-hidden='true' />
-                    {t('history.agent')}
-                  </span>
+                  <Tooltip label={t('history.agentTitle')}>
+                    <span className='history-badge'>
+                      <Bot aria-hidden='true' />
+                      {t('history.agent')}
+                    </span>
+                  </Tooltip>
                 )}
                 {marks.map(version => <span key={version.sequence} className='history-badge history-badge-version'>{label(version).text}</span>)}
-                {overwroteLabel && !overwroteKey && <span className='history-badge' title={overwrote}>{overwroteLabel}</span>}
+                {overwroteLabel && !overwroteKey && (
+                  <Tooltip label={overwrote}>
+                    <span className='history-badge'>{overwroteLabel}</span>
+                  </Tooltip>
+                )}
                 <span>{dates.format(new Date(entry.date))}</span>
                 {entry.author && <span>{entry.author}</span>}
               </small>
             </>,
             <>
               {overwroteKey && overwroteLabel && (
-                <Button
-                  size='small'
-                  className='history-badge'
-                  title={overwrote}
-                  onClick={() => setOpened(overwroteKey)}
-                >
-                  {overwroteLabel}
-                </Button>
+                <Tooltip label={overwrote}>
+                  <Button
+                    size='small'
+                    className='history-badge'
+                    onClick={() => setOpened(overwroteKey)}
+                  >
+                    {overwroteLabel}
+                  </Button>
+                </Tooltip>
               )}
               {canWrite && !marks.length && (
-                <Button
-                  size='icon'
-                  aria-label={t('history.markVersion')}
-                  title={t('history.markVersion')}
-                  onClick={() => setDialog({ mode: 'mark', entry })}
-                >
-                  <Tag aria-hidden='true' />
-                </Button>
+                <Tooltip label={t('history.markVersion')}>
+                  <Button
+                    size='icon'
+                    aria-label={t('history.markVersion')}
+                    onClick={() => setDialog({ mode: 'mark', entry })}
+                  >
+                    <Tag aria-hidden='true' />
+                  </Button>
+                </Tooltip>
               )}
             </>,
           );
@@ -487,10 +505,12 @@ function HistoryReader({ history, start, onRestore, onClose }: { history: NoteHi
           {entry && <span className='history-subject'>{plainSubject(entry.subject)}</span>}
           <small className='history-meta'>
             {entry?.agent && (
-              <span className='history-badge' title={t('history.agentTitle')}>
-                <Bot aria-hidden='true' />
-                {t('history.agent')}
-              </span>
+              <Tooltip label={t('history.agentTitle')}>
+                <span className='history-badge'>
+                  <Bot aria-hidden='true' />
+                  {t('history.agent')}
+                </span>
+              </Tooltip>
             )}
             {point.date && <span>{dates.format(new Date(point.date))}</span>}
             {entry?.author && <span>{entry.author}</span>}

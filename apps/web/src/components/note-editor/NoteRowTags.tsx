@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -102,33 +103,35 @@ export function NoteRowTags({ metadata, setMetadata, availableTags, locked }: No
           <li key={tag} className='note-tag' data-clipped={!expanded && index >= fit ? true : undefined}>
             <span>{tag}</span>
             {!locked && (
-              <button
-                type='button'
-                className='note-tag-remove'
-                aria-label={t('editor.removeTag', { tag })}
-                title={t('editor.removeTag', { tag })}
-                onClick={() => setMetadata(withoutTag(metadata, tag))}
-              >
-                <X aria-hidden='true' />
-              </button>
+              <Tooltip label={t('editor.removeTag', { tag })}>
+                <button
+                  type='button'
+                  className='note-tag-remove'
+                  aria-label={t('editor.removeTag', { tag })}
+                  onClick={() => setMetadata(withoutTag(metadata, tag))}
+                >
+                  <X aria-hidden='true' />
+                </button>
+              </Tooltip>
             )}
           </li>
         ))}
       </ul>
       {tags.length > 0 && (hidden > 0 || expanded) && <button type='button' className='note-tag-more' aria-expanded={expanded} aria-label={t('editor.moreTags', { count: tags.length - fit })} onClick={() => setExpanded(open => !open)}>{expanded ? <X aria-hidden='true' /> : `+${hidden}`}</button>}
       {!locked && folded && (
-        <button
-          type='button'
-          className='note-tag-add-button'
-          aria-label={t('editor.addTagShort')}
-          title={t('editor.addTagShort')}
-          onClick={() => {
-            setExpanded(false);
-            setAdding(true);
-          }}
-        >
-          <Plus aria-hidden='true' />
-        </button>
+        <Tooltip label={t('editor.addTagShort')}>
+          <button
+            type='button'
+            className='note-tag-add-button'
+            aria-label={t('editor.addTagShort')}
+            onClick={() => {
+              setExpanded(false);
+              setAdding(true);
+            }}
+          >
+            <Plus aria-hidden='true' />
+          </button>
+        </Tooltip>
       )}
       {!locked && !folded && (
         <div className='note-tag-add' data-popover={compact || undefined}>

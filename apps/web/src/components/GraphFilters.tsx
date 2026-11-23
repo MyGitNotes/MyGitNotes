@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useId, useRef, useState } from 'react';
 import { Filter, Search, X } from 'lucide-react';
 import type { FilterControls } from '../lib/filter-controls.js';
@@ -53,10 +54,12 @@ export function GraphFilters({ value, neighbors, notebooks, folders, tags, statu
           <Search size={15} aria-hidden='true' />
           <input type='search' aria-label={t('header.searchPlaceholder')} placeholder={t('header.searchPlaceholder')} value={value.q} onChange={event => onChange({ q: event.target.value })} />
         </label>
-        <button type='button' className='ui-button filter-trigger' ref={trigger} aria-label={t('filters.title')} title={t('filters.title')} aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
-          <Filter size={14} aria-hidden='true' />
-          <span className='filter-count'>{chips.length + extraCount}</span>
-        </button>
+        <Tooltip label={t('filters.title')}>
+          <button type='button' className='ui-button filter-trigger' ref={trigger} aria-label={t('filters.title')} aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
+            <Filter size={14} aria-hidden='true' />
+            <span className='filter-count'>{chips.length + extraCount}</span>
+          </button>
+        </Tooltip>
         {onToggleOrphans && <button type='button' className='ui-button' aria-pressed={showOrphans} onClick={onToggleOrphans}>{t('graph.showOrphans')}</button>}
       </div>
       {open && (

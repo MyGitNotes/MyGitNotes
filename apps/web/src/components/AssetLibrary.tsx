@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { Button } from './Button.js';
 import React, { useEffect, useId, useState } from 'react';
 import { Check, File, Folder, Image as ImageIcon, Upload, X } from 'lucide-react';
@@ -187,7 +188,9 @@ export function AssetLibrary({ assets, initialAssetPath, initialDirectory, onUpl
                   >
                     <div className='h-28 bg-fg/5 flex items-center justify-center'>{imageFile(asset.name) ? <img src={asset.rawUrl} alt={asset.name} className='w-full h-full object-cover' /> : <File className='w-9 h-9 theme-muted' />}</div>
                     <div className='p-2.5'>
-                      <div className='text-xs font-medium truncate' title={asset.name}>{asset.name}</div>
+                      <Tooltip label={asset.name}>
+                        <div className='text-xs font-medium truncate'>{asset.name}</div>
+                      </Tooltip>
                       <div className='text-[10px] theme-muted mt-1'>{(asset.size / 1024).toFixed(1)}{' KB'}</div>
                     </div>
                     {selectedPath === asset.path && <Check className='absolute right-2 top-2 w-5 h-5 bg-surface text-success rounded-full' />}

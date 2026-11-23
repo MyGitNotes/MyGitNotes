@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from './tooltip-test-helpers.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createElement, createRef, useState } from 'react';
@@ -65,13 +66,13 @@ it('keeps one ✕: with a search it clears and keeps the cursor, pressed again i
   fireEvent.change(input, { target: { value: 'plan' } });
   expect(within(search).getAllByRole('button')).toHaveLength(1);
   const clear = within(search).getByRole('button', { name: 'Clear search' });
-  expect(clear).toHaveAttribute('title', 'Clear search');
+  expect(tooltipText(clear)).toEqual('Clear search');
   fireEvent.click(clear);
   expect(input).toHaveValue('');
   expect(input).toHaveFocus();
   expect(search).toHaveAttribute('data-open');
   const close = within(search).getByRole('button', { name: 'Close' });
-  expect(close).toHaveAttribute('title', 'Close');
+  expect(tooltipText(close)).toEqual('Close');
   fireEvent.click(close);
   expect(search).not.toHaveAttribute('data-open');
   expect(toggle).toHaveFocus();

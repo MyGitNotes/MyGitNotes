@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { FileType } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { usePhone } from '../../lib/use-phone.js';
@@ -19,8 +20,10 @@ function OfferedToggle({ note, className = '' }: { note: PreviewNote; className?
   if (!project || phone) return null;
   const label = t('typstPreview.title');
   return (
-    <button type='button' className={`ui-icon-button typst-preview-toggle ${className}`} aria-label={label} title={label} aria-expanded={open} aria-controls={open ? 'typst-preview-dock' : undefined} data-open={open || undefined} onClick={previewDock.toggle}>
-      <FileType aria-hidden='true' />
-    </button>
+    <Tooltip label={label}>
+      <button type='button' className={`ui-icon-button typst-preview-toggle ${className}`} aria-label={label} aria-expanded={open} aria-controls={open ? 'typst-preview-dock' : undefined} data-open={open || undefined} onClick={previewDock.toggle}>
+        <FileType aria-hidden='true' />
+      </button>
+    </Tooltip>
   );
 }

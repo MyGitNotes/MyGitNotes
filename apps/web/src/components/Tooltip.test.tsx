@@ -35,9 +35,22 @@ it('shows a one-line bubble with the label and the muted detail after the hover 
   const tip = screen.getByRole('tooltip');
   expect(tip).toHaveTextContent('Search⌘K');
   expect(tip.querySelector('.tooltip-detail')).toHaveTextContent('⌘K');
-  expect(button.getAttribute('aria-describedby')!.split(' ')).toEqual(['own-hint', tip.id]);
+  expect(button.getAttribute('aria-describedby')!.split(' ')).toEqual(['own-hint', tip.querySelector('.tooltip-detail')!.id]);
   expect(button).not.toHaveAttribute('title');
   expect(button).toHaveAccessibleName('Search notes');
+});
+
+it('does not repeat the accessible name in a description', () => {
+  render(
+    <Tooltip label='Close'>
+      <button>Close</button>
+    </Tooltip>,
+  );
+  const button = screen.getByRole('button', { name: 'Close' });
+  hover(button);
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Close');
+  expect(button).not.toHaveAttribute('aria-describedby');
 });
 
 it('hides when the pointer leaves or presses, and keeps the trigger working', () => {

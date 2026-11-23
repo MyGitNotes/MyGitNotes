@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { Maximize2 } from 'lucide-react';
 import { GraphControls } from './GraphControls.js';
 import { GraphFilters } from '../GraphFilters.js';
@@ -107,18 +108,19 @@ export function GraphPanels({ model }: { model: ReturnType<typeof useGraphContro
         />
       )}
       {!lane && !lanePanel && activeLane && (
-        <button
-          type='button'
-          className='graph-lane-label'
-          aria-expanded={false}
-          title={t('graph.chooseLane')}
-          onClick={() => {
-            setLanePanel(true);
-            setPickerOpen(false);
-          }}
-        >
-          {activeLane.name}
-        </button>
+        <Tooltip label={t('graph.chooseLane')}>
+          <button
+            type='button'
+            className='graph-lane-label'
+            aria-expanded={false}
+            onClick={() => {
+              setLanePanel(true);
+              setPickerOpen(false);
+            }}
+          >
+            {activeLane.name}
+          </button>
+        </Tooltip>
       )}
       {editLane && activeLane && screen && (
         <CompilationEditRow

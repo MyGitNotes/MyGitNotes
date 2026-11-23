@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import React, { useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChevronDown, Columns2, ListTree, PanelsTopLeft, Rows2, X } from 'lucide-react';
@@ -44,14 +45,18 @@ export const FocusControls: React.FC<{
           icon, so the shown Focus is named in its label and tooltip too. */
       }
       <SelectButtonGroup className='focus-switcher' active>
-        <SelectButtonPrimary aria-label={label} title={named ? `${label} · ${t('focus.close')}` : label} onClick={() => onShow(CURRENT_FOCUS)}>
-          <PanelsTopLeft aria-hidden='true' />
-          <span className='focus-switcher-label'>{label}</span>
-        </SelectButtonPrimary>
+        <Tooltip label={named ? `${label} · ${t('focus.close')}` : label}>
+          <SelectButtonPrimary aria-label={label} onClick={() => onShow(CURRENT_FOCUS)}>
+            <PanelsTopLeft aria-hidden='true' />
+            <span className='focus-switcher-label'>{label}</span>
+          </SelectButtonPrimary>
+        </Tooltip>
         <DropdownMenu.Root>
-          <SelectButtonTrigger aria-label={t('focus.switch')} title={t('focus.switch')}>
-            <ChevronDown aria-hidden='true' />
-          </SelectButtonTrigger>
+          <Tooltip label={t('focus.switch')}>
+            <SelectButtonTrigger aria-label={t('focus.switch')}>
+              <ChevronDown aria-hidden='true' />
+            </SelectButtonTrigger>
+          </Tooltip>
           <DropdownMenu.Portal>
             <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('focus.switch')} onEscapeKeyDown={event => event.stopPropagation()}>
               <DropdownMenu.RadioGroup value={focus.shown ?? ''} onValueChange={onShow}>
@@ -85,15 +90,23 @@ export const FocusControls: React.FC<{
         </DropdownMenu.Root>
       </SelectButtonGroup>
       {focus.mutationError && (
-        <p role='alert' className='focus-mutation-error' title={focusErrorMessage(t, focus.mutationError)}>
-          <span>{focusErrorMessage(t, focus.mutationError)}</span>
-          <button type='button' className='ui-icon-button' aria-label={t('focus.dismissError')} title={t('focus.dismissError')} onClick={focus.dismissMutationError}>
-            <X aria-hidden='true' />
-          </button>
-        </p>
+        <Tooltip label={focusErrorMessage(t, focus.mutationError)}>
+          <p role='alert' className='focus-mutation-error'>
+            <span>{focusErrorMessage(t, focus.mutationError)}</span>
+            <Tooltip label={t('focus.dismissError')}>
+              <button type='button' className='ui-icon-button' aria-label={t('focus.dismissError')} onClick={focus.dismissMutationError}>
+                <X aria-hidden='true' />
+              </button>
+            </Tooltip>
+          </p>
+        </Tooltip>
       )}
       {focus.layout && focus.entry && <LayoutMenu focus={focus} splittable={splittable} />}
-      {focus.layout && browseToggle && <button type='button' className='ui-icon-button' aria-pressed={browseToggle.showing} onClick={browseToggle.onToggle} aria-label={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')} title={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')}>{browseToggle.showing ? <PanelsTopLeft aria-hidden='true' /> : <ListTree aria-hidden='true' />}</button>}
+      {focus.layout && browseToggle && (
+        <Tooltip label={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')}>
+          <button type='button' className='ui-icon-button' aria-pressed={browseToggle.showing} onClick={browseToggle.onToggle} aria-label={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')}>{browseToggle.showing ? <PanelsTopLeft aria-hidden='true' /> : <ListTree aria-hidden='true' />}</button>
+        </Tooltip>
+      )}
       {dialog?.kind === 'name' && <FocusNameDialog title={t('focus.nameTitle')} initial='' taken={taken} onClose={() => setDialog(null)} onSubmit={name => onShow(focus.name(name))} />}
       {dialog?.kind === 'rename' && <FocusNameDialog title={t('focus.renameTitle')} initial={dialog.name} taken={taken.filter(name => name !== dialog.name)} onClose={() => setDialog(null)} onSubmit={name => focus.rename(dialog.id, name)} />}
       {confirmingClear && (
@@ -146,17 +159,21 @@ const LayoutMenu: React.FC<{ focus: NoteFocus; splittable: boolean; }> = ({ focu
     const refusal = splittable && shows ? dropRefusal(layout, pane, edge) : undefined;
     const reason = refusal ? t(refusal === 'pane-limit' ? 'focus.paneLimit' : refusal === 'depth-limit' ? 'focus.depthLimit' : 'focus.limit') : undefined;
     return (
-      <DropdownMenu.Item disabled={!focus.editable || !splittable || !shows || Boolean(refusal)} title={reason} onSelect={() => void focus.splitShown(pane, orientation).catch(fail)}>
-        {icon}
-        <span>{label}</span>
-      </DropdownMenu.Item>
+      <Tooltip label={reason}>
+        <DropdownMenu.Item disabled={!focus.editable || !splittable || !shows || Boolean(refusal)} onSelect={() => void focus.splitShown(pane, orientation).catch(fail)}>
+          {icon}
+          <span>{label}</span>
+        </DropdownMenu.Item>
+      </Tooltip>
     );
   };
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger className='ui-icon-button focus-layout-trigger' disabled={!focus.editable} aria-label={t('focus.layout')} title={t('focus.layout')}>
-        <LayoutIcon layout={layout} />
-      </DropdownMenu.Trigger>
+      <Tooltip label={t('focus.layout')}>
+        <DropdownMenu.Trigger className='ui-icon-button focus-layout-trigger' disabled={!focus.editable} aria-label={t('focus.layout')}>
+          <LayoutIcon layout={layout} />
+        </DropdownMenu.Trigger>
+      </Tooltip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('focus.layout')} onEscapeKeyDown={event => event.stopPropagation()}>
           {splitItem('right', 'horizontal', t('focus.splitRight'), <Columns2 aria-hidden='true' />)}

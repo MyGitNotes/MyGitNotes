@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from './tooltip-test-helpers.js';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { readFileSync } from 'node:fs';
@@ -54,10 +55,10 @@ describe('split view', () => {
     const sync = screen.getByRole('button', { name: 'Sync scrolling' });
     expect(divider.contains(sync)).toBe(true);
     expect(sync).toHaveAttribute('aria-pressed', 'true');
-    expect(sync).toHaveAttribute('title', 'Scrolling is linked: click to unlink');
+    expect(tooltipText(sync)).toEqual('Scrolling is linked: click to unlink');
     act(() => fireEvent.click(sync));
     expect(sync).toHaveAttribute('aria-pressed', 'false');
-    expect(sync).toHaveAttribute('title', 'Scrolling is unlinked: click to link');
+    expect(tooltipText(sync)).toEqual('Scrolling is unlinked: click to link');
     unmount();
     // Another split view in the same session starts unlinked, and the choice is no part of the URL.
     open('# Title\n');
@@ -69,7 +70,7 @@ describe('split view', () => {
     try {
       open('# Title\n');
       const sync = screen.getByRole('button', { name: '同步捲動' });
-      expect(sync).toHaveAttribute('title', '捲動已連動：按一下解除');
+      expect(tooltipText(sync)).toEqual('捲動已連動：按一下解除');
     } finally {
       localStorage.removeItem('github-notes:language');
     }

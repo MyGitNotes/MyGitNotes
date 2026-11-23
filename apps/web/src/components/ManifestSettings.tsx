@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useState } from 'react';
 import { AlertCircle, Check, Save } from 'lucide-react';
 import type { RepositoryId } from '@mygitnotes/core/repository';
@@ -91,10 +92,12 @@ export function ManifestSettings({ repositories, defaultRepository, initialRepos
           <label className='text-xs font-semibold text-fg uppercase tracking-wider'>{t('settings.manifest')}</label>
           {onCore && <span className='text-[11px] px-2 py-0.5 rounded-full bg-sidebar text-muted font-mono'>{t('settings.coreBranchReadOnly')}</span>}
         </div>
-        <Button variant='primary' type='button' onClick={handleSaveConfig} disabled={!canWrite || isSaving} title={onCore ? t('settings.coreBranchConfigReadOnlyTitle') : t('settings.saveCommit')}>
-          <Save className='w-3.5 h-3.5' />
-          <span>{isSaving ? t('settings.saving') : t('settings.saveCommit')}</span>
-        </Button>
+        <Tooltip label={onCore ? t('settings.coreBranchConfigReadOnlyTitle') : t('settings.saveCommit')}>
+          <Button variant='primary' type='button' onClick={handleSaveConfig} disabled={!canWrite || isSaving}>
+            <Save className='w-3.5 h-3.5' />
+            <span>{isSaving ? t('settings.saving') : t('settings.saveCommit')}</span>
+          </Button>
+        </Tooltip>
       </div>
       {repositories.length > 1 && (
         <label className='flex flex-col gap-1 text-xs'>

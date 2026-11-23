@@ -67,7 +67,7 @@ it('hands Settings and "create manifest" the manifest by local id, so both commi
   saved.requests = [];
   window.matchMedia = ((query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
   const settings = render(createElement(SettingsModal, { manifest: { repositories: result.current.repositories, defaultRepository: home.id, initialRepository: home.id, onManifestRevision: () => {} }, onRefreshWorkspace: async () => {}, currentTheme: { familyId: 'flexoki', mode: 'light' }, onSelectTheme: () => {} }));
-  fireEvent.click(settings.getByTitle('Save & Commit'));
+  fireEvent.click(settings.getByRole('button', { name: 'Save & Commit' }));
   await waitFor(() => expect(saved.yaml).toHaveLength(1));
   settings.unmount();
   const created = vi.fn(async () => {});

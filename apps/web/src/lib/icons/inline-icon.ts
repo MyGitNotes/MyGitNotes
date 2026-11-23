@@ -45,12 +45,12 @@ const FALLBACK_SHAPES = '<rect x="3" y="3" width="18" height="18" rx="2" stroke-
 function holder(name: string, size: string, shapes: string, state?: 'pending' | 'missing'): string {
   const label = escapeAttribute(name);
   const svg = `<svg width="${escapeAttribute(size)}" height="${escapeAttribute(size)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shapes}</svg>`;
-  return `<span class="lucide-icon inline-icon${state ? ` lucide-icon-${state}` : ''}" data-lucide="${label}" data-size="${escapeAttribute(size)}" title="${label}" role="img" aria-label="${label}">${svg}</span>`;
+  return `<span class="lucide-icon inline-icon${state ? ` lucide-icon-${state}` : ''}" data-lucide="${label}" data-size="${escapeAttribute(size)}" data-t1-label="${label}" role="img" aria-label="${label}">${svg}</span>`;
 }
 
 /**
  * One icon as the HTML a note carries: its real Lucide shapes in an SVG sized by width and height attributes (never a
- * style, which a public page's sanitizer would drop), `currentColor`, and the name in its title. A name Lucide does not
+ * style, which a public page's sanitizer would drop), `currentColor`, and the name in its T1 hint. A name Lucide does not
  * have gets the fallback glyph; before the icon set has loaded every name does, and `hydratePendingIcons` redraws it.
  */
 export function inlineIconHtml(name: string, sizeInput?: string): string {
@@ -107,7 +107,7 @@ export function hydratePendingIcons(root: ParentNode): void {
     if (!drawn) continue;
     placeholder.classList.remove('lucide-icon-pending');
     placeholder.classList.toggle('lucide-icon-missing', drawn.classList.contains('lucide-icon-missing'));
-    for (const attribute of ['data-lucide', 'title', 'aria-label']) placeholder.setAttribute(attribute, drawn.getAttribute(attribute) ?? '');
+    for (const attribute of ['data-lucide', 'data-t1-label', 'aria-label']) placeholder.setAttribute(attribute, drawn.getAttribute(attribute) ?? '');
     placeholder.replaceChildren(...drawn.childNodes);
   }
 }

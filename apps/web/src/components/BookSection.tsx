@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useEffect, useMemo } from 'react';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -37,7 +38,9 @@ function SectionFrame({ anchor, level, parts, onOpenZoom, onLiveTitle }: Pick<Bo
     <section className='compilation-book-section' data-level={level} {...frameProps}>
       <div className='compilation-book-heading-row'>
         <Heading className='compilation-book-heading' data-book-anchor={anchor} tabIndex={-1}>
-          <button type='button' className='compilation-book-title' title={title} onClick={onOpenZoom}>{title}</button>
+          <Tooltip label={title}>
+            <button type='button' className='compilation-book-title' onClick={onOpenZoom}>{title}</button>
+          </Tooltip>
         </Heading>
         {controls}
       </div>

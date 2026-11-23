@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink, Eye, Lock, Plus, RefreshCw, Search } from 'lucide-react';
 import { Button } from './Button.js';
@@ -147,15 +148,16 @@ export function RepositoryChooser({ actionLabel, busyLabel, onChoose, members = 
                       <span className='flex items-center gap-2 shrink-0 text-xs text-muted'>
                         {t('repositories.hidden')}
                         {onShow && (
-                          <Button
-                            size='small'
-                            disabled={busy || Boolean(showBlocked)}
-                            title={showBlocked}
-                            onClick={() => void show(member.id)}
-                          >
-                            <Eye className='w-3.5 h-3.5' />
-                            <span>{t('repositories.show')}</span>
-                          </Button>
+                          <Tooltip label={showBlocked}>
+                            <Button
+                              size='small'
+                              disabled={busy || Boolean(showBlocked)}
+                              onClick={() => void show(member.id)}
+                            >
+                              <Eye className='w-3.5 h-3.5' />
+                              <span>{t('repositories.show')}</span>
+                            </Button>
+                          </Tooltip>
                         )}
                       </span>
                     )

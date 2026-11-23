@@ -225,7 +225,7 @@ it('opens zoom for a touch tap, a title click, and any click on a read-only note
   expect(card('item-1')).not.toHaveAttribute('data-editing');
   fireEvent.click(screen.getByRole('button', { name: 'Edit Note A' }));
   await waitFor(() => expect(card('item-1')).toHaveAttribute('data-editing'));
-  fireEvent.click(within(card('item-1')).getByTitle('Note A'));
+  fireEvent.click(within(card('item-1')).getByRole('button', { name: 'Note A' }));
   expect(onOpen).toHaveBeenCalledTimes(2);
   expect(card('item-1')).toHaveAttribute('data-editing');
   rerender(lane({ row: two, onOpen, readOnly: true }));

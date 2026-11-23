@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { FilterControls } from '../lib/filter-controls.js';
@@ -65,10 +66,12 @@ function FilterPopover({ label, title, active = false, face, children }: { label
   };
   return (
     <div ref={anchor} className='list-filter-anchor'>
-      <button ref={button} type='button' className='list-filter-button' data-active={active || undefined} aria-haspopup='dialog' aria-expanded={open} aria-controls={open ? id : undefined} aria-label={face ? label : undefined} title={face ? label : undefined} onClick={() => setOpen(value => !value)}>
-        {face ?? <span>{label}</span>}
-        <ChevronDown aria-hidden='true' />
-      </button>
+      <Tooltip label={face ? label : undefined}>
+        <button ref={button} type='button' className='list-filter-button' data-active={active || undefined} aria-haspopup='dialog' aria-expanded={open} aria-controls={open ? id : undefined} aria-label={face ? label : undefined} onClick={() => setOpen(value => !value)}>
+          {face ?? <span>{label}</span>}
+          <ChevronDown aria-hidden='true' />
+        </button>
+      </Tooltip>
       {open && (
         <div
           ref={panel}

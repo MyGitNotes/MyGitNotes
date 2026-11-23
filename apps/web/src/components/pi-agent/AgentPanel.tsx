@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronDown, FileText, FolderCog, FolderGit2, Maximize2, MessageSquarePlus, Minimize2, Paperclip, Power, Send, Square, SquareTerminal, X } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -77,7 +78,11 @@ function SwitchWorkspace({ onDone }: { onDone: () => void; }) {
                   >
                     <FolderGit2 aria-hidden='true' />
                     <span>{name(workspace)}</span>
-                    {workspace.folder && <small title={workspace.folder}>{workspace.folder}</small>}
+                    {workspace.folder && (
+                      <Tooltip label={workspace.folder}>
+                        <small>{workspace.folder}</small>
+                      </Tooltip>
+                    )}
                   </button>
                 </li>
               ))}
@@ -124,7 +129,11 @@ const tokenCount = (tokens: number) => tokens < 1000 ? String(tokens) : `${Math.
 function ContextUsage({ usage }: { usage: PiContextUsage; }) {
   const { t } = useTranslation();
   const label = t('piAgent.contextUsage', { tokens: usage.tokens === null ? '?' : tokenCount(usage.tokens), window: tokenCount(usage.contextWindow) });
-  return <span className='pi-agent-badge pi-agent-usage' data-tone={usage.percent !== null && usage.percent >= 80 ? 'warning' : undefined} title={label} aria-label={label}>{usage.percent === null ? '–' : `${Math.round(usage.percent)}%`}</span>;
+  return (
+    <Tooltip label={label}>
+      <span className='pi-agent-badge pi-agent-usage' data-tone={usage.percent !== null && usage.percent >= 80 ? 'warning' : undefined} aria-label={label}>{usage.percent === null ? '–' : `${Math.round(usage.percent)}%`}</span>
+    </Tooltip>
+  );
 }
 
 /** A file as Pi should read it: relative to the folder Pi runs in when it lies inside, absolute otherwise. */
@@ -175,13 +184,17 @@ function DockActions({ dock }: { dock: AgentDockControls; }) {
   return (
     <>
       {dock.onOpenAgents && (
-        <Button size='icon' title={t('nav.agent')} aria-label={t('nav.agent')} disabled={dock.agentsDisabled} onClick={dock.onOpenAgents}>
-          <FolderCog aria-hidden='true' />
-        </Button>
+        <Tooltip label={t('nav.agent')}>
+          <Button size='icon' aria-label={t('nav.agent')} disabled={dock.agentsDisabled} onClick={dock.onOpenAgents}>
+            <FolderCog aria-hidden='true' />
+          </Button>
+        </Tooltip>
       )}
-      <Button size='icon' title={t('piAgent.dock.close')} aria-label={t('piAgent.dock.close')} onClick={dock.onClose}>
-        <X aria-hidden='true' />
-      </Button>
+      <Tooltip label={t('piAgent.dock.close')}>
+        <Button size='icon' aria-label={t('piAgent.dock.close')} onClick={dock.onClose}>
+          <X aria-hidden='true' />
+        </Button>
+      </Tooltip>
     </>
   );
 }
@@ -391,23 +404,37 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
     <section ref={panel} className='pi-agent-panel' aria-label={t('piAgent.title')}>
       <header className='pi-agent-header'>
         {/* The dot's colour says the session's status; its label is the tooltip and the accessible name. */}
-        <span className='pi-agent-status' role='img' aria-label={statusLabel} title={statusLabel} data-status={initialized ? session!.status : loading ? 'starting' : 'none'} />
+        <Tooltip label={statusLabel}>
+          <span className='pi-agent-status' role='img' aria-label={statusLabel} data-status={initialized ? session!.status : loading ? 'starting' : 'none'} />
+        </Tooltip>
         {/* The workspace name opens the workspace picker; its tooltip names the absolute folder Pi runs in. */}
-        <button type='button' className='pi-agent-cwd' title={session?.cwd ? `${t('piAgent.switchWorkspace')}\n${session.cwd}` : t('piAgent.switchWorkspace')} aria-haspopup='dialog' aria-expanded={switching} onClick={() => setSwitching(open => !open)}>
-          <span>{session ? name(session.location) : t('piAgent.switchWorkspace')}</span>
-          <ChevronDown aria-hidden='true' />
-        </button>
+        <Tooltip label={session?.cwd ? `${t('piAgent.switchWorkspace')}\n${session.cwd}` : t('piAgent.switchWorkspace')}>
+          <button type='button' className='pi-agent-cwd' aria-haspopup='dialog' aria-expanded={switching} onClick={() => setSwitching(open => !open)}>
+            <span>{session ? name(session.location) : t('piAgent.switchWorkspace')}</span>
+            <ChevronDown aria-hidden='true' />
+          </button>
+        </Tooltip>
         {/* The conversation's name, which /name sets, else the title an extension gave it. */}
-        <span className='pi-agent-session-name' title={initialized ? agent.transcript.name ?? agent.transcript.title : undefined}>{initialized ? agent.transcript.name ?? agent.transcript.title : undefined}</span>
+        <Tooltip label={initialized ? agent.transcript.name ?? agent.transcript.title : undefined}>
+          <span className='pi-agent-session-name'>{initialized ? agent.transcript.name ?? agent.transcript.title : undefined}</span>
+        </Tooltip>
         {initialized && (
           <>
-            <Button size='icon' title={t('piAgent.newConversation')} aria-label={t('piAgent.newConversation')} disabled={!ready} onClick={agent.newConversation}>
-              <MessageSquarePlus aria-hidden='true' />
-            </Button>
-            <Button size='icon' title={t('piAgent.end')} aria-label={t('piAgent.end')} onClick={() => void agent.end()}>
-              <Power aria-hidden='true' />
-            </Button>
-            {dock?.onToggleExpanded && <Button size='icon' title={t(dock.expanded ? 'piAgent.dock.shrink' : 'piAgent.dock.expand')} aria-label={t(dock.expanded ? 'piAgent.dock.shrink' : 'piAgent.dock.expand')} onClick={dock.onToggleExpanded}>{dock.expanded ? <Minimize2 aria-hidden='true' /> : <Maximize2 aria-hidden='true' />}</Button>}
+            <Tooltip label={t('piAgent.newConversation')}>
+              <Button size='icon' aria-label={t('piAgent.newConversation')} disabled={!ready} onClick={agent.newConversation}>
+                <MessageSquarePlus aria-hidden='true' />
+              </Button>
+            </Tooltip>
+            <Tooltip label={t('piAgent.end')}>
+              <Button size='icon' aria-label={t('piAgent.end')} onClick={() => void agent.end()}>
+                <Power aria-hidden='true' />
+              </Button>
+            </Tooltip>
+            {dock?.onToggleExpanded && (
+              <Tooltip label={t(dock.expanded ? 'piAgent.dock.shrink' : 'piAgent.dock.expand')}>
+                <Button size='icon' aria-label={t(dock.expanded ? 'piAgent.dock.shrink' : 'piAgent.dock.expand')} onClick={dock.onToggleExpanded}>{dock.expanded ? <Minimize2 aria-hidden='true' /> : <Maximize2 aria-hidden='true' />}</Button>
+              </Tooltip>
+            )}
           </>
         )}
         {dock && <DockActions dock={dock} />}
@@ -462,11 +489,13 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
             <div className='pi-agent-context'>
               {target && (
                 <DropdownMenu.Root>
-                  <DropdownMenu.Trigger className='pi-agent-context-chip' aria-label={`${t('piAgent.context')}: ${chipText}`} title={absolute ?? (fileIsTarget ? file?.error : undefined)}>
-                    <FileText aria-hidden='true' />
-                    <span>{chipText}</span>
-                    <ChevronDown aria-hidden='true' />
-                  </DropdownMenu.Trigger>
+                  <Tooltip label={absolute ?? (fileIsTarget ? file?.error : undefined)}>
+                    <DropdownMenu.Trigger className='pi-agent-context-chip' aria-label={`${t('piAgent.context')}: ${chipText}`}>
+                      <FileText aria-hidden='true' />
+                      <span>{chipText}</span>
+                      <ChevronDown aria-hidden='true' />
+                    </DropdownMenu.Trigger>
+                  </Tooltip>
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content className='focus-menu assistant-dock-menu' side='top' align='start' sideOffset={4} collisionPadding={8} aria-label={t('piAgent.context')} onEscapeKeyDown={event => event.stopPropagation()}>
                       <DropdownMenu.RadioGroup
@@ -488,14 +517,18 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                       {noteTools && (
                         <>
                           <DropdownMenu.Separator />
-                          <DropdownMenu.Label className='pi-agent-scope-label' title={t('piAgent.scope.hint')}>{t('piAgent.scope')}</DropdownMenu.Label>
+                          <Tooltip label={t('piAgent.scope.hint')}>
+                            <DropdownMenu.Label className='pi-agent-scope-label'>{t('piAgent.scope')}</DropdownMenu.Label>
+                          </Tooltip>
                           {scopeItems.map(item => (
-                            <DropdownMenu.CheckboxItem key={`${item.notebookId}\0${item.path}`} checked={item.kept} title={item.open ? t('piAgent.scope.openHint') : item.path} onSelect={event => event.preventDefault()} onCheckedChange={on => agent.setEditable({ notebookId: item.notebookId, path: item.path }, on === true)}>
-                              <span>{item.path.slice(item.path.lastIndexOf('/') + 1)}{item.open ? ` ${t('piAgent.scope.open')}` : ''}</span>
-                              <DropdownMenu.ItemIndicator className='pi-agent-context-check'>
-                                <Check aria-hidden='true' />
-                              </DropdownMenu.ItemIndicator>
-                            </DropdownMenu.CheckboxItem>
+                            <Tooltip key={`${item.notebookId}\0${item.path}`} label={item.open ? t('piAgent.scope.openHint') : item.path}>
+                              <DropdownMenu.CheckboxItem checked={item.kept} onSelect={event => event.preventDefault()} onCheckedChange={on => agent.setEditable({ notebookId: item.notebookId, path: item.path }, on === true)}>
+                                <span>{item.path.slice(item.path.lastIndexOf('/') + 1)}{item.open ? ` ${t('piAgent.scope.open')}` : ''}</span>
+                                <DropdownMenu.ItemIndicator className='pi-agent-context-check'>
+                                  <Check aria-hidden='true' />
+                                </DropdownMenu.ItemIndicator>
+                              </DropdownMenu.CheckboxItem>
+                            </Tooltip>
                           ))}
                         </>
                       )}
@@ -513,14 +546,22 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
               <ul className='pi-agent-queue' aria-label={t('piAgent.queue')}>
                 {agent.held && (
                   <li>
-                    <span className='pi-agent-badge' title={t('piAgent.queue.heldHint')}>{t('piAgent.queue.held')}</span>
-                    <span className='pi-agent-queue-text' title={agent.held}>{agent.held}</span>
+                    <Tooltip label={t('piAgent.queue.heldHint')}>
+                      <span className='pi-agent-badge'>{t('piAgent.queue.held')}</span>
+                    </Tooltip>
+                    <Tooltip label={agent.held}>
+                      <span className='pi-agent-queue-text'>{agent.held}</span>
+                    </Tooltip>
                   </li>
                 )}
                 {agent.transcript.queued.map((message, index) => (
                   <li key={index}>
-                    <span className='pi-agent-badge' title={t(message.kind === 'steer' ? 'piAgent.queue.steerHint' : 'piAgent.queue.followUpHint')}>{t(message.kind === 'steer' ? 'piAgent.queue.steer' : 'piAgent.queue.followUp')}</span>
-                    <span className='pi-agent-queue-text' title={message.text}>{message.text}</span>
+                    <Tooltip label={t(message.kind === 'steer' ? 'piAgent.queue.steerHint' : 'piAgent.queue.followUpHint')}>
+                      <span className='pi-agent-badge'>{t(message.kind === 'steer' ? 'piAgent.queue.steer' : 'piAgent.queue.followUp')}</span>
+                    </Tooltip>
+                    <Tooltip label={message.text}>
+                      <span className='pi-agent-queue-text'>{message.text}</span>
+                    </Tooltip>
                   </li>
                 ))}
               </ul>
@@ -529,20 +570,29 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
               <ul className='pi-agent-attachments' aria-label={t('piAgent.attachments')}>
                 {attachments.map(attachment => (
                   <li key={attachment.id} data-kind={attachment.kind}>
-                    {attachment.kind === 'image' ? <img src={thumbnailUrl(attachment.image)} alt={attachment.name} title={attachment.name} /> : (
-                      <span className='pi-agent-attachment-file' title={attachment.name}>
-                        <FileText aria-hidden='true' />
-                        <span>{attachment.name}</span>
-                      </span>
-                    )}
-                    <button
-                      type='button'
-                      title={t('piAgent.attachment.remove', { name: attachment.name })}
-                      aria-label={t('piAgent.attachment.remove', { name: attachment.name })}
-                      onClick={() => removeAttachment(attachment.id)}
-                    >
-                      <X aria-hidden='true' />
-                    </button>
+                    {attachment.kind === 'image'
+                      ? (
+                        <Tooltip label={attachment.name}>
+                          <img src={thumbnailUrl(attachment.image)} alt={attachment.name} />
+                        </Tooltip>
+                      )
+                      : (
+                        <Tooltip label={attachment.name}>
+                          <span className='pi-agent-attachment-file'>
+                            <FileText aria-hidden='true' />
+                            <span>{attachment.name}</span>
+                          </span>
+                        </Tooltip>
+                      )}
+                    <Tooltip label={t('piAgent.attachment.remove', { name: attachment.name })}>
+                      <button
+                        type='button'
+                        aria-label={t('piAgent.attachment.remove', { name: attachment.name })}
+                        onClick={() => removeAttachment(attachment.id)}
+                      >
+                        <X aria-hidden='true' />
+                      </button>
+                    </Tooltip>
                   </li>
                 ))}
               </ul>
@@ -612,33 +662,38 @@ function AgentConversation({ dock }: { dock?: AgentDockControls; }) {
                   event.target.value = '';
                 }}
               />
-              <Button size='icon' title={t('piAgent.attach')} aria-label={t('piAgent.attach')} onClick={() => picker.current?.click()}>
-                <Paperclip aria-hidden='true' />
-              </Button>
+              <Tooltip label={t('piAgent.attach')}>
+                <Button size='icon' aria-label={t('piAgent.attach')} onClick={() => picker.current?.click()}>
+                  <Paperclip aria-hidden='true' />
+                </Button>
+              </Tooltip>
               {ready && model.models.length > 0 && (
                 <div className='pi-agent-model-row'>
                   {/* The button names the model alone, since a provider suffix pushes the part that tells models apart out of view; the menu and tooltip keep it. */}
-                  <Select className='pi-agent-model' aria-label={t('piAgent.model')} title={currentModel ? `${t('piAgent.model')}: ${currentModel.label}` : t('piAgent.model')} icon={currentModel?.name} value={model.model ?? ''} onValueChange={agent.setModel} options={model.model && !model.models.some(option => option.value === model.model) ? [{ value: model.model, label: model.model }, ...model.models] : model.models} />
-                  {model.levels.length > 1 && <Select className='pi-agent-thinking' aria-label={t('piAgent.thinkingLevel')} title={t('piAgent.thinkingLevel')} value={model.thinking ?? ''} onValueChange={agent.setThinking} options={model.levels.map(level => ({ value: level, label: level }))} />}
+                  <Select className='pi-agent-model' aria-label={t('piAgent.model')} tooltip={currentModel ? `${t('piAgent.model')}: ${currentModel.label}` : t('piAgent.model')} icon={currentModel?.name} value={model.model ?? ''} onValueChange={agent.setModel} options={model.model && !model.models.some(option => option.value === model.model) ? [{ value: model.model, label: model.model }, ...model.models] : model.models} />
+                  {model.levels.length > 1 && <Select className='pi-agent-thinking' aria-label={t('piAgent.thinkingLevel')} tooltip={t('piAgent.thinkingLevel')} value={model.thinking ?? ''} onValueChange={agent.setThinking} options={model.levels.map(level => ({ value: level, label: level }))} />}
                 </div>
               )}
               {agent.transcript.running && (
-                <Button
-                  size='small'
-                  onClick={async () => {
-                    const restored = await agent.abort();
-                    if (restored.text) {
-                      setDraft(current => current.trim() ? `${restored.text}\n\n${current}` : restored.text);
-                    }
-                    if (restored.files.length) setAttachments(current => (latestAttachments.current = [...current, ...restoredFiles(restored.files, `taken-${crypto.randomUUID()}`)]));
-                  }}
-                  title={t(agent.transcript.queued.length ? 'piAgent.abortQueued' : 'piAgent.abort')}
-                >
-                  <Square aria-hidden='true' />
-                  {t('piAgent.abort')}
-                </Button>
+                <Tooltip label={t(agent.transcript.queued.length ? 'piAgent.abortQueued' : 'piAgent.abort')}>
+                  <Button
+                    size='small'
+                    onClick={async () => {
+                      const restored = await agent.abort();
+                      if (restored.text) {
+                        setDraft(current => current.trim() ? `${restored.text}\n\n${current}` : restored.text);
+                      }
+                      if (restored.files.length) setAttachments(current => (latestAttachments.current = [...current, ...restoredFiles(restored.files, `taken-${crypto.randomUUID()}`)]));
+                    }}
+                  >
+                    <Square aria-hidden='true' />
+                    {t('piAgent.abort')}
+                  </Button>
+                </Tooltip>
               )}
-              <Button type='submit' variant='primary' size='small' disabled={readingFiles > 0 || (!draft.trim() && attachments.length === 0)} title={readingFiles > 0 ? t('piAgent.attachment.reading') : undefined}>{shell ? <SquareTerminal aria-hidden='true' /> : <Send aria-hidden='true' />}{t(shell ? 'piAgent.run' : agent.transcript.running ? 'piAgent.steer' : 'piAgent.send')}</Button>
+              <Tooltip label={readingFiles > 0 ? t('piAgent.attachment.reading') : undefined}>
+                <Button type='submit' variant='primary' size='small' disabled={readingFiles > 0 || (!draft.trim() && attachments.length === 0)}>{shell ? <SquareTerminal aria-hidden='true' /> : <Send aria-hidden='true' />}{t(shell ? 'piAgent.run' : agent.transcript.running ? 'piAgent.steer' : 'piAgent.send')}</Button>
+              </Tooltip>
             </div>
           </div>
         </form>

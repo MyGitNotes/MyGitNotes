@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from './tooltip-test-helpers.js';
 import { createElement, type ReactNode, useEffect } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -46,7 +47,7 @@ it('offers Edit named after the note, and no control where the note cannot be ed
   const { rerender } = render(two());
   const edit = within(frame('a')).getByRole('button', { name: 'Edit Alpha' });
   expect(edit).toHaveTextContent('Edit');
-  expect(edit).toHaveAttribute('title', 'Edit Alpha');
+  expect(tooltipText(edit)).toEqual('Edit Alpha');
   rerender(two({ writable: false }));
   expect(screen.queryByRole('button', { name: /^Edit / })).toBeNull();
 });

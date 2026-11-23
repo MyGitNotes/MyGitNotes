@@ -166,7 +166,7 @@ class InfographicController {
       title.className = 'live-directive-title-input';
       title.value = block.attrs.title ?? '';
       title.placeholder = t('infographic.editor.titlePlaceholder');
-      title.title = t('infographic.editor.titleField');
+      title.dataset.t1Label = t('infographic.editor.titleField');
       title.setAttribute('aria-label', t('infographic.editor.titleField'));
       title.addEventListener('mousedown', event => event.stopPropagation());
       const commit = () => {
@@ -187,7 +187,7 @@ class InfographicController {
 
       const palette = document.createElement('select');
       palette.className = 'live-infographic-palette';
-      palette.title = t('infographic.editor.palette');
+      palette.dataset.t1Label = t('infographic.editor.palette');
       palette.setAttribute('aria-label', t('infographic.editor.palette'));
       const current = block.attrs.palette ?? '';
       const options = ['', ...INFOGRAPHIC_PALETTES, ...(current && !INFOGRAPHIC_PALETTES.includes(current) ? [current] : [])];
@@ -213,7 +213,7 @@ class InfographicController {
     button.type = 'button';
     button.className = className;
     button.textContent = label;
-    button.title = title;
+    button.dataset.t1Label = title;
     button.setAttribute('aria-label', label);
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('click', event => {

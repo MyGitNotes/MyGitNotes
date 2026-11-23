@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChevronDown, FileText, GalleryHorizontalEnd, LayoutTemplate, ListTree, Plus } from 'lucide-react';
 import { SelectButtonGroup, SelectButtonPrimary, SelectButtonTrigger } from './SelectButton.js';
@@ -26,14 +27,18 @@ export function NewNoteMenu({ onNewNote, onNewCompilation, onNewOutline, templat
   const { t } = useTranslation();
   return (
     <SelectButtonGroup className='new-note-menu'>
-      <SelectButtonPrimary aria-label={t('header.newNote')} title={t('header.newNote')} onClick={onNewNote} className='ui-button-primary header-new-note'>
-        <Plus aria-hidden='true' />
-        <span>{t('header.newNote')}</span>
-      </SelectButtonPrimary>
+      <Tooltip label={t('header.newNote')}>
+        <SelectButtonPrimary aria-label={t('header.newNote')} onClick={onNewNote} className='ui-button-primary header-new-note'>
+          <Plus aria-hidden='true' />
+          <span>{t('header.newNote')}</span>
+        </SelectButtonPrimary>
+      </Tooltip>
       <DropdownMenu.Root>
-        <SelectButtonTrigger className='ui-button-primary' aria-label={t('header.newMenu')} title={t('header.newMenu')}>
-          <ChevronDown aria-hidden='true' />
-        </SelectButtonTrigger>
+        <Tooltip label={t('header.newMenu')}>
+          <SelectButtonTrigger className='ui-button-primary' aria-label={t('header.newMenu')}>
+            <ChevronDown aria-hidden='true' />
+          </SelectButtonTrigger>
+        </Tooltip>
         <DropdownMenu.Portal>
           <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('header.newMenu')}>
             <DropdownMenu.Item onSelect={onNewNote}>

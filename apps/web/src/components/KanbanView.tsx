@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { NoteMoveButton } from './NoteMoveButton.js';
 import { LiveBadge } from './live/LiveBadge.js';
 import { FrontmatterInvalid } from './NoteStatusSelect.js';
@@ -140,54 +141,61 @@ function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardCo
   const locked = liveLock(note, 'other');
   const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
   return (
-    <div data-notepath={note.path} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} title={selectionActive ? undefined : t('notes.multiSelectHint')} className={`p-3 rounded-lg border transition-all cursor-grab active:cursor-grabbing group shadow-xs ${isBeingDragged ? 'opacity-40 scale-[0.98] border-primary shadow-inner' : 'hover:shadow-sm hover:border-muted'}`} style={{ backgroundColor: 'var(--color-surface)', borderColor: isBeingDragged ? 'var(--color-primary)' : 'var(--color-line)' }}>
-      <div className='flex items-start justify-between gap-1 mb-1.5'>
-        <div className='flex items-start gap-1.5 min-w-0 flex-1'>
-          {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
-          <div className='font-medium text-fg text-sm line-clamp-2 transition min-w-0'>{note.title}</div>
-          {note.frontmatterInvalid && <FrontmatterInvalid iconOnly />}
-          <LiveBadge live={note.live} title={note.title} />
+    <Tooltip label={selectionActive ? undefined : t('notes.multiSelectHint')}>
+      <div data-notepath={note.path} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} className={`p-3 rounded-lg border transition-all cursor-grab active:cursor-grabbing group shadow-xs ${isBeingDragged ? 'opacity-40 scale-[0.98] border-primary shadow-inner' : 'hover:shadow-sm hover:border-muted'}`} style={{ backgroundColor: 'var(--color-surface)', borderColor: isBeingDragged ? 'var(--color-primary)' : 'var(--color-line)' }}>
+        <div className='flex items-start justify-between gap-1 mb-1.5'>
+          <div className='flex items-start gap-1.5 min-w-0 flex-1'>
+            {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
+            <div className='font-medium text-fg text-sm line-clamp-2 transition min-w-0'>{note.title}</div>
+            {note.frontmatterInvalid && <FrontmatterInvalid iconOnly />}
+            <LiveBadge live={note.live} title={note.title} />
+          </div>
+          {/* A note being edited live keeps its column, so its card offers no handle to drag it to another. */}
+          {!board.liveLocked(note) && <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />}
         </div>
-        {/* A note being edited live keeps its column, so its card offers no handle to drag it to another. */}
-        {!board.liveLocked(note) && <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />}
+        {note.tags.length > 0 && <NoteTags tags={note.tags} oneLine className='mb-2.5' />}
+        {/* Card Actions & Timestamp */}
+        <div className='flex items-center justify-between pt-2 border-t text-muted text-xs' style={{ borderColor: 'var(--color-line)' }} onClick={(e) => e.stopPropagation()}>
+          <div className='flex items-center gap-1.5 text-muted'>
+            <span className='flex items-center gap-1 text-[11px]'>
+              <Clock className='w-3 h-3 text-muted' />
+              {formattedDate}
+            </span>
+          </div>
+          <div className='flex items-center gap-1'>
+            {board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />}
+            {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={moveLocked} />}
+            {!board.readOnly && index > 0 && (
+              <Tooltip label={locked ?? t('kanban.moveTo', { title: board.columns[index - 1].title })}>
+                <button
+                  type='button'
+                  onClick={() => board.onUpdateNoteStatus(note, board.columns[index - 1].id)}
+                  disabled={Boolean(locked)}
+                  aria-label={t('kanban.moveTo', { title: board.columns[index - 1].title })}
+                  className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'
+                >
+                  <ArrowLeft className='w-3.5 h-3.5' />
+                </button>
+              </Tooltip>
+            )}
+            {!board.readOnly && index >= 0 && index < board.columns.length - 1 && (
+              <Tooltip label={locked ?? t('kanban.moveTo', { title: board.columns[index + 1].title })}>
+                <button type='button' onClick={() => board.onUpdateNoteStatus(note, board.columns[index + 1].id)} disabled={Boolean(locked)} aria-label={t('kanban.moveTo', { title: board.columns[index + 1].title })} className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'>
+                  <ArrowRight className='w-3.5 h-3.5' />
+                </button>
+              </Tooltip>
+            )}
+            {!board.readOnly && board.canDelete && (
+              <Tooltip label={deleteLocked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))}>
+                <button type='button' onClick={() => requestDelete(noteRefKey(note))} disabled={Boolean(deleteLocked)} aria-label={t('notes.delete')} className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 rounded transition' : 'kanban-card-delete p-1 rounded transition opacity-40 enabled:hover:opacity-100 enabled:hover:text-danger enabled:hover:bg-danger-soft'}>
+                  <Trash2 className='w-3.5 h-3.5' />
+                </button>
+              </Tooltip>
+            )}
+          </div>
+        </div>
       </div>
-      {note.tags.length > 0 && <NoteTags tags={note.tags} oneLine className='mb-2.5' />}
-      {/* Card Actions & Timestamp */}
-      <div className='flex items-center justify-between pt-2 border-t text-muted text-xs' style={{ borderColor: 'var(--color-line)' }} onClick={(e) => e.stopPropagation()}>
-        <div className='flex items-center gap-1.5 text-muted'>
-          <span className='flex items-center gap-1 text-[11px]'>
-            <Clock className='w-3 h-3 text-muted' />
-            {formattedDate}
-          </span>
-        </div>
-        <div className='flex items-center gap-1'>
-          {board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />}
-          {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={moveLocked} />}
-          {!board.readOnly && index > 0 && (
-            <button
-              type='button'
-              onClick={() => board.onUpdateNoteStatus(note, board.columns[index - 1].id)}
-              disabled={Boolean(locked)}
-              aria-label={t('kanban.moveTo', { title: board.columns[index - 1].title })}
-              title={locked ?? t('kanban.moveTo', { title: board.columns[index - 1].title })}
-              className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'
-            >
-              <ArrowLeft className='w-3.5 h-3.5' />
-            </button>
-          )}
-          {!board.readOnly && index >= 0 && index < board.columns.length - 1 && (
-            <button type='button' onClick={() => board.onUpdateNoteStatus(note, board.columns[index + 1].id)} disabled={Boolean(locked)} aria-label={t('kanban.moveTo', { title: board.columns[index + 1].title })} title={locked ?? t('kanban.moveTo', { title: board.columns[index + 1].title })} className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'>
-              <ArrowRight className='w-3.5 h-3.5' />
-            </button>
-          )}
-          {!board.readOnly && board.canDelete && (
-            <button type='button' onClick={() => requestDelete(noteRefKey(note))} disabled={Boolean(deleteLocked)} aria-label={t('notes.delete')} title={deleteLocked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))} className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 rounded transition' : 'kanban-card-delete p-1 rounded transition opacity-40 enabled:hover:opacity-100 enabled:hover:text-danger enabled:hover:bg-danger-soft'}>
-              <Trash2 className='w-3.5 h-3.5' />
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    </Tooltip>
   );
 }
 
@@ -228,9 +236,11 @@ function KanbanColumn({ col, index, board, query, hiddenNote, sort, onSort }: { 
             className='min-h-7 px-1.5 py-1 text-[11px] font-medium'
           />
           {!board.readOnly && (
-            <button type='button' onClick={() => board.onNewNoteWithStatus(col.id)} className='p-1 text-muted hover:text-fg hover:bg-fg/5 rounded-md transition' title={t('kanban.addNoteTo', { title: col.title })}>
-              <Plus className='w-4 h-4' />
-            </button>
+            <Tooltip label={t('kanban.addNoteTo', { title: col.title })}>
+              <button type='button' onClick={() => board.onNewNoteWithStatus(col.id)} className='p-1 text-muted hover:text-fg hover:bg-fg/5 rounded-md transition' aria-label={t('kanban.addNoteTo', { title: col.title })}>
+                <Plus className='w-4 h-4' />
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -276,15 +286,17 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
           const selectionActive = Boolean(board.selectedKeys?.size);
           const selected = board.selectedKeys?.has(noteRefKey(note)) ?? false;
           return (
-            <div key={noteRefKey(note)} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} title={selectionActive ? undefined : t('notes.multiSelectHint')} className='p-3 rounded-lg border hover:shadow-xs transition cursor-grab active:cursor-grabbing' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
-              <div className='flex items-start gap-1.5 mb-1 min-w-0'>
-                {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
-                <div className='font-medium text-fg text-sm line-clamp-2 min-w-0'>{note.title}</div>
-                {note.frontmatterInvalid && <FrontmatterInvalid iconOnly />}
-                <LiveBadge live={note.live} title={note.title} />
+            <Tooltip key={noteRefKey(note)} label={selectionActive ? undefined : t('notes.multiSelectHint')}>
+              <div {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} className='p-3 rounded-lg border hover:shadow-xs transition cursor-grab active:cursor-grabbing' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
+                <div className='flex items-start gap-1.5 mb-1 min-w-0'>
+                  {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
+                  <div className='font-medium text-fg text-sm line-clamp-2 min-w-0'>{note.title}</div>
+                  {note.frontmatterInvalid && <FrontmatterInvalid iconOnly />}
+                  <LiveBadge live={note.live} title={note.title} />
+                </div>
+                {(board.focusMode || (!board.readOnly && board.onMoveNote)) && <div className='flex justify-end items-center gap-1' onClick={event => event.stopPropagation()}>{board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />} {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={liveLock(note, 'move')} />}</div>}
               </div>
-              {(board.focusMode || (!board.readOnly && board.onMoveNote)) && <div className='flex justify-end items-center gap-1' onClick={event => event.stopPropagation()}>{board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />} {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={liveLock(note, 'move')} />}</div>}
-            </div>
+            </Tooltip>
           );
         })}
         <NoteListSentinel hasMore={result.hasMore} loading={result.loadingMore} error={result.error} onLoadMore={result.loadMore} />

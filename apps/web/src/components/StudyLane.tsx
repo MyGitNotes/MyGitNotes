@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { createPortal } from 'react-dom';
 import { Button } from './Button.js';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
@@ -67,33 +68,36 @@ export function StudyLane({ row, notes, controller, disabled, onOpen, toolbar }:
     setSelected(undefined);
   };
   const more = (
-    <Button size='icon' className='study-more' aria-label={t('study.more')} title={t('study.more')} onClick={() => setActionsOpen(true)}>
-      <Ellipsis size={20} />
-    </Button>
+    <Tooltip label={t('study.more')}>
+      <Button size='icon' className='study-more' aria-label={t('study.more')} onClick={() => setActionsOpen(true)}>
+        <Ellipsis size={20} />
+      </Button>
+    </Tooltip>
   );
   return (
     <div className='study-lane'>
       {toolbar && createPortal(
-        <Button
-          size='icon'
-          className='study-undo'
-          title={t('study.undo')}
-          disabled={busy || !undoNote}
-          onClick={() => {
-            if (undoNote && last) {
-              void controller.action(undoNote, row, 'undo', { eventId: last.id }).then(ok => {
-                if (ok) {
-                  setSkipped(values => values.filter(path => path !== undoNote.path));
-                  setSelected(undoNote.path);
-                  setActionsOpen(false);
-                }
-              });
-            }
-          }}
-          aria-label={t('study.undo')}
-        >
-          <Undo2 size={18} />
-        </Button>,
+        <Tooltip label={t('study.undo')}>
+          <Button
+            size='icon'
+            className='study-undo'
+            disabled={busy || !undoNote}
+            onClick={() => {
+              if (undoNote && last) {
+                void controller.action(undoNote, row, 'undo', { eventId: last.id }).then(ok => {
+                  if (ok) {
+                    setSkipped(values => values.filter(path => path !== undoNote.path));
+                    setSelected(undoNote.path);
+                    setActionsOpen(false);
+                  }
+                });
+              }
+            }}
+            aria-label={t('study.undo')}
+          >
+            <Undo2 size={18} />
+          </Button>
+        </Tooltip>,
         toolbar,
       )}
       {controller.error && (
@@ -228,10 +232,12 @@ function StudyLaneCard({ note: listed, row, controller, disabled, onDone, onOpen
         <header>
           <button type='button' className='screen-card-title' aria-label={`${t('links.open')}: ${note.title}`} onClick={onOpen}>{note.title}</button>
           {totalStages > 0 && (
-            <div className='study-card-stage' title={`${currentStatus ? labelOf(currentStatus) : ''} · ${currentStage?.intervalDays ?? 0} ${t('study.days')}`}>
-              <span className='study-card-stars' aria-label={`Stage ${currentStar} of ${totalStages}`}>{starDisplay}</span>
-              <span className='study-card-stage-status'>{currentStatus ? labelOf(currentStatus) : currentStatus}</span>
-            </div>
+            <Tooltip label={`${currentStatus ? labelOf(currentStatus) : ''} · ${currentStage?.intervalDays ?? 0} ${t('study.days')}`}>
+              <div className='study-card-stage'>
+                <span className='study-card-stars' aria-label={`Stage ${currentStar} of ${totalStages}`}>{starDisplay}</span>
+                <span className='study-card-stage-status'>{currentStatus ? labelOf(currentStatus) : currentStatus}</span>
+              </div>
+            </Tooltip>
           )}
         </header>
         {!resolved && (
@@ -287,11 +293,13 @@ function StudyFooter({ progression, status, pageCount, page, revealed = false, c
             const labelKey = (['study.again', 'study.hard', 'study.good', 'study.easy'] as const)[rating - 1];
             const starDisplay = totalStages <= 7 ? '★'.repeat(starCount) : `★${starCount}`;
             return (
-              <Button data-rating={rating} key={rating} disabled={!canRate} onClick={() => onRate(rating)} title={`${t(labelKey)} · ${labelOf(targetStage.status)} · ${targetStage.intervalDays} ${t('study.days')}`}>
-                <span className='study-rating-label'>{t(labelKey)}</span>
-                <span className='study-rating-stars' aria-label={`Stage ${starCount} of ${totalStages}`}>{starDisplay}</span>
-                <small>{targetStage.intervalDays} {t('study.days')}</small>
-              </Button>
+              <Tooltip key={rating} label={`${t(labelKey)} · ${labelOf(targetStage.status)} · ${targetStage.intervalDays} ${t('study.days')}`}>
+                <Button data-rating={rating} disabled={!canRate} onClick={() => onRate(rating)}>
+                  <span className='study-rating-label'>{t(labelKey)}</span>
+                  <span className='study-rating-stars' aria-label={`Stage ${starCount} of ${totalStages}`}>{starDisplay}</span>
+                  <small>{targetStage.intervalDays} {t('study.days')}</small>
+                </Button>
+              </Tooltip>
             );
           })}
         </div>

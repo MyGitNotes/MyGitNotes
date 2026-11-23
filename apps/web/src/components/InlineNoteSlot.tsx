@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type HTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, Pencil } from 'lucide-react';
 import { noteRefKey } from '@mygitnotes/core/note-query';
@@ -167,10 +168,12 @@ export function InlineNoteSlot({ slot, notebookId, path, title, writable, layout
   const label = t(editing ? 'compilation.finishNote' : 'compilation.editNote', { title: shown });
   const controls = writable || editing
     ? (
-      <Button ref={setToggle} size='small' variant={editing ? 'primary' : 'default'} className='compilation-edit-toggle' aria-label={label} title={label} onClick={() => void (editing ? end() : begin())}>
-        {editing ? <Check aria-hidden='true' /> : <Pencil aria-hidden='true' />}
-        <span>{t(editing ? 'editor.finishEditing' : 'editor.startEditing')}</span>
-      </Button>
+      <Tooltip label={label}>
+        <Button ref={setToggle} size='small' variant={editing ? 'primary' : 'default'} className='compilation-edit-toggle' aria-label={label} onClick={() => void (editing ? end() : begin())}>
+          {editing ? <Check aria-hidden='true' /> : <Pencil aria-hidden='true' />}
+          <span>{t(editing ? 'editor.finishEditing' : 'editor.startEditing')}</span>
+        </Button>
+      </Tooltip>
     )
     : null;
   const body = editing

@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import React, { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ArrowLeft, ChevronDown, Columns2, FileText, GalleryHorizontalEnd, ListPlus, Maximize2, PanelsTopLeft, PanelTopClose, Rows2, X } from 'lucide-react';
@@ -292,30 +293,33 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
               onDragOver={event => hover(event, slotAt(event, tab))}
               onDrop={event => drop(event, slotAt(event, tab))}
             >
-              <button
-                type='button'
-                role='tab'
-                aria-selected={tab.pane === displayed.pane && tab.key === displayed.key}
-                aria-controls={panelId}
-                aria-label={repeatedLabels.has(tab.label) ? `${tab.label}, ${t('focus.paneNumber', { number: numberOf(tab.pane) })}` : undefined}
-                data-pane-cue={repeatedLabels.has(tab.label) ? t('focus.paneShort', { number: numberOf(tab.pane) }) : undefined}
-                tabIndex={(tab.pane === displayed.pane && tab.key === displayed.key) || (!displayed.key && tab === tabs[0]) ? 0 : -1}
-                title={tab.label}
-                onClick={() => void focus.show(tab.pane, tab.key)}
-                onKeyDown={event => {
-                  if (editable && event.key === 'Delete') {
-                    event.preventDefault();
-                    void focus.close(tab.key, tab.pane).catch(() => {});
-                  }
-                }}
-              >
-                <TabIcon path={tab.tab.path} notebook={notebook} />
-                <span>{tab.label}</span>
-              </button>
-              {editable && (
-                <button type='button' className='focus-tab-close' tabIndex={-1} aria-label={t('focus.closeTab', { name: tab.label })} title={t('focus.closeTab', { name: tab.label })} onClick={() => void focus.close(tab.key, tab.pane).catch(() => {})}>
-                  <X aria-hidden='true' />
+              <Tooltip label={tab.label}>
+                <button
+                  type='button'
+                  role='tab'
+                  aria-selected={tab.pane === displayed.pane && tab.key === displayed.key}
+                  aria-controls={panelId}
+                  aria-label={repeatedLabels.has(tab.label) ? `${tab.label}, ${t('focus.paneNumber', { number: numberOf(tab.pane) })}` : undefined}
+                  data-pane-cue={repeatedLabels.has(tab.label) ? t('focus.paneShort', { number: numberOf(tab.pane) }) : undefined}
+                  tabIndex={(tab.pane === displayed.pane && tab.key === displayed.key) || (!displayed.key && tab === tabs[0]) ? 0 : -1}
+                  onClick={() => void focus.show(tab.pane, tab.key)}
+                  onKeyDown={event => {
+                    if (editable && event.key === 'Delete') {
+                      event.preventDefault();
+                      void focus.close(tab.key, tab.pane).catch(() => {});
+                    }
+                  }}
+                >
+                  <TabIcon path={tab.tab.path} notebook={notebook} />
+                  <span>{tab.label}</span>
                 </button>
+              </Tooltip>
+              {editable && (
+                <Tooltip label={t('focus.closeTab', { name: tab.label })}>
+                  <button type='button' className='focus-tab-close' tabIndex={-1} aria-label={t('focus.closeTab', { name: tab.label })} onClick={() => void focus.close(tab.key, tab.pane).catch(() => {})}>
+                    <X aria-hidden='true' />
+                  </button>
+                </Tooltip>
               )}
             </div>
           ))}
@@ -372,10 +376,14 @@ const PhoneBackBar: React.FC<{ title: string; }> = ({ title }) => {
   const { back } = usePhoneNotes();
   return (
     <div className='phone-note-bar'>
-      <button type='button' className='ui-icon-button' aria-label={t('phone.back')} title={t('phone.back')} onClick={back}>
-        <ArrowLeft aria-hidden='true' />
-      </button>
-      <div className='phone-note-title' title={title}>{title}</div>
+      <Tooltip label={t('phone.back')}>
+        <button type='button' className='ui-icon-button' aria-label={t('phone.back')} onClick={back}>
+          <ArrowLeft aria-hidden='true' />
+        </button>
+      </Tooltip>
+      <Tooltip label={title}>
+        <div className='phone-note-title'>{title}</div>
+      </Tooltip>
     </div>
   );
 };
@@ -437,50 +445,53 @@ const TabListMenu: React.FC<{ label: string; editable: boolean; notebook?: Marke
   }, [open]);
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
-      <DropdownMenu.Trigger className='ui-icon-button focus-tab-list-trigger' aria-label={label} title={label}>
-        <ChevronDown aria-hidden='true' />
-      </DropdownMenu.Trigger>
+      <Tooltip label={label}>
+        <DropdownMenu.Trigger className='ui-icon-button focus-tab-list-trigger' aria-label={label}>
+          <ChevronDown aria-hidden='true' />
+        </DropdownMenu.Trigger>
+      </Tooltip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content ref={content} className='focus-menu focus-tab-list' align='end' sideOffset={4} collisionPadding={8} aria-label={label} onEscapeKeyDown={event => event.stopPropagation()}>
           {items.map(({ tab, current, cue, closeLabel, drop }) => (
-            <DropdownMenu.Item
-              key={`${tab.pane}:${tab.key}`}
-              data-current={current || undefined}
-              data-drop={drop}
-              draggable={editable}
-              title={tab.label}
-              onSelect={() => onShow(tab)}
-              onKeyDown={event => {
-                if (editable && event.key === 'Delete') {
-                  event.preventDefault();
-                  onClose(tab);
-                }
-              }}
-              onDragStart={event => onDragStart(event, tab)}
-              onDragOver={event => onDragOver(event, tab)}
-              onDrop={event => onDrop(event, tab)}
-            >
-              <TabIcon path={tab.tab.path} notebook={notebook} />
-              <span>{tab.label}</span>
-              {cue && <small className='focus-tab-list-cue'>{cue}</small>}
-              {editable && (
-                // A click here closes the tab and keeps the list open; it must not reach the row, which would show the tab and close the list.
-                <button
-                  type='button'
-                  className='focus-tab-list-close'
-                  tabIndex={-1}
-                  aria-label={closeLabel}
-                  title={closeLabel}
-                  onClick={event => {
+            <Tooltip key={`${tab.pane}:${tab.key}`} label={tab.label}>
+              <DropdownMenu.Item
+                data-current={current || undefined}
+                data-drop={drop}
+                draggable={editable}
+                onSelect={() => onShow(tab)}
+                onKeyDown={event => {
+                  if (editable && event.key === 'Delete') {
                     event.preventDefault();
-                    event.stopPropagation();
                     onClose(tab);
-                  }}
-                >
-                  <X aria-hidden='true' />
-                </button>
-              )}
-            </DropdownMenu.Item>
+                  }
+                }}
+                onDragStart={event => onDragStart(event, tab)}
+                onDragOver={event => onDragOver(event, tab)}
+                onDrop={event => onDrop(event, tab)}
+              >
+                <TabIcon path={tab.tab.path} notebook={notebook} />
+                <span>{tab.label}</span>
+                {cue && <small className='focus-tab-list-cue'>{cue}</small>}
+                {editable && (
+                  // A click here closes the tab and keeps the list open; it must not reach the row, which would show the tab and close the list.
+                  <Tooltip label={closeLabel}>
+                    <button
+                      type='button'
+                      className='focus-tab-list-close'
+                      tabIndex={-1}
+                      aria-label={closeLabel}
+                      onClick={event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onClose(tab);
+                      }}
+                    >
+                      <X aria-hidden='true' />
+                    </button>
+                  </Tooltip>
+                )}
+              </DropdownMenu.Item>
+            </Tooltip>
           ))}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
@@ -491,18 +502,22 @@ const TabListMenu: React.FC<{ label: string; editable: boolean; notebook?: Marke
 /** The pane's own actions as one menu, so the bar keeps its width for tabs: each item carries the button's name, and a limit's reason shows beside a disabled split. */
 const PaneMenu: React.FC<{ label: string; items: { key: string; label: string; icon: ReactNode; onSelect: () => void; disabled?: boolean; hint?: string; checked?: boolean; }[]; }> = ({ label, items }) => (
   <DropdownMenu.Root>
-    <DropdownMenu.Trigger className='ui-icon-button focus-pane-menu' aria-label={label} title={label}>
-      <PanelsTopLeft aria-hidden='true' />
-    </DropdownMenu.Trigger>
+    <Tooltip label={label}>
+      <DropdownMenu.Trigger className='ui-icon-button focus-pane-menu' aria-label={label}>
+        <PanelsTopLeft aria-hidden='true' />
+      </DropdownMenu.Trigger>
+    </Tooltip>
     <DropdownMenu.Portal>
       <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={label} onEscapeKeyDown={event => event.stopPropagation()}>
         {items.map(item =>
           item.checked === undefined
             ? (
-              <DropdownMenu.Item key={item.key} data-item={item.key} disabled={item.disabled} title={item.hint} onSelect={item.onSelect}>
-                {item.icon}
-                <span>{item.hint ? `${item.label}. ${item.hint}` : item.label}</span>
-              </DropdownMenu.Item>
+              <Tooltip key={item.key} label={item.hint}>
+                <DropdownMenu.Item data-item={item.key} disabled={item.disabled} onSelect={item.onSelect}>
+                  {item.icon}
+                  <span>{item.hint ? `${item.label}. ${item.hint}` : item.label}</span>
+                </DropdownMenu.Item>
+              </Tooltip>
             )
             : (
               <DropdownMenu.CheckboxItem key={item.key} data-item={item.key} checked={item.checked} onSelect={item.onSelect}>

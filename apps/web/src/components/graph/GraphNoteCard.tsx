@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { useState } from 'react';
 import type { NoteGraphNode } from '@mygitnotes/core/note-graph';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -38,18 +39,19 @@ export function GraphNoteCard({ node, session, editorRef, onSession, onCollapse,
         <button type='button' onClick={onMaximize} aria-label={t('graph.maximize')}>{maximized ? '↙' : '↗'}</button>
         <button type='button' onClick={onCollapse} aria-label={t('graph.collapse')}>−</button>
       </header>
-      <button
-        type='button'
-        className='graph-connection-port'
-        disabled={!session || session.locked}
-        onPointerDown={onConnect}
-        onClick={() => {
-          setLinking(value => !value);
-          setQuery('');
-        }}
-        aria-label={t('graph.connect')}
-        title={t('graph.connect')}
-      />
+      <Tooltip label={t('graph.connect')}>
+        <button
+          type='button'
+          className='graph-connection-port'
+          disabled={!session || session.locked}
+          onPointerDown={onConnect}
+          onClick={() => {
+            setLinking(value => !value);
+            setQuery('');
+          }}
+          aria-label={t('graph.connect')}
+        />
+      </Tooltip>
       {linking && (
         <div className='note-link-picker'>
           <input type='search' autoFocus value={query} aria-label={t('graph.findNote')} onChange={event => setQuery(event.target.value)} />

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from '../tooltip-test-helpers.js';
 import { createElement } from 'react';
 import { cleanup, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -49,7 +50,7 @@ describe('a filed live note others edit', () => {
     render(createElement(LiveDraftsProvider, { value: builtin }, createElement(ListView, { statuses: ['inbox'], notes: [note], onOpenNote: vi.fn(), onDeleteNote: vi.fn(), onMoveNote: vi.fn(), onUpdateNoteStatus: vi.fn(), onNewNote: vi.fn() })));
     const line = screen.getByText('Weekly').closest('tr')!;
     const marker = within(line).getByText('Moves here at check-in');
-    expect(marker.closest('[title]')).toHaveAttribute('title', expect.stringContaining('notes/life/會議/2026-11-17 公司週會.md'));
+    expect(tooltipText(marker.closest('[data-t1-trigger]'))).toEqual(expect.stringContaining('notes/life/會議/2026-11-17 公司週會.md'));
     expect(within(line).getByRole('button', { name: 'Move note' })).toBeEnabled();
     expect(within(line).getByRole('button', { name: 'Delete note' })).toBeDisabled();
   });
@@ -57,13 +58,13 @@ describe('a filed live note others edit', () => {
   it('says on its row when the check-in kept it in place because its target exists', () => {
     render(createElement(LiveBadge, { live: { since, activeEditors: 1, editorUrl: '', unmoved: 'notes/life/archive/2026-11-17 公司週會.md' } }));
     const warning = screen.getByText('Not moved: the destination exists');
-    expect(warning.closest('[title]')).toHaveAttribute('title', expect.stringContaining('notes/life/archive/2026-11-17 公司週會.md'));
+    expect(tooltipText(warning.closest('[data-t1-trigger]'))).toEqual(expect.stringContaining('notes/life/archive/2026-11-17 公司週會.md'));
   });
 
   it('says on its row when the check-in kept it in place because the move would change too much', () => {
     render(createElement(LiveBadge, { live: { since, activeEditors: 1, editorUrl: '', unmoved: 'notes/life/archive/2026-11-17 公司週會.md', unmovedReason: 'too-large' } }));
     const warning = screen.getByText('Not moved: too many files to change');
-    expect(warning.closest('[title]')).toHaveAttribute('title', expect.stringContaining('more files than one commit takes'));
+    expect(tooltipText(warning.closest('[data-t1-trigger]'))).toEqual(expect.stringContaining('more files than one commit takes'));
     expect(zhTW['live.unmovedTooLarge']).toBe('沒有移動：牽動的檔案太多');
   });
 

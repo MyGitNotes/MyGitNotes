@@ -46,19 +46,23 @@ export function HeaderUtilities({ activeTab, setActiveTab, navigationDisabled = 
   const dockOffer = usePiAgentOffer();
   // The button opens quick open on note search, the same as its chord.
   const [paletteKeys] = bindingsFor(keymapEntry('palette.notes'), keyEnvironment);
-  const paletteLabel = paletteKeys ? t('shortcuts.openWithKeys', { keys: formatKeys(paletteKeys, keyEnvironment).join(' ') }) : t('shortcuts.open');
+  const paletteDetail = paletteKeys && formatKeys(paletteKeys, keyEnvironment).join(' ');
   return (
     <div className={className}>
       {/* Where the assistant dock is offered, the Agents page opens from the dock's header instead, so the header shows one agent button; while the server has not yet said, the dock's own button waits disabled in its place. */}
       {dockOffer === 'none' && (
-        <button type='button' disabled={navigationDisabled} className='ui-icon-button header-agent' data-header-agent='' aria-label={t('nav.agent')} title={t('nav.agent')} aria-current={activeTab === 'agent' ? 'page' : undefined} onClick={() => setActiveTab('agent')}>
-          <Bot size={17} />
-        </button>
+        <Tooltip label={t('nav.agent')}>
+          <button type='button' disabled={navigationDisabled} className='ui-icon-button header-agent' data-header-agent='' aria-label={t('nav.agent')} aria-current={activeTab === 'agent' ? 'page' : undefined} onClick={() => setActiveTab('agent')}>
+            <Bot size={17} />
+          </button>
+        </Tooltip>
       )}
       <AssistantDockToggle className='header-assistant' />
-      <button type='button' disabled={navigationDisabled} className='ui-icon-button header-command' data-header-command='' aria-label={t('shortcuts.open')} aria-keyshortcuts={paletteKeys && ariaKeyShortcuts(paletteKeys, keyEnvironment)} title={paletteLabel} onClick={onOpenCommands}>
-        <Keyboard size={17} />
-      </button>
+      <Tooltip label={t('shortcuts.open')} detail={paletteDetail}>
+        <button type='button' disabled={navigationDisabled} className='ui-icon-button header-command' data-header-command='' aria-label={t('shortcuts.open')} aria-keyshortcuts={paletteKeys && ariaKeyShortcuts(paletteKeys, keyEnvironment)} onClick={onOpenCommands}>
+          <Keyboard size={17} />
+        </button>
+      </Tooltip>
       {accountControls}
     </div>
   );
@@ -80,18 +84,19 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
               <span>{t('header.newNote')}</span>
             </Button>
           )}
-          <button
-            type='button'
-            disabled={navigationDisabled}
-            onClick={() => setActiveTab(id)}
-            aria-label={label}
-            title={label}
-            className={'desktopOnly' in item && item.desktopOnly ? 'desktop-only' : undefined}
-            aria-current={activeTab === id ? 'page' : undefined}
-          >
-            <Icon aria-hidden='true' />
-            <span>{label}</span>
-          </button>
+          <Tooltip label={label}>
+            <button
+              type='button'
+              disabled={navigationDisabled}
+              onClick={() => setActiveTab(id)}
+              aria-label={label}
+              className={'desktopOnly' in item && item.desktopOnly ? 'desktop-only' : undefined}
+              aria-current={activeTab === id ? 'page' : undefined}
+            >
+              <Icon aria-hidden='true' />
+              <span>{label}</span>
+            </button>
+          </Tooltip>
         </React.Fragment>
       ))}
     </nav>
@@ -128,7 +133,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
             {!notes && notebooks.length > 0 && (
               <>
                 <BookOpen aria-hidden='true' />
-                <Select aria-label={t('sidebar.notebooks')} value={selectedNotebookId} title={notebooks.find(nb => nb.id === selectedNotebookId)?.title} disabled={notebookDisabled || navigationDisabled} onValueChange={onSelectNotebook} groups={notebookGroups?.map(group => ({ label: group.label, values: group.notebooks }))} options={notebooks.map(nb => ({ value: nb.id, label: unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title }))} />
+                <Select aria-label={t('sidebar.notebooks')} value={selectedNotebookId} tooltip={notebooks.find(nb => nb.id === selectedNotebookId)?.title} disabled={notebookDisabled || navigationDisabled} onValueChange={onSelectNotebook} groups={notebookGroups?.map(group => ({ label: group.label, values: group.notebooks }))} options={notebooks.map(nb => ({ value: nb.id, label: unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title }))} />
               </>
             )}
           </div>

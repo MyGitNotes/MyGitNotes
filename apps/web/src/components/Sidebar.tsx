@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import './sidebar-filters.css';
 import type { FilterControls } from '../lib/filter-controls.js';
 import type { FolderAction } from './FolderActions.js';
@@ -85,12 +86,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
   );
   const expandControls = onSelectFolder && (
     <div className='sidebar-panel-actions' role='group' aria-label={t('sidebar.notebooks')}>
-      <button type='button' className='ui-icon-button' title={t('folder.expandAll')} aria-label={t('folder.expandAll')} onClick={() => expandAll(true)}>
-        <ChevronsUpDown size={15} />
-      </button>
-      <button type='button' className='ui-icon-button' title={t('folder.collapseAll')} aria-label={t('folder.collapseAll')} onClick={() => expandAll(false)}>
-        <ChevronsDownUp size={15} />
-      </button>
+      <Tooltip label={t('folder.expandAll')}>
+        <button type='button' className='ui-icon-button' aria-label={t('folder.expandAll')} onClick={() => expandAll(true)}>
+          <ChevronsUpDown size={15} />
+        </button>
+      </Tooltip>
+      <Tooltip label={t('folder.collapseAll')}>
+        <button type='button' className='ui-icon-button' aria-label={t('folder.collapseAll')} onClick={() => expandAll(false)}>
+          <ChevronsDownUp size={15} />
+        </button>
+      </Tooltip>
     </div>
   );
   const notebooksBody = (

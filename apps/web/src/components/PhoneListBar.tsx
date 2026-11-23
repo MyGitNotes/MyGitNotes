@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import './note-search.css';
 import './phone-notes.css';
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
@@ -47,10 +48,12 @@ export function PhoneListBar({ notebooks, selectedNotebookId, onSelectNotebook, 
   }), []);
   return (
     <div className='phone-list-bar' role='group' aria-label={t('phone.listBar')}>
-      <button type='button' className='ui-icon-button' aria-label={t('filters.notebookPanel')} title={t('filters.notebookPanel')} aria-expanded={filtersOpen} aria-controls='notebook-panel' onClick={onToggleFilters}>
-        <PanelLeft aria-hidden='true' />
-      </button>
-      {notebooks.length > 0 && <Select className='phone-list-notebook' aria-label={t('sidebar.notebooks')} value={selectedNotebookId} title={notebooks.find(nb => nb.id === selectedNotebookId)?.title} disabled={notebookDisabled} onValueChange={onSelectNotebook} groups={notebookGroups?.map(group => ({ label: group.label, values: group.notebooks }))} options={notebooks.map(nb => ({ value: nb.id, label: unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title, leading: <NotebookMark notebook={nb} size='tab' className='select-option-mark' /> }))} />}
+      <Tooltip label={t('filters.notebookPanel')}>
+        <button type='button' className='ui-icon-button' aria-label={t('filters.notebookPanel')} aria-expanded={filtersOpen} aria-controls='notebook-panel' onClick={onToggleFilters}>
+          <PanelLeft aria-hidden='true' />
+        </button>
+      </Tooltip>
+      {notebooks.length > 0 && <Select className='phone-list-notebook' aria-label={t('sidebar.notebooks')} value={selectedNotebookId} tooltip={notebooks.find(nb => nb.id === selectedNotebookId)?.title} disabled={notebookDisabled} onValueChange={onSelectNotebook} groups={notebookGroups?.map(group => ({ label: group.label, values: group.notebooks }))} options={notebooks.map(nb => ({ value: nb.id, label: unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title, leading: <NotebookMark notebook={nb} size='tab' className='select-option-mark' /> }))} />}
       <button ref={toggle} type='button' className='ui-icon-button note-search-toggle' aria-label={t('header.searchPlaceholder')} aria-expanded={searchOpen} aria-controls='note-toolbar-search' data-active={query.trim() ? true : undefined} onClick={() => setSearchOpen(true)}>
         <Search aria-hidden='true' />
       </button>
@@ -59,9 +62,11 @@ export function PhoneListBar({ notebooks, selectedNotebookId, onSelectNotebook, 
           <Search size={15} aria-hidden='true' />
           <input ref={searchInput} className='note-search-input' type='search' aria-label={t('header.searchPlaceholder')} placeholder={t('header.searchPlaceholder')} value={query} onChange={event => onQueryChange(event.target.value)} />
         </label>
-        <button type='button' className='ui-icon-button note-search-close' aria-label={closeLabel} title={closeLabel} onClick={clearOrClose}>
-          <X size={16} aria-hidden='true' />
-        </button>
+        <Tooltip label={closeLabel}>
+          <button type='button' className='ui-icon-button note-search-close' aria-label={closeLabel} onClick={clearOrClose}>
+            <X size={16} aria-hidden='true' />
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, ExternalLink, Users } from 'lucide-react';
@@ -146,8 +147,16 @@ export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, o
               {t('live.openInTab')}
             </a>
           )}
-          {checkout.pending && editor.discard && (framed || phase.kind === 'kept' || phase.kind === 'failed') && <Button size='small' variant='danger' title={t('live.discardHint')} onClick={() => void discard()}>{t('live.discard')}</Button>}
-          {framed && <Button size='small' variant='primary' title={t('live.checkInHint')} disabled={!status?.saved} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>}
+          {checkout.pending && editor.discard && (framed || phase.kind === 'kept' || phase.kind === 'failed') && (
+            <Tooltip label={t('live.discardHint')}>
+              <Button size='small' variant='danger' onClick={() => void discard()}>{t('live.discard')}</Button>
+            </Tooltip>
+          )}
+          {framed && (
+            <Tooltip label={t('live.checkInHint')}>
+              <Button size='small' variant='primary' disabled={!status?.saved} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>
+            </Tooltip>
+          )}
           <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>
         </div>
       </div>

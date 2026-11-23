@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import type { DiffStats as Stats } from '../lib/diff-preview.js';
 import { useTranslation } from '../lib/i18n/index.js';
 
@@ -6,9 +7,11 @@ export function DiffStats({ stats }: { stats: Stats; }) {
   const { t } = useTranslation();
   const label = t('changes.diffStats', { added: stats.added, removed: stats.removed });
   return (
-    <span className='diff-stats' role='img' aria-label={label} title={label}>
-      <b className='diff-added' aria-hidden='true'>+{stats.added}</b>
-      <b className='diff-removed' aria-hidden='true'>−{stats.removed}</b>
-    </span>
+    <Tooltip label={label}>
+      <span className='diff-stats' role='img' aria-label={label}>
+        <b className='diff-added' aria-hidden='true'>+{stats.added}</b>
+        <b className='diff-removed' aria-hidden='true'>−{stats.removed}</b>
+      </span>
+    </Tooltip>
   );
 }

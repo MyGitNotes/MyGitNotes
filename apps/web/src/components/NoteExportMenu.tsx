@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { r2ReferenceKeys } from '@mygitnotes/core/r2-references';
 import { AlertTriangle, Check, Copy, Download, FileArchive, FileText, Printer } from 'lucide-react';
@@ -63,9 +64,11 @@ export function NoteExportMenu({ path, notebookId, title, content, copyState, on
   const Icon = copyState === 'copied' ? Check : copyState === 'error' ? AlertTriangle : Download;
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger className={className} aria-label={label} title={label}>
-        <Icon size={iconSize} aria-hidden='true' />
-      </DropdownMenu.Trigger>
+      <Tooltip label={label}>
+        <DropdownMenu.Trigger className={className} aria-label={label}>
+          <Icon size={iconSize} aria-hidden='true' />
+        </DropdownMenu.Trigger>
+      </Tooltip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('editor.export')} onEscapeKeyDown={event => event.stopPropagation()}>
           <NoteExportItems path={path} notebookId={notebookId} title={title} content={content} onCopy={onCopy} />

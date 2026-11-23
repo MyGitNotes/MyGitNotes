@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { type RefObject, useCallback, useRef } from 'react';
 import type { ForceGraphMethods } from 'react-force-graph-2d';
 import type { NoteGraphLink, NoteGraphNode } from '@mygitnotes/core/note-graph';
@@ -71,74 +72,75 @@ export function useGraphMinimap({ graphRef: fgRef, graphData, dimensions, isDark
   /* eslint-enable react-hooks/exhaustive-deps */
 
   const minimap = (
-    <button
-      type='button'
-      aria-label={t('graph.minimap')}
-      title={t('graph.minimapHint')}
-      onMouseEnter={onClearHover}
-      className='overflow-hidden rounded-xl border border-line-strong/80 bg-surface/90 shadow-sm backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
-      onClick={(event) => {
-        if (!fgRef.current || !graphData.nodes.length) return;
-        if (event.detail === 0) handleResetZoom();
-      }}
-    >
-      <canvas
-        ref={minimapRef}
-        style={{ width: 176, height: 112, touchAction: 'none' }}
-        aria-hidden='true'
-        className='block cursor-crosshair'
-        onPointerDown={event => {
-          if (event.button !== 0 || !event.isPrimary || !fgRef.current || !minimapViewport.current) return;
-          onNavigate();
-          const rect = event.currentTarget.getBoundingClientRect();
-          const px = event.clientX - rect.left;
-          const py = event.clientY - rect.top;
-          const box = minimapViewport.current;
-          const inside = px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h;
-          const center = fgRef.current.centerAt();
-          const transform = minimapTransform.current;
-          minimapGesture.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, inside, moved: false, centerX: center.x, centerY: center.y, scale: transform.scale, offsetX: transform.x, offsetY: transform.y };
-          event.currentTarget.setPointerCapture(event.pointerId);
-          event.currentTarget.style.cursor = inside ? 'grabbing' : 'crosshair';
+    <Tooltip label={t('graph.minimapHint')}>
+      <button
+        type='button'
+        aria-label={t('graph.minimap')}
+        onMouseEnter={onClearHover}
+        className='overflow-hidden rounded-xl border border-line-strong/80 bg-surface/90 shadow-sm backdrop-blur-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+        onClick={(event) => {
+          if (!fgRef.current || !graphData.nodes.length) return;
+          if (event.detail === 0) handleResetZoom();
         }}
-        onPointerMove={event => {
-          const gesture = minimapGesture.current;
-          if (gesture) {
-            if (gesture.pointerId !== event.pointerId) return;
-            const dx = event.clientX - gesture.startX;
-            const dy = event.clientY - gesture.startY;
-            if (Math.hypot(dx, dy) > 3) gesture.moved = true;
-            if (gesture.inside && gesture.moved) {
-              fgRef.current?.centerAt(gesture.centerX + dx / gesture.scale, gesture.centerY + dy / gesture.scale, 0);
-            }
-            return;
-          }
-          const rect = event.currentTarget.getBoundingClientRect();
-          const px = event.clientX - rect.left, py = event.clientY - rect.top;
-          const box = minimapViewport.current;
-          event.currentTarget.style.cursor = box && px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h ? 'grab' : 'crosshair';
-        }}
-        onPointerUp={event => {
-          const gesture = minimapGesture.current;
-          if (!gesture || gesture.pointerId !== event.pointerId) return;
-          minimapGesture.current = null;
-          event.currentTarget.releasePointerCapture(event.pointerId);
-          event.currentTarget.style.cursor = gesture.inside ? 'grab' : 'crosshair';
-          if (!gesture.inside && !gesture.moved && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) <= 3) {
+      >
+        <canvas
+          ref={minimapRef}
+          style={{ width: 176, height: 112, touchAction: 'none' }}
+          aria-hidden='true'
+          className='block cursor-crosshair'
+          onPointerDown={event => {
+            if (event.button !== 0 || !event.isPrimary || !fgRef.current || !minimapViewport.current) return;
+            onNavigate();
             const rect = event.currentTarget.getBoundingClientRect();
-            fgRef.current?.centerAt((event.clientX - rect.left - gesture.offsetX) / gesture.scale, (event.clientY - rect.top - gesture.offsetY) / gesture.scale, 300);
-          }
-        }}
-        onPointerCancel={() => {
-          minimapGesture.current = null;
-        }}
-        onLostPointerCapture={event => {
-          minimapGesture.current = null;
-          event.currentTarget.style.cursor = 'crosshair';
-        }}
-      />
-      <span className='block pb-2 text-[10px] text-muted'>{t('graph.minimap')}</span>
-    </button>
+            const px = event.clientX - rect.left;
+            const py = event.clientY - rect.top;
+            const box = minimapViewport.current;
+            const inside = px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h;
+            const center = fgRef.current.centerAt();
+            const transform = minimapTransform.current;
+            minimapGesture.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, inside, moved: false, centerX: center.x, centerY: center.y, scale: transform.scale, offsetX: transform.x, offsetY: transform.y };
+            event.currentTarget.setPointerCapture(event.pointerId);
+            event.currentTarget.style.cursor = inside ? 'grabbing' : 'crosshair';
+          }}
+          onPointerMove={event => {
+            const gesture = minimapGesture.current;
+            if (gesture) {
+              if (gesture.pointerId !== event.pointerId) return;
+              const dx = event.clientX - gesture.startX;
+              const dy = event.clientY - gesture.startY;
+              if (Math.hypot(dx, dy) > 3) gesture.moved = true;
+              if (gesture.inside && gesture.moved) {
+                fgRef.current?.centerAt(gesture.centerX + dx / gesture.scale, gesture.centerY + dy / gesture.scale, 0);
+              }
+              return;
+            }
+            const rect = event.currentTarget.getBoundingClientRect();
+            const px = event.clientX - rect.left, py = event.clientY - rect.top;
+            const box = minimapViewport.current;
+            event.currentTarget.style.cursor = box && px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h ? 'grab' : 'crosshair';
+          }}
+          onPointerUp={event => {
+            const gesture = minimapGesture.current;
+            if (!gesture || gesture.pointerId !== event.pointerId) return;
+            minimapGesture.current = null;
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            event.currentTarget.style.cursor = gesture.inside ? 'grab' : 'crosshair';
+            if (!gesture.inside && !gesture.moved && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) <= 3) {
+              const rect = event.currentTarget.getBoundingClientRect();
+              fgRef.current?.centerAt((event.clientX - rect.left - gesture.offsetX) / gesture.scale, (event.clientY - rect.top - gesture.offsetY) / gesture.scale, 300);
+            }
+          }}
+          onPointerCancel={() => {
+            minimapGesture.current = null;
+          }}
+          onLostPointerCapture={event => {
+            minimapGesture.current = null;
+            event.currentTarget.style.cursor = 'crosshair';
+          }}
+        />
+        <span className='block pb-2 text-[10px] text-muted'>{t('graph.minimap')}</span>
+      </button>
+    </Tooltip>
   );
   return { paintMinimap, minimap };
 }

@@ -1,5 +1,5 @@
 import type { TranslationKey } from '../i18n/en.js';
-import { type KeyText, matchesKeys, type ParsedKeys, parseKeys } from './keys.js';
+import { formatKeys, type KeyText, matchesKeys, type ParsedKeys, parseKeys } from './keys.js';
 import { type Browser, type KeyEnvironment, keyEnvironment, type Platform } from './platform.js';
 
 /** Where a key acts. `global` covers every other scope, including text fields and editors. */
@@ -197,6 +197,12 @@ export function parsedBinding(binding: KeyBinding): ParsedKeys {
 /** The entry's bindings in `env`, in table order. */
 export function bindingsFor(item: KeymapEntry, env: KeyEnvironment = keyEnvironment): readonly ParsedKeys[] {
   return item.bindings.filter(binding => bindingApplies(binding, env)).map(parsedBinding);
+}
+
+/** The first applicable shortcut, displayed as supplemental text in a tooltip. */
+export function primaryShortcutHint(id: string, env: KeyEnvironment = keyEnvironment): string | undefined {
+  const [keys] = bindingsFor(keymapEntry(id), env);
+  return keys && formatKeys(keys, env).join(' ');
 }
 
 /** Whether `event` presses one of the entry's single-chord bindings; widgets read their keys through this. */

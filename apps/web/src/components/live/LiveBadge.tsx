@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { AlertTriangle, FilePen, FolderInput, Radio } from 'lucide-react';
 import type { LiveNoteState } from '@mygitnotes/core';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -17,32 +18,40 @@ export function LiveBadge({ live, title }: { live: LiveNoteState | undefined; ti
   if (live.pending) {
     const destination = liveDestinationPreview(live, title);
     return (
-      <span className='live-badge' data-pending='' title={destination ? t(destination.followsTitle ? 'live.fileToTitle' : 'live.fileTo', { path: destination.path }) : t('live.pendingHint')}>
-        <FilePen aria-hidden='true' />
-        {t('live.pending')}
-      </span>
+      <Tooltip label={destination ? t(destination.followsTitle ? 'live.fileToTitle' : 'live.fileTo', { path: destination.path }) : t('live.pendingHint')}>
+        <span className='live-badge' data-pending=''>
+          <FilePen aria-hidden='true' />
+          {t('live.pending')}
+        </span>
+      </Tooltip>
     );
   }
   const editing = live.activeEditors > 0 || live.changed
     ? (
-      <span className='live-badge' title={t('live.badgeHint')}>
-        <Radio aria-hidden='true' />
-        {live.activeEditors > 0 ? t('live.badge', { count: live.activeEditors }) : t('live.badgeQuiet')}
-      </span>
+      <Tooltip label={t('live.badgeHint')}>
+        <span className='live-badge'>
+          <Radio aria-hidden='true' />
+          {live.activeEditors > 0 ? t('live.badge', { count: live.activeEditors }) : t('live.badgeQuiet')}
+        </span>
+      </Tooltip>
     )
     : null;
   // A note moving at its next check-in is listed where it goes (docs/specs/2026-11-15-builtin-live-editor §20.4).
   const moving = live.movingFrom !== undefined && (
-    <span className='live-badge' data-moving='' title={t('live.movingHereHint', { path: live.movingFrom })}>
-      <FolderInput aria-hidden='true' />
-      {t('live.movingHere')}
-    </span>
+    <Tooltip label={t('live.movingHereHint', { path: live.movingFrom })}>
+      <span className='live-badge' data-moving=''>
+        <FolderInput aria-hidden='true' />
+        {t('live.movingHere')}
+      </span>
+    </Tooltip>
   );
   const unmoved = live.unmoved !== undefined && (
-    <span className='live-badge' data-unmoved='' title={t(live.unmovedReason === 'too-large' ? 'live.unmovedTooLargeHint' : 'live.unmovedHint', { path: live.unmoved })}>
-      <AlertTriangle aria-hidden='true' />
-      {t(live.unmovedReason === 'too-large' ? 'live.unmovedTooLarge' : 'live.unmoved')}
-    </span>
+    <Tooltip label={t(live.unmovedReason === 'too-large' ? 'live.unmovedTooLargeHint' : 'live.unmovedHint', { path: live.unmoved })}>
+      <span className='live-badge' data-unmoved=''>
+        <AlertTriangle aria-hidden='true' />
+        {t(live.unmovedReason === 'too-large' ? 'live.unmovedTooLarge' : 'live.unmoved')}
+      </span>
+    </Tooltip>
   );
   if (!moving && !unmoved) return editing;
   return <span className='live-badges'>{moving}{unmoved}{editing}</span>;

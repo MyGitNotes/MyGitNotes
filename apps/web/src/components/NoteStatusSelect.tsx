@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { AlertTriangle } from 'lucide-react';
 import { Select } from './Select.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -12,10 +13,12 @@ export function FrontmatterInvalid({ iconOnly = false, announce = false }: { ico
   const { t } = useTranslation();
   const name = t('editor.frontmatterInvalidShort');
   return (
-    <span className='note-frontmatter-invalid' data-icon-only={iconOnly || undefined} role={announce ? 'status' : iconOnly ? 'img' : undefined} aria-label={iconOnly ? name : undefined} title={t('editor.frontmatterInvalidLive')}>
-      <AlertTriangle aria-hidden='true' />
-      {!iconOnly && <span>{name}</span>}
-    </span>
+    <Tooltip label={t('editor.frontmatterInvalidLive')}>
+      <span className='note-frontmatter-invalid' data-icon-only={iconOnly || undefined} role={announce ? 'status' : iconOnly ? 'img' : undefined} aria-label={iconOnly ? name : undefined}>
+        <AlertTriangle aria-hidden='true' />
+        {!iconOnly && <span>{name}</span>}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -48,7 +51,7 @@ export function NoteStatusSelect({ status = '', statuses, readOnly, onChange, la
           </span>
         }
         className={`status-cell cursor-pointer disabled:cursor-default ${status ? '' : 'status-cell-empty'}${dotOnly ? ' status-cell-dot' : ''}`}
-        title={lockedReason ?? label}
+        tooltip={lockedReason ?? label}
       />
     </div>
   );

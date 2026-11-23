@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { MoreHorizontal } from 'lucide-react';
@@ -243,9 +244,11 @@ export const TagActions: React.FC<TagActionsProps> = ({ tag, allTags, onPreviewU
     <DropdownMenu.Root open={menuOpen} onOpenChange={handleOpenChange}>
       <span className='sidebar-tag-chip' ref={chipRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchCancel} onContextMenu={onContextMenu}>{children}</span>
       <span className='sidebar-tag-actions-trigger' onClick={stop} data-open={menuOpen || undefined}>
-        <DropdownMenu.Trigger ref={triggerRef} className='ui-icon-button' aria-label={t('sidebar.tagManage', { tag })} title={t('sidebar.tagManage', { tag })}>
-          <MoreHorizontal size={12} />
-        </DropdownMenu.Trigger>
+        <Tooltip label={t('sidebar.tagManage', { tag })}>
+          <DropdownMenu.Trigger ref={triggerRef} className='ui-icon-button' aria-label={t('sidebar.tagManage', { tag })}>
+            <MoreHorizontal size={12} />
+          </DropdownMenu.Trigger>
+        </Tooltip>
       </span>
       <DropdownMenu.Portal container={portal}>
         <DropdownMenu.Content

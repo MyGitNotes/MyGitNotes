@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from '../tooltip-test-helpers.js';
 import { createElement, type ReactNode } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -49,7 +50,7 @@ it('toggles the dock from the header, the one agent button there, naming its key
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
   // It names the dock it controls only while the dock is there.
   expect(toggle.hasAttribute('aria-controls')).toBe(false);
-  expect(toggle.getAttribute('title')).toBe('Agent (Ctrl+`)');
+  expect(tooltipText(toggle)).toBe('Agent Ctrl+`');
   expect(toggle.getAttribute('aria-keyshortcuts')).toBe('Control+`');
   expect(screen.queryByRole('button', { name: 'Agent workspaces' })).toBeNull();
   expect(screen.queryByRole('separator', { name: 'Resize agent' })).toBeNull();

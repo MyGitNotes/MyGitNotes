@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { lazy, Suspense } from 'react';
 import { Button } from '../Button.js';
 import { Code2, Download, Eye, FolderInput, Pencil, Trash2, X } from 'lucide-react';
@@ -14,9 +15,11 @@ export function FileDetail({ model }: { model: ReturnType<typeof useFileManager>
       <div className='file-detail-heading'>
         <div className='file-detail-title'>
           <strong>{selectedEntry.name}</strong>
-          <button type='button' className='ui-icon-button' aria-label={t('files.close')} title={t('files.close')} disabled={busy} onClick={() => void navigate(directory)}>
-            <X size={18} />
-          </button>
+          <Tooltip label={t('files.close')}>
+            <button type='button' className='ui-icon-button' aria-label={t('files.close')} disabled={busy} onClick={() => void navigate(directory)}>
+              <X size={18} />
+            </button>
+          </Tooltip>
         </div>
       </div>
       <div className='file-actions'>
@@ -52,9 +55,11 @@ export function FileDetail({ model }: { model: ReturnType<typeof useFileManager>
           </>
         )}
         {!selectedEntry.directory && (
-          <a className='ui-icon-button' href={rawUrl + '&download=1'} download aria-label={t('files.download')} title={t('files.download')}>
-            <Download size={18} />
-          </a>
+          <Tooltip label={t('files.download')}>
+            <a className='ui-icon-button' href={rawUrl + '&download=1'} download aria-label={t('files.download')}>
+              <Download size={18} />
+            </a>
+          </Tooltip>
         )}
         {mode === 'pick-image' && onInsert && selectedEntry.presentation === 'image' && <Button type='button' variant='primary' disabled={busy || reading || !detail?.hash} onClick={() => detail?.hash && onInsert(`![${selectedEntry.name.replace(/[\\[\]]/g, '\\$&')}](/raw-assets/by-hash/${detail.hash})`)}>{t('files.insert')}</Button>}
       </div>

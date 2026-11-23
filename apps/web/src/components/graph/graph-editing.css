@@ -23,7 +23,6 @@
 @media (max-width: 650px) { .graph-editing-surface .graph-minimap-panel { transform: scale(0.7); transform-origin: bottom right; } }
 .graph-tool { position: relative; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 6px; }
 .graph-tool small { position: absolute; bottom: 0; right: 1px; font-size: 9px; line-height: 11px; }
-.graph-tool:hover::after, .graph-tool:focus-visible::after { content: attr(data-tooltip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-line); padding: 6px 9px; border-radius: 5px; font-size: 12px; white-space: nowrap; pointer-events: none; z-index: 2; }
 .graph-fullscreen-tool { position: absolute; right: 12px; top: 12px; z-index: 45; }
 .graph-fullscreen-tool .graph-tool:hover::after, .graph-fullscreen-tool .graph-tool:focus-visible::after { left: auto; right: calc(100% + 10px); }
 .graph-fullscreen-tool button { background: var(--color-surface); }

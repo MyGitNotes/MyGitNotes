@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { TagActions } from './TagActions.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -86,7 +87,11 @@ export const NoteTags: React.FC<{ tags: string[]; chipClassName?: string; tagAct
           )
           : <React.Fragment key={tag}>{chip(attributes)}</React.Fragment>;
       })}
-      {oneLine && tags.length > 0 && <span data-tag-more='' data-count={hidden || tags.length} className={`note-tag-chip note-tag-more ${chipClassName}`} title={hidden ? rest.join(', ') : undefined} aria-label={hidden ? t('notes.moreTags', { count: hidden, tags: rest.join(', ') }) : undefined} aria-hidden={hidden ? undefined : true} {...(hidden ? {} : { 'data-overflow': '', inert: '' })}>+{hidden || tags.length}</span>}
+      {oneLine && tags.length > 0 && (
+        <Tooltip label={hidden ? rest.join(', ') : undefined}>
+          <span data-tag-more='' data-count={hidden || tags.length} className={`note-tag-chip note-tag-more ${chipClassName}`} aria-label={hidden ? t('notes.moreTags', { count: hidden, tags: rest.join(', ') }) : undefined} aria-hidden={hidden ? undefined : true} {...(hidden ? {} : { 'data-overflow': '', inert: '' })}>+{hidden || tags.length}</span>
+        </Tooltip>
+      )}
       {children}
     </div>
   );

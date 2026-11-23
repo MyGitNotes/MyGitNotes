@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import type { NoteRef } from '@mygitnotes/core/note-query';
 import { Button } from './Button.js';
 import { type ReactNode, useLayoutEffect } from 'react';
@@ -5,6 +6,7 @@ import { Braces, CalendarDays, GitBranch, History, Info, ListTodo, ListTree, Sea
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { ChangeRequest, FileChange, GitStatus, NotebookConfig, NoteItem } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { primaryShortcutHint } from '../lib/keyboard/keymap.js';
 import { DOCUMENT_TOOL_IDS, type DocumentToolId, isDocumentTool, usePanelContext, WORKSPACE_TOOL_IDS, type WorkspaceToolId } from '../lib/panel-context.js';
 import { getSavedRightPanelWidth, RIGHT_PANEL_RAIL_WIDTH } from './WorkspaceChrome.js';
 import { CalendarTool } from './CalendarTool.js';
@@ -118,40 +120,41 @@ export function RightPanel({ notebooks, selectedNotebookId, currentFolder, onOpe
       {isOpen && <div className='right-panel-content'>{content}</div>}
       <div className='right-panel-rail' role='tablist' aria-label={t('panel.title')}>
         {fileMode && (
-          <Button
-            type='button'
-            role='tab'
-            aria-selected={showingMetadata}
-            aria-label={t('files.metadataLabel')}
-            title={t('files.metadataLabel')}
-            disabled={!fileMetadata}
-            onClick={() => {
-              panel.close();
-              onMetadataOpenChange?.(!showingMetadata);
-            }}
-          >
-            <Info aria-hidden='true' />
-          </Button>
+          <Tooltip label={t('files.metadataLabel')}>
+            <Button
+              type='button'
+              role='tab'
+              aria-selected={showingMetadata}
+              aria-label={t('files.metadataLabel')}
+              disabled={!fileMetadata}
+              onClick={() => {
+                panel.close();
+                onMetadataOpenChange?.(!showingMetadata);
+              }}
+            >
+              <Info aria-hidden='true' />
+            </Button>
+          </Tooltip>
         )}
         {WORKSPACE_TOOL_IDS.filter(offered).map(id => {
           const Icon = WORKSPACE_TOOL_ICONS[id];
           const label = t(WORKSPACE_TOOL_LABELS[id]);
           return (
-            <Button
-              key={id}
-              type='button'
-              role='tab'
-              aria-selected={showingWorkspaceTool && panel.activeTool === id}
-              title={label}
-              aria-label={label}
-              onClick={() => {
-                onMetadataOpenChange?.(false);
-                panel.openTool(id);
-              }}
-            >
-              <Icon aria-hidden='true' />
-              {id === 'changes' && changesCount > 0 && <span className='right-panel-badge' aria-hidden='true'>{changesCount > 99 ? '99+' : changesCount}</span>}
-            </Button>
+            <Tooltip key={id} label={label}>
+              <Button
+                type='button'
+                role='tab'
+                aria-selected={showingWorkspaceTool && panel.activeTool === id}
+                aria-label={label}
+                onClick={() => {
+                  onMetadataOpenChange?.(false);
+                  panel.openTool(id);
+                }}
+              >
+                <Icon aria-hidden='true' />
+                {id === 'changes' && changesCount > 0 && <span className='right-panel-badge' aria-hidden='true'>{changesCount > 99 ? '99+' : changesCount}</span>}
+              </Button>
+            </Tooltip>
           );
         })}
         {documentPanel && (
@@ -160,19 +163,20 @@ export function RightPanel({ notebooks, selectedNotebookId, currentFolder, onOpe
             {DOCUMENT_TOOL_IDS.map(id => {
               const Icon = DOCUMENT_TOOL_ICONS[id];
               const label = t(DOCUMENT_TOOL_LABELS[id]);
+              const command = id === 'find' ? 'editor.leaderFind' : id === 'outline' ? 'editor.leaderOutline' : undefined;
               return (
-                <Button
-                  key={id}
-                  type='button'
-                  role='tab'
-                  aria-selected={showingDocument && panel.activeTool === id}
-                  title={label}
-                  aria-label={label}
-                  disabled={!documentPanel.enabled}
-                  onClick={() => panel.openTool(id)}
-                >
-                  <Icon aria-hidden='true' />
-                </Button>
+                <Tooltip key={id} label={label} detail={command && primaryShortcutHint(command)}>
+                  <Button
+                    type='button'
+                    role='tab'
+                    aria-selected={showingDocument && panel.activeTool === id}
+                    aria-label={label}
+                    disabled={!documentPanel.enabled}
+                    onClick={() => panel.openTool(id)}
+                  >
+                    <Icon aria-hidden='true' />
+                  </Button>
+                </Tooltip>
               );
             })}
           </>

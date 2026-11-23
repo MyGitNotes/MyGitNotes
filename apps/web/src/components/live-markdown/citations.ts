@@ -30,7 +30,7 @@ export class CitationChip extends WidgetType {
     const dom = document.createElement('span');
     dom.className = 'live-md-citation';
     dom.textContent = this.text;
-    dom.title = this.source;
+    dom.dataset.t1Label = this.source;
     dom.addEventListener('mousedown', event => {
       event.preventDefault();
       view.dispatch({ selection: { anchor: view.posAtDOM(dom) } });

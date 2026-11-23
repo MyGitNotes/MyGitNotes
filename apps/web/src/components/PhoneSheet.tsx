@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
@@ -84,7 +85,9 @@ export function PhoneSheet({ title, onClose, variant = 'bottom', children, class
       <button type='button' className='phone-sheet-backdrop' tabIndex={-1} aria-label={t('common.close')} onClick={() => close.current()} />
       <div ref={dialog} role='dialog' aria-modal='true' aria-label={title} tabIndex={-1} className={`phone-sheet ${className}`} data-dragging={drag ? '' : undefined} style={drag ? { transform: `translateY(${drag.offset}px)` } : undefined} onKeyDown={onKeyDown}>
         <div className='phone-sheet-top' data-testid='phone-sheet-grip' onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
-          <span className='phone-sheet-grip' role='presentation' title={t('phone.dragHandle')} />
+          <Tooltip label={t('phone.dragHandle')}>
+            <span className='phone-sheet-grip' role='presentation' />
+          </Tooltip>
           <div className='phone-sheet-heading'>
             <h2>{title}</h2>
             <button type='button' className='ui-icon-button' aria-label={t('common.close')} onClick={() => close.current()}>

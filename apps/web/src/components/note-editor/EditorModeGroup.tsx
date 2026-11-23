@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { Code2, Columns2, Eye, type LucideIcon } from 'lucide-react';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
 import { formatKeys } from '../../lib/keyboard/keys.js';
@@ -21,16 +22,18 @@ interface EditorModeGroupProps {
 export function EditorModeGroup({ mode, modes, onChange }: EditorModeGroupProps) {
   const { t } = useTranslation();
   const [keys] = bindingsFor(keymapEntry('editor.leaderMode'), keyEnvironment);
-  const key = keys ? ` (${formatKeys(keys, keyEnvironment).join(' ')})` : '';
+  const detail = keys && formatKeys(keys, keyEnvironment).join(' ');
   return (
     <div role='group' className='note-mode-group' aria-label={t('editor.modes')}>
       {modes.map(value => {
         const { label, icon: Icon } = MODES[value];
-        const name = t(label) + (value === 'split' ? '' : key);
+        const name = t(label);
         return (
-          <button key={value} type='button' className='ui-icon-button toolbar-icon-button editor-mode-action' data-mode={value} aria-pressed={mode === value} aria-label={name} title={name} onClick={() => onChange(value)}>
-            <Icon aria-hidden='true' />
-          </button>
+          <Tooltip key={value} label={name} detail={value === 'split' ? undefined : detail}>
+            <button type='button' className='ui-icon-button toolbar-icon-button editor-mode-action' data-mode={value} aria-pressed={mode === value} aria-label={name} onClick={() => onChange(value)}>
+              <Icon aria-hidden='true' />
+            </button>
+          </Tooltip>
         );
       })}
     </div>

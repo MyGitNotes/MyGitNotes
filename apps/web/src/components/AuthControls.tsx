@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { Button } from './Button.js';
 import { Select } from './Select.js';
 import { useEffect, useState } from 'react';
@@ -221,10 +222,12 @@ export function AgentAccessSettings({ local = false }: { local?: boolean; }) {
           <KeyRound className='w-4 h-4' style={{ color: 'var(--color-primary)' }} />
           {t('auth.mcpAccessControl')}
         </h3>
-        <button type='button' onClick={() => setIsTutorialOpen(true)} className='flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-line-strong bg-surface hover:bg-sidebar text-fg transition active:scale-95 shadow-xs shrink-0 cursor-pointer' title={t('auth.connectorGuide')}>
-          <HelpCircle className='w-3.5 h-3.5 text-primary' />
-          <span>{t('auth.connectorGuide')}</span>
-        </button>
+        <Tooltip label={t('auth.connectorGuide')}>
+          <button type='button' onClick={() => setIsTutorialOpen(true)} className='flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-line-strong bg-surface hover:bg-sidebar text-fg transition active:scale-95 shadow-xs shrink-0 cursor-pointer'>
+            <HelpCircle className='w-3.5 h-3.5 text-primary' />
+            <span>{t('auth.connectorGuide')}</span>
+          </button>
+        </Tooltip>
       </div>
       <p className='text-xs text-muted'>{t('auth.grantsActiveNotice')}</p>
       <p className='text-xs text-muted'>{t('auth.chatgptConnectorNotice')}</p>
@@ -265,10 +268,12 @@ export function AgentAccessSettings({ local = false }: { local?: boolean; }) {
             <label className='text-xs font-semibold' htmlFor='agent-token'>{t('auth.copyUrlPrompt')}</label>
             <div className='flex gap-2 items-center flex-wrap sm:flex-nowrap'>
               <input id='agent-token' aria-label={t('auth.connectionUrlAria')} readOnly value={token} onClick={e => (e.target as HTMLInputElement).select()} onFocus={e => e.target.select()} className='flex-1 min-w-0 p-2 rounded border border-line-strong bg-transparent font-mono text-xs cursor-pointer select-all focus:outline-none focus:ring-1 focus:ring-primary' />
-              <Button variant='primary' type='button' onClick={handleCopyToken} title={copied ? t('common.copied') : t('common.copy')}>
-                {copied ? <Check className='w-3.5 h-3.5' /> : <Copy className='w-3.5 h-3.5' />}
-                <span>{copied ? t('common.copied') : t('common.copy')}</span>
-              </Button>
+              <Tooltip label={copied ? t('common.copied') : t('common.copy')}>
+                <Button variant='primary' type='button' onClick={handleCopyToken}>
+                  {copied ? <Check className='w-3.5 h-3.5' /> : <Copy className='w-3.5 h-3.5' />}
+                  <span>{copied ? t('common.copied') : t('common.copy')}</span>
+                </Button>
+              </Tooltip>
               <button type='button' className='px-2.5 py-1.5 text-xs rounded-lg border border-line-strong bg-surface hover:bg-sidebar text-fg flex items-center gap-1.5 transition active:scale-95 shadow-xs shrink-0 cursor-pointer' onClick={() => setIsTutorialOpen(true)}>
                 <HelpCircle className='w-3.5 h-3.5 text-primary' />
                 <span>{t('auth.connectorGuide')}</span>

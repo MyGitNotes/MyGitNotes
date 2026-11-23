@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import React from 'react';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { BreadcrumbSegment } from '../lib/folder-tree.js';
@@ -21,10 +22,12 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ segments, currentFolde
     <nav aria-label='Breadcrumbs' className='workspace-breadcrumbs flex items-center justify-between gap-3 px-3 py-2 md:px-4 md:py-2.5 rounded-xl border bg-fg/[0.02] mb-4 text-xs select-none transition-colors flex-wrap sm:flex-nowrap' style={{ borderColor: 'var(--color-line)' }}>
       <div className='flex items-center gap-1.5 flex-wrap min-w-0'>
         {currentFolder !== null && (
-          <button type='button' onClick={() => onSelectFolder(parentFolder)} title={t('folder.goUpTooltip')} aria-label={t('folder.goUpTooltip')} className='inline-flex items-center gap-1 px-2 py-1 -ml-1 rounded-lg text-muted hover:text-fg hover:bg-fg/5 transition active:scale-95 shrink-0'>
-            <ArrowLeft className='w-3.5 h-3.5' />
-            <span className='font-medium hidden sm:inline'>{t('folder.up')}</span>
-          </button>
+          <Tooltip label={t('folder.goUpTooltip')}>
+            <button type='button' onClick={() => onSelectFolder(parentFolder)} aria-label={t('folder.goUpTooltip')} className='inline-flex items-center gap-1 px-2 py-1 -ml-1 rounded-lg text-muted hover:text-fg hover:bg-fg/5 transition active:scale-95 shrink-0'>
+              <ArrowLeft className='w-3.5 h-3.5' />
+              <span className='font-medium hidden sm:inline'>{t('folder.up')}</span>
+            </button>
+          </Tooltip>
         )}
         {/* Folder cards and note rows already read as folders; the path lists only the folders below the root. */}
         <div className='flex items-center gap-1.5 flex-wrap min-w-0'>

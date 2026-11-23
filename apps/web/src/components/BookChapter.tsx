@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useMemo, useState } from 'react';
 import { ExternalLink, FileText, Pencil, Play } from 'lucide-react';
 import type { CompilationItem } from '@mygitnotes/core/compilation';
@@ -37,7 +38,9 @@ function ChapterFrame({ chapter, depth, onOpen, children }: { chapter: Chapter; 
     <section className='compilation-book-section' data-level={2 + depth} data-kind={item.kind}>
       <div className='compilation-book-heading-row'>
         <Heading className='compilation-book-heading' data-book-anchor={anchor} tabIndex={-1}>
-          <button type='button' className='compilation-book-title' title={title} onClick={() => onOpen(item, chapter.note)}>{title}</button>
+          <Tooltip label={title}>
+            <button type='button' className='compilation-book-title' onClick={() => onOpen(item, chapter.note)}>{title}</button>
+          </Tooltip>
         </Heading>
         {item.kind !== 'note' && (
           <button type='button' className='screen-open ui-icon-button' aria-label={`${t('links.open')}: ${title}`} onClick={() => onOpen(item, chapter.note)}>
@@ -83,13 +86,17 @@ function AnchoredChapter({ chapter, depth, writable, onOpen }: Pick<BookChapterP
     <section className='compilation-book-section' data-level={2 + depth} data-kind='note' data-anchored>
       <div className='compilation-book-heading-row'>
         <Heading className='compilation-book-heading' data-book-anchor={anchor} tabIndex={-1}>
-          <button type='button' className='compilation-book-title' title={title} onClick={() => onOpen(item, note)}>{title}</button>
+          <Tooltip label={title}>
+            <button type='button' className='compilation-book-title' onClick={() => onOpen(item, note)}>{title}</button>
+          </Tooltip>
         </Heading>
         {editable && (
-          <Button size='small' className='compilation-edit-toggle' aria-label={label} title={label} onClick={() => onOpen(item, note)}>
-            <Pencil aria-hidden='true' />
-            <span>{t('editor.startEditing')}</span>
-          </Button>
+          <Tooltip label={label}>
+            <Button size='small' className='compilation-edit-toggle' aria-label={label} onClick={() => onOpen(item, note)}>
+              <Pencil aria-hidden='true' />
+              <span>{t('editor.startEditing')}</span>
+            </Button>
+          </Tooltip>
         )}
       </div>
       <div className='compilation-book-content'>
@@ -112,7 +119,9 @@ function HeadingChapter({ chapter, ...props }: BookChapterProps) {
     <section className='compilation-book-section compilation-book-chapter' data-level={2} data-kind='heading'>
       <div className='compilation-book-heading-row'>
         <h2 className='compilation-book-heading' data-book-anchor={chapter.anchor} tabIndex={-1}>
-          <span className='compilation-book-title' title={chapter.title}>{chapter.title}</span>
+          <Tooltip label={chapter.title}>
+            <span className='compilation-book-title'>{chapter.title}</span>
+          </Tooltip>
         </h2>
       </div>
       <div className='compilation-book-chapter-items'>{members.length ? members.map(member => <BookChapter key={member.id} {...props} chapter={member} depth={1} />) : <p className='screen-summary'>{t('book.emptyChapter')}</p>}</div>

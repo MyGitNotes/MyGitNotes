@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { useEffect, useState } from 'react';
 import { GitCommit, RefreshCw, RotateCcw } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -12,16 +13,20 @@ export function NoteRefreshAction({ onRefresh, disabled, className = '', iconOnl
   const { t } = useTranslation();
   if (iconOnly) {
     return (
-      <button type='button' className={`ui-icon-button toolbar-icon-button ${className}`} data-action='refresh' disabled={disabled} aria-label={t('editor.quickRefresh')} title={t('editor.quickRefreshHint')} onClick={() => !disabled && void onRefresh()}>
-        <RefreshCw aria-hidden='true' />
-      </button>
+      <Tooltip label={t('editor.quickRefreshHint')}>
+        <button type='button' className={`ui-icon-button toolbar-icon-button ${className}`} data-action='refresh' disabled={disabled} aria-label={t('editor.quickRefresh')} onClick={() => !disabled && void onRefresh()}>
+          <RefreshCw aria-hidden='true' />
+        </button>
+      </Tooltip>
     );
   }
   return (
-    <button type='button' className={`note-quick-action ${className}`} data-action='refresh' disabled={disabled} title={t('editor.quickRefreshHint')} onClick={() => !disabled && void onRefresh()}>
-      <RefreshCw aria-hidden='true' />
-      <span>{t('editor.quickRefresh')}</span>
-    </button>
+    <Tooltip label={t('editor.quickRefreshHint')}>
+      <button type='button' className={`note-quick-action ${className}`} data-action='refresh' disabled={disabled} onClick={() => !disabled && void onRefresh()}>
+        <RefreshCw aria-hidden='true' />
+        <span>{t('editor.quickRefresh')}</span>
+      </button>
+    </Tooltip>
   );
 }
 
@@ -48,24 +53,27 @@ export function NoteQuickActions({ onRefresh, onCommit, onRestore, changes, disa
       {onRefresh && <NoteRefreshAction onRefresh={onRefresh} disabled={disabled} />}
       {changes && (onRestore || onCommit) && <DiffStats stats={changes} />}
       {onRestore && (
-        <button
-          type='button'
-          className='note-quick-action'
-          data-action='restore'
-          data-armed={armed === 'restore' || undefined}
-          disabled={disabled}
-          title={t('editor.quickRestoreHint')}
-          onClick={() => press('restore', onRestore)}
-        >
-          <RotateCcw aria-hidden='true' />
-          <span>{t(armed === 'restore' ? 'editor.confirmQuickRestore' : 'editor.quickRestore')}</span>
-        </button>
+        <Tooltip label={t('editor.quickRestoreHint')}>
+          <button
+            type='button'
+            className='note-quick-action'
+            data-action='restore'
+            data-armed={armed === 'restore' || undefined}
+            disabled={disabled}
+            onClick={() => press('restore', onRestore)}
+          >
+            <RotateCcw aria-hidden='true' />
+            <span>{t(armed === 'restore' ? 'editor.confirmQuickRestore' : 'editor.quickRestore')}</span>
+          </button>
+        </Tooltip>
       )}
       {onCommit && (
-        <button type='button' className='note-quick-action' data-action='commit' data-armed={armed === 'commit' || undefined} disabled={disabled} title={t('editor.quickCommitHint')} onClick={() => press('commit', onCommit)}>
-          <GitCommit aria-hidden='true' />
-          <span>{t(armed === 'commit' ? 'editor.confirmQuickCommit' : 'editor.quickCommit')}</span>
-        </button>
+        <Tooltip label={t('editor.quickCommitHint')}>
+          <button type='button' className='note-quick-action' data-action='commit' data-armed={armed === 'commit' || undefined} disabled={disabled} onClick={() => press('commit', onCommit)}>
+            <GitCommit aria-hidden='true' />
+            <span>{t(armed === 'commit' ? 'editor.confirmQuickCommit' : 'editor.quickCommit')}</span>
+          </button>
+        </Tooltip>
       )}
     </div>
   );

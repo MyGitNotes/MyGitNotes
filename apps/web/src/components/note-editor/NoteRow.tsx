@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { Braces } from 'lucide-react';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import '../note-row.css';
@@ -51,7 +52,11 @@ export function NoteRow({ path, session, docPanel, statuses, availableTags, onRe
   }, []);
   return (
     <div ref={row} className='note-row' data-narrow={narrow || undefined} role='group' aria-label={t('editor.noteRow')}>
-      {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
+      {template && (
+        <Tooltip label={t('templates.labelHint')}>
+          <span className='note-row-template'>{t('templates.label')}</span>
+        </Tooltip>
+      )}
       <NoteTitleEdit title={session.title} path={path} locked={session.locked} onRename={onRename} />
       {frontmatterInvalid ? <FrontmatterInvalid announce /> : (
         <>
@@ -59,9 +64,11 @@ export function NoteRow({ path, session, docPanel, statuses, availableTags, onRe
           <NoteRowTags metadata={session.metadata} setMetadata={session.setMetadata} availableTags={availableTags} locked={session.locked} />
         </>
       )}
-      <button type='button' className='note-row-frontmatter ui-icon-button toolbar-icon-button' aria-pressed={docPanel.showFrontmatter} aria-label={t('editor.frontmatter')} title={t('editor.frontmatter')} onClick={() => docPanel.setNotePanel(docPanel.showFrontmatter ? null : 'frontmatter')}>
-        <Braces aria-hidden='true' />
-      </button>
+      <Tooltip label={t('editor.frontmatter')}>
+        <button type='button' className='note-row-frontmatter ui-icon-button toolbar-icon-button' aria-pressed={docPanel.showFrontmatter} aria-label={t('editor.frontmatter')} onClick={() => docPanel.setNotePanel(docPanel.showFrontmatter ? null : 'frontmatter')}>
+          <Braces aria-hidden='true' />
+        </button>
+      </Tooltip>
       {trailing}
     </div>
   );

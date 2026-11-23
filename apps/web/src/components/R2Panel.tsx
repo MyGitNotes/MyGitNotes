@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useEffect, useRef, useState } from 'react';
 import { Copy, CornerLeftUp, Download, File, Folder, FolderInput, FolderPlus, Trash2, Upload, X } from 'lucide-react';
 import { r2PreviewType, r2Reference } from '@mygitnotes/core/r2-references';
@@ -186,38 +187,43 @@ function R2Browser({ notebookId, listing, directory, mutable, showHidden, busy, 
       <div className='file-list' aria-label={t('files.list')}>
         {directory !== root && (
           <div className='file-row file-navigation-row'>
-            <button type='button' className='file-row-name' aria-label={t('files.up')} title={t('files.up')} disabled={busy} onClick={() => onNavigate(parentPath(directory))}>
-              <CornerLeftUp size={18} />
-              <span>..</span>
-            </button>
+            <Tooltip label={t('files.up')}>
+              <button type='button' className='file-row-name' aria-label={t('files.up')} disabled={busy} onClick={() => onNavigate(parentPath(directory))}>
+                <CornerLeftUp size={18} />
+                <span>..</span>
+              </button>
+            </Tooltip>
           </div>
         )}
         {childFolders.map(folder => (
           <div key={folder} className='file-row'>
-            <button type='button' disabled={busy} className='file-row-name' title={folder} aria-label={`${t('files.openFolder')}: ${baseName(folder)}`} onClick={() => onNavigate(folder)}>
-              <Folder size={18} />
-              <span>{baseName(folder)}</span>
-              <small>{t('files.directory')}</small>
-            </button>
+            <Tooltip label={folder}>
+              <button type='button' disabled={busy} className='file-row-name' aria-label={`${t('files.openFolder')}: ${baseName(folder)}`} onClick={() => onNavigate(folder)}>
+                <Folder size={18} />
+                <span>{baseName(folder)}</span>
+                <small>{t('files.directory')}</small>
+              </button>
+            </Tooltip>
           </div>
         ))}
         {files.map(object => (
           <div key={object.key} className={`file-row ${selected === object.key ? 'is-selected' : ''}`}>
-            <button
-              type='button'
-              disabled={busy}
-              className='file-row-name'
-              title={object.key}
-              aria-label={`${t('files.select')}: ${baseName(object.key)}`}
-              onClick={() => {
-                setSelected(object.key);
-                setOperation(undefined);
-              }}
-            >
-              <File size={18} />
-              <span>{baseName(object.key)}</span>
-              <small>{`${(object.size / 1024).toFixed(1)} KB`}</small>
-            </button>
+            <Tooltip label={object.key}>
+              <button
+                type='button'
+                disabled={busy}
+                className='file-row-name'
+                aria-label={`${t('files.select')}: ${baseName(object.key)}`}
+                onClick={() => {
+                  setSelected(object.key);
+                  setOperation(undefined);
+                }}
+              >
+                <File size={18} />
+                <span>{baseName(object.key)}</span>
+                <small>{`${(object.size / 1024).toFixed(1)} KB`}</small>
+              </button>
+            </Tooltip>
           </div>
         ))}
         {!childFolders.length && !files.length && <p className='file-empty'>{t('files.empty')}</p>}
@@ -229,22 +235,25 @@ function R2Browser({ notebookId, listing, directory, mutable, showHidden, busy, 
               <strong>{baseName(selectedObject.key)}</strong>
               <div className='file-detail-icons'>
                 {onInsert && <Button type='button' variant='primary' disabled={busy} onClick={() => onInsert(r2Reference(selectedObject.key))}>{t('files.r2Insert')}</Button>}
-                <a className='ui-icon-button' href={rawUrl + '&download=1'} aria-label={t('files.download')} title={t('files.download')}>
-                  <Download size={18} />
-                </a>
-                <button
-                  type='button'
-                  className='ui-icon-button'
-                  aria-label={t('files.close')}
-                  title={t('files.close')}
-                  disabled={busy}
-                  onClick={() => {
-                    setSelected('');
-                    setOperation(undefined);
-                  }}
-                >
-                  <X size={18} />
-                </button>
+                <Tooltip label={t('files.download')}>
+                  <a className='ui-icon-button' href={rawUrl + '&download=1'} aria-label={t('files.download')}>
+                    <Download size={18} />
+                  </a>
+                </Tooltip>
+                <Tooltip label={t('files.close')}>
+                  <button
+                    type='button'
+                    className='ui-icon-button'
+                    aria-label={t('files.close')}
+                    disabled={busy}
+                    onClick={() => {
+                      setSelected('');
+                      setOperation(undefined);
+                    }}
+                  >
+                    <X size={18} />
+                  </button>
+                </Tooltip>
               </div>
             </div>
             <code>{`r2:${selectedObject.key}`}</code>

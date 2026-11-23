@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { AlertCircle, ArrowDown, ArrowUp, Eye, EyeOff, FolderGit2, Plus, Star, Trash2 } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -172,35 +173,47 @@ export function RepositoriesSettings({ repositories, onMembershipChanged, onOpen
                 </div>
                 {changes && (
                   <div className='flex flex-wrap items-center gap-1'>
-                    <Button size='icon' aria-label={t('repositories.moveUp', { alias: member.alias })} title={t('repositories.moveUp', { alias: member.alias })} disabled={busy || index === 0} onClick={() => move(member, -1)}>
-                      <ArrowUp className='w-4 h-4' />
-                    </Button>
-                    <Button size='icon' aria-label={t('repositories.moveDown', { alias: member.alias })} title={t('repositories.moveDown', { alias: member.alias })} disabled={busy || index === members.length - 1} onClick={() => move(member, 1)}>
-                      <ArrowDown className='w-4 h-4' />
-                    </Button>
-                    {!member.default && (
-                      <Button size='small' disabled={busy || (member.hidden && full)} title={member.hidden ? fullReason : undefined} onClick={() => void run(revision => setDefaultMember(member.id, revision))}>
-                        <Star className='w-3.5 h-3.5' />
-                        <span>{t('repositories.makeDefault')}</span>
+                    <Tooltip label={t('repositories.moveUp', { alias: member.alias })}>
+                      <Button size='icon' aria-label={t('repositories.moveUp', { alias: member.alias })} disabled={busy || index === 0} onClick={() => move(member, -1)}>
+                        <ArrowUp className='w-4 h-4' />
                       </Button>
+                    </Tooltip>
+                    <Tooltip label={t('repositories.moveDown', { alias: member.alias })}>
+                      <Button size='icon' aria-label={t('repositories.moveDown', { alias: member.alias })} disabled={busy || index === members.length - 1} onClick={() => move(member, 1)}>
+                        <ArrowDown className='w-4 h-4' />
+                      </Button>
+                    </Tooltip>
+                    {!member.default && (
+                      <Tooltip label={member.hidden ? fullReason : undefined}>
+                        <Button size='small' disabled={busy || (member.hidden && full)} onClick={() => void run(revision => setDefaultMember(member.id, revision))}>
+                          <Star className='w-3.5 h-3.5' />
+                          <span>{t('repositories.makeDefault')}</span>
+                        </Button>
+                      </Tooltip>
                     )}
                     {member.hidden
                       ? (
-                        <Button size='small' disabled={busy || full} title={fullReason} onClick={() => void run(revision => setMemberHidden(member.id, false, revision))}>
-                          <Eye className='w-3.5 h-3.5' />
-                          <span>{t('repositories.show')}</span>
-                        </Button>
+                        <Tooltip label={fullReason}>
+                          <Button size='small' disabled={busy || full} onClick={() => void run(revision => setMemberHidden(member.id, false, revision))}>
+                            <Eye className='w-3.5 h-3.5' />
+                            <span>{t('repositories.show')}</span>
+                          </Button>
+                        </Tooltip>
                       )
                       : (
-                        <Button size='small' disabled={busy || member.default} title={member.default ? t('repositories.defaultHide') : undefined} onClick={() => guarded(member, 'hide', revision => setMemberHidden(member.id, true, revision))}>
-                          <EyeOff className='w-3.5 h-3.5' />
-                          <span>{t('repositories.hide')}</span>
-                        </Button>
+                        <Tooltip label={member.default ? t('repositories.defaultHide') : undefined}>
+                          <Button size='small' disabled={busy || member.default} onClick={() => guarded(member, 'hide', revision => setMemberHidden(member.id, true, revision))}>
+                            <EyeOff className='w-3.5 h-3.5' />
+                            <span>{t('repositories.hide')}</span>
+                          </Button>
+                        </Tooltip>
                       )}
-                    <Button size='small' variant='danger' disabled={busy || Boolean(removeBlocked)} title={removeBlocked || undefined} onClick={() => guarded(member, 'remove', revision => removeMember(member.id, revision))}>
-                      <Trash2 className='w-3.5 h-3.5' />
-                      <span>{t('repositories.remove')}</span>
-                    </Button>
+                    <Tooltip label={removeBlocked || undefined}>
+                      <Button size='small' variant='danger' disabled={busy || Boolean(removeBlocked)} onClick={() => guarded(member, 'remove', revision => removeMember(member.id, revision))}>
+                        <Trash2 className='w-3.5 h-3.5' />
+                        <span>{t('repositories.remove')}</span>
+                      </Button>
+                    </Tooltip>
                   </div>
                 )}
               </div>
@@ -220,10 +233,12 @@ export function RepositoriesSettings({ repositories, onMembershipChanged, onOpen
       {answer.limit && <MembersLimitLine limit={answer.limit} refusal={limitRefusal} />}
       {changeable && answer.adds === 'repository' && (
         <div>
-          <Button variant='primary' disabled={busy || full} title={fullReason} onClick={() => setAdding(true)}>
-            <Plus className='w-3.5 h-3.5' />
-            <span>{t('repositories.add')}</span>
-          </Button>
+          <Tooltip label={fullReason}>
+            <Button variant='primary' disabled={busy || full} onClick={() => setAdding(true)}>
+              <Plus className='w-3.5 h-3.5' />
+              <span>{t('repositories.add')}</span>
+            </Button>
+          </Tooltip>
         </div>
       )}
       {changeable && answer.adds !== 'repository' && (

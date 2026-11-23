@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { Bot } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { useAssistantDock } from '../../lib/assistant-dock.js';
@@ -15,8 +16,10 @@ export function AssistantDockToggle({ className = '', disabled }: { className?: 
   const [keys] = bindingsFor(keymapEntry('assistant.toggleFocus'), keyEnvironment);
   const label = t('piAgent.tab');
   return (
-    <button type='button' disabled={disabled || offer === 'pending'} className={`ui-icon-button assistant-dock-toggle ${className}`} aria-label={label} title={keys ? `${label} (${formatKeys(keys, keyEnvironment).join(' ')})` : label} aria-keyshortcuts={keys && ariaKeyShortcuts(keys, keyEnvironment)} aria-expanded={open} aria-controls={open ? 'assistant-dock' : undefined} data-open={open || undefined} onClick={toggleDock}>
-      <Bot aria-hidden='true' />
-    </button>
+    <Tooltip label={label} detail={keys && formatKeys(keys, keyEnvironment).join(' ')}>
+      <button type='button' disabled={disabled || offer === 'pending'} className={`ui-icon-button assistant-dock-toggle ${className}`} aria-label={label} aria-keyshortcuts={keys && ariaKeyShortcuts(keys, keyEnvironment)} aria-expanded={open} aria-controls={open ? 'assistant-dock' : undefined} data-open={open || undefined} onClick={toggleDock}>
+        <Bot aria-hidden='true' />
+      </button>
+    </Tooltip>
   );
 }

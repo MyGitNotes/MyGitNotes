@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useState } from 'react';
 import { Pencil, Plus, TextCursorInput, Trash2 } from 'lucide-react';
 import { safeFileName } from '@mygitnotes/core/note-template';
@@ -87,38 +88,41 @@ export function ManageTemplatesDialog({ notebookTitle, templates, builtin, loadi
               </div>
               {!readOnly && (
                 <div className='manage-templates-actions'>
-                  <button
-                    type='button'
-                    className='ui-icon-button'
-                    aria-label={t('templates.edit', { name: template.name })}
-                    title={t('templates.edit', { name: template.name })}
-                    disabled={busy}
-                    onClick={() => void run(() => onEdit(template), true)}
-                  >
-                    <Pencil aria-hidden='true' />
-                  </button>
+                  <Tooltip label={t('templates.edit', { name: template.name })}>
+                    <button
+                      type='button'
+                      className='ui-icon-button'
+                      aria-label={t('templates.edit', { name: template.name })}
+                      disabled={busy}
+                      onClick={() => void run(() => onEdit(template), true)}
+                    >
+                      <Pencil aria-hidden='true' />
+                    </button>
+                  </Tooltip>
                   {template.source === 'file' && fileActions && (
                     <>
-                      <button
-                        type='button'
-                        className='ui-icon-button'
-                        aria-label={t('templates.rename', { name: template.name })}
-                        title={t('templates.rename', { name: template.name })}
-                        disabled={busy}
-                        onClick={() => start({ kind: 'rename', template }, template.id)}
-                      >
-                        <TextCursorInput aria-hidden='true' />
-                      </button>
-                      <button
-                        type='button'
-                        className='ui-icon-button'
-                        aria-label={t('templates.delete', { name: template.name })}
-                        title={t('templates.delete', { name: template.name })}
-                        disabled={busy}
-                        onClick={() => start({ kind: 'delete', template })}
-                      >
-                        <Trash2 aria-hidden='true' />
-                      </button>
+                      <Tooltip label={t('templates.rename', { name: template.name })}>
+                        <button
+                          type='button'
+                          className='ui-icon-button'
+                          aria-label={t('templates.rename', { name: template.name })}
+                          disabled={busy}
+                          onClick={() => start({ kind: 'rename', template }, template.id)}
+                        >
+                          <TextCursorInput aria-hidden='true' />
+                        </button>
+                      </Tooltip>
+                      <Tooltip label={t('templates.delete', { name: template.name })}>
+                        <button
+                          type='button'
+                          className='ui-icon-button'
+                          aria-label={t('templates.delete', { name: template.name })}
+                          disabled={busy}
+                          onClick={() => start({ kind: 'delete', template })}
+                        >
+                          <Trash2 aria-hidden='true' />
+                        </button>
+                      </Tooltip>
                     </>
                   )}
                 </div>

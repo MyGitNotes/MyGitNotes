@@ -67,7 +67,8 @@ export function useNotebookAppearance({ notebooks, repositoryFor, refreshWorkspa
       }
       throw error;
     }
-    await refreshWorkspace(true);
+    // The manifest PUT already succeeded; a failed reload must not look like a failed save.
+    await refreshWorkspace(true).catch(() => undefined);
   };
 
   const notebook = editing ? notebooks.find(candidate => candidate.id === editing) : undefined;

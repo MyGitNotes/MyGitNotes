@@ -31,7 +31,7 @@ function trackModality() {
   document.addEventListener('mousedown', () => keyboardInput = false, true);
 }
 
-type TriggerProps = { ref?: Ref<HTMLElement>; 'aria-describedby'?: string; onPointerEnter?: (event: PointerEvent<HTMLElement>) => void; onPointerLeave?: (event: PointerEvent<HTMLElement>) => void; onPointerDown?: (event: PointerEvent<HTMLElement>) => void; onFocus?: (event: FocusEvent<HTMLElement>) => void; onBlur?: (event: FocusEvent<HTMLElement>) => void; onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void; };
+type TriggerProps = { 'data-t1-trigger'?: string; ref?: Ref<HTMLElement>; 'aria-describedby'?: string; onPointerEnter?: (event: PointerEvent<HTMLElement>) => void; onPointerLeave?: (event: PointerEvent<HTMLElement>) => void; onPointerDown?: (event: PointerEvent<HTMLElement>) => void; onFocus?: (event: FocusEvent<HTMLElement>) => void; onBlur?: (event: FocusEvent<HTMLElement>) => void; onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void; };
 
 export interface TooltipProps {
   /** What the trigger is or does, on one line. */
@@ -47,8 +47,8 @@ export interface TooltipProps {
 /**
  * A compact tooltip (T1): one line, the theme's text colour as its background and its background as the ink, with an
  * arrow toward the trigger. It shows after a short rest of a mouse or pen (never for a touch), or at once on keyboard
- * focus; leaving, pressing, blur and Escape hide it. While shown it describes the trigger (`aria-describedby`), which
- * keeps its own accessible name; the trigger carries no `title`.
+ * focus; leaving, pressing, blur and Escape hide it. Only the optional detail describes the trigger, which keeps
+ * its own accessible name; the trigger carries no `title`.
  */
 export function Tooltip({ label, detail, side = 'bottom', children }: TooltipProps) {
   const id = useId();
@@ -112,13 +112,16 @@ export function Tooltip({ label, detail, side = 'bottom', children }: TooltipPro
   }, [childRef]);
 
   const own = child.props;
-  const describedBy = [own['aria-describedby'], open ? id : undefined].filter(Boolean).join(' ') || undefined;
+  const hasDetail = detail !== undefined && detail !== null && detail !== '' && detail !== false;
+  const enabled = label !== undefined && label !== null && label !== '' && label !== false;
+  const describedBy = [own['aria-describedby'], open && enabled && hasDetail ? id : undefined].filter(Boolean).join(' ') || undefined;
   const triggerProps: TriggerProps = {
+    'data-t1-trigger': enabled ? '' : undefined,
     ref: setTrigger,
     'aria-describedby': describedBy,
     onPointerEnter: event => {
       own.onPointerEnter?.(event);
-      if (event.pointerType === 'touch') return;
+      if (!enabled || event.pointerType === 'touch' || (event.target instanceof Element && event.target.closest('[data-t1-trigger],[data-t1-label]') !== event.currentTarget)) return;
       if (warm()) show();
       else {
         cancel();
@@ -135,7 +138,7 @@ export function Tooltip({ label, detail, side = 'bottom', children }: TooltipPro
     },
     onFocus: event => {
       own.onFocus?.(event);
-      if (keyboardInput) show();
+      if (enabled && keyboardInput && event.target === event.currentTarget) show();
     },
     onBlur: event => {
       own.onBlur?.(event);
@@ -152,10 +155,10 @@ export function Tooltip({ label, detail, side = 'bottom', children }: TooltipPro
     <>
       {/* eslint-disable-next-line react/refs -- The handlers read the trigger's ref when they run, never during render. */}
       {cloneElement(child, triggerProps)}
-      {open && container && createPortal(
-        <div ref={bubble} id={id} role='tooltip' className='tooltip' data-side={placement?.side ?? side} style={style}>
+      {open && enabled && container && createPortal(
+        <div ref={bubble} role='tooltip' className='tooltip' data-side={placement?.side ?? side} style={style}>
           <span className='tooltip-label'>{label}</span>
-          {detail !== undefined && detail !== null && detail !== '' && <span className='tooltip-detail'>{detail}</span>}
+          {hasDetail && <span className='tooltip-detail' id={id}>{detail}</span>}
         </div>,
         container,
       )}

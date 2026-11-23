@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { act } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { listFamilies, registerThemes } from '../lib/themes.js';
 
@@ -9,10 +10,12 @@ const { createWebApp, PALETTE_FAMILIES } = await import('./create-web-app.js');
 
 afterEach(() => registerThemes({}));
 
-it('registers the edition themes before it renders', () => {
+it('registers the edition themes before it renders', async () => {
   const root = document.createElement('div');
-  createWebApp(root, { themes: { families: [{ ...PALETTE_FAMILIES[0], id: 'ocean', name: 'Ocean' }], defaultFamily: 'ocean' } });
-  expect(listFamilies().at(-1)?.id).toBe('ocean');
+  await act(async () => {
+    createWebApp(root, { themes: { families: [{ ...PALETTE_FAMILIES[0], id: 'ocean', name: 'Ocean' }], defaultFamily: 'ocean' } });
+    expect(listFamilies().at(-1)?.id).toBe('ocean');
+  });
 });
 
 it('throws, rendering nothing, when the default family is unknown', () => {

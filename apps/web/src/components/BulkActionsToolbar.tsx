@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import React, { useState } from 'react';
 import { FolderInput, X } from 'lucide-react';
 import { Button } from './Button.js';
@@ -70,15 +71,19 @@ export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({ count, s
             <Button type='button' size='small' disabled={busy || !tagInput.trim()} onClick={() => submitTag(onAddTag)}>{t('bulk.addTag')}</Button>
             <Button type='button' size='small' disabled={busy || !tagInput.trim()} onClick={() => submitTag(onRemoveTag)}>{t('bulk.removeTag')}</Button>
           </div>
-          <Button type='button' size='small' disabled={working || (liveLocked && !liveMovable) || !canMove} title={canMove ? undefined : t('bulk.moveRequiresSingleNotebook')} onClick={onMove}>
-            <FolderInput className='w-3.5 h-3.5' />
-            {t('bulk.moveToFolder')}
-          </Button>
+          <Tooltip label={canMove ? undefined : t('bulk.moveRequiresSingleNotebook')}>
+            <Button type='button' size='small' disabled={working || (liveLocked && !liveMovable) || !canMove} onClick={onMove}>
+              <FolderInput className='w-3.5 h-3.5' />
+              {t('bulk.moveToFolder')}
+            </Button>
+          </Tooltip>
         </>
       )}
-      <button type='button' onClick={onClear} disabled={working} className='ml-auto text-muted hover:text-fg p-1 rounded hover:bg-fg/10 transition shrink-0' aria-label={t('bulk.clearSelection')} title={t('bulk.clearSelection')}>
-        <X className='w-3.5 h-3.5' />
-      </button>
+      <Tooltip label={t('bulk.clearSelection')}>
+        <button type='button' onClick={onClear} disabled={working} className='ml-auto text-muted hover:text-fg p-1 rounded hover:bg-fg/10 transition shrink-0' aria-label={t('bulk.clearSelection')}>
+          <X className='w-3.5 h-3.5' />
+        </button>
+      </Tooltip>
     </div>
   );
 };

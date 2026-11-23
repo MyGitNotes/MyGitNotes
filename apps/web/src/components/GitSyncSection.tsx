@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type { GitStatus } from '../lib/types.js';
@@ -41,8 +42,18 @@ export function GitSyncSection({ gitStatus, onSynced, repository, label }: { git
   return (
     <section className='todo-group git-sync' aria-label={label ? `${t('panel.sync')} ${label}` : t('panel.sync')}>
       <h4>{t('panel.sync')}</h4>
-      {label && <p className='git-sync-repository' title={label}>{label}</p>}
-      {upstream ? <p className='git-sync-status' title={t('panel.syncStatusHint')}>{t('panel.syncStatus', { upstream, ahead: gitStatus?.ahead ?? 0, behind: gitStatus?.behind ?? 0 })}</p> : <p className='changes-help'>{t('panel.syncNoUpstream')}</p>}
+      {label && (
+        <Tooltip label={label}>
+          <p className='git-sync-repository'>{label}</p>
+        </Tooltip>
+      )}
+      {upstream
+        ? (
+          <Tooltip label={t('panel.syncStatusHint')}>
+            <p className='git-sync-status'>{t('panel.syncStatus', { upstream, ahead: gitStatus?.ahead ?? 0, behind: gitStatus?.behind ?? 0 })}</p>
+          </Tooltip>
+        )
+        : <p className='changes-help'>{t('panel.syncNoUpstream')}</p>}
       {upstream && dirty && <p className='changes-help'>{t('panel.syncDirty')}</p>}
       <Button className='git-sync-button' disabled={busy || !upstream || dirty} onClick={() => void sync()}>
         <RefreshCw aria-hidden='true' size={14} className={busy ? 'animate-spin' : ''} />
@@ -51,7 +62,13 @@ export function GitSyncSection({ gitStatus, onSynced, repository, label }: { git
       {conflict && (
         <div className='changes-confirm git-sync-conflict' role='alert'>
           <p>{t(conflict.unresolved ? 'panel.syncUnresolved' : 'panel.syncConflict')}</p>
-          <ul className='changes-file-list'>{conflict.files.map(file => <li key={file} className='changes-file-label' title={file}>{file}</li>)}</ul>
+          <ul className='changes-file-list'>
+            {conflict.files.map(file => (
+              <Tooltip key={file} label={file}>
+                <li className='changes-file-label'>{file}</li>
+              </Tooltip>
+            ))}
+          </ul>
           {!conflict.unresolved && (
             <>
               <Button disabled={busy} onClick={() => void sync('remote')}>{t('panel.syncUseRemote')}</Button>

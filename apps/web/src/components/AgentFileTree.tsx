@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useState } from 'react';
 import { BookOpen, ChevronRight, FileCode, FileText, Plus, Wand2 } from 'lucide-react';
 import type { AgentFile, AgentSkill } from '../lib/agent-workspaces.js';
@@ -13,10 +14,12 @@ interface NavigationProps {
 function SkillFileLink({ file, base, icon: Icon, ...navigation }: NavigationProps & { file: AgentFile; base: string; icon: typeof FileText; }) {
   return (
     <li>
-      <button type='button' className='agent-file sidebar-link' disabled={navigation.disabled} aria-current={navigation.selectedPath === file.path ? 'page' : undefined} title={file.path} onClick={() => navigation.onSelect(file.path)}>
-        <Icon aria-hidden='true' />
-        <span>{file.path.slice(base.length + 1)}</span>
-      </button>
+      <Tooltip label={file.path}>
+        <button type='button' className='agent-file sidebar-link' disabled={navigation.disabled} aria-current={navigation.selectedPath === file.path ? 'page' : undefined} onClick={() => navigation.onSelect(file.path)}>
+          <Icon aria-hidden='true' />
+          <span>{file.path.slice(base.length + 1)}</span>
+        </button>
+      </Tooltip>
     </li>
   );
 }
@@ -54,11 +57,13 @@ function SkillNode({ skill, onAdd, ...navigation }: NavigationProps & { skill: A
   }
   return (
     <li>
-      <button type='button' className='agent-folder sidebar-link' aria-expanded={expanded} title={skill.directory} onClick={() => setExpanded(value => !value)}>
-        <ChevronRight aria-hidden='true' className={`agent-tree-chevron ${expanded ? 'expanded' : ''}`} />
-        <Wand2 aria-hidden='true' />
-        <span>{skill.name}</span>
-      </button>
+      <Tooltip label={skill.directory}>
+        <button type='button' className='agent-folder sidebar-link' aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
+          <ChevronRight aria-hidden='true' className={`agent-tree-chevron ${expanded ? 'expanded' : ''}`} />
+          <Wand2 aria-hidden='true' />
+          <span>{skill.name}</span>
+        </button>
+      </Tooltip>
       {expanded && (
         <ul>
           {skill.entry && <SkillFileLink file={skill.entry} base={skill.directory} icon={FileText} {...navigation} />}

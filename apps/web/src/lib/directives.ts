@@ -475,7 +475,7 @@ export function renderContainerDirective(name: string, label: string | undefined
       const val = attrs[key]?.trim();
       if (!val) return '';
       const statLabel = escapeHtml(strings[`directive.cocStat.stat.${key}`]);
-      return `<div class="coc-stat-cell" data-stat="${key}"><span class="coc-stat-label"><span class="coc-stat-label-name">${statLabel}</span><abbr class="coc-stat-code" title="${statLabel}">${cocCode(key)}</abbr></span><strong class="coc-stat-value">${escapeHtml(val)}</strong></div>`;
+      return `<div class="coc-stat-cell" data-stat="${key}"><span class="coc-stat-label"><span class="coc-stat-label-name">${statLabel}</span><abbr class="coc-stat-code" data-t1-label="${statLabel}">${cocCode(key)}</abbr></span><strong class="coc-stat-value">${escapeHtml(val)}</strong></div>`;
     };
     const charCells = COC_CHARACTERISTICS.map(cell).join('');
     const derivedCells = COC_DERIVED.map(cell).join('');

@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
@@ -77,29 +78,47 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
       <div className='phone-note-bar' role='group' aria-label={t('phone.noteBar')} data-overlay={overlay || undefined} data-hidden={hidden || undefined} {...(hidden ? { inert: '' } : {})}>
         {frame === 'zoom'
           ? (
-            <button type='button' className='ui-icon-button' aria-label={t('editor.closeNote')} title={t('editor.closeNote')} onClick={session.close}>
-              <ArrowLeft aria-hidden='true' />
-            </button>
+            <Tooltip label={t('editor.closeNote')}>
+              <button type='button' className='ui-icon-button' aria-label={t('editor.closeNote')} onClick={session.close}>
+                <ArrowLeft aria-hidden='true' />
+              </button>
+            </Tooltip>
           )
           : (
-            <button type='button' className='ui-icon-button' aria-label={t('phone.back')} title={t('phone.back')} onClick={back}>
-              <ArrowLeft aria-hidden='true' />
-            </button>
+            <Tooltip label={t('phone.back')}>
+              <button type='button' className='ui-icon-button' aria-label={t('phone.back')} onClick={back}>
+                <ArrowLeft aria-hidden='true' />
+              </button>
+            </Tooltip>
           )}
-        {template && <span className='note-row-template' title={t('templates.labelHint')}>{t('templates.label')}</span>}
-        <div className='phone-note-title' title={title}>{title}</div>
+        {template && (
+          <Tooltip label={t('templates.labelHint')}>
+            <span className='note-row-template'>{t('templates.label')}</span>
+          </Tooltip>
+        )}
+        <Tooltip label={title}>
+          <div className='phone-note-title'>{title}</div>
+        </Tooltip>
         {liveBadge && <LiveBadge live={props.note.live} title={props.note.title} />}
         {props.frontmatterInvalid ? <FrontmatterInvalid iconOnly announce /> : <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />}
         {!autoSave && !readOnly && (
-          <button type='button' className='ui-icon-button' aria-label={t('editor.saveToGitHub')} title={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave}>
-            <Save aria-hidden='true' />
-          </button>
+          <Tooltip label={t('editor.saveToGitHub')}>
+            <button type='button' className='ui-icon-button' aria-label={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave}>
+              <Save aria-hidden='true' />
+            </button>
+          </Tooltip>
         )}
-        {phoneEditing && <button type='button' className='ui-icon-button phone-note-edit' aria-pressed={phoneEditing.editing} aria-label={t(phoneEditing.editing ? 'editor.finishEditing' : 'editor.startEditing')} title={t(phoneEditing.editing ? 'editor.finishEditing' : 'editor.startEditing')} onClick={phoneEditing.editing ? phoneEditing.onDone : phoneEditing.onEdit}>{phoneEditing.editing ? <Check aria-hidden='true' /> : <Pencil aria-hidden='true' />}</button>}
+        {phoneEditing && (
+          <Tooltip label={t(phoneEditing.editing ? 'editor.finishEditing' : 'editor.startEditing')}>
+            <button type='button' className='ui-icon-button phone-note-edit' aria-pressed={phoneEditing.editing} aria-label={t(phoneEditing.editing ? 'editor.finishEditing' : 'editor.startEditing')} onClick={phoneEditing.editing ? phoneEditing.onDone : phoneEditing.onEdit}>{phoneEditing.editing ? <Check aria-hidden='true' /> : <Pencil aria-hidden='true' />}</button>
+          </Tooltip>
+        )}
         <AssistantDockToggle />
-        <button ref={trigger} type='button' className='ui-icon-button' aria-label={t('editor.moreActions')} title={t('editor.moreActions')} aria-haspopup='dialog' aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
-          <MoreHorizontal aria-hidden='true' />
-        </button>
+        <Tooltip label={t('editor.moreActions')}>
+          <button ref={trigger} type='button' className='ui-icon-button' aria-label={t('editor.moreActions')} aria-haspopup='dialog' aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
+            <MoreHorizontal aria-hidden='true' />
+          </button>
+        </Tooltip>
       </div>
       {menuOpen && <PhoneNoteSheet {...props} title={title} trigger={trigger} onClose={() => setMenuOpen(false)} />}
     </>

@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useState } from 'react';
 import { closestCenter, DndContext, KeyboardSensor, type Modifier, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -183,9 +184,11 @@ function OrderRow({ entry, index, indent, fixed, autoFocus, onRetitle, onRemove,
           <>
             {/* eslint-disable-next-line jsx-a11y/no-autofocus -- A chapter just added takes focus so its title can be typed at once. */}
             <input className='ui-control compilation-order-chapter' aria-label={t('compilation.chapterTitle')} placeholder={t('compilation.chapterTitle')} value={entry.title} maxLength={100} autoFocus={autoFocus} onChange={event => onRetitle(entry.item.id, event.target.value)} />
-            <Button type='button' size='icon' aria-label={`${t('compilation.removeChapter')}: ${entry.title}`} title={t('compilation.removeChapter')} onClick={() => onRemove(entry.item.id)}>
-              <X size={14} aria-hidden='true' />
-            </Button>
+            <Tooltip label={t('compilation.removeChapter')}>
+              <Button type='button' size='icon' aria-label={`${t('compilation.removeChapter')}: ${entry.title}`} onClick={() => onRemove(entry.item.id)}>
+                <X size={14} aria-hidden='true' />
+              </Button>
+            </Tooltip>
           </>
         )
         : (

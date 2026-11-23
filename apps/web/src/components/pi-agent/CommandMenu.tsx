@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { useEffect, useRef } from 'react';
 import type { PiCommand } from '../../lib/pi-agent/commands.js';
 import { type TranslationKey, useTranslation } from '../../lib/i18n/index.js';
@@ -21,20 +22,20 @@ export function CommandMenu({ id, commands, highlight, onPick }: { id: string; c
     <ul ref={list} id={id} className='pi-agent-commands' role='listbox' aria-label={t('piAgent.commands')}>
       {commands.length === 0 && <li className='pi-agent-commands-empty'>{t('piAgent.commands.none')}</li>}
       {commands.map((command, index) => (
-        <li
-          key={`${command.source}:${command.name}`}
-          id={`${id}-${index}`}
-          role='option'
-          aria-selected={index === highlight}
-          title={command.description}
-          // Keeps focus in the message box, so the pick lands there.
-          onMouseDown={event => event.preventDefault()}
-          onClick={() => onPick(command)}
-        >
-          <span className='pi-agent-command-name'>/{command.name}{command.usage && <span className='pi-agent-command-usage'>{command.usage}</span>}</span>
-          {command.description && <span className='pi-agent-command-description'>{command.description}</span>}
-          <span className='pi-agent-badge'>{t(`piAgent.commands.source.${command.source}` as TranslationKey)}</span>
-        </li>
+        <Tooltip key={`${command.source}:${command.name}`} label={command.description}>
+          <li
+            id={`${id}-${index}`}
+            role='option'
+            aria-selected={index === highlight}
+            // Keeps focus in the message box, so the pick lands there.
+            onMouseDown={event => event.preventDefault()}
+            onClick={() => onPick(command)}
+          >
+            <span className='pi-agent-command-name'>/{command.name}{command.usage && <span className='pi-agent-command-usage'>{command.usage}</span>}</span>
+            {command.description && <span className='pi-agent-command-description'>{command.description}</span>}
+            <span className='pi-agent-badge'>{t(`piAgent.commands.source.${command.source}` as TranslationKey)}</span>
+          </li>
+        </Tooltip>
       ))}
     </ul>
   );

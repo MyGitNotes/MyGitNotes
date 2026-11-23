@@ -61,7 +61,7 @@ export class LiveMarkdownTable extends WidgetType {
       const control = document.createElement('button');
       control.type = 'button';
       control.className = className;
-      control.title = label;
+      control.dataset.t1Label = label;
       control.setAttribute('aria-label', label);
       if (icons[symbol]) control.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[symbol]}</svg>`;
       else control.textContent = symbol;
@@ -109,7 +109,7 @@ export class LiveMarkdownTable extends WidgetType {
     if (this.readOnly) return root;
 
     const alignment = document.createElement('select');
-    alignment.title = this.t('table.align');
+    alignment.dataset.t1Label = this.t('table.align');
     alignment.setAttribute('aria-label', this.t('table.align'));
     for (const value of ['none', 'left', 'center', 'right'] as const) {
       const option = document.createElement('option');
@@ -150,7 +150,7 @@ export class LiveMarkdownTable extends WidgetType {
       deleteArmed = false;
       clearTimeout(deleteTimer);
       delete deleteTable.dataset.confirm;
-      deleteTable.title = this.t('table.deleteTable');
+      deleteTable.dataset.t1Label = this.t('table.deleteTable');
       deleteTable.setAttribute('aria-label', this.t('table.deleteTable'));
     };
     const deleteTable = button(toolbar, this.t('table.deleteTable'), 'trash', () => {
@@ -158,7 +158,7 @@ export class LiveMarkdownTable extends WidgetType {
       if (!deleteArmed) {
         deleteArmed = true;
         deleteTable.dataset.confirm = 'true';
-        deleteTable.title = this.t('table.confirmDeleteTable');
+        deleteTable.dataset.t1Label = this.t('table.confirmDeleteTable');
         deleteTable.setAttribute('aria-label', this.t('table.confirmDeleteTable'));
         deleteTimer = window.setTimeout(disarmDelete, 4000);
         return;
@@ -204,7 +204,7 @@ export class LiveMarkdownTable extends WidgetType {
       input.value = initialValue;
       input.rows = 1;
       input.wrap = 'soft';
-      input.title = this.t('table.multilineHint');
+      input.dataset.t1Label = this.t('table.multilineHint');
       input.setAttribute('aria-description', this.t('table.multilineHint'));
       input.setAttribute('aria-label', this.t('table.cell', { row: row + 1, column: column + 1 }));
       const original = cell.innerHTML;
@@ -274,7 +274,7 @@ export class LiveMarkdownTable extends WidgetType {
     for (const [r, values] of [...table.rows].entries()) {
       for (const [c, cell] of [...values.cells].entries()) {
         cell.tabIndex = 0;
-        cell.title = this.t('table.inlineHint');
+        cell.dataset.t1Label = this.t('table.inlineHint');
         cell.addEventListener('click', event => {
           if (!(event.target as HTMLElement).closest('a, textarea')) selectCell(r, c);
         });

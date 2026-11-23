@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { Button } from './Button.js';
 import { useWorkspaceLinks } from './WorkspaceLinks.js';
 import { AgentFileTree } from './AgentFileTree.js';
@@ -502,10 +503,12 @@ export const AgentSystemView = React.forwardRef<AgentSystemHandle, AgentSystemVi
               ? (
                 <ul className='agent-file-tree'>
                   <li>
-                    <button type='button' className='agent-file agent-instructions sidebar-link' disabled={busy} aria-current={selectedPath === instructions.path ? 'page' : undefined} title={instructions.path} onClick={() => navigate(instructions.path)}>
-                      <FileText aria-hidden='true' />
-                      <span>{instructions.path.split('/').pop()}</span>
-                    </button>
+                    <Tooltip label={instructions.path}>
+                      <button type='button' className='agent-file agent-instructions sidebar-link' disabled={busy} aria-current={selectedPath === instructions.path ? 'page' : undefined} onClick={() => navigate(instructions.path)}>
+                        <FileText aria-hidden='true' />
+                        <span>{instructions.path.split('/').pop()}</span>
+                      </button>
+                    </Tooltip>
                   </li>
                 </ul>
               )
@@ -569,48 +572,52 @@ export const AgentSystemView = React.forwardRef<AgentSystemHandle, AgentSystemVi
           <div className='agent-controls flex items-center gap-3'>
             {/* Single-file restore applies to uncommitted local edits. */}
             {showRestore && (
-              <button disabled={!canRestore} aria-label={confirmRestore ? t('agent.confirmRestore') : t('agent.restore')} onClick={handleRestoreClick} className={`editor-action ${confirmRestore ? 'editor-confirming' : ''} flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed ${confirmRestore ? 'bg-danger hover:bg-danger/90 text-on-danger shadow-md animate-pulse' : 'bg-fg/5 border border-line-strong text-fg hover:bg-fg/10'}`} title={confirmRestore ? t('editor.confirmRestoreTooltip') : t('editor.restoreTooltip')}>
-                {confirmRestore
-                  ? (
-                    <>
-                      <AlertTriangle className='w-3.5 h-3.5' />
-                      <span>{t('agent.confirmRestore')}</span>
-                    </>
-                  )
-                  : (
-                    <>
-                      <RotateCcw className='w-3.5 h-3.5' />
-                      <span>{t('agent.restore')}</span>
-                    </>
-                  )}
-              </button>
+              <Tooltip label={confirmRestore ? t('editor.confirmRestoreTooltip') : t('editor.restoreTooltip')}>
+                <button disabled={!canRestore} aria-label={confirmRestore ? t('agent.confirmRestore') : t('agent.restore')} onClick={handleRestoreClick} className={`editor-action ${confirmRestore ? 'editor-confirming' : ''} flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed ${confirmRestore ? 'bg-danger hover:bg-danger/90 text-on-danger shadow-md animate-pulse' : 'bg-fg/5 border border-line-strong text-fg hover:bg-fg/10'}`}>
+                  {confirmRestore
+                    ? (
+                      <>
+                        <AlertTriangle className='w-3.5 h-3.5' />
+                        <span>{t('agent.confirmRestore')}</span>
+                      </>
+                    )
+                    : (
+                      <>
+                        <RotateCcw className='w-3.5 h-3.5' />
+                        <span>{t('agent.restore')}</span>
+                      </>
+                    )}
+                </button>
+              </Tooltip>
             )}
             {isSkillEntry && (
-              <Button
-                size='icon'
-                className='editor-panel-action'
-                aria-pressed={metadataOpen && !historyOpen}
-                title={t('editor.frontmatter')}
-                aria-label={t('editor.frontmatter')}
-                onClick={() => {
-                  setMetadataOpen(open => historyOpen || !open);
-                  setHistoryOpen(false);
-                }}
-              >
-                <Braces aria-hidden='true' />
-              </Button>
+              <Tooltip label={t('editor.frontmatter')}>
+                <Button
+                  size='icon'
+                  className='editor-panel-action'
+                  aria-pressed={metadataOpen && !historyOpen}
+                  aria-label={t('editor.frontmatter')}
+                  onClick={() => {
+                    setMetadataOpen(open => historyOpen || !open);
+                    setHistoryOpen(false);
+                  }}
+                >
+                  <Braces aria-hidden='true' />
+                </Button>
+              </Tooltip>
             )}
             {selectedPath && (
-              <Button
-                size='icon'
-                className='editor-panel-action'
-                aria-pressed={historyOpen}
-                title={t('history.open')}
-                aria-label={t('history.open')}
-                onClick={() => setHistoryOpen(open => !open)}
-              >
-                <History aria-hidden='true' />
-              </Button>
+              <Tooltip label={t('history.open')}>
+                <Button
+                  size='icon'
+                  className='editor-panel-action'
+                  aria-pressed={historyOpen}
+                  aria-label={t('history.open')}
+                  onClick={() => setHistoryOpen(open => !open)}
+                >
+                  <History aria-hidden='true' />
+                </Button>
+              </Tooltip>
             )}
             {!script && <MarkdownEditorModeSwitch mode={viewMode} onChange={setViewMode} />}
           </div>

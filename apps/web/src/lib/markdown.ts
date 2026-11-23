@@ -355,7 +355,7 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
       control.setAttribute('type', 'button');
       control.dataset.youtubeModeOption = mode;
       control.textContent = label;
-      control.setAttribute('title', label);
+      control.setAttribute('data-t1-label', label);
       control.setAttribute('aria-label', label);
       control.setAttribute('aria-pressed', String(mode === 'thumbnail'));
       toolbar.append(control);
@@ -368,7 +368,7 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     copy.dataset.copiedLabel = youtubeLabels.copied;
     copy.dataset.copyFailedLabel = youtubeLabels.copyFailed;
     copy.setAttribute('aria-label', youtubeLabels.copy);
-    copy.setAttribute('title', youtubeLabels.copy);
+    copy.setAttribute('data-t1-label', youtubeLabels.copy);
     copy.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     toolbar.append(copy);
     const poster = parsed.createElement('button');

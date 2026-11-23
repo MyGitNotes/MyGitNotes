@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { tooltipText } from './tooltip-test-helpers.js';
 import { createElement } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -36,7 +37,7 @@ it('shows a zoom button that calls onZoomNote without opening the note', () => {
   const onOpenNote = vi.fn();
   const onZoomNote = vi.fn();
   render(createElement(ListView, { ...baseProps, onOpenNote, notes: [noteOf('notes/a.md')], focusMode: { onZoomNote, canDrag: () => true } }));
-  fireEvent.click(screen.getByTitle('Open in zoom'));
+  fireEvent.click(screen.getByRole('button', { name: 'Open in zoom' }));
   expect(onZoomNote).toHaveBeenCalledWith(expect.objectContaining({ path: 'notes/a.md' }));
   expect(onOpenNote).not.toHaveBeenCalled();
 });
@@ -94,8 +95,8 @@ const titled = (path: string, title: string, extra: Partial<NoteListItem> = {}):
 it('keeps one line per note: the path is the title tooltip, not a second line', () => {
   render(createElement(ListView, { ...baseProps, notes: [titled('notes/deep/alpha.md', 'Alpha')] }));
   expect(screen.queryByText('notes/deep/alpha.md')).not.toBeInTheDocument();
-  const title = screen.getByText('Alpha').closest('[title]')!;
-  expect(title).toHaveAttribute('title', 'notes/deep/alpha.md');
+  const title = screen.getByText('Alpha').closest('[data-t1-trigger]')!;
+  expect(tooltipText(title)).toEqual('notes/deep/alpha.md');
 });
 
 it('shows the path with the match marked while a search matches it, so a row found by its path says why', () => {
@@ -137,7 +138,7 @@ it('marks the row actions so they appear on hover and keyboard focus, and stay w
   const { container } = render(createElement(ListView, { ...baseProps, confirmDelete: true, notes: [titled('notes/a.md', 'Alpha')] }));
   const actions = container.querySelector('.note-row-actions')!;
   expect(actions).not.toHaveAttribute('data-confirming');
-  fireEvent.click(screen.getByTitle('Delete note'));
+  fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
   expect(container.querySelector('.note-row-actions')).toHaveAttribute('data-confirming');
 });
 

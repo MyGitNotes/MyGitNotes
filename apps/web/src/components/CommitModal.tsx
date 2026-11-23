@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 import { Button } from './Button.js';
 import { DiffPreview } from './DiffPreview.js';
@@ -272,31 +273,35 @@ function Changes({ request, writable, gitStatus, remoteChanges, getPreview, desc
                     )
                     : void act(file, file.staged ? 'unstage' : 'stage')}
               />
-              <Button
-                type='button'
-                className='changes-file'
-                aria-pressed={active?.key === changeKey(file) && active.side === side}
-                onClick={() => setActive({ key: changeKey(file), side })}
-                title={file.path}
-              >
-                <span>{file.path}</span>
-                <small>{t(`changes.${file.kind}`)}</small>
-              </Button>
-              {!selectionMode && (
+              <Tooltip label={file.path}>
                 <Button
                   type='button'
-                  size='icon'
-                  aria-label={`${t(side === 'working' ? 'changes.stage' : 'changes.unstage')} ${file.path}`}
-                  title={t(side === 'working' ? 'changes.stage' : 'changes.unstage')}
-                  disabled={busy || !writable || !file.available}
-                  onClick={() => void act(file, side === 'working' ? 'stage' : 'unstage')}
+                  className='changes-file'
+                  aria-pressed={active?.key === changeKey(file) && active.side === side}
+                  onClick={() => setActive({ key: changeKey(file), side })}
                 >
-                  {side === 'working' ? <Plus /> : <Minus />}
+                  <span>{file.path}</span>
+                  <small>{t(`changes.${file.kind}`)}</small>
                 </Button>
+              </Tooltip>
+              {!selectionMode && (
+                <Tooltip label={t(side === 'working' ? 'changes.stage' : 'changes.unstage')}>
+                  <Button
+                    type='button'
+                    size='icon'
+                    aria-label={`${t(side === 'working' ? 'changes.stage' : 'changes.unstage')} ${file.path}`}
+                    disabled={busy || !writable || !file.available}
+                    onClick={() => void act(file, side === 'working' ? 'stage' : 'unstage')}
+                  >
+                    {side === 'working' ? <Plus /> : <Minus />}
+                  </Button>
+                </Tooltip>
               )}
-              <Button type='button' size='icon' aria-label={`${t('common.restore')} ${file.path}`} title={t(file.tracked ? 'common.restore' : 'changes.discardNew')} disabled={busy || !canRestore(file)} onClick={() => void act(file, 'restore')}>
-                <RotateCcw />
-              </Button>
+              <Tooltip label={t(file.tracked ? 'common.restore' : 'changes.discardNew')}>
+                <Button type='button' size='icon' aria-label={`${t('common.restore')} ${file.path}`} disabled={busy || !canRestore(file)} onClick={() => void act(file, 'restore')}>
+                  <RotateCcw />
+                </Button>
+              </Tooltip>
             </div>
           ))}
         </React.Fragment>
@@ -365,7 +370,9 @@ function Changes({ request, writable, gitStatus, remoteChanges, getPreview, desc
       {error && <p role='alert' className='changes-error'>{error}</p>}
       {notice && <p role='status' className='changes-help'>{notice}</p>}
       <footer>
-        <input className='ui-control' aria-label={t('commit.message')} placeholder={t('commit.placeholder')} title={details} value={message} disabled={busy} onChange={event => setMessage(event.target.value)} />
+        <Tooltip label={details}>
+          <input className='ui-control' aria-label={t('commit.message')} placeholder={t('commit.placeholder')} value={message} disabled={busy} onChange={event => setMessage(event.target.value)} />
+        </Tooltip>
         <Button disabled={busy || !staged.length} onClick={() => void generate()}>{t(remote ? 'commit.generateMessage' : 'commit.semanticMessage')}</Button>
         {polish && remote && !demo && (polishGate.allowed ? <Button disabled={busy || !described || !message.trim()} onClick={() => void polishMessage()}>{t(polishing ? 'commit.polishing' : 'commit.polishMessage')}</Button> : <span className='changes-polish-gate' role='status'>{polishGate.reason ?? t('feature.unavailable')}</span>)}
         <Button variant='primary' disabled={busy || !writable || !staged.length || !message.trim() || staged.some(file => !file.available)} onClick={() => void commit()}>

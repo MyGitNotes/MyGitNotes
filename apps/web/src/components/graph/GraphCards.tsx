@@ -1,3 +1,5 @@
+import { Tooltip } from '../Tooltip.js';
+import { primaryShortcutHint } from '../../lib/keyboard/keymap.js';
 import { PanelTopOpen } from 'lucide-react';
 import { GraphNoteCard } from './GraphNoteCard.js';
 import type { useGraphController } from './useGraphController.js';
@@ -23,20 +25,21 @@ export function GraphCards({ model }: { model: ReturnType<typeof useGraphControl
         );
       })}
       {hoveredNode && (
-        <button
-          className='ui-button graph-hover-expand'
-          style={{ left: (hoveredNode.x || 0) * transform.k + transform.x + 14, top: (hoveredNode.y || 0) * transform.k + transform.y - 14 }}
-          title={t('graph.expandEnter')}
-          aria-label={`${t('graph.expand')}: ${hoveredNode.title}`}
-          onMouseEnter={() => clearTimeout(hoverTimer.current)}
-          onMouseLeave={() => setHover(null)}
-          onClick={() => {
-            setExpanded([hoveredNode.id], true);
-            setHover(null);
-          }}
-        >
-          <PanelTopOpen size={16} />
-        </button>
+        <Tooltip label={t('graph.expand')} detail={primaryShortcutHint('graph.toggleExpand')}>
+          <button
+            className='ui-button graph-hover-expand'
+            style={{ left: (hoveredNode.x || 0) * transform.k + transform.x + 14, top: (hoveredNode.y || 0) * transform.k + transform.y - 14 }}
+            aria-label={`${t('graph.expand')}: ${hoveredNode.title}`}
+            onMouseEnter={() => clearTimeout(hoverTimer.current)}
+            onMouseLeave={() => setHover(null)}
+            onClick={() => {
+              setExpanded([hoveredNode.id], true);
+              setHover(null);
+            }}
+          >
+            <PanelTopOpen size={16} />
+          </button>
+        </Tooltip>
       )}
     </>
   );

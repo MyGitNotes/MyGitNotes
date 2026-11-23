@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { EditorFooter } from './EditorFooter.js';
 import { ListTree } from 'lucide-react';
 import { useOutlineActions, useOutlineInsertion } from '../lib/outline-actions.js';
@@ -369,10 +370,12 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // A compilation's section and a graph card show the note as it reads; their 編輯 opens zoom.
   const liveEditButton = liveEdit.edit && (
     <div className='note-live-edit'>
-      <Button size='small' onClick={liveEdit.edit} title={t('live.toolbar')}>
-        <Pencil size={13} aria-hidden='true' />
-        {t('editor.startEditing')}
-      </Button>
+      <Tooltip label={t('live.toolbar')}>
+        <Button size='small' onClick={liveEdit.edit}>
+          <Pencil size={13} aria-hidden='true' />
+          {t('editor.startEditing')}
+        </Button>
+      </Tooltip>
     </div>
   );
 
@@ -397,9 +400,11 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
         <NoteEditorNotices session={session} notePath={note.path} />
         {liveEditButton}
         {addToOutline && (
-          <button type='button' className='ui-icon-button' title={t('outline.add')} aria-label={t('outline.add')} onClick={addToOutline}>
-            <ListTree aria-hidden='true' />
-          </button>
+          <Tooltip label={t('outline.add')}>
+            <button type='button' className='ui-icon-button' aria-label={t('outline.add')} onClick={addToOutline}>
+              <ListTree aria-hidden='true' />
+            </button>
+          </Tooltip>
         )}
         {awaitingRecovery && (
           <p role='status'>

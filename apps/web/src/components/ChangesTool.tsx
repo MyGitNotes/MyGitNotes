@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useEffect, useState } from 'react';
 import { FileDiff, GitCommit, RotateCcw } from 'lucide-react';
 import type { ChangeRequest, FileChange, GitStatus, NoteItem } from '../lib/types.js';
@@ -117,35 +118,41 @@ export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenComm
                         disabled={!writable || !file.available}
                         onChange={event => setSelected(old => event.target.checked ? [...old, changeKey(file)] : old.filter(key => key !== changeKey(file)))}
                       />
-                      <Button
-                        className='panel-file-title'
-                        title={file.path}
-                        aria-pressed={activeKey === changeKey(file)}
-                        onClick={() => setActiveKey(old => old === changeKey(file) ? undefined : changeKey(file))}
-                      >
-                        <FileDiff aria-hidden='true' />
-                        <span>
-                          {file.path.split('/').pop()}
-                          <small>{file.path}</small>
-                        </span>
-                      </Button>
+                      <Tooltip label={file.path}>
+                        <Button
+                          className='panel-file-title'
+                          aria-pressed={activeKey === changeKey(file)}
+                          onClick={() => setActiveKey(old => old === changeKey(file) ? undefined : changeKey(file))}
+                        >
+                          <FileDiff aria-hidden='true' />
+                          <span>
+                            {file.path.split('/').pop()}
+                            <small>{file.path}</small>
+                          </span>
+                        </Button>
+                      </Tooltip>
                     </div>
                     <div className='panel-change-actions'>
                       <span className='change-kind' data-kind={file.kind}>{t(`changes.${file.kind}`)}</span>
-                      <Button
-                        size='icon'
-                        title={t('changes.viewFile')}
-                        aria-label={t('panel.changesViewDiff', { path: file.path })}
-                        onClick={() => request('review', [changeKey(file)])}
-                      >
-                        <FileDiff aria-hidden='true' />
-                      </Button>
-                      <Button size='icon' title={t('common.restore')} aria-label={t('changes.restoreFile', { path: file.path })} disabled={!canRestore(file)} onClick={() => request('restore', [changeKey(file)])}>
-                        <RotateCcw aria-hidden='true' />
-                      </Button>
-                      <Button size='icon' title={t('changes.commitFile', { path: file.path })} aria-label={t('changes.commitFile', { path: file.path })} disabled={!writable || !file.available} onClick={() => request('commit', [changeKey(file)])}>
-                        <GitCommit aria-hidden='true' />
-                      </Button>
+                      <Tooltip label={t('changes.viewFile')}>
+                        <Button
+                          size='icon'
+                          aria-label={t('panel.changesViewDiff', { path: file.path })}
+                          onClick={() => request('review', [changeKey(file)])}
+                        >
+                          <FileDiff aria-hidden='true' />
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label={t('common.restore')}>
+                        <Button size='icon' aria-label={t('changes.restoreFile', { path: file.path })} disabled={!canRestore(file)} onClick={() => request('restore', [changeKey(file)])}>
+                          <RotateCcw aria-hidden='true' />
+                        </Button>
+                      </Tooltip>
+                      <Tooltip label={t('changes.commitFile', { path: file.path })}>
+                        <Button size='icon' aria-label={t('changes.commitFile', { path: file.path })} disabled={!writable || !file.available} onClick={() => request('commit', [changeKey(file)])}>
+                          <GitCommit aria-hidden='true' />
+                        </Button>
+                      </Tooltip>
                     </div>
                   </li>
                 ))}
@@ -188,10 +195,12 @@ export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenComm
       )}
       {onSynced && (syncTargets && syncTargets.length > 1 ? syncTargets.map(target => <GitSyncSection key={target.id} repository={target.id} label={target.label} gitStatus={target.gitStatus} onSynced={onSynced} />) : <GitSyncSection gitStatus={gitStatus} onSynced={onSynced} />)}
       {onSynced && <GitPullSection onPulled={onSynced} repoRoot={repoRoot} upstream={gitStatus?.upstream} />}
-      <a className='panel-credit' href='https://github.com/MyGitNotes/MyGitNotes' target='_blank' rel='noopener noreferrer' title='MyGitNotes by the MyGitNotes organization'>
-        {'powered by '}
-        <span>MyGitNotes</span>
-      </a>
+      <Tooltip label='MyGitNotes by the MyGitNotes organization'>
+        <a className='panel-credit' href='https://github.com/MyGitNotes/MyGitNotes' target='_blank' rel='noopener noreferrer'>
+          {'powered by '}
+          <span>MyGitNotes</span>
+        </a>
+      </Tooltip>
     </div>
   );
 }

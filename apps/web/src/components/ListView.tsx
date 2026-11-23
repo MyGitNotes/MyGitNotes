@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { NoteMoveButton } from './NoteMoveButton.js';
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown, FileText, GalleryHorizontalEnd, Trash2 } from 'lucide-react';
@@ -89,60 +90,65 @@ const NoteRow = React.memo(function NoteRow({ note, statuses, readOnly, canDelet
   // The path is the title's tooltip; while a search matches it, it also shows after the title with the match marked, so a row found by its path says why.
   const pathMatched = highlightSegments(note.path, highlightQuery).some(segment => segment.match);
   return (
-    <tr {...touchSelection.itemProps(note, actions.open)} title={selectionActive ? undefined : t('notes.multiSelectHint')} draggable={canDrag || dragsToMove} onDragStart={canDrag || dragsToMove ? event => startNoteDrag(event, note, { focus: Boolean(canDrag), move: dragsToMove }) : undefined} className='hover:bg-fg/5 transition cursor-pointer group'>
-      <td className='py-2 px-3'>
-        <div className='flex items-center gap-2.5'>
-          {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => actions.toggleSelect(note)} />}
-          {isCompilationPath(note.path) ? <GalleryHorizontalEnd className='w-4 h-4 text-primary shrink-0' aria-hidden='true' /> : <FileText className='w-4 h-4 text-primary shrink-0' />}
-          <div className='min-w-0 flex-1'>
-            <div className='font-medium text-fg transition flex items-center gap-1.5' title={note.path}>
-              <span className='note-row-title'>
-                <HighlightText text={note.title} query={highlightQuery} />
-              </span>
-              {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
-              <LiveBadge live={note.live} title={note.title} />
-              {pathMatched && (
-                <span className='note-row-path font-mono'>
-                  <HighlightText text={note.path} query={highlightQuery} />
-                </span>
+    <Tooltip label={selectionActive ? undefined : t('notes.multiSelectHint')}>
+      <tr {...touchSelection.itemProps(note, actions.open)} draggable={canDrag || dragsToMove} onDragStart={canDrag || dragsToMove ? event => startNoteDrag(event, note, { focus: Boolean(canDrag), move: dragsToMove }) : undefined} className='hover:bg-fg/5 transition cursor-pointer group'>
+        <td className='py-2 px-3'>
+          <div className='flex items-center gap-2.5'>
+            {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => actions.toggleSelect(note)} />}
+            {isCompilationPath(note.path) ? <GalleryHorizontalEnd className='w-4 h-4 text-primary shrink-0' aria-hidden='true' /> : <FileText className='w-4 h-4 text-primary shrink-0' />}
+            <div className='min-w-0 flex-1'>
+              <Tooltip label={note.path}>
+                <div className='font-medium text-fg transition flex items-center gap-1.5'>
+                  <span className='note-row-title'>
+                    <HighlightText text={note.title} query={highlightQuery} />
+                  </span>
+                  {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
+                  <LiveBadge live={note.live} title={note.title} />
+                  {pathMatched && (
+                    <span className='note-row-path font-mono'>
+                      <HighlightText text={note.path} query={highlightQuery} />
+                    </span>
+                  )}
+                </div>
+              </Tooltip>
+              {note.matchSnippet && (
+                <div className='text-xs text-muted mt-0.5 line-clamp-2'>
+                  <HighlightText text={note.matchSnippet} query={highlightQuery} />
+                </div>
               )}
             </div>
-            {note.matchSnippet && (
-              <div className='text-xs text-muted mt-0.5 line-clamp-2'>
-                <HighlightText text={note.matchSnippet} query={highlightQuery} />
-              </div>
+          </div>
+        </td>
+        {/* In-Table Selectable Status */}
+        <td className='py-2 px-3'>
+          <NoteStatusSelect unreadable={note.frontmatterInvalid} statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => actions.status(note, status)} />
+        </td>
+        <td className='py-2 px-3'>{note.tags.length > 0 ? <NoteTags tags={note.tags} oneLine tagActions={tagActions} /> : <span className='text-xs text-muted'>—</span>}</td>
+        <td className='py-2 px-3 text-xs text-muted whitespace-nowrap tabular-nums'>
+          <time dateTime={updated ? new Date(updated).toISOString() : undefined} title={updated ? dates.full.format(updated) : undefined}>{formattedDate}</time>
+        </td>
+        {/* Actions Column */}
+        <td className='py-2 px-3 text-right'>
+          <div className='note-row-actions flex items-center justify-end' data-confirming={isPendingDelete || undefined} onClick={(e) => e.stopPropagation()}>
+            {showZoom && <NoteZoomButton onClick={() => actions.zoom(note)} iconClassName='w-4 h-4' />}
+            {!readOnly && <NoteMoveButton onClick={() => actions.move(note)} reason={moveLocked} />}
+            {!readOnly && canDelete && (
+              <Tooltip label={deleteLocked ?? (isPendingDelete ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))}>
+                <button
+                  type='button'
+                  onClick={() => actions.remove(note)}
+                  disabled={Boolean(deleteLocked)}
+                  aria-label={t('notes.delete')}
+                  className={isPendingDelete ? 'p-1.5 text-on-danger bg-danger hover:bg-danger/90 rounded-lg transition' : 'p-1.5 text-muted hover:text-danger hover:bg-danger-soft rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted'}
+                >
+                  <Trash2 className='w-4 h-4' />
+                </button>
+              </Tooltip>
             )}
           </div>
-        </div>
-      </td>
-      {/* In-Table Selectable Status */}
-      <td className='py-2 px-3'>
-        <NoteStatusSelect unreadable={note.frontmatterInvalid} statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => actions.status(note, status)} />
-      </td>
-      <td className='py-2 px-3'>{note.tags.length > 0 ? <NoteTags tags={note.tags} oneLine tagActions={tagActions} /> : <span className='text-xs text-muted'>—</span>}</td>
-      <td className='py-2 px-3 text-xs text-muted whitespace-nowrap tabular-nums'>
-        <time dateTime={updated ? new Date(updated).toISOString() : undefined} title={updated ? dates.full.format(updated) : undefined}>{formattedDate}</time>
-      </td>
-      {/* Actions Column */}
-      <td className='py-2 px-3 text-right'>
-        <div className='note-row-actions flex items-center justify-end' data-confirming={isPendingDelete || undefined} onClick={(e) => e.stopPropagation()}>
-          {showZoom && <NoteZoomButton onClick={() => actions.zoom(note)} iconClassName='w-4 h-4' />}
-          {!readOnly && <NoteMoveButton onClick={() => actions.move(note)} reason={moveLocked} />}
-          {!readOnly && canDelete && (
-            <button
-              type='button'
-              onClick={() => actions.remove(note)}
-              disabled={Boolean(deleteLocked)}
-              aria-label={t('notes.delete')}
-              title={deleteLocked ?? (isPendingDelete ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))}
-              className={isPendingDelete ? 'p-1.5 text-on-danger bg-danger hover:bg-danger/90 rounded-lg transition' : 'p-1.5 text-muted hover:text-danger hover:bg-danger-soft rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted'}
-            >
-              <Trash2 className='w-4 h-4' />
-            </button>
-          )}
-        </div>
-      </td>
-    </tr>
+        </td>
+      </tr>
+    </Tooltip>
   );
 });
 

@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { ChevronRight, Folder } from 'lucide-react';
 import type { NoteGroup } from '../lib/note-groups.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -14,10 +15,12 @@ export function NoteGroupHeading({ group, collapsed, onToggle }: { group: NoteGr
     );
   }
   return (
-    <button type='button' className='note-group-heading note-group-toggle' aria-expanded={!collapsed} title={t(collapsed ? 'folder.expand' : 'folder.collapse')} onClick={() => onToggle(group.key)}>
-      <ChevronRight className='note-group-chevron' aria-hidden='true' />
-      <Folder aria-hidden='true' />
-      <span>{group.label}</span>
-    </button>
+    <Tooltip label={t(collapsed ? 'folder.expand' : 'folder.collapse')}>
+      <button type='button' className='note-group-heading note-group-toggle' aria-expanded={!collapsed} onClick={() => onToggle(group.key)}>
+        <ChevronRight className='note-group-chevron' aria-hidden='true' />
+        <Folder aria-hidden='true' />
+        <span>{group.label}</span>
+      </button>
+    </Tooltip>
   );
 }

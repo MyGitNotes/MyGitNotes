@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -38,7 +39,13 @@ export function OfflineNotice() {
       {listed.length > 0 && (
         <section aria-label={t('pwa.offlineDrafts')}>
           <h2 className='mb-1 text-sm font-medium'>{t('pwa.offlineDrafts')}</h2>
-          <ul className='max-h-48 overflow-auto text-sm'>{listed.map(draft => <li key={draft.key} className='truncate py-1' title={draft.path}>{draft.title}</li>)}</ul>
+          <ul className='max-h-48 overflow-auto text-sm'>
+            {listed.map(draft => (
+              <Tooltip key={draft.key} label={draft.path}>
+                <li className='truncate py-1'>{draft.title}</li>
+              </Tooltip>
+            ))}
+          </ul>
         </section>
       )}
       {listed.length === 0 && total > 0 && <p className='text-sm'>{t('pwa.offlineDraftCount', { count: total })}</p>}
@@ -47,7 +54,9 @@ export function OfflineNotice() {
           <h2 className='mb-1 text-sm font-medium'>{t('pwa.offlineLive')}</h2>
           {live.map(entry => (
             <details key={entry.key} className='py-1 text-sm' open={live.length === 1}>
-              <summary className='truncate' title={entry.path}>{entry.title || entry.path.split('/').pop()}</summary>
+              <Tooltip label={entry.path}>
+                <summary className='truncate'>{entry.title || entry.path.split('/').pop()}</summary>
+              </Tooltip>
               <pre className='max-h-64 overflow-auto whitespace-pre-wrap text-xs'>{entry.text}</pre>
             </details>
           ))}

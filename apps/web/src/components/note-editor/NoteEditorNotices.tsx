@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { X } from 'lucide-react';
 import { CrashRecoveryBanner } from '../CrashRecoveryBanner.js';
 import { EditorNotice } from '../EditorNotice.js';
@@ -25,9 +26,11 @@ export function NoteEditorNotices({ session, notePath }: { session: NoteEditorSe
               {blocked && <button disabled={session.isSaving} onClick={session.refreshRemote} className='font-semibold underline hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed transition'>{t('editor.refreshRemote')}</button>}
               {session.conflictDraft && <button onClick={session.downloadConflictDraft} className='underline hover:opacity-80 transition'>{t('editor.downloadPreservedDraft')}</button>}
               {!blocked && (
-                <button type='button' aria-label={t('editor.dismissNotice')} title={t('editor.dismissNotice')} onClick={session.dismissNotice} className='ui-icon-button'>
-                  <X aria-hidden='true' />
-                </button>
+                <Tooltip label={t('editor.dismissNotice')}>
+                  <button type='button' aria-label={t('editor.dismissNotice')} onClick={session.dismissNotice} className='ui-icon-button'>
+                    <X aria-hidden='true' />
+                  </button>
+                </Tooltip>
               )}
             </>
           }

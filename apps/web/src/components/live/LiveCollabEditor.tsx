@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { type CSSProperties, type ReactNode, type Ref, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, Users } from 'lucide-react';
@@ -772,7 +773,26 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
             <span className='live-editor-state' data-tone={stateKey === 'live.saved' ? 'ok' : stateKey === 'live.offline' ? 'warn' : undefined}>{stateKey === 'live.offline' && <CloudOff size={14} aria-hidden='true' />}{t(stateKey)}</span>
           </>
         )}
-        <div className='live-editor-actions'>{discardable && <Button size='small' variant='danger' title={t(discardOffline ? 'live.discardOffline' : 'live.discardHint')} disabled={discardOffline} onClick={() => void discard()}>{t('live.discard')}</Button>}{live && <Button size='small' variant='primary' title={t('live.checkInHint')} disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>}{phase.kind !== 'lost' && <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>}</div>
+        <div className='live-editor-actions'>
+          {discardable && (
+            <Tooltip label={t(discardOffline ? 'live.discardOffline' : 'live.discardHint')}>
+              <Button
+                size='small'
+                variant='danger'
+                disabled={discardOffline}
+                onClick={() => void discard()}
+              >
+                {t('live.discard')}
+              </Button>
+            </Tooltip>
+          )}
+          {live && (
+            <Tooltip label={t('live.checkInHint')}>
+              <Button size='small' variant='primary' disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>
+            </Tooltip>
+          )}
+          {phase.kind !== 'lost' && <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>}
+        </div>
       </div>
       {live && leaving && (
         <div role='alertdialog' aria-label={t('common.close')} className='live-editor-notice'>

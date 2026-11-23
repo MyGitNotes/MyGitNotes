@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { Select } from './Select.js';
 import { bookmarkOriginalRange, normalizeBookmarkBody } from '@mygitnotes/core/bookmark-anchor';
 import React, { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
@@ -381,19 +382,19 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
         {FORMAT_GROUPS.map((group, index) => (
           <div className='markdown-format-group' key={index}>
             {group.map(({ format, icon: Icon, command }) => {
-              const label = t(`format.${format}` as TranslationKey) + (command ? ` (${commandKeyLabel(command)})` : '');
+              const label = t(`format.${format}` as TranslationKey);
               return (
-                <button
-                  key={format}
-                  type='button'
-                  className='ui-icon-button toolbar-icon-button'
-                  aria-label={label}
-                  title={label}
-                  onMouseDown={event => event.preventDefault()}
-                  onClick={() => applyFormat(format)}
-                >
-                  <Icon aria-hidden='true' />
-                </button>
+                <Tooltip key={format} label={label} detail={command && commandKeyLabel(command)}>
+                  <button
+                    type='button'
+                    className='ui-icon-button toolbar-icon-button'
+                    aria-label={label}
+                    onMouseDown={event => event.preventDefault()}
+                    onClick={() => applyFormat(format)}
+                  >
+                    <Icon aria-hidden='true' />
+                  </button>
+                </Tooltip>
               );
             })}
           </div>
@@ -401,73 +402,84 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
         {outline && (
           <div className='markdown-format-group'>
             {([['outdent', IndentDecrease], ['indent', IndentIncrease]] as const).map(([command, Icon]) => (
-              <button
-                key={command}
-                type='button'
-                className='ui-icon-button toolbar-icon-button'
-                aria-label={t(`outline.${command}`)}
-                title={t(`outline.${command}`)}
-                onMouseDown={event => event.preventDefault()}
-                onClick={() => applyOutline(command)}
-              >
-                <Icon aria-hidden='true' />
-              </button>
+              <Tooltip key={command} label={t(`outline.${command}`)}>
+                <button
+                  type='button'
+                  className='ui-icon-button toolbar-icon-button'
+                  aria-label={t(`outline.${command}`)}
+                  onMouseDown={event => event.preventDefault()}
+                  onClick={() => applyOutline(command)}
+                >
+                  <Icon aria-hidden='true' />
+                </button>
+              </Tooltip>
             ))}
           </div>
         )}
         <div className='markdown-format-group'>
-          <button
-            type='button'
-            className='ui-icon-button toolbar-icon-button insert-icon-button'
-            aria-label={t('graph.insertLink')}
-            title={t('graph.insertLink')}
-            aria-expanded={picker}
-            onMouseDown={event => event.preventDefault()}
-            onClick={() => {
-              setPicker(value => !value);
-              setQuery('');
-            }}
-          >
-            <Link2 aria-hidden='true' />
-            <span className='insert-plus-badge' aria-hidden='true'>
-              <Plus />
-            </span>
-          </button>
-          {onInsertImage && (
-            <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('editor.notebookAssets')} title={t('editor.notebookAssets')} onMouseDown={event => event.preventDefault()} onClick={() => onInsertImage()}>
-              <ImageIcon aria-hidden='true' />
+          <Tooltip label={t('graph.insertLink')}>
+            <button
+              type='button'
+              className='ui-icon-button toolbar-icon-button insert-icon-button'
+              aria-label={t('graph.insertLink')}
+              aria-expanded={picker}
+              onMouseDown={event => event.preventDefault()}
+              onClick={() => {
+                setPicker(value => !value);
+                setQuery('');
+              }}
+            >
+              <Link2 aria-hidden='true' />
               <span className='insert-plus-badge' aria-hidden='true'>
                 <Plus />
               </span>
             </button>
+          </Tooltip>
+          {onInsertImage && (
+            <Tooltip label={t('editor.notebookAssets')}>
+              <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('editor.notebookAssets')} onMouseDown={event => event.preventDefault()} onClick={() => onInsertImage()}>
+                <ImageIcon aria-hidden='true' />
+                <span className='insert-plus-badge' aria-hidden='true'>
+                  <Plus />
+                </span>
+              </button>
+            </Tooltip>
           )}
           {onInsertImage && (
-            <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('imageAnnotation.insert')} title={t('imageAnnotation.insert')} onMouseDown={event => event.preventDefault()} onClick={() => onInsertImage({ annotated: true })}>
-              <MessageSquarePlus aria-hidden='true' />
+            <Tooltip label={t('imageAnnotation.insert')}>
+              <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('imageAnnotation.insert')} onMouseDown={event => event.preventDefault()} onClick={() => onInsertImage({ annotated: true })}>
+                <MessageSquarePlus aria-hidden='true' />
+                <span className='insert-plus-badge' aria-hidden='true'>
+                  <Plus />
+                </span>
+              </button>
+            </Tooltip>
+          )}
+          <Tooltip label={t('table.insert')}>
+            <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('table.insert')} onClick={insertTable}>
+              <Table2 aria-hidden='true' />
               <span className='insert-plus-badge' aria-hidden='true'>
                 <Plus />
               </span>
             </button>
-          )}
-          <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('table.insert')} title={t('table.insert')} onClick={insertTable}>
-            <Table2 aria-hidden='true' />
-            <span className='insert-plus-badge' aria-hidden='true'>
-              <Plus />
-            </span>
-          </button>
-          <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('icon.insert')} title={t('icon.insert')} aria-haspopup='dialog' onClick={() => setIconPicker(true)}>
-            <Shapes aria-hidden='true' />
-            <span className='insert-plus-badge' aria-hidden='true'>
-              <Plus />
-            </span>
-          </button>
+          </Tooltip>
+          <Tooltip label={t('icon.insert')}>
+            <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('icon.insert')} aria-haspopup='dialog' onClick={() => setIconPicker(true)}>
+              <Shapes aria-hidden='true' />
+              <span className='insert-plus-badge' aria-hidden='true'>
+                <Plus />
+              </span>
+            </button>
+          </Tooltip>
           <DropdownMenu.Root>
-            <DropdownMenu.Trigger className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('directive.insert')} title={t('directive.insert')}>
-              <Square aria-hidden='true' />
-              <span className='insert-plus-badge' aria-hidden='true'>
-                <Plus />
-              </span>
-            </DropdownMenu.Trigger>
+            <Tooltip label={t('directive.insert')}>
+              <DropdownMenu.Trigger className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('directive.insert')}>
+                <Square aria-hidden='true' />
+                <span className='insert-plus-badge' aria-hidden='true'>
+                  <Plus />
+                </span>
+              </DropdownMenu.Trigger>
+            </Tooltip>
             <DropdownMenu.Portal>
               <DropdownMenu.Content
                 className='markdown-insert-menu'
@@ -522,12 +534,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
           <DropdownMenu.Root>
-            <DropdownMenu.Trigger className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('infographic.insert')} title={t('infographic.insert')}>
-              <ChartColumn aria-hidden='true' />
-              <span className='insert-plus-badge' aria-hidden='true'>
-                <Plus />
-              </span>
-            </DropdownMenu.Trigger>
+            <Tooltip label={t('infographic.insert')}>
+              <DropdownMenu.Trigger className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('infographic.insert')}>
+                <ChartColumn aria-hidden='true' />
+                <span className='insert-plus-badge' aria-hidden='true'>
+                  <Plus />
+                </span>
+              </DropdownMenu.Trigger>
+            </Tooltip>
             <DropdownMenu.Portal>
               <DropdownMenu.Content
                 className='markdown-insert-menu infographic-insert-menu'
@@ -556,12 +570,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
-          <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('argumentMap.insert')} title={t('argumentMap.insert')} onClick={insertArgumentMap}>
-            <ListTree aria-hidden='true' />
-            <span className='insert-plus-badge' aria-hidden='true'>
-              <Plus />
-            </span>
-          </button>
+          <Tooltip label={t('argumentMap.insert')}>
+            <button type='button' className='ui-icon-button toolbar-icon-button insert-icon-button' aria-label={t('argumentMap.insert')} onClick={insertArgumentMap}>
+              <ListTree aria-hidden='true' />
+              <span className='insert-plus-badge' aria-hidden='true'>
+                <Plus />
+              </span>
+            </button>
+          </Tooltip>
         </div>
       </div>
     )

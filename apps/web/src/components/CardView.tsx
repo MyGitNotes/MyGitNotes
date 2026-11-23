@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { NoteMoveButton } from './NoteMoveButton.js';
 import React from 'react';
 import { Clock, Trash2 } from 'lucide-react';
@@ -80,47 +81,50 @@ export const CardView: React.FC<CardViewProps> = ({ notes, uncommitted = [], has
     const selected = !draft && (selectedKeys?.has(noteRefKey(note)) ?? false);
 
     return (
-      <div key={noteRefKey(note)} {...touchSelection.itemProps(note, onOpenNote, !draft)} title={draft || selectionActive ? undefined : t('notes.multiSelectHint')} draggable={canDrag || canMove} onDragStart={canDrag || canMove ? event => startNoteDrag(event, note, { focus: canDrag, move: canMove }) : undefined} style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }} className='note-card rounded-lg border hover:border-primary px-3 py-2.5 flex flex-col gap-1.5 transition cursor-pointer group'>
-        <div className='flex items-start justify-between gap-2'>
-          <h3 className='font-semibold text-fg text-sm leading-snug transition flex items-start gap-1.5 min-w-0'>
-            {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => onToggleSelect?.(note)} />}
-            <span className='line-clamp-2 break-words'>
-              <HighlightText text={note.title} query={highlightQuery} />
+      <Tooltip key={noteRefKey(note)} label={draft || selectionActive ? undefined : t('notes.multiSelectHint')}>
+        <div {...touchSelection.itemProps(note, onOpenNote, !draft)} draggable={canDrag || canMove} onDragStart={canDrag || canMove ? event => startNoteDrag(event, note, { focus: canDrag, move: canMove }) : undefined} style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }} className='note-card rounded-lg border hover:border-primary px-3 py-2.5 flex flex-col gap-1.5 transition cursor-pointer group'>
+          <div className='flex items-start justify-between gap-2'>
+            <h3 className='font-semibold text-fg text-sm leading-snug transition flex items-start gap-1.5 min-w-0'>
+              {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => onToggleSelect?.(note)} />}
+              <span className='line-clamp-2 break-words'>
+                <HighlightText text={note.title} query={highlightQuery} />
+              </span>
+              {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
+              <LiveBadge live={note.live} title={note.title} />
+            </h3>
+            <NoteStatusSelect unreadable={note.frontmatterInvalid} statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => onUpdateNoteStatus(note, status)} />
+          </div>
+          {note.matchSnippet && (
+            <p className='text-xs text-muted line-clamp-2 leading-relaxed'>
+              <HighlightText text={note.matchSnippet} query={highlightQuery} />
+            </p>
+          )}
+          <div className='note-card-footer flex items-center gap-2 text-xs text-muted'>
+            <div className='min-w-0 flex-1'>{note.tags.length > 0 && <NoteTags tags={note.tags} oneLine tagActions={tagActions} className='note-card-tags' />}</div>
+            <span className='flex items-center gap-1 text-[11px] shrink-0'>
+              <Clock className='w-3 h-3' />
+              {formattedDate}
             </span>
-            {note.path.endsWith('.mdx') && <span className='shrink-0 text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded bg-warning-soft text-warning border border-warning/40 leading-none'>MDX</span>}
-            <LiveBadge live={note.live} title={note.title} />
-          </h3>
-          <NoteStatusSelect unreadable={note.frontmatterInvalid} statuses={statuses} status={note.status} readOnly={readOnly} lockedReason={locked} label={t('notes.statusFor', { title: note.title })} onChange={(status) => onUpdateNoteStatus(note, status)} />
-        </div>
-        {note.matchSnippet && (
-          <p className='text-xs text-muted line-clamp-2 leading-relaxed'>
-            <HighlightText text={note.matchSnippet} query={highlightQuery} />
-          </p>
-        )}
-        <div className='note-card-footer flex items-center gap-2 text-xs text-muted'>
-          <div className='min-w-0 flex-1'>{note.tags.length > 0 && <NoteTags tags={note.tags} oneLine tagActions={tagActions} className='note-card-tags' />}</div>
-          <span className='flex items-center gap-1 text-[11px] shrink-0'>
-            <Clock className='w-3 h-3' />
-            {formattedDate}
-          </span>
-          <div className='flex items-center gap-1 shrink-0' onClick={(e) => e.stopPropagation()}>
-            {focusMode && <NoteZoomButton onClick={() => focusMode.onZoomNote(note)} />}
-            {!readOnly && onMoveNote && <NoteMoveButton onClick={() => onMoveNote(note)} reason={moveLocked} />}
-            {!readOnly && canDelete && (
-              <button
-                type='button'
-                onClick={() => requestDelete(noteRefKey(note))}
-                disabled={Boolean(deleteLocked)}
-                aria-label={t('notes.delete')}
-                title={deleteLocked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))}
-                className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 transition rounded' : 'p-1 text-muted hover:text-danger transition rounded disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted'}
-              >
-                <Trash2 className='w-3.5 h-3.5' />
-              </button>
-            )}
+            <div className='flex items-center gap-1 shrink-0' onClick={(e) => e.stopPropagation()}>
+              {focusMode && <NoteZoomButton onClick={() => focusMode.onZoomNote(note)} />}
+              {!readOnly && onMoveNote && <NoteMoveButton onClick={() => onMoveNote(note)} reason={moveLocked} />}
+              {!readOnly && canDelete && (
+                <Tooltip label={deleteLocked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))}>
+                  <button
+                    type='button'
+                    onClick={() => requestDelete(noteRefKey(note))}
+                    disabled={Boolean(deleteLocked)}
+                    aria-label={t('notes.delete')}
+                    className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 transition rounded' : 'p-1 text-muted hover:text-danger transition rounded disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted'}
+                  >
+                    <Trash2 className='w-3.5 h-3.5' />
+                  </button>
+                </Tooltip>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </Tooltip>
     );
   };
 

@@ -39,7 +39,7 @@ it("opens on the current notebook's repository and saves its manifest there, wit
   settings({ initialRepository: campaign.id, onManifestRevision });
   showYaml();
   expect(YAML.parse(editorText()).workspace.title).toBe('Campaign');
-  fireEvent.click(screen.getByTitle('Save & Commit'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save & Commit' }));
   await waitFor(() => expect(updateWorkspaceConfig).toHaveBeenCalledTimes(1));
   expect(updateWorkspaceConfig.mock.calls[0][0]).toBe(campaign.id);
   expect(updateWorkspaceConfig.mock.calls[0][2]).toBe('campaign-rev');
@@ -54,14 +54,14 @@ it('shows the exclude lists as the manifest holds them, without the list each no
   const shown = YAML.parse(editorText());
   expect(shown.exclude).toEqual(['**/analysis/**']);
   expect(shown.notebooks[0]).toEqual({ id: 'campaign', title: 'campaign', root: 'notes/campaign', exclude: ['reports/**'] });
-  fireEvent.click(screen.getByTitle('Save & Commit'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save & Commit' }));
   await waitFor(() => expect(updateWorkspaceConfig).toHaveBeenCalledTimes(1));
   expect(updateWorkspaceConfig.mock.calls[0][1]).not.toContain('excluded');
 });
 
 it('keeps the outcome of a save shown when the saved manifest comes back with its new revision', async () => {
   const view = settings({ initialRepository: campaign.id });
-  fireEvent.click(screen.getByTitle('Save & Commit'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save & Commit' }));
   await screen.findByText('Workspace configuration saved and committed.');
   const saved = { ...campaign, title: 'Campaign renamed', config: config('Campaign renamed', 'campaign'), configRevision: 'next' };
   view.rerender(createElement(ManifestSettings, { repositories: [home, saved], defaultRepository: home.id, initialRepository: campaign.id, onManifestRevision: () => {}, onRefreshWorkspace: async () => {} }));
@@ -94,7 +94,7 @@ it('shows an unreadable manifest as its text, editable, so the person can fix an
   expect(editor.value).toBe('workspace: [broken\n');
   expect(editor).not.toHaveAttribute('readonly');
   fireEvent.change(editor, { target: { value: 'fixed' } });
-  fireEvent.click(screen.getByTitle('Save & Commit'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save & Commit' }));
   await waitFor(() => expect(updateWorkspaceConfig).toHaveBeenCalledWith(broken.id, 'fixed', 'broken-rev'));
 });
 
@@ -102,15 +102,15 @@ it('names why a repository it cannot reach is unavailable, and offers no editor 
   settings({ repositories: [home, { ...campaign, notebooks: [], config: null, configRevision: '', write: false, unavailable: { reason: 'no-access', message: 'me/campaign is not accessible.' } }], initialRepository: campaign.id });
   expect(screen.getByRole('alert')).toHaveTextContent('me/campaign is not accessible.');
   expect(screen.queryByRole('textbox', { name: 'Workspace Title' })).not.toBeInTheDocument();
-  expect(screen.getByTitle('Save & Commit')).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Save & Commit' })).toBeDisabled();
 });
 
 it("keeps a repository serving its core branch read-only, whatever the other repositories' branches", () => {
   settings({ repositories: [home, { ...campaign, branch: 'core' }], initialRepository: campaign.id });
-  expect(screen.getByTitle('Workspace config can only be edited on the main branch')).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Save & Commit' })).toBeDisabled();
   cleanup();
   settings({ repositories: [home, { ...campaign, branch: 'core' }], initialRepository: home.id });
-  expect(screen.getByTitle('Save & Commit')).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Save & Commit' })).toBeEnabled();
 });
 
 it("follows the current notebook's repository once the workspace loads", () => {
@@ -130,7 +130,7 @@ it("keeps unsaved YAML when only the repository's revision moves, and saves it a
   // The manifest itself changes elsewhere: the person's text still stays.
   view.rerender(createElement(ManifestSettings, props([home, { ...campaign, title: 'Elsewhere', config: config('Elsewhere', 'campaign'), configRevision: 'after-manifest' }])));
   expect(editorText()).toBe('edited: yes\n');
-  fireEvent.click(screen.getByTitle('Save & Commit'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save & Commit' }));
   await waitFor(() => expect(updateWorkspaceConfig).toHaveBeenCalledWith(campaign.id, 'edited: yes\n', 'after-manifest'));
 });
 
@@ -154,12 +154,12 @@ it("refreshes the repository on a conflict, keeping the person's text so it can 
   const { updateWorkspaceConfig: send } = await vi.importActual<typeof import('../lib/api.js')>('../lib/api.js');
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'The workspace manifest changed since it was read. Reload before saving.' }), { status: 409 })));
   updateWorkspaceConfig.mockImplementationOnce(send);
-  fireEvent.click(screen.getByTitle('Save & Commit'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save & Commit' }));
   await screen.findByText(/changed on the server/);
   vi.unstubAllGlobals();
   expect(onRefreshWorkspace).toHaveBeenCalledTimes(1);
   expect(editorText()).toBe('mine: yes\n');
-  fireEvent.click(screen.getByTitle('Save & Commit'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save & Commit' }));
   await waitFor(() => expect(updateWorkspaceConfig).toHaveBeenLastCalledWith(campaign.id, 'mine: yes\n', 'server-rev'));
   await screen.findByText('Workspace configuration saved and committed.');
 });

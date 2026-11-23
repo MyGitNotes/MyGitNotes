@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { GraphPanels } from './graph/GraphPanels.js';
 import { GraphCanvas } from './graph/GraphCanvas.js';
 import { GraphCards } from './graph/GraphCards.js';
@@ -23,7 +24,9 @@ export function GraphPage(props: GraphPageProps) {
       {!graphLoading && !graphData.nodes.length && <p className='graph-empty' role='status'>{t('filters.graphEmpty')}</p>}
       <div className='graph-minimap-panel'>
         <div className='graph-stats' role='status' data-filter-results={matching.length} data-graph-nodes={graphData.nodes.length} data-graph-links={graphData.links.length}>
-          <button className='ui-icon-button' aria-label={t('graph.resetZoom')} title={t('graph.resetZoom')} onClick={resetView}>↺</button>
+          <Tooltip label={t('graph.resetZoom')}>
+            <button className='ui-icon-button' aria-label={t('graph.resetZoom')} onClick={resetView}>↺</button>
+          </Tooltip>
           <span>{graphData.nodes.length}{' ●'}</span>
           <span>{graphData.links.length}{' ↗'}</span>
         </div>

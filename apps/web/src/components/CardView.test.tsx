@@ -35,7 +35,7 @@ it('shows a zoom button that calls onZoomNote without opening the note', () => {
   const onOpenNote = vi.fn();
   const onZoomNote = vi.fn();
   render(createElement(CardView, { ...baseProps, onOpenNote, notes: [noteOf('notes/a.md')], focusMode: { onZoomNote, canDrag: () => true } }));
-  fireEvent.click(screen.getByTitle('Open in zoom'));
+  fireEvent.click(screen.getByRole('button', { name: 'Open in zoom' }));
   expect(onZoomNote).toHaveBeenCalledWith(expect.objectContaining({ path: 'notes/a.md' }));
   expect(onOpenNote).not.toHaveBeenCalled();
 });

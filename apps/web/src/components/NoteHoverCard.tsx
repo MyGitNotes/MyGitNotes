@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
@@ -133,22 +134,25 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
           </button>
         )}
         {!readOnly && onMove && (
-          <button type='button' className='ui-button ui-button-small' disabled={Boolean(moveLocked)} title={moveLocked} onClick={() => (onMove(note), onDone())}>
-            <FolderInput aria-hidden='true' />
-            {t('files.moveNote')}
-          </button>
+          <Tooltip label={moveLocked}>
+            <button type='button' className='ui-button ui-button-small' disabled={Boolean(moveLocked)} onClick={() => (onMove(note), onDone())}>
+              <FolderInput aria-hidden='true' />
+              {t('files.moveNote')}
+            </button>
+          </Tooltip>
         )}
         {!readOnly && onDelete && (
-          <button
-            type='button'
-            className={`ui-button ui-button-small ${deleteArmed ? 'ui-button-danger' : ''}`}
-            disabled={Boolean(deleteLocked)}
-            title={deleteLocked ?? (note.live?.pending ? t('live.discard') : undefined)}
-            onClick={() => onDelete(note) && onDone()}
-          >
-            <Trash2 aria-hidden='true' />
-            {deleteArmed ? t('notes.confirmDelete') : t('notes.delete')}
-          </button>
+          <Tooltip label={deleteLocked ?? (note.live?.pending ? t('live.discard') : undefined)}>
+            <button
+              type='button'
+              className={`ui-button ui-button-small ${deleteArmed ? 'ui-button-danger' : ''}`}
+              disabled={Boolean(deleteLocked)}
+              onClick={() => onDelete(note) && onDone()}
+            >
+              <Trash2 aria-hidden='true' />
+              {deleteArmed ? t('notes.confirmDelete') : t('notes.delete')}
+            </button>
+          </Tooltip>
         )}
       </div>
     </div>,

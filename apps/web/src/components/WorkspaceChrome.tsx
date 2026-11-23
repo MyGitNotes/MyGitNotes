@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PanelLeft } from 'lucide-react';
@@ -302,10 +303,12 @@ export function WorkspaceSidebarToggle({ label, open, onClick, controlsId }: { l
     return () => mobile.removeEventListener('change', pick);
   }, []);
   return host && createPortal(
-    <button type='button' data-sidebar-toggle='' className='ui-icon-button workspace-sidebar-toggle' aria-label={label} title={label} aria-expanded={open} aria-controls={controlsId} onClick={onClick}>
-      <PanelLeft size={17} />
-      <span className='sr-only'>{label}</span>
-    </button>,
+    <Tooltip label={label}>
+      <button type='button' data-sidebar-toggle='' className='ui-icon-button workspace-sidebar-toggle' aria-label={label} aria-expanded={open} aria-controls={controlsId} onClick={onClick}>
+        <PanelLeft size={17} />
+        <span className='sr-only'>{label}</span>
+      </button>
+    </Tooltip>,
     host,
   );
 }

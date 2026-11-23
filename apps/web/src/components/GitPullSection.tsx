@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { useState } from 'react';
 import { ArrowDownToLine } from 'lucide-react';
 import { GitSyncError, syncGitWorkspace } from '../lib/api.js';
@@ -49,7 +50,15 @@ export function GitPullSection({ onPulled, repoRoot, upstream }: { onPulled: () 
       {failure && (
         <WorkspaceDialog title={t('sidebar.pullFailedTitle')} onClose={() => setFailure(undefined)} className='git-pull-dialog'>
           <p role='alert' className='changes-error'>{failure.message}</p>
-          {failure.files.length > 0 && <ul className='changes-file-list'>{failure.files.map(file => <li key={file} className='changes-file-label' title={file}>{file}</li>)}</ul>}
+          {failure.files.length > 0 && (
+            <ul className='changes-file-list'>
+              {failure.files.map(file => (
+                <Tooltip key={file} label={file}>
+                  <li className='changes-file-label'>{file}</li>
+                </Tooltip>
+              ))}
+            </ul>
+          )}
           <p className='changes-help'>{t('sidebar.pullPromptHint')}</p>
           <textarea className='git-pull-prompt' readOnly rows={8} value={prompt} aria-label={t('sidebar.pullPromptHint')} />
           <div className='workspace-dialog-actions'>

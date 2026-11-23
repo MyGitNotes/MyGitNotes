@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useDndContext } from '@dnd-kit/core';
@@ -58,9 +59,11 @@ export function BookDrawer({ container, onClose, ...contents }: BookDrawerProps)
     <div className='compilation-book-drawer' onKeyDown={trap}>
       <div className='compilation-book-drawer-backdrop' data-testid='book-drawer-backdrop' onClick={onClose} />
       <div ref={panel} role='dialog' aria-modal='true' aria-label={t('book.contents')} className='compilation-book-drawer-panel'>
-        <Button type='button' size='icon' className='compilation-book-drawer-close' aria-label={t('book.closeContents')} title={t('book.closeContents')} onClick={onClose}>
-          <X size={16} aria-hidden='true' />
-        </Button>
+        <Tooltip label={t('book.closeContents')}>
+          <Button type='button' size='icon' className='compilation-book-drawer-close' aria-label={t('book.closeContents')} onClick={onClose}>
+            <X size={16} aria-hidden='true' />
+          </Button>
+        </Tooltip>
         <BookContents {...contents} />
       </div>
     </div>,

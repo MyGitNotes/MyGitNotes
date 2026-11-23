@@ -2,7 +2,10 @@ import * as RadixSelect from '@radix-ui/react-select';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { type ComponentPropsWithoutRef, type ReactNode, useEffect, useRef, useState } from 'react';
 
-type Props = Omit<ComponentPropsWithoutRef<typeof RadixSelect.Trigger>, 'value' | 'onChange' | 'children'> & {
+import { Tooltip } from './Tooltip.js';
+
+type Props = Omit<ComponentPropsWithoutRef<typeof RadixSelect.Trigger>, 'value' | 'onChange' | 'children' | 'title'> & {
+  tooltip?: string;
   value: string;
   onValueChange: (value: string) => void;
   options: SelectOption[];
@@ -34,7 +37,7 @@ function SelectItem({ option }: { option: SelectOption; }) {
   );
 }
 
-export function Select({ value, onValueChange, options, groups, icon, disabled, className = '', onFocus, onOpenChange, ...props }: Props) {
+export function Select({ value, onValueChange, options, groups, icon, disabled, className = '', onFocus, onOpenChange, tooltip, ...props }: Props) {
   const trigger = useRef<HTMLButtonElement>(null);
   const [portal, setPortal] = useState<HTMLElement>();
   const [contentReady, setContentReady] = useState(false);
@@ -56,23 +59,25 @@ export function Select({ value, onValueChange, options, groups, icon, disabled, 
       }}
       disabled={disabled}
     >
-      <RadixSelect.Trigger
-        ref={trigger}
-        {...props}
-        value={value}
-        className={`ui-control select-trigger ${className}`}
-        onFocus={event => {
-          setContentReady(true);
-          onFocus?.(event);
-        }}
-      >
-        <span className='select-value'>
-          <RadixSelect.Value placeholder='Select…'>{icon ?? (selected ? <>{selected.leading}{selected.label}</> : value)}</RadixSelect.Value>
-        </span>
-        <RadixSelect.Icon asChild>
-          <ChevronDown className='select-chevron w-3.5 h-3.5 shrink-0' />
-        </RadixSelect.Icon>
-      </RadixSelect.Trigger>
+      <Tooltip label={tooltip}>
+        <RadixSelect.Trigger
+          ref={trigger}
+          {...props}
+          value={value}
+          className={`ui-control select-trigger ${className}`}
+          onFocus={event => {
+            setContentReady(true);
+            onFocus?.(event);
+          }}
+        >
+          <span className='select-value'>
+            <RadixSelect.Value placeholder='Select…'>{icon ?? (selected ? <>{selected.leading}{selected.label}</> : value)}</RadixSelect.Value>
+          </span>
+          <RadixSelect.Icon asChild>
+            <ChevronDown className='select-chevron w-3.5 h-3.5 shrink-0' />
+          </RadixSelect.Icon>
+        </RadixSelect.Trigger>
+      </Tooltip>
       {contentReady && (
         <RadixSelect.Portal container={portal}>
           <RadixSelect.Content className='select-popup' position='popper' sideOffset={4} collisionPadding={8} onEscapeKeyDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>

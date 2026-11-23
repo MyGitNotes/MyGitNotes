@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -77,7 +78,9 @@ function ChapterDivider({ item, controls }: { item: CompilationHeadingItem; cont
   return (
     <div className='screen-chapter-divider' data-screen-heading={item.id}>
       {controls}
-      <h4 className='screen-chapter-title' title={item.title}>{item.title}</h4>
+      <Tooltip label={item.title}>
+        <h4 className='screen-chapter-title'>{item.title}</h4>
+      </Tooltip>
     </div>
   );
 }
@@ -99,9 +102,11 @@ function MovableDivider({ item, dragDisabled, remove }: { item: CompilationHeadi
               </Button>
             )}
             {remove && (
-              <Button type='button' size='icon' className='screen-remove' aria-label={`${t('compilation.removeChapter')}: ${item.title}`} title={t('compilation.removeChapter')} onClick={remove}>
-                <X size={12} />
-              </Button>
+              <Tooltip label={t('compilation.removeChapter')}>
+                <Button type='button' size='icon' className='screen-remove' aria-label={`${t('compilation.removeChapter')}: ${item.title}`} onClick={remove}>
+                  <X size={12} />
+                </Button>
+              </Tooltip>
             )}
           </span>
         )}

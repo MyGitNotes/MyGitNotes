@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { AlertCircle, GripVertical } from 'lucide-react';
@@ -42,10 +43,12 @@ export function BookContents({ entries, dragItems, active, hasMore, loadingMore,
           {entries.map(entry => {
             const dragItem = dragItems?.get(entry.anchor);
             const jump = (
-              <button type='button' className='compilation-book-jump' aria-current={entry.anchor === active ? 'location' : undefined} title={entry.title} onClick={() => onJump(entry.anchor)}>
-                <span>{entry.title}</span>
-                {entry.missing && <AlertCircle size={13} role='img' aria-label={t('screen.missing')} />}
-              </button>
+              <Tooltip label={entry.title}>
+                <button type='button' className='compilation-book-jump' aria-current={entry.anchor === active ? 'location' : undefined} onClick={() => onJump(entry.anchor)}>
+                  <span>{entry.title}</span>
+                  {entry.missing && <AlertCircle size={13} role='img' aria-label={t('screen.missing')} />}
+                </button>
+              </Tooltip>
             );
             return dragItem ? <SortableContentsRow key={entry.anchor} entry={entry} dragItem={dragItem}>{jump}</SortableContentsRow> : <li key={entry.anchor} data-level={entry.level} data-heading={entry.heading || undefined}>{jump}</li>;
           })}

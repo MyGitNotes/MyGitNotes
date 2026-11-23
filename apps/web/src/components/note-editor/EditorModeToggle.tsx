@@ -1,3 +1,4 @@
+import { Tooltip } from '../Tooltip.js';
 import { Code2, Eye } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { formatKeys } from '../../lib/keyboard/keys.js';
@@ -20,5 +21,9 @@ export function EditorModeToggle({ mode, onChange, className, iconSize, showKey 
   const live = mode === 'live';
   const label = t(live ? 'editor.switchToSource' : 'editor.switchToLive');
   const [keys] = showKey ? bindingsFor(keymapEntry('editor.leaderMode'), keyEnvironment) : [];
-  return <button type='button' className={className} data-mode-toggle={mode} aria-label={label} title={keys ? `${label} (${formatKeys(keys, keyEnvironment).join(' ')})` : label} onClick={() => onChange(live ? 'raw' : 'live')}>{live ? <Eye size={iconSize} aria-hidden='true' /> : <Code2 size={iconSize} aria-hidden='true' />}</button>;
+  return (
+    <Tooltip label={label} detail={keys && formatKeys(keys, keyEnvironment).join(' ')}>
+      <button type='button' className={className} data-mode-toggle={mode} aria-label={label} onClick={() => onChange(live ? 'raw' : 'live')}>{live ? <Eye size={iconSize} aria-hidden='true' /> : <Code2 size={iconSize} aria-hidden='true' />}</button>
+    </Tooltip>
+  );
 }

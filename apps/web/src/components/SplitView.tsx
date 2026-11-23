@@ -1,3 +1,4 @@
+import { Tooltip } from './Tooltip.js';
 import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link2, Link2Off } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -149,7 +150,9 @@ export function SplitView({ source, sourceScroller, content, path, notebookId, s
     <div className='note-split-view' data-split-view>
       <div className='note-split-pane' data-split-part='source'>{source}</div>
       <div className='note-split-divider' data-split-part='divider'>
-        <button type='button' className='ui-icon-button note-split-sync' aria-label={label} aria-pressed={sync} title={t(sync ? 'editor.scrollSyncOn' : 'editor.scrollSyncOff')} onClick={toggle}>{sync ? <Link2 aria-hidden='true' /> : <Link2Off aria-hidden='true' />}</button>
+        <Tooltip label={t(sync ? 'editor.scrollSyncOn' : 'editor.scrollSyncOff')}>
+          <button type='button' className='ui-icon-button note-split-sync' aria-label={label} aria-pressed={sync} onClick={toggle}>{sync ? <Link2 aria-hidden='true' /> : <Link2Off aria-hidden='true' />}</button>
+        </Tooltip>
       </div>
       <div ref={preview} className='note-split-preview' data-split-part='preview' data-split-preview onScroll={() => onScrollRef.current('preview')}>
         <NoteHtml className='prose-custom screen-markdown' html={html} notebookId={notebookId} />
