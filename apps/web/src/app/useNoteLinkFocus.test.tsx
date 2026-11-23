@@ -386,6 +386,21 @@ describe('the address of the Focus', () => {
     act(() => api.current.focus.close(at('a.md')));
     await waitFor(() => expect(api.current.url).toBe('/notebooks/life/folders/projects?q=draft'));
   });
+  it('leaves a board address on the board, which spans the note column, while the Focus shows a note', async () => {
+    const { api } = open(['/notebooks/life/notes/a.md', '/notebooks/life?view=kanban&q=draft'], showing({ p1: [at('a.md')] }));
+    await waitFor(() => expect(api.current.focus.activeNotePath).toBe(at('a.md')));
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    });
+    expect(api.current.url).toBe('/notebooks/life?view=kanban&q=draft');
+  });
+  it('opens a note picked on the board beside the list, its address dropping the board, and Back returns to the board', async () => {
+    const { api } = open(['/notebooks/life?view=kanban&q=draft'], showing({ p1: [at('a.md')] }));
+    await act(() => api.current.browse(at('b.md')));
+    await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/b.md?q=draft'));
+    await back(api);
+    expect(api.current.url).toBe('/notebooks/life?view=kanban&q=draft');
+  });
   it('drops the ?notebook= the way back from Settings leaves on the notebook route, since the note route names its notebook', async () => {
     const { api } = open(['/settings', '/notebooks/life?q=draft&notebook=life'], showing({ p1: [at('a.md')] }));
     await waitFor(() => expect(api.current.url).toBe('/notebooks/life/notes/a.md?q=draft'));

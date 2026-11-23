@@ -142,6 +142,8 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
   const target = !managed ? undefined : activeNotePath && !isCompilationPath(activeNotePath) && !(phone && focusNarrowView !== 'focus') ? activeNotePath : null;
   /** The note the address names now. */
   const named = editorRoute.note && inFocus ? routedPath : null;
+  /** The board spans the note column: its address stays the notebook's until the person opens a note from it. */
+  const onBoard = !editorRoute.note && new URLSearchParams(location.search).get('view') === 'kanban';
   const urlFor = (path: string | null) => {
     const browse = editorRoute.note ? returnTo : location.pathname + location.search;
     if (!path || !notebookRoot || !path.startsWith(`${notebookRoot}/`)) return browse + location.hash;
@@ -151,6 +153,8 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
     if (folder) url.searchParams.set('folder', decodeURIComponent(folder));
     // The note route names its notebook in the path, as zoom's does; a `?notebook=` the notebook route carries (the way back from Settings sets one) is not kept.
     url.searchParams.delete('notebook');
+    // The board spans the note's column, so a note opened from it shows beside the list, and closing the note leaves the list there.
+    if (url.searchParams.get('view') === 'kanban') url.searchParams.delete('view');
     return noteRoute(selectedNotebookId, path.slice(notebookRoot.length + 1)) + url.search + location.hash;
   };
   /** Set while the person opens a note, so the address it gets is a new history entry. */
@@ -166,13 +170,13 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
   useEffect(() => {
     const changed = previous.current.target !== target, moved = previous.current.key !== location.key;
     previous.current = { target, key: location.key };
-    if (target === undefined || !(changed || (moved && navigationType !== 'POP')) || target === named) return;
+    if (target === undefined || onBoard || !(changed || (moved && navigationType !== 'POP')) || target === named) return;
     // A newer entry is followed once it renders; Back or Forward leaves it as the entry has it.
     if (!isCurrent(location.key)) return;
     const push = pushNext.current;
     pushNext.current = false;
     void follow(target, push);
-  }, [target, named, location.key, navigationType]);
+  }, [target, named, onBoard, location.key, navigationType]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // A note link the Focus took (the page was loaded on it) is marked as an address the Focus gave, as the entry a note's
