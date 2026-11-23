@@ -14,6 +14,10 @@ export interface NoteItem {
   lineNumberOffset?: number;
   mtime?: number;
   size?: number;
+  /** The author date of the newest commit that changed the note's text, as the server read it from Git. */
+  lastCommitAt?: string;
+  /** The note's edit date the server resolved (Git, else the frontmatter `updated`), which lists show and sort by. */
+  updated?: string;
   /** The note opens a frontmatter block that cannot be read: it has no status or tags until it is fixed. */
   frontmatterInvalid?: true;
   /** Present while the note is checked out to the live editor (編輯中), or pending: the text is the live text. */

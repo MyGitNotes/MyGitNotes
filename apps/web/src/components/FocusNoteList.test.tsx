@@ -80,6 +80,12 @@ it('adds a second line with the updated date and the tags when the list column a
   expect(untagged.querySelector('.focus-row-meta')!.textContent).toBe(date);
 });
 
+it('dates a row by the edit date the server resolved from Git, not its frontmatter', () => {
+  setup({ notes: [note('a', { tags: [], lastCommitAt: '2026-11-03T12:00:00.000Z', updated: '2026-11-03T12:00:00.000Z' })], focusMode: { onZoomNote: vi.fn(), canDrag: () => true, compactRows: true, rowMeta: true } });
+  const date = new Date('2026-11-03T12:00:00.000Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  expect(document.querySelector('.focus-row-meta')!.textContent).toBe(date);
+});
+
 it('keeps the two-line title and no meta line where row meta is not asked for (the phone list)', () => {
   setup();
   expect(document.querySelector('.focus-row-meta')).toBeNull();
