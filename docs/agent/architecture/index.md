@@ -326,7 +326,8 @@ Where the dates come from:
 - **A worktree** (`noteEditFacts` in `packages/git/src/edit-dates.ts`): one `git log -M --raw` pass over the
   notebook roots dates every file Git tracks there, and stops once each is dated. The result is kept per repository,
   notebook roots and head; when the head moves on, only the new commits are read, and a head that went back is dated
-  again. `git status` marks the files with uncommitted changes on every call. The local note routes
+  again. `git status` marks the files with uncommitted changes on every call. A Git failure is logged and dates
+  nothing, so reads fall back to frontmatter dates. The local note routes
   (`/api/notes/read`, `GET /api/notes`) and the stdio MCP tools use it too.
 - **A hosted source** (`RemoteEditDates` in `packages/core/src/remote-edit-dates.ts`, through
   `RemoteSource.editFacts` and `dated`): the provider names the last commit of each path (GitLab GraphQL
@@ -335,9 +336,10 @@ Where the dates come from:
   (GitLab `diff: ''`, GitHub `changes: 0`) send the note back to its former path from the commit's first parent. A
   date is kept per path and blob, in the process and sealed in the shared cache, so a later head where the note is
   unchanged asks nothing. A text restored byte for byte to one dated before keeps that earlier date. A request waits
-  at most five seconds (`EDIT_DATE_WAIT_MS`); notes not dated by then are answered without `lastCommitAt` and dated
-  in the background, so the first lists after a start on a large repository fall back to frontmatter dates for a
-  while. A provider failure leaves notes undated and never fails a read. An edition source dates through its
+  at most five seconds (`EDIT_DATE_WAIT_MS`), and one that finds its notes already being dated waits only for what is
+  left of the wait of the request that started it; notes not dated by then are answered without `lastCommitAt` and
+  dated in the background, so the first lists after a start on a large repository fall back to frontmatter dates for
+  a while. A provider failure leaves notes undated and never fails a read. An edition source dates through its
   `historyPage` and knows no renames unless it overrides `pureRenames`; one without history dates nothing.
   A checked-out live note is dated by its Git file, a pending one by its frontmatter.
 
