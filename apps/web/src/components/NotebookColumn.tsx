@@ -37,9 +37,9 @@ export interface NotebookColumnProps {
   searchRef?: Ref<NoteSearchHandle>;
   /** The rail's search button: opens the column at its search field. */
   onOpenSearch: () => void;
-  /** What the list shows, for the rail's outline and compilation buttons. */
+  /** What the list shows, for the rail's outline and compilation buttons, each a toggle: pressed again, it goes back to the notes. */
   kind: 'note' | 'outline' | 'compilation';
-  onSelectKind: (kind: 'outline' | 'compilation') => void;
+  onSelectKind: (kind: 'note' | 'outline' | 'compilation') => void;
 }
 
 /** The notebooks in the order to show them: under each repository's title where there are several, else one untitled group. */
@@ -87,10 +87,10 @@ export function NotebookColumn({ mode, columnId, notebooks, groups, unavailableN
           ))}
         </nav>
         <span className='browse-rail-divider' aria-hidden='true' />
-        <button type='button' className='ui-icon-button' aria-label={t('outline.list')} title={t('outline.list')} aria-pressed={kind === 'outline'} onClick={() => onSelectKind('outline')}>
+        <button type='button' className='ui-icon-button' aria-label={t('outline.list')} title={t('outline.list')} aria-pressed={kind === 'outline'} onClick={() => onSelectKind(kind === 'outline' ? 'note' : 'outline')}>
           <ListTree size={16} aria-hidden='true' />
         </button>
-        <button type='button' className='ui-icon-button' aria-label={t('sidebar.compilations')} title={t('sidebar.compilations')} aria-pressed={kind === 'compilation'} onClick={() => onSelectKind('compilation')}>
+        <button type='button' className='ui-icon-button' aria-label={t('sidebar.compilations')} title={t('sidebar.compilations')} aria-pressed={kind === 'compilation'} onClick={() => onSelectKind(kind === 'compilation' ? 'note' : 'compilation')}>
           <GalleryHorizontalEnd size={16} aria-hidden='true' />
         </button>
         {links.length > 0 && <SidebarLinks links={links} variant='sidebar' />}

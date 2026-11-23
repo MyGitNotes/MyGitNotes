@@ -115,3 +115,18 @@ it('folds to a rail of notebook icons, each named in full, with the current one 
   // The links keep their names.
   expect(screen.getByRole('link', { name: 'Docs' })).toBeInTheDocument();
 });
+
+// Boss: on the rail, the outline and compilation buttons had no way back to the notes; each is a toggle now.
+it("turns the rail's outline and compilation buttons off again, back to the notes", () => {
+  const onSelectKind = vi.fn();
+  const { rerender } = render(wrap(column({ mode: 'rail', kind: 'outline', onSelectKind }), true));
+  const outlines = screen.getByRole('button', { name: 'Outlines' });
+  expect(outlines).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(outlines);
+  expect(onSelectKind).toHaveBeenLastCalledWith('note');
+  rerender(wrap(column({ mode: 'rail', kind: 'compilation', onSelectKind }), true));
+  fireEvent.click(screen.getByRole('button', { name: 'Compilations' }));
+  expect(onSelectKind).toHaveBeenLastCalledWith('note');
+  fireEvent.click(screen.getByRole('button', { name: 'Outlines' }));
+  expect(onSelectKind).toHaveBeenLastCalledWith('outline');
+});
