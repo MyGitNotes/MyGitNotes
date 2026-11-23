@@ -27,8 +27,11 @@ function nestedScroller(target: EventTarget | null, root: HTMLElement, selector:
  * Every Alt+wheel event over a scroller is cancelled, even one without vertical movement: Chrome lets a page cancel only the
  * first wheel event of a gesture, so a gesture whose first event went to the page would scroll the page as well. The gesture
  * keeps its scroller until it pauses, so its momentum and a released Alt key do not turn it into a vertical scroll midway.
+ *
+ * With `holdWithin`, Alt+wheel over an element inside a match (the note's text) with nothing to scroll sideways is cancelled too: holding
+ * Alt there never scrolls the note up or down.
  */
-export function useAltWheelHorizontalScroll(targetRef: ElementRef, scrollerRef: ElementRef, nestedSelector?: string, enabled = true) {
+export function useAltWheelHorizontalScroll(targetRef: ElementRef, scrollerRef: ElementRef, nestedSelector?: string, enabled = true, holdWithin?: string) {
   useEffect(() => {
     if (!enabled) return;
     const target = targetRef.current;
@@ -42,7 +45,11 @@ export function useAltWheelHorizontalScroll(targetRef: ElementRef, scrollerRef: 
       const held = latched && now <= latched.until && target.contains(latched.scroller) ? latched.scroller : null;
       if (!held && !event.altKey) return;
       const activeScroller = held ?? (nestedSelector ? nestedScroller(event.target, target, nestedSelector) : scroller);
-      if (!activeScroller) return;
+      if (!activeScroller) {
+        const within = holdWithin && event.target instanceof Element ? event.target.closest(holdWithin) : null;
+        if (within && target.contains(within)) event.preventDefault();
+        return;
+      }
       latched = { scroller: activeScroller, until: now + LATCH_MS };
       event.preventDefault();
       if (nestedSelector) event.stopPropagation();
@@ -54,5 +61,5 @@ export function useAltWheelHorizontalScroll(targetRef: ElementRef, scrollerRef: 
     const capture = Boolean(nestedSelector);
     target.addEventListener('wheel', wheel, { passive: false, capture });
     return () => target.removeEventListener('wheel', wheel, capture);
-  }, [scrollerRef, targetRef, nestedSelector, enabled]);
+  }, [scrollerRef, targetRef, nestedSelector, enabled, holdWithin]);
 }

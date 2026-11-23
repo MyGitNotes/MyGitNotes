@@ -41,8 +41,9 @@ export function WorkspaceLinks({ notebooks, folders, children, onOpenNote }: {
   const scope = useNoteQueryScope();
   const before = useRef(new Set<BeforeNavigate>());
   const surfaceRef = useRef<HTMLDivElement>(null);
-  // Every sideways scroller in a note's text (a table, a diagram, a code block, one inside a directive) takes Alt+wheel.
-  useAltWheelHorizontalScroll(surfaceRef, surfaceRef, ':is(.prose-custom, .cm-content) *');
+  // Every sideways scroller in a note's text (a table, a diagram, a code block, one inside a directive) takes Alt+wheel; elsewhere in a note's
+  // reading view or editor, Alt+wheel does nothing rather than scroll the note up or down.
+  useAltWheelHorizontalScroll(surfaceRef, surfaceRef, ':is(.prose-custom, .cm-content) *', true, '.prose-custom, .cm-editor');
   useNoteYouTubeEmbed(surfaceRef);
   useLinkedNotePreload(surfaceRef, notebooks);
   const [error, setError] = useState('');

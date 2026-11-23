@@ -26,11 +26,12 @@ function setup(nested = true, enabled = true) {
   const text = document.createElement('p');
   table.append(cell);
   prose.append(table, plain, text);
-  host.append(prose);
+  const aside = document.createElement('aside');
+  host.append(prose, aside);
   document.body.append(host);
   const added = vi.spyOn(host, 'addEventListener');
   /* eslint-disable react-hooks/rules-of-hooks -- This unit harness invokes mocked React hooks to exercise event registration without rendering. */
-  useAltWheelHorizontalScroll({ current: host }, { current: host }, nested ? '.prose-custom *' : undefined, enabled);
+  useAltWheelHorizontalScroll({ current: host }, { current: host }, nested ? '.prose-custom *' : undefined, enabled, nested ? '.prose-custom' : undefined);
   /* eslint-enable react-hooks/rules-of-hooks */
   let time = 0;
   const wheel = (target: Element, init: WheelEventInit & { at?: number; } = {}) => {
@@ -41,7 +42,7 @@ function setup(nested = true, enabled = true) {
     target.dispatchEvent(event);
     return { prevented: event.defaultPrevented, stopped: stop.mock.calls.length > 0 };
   };
-  return { host, table, plain, cell, text, added, wheel };
+  return { host, table, plain, cell, text, aside, added, wheel };
 }
 
 describe('Alt wheel horizontal scrolling', () => {
@@ -66,13 +67,20 @@ describe('Alt wheel horizontal scrolling', () => {
     expect(wheel(text, { altKey: false, at: 1000 }).prevented).toBe(false);
     expect(table.scrollLeft).toBe(80);
   });
-  it('leaves ordinary wheel input and content that does not scroll sideways to the browser', () => {
-    const { table, cell, plain, text, wheel } = setup();
+  it('leaves ordinary wheel input and Alt+wheel outside the note text to the browser', () => {
+    const { table, cell, aside, wheel } = setup();
     expect(wheel(cell, { altKey: false }).prevented).toBe(false);
-    // `plain` is wider than its box but its style does not scroll; `text` is not wider at all.
-    expect(wheel(plain).prevented).toBe(false);
-    expect(wheel(text).prevented).toBe(false);
+    expect(wheel(aside).prevented).toBe(false);
     expect(wheel(cell, { ctrlKey: true }).prevented).toBe(false);
+    expect(table.scrollLeft).toBe(0);
+  });
+  // Boss: holding Alt in the editor, the note must not scroll up or down, also where nothing under the pointer scrolls sideways.
+  it('keeps Alt+wheel over note text with nothing to scroll sideways from scrolling the note vertically', () => {
+    const { table, plain, text, wheel } = setup();
+    // `plain` is wider than its box but its style does not scroll; `text` is not wider at all.
+    expect(wheel(plain)).toEqual({ prevented: true, stopped: false });
+    expect(wheel(text, { at: 1000 }).prevented).toBe(true);
+    expect(plain.scrollLeft).toBe(0);
     expect(table.scrollLeft).toBe(0);
   });
   it('scrolls its own scroller in line units without a nested selector', () => {
