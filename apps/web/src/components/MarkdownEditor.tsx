@@ -20,6 +20,7 @@ import { attachLineGutterGesture } from '../lib/line-gutter-gesture.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { listenForFormats } from '../lib/format-request.js';
 import { applyEdits, formatMarkdown, type MarkdownFormat } from '../lib/markdown-format.js';
+import { indentLines } from '../lib/markdown-indent.js';
 import { isOutlinePath } from '@mygitnotes/core/outline';
 import { editOutline, type OutlineCommand } from '../lib/outline-editing.js';
 import { OutlineRawHistory, type OutlineRawSnapshot } from '../lib/outline-raw-history.js';
@@ -344,6 +345,20 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
     if (outline) return;
     requestAnimationFrame(() => {
       target.focus();
+      target.setSelectionRange(result.anchor, result.head);
+      updateActiveSourceLine(target);
+    });
+  };
+  /** Tab and Shift+Tab in the source textarea: one level more or less on every line the selection touches. */
+  const indentSource = (direction: 'more' | 'less') => {
+    const target = source.current;
+    if (!target) return;
+    const selection = outline ? rawSnapshot() : { anchor: target.selectionStart, head: target.selectionEnd };
+    const result = indentLines(content, selection.anchor, selection.head, direction);
+    if (!result.changes.length) return;
+    changeSource(applyEdits(content, result.changes), result);
+    if (outline) return;
+    requestAnimationFrame(() => {
       target.setSelectionRange(result.anchor, result.head);
       updateActiveSourceLine(target);
     });
@@ -717,6 +732,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
                 event.preventDefault();
                 return;
               }
+            }
+            // Tab indents the lines of the selection and Shift+Tab outdents them, as in the live editor; Escape, then Tab, leaves the editor.
+            if (event.key === 'Tab' && !readOnly && !escaped && !event.altKey && !event.metaKey && !event.ctrlKey) {
+              event.preventDefault();
+              indentSource(event.shiftKey ? 'less' : 'more');
+              return;
             }
             if (!suggestions.length) return;
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

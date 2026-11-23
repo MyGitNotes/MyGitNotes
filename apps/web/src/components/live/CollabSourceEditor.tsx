@@ -5,6 +5,7 @@ import type * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import type { LiveMarkdownHandle } from '../LiveMarkdownEditor.js';
+import { markdownTabKeymap } from '../live-markdown/editor-keymap.js';
 
 /** Plain source as the direct editor's Source text area shows it: no Markdown styling, which would read the frontmatter's `---` as a heading rule. */
 const sourceTheme = EditorView.theme({ '.cm-content': { padding: '12px 16px', fontFamily: 'var(--font-mono, ui-monospace, monospace)' } });
@@ -63,7 +64,7 @@ export const CollabSourceEditor = forwardRef<LiveMarkdownHandle, CollabSourceEdi
   }), []);
   /* eslint-disable react-hooks/exhaustive-deps -- The view is built once per shared text; line numbers reconfigure it below. */
   useEffect(() => {
-    const created = new EditorView({ parent: host.current!, state: EditorState.create({ doc: text.toString(), extensions: [yCollab(text, awareness, { undoManager }), Prec.high(keymap.of(yUndoManagerKeymap)), gutter.current.of(showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []), EditorView.lineWrapping, sourceTheme, EditorView.contentAttributes.of({ 'aria-label': ariaLabel, 'role': 'textbox', 'aria-multiline': 'true', 'data-key-scope': 'markdown-editor' })] }) });
+    const created = new EditorView({ parent: host.current!, state: EditorState.create({ doc: text.toString(), extensions: [yCollab(text, awareness, { undoManager }), Prec.high(keymap.of(yUndoManagerKeymap)), markdownTabKeymap(), gutter.current.of(showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []), EditorView.lineWrapping, sourceTheme, EditorView.contentAttributes.of({ 'aria-label': ariaLabel, 'role': 'textbox', 'aria-multiline': 'true', 'data-key-scope': 'markdown-editor' })] }) });
     view.current = created;
     if (scroller) scroller.current = created.scrollDOM;
     return () => {

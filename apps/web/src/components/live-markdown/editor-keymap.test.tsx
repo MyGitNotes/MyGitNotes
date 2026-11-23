@@ -12,7 +12,7 @@ import { bindingApplies, KEYMAP, type KeyScope, parsedBinding } from '../../lib/
 import { type KeyEnvironment, keyEnvironment } from '../../lib/keyboard/platform.js';
 import { LiveMarkdownEditor } from '../LiveMarkdownEditor.js';
 import { FileSourceEditor } from '../FileSourceEditor.js';
-import { codeEditorKeymap, markdownEditorKeymap } from './editor-keymap.js';
+import { codeEditorKeymap, markdownEditorKeymap, markdownTabKeymap } from './editor-keymap.js';
 
 const MAC: KeyEnvironment = { platform: 'mac', browser: 'safari' };
 
@@ -95,6 +95,18 @@ describe('installed CodeMirror keymaps', () => {
     const installed = facetBindings(view.container.querySelector<HTMLElement>('.cm-content')!);
     expectCovered(installed, ['code-editor'], keyEnvironment);
     expect(installed.some(binding => binding.key && codeMirrorChordId(binding.key, keyEnvironment) === 'mod+/')).toBe(true);
+  });
+
+  it('indents with Tab and outdents with Shift+Tab in the Markdown editors, the collab Source editor included', () => {
+    for (const extension of [markdownEditorKeymap(), markdownTabKeymap()]) {
+      const view = new EditorView({ parent: document.body, state: EditorState.create({ doc: '- a\n- b', selection: { anchor: 7 }, extensions: extension }) });
+      const press = (shiftKey: boolean) => view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', keyCode: 9, shiftKey, bubbles: true, cancelable: true }));
+      press(false);
+      expect(view.state.doc.toString()).toBe('- a\n  - b');
+      press(true);
+      expect(view.state.doc.toString()).toBe('- a\n- b');
+      view.destroy();
+    }
   });
 
   it('builds the macOS variants from the table as well', () => {

@@ -96,8 +96,9 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('editor.indentLess', 'editor', EDITORS, 'codemirror', ['Mod+[']),
   entry('editor.indentMore', 'editor', EDITORS, 'codemirror', ['Mod+]']),
   entry('editor.indentSelection', 'editor', EDITORS, 'codemirror', ['Mod+Alt+\\']),
-  entry('editor.indentTab', 'editor', CODE, 'codemirror', ['Tab']),
-  entry('editor.outdentTab', 'editor', CODE, 'codemirror', ['Shift+Tab']),
+  // In an outline note Tab nests the item instead; Escape, then Tab, moves focus out of the editor.
+  entry('editor.indentTab', 'editor', EDITORS, 'codemirror', ['Tab'], { description: 'command.editor.indentTab.describe' }),
+  entry('editor.outdentTab', 'editor', EDITORS, 'codemirror', ['Shift+Tab'], { description: 'command.editor.outdentTab.describe' }),
   entry('editor.deleteLine', 'editor', EDITORS, 'codemirror', ['Mod+Shift+K']),
   entry('editor.matchingBracket', 'editor', EDITORS, 'codemirror', ['Mod+Shift+\\']),
   entry('editor.toggleLineComment', 'editor', CODE, 'codemirror', ['Mod+/']),
@@ -134,8 +135,6 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('outlinePanel.jump', 'outline', ['outline-panel'], 'widget', ['Enter']),
   entry('outline.sibling', 'outline', MARKDOWN, 'codemirror', ['Enter']),
   entry('outline.annotation', 'outline', MARKDOWN, 'codemirror', ['Shift+Enter']),
-  entry('outline.indent', 'outline', MARKDOWN, 'codemirror', ['Tab']),
-  entry('outline.outdent', 'outline', MARKDOWN, 'codemirror', ['Shift+Tab']),
   // Table
   entry('table.crossBoundary', 'table', MARKDOWN, 'codemirror', ['Backspace', 'Delete']),
   entry('table.editCell', 'table', ['table'], 'widget', ['Enter', 'F2']),

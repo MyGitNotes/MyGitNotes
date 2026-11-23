@@ -164,10 +164,17 @@ it('renders outline YouTube links without media previews in live and rendered Ma
   expect(rendered.querySelector('a')?.getAttribute('href')).toBe('https://youtu.be/dQw4w9WgXcQ');
 });
 
-it('keeps raw normal-note Tab native and exposes outline toolbar actions', () => {
+it('indents a raw normal-note line with Tab, leaves Tab native after Escape, and exposes outline toolbar actions', () => {
   const normal = mount('- First\n- Second', 'raw', { path: 'notes/ex/plain.md' });
   const original = screen.getByRole<HTMLTextAreaElement>('textbox');
   original.setSelectionRange(16, 16);
+  expect(key(original, 'Tab')).toBe(false);
+  expect(original.value).toBe('- First\n  - Second');
+  original.setSelectionRange(18, 18);
+  expect(key(original, 'Tab', { shiftKey: true })).toBe(false);
+  expect(original.value).toBe('- First\n- Second');
+  // Escape, then Tab, moves focus out of the editor as the browser does.
+  key(original, 'Escape');
   expect(key(original, 'Tab')).toBe(true);
   expect(original.value).toBe('- First\n- Second');
   expect(screen.queryByRole('button', { name: 'Indent item' })).toBeNull();
