@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -95,5 +95,20 @@ it('knows nothing of a folder that is not a repository, or of a repository witho
     expect((await noteEditFacts(plain, roots)).size).toBe(0);
   } finally {
     fs.rmSync(plain, { recursive: true, force: true });
+  }
+});
+
+it('dates nothing, without failing, when Git cannot read the history', async () => {
+  // The first commit's tree is gone: the log stops on it.
+  const tree = (await runGit(['rev-parse', 'HEAD^{tree}'], root)).stdout;
+  write('notes/a/one.md', 'one, edited\n');
+  await commit('2026-02-01T00:00:00Z', 'Edit one', 'notes/a/one.md');
+  fs.rmSync(path.join(root, '.git/objects', tree.slice(0, 2), tree.slice(2)));
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  try {
+    expect((await noteEditFacts(root, roots)).size).toBe(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('[edit-dates]'));
+  } finally {
+    warn.mockRestore();
   }
 });

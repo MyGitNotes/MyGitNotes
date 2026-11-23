@@ -142,9 +142,19 @@ async function dateTree(top: string, head: string, pathspecs: string[], scope: s
  * is everything in a folder that is not a repository or a repository without commits.
  *
  * The dates are computed in one `git log` pass over the roots and kept per repository and head; when the head moves on,
- * only the new commits are read. The uncommitted changes are read on every call.
+ * only the new commits are read. The uncommitted changes are read on every call. A Git failure is logged and dates
+ * nothing, so a read falls back to frontmatter dates instead of failing.
  */
 export async function noteEditFacts(repoRoot: string, roots: readonly string[]): Promise<Map<string, NoteEditFact>> {
+  try {
+    return await editFacts(repoRoot, roots);
+  } catch (error) {
+    console.warn(`[edit-dates] ${repoRoot}: ${(error as Error).message.split('\n')[0]}`);
+    return new Map();
+  }
+}
+
+async function editFacts(repoRoot: string, roots: readonly string[]): Promise<Map<string, NoteEditFact>> {
   const where = await located(repoRoot);
   const facts = new Map<string, NoteEditFact>();
   if (!where || !roots.length) return facts;
