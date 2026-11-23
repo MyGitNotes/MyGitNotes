@@ -25,7 +25,7 @@ function Note({ mounts, unmounts }: { mounts: () => void; unmounts: () => void; 
 
 const page = (layout: BrowseColumnsLayout, merged: boolean, note: JSX.Element) => (
   <I18nProvider>
-    <BrowseColumns layout={layout} merged={merged} notebooks={layout.notebooks === 'hidden' ? null : <p>notebooks</p>} list={<p>list</p>} note={note} restore={<button type='button'>Show columns</button>} />
+    <BrowseColumns layout={layout} merged={merged} notebooks={<p>notebooks</p>} list={<p>list</p>} note={note} restore={<button type='button'>Show note list</button>} />
   </I18nProvider>
 );
 
@@ -35,7 +35,7 @@ it('keeps the note mounted, not remounted, while the columns beside it fold, ope
   const note = <Note mounts={mounts} unmounts={unmounts} />;
   const { rerender } = render(page({ notebooks: 'open', list: true }, false, note));
   const shown = screen.getByTestId('note');
-  const steps: Array<[BrowseColumnsLayout, boolean]> = [[{ notebooks: 'rail', list: true }, false], [{ notebooks: 'hidden', list: false }, false], [{ notebooks: 'open', list: true }, true], [{ notebooks: 'rail', list: false }, false], [{ notebooks: 'open', list: true }, false]];
+  const steps: Array<[BrowseColumnsLayout, boolean]> = [[{ notebooks: 'rail', list: true }, false], [{ notebooks: 'open', list: true }, true], [{ notebooks: 'rail', list: false }, false], [{ notebooks: 'open', list: true }, false]];
   for (const [layout, merged] of steps) {
     rerender(page(layout, merged, note));
     expect(screen.getByTestId('note')).toBe(shown);
@@ -53,13 +53,14 @@ it('hides a folded column in place, keeping its element, and leaves the note in 
   expect(list).not.toHaveAttribute('hidden');
   expect(document.querySelector('[inert]')).toBeNull();
 
-  rerender(page({ notebooks: 'hidden', list: false }, false, note));
+  rerender(page({ notebooks: 'rail', list: false }, false, note));
   expect(document.getElementById(NOTEBOOK_COLUMN_ID)).toBe(notebooks);
   expect(document.getElementById(LIST_COLUMN_ID)).toBe(list);
-  expect(notebooks).toHaveAttribute('hidden');
+  // The notebooks column only narrows to its rail; the list hides.
+  expect(notebooks).not.toHaveAttribute('hidden');
   expect(list).toHaveAttribute('hidden');
   expect(screen.getByText('note').closest('[hidden]')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Show columns' }).closest('[hidden]')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Show note list' }).closest('[hidden]')).toBeNull();
 });
 
 it('folds at once, with no animation flag to wait out', () => {

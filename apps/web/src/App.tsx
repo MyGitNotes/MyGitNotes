@@ -483,7 +483,7 @@ export const AppContent: React.FC = () => {
     // The search sits at the top of the notebooks column: a folded column opens first, then the field takes the cursor once it is back.
     if (notesColumns && columns.layout.notebooks !== 'open') {
       noteSearchPending.current = true;
-      return columns.layout.notebooks === 'hidden' ? columns.toggleColumns() : columns.toggleNotebooks();
+      return columns.toggleNotebooks();
     }
     if (noteSearch.current) return noteSearch.current.focus();
     if (activeTab === 'notes' && !phoneNoteScreen) return;
@@ -692,7 +692,7 @@ export const AppContent: React.FC = () => {
   const unavailableNotebooks = repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks);
   const focusArea = <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />;
   // Column 1: every notebook, the open one unfolded into its folders, outlines and compilations, or the rail of their initials.
-  const notebookColumn = columns.layout.notebooks !== 'hidden' && <NotebookColumn mode={columns.layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={config?.notebooks || []} groups={notebookGroups} unavailableNotebooks={unavailableNotebooks} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} switchDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} counts={facetsQuery.facets ? Object.fromEntries(Object.entries(facetsQuery.facets).map(([id, facet]) => [id, facet.total])) : undefined} current={selectedNotebook && <NotebookTree notebook={selectedNotebook} filters={filterProps} facets={facetsQuery.facets} folders={folders} foldersLoading={foldersLoading} foldersWritable={canWriteFiles} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onManageFiles={openFileManager} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} onDropNote={dropNoteOnFolder} expanded={foldedTree !== selectedNotebookId} onToggleExpanded={() => setFoldedTree(folded => folded === selectedNotebookId ? null : selectedNotebookId)} />} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} searchRef={notesColumns ? noteSearch : undefined} onOpenSearch={focusNoteSearch} onToggle={columns.toggleNotebooks} kind={route.kind} onSelectKind={kind => changeFilters({ kind, folders: [] })} />;
+  const notebookColumn = <NotebookColumn mode={columns.layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={config?.notebooks || []} groups={notebookGroups} unavailableNotebooks={unavailableNotebooks} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} switchDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} counts={facetsQuery.facets ? Object.fromEntries(Object.entries(facetsQuery.facets).map(([id, facet]) => [id, facet.total])) : undefined} current={selectedNotebook && <NotebookTree notebook={selectedNotebook} filters={filterProps} facets={facetsQuery.facets} folders={folders} foldersLoading={foldersLoading} foldersWritable={canWriteFiles} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onManageFiles={openFileManager} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} onDropNote={dropNoteOnFolder} expanded={foldedTree !== selectedNotebookId} onToggleExpanded={() => setFoldedTree(folded => folded === selectedNotebookId ? null : selectedNotebookId)} />} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} searchRef={notesColumns ? noteSearch : undefined} onOpenSearch={focusNoteSearch} kind={route.kind} onSelectKind={kind => changeFilters({ kind, folders: [] })} />;
   // Column 2: where the list is, its view switch and fold toggle, the Status, Tags and Sort buttons, and the list, table or board.
   const listPath = route.kind === 'outline' ? [t('outline.list')] : route.kind === 'compilation' ? [t('sidebar.compilations')] : breadcrumbs.filter(segment => segment.path !== null).map(segment => segment.name);
   // The root choice is named after the notebook: beside the rail the picker stands for the whole path.
@@ -734,11 +734,10 @@ export const AppContent: React.FC = () => {
       {browseRegion()}
     </NoteListColumn>
   );
-  // At the note's top left while the list is folded away: the list back, or, with both columns folded, both.
-  const bothFolded = columns.layout.notebooks === 'hidden';
-  const restoreLabel = t(bothFolded ? 'browse.expandColumns' : 'browse.expandList');
+  // At the note's top left while the list is folded away: the list back. The notebooks column has its own toggle, left of the logo.
+  const restoreLabel = t('browse.expandList');
   const restoreColumns = (
-    <button type='button' className='ui-icon-button browse-column-toggle' data-column-toggle='' aria-label={restoreLabel} title={restoreLabel} aria-expanded='false' aria-controls={bothFolded ? NOTEBOOK_COLUMN_ID : LIST_COLUMN_ID} onClick={bothFolded ? columns.toggleColumns : columns.toggleList}>
+    <button type='button' className='ui-icon-button browse-column-toggle' data-column-toggle='' aria-label={restoreLabel} title={restoreLabel} aria-expanded='false' aria-controls={LIST_COLUMN_ID} onClick={columns.toggleList}>
       <PanelLeft size={16} aria-hidden='true' />
     </button>
   );
@@ -769,7 +768,7 @@ export const AppContent: React.FC = () => {
                 <DemoBanner />
                 {defaultRepository?.manifest === 'derived' && defaultRepository.config && <DerivedManifestNotice repository={defaultRepository.id} config={defaultRepository.config} configRevision={defaultRepository.configRevision} canWrite={manifestWritable} onCreated={() => refreshWorkspace(true)} />}
                 {/* Top Header */}
-                <Header unavailableNotebooks={unavailableNotebooks} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={<AccountControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={canWrite ? () => void createNote() : undefined} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} navOnly={phoneNotes} focusControls={focusControls} newNote={newNote} />
+                <Header unavailableNotebooks={unavailableNotebooks} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={<AccountControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={canWrite ? () => void createNote() : undefined} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} navOnly={phoneNotes} focusControls={focusControls} newNote={newNote} notebooksToggle={notesColumns ? { open: columns.layout.notebooks === 'open', controls: NOTEBOOK_COLUMN_ID, onToggle: columns.toggleNotebooks } : undefined} />
                 <KeyboardShortcuts mode={shortcutMode} onModeChange={setShortcutMode} suspended={isCommitOpen} selectedNotebookId={selectedNotebookId} onOpenNote={note => void handleOpenNote(note)} />
                 {routeError && (
                   <div role='alert' className='px-6 py-3 text-sm text-danger'>

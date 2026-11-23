@@ -1,5 +1,5 @@
 import { type ReactNode, type Ref, useImperativeHandle, useRef } from 'react';
-import { BookOpen, GalleryHorizontalEnd, ListTree, PanelLeft, Search, X } from 'lucide-react';
+import { BookOpen, GalleryHorizontalEnd, ListTree, Search, X } from 'lucide-react';
 import type { NotebookConfig } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useSidebarLinks } from '../lib/web-features.js';
@@ -37,7 +37,6 @@ export interface NotebookColumnProps {
   searchRef?: Ref<NoteSearchHandle>;
   /** The rail's search button: opens the column at its search field. */
   onOpenSearch: () => void;
-  onToggle: () => void;
   /** What the list shows, for the rail's outline and compilation buttons. */
   kind: 'note' | 'outline' | 'compilation';
   onSelectKind: (kind: 'outline' | 'compilation') => void;
@@ -57,7 +56,7 @@ const initial = (title: string) => Array.from(title.trim())[0]?.toUpperCase() ??
  * its folders, outlines and compilations, and an edition's links at the foot. Folded, it is a rail of the notebooks' initials (each named in
  * full), the search button, and the open notebook's outlines and compilations.
  */
-export function NotebookColumn({ mode, columnId, notebooks, groups, unavailableNotebooks = [], selectedNotebookId, onSelectNotebook, switchDisabled = false, counts, current, query, onQueryChange, searchRef, onOpenSearch, onToggle, kind, onSelectKind }: NotebookColumnProps): JSX.Element {
+export function NotebookColumn({ mode, columnId, notebooks, groups, unavailableNotebooks = [], selectedNotebookId, onSelectNotebook, switchDisabled = false, counts, current, query, onQueryChange, searchRef, onOpenSearch, kind, onSelectKind }: NotebookColumnProps): JSX.Element {
   const { t } = useTranslation();
   const links = useSidebarLinks();
   const input = useRef<HTMLInputElement>(null);
@@ -65,12 +64,6 @@ export function NotebookColumn({ mode, columnId, notebooks, groups, unavailableN
   const [searchKeys] = bindingsFor(keymapEntry('note.searchList'), keyEnvironment);
   const titleOf = (nb: NotebookConfig) => unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title;
   const sections = grouped(notebooks, groups);
-  const toggleLabel = t(mode === 'open' ? 'browse.collapseNotebooks' : 'browse.expandNotebooks');
-  const toggle = (
-    <button type='button' className='ui-icon-button browse-column-toggle' data-column-toggle='' aria-label={toggleLabel} title={toggleLabel} aria-expanded={mode === 'open'} aria-controls={columnId} onClick={onToggle}>
-      <PanelLeft size={16} aria-hidden='true' />
-    </button>
-  );
   const footer = links.length > 0 && (
     <div className='browse-notebooks-footer'>
       <SidebarLinks links={links} variant='sidebar' />
@@ -79,9 +72,9 @@ export function NotebookColumn({ mode, columnId, notebooks, groups, unavailableN
 
   if (mode === 'rail') {
     return (
-      // Keyed apart from the open column's top row, so React never turns the focused toggle into the rail's search button.
+      // Keyed apart from the open column's top row, so React never turns the focused search field into the rail's search button. The column's
+      // toggle is the header's, left of the logo.
       <div key='rail' className='browse-rail'>
-        {toggle}
         <button type='button' className='ui-icon-button' aria-label={t('header.searchPlaceholder')} title={t('header.searchPlaceholder')} aria-keyshortcuts={searchKeys && ariaKeyShortcuts(searchKeys, keyEnvironment)} onClick={onOpenSearch}>
           <Search size={16} aria-hidden='true' />
         </button>
@@ -142,7 +135,6 @@ export function NotebookColumn({ mode, columnId, notebooks, groups, unavailableN
             )
             : searchKeys && <kbd>{formatKeys(searchKeys, keyEnvironment).join(' ')}</kbd>}
         </label>
-        {toggle}
       </div>
       <div className='browse-notebooks-scroll'>
         <NavTree aria-label={t('sidebar.notebooks')} className='browse-notebooks'>

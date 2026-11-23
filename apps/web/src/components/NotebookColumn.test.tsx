@@ -30,7 +30,7 @@ function controls(value: Partial<NoteFilters> = {}, onChange: FilterControls['on
 }
 
 function column(props: Partial<NotebookColumnProps> = {}, filters = controls()) {
-  const all: NotebookColumnProps = { mode: 'open', columnId: 'browse-notebooks', notebooks, selectedNotebookId: 'life', onSelectNotebook: () => {}, counts: { life: 7, work: 1, thesis: 4 }, current: <NotebookTree notebook={notebooks[0]} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={null} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />, query: '', onQueryChange: () => {}, onOpenSearch: () => {}, onToggle: () => {}, kind: 'note', onSelectKind: () => {}, ...props };
+  const all: NotebookColumnProps = { mode: 'open', columnId: 'browse-notebooks', notebooks, selectedNotebookId: 'life', onSelectNotebook: () => {}, counts: { life: 7, work: 1, thesis: 4 }, current: <NotebookTree notebook={notebooks[0]} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={null} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />, query: '', onQueryChange: () => {}, onOpenSearch: () => {}, kind: 'note', onSelectKind: () => {}, ...props };
   return <NotebookColumn {...all} />;
 }
 
@@ -96,10 +96,9 @@ it("puts an edition's links at its foot", () => {
 
 it('folds to a rail of notebook icons, each named in full, with the current one marked', () => {
   const onSelectNotebook = vi.fn();
-  const onToggle = vi.fn();
   const onOpenSearch = vi.fn();
   const onSelectKind = vi.fn();
-  render(wrap(column({ mode: 'rail', onSelectNotebook, onToggle, onOpenSearch, onSelectKind }), true));
+  render(wrap(column({ mode: 'rail', onSelectNotebook, onOpenSearch, onSelectKind }), true));
   expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
   const life = screen.getByRole('button', { name: 'Life notes' });
   expect(life).toHaveAttribute('aria-current', 'true');
@@ -107,11 +106,8 @@ it('folds to a rail of notebook icons, each named in full, with the current one 
   expect(life).toHaveTextContent('L');
   fireEvent.click(screen.getByRole('button', { name: 'Work' }));
   expect(onSelectNotebook).toHaveBeenCalledWith('work');
-  const expand = screen.getByRole('button', { name: 'Expand notebooks' });
-  expect(expand).toHaveAttribute('aria-expanded', 'false');
-  expect(expand).toHaveAttribute('aria-controls', 'browse-notebooks');
-  fireEvent.click(expand);
-  expect(onToggle).toHaveBeenCalledOnce();
+  // The column's toggle sits left of the logo in the header, not in the column.
+  expect(screen.queryByRole('button', { name: /notebooks$/ })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Search notes/ }));
   expect(onOpenSearch).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: 'Outlines' }));

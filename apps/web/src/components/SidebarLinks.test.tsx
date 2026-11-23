@@ -46,7 +46,7 @@ function app(features: WebFeature[], children: ReactNode) {
 }
 
 const sidebar = (dock?: 'folders') => <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} dock={dock} />;
-const notebookColumn = (mode: 'open' | 'rail') => <NotebookColumn mode={mode} columnId='browse-notebooks' notebooks={filters.notebooks} selectedNotebookId='life' onSelectNotebook={() => {}} current={<p>Life</p>} query='' onQueryChange={() => {}} onOpenSearch={() => {}} onToggle={() => {}} kind='note' onSelectKind={() => {}} />;
+const notebookColumn = (mode: 'open' | 'rail') => <NotebookColumn mode={mode} columnId='browse-notebooks' notebooks={filters.notebooks} selectedNotebookId='life' onSelectNotebook={() => {}} current={<p>Life</p>} query='' onQueryChange={() => {}} onOpenSearch={() => {}} kind='note' onSelectKind={() => {}} />;
 const sheet = (onClose = vi.fn()) => (
   <PhoneFilterSheet onClose={onClose} sortField='updated' sortOrder='desc' onSortChange={vi.fn()} viewMode='flat' setViewMode={vi.fn()} showHidden={false} hiddenNoteCount={0} onShowHiddenChange={vi.fn()}>
     <p>filters</p>

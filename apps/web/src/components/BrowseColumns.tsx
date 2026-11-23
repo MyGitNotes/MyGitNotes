@@ -18,7 +18,7 @@ export interface BrowseColumnsProps {
   list: ReactNode;
   /** Column 3: the Focus. */
   note: ReactNode;
-  /** At the note column's top left while the list is folded away: what brings it (and the notebooks) back. */
+  /** At the note column's top left while the list is folded away: what brings it back. */
   restore?: ReactNode;
 }
 
@@ -27,7 +27,7 @@ const lost = (element: Element | null) => !element || !element.isConnected || Bo
 
 /**
  * The Notes page's three columns: the notebooks, the note list and the note. Their elements stay the same whatever the person opens, closes or
- * switches; only their content follows. Folding a column hides it in place (the notebooks column turns into its rail inside the same element).
+ * switches; only their content follows. Folding the list hides it in place; the notebooks column turns into its rail inside the same element.
  * When the focused control goes with a fold, the keyboard moves to the toggle that brings that column back, else to the first toggle left.
  */
 export function BrowseColumns({ layout, measure, merged, notebooks, list, note, restore }: BrowseColumnsProps): JSX.Element {
@@ -64,7 +64,7 @@ export function BrowseColumns({ layout, measure, merged, notebooks, list, note, 
         if (!event.relatedTarget || !root.current?.contains(event.relatedTarget as Node)) focused.current = event.relatedTarget ? null : focused.current;
       }}
     >
-      <aside id={NOTEBOOK_COLUMN_ID} className='browse-column browse-column-notebooks' aria-label={t('sidebar.notebooks')} hidden={layout.notebooks === 'hidden'}>{notebooks}</aside>
+      <aside id={NOTEBOOK_COLUMN_ID} className='browse-column browse-column-notebooks' aria-label={t('sidebar.notebooks')}>{notebooks}</aside>
       <section id={LIST_COLUMN_ID} className='browse-column browse-column-list' aria-label={t('browse.listColumn')} hidden={!listShown}>{list}</section>
       <div className='browse-column browse-column-note' hidden={merged}>
         {!layout.list && restore && <div className='browse-column-restore'>{restore}</div>}

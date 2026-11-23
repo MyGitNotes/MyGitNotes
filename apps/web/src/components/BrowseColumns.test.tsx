@@ -45,21 +45,23 @@ interface PageProps {
   folder?: string | null;
   onToggleNotebooks?: () => void;
   onToggleList?: () => void;
-  onToggleColumns?: () => void;
   measure?: (element: HTMLElement | null) => void;
 }
 
-/** The Notes page's three columns as the app composes them. */
-function Page({ layout = { notebooks: 'open', list: true }, presentation = 'list', note, notebookId = 'life', folder = null, onToggleNotebooks = () => {}, onToggleList = () => {}, onToggleColumns = () => {}, measure }: PageProps) {
+/** The Notes page's three columns as the app composes them, under the header's notebooks toggle left of the logo. */
+function Page({ layout = { notebooks: 'open', list: true }, presentation = 'list', note, notebookId = 'life', folder = null, onToggleNotebooks = () => {}, onToggleList = () => {}, measure }: PageProps) {
   const notebook = notebooks.find(nb => nb.id === notebookId)!;
   const filters = controls({ notebookId, folders: folder ? [`${notebook.root}/${folder}`] : [] });
   return (
     <I18nProvider>
+      <header>
+        <button type='button' aria-controls={NOTEBOOK_COLUMN_ID} aria-expanded={layout.notebooks === 'open'} onClick={onToggleNotebooks}>{layout.notebooks === 'open' ? 'Collapse notebooks' : 'Expand notebooks'}</button>
+      </header>
       <BrowseColumns
         layout={layout}
         measure={measure}
         merged={presentation !== 'list'}
-        notebooks={layout.notebooks === 'hidden' ? null : <NotebookColumn mode={layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={notebooks} selectedNotebookId={notebookId} onSelectNotebook={() => {}} counts={{ life: 7, work: 1 }} current={<NotebookTree notebook={notebook} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={folder} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />} query='' onQueryChange={() => {}} onOpenSearch={() => {}} onToggle={onToggleNotebooks} kind='note' onSelectKind={() => {}} />}
+        notebooks={<NotebookColumn mode={layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={notebooks} selectedNotebookId={notebookId} onSelectNotebook={() => {}} counts={{ life: 7, work: 1 }} current={<NotebookTree notebook={notebook} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={folder} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />} query='' onQueryChange={() => {}} onOpenSearch={() => {}} kind='note' onSelectKind={() => {}} />}
         list={
           <NoteListColumn columnId={LIST_COLUMN_ID} notebookTitle={notebook.title} path={folder ? [folder] : []} count={folder ? 2 : 7} presentation={presentation} onPresentationChange={() => {}} onCollapse={presentation === 'list' ? onToggleList : undefined} chips={<ListFilterButtons filters={filters} counts={listFacets(filters, facets)} notebookId={notebookId} sortField='updated' sortOrder='desc' onSortChange={() => {}} sortable showHidden={false} hiddenNoteCount={1} onShowHiddenChange={() => {}} />}>
             <ul>
@@ -69,7 +71,7 @@ function Page({ layout = { notebooks: 'open', list: true }, presentation = 'list
           </NoteListColumn>
         }
         note={note ? <article>{'Note '}{note}</article> : <p>No note open</p>}
-        restore={<button type='button' data-column-toggle='' aria-controls={layout.notebooks === 'hidden' ? NOTEBOOK_COLUMN_ID : LIST_COLUMN_ID} aria-expanded='false' onClick={layout.notebooks === 'hidden' ? onToggleColumns : onToggleList}>Show columns</button>}
+        restore={<button type='button' data-column-toggle='' aria-controls={LIST_COLUMN_ID} aria-expanded='false' onClick={onToggleList}>Show note list</button>}
       />
     </I18nProvider>
   );
@@ -116,27 +118,28 @@ describe('the three columns', () => {
     same();
   });
 
-  it('lays out all three columns (A1), the notebooks rail (A2), and only the note once both fold (A3)', () => {
+  it('lays out all three columns (A1), the notebooks rail (A2), and the rail beside the note once the list folds too (A3)', () => {
     const { rerender } = render(<Page note='a' />);
     const root = document.querySelector('.browse-columns')!;
     expect(root).toHaveAttribute('data-notebooks', 'open');
     expect(root).toHaveAttribute('data-list', 'open');
     expect(notebooksColumn()).toBeVisible();
     expect(listColumn()).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Show columns' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show note list' })).not.toBeInTheDocument();
+    // The notebooks column's toggle is the header's, not the column's.
+    expect(notebooksColumn().querySelector('[data-column-toggle]')).toBeNull();
 
     rerender(<Page note='a' layout={{ notebooks: 'rail', list: true }} />);
     expect(root).toHaveAttribute('data-notebooks', 'rail');
-    expect(screen.getByRole('button', { name: 'Expand notebooks' })).toHaveAttribute('aria-expanded', 'false');
 
-    rerender(<Page note='a' layout={{ notebooks: 'hidden', list: false }} />);
-    expect(root).toHaveAttribute('data-notebooks', 'hidden');
+    rerender(<Page note='a' layout={{ notebooks: 'rail', list: false }} />);
+    expect(root).toHaveAttribute('data-notebooks', 'rail');
     expect(root).toHaveAttribute('data-list', 'closed');
-    expect(notebooksColumn()).not.toBeVisible();
+    expect(notebooksColumn()).toBeVisible();
     expect(listColumn()).not.toBeVisible();
     expect(screen.getByText('Note a')).toBeVisible();
     // The way back sits left of the note's title.
-    expect(screen.getByRole('button', { name: 'Show columns' }).closest('.browse-column-note')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Show note list' }).closest('.browse-column-note')).not.toBeNull();
   });
 
   it('spreads the table and the board across the note column, keeping the notebooks column', () => {
@@ -160,11 +163,11 @@ describe('the three columns', () => {
 /** The page with its columns' real state, as the app keeps it. */
 function Stateful() {
   const columns = useBrowseColumns({ panes: 1 });
-  return <Page note='a' layout={columns.layout} measure={columns.measure} onToggleNotebooks={columns.toggleNotebooks} onToggleList={columns.toggleList} onToggleColumns={columns.toggleColumns} />;
+  return <Page note='a' layout={columns.layout} measure={columns.measure} onToggleNotebooks={columns.toggleNotebooks} onToggleList={columns.toggleList} />;
 }
 
 describe('folding by hand', () => {
-  it('keeps the keyboard on the toggle that brings a folded column back', () => {
+  it('folds the list alone, keeping the keyboard on the toggle that brings it back', () => {
     render(<Stateful />);
     const collapseList = screen.getByRole('button', { name: 'Hide note list' });
     expect(collapseList).toHaveAttribute('aria-expanded', 'true');
@@ -172,28 +175,16 @@ describe('folding by hand', () => {
     collapseList.focus();
     fireEvent.click(collapseList);
     expect(listColumn()).not.toBeVisible();
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Show columns' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Show note list' }));
 
-    const collapseNotebooks = screen.getByRole('button', { name: 'Collapse notebooks' });
-    expect(collapseNotebooks).toHaveAttribute('aria-controls', NOTEBOOK_COLUMN_ID);
-    collapseNotebooks.focus();
-    fireEvent.click(collapseNotebooks);
-    // Both folded: only the note and the way back are left.
-    expect(document.querySelector('.browse-columns')).toHaveAttribute('data-notebooks', 'hidden');
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Show columns' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Show columns' }));
+    // Folding the notebooks column to its rail leaves the list folded, and the rail stays beside the note.
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse notebooks' }));
+    expect(document.querySelector('.browse-columns')).toHaveAttribute('data-notebooks', 'rail');
     expect(notebooksColumn()).toBeVisible();
+    expect(listColumn()).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Show note list' }));
     expect(listColumn()).toBeVisible();
-  });
-
-  it("moves the keyboard to the rail's own toggle when the notebooks column folds to its rail, and back when it opens", () => {
-    render(<Stateful />);
-    const collapse = screen.getByRole('button', { name: 'Collapse notebooks' });
-    collapse.focus();
-    fireEvent.click(collapse);
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Expand notebooks' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Expand notebooks' }));
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Collapse notebooks' }));
+    expect(document.querySelector('.browse-columns')).toHaveAttribute('data-notebooks', 'rail');
   });
 
   it('keeps the folded columns for the next visit in this browser', () => {
@@ -247,7 +238,7 @@ describe('narrow pages', () => {
   });
 });
 
-it('runs the column toggles from the keyboard: Mod+\\ folds every column, Mod+Shift+\\ the list alone', async () => {
+it('runs the column toggles from the keyboard: Mod+\\ the notebooks column, Mod+Shift+\\ the list', async () => {
   const { KeyboardRoot } = await import('../lib/keyboard/KeyboardDispatcher.js');
   const { useRegisterCommands } = await import('../lib/commands/registry.js');
   const { browseColumnCommands } = await import('../app/useBrowseColumns.js');
@@ -256,7 +247,7 @@ it('runs the column toggles from the keyboard: Mod+\\ folds every column, Mod+Sh
     const columns = useBrowseColumns({ panes: 1 });
     const { t } = useTranslation();
     useRegisterCommands(browseColumnCommands(columns, t));
-    return <Page note='a' layout={columns.layout} onToggleList={columns.toggleList} onToggleNotebooks={columns.toggleNotebooks} onToggleColumns={columns.toggleColumns} />;
+    return <Page note='a' layout={columns.layout} onToggleList={columns.toggleList} onToggleNotebooks={columns.toggleNotebooks} />;
   }
   render(
     <I18nProvider>
@@ -279,17 +270,17 @@ it('runs the column toggles from the keyboard: Mod+\\ folds every column, Mod+Sh
   press({ shiftKey: true });
   expect(root()).toHaveAttribute('data-list', 'open');
   press({});
-  expect(root()).toHaveAttribute('data-notebooks', 'hidden');
-  expect(root()).toHaveAttribute('data-list', 'closed');
+  expect(root()).toHaveAttribute('data-notebooks', 'rail');
+  expect(root()).toHaveAttribute('data-list', 'open');
   press({});
   expect(root()).toHaveAttribute('data-notebooks', 'open');
   expect(root()).toHaveAttribute('data-list', 'open');
 });
 
-it('names every column toggle as a button with its state', () => {
+it('names the list toggle as a button with its state', () => {
   const onToggle = vi.fn();
-  render(<Page onToggleNotebooks={onToggle} />);
-  const toggle = screen.getByRole('button', { name: 'Collapse notebooks' });
+  render(<Page onToggleList={onToggle} />);
+  const toggle = screen.getByRole('button', { name: 'Hide note list' });
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
   fireEvent.click(toggle);
   expect(onToggle).toHaveBeenCalledOnce();

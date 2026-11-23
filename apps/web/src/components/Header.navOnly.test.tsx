@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { createElement } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { I18nProvider } from '../lib/i18n/index.js';
@@ -12,7 +12,7 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-const header = (navOnly: boolean, readOnly = false) => render(createElement(I18nProvider, null, createElement(Header, { workspaceTitle: 'Work', activeTab: 'notes', setActiveTab: vi.fn(), notebooks: [{ id: 'a', title: 'Alpha' }] as never, selectedNotebookId: 'a', onSelectNotebook: vi.fn(), onCreateNote: readOnly ? undefined : vi.fn(), onOpenCommands: vi.fn(), navOnly })));
+const header = (navOnly: boolean, readOnly = false, notebooksToggle?: { open: boolean; controls: string; onToggle: () => void; }) => render(createElement(I18nProvider, null, createElement(Header, { workspaceTitle: 'Work', activeTab: 'notes', setActiveTab: vi.fn(), notebooks: [{ id: 'a', title: 'Alpha' }] as never, selectedNotebookId: 'a', onSelectNotebook: vi.fn(), onCreateNote: readOnly ? undefined : vi.fn(), onOpenCommands: vi.fn(), navOnly, notebooksToggle })));
 
 it('keeps only the bottom navigation when a phone draws its own bars', () => {
   header(true);
@@ -36,4 +36,23 @@ it('shows the brand and the utilities wider than a phone, the notebooks column h
   expect(screen.getByRole('heading', { name: 'Work' })).toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Notebooks' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Quick open' })).toBeInTheDocument();
+});
+
+// Boss (0.31.1 review): the notebooks column's toggle moves left of the logo, like a desktop app's sidebar button.
+it("puts the notebooks column's toggle left of the logo on the Notes page", () => {
+  const onToggle = vi.fn();
+  const { rerender } = header(false, false, { open: true, controls: 'browse-notebooks', onToggle });
+  const toggle = screen.getByRole('button', { name: 'Collapse notebooks' });
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(toggle).toHaveAttribute('aria-controls', 'browse-notebooks');
+  expect(toggle.compareDocumentPosition(screen.getByRole('img', { name: 'MyGitNotes' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(toggle);
+  expect(onToggle).toHaveBeenCalledOnce();
+  rerender(createElement(I18nProvider, null, createElement(Header, { workspaceTitle: 'Work', activeTab: 'notes', setActiveTab: vi.fn(), notebooks: [] as never, selectedNotebookId: 'a', onSelectNotebook: vi.fn(), onOpenCommands: vi.fn(), notebooksToggle: { open: false, controls: 'browse-notebooks', onToggle } })));
+  expect(screen.getByRole('button', { name: 'Expand notebooks' })).toHaveAttribute('aria-expanded', 'false');
+});
+
+it('shows no notebooks toggle where the page has no notebooks column', () => {
+  header(false);
+  expect(screen.queryByRole('button', { name: /notebooks$/ })).toBeNull();
 });

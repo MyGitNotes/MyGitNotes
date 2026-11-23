@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSE_COLUMNS_STORAGE_KEY, browseColumnsLayout, browsePresentation, notebooksCramped, paneColumns, readBrowseColumns, saveBrowseColumns, toggleColumns, toggleList, toggleNotebooks } from './browse-columns.js';
+import { BROWSE_COLUMNS_STORAGE_KEY, browseColumnsLayout, browsePresentation, notebooksCramped, paneColumns, readBrowseColumns, saveBrowseColumns, toggleList, toggleNotebooks } from './browse-columns.js';
 
 const memory = () => {
   const items = new Map<string, string>();
@@ -25,10 +25,9 @@ describe('stored columns', () => {
 });
 
 describe('layout', () => {
-  it('shows all three columns (A1), the rail (A2), and only the note once both fold (A3)', () => {
+  it('shows all three columns (A1), the rail (A2), and the rail beside the note once the list folds too (A3)', () => {
     expect(browseColumnsLayout({ stored: OPEN, cramped: false, heldOpen: false })).toEqual({ notebooks: 'open', list: true });
     expect(browseColumnsLayout({ stored: { notebooksCollapsed: true, listCollapsed: false }, cramped: false, heldOpen: false })).toEqual({ notebooks: 'rail', list: true });
-    expect(browseColumnsLayout({ stored: { notebooksCollapsed: true, listCollapsed: true }, cramped: false, heldOpen: false })).toEqual({ notebooks: 'hidden', list: false });
     expect(browseColumnsLayout({ stored: { notebooksCollapsed: false, listCollapsed: true }, cramped: false, heldOpen: false })).toEqual({ notebooks: 'open', list: false });
   });
 
@@ -70,13 +69,13 @@ describe('toggles', () => {
 
   it('folds and shows the list alone', () => {
     expect(toggleList({ notebooks: 'open', list: true }, OPEN, false)).toEqual({ stored: { notebooksCollapsed: false, listCollapsed: true }, heldOpen: false });
-    expect(toggleList({ notebooks: 'hidden', list: false }, { notebooksCollapsed: true, listCollapsed: true }, false)).toEqual({ stored: { notebooksCollapsed: true, listCollapsed: false }, heldOpen: false });
+    expect(toggleList({ notebooks: 'rail', list: false }, { notebooksCollapsed: true, listCollapsed: true }, false)).toEqual({ stored: { notebooksCollapsed: true, listCollapsed: false }, heldOpen: false });
   });
 
-  it('folds every column away, then brings both back', () => {
-    expect(toggleColumns({ notebooks: 'rail', list: true }, false)).toEqual({ stored: { notebooksCollapsed: true, listCollapsed: true }, heldOpen: false });
-    expect(toggleColumns({ notebooks: 'open', list: false }, false)).toEqual({ stored: { notebooksCollapsed: true, listCollapsed: true }, heldOpen: false });
-    expect(toggleColumns({ notebooks: 'hidden', list: false }, true)).toEqual({ stored: OPEN, heldOpen: true });
+  // Boss (0.31.1 review): the list's toggle controls the list alone; folding it leaves the notebooks column as it was, its rail included.
+  it('keeps the notebooks rail when the list folds away too', () => {
+    expect(browseColumnsLayout({ stored: { notebooksCollapsed: true, listCollapsed: true }, cramped: false, heldOpen: false })).toEqual({ notebooks: 'rail', list: false });
+    expect(browseColumnsLayout({ stored: { notebooksCollapsed: false, listCollapsed: true }, cramped: true, heldOpen: false })).toEqual({ notebooks: 'rail', list: false });
   });
 });
 

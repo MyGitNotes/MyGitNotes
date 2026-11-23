@@ -126,7 +126,7 @@ export const KEYMAP: readonly KeymapEntry[] = [
   // The Notes page's columns: the note list alone, or every column. The list's chord comes first, since Mod+\ also takes Shift (some
   // layouts need Shift for punctuation).
   entry('browse.toggleList', 'panes', ['global'], 'dispatcher', [{ keys: 'Mod+Shift+\\', when: { exceptScopes: CODE } }], { phase: 'capture', description: 'command.browse.toggleList.describe' }),
-  entry('browse.toggleColumns', 'panes', ['global'], 'dispatcher', ['Mod+\\'], { phase: 'capture', description: 'command.browse.toggleColumns.describe' }),
+  entry('browse.toggleNotebooks', 'panes', ['global'], 'dispatcher', ['Mod+\\'], { phase: 'capture', description: 'command.browse.toggleNotebooks.describe' }),
   // On macOS Cmd+` switches windows before the page sees it, and Ctrl+` belongs to the terminal, so the Mac takes Cmd+'.
   entry('assistant.toggleFocus', 'panes', ['global'], 'dispatcher', [mac("Mod+'"), other('Ctrl+`')], { phase: 'capture', description: 'command.assistant.toggleFocus.describe' }),
   // Focus

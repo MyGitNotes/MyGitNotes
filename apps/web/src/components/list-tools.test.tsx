@@ -45,7 +45,7 @@ function header({ presentation = 'list', onPresentationChange = () => {}, onColl
 }
 
 function column(props: Partial<NotebookColumnProps> = {}) {
-  const all: NotebookColumnProps = { mode: 'open', columnId: 'browse-notebooks', notebooks, selectedNotebookId: 'life', onSelectNotebook: () => {}, current: <p>Life</p>, query: '', onQueryChange: () => {}, onOpenSearch: () => {}, onToggle: () => {}, kind: 'note', onSelectKind: () => {}, ...props };
+  const all: NotebookColumnProps = { mode: 'open', columnId: 'browse-notebooks', notebooks, selectedNotebookId: 'life', onSelectNotebook: () => {}, current: <p>Life</p>, query: '', onQueryChange: () => {}, onOpenSearch: () => {}, kind: 'note', onSelectKind: () => {}, ...props };
   return render(
     <I18nProvider>
       <NotebookColumn {...all} />
@@ -58,7 +58,7 @@ function SearchHarness({ initial = '' }: { initial?: string; }) {
   const [query, setQuery] = useState(initial);
   return (
     <I18nProvider>
-      <NotebookColumn mode='open' columnId='browse-notebooks' notebooks={notebooks} selectedNotebookId='life' onSelectNotebook={() => {}} current={<p>Life</p>} query={query} onQueryChange={setQuery} onOpenSearch={() => {}} onToggle={() => {}} kind='note' onSelectKind={() => {}} />
+      <NotebookColumn mode='open' columnId='browse-notebooks' notebooks={notebooks} selectedNotebookId='life' onSelectNotebook={() => {}} current={<p>Life</p>} query={query} onQueryChange={setQuery} onOpenSearch={() => {}} kind='note' onSelectKind={() => {}} />
     </I18nProvider>
   );
 }

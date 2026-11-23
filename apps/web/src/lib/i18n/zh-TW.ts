@@ -2577,7 +2577,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'browse.expandNotebooks': '展開筆記本欄',
   'browse.collapseList': '收起筆記清單',
   'browse.expandList': '展開筆記清單',
-  'browse.expandColumns': '展開筆記本與清單',
   'browse.view': '檢視',
   'browse.viewList': '清單',
   'browse.viewTable': '表格',
@@ -2596,8 +2595,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'browse.noFocus': '從清單打開一篇筆記',
   'browse.allFolders': '全部資料夾',
   'browse.display': '顯示',
-  'command.browse.toggleColumns': '顯示或收起筆記本與清單',
-  'command.browse.toggleColumns.describe': '收起筆記本欄與筆記清單，讓筆記佔滿畫面，或把兩欄都叫回來',
+  'command.browse.toggleNotebooks': '展開或收起筆記本欄',
+  'command.browse.toggleNotebooks.describe': '把筆記本欄收成只剩筆記本首字的窄欄，或把它展開',
   'command.browse.toggleList': '顯示或收起筆記清單',
   'command.browse.toggleList.describe': '收起筆記旁的清單，或把它叫回來',
 };

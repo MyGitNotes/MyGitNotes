@@ -41,15 +41,15 @@ describe('Folding the columns from the palette and the keyboard', () => {
     expect(result.current.focusCommands.map(command => command.id)).not.toContain('focus-toggle-browse');
   });
 
-  it('folds every column with Mod+\\ and the list alone with Mod+Shift+\\', () => {
-    const columns = { layout: { notebooks: 'open' as const, list: true }, measure: () => {}, toggleNotebooks: vi.fn(), toggleList: vi.fn(), toggleColumns: vi.fn() };
+  it('folds the notebooks column with Mod+\\ and the list with Mod+Shift+\\', () => {
+    const columns = { layout: { notebooks: 'open' as const, list: true }, measure: () => {}, toggleNotebooks: vi.fn(), toggleList: vi.fn() };
     const commands = browseColumnCommands(columns, ((key: string) => key) as never);
-    expect(commands.map(command => [command.id, command.title])).toEqual([['browse.toggleColumns', 'command.browse.toggleColumns'], ['browse.toggleList', 'command.browse.toggleList']]);
+    expect(commands.map(command => [command.id, command.title])).toEqual([['browse.toggleNotebooks', 'command.browse.toggleNotebooks'], ['browse.toggleList', 'command.browse.toggleList']]);
     void commands[0].run({} as never);
-    expect(columns.toggleColumns).toHaveBeenCalledOnce();
+    expect(columns.toggleNotebooks).toHaveBeenCalledOnce();
     void commands[1].run({} as never);
     expect(columns.toggleList).toHaveBeenCalledOnce();
-    expect(keymapEntry('browse.toggleColumns').bindings.map(binding => binding.keys)).toEqual(['Mod+\\']);
+    expect(keymapEntry('browse.toggleNotebooks').bindings.map(binding => binding.keys)).toEqual(['Mod+\\']);
     expect(keymapEntry('browse.toggleList').bindings.map(binding => binding.keys)).toEqual(['Mod+Shift+\\']);
   });
 });

@@ -19,8 +19,8 @@ export interface StoredBrowseColumns {
   listCollapsed: boolean;
 }
 
-/** How the notebooks column shows: open, as its icon rail, or not at all (both columns folded away). */
-export type NotebookColumnMode = 'open' | 'rail' | 'hidden';
+/** How the notebooks column shows: open, or as its icon rail. */
+export type NotebookColumnMode = 'open' | 'rail';
 
 export interface BrowseColumnsLayout {
   notebooks: NotebookColumnMode;
@@ -79,11 +79,10 @@ export function notebooksCramped({ viewport, width, listShown, panes }: CrampedI
 
 /**
  * The columns that show. The notebooks column folds to its rail when the person folded it, or when it is cramped and they have not opened it by
- * hand since (`heldOpen`); with the list folded away too, neither column shows.
+ * hand since (`heldOpen`). The list folds on its own toggle, leaving the notebooks column as it is.
  */
 export function browseColumnsLayout({ stored, cramped, heldOpen }: { stored: StoredBrowseColumns; cramped: boolean; heldOpen: boolean; }): BrowseColumnsLayout {
   const notebooksCollapsed = stored.notebooksCollapsed || (cramped && !heldOpen);
-  if (notebooksCollapsed && stored.listCollapsed) return { notebooks: 'hidden', list: false };
   return { notebooks: notebooksCollapsed ? 'rail' : 'open', list: !stored.listCollapsed };
 }
 
@@ -102,12 +101,6 @@ export function toggleNotebooks(layout: BrowseColumnsLayout, stored: StoredBrows
 /** Shows or folds the note list, leaving the notebooks column as the person left it. */
 export function toggleList(layout: BrowseColumnsLayout, stored: StoredBrowseColumns, heldOpen: boolean): BrowseColumnsChange {
   return { stored: { ...stored, listCollapsed: layout.list }, heldOpen };
-}
-
-/** Folds both columns away, or brings both back once neither shows; bringing them back by hand holds the notebooks column open. */
-export function toggleColumns(layout: BrowseColumnsLayout, cramped: boolean): BrowseColumnsChange {
-  if (layout.notebooks === 'hidden') return { stored: OPEN, heldOpen: cramped };
-  return { stored: { notebooksCollapsed: true, listCollapsed: true }, heldOpen: false };
 }
 
 /** What the list column shows: the list beside the note, or the table or the board across the list and note columns. */

@@ -1,6 +1,6 @@
 import { Button } from './Button.js';
 import React, { useEffect } from 'react';
-import { BookOpen, Bot, Image as ImageIcon, Keyboard, Network, Plus, Settings } from 'lucide-react';
+import { BookOpen, Bot, Image as ImageIcon, Keyboard, Network, PanelLeft, Plus, Settings } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
 import type { WorkspaceTab } from '../lib/routes.js';
 import type { NotebookConfig } from '../lib/types.js';
@@ -35,6 +35,8 @@ interface HeaderProps {
   focusControls?: React.ReactNode;
   /** The New button's actions, shown on the Notes page right of the Focus controls; absent for a read-only notebook, which then shows none. */
   newNote?: NewNoteActions;
+  /** The Notes page's notebooks column toggle, left of the logo: open, or folded to its rail. */
+  notebooksToggle?: { open: boolean; controls: string; onToggle: () => void; };
 }
 
 /** The assistant dock's button, the command palette's, and the account controls: the header's right end, and a phone's Notes drawer where there is no header. */
@@ -61,7 +63,7 @@ export function HeaderUtilities({ activeTab, setActiveTab, navigationDisabled = 
   );
 }
 
-export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, onOpenCommands, navigationDisabled = false, navOnly = false, focusControls, newNote }: HeaderProps) {
+export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = [], accountControls, activeTab, setActiveTab, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, onCreateNote, onOpenCommands, navigationDisabled = false, navOnly = false, focusControls, newNote, notebooksToggle }: HeaderProps) {
   const { t } = useTranslation();
   useEffect(() => {
     document.title = `${t(`nav.${activeTab}`)} · MyGitNotes`;
@@ -95,11 +97,18 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
   );
   // The Notes page's own actions; every other page shows only the notebook switcher and the utilities here.
   const notes = activeTab === 'notes';
+  const notebooksLabel = t(notebooksToggle?.open ? 'browse.collapseNotebooks' : 'browse.expandNotebooks');
+  const [notebooksKeys] = bindingsFor(keymapEntry('browse.toggleNotebooks'), keyEnvironment);
   if (navOnly) return <header className='workspace-header' data-nav-only=''>{nav}</header>;
   return (
     <header className='workspace-header'>
       <div className='header-layout'>
         <div className='header-brand'>
+          {notebooksToggle && (
+            <button type='button' className='ui-icon-button header-notebooks-toggle' aria-label={notebooksLabel} title={notebooksLabel} aria-keyshortcuts={notebooksKeys && ariaKeyShortcuts(notebooksKeys, keyEnvironment)} aria-expanded={notebooksToggle.open} aria-controls={notebooksToggle.controls} onClick={notebooksToggle.onToggle}>
+              <PanelLeft size={17} aria-hidden='true' />
+            </button>
+          )}
           <img src={`${import.meta.env.BASE_URL}brand/github-notes-64.png`} width='32' height='32' alt='MyGitNotes' className='workspace-brand-icon' />
           <div className='min-w-0'>
             <h1>{workspaceTitle || 'MyGitNotes'}</h1>

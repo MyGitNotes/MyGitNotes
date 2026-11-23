@@ -2576,7 +2576,6 @@ export const en = {
   'browse.expandNotebooks': 'Expand notebooks',
   'browse.collapseList': 'Hide note list',
   'browse.expandList': 'Show note list',
-  'browse.expandColumns': 'Show notebooks and list',
   'browse.view': 'View',
   'browse.viewList': 'List',
   'browse.viewTable': 'Table',
@@ -2595,8 +2594,8 @@ export const en = {
   'browse.noFocus': 'Open a note from the list',
   'browse.allFolders': 'All folders',
   'browse.display': 'Display',
-  'command.browse.toggleColumns': 'Show or hide the notebooks and list',
-  'command.browse.toggleColumns.describe': 'Fold the notebooks and the note list away so the note gets the whole page, or bring both back',
+  'command.browse.toggleNotebooks': 'Expand or collapse the notebooks',
+  'command.browse.toggleNotebooks.describe': "Fold the notebooks column to its rail of the notebooks' initials, or open it",
   'command.browse.toggleList': 'Show or hide the note list',
   'command.browse.toggleList.describe': 'Fold the note list away beside the note, or bring it back',
 };
