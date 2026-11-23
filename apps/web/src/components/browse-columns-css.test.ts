@@ -28,3 +28,12 @@ describe('the board and the table across the note column', () => {
     expect(rule(".browse-columns[data-notebooks='rail'] .browse-column-notebooks")).toMatch(/flex-basis:\s*var\(--browse-rail-width\)/);
   });
 });
+
+// Boss report: hovering the open notebook's tile on the rail turned its fill to the hover grey under the dark text it keeps on the accent,
+// so its initial all but vanished.
+describe('the rail notebook tiles', () => {
+  it("keeps the open notebook's tile on the accent under the pointer", () => {
+    expect(rule('.browse-rail-notebook:hover:not(:disabled)')).toBe('');
+    expect(rule(".browse-rail-notebook:hover:not(:disabled):not([aria-current='true'])")).toMatch(/background:\s*var\(--workspace-selection\)/);
+  });
+});

@@ -38,7 +38,8 @@
 .browse-rail-divider { flex: none; width: 32px; height: 1px; margin: 4px 0; background: var(--workspace-divider); }
 .browse-rail-notebooks { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .browse-rail-notebook { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); color: var(--color-text); font-size: 15px; font-weight: 600; }
-.browse-rail-notebook:hover:not(:disabled) { background: var(--workspace-selection); }
+/* The open notebook's tile keeps the accent under the pointer: its text is the accent's dark, unreadable on the hover grey. */
+.browse-rail-notebook:hover:not(:disabled):not([aria-current='true']) { background: var(--workspace-selection); }
 .browse-rail-notebook[aria-current='true'] { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-on-primary); }
 .browse-rail-notebook:disabled { cursor: default; opacity: 0.6; }
 .browse-rail .ui-icon-button[aria-pressed='true'] { background: var(--workspace-selection); color: var(--color-primary); }
