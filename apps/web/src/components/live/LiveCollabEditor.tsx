@@ -1,4 +1,4 @@
-import { type ReactNode, type Ref, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, type Ref, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, Users } from 'lucide-react';
 import * as Y from 'yjs';
@@ -96,6 +96,26 @@ type Phase =
   /** The note stayed open (a check-in that did not release it, a kept draft) or a call failed: the person may go back. */
   | { kind: 'notice'; message: string; tone: 'status' | 'alert'; };
 
+/**
+ * Who is editing, as the cursors show them: this tab first, then each other person once, each beside a swatch of the colour
+ * their cursor takes, so a cursor in the text can be told by its colour. Nothing before the server said who this tab is
+ * and while nobody else shows a cursor.
+ */
+function EditorList({ you, others, t }: { you?: LiveEditorPerson; others: LiveEditorPerson[]; t: (key: TranslationKey, params?: Record<string, string | number>) => string; }) {
+  const people = [...(you ? [{ ...you, own: true }] : []), ...others.filter(person => person.name !== you?.name).map(person => ({ ...person, own: false }))];
+  if (!people.length) return null;
+  return (
+    <ul className='live-editor-people' aria-label={t('live.editorList')}>
+      {people.map(person => (
+        <li key={person.name} className='live-editor-person' data-own={person.own ? '' : undefined}>
+          <span className='live-editor-swatch' style={person.color ? { backgroundColor: person.color } : undefined} aria-hidden='true' />
+          {person.own ? t('live.editorYou', { name: person.name }) : person.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The socket as the provider reports it. */
 interface Connection {
   status: 'connecting' | 'connected' | 'disconnected';
@@ -115,10 +135,32 @@ interface Connection {
    * window of theirs; until it first tells, this tab and every other name in awareness. Offline, this tab alone.
    */
   people: number;
+  /** The name and colour the others see this tab's cursor under, as the server told it (`{ type: 'you' }`). */
+  you?: LiveEditorPerson;
+  /** The others whose cursors this tab shows, each name once, as awareness has them. */
+  others: LiveEditorPerson[];
   /** The count before the socket was last reported disconnected, until its close says whether it was for a new ticket. */
   kept?: number;
 }
-const START: Connection = { status: 'connecting', synced: false, unsynced: 0, people: 1 };
+const START: Connection = { status: 'connecting', synced: false, unsynced: 0, people: 1, others: [] };
+
+/** A person editing the note, under the name and colour their cursor shows. */
+export interface LiveEditorPerson {
+  name: string;
+  color: string;
+}
+const COLOUR = /^#[0-9a-f]{6}$/i;
+
+/** The people of awareness states other than this tab's: each name once, in the order they came, with a colour a cursor can show. */
+export function awarenessPeople(states: readonly { clientId: number; user?: { name?: unknown; color?: unknown; }; }[], own: number): LiveEditorPerson[] {
+  const people = new Map<string, LiveEditorPerson>();
+  for (const state of states) {
+    const { name, color } = state.user ?? {};
+    if (state.clientId === own || typeof name !== 'string' || !name || people.has(name)) continue;
+    people.set(name, { name, color: typeof color === 'string' && COLOUR.test(color) ? color : '' });
+  }
+  return [...people.values()];
+}
 /** How long nothing may be unsaved before the bar says 已儲存: each keystroke is stored within a few milliseconds. */
 const SETTLE_MS = 300;
 /** How long a pending step nobody typed (a connect's own sync step) may last before the bar says 未儲存 rather than connecting. */
@@ -492,9 +534,10 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
           setConnection(current => ({ ...current, dirty: next }));
         },
         // A server that does not count: the server writes each person's name; this tab counts itself once, and every other name once.
+        // The others' names and colours are listed in the bar whichever counts the people.
         onAwarenessChange: ({ states }) => {
-          if (counted) return;
-          setConnection(current => ({ ...current, people: 1 + new Set(states.filter(state => state.clientId !== doc.clientID && typeof state.user?.name === 'string').map(state => state.user.name as string)).size }));
+          const others = awarenessPeople(states, doc.clientID);
+          setConnection(current => ({ ...current, others, ...(counted ? {} : { people: 1 + others.length }) }));
         },
         onStateless: ({ payload }) => {
           let message: { type?: unknown; reason?: unknown; };
@@ -508,6 +551,9 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
             if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 10_000) return;
             counted = true;
             setConnection(current => ({ ...current, people: count }));
+          } else if (message.type === 'you') {
+            const { name, color } = message as { name?: unknown; color?: unknown; };
+            if (typeof name === 'string' && name && typeof color === 'string' && COLOUR.test(color)) setConnection(current => ({ ...current, you: { name, color } }));
           } else if (message.type === 'released') released();
           // Someone moved or renamed the note (§20.4): it is read again, which says where it lies, and the page follows it there.
           else if (message.type === 'moved') latest.current.onRefetch();
@@ -714,7 +760,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
   // Discarding asks the server: a live tab offers it only connected, with its document synced, so its unsaved typing can be offered when the draft stays.
   const discardOffline = live && !(connection.status === 'connected' && connection.synced);
   return (
-    <div className='live-editor-frame live-collab'>
+    <div className='live-editor-frame live-collab' style={connection.you ? { '--live-own-colour': connection.you.color } as CSSProperties : undefined} data-own-colour={connection.you ? '' : undefined}>
       <div className='live-editor-bar' role='toolbar' aria-label={t('live.toolbar')}>
         {live && (
           <>
@@ -722,6 +768,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
               <Users size={14} aria-hidden='true' />
               {t('live.editors', { count: connection.people })}
             </span>
+            <EditorList you={connection.you} others={connection.others} t={t} />
             <span className='live-editor-state' data-tone={stateKey === 'live.saved' ? 'ok' : stateKey === 'live.offline' ? 'warn' : undefined}>{stateKey === 'live.offline' && <CloudOff size={14} aria-hidden='true' />}{t(stateKey)}</span>
           </>
         )}

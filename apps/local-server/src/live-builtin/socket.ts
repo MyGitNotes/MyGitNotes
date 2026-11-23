@@ -157,6 +157,8 @@ const RENEW_REASON = 'Live ticket renewal';
 const TICKET = /^[A-Za-z0-9_-]{32,128}$/;
 /** What a tab is told of who has its note open: the people with a seat on the document, each once. */
 const PEOPLE = (count: number) => JSON.stringify({ type: 'people', count });
+/** What a tab is told of itself: the name and colour the others see its cursor under, so it can show both. */
+const YOU = (name: string, color: string) => JSON.stringify({ type: 'you', name, color });
 const REFUSED = (reason: 'too-large' | 'busy' | 'invalid') => JSON.stringify({ type: 'refused', reason });
 const errorName = (error: unknown) => error instanceof Error ? error.constructor.name : 'error';
 
@@ -304,10 +306,12 @@ export function liveSocket({ documents, store, clock, process: processName, read
       // A connection closing under the message: its seat leaves, and the others are told again then.
     }
   };
-  /** Tells one seat, one that just opened the document, how many people have it open, without telling the others. */
+  /** Tells one seat, one that just opened the document, how many people have it open and who it is to the others, without telling the others. */
   const tellPeople = (seat: Seat) => {
     const room = rooms.get(seat.name);
-    if (room) send(seat, PEOPLE(peopleOn(room)));
+    if (!room) return;
+    send(seat, YOU(seat.display, liveColour(seat.editor.key)));
+    send(seat, PEOPLE(peopleOn(room)));
   };
   /** Sends a socket a message, unless it is closing: Hocuspocus then has nobody to tell either. */
   const tell = (socket: WebSocket, message: Uint8Array) => {

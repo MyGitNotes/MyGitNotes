@@ -21,7 +21,7 @@ interface FakeConfig {
   onSynced?: (event: { state: boolean; }) => void;
   onUnsyncedChanges?: (event: { number: number; }) => void;
   onDirty?: (event: { dirty: boolean; }) => void;
-  onAwarenessChange?: (event: { states: { clientId: number; user?: { name?: string; }; }[]; }) => void;
+  onAwarenessChange?: (event: { states: { clientId: number; user?: { name?: string; color?: string; }; }[]; }) => void;
   onStateless?: (event: { payload: string; }) => void;
   onAuthenticationFailed?: (event: { reason: string; }) => void;
   onAuthenticated?: (event: { scope: string; }) => void;
@@ -170,6 +170,25 @@ describe('the bar', () => {
     emit(config => config.onStatus?.({ status: 'connected' }));
     emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'people', count: 3 }) }));
     expect(screen.getByText('3 editing')).toBeInTheDocument();
+  });
+
+  it('lists who is editing beside the colour of their cursor, the tab itself first, and takes its own colour for its caret', async () => {
+    await open();
+    sync();
+    expect(screen.queryByRole('list', { name: 'People editing' })).toBeNull();
+    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'you', name: 'Me', color: '#a1b2c3' }) }));
+    emit(config => config.onAwarenessChange?.({ states: [{ clientId: config.document.clientID }, { clientId: 2, user: { name: 'Bo', color: '#112233' } }, { clientId: 3, user: { name: 'Bo', color: '#112233' } }, { clientId: 4, user: { name: 'Me', color: '#a1b2c3' } }, { clientId: 5, user: { name: 'Cy', color: 'red' } }] }));
+    const list = screen.getByRole('list', { name: 'People editing' });
+    const items = [...list.querySelectorAll('li')];
+    // Another window of the tab's own person is the tab itself; a name is listed once; a colour that is no hex colour shows none.
+    expect(items.map(item => item.textContent)).toEqual(['Me (you)', 'Bo', 'Cy']);
+    expect(items.map(item => (item.querySelector('.live-editor-swatch') as HTMLElement).style.backgroundColor)).toEqual(['rgb(161, 178, 195)', 'rgb(17, 34, 51)', '']);
+    const frame = list.closest('.live-collab') as HTMLElement;
+    expect(frame).toHaveAttribute('data-own-colour');
+    expect(frame.style.getPropertyValue('--live-own-colour')).toBe('#a1b2c3');
+    // A `you` message without a usable colour is ignored.
+    emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'you', name: 'Me', color: 'url(x)' }) }));
+    expect(frame.style.getPropertyValue('--live-own-colour')).toBe('#a1b2c3');
   });
 
   it('announces the tab in awareness on every connect, so the others count it before it moves a cursor', async () => {

@@ -134,6 +134,13 @@ const sockets = (name: string, makeStore: () => LiveStore) =>
       expect(await stored(store, id)).toBe(text);
       // Each tab asked for one ticket, and opened one socket with it.
       expect([one.asked, two.asked, one.refused, one.closes, one.told]).toEqual([1, 1, [], [], []]);
+      // Each tab is told the name and colour the others see its cursor under: its own, the same in every window of its person.
+      expect(one.you).toEqual([{ name: 'Person 1', color: expect.stringMatching(/^#[0-9a-f]{6}$/) }]);
+      expect(two.you).toEqual([{ name: 'Person 2', color: expect.stringMatching(/^#[0-9a-f]{6}$/) }]);
+      expect(one.you[0].color).not.toBe(two.you[0].color);
+      const again = await server.tab(1);
+      await again.synced();
+      expect(again.you).toEqual(one.you);
     });
 
     it('tells every tab how many people have the note open, each person once however many windows, at once as they come, close, go offline and come back', async () => {

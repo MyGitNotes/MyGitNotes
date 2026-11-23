@@ -2512,6 +2512,8 @@ export const en = {
   'live.frameTitle': 'Live editor: {title}',
   'live.frameRefused': 'The live editor cannot be shown here.',
   'live.editors': '{count} editing',
+  'live.editorList': 'People editing',
+  'live.editorYou': '{name} (you)',
   'live.saved': 'Saved',
   'live.saving': 'Saving…',
   'live.connecting': 'Connecting…',

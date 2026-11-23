@@ -2513,6 +2513,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'live.frameTitle': '即時編輯器：{title}',
   'live.frameRefused': '無法在這裡顯示即時編輯器。',
   'live.editors': '{count} 人編輯中',
+  'live.editorList': '正在編輯的人',
+  'live.editorYou': '{name}（你）',
   'live.saved': '已儲存',
   'live.saving': '儲存中…',
   'live.connecting': '連線中…',
