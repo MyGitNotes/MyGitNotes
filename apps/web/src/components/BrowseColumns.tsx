@@ -1,5 +1,5 @@
 import './browse-columns.css';
-import { type ReactNode, useCallback, useLayoutEffect, useRef } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { BrowseColumnsLayout } from '../lib/browse-columns.js';
 import { useTranslation } from '../lib/i18n/index.js';
 
@@ -22,8 +22,16 @@ export interface BrowseColumnsProps {
   restore?: ReactNode;
 }
 
-/** Whether `element` no longer takes focus where it is: removed from the page, or inside a column that folded away. */
-const lost = (element: Element | null) => !element || !element.isConnected || Boolean(element.closest('[hidden]'));
+/** Whether `element` no longer takes focus where it is: removed from the page, or inside a column that folded away or is sliding shut. */
+const lost = (element: Element | null) => !element || !element.isConnected || Boolean(element.closest('[hidden], [inert]'));
+
+/** Where motion is welcome, the list slides shut and open as the notebooks column slides to its rail (browse-columns.css). */
+const motionWelcome = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: no-preference)').matches === true;
+/** Past the 160ms slide: a list whose transition never ends (an interrupted or skipped one) hides anyway. */
+const SLIDE_FALLBACK_MS = 300;
+
+/** The list column on its way: `closing` slides its width to nothing before it hides, `opening` shows it at no width for a frame to slide from. */
+type ListPhase = 'open' | 'closing' | 'closed' | 'opening';
 
 /**
  * The Notes page's three columns: the notebooks, the note list and the note. Their elements stay the same whatever the person opens, closes or
@@ -35,6 +43,24 @@ export function BrowseColumns({ layout, measure, merged, notebooks, list, note, 
   const root = useRef<HTMLDivElement | null>(null);
   const focused = useRef<Element | null>(null);
   const listShown = layout.list || merged;
+  const [phase, setPhase] = useState<ListPhase>(listShown ? 'open' : 'closed');
+  const [wasShown, setWasShown] = useState(listShown);
+  if (wasShown !== listShown) {
+    setWasShown(listShown);
+    setPhase(listShown ? (motionWelcome() ? 'opening' : 'open') : (motionWelcome() ? 'closing' : 'closed'));
+  }
+  useEffect(() => {
+    if (phase === 'closing') {
+      const timer = window.setTimeout(() => setPhase('closed'), SLIDE_FALLBACK_MS);
+      return () => window.clearTimeout(timer);
+    }
+    if (phase !== 'opening') return;
+    // Two frames: the first lays the list out at no width, the second gives it its width to slide to.
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setPhase('open'));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [phase]);
   useLayoutEffect(() => {
     const was = focused.current;
     if (!was || !lost(was) || !root.current) return;
@@ -55,7 +81,7 @@ export function BrowseColumns({ layout, measure, merged, notebooks, list, note, 
       ref={attach}
       className='browse-columns'
       data-notebooks={layout.notebooks}
-      data-list={listShown ? 'open' : 'closed'}
+      data-list={phase === 'open' ? 'open' : 'closed'}
       data-merged={merged || undefined}
       onFocus={event => {
         focused.current = event.target;
@@ -65,7 +91,18 @@ export function BrowseColumns({ layout, measure, merged, notebooks, list, note, 
       }}
     >
       <aside id={NOTEBOOK_COLUMN_ID} className='browse-column browse-column-notebooks' aria-label={t('sidebar.notebooks')}>{notebooks}</aside>
-      <section id={LIST_COLUMN_ID} className='browse-column browse-column-list' aria-label={t('browse.listColumn')} hidden={!listShown}>{list}</section>
+      <section
+        id={LIST_COLUMN_ID}
+        className='browse-column browse-column-list'
+        aria-label={t('browse.listColumn')}
+        hidden={phase === 'closed'}
+        {...(phase === 'closing' ? { inert: '' } : {})}
+        onTransitionEnd={event => {
+          if (event.target === event.currentTarget && phase === 'closing') setPhase('closed');
+        }}
+      >
+        {list}
+      </section>
       <div className='browse-column browse-column-note' hidden={merged}>
         {!layout.list && restore && <div className='browse-column-restore'>{restore}</div>}
         <div className='browse-column-note-body'>{note}</div>

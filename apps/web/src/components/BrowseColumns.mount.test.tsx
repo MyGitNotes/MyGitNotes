@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useEffect } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import type { BrowseColumnsLayout } from '../lib/browse-columns.js';
 import { I18nProvider } from '../lib/i18n/index.js';
@@ -91,4 +91,66 @@ it('hands its element to measure once, not again on every render, so measuring c
   rerender(view({ notebooks: 'rail', list: true }, false));
   expect(measure).toHaveBeenCalledOnce();
   expect(measure).toHaveBeenCalledWith(document.querySelector('.browse-columns'));
+});
+
+// Boss: the notebooks column slid to its rail while the list vanished at once. Where motion is welcome the list now slides shut too, leaves the
+// keyboard while it does, and hides once its width has run out; it slides open from nothing.
+describe('the list sliding', () => {
+  const motion = (welcome: boolean) => {
+    window.matchMedia = ((query: string) => ({ matches: welcome && query.includes('no-preference'), media: query, onchange: null, addListener: () => {}, removeListener: () => {}, addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false })) as typeof window.matchMedia;
+  };
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'matchMedia');
+    vi.useRealTimers();
+  });
+
+  it('slides the list shut, then hides it', () => {
+    motion(true);
+    const { rerender } = render(page({ notebooks: 'open', list: true }, false, <p>note</p>));
+    const root = document.querySelector('.browse-columns')!;
+    const list = document.getElementById(LIST_COLUMN_ID)!;
+    rerender(page({ notebooks: 'open', list: false }, false, <p>note</p>));
+    expect(root).toHaveAttribute('data-list', 'closed');
+    expect(list).not.toHaveAttribute('hidden');
+    expect(list).toHaveAttribute('inert');
+    fireEvent.transitionEnd(list, { propertyName: 'flex-basis' });
+    expect(list).toHaveAttribute('hidden');
+    expect(list).not.toHaveAttribute('inert');
+  });
+
+  it('hides the list even when its transition never ends', () => {
+    vi.useFakeTimers();
+    motion(true);
+    const { rerender } = render(page({ notebooks: 'open', list: true }, false, <p>note</p>));
+    rerender(page({ notebooks: 'open', list: false }, false, <p>note</p>));
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(document.getElementById(LIST_COLUMN_ID)).toHaveAttribute('hidden');
+  });
+
+  it('slides the list open from nothing', async () => {
+    motion(true);
+    const { rerender } = render(page({ notebooks: 'open', list: false }, false, <p>note</p>));
+    const root = document.querySelector('.browse-columns')!;
+    const list = document.getElementById(LIST_COLUMN_ID)!;
+    expect(list).toHaveAttribute('hidden');
+    rerender(page({ notebooks: 'open', list: true }, false, <p>note</p>));
+    // Shown at no width first, so the width has somewhere to slide from.
+    expect(list).not.toHaveAttribute('hidden');
+    expect(root).toHaveAttribute('data-list', 'closed');
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    });
+    expect(root).toHaveAttribute('data-list', 'open');
+  });
+
+  it('folds and opens at once where motion is reduced', () => {
+    motion(false);
+    const { rerender } = render(page({ notebooks: 'open', list: true }, false, <p>note</p>));
+    rerender(page({ notebooks: 'open', list: false }, false, <p>note</p>));
+    expect(document.getElementById(LIST_COLUMN_ID)).toHaveAttribute('hidden');
+    rerender(page({ notebooks: 'open', list: true }, false, <p>note</p>));
+    expect(document.querySelector('.browse-columns')).toHaveAttribute('data-list', 'open');
+  });
 });
