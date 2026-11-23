@@ -151,7 +151,8 @@ it('clears a search with the ✕, keeping the cursor in the field, and shows the
   expect(within(region).queryByRole('button', { name: '清除搜尋' })).toBeNull();
   fireEvent.change(field, { target: { value: 'dragon' } });
   const clear = within(region).getByRole('button', { name: '清除搜尋' });
-  expect(clear).toHaveAttribute('title', '清除搜尋');
+  // A tooltip names it, not a native title.
+  expect(clear).not.toHaveAttribute('title');
   fireEvent.click(clear);
   expect(field).toHaveValue('');
   expect(document.activeElement).toBe(field);

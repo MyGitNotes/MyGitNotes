@@ -1,0 +1,19 @@
+/* A notebook's mark (NotebookMark): a tile tinted with its colour and its icon or initial in that colour. The colours are the status tokens, so every theme and mode follow; the appearance picker's swatches share the notebook-color-* classes. */
+.notebook-mark { --mark: var(--color-muted); --mark-ink: var(--color-text); --mark-size: 20px; display: inline-grid; flex: none; place-items: center; width: var(--mark-size); height: var(--mark-size); border-radius: calc(var(--mark-size) / 4); background: color-mix(in srgb, var(--mark) 16%, transparent); color: var(--mark-ink); font: 600 calc(var(--mark-size) * 0.5) / 1 var(--font-body); }
+.notebook-mark[data-color] { --mark-ink: var(--mark); }
+.notebook-color-green { --mark: var(--color-success); }
+.notebook-color-blue { --mark: var(--color-info); }
+.notebook-color-amber { --mark: var(--color-warning); }
+.notebook-color-red { --mark: var(--color-danger); }
+.notebook-color-purple { --mark: var(--color-status-purple); }
+.notebook-color-teal { --mark: var(--color-status-teal); }
+.notebook-color-pink { --mark: var(--color-status-pink); }
+.notebook-color-gray { --mark: var(--color-status-gray); }
+.notebook-mark[data-state] > svg { display: block; color: inherit; opacity: 1; }
+.notebook-mark[data-size='rail'] { --mark-size: 32px; }
+.notebook-mark[data-size='row'] { --mark-size: 20px; }
+.notebook-mark[data-size='inline'] { --mark-size: 22px; }
+.notebook-mark[data-size='tab'] { --mark-size: 16px; }
+/* The open notebook: a stronger tint and a ring in its colour. */
+.notebook-mark[data-selected] { background: color-mix(in srgb, var(--mark) 30%, transparent); box-shadow: 0 0 0 2px var(--workspace-rail, var(--color-surface)), 0 0 0 3.5px var(--mark); }
+.notebook-mark.select-option-mark { margin-inline-end: 8px; vertical-align: -3px; }

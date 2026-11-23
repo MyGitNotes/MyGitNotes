@@ -90,7 +90,7 @@ function TreeItem({ folder, hint, disabled, selected, onSelect, onManage, onDrop
     <div ref={drag.setNodeRef} {...(disabled ? {} : drag.listeners)} className={`folder-tree-item ${selected ? 'is-selected' : ''} ${disabled ? '' : 'is-draggable'}`} style={{ opacity: drag.isDragging ? 0.35 : undefined }}>
       <NoteDropTarget onDrop={disabled ? undefined : onDropNote}>
         <DropZone path={folder.path} hint={hint} disabled={disabled}>
-          <NavTreeRow hasChildren={hasChildren} isExpanded={isExpanded} onToggleExpand={onToggleExpand} expandAriaLabel={isExpanded ? t('folder.collapse') : t('folder.expand')} title={folder.title} selected={selected} onSelect={onSelect} actions={<FolderActions title={folder.title} disabled={disabled} onAction={onManage} />} buttonProps={{ title: folder.description || folder.path }} />
+          <NavTreeRow hasChildren={hasChildren} isExpanded={isExpanded} onToggleExpand={onToggleExpand} expandAriaLabel={isExpanded ? t('folder.collapse') : t('folder.expand')} title={folder.title} selected={selected} onSelect={onSelect} actions={<FolderActions title={folder.title} disabled={disabled} onAction={onManage} />} tooltip={{ label: folder.description || folder.path }} />
         </DropZone>
       </NoteDropTarget>
     </div>
@@ -104,7 +104,7 @@ function RootRow({ hint, selected, disabled, onSelect, onDropNote }: { hint?: Dr
   return (
     <NoteDropTarget onDrop={disabled ? undefined : onDropNote}>
       <DropZone path='' hint={hint} disabled={disabled}>
-        <NavTreeRow hasChildren={false} title={t('folder.allFolders')} selected={selected} onSelect={onSelect} />
+        <NavTreeRow hasChildren={false} title={t('folder.allFolders')} selected={selected} onSelect={onSelect} tooltip={{}} />
       </DropZone>
     </NoteDropTarget>
   );

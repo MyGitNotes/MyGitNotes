@@ -93,6 +93,7 @@ import { browsePath, phoneBrowseLayout } from './lib/browse-layout.js';
 import { browsePresentation, paneColumns } from './lib/browse-columns.js';
 import { browseColumnCommands, useBrowseColumns } from './app/useBrowseColumns.js';
 import { BrowseColumns, LIST_COLUMN_ID, NOTEBOOK_COLUMN_ID } from './components/BrowseColumns.js';
+import { useNotebookAppearance } from './components/NotebookAppearance.js';
 import { NotebookColumn } from './components/NotebookColumn.js';
 import { NotebookTree } from './components/NotebookTree.js';
 import { type FolderChoice, NoteListColumn } from './components/NoteListColumn.js';
@@ -306,6 +307,8 @@ export const AppContent: React.FC = () => {
 
   // The selected notebook's templates: its manifest's, then the files of its `.templates/` folder, with this page's working changes.
   const selectedNotebook = config?.notebooks.find(nb => nb.id === selectedNotebookId);
+  // A notebook's 「外觀…」 (icon and colour), from its context menu in the notebooks column.
+  const notebookAppearance = useNotebookAppearance({ notebooks: config?.notebooks ?? [], repositoryFor, refreshWorkspace, setManifestRevision });
   const notebookTemplates = useNotebookTemplates(selectedNotebook);
   const [manageTemplatesOpen, setManageTemplatesOpen] = useState(false);
   // A new note of a live repository whose template's path needs values asks for them first.
@@ -690,9 +693,9 @@ export const AppContent: React.FC = () => {
   // A read-only notebook shows neither the New button nor its menu.
   const newNote: NewNoteActions | undefined = notesActions && canWrite ? { onNewNote: () => void createNote(), onNewOutline: () => void createNote({ kind: 'outline' }), onNewCompilation: () => void createUntitledCompilation(), templates: [...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)], onManageTemplates: selectedNotebook ? () => setManageTemplatesOpen(true) : undefined, onNewFromTemplate: templateId => void createNote({ templateId }), onImportLegacy: legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined } : undefined;
   const unavailableNotebooks = repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks);
-  const focusArea = <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />;
+  const focusArea = <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} notebook={selectedNotebook} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />;
   // Column 1: every notebook, the open one unfolded into its folders, outlines and compilations, or the rail of their initials.
-  const notebookColumn = <NotebookColumn mode={columns.layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={config?.notebooks || []} groups={notebookGroups} unavailableNotebooks={unavailableNotebooks} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} switchDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} counts={facetsQuery.facets ? Object.fromEntries(Object.entries(facetsQuery.facets).map(([id, facet]) => [id, facet.total])) : undefined} current={selectedNotebook && <NotebookTree notebook={selectedNotebook} filters={filterProps} facets={facetsQuery.facets} folders={folders} foldersLoading={foldersLoading} foldersWritable={canWriteFiles} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onManageFiles={openFileManager} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} onDropNote={dropNoteOnFolder} expanded={foldedTree !== selectedNotebookId} onToggleExpanded={() => setFoldedTree(folded => folded === selectedNotebookId ? null : selectedNotebookId)} />} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} searchRef={notesColumns ? noteSearch : undefined} onOpenSearch={focusNoteSearch} kind={route.kind} onSelectKind={kind => changeFilters({ kind, folders: [] })} />;
+  const notebookColumn = <NotebookColumn mode={columns.layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={config?.notebooks || []} groups={notebookGroups} unavailableNotebooks={unavailableNotebooks} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} switchDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} counts={facetsQuery.facets ? Object.fromEntries(Object.entries(facetsQuery.facets).map(([id, facet]) => [id, facet.total])) : undefined} current={selectedNotebook && <NotebookTree notebook={selectedNotebook} filters={filterProps} facets={facetsQuery.facets} folders={folders} foldersLoading={foldersLoading} foldersWritable={canWriteFiles} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onManageFiles={openFileManager} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} onDropNote={dropNoteOnFolder} expanded={foldedTree !== selectedNotebookId} onToggleExpanded={() => setFoldedTree(folded => folded === selectedNotebookId ? null : selectedNotebookId)} onContextMenu={event => notebookAppearance.onContextMenu(event, selectedNotebookId)} />} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} searchRef={notesColumns ? noteSearch : undefined} onOpenSearch={focusNoteSearch} kind={route.kind} onSelectKind={kind => changeFilters({ kind, folders: [] })} onNotebookContextMenu={notebookAppearance.onContextMenu} />;
   // Column 2: where the list is, its view switch and fold toggle, the Status, Tags and Sort buttons, and the list, table or board.
   const listPath = route.kind === 'outline' ? [t('outline.list')] : route.kind === 'compilation' ? [t('sidebar.compilations')] : breadcrumbs.filter(segment => segment.path !== null).map(segment => segment.name);
   // The root choice is named after the notebook: beside the rail the picker stands for the whole path.
@@ -701,6 +704,7 @@ export const AppContent: React.FC = () => {
     <NoteListColumn
       columnId={LIST_COLUMN_ID}
       notebookTitle={selectedNotebook?.title ?? ''}
+      notebook={selectedNotebook}
       path={listPath}
       count={filterProps.count}
       presentation={presentation}
@@ -968,6 +972,7 @@ export const AppContent: React.FC = () => {
                     ))}
                   </section>
                 )}
+                {notebookAppearance.element}
                 {fileDialog && <FileManagerDialog notebookId={fileDialog.notebookId} notebooks={config?.notebooks || []} writable={canWriteFiles} initialPath={fileDialog.path} movePath={fileDialog.movePath} initialOperation={fileDialog.initialOperation} showDocuments={fileDialog.showDocuments} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} onClose={() => setFileDialog(undefined)} />}
                 {noteMove.request?.mode === 'move' && movingNotebook && <FolderPickerDialog notebooks={[movingNotebook]} folders={folders} title={t('files.moveNoteTitle', { title: noteMove.request.note.title || noteMove.request.note.path.split('/').pop() || '' })} initial={{ notebookId: movingNotebook.id, folder: noteMove.request.note.live?.pending ? liveDestinationFolder(noteMove.request.note.live) : noteFolder(noteMove.request.note.path, movingNotebook.root) }} confirmLabel={t('bulk.moveConfirm')} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={({ folder }) => void noteMove.confirmMove(folder)}>{noteMove.request.note.live?.pending && <p className='text-xs text-muted'>{t('live.collisionNote')}</p>}</FolderPickerDialog>}
                 {livePathRequest && (

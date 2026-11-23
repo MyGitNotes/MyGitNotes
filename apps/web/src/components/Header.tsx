@@ -5,6 +5,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import type { WorkspaceTab } from '../lib/routes.js';
 import type { NotebookConfig } from '../lib/types.js';
 import { Select } from './Select.js';
+import { Tooltip } from './Tooltip.js';
 import { ariaKeyShortcuts, formatKeys } from '../lib/keyboard/keys.js';
 import { bindingsFor, keymapEntry } from '../lib/keyboard/keymap.js';
 import { keyEnvironment } from '../lib/keyboard/platform.js';
@@ -105,9 +106,11 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
       <div className='header-layout'>
         <div className='header-brand'>
           {notebooksToggle && (
-            <button type='button' className='ui-icon-button header-notebooks-toggle' aria-label={notebooksLabel} title={notebooksLabel} aria-keyshortcuts={notebooksKeys && ariaKeyShortcuts(notebooksKeys, keyEnvironment)} aria-expanded={notebooksToggle.open} aria-controls={notebooksToggle.controls} onClick={notebooksToggle.onToggle}>
-              <PanelLeft size={17} aria-hidden='true' />
-            </button>
+            <Tooltip label={notebooksLabel} detail={notebooksKeys && formatKeys(notebooksKeys, keyEnvironment).join(' ')}>
+              <button type='button' className='ui-icon-button header-notebooks-toggle' aria-label={notebooksLabel} aria-keyshortcuts={notebooksKeys && ariaKeyShortcuts(notebooksKeys, keyEnvironment)} aria-expanded={notebooksToggle.open} aria-controls={notebooksToggle.controls} onClick={notebooksToggle.onToggle}>
+                <PanelLeft size={17} aria-hidden='true' />
+              </button>
+            </Tooltip>
           )}
           <img src={`${import.meta.env.BASE_URL}brand/github-notes-64.png`} width='32' height='32' alt='MyGitNotes' className='workspace-brand-icon' />
           <div className='min-w-0'>

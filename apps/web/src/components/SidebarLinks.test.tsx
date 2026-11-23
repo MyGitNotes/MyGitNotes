@@ -119,3 +119,11 @@ it('adds nothing when no feature registers a link, or only unsafe ones', () => {
     }
   }
 });
+
+it('names a link on the rail by tooltip, not a native title', async () => {
+  app([archive], notebookColumn('rail'));
+  const help = screen.getByRole('link', { name: 'Help' });
+  expect(help).not.toHaveAttribute('title');
+  fireEvent.pointerEnter(help, { pointerType: 'mouse' });
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Help');
+});

@@ -1,5 +1,6 @@
 import React, { ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Folder } from 'lucide-react';
+import { Tooltip } from './Tooltip.js';
 
 export interface NavTreeProps {
   children: ReactNode;
@@ -26,9 +27,21 @@ export interface NavTreeRowProps {
   className?: string;
   disabled?: boolean;
   buttonProps?: React.ButtonHTMLAttributes<HTMLButtonElement>;
+  /**
+   * Names the row in a tooltip (`Tooltip`) instead of a native title: `label` defaults to the row's title, `detail` is
+   * shown muted after it. Without it the row keeps the native title.
+   */
+  tooltip?: { label?: string; detail?: ReactNode; };
 }
 
-export function NavTreeRow({ hasChildren = false, isExpanded = false, onToggleExpand, expandAriaLabel, icon = <Folder size={15} />, title, selected = false, onSelect, actions, prefix, suffix, className = '', disabled = false, buttonProps }: NavTreeRowProps) {
+export function NavTreeRow({ hasChildren = false, isExpanded = false, onToggleExpand, expandAriaLabel, icon = <Folder size={15} />, title, selected = false, onSelect, actions, prefix, suffix, className = '', disabled = false, buttonProps, tooltip }: NavTreeRowProps) {
+  const entry = (
+    <button type='button' className='nav-tree-entry' aria-current={selected ? 'location' : undefined} aria-pressed={selected} disabled={disabled} onClick={onSelect} title={tooltip ? undefined : title} {...buttonProps}>
+      {icon}
+      <span className='nav-tree-title'>{title}</span>
+      {suffix}
+    </button>
+  );
   return (
     <div className={`nav-tree-row ${selected ? 'is-selected' : ''} ${className}`}>
       {prefix}
@@ -49,11 +62,7 @@ export function NavTreeRow({ hasChildren = false, isExpanded = false, onToggleEx
           </button>
         )
         : <span className='nav-tree-chevron-spacer' aria-hidden='true' />}
-      <button type='button' className='nav-tree-entry' aria-current={selected ? 'location' : undefined} aria-pressed={selected} disabled={disabled} onClick={onSelect} title={title} {...buttonProps}>
-        {icon}
-        <span className='nav-tree-title'>{title}</span>
-        {suffix}
-      </button>
+      {tooltip ? <Tooltip label={tooltip.label ?? title} detail={tooltip.detail} side='right'>{entry}</Tooltip> : entry}
       {actions}
     </div>
   );

@@ -45,6 +45,9 @@
 .browse-rail-notebook:hover:not(:disabled):not([aria-current='true']) { background: var(--workspace-selection); }
 .browse-rail-notebook[aria-current='true'] { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-on-primary); }
 .browse-rail-notebook:disabled { cursor: default; opacity: 0.6; }
+/* A notebook with a mark of its own is its tinted tile (notebook-mark.css), the open one marked by the tile's stronger tint and ring. */
+.browse-rail-notebook[data-marked], .browse-rail-notebook[data-marked][aria-current='true'] { border-color: transparent; background: transparent; color: var(--color-text); }
+.browse-rail-notebook[data-marked]:hover:not(:disabled) { background: var(--workspace-selection); }
 .browse-rail .ui-icon-button[aria-pressed='true'] { background: var(--workspace-selection); color: var(--color-primary); }
 .browse-rail .sidebar-links { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; }
 .browse-rail .sidebar-link { justify-content: center; width: 40px; height: 36px; padding: 0; }

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { AlertCircle, Check, Save } from 'lucide-react';
-import YAML from 'yaml';
 import type { RepositoryId } from '@mygitnotes/core/repository';
 import { ApiError, updateWorkspaceConfig } from '../lib/api.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { manifestYaml } from '../lib/notebook-appearance.js';
 import type { WorkspaceRepository } from '../lib/workspace-repositories.js';
 import { Button } from './Button.js';
 import { Select } from './Select.js';
@@ -25,7 +25,7 @@ export interface ManifestSettingsProps {
  * notebook's `excluded` is derived from the `exclude` lists when the manifest is read and is never part of the file, so
  * it is left out: shown, it would look like a second list to edit, and an edit to it does nothing.
  */
-const manifestText = (repository: WorkspaceRepository | undefined) => repository?.manifestError ? repository.manifestError.text : repository?.config ? YAML.stringify({ ...repository.config, notebooks: repository.config.notebooks.map(({ excluded: _excluded, ...notebook }) => notebook) }) : '';
+const manifestText = (repository: WorkspaceRepository | undefined) => repository?.manifestError ? repository.manifestError.text : repository?.config ? manifestYaml(repository.config) : '';
 
 /** Settings → Manifest: each repository's own `.mygitnotes.yaml`, edited and committed in that repository. */
 export function ManifestSettings({ repositories, defaultRepository, initialRepository, onManifestRevision, onRefreshWorkspace }: ManifestSettingsProps) {

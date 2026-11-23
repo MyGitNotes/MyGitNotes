@@ -61,6 +61,24 @@ describe('the list header', () => {
     expect(onPresentationChange).toHaveBeenCalledWith('kanban');
   });
 
+  it("puts the notebook's mark before its name, and names the header's buttons and its path by tooltip, not a native title", async () => {
+    column({ notebook: { title: 'Life', icon: 'leaf', color: 'green' } });
+    const path = document.querySelector<HTMLElement>('.browse-list-path')!;
+    expect(path.querySelector('.notebook-mark')).toHaveAttribute('data-color', 'green');
+    expect(path).not.toHaveAttribute('title');
+    for (const name of ['List', 'Table', 'Board', 'Hide note list']) expect(screen.getByRole('button', { name })).not.toHaveAttribute('title');
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Hide note list' }), { pointerType: 'mouse' });
+    expect((await screen.findByRole('tooltip')).querySelector('.tooltip-detail')).toHaveTextContent(/Shift/);
+    fireEvent.pointerLeave(screen.getByRole('button', { name: 'Hide note list' }), { pointerType: 'mouse' });
+    fireEvent.pointerEnter(path, { pointerType: 'mouse' });
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Life › tech');
+  });
+
+  it('shows no mark for a notebook without one', () => {
+    column({ notebook: { title: 'Life' } });
+    expect(document.querySelector('.browse-list-path .notebook-mark')).toBeNull();
+  });
+
   it('folds the list away from the right end of its header', () => {
     const onCollapse = vi.fn();
     column({ onCollapse });

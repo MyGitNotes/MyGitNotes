@@ -18,11 +18,14 @@ interface SelectOption {
   value: string;
   label: string;
   disabled?: boolean;
+  /** Drawn before the label, in the list and in the trigger (such as a notebook's mark); typeahead reads the label alone. */
+  leading?: ReactNode;
 }
 
 function SelectItem({ option }: { option: SelectOption; }) {
   return (
     <RadixSelect.Item className='select-option' value={`option:${option.value}`} data-option-value={option.value} disabled={option.disabled}>
+      {option.leading}
       <RadixSelect.ItemText>{option.label}</RadixSelect.ItemText>
       <RadixSelect.ItemIndicator className='select-check'>
         <Check className='w-4 h-4' />
@@ -35,6 +38,7 @@ export function Select({ value, onValueChange, options, groups, icon, disabled, 
   const trigger = useRef<HTMLButtonElement>(null);
   const [portal, setPortal] = useState<HTMLElement>();
   const [contentReady, setContentReady] = useState(false);
+  const selected = options.find(option => option.value === value);
   useEffect(() => {
     setPortal(trigger.current?.closest('dialog') || undefined);
     // Forms need Radix's native options even before the user visits this field.
@@ -63,7 +67,7 @@ export function Select({ value, onValueChange, options, groups, icon, disabled, 
         }}
       >
         <span className='select-value'>
-          <RadixSelect.Value placeholder='Select…'>{icon ?? options.find(option => option.value === value)?.label ?? value}</RadixSelect.Value>
+          <RadixSelect.Value placeholder='Select…'>{icon ?? (selected ? <>{selected.leading}{selected.label}</> : value)}</RadixSelect.Value>
         </span>
         <RadixSelect.Icon asChild>
           <ChevronDown className='select-chevron w-3.5 h-3.5 shrink-0' />

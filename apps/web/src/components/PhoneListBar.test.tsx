@@ -132,3 +132,14 @@ it("lists the notebook's metadata sort field in the filter sheet's sort menu", (
   fireEvent.click(screen.getByRole('option', { name: 'date (ascending)' }));
   expect(onSortChange).toHaveBeenCalledWith('metadata.date', 'asc');
 });
+
+it("puts each notebook's mark before its name in the switcher, and none where a notebook has none", async () => {
+  bar({ notebooks: [{ id: 'a', title: 'Alpha', color: 'red' }, { id: 'b', title: 'Beta' }] as never });
+  const switcher = screen.getByRole('combobox', { name: 'Notebooks' });
+  expect(switcher.querySelector('.notebook-mark')).toHaveAttribute('data-color', 'red');
+  fireEvent.keyDown(switcher, { key: 'ArrowDown' });
+  const options = await screen.findAllByRole('option');
+  expect(options[0].querySelector('.notebook-mark')).toHaveAttribute('data-color', 'red');
+  expect(options[1].querySelector('.notebook-mark')).toBeNull();
+  expect(options[1]).toHaveTextContent('Beta');
+});

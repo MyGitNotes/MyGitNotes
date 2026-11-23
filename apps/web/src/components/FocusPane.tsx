@@ -13,6 +13,7 @@ import type { NoteEditorProps } from './NoteEditor.js';
 import { HostedNoteEditor } from './NoteEditorHost.js';
 import { BatchAddDialog } from './BatchAddDialog.js';
 import { Button } from './Button.js';
+import { hasNotebookMark, type MarkedNotebook, NotebookMark } from './NotebookMark.js';
 import { paneDimmed, tabDimmed } from '../lib/focus-search.js';
 import { usePublishAgentTarget } from '../lib/pi-agent/session.js';
 import { usePhone } from '../lib/use-phone.js';
@@ -46,6 +47,8 @@ export interface FocusPaneContext {
   documentPanel?: NoteEditorProps['documentPanel'];
   /** The paths matching the toolbar search while it dims the Focus; null when it is inactive. */
   searchMatches?: ReadonlySet<string> | null;
+  /** The Focus's notebook, whose mark a note's tab shows where it has one. */
+  notebook?: MarkedNotebook;
 }
 
 interface PaneTab {
@@ -63,7 +66,7 @@ interface DropSlot {
 
 /** One pane on screen: its tab list and the displayed tab. On narrow screens it stands for several stored panes. */
 export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; /** Whether the whole tree is on screen (desktop), the only case a drop on a pane's edge splits it. */ edgeDrops?: boolean; }> = ({ displayed, edgeDrops = false, ...context }) => {
-  const { focus, notebookRoot, folders, renderCompilation, onZoomNote, documentPanel, searchMatches = null } = context;
+  const { focus, notebookRoot, folders, renderCompilation, onZoomNote, documentPanel, searchMatches = null, notebook } = context;
   const { t } = useTranslation();
   const layout = focus.layout!, entry = focus.entry!;
   const active = displayed.panes.includes(entry.activePane);
@@ -306,7 +309,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
                   }
                 }}
               >
-                {isCompilationPath(tab.tab.path) ? <GalleryHorizontalEnd aria-hidden='true' /> : <FileText aria-hidden='true' />}
+                <TabIcon path={tab.tab.path} notebook={notebook} />
                 <span>{tab.label}</span>
               </button>
               {editable && (
@@ -323,6 +326,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
             <TabListMenu
               label={t('focus.allTabs')}
               editable={editable}
+              notebook={notebook}
               items={tabs.map(tab => ({ tab, current: tab.pane === displayed.pane && tab.key === displayed.key, cue: repeatedLabels.has(tab.label) ? t('focus.paneShort', { number: numberOf(tab.pane) }) : undefined, closeLabel: t('focus.closeTab', { name: tab.label }), drop: marker(tab) }))}
               onShow={tab => void focus.show(tab.pane, tab.key)}
               onClose={tab => void focus.close(tab.key, tab.pane).catch(() => {})}
@@ -416,7 +420,13 @@ interface TabListItem {
  * Every tab of the pane, for a bar too narrow to show them all: it opens on the shown tab, and a row shows its tab, closes it
  * (its button or Delete) and drags to reorder, as the bar's own tabs do.
  */
-const TabListMenu: React.FC<{ label: string; editable: boolean; items: TabListItem[]; onShow: (tab: PaneTab) => void; onClose: (tab: PaneTab) => void; onDragStart: (event: React.DragEvent, tab: PaneTab) => void; onDragOver: (event: React.DragEvent, tab: PaneTab) => void; onDrop: (event: React.DragEvent, tab: PaneTab) => void; }> = ({ label, editable, items, onShow, onClose, onDragStart, onDragOver, onDrop }) => {
+/** A tab's icon: a compilation's own, else the mark of the Focus's notebook where it has one, else a page. */
+function TabIcon({ path, notebook }: { path: string; notebook?: MarkedNotebook; }) {
+  if (isCompilationPath(path)) return <GalleryHorizontalEnd aria-hidden='true' />;
+  return notebook && hasNotebookMark(notebook) ? <NotebookMark notebook={notebook} size='tab' /> : <FileText aria-hidden='true' />;
+}
+
+const TabListMenu: React.FC<{ label: string; editable: boolean; notebook?: MarkedNotebook; items: TabListItem[]; onShow: (tab: PaneTab) => void; onClose: (tab: PaneTab) => void; onDragStart: (event: React.DragEvent, tab: PaneTab) => void; onDragOver: (event: React.DragEvent, tab: PaneTab) => void; onDrop: (event: React.DragEvent, tab: PaneTab) => void; }> = ({ label, editable, notebook, items, onShow, onClose, onDragStart, onDragOver, onDrop }) => {
   const content = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   // The menu focuses its first row as it opens; the shown tab's row takes the focus over, so the list opens scrolled to it.
@@ -450,7 +460,7 @@ const TabListMenu: React.FC<{ label: string; editable: boolean; items: TabListIt
               onDragOver={event => onDragOver(event, tab)}
               onDrop={event => onDrop(event, tab)}
             >
-              {isCompilationPath(tab.tab.path) ? <GalleryHorizontalEnd aria-hidden='true' /> : <FileText aria-hidden='true' />}
+              <TabIcon path={tab.tab.path} notebook={notebook} />
               <span>{tab.label}</span>
               {cue && <small className='focus-tab-list-cue'>{cue}</small>}
               {editable && (

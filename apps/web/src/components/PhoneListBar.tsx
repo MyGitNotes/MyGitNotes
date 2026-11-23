@@ -7,6 +7,7 @@ import type { SortField, SortOrder } from '../lib/note-sort.js';
 import type { NotebookConfig } from '../lib/types.js';
 import { ViewMode } from '../lib/types.js';
 import { type NoteSearchHandle, noteSortOptions, useClearOrClose } from './note-list-search.js';
+import { NotebookMark } from './NotebookMark.js';
 import { PhoneSheet } from './PhoneSheet.js';
 import { Select } from './Select.js';
 import { SidebarLinks } from './SidebarLinks.js';
@@ -49,7 +50,7 @@ export function PhoneListBar({ notebooks, selectedNotebookId, onSelectNotebook, 
       <button type='button' className='ui-icon-button' aria-label={t('filters.notebookPanel')} title={t('filters.notebookPanel')} aria-expanded={filtersOpen} aria-controls='notebook-panel' onClick={onToggleFilters}>
         <PanelLeft aria-hidden='true' />
       </button>
-      {notebooks.length > 0 && <Select className='phone-list-notebook' aria-label={t('sidebar.notebooks')} value={selectedNotebookId} title={notebooks.find(nb => nb.id === selectedNotebookId)?.title} disabled={notebookDisabled} onValueChange={onSelectNotebook} groups={notebookGroups?.map(group => ({ label: group.label, values: group.notebooks }))} options={notebooks.map(nb => ({ value: nb.id, label: unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title }))} />}
+      {notebooks.length > 0 && <Select className='phone-list-notebook' aria-label={t('sidebar.notebooks')} value={selectedNotebookId} title={notebooks.find(nb => nb.id === selectedNotebookId)?.title} disabled={notebookDisabled} onValueChange={onSelectNotebook} groups={notebookGroups?.map(group => ({ label: group.label, values: group.notebooks }))} options={notebooks.map(nb => ({ value: nb.id, label: unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title, leading: <NotebookMark notebook={nb} size='tab' className='select-option-mark' /> }))} />}
       <button ref={toggle} type='button' className='ui-icon-button note-search-toggle' aria-label={t('header.searchPlaceholder')} aria-expanded={searchOpen} aria-controls='note-toolbar-search' data-active={query.trim() ? true : undefined} onClick={() => setSearchOpen(true)}>
         <Search aria-hidden='true' />
       </button>

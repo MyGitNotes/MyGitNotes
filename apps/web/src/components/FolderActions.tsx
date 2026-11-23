@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { MoreHorizontal } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
+import { Tooltip } from './Tooltip.js';
 
 export type FolderAction = 'browse' | 'move' | 'delete';
 
@@ -16,9 +17,11 @@ export function FolderActions({ title, disabled, onAction }: { title: string; di
         if (open) setPortal(trigger.current?.closest('dialog') || undefined);
       }}
     >
-      <DropdownMenu.Trigger ref={trigger} className='folder-manage' aria-label={`${t('folder.manage')}: ${title}`} title={t('folder.manage')}>
-        <MoreHorizontal size={15} />
-      </DropdownMenu.Trigger>
+      <Tooltip label={t('folder.manage')}>
+        <DropdownMenu.Trigger ref={trigger} className='folder-manage' aria-label={`${t('folder.manage')}: ${title}`}>
+          <MoreHorizontal size={15} />
+        </DropdownMenu.Trigger>
+      </Tooltip>
       <DropdownMenu.Portal container={portal}>
         <DropdownMenu.Content
           className='sidebar-tag-menu folder-action-menu'

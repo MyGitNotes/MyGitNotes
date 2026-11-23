@@ -1,0 +1,24 @@
+/* 「外觀…」 (NotebookAppearanceDialog): a preview of the mark, the icon search and grid, the colour swatches, Clear and Done. */
+.workspace-dialog.notebook-appearance-dialog[open] { width: min(28rem, calc(100vw - 24px)); max-height: min(44rem, 92dvh); display: flex; flex-direction: column; gap: 0.75rem; overflow: hidden; }
+.notebook-appearance-preview { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.notebook-appearance-plain { display: grid; flex: none; place-items: center; width: 32px; height: 32px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); color: var(--color-text); font-size: 15px; font-weight: 600; }
+.notebook-appearance-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.notebook-appearance-section { display: flex; flex-direction: column; gap: 0.4rem; min-height: 0; }
+.notebook-appearance-section:first-of-type { flex: 1 1 auto; }
+.notebook-appearance-section > h3 { margin: 0; color: var(--color-muted); font: 600 11px/1.5 var(--font-body); }
+.icon-picker-grid.notebook-appearance-grid { grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 6px; min-height: 5.5rem; max-height: 9.5rem; border: 0; padding: 2px; }
+.notebook-appearance-grid [role='option'] { display: grid; place-items: center; height: 36px; padding: 0; border: 1.5px solid transparent; border-radius: 8px; background: var(--color-bg); color: var(--color-text); }
+.notebook-appearance-grid [role='option'] svg { width: 20px; height: 20px; }
+/* The chosen icon wears the chosen colour, or the primary without one. */
+.notebook-appearance-grid [role='option'][aria-selected='true'] { border-color: var(--mark, var(--color-primary)); background: color-mix(in srgb, var(--mark, var(--color-primary)) 12%, transparent); color: var(--mark, var(--color-primary)); }
+.notebook-appearance-swatches { display: flex; flex-wrap: wrap; gap: 4px; }
+.notebook-swatch { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 36px; cursor: pointer; }
+.notebook-swatch input { position: absolute; inset: 0 0 auto; width: 28px; height: 28px; margin: 0 auto; opacity: 0; cursor: pointer; }
+.notebook-swatch-dot { width: 28px; height: 28px; border-radius: 9999px; background: var(--mark, transparent); }
+.notebook-swatch:not([data-color]) .notebook-swatch-dot { border: 1.5px solid var(--color-line-strong); background: linear-gradient(135deg, transparent calc(50% - 0.75px), var(--color-muted) calc(50% - 0.75px), var(--color-muted) calc(50% + 0.75px), transparent calc(50% + 0.75px)); }
+.notebook-swatch input:checked + .notebook-swatch-dot { box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-text); }
+.notebook-swatch input:focus-visible + .notebook-swatch-dot { outline: 2px solid var(--color-primary); outline-offset: 4px; }
+.notebook-swatch-label { color: var(--color-muted); font-size: 10.5px; white-space: nowrap; }
+.notebook-appearance-footer { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--color-line); }
+.notebook-appearance-error { margin: 0; color: var(--color-danger); font-size: 0.75rem; }
+.notebook-appearance-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }

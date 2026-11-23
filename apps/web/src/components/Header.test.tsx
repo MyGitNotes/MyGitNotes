@@ -31,4 +31,11 @@ describe('Header notebook selector', () => {
     expect(button).toContain('aria-keyshortcuts="Control+P"');
     expect(button).toContain('title="Quick open (Ctrl+P)"');
   });
+
+  it("names the notebooks column's toggle and its chord in a tooltip, not a native title", () => {
+    const html = renderToStaticMarkup(createElement(Header, { workspaceTitle: 'Notes', activeTab: 'notes', setActiveTab: () => {}, selectedNotebookId: 'work', notebooks: [], onSelectNotebook: () => {}, onCreateNote: () => {}, onOpenCommands: () => {}, notebooksToggle: { open: true, controls: 'browse-notebooks', onToggle: () => {} } }));
+    const button = html.match(/<button[^>]*header-notebooks-toggle[^>]*>/)![0];
+    expect(button).toContain('aria-label="Collapse notebooks"');
+    expect(button).not.toContain('title=');
+  });
 });

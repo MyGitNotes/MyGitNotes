@@ -432,3 +432,13 @@ describe('on a phone', () => {
     expect(back).toHaveBeenCalledTimes(1);
   });
 });
+
+it("marks a note's tab with its notebook's mark, keeps the compilation's own icon, and keeps the page icon for a notebook without a mark", () => {
+  const displayed = { panes: ['p1'], pane: 'p1', key: 'note:notes/a.md' };
+  const view = render(createElement(I18nProvider, null, createElement(FocusPane, { focus, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, displayed, notebook: { title: 'Life', icon: 'leaf', color: 'green' } })));
+  const tabs = [...document.querySelectorAll<HTMLElement>('.focus-tab')];
+  expect(tabs[0].querySelector('.notebook-mark')).toHaveAttribute('data-size', 'tab');
+  expect(tabs[1].querySelector('.notebook-mark')).toBeNull();
+  view.rerender(createElement(I18nProvider, null, createElement(FocusPane, { focus, notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, displayed, notebook: { title: 'Life' } })));
+  expect(document.querySelector('.focus-tab .notebook-mark')).toBeNull();
+});
