@@ -30,8 +30,8 @@ import { CheckedOutError, isLiveNotePath, LIVE_MAX_BYTES, liveContentHash, LiveN
 import type { LiveCheckInResult } from './live-checkin.js';
 import { editedLiveError, type LiveLink, liveNoteState, type LiveRecord, type LiveRepository, parseLiveBase } from './live-repository.js';
 import { notebookOfPath } from './workspace-links.js';
-import { type CommitRenames, type LastCommit, RemoteEditDates } from './remote-edit-dates.js';
-import { type EditDated, type NoteEditFact, withEditDate } from './edit-dates.js';
+import { type CommitRenames, ignoredRevs, type LastCommit, RemoteEditDates } from './remote-edit-dates.js';
+import { type EditDated, IGNORE_REVS_FILE, type NoteEditFact, withEditDate } from './edit-dates.js';
 
 export { SourceError } from './github-api.js';
 const CACHEABLE_FILE = /\.(md|markdown|mdx|txt|ya?ml)$/i;
@@ -703,10 +703,20 @@ export abstract class RemoteSource {
   private editDating?: RemoteEditDates;
   /**
    * What Git tells of the edit dates of `files` as reads know them (`edit-dates.ts`), by path. A checked-out note is
-   * dated by its Git file, with the live editor's typing as uncommitted changes; a pending note has no Git date.
+   * dated by its Git file, with the live editor's typing as uncommitted changes; a pending note has no Git date. The
+   * commits the head's `.git-blame-ignore-revs` lists date no note; a list that cannot be read dates nothing this time.
    */
   async editFacts(files: string[]): Promise<Map<string, NoteEditFact>> {
     const snapshot = await this.getSnapshot();
+    const list = snapshot.entries.find(entry => entry.path === IGNORE_REVS_FILE && entry.type === 'blob' && entry.mode !== '120000');
+    let ignored: string[];
+    try {
+      ignored = list ? await ignoredRevs(this.historyMemoOwner() ?? this, list.sha, () => this.readSnapshotFile(snapshot, IGNORE_REVS_FILE)) : [];
+    } catch (error) {
+      // Dating without the list would remember dates it skips; the notes fall back to their frontmatter instead.
+      console.warn(`[edit-dates] ${this.id}: ${IGNORE_REVS_FILE} could not be read: ${(error as Error).message}`);
+      return new Map();
+    }
     const links = new Map((this.live ? await this.live.links() : []).map(link => [link.path, link]));
     const blobs = new Map(snapshot.entries.filter(entry => entry.type === 'blob').map(entry => [entry.path, entry.sha]));
     const wanted = files.flatMap(file => {
@@ -716,7 +726,7 @@ export abstract class RemoteSource {
     // A provider counts its limits per token, or per address without one, so a failure pauses only this caller's dating.
     const caller = this.token ? createHash('sha256').update(this.token).digest('hex') : 'anonymous';
     this.editDating ??= new RemoteEditDates(this.id, { caller, lastCommits: (head, paths) => this.lastCommits(head, paths), pureRenames: commit => this.pureRenames(commit) }, this.cache, this.historyMemoOwner() ?? this);
-    const dates = await this.editDating.dates(snapshot.sha, wanted);
+    const dates = await this.editDating.dates(snapshot.sha, wanted, ignored);
     return new Map(wanted.flatMap(({ file, path, uncommitted }) => dates.has(path) ? [[file, { lastCommitAt: dates.get(path), ...(uncommitted ? { uncommitted } : {}) }]] : []));
   }
   /** The notes with their edit dates resolved (`withEditDate`), as reads answer them. */

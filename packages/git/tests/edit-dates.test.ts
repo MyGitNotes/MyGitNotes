@@ -77,6 +77,35 @@ it('moves with the branch head, whether it advanced or went back', async () => {
   expect(await dates()).toEqual({ 'notes/a/one.md': '2026-01-01T02:00:00.000Z', 'notes/a/deep/two.md': '2026-01-01T02:00:00.000Z', 'notes/b/three.md': '2026-01-01T02:00:00.000Z' });
 });
 
+const head = async () => (await runGit(['rev-parse', 'HEAD'], root)).stdout.trim();
+
+it('skips the commits .git-blame-ignore-revs lists, dating each note by its newest earlier edit, and re-dates when the list changes', async () => {
+  write('notes/a/one.md', 'one, edited\n');
+  await commit('2026-02-01T00:00:00Z', 'Edit one', 'notes/a/one.md');
+  // A frontmatter backfill touches every note and adds one.
+  write('notes/a/one.md', '---\nupdated: 2026-02-01\n---\none, edited\n');
+  write('notes/a/deep/two.md', '---\nupdated: 2026-01-01\n---\ntwo\n');
+  write('notes/b/added.md', 'added by the backfill\n');
+  await commit('2026-03-01T00:00:00Z', 'Backfill', '.');
+  const backfill = await head();
+  await runGit(['mv', 'notes/a/deep/two.md', 'notes/b/two.md'], root);
+  await commit('2026-03-02T00:00:00Z', 'Move two');
+  const unlisted = { 'notes/a/one.md': '2026-03-01T00:00:00.000Z', 'notes/b/two.md': '2026-03-01T00:00:00.000Z', 'notes/b/three.md': '2026-01-01T02:00:00.000Z', 'notes/b/added.md': '2026-03-01T00:00:00.000Z' };
+  expect(await dates()).toEqual(unlisted);
+  write('.git-blame-ignore-revs', `# Frontmatter backfill\n${backfill}\n`);
+  await commit('2026-03-03T00:00:00Z', 'Ignore the backfill', '.git-blame-ignore-revs');
+  // The list changed with the head: the dates of the earlier head are not carried over.
+  expect(await dates()).toEqual({ 'notes/a/one.md': '2026-02-01T00:00:00.000Z', 'notes/b/two.md': '2026-01-01T02:00:00.000Z', 'notes/b/three.md': '2026-01-01T02:00:00.000Z' });
+  // A later edit dates the note again; commits after the head are read alone, the list unchanged.
+  write('notes/b/three.md', 'three, edited\n');
+  await commit('2026-04-01T00:00:00Z', 'Edit three', 'notes/b/three.md');
+  expect(await dates()).toEqual({ 'notes/a/one.md': '2026-02-01T00:00:00.000Z', 'notes/b/two.md': '2026-01-01T02:00:00.000Z', 'notes/b/three.md': '2026-04-01T00:00:00.000Z' });
+  // A list without the commit dates by it again.
+  write('.git-blame-ignore-revs', '# nothing ignored\nnot-a-sha\n');
+  await commit('2026-04-02T00:00:00Z', 'Empty the list', '.git-blame-ignore-revs');
+  expect(await dates()).toMatchObject({ 'notes/a/one.md': '2026-03-01T00:00:00.000Z', 'notes/b/added.md': '2026-03-01T00:00:00.000Z' });
+});
+
 it('marks a note with uncommitted changes and leaves out one Git does not hold', async () => {
   write('notes/a/one.md', 'one, typed and saved\n');
   write('notes/b/three.md', 'three, staged\n');

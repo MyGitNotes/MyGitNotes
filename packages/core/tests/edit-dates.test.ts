@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isoTime, withEditDate } from '../src/edit-dates.js';
+import { isoTime, parseIgnoreRevs, withEditDate } from '../src/edit-dates.js';
 import { noteUpdatedTime, sortNotes } from '../src/note-sort.js';
 import { noteSummary } from '../src/note-query.js';
 
@@ -55,5 +55,14 @@ describe('sorting and listing by the edit date', () => {
     const dated = withEditDate({ id: 'a', path: 'notes/a.md', notebookId: 'n', title: 'A', tags: [], metadata: {}, content: 'Body' }, { lastCommitAt: '2026-11-20T10:00:00Z' });
     expect(noteSummary(dated)).toMatchObject({ lastCommitAt: '2026-11-20T10:00:00.000Z', updated: '2026-11-20T10:00:00.000Z' });
     expect(noteSummary({ id: 'b', path: 'notes/b.md', notebookId: 'n', title: 'B', tags: [], metadata: {}, content: '' })).not.toHaveProperty('updated');
+  });
+});
+
+describe('the commits a repository’s .git-blame-ignore-revs leaves out of edit dates', () => {
+  it('are its full object ids, one a line, with comments, blank and malformed lines skipped', () => {
+    const a = 'a'.repeat(40), b = 'B'.repeat(40), c = 'c'.repeat(64);
+    const text = `# Frontmatter backfill (!216)\n${a}\n\n  ${b}  # inline note\r\n${a}\nabc123\n${'d'.repeat(39)}\n${'e'.repeat(40)} trailing words\nnot a sha\n${c}\n`;
+    expect(parseIgnoreRevs(text)).toEqual([a, 'b'.repeat(40), c]);
+    expect(parseIgnoreRevs('')).toEqual([]);
   });
 });

@@ -305,6 +305,16 @@ that only moved or renamed the note, its text unchanged (the same blob on both s
 follows the note back through it, so a reorganization of folders keeps every note's date. Nothing stamps the
 frontmatter for it: `updated` in the frontmatter is only a fallback (`packages/core/src/edit-dates.ts`).
 
+A commit the repository lists in `.git-blame-ignore-revs` at its top level, Git's own file for `git blame
+--ignore-revs-file`, dates no note either: a mass edit such as a frontmatter backfill or a reformat changes many
+notes' text without anyone editing them. Each note it changed is dated by its newest earlier commit that changed its
+text, still following moves that kept the text; a note no other commit changed, such as one the listed commit
+added, is undated and falls back to its frontmatter `updated`. The file is read at the head, as committed
+(`IGNORE_REVS_FILE`, `parseIgnoreRevs`): one full object id a line (40 hex digits, or 64), `#` starting a comment,
+blank and malformed lines skipped, so an unreadable line ignores nothing rather than failing the dates. List the
+commits that changed the notes, not the merge commits that brought them in: neither the worktree walk nor a
+provider's last-commit query names a merge for a note's text. Changing the list dates every note again, once.
+
 Every listed and read note carries two fields beside `metadata`, both ISO 8601 timestamps in UTC:
 
 - `lastCommitAt`: the Git date above. It is absent for a note no commit holds (an untracked file, a pending live
@@ -324,8 +334,9 @@ Where the dates come from:
   `/api/notes/lookup`) through each repository catalog's optional `dates`; facets, the agenda and the graph read no
   dates. A catalog without `dates` dates its notes from the frontmatter alone.
 - **A worktree** (`noteEditFacts` in `packages/git/src/edit-dates.ts`): one `git log -M --raw` pass over the
-  notebook roots dates every file Git tracks there, and stops once each is dated. The result is kept per repository,
-  notebook roots and head; when the head moves on, only the new commits are read, and a head that went back is dated
+  notebook roots dates every file Git tracks there, and stops once each is dated; a listed commit leaves the file
+  searched for in the commits before it. The result is kept per repository, notebook roots and head; when the head
+  moves on, only the new commits are read, and a head that went back, or one whose ignore list differs, is dated
   again. `git status` marks the files with uncommitted changes on every call. A Git failure is logged and dates
   nothing, so reads fall back to frontmatter dates. The local note routes
   (`/api/notes/read`, `GET /api/notes`) and the stdio MCP tools use it too.
@@ -336,8 +347,13 @@ Where the dates come from:
   only: an anonymous GitHub reader dates nothing, since per-path REST would spend the hourly limit every anonymous
   reader of the server shares), and a commit's renames whose diff is empty
   (GitLab `diff: ''`, GitHub `changes: 0`) send the note back to its former path from the commit's first parent. A
-  date is kept per path and blob, in the process and sealed in the shared cache, so a later head where the note is
-  unchanged asks nothing. A text restored byte for byte to one dated before keeps that earlier date. A request waits
+  listed commit sends the note back to the same path from its first parent (`pureRenames` names the parent), so the
+  notes one commit changed are asked again together, one batch per parent and step; a listed commit without a
+  parent, or more than twenty moves and listed commits back (`MAX_MOVES`), leaves the note undated. The list is read
+  once per blob and backend, and a list that cannot be read dates nothing that request. A date is kept per path and
+  blob and, when the head lists commits, a hash of the sorted list, in the process and sealed in the shared cache, so
+  a later head where the note and the list are unchanged asks nothing and a changed list dates the notes again; a
+  repository without the file keeps the keys it had. A text restored byte for byte to one dated before keeps that earlier date. A request waits
   at most five seconds (`EDIT_DATE_WAIT_MS`), and one that finds its notes already being dated waits only for what is
   left of the wait of the request that started it; notes not dated by then are answered without `lastCommitAt` and
   dated in the background, so the first lists after a start on a large repository fall back to frontmatter dates for

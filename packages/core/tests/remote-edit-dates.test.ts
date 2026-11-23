@@ -141,3 +141,52 @@ it('remembers that no commit holds a path and text, and does not ask again', asy
   expect((await new RemoteEditDates('repo', other.source, cache, {}).dates('head', file)).size).toBe(0);
   expect([tries.length, other.tries.length]).toEqual([1, 0]);
 });
+
+/**
+ * A history where `backfill` (first parent `edit`) changed the text of a.md and b.md and renamed old-d.md to d.md unchanged:
+ * `edit` changed a.md, `start` added a.md, b.md and old-d.md, and `backfill` added c.md. Each call is recorded.
+ */
+function backfilled() {
+  const asked: string[][] = [];
+  const last: Record<string, LastCommit> = { 'head:a.md': { sha: 'backfill', date: '2026-11-23T16:54:31Z' }, 'head:b.md': { sha: 'backfill', date: '2026-11-23T16:54:31Z' }, 'head:c.md': { sha: 'backfill', date: '2026-11-23T16:54:31Z' }, 'head:d.md': { sha: 'backfill', date: '2026-11-23T16:54:31Z' }, 'edit:a.md': { sha: 'edit', date: '2026-03-01T00:00:00Z' }, 'edit:b.md': { sha: 'start', date: '2026-01-01T00:00:00Z' }, 'edit:old-d.md': { sha: 'start', date: '2026-01-01T00:00:00Z' } };
+  const renames: Record<string, CommitRenames> = { backfill: { parent: 'edit', renames: new Map([['d.md', 'old-d.md']]) }, edit: { parent: 'start', renames: new Map() }, start: { parent: null, renames: new Map() } };
+  const source: EditDateHistory = {
+    async lastCommits(head, paths) {
+      asked.push(paths.map(path => `${head}:${path}`));
+      return new Map(paths.map(path => [path, last[`${head}:${path}`] ?? null]));
+    },
+    async pureRenames(commit) {
+      return renames[commit];
+    },
+  };
+  return { source, asked };
+}
+const backfillFiles = ['a', 'b', 'c', 'd'].map(name => ({ path: `${name}.md`, blob: `blob-${name}` }));
+
+it('skips an ignored commit, dating each note by its newest earlier edit from the commit’s parent, in one batch', async () => {
+  const { source, asked } = backfilled();
+  const dates = await new RemoteEditDates('repo', source, undefined, {}).dates('head', backfillFiles, ['backfill']);
+  expect(Object.fromEntries(dates)).toEqual({ 'a.md': '2026-03-01T00:00:00.000Z', 'b.md': '2026-01-01T00:00:00.000Z', 'd.md': '2026-01-01T00:00:00.000Z' });
+  expect(asked).toEqual([['head:a.md', 'head:b.md', 'head:c.md', 'head:d.md'], ['edit:a.md', 'edit:b.md', 'edit:c.md', 'edit:old-d.md']]);
+  // An ignored commit without a parent leaves the note undated.
+  const root = backfilled();
+  expect(Object.fromEntries(await new RemoteEditDates('repo', root.source, undefined, {}).dates('head', backfillFiles, ['backfill', 'start']))).toEqual({ 'a.md': '2026-03-01T00:00:00.000Z' });
+});
+
+it('keeps dates per ignore list, so a changed list dates the notes again and an unchanged one asks nothing', async () => {
+  const owner = {}, cache = signed();
+  const first = backfilled();
+  await new RemoteEditDates('repo', first.source, cache, owner).dates('head', backfillFiles, ['backfill']);
+  // The same list, in another order, in another process sharing the cache: nothing is asked.
+  const same = backfilled();
+  expect((await new RemoteEditDates('repo', same.source, cache, {}).dates('head', backfillFiles, ['backfill', 'backfill'])).get('a.md')).toBe('2026-03-01T00:00:00.000Z');
+  expect(same.asked).toEqual([]);
+  // Without the list the backfill dates every note whose text it changed again.
+  const unlisted = backfilled(), backfill = '2026-11-23T16:54:31.000Z';
+  expect(Object.fromEntries(await new RemoteEditDates('repo', unlisted.source, cache, owner).dates('head', backfillFiles))).toEqual({ 'a.md': backfill, 'b.md': backfill, 'c.md': backfill, 'd.md': '2026-01-01T00:00:00.000Z' });
+  expect(unlisted.asked).toEqual([['head:a.md', 'head:b.md', 'head:c.md', 'head:d.md'], ['edit:old-d.md']]);
+  // Another list is another key.
+  const other = backfilled();
+  await new RemoteEditDates('repo', other.source, cache, owner).dates('head', backfillFiles, ['backfill', 'f'.repeat(40)]);
+  expect(other.asked.length).toBe(2);
+});

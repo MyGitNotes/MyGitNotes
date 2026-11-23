@@ -1,4 +1,5 @@
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { parseIgnoreRevs } from './edit-dates.js';
 import { SourceError } from './github-api.js';
 import { REMOTE_CACHE_TTL, type RemoteCache } from './remote-cache.js';
 
@@ -61,6 +62,35 @@ interface Shared {
 }
 const sharedState = new WeakMap<object, Shared>();
 
+/**
+ * What a list of commits to skip adds to the key of a date: a hash of the distinct commits, sorted, so the same list
+ * in another order or with other comments keeps its dates and another list dates the notes again. An empty list adds
+ * nothing, so a repository without one keeps the dates it had.
+ */
+function ignoredKey(ignored: readonly string[]): string[] {
+  const revs = [...new Set(ignored)].sort();
+  return revs.length ? [`ignore:${createHash('sha256').update(revs.join('\n')).digest('hex').slice(0, 32)}`] : [];
+}
+
+/** The commits ignore-revs files list, by the file's object id, per history backend; a blob never changes. */
+const ignoreLists = new WeakMap<object, Map<string, string[]>>();
+
+/**
+ * The commits a repository's `.git-blame-ignore-revs` (blob `blob`, its bytes from `read`) lists, read once per text
+ * and backend (`owner`, as `RemoteEditDates` shares its facts).
+ */
+export async function ignoredRevs(owner: object, blob: string, read: () => Promise<Buffer>): Promise<string[]> {
+  let lists = ignoreLists.get(owner);
+  if (!lists) ignoreLists.set(owner, lists = new Map());
+  let revs = lists.get(blob);
+  if (!revs) {
+    revs = parseIgnoreRevs((await read()).toString('utf8'));
+    lists.set(blob, revs);
+    while (lists.size > 100) lists.delete(lists.keys().next().value!);
+  }
+  return revs;
+}
+
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms).unref?.());
 
 /** Runs `task` over `items`, at most `limit` at a time. */
@@ -73,14 +103,15 @@ async function eachLimited<T>(items: T[], limit: number, task: (item: T) => Prom
 
 /**
  * Dates a hosted repository's notes as a worktree's are (`noteEditFacts` in `@mygitnotes/git`): by the author date of
- * the newest commit that changed a note's text, following back through commits that only moved it.
+ * the newest commit that changed a note's text, following back through commits that only moved it and past commits
+ * the caller skips (a repository's `.git-blame-ignore-revs`), from each one's first parent.
  *
  * A date is a fact about a path and the text it holds (its blob), so it is kept per path and blob, in this process and,
- * sealed, in the shared cache, and holds at every head where the file is unchanged; only notes whose text is new to the
- * process are asked of the provider. (A text restored byte for byte to one dated before keeps that earlier date.) A
- * request waits at most `wait` milliseconds; notes not dated by then are left out of its answer and dated in the
- * background, so the first listing of a large repository falls back to frontmatter dates for a while. A failure of the
- * provider leaves notes undated and never fails the read.
+ * sealed, in the shared cache, and holds at every head where the file is unchanged, under the same list of skipped
+ * commits; only notes whose text is new to the process are asked of the provider. (A text restored byte for byte to
+ * one dated before keeps that earlier date.) A request waits at most `wait` milliseconds; notes not dated by then are
+ * left out of its answer and dated in the background, so the first listing of a large repository falls back to
+ * frontmatter dates for a while. A failure of the provider leaves notes undated and never fails the read.
  */
 export class RemoteEditDates {
   private readonly shared: Shared;
@@ -171,13 +202,13 @@ export class RemoteEditDates {
   }
 
   /**
-   * The dates of `files` at `head`, by path, as ISO timestamps from the provider; a file not dated within the wait, or
-   * that the provider could not date, is left out. After a provider failure nothing new is dated for this caller until
-   * the pause the failure set is over.
+   * The dates of `files` at `head`, by path, as ISO timestamps from the provider, passing the `ignored` commits; a file
+   * not dated within the wait, or that the provider could not date, is left out. After a provider failure nothing new
+   * is dated for this caller until the pause the failure set is over.
    */
-  async dates(head: string, files: DatedFile[]): Promise<Map<string, string>> {
-    const dates = new Map<string, string>();
-    const keyed = files.map(file => ({ ...file, key: this.key('date', file.path, file.blob) }));
+  async dates(head: string, files: DatedFile[], ignored: readonly string[] = []): Promise<Map<string, string>> {
+    const dates = new Map<string, string>(), list = ignoredKey(ignored);
+    const keyed = files.map(file => ({ ...file, key: this.key('date', file.path, file.blob, ...list) }));
     const unknown = keyed.filter(file => {
       const known = this.remembered(file.key);
       if (known) dates.set(file.path, known);
@@ -200,7 +231,7 @@ export class RemoteEditDates {
     if (pausedUntil <= Date.now()) {
       paused.delete(this.pauseKey);
       const fresh = missing.filter(file => !inflight.has(file.key));
-      if (fresh.length) this.date(head, fresh, Date.now() + this.wait);
+      if (fresh.length) this.date(head, fresh, new Set(ignored), Date.now() + this.wait);
     }
     // A file another request is dating is waited for only as long as that request waits, so the requests that come
     // while a large repository is dated in the background answer at once with what is known.
@@ -219,7 +250,7 @@ export class RemoteEditDates {
   }
 
   /** Starts dating `files` in steps, each file's dating in flight until its date is kept or found unknown. */
-  private date(head: string, files: (DatedFile & { key: string; })[], until: number) {
+  private date(head: string, files: (DatedFile & { key: string; })[], ignored: ReadonlySet<string>, until: number) {
     const { inflight } = this.shared;
     const settle = new Map<string, (date: string | undefined) => void>();
     for (const file of files) inflight.set(file.key, { date: new Promise(resolve => settle.set(file.key, resolve)), until });
@@ -234,7 +265,7 @@ export class RemoteEditDates {
     void eachLimited(steps, STEPS_AT_ONCE, async step => {
       if (failed) return step.forEach(file => done(file, undefined));
       try {
-        const found = await this.step(head, step);
+        const found = await this.step(head, step, ignored);
         await this.keep(step.flatMap(file => found.has(file.key) ? [[file.key, found.get(file.key)!] as [string, string]] : [])).catch(error => console.warn(`[edit-dates] shared cache write failed: ${(error as Error).message}`));
         for (const file of step) done(file, found.get(file.key) || undefined);
       } catch (error) {
@@ -254,10 +285,12 @@ export class RemoteEditDates {
   }
 
   /**
-   * Dates one step of files: the last commit at each path, followed back through each commit that only moved it there.
-   * A file no commit holds is answered `UNDATED`, so it is not asked again.
+   * Dates one step of files: the last commit at each path, followed back through each commit that only moved it there
+   * and past each `ignored` one, at the same path from its first parent. A file no commit holds, other than ignored
+   * ones, is answered `UNDATED`, so it is not asked again; so is one whose ignored commit names no parent or lies more
+   * than `MAX_MOVES` back.
    */
-  private async step(head: string, files: (DatedFile & { key: string; })[]): Promise<Map<string, string>> {
+  private async step(head: string, files: (DatedFile & { key: string; })[], ignored: ReadonlySet<string>): Promise<Map<string, string>> {
     const found = new Map<string, string>();
     let work = files.map(file => ({ file, path: file.path, head }));
     for (let move = 0; move <= MAX_MOVES && work.length; move++) {
@@ -280,9 +313,10 @@ export class RemoteEditDates {
           found.set(item.file.key, UNDATED);
           continue;
         }
-        const moved = renames.get(commit.sha);
+        const moved = renames.get(commit.sha), skipped = ignored.has(commit.sha.toLowerCase());
         const from = moved?.renames.get(item.path);
-        if (from && moved!.parent && move < MAX_MOVES) next.push({ file: item.file, path: from, head: moved!.parent });
+        if ((from || skipped) && moved?.parent && move < MAX_MOVES) next.push({ file: item.file, path: from ?? item.path, head: moved.parent });
+        else if (skipped) found.set(item.file.key, UNDATED);
         else if (commit.date && !Number.isNaN(Date.parse(commit.date))) found.set(item.file.key, new Date(commit.date).toISOString());
       }
       work = next;
