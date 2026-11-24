@@ -50,7 +50,7 @@ import { noteLookupOptions, useNotebookTemplates } from './lib/use-note-queries.
 import { isTemplatePath } from './lib/note-templates.js';
 import { useTemplateActions } from './app/useTemplateActions.js';
 import { ManageTemplatesDialog } from './components/ManageTemplatesDialog.js';
-import { FOCUS_NOTE_STATE, notebookRoute, noteRoute, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
+import { FOCUS_NOTE_STATE, notebookRoute, noteRoute, parseWorkspaceRoute } from './lib/routes.js';
 import { draftScope, editable, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
 import { DemoBanner } from './components/DemoBanner.js';
 import { demoFocusesOf, useDemoScenario } from './app/useDemoScenario.js';
@@ -63,16 +63,16 @@ import { NoteListSentinel } from './components/NoteListSentinel.js';
 import type { NotebookConfig, NoteItem } from './lib/types.js';
 import { useTagWorkspaceOperations } from './app/useTagWorkspaceOperations.js';
 import { useNoteSelection } from './app/useNoteSelection.js';
-import { useBulkNoteActions } from './app/useBulkNoteActions.js';
-import { BulkActionsToolbar } from './components/BulkActionsToolbar.js';
 import { FolderPickerDialog } from './components/FolderPickerDialog.js';
 import { useAssetOperations } from './app/useAssetOperations.js';
 import { useRoutedNote } from './app/useRoutedNote.js';
 import { followMovedNote } from './app/follow-moved-note.js';
 import { noteEditorProps } from './app/note-editor-props.js';
 import { useNoteSearchFocus } from './app/useNoteSearchFocus.js';
+import { useCompilations } from './app/useCompilations.js';
+import { useBulkToolbar } from './app/useBulkToolbar.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
-import { UNTITLED_STEM, useCreateNote } from './app/useCreateNote.js';
+import { useCreateNote } from './app/useCreateNote.js';
 import { useNoteMove } from './app/useNoteMove.js';
 import { folderCommandScope } from './lib/file-change-scope.js';
 import type { FolderCommand } from '@mygitnotes/core';
@@ -111,10 +111,6 @@ import { FocusArea } from './components/FocusArea.js';
 import { FoldedNoteDots } from './components/FoldedNoteDots.js';
 import { FocusControls } from './components/FocusControls.js';
 import { AddToFocusDialog } from './components/AddToFocusDialog.js';
-import { CompilationView } from './components/CompilationView.js';
-import { planNewCompilation } from './lib/compilation-create.js';
-import { initialCompilationStatus } from './lib/compilation-status.js';
-import type { CompilationRow } from '@mygitnotes/core/compilation';
 import { usePhone } from './lib/use-phone.js';
 import { useFocusSearch } from './lib/focus-search.js';
 import { LegacyScreenRedirect } from './components/LegacyScreenRedirect.js';
@@ -122,7 +118,6 @@ import { LegacySchemaNotice } from './components/LegacySchemaNotice.js';
 import { CompilationActionsProvider } from './lib/compilation-actions.js';
 import { StatusColorProvider } from './lib/status-color.js';
 import { statusLabel } from '@mygitnotes/core/note-status';
-import { useCompilationActionsValue } from './app/useCompilationActionsValue.js';
 import { RightPanel } from './components/RightPanel.js';
 import { FileManager, FileManagerDialog, FileMetadata } from './components/files/index.js';
 import { AgentSystemView } from './components/AgentSystemView.js';
@@ -263,10 +258,8 @@ export const AppContent: React.FC = () => {
   const { handleRestoreNoteFile, handleUpdateNoteStatus, handleOpenFolderIndex } = useNoteRestoration({ remote, readDraft, updateDraft, setEditingNote, navigate, returnTo, invalidateNotes, setGitStatus, setActionError, handleSaveNote, readNoteForChange, selectedNotebookId, canWriteNotebook, t, config, queryClient, queryScope, stageWorkingNote, revisionFor, location, liveLocked: note => liveActionLocked(note, 'other', liveDrafts) });
 
   // Multi-select and bulk actions (set status, add/remove tag, move to folder) for the browse views.
-  const { selectedNotes, selectedKeys, toggleSelect, clearSelection } = useNoteSelection({ displayedNotes, viewMode, selectedNotebookId, scopeKey: noteLink.inFocus ? returnTo : location.pathname + location.search });
-  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
-  const bulkMoveNotebookId = selectedNotes.length > 0 && selectedNotes.every(note => note.notebookId === selectedNotes[0].notebookId) ? selectedNotes[0].notebookId : undefined;
-  const bulkMoveNotebook = config?.notebooks.find(nb => nb.id === bulkMoveNotebookId);
+  const selection = useNoteSelection({ displayedNotes, viewMode, selectedNotebookId, scopeKey: noteLink.inFocus ? returnTo : location.pathname + location.search });
+  const { selectedKeys, toggleSelect } = selection;
 
   // The selected notebook's templates: its manifest's, then the files of its `.templates/` folder, with this page's working changes.
   const selectedNotebook = config?.notebooks.find(nb => nb.id === selectedNotebookId);
@@ -323,7 +316,7 @@ export const AppContent: React.FC = () => {
   });
   const templateActions = useTemplateActions({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, revisionFor, queryClient, queryScope, invalidateNotes, setGitStatus, openInZoom: handleOpenNote, deleteNote: note => handleDeleteNote(note), relocateFile: noteMove.relocateFile, t });
   const movingNotebook = noteMove.request?.mode === 'move' ? config?.notebooks.find(nb => nb.id === noteMove.request?.note.notebookId) : undefined;
-  const { bulkBusy, runBulkStatus, runBulkTag, runBulkMove } = useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNoteStatus: handleUpdateNoteStatus, beforeFileChange, onFilesChanged, repositories, remote, canWrite: canWriteFiles, t, invalidateNotes, setRepositoryRevision, setActionError, tagOperations, config });
+  const { toolbar: bulkToolbar, moveDialog: bulkMoveDialog } = useBulkToolbar({ selection, config, remote, folders, repositories, setRepositoryRevision, setActionError, canWriteFiles, statuses: notebookStatuses, availableTags, liveDrafts, tagOperations, onUpdateNoteStatus: handleUpdateNoteStatus, beforeFileChange, onFilesChanged, invalidateNotes, t });
 
   // A note the Focus shows, or a linked note waiting to open there, is not shown in zoom.
   const noteEditorOpen = (Boolean(routedNote) || routedLoading) && !routeError && !noteLink.inFocus;
@@ -378,7 +371,7 @@ export const AppContent: React.FC = () => {
       {layout.chips === 'list' && <FilterChips filters={filterProps} onAdd={openFilters} />}
       <LegacySchemaNotice schemaVersion={config?.schema_version} />
       {actionError && <p role='alert' className='mb-3 text-sm text-danger'>{actionError}</p>}
-      {selectedNotes.length > 0 && <BulkActionsToolbar count={selectedNotes.length} statuses={notebookStatuses} availableTags={availableTags} busy={bulkBusy} readOnly={!canWriteFiles} canMove={Boolean(bulkMoveNotebookId)} liveNotes={selectedNotes.filter(note => liveActionLocked(note, 'other', liveDrafts)).map(note => note.title || note.path)} liveMovable={selectedNotes.every(note => !liveActionLocked(note, 'move', liveDrafts))} onSetStatus={status => void runBulkStatus(status)} onAddTag={tag => void runBulkTag('add', tag)} onRemoveTag={tag => void runBulkTag('remove', tag)} onMove={() => setBulkMoveOpen(true)} onClear={clearSelection} />}
+      {bulkToolbar}
       {staleNotice && <p role='alert' className='mb-3 text-sm text-warning'>{staleNotice}</p>}
       {listResult.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.loadFailed', { message: listResult.error })}</p>}
       {facetsQuery.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.countsFailed', { message: facetsQuery.error })}</p>}
@@ -431,51 +424,7 @@ export const AppContent: React.FC = () => {
   );
   // The toolbar search dims what the Focus shows that it does not match; on a phone it only filters the list.
   const focusMatches = useFocusSearch({ q: debouncedSearch, notebookId: selectedNotebookId, enabled: Boolean(noteFocus.layout) && !phone });
-  const compilationActions = useCompilationActionsValue({ remote, canWriteNotebook, repositoryId: notebookId => repositoryFor(notebookId)?.id, revisionFor, save: handleSaveNote, remove: handleDeleteNote, stageWorkingNote, invalidateNotes, setGitStatus, createNote: options => void createNote(options) });
-  const createCompilation = async (row: CompilationRow) => {
-    const notebook = config?.notebooks.find(nb => nb.id === row.notebookId);
-    if (!notebook) return;
-    try {
-      const plan = await planNewCompilation(row, notebook, '', UNTITLED_STEM, initialCompilationStatus(config?.notebooks || [], notebook.id, facetsQuery.facets));
-      void openFromBrowse(await compilationActions.create(notebook.id, plan.path, plan.content, plan.metadata));
-    } catch (error) {
-      setActionError((error as Error).message);
-    }
-  };
-  // A new compilation starts empty, named Untitled, at the notebook root; its menu edits, renames and moves it.
-  const createUntitledCompilation = () => createCompilation({ id: crypto.randomUUID(), name: t('compilation.untitled'), notebookId: selectedNotebookId, path: '', view: 'small', kind: 'custom', items: [] });
-  const openCompilationFolder = (item: { notebookId: string; path: string; }) => {
-    // A folder of this notebook filters the browse region and keeps the Focus; others open as they do elsewhere.
-    const notebook = config?.notebooks.find(nb => nb.id === item.notebookId);
-    if (item.notebookId !== selectedNotebookId || !notebook || !folderRoot) return false;
-    const assetRoot = `${folderRoot}/${notebook.assets || 'assets'}`;
-    if (item.path === assetRoot || item.path.startsWith(`${assetRoot}/`)) return false;
-    if (item.path !== folderRoot && !item.path.startsWith(`${folderRoot}/`)) return false;
-    setSelectedFolder(item.path === folderRoot ? null : item.path.slice(folderRoot.length + 1));
-    return true;
-  };
-  /** The compilation at `path` of the selected notebook, in a Focus pane (`pane`) or in zoom. */
-  const renderCompilation = (path: string, pane?: string) => (
-    <CompilationView
-      key={`${selectedNotebookId}:${path}`}
-      notebookId={selectedNotebookId}
-      path={path}
-      notebooks={config?.notebooks || []}
-      folders={folders}
-      frame={pane === undefined ? 'zoom' : 'pane'}
-      // A card in a Focus pane opens its note in another pane (splitting when there is only one); in zoom, or when the Focus cannot take it, it opens in zoom.
-      // A heading-anchored item always opens in zoom, scrolled to its heading.
-      onOpenNote={(note, anchor) => void (async () => {
-        if (anchor || pane === undefined || !await openInFocus(note, pane, 'beside')) await handleOpenNote(note, anchor);
-      })()}
-      onOpenFolder={openCompilationFolder}
-      onClose={pane === undefined ? closeCompilationZoom : undefined}
-    />
-  );
-
-  // A note opened from a zoomed compilation leaves that compilation mounted behind it.
-  const behindPath = trailCompilation(location.state, editorRoute.notebook, config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root ?? '');
-  const compilationBehind = behindPath ? { notebookId: selectedNotebookId, path: behindPath } : null;
+  const { compilationActions, createUntitledCompilation, renderCompilation, compilationBehind } = useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets: facetsQuery.facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState: location.state, routeNotebook: editorRoute.notebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse });
   /** A phone's list screen beside a Focus: the path line and the list, and below the divider the notebook's folders. */
   const browseSplit = () => {
     const path = browsePath({ kind: route.kind, notebookTitle: selectedNotebook?.title ?? '', breadcrumbs, labels: { outline: t('outline.list'), compilations: t('sidebar.compilations') } });
@@ -822,21 +771,7 @@ export const AppContent: React.FC = () => {
                 )}
                 {manageTemplatesOpen && selectedNotebook && <ManageTemplatesDialog notebookTitle={selectedNotebook.title} templates={notebookTemplates.templates} builtin={builtinNoteTemplates(t)} loading={notebookTemplates.loading} error={notebookTemplates.error} readOnly={!canWrite} fileActions={canWriteFiles} onCreate={name => templateActions.createTemplate(selectedNotebook.id, name)} onEdit={templateActions.editTemplate} onRename={templateActions.renameTemplate} onDelete={templateActions.deleteTemplate} onClose={() => setManageTemplatesOpen(false)} />}
                 {noteMove.request?.mode === 'rename' && <RenameNoteDialog path={noteMove.request.note.path} title={noteMove.request.note.title} initial={noteMove.request.name} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={title => void noteMove.confirmRename(title)} />}
-                {bulkMoveOpen && bulkMoveNotebook && (
-                  <FolderPickerDialog
-                    notebooks={[bulkMoveNotebook]}
-                    folders={folders}
-                    title={t('bulk.moveDialogTitle', { count: selectedNotes.length })}
-                    initial={{ notebookId: bulkMoveNotebook.id, folder: null }}
-                    confirmLabel={t('bulk.moveConfirm')}
-                    busy={bulkBusy}
-                    onClose={() => setBulkMoveOpen(false)}
-                    onConfirm={({ folder }) => {
-                      setBulkMoveOpen(false);
-                      void runBulkMove(bulkMoveNotebook.id, folder);
-                    }}
-                  />
-                )}
+                {bulkMoveDialog}
                 {/* Note Editor Modal */}
                 <EditorModal key={fileEditorRevision} note={routedNote} committed={routedCommitted && typeof routedCommitted.content === 'string' ? routedCommitted as NoteItem : undefined} loading={routedLoading} isOpen={noteEditorOpen} renderCompilation={renderCompilation} behind={compilationBehind} error={actionError} />
                 {phoneNotes && phoneFilterOpen && <PhoneFilterSheet onClose={() => setPhoneFilterOpen(false)} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} metadataSortFields={metadataSortFields} viewMode={viewMode} setViewMode={setViewMode} showHidden={showHidden} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} onShowHiddenChange={value => changeFilters({ showHidden: value })} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined}>{renderSidebar(true)}</PhoneFilterSheet>}
