@@ -49,7 +49,7 @@ import { noteLookupOptions, useNotebookTemplates } from './lib/use-note-queries.
 import { isTemplatePath } from './lib/note-templates.js';
 import { useTemplateActions } from './app/useTemplateActions.js';
 import { ManageTemplatesDialog } from './components/ManageTemplatesDialog.js';
-import { FOCUS_NOTE_STATE, notebookRoute, noteRoute, noteTrail, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
+import { FOCUS_NOTE_STATE, notebookRoute, noteRoute, parseWorkspaceRoute, trailCompilation } from './lib/routes.js';
 import { draftScope, editable, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
 import { DemoBanner } from './components/DemoBanner.js';
 import { demoFocusesOf, useDemoScenario } from './app/useDemoScenario.js';
@@ -275,7 +275,7 @@ export const AppContent: React.FC = () => {
   /** Whether a note is one of its notebook's template files, which is edited in zoom and never opens in a Focus pane. */
   const isTemplate = (note: { notebookId: string; path: string; }) => isTemplatePath(config?.notebooks.find(nb => nb.id === note.notebookId), note.path);
   // A note's link opens it in the Focus, not zoom, and the address bar names the note the Focus shows.
-  const { trackOpen } = useOpenNoteLinkInFocus({ link: noteLink, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus, activeNotePath, focusNarrowView, selectedNotebookId, notebookRoot: config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root, returnTo, browsing: activeTab === 'notes' && !route.study, setFocusNarrowView, isTemplate });
+  const { trackOpen, returnToFocus, frameSelection } = useOpenNoteLinkInFocus({ link: noteLink, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus, activeNotePath, focusNarrowView, selectedNotebookId, notebookRoot: config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root, returnTo, browsing: activeTab === 'notes' && !route.study, flushZoom: editorRegistry.flushEditors, setFocusNarrowView, isTemplate });
 
   // The table is chosen on the page and put away when a note opens from it; the board follows `view=kanban` on a notebook's address, never
   // beside a note the address names, so closing that note leaves the list as it was.
@@ -293,7 +293,7 @@ export const AppContent: React.FC = () => {
   const listViewMode = !phone && viewMode === 'kanban' && presentation !== 'kanban' ? 'flat' : viewMode;
   const { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, highlightQuery, groupable, groupedByFolder } = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode: listViewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
 
-  const { handleOpenNote } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, focusNoteRoute: noteLink.inFocus, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
+  const { handleOpenNote, closeZoom, closeCompilationZoom } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, focusNoteRoute: noteLink.inFocus, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
 
   const { openInFocus, openFromBrowse, openLink, zoomFocusNote, addToFocus } = useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus, isTemplate, trackOpen });
 
@@ -438,8 +438,7 @@ export const AppContent: React.FC = () => {
       beforeFileChange: !writable ? undefined : beforeFileChange,
       onFilesChanged: !writable ? undefined : onFilesChanged,
       readOnly: !editableNote,
-      // A Focus pane shows no split view: picking it opens the note in zoom, where Back returns to the pane.
-      openInZoom: mode => void handleOpenNote(note, '', { mode }),
+      zoomNavigation: { open: mode => handleOpenNote(note, '', { mode }), returnToFocus, selection: frameSelection },
       autoSave: true,
       draftMode: remote,
       remoteBase: draft?.base || (committed && typeof committed.content === 'string' ? committed : undefined),
@@ -459,13 +458,6 @@ export const AppContent: React.FC = () => {
       onSaveAsTemplate: editableNote && !isTemplate(note) ? edited => void templateActions.saveAsTemplate({ notebookId: note.notebookId, ...edited }).catch(error => setActionError((error as Error).message)) : undefined,
       live,
     };
-  };
-  const closeZoom = () => {
-    setEditingNote(null);
-    const trail = noteTrail(location.state);
-    const previous = trail[trail.length - 1];
-    if (previous) navigate(previous, { replace: true, state: trail.length > 1 ? { noteTrail: trail.slice(0, -1) } : null });
-    else navigate(returnTo, { replace: true });
   };
 
   const phoneNotes = phone && activeTab === 'notes' && !route.study;
@@ -646,7 +638,7 @@ export const AppContent: React.FC = () => {
         if (anchor || pane === undefined || !await openInFocus(note, pane, 'beside')) await handleOpenNote(note, anchor);
       })()}
       onOpenFolder={openCompilationFolder}
-      onClose={pane === undefined ? closeZoom : undefined}
+      onClose={pane === undefined ? closeCompilationZoom : undefined}
     />
   );
 

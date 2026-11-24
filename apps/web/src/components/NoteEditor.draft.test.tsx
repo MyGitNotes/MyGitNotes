@@ -125,6 +125,23 @@ it('does not let a concurrent remote check read back its own in-flight autosave 
   expect((screen.getByLabelText('Note content') as HTMLTextAreaElement).value).toBe('# Alpha\nMore.');
 });
 
+it('honors a zoom close pressed while the note is being read', async () => {
+  let finishRead: ((note: NoteItem) => void) | undefined;
+  const read = new Promise<NoteItem>(resolve => {
+    finishRead = resolve;
+  });
+  const onClose = vi.fn();
+  render(editor({ onClose, onReadRemote: () => read, frame: 'zoom' }));
+  fireEvent.click(screen.getByLabelText('Close note'));
+  expect(onClose).not.toHaveBeenCalled();
+
+  await act(async () => {
+    finishRead?.(note);
+    await vi.advanceTimersByTimeAsync(100);
+  });
+  expect(onClose).toHaveBeenCalledOnce();
+});
+
 it('lets close proceed while a local autosave is still in flight', async () => {
   let resolveSave: ((value: NoteItem) => void) | null = null;
   const gate = new Promise<NoteItem>(resolve => {

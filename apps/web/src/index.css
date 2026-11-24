@@ -264,6 +264,11 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 .note-split-sync[aria-pressed='true'] { color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line-strong)); }
 .note-split-sync > svg { width: 15px; height: 15px; }
 .note-split-preview { flex: 1 1 0; min-width: 0; min-height: 0; overflow: auto; padding: 16px 28px 32px; background: var(--color-surface); }
+@container focus-pane (max-width: 599px) {
+  .note-editor[data-frame='pane'] .note-split-view { flex-direction: column; }
+  .note-editor[data-frame='pane'] .note-split-divider { width: auto; height: 1px; }
+  .note-editor[data-frame='pane'] .note-split-preview { padding-inline: 16px; }
+}
 /* The editor's mode: three icon buttons, the one in use pressed. */
 .note-mode-group { display: flex; align-items: center; gap: 1px; padding: 2px; border-radius: var(--radius-control); background: color-mix(in srgb, var(--color-line) 70%, transparent); }
 .note-mode-group > .toolbar-icon-button { width: 30px; height: 28px; }

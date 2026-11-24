@@ -1379,6 +1379,8 @@ export const en = {
   'editor.restoreTooltip': 'Discard uncommitted changes and restore from Git HEAD (Click twice to confirm)',
   'editor.confirmRestoreTooltip': 'Click again to confirm reverting changes from Git HEAD',
   'editor.closeNote': 'Close note',
+  'editor.zoomNote': 'Zoom note',
+  'editor.returnToFocus': 'Return to Focus',
   'editor.export': 'Export',
   'editor.exportCopy': 'Copy',
   'editor.exportMarkdown': 'Download (.md)',

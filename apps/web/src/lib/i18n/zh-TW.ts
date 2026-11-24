@@ -1380,6 +1380,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'editor.restoreTooltip': '捨棄未提交變更並從 Git HEAD 還原（點選兩次確認）',
   'editor.confirmRestoreTooltip': '再次點選以確認從 Git HEAD 還原變更',
   'editor.closeNote': '關閉筆記',
+  'editor.zoomNote': '放大筆記',
+  'editor.returnToFocus': '回到 Focus',
   'editor.export': '匯出',
   'editor.exportCopy': '複製',
   'editor.exportMarkdown': '下載 (.md)',

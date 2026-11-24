@@ -38,10 +38,7 @@ export function searchWithEditorMode(search: string, mode: EditorMode): string {
   return kept.length ? `?${kept.join('&')}` : '';
 }
 
-/**
- * The mode an editor shows for the mode the URL names: split needs zoom on a screen wider than a phone, so a phone and
- * a Focus pane show live instead, leaving the URL as it is.
- */
-export function shownEditorMode(mode: EditorMode, { frame, phone }: { frame: 'zoom' | 'pane'; phone: boolean; }): EditorMode {
-  return mode === 'split' && (phone || frame !== 'zoom') ? 'live' : mode;
+/** Phones show split links live, without changing the URL. */
+export function shownEditorMode(mode: EditorMode, phone: boolean): EditorMode {
+  return mode === 'split' && phone ? 'live' : mode;
 }

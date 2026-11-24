@@ -662,9 +662,12 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   }, [registerBeforeNavigate, registerEditor, readOnly, note, onSave, draftScope, branch, draftMode]);
 
   const close = async () => {
-    if (closing.current || operation.current) return;
+    if (closing.current) return;
+    closing.current = true;
+    // A mount or window focus can start a remote read just before the click. Honor the close after it settles.
+    while (operation.current && mounted.current) await new Promise(resolve => setTimeout(resolve, 50));
+    if (!mounted.current) return;
     if (autoSave && !readOnly && !current.current.blocked && hasUnsaved()) {
-      closing.current = true;
       setIsSaving(true);
       try {
         const saved = await onSave({ path: note.path, content: current.current.content, metadata: current.current.metadata, baseNote: current.current.baseNote });
@@ -683,8 +686,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
         return;
       }
     }
-    if (!autoSave && !readOnly && hasUnsavedChanges && !window.confirm(t('editor.confirmCloseUnsaved'))) return;
     closing.current = false;
+    if (!autoSave && !readOnly && hasUnsavedChanges && !window.confirm(t('editor.confirmCloseUnsaved'))) return;
     setIsSaving(false);
     onClose?.();
   };

@@ -61,5 +61,16 @@ export function useNoteActions({ activeTab, editorRegistry, setEditingNote, conf
     return Boolean(notebook);
   };
 
-  return { handleOpenNote };
+  const closeZoom = () => {
+    setEditingNote(null);
+    navigate(returnTo, { replace: true });
+  };
+  const closeCompilationZoom = () => {
+    const trail = noteTrail(location.state);
+    const previous = trail.at(-1);
+    if (!previous) return closeZoom();
+    setEditingNote(null);
+    navigate(previous, { replace: true, state: trail.length > 1 ? { noteTrail: trail.slice(0, -1) } : null });
+  };
+  return { handleOpenNote, closeZoom, closeCompilationZoom };
 }

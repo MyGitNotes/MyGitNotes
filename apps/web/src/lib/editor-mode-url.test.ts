@@ -23,11 +23,9 @@ describe('the editor mode in the query string', () => {
     expect(searchWithEditorMode('?mode=split&zoom&mode=live', 'live')).toBe('?zoom');
   });
 
-  it('shows split only in zoom on a screen wider than a phone; a phone and a Focus pane show live instead', () => {
-    expect(shownEditorMode('split', { frame: 'zoom', phone: false })).toBe('split');
-    expect(shownEditorMode('split', { frame: 'zoom', phone: true })).toBe('live');
-    expect(shownEditorMode('split', { frame: 'pane', phone: false })).toBe('live');
-    expect(shownEditorMode('raw', { frame: 'pane', phone: false })).toBe('raw');
-    expect(shownEditorMode('raw', { frame: 'zoom', phone: true })).toBe('raw');
+  it('shows split on desktop and falls back to live on a phone', () => {
+    expect(shownEditorMode('split', false)).toBe('split');
+    expect(shownEditorMode('split', true)).toBe('live');
+    expect(shownEditorMode('raw', true)).toBe('raw');
   });
 });

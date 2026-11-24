@@ -44,6 +44,7 @@ import { LiveCollabEditor, type LiveSession } from './live/LiveCollabEditor.js';
 import { replaceLiveText, useLiveText, writeLiveFrontmatter, writeLiveTitle, writeLiveYaml } from './live/live-frontmatter.js';
 import { LiveRestoreDialog } from './live/LiveRestoreDialog.js';
 import { useLiveEdit, useLiveTheme } from './live/useLiveEdit.js';
+import { useZoomToggle } from './note-editor/useZoomToggle.js';
 
 export interface NoteEditorHandle {
   /** Inserts `text` at `at`, or at the caret; no-op while the session is locked. */
@@ -85,7 +86,7 @@ function footerActions({ frame, readOnly, session, refresh, canCommit }: { frame
 /** How long after the last frontmatter change of a live note the lists read it again: its typing reaches the server first. */
 const LIST_REFETCH_MS = 500;
 
-export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly: givenReadOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onMoved, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate, live, openInZoom }, ref) => {
+export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note, frame, active, documentPanel, actionsSlot, onClose, onMove, onRename, onSession, onCaret, statuses, metadataFields, readOnly: givenReadOnly = false, autoSave = true, draftMode = false, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onMoved, onRestoreFile, onCommitFile, readDiff, isDirty: propIsDirty = false, availableTags = [], beforeFileChange, onFilesChanged, branch, draftScope, template = false, onSaveAsTemplate, live, zoomNavigation }, ref) => {
   const isMarkdown = /\.(md|markdown|mdx)$/i.test(note.path);
   // A note of a repository with a live editor is read here and edited there; `refresh` is declared below and read only after render.
   const liveEdit = useLiveEdit({ note, live, frame, refetch: () => void refresh?.(), hasDraft: () => Boolean(sessionRef.current?.isDirty) });
@@ -109,19 +110,14 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
 
   // A phone has no room for line numbers, and its notes have no card frame: whatever this device chose for a larger screen stays stored.
   const phone = usePhone();
-  // Zoom and a Focus pane take their mode from the page's URL (`?mode=`); a graph card, and an editor embedded without the
-  // app's router, keep their own. Split needs zoom on a wider screen: a phone and a Focus pane show live for it, and a pane
-  // hands split to zoom, so Back returns to the pane.
+  // Zoom and Focus take their mode from the URL; card and embedded editors keep their own.
   const modeRoute = useEditorModeRoute();
-  const routed = modeRoute && (frame === 'zoom' || frame === 'pane') ? modeRoute : null;
+  const fullEditor = frame === 'zoom' || frame === 'pane';
+  const routed = fullEditor ? modeRoute : null;
   const [ownMode, setOwnMode] = useState<MarkdownEditorMode>('live');
-  const editorMode = routed ? shownEditorMode(routed.mode, { frame: frame as 'zoom' | 'pane', phone }) : ownMode;
-  const setEditorMode = (mode: MarkdownEditorMode) => {
-    if (!routed) return setOwnMode(mode);
-    if (mode === 'split' && frame === 'pane') return openInZoom?.('split');
-    routed.setMode(mode);
-  };
-  const editorModes: MarkdownEditorMode[] = routed && !phone && (frame === 'zoom' || openInZoom) ? ['live', 'raw', 'split'] : ['live', 'raw'];
+  const editorMode = shownEditorMode(routed?.mode ?? ownMode, phone);
+  const setEditorMode = routed?.setMode ?? setOwnMode;
+  const editorModes: MarkdownEditorMode[] = fullEditor && !phone ? ['live', 'raw', 'split'] : ['live', 'raw'];
   const [showLineNumbers, setShowLineNumbers] = useState(() => readShowLineNumbers(note.notebookId));
   const toggleLineNumbers = () =>
     setShowLineNumbers(value => {
@@ -155,6 +151,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   const shared = collabShown ? liveSession : null;
   const { text: liveText, frontmatter: liveFrontmatter } = useLiveText(shared?.text ?? null);
   const collabEditorRef = useRef<LiveMarkdownHandle>(null);
+  const toggleZoom = useZoomToggle({ navigation: zoomNavigation, note, frame, active, mode: editorMode, editor: editorRef, collabEditor: collabEditorRef, collabShown });
   const checkInButton = useRef<HTMLButtonElement>(null);
   const liveBody = shared ? liveText.slice(liveFrontmatter.bodyStart) : '';
   const liveTitle = useMemo(() => (shared ? parseNoteFile(liveText.slice(0, liveFrontmatter.bodyStart) + liveBody, note.path).title : ''), [shared, liveText, liveFrontmatter.bodyStart, liveBody, note.path]);
@@ -458,7 +455,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
       <div className='editor-notices'>{liveEdit.notices}</div>
-      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} editorModes={editorModes} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phoneEditing} onRefresh={refresh} onClose={onClose} onMove={moveNote} onRename={shared ? liveRename : directPanel.onRename} liveDraft={liveDraft} frontmatterInvalid={shared ? !liveFrontmatter.valid : unreadable} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
+      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} editorModes={editorModes} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phoneEditing} onRefresh={refresh} onClose={onClose} toggleZoom={toggleZoom} hasZoomNavigation={Boolean(zoomNavigation)} onMove={moveNote} onRename={shared ? liveRename : directPanel.onRename} liveDraft={liveDraft} frontmatterInvalid={shared ? !liveFrontmatter.valid : unreadable} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
       {awaitingRecovery && (
         <p role='status'>
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>

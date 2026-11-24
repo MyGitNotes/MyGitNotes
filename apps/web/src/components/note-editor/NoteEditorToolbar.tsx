@@ -1,7 +1,8 @@
 import { Tooltip } from '../Tooltip.js';
 import { type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Check, ListOrdered, PanelRight, Pencil, Play, Save, ScrollText, Type } from 'lucide-react';
+import { Check, ListOrdered, Maximize2, Minimize2, PanelRight, Pencil, Play, Save, ScrollText, Type, X } from 'lucide-react';
+import { hasKeymapEntry, primaryShortcutHint } from '../../lib/keyboard/keymap.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import type { NoteItem } from '../../lib/types.js';
 import { Button } from '../Button.js';
@@ -37,6 +38,8 @@ interface NoteEditorToolbarProps {
   /** Present when the note can pull its latest version; zoom shows it first among the actions. */
   onRefresh?: () => Promise<void>;
   onClose?: () => void;
+  toggleZoom?: () => Promise<void>;
+  hasZoomNavigation?: boolean;
   onAddToOutline?: () => void;
   /** Present for a slide note: plays it as a deck, or opens its speaker notes. */
   /** `opener` is the button pressed, which takes the focus back when the deck closes. */
@@ -84,9 +87,11 @@ function togglePanel(docPanel: NoteDocumentPanelState, isMarkdown: boolean) {
 }
 
 /** The editor's actions: refresh and save, the view (mode, line numbers, formatting toolbar), the "⋯" menu, and in zoom the panels. */
-function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, editorModes = ['live', 'raw'], showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, liveDraft, phoneEditing }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onClose' | 'onRename' | 'actionsSlot' | 'template'>) {
+function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, editorModes = ['live', 'raw'], showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, liveDraft, phoneEditing, onClose, toggleZoom, hasZoomNavigation }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onRename' | 'actionsSlot' | 'template'>) {
   const { t } = useTranslation();
   const zoom = frame === 'zoom';
+  const zoomLabel = t(zoom ? 'editor.returnToFocus' : 'editor.zoomNote');
+  const zoomHint = !zoom && hasKeymapEntry('focus-zoom-tab') ? primaryShortcutHint('focus-zoom-tab') : undefined;
   return (
     <div className='note-controls flex items-center gap-2'>
       {zoom && onRefresh && <NoteRefreshAction iconOnly onRefresh={onRefresh} disabled={session.isSaving} />}
@@ -143,34 +148,38 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
           <AssistantDockToggle className='toolbar-icon-button editor-assistant-action' />
         </div>
       )}
+      {hasZoomNavigation && (
+        <Tooltip label={zoomLabel} detail={zoomHint}>
+          <button type='button' aria-label={zoomLabel} aria-pressed={zoom} disabled={!toggleZoom} onClick={toggleZoom} className='ui-icon-button toolbar-icon-button'>
+            {zoom ? <Minimize2 aria-hidden='true' /> : <Maximize2 aria-hidden='true' />}
+          </button>
+        </Tooltip>
+      )}
+      {zoom && onClose && (
+        <Tooltip label={t('editor.closeNote')}>
+          <button type='button' aria-label={t('editor.closeNote')} onClick={session.close} className='ui-icon-button toolbar-icon-button shrink-0'>
+            <X aria-hidden='true' />
+          </button>
+        </Tooltip>
+      )}
     </div>
   );
 }
 
 /**
  * The zoom and pane editor's top bars. The note row carries the title, status, tags and the frontmatter button; the actions
- * follow it in one row, led by the back button in zoom, and go into the Focus pane's tab bar while the pane hides this bar.
+ * follow it, or go into the Focus pane's tab bar when that pane hides this bar.
  */
 export function NoteEditorToolbar({ onClose, onRename, template = false, frontmatterInvalid, statuses, availableTags, actionsSlot, phoneEditing, phoneChrome, ...actions }: NoteEditorToolbarProps) {
-  const { t } = useTranslation();
   const { frame, note, session, docPanel, readOnly } = actions;
   const zoom = frame === 'zoom';
   if (phoneChrome) {
     const { frame: phoneFrame, note: phoneNote, session: phoneSession, docPanel: phoneDocPanel, isMarkdown, autoSave, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate } = actions;
     return <PhoneNoteChrome {...phoneChrome} onPlaySlides={onPlaySlides} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} liveDraft={actions.liveDraft} template={template} frontmatterInvalid={frontmatterInvalid} onSaveAsTemplate={onSaveAsTemplate} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
   }
-  const controls: ReactNode = <NoteActions {...actions} phoneEditing={phoneEditing} />;
+  const controls: ReactNode = <NoteActions {...actions} phoneEditing={phoneEditing} onClose={onClose} />;
   return (
     <div className='note-toolbar relative shrink-0 px-4 py-2 border-b border-line flex items-center justify-between gap-4 bg-sidebar/60' data-actions={actionsSlot ? 'bar' : zoom || frame === 'pane' ? 'row' : 'inline'}>
-      {zoom && (onClose
-        ? (
-          <Tooltip label={t('editor.closeNote')}>
-            <button type='button' aria-label={t('editor.closeNote')} onClick={session.close} className='note-close ui-icon-button toolbar-icon-button shrink-0'>
-              <ArrowLeft aria-hidden='true' />
-            </button>
-          </Tooltip>
-        )
-        : null)}
       <NoteRow path={note.path} session={session} docPanel={docPanel} statuses={statuses} availableTags={availableTags} onRename={onRename} template={template} frontmatterInvalid={frontmatterInvalid} trailing={zoom && phoneEditing ? <PhoneEditToggle {...phoneEditing} /> : undefined} />
       {actionsSlot ? createPortal(controls, actionsSlot) : controls}
     </div>

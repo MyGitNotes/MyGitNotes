@@ -99,9 +99,9 @@ describe('the editor mode of a zoomed note', () => {
 });
 
 describe('the editor mode of a Focus pane', () => {
-  it('shows live for a split link, without rewriting the URL', () => {
+  it('shows split for a split link, without rewriting the URL', () => {
     const address = open(`${NOTE}?mode=split`, { frame: 'pane' });
-    expect(shown).toBe('live');
+    expect(shown).toBe('split');
     expect(address.current.url).toBe(`${NOTE}?mode=split`);
   });
 
@@ -110,12 +110,17 @@ describe('the editor mode of a Focus pane', () => {
     expect(shown).toBe('raw');
   });
 
-  it('still offers split, which opens the note in zoom instead of splitting the pane', () => {
-    const openInZoom = vi.fn();
-    const address = open(NOTE, { frame: 'pane', openInZoom });
+  it('changes mode in place; only the frame toggle requests zoom', () => {
+    const toggleFrame = vi.fn(async () => true);
+    const address = open(NOTE, { frame: 'pane', zoomNavigation: { open: toggleFrame, selection: { current: null } } });
+    const zoom = screen.getByRole('button', { name: 'Zoom note' });
+    expect(zoom).toHaveAttribute('aria-pressed', 'false');
     act(() => fireEvent.click(within(modes()).getByRole('button', { name: 'Split view' })));
-    expect(openInZoom).toHaveBeenCalledWith('split');
-    expect(shown).toBe('live');
-    expect(address.current.url).toBe(NOTE);
+    expect(shown).toBe('split');
+    expect(document.querySelector('.note-editor')?.getAttribute('data-frame')).toBe('pane');
+    expect(address.current.url).toBe(`${NOTE}?mode=split`);
+    expect(toggleFrame).not.toHaveBeenCalled();
+    fireEvent.click(zoom);
+    expect(toggleFrame).toHaveBeenCalledWith('split');
   });
 });

@@ -2,7 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { matchPath, useNavigationType } from 'react-router-dom';
 import { useCurrentEntry } from './current-entry.js';
 import type { useLocation, useNavigate } from 'react-router-dom';
-import { focusPanes } from '@mygitnotes/core/focus-page';
+import { findFocusTabInPane, focusPanes, focusTabKey } from '@mygitnotes/core/focus-page';
+import { noteRefKey } from '@mygitnotes/core/note-query';
+import type { FrameSelection } from '../components/note-editor/types.js';
+import { type EditorMode, searchWithEditorMode } from '../lib/editor-mode-url.js';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { FOCUS_NOTE_STATE, isFocusNoteState, noteRoute, type parseWorkspaceRoute } from '../lib/routes.js';
 import type { NoteItem } from '../lib/types.js';
@@ -65,6 +68,7 @@ interface Params {
   returnTo: string;
   /** Whether the Notes page browses a notebook, where a Focus is shown (not a study session or another page). */
   browsing: boolean;
+  flushZoom?: (keys: readonly string[]) => Promise<boolean>;
   setFocusNarrowView: ReturnType<typeof useFocusPanes>['setFocusNarrowView'];
   /** Whether a note is a template file of its notebook, which stays in zoom: it never opens in a Focus pane. */
   isTemplate?: (note: Pick<NoteItem, 'notebookId' | 'path'>) => boolean;
@@ -77,7 +81,7 @@ interface Params {
  * rename replaces it. A note link the page was loaded on, and an address Back or Forward returns to, opens that note in
  * the Focus (its tab where one is open, else a new one); when the Focus cannot take it, the note stays in zoom.
  */
-export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus, activeNotePath, focusNarrowView, selectedNotebookId, notebookRoot, returnTo, browsing, setFocusNarrowView, isTemplate }: Params) {
+export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus, activeNotePath, focusNarrowView, selectedNotebookId, notebookRoot, returnTo, browsing, flushZoom, setFocusNarrowView, isTemplate }: Params) {
   const { pending, inFocus, settle } = link;
   const navigationType = useNavigationType();
   const isCurrent = useCurrentEntry();
@@ -207,5 +211,21 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
     }
     return result;
   };
-  return { trackOpen };
+  // A toggle is not a Back: it explicitly chooses this note, even if the browse entry had another tab showing.
+  const returnToFocus = !inFocus && routedNote && focusReady && noteFocus.layout && noteFocus.entry && routedNote.notebookId === selectedNotebookId && !isTemplate?.(routedNote) ? async (mode: EditorMode) => {
+    const path = routedNote.path;
+    const active = noteFocus.entry!.activePane;
+    const key = focusTabKey({ kind: 'note', path });
+    const layout = noteFocus.layout!;
+    const pane = findFocusTabInPane(layout, active, key) !== -1 ? active : focusPanes(layout).find(pane => findFocusTabInPane(layout, pane.id, key) !== -1)?.id ?? active;
+    if (flushZoom && !await flushZoom([noteRefKey(routedNote)])) return false;
+    if (!isCurrent(location.key) || await noteFocus.openNote(path, pane, 'here') !== 'opened' || !isCurrent(location.key)) return false;
+    const url = new URL(urlFor(path), 'https://workspace.invalid');
+    setFocusNarrowView('focus');
+    // Replace the zoom entry so Back goes to the entry that opened it, rather than reopening zoom.
+    void navigate(url.pathname + searchWithEditorMode(url.search, mode) + url.hash, { replace: true, state: FOCUS_NOTE_STATE });
+    return true;
+  } : undefined;
+  const frameSelection = useRef<FrameSelection | null>(null);
+  return { trackOpen, returnToFocus, frameSelection };
 }

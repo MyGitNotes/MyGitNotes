@@ -13,16 +13,20 @@ afterEach(cleanup);
 const note: NoteItem = { id: 'a', path: 'notes/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: { title: 'Alpha' }, content: '# Alpha\n' };
 const editor = (props: Partial<NoteEditorProps>) => createElement(PanelProvider, null, createElement(NoteEditor, { note, frame: 'zoom', active: true, statuses: [], autoSave: true, onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main', ...props } as NoteEditorProps));
 
-it('leaves zoom from the heading at the left, apart from the document-panel toggle', async () => {
-  const onClose = vi.fn();
-  const { container } = render(editor({ onClose }));
-  const back = screen.getByRole('button', { name: 'Close note' });
-  expect(container.querySelector('.note-toolbar')?.firstElementChild).toBe(back);
-  expect(container.querySelector('.note-controls')?.contains(back)).toBe(false);
-
-  await act(async () => {
-    fireEvent.click(back);
-  });
+it('separates the pressed zoom toggle from the close icon at the right end', async () => {
+  const onClose = vi.fn(), toggleFrame = vi.fn(async () => true);
+  const { container } = render(editor({ onClose, zoomNavigation: { open: vi.fn(), returnToFocus: toggleFrame, selection: { current: null } } }));
+  const toggle = screen.getByRole('button', { name: 'Return to Focus' });
+  const close = screen.getByRole('button', { name: 'Close note' });
+  expect(toggle.getAttribute('aria-pressed')).toBe('true');
+  expect(container.querySelector('.note-toolbar')?.firstElementChild?.classList.contains('note-row')).toBe(true);
+  expect(container.querySelector('.note-controls')?.lastElementChild).toBe(close);
+  expect(close.previousElementSibling).toBe(toggle);
+  expect(close.querySelector('.lucide-x')).not.toBeNull();
+  fireEvent.click(toggle);
+  expect(toggleFrame).toHaveBeenCalledWith('live');
+  expect(onClose).not.toHaveBeenCalled();
+  await act(async () => { fireEvent.click(close); });
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 

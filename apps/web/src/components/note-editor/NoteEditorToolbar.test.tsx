@@ -165,7 +165,7 @@ it('puts Refresh first in the zoom controls as a ghost icon button with a toolti
   expect(onRefresh).toHaveBeenCalledOnce();
 });
 
-it('makes zoom one row: back button, note row, then the actions grouped as view with ⋯ and panels', () => {
+it('makes zoom one row with the title first and the close icon after the actions', () => {
   const groups = (isMarkdown: boolean, extra: Record<string, unknown> = {}) => {
     const { container } = render(toolbar(vi.fn(), { isMarkdown, toggleFormatToolbar: vi.fn(), ...extra }));
     const bar = container.querySelector('.note-toolbar')!;
@@ -176,13 +176,13 @@ it('makes zoom one row: back button, note row, then the actions grouped as view 
     return { names, members, order };
   };
   const { names, members, order } = groups(true);
-  expect(order).toEqual(['note-close', 'note-row', 'note-controls']);
+  expect(order).toEqual(['note-row', 'note-controls']);
   expect(names).toEqual(['View', 'Panels']);
   expect(members).toEqual([['Line Numbers', 'Formatting toolbar', 'More actions'], ['Document tools']]);
   // The mode group leads the view, ahead of its group.
   render(toolbar(vi.fn(), { isMarkdown: true }));
   const controls = [...document.querySelector('.note-controls')!.children].map(child => child.className.split(' ')[0]);
-  expect(controls).toEqual(['note-mode-group', 'note-controls-group', 'note-controls-group']);
+  expect(controls).toEqual(['note-mode-group', 'note-controls-group', 'note-controls-group', 'ui-icon-button']);
   cleanup();
   // A note that is not Markdown has no modes.
   expect(groups(false).members[0]).toEqual(['Line Numbers', 'Formatting toolbar', 'More actions']);

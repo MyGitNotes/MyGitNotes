@@ -1,4 +1,5 @@
-import type { MarkdownEditorMode } from '../MarkdownEditor.js';
+import type { MutableRefObject } from 'react';
+import type { EditorMode } from '../../lib/editor-mode-url.js';
 import type { FileResult } from '../../lib/files-api.js';
 import type { FileChangeScope } from '../../lib/file-change-scope.js';
 import type { NewVersionRequest } from '../../lib/history-api.js';
@@ -7,6 +8,19 @@ import type { LiveNoteEditing } from '../../lib/live-api.js';
 
 // Types the editor's parts share with NoteEditor; kept apart so those parts need not import the editor itself.
 export type NotePanelMode = 'find' | 'outline' | 'frontmatter' | 'view' | 'history';
+
+export interface FrameSelection {
+  key: string;
+  frame: 'pane' | 'zoom';
+  from: number;
+  to: number;
+}
+
+export interface ZoomNavigation {
+  open: (mode: EditorMode) => Promise<boolean>;
+  returnToFocus?: (mode: EditorMode) => Promise<boolean>;
+  selection: MutableRefObject<FrameSelection | null>;
+}
 
 /** Props every editor of one note shares, whether zoom or a Focus pane frames it. */
 export interface NoteEditorSharedProps {
@@ -51,8 +65,8 @@ export interface NoteEditorSharedProps {
    * out and frames the editor in zoom. Absent for notes the live editor does not take, and where the reader may not write.
    */
   live?: LiveNoteEditing;
-  /** Opens the note in zoom in `mode`, as a new history entry; a Focus pane hands split view to it, which it does not show itself. */
-  openInZoom?: (mode: MarkdownEditorMode) => void;
+  /** Moves this note between Focus and zoom without changing its mode. */
+  zoomNavigation?: ZoomNavigation;
 }
 
 /** What a host that embeds the editor sees of its session, for features it builds on top of the body. */

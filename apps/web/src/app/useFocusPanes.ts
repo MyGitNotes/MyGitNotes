@@ -43,7 +43,7 @@ export function useFocusPanes({ selectedNotebookId, notebookRepository, focusPag
   const localId = parseNotebookKey(selectedNotebookId)?.localId;
   const focusScope = localId && resolveBareNotebook(localId) === selectedNotebookId ? remote ? sourceId : `local:${repoRoot}` : null;
   // A Notes page whose URL names no Focus shows the one it displayed last, decided while rendering so the list never paints first.
-  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, notebookRoot, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' && (!editorRoute.note || focusNoteRoute), writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
+  const noteFocus = useNoteFocus({ page: focusPage, notebookId: selectedNotebookId, notebookRoot, repository: notebookRepository, scope: focusScope, focusKey: activeTab === 'notes' ? route.focus : null, restoreLast: activeTab === 'notes' || Boolean(editorRoute.note), writable: canWrite, splitBeside: focusCapacity === 'all', flushEditors: editorRegistry.flushEditors });
   const focusDisplay = noteFocus.layout && noteFocus.entry ? displayedPanes(noteFocus.entry, noteFocus.layout, focusCapacity) : undefined;
   /** On phones the browse region and the Focus take turns filling the screen; a phone starts on the list. */
   const [focusNarrowView, setFocusNarrowView] = useState<'focus' | 'browse'>(() => isPhoneViewport() ? 'browse' : 'focus');

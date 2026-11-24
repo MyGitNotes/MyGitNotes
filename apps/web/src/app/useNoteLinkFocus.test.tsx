@@ -31,10 +31,14 @@ function useFakeFocus(initial: FocusState, { loading = false, result, gate }: { 
   const layout: FocusLayout = Object.keys(state.panes).length === 1 ? { root: { kind: 'pane', id: Object.keys(state.panes)[0]!, tabs: state.panes[Object.keys(state.panes)[0]!]!.map(path => ({ kind: 'note', path })) } } : { root: { kind: 'split', id: 's1', orientation: 'horizontal', children: Object.entries(state.panes).map(([id, paths]) => ({ kind: 'pane', id, tabs: paths.map(path => ({ kind: 'note', path })) })) } };
   const entry = { activePane: state.activePane, shown: Object.fromEntries(Object.entries(state.shown).map(([pane, path]) => [pane, path ? `note:${path}` : null])), recent: [], history: {}, ratios: {}, hideToolbar: {} };
   const [openNote] = useState(() =>
-    vi.fn(async (path: string): Promise<OpenResult> => {
+    vi.fn(async (path: string, source?: string, placement?: 'here' | 'beside'): Promise<OpenResult> => {
       if (result) return result;
       if (gate) await gate(path);
-      setState(current => ({ ...current, panes: { ...current.panes, [current.activePane]: current.panes[current.activePane]!.includes(path) ? current.panes[current.activePane]! : [...current.panes[current.activePane]!, path] }, shown: { ...current.shown, [current.activePane]: path } }));
+      setState(current => {
+        const pane = placement === 'here' && source !== undefined ? source : current.activePane;
+        const tabs = current.panes[pane]!;
+        return { panes: { ...current.panes, [pane]: tabs.includes(path) ? tabs : [...tabs, path] }, shown: { ...current.shown, [pane]: path }, activePane: pane };
+      });
       return 'opened';
     })
   );
@@ -66,8 +70,9 @@ interface Harness {
   handleOpenNote: ReturnType<typeof vi.fn>;
   /** The person picks the sort by title, as the page's sort menu does. */
   sortByTitle: () => void;
-  /** The person picks split view in the mode control of the Focus pane showing `path`: the app's zoom opens it in that mode. */
   zoomInMode: (path: string, mode: 'live' | 'raw' | 'split') => Promise<boolean>;
+  returnToFocus?: (mode: 'live' | 'raw' | 'split') => Promise<boolean>;
+  closeZoom: () => void;
 }
 
 /** A link in a note the Focus pane `pane` shows. */
@@ -101,10 +106,10 @@ function Page({ report, focus: initial, options }: { report: (harness: Harness) 
   const [handleOpenNote] = useState(() => vi.fn(async () => true));
   const { handleSortChange } = useNoteSort('life', undefined, link.inFocus);
   const [setEditingNote] = useState(() => vi.fn()), [setAssets] = useState(() => vi.fn());
-  const { handleOpenNote: openZoom } = useNoteActions({ activeTab: 'notes', editorRegistry: {} as never, setEditingNote, config: { notebooks: [{ id: 'life', root: ROOT }] } as never, location, editorRoute, focusNoteRoute: link.inFocus, returnTo, selectedFolder: null, selectedNotebookId: 'life', navigate, setAssets });
-  const { trackOpen } = useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus: focus.noteFocus, activeNotePath: focus.activeNotePath, focusNarrowView: narrow, selectedNotebookId: 'life', notebookRoot: ROOT, returnTo, browsing: editorRoute.tab === 'notes', setFocusNarrowView: setNarrow, isTemplate: note => note.path.includes('/.templates/') });
+  const { handleOpenNote: openZoom, closeZoom } = useNoteActions({ activeTab: 'notes', editorRegistry: {} as never, setEditingNote, config: { notebooks: [{ id: 'life', root: ROOT }] } as never, location, editorRoute, focusNoteRoute: link.inFocus, returnTo, selectedFolder: null, selectedNotebookId: 'life', navigate, setAssets });
+  const { trackOpen, returnToFocus } = useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus: focus.noteFocus, activeNotePath: focus.activeNotePath, focusNarrowView: narrow, selectedNotebookId: 'life', notebookRoot: ROOT, returnTo, browsing: editorRoute.tab === 'notes', setFocusNarrowView: setNarrow, isTemplate: note => note.path.includes('/.templates/') });
   const { openFromBrowse, openLink } = useFocusNoteNavigation({ noteFocus: focus.noteFocus, selectedNotebookId: 'life', setFocusNarrowView: setNarrow, handleOpenNote: handleOpenNote as never, setAddingToFocus: vi.fn(), isTemplate: note => note.path.includes('/.templates/'), trackOpen });
-  const harness: Harness = { url: location.pathname + location.search + location.hash, state: location.state, zoomed: Boolean(routedNote) && !routeError && !link.inFocus, linkPending: link.pending, focus, navigate, browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never), link: (path, pane) => openLink({ notebookId: 'life', path, title: path } as never, undefined, linkIn(pane)), setNarrow, narrow, handleOpenNote, sortByTitle: () => handleSortChange('title', 'asc'), zoomInMode: (path, mode) => openZoom({ notebookId: 'life', path, title: path } as never, '', { mode }) };
+  const harness: Harness = { url: location.pathname + location.search + location.hash, state: location.state, zoomed: Boolean(routedNote) && !routeError && !link.inFocus, linkPending: link.pending, focus, navigate, browse: path => openFromBrowse({ notebookId: 'life', path, title: path } as never), link: (path, pane) => openLink({ notebookId: 'life', path, title: path } as never, undefined, linkIn(pane)), setNarrow, narrow, handleOpenNote, sortByTitle: () => handleSortChange('title', 'asc'), returnToFocus, closeZoom, zoomInMode: (path, mode) => openZoom({ notebookId: 'life', path, title: path } as never, '', { mode }) };
   useLayoutEffect(() => {
     report(harness);
     options.onCommit?.(harness);
@@ -557,8 +562,8 @@ describe('a zoom URL', () => {
   });
 });
 
-describe('split view picked in a Focus pane', () => {
-  it('opens the note in zoom with mode=split as a new entry, and Back returns to the Focus showing the same tab', async () => {
+describe('switching between a Focus pane and zoom', () => {
+  it('toggles to zoom with the same mode in a new entry, and Back shows the prior Focus tab', async () => {
     const { api } = open(['/notebooks/life'], showing({ p1: [at('a.md'), at('b.md')] }, 'p1', { p1: at('b.md') }));
     await showsNote(api, 'b.md');
     await waitFor(() => expect(isFocusNoteState(api.current.state)).toBe(true));
@@ -568,23 +573,44 @@ describe('split view picked in a Focus pane', () => {
     expect(zoom.pathname).toBe('/notebooks/life/notes/b.md');
     expect(zoom.searchParams.get('mode')).toBe('split');
     expect(zoom.searchParams.get('returnTo')).toBe('/notebooks/life');
-    expect(shownEditorMode(editorModeOf(zoom.search), { frame: 'zoom', phone: false })).toBe('split');
+    expect(shownEditorMode(editorModeOf(zoom.search), false)).toBe('split');
     // The Focus underneath did not move.
     expect(api.current.focus.activeNotePath).toBe(at('b.md'));
     await back(api);
     await showsNote(api, 'b.md');
     expect(api.current.focus.state.panes.p1).toEqual([at('a.md'), at('b.md')]);
-    // The pane shows the note live: its address names no mode.
-    expect(shownEditorMode(editorModeOf(new URL(api.current.url, 'https://workspace.invalid').search), { frame: 'pane', phone: false })).toBe('live');
+    // Browser Back restores the original entry and its live mode.
+    expect(editorModeOf(new URL(api.current.url, 'https://workspace.invalid').search)).toBe('live');
   });
 
-  it('keeps a split link that lands in the Focus as it is, the pane showing live', async () => {
+  it.each([true, false])('returns from zoom in source mode (existing tab: %s)', async existing => {
+    const { api } = open(['/notebooks/life/notes/c.md?returnTo=%2Fnotebooks%2Flife&mode=source'], showing({ p1: [at('a.md')], p2: [existing ? at('c.md') : at('b.md')] }));
+    expect(api.current.zoomed).toBe(true);
+    await act(async () => void await api.current.returnToFocus!('raw'));
+    expect(api.current.zoomed).toBe(false);
+    expect(api.current.focus.activeNotePath).toBe(at('c.md'));
+    expect(api.current.focus.state.activePane).toBe(existing ? 'p2' : 'p1');
+    expect(api.current.focus.state.panes).toEqual(existing ? { p1: [at('a.md')], p2: [at('c.md')] } : { p1: [at('a.md'), at('c.md')], p2: [at('b.md')] });
+    expect(api.current.url).toBe('/notebooks/life/notes/c.md?mode=source');
+  });
+
+  it('closes a zoomed note back to Notes without adding it to the Focus', async () => {
+    const { api } = open([{ pathname: '/notebooks/life/notes/c.md', search: '?returnTo=%2Fnotebooks%2Flife%3Fview%3Dkanban', state: { noteTrail: ['/notebooks/life/notes/a.md?zoom'] } }], showing({ p1: [at('b.md')] }));
+    expect(api.current.zoomed).toBe(true);
+    await act(async () => api.current.closeZoom());
+    expect(api.current.zoomed).toBe(false);
+    expect(api.current.url).toBe('/notebooks/life?view=kanban');
+    expect(api.current.focus.state).toEqual(showing({ p1: [at('b.md')] }));
+    expect(api.current.focus.openNote).not.toHaveBeenCalled();
+  });
+
+  it('keeps a split link that lands in the Focus as it is', async () => {
     const { api } = open(['/notebooks/life/notes/a.md?mode=split']);
     await waitFor(() => expect(api.current.focus.activeNotePath).toBe(at('a.md')));
     await waitFor(() => expect(isFocusNoteState(api.current.state)).toBe(true));
     expect(api.current.url).toBe('/notebooks/life/notes/a.md?mode=split');
     expect(api.current.zoomed).toBe(false);
-    expect(shownEditorMode(editorModeOf('?mode=split'), { frame: 'pane', phone: false })).toBe('live');
+    expect(shownEditorMode(editorModeOf('?mode=split'), false)).toBe('split');
   });
 
   it('keeps the mode in the address when the Focus moves to another tab', async () => {
