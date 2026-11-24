@@ -41,7 +41,7 @@ export function KanbanCard({ note, board, index }: { note: NoteListItem; board: 
             onClick={() => board.onUpdateNoteStatus(note, board.columns[index - 1].id)}
             disabled={Boolean(locked)}
             aria-label={t('kanban.moveTo', { title: board.columns[index - 1].title })}
-            className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'
+            className='kanban-card-step p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'
           >
             <ArrowLeft className='w-3.5 h-3.5' />
           </button>
@@ -49,7 +49,7 @@ export function KanbanCard({ note, board, index }: { note: NoteListItem; board: 
       )}
       {!board.readOnly && index >= 0 && index < board.columns.length - 1 && (
         <Tooltip label={locked ?? t('kanban.moveTo', { title: board.columns[index + 1].title })}>
-          <button type='button' onClick={() => board.onUpdateNoteStatus(note, board.columns[index + 1].id)} disabled={Boolean(locked)} aria-label={t('kanban.moveTo', { title: board.columns[index + 1].title })} className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'>
+          <button type='button' onClick={() => board.onUpdateNoteStatus(note, board.columns[index + 1].id)} disabled={Boolean(locked)} aria-label={t('kanban.moveTo', { title: board.columns[index + 1].title })} className='kanban-card-step p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'>
             <ArrowRight className='w-3.5 h-3.5' />
           </button>
         </Tooltip>
@@ -101,7 +101,7 @@ export function KanbanCard({ note, board, index }: { note: NoteListItem; board: 
         {/* Card Actions & Timestamp */}
         <div className='flex items-center justify-between pt-2 border-t text-muted text-xs' style={{ borderColor: 'var(--color-line)' }} onClick={(e) => e.stopPropagation()}>
           <div className='flex items-center gap-1.5 text-muted'>
-            <span className='flex items-center gap-1 text-[11px]'>
+            <span className='flex items-center gap-1 text-[11px] whitespace-nowrap'>
               <Clock className='w-3 h-3 text-muted' />
               {formattedDate}
             </span>

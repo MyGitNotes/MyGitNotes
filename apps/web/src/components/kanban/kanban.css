@@ -1,7 +1,8 @@
 /* The board's columns share the width between 180px and 320px each; past the narrowest the board scrolls sideways. */
 .kanban-column { flex: 1 1 0%; min-width: 180px; max-width: 320px; container-type: inline-size; }
-/* A narrow column keeps its name and count; the column's own sort gives way, the board's sort still applies. */
-@container (max-width: 239px) { .kanban-column-sort { display: none; } }
+/* A narrow column keeps its name and count, and a card its date, open, move and delete: the column's own sort and the cards' step arrows give
+   way (the board's sort and dragging still do both). */
+@container (max-width: 239px) { .kanban-column-sort, .kanban-card-step { display: none; } }
 
 /* A folded column: dot, name down the strip, count. It stays a drop target. */
 .kanban-strip { flex: none; width: 30px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); transition: border-color 120ms ease, background-color 120ms ease; }

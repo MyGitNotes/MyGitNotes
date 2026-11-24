@@ -26,3 +26,18 @@ describe('the disabled delete on a Kanban card', () => {
     expect(global.join(';')).toMatch(/opacity:\s*0\.45\s*!important/);
   });
 });
+
+describe('the board columns', () => {
+  const board = strip('components/kanban/kanban.css');
+  it('share the width between 180px and 320px each, and fold to a 30px strip', () => {
+    const column = rules(board, '.kanban-column').join(';');
+    expect(column).toMatch(/flex:\s*1 1 0%/);
+    expect(column).toMatch(/min-width:\s*180px/);
+    expect(column).toMatch(/max-width:\s*320px/);
+    expect(rules(board, '.kanban-strip').join(';')).toMatch(/width:\s*30px/);
+  });
+
+  it('let a narrow column drop its own sort and the cards their step arrows, keeping date, open, move and delete', () => {
+    expect(board).toMatch(/@container \(max-width: 239px\) \{ \.kanban-column-sort, \.kanban-card-step \{ display: none; \} \}/);
+  });
+});
