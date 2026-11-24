@@ -17,7 +17,7 @@ import { CompilationView } from '../CompilationView.js';
 
 vi.mock('../../lib/note-editing.js', async importOriginal => ({ ...await importOriginal<typeof import('../../lib/note-editing.js')>(), useEditorRegistry: () => () => () => {}, useNoteEditing: () => editing }));
 
-const editing = { flushEditors: async () => true, refreshNotes: async () => {}, editorProps: () => ({ readOnly: false }), addToFocus: () => undefined };
+const editing = { flushEditors: async () => true, refreshNotes: async () => {}, editorProps: () => ({ readOnly: false }), addToFocus: () => undefined, renameNote: () => () => {}, moveNote: () => () => {} };
 const notebooks = [{ id: 'thesis', title: 'Thesis', root: 'notes/thesis' }, { id: 'reading', title: 'Reading', root: 'notes/reading', icon: 'book', color: 'teal' as const }];
 const note = (notebookId: string, path: string, title: string, content: string, status?: string) => ({ id: path, path, notebookId, title, content, metadata: {}, tags: [] as string[], ...(status ? { status } : {}) });
 const save = vi.fn<(ref: NoteRef, text: string) => Promise<void>>();
@@ -202,6 +202,10 @@ describe('the board, drawn', () => {
     expect(tabs.getByRole('button', { name: 'Whiteboard' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('button', { name: /Filters and sort/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Arrange contents: 第三章：德性與依據' })).toBeInTheDocument();
+    // On a wider screen the compilation keeps its own actions: rename, add, arrange and the menu.
+    expect(screen.getByRole('button', { name: '第三章：德性與依據' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add item: 第三章：德性與依據' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'More compilation actions: 第三章：德性與依據' })).toBeInTheDocument();
     fireEvent.click(tabs.getByRole('button', { name: 'Book' }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     const written = parseCompilation(save.mock.calls[0][1], ['notes/thesis', 'notes/reading']);
@@ -236,6 +240,16 @@ describe('the board, drawn', () => {
     }
   });
 
+  it('shows every member of a dynamic board, whatever status filter the other arrangements keep', async () => {
+    const raw = 'version: 1\nid: dyn\ntitle: Dyn\narrangement: board\nsource: { kind: tag, tag: t }\nstudy: { filter: all, dueFirst: false, status: done }\n';
+    const member = { ...note('thesis', 'notes/thesis/draft.md', 'Draft note', 'Body', 'draft'), tags: ['t'] };
+    open({ path: 'notes/thesis/dyn.compilation.yml', notebookId: 'thesis', raw, notes: [member], members: [{ notebookId: 'thesis', path: member.path }] });
+    await screen.findByRole('button', { name: /^Draft note/ });
+    const queries = requests.mock.calls.map(([input]) => new URL(String(input), 'http://localhost')).filter(url => url.pathname === '/api/notes/query');
+    expect(queries.length).toBeGreaterThan(0);
+    for (const url of queries) expect(url.searchParams.get('status')).toBeNull();
+  });
+
   it('on a phone: no arrangement switch, no minimap, and a tap opens the note', async () => {
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('max-width: 767px'), media: query, addEventListener() {}, removeEventListener() {} }));
     openExample();
@@ -245,6 +259,10 @@ describe('the board, drawn', () => {
     expect(screen.queryByRole('combobox', { name: /View size/ })).not.toBeInTheDocument();
     expect(document.querySelector('.board-minimap')).toBeNull();
     for (const tool of ['Select', 'Card', 'Text', 'Section', 'Arrow']) expect(screen.queryByRole('button', { name: tool })).not.toBeInTheDocument();
+    // Nothing that changes the file, the outline or the compilation's place: no add, arrange, rename, settings, copy, move or delete.
+    for (const action of [/^Add item/, /^Arrange contents/, /^Filters and sorting/, /^Create note in compilation/, /^Add to outline/, /^More compilation actions/, /^Start studying/]) expect(screen.queryByRole('button', { name: action })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '第三章：德性與依據' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
     fireEvent.pointerDown(card, { pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 10 });
     fireEvent.pointerUp(card, { pointerId: 1, pointerType: 'touch', clientX: 10, clientY: 10 });
     fireEvent.click(card);

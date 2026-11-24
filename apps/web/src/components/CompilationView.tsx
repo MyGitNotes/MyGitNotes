@@ -24,6 +24,7 @@ import type { FolderItem, NotebookConfig } from '../lib/types.js';
 import { useNoteFacets, useNoteQueryScope } from '../lib/use-note-queries.js';
 import { useCompilation } from '../lib/use-compilation.js';
 import { useStudyWorkspace } from '../lib/use-study-workspace.js';
+import { usePhone } from '../lib/use-phone.js';
 import { Button } from './Button.js';
 import type { CompilationContentProps } from './CompilationCard.js';
 import { CompilationAddItem, CompilationEditRow } from './CompilationDialogs.js';
@@ -77,7 +78,10 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   const row = compilation.page.rows[0] as CompilationRow | undefined;
   const itemOpen = useCompilationItemOpen({ notebooks, assets, onOpenNote, onMissing: () => setMissing(true) });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: screenKeyboardCoordinates }));
-  const disabled = !compilation.writable || compilation.loading;
+  // On a phone a board is for looking: nothing there changes the compilation file, the outline or the compilation's place.
+  const phone = usePhone();
+  const writable = compilation.writable && !(phone && row !== undefined && shownView(row.view) === 'board');
+  const disabled = !writable || compilation.loading;
   // A folder source includes assets, so an incomplete asset read must not become a saved manual order.
   const dragDisabled = row?.kind === 'dynamic' && row.source.kind === 'folder' && (assetsLoading || assetError);
   const latest = useRef<{ row: CompilationRow | undefined; scope: typeof scope; assets: typeof assets; blocked: boolean; } | null>(null);
@@ -176,9 +180,9 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
     void slots.finish().then(saved => saved && change(next));
   };
   const addToFocus = compilation.note ? editing.addToFocus({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;
-  const move = compilation.writable && compilation.note ? editing.moveNote?.({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;
+  const move = writable && compilation.note ? editing.moveNote?.({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;
   // Renaming retitles the compilation through its own row, then the file follows the new name.
-  const rename = (current: CompilationRow) => compilation.writable && compilation.note ? editing.renameNote?.({ ...compilation.note, content: compilation.note.content ?? '', title: current.name }, title => change({ ...current, name: title })) : undefined;
+  const rename = (current: CompilationRow) => writable && compilation.note ? editing.renameNote?.({ ...compilation.note, content: compilation.note.content ?? '', title: current.name }, title => change({ ...current, name: title })) : undefined;
 
   const view = (current: CompilationRow) => {
     const common = {
@@ -189,7 +193,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       onOpen: open,
       disabled,
       dragDisabled,
-      readOnly: !compilation.writable,
+      readOnly: !writable,
       study,
       facets: facets.facets,
       onStudy: () => void startStudy(),
@@ -198,7 +202,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       onAdd: () => setDialog('add'),
       extra: (
         <>
-          {outlines?.canAdd(notebookId) && compilation.writable && compilation.note && (
+          {outlines?.canAdd(notebookId) && writable && compilation.note && (
             <Tooltip label={t('outline.add')}>
               <button
                 type='button'
@@ -211,7 +215,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
               </button>
             </Tooltip>
           )}
-          {(compilation.writable || addToFocus) && (
+          {(writable || addToFocus) && (
             // Secondary actions share one menu so the header stays on one line in a narrow Focus pane.
             <DropdownMenu.Root>
               <Tooltip label={t('compilation.more')}>
@@ -227,7 +231,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
                       <span>{t('focus.addTo')}</span>
                     </DropdownMenu.Item>
                   )}
-                  {compilation.writable && (
+                  {writable && (
                     <>
                       <DropdownMenu.Item
                         disabled={disabled}
@@ -262,8 +266,8 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
         </>
       ),
       onSort: (sort: NonNullable<Extract<CompilationRow, { kind: 'dynamic'; }>['sort']>) => current.kind === 'dynamic' && change({ ...current, sort }),
-      onEditOrder: current.kind === 'dynamic' && compilation.writable ? () => setDialog('order') : undefined,
-      onArrange: current.kind === 'custom' && compilation.writable ? () => setDialog('arrange') : undefined,
+      onEditOrder: current.kind === 'dynamic' && writable ? () => setDialog('order') : undefined,
+      onArrange: current.kind === 'custom' && writable ? () => setDialog('arrange') : undefined,
       onRename: rename(current),
       onCreateNote: actions.createNote,
     };

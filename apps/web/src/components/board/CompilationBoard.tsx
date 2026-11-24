@@ -35,8 +35,10 @@ type BoardHeader = Omit<CompilationHeaderProps, 'row' | 'count' | 'notebooks' | 
 export function CompilationBoard({ row, notebooks, assets, assetsLoading = false, folders = [], onOpen, facets, extra, ...header }: Omit<CompilationContentProps, 'notes'> & BoardHeader & { row: CompilationRow; assetsLoading?: boolean; facets?: Record<string, NotebookFacets>; extra?: ReactNode; folders?: FolderItem[]; }) {
   const { t } = useTranslation();
   const phone = usePhone();
-  // A board places every member, so it reads them all, with the body each card's first lines come from.
-  const lane = useLaneNotes(row, { content: true, all: true });
+  // A board places every member, so it reads them all, with the body each card's first lines come from. The status
+  // filter of the other arrangements does not apply: it stays in the file and the board shows every member.
+  const unfiltered = useMemo(() => row.study?.status ? { ...row, study: { ...row.study, status: undefined } } : row, [row]);
+  const lane = useLaneNotes(unfiltered, { content: true, all: true });
   const notes = lane.notes;
   const items = useMemo(() => compilationRowItems(row, notes, assets, notebooks, folders), [row, notes, assets, notebooks, folders]);
   const board = useMemo(() => placeBoard(boardEntries(row, items), row.board?.texts), [row, items]);
