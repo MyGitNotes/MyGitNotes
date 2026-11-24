@@ -1188,6 +1188,11 @@ export const en = {
   'kanban.noNotes': 'No notes',
   'kanban.dragNotesHere': 'Drag notes here or click +',
   'kanban.moveTo': 'Move to {title}',
+  'kanban.density': 'Card density',
+  'kanban.densityCompact': 'Compact',
+  'kanban.densityNormal': 'Normal',
+  'kanban.collapseColumn': 'Collapse {title}',
+  'kanban.expandColumn': 'Expand {title}',
 
   // Folders & Breadcrumbs
   'folder.allFolders': 'All folders',

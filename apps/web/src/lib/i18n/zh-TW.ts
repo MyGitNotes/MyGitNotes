@@ -1189,6 +1189,11 @@ export const zhTW: Record<TranslationKey, string> = {
   'kanban.noNotes': '尚無筆記',
   'kanban.dragNotesHere': '拖曳筆記至此或點選 +',
   'kanban.moveTo': '移動至 {title}',
+  'kanban.density': '卡片密度',
+  'kanban.densityCompact': '精簡',
+  'kanban.densityNormal': '一般',
+  'kanban.collapseColumn': '收合「{title}」',
+  'kanban.expandColumn': '展開「{title}」',
 
   // Folders & Breadcrumbs
   'folder.allFolders': '所有資料夾',

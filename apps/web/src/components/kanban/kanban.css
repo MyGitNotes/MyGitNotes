@@ -1,0 +1,28 @@
+/* The board's columns share the width between 180px and 320px each; past the narrowest the board scrolls sideways. */
+.kanban-column { flex: 1 1 0%; min-width: 180px; max-width: 320px; container-type: inline-size; }
+/* A narrow column keeps its name and count; the column's own sort gives way, the board's sort still applies. */
+@container (max-width: 239px) { .kanban-column-sort { display: none; } }
+
+/* A folded column: dot, name down the strip, count. It stays a drop target. */
+.kanban-strip { flex: none; width: 30px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); transition: border-color 120ms ease, background-color 120ms ease; }
+.kanban-strip[data-over] { border-color: var(--color-primary); background: var(--color-primary-light); box-shadow: 0 0 0 2px var(--color-primary); }
+.kanban-strip-button { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-height: 180px; padding: 10px 0; border-radius: 9px; color: var(--color-text); }
+.kanban-strip-button:hover { background: var(--workspace-selection); }
+.kanban-strip-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.kanban-strip-title { max-height: 240px; overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; writing-mode: vertical-rl; }
+.kanban-strip-count { color: var(--color-muted); font-size: 11px; }
+
+/* The card density switch in the board's toolbar. */
+.kanban-density { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-bg); }
+.kanban-density button { height: 24px; padding: 0 8px; border-radius: 5px; color: var(--color-muted); font-size: 12px; }
+.kanban-density button:hover { color: var(--color-text); }
+.kanban-density button[aria-pressed='true'] { background: var(--workspace-selection); color: var(--color-primary); font-weight: 600; }
+
+/* A compact card: title and one line; its buttons cover the line's end where the pointer rests or the keyboard is. */
+.kanban-card[data-density='compact'] { position: relative; }
+.kanban-card[data-density='compact'] .kanban-card-meta { margin-top: 2px; }
+.kanban-card[data-density='compact'] .kanban-card-actions { position: absolute; right: 6px; bottom: 3px; padding-left: 4px; background: var(--color-surface); opacity: 0; }
+.kanban-card[data-density='compact']:is(:hover, :focus-within) .kanban-card-actions { opacity: 1; }
+@media (hover: none) { .kanban-card[data-density='compact'] .kanban-card-actions { opacity: 1; } }
+/* The note the active pane shows. */
+.kanban-card[data-active] { box-shadow: 0 0 0 1px var(--color-primary); }

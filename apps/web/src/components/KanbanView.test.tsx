@@ -213,3 +213,71 @@ it('keeps a card whose frontmatter cannot be read out of the status columns, and
   fireEvent.drop(document.querySelector('[data-status-column="doing"]')!, { dataTransfer });
   expect(onUpdateNoteStatus).not.toHaveBeenCalled();
 });
+
+it('rests an empty column as a strip that still takes a dropped card, and opens it on click for this device', async () => {
+  window.localStorage.removeItem('mygitnotes:kanban');
+  mockTwoColumnFetch();
+  const onUpdateNoteStatus = vi.fn();
+  const { unmount } = render(twoColumnBoard({ onUpdateNoteStatus }), { wrapper });
+  await waitFor(() => expect(screen.getByText('notes/life/a.md')).toBeInTheDocument());
+  const strip = document.querySelector('[data-status-column="doing"]')!;
+  await waitFor(() => expect(strip).toHaveAttribute('data-strip'));
+  expect(strip).toHaveTextContent('doing0');
+  expect(strip.querySelector('.status-dot')).not.toBeNull();
+  expect(document.querySelector('[data-status-column="inbox"]')).not.toHaveAttribute('data-strip');
+
+  const dataTransfer = makeDataTransfer();
+  fireEvent.dragStart(screen.getByText('notes/life/a.md').closest('[data-notepath]')!, { dataTransfer });
+  fireEvent.dragOver(strip, { dataTransfer });
+  expect(strip).toHaveAttribute('data-over');
+  fireEvent.drop(strip, { dataTransfer });
+  expect(onUpdateNoteStatus).toHaveBeenCalledWith(expect.objectContaining({ path: 'notes/life/a.md' }), 'doing');
+
+  fireEvent.click(screen.getByRole('button', { name: 'Expand doing' }));
+  expect(document.querySelector('[data-status-column="doing"]')).not.toHaveAttribute('data-strip');
+  unmount();
+  render(twoColumnBoard({ onUpdateNoteStatus }), { wrapper });
+  await waitFor(() => expect(screen.getByText('notes/life/a.md')).toBeInTheDocument());
+  expect(document.querySelector('[data-status-column="doing"]')).not.toHaveAttribute('data-strip');
+  window.localStorage.removeItem('mygitnotes:kanban');
+});
+
+it('folds a column with notes to a strip by hand and keeps it folded on the next visit', async () => {
+  window.localStorage.removeItem('mygitnotes:kanban');
+  mockTwoColumnFetch();
+  const { unmount } = render(twoColumnBoard({ onUpdateNoteStatus: () => {} }), { wrapper });
+  await waitFor(() => expect(screen.getByText('notes/life/a.md')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Collapse inbox' }));
+  const strip = document.querySelector('[data-status-column="inbox"]')!;
+  expect(strip).toHaveAttribute('data-strip');
+  expect(strip).toHaveTextContent('inbox1');
+  expect(screen.queryByText('notes/life/a.md')).not.toBeInTheDocument();
+  unmount();
+  render(twoColumnBoard({ onUpdateNoteStatus: () => {} }), { wrapper });
+  await waitFor(() => expect(document.querySelector('[data-status-column="inbox"]')).toHaveAttribute('data-strip'));
+  window.localStorage.removeItem('mygitnotes:kanban');
+});
+
+it('switches the cards to compact, a title and one line, and keeps the density for this device', async () => {
+  window.localStorage.removeItem('mygitnotes:kanban');
+  const tagged = { ...noteOf('notes/life/a.md', 'inbox'), tags: ['draft', 'chapter'], metadata: { updated: '2026-01-05T10:00:00Z' } };
+  vi.mocked(fetch).mockImplementation(async (url: unknown) => {
+    const notes = String(url).includes('status=inbox') ? [tagged] : [];
+    return new Response(JSON.stringify({ revision: REVISION, total: notes.length, nextCursor: null, notes }), { headers: { 'Content-Type': 'application/json' } });
+  });
+  const { unmount } = render(twoColumnBoard({ onUpdateNoteStatus: () => {} }), { wrapper });
+  await waitFor(() => expect(screen.getByText('notes/life/a.md')).toBeInTheDocument());
+  const normal = screen.getByRole('button', { name: 'Normal' });
+  expect(normal).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByText('notes/life/a.md').closest('[data-notepath]')).not.toHaveAttribute('data-density');
+  fireEvent.click(screen.getByRole('button', { name: 'Compact' }));
+  const card = screen.getByText('notes/life/a.md').closest('[data-notepath]')!;
+  expect(card).toHaveAttribute('data-density', 'compact');
+  const date = new Date('2026-01-05T10:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  expect(card.querySelector('.kanban-card-meta > span')).toHaveTextContent(`#draft · ${date}`);
+  unmount();
+  render(twoColumnBoard({ onUpdateNoteStatus: () => {} }), { wrapper });
+  await waitFor(() => expect(screen.getByText('notes/life/a.md').closest('[data-notepath]')).toHaveAttribute('data-density', 'compact'));
+  expect(screen.getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true');
+  window.localStorage.removeItem('mygitnotes:kanban');
+});

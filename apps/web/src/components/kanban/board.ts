@@ -1,5 +1,6 @@
 import type React from 'react';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
+import type { CardDensity } from '../../lib/kanban-prefs.js';
 import { NOTE_DRAG_TYPE, type NoteBrowseFocusMode } from '../../lib/note-drag.js';
 
 /** A board column: one of the notebook's statuses, titled with its label and painted with its dot. */
@@ -31,6 +32,11 @@ export interface BoardContext {
   selectedKeys?: Set<string>;
   onToggleSelect?: (note: NoteListItem) => void;
   metadataSortFields?: readonly string[];
+  /** How much each card shows. */
+  density: CardDensity;
+  /** Whether a column shows as a strip: as the person left it, else a strip while it holds no notes. */
+  foldOf: (columnId: string, empty: boolean) => 'strip' | 'open';
+  setFold: (columnId: string, fold: 'strip' | 'open') => void;
 }
 
 /** A column as a drop target: a note dropped on it takes the column's status, unless it is edited live or its frontmatter cannot be read. */
