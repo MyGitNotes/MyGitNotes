@@ -140,29 +140,45 @@ export function orderedBoard(board: CompilationBoard): CompilationBoard {
   return { ...(sections ? { sections: sections.map(section => 'item' in section ? { item: section.item, x: section.x, y: section.y, w: section.w, h: section.h } : { folder: section.folder, x: section.x, y: section.y }) } : {}), ...(cards ? { cards: cards.map(card => 'item' in card ? { item: card.item, x: card.x, y: card.y } : { path: card.path, x: card.x, y: card.y }) } : {}), ...(texts ? { texts: texts.map(text => ({ id: text.id, x: text.x, y: text.y, ...(text.w !== undefined ? { w: text.w } : {}), text: text.text, ...(text.color ? { color: text.color } : {}) })) } : {}), ...(arrows ? { arrows: arrows.map(arrow => ({ id: arrow.id, from: end(arrow.from), to: end(arrow.to), ...(arrow.label ? { label: arrow.label } : {}) })) } : {}) };
 }
 
-const record = (value: unknown): Record<string, unknown> | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
+type Location = (string | number)[];
 
-/** The repository paths a stored board names, with their location in the file: dynamic card paths, folder sections and path arrow ends. */
-export function boardPaths(value: unknown): { location: (string | number)[]; path: unknown; }[] {
-  const board = record(value);
-  if (!board) return [];
-  const found: { location: (string | number)[]; path: unknown; }[] = [];
-  list(board.cards).forEach((card, index) => {
-    const entry = record(card);
-    if (entry && 'path' in entry) found.push({ location: ['board', 'cards', index, 'path'], path: entry.path });
+/**
+ * The edits that move a valid board's paths: dynamic card paths, folder sections and path arrow ends. A path may move
+ * onto one a stale entry still names (a member that left, a folder that went): the entry that moved names what is
+ * there now, so it stays and the stale one goes, and an arrow whose two ends become one path goes. Neither was drawn,
+ * since a stale path is not a member; without the rule the moved board would repeat an entry or point an arrow at itself.
+ */
+export function relocateBoard(board: CompilationBoard, move: (path: string) => string): { edits: { location: Location; next: string; }[]; removals: Location[]; } {
+  const edits: { location: Location; next: string; }[] = [];
+  const removals: Location[] = [];
+  const relocate = (entries: readonly { path?: string; }[], list: string, field: string) => {
+    const winners = new Map<string, { index: number; moved: boolean; }>();
+    entries.forEach((entry, index) => {
+      if (entry.path === undefined) return;
+      const next = move(entry.path), moved = next !== entry.path;
+      if (moved) edits.push({ location: ['board', list, index, field], next });
+      const winner = winners.get(next);
+      if (!winner) winners.set(next, { index, moved });
+      else if (moved && !winner.moved) {
+        removals.push(['board', list, winner.index]);
+        winners.set(next, { index, moved });
+      } else removals.push(['board', list, index]);
+    });
+  };
+  relocate((board.cards ?? []).map(card => 'path' in card ? { path: card.path } : {}), 'cards', 'path');
+  relocate((board.sections ?? []).map(section => 'folder' in section ? { path: section.folder } : {}), 'sections', 'folder');
+  board.arrows?.forEach((arrow, index) => {
+    const ends = (['from', 'to'] as const).map(side => {
+      const end = arrow[side];
+      if (!('path' in end)) return undefined;
+      const next = move(end.path);
+      if (next !== end.path) edits.push({ location: ['board', 'arrows', index, side, 'path'], next });
+      return next;
+    });
+    if (ends[0] !== undefined && ends[0] === ends[1]) removals.push(['board', 'arrows', index]);
   });
-  list(board.sections).forEach((section, index) => {
-    const entry = record(section);
-    if (entry && 'folder' in entry) found.push({ location: ['board', 'sections', index, 'folder'], path: entry.folder });
-  });
-  list(board.arrows).forEach((arrow, index) => {
-    for (const side of ['from', 'to']) {
-      const end = record(record(arrow)?.[side]);
-      if (end && 'path' in end) found.push({ location: ['board', 'arrows', index, side, 'path'], path: end.path });
-    }
-  });
-  return found;
+  // Removing from the back keeps the other indices, which the edits name, valid.
+  return { edits: edits.filter(edit => !removals.some(removal => removal.every((part, at) => edit.location[at] === part))), removals: removals.sort((a, b) => Number(b[2]) - Number(a[2])) };
 }
 
 const clampCoordinate = (value: number) => Math.max(-BOARD_COORDINATE_LIMIT, Math.min(BOARD_COORDINATE_LIMIT, Math.round(value)));

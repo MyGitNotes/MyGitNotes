@@ -185,6 +185,44 @@ describe('board references when files and items change', () => {
     expect(changed).toEqual(['    - { folder: notes/one/moved, x: 0, y: 0 }', '    - { path: notes/one/moved/x.md, x: 24, y: 56 }', '    - { id: a1, from: { path: notes/one/moved/x.md }, to: { path: notes/one/cases/b/y.md } }', '    - { id: a2, from: { text: t1 }, to: { path: notes/one/moved/x.md } }']);
     expect(relocateCompilation(dynamicBoard, path => path.replace('notes/two', 'notes/three'))).toBeNull();
   });
+  it('leaves an invalid board as written while its other references still move', () => {
+    const invalid = dynamicBoard.replace('x: 24, y: 56', 'x: 1000001, y: 56');
+    const move = (path: string) => path.replace('notes/one/cases/a', 'notes/one/moved');
+    expect(relocateCompilation(invalid, move)).toBeNull();
+    const withOrder = invalid.replace('group: folder\n', 'group: folder\nmanualOrder: [notes/one/cases/a/x.md]\n');
+    const next = relocateCompilation(withOrder, move)!;
+    expect(YAML.parse(next).manualOrder).toEqual(['notes/one/moved/x.md']);
+    expect(next.slice(next.indexOf('board:'))).toBe(withOrder.slice(withOrder.indexOf('board:')));
+  });
+  it('lets a path that moves onto a stale entry keep its own, so the board stays valid', () => {
+    // b.md and folder b are not members now; a.md moves onto b.md and folder a onto folder b.
+    const stale = `version: 1
+id: s
+title: S
+arrangement: board
+source: { kind: tag, tag: t }
+group: folder
+board:
+  sections:
+    - { folder: notes/one/b, x: 0, y: 0 }
+    - { folder: notes/one/a, x: 400, y: 0 }
+  cards:
+    - { path: notes/one/b.md, x: 1, y: 1 }
+    - { path: notes/one/a.md, x: 2, y: 2 }
+    - { path: notes/one/c.md, x: 3, y: 3 }
+  arrows:
+    - { id: ab, from: { path: notes/one/a.md }, to: { path: notes/one/b.md }, label: 提出 }
+    - { id: ac, from: { path: notes/one/a.md }, to: { path: notes/one/c.md } }
+    - { id: cb, from: { path: notes/one/c.md }, to: { path: notes/one/b.md } }
+`;
+    const move = (path: string) => path === 'notes/one/a.md' ? 'notes/one/b.md' : path === 'notes/one/a' ? 'notes/one/b' : path;
+    const next = relocateCompilation(stale, move)!;
+    const file = parseCompilation(next, scope);
+    expect(file.board).toEqual({ sections: [{ folder: 'notes/one/b', x: 400, y: 0 }], cards: [{ path: 'notes/one/b.md', x: 2, y: 2 }, { path: 'notes/one/c.md', x: 3, y: 3 }], arrows: [{ id: 'ac', from: { path: 'notes/one/b.md' }, to: { path: 'notes/one/c.md' } }, { id: 'cb', from: { path: 'notes/one/c.md' }, to: { path: 'notes/one/b.md' } }] });
+    // The same when the moved entry comes first.
+    const reversed = relocateCompilation(stale.replace('    - { path: notes/one/b.md, x: 1, y: 1 }\n    - { path: notes/one/a.md, x: 2, y: 2 }\n', '    - { path: notes/one/a.md, x: 2, y: 2 }\n    - { path: notes/one/b.md, x: 1, y: 1 }\n'), move)!;
+    expect(parseCompilation(reversed, scope).board!.cards).toEqual([{ path: 'notes/one/b.md', x: 2, y: 2 }, { path: 'notes/one/c.md', x: 3, y: 3 }]);
+  });
   it('leaves a custom board alone when a pinned note moves: its cards name the item', () => {
     const next = relocateCompilation(example, path => path.replace('第三章導論', '導論'))!;
     expect(YAML.parse(next).items[1].path).toBe('notes/thesis/導論.md');

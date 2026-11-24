@@ -4,7 +4,7 @@ import { NOTEBOOK_KEY_MAX_LENGTH, parseNotebookKey } from './notebook-key.js';
 import { type StudyProgression, StudyProgressionSchema } from './study-stages.js';
 import { isNoteHidden } from './note-status.js';
 import { type CompilationYamlExtensions, stringifyCompilationYaml, takeCompilationExtensions, writeCompilationYaml } from './compilation-yaml.js';
-import { boardCounts, boardPaths, BoardSchema, checkBoard, type CompilationBoard, fitBoard, orderedBoard, remapBoardItems } from './compilation-board.js';
+import { boardCounts, BoardSchema, checkBoard, type CompilationBoard, fitBoard, orderedBoard, relocateBoard, remapBoardItems } from './compilation-board.js';
 import { COMPILATION_MAX_HEADINGS, COMPILATION_MAX_ORDER, compilationId as id, compilationRepoPath as repoPath } from './compilation-primitives.js';
 
 export * from './compilation-board.js';
@@ -319,7 +319,7 @@ export function replaceCompilationTags(raw: string, tags: readonly string[]): st
 export function relocateCompilation(raw: string, move: (path: string) => string): string | null {
   const document = YAML.parseDocument(raw);
   if (document.errors.length || !YAML.isMap(document.contents)) return null;
-  const value = document.toJS({ maxAliasCount: 20 }) as { items?: { kind?: string; path?: unknown; }[]; source?: { kind?: string; path?: unknown; }; manualOrder?: unknown[]; graph?: { nodes?: { path?: unknown; }[]; }; board?: unknown; };
+  const value = document.toJS({ maxAliasCount: 20 }) as { items?: { kind?: string; path?: unknown; }[]; source?: { kind?: string; path?: unknown; }; manualOrder?: unknown[]; graph?: { nodes?: { path?: unknown; }[]; }; };
   const edits: { location: (string | number)[]; next: string; }[] = [];
   const update = (location: (string | number)[], current: unknown) => {
     if (typeof current !== 'string') return;
@@ -333,11 +333,18 @@ export function relocateCompilation(raw: string, move: (path: string) => string)
   if (value.source?.kind === 'folder') update(['source', 'path'], value.source.path);
   if (Array.isArray(value.manualOrder)) value.manualOrder.forEach((path, index) => update(['manualOrder', index], path));
   value.graph?.nodes?.forEach((node, index) => update(['graph', 'nodes', index, 'path'], node.path));
-  // Custom cards and arrows name item ids, whose own paths are rewritten above; a dynamic board names paths.
-  for (const { location, path } of boardPaths(value.board)) update(location, path);
-  if (!edits.length) return null;
+  // Custom cards and arrows name item ids, whose own paths are rewritten above; a dynamic board names paths. Only a
+  // valid board moves, so the result is valid too; an invalid one stays as written, its error still named on reading.
+  let board: CompilationBoard | undefined;
+  try {
+    board = parseCompilation(raw).board;
+  } catch { /* The file shows as invalid, with its board untouched. */ }
+  const { edits: boardEdits, removals } = board ? relocateBoard(board, move) : { edits: [], removals: [] };
+  edits.push(...boardEdits);
+  if (!edits.length && !removals.length) return null;
   const extensions = takeCompilationExtensions(document, knownCompilationKeys);
   for (const { location, next } of edits) document.setIn(location, next);
+  for (const location of removals) document.deleteIn(location);
   return stringifyCompilationYaml(document, extensions);
 }
 
