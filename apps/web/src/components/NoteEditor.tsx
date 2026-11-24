@@ -38,6 +38,8 @@ import { SlideDeck, type SlideDeckView } from './slides/SlideDeck.js';
 import { Pencil } from 'lucide-react';
 import { Button } from './Button.js';
 import { LiveEditorFrame } from './live/LiveEditorFrame.js';
+import type { LiveLeaveGuard } from './live/LiveLeavePrompt.js';
+import type { LiveToolbarState } from './live/LiveToolbarControls.js';
 import { useEditorModeRoute } from '../app/editor-mode-route.js';
 import { shownEditorMode } from '../lib/editor-mode-url.js';
 import { LiveCollabEditor, type LiveSession } from './live/LiveCollabEditor.js';
@@ -144,7 +146,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     onCaret?.(position);
   };
 
-  const directSession = useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onMoved, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession });
+  const liveLeave = useRef<LiveLeaveGuard>(null);
+  const beforeLeave = useCallback(() => liveLeave.current?.(), []);
+  const directSession = useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onMoved, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession, beforeLeave });
   // A note in the built-in collab editor: its row and document panel read and write the live text (collab-frontmatter).
   const [liveSession, setLiveSession] = useState<LiveSession | null>(null);
   const collabShown = Boolean(live && liveEdit.checkout && live.editor.kind === 'builtin');
@@ -299,7 +303,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // whose resize moved the page under the selection. Editing starts from the toolbar's Edit button.
   const [editing, setEditing] = useState(false);
   // While a live editor shows a checked-out note it is the one edited: the direct editor is gone, and its reading and
-  // editing are not offered or switched (the collab editor's own bar checks the note in or closes it).
+  // editing are not offered or switched (the note toolbar offers Live check-in instead).
   const directShown = !liveEdit.checkout;
   const reading = phone && directShown && !editing && !session.locked;
   const finishEditing = () => {
@@ -378,7 +382,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // write it succeeds, so `:wq` still closes. `:q` closes a zoomed note the way its back button does.
   const canCommitNow = Boolean(actions.onCommit);
   const vimRoot = useVimCommands({ write: async () => canCommitNow ? session.commitNote() : !autoSave && !readOnly && session.hasUnsavedChanges ? session.handleExplicitSave() : true, quit: frame === 'zoom' && onClose ? session.close : undefined });
-  // A phone's note screen: the title bar rides over the text and slides away while it scrolls down, unless a notice, the formatting toolbar or the framed live editor's bar sits above the text and needs the room the bar would cover.
+  // A phone's note screen: the title bar rides over the text and slides away while it scrolls down, unless a notice, the formatting toolbar or the live editor needs the room the bar would cover.
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
   const rootRef = useCallback((node: HTMLElement | null) => {
     vimRoot(node);
@@ -391,7 +395,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // A compilation's section and a graph card show the note as it reads; their 編輯 opens zoom.
   const liveEditButton = liveEdit.edit && (
     <div className='note-live-edit'>
-      <Tooltip label={t('live.toolbar')}>
+      <Tooltip label={t('live.editor')}>
         <Button size='small' onClick={liveEdit.edit}>
           <Pencil size={13} aria-hidden='true' />
           {t('editor.startEditing')}
@@ -451,17 +455,21 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // title per Q3 (a filed note renames after checking in, a pending one writes `title:`), the Gist read-only (Q4).
   // The YAML view stays writable while the block does not parse, so it can be fixed there; the form is disabled by `frontmatterInvalid`.
   const panel = shared ? { ...directPanel, history: liveHistory, onRename: liveRename, lineNumberOffset: liveFrontmatter.lineOffset, readOnly: false, locked: !shared.online, yamlSource: liveFrontmatter.yaml, frontmatterInvalid: liveFrontmatter.valid ? undefined : liveFrontmatter.error ?? '', liveNote: true } : directPanel;
-  return (
-    <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
-      <NoteEditorNotices session={session} notePath={note.path} />
-      <div className='editor-notices'>{liveEdit.notices}</div>
-      <NoteEditorToolbar frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} editorModes={editorModes} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phoneEditing} onRefresh={refresh} onClose={onClose} toggleZoom={toggleZoom} hasZoomNavigation={Boolean(zoomNavigation)} onMove={moveNote} onRename={shared ? liveRename : directPanel.onRename} liveDraft={liveDraft} frontmatterInvalid={shared ? !liveFrontmatter.valid : unreadable} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
+  const renderToolbar = (liveToolbar?: LiveToolbarState) => (
+    <>
+      <NoteEditorToolbar liveToolbar={liveToolbar} checkInButton={checkInButton} beforeLeave={beforeLeave} frame={frame} note={note} session={session} docPanel={docPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} editorModes={editorModes} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={isMarkdown && !session.locked ? toggleFormatToolbar : undefined} phoneEditing={phoneEditing} onRefresh={refresh} onClose={onClose} toggleZoom={toggleZoom} hasZoomNavigation={Boolean(zoomNavigation)} onMove={moveNote} onRename={shared ? liveRename : directPanel.onRename} liveDraft={liveDraft} frontmatterInvalid={shared ? !liveFrontmatter.valid : unreadable} template={template} onSaveAsTemplate={readOnly || template || !onSaveAsTemplate ? undefined : () => onSaveAsTemplate({ title: session.title, metadata: session.metadata, content: session.content })} statuses={statuses} availableTags={availableTags} actionsSlot={actionsSlot} onAddToOutline={addToOutline} onPlaySlides={slideDeck} phoneChrome={phone ? { quickActions, hasHistory: Boolean(history), overlay: barOverlay, hidden: barHidden, liveBadge: liveEdit.badgeShown, liveEditing: Boolean(liveEdit.checkout) } : undefined} />
       {awaitingRecovery && (
         <p role='status'>
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
         </p>
       )}
-      {live && liveEdit.checkout && (live.editor.kind === 'builtin' ? <LiveCollabEditor checkInButtonRef={checkInButton} checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} noteLang={noteLang} showLineNumbers={lineNumbersShown} mode={isMarkdown ? editorMode : 'raw'} body={liveBody}>{shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}</LiveCollabEditor> : <LiveEditorFrame checkInButtonRef={checkInButton} checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} />)}
+    </>
+  );
+  return (
+    <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
+      <NoteEditorNotices session={session} notePath={note.path} />
+      <div className='editor-notices'>{liveEdit.notices}</div>
+      {live && liveEdit.checkout ? live.editor.kind === 'builtin' ? <LiveCollabEditor renderToolbar={renderToolbar} beforeLeaveRef={liveLeave} checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onDismissRecovery={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} noteLang={noteLang} showLineNumbers={lineNumbersShown} mode={isMarkdown ? editorMode : 'raw'} body={liveBody}>{shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}</LiveCollabEditor> : <LiveEditorFrame renderToolbar={renderToolbar} beforeLeaveRef={liveLeave} checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} /> : renderToolbar()}
       {formatToolbarShown && !liveEdit.checkout && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       {!liveEdit.checkout && (
         <div ref={setBody} className='note-editor-body'>

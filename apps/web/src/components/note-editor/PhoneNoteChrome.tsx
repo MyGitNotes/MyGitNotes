@@ -1,6 +1,6 @@
 import { Tooltip } from '../Tooltip.js';
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
+import { type ReactNode, type Ref, type RefObject, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Check, Code2, Copy, ExternalLink, Eye, FileText, FolderInput, LayoutTemplate, ListTree, MoreHorizontal, Pencil, PencilLine, Play, Printer, Save, ScrollText, Trash2, Type } from 'lucide-react';
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import '../phone-notes.css';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -14,6 +14,8 @@ import type { MarkdownEditorMode } from '../MarkdownEditor.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { FrontmatterInvalid, NoteStatusSelect } from '../NoteStatusSelect.js';
 import { LiveBadge } from '../live/LiveBadge.js';
+import { LiveCheckIn, LiveStatusBadge, type LiveToolbarState } from '../live/LiveToolbarControls.js';
+import type { LiveLeaveGuard } from '../live/LiveLeavePrompt.js';
 import { useLiveLock } from '../live/live-drafts.js';
 import { PhoneSheet } from '../PhoneSheet.js';
 import { PHONE_TOOLS } from './phone-tools.js';
@@ -57,19 +59,26 @@ export interface PhoneNoteChromeProps {
   /** The bar rides over the text and slides away while the text scrolls down; false keeps it in the page flow, above a notice or the formatting toolbar. */
   overlay: boolean;
   hidden: boolean;
-  /** Whether the title bar shows the note's 編輯中 badge: not while the framed live editor's bar counts the editors, nor once the note is checked in. */
+  /** Whether to show the read-view badge. An open live session has its own status badge. */
   liveBadge?: boolean;
   /** The live editor is open over the read view: the sheet says nothing of the read view's words or save state. */
   liveEditing?: boolean;
   /** A pending live note: Rename sets where its check-in files it. */
   liveDraft?: LiveDraftActions;
+  liveToolbar?: LiveToolbarState;
+  checkInButton?: Ref<HTMLButtonElement>;
+  beforeLeave?: LiveLeaveGuard;
 }
 
 /** A phone's note screen top: back to the list, the title, the status dot, edit or read, the assistant, and the "⋯" sheet that holds everything else. */
 export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
   const { t } = useTranslation();
-  const { frame, session, autoSave, readOnly, statuses, phoneEditing, overlay, hidden, template, liveBadge = true } = props;
+  const { frame, session, autoSave, readOnly, statuses, phoneEditing, overlay, hidden, template, liveBadge = true, liveToolbar, checkInButton, beforeLeave } = props;
   const { back } = usePhoneNotes();
+  const leave = async () => {
+    const allowed = beforeLeave?.();
+    if (!allowed || await allowed) back();
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   // The sheet's rows are gone once one is pressed; what they open returns the focus here.
   const trigger = useRef<HTMLButtonElement>(null);
@@ -87,7 +96,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
           )
           : (
             <Tooltip label={t('phone.back')}>
-              <button type='button' className='ui-icon-button' aria-label={t('phone.back')} onClick={back}>
+              <button type='button' className='ui-icon-button' aria-label={t('phone.back')} onClick={() => void leave()}>
                 <ArrowLeft aria-hidden='true' />
               </button>
             </Tooltip>
@@ -101,6 +110,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
           <div className='phone-note-title'>{title}</div>
         </Tooltip>
         {liveBadge && <LiveBadge live={props.note.live} title={props.note.title} />}
+        <LiveStatusBadge status={liveToolbar?.status} />
         {props.frontmatterInvalid ? <FrontmatterInvalid iconOnly announce /> : <NoteStatusSelect dotOnly status={String(session.metadata.status || '')} statuses={statuses} readOnly={session.locked} onChange={status => session.setMetadata(withNoteStatus(session.metadata, status))} label={t('editor.status')} />}
         {!autoSave && !readOnly && (
           <Tooltip label={t('editor.saveToGitHub')}>
@@ -114,6 +124,7 @@ export function PhoneNoteChrome(props: PhoneNoteChromeProps) {
             <button type='button' className='ui-icon-button phone-note-edit' aria-pressed={phoneEditing.editing} aria-label={t(phoneEditing.editing ? 'editor.finishEditing' : 'editor.startEditing')} onClick={phoneEditing.editing ? phoneEditing.onDone : phoneEditing.onEdit}>{phoneEditing.editing ? <Check aria-hidden='true' /> : <Pencil aria-hidden='true' />}</button>
           </Tooltip>
         )}
+        <LiveCheckIn action={liveToolbar?.checkIn} buttonRef={checkInButton} iconOnly />
         <AssistantDockToggle />
         <Tooltip label={t('editor.moreActions')}>
           <button ref={trigger} type='button' className='ui-icon-button' aria-label={t('editor.moreActions')} aria-haspopup='dialog' aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>
@@ -184,13 +195,13 @@ function RenameRow({ title, onRename, onDone }: { title: string; onRename: (titl
 }
 
 /** The "⋯" sheet: the note's status and tags, the tools the rail offered on a larger screen, and the actions that file or export it. */
-function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, onSaveAsTemplate, statuses, availableTags, frontmatterInvalid, hasHistory, quickActions, liveEditing, liveDraft, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
+function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onRename, onSaveAsTemplate, statuses, availableTags, frontmatterInvalid, hasHistory, quickActions, liveEditing, liveDraft, liveToolbar, title, trigger, onClose }: PhoneNoteChromeProps & { title: string; trigger: RefObject<HTMLButtonElement | null>; onClose: () => void; }) {
   const { t } = useTranslation();
   const panel = usePanelContext();
   const { changesCount, deleteNote, back } = usePhoneNotes();
   // A pending live note opens read-only, yet deleting discards it where its live editor can.
   const liveLock = useLiveLock();
-  const discardable = Boolean(note.live?.pending) && !liveLock(note, 'delete');
+  const discardable = !liveEditing && Boolean(note.live?.pending) && !liveLock(note, 'delete');
   const draftMovable = Boolean(note.live?.pending) && !liveLock(note, 'move');
   // Deleting asks for a second tap, which lapses if it is not given.
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -251,6 +262,18 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         {isMarkdown && <SheetItem icon={editorMode === 'live' ? <Code2 aria-hidden='true' /> : <Eye aria-hidden='true' />} label={t(editorMode === 'live' ? 'editor.switchToSource' : 'editor.switchToLive')} onClick={act(() => setEditorMode(editorMode === 'live' ? 'raw' : 'live'))} />}
         {toggleFormatToolbar && <SheetItem icon={<Type aria-hidden='true' />} label={t('editor.formatToolbar')} pressed={showFormatToolbar} onClick={toggleFormatToolbar} />}
         <div className='phone-sheet-quick'>{quickActions}</div>
+        {liveToolbar?.openInTab && (
+          <a href={liveToolbar.openInTab} target='_blank' rel='noopener noreferrer' className='phone-sheet-item' onClick={onClose}>
+            <ExternalLink aria-hidden='true' />
+            <span>{t('live.openInTab')}</span>
+          </a>
+        )}
+        {liveToolbar?.discard && (
+          <div className='phone-sheet-danger'>
+            <SheetItem icon={<Trash2 aria-hidden='true' />} label={t('live.discard')} disabled={liveToolbar.discard.disabled} onClick={act(liveToolbar.discard.run)} />
+            {liveToolbar.discard.disabled && liveToolbar.discard.reason && <p className='phone-sheet-meta'>{t(liveToolbar.discard.reason)}</p>}
+          </div>
+        )}
         {onRename && <RenameRow title={session.title} onRename={onRename} onDone={onClose} />}
         {/* A live note's own rename, where the title cannot be renamed here: the title's rename runs it too, so one is offered. */}
         {liveDraft?.onRename && !onRename && <SheetItem icon={<Pencil aria-hidden='true' />} label={t('files.rename')} onClick={act(liveDraft.onRename)} />}

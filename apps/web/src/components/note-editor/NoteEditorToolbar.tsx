@@ -1,5 +1,5 @@
 import { Tooltip } from '../Tooltip.js';
-import { type ReactNode } from 'react';
+import { type ReactNode, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ListOrdered, Maximize2, Minimize2, PanelRight, Pencil, Play, Save, ScrollText, Type, X } from 'lucide-react';
 import { hasKeymapEntry, primaryShortcutHint } from '../../lib/keyboard/keymap.js';
@@ -12,6 +12,7 @@ import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { TypstPreviewToggle } from '../typst-preview/TypstPreviewToggle.js';
 import { type LiveDraftActions, NoteActionsMenu } from './NoteActionsMenu.js';
 import { noteLanguageTag } from '../../lib/note-language.js';
+import { LiveCheckIn, LiveStatusBadge, type LiveToolbarState } from '../live/LiveToolbarControls.js';
 import { NoteRefreshAction } from './NoteQuickActions.js';
 import { NoteRow } from './NoteRow.js';
 import { PhoneNoteChrome, type PhoneNoteChromeProps } from './PhoneNoteChrome.js';
@@ -38,6 +39,9 @@ interface NoteEditorToolbarProps {
   /** Present when the note can pull its latest version; zoom shows it first among the actions. */
   onRefresh?: () => Promise<void>;
   onClose?: () => void;
+  beforeLeave?: PhoneNoteChromeProps['beforeLeave'];
+  liveToolbar?: LiveToolbarState;
+  checkInButton?: Ref<HTMLButtonElement>;
   toggleZoom?: () => Promise<void>;
   hasZoomNavigation?: boolean;
   onAddToOutline?: () => void;
@@ -87,7 +91,7 @@ function togglePanel(docPanel: NoteDocumentPanelState, isMarkdown: boolean) {
 }
 
 /** The editor's actions: refresh and save, the view (mode, line numbers, formatting toolbar), the "⋯" menu, and in zoom the panels. */
-function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, editorModes = ['live', 'raw'], showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, liveDraft, phoneEditing, onClose, toggleZoom, hasZoomNavigation }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onRename' | 'actionsSlot' | 'template'>) {
+function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, editorModes = ['live', 'raw'], showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, liveDraft, phoneEditing, onClose, toggleZoom, hasZoomNavigation, liveToolbar, checkInButton }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onRename' | 'actionsSlot' | 'template'>) {
   const { t } = useTranslation();
   const zoom = frame === 'zoom';
   const zoomLabel = t(zoom ? 'editor.returnToFocus' : 'editor.zoomNote');
@@ -95,6 +99,8 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
   return (
     <div className='note-controls flex items-center gap-2'>
       {zoom && onRefresh && <NoteRefreshAction iconOnly onRefresh={onRefresh} disabled={session.isSaving} />}
+      <LiveCheckIn action={liveToolbar?.checkIn} buttonRef={checkInButton} />
+      <LiveStatusBadge status={liveToolbar?.status} />
       {!autoSave && !readOnly && (
         <Tooltip label={t('editor.saveToGitHub')}>
           <Button variant='primary' aria-label={t('editor.saveToGitHub')} disabled={session.locked || !session.hasUnsavedChanges} onClick={session.handleExplicitSave} className='note-save editor-action'>
@@ -135,7 +141,7 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
           </Tooltip>
         )}
         {isMarkdown && <TypstPreviewToggle note={note} className='toolbar-icon-button editor-typst-preview-action' />}
-        <NoteActionsMenu className='ui-icon-button toolbar-icon-button editor-more-action' path={note.path} notebookId={note.notebookId} noteLang={noteLanguageTag(session.metadata)} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} locked={session.locked} onAddToOutline={onAddToOutline} onMove={onMove} onSaveAsTemplate={onSaveAsTemplate} liveDraft={liveDraft} />
+        <NoteActionsMenu className='ui-icon-button toolbar-icon-button editor-more-action' path={note.path} notebookId={note.notebookId} noteLang={noteLanguageTag(session.metadata)} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} locked={session.locked} onAddToOutline={onAddToOutline} onMove={onMove} onSaveAsTemplate={onSaveAsTemplate} liveDraft={liveDraft} liveToolbar={liveToolbar} />
       </div>
       {/* A Focus pane leaves the document panel to its rail and the assistant to the window's own toggle, so several panes do not repeat them. */}
       {zoom && (
@@ -150,9 +156,7 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
       )}
       {hasZoomNavigation && (
         <Tooltip label={zoomLabel} detail={zoomHint}>
-          <button type='button' aria-label={zoomLabel} aria-pressed={zoom} disabled={!toggleZoom} onClick={toggleZoom} className='ui-icon-button toolbar-icon-button'>
-            {zoom ? <Minimize2 aria-hidden='true' /> : <Maximize2 aria-hidden='true' />}
-          </button>
+          <button type='button' aria-label={zoomLabel} aria-pressed={zoom} disabled={!toggleZoom} onClick={toggleZoom} className='ui-icon-button toolbar-icon-button'>{zoom ? <Minimize2 aria-hidden='true' /> : <Maximize2 aria-hidden='true' />}</button>
         </Tooltip>
       )}
       {zoom && onClose && (
@@ -175,7 +179,7 @@ export function NoteEditorToolbar({ onClose, onRename, template = false, frontma
   const zoom = frame === 'zoom';
   if (phoneChrome) {
     const { frame: phoneFrame, note: phoneNote, session: phoneSession, docPanel: phoneDocPanel, isMarkdown, autoSave, editorMode, setEditorMode, showFormatToolbar, toggleFormatToolbar, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate } = actions;
-    return <PhoneNoteChrome {...phoneChrome} onPlaySlides={onPlaySlides} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} liveDraft={actions.liveDraft} template={template} frontmatterInvalid={frontmatterInvalid} onSaveAsTemplate={onSaveAsTemplate} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
+    return <PhoneNoteChrome {...phoneChrome} liveToolbar={actions.liveToolbar} checkInButton={actions.checkInButton} beforeLeave={actions.beforeLeave} onPlaySlides={onPlaySlides} frame={phoneFrame} note={phoneNote} session={phoneSession} docPanel={phoneDocPanel} isMarkdown={isMarkdown} autoSave={autoSave} readOnly={readOnly} editorMode={editorMode} setEditorMode={setEditorMode} showFormatToolbar={showFormatToolbar} toggleFormatToolbar={toggleFormatToolbar} onAddToOutline={onAddToOutline} onMove={onMove} onRename={onRename} liveDraft={actions.liveDraft} template={template} frontmatterInvalid={frontmatterInvalid} onSaveAsTemplate={onSaveAsTemplate} statuses={statuses} availableTags={availableTags} phoneEditing={phoneEditing} />;
   }
   const controls: ReactNode = <NoteActions {...actions} phoneEditing={phoneEditing} onClose={onClose} />;
   return (

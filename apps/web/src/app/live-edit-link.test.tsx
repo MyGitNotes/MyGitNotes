@@ -161,7 +161,7 @@ describe('a note address with ?edit, where the repository opens notes collab-fir
     const { probe } = await open({ pathname: NOTE, search: '?zoom&edit&q=x', hash: '#part' }, { frame: 'zoom', collab: true });
     expect(checkouts()).toHaveLength(1);
     expect(probe.current.url).toBe(`${NOTE}?zoom&q=x#part`);
-    expect(screen.getByRole('toolbar', { name: 'Live editor' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check in now' }).closest('.note-controls')).toBeInTheDocument();
   });
 
   it('in a Focus pane, opens the collab editor there, without zoom, and takes edit out of the address', async () => {
@@ -170,7 +170,7 @@ describe('a note address with ?edit, where the repository opens notes collab-fir
     expect(checkouts()).toHaveLength(1);
     expect(probe.current.url).toBe(`${NOTE}?mode=split`);
     expect(probe.current.state).toEqual(FOCUS_NOTE_STATE);
-    expect(screen.getByRole('toolbar', { name: 'Live editor' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check in now' }).closest('.note-controls')).toBeInTheDocument();
   });
 });
 

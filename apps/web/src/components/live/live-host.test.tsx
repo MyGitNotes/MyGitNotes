@@ -58,8 +58,9 @@ describe('a note of a repository with a live editor', () => {
 
   it('checks the note out on Edit and frames the editor', async () => {
     const onRefetch = vi.fn();
+    const onClose = vi.fn();
     fetchMock.mockResolvedValue(json({ checkout: view, outcome: 'created' }));
-    render(noteEditor({ live: { editor, onRefetch } }));
+    render(noteEditor({ live: { editor, onRefetch }, onClose }));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     });
@@ -67,9 +68,10 @@ describe('a note of a repository with a live editor', () => {
     expect(document.querySelector('iframe')?.getAttribute('src')).toBe('https://live.example.test/embed/abc?theme=light');
     expect(screen.queryByLabelText('Note content')).toBeNull();
     expect(onRefetch).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(document.querySelector('iframe')).toBeNull();
-    expect(screen.getByLabelText('Note content')).toHaveAttribute('readonly');
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close note' }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the direct editor for a note the live editor refuses as too large', async () => {
@@ -136,7 +138,6 @@ describe('lists', () => {
     expect(row(checkedOut)).toHaveAttribute('draggable', 'false');
   });
 
-
   it('lock the bulk actions while the selection holds a checked-out note', () => {
     render(createElement(BulkActionsToolbar, { count: 2, statuses: ['inbox'], availableTags: [], busy: false, readOnly: false, canMove: true, liveNotes: ['Alpha'], onSetStatus: vi.fn(), onAddTag: vi.fn(), onRemoveTag: vi.fn(), onMove: vi.fn(), onClear: vi.fn() }));
     expect(screen.getByText('Being edited live; check it in first: Alpha')).toBeInTheDocument();
@@ -171,7 +172,7 @@ describe('a live note that was checked in and filed elsewhere', () => {
 });
 
 describe('a live note on a phone', () => {
-  it('keeps the live bar out from under the note header, so 立即簽回 and the save state stay reachable', async () => {
+  it('keeps 立即簽回 and the save state reachable in the phone header', async () => {
     vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 767px)', media: query, addEventListener: () => {}, removeEventListener: () => {} }));
     fetchMock.mockResolvedValue(json({ checkout: view, outcome: 'created' }));
     const { container } = render(noteEditor({ live: { editor, onRefetch: vi.fn() } }));
@@ -446,8 +447,7 @@ describe('the built-in live editor', () => {
     });
     expect(fetchMock).toHaveBeenCalledWith('/api/live/socket-ticket', expect.objectContaining({ method: 'POST', body: JSON.stringify({ notebookId: 'notes~life', path: 'notes/life/a.md' }) }));
     expect(document.querySelector('iframe')).toBeNull();
-    expect(screen.getByRole('toolbar', { name: 'Live editor' })).toBeInTheDocument();
-    expect(screen.getByText('Connecting…')).toBeInTheDocument();
+    expect(screen.getByText('Connecting…').closest('.note-controls')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Open in a new tab' })).toBeNull();
   });
 });
@@ -463,13 +463,17 @@ describe('捨棄草稿 in the framed editor', () => {
     });
     const first = render(noteEditor({ note: pendingNote, live: { editor, onRefetch: vi.fn() } }));
     await act(async () => {});
-    expect(screen.queryByRole('button', { name: 'Discard draft' })).toBeNull();
-    first.unmount();
-    const onDiscarded = vi.fn();
-    render(noteEditor({ note: pendingNote, live: { editor: { ...editor, discard: true }, onRefetch: vi.fn(), onDiscarded } }));
-    await act(async () => {});
+    const more = screen.getByRole('button', { name: 'More actions' });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
+      more.focus();
+      fireEvent.keyDown(more, { key: 'ArrowDown' });
+    });
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Discard draft' })).toBeNull();
+    const onDiscarded = vi.fn();
+    first.rerender(noteEditor({ note: pendingNote, live: { editor: { ...editor, discard: true }, onRefetch: vi.fn(), onDiscarded } }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Discard draft' }));
     });
     expect(order.at(-1)).toBe('/api/live/discard frame=gone');
     expect(onDiscarded).toHaveBeenCalled();
@@ -477,8 +481,8 @@ describe('捨棄草稿 in the framed editor', () => {
 
   it('says an empty draft was discarded when 立即簽回 found it empty', async () => {
     fetchMock.mockImplementation(async (url: string) => url === '/api/live/checkout' ? json({ checkout: pendingView, outcome: 'joined' }) : json({ id: 'abc', path: null, committed: false, released: true, discarded: true, reason: 'empty', revision: 'c'.repeat(40) }));
-    const onDiscarded = vi.fn();
-    render(noteEditor({ note: pendingNote, live: { editor, onRefetch: vi.fn(), onDiscarded } }));
+    const onClose = vi.fn();
+    render(noteEditor({ note: pendingNote, live: { editor, onRefetch: vi.fn() }, onClose }));
     await act(async () => {});
     act(() => {
       window.dispatchEvent(new MessageEvent('message', { data: { type: 'live-status', users: 1, saved: true, connected: true, released: false }, origin: editor.origin, source: document.querySelector('iframe')!.contentWindow }));
@@ -488,8 +492,9 @@ describe('捨棄草稿 in the framed editor', () => {
     });
     expect(screen.getByText('The draft was empty and was discarded.')).toBeInTheDocument();
     expect(screen.queryByText('Checked in')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(onDiscarded).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close note' }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });
 
@@ -524,5 +529,4 @@ describe('a pending note in the lists, where the adapter can discard and retarge
     expect(card.getByRole('button', { name: 'Delete note' })).toBeDisabled();
     expect(card.getByRole('button', { name: 'Move note' })).toBeDisabled();
   });
-
 });

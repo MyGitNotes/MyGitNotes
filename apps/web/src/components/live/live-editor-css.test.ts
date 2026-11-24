@@ -16,9 +16,9 @@ function phoneRules(selector: string): string[] {
   return bodies;
 }
 
-describe('the live editor bar on a phone', () => {
-  it('gives 在新分頁開啟, 立即簽回 and 關閉 44px touch targets', () => {
-    expect(phoneRules('.live-editor-actions .ui-button.ui-button-small').join(';')).toMatch(/min-height:\s*44px/);
+describe('live editor notices on a phone', () => {
+  it('keeps 44px touch targets in the leave and discard notices', () => {
+    expect(phoneRules('.live-editor-notice-actions .ui-button.ui-button-small').join(';')).toMatch(/min-height:\s*44px/);
   });
 });
 

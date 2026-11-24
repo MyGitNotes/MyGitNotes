@@ -1,16 +1,21 @@
 // @vitest-environment jsdom
-import { createElement } from 'react';
+import { createElement, createRef } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import type { LiveCheckoutView } from '../../lib/live-api.js';
+import { NoteActionsMenu } from '../note-editor/NoteActionsMenu.js';
 import { LiveEditorFrame, type LiveEditorFrameProps } from './LiveEditorFrame.js';
+import type { LiveLeaveGuard } from './LiveLeavePrompt.js';
+import { stubModalDialog } from './live-leave-test-helpers.js';
+import { LiveCheckIn, LiveStatusBadge, type LiveToolbarState } from './LiveToolbarControls.js';
 
 const editor = { origin: 'https://live.example.test', messageType: 'live-status', themeParam: 'theme' };
 const checkout: LiveCheckoutView = { id: 'abc', notebookId: 'notes~life', path: 'notes/life/a.md', pending: false, editorUrl: 'https://live.example.test/abc', embedUrl: 'https://live.example.test/embed/abc', since: '2026-11-15T01:00:00.000Z', activeEditors: 1, conflict: null };
 
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
+  stubModalDialog();
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -19,7 +24,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const props = (overrides: Partial<LiveEditorFrameProps> = {}): LiveEditorFrameProps => ({ checkout, editor, theme: 'light', onRefetch: vi.fn(), onClose: vi.fn(), ...overrides });
+function TestToolbar({ state }: { state: LiveToolbarState; }) {
+  return (
+    <>
+      <LiveStatusBadge status={state.status} />
+      <LiveCheckIn action={state.checkIn} />
+      <NoteActionsMenu path={checkout.path} title='Note' content='' copyState='idle' onCopy={() => {}} locked className='' liveToolbar={state} />
+    </>
+  );
+}
+const props = (overrides: Partial<LiveEditorFrameProps> = {}): LiveEditorFrameProps => ({ checkout, editor, theme: 'light', onRefetch: vi.fn(), renderToolbar: state => <TestToolbar state={state} />, ...overrides });
 const frame = () => document.querySelector('iframe');
 const post = (data: unknown, source: unknown = frame()?.contentWindow, origin = editor.origin) =>
   act(() => {
@@ -40,7 +54,9 @@ it('frames the embed URL with the theme parameter, without sandbox, and opens th
   expect(iframe.hasAttribute('sandbox')).toBe(false);
   expect(iframe.hasAttribute('allow')).toBe(false);
   expect(iframe.getAttribute('referrerpolicy')).toBe('strict-origin-when-cross-origin');
-  const link = screen.getByRole('link', { name: 'Open in a new tab' });
+  expect(screen.queryByRole('link', { name: 'Open in a new tab' })).toBeNull();
+  fireEvent.keyDown(screen.getByRole('button', { name: 'More actions' }), { key: 'Enter' });
+  const link = screen.getByRole('menuitem', { name: 'Open in a new tab' });
   expect(link).toHaveAttribute('href', checkout.editorUrl);
   expect(link).toHaveAttribute('target', '_blank');
   expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -114,17 +130,33 @@ it('unmounts the frame before it checks the note in, and reports a note that sta
   expect(frame()).not.toBeNull();
 });
 
-it('says a check-in that failed, and closes', async () => {
-  const onClose = vi.fn();
+it('keeps a failed check-in notice in the editor, without a separate close action', async () => {
   const onRefetch = vi.fn();
   fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'Live editor unavailable.' }), { status: 502, headers: { 'Content-Type': 'application/json' } }));
-  render(createElement(LiveEditorFrame, props({ onClose, onRefetch })));
+  render(createElement(LiveEditorFrame, props({ onRefetch })));
   post(status());
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Check in now' }));
   });
   expect(screen.getByRole('alert')).toHaveTextContent('Live editor unavailable.');
-  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-  expect(onClose).toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
   expect(onRefetch).toHaveBeenCalled();
+});
+
+it('warns only after the frame reports unsaved edits, without promising a copy of cross-origin text', async () => {
+  const beforeLeaveRef = createRef<LiveLeaveGuard>();
+  render(createElement(LiveEditorFrame, props({ beforeLeaveRef })));
+  expect(beforeLeaveRef.current?.()).toBeUndefined();
+  post(status({ saved: false, connected: false }));
+  expect(screen.getByText('Offline').closest('.live-toolbar-badge')).toHaveAttribute('data-tone', 'warn');
+  let answer: Promise<boolean> | undefined;
+  act(() => {
+    answer = beforeLeaveRef.current?.();
+  });
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('The live editor has unsaved changes.');
+  expect(screen.queryByRole('button', { name: 'Copy my version' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to the editor' }));
+  await expect(answer).resolves.toBe(false);
+  post(status());
+  expect(beforeLeaveRef.current?.()).toBeUndefined();
 });

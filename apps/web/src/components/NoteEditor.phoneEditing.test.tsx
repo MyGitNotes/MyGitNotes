@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createElement, forwardRef, useEffect, useImperativeHandle } from 'react';
+import { createElement, forwardRef, Fragment, useEffect, useImperativeHandle } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -7,6 +7,7 @@ import type { LiveCheckoutView, LiveNoteEditing } from '../lib/live-api.js';
 import { PanelProvider } from '../lib/panel-context.js';
 import type { NoteItem } from '../lib/types.js';
 import { NoteEditor, type NoteEditorHandle, type NoteEditorProps } from './NoteEditor.js';
+import type { RenderLiveToolbar } from './live/LiveToolbarControls.js';
 
 const inserted: string[] = [];
 /** Each `editAt` call: where, and whether the touch that asked for it was still being dispatched. */
@@ -23,12 +24,12 @@ vi.mock('./MarkdownEditor.js', () => ({
 // The live editors stand in as plain editable text; the collab one hands the note its live session as the real one does once synced.
 vi.mock('./live/LiveCollabEditor.js', async original => ({
   ...await original<typeof import('./live/LiveCollabEditor.js')>(),
-  LiveCollabEditor: ({ onLive }: { onLive: (session: { text: Y.Text; online: boolean; people: number; }) => void; }) => {
+  LiveCollabEditor: ({ onLive, renderToolbar }: { onLive: (session: { text: Y.Text; online: boolean; people: number; }) => void; renderToolbar: RenderLiveToolbar; }) => {
     useEffect(() => onLive({ text: new Y.Doc().getText('content'), online: true, people: 1 }), [onLive]);
-    return createElement('textarea', { 'aria-label': 'Live text', defaultValue: '' });
+    return createElement(Fragment, null, renderToolbar({}), createElement('textarea', { 'aria-label': 'Live text', defaultValue: '' }));
   },
 }));
-vi.mock('./live/LiveEditorFrame.js', () => ({ LiveEditorFrame: () => createElement('iframe', { title: 'Framed live editor' }) }));
+vi.mock('./live/LiveEditorFrame.js', () => ({ LiveEditorFrame: ({ renderToolbar }: { renderToolbar: RenderLiveToolbar; }) => createElement(Fragment, null, renderToolbar({}), createElement('iframe', { title: 'Framed live editor' })) }));
 
 const liveEdit = { current: null as { edit?: () => void; checkout?: LiveCheckoutView; } | null };
 vi.mock('./live/useLiveEdit.js', async original => {
