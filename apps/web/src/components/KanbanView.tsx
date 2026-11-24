@@ -21,7 +21,7 @@ import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteZoomButton } from './NoteZoomButton.js';
 import { Select } from './Select.js';
 import { Tooltip } from './Tooltip.js';
-import { type BoardContext, cardDragProps, type Column, useColumnDrag } from './kanban/board.js';
+import { type BoardContext, cardDragProps, type Column, statusQuery, useColumnDrag } from './kanban/board.js';
 import { KanbanCard } from './kanban/KanbanCard.js';
 import { KanbanStrip } from './kanban/KanbanStrip.js';
 import './kanban/kanban.css';
@@ -60,8 +60,7 @@ const columnSortOptionValues = [{ value: 'updated:desc', label: 'kanban.newest' 
 function KanbanColumn({ col, index, board, query, hiddenNote, sort, onSort }: { col: Column; index: number; board: BoardContext; query: Partial<NoteQuery>; hiddenNote?: NoteListItem; sort: { field: SortField; order: SortOrder; }; onSort: (value: { field: SortField; order: SortOrder; }) => void; }) {
   const { t } = useTranslation();
   const hide = hiddenNote && (hiddenNote.status || '') === col.id ? hiddenNote.path : undefined;
-  // A status filter keeps every column on the board but only its own column holds notes.
-  const result = useNoteList(query.status && query.status !== col.id ? null : { ...query, status: col.id, sort: sort.field, order: sort.order }, { hide });
+  const result = useNoteList(statusQuery(query, col.id, sort), { hide });
   const drag = useColumnDrag(board, col.id);
   const isColumnDragOver = board.dragOverColumnId === col.id;
   const report = board.onTotal;
@@ -123,7 +122,7 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
   const touchSelection = useNoteTouchSelection(board.onToggleSelect);
   const liveLock = useLiveLock();
   const hide = hiddenNote && !hiddenNote.status ? hiddenNote.path : undefined;
-  const result = useNoteList(query.status ? null : { ...query, withoutStatus: true, sort: sort.field, order: sort.order }, { hide });
+  const result = useNoteList(statusQuery(query, '', sort), { hide });
   const notes = [...result.uncommitted, ...result.notes];
   const drag = useColumnDrag(board, '');
   const report = board.onTotal;

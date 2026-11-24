@@ -1194,6 +1194,12 @@ export const zhTW: Record<TranslationKey, string> = {
   'kanban.densityNormal': '一般',
   'kanban.collapseColumn': '收合「{title}」',
   'kanban.expandColumn': '展開「{title}」',
+  'kanban.foldBoard': '開進 Focus',
+  'kanban.foldBoardDetail': '看板收成左側的狀態清單',
+  'kanban.expandBoard': '展開看板',
+  'kanban.expandBoardPanes': 'Focus 有多個窗格時看板收在左側；把窗格合併成一個才能展開',
+  'kanban.statusList': '依狀態分組的筆記',
+  'kanban.moreNotes': '還有 {count} 則',
 
   // Folders & Breadcrumbs
   'folder.allFolders': '所有資料夾',

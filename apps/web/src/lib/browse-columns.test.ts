@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSE_COLUMNS_STORAGE_KEY, browseColumnsLayout, notebooksCramped, paneColumns, readBrowseColumns, saveBrowseColumns, toggleList, toggleNotebooks } from './browse-columns.js';
+import { boardPlacement, BROWSE_COLUMNS_STORAGE_KEY, browseColumnsLayout, notebooksCramped, paneColumns, paneCount, readBrowseColumns, saveBrowseColumns, toggleList, toggleNotebooks } from './browse-columns.js';
 
 const memory = () => {
   const items = new Map<string, string>();
@@ -76,5 +76,21 @@ describe('toggles', () => {
   it('keeps the notebooks rail when the list folds away too', () => {
     expect(browseColumnsLayout({ stored: { notebooksCollapsed: true, listCollapsed: true }, cramped: false, heldOpen: false })).toEqual({ notebooks: 'rail', list: false });
     expect(browseColumnsLayout({ stored: { notebooksCollapsed: false, listCollapsed: true }, cramped: true, heldOpen: false })).toEqual({ notebooks: 'rail', list: false });
+  });
+});
+
+describe('where the board stands', () => {
+  it('counts every pane of the Focus, side by side or one under another', () => {
+    const pane = (id: string) => ({ kind: 'pane' as const, id, panes: [id] });
+    expect(paneCount(undefined)).toBe(0);
+    expect(paneCount(pane('a'))).toBe(1);
+    expect(paneCount({ kind: 'split', id: 's', orientation: 'vertical', children: [pane('a'), { kind: 'split', id: 't', orientation: 'horizontal', children: [pane('c'), pane('d')] }] })).toBe(3);
+  });
+
+  it('stands alone without a note in the Focus, beside a one-pane Focus, and folds with more panes or by choice', () => {
+    expect(boardPlacement({ focusOpen: false, panes: 2, folded: true })).toBe('full');
+    expect(boardPlacement({ focusOpen: true, panes: 1, folded: false })).toBe('side');
+    expect(boardPlacement({ focusOpen: true, panes: 1, folded: true })).toBe('folded');
+    expect(boardPlacement({ focusOpen: true, panes: 2, folded: false })).toBe('folded');
   });
 });

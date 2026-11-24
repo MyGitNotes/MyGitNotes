@@ -34,7 +34,7 @@ import { type NoteListItem, sameNote } from '@mygitnotes/core/note-query';
 import { useWorkspaceSync } from './lib/use-workspace-sync.js';
 import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
-import { hasStoredFocusView } from './lib/focus-view.js';
+import { hasStoredFocusView, isEmptyFocus } from './lib/focus-view.js';
 import { noteLookupOptions, useNotebookTemplates } from './lib/use-note-queries.js';
 import { isTemplatePath } from './lib/note-templates.js';
 import { useTemplateActions } from './app/useTemplateActions.js';
@@ -80,7 +80,8 @@ import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
 import { SidebarProvider, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
 import type { NewNoteActions } from './components/NewNoteMenu.js';
 import { useVisualViewport } from './lib/use-visual-viewport.js';
-import { paneColumns } from './lib/browse-columns.js';
+import { paneColumns, paneCount } from './lib/browse-columns.js';
+import { useBoardPlacement } from './app/useBoardPlacement.js';
 import { browseColumnCommands, useBrowseColumns } from './app/useBrowseColumns.js';
 import { NOTEBOOK_COLUMN_ID } from './components/BrowseColumns.js';
 import { useNotebookAppearance } from './components/NotebookAppearance.js';
@@ -268,14 +269,15 @@ export const AppContent: React.FC = () => {
   // away, and a cramped page, or a Focus whose panes need the room, folds the notebooks column to its rail.
   const notesColumns = !phone && activeTab === 'notes' && !route.study && !notebookUnavailable;
   const columns = useBrowseColumns({ panes: paneColumns(focusDisplay?.root) });
+  const board = useBoardPlacement({ presentation, focusOpen: Boolean(noteFocus.layout && !isEmptyFocus(noteFocus.layout)), panes: paneCount(focusDisplay?.root) });
   const { focusCommands, shortcutMode, setShortcutMode } = useShortcutSurface({ noteFocus, focusDisplay, t, showFocus, requestClear, zoomFocusNote, focusCapacity });
   const { noteSearch, focusNoteSearch } = useNoteSearchFocus({ notesColumns, columns, activeTab, phoneNoteScreen, setActiveTab, setFocusNarrowView });
-  useAppCommands({ t, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch, noteEditorOpen, pageCommands: notesColumns ? [...focusCommands, ...browseColumnCommands(columns, t, presentation)] : focusCommands });
+  useAppCommands({ t, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch, noteEditorOpen, pageCommands: notesColumns ? [...focusCommands, ...browseColumnCommands(columns, t, board.placement === 'folded' ? 'list' : presentation)] : focusCommands });
 
   // The toolbar search dims what the Focus shows that it does not match; on a phone it only filters the list.
   const focusMatches = useFocusSearch({ q: debouncedSearch, notebookId: selectedNotebookId, enabled: Boolean(noteFocus.layout) && !phone });
   const { compilationActions, createUntitledCompilation, renderCompilation, compilationBehind } = useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets: facetsQuery.facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState: location.state, routeNotebook: editorRoute.notebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse });
-  const { renderNotesPage, phoneFilterSheet } = useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, remote, loading, folders, foldersLoading, actionError, refreshWorkspace, refreshDocuments, staleNotice, readNoteForChange, notebookGroups, unavailableNotebooks, route, activeTab, selectedNotebookId, selectedNotebook, selectedFolder, folderRoot, showHidden, canWrite, canWriteFiles, filtersOpen, setFiltersOpen, navigation, facets: browseFacets, browse: browseNotes, sort, selection, tags: tagWorkspace, bulkToolbar, noteFocus, activeNotePath, columns, notesColumns, presentation, noteSearch, focusNoteSearch, notebookAppearance, handleOpenNote, openFromBrowse, handleDeleteNote, handleUpdateNoteStatus, noteMove, createNote, createUntitledCompilation, openFileManager, beforeFileChange, navigationDisabled: noteEditorOpen || isCommitOpen, setShortcutMode });
+  const { renderNotesPage, phoneFilterSheet } = useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, remote, loading, folders, foldersLoading, actionError, refreshWorkspace, refreshDocuments, staleNotice, readNoteForChange, notebookGroups, unavailableNotebooks, route, activeTab, selectedNotebookId, selectedNotebook, selectedFolder, folderRoot, showHidden, canWrite, canWriteFiles, filtersOpen, setFiltersOpen, navigation, facets: browseFacets, browse: browseNotes, sort, selection, tags: tagWorkspace, bulkToolbar, noteFocus, activeNotePath, columns, notesColumns, presentation, board, noteSearch, focusNoteSearch, notebookAppearance, handleOpenNote, openFromBrowse, handleDeleteNote, handleUpdateNoteStatus, noteMove, createNote, createUntitledCompilation, openFileManager, beforeFileChange, navigationDisabled: noteEditorOpen || isCommitOpen, setShortcutMode });
 
   if (loading || loadError) return <ConnectionState loading={loading} error={loadError} onRetry={refreshWorkspace} />;
   if (route.legacyScreen) return <LegacyScreenRedirect laneId={route.legacyLane} notebooks={config?.notebooks || []} onMissing={setActionError} />;

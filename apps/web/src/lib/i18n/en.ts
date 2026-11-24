@@ -1193,6 +1193,12 @@ export const en = {
   'kanban.densityNormal': 'Normal',
   'kanban.collapseColumn': 'Collapse {title}',
   'kanban.expandColumn': 'Expand {title}',
+  'kanban.foldBoard': 'Open in Focus',
+  'kanban.foldBoardDetail': 'Folds the board into a status list on the left',
+  'kanban.expandBoard': 'Expand board',
+  'kanban.expandBoardPanes': 'The board stays folded while the Focus has more than one pane; merge the panes to expand it',
+  'kanban.statusList': 'Notes by status',
+  'kanban.moreNotes': '{count} more',
 
   // Folders & Breadcrumbs
   'folder.allFolders': 'All folders',

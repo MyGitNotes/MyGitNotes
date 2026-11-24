@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Kanban, List, PanelLeft } from 'lucide-react';
+import { Columns3, Kanban, List, PanelLeft } from 'lucide-react';
 import type { BrowsePresentation } from '../lib/browse-columns.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { bindingsFor, keymapEntry } from '../lib/keyboard/keymap.js';
@@ -30,6 +30,8 @@ export interface NoteListColumnProps {
   onPresentationChange: (presentation: BrowsePresentation) => void;
   /** Folds the list away; absent while the list spans the note column (the board). */
   onCollapse?: () => void;
+  /** While the board is folded into the list column: 「展開看板」, which `onExpand` does, or explains why not while it is absent. */
+  expandBoard?: { onExpand?: () => void; };
   /** While the notebooks column is a rail, the folder is picked from the path instead. */
   folderMenu?: { folders: FolderChoice[]; value: string; onChange: (folder: string) => void; };
   /** The Status, Tags and Sort buttons under the header. */
@@ -44,7 +46,7 @@ const PRESENTATIONS = [{ value: 'list', label: 'browse.viewList', Icon: List }, 
  * Column 2 of the Notes page: a header naming where the list is (notebook › folder) and how many notes it holds, the switch between the
  * list and the board, and the toggle that folds the list away; then the Status, Tags and Sort buttons; then the list.
  */
-export function NoteListColumn({ columnId, notebookTitle, notebook, path, count, presentation, onPresentationChange, onCollapse, folderMenu, chips, children }: NoteListColumnProps): JSX.Element {
+export function NoteListColumn({ columnId, notebookTitle, notebook, path, count, presentation, onPresentationChange, onCollapse, expandBoard, folderMenu, chips, children }: NoteListColumnProps): JSX.Element {
   const { t } = useTranslation();
   const collapseLabel = t('browse.collapseList');
   const [collapseKeys] = bindingsFor(keymapEntry('browse.toggleList'), keyEnvironment);
@@ -82,6 +84,14 @@ export function NoteListColumn({ columnId, notebookTitle, notebook, path, count,
             </Tooltip>
           ))}
         </div>
+        {expandBoard && (
+          // Kept focusable while it cannot expand, so its tooltip still says why.
+          <Tooltip label={t('kanban.expandBoard')} detail={expandBoard.onExpand ? undefined : t('kanban.expandBoardPanes')}>
+            <button type='button' className='ui-icon-button' aria-label={t('kanban.expandBoard')} aria-disabled={expandBoard.onExpand ? undefined : 'true'} onClick={expandBoard.onExpand}>
+              <Columns3 size={16} aria-hidden='true' />
+            </button>
+          </Tooltip>
+        )}
         {onCollapse && (
           <Tooltip label={collapseLabel} detail={collapseKeys && formatKeys(collapseKeys, keyEnvironment).join(' ')}>
             <button type='button' className='ui-icon-button browse-column-toggle' data-column-toggle='' aria-label={collapseLabel} aria-expanded='true' aria-controls={columnId} onClick={onCollapse}>

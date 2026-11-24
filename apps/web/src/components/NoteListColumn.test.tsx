@@ -175,3 +175,21 @@ describe('the filter buttons', () => {
     expect(onClear).toHaveBeenCalledOnce();
   });
 });
+
+describe('the board folded into the list column', () => {
+  it('offers 「Expand board」 only while folded, and explains instead of acting while the Focus keeps it folded', () => {
+    const onExpand = vi.fn();
+    const { unmount } = column({ presentation: 'kanban' });
+    expect(screen.queryByRole('button', { name: 'Expand board' })).not.toBeInTheDocument();
+    unmount();
+    const folded = column({ presentation: 'kanban', expandBoard: { onExpand } });
+    fireEvent.click(screen.getByRole('button', { name: 'Expand board' }));
+    expect(onExpand).toHaveBeenCalledTimes(1);
+    folded.unmount();
+    column({ presentation: 'kanban', expandBoard: {} });
+    const locked = screen.getByRole('button', { name: 'Expand board' });
+    expect(locked).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(locked);
+    expect(onExpand).toHaveBeenCalledTimes(1);
+  });
+});

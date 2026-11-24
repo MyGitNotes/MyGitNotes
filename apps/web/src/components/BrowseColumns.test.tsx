@@ -46,10 +46,12 @@ interface PageProps {
   onToggleNotebooks?: () => void;
   onToggleList?: () => void;
   measure?: (element: HTMLElement | null) => void;
+  /** The board folded into the list column beside the Focus. */
+  boardFolded?: boolean;
 }
 
 /** The Notes page's three columns as the app composes them, under the header's notebooks toggle left of the logo. */
-function Page({ layout = { notebooks: 'open', list: true }, presentation = 'list', note, notebookId = 'life', folder = null, onToggleNotebooks = () => {}, onToggleList = () => {}, measure }: PageProps) {
+function Page({ layout = { notebooks: 'open', list: true }, presentation = 'list', note, notebookId = 'life', folder = null, onToggleNotebooks = () => {}, onToggleList = () => {}, measure, boardFolded }: PageProps) {
   const notebook = notebooks.find(nb => nb.id === notebookId)!;
   const filters = controls({ notebookId, folders: folder ? [`${notebook.root}/${folder}`] : [] });
   return (
@@ -62,9 +64,11 @@ function Page({ layout = { notebooks: 'open', list: true }, presentation = 'list
         measure={measure}
         presentation={presentation}
         focusOpen={Boolean(note)}
+        boardFolded={boardFolded}
+        fold={<button type='button'>Open in Focus</button>}
         notebooks={<NotebookColumn mode={layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={notebooks} selectedNotebookId={notebookId} onSelectNotebook={() => {}} counts={{ life: 7, work: 1 }} current={<NotebookTree notebook={notebook} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={folder} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />} query='' onQueryChange={() => {}} onOpenSearch={() => {}} kind='note' onSelectKind={() => {}} />}
         list={
-          <NoteListColumn columnId={LIST_COLUMN_ID} notebookTitle={notebook.title} path={folder ? [folder] : []} count={folder ? 2 : 7} presentation={presentation} onPresentationChange={() => {}} onCollapse={presentation === 'list' ? onToggleList : undefined} chips={<ListFilterButtons filters={filters} counts={listFacets(filters, facets)} notebookId={notebookId} sortField='updated' sortOrder='desc' onSortChange={() => {}} sortable showHidden={false} hiddenNoteCount={1} onShowHiddenChange={() => {}} />}>
+          <NoteListColumn columnId={LIST_COLUMN_ID} notebookTitle={notebook.title} path={folder ? [folder] : []} count={folder ? 2 : 7} presentation={presentation} onPresentationChange={() => {}} onCollapse={presentation === 'list' || boardFolded ? onToggleList : undefined} chips={<ListFilterButtons filters={filters} counts={listFacets(filters, facets)} notebookId={notebookId} sortField='updated' sortOrder='desc' onSortChange={() => {}} sortable showHidden={false} hiddenNoteCount={1} onShowHiddenChange={() => {}} />}>
             <ul>
               <li aria-current={note === 'a' ? 'true' : undefined}>Note A</li>
               <li aria-current={note === 'b' ? 'true' : undefined}>Note B</li>
@@ -184,6 +188,35 @@ describe('the three columns', () => {
     unmount();
     render(<Page note='a' presentation='kanban' />);
     expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', String(max - 5));
+  });
+
+  it('offers to fold the board at the Focus’s top left while they stand side by side, and only then', () => {
+    const { rerender } = render(<Page presentation='kanban' />);
+    expect(screen.queryByRole('button', { name: 'Open in Focus' })).not.toBeInTheDocument();
+    rerender(<Page note='a' presentation='kanban' />);
+    expect(screen.getByRole('button', { name: 'Open in Focus' }).closest('.browse-column-note')).toContainElement(screen.getByRole('article'));
+    rerender(<Page note='a' presentation='list' />);
+    expect(screen.queryByRole('button', { name: 'Open in Focus' })).not.toBeInTheDocument();
+  });
+
+  it('folds the board into the list column beside the Focus, which then folds and returns as the list does, keeping the same elements', () => {
+    const { rerender } = render(<Page note='a' presentation='kanban' />);
+    const list = listColumn();
+    const focus = screen.getByRole('article');
+    rerender(<Page note='a' presentation='kanban' boardFolded />);
+    expect(listColumn()).toBe(list);
+    expect(screen.getByRole('article')).toBe(focus);
+    expect(list.parentElement).not.toHaveAttribute('data-board');
+    expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open in Focus' })).not.toBeInTheDocument();
+    expect(list).toBeVisible();
+    rerender(<Page note='a' presentation='kanban' boardFolded layout={{ notebooks: 'open', list: false }} />);
+    expect(list).not.toBeVisible();
+    expect(screen.getByRole('button', { name: 'Show note list' })).toBeVisible();
+    // Without a note the board stands alone again, whatever was folded.
+    rerender(<Page presentation='kanban' boardFolded layout={{ notebooks: 'open', list: false }} />);
+    expect(list).toBeVisible();
+    expect(list.parentElement).toHaveAttribute('data-board', 'true');
   });
 
   it('drops the board height kept for the old board above the Focus', () => {

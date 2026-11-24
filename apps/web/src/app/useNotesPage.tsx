@@ -1,6 +1,6 @@
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import React, { useMemo, useState } from 'react';
-import { PanelLeft } from 'lucide-react';
+import { Maximize2, PanelLeft } from 'lucide-react';
 import { AccountControls } from '../components/AuthControls.js';
 import { BrowseColumns, LIST_COLUMN_ID, NOTEBOOK_COLUMN_ID } from '../components/BrowseColumns.js';
 import { Breadcrumbs } from '../components/Breadcrumbs.js';
@@ -12,6 +12,7 @@ import { FolderIndex } from '../components/FolderIndex.js';
 import { FolderLinks } from '../components/FolderLinks.js';
 import { HeaderUtilities } from '../components/Header.js';
 import { KanbanView } from '../components/KanbanView.js';
+import { KanbanStatusList } from '../components/kanban/KanbanStatusList.js';
 import { LegacySchemaNotice } from '../components/LegacySchemaNotice.js';
 import { ListFilterButtons } from '../components/ListFilterButtons.js';
 import { LoadingStatus } from '../components/LoadingStatus.js';
@@ -36,6 +37,7 @@ import type { WorkspaceTab } from '../lib/routes.js';
 import type { NotebookConfig } from '../lib/types.js';
 import type { useBrowseFacets } from './useBrowseFacets.js';
 import type { BrowseColumns as BrowseColumnsState } from './useBrowseColumns.js';
+import type { BoardPlacementState } from './useBoardPlacement.js';
 import type { useBrowseNotes } from './useBrowseNotes.js';
 import type { useBrowseRoute } from './useBrowseRoute.js';
 import type { useCreateNote } from './useCreateNote.js';
@@ -99,6 +101,8 @@ interface Params {
   /** Whether the Notes page shows its three columns, and how the list presents its notes there. */
   notesColumns: boolean;
   presentation: 'kanban' | 'list';
+  /** Where the board stands beside the Focus, and the actions that fold and unfold it. */
+  board: BoardPlacementState;
   noteSearch: ReturnType<typeof useNoteSearchFocus>['noteSearch'];
   focusNoteSearch: ReturnType<typeof useNoteSearchFocus>['focusNoteSearch'];
   notebookAppearance: ReturnType<typeof useNotebookAppearance>;
@@ -117,7 +121,7 @@ interface Params {
 }
 
 /** The Notes page's views: its browse region (the list or board with its notices), the folders and filters beside it, a phone's screens and the three columns. */
-export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, remote, loading, folders, foldersLoading, actionError, refreshWorkspace, refreshDocuments, staleNotice, readNoteForChange, notebookGroups, unavailableNotebooks, route, activeTab, selectedNotebookId, selectedNotebook, selectedFolder, folderRoot, showHidden, canWrite, canWriteFiles, filtersOpen, setFiltersOpen, navigation, facets, browse, sort, selection, tags, bulkToolbar, noteFocus, activeNotePath, columns, notesColumns, presentation, noteSearch, focusNoteSearch, notebookAppearance, handleOpenNote, openFromBrowse, handleDeleteNote, handleUpdateNoteStatus, noteMove, createNote, createUntitledCompilation, openFileManager, beforeFileChange, navigationDisabled, setShortcutMode }: Params) {
+export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, remote, loading, folders, foldersLoading, actionError, refreshWorkspace, refreshDocuments, staleNotice, readNoteForChange, notebookGroups, unavailableNotebooks, route, activeTab, selectedNotebookId, selectedNotebook, selectedFolder, folderRoot, showHidden, canWrite, canWriteFiles, filtersOpen, setFiltersOpen, navigation, facets, browse, sort, selection, tags, bulkToolbar, noteFocus, activeNotePath, columns, notesColumns, presentation, board, noteSearch, focusNoteSearch, notebookAppearance, handleOpenNote, openFromBrowse, handleDeleteNote, handleUpdateNoteStatus, noteMove, createNote, createUntitledCompilation, openFileManager, beforeFileChange, navigationDisabled, setShortcutMode }: Params) {
   const { changeFilters, setActiveTab, resourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder, setViewMode, setGroupByFolder } = navigation;
   const { facetsQuery, notebookFacets, notebookStatuses, workspaceTagNames, searchQuery, viewMode, folderless } = facets;
   const { folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, highlightQuery, groupable, groupedByFolder } = browse;
@@ -129,6 +133,8 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
   const [phoneFilterOpen, setPhoneFilterOpen] = useState(false);
   // A shown Focus (Default or named) with no open note: a phone's list screen then shows the list alone, without the folders under it.
   const focusEmpty = Boolean(noteFocus.layout && isEmptyFocus(noteFocus.layout));
+  // Beside a Focus of several panes, or by the person's choice, the board folds into the list column as a status list.
+  const boardFolded = board.placement === 'folded';
   const browseFocusMode = noteFocus.layout || phone || presentation === 'list' ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, rowMeta: !phone && presentation === 'list', openPath: activeNotePath, readNote: readNoteForChange } : undefined;
   // A phone's list screen beside a Focus shows the folders under the list, and the chips of the filters in force where the filters are out of sight.
   const layout = phoneBrowseLayout({ phone, focusShown: activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && !focusEmpty, viewMode });
@@ -178,7 +184,13 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
           <NoteListSentinel hasMore={listResult.hasMore} loading={listResult.loadingMore} error={listResult.error} onLoadMore={listResult.loadMore} />
         </>
       )}
-      {viewMode === 'kanban' && (
+      {viewMode === 'kanban' && boardFolded && (
+        <>
+          {folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}
+          <KanbanStatusList focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} query={baseQuery} hiddenNote={folderIndex} onOpenNote={note => void openFromBrowse(note)} onUpdateNoteStatus={handleUpdateNoteStatus} sortField={sortField} sortOrder={sortOrder} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} />
+        </>
+      )}
+      {viewMode === 'kanban' && !boardFolded && (
         <KanbanView
           focusMode={browseFocusMode}
           statuses={notebookStatuses}
@@ -261,7 +273,8 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
         onPresentationChange={next => {
           if (next !== presentation) setViewMode(next === 'kanban' ? 'kanban' : 'flat');
         }}
-        onCollapse={presentation === 'list' ? columns.toggleList : undefined}
+        onCollapse={presentation === 'list' || boardFolded ? columns.toggleList : undefined}
+        expandBoard={boardFolded ? { onExpand: board.unfold } : undefined}
         // Folded to its rail, the notebooks column leaves the folder to the path's menu.
         folderMenu={columns.layout.notebooks !== 'open' && route.kind === 'note'
           ? { folders: folderChoices, value: selectedFolder ?? '', onChange: folder => setSelectedFolder(folder || null) }
@@ -276,7 +289,7 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
             sortOrder={sortOrder}
             onSortChange={handleSortChange}
             metadataSortFields={metadataSortFields}
-            sortable={presentation !== 'kanban'}
+            sortable={presentation !== 'kanban' || boardFolded}
             showHidden={showHidden}
             hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null}
             onShowHiddenChange={value => changeFilters({ showHidden: value })}
@@ -301,6 +314,15 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
         </Tooltip>
         <FoldedNoteDots notes={[...listResult.uncommitted, ...displayedNotes]} openPath={activeNotePath} onOpenNote={note => void openFromBrowse(note)} />
       </>
+    );
+    // At the Focus's top left while the board stands beside it: fold the board into the list column, the Focus taking the room.
+    const foldLabel = t('kanban.foldBoard');
+    const foldBoard = (
+      <Tooltip label={foldLabel} detail={t('kanban.foldBoardDetail')}>
+        <button type='button' className='ui-icon-button browse-column-toggle' aria-label={foldLabel} onClick={board.fold}>
+          <Maximize2 size={16} aria-hidden='true' />
+        </button>
+      </Tooltip>
     );
     return (phone
       ? (
@@ -334,7 +356,7 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
       )
       : (
         <main className='workspace-main notes-main'>
-          <BrowseColumns layout={columns.layout} measure={columns.measure} presentation={presentation} focusOpen={Boolean(noteFocus.layout) && !focusEmpty} notebooks={notebookColumn} list={listColumn} note={noteFocus.layout ? focusArea : <p className='browse-note-empty'>{t('browse.noFocus')}</p>} restore={restoreColumns} />
+          <BrowseColumns layout={columns.layout} measure={columns.measure} presentation={presentation} focusOpen={Boolean(noteFocus.layout) && !focusEmpty} boardFolded={boardFolded} notebooks={notebookColumn} list={listColumn} note={noteFocus.layout ? focusArea : <p className='browse-note-empty'>{t('browse.noFocus')}</p>} restore={restoreColumns} fold={foldBoard} />
         </main>
       ));
   };

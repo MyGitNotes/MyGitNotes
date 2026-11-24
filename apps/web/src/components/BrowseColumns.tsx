@@ -12,8 +12,10 @@ export interface BrowseColumnsProps {
   /** Measures the width the columns share. */
   measure?: (element: HTMLElement | null) => void;
   presentation: BrowsePresentation;
-  /** The board takes the full height unless there is a note in the Focus. */
+  /** The board takes the whole width unless there is a note in the Focus. */
   focusOpen: boolean;
+  /** With a note in the Focus, the board folds into the list column (the status list) instead of standing beside the Focus. */
+  boardFolded?: boolean;
   /** Column 1: the notebooks, open or as the rail. */
   notebooks: ReactNode;
   /** Column 2: the note list. */
@@ -22,6 +24,8 @@ export interface BrowseColumnsProps {
   note: ReactNode;
   /** At the note column's top left while the list is folded away: what brings it back. */
   restore?: ReactNode;
+  /** At the note column's top left while the board stands beside it: what folds the board into the list column. */
+  fold?: ReactNode;
 }
 
 /** Whether `element` no longer takes focus where it is: removed from the page, or inside a column that folded away or is sliding shut. */
@@ -40,12 +44,13 @@ type ListPhase = 'open' | 'closing' | 'closed' | 'opening';
  * switches; only their content follows. Folding the list hides it in place; the notebooks column turns into its rail inside the same element.
  * When the focused control goes with a fold, the keyboard moves to the toggle that brings that column back, else to the first toggle left.
  */
-export function BrowseColumns({ layout, measure, presentation, focusOpen, notebooks, list, note, restore }: BrowseColumnsProps): JSX.Element {
+export function BrowseColumns({ layout, measure, presentation, focusOpen, boardFolded = false, notebooks, list, note, restore, fold }: BrowseColumnsProps): JSX.Element {
   const { t } = useTranslation();
   const root = useRef<HTMLDivElement | null>(null);
   const focused = useRef<Element | null>(null);
   const focusId = useId();
-  const board = presentation === 'kanban';
+  // Folded beside the Focus, the board is the list column's status list and the columns behave as for the list.
+  const board = presentation === 'kanban' && !(focusOpen && boardFolded);
   const split = board && focusOpen;
   const listShown = layout.list || board;
   const [phase, setPhase] = useState<ListPhase>(listShown ? 'open' : 'closed');
@@ -113,12 +118,7 @@ export function BrowseColumns({ layout, measure, presentation, focusOpen, notebo
             {list}
           </section>
         }
-        focus={
-          <div id={focusId} className='browse-column browse-column-note' hidden={board && !split}>
-            {!board && !layout.list && restore && <div className='browse-column-restore'>{restore}</div>}
-            {(!board || split) && <div className='browse-column-note-body'>{note}</div>}
-          </div>
-        }
+        focus={<div id={focusId} className='browse-column browse-column-note' hidden={board && !split}>{!board && !layout.list && restore && <div className='browse-column-restore'>{restore}</div>}{split && fold && <div className='browse-column-restore'>{fold}</div>}{(!board || split) && <div className='browse-column-note-body'>{note}</div>}</div>}
       />
     </div>
   );

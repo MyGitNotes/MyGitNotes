@@ -104,3 +104,20 @@ export function toggleList(layout: BrowseColumnsLayout, stored: StoredBrowseColu
 
 /** The list beside the Focus, or the board (beside a Focus, or folded into the list column; see `BrowseColumns`). */
 export type BrowsePresentation = 'list' | 'kanban';
+
+/** How many panes the displayed Focus holds, side by side or one under another. */
+export function paneCount(node: DisplayNode | undefined): number {
+  if (!node) return 0;
+  return node.kind === 'pane' ? 1 : node.children.reduce((sum, child) => sum + paneCount(child), 0);
+}
+
+/**
+ * Where the board stands on the Notes page: alone (`full`) while the Focus shows no note; beside a Focus of one pane (`side`), the board at
+ * full height on the left; or folded into the list column as a status list (`folded`), when the Focus has more panes or the person folded it.
+ */
+export type BoardPlacement = 'full' | 'side' | 'folded';
+
+export function boardPlacement({ focusOpen, panes, folded }: { focusOpen: boolean; panes: number; folded: boolean; }): BoardPlacement {
+  if (!focusOpen) return 'full';
+  return folded || panes > 1 ? 'folded' : 'side';
+}
