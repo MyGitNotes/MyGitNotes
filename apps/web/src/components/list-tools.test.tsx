@@ -66,7 +66,8 @@ function SearchHarness({ initial = '' }: { initial?: string; }) {
 it('labels the view switch in Traditional Chinese under the zh-TW locale', () => {
   header();
   const views = screen.getByRole('group', { name: '檢視' });
-  for (const name of ['清單', '表格', '看板']) expect(within(views).getByRole('button', { name })).toBeInTheDocument();
+  for (const name of ['清單', '看板']) expect(within(views).getByRole('button', { name })).toBeInTheDocument();
+  expect(within(views).queryByRole('button', { name: '表格' })).not.toBeInTheDocument();
 });
 
 it('ends the list header with the view switch, then the column toggle, and leaves the Focus controls and New to the page header', () => {
