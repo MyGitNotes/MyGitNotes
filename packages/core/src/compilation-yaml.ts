@@ -10,7 +10,7 @@ export interface CompilationYamlExtensions {
 /** Where a parsed compilation keeps its extensions: opaque to MGN and not part of any listing/API metadata; enumerable so row and file spreads carry it through edits. */
 export const compilationExtensions = Symbol('compilation extensions');
 
-/** An extension entry, with its value as JS for comparison and whether it holds an alias or anchor, which ties it to other entries. */
+/** An extension entry, with the shape its value is compared by and whether it holds an alias or anchor, which ties it to other entries. */
 export interface ExtensionEntry {
   pair: Pair;
   value: unknown;
@@ -18,29 +18,33 @@ export interface ExtensionEntry {
 }
 
 /**
- * The extension entries by key. Values read maps as `Map`, so typed keys such as `1` and `"1"` stay apart. Undefined
- * when a key, at the top or inside a value, is not a scalar, or a top key repeats: such entries cannot be matched across files.
+ * What a YAML node holds, as written: every scalar's typed value and explicit tag, maps as their ordered pairs (keys
+ * compared the same way, so `1` and `"1"` stay apart), aliases by name. Two values with one shape are the same value.
  */
-export function extensionEntries(extensions: CompilationYamlExtensions | undefined): Map<unknown, ExtensionEntry> | undefined {
-  const entries = new Map<unknown, ExtensionEntry>();
-  if (!extensions) return entries;
-  const document = new YAML.Document(new YAML.YAMLMap(), { schema: extensions.schema });
-  (document.contents as YAMLMap).items = [...extensions.entries];
-  for (const pair of extensions.entries) {
-    if (!YAML.isScalar(pair.key) || entries.has(pair.key.value)) return undefined;
-    let linked = Boolean(pair.key.anchor), matchable = true;
+function nodeShape(node: unknown): unknown {
+  if (YAML.isScalar(node)) return { tag: node.tag ?? null, scalar: node.value };
+  if (YAML.isMap(node)) return { tag: node.tag ?? null, map: node.items.map(pair => [nodeShape(pair.key), nodeShape(pair.value)]) };
+  if (YAML.isSeq(node)) return { tag: node.tag ?? null, seq: node.items.map(nodeShape) };
+  if (YAML.isAlias(node)) return { alias: node.source };
+  if (YAML.isPair(node)) return { pair: [nodeShape(node.key), nodeShape(node.value)] };
+  return node ?? null;
+}
+
+/** The extension entries by the shape of their key; undefined when a key is not a scalar or repeats, as such entries cannot be matched across files. */
+export function extensionEntries(extensions: CompilationYamlExtensions | undefined): Map<string, ExtensionEntry> | undefined {
+  const entries = new Map<string, ExtensionEntry>();
+  for (const pair of extensions?.entries ?? []) {
+    const key = YAML.isScalar(pair.key) ? JSON.stringify(nodeShape(pair.key)) : undefined;
+    if (key === undefined || entries.has(key)) return undefined;
+    let linked = Boolean((pair.key as YAML.Scalar).anchor);
     if (YAML.isNode(pair.value)) {
       YAML.visit(pair.value, {
-        Pair(_key, inner) {
-          if (inner.key !== null && !YAML.isScalar(inner.key)) matchable = false;
-        },
         Node(_key, node) {
           if (YAML.isAlias(node) || node.anchor) linked = true;
         },
       });
     }
-    if (!matchable) return undefined;
-    entries.set(pair.key.value, { pair, value: YAML.isNode(pair.value) ? pair.value.toJS(document, { maxAliasCount: 20, mapAsMap: true }) : pair.value, linked });
+    entries.set(key, { pair, value: nodeShape(pair.value), linked });
   }
   return entries;
 }

@@ -66,8 +66,8 @@ function keepsOrder(base: readonly string[], side: readonly string[]): boolean {
  * `heading` marks the entries that start a chapter (a compilation's heading items). The other side's additions land in
  * the chapter they were added to: after the entry they follow there when it is still in that chapter, else at the
  * chapter's end, as an item added to the end of a chapter stays at its end; a chapter the lead side removed is a conflict.
- * An entry one side moved to another chapter while the other removed it is a conflict too. Without chapters, an addition
- * follows its entry, and one that ended the other side's list ends the merged list.
+ * Each entry's chapter merges three ways like a value. Without chapters, an addition follows its entry, and one that
+ * ended the other side's list ends the merged list. An entry one side removed and the other moved is a conflict.
  */
 function mergeList<T>(base: readonly T[], local: readonly T[], remote: readonly T[], keyOf: (entry: T) => string, isHeading?: (entry: T) => boolean): Merged<T[]> {
   const index = (entries: readonly T[]) => new Map(entries.map(entry => [keyOf(entry), entry]));
@@ -89,10 +89,15 @@ function mergeList<T>(base: readonly T[], local: readonly T[], remote: readonly 
   };
   const chapterOf = (keys: readonly string[], key: string) => chapterAt(keys, keys.indexOf(key));
   const [baseKeys, localKeys, remoteKeys] = [[...b.keys()], [...l.keys()], [...r.keys()]];
+  // An entry one side removed while the other moved it past another entry is a conflict: the removal would drop the
+  // move, and which entry moved cannot be told from the order alone.
+  const before = (keys: readonly string[], key: string, within: ReadonlySet<string>) => keys.slice(0, keys.indexOf(key)).filter(candidate => within.has(candidate));
   for (const key of baseKeys) {
-    if (heading(key)) continue;
-    for (const [kept, keys, removed] of [[l, localKeys, r], [r, remoteKeys, l]] as const) {
-      if (kept.has(key) && !removed.has(key) && chapterOf(keys, key) !== chapterOf(baseKeys, key)) return CONFLICT;
+    for (const [keys, kept, removed] of [[localKeys, l, r], [remoteKeys, r, l]] as const) {
+      if (!kept.has(key) || removed.has(key)) continue;
+      const shared = new Set(keys.filter(candidate => b.has(candidate)));
+      const was = new Set(before(baseKeys, key, shared)), now = before(keys, key, shared);
+      if (was.size !== now.length || now.some(candidate => !was.has(candidate))) return CONFLICT;
     }
   }
   const localKept = keepsOrder(baseKeys, localKeys), remoteKept = keepsOrder(baseKeys, remoteKeys);
@@ -123,6 +128,16 @@ function mergeList<T>(base: readonly T[], local: readonly T[], remote: readonly 
     // Entries the lead side added at the same place come first.
     while (after + 1 < order.length && !b.has(order[after + 1]) && !otherSide.has(order[after + 1]) && !heading(order[after + 1])) after++;
     order.splice(after + 1, 0, key);
+  }
+  // Each entry's chapter merges as a value of its own: both sides moving an entry to different chapters conflict, and so
+  // does an order that cannot keep the chapter the merge gives it.
+  if (isHeading) {
+    for (const key of order) {
+      if (heading(key)) continue;
+      const at = (keys: readonly string[]) => keys.includes(key) ? chapterOf(keys, key) : undefined;
+      const chapter = mergeWhole(at(baseKeys), at(localKeys), at(remoteKeys));
+      if (chapter.conflict || chapterOf(order, key) !== chapter.value) return CONFLICT;
+    }
   }
   return { conflict: false, value: order.map(key => values.get(key)!) };
 }
@@ -159,7 +174,7 @@ function mergeExtensions(sides: (CompilationYamlExtensions | undefined)[]): Merg
   const entries = sides.map(extensionEntries);
   if (entries.some(side => side === undefined)) return undefined;
   const [base, local, remote] = entries as NonNullable<(typeof entries)[number]>[];
-  const kept: { key: unknown; from: 'local' | 'remote'; }[] = [];
+  const kept: { key: string; from: 'local' | 'remote'; }[] = [];
   for (const key of new Set([...local.keys(), ...remote.keys(), ...base.keys()])) {
     const side = winner(base.get(key)?.value, local.get(key)?.value, remote.get(key)?.value);
     if (!side) return CONFLICT;

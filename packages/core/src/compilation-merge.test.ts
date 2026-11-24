@@ -136,9 +136,23 @@ describe('compilation merge by entry', () => {
     const base = items('h1', 'a', 'h2', 'b');
     expect(mergeCompilationText(base, items('h1', 'h2', 'b'), items('h1', 'h2', 'b', 'a'))).toEqual({ conflict: true });
     expect(mergeCompilationText(base, items('h1', 'h2', 'b', 'a'), items('h1', 'h2', 'b'))).toEqual({ conflict: true });
-    // Moved within its chapter, the removal stands.
+    // So does a move within a chapter, or in a book without chapters: which entry moved cannot be told.
     const within = items('h1', 'a', 'x', 'h2', 'b');
-    expect(mergeCompilationText(within, items('h1', 'x', 'h2', 'b'), items('h1', 'x', 'a', 'h2', 'b'))).toMatchObject({ conflict: false });
+    expect(mergeCompilationText(within, items('h1', 'x', 'h2', 'b'), items('h1', 'x', 'a', 'h2', 'b'))).toEqual({ conflict: true });
+    expect(mergeCompilationText(items('a', 'b', 'c'), items('b', 'c'), items('b', 'a', 'c'))).toEqual({ conflict: true });
+    expect(mergeCompilationText(items('a', 'b', 'c'), items('b', 'a', 'c'), items('b', 'c'))).toEqual({ conflict: true });
+    // A removal and a move of other entries both stand.
+    const merged = mergeCompilationText(items('a', 'b', 'c', 'd'), items('a', 'b', 'c'), items('b', 'a', 'c', 'd'));
+    expect(itemsOf((merged as { text: string; }).text)).toEqual(['b', 'a', 'c']);
+  });
+  it('merges each item’s chapter as a value, conflicting when both sides put it in different chapters', () => {
+    // Each side draws a new section around a: its heading goes before a, and the board gets the section.
+    const base = 'version: 1\nid: c\ntitle: C\narrangement: board\nitems:\n' + item('a', 'notes/a.md') + item('b', 'notes/b.md');
+    const sectioned = (id: string) => `version: 1\nid: c\ntitle: C\narrangement: board\nitems:\n${item('b', 'notes/b.md')}  - id: ${id}\n    kind: heading\n    title: ${id}\n${item('a', 'notes/a.md')}board:\n  sections:\n    - { item: ${id}, x: 0, y: 0, w: 288, h: 176 }\n`;
+    expect(() => parseCompilation(sectioned('h1'))).not.toThrow();
+    expect(mergeCompilationText(base, sectioned('h1'), sectioned('h2'))).toEqual({ conflict: true });
+    expect(mergeCompilationText(base, sectioned('h2'), sectioned('h1'))).toEqual({ conflict: true });
+    expect(mergeCompilationText(base, sectioned('h1'), sectioned('h1'))).toEqual({ conflict: false, text: sectioned('h1') });
   });
   it('compares and keeps external values with typed keys', () => {
     const base = `${example}external: { 1: old, "1": string }\nother: x\n`;
@@ -151,6 +165,12 @@ describe('compilation merge by entry', () => {
     expect(values(merged).get('external')).toEqual(new Map<unknown, unknown>([[1, 'new'], ['1', 'string']]));
     expect(values(merged).get('other')).toBe('y');
     expect((merged as { text: string; }).text).toContain('external: { 1: new, "1": string }\nother: y\n');
+    // Explicit tags are part of a value, at the top and nested.
+    const tagged = `${example}external: !internal value\nnested: { state: !draft x }\nother: x\n`;
+    const retitled = edit(tagged, ['title: 第三章：德性與依據\n', 'title: 第三章\n']);
+    expect((mergeCompilationText(tagged, retitled, edit(tagged, ['!internal', '!published'])) as { text: string; }).text).toContain('external: !published value\n');
+    const combined = mergeCompilationText(tagged, edit(retitled, ['other: x', 'other: y']), edit(tagged, ['!draft', '!final']));
+    expect((combined as { text: string; }).text).toContain('external: !internal value\nnested: { state: !final x }\nother: y\n');
     // An external field holding an anchor is not combined with the other side's fields: the line merge takes it.
     const anchored = `${example}shared: &s { a: 1 }\nother: x\n`;
     expect(mergeCompilationText(anchored, edit(anchored, ['other: x', 'other: y']), edit(anchored, ['a: 1', 'a: 2']))).toBeUndefined();
