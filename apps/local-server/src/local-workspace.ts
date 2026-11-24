@@ -17,9 +17,9 @@ async function workspaceWorktrees(res: Response): Promise<{ id: string; root: st
   return worktrees.flat();
 }
 
-/** Files changed in any worktree, whoever wrote them, as server-sent `change` events naming the repositories. */
+/** Worktree edits and HEAD moves both invalidate the workspace's Git status. */
 async function streamWorktreeChanges(_req: Request, res: Response) {
-  await openEventStream(res, () => workspaceWorktrees(res), error => res.status(500).json({ error: error instanceof Error ? error.message : String(error) }), (worktrees, write) => watchWorktrees(worktrees, repositories => write(`event: change\ndata: ${JSON.stringify({ repositories })}\n\n`)));
+  await openEventStream(res, () => workspaceWorktrees(res), error => res.status(500).json({ error: error instanceof Error ? error.message : String(error) }), (worktrees, write) => watchWorktrees(worktrees, repositories => write(`event: change\ndata: ${JSON.stringify({ repositories })}\n\n`), ['files', 'commits']));
 }
 
 export function createLocalWorkspaceRouter(): Router {

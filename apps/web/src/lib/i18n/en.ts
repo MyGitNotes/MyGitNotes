@@ -2004,6 +2004,8 @@ export const en = {
   'panel.syncStatus': '{upstream} · {ahead} to push · {behind} to pull',
   'panel.syncStatusHint': 'Counts reflect the last fetch.',
   'panel.syncNow': 'Pull and push',
+  'panel.headerSync': '{ahead} to push · {behind} to pull — click to sync',
+  'panel.headerSyncSeveral': '{ahead} to push · {behind} to pull — open repository sync',
   'panel.syncing': 'Syncing…',
   'panel.syncNoUpstream': 'main has no upstream branch. Run git push -u origin main in a terminal.',
   'panel.syncDirty': 'Commit or restore changes before syncing.',

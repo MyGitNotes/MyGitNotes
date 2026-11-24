@@ -1,93 +1,64 @@
-import { Tooltip } from './Tooltip.js';
-import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import type { GitStatus } from '../lib/types.js';
-import { GitSyncError, syncGitWorkspace } from '../lib/api.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { hasTrackedChanges, type SyncTarget, useWorkspaceGitSync } from '../lib/workspace-git-sync.js';
 import { Button } from './Button.js';
+import { Tooltip } from './Tooltip.js';
 
-interface Conflict {
-  files: string[];
-  unresolved: boolean;
-}
-
-/** Pull --rebase and push for one local worktree (the default worktree without `repository`); conflicts are aborted and offered as explicit choices. */
-export function GitSyncSection({ gitStatus, onSynced, repository, label }: { gitStatus: GitStatus | null; onSynced: () => void; repository?: string; label?: string; }) {
+/** The shared sync action, with the per-worktree outcomes and conflict choices in Changes. */
+export function GitSyncSection({ target }: { target: SyncTarget; }) {
   const { t } = useTranslation();
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState(''), [error, setError] = useState('');
-  const [conflict, setConflict] = useState<Conflict>();
+  const sync = useWorkspaceGitSync();
+  if (!sync) return null;
+  const { id, label, gitStatus } = target;
+  const state = sync.states.get(id);
+  const busy = state?.kind === 'busy';
   const upstream = gitStatus?.upstream;
-  const dirty = Boolean(gitStatus?.staged.length || gitStatus?.modified.length);
-
-  const sync = async (strategy?: 'remote' | 'local') => {
-    setBusy(true);
-    setNotice('');
-    setError('');
-    setConflict(undefined);
-    try {
-      const result = await syncGitWorkspace(strategy, repository);
-      const summary = result.pulled || result.pushed ? t('panel.syncDone', { pulled: result.pulled, pushed: result.pushed }) : t('panel.syncUpToDate');
-      setNotice(result.backup ? `${summary} ${t('panel.syncBackup', { ref: result.backup })}` : summary);
-    } catch (failure) {
-      if (failure instanceof GitSyncError && (failure.code === 'CONFLICT' || failure.code === 'UNRESOLVED')) {
-        setConflict({ files: failure.files, unresolved: failure.code === 'UNRESOLVED' });
-      } else setError((failure as Error).message);
-    } finally {
-      setBusy(false);
-      onSynced();
-    }
-  };
+  const dirty = hasTrackedChanges(gitStatus);
+  const disabled = busy || !upstream || dirty;
+  const summary = state?.kind === 'done' && (state.result.pulled || state.result.pushed ? t('panel.syncDone', { pulled: state.result.pulled, pushed: state.result.pushed }) : t('panel.syncUpToDate'));
+  const chosen = state?.kind === 'conflict' || state?.kind === 'unresolved';
 
   return (
-    <section className='todo-group git-sync' aria-label={label ? `${t('panel.sync')} ${label}` : t('panel.sync')}>
+    <section tabIndex={-1} data-sync-repository={id} className='todo-group git-sync' aria-label={sync.targets.length > 1 ? `${t('panel.sync')} ${label}` : t('panel.sync')}>
       <h4>{t('panel.sync')}</h4>
-      {label && (
+      {sync.targets.length > 1 && (
         <Tooltip label={label}>
           <p className='git-sync-repository'>{label}</p>
         </Tooltip>
       )}
-      {upstream
-        ? (
-          <Tooltip label={t('panel.syncStatusHint')}>
-            <p className='git-sync-status'>{t('panel.syncStatus', { upstream, ahead: gitStatus?.ahead ?? 0, behind: gitStatus?.behind ?? 0 })}</p>
-          </Tooltip>
-        )
-        : <p className='changes-help'>{t('panel.syncNoUpstream')}</p>}
-      {upstream && dirty && <p className='changes-help'>{t('panel.syncDirty')}</p>}
-      <Button className='git-sync-button' disabled={busy || !upstream || dirty} onClick={() => void sync()}>
+      {upstream && (
+        <Tooltip label={t('panel.syncStatusHint')}>
+          <p className='git-sync-status'>{t('panel.syncStatus', { upstream, ahead: gitStatus?.ahead ?? 0, behind: gitStatus?.behind ?? 0 })}</p>
+        </Tooltip>
+      )}
+      {(!upstream || state?.kind === 'no-upstream') && <p className='changes-help'>{t('panel.syncNoUpstream')}</p>}
+      {upstream && (dirty || state?.kind === 'dirty') && <p className='changes-help'>{t('panel.syncDirty')}</p>}
+      <Button className='git-sync-button' aria-busy={busy} disabled={disabled} onClick={() => void sync.run(target)}>
         <RefreshCw aria-hidden='true' size={14} className={busy ? 'animate-spin' : ''} />
         <span>{t(busy ? 'panel.syncing' : 'panel.syncNow')}</span>
       </Button>
-      {conflict && (
+      {chosen && (
         <div className='changes-confirm git-sync-conflict' role='alert'>
-          <p>{t(conflict.unresolved ? 'panel.syncUnresolved' : 'panel.syncConflict')}</p>
+          <p>{t(state.kind === 'unresolved' ? 'panel.syncUnresolved' : 'panel.syncConflict')}</p>
           <ul className='changes-file-list'>
-            {conflict.files.map(file => (
+            {state.files.map(file => (
               <Tooltip key={file} label={file}>
                 <li className='changes-file-label'>{file}</li>
               </Tooltip>
             ))}
           </ul>
-          {!conflict.unresolved && (
+          {state.kind === 'conflict' && (
             <>
-              <Button disabled={busy} onClick={() => void sync('remote')}>{t('panel.syncUseRemote')}</Button>
-              <Button variant='danger' disabled={busy} onClick={() => void sync('local')}>{t('panel.syncUseLocal')}</Button>
+              <Button disabled={disabled} onClick={() => void sync.run(target, 'remote')}>{t('panel.syncUseRemote')}</Button>
+              <Button variant='danger' disabled={disabled} onClick={() => void sync.run(target, 'local')}>{t('panel.syncUseLocal')}</Button>
             </>
           )}
-          <Button
-            disabled={busy}
-            onClick={() => {
-              setConflict(undefined);
-              setNotice(t('panel.syncManualHint'));
-            }}
-          >
-            {t('panel.syncManual')}
-          </Button>
+          <Button onClick={() => sync.resolveManually(id)}>{t('panel.syncManual')}</Button>
         </div>
       )}
-      {error && <p role='alert' className='changes-error'>{error}</p>}
-      {notice && <p role='status' className='changes-help'>{notice}</p>}
+      {state?.kind === 'error' && <p role='alert' className='changes-error'>{state.message}</p>}
+      {state?.kind === 'manual' && <p role='status' className='changes-help'>{t('panel.syncManualHint')}</p>}
+      {state?.kind === 'done' && <p role='status' className='changes-help'>{summary}{state.result.backup && ` ${t('panel.syncBackup', { ref: state.result.backup })}`}</p>}
     </section>
   );
 }

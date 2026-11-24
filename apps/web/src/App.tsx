@@ -79,6 +79,7 @@ import { noteFolder } from './lib/note-move.js';
 import { RenameNoteDialog } from './components/RenameNoteDialog.js';
 import { AccountControls, AgentAccessSettings, ConnectionState } from './components/AuthControls.js';
 import { Header, HeaderUtilities } from './components/Header.js';
+import { WorkspaceGitSyncProvider } from './lib/workspace-git-sync.js';
 import { PhoneFilterSheet, PhoneListBar } from './components/PhoneListBar.js';
 import { PhoneNotesProvider, phoneNotesScreen } from './lib/phone-notes.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
@@ -697,6 +698,11 @@ export const AppContent: React.FC = () => {
   // A read-only notebook shows neither the New button nor its menu.
   const newNote: NewNoteActions | undefined = notesActions && canWrite ? { onNewNote: () => void createNote(), onNewOutline: () => void createNote({ kind: 'outline' }), onNewCompilation: () => void createUntitledCompilation(), templates: [...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)], onManageTemplates: selectedNotebook ? () => setManageTemplatesOpen(true) : undefined, onNewFromTemplate: templateId => void createNote({ templateId }), onImportLegacy: legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined } : undefined;
   const unavailableNotebooks = repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks);
+  const syncTargets = remote ? [] : repositories.filter(repository => !repository.unavailable).map(repository => ({ id: repository.id, label: repository.repository ?? repository.id.replace(/^local:/, ''), gitStatus: repository.id === sourceId ? gitStatus : repository.gitStatus ?? null }));
+  const refreshAfterSync = async () => {
+    await refreshWorkspace();
+    await refreshDocuments().catch(error => setActionError(error instanceof Error ? error.message : String(error)));
+  };
   const focusArea = <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} notebook={selectedNotebook} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />;
   // Column 1: every notebook, the open one unfolded into its folders, outlines and compilations, or the rail of their initials.
   const notebookColumn = <NotebookColumn mode={columns.layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={config?.notebooks || []} groups={notebookGroups} unavailableNotebooks={unavailableNotebooks} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} switchDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} counts={facetsQuery.facets ? Object.fromEntries(Object.entries(facetsQuery.facets).map(([id, facet]) => [id, facet.total])) : undefined} current={selectedNotebook && <NotebookTree notebook={selectedNotebook} filters={filterProps} facets={facetsQuery.facets} folders={folders} foldersLoading={foldersLoading} foldersWritable={canWriteFiles} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onManageFiles={openFileManager} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} onDropNote={dropNoteOnFolder} expanded={foldedTree !== selectedNotebookId} onToggleExpanded={() => setFoldedTree(folded => folded === selectedNotebookId ? null : selectedNotebookId)} onContextMenu={event => notebookAppearance.onContextMenu(event, selectedNotebookId)} />} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} searchRef={notesColumns ? noteSearch : undefined} onOpenSearch={focusNoteSearch} kind={route.kind} onSelectKind={kind => changeFilters({ kind, folders: [] })} onNotebookContextMenu={notebookAppearance.onContextMenu} />;
@@ -836,13 +842,9 @@ export const AppContent: React.FC = () => {
                           writable={canWrite}
                           remoteChanges={panelRemoteChanges}
                           getPreview={panelGetPreview}
-                          onSynced={remote ? undefined : async () => {
-                            await refreshWorkspace();
-                            await refreshDocuments();
-                          }}
+                          onSynced={remote ? undefined : refreshAfterSync}
                           repositoryHeading={repositoryHeading}
                           repoRoot={repoRoot}
-                          syncTargets={remote ? undefined : repositories.filter(repository => !repository.unavailable).map(repository => ({ id: repository.id, label: repository.repository ?? repository.id.replace(/^local:/, ''), gitStatus: repository.id === sourceId ? gitStatus : repository.gitStatus ?? null }))}
                           onWidthChange={setRightPanelWidth}
                         />
                       }
@@ -1122,7 +1124,9 @@ export const AppContent: React.FC = () => {
           <TypstPreviewProvider enabled={!remote && !loading}>
             <PhoneNotesProvider value={phoneNotesValue}>
               <EditorModeRouteProvider>
-                <LiveEditLinkProvider target={liveEditTarget}>{content}</LiveEditLinkProvider>
+                <WorkspaceGitSyncProvider enabled={!remote} targets={syncTargets} onSynced={refreshAfterSync} onRevealChanges={() => setFileMetadataOpen(false)}>
+                  <LiveEditLinkProvider target={liveEditTarget}>{content}</LiveEditLinkProvider>
+                </WorkspaceGitSyncProvider>
               </EditorModeRouteProvider>
             </PhoneNotesProvider>
           </TypstPreviewProvider>

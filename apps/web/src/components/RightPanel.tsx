@@ -11,7 +11,7 @@ import { DOCUMENT_TOOL_IDS, type DocumentToolId, isDocumentTool, usePanelContext
 import { getSavedRightPanelWidth, RIGHT_PANEL_RAIL_WIDTH } from './WorkspaceChrome.js';
 import { CalendarTool } from './CalendarTool.js';
 import { TodoTool } from './TodoTool.js';
-import { ChangesTool, type SyncTarget } from './ChangesTool.js';
+import { ChangesTool } from './ChangesTool.js';
 import { PhoneSheet } from './PhoneSheet.js';
 import { phoneToolLabel } from './note-editor/phone-tools.js';
 
@@ -41,7 +41,6 @@ interface RightPanelProps {
   writable: boolean;
   /** Present only for a local workspace, which syncs with its Git upstream. */
   onSynced?: () => void;
-  syncTargets?: SyncTarget[];
   /** The default worktree's absolute path, named in the pull failure prompt. */
   repoRoot?: string;
   repositoryHeading?: (repository: string | undefined) => string;
@@ -61,7 +60,7 @@ const DOCUMENT_TOOL_LABELS: Record<DocumentToolId, 'editor.outline' | 'editor.fi
 const FILE_MODE_TOOLS: readonly WorkspaceToolId[] = ['changes'];
 
 /** The workspace-level Calendar/Todo/Changes panel. Hidden while a note is open — the editor has its own document panel. */
-export function RightPanel({ notebooks, selectedNotebookId, currentFolder, onOpenNote, onSaveNote, onReadNote, gitStatus, changeCount, deletedNotes, onRestoreNote, onOpenCommitModal, remoteChanges, getPreview, writable, onSynced, syncTargets, repoRoot, repositoryHeading, fileMode = false, fileMetadata, onFileMetadataContainer, metadataOpen = false, onMetadataOpenChange, onWidthChange, documentPanel, phoneSheet = false }: RightPanelProps) {
+export function RightPanel({ notebooks, selectedNotebookId, currentFolder, onOpenNote, onSaveNote, onReadNote, gitStatus, changeCount, deletedNotes, onRestoreNote, onOpenCommitModal, remoteChanges, getPreview, writable, onSynced, repoRoot, repositoryHeading, fileMode = false, fileMetadata, onFileMetadataContainer, metadataOpen = false, onMetadataOpenChange, onWidthChange, documentPanel, phoneSheet = false }: RightPanelProps) {
   const { t } = useTranslation();
   const panel = usePanelContext();
   const visible = !panel.hasOpenNote;
@@ -101,7 +100,7 @@ export function RightPanel({ notebooks, selectedNotebookId, currentFolder, onOpe
       )}
       {showingWorkspaceTool && panel.activeTool === 'calendar' && <CalendarTool notebooks={notebooks} selectedNotebookId={selectedNotebookId} currentFolder={currentFolder} onOpenNote={onOpenNote} />}
       {showingWorkspaceTool && panel.activeTool === 'todo' && <TodoTool notebooks={notebooks} selectedNotebookId={selectedNotebookId} currentFolder={currentFolder} onOpenNote={onOpenNote} onSaveNote={onSaveNote} onReadNote={onReadNote} />}
-      {showingWorkspaceTool && panel.activeTool === 'changes' && <ChangesTool writable={writable} remoteChanges={remoteChanges} getPreview={getPreview} gitStatus={gitStatus} deletedNotes={deletedNotes} onRestoreNote={onRestoreNote} onOpenCommitModal={onOpenCommitModal} onSynced={onSynced} syncTargets={syncTargets} repoRoot={repoRoot} repositoryHeading={repositoryHeading} />}
+      {showingWorkspaceTool && panel.activeTool === 'changes' && <ChangesTool writable={writable} remoteChanges={remoteChanges} getPreview={getPreview} gitStatus={gitStatus} deletedNotes={deletedNotes} onRestoreNote={onRestoreNote} onOpenCommitModal={onOpenCommitModal} onSynced={onSynced} repoRoot={repoRoot} repositoryHeading={repositoryHeading} />}
       {showingDocument && <div ref={documentPanel?.onContainer} className='right-panel-document' />}
     </>
   );
