@@ -6,6 +6,7 @@ import { PanelProvider } from '../lib/panel-context.js';
 import type { NoteItem } from '../lib/types.js';
 import { NoteEditor, type NoteEditorProps } from './NoteEditor.js';
 import { VIM_COMMAND_EVENT, type VimCommand } from '../lib/vim-mode.js';
+import { useQuickNoteCommit } from '../app/useQuickNoteCommit.js';
 
 vi.mock('./MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; onChange: (content: string) => void; }>(({ content, onChange }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) })) }));
 
@@ -16,6 +17,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 const note: NoteItem = { id: 'a', path: 'notes/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: { title: 'Alpha' }, content: '# Alpha\n' };
@@ -67,6 +69,60 @@ it('commits the note only on a confirming second click, saving pending edits fir
     await vi.advanceTimersByTimeAsync(2000);
   });
   expect(onSave).toHaveBeenCalledTimes(1);
+});
+
+function pressSave(target: EventTarget = document, repeat = false) {
+  const event = new KeyboardEvent('keydown', { key: 's', code: 'KeyS', ctrlKey: true, bubbles: true, cancelable: true, repeat });
+  act(() => {
+    target.dispatchEvent(event);
+  });
+  return event.defaultPrevented;
+}
+
+it.each(['pane', 'zoom'] as const)('commits only this note once with Ctrl+S in %s, using the local footer commit path', async frame => {
+  const changed = '# Alpha\nMore.';
+  const onSave = vi.fn(async () => ({ ...note, content: changed }));
+  const commitWorkingNotes = vi.fn();
+  const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => new Response(JSON.stringify(url === '/api/git/changes' ? { changes: [{ path: note.path, available: true, revision: 'r1' }] } : {})));
+  vi.stubGlobal('fetch', fetchMock);
+  function LocalEditor() {
+    const { commitNoteFile } = useQuickNoteCommit({ remote: false, repositoryFor: () => undefined, refreshWorkspace: async () => {}, commitWorkingNotes, activeWorkingNotes: {}, t: key => key });
+    return editor({ frame, onSave, onCommitFile: (path, version) => commitNoteFile(path, note.notebookId, version) });
+  }
+  render(createElement(LocalEditor));
+  const source = screen.getByLabelText('Note content');
+  const editorKeydown = vi.fn();
+  source.addEventListener('keydown', editorKeydown);
+  fireEvent.change(source, { target: { value: changed } });
+  const swallowed = pressSave(source);
+  await flush();
+  expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/git/changes', '/api/git/commit-staged']);
+  expect(swallowed).toBe(true);
+  expect(pressSave(source, true)).toBe(true);
+  await flush();
+  expect(onSave).toHaveBeenCalledOnce();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ files: [note.path], revisions: { [note.path]: 'r1' }, selected: true, message: 'docs(notes): update a' });
+  expect(commitWorkingNotes).not.toHaveBeenCalled();
+  expect(editorKeydown).not.toHaveBeenCalled();
+  expect(fireEvent.keyDown(source, { key: 's' })).toBe(true);
+  expect(editorKeydown).toHaveBeenCalledOnce();
+});
+
+it.each([{ name: 'clean' }, { name: 'read-only', isDirty: true, readOnly: true }, { name: 'without commit permission', isDirty: true, onCommitFile: undefined }])('swallows Ctrl+S on an open note that is $name', async ({ name: _name, ...props }) => {
+  const onCommitFile = vi.fn();
+  const onSave = vi.fn();
+  render(editor({ onCommitFile, onSave, ...props }));
+  expect(pressSave(screen.getByLabelText('Note content'))).toBe(true);
+  await flush();
+  expect(onCommitFile).not.toHaveBeenCalled();
+  expect(onSave).not.toHaveBeenCalled();
+});
+
+it('leaves Ctrl+S to the browser outside an open zoom or Focus note', () => {
+  expect(pressSave()).toBe(false);
+  render(editor({ frame: 'compact', isDirty: true }));
+  expect(pressSave(screen.getByLabelText('Note content'))).toBe(false);
 });
 
 it.each([[false, 'Committing...'], [true, 'Pushing...']])('names the commit in the status while it runs, draft mode %s', async (draftMode, status) => {

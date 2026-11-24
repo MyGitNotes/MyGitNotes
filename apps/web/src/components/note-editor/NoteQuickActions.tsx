@@ -2,6 +2,7 @@ import { Tooltip } from '../Tooltip.js';
 import { useEffect, useState } from 'react';
 import { GitCommit, RefreshCw, RotateCcw } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { primaryShortcutHint } from '../../lib/keyboard/keymap.js';
 import type { DiffStats as Stats } from '../../lib/diff-preview.js';
 import { DiffStats } from '../DiffStats.js';
 
@@ -68,7 +69,7 @@ export function NoteQuickActions({ onRefresh, onCommit, onRestore, changes, disa
         </Tooltip>
       )}
       {onCommit && (
-        <Tooltip label={t('editor.quickCommitHint')}>
+        <Tooltip label={t('editor.quickCommitHint')} detail={primaryShortcutHint('editor.commit')}>
           <button type='button' className='note-quick-action' data-action='commit' data-armed={armed === 'commit' || undefined} disabled={disabled} onClick={() => press('commit', onCommit)}>
             <GitCommit aria-hidden='true' />
             <span>{t(armed === 'commit' ? 'editor.confirmQuickCommit' : 'editor.quickCommit')}</span>

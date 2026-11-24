@@ -991,6 +991,7 @@ export const en = {
   'command.editor.leader.describe': 'Opens a menu in an open note: F finds, / shows the outline, M switches between live preview and source',
   'command.editor.leaderMode': 'Switch between live preview and source',
   'command.editor.leaderFind': 'Find in note',
+  'command.editor.commit': 'Commit note or check in live note',
   'command.editor.leaderOutline': 'Show outline',
   'command.note.closePanel': "Close the note commands or the note's tools",
   'command.format.bold': 'Bold',

@@ -14,6 +14,7 @@ import { noteLiveSocketClosing } from '../../lib/live-closing.js';
 import { liveOwnerClaim, relocateUnsynced, unsyncedKey, unsyncedLiveStore, type UnsyncedLiveText, unsyncedOf } from '../../lib/live-unsynced.js';
 import { isNetworkFailure } from '../../lib/api.js';
 import { onReachable } from '../../lib/live-reachability.js';
+import { primaryShortcutHint } from '../../lib/keyboard/keymap.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { LiveMarkdownEditor, type LiveMarkdownHandle } from '../LiveMarkdownEditor.js';
@@ -36,6 +37,8 @@ export interface LiveCollabEditorProps {
   onClose: () => void;
   /** The note was checked in: by this page (`answer`), or by someone else, which the server tells the tab. */
   onCheckedIn?: (answer?: LiveCheckInAnswer) => void;
+  /** Lets the note's shortcut invoke the same button, with its current disabled state. */
+  checkInButtonRef?: Ref<HTMLButtonElement>;
   /** The note stopped being live while the tab still offers its unsaved text: the app reads the live state again now. */
   onReleased?: () => void;
   /** The pending note was discarded: by 「捨棄草稿」, or by a check-in that found the draft empty. */
@@ -203,7 +206,7 @@ const downloadName = (title: string | undefined, path: string) => `${(title || p
  * typed on) when that document ended; offline meanwhile, it shows the kept text read-only. A conflicting merge goes to
  * `onMergeConflict`; a live editor that cannot merge leaves the copy or download.
  */
-export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange, onLive, editorRef, slides, showLineNumbers, mode = 'live', body = '', children }: LiveCollabEditorProps) {
+export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheckedIn, checkInButtonRef, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange, onLive, editorRef, slides, showLineNumbers, mode = 'live', body = '', children }: LiveCollabEditorProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   // Each session is one document and one provider; going back to the editor after a check-in that left it open starts a new one.
@@ -787,8 +790,8 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, onClose, onCheck
             </Tooltip>
           )}
           {live && (
-            <Tooltip label={t('live.checkInHint')}>
-              <Button size='small' variant='primary' disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>
+            <Tooltip label={t('live.checkInHint')} detail={checkInButtonRef ? primaryShortcutHint('editor.commit') : undefined}>
+              <Button ref={checkInButtonRef} size='small' variant='primary' disabled={!canCheckIn} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>
             </Tooltip>
           )}
           {phase.kind !== 'lost' && <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>}

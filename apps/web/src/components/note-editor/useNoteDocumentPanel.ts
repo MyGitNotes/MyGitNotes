@@ -25,6 +25,7 @@ export interface UseNoteDocumentPanelParams {
   branch: string;
   draftScope?: string;
   readOnly: boolean;
+  onCommitShortcut?: () => void;
 }
 
 const PANEL_KEY = DOCUMENT_PANEL_STORAGE_KEY;
@@ -42,7 +43,7 @@ function savedPanel(isMarkdown: boolean): NotePanelMode {
 }
 
 /** The document panel's visibility, find/outline navigation, its frontmatter form/tag state, and its keyboard leader menu. */
-export function useNoteDocumentPanel({ frame, active, isMarkdown, content, editorMode, setEditorMode, documentPanel, editorRef, metadata, notePath, branch, draftScope, readOnly }: UseNoteDocumentPanelParams) {
+export function useNoteDocumentPanel({ frame, active, isMarkdown, content, editorMode, setEditorMode, documentPanel, editorRef, metadata, notePath, branch, draftScope, readOnly, onCommitShortcut }: UseNoteDocumentPanelParams) {
   const lastNotePanel = useRef<NotePanelMode>(savedPanel(isMarkdown));
   // A zoomed note reopens its panel as the user left it; a Focus pane follows the rail, which remembers its own. On a phone the panel is a
   // full-height sheet over the note, which only the person opening it should bring up, so it never starts open nor changes what a larger screen remembers.
@@ -150,7 +151,9 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
     chooseOutline(nextIndex, false);
   };
   const shortcutAction = useRef<(event: KeyboardEvent) => boolean>(() => false);
+  const commitShortcut = useRef(onCommitShortcut);
   /* eslint-disable react/refs -- The editor keeps current draft and event callbacks in refs for async saves and imperative keyboard handlers. */
+  commitShortcut.current = onCommitShortcut;
   shortcutAction.current = event => {
     const slashKey = event.code === 'Slash' || event.key === '/';
     // The leader (Mod+Shift+E in the table) opens the note commands in zoom and in a Focus pane, not in a graph card or an outline.
@@ -200,11 +203,17 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
   useEffect(() => {
     if (!active) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (document.querySelector('dialog[open], [role="listbox"]')) return;
-      // The assistant dock beside the editor owns the keys typed in it, Escape included.
-      if (insideAssistantDock(event.target)) return;
-      // Help and quick open own the keys typed in them, Escape included.
-      if (event.target instanceof Element && event.target.closest('[data-key-scope="help"], [data-key-scope="palette"]')) return;
+      if (event.defaultPrevented) return;
+      // The assistant, help and quick open own their own keys, Escape included.
+      const inOtherScope = insideAssistantDock(event.target) || (event.target instanceof Element && event.target.closest('[data-key-scope="help"], [data-key-scope="palette"]'));
+      if ((frame === 'zoom' || frame === 'pane') && matchesCommand(event, 'editor.commit')) {
+        // Claim Save before the editor's keymap or the browser, even when the note can't commit.
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat && !event.isComposing && !inOtherScope && !document.querySelector('dialog[open], [role="alertdialog"]')) commitShortcut.current?.();
+        return;
+      }
+      if (inOtherScope || document.querySelector('dialog[open], [role="listbox"]')) return;
       // A field that takes Escape to cancel its own edit keeps it from closing the panel.
       if (event.key === 'Escape' && event.target instanceof Element && event.target.closest('[data-escape-local]')) return;
       if (shortcutAction.current(event)) {
@@ -222,7 +231,7 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
     };
     document.addEventListener('keydown', onKeyDown, true);
     return () => document.removeEventListener('keydown', onKeyDown, true);
-  }, [active]);
+  }, [active, frame]);
 
   const [panelIdentity, setPanelIdentity] = useState({ notePath, branch, draftScope, readOnly });
   if (panelIdentity.notePath !== notePath || panelIdentity.branch !== branch || panelIdentity.draftScope !== draftScope || panelIdentity.readOnly !== readOnly) {

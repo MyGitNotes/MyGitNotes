@@ -154,6 +154,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   const shared = collabShown ? liveSession : null;
   const { text: liveText, frontmatter: liveFrontmatter } = useLiveText(shared?.text ?? null);
   const collabEditorRef = useRef<LiveMarkdownHandle>(null);
+  const checkInButton = useRef<HTMLButtonElement>(null);
   const liveBody = shared ? liveText.slice(liveFrontmatter.bodyStart) : '';
   const liveTitle = useMemo(() => (shared ? parseNoteFile(liveText.slice(0, liveFrontmatter.bodyStart) + liveBody, note.path).title : ''), [shared, liveText, liveFrontmatter.bodyStart, liveBody, note.path]);
   const liveLocked = !shared?.online || !liveFrontmatter.valid;
@@ -261,7 +262,28 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     };
   }
   /* eslint-enable react/refs */
-  const docPanel = useNoteDocumentPanel({ frame, active, isMarkdown, content: session.content, editorMode, setEditorMode, documentPanel, editorRef: panelEditorRef, metadata: session.metadata, notePath: note.path, branch, draftScope, readOnly });
+  const actions = footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) });
+  const docPanel = useNoteDocumentPanel({
+    frame,
+    active,
+    isMarkdown,
+    content: session.content,
+    editorMode,
+    setEditorMode,
+    documentPanel,
+    editorRef: panelEditorRef,
+    metadata: session.metadata,
+    notePath: note.path,
+    branch,
+    draftScope,
+    readOnly,
+    onCommitShortcut: () => {
+      if (givenReadOnly) return;
+      // The live button owns availability and check-in; click() on a disabled button is a no-op.
+      if (liveEdit.checkout) checkInButton.current?.click();
+      else if (!session.isSaving) void actions.onCommit?.();
+    },
+  });
   // The active editor is the file the agent panel names to Pi, with the line its caret is on.
   const contentRef = useRef(session.content);
   useEffect(() => {
@@ -355,7 +377,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
 
   // Vim's `:w` does what the footer's Commit does, or the toolbar's Save where the note saves by hand; with nothing to
   // write it succeeds, so `:wq` still closes. `:q` closes a zoomed note the way its back button does.
-  const canCommitNow = Boolean(footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) }).onCommit);
+  const canCommitNow = Boolean(actions.onCommit);
   const vimRoot = useVimCommands({ write: async () => canCommitNow ? session.commitNote() : !autoSave && !readOnly && session.hasUnsavedChanges ? session.handleExplicitSave() : true, quit: frame === 'zoom' && onClose ? session.close : undefined });
   // A phone's note screen: the title bar rides over the text and slides away while it scrolls down, unless a notice, the formatting toolbar or the framed live editor's bar sits above the text and needs the room the bar would cover.
   const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
@@ -420,7 +442,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   // A pending note takes its title in its live text, heading included, so the title counts as content at check-in (設了標題就算有內容).
   // A title is not written into a live text whose block cannot be read (the panel says why); it is fixed in the text first.
   const liveRename = givenReadOnly || template || (shared && !liveFrontmatter.valid) ? undefined : liveEdit.checkout?.pending ? (title: string) => void (sharedText && writeLiveTitle(sharedText, liveFrontmatter.metadata, title, liveTitle)) : own?.rename ? (title: string) => void own.rename!(title) : undefined;
-  const quickActions = <NoteQuickActions {...footerActions({ frame, readOnly, session, refresh, canCommit: Boolean(onCommitFile) })} changes={changes} disabled={session.isSaving} />;
+  const quickActions = <NoteQuickActions {...actions} changes={changes} disabled={session.isSaving} />;
   const history = { target: historyTarget, dirty: session.isDirty, current: currentFile, onRestore: readOnly || session.locked ? undefined : restoreFile, onCommitVersion: onCommitFile && !readOnly ? async (text: VersionText) => void await session.commitNote({ path: note.path, today: today(), ...text }) : undefined };
   // A file whose block cannot be read is all body here, block included: its metadata, title and status are not written
   // (a block put in front would leave two) until the block is fixed in the text.
@@ -440,7 +462,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
           {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
         </p>
       )}
-      {live && liveEdit.checkout && (live.editor.kind === 'builtin' ? <LiveCollabEditor checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} showLineNumbers={lineNumbersShown} mode={isMarkdown ? editorMode : 'raw'} body={liveBody}>{shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}</LiveCollabEditor> : <LiveEditorFrame checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} />)}
+      {live && liveEdit.checkout && (live.editor.kind === 'builtin' ? <LiveCollabEditor checkInButtonRef={checkInButton} checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} showLineNumbers={lineNumbersShown} mode={isMarkdown ? editorMode : 'raw'} body={liveBody}>{shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}</LiveCollabEditor> : <LiveEditorFrame checkInButtonRef={checkInButton} checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onClose={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} />)}
       {formatToolbarShown && !liveEdit.checkout && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       {!liveEdit.checkout && (
         <div ref={setBody} className='note-editor-body'>

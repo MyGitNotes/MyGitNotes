@@ -992,6 +992,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'command.editor.leader.describe': '在開啟的筆記中開啟選單：F 尋找、/ 顯示大綱、M 切換即時預覽與原始碼',
   'command.editor.leaderMode': '在即時預覽與原始碼之間切換',
   'command.editor.leaderFind': '在筆記中尋找',
+  'command.editor.commit': '提交筆記或簽回即時筆記',
   'command.editor.leaderOutline': '顯示大綱',
   'command.note.closePanel': '關閉筆記指令或筆記工具',
   'command.format.bold': '粗體',

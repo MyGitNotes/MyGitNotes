@@ -1,5 +1,5 @@
 import { Tooltip } from '../Tooltip.js';
-import { useEffect, useRef, useState } from 'react';
+import { type Ref, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CloudOff, ExternalLink, Users } from 'lucide-react';
 import type { LiveFrameEditorInfo } from '@mygitnotes/core';
@@ -24,6 +24,8 @@ export interface LiveEditorFrameProps {
   onClose: () => void;
   /** The note was checked in: by this page (`answer`), or by someone else, which the editor reports as released. */
   onCheckedIn?: (answer?: LiveCheckInAnswer) => void;
+  /** Lets the note's shortcut invoke the same button from the host page (keys inside the frame stay in the frame). */
+  checkInButtonRef?: Ref<HTMLButtonElement>;
   /** The pending note was discarded: by 「捨棄草稿」, or by a check-in that found the draft empty. */
   onDiscarded?: () => void;
   /** The note's title, which names the frame for assistive technology. */
@@ -38,7 +40,7 @@ type Phase = { kind: 'open'; } | { kind: 'checking'; } | { kind: 'released'; } |
  * the text is saved and connected, and offers 「在新分頁開啟」, 「立即簽回」 and 「關閉」. Status messages are taken only from
  * the editor origin and this frame's window.
  */
-export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, onCheckedIn, onDiscarded, title }: LiveEditorFrameProps) {
+export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, onCheckedIn, checkInButtonRef, onDiscarded, title }: LiveEditorFrameProps) {
   const { t } = useTranslation();
   const frameRef = useRef<HTMLIFrameElement>(null);
   // The frame keeps the URL it opened with; later theme changes travel by message, so the editor is not reloaded.
@@ -154,7 +156,7 @@ export function LiveEditorFrame({ checkout, editor, theme, onRefetch, onClose, o
           )}
           {framed && (
             <Tooltip label={t('live.checkInHint')}>
-              <Button size='small' variant='primary' disabled={!status?.saved} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>
+              <Button ref={checkInButtonRef} size='small' variant='primary' disabled={!status?.saved} onClick={() => void checkIn()}>{t('live.checkIn')}</Button>
             </Tooltip>
           )}
           <Button size='small' disabled={phase.kind === 'checking' || phase.kind === 'discarding'} onClick={close}>{t('common.close')}</Button>

@@ -109,6 +109,31 @@ const openTab = (name: string) => fireEvent.click(within(screen.getByRole('tabli
 const panel = () => screen.getByRole('complementary', { name: 'Document tools' });
 
 describe('a note in the collab editor', () => {
+  it('uses Ctrl+S to check in once, and swallows it without checking in while offline', async () => {
+    const onCheckedIn = vi.fn();
+    const onCommitFile = vi.fn();
+    await open({ live: live({ onCheckedIn }), onCommitFile, isDirty: true });
+    const config = fake.providers.at(-1)!.configuration;
+    const checkIns = () => vi.mocked(fetch).mock.calls.filter(([url]) => url === '/api/live/checkin');
+    const pressSave = () => fireEvent.keyDown(screen.getByLabelText('Live note content'), { key: 's', code: 'KeyS', ctrlKey: true });
+
+    act(() => config.onStatus?.({ status: 'disconnected' }));
+    expect(screen.getByRole('button', { name: 'Check in now' })).toBeDisabled();
+    const allowedOffline = pressSave();
+    expect(checkIns()).toHaveLength(0);
+    act(() => {
+      config.onStatus?.({ status: 'connected' });
+      config.onSynced?.({ state: true });
+    });
+    expect(screen.getByRole('button', { name: 'Check in now' })).toBeEnabled();
+    await act(async () => {
+      expect(pressSave()).toBe(false);
+    });
+    expect(checkIns()).toHaveLength(1);
+    expect(onCheckedIn).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ committed: true, released: true }));
+    expect(allowedOffline).toBe(false);
+    expect(onCommitFile).not.toHaveBeenCalled();
+  });
   it('shows the document panel beside the collab editor in zoom, with every tab', async () => {
     await open();
     fireEvent.click(within(row()).getByRole('button', { name: 'Frontmatter' }));
