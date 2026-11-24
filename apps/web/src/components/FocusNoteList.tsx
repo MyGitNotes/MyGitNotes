@@ -1,12 +1,12 @@
 import React, { useRef } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import { GalleryHorizontalEnd } from 'lucide-react';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useTranslation } from '../lib/i18n/index.js';
 import { noteUpdatedTime } from '../lib/note-sort.js';
-import { pointerMovesNotes, startNoteDrag } from '../lib/note-drag.js';
+import { type NoteBrowseFocusMode, pointerMovesNotes, startNoteDrag } from '../lib/note-drag.js';
 import { useDeleteConfirm } from '../lib/use-delete-confirm.js';
 import { useNoteHoverCard } from '../lib/use-note-hover-card.js';
 import { useNoteTouchSelection } from '../lib/use-note-touch-selection.js';
@@ -17,8 +17,8 @@ import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
 import { LiveBadge } from './live/LiveBadge.js';
 import { useLiveLock } from './live/live-drafts.js';
-import { NotesEmptyState } from './NotesEmptyState.js';
-import type { ListViewProps } from './ListView.js';
+import { type BrowseKind, NotesEmptyState } from './NotesEmptyState.js';
+import type { NoteGroupOf } from '../lib/note-groups.js';
 import './focus-list.css';
 
 /** A row stays one height whatever its title: the title always reserves two lines, or one above the meta line. */
@@ -35,7 +35,42 @@ function rowMetaText(note: NoteListItem): string {
  * The notes of a list that sits in the narrow dock beside a Focus: a status dot and a title of up to two lines per row, the rest of
  * what a card shows (every tag, both dates, the folder, an excerpt, and the actions) in a hover card beside the dock.
  */
-export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, focusMode, leading, highlightQuery = '', selectedKeys, onToggleSelect, groupOf, collapsedGroups, onToggleGroup }: ListViewProps) {
+interface FocusNoteListProps {
+  notes: NoteListItem[];
+  /** Staged drafts the server cannot return yet; listed above the committed rows. */
+  uncommitted?: NoteListItem[];
+  hasFolderEntries?: boolean;
+  /** The first page is still in flight, so nothing is known to be missing yet. */
+  loading?: boolean;
+  statuses: string[];
+  readOnly?: boolean;
+  canDelete?: boolean;
+  confirmDelete?: boolean;
+  onOpenNote: (note: NoteListItem) => void;
+  onDeleteNote: (note: NoteListItem) => void;
+  onMoveNote?: (note: NoteListItem) => void;
+  onUpdateNoteStatus: (note: NoteListItem, newStatus: string) => void;
+  onNewNote: () => void;
+  /** What the list shows, so its empty state offers to create the same kind. */
+  newKind?: BrowseKind;
+  /** Present while a Focus is displayed: rows get a zoom button and can be dragged into a pane. */
+  focusMode?: NoteBrowseFocusMode;
+  /** An entry listed as the first row, such as the folder index in the flat view. */
+  leading?: ReactNode;
+  /** Active search text: highlights matches in the title and shows a matched-content snippet. */
+  highlightQuery?: string;
+  /** `noteRefKey`s of the notes selected for bulk actions; a checkbox only appears on rows while this is non-empty. */
+  selectedKeys?: Set<string>;
+  /** Modifier-click (or the checkbox, once shown) toggles a row's membership; a plain click still opens it. */
+  onToggleSelect?: (note: NoteListItem) => void;
+  /** Present while the notes come grouped by folder: a header row starts each folder. */
+  groupOf?: NoteGroupOf;
+  /** Group keys whose notes are hidden under their heading. */
+  collapsedGroups?: ReadonlySet<string>;
+  onToggleGroup?: (key: string) => void;
+}
+
+export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, focusMode, leading, highlightQuery = '', selectedKeys, onToggleSelect, groupOf, collapsedGroups, onToggleGroup }: FocusNoteListProps) {
   const { t } = useTranslation();
   const liveLock = useLiveLock();
   const touchSelection = useNoteTouchSelection(onToggleSelect, !readOnly && Boolean(onMoveNote));

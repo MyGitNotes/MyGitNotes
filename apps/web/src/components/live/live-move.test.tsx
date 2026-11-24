@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { tooltipText } from '../tooltip-test-helpers.js';
 import { createElement } from 'react';
-import { cleanup, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
-import { ListView } from '../ListView.js';
+import { FocusNoteList } from '../FocusNoteList.js';
 import { LiveBadge } from './LiveBadge.js';
 import { liveActionLocked, type LiveDrafts, LiveDraftsProvider } from './live-drafts.js';
 import { zhTW } from '../../lib/i18n/zh-TW.js';
@@ -45,14 +45,16 @@ describe('a filed live note others edit', () => {
     expect(liveActionLocked(note, 'move', framed)).toBe(true);
   });
 
-  it('shows in a list at its target, marked as moving there at the check-in, with where it lies now, and its Move open', () => {
+  it('shows in a list at its target, marked as moving there at the check-in, with where it lies now, and its Move open', async () => {
     const note = row('notes/life/archive/2026-11-17 公司週會.md', moving);
-    render(createElement(LiveDraftsProvider, { value: builtin }, createElement(ListView, { statuses: ['inbox'], notes: [note], onOpenNote: vi.fn(), onDeleteNote: vi.fn(), onMoveNote: vi.fn(), onUpdateNoteStatus: vi.fn(), onNewNote: vi.fn() })));
-    const line = screen.getByText('Weekly').closest('tr')!;
+    render(createElement(LiveDraftsProvider, { value: builtin }, createElement(FocusNoteList, { statuses: ['inbox'], notes: [note], onOpenNote: vi.fn(), onDeleteNote: vi.fn(), onMoveNote: vi.fn(), onUpdateNoteStatus: vi.fn(), onNewNote: vi.fn() })));
+    const line = screen.getByText('Weekly').closest<HTMLElement>('[data-focus-row]')!;
     const marker = within(line).getByText('Moves here at check-in');
     expect(tooltipText(marker.closest('[data-t1-trigger]'))).toEqual(expect.stringContaining('notes/life/會議/2026-11-17 公司週會.md'));
-    expect(within(line).getByRole('button', { name: 'Move note' })).toBeEnabled();
-    expect(within(line).getByRole('button', { name: 'Delete note' })).toBeDisabled();
+    fireEvent.focus(line);
+    const details = within(await screen.findByRole('group', { name: 'Details for Weekly' }));
+    expect(details.getByRole('button', { name: 'Move note' })).toBeEnabled();
+    expect(details.getByRole('button', { name: 'Delete note' })).toBeDisabled();
   });
 
   it('says on its row when the check-in kept it in place because its target exists', () => {

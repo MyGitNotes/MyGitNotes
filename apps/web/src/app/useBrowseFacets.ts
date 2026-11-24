@@ -2,9 +2,8 @@ import { noteQueryStatuses } from '@mygitnotes/core/note-query';
 import { mergeNotebookStatuses } from '@mygitnotes/core/note-status';
 import { useStatusAvoidColor } from '../lib/status-color.js';
 import { parseWorkspaceRoute } from '../lib/routes.js';
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { useNoteFacets } from '../lib/use-note-queries.js';
-import { useTagWorkspaceOperations } from '../app/useTagWorkspaceOperations.js';
 import { mergeNotebookFacets, queryNotebookIds } from '../lib/note-facets.js';
 import type { WorkspaceState } from './workspace-state.js';
 import type { ViewMode } from '../lib/types.js';
@@ -16,15 +15,9 @@ interface Params {
   selectedFolders: string[];
   selectedNotebookId: WorkspaceState['selectedNotebookId'];
   route: ReturnType<typeof parseWorkspaceRoute>;
-  /** Whether every repository may take a workspace-wide tag change. */
-  canManageTags: boolean;
-  previewTagUsage: ReturnType<typeof useTagWorkspaceOperations>['previewTagUsage'];
-  handleRenameTag: ReturnType<typeof useTagWorkspaceOperations>['handleRenameTag'];
-  handleMergeTag: ReturnType<typeof useTagWorkspaceOperations>['handleMergeTag'];
-  handleDeleteTag: ReturnType<typeof useTagWorkspaceOperations>['handleDeleteTag'];
 }
 
-export function useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route, canManageTags, previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag }: Params) {
+export function useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route }: Params) {
   // Counts, status options, tag lists and subfolder counts all come from one facet answer.
   const facetsQuery = useNoteFacets(showHidden);
   const facetNotebookIds = useMemo(() => queryNotebookIds(config?.notebooks || [], scopeNotebookId, selectedFolders), [config, scopeNotebookId, selectedFolders]);
@@ -42,20 +35,14 @@ export function useBrowseFacets({ showHidden, config, scopeNotebookId, selectedF
   const avoidColor = useStatusAvoidColor();
   const statusEntries = useMemo(() => mergeNotebookStatuses((config?.notebooks || []).filter(notebook => facetNotebookIds.includes(notebook.id)), avoidColor), [config, facetNotebookIds, avoidColor]);
   const selectedTags = useMemo(() => [...new Set(route.tags)], [route.tags]);
-  // Stable across renders so memoized note rows skip re-rendering; calls reach the latest handlers.
-  const tagHandlers = useRef({ previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag });
-  useLayoutEffect(() => {
-    tagHandlers.current = { previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag };
-  });
   // The tag vocabulary spans hidden notes too, so it has its own facet answer.
   const tagFacets = useNoteFacets(true);
   const workspaceTagNames = useMemo(() => Array.from(new Set(Object.values(tagFacets.facets || {}).flatMap(facets => Object.keys(facets.tags)))), [tagFacets.facets]);
-  const noteTagActions = useMemo(() => canManageTags ? { allTags: workspaceTagNames, onPreviewUsage: (tag: string) => tagHandlers.current.previewTagUsage(tag), onRename: (from: string, to: string) => tagHandlers.current.handleRenameTag(from, to), onMerge: (from: string, into: string) => tagHandlers.current.handleMergeTag(from, into), onDelete: (tag: string) => tagHandlers.current.handleDeleteTag(tag) } : undefined, [canManageTags, workspaceTagNames]);
   const searchQuery = route.q;
-  // Card and List were views before the table-or-cards choice followed the width; their links open the folder view.
+  // Old card links open the folder list.
   const viewMode: ViewMode = route.view === 'card' ? 'list' : route.view;
   // Flat and Kanban list the whole notebook, without folder navigation.
   const folderless = viewMode === 'flat' || viewMode === 'kanban' || kindList;
 
-  return { facetsQuery, notebookFacets, compilationFacets: merged.compilations, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, noteTagActions, searchQuery, viewMode, folderless };
+  return { facetsQuery, notebookFacets, compilationFacets: merged.compilations, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, searchQuery, viewMode, folderless };
 }

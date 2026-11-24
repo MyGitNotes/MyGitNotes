@@ -142,8 +142,8 @@ describe('the three columns', () => {
     expect(screen.getByRole('button', { name: 'Show note list' }).closest('.browse-column-note')).not.toBeNull();
   });
 
-  it('spreads the table and the board across the note column, keeping the notebooks column', () => {
-    const { rerender } = render(<Page note='a' presentation='table' />);
+  it('spreads the board across the note column, keeping the notebooks column', () => {
+    const { rerender } = render(<Page note='a' presentation='kanban' />);
     const root = document.querySelector('.browse-columns')!;
     expect(root).toHaveAttribute('data-merged', 'true');
     expect(notebooksColumn()).toBeVisible();

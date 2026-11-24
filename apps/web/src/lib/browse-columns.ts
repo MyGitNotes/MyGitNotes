@@ -103,14 +103,9 @@ export function toggleList(layout: BrowseColumnsLayout, stored: StoredBrowseColu
   return { stored: { ...stored, listCollapsed: layout.list }, heldOpen };
 }
 
-/** What the list column shows: the list beside the note, or the table or the board across the list and note columns. */
-export type BrowsePresentation = 'list' | 'table' | 'kanban';
+/** The list beside the Focus, or the board on a notebook address. */
+export type BrowsePresentation = 'list' | 'kanban';
 
-/**
- * The table while it is chosen (it is page state, put away when a note opens from it); the board on a notebook's address with `view=kanban`,
- * never beside a note the address names, so closing that note does not bring the board back; the list otherwise.
- */
-export function browsePresentation({ viewMode, table, noteAddress }: { viewMode: ViewMode; table: boolean; noteAddress: boolean; }): BrowsePresentation {
-  if (table) return 'table';
+export function browsePresentation({ viewMode, noteAddress }: { viewMode: ViewMode; noteAddress: boolean; }): BrowsePresentation {
   return viewMode === 'kanban' && !noteAddress ? 'kanban' : 'list';
 }

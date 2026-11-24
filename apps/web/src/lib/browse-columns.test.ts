@@ -81,14 +81,8 @@ describe('toggles', () => {
 
 describe('presentation', () => {
   it('shows the board on a notebook address with view=kanban, and the list beside a note the address names', () => {
-    expect(browsePresentation({ viewMode: 'kanban', table: false, noteAddress: false })).toBe('kanban');
-    expect(browsePresentation({ viewMode: 'kanban', table: false, noteAddress: true })).toBe('list');
+    expect(browsePresentation({ viewMode: 'kanban', noteAddress: false })).toBe('kanban');
+    expect(browsePresentation({ viewMode: 'kanban', noteAddress: true })).toBe('list');
   });
 
-  it('shows the table while it is chosen, beside a note address too, and the list otherwise', () => {
-    expect(browsePresentation({ viewMode: 'flat', table: true, noteAddress: false })).toBe('table');
-    expect(browsePresentation({ viewMode: 'flat', table: true, noteAddress: true })).toBe('table');
-    expect(browsePresentation({ viewMode: 'list', table: false, noteAddress: false })).toBe('list');
-    expect(browsePresentation({ viewMode: 'flat', table: false, noteAddress: true })).toBe('list');
-  });
 });

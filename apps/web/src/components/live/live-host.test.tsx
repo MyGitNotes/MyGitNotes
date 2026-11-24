@@ -8,8 +8,7 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { PanelProvider } from '../../lib/panel-context.js';
 import type { NoteItem } from '../../lib/types.js';
 import { NoteEditor, type NoteEditorProps } from '../NoteEditor.js';
-import { ListView } from '../ListView.js';
-import { CardView } from '../CardView.js';
+import { FocusNoteList } from '../FocusNoteList.js';
 import { BulkActionsToolbar } from '../BulkActionsToolbar.js';
 import { moveAsset, responseError, restoreNote } from '../../lib/api.js';
 import { mutateFile } from '../../lib/files-api.js';
@@ -113,32 +112,30 @@ const pending = listed('notes/life/.live/xyz.md', { since: view.since, activeEdi
 const plain = listed('notes/life/c.md');
 const listProps = { statuses: ['inbox', 'done'], onOpenNote: vi.fn(), onDeleteNote: vi.fn(), onMoveNote: vi.fn(), onUpdateNoteStatus: vi.fn(), onNewNote: vi.fn() };
 
+async function noteDetails(row: HTMLElement, title: string) {
+  fireEvent.focus(row);
+  return within(await screen.findByRole('group', { name: `Details for ${title}` }));
+}
+
 describe('lists', () => {
-  it('badge checked-out and pending notes, and lock their quick actions with the reason', () => {
-    render(createElement(ListView, { ...listProps, notes: [checkedOut, quiet, pending, plain] }));
-    const row = (note: NoteListItem) => screen.getByText(note.title).closest('tr')!;
+  it('badge checked-out and pending notes, and lock their quick actions with the reason', async () => {
+    render(createElement(FocusNoteList, { ...listProps, notes: [checkedOut, quiet, pending, plain] }));
+    const row = (note: NoteListItem) => screen.getByText(note.title).closest<HTMLElement>('[data-focus-row]')!;
     expect(within(row(checkedOut)).getByText('Editing · 2')).toBeInTheDocument();
     expect(within(row(quiet)).getByText('Editing')).toBeInTheDocument();
     expect(within(row(pending)).getByText('Not filed')).toBeInTheDocument();
     expect(within(row(plain)).queryByText(/Editing|Not filed/)).toBeNull();
     for (const note of [checkedOut, pending]) {
       expect(within(row(note)).getByRole('combobox')).toBeDisabled();
-      expect(within(row(note)).getByRole('button', { name: 'Move note' })).toBeDisabled();
-      expect(tooltipText(within(row(note)).getByRole('button', { name: 'Move note' }))).toEqual('Being edited live; check it in first');
-      expect(within(row(note)).getByRole('button', { name: 'Delete note' })).toBeDisabled();
+      const card = await noteDetails(row(note), note.title);
+      expect(card.getByRole('button', { name: 'Move note' })).toBeDisabled();
+      expect(tooltipText(card.getByRole('button', { name: 'Move note' }))).toEqual('Being edited live; check it in first');
+      expect(card.getByRole('button', { name: 'Delete note' })).toBeDisabled();
     }
     expect(within(row(plain)).getByRole('combobox')).toBeEnabled();
     expect(row(checkedOut)).toHaveAttribute('draggable', 'false');
   });
 
-  it('badge cards the same way', () => {
-    render(createElement(CardView, { ...listProps, notes: [checkedOut, pending, plain] }));
-    const card = (note: NoteListItem) => screen.getByText(note.title).closest('.note-card')! as HTMLElement;
-    expect(within(card(checkedOut)).getByText('Editing · 2')).toBeInTheDocument();
-    expect(within(card(pending)).getByText('Not filed')).toBeInTheDocument();
-    expect(within(card(checkedOut)).getByRole('combobox')).toBeDisabled();
-    expect(within(card(plain)).getByRole('combobox')).toBeEnabled();
-  });
 
   it('lock the bulk actions while the selection holds a checked-out note', () => {
     render(createElement(BulkActionsToolbar, { count: 2, statuses: ['inbox'], availableTags: [], busy: false, readOnly: false, canMove: true, liveNotes: ['Alpha'], onSetStatus: vi.fn(), onAddTag: vi.fn(), onRemoveTag: vi.fn(), onMove: vi.fn(), onClear: vi.fn() }));
@@ -501,36 +498,31 @@ describe('a pending note in the lists, where the adapter can discard and retarge
   const drafts = { discards: () => true, retargets: () => true };
   const inDrafts = (element: ReturnType<typeof createElement>) => createElement(LiveDraftsProvider, { value: drafts }, element);
 
-  it('says where it files, and lets it be deleted (discarded) and moved', () => {
+  it('says where it files, and lets it be deleted (discarded) and moved', async () => {
     const onDeleteNote = vi.fn(), onMoveNote = vi.fn();
-    render(inDrafts(createElement(ListView, { ...listProps, onDeleteNote, onMoveNote, notes: [filing, checkedOut] })));
-    const row = (item: NoteListItem) => screen.getByText(item.title).closest('tr')!;
+    render(inDrafts(createElement(FocusNoteList, { ...listProps, onDeleteNote, onMoveNote, notes: [filing, checkedOut] })));
+    const row = (item: NoteListItem) => screen.getByText(item.title).closest<HTMLElement>('[data-focus-row]')!;
     expect(tooltipText(within(row(filing)).getByText('Not filed').closest('.live-badge'))).toEqual('Files to: projects/Untitled.md (the name follows the title)');
-    const remove = within(row(filing)).getByRole('button', { name: 'Delete note' });
+    const remove = (await noteDetails(row(filing), filing.title)).getByRole('button', { name: 'Delete note' });
     expect(remove).toBeEnabled();
     expect(tooltipText(remove)).toEqual('Discard draft');
     fireEvent.click(remove);
     expect(onDeleteNote).toHaveBeenCalledWith(filing);
-    fireEvent.click(within(row(filing)).getByRole('button', { name: 'Move note' }));
+    fireEvent.click((await noteDetails(row(filing), filing.title)).getByRole('button', { name: 'Move note' }));
     expect(onMoveNote).toHaveBeenCalledWith(filing);
     // Its status is still the live editor's; a checked-out note is not deleted, and moves at its next check-in (§20.4).
     expect(within(row(filing)).getByRole('combobox')).toBeDisabled();
-    expect(within(row(checkedOut)).getByRole('button', { name: 'Delete note' })).toBeDisabled();
-    expect(within(row(checkedOut)).getByRole('button', { name: 'Move note' })).toBeEnabled();
+    const checkedOutDetails = await noteDetails(row(checkedOut), checkedOut.title);
+    expect(checkedOutDetails.getByRole('button', { name: 'Delete note' })).toBeDisabled();
+    expect(checkedOutDetails.getByRole('button', { name: 'Move note' })).toBeEnabled();
   });
 
-  it('keeps delete and move locked where the adapter can do neither', () => {
-    render(createElement(LiveDraftsProvider, { value: { discards: () => false, retargets: () => false } }, createElement(ListView, { ...listProps, notes: [filing] })));
-    const row = screen.getByText(filing.title).closest('tr')!;
-    expect(within(row).getByRole('button', { name: 'Delete note' })).toBeDisabled();
-    expect(within(row).getByRole('button', { name: 'Move note' })).toBeDisabled();
+  it('keeps delete and move locked where the adapter can do neither', async () => {
+    render(createElement(LiveDraftsProvider, { value: { discards: () => false, retargets: () => false } }, createElement(FocusNoteList, { ...listProps, notes: [filing] })));
+    const row = screen.getByText(filing.title).closest<HTMLElement>('[data-focus-row]')!;
+    const card = await noteDetails(row, filing.title);
+    expect(card.getByRole('button', { name: 'Delete note' })).toBeDisabled();
+    expect(card.getByRole('button', { name: 'Move note' })).toBeDisabled();
   });
 
-  it('unlocks the same entries on cards', () => {
-    const onDeleteNote = vi.fn();
-    render(inDrafts(createElement(CardView, { ...listProps, onDeleteNote, notes: [filing] })));
-    const card = screen.getByText(filing.title).closest('.note-card')! as HTMLElement;
-    expect(within(card).getByRole('button', { name: 'Delete note' })).toBeEnabled();
-    expect(within(card).getByRole('button', { name: 'Move note' })).toBeEnabled();
-  });
 });

@@ -32,8 +32,7 @@ it('uses T1 instead of native hover titles', () => {
     inspect(parseSync(file, source).program, node => {
       if (node.type !== 'JSXOpeningElement' || !node.attributes?.some(attr => attr.type === 'JSXAttribute' && typeof attr.name === 'object' && attr.name.name === 'title')) return;
       const tag = typeof node.name === 'object' ? source.slice(node.name.start, node.name.end) : '';
-      const fullDate = tag === 'time' && relative(root, file) === 'components/ListView.tsx';
-      if (tag !== 'iframe' && !fullDate && !contentProps.has(tag)) report(node.start ?? 0, tag);
+      if (tag !== 'iframe' && !contentProps.has(tag)) report(node.start ?? 0, tag);
     });
     // Rendered HTML must carry data-t1-label. Embedded image descriptions are authored content.
     for (const match of source.matchAll(/<(?:button|a|span|abbr|img|input|select)\b[^<>\n]*?\s+title\s*=/g)) {

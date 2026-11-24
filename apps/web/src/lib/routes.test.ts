@@ -27,6 +27,7 @@ describe('workspace URLs', () => {
     for (const pathname of ['/', '/notes', '/notebooks/example', '/notebooks/example/folders/projects']) {
       expect(parseWorkspaceRoute(pathname, '').view).toBe('flat');
       expect(parseWorkspaceRoute(pathname, '?view=unknown').view).toBe('flat');
+      expect(parseWorkspaceRoute(pathname, '?view=table').view).toBe('flat');
       for (const view of ['flat', 'list', 'card', 'kanban', 'graph']) {
         expect(parseWorkspaceRoute(pathname, `?view=${view}`).view).toBe(view);
       }

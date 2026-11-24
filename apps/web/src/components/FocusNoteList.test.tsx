@@ -9,7 +9,6 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { HOVER_CARD_CLOSE_MS, HOVER_CARD_OPEN_MS } from '../lib/use-note-hover-card.js';
 import { hoverCardPosition } from './NoteHoverCard.js';
-import { NoteCollection } from './NoteCollection.js';
 import { FocusNoteList } from './FocusNoteList.js';
 
 beforeAll(() => {
@@ -36,7 +35,7 @@ afterEach(() => {
 const note = (name: string, extra: Partial<NoteListItem> = {}): NoteListItem => ({ id: name, path: `notes/life/projects/${name}.md`, notebookId: 'life', title: `Title of ${name}`, status: 'todo', tags: ['alpha', 'beta', 'gamma', 'delta'], metadata: { created: '2026-10-01T09:00:00Z', updated: '2026-10-20T10:30:00Z' }, ...extra });
 
 function setup(overrides: Record<string, unknown> = {}) {
-  const props = { notes: [note('a'), note('b', { status: 'done', tags: [] })], statuses: ['todo', 'working', 'done'], onOpenNote: vi.fn(), onDeleteNote: vi.fn(), onMoveNote: vi.fn(), onUpdateNoteStatus: vi.fn(), onNewNote: vi.fn(), focusMode: { onZoomNote: vi.fn(), canDrag: () => true, compactRows: true, readNote: vi.fn(async () => ({ content: '# Title of a\n\nThe opening line says **what** the note is about, with a [link](x.md).\n\n```js\nignored()\n```\n' })) }, ...overrides };
+  const props = { notes: [note('a'), note('b', { status: 'done', tags: [] })], statuses: ['todo', 'working', 'done'], onOpenNote: vi.fn(), onDeleteNote: vi.fn(), onMoveNote: vi.fn(), onUpdateNoteStatus: vi.fn(), onNewNote: vi.fn(), focusMode: { onZoomNote: vi.fn(), canDrag: () => true, readNote: vi.fn(async () => ({ content: '# Title of a\n\nThe opening line says **what** the note is about, with a [link](x.md).\n\n```js\nignored()\n```\n' })) }, ...overrides };
   render(createElement(I18nProvider, null, createElement(FocusNoteList, props as never)));
   return props as typeof props & Record<string, never>;
 }
@@ -70,7 +69,7 @@ it('lists each note as a status dot and a title that is clamped to two lines, wi
 
 // Boss review of the three-column list (A1): each row also shows its updated date and tags on a second line, with the title on one.
 it('adds a second line with the updated date and the tags when the list column asks for row meta', () => {
-  setup({ focusMode: { onZoomNote: vi.fn(), canDrag: () => true, compactRows: true, rowMeta: true } });
+  setup({ focusMode: { onZoomNote: vi.fn(), canDrag: () => true, rowMeta: true } });
   const [tagged, untagged] = document.querySelectorAll<HTMLElement>('[data-focus-row]');
   const title = tagged.querySelector('.focus-row-title') as HTMLElement;
   expect(title.style.getPropertyValue('--title-lines')).toBe('1');
@@ -81,7 +80,7 @@ it('adds a second line with the updated date and the tags when the list column a
 });
 
 it('dates a row by the edit date the server resolved from Git, not its frontmatter', () => {
-  setup({ notes: [note('a', { tags: [], lastCommitAt: '2026-11-03T12:00:00.000Z', updated: '2026-11-03T12:00:00.000Z' })], focusMode: { onZoomNote: vi.fn(), canDrag: () => true, compactRows: true, rowMeta: true } });
+  setup({ notes: [note('a', { tags: [], lastCommitAt: '2026-11-03T12:00:00.000Z', updated: '2026-11-03T12:00:00.000Z' })], focusMode: { onZoomNote: vi.fn(), canDrag: () => true, rowMeta: true } });
   const date = new Date('2026-11-03T12:00:00.000Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   expect(document.querySelector('.focus-row-meta')!.textContent).toBe(date);
 });
@@ -101,7 +100,7 @@ it('marks a row whose frontmatter cannot be read with the warning sign in place 
 });
 
 it('opens a note on a click and on Enter, and marks the one the active pane shows as open', () => {
-  const props = setup({ focusMode: { onZoomNote: vi.fn(), canDrag: () => false, compactRows: true, openPath: 'notes/life/projects/b.md' } });
+  const props = setup({ focusMode: { onZoomNote: vi.fn(), canDrag: () => false, openPath: 'notes/life/projects/b.md' } });
   fireEvent.click(rowOf('a'));
   expect(props.onOpenNote).toHaveBeenCalledWith(expect.objectContaining({ title: 'Title of a' }));
   fireEvent.keyDown(rowOf('b'), { key: 'Enter' });
@@ -250,16 +249,6 @@ it('starts a drag into the Focus from a row', () => {
   const data: Record<string, string> = {};
   fireEvent.dragStart(rowOf('a'), { dataTransfer: { setData: (type: string, value: string) => (data[type] = value), effectAllowed: '' } });
   expect(data['application/x-mygitnotes-note']).toBe('notes/life/projects/a.md');
-});
-
-it('is what NoteCollection lists in the docked Focus, in place of the table and the cards', () => {
-  const props = { notes: [note('a')], statuses: ['todo'], onOpenNote: vi.fn(), onDeleteNote: vi.fn(), onUpdateNoteStatus: vi.fn(), onNewNote: vi.fn() };
-  const { container, rerender } = render(createElement(I18nProvider, null, createElement(NoteCollection, { ...props, focusMode: { onZoomNote: vi.fn(), canDrag: () => false, compactRows: true } })));
-  expect(container.querySelector('.focus-note-list')).toBeInTheDocument();
-  expect(container.querySelector('table, .note-card')).toBeNull();
-  // On a phone the Focus list stays cards, as does the list with no Focus.
-  rerender(createElement(I18nProvider, null, createElement(NoteCollection, { ...props, focusMode: { onZoomNote: vi.fn(), canDrag: () => false, compactRows: false } })));
-  expect(container.querySelector('.focus-note-list')).toBeNull();
 });
 
 it('places the hover card beside the dock at the row height, never over the list, and keeps it in the window', () => {
