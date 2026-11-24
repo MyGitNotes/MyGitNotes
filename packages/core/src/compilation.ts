@@ -5,6 +5,8 @@ import { type StudyProgression, StudyProgressionSchema } from './study-stages.js
 import { isNoteHidden } from './note-status.js';
 import { type CompilationYamlExtensions, stringifyCompilationYaml, takeCompilationExtensions, writeCompilationYaml } from './compilation-yaml.js';
 
+export * from './board-placement.js';
+
 /** The workspace `schema_version` that replaced the Screen file with compilation files. */
 export const COMPILATION_SCHEMA_VERSION = 3;
 
