@@ -56,7 +56,8 @@ export const gutterWidth = ViewPlugin.fromClass(
 export const theme = EditorView.theme({
   '&': { height: '100%', color: 'var(--color-text)', backgroundColor: 'var(--color-bg)' },
   '&.cm-focused': { outline: 'none' },
-  '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit', lineHeight: '1.8', backgroundColor: 'var(--color-bg)', padding: '24px 16px' },
+  // The overview rail beside the scrollbar asks for room on the right (`--overview-rail-space`, set on the scroller while it shows).
+  '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit', lineHeight: '1.8', backgroundColor: 'var(--color-bg)', padding: '24px 16px', paddingRight: 'calc(16px + var(--overview-rail-space, 0px))' },
   // The horizontal inset lives on .cm-line (not .cm-content) because CodeMirror's own
   // selection-rectangle geometry (rectanglesForRange) reads a line's computed padding to
   // find the text edge for whole-line selection spans; padding on .cm-content itself is
@@ -71,7 +72,7 @@ export const theme = EditorView.theme({
   // keeps as much room as the gutter takes on its right, out of the margin the text left there, so the card grows to the
   // left by the gutter and the text moves only where that margin is narrower than the gutter.
   '.cm-gutters': { backgroundColor: 'transparent', borderRight: '1px solid var(--color-border)', marginLeft: 'auto', height: 'calc(100% - 48px)', touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none' },
-  '.cm-scroller:has(> .cm-gutters)': { paddingRight: 'calc(16px + min(var(--cm-gutter-width, 0px), max(0px, (100% - 32px - var(--note-content-width, 880px)) / 2)))' },
+  '.cm-scroller:has(> .cm-gutters)': { paddingRight: 'calc(16px + var(--overview-rail-space, 0px) + min(var(--cm-gutter-width, 0px), max(0px, (100% - 32px - var(--note-content-width, 880px)) / 2)))' },
   '.cm-gutters ~ .cm-content': { marginLeft: '0' },
   '.cm-lineNumbers': { color: 'var(--color-muted)', fontFamily: 'monospace', fontSize: '11px', opacity: '0.55' },
   // The number takes the body text's line box (its font size at the scroller's 1.8 line height),

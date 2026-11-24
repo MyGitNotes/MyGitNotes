@@ -47,6 +47,7 @@ import { replaceLiveText, useLiveText, writeLiveFrontmatter, writeLiveTitle, wri
 import { LiveRestoreDialog } from './live/LiveRestoreDialog.js';
 import { useLiveEdit, useLiveTheme } from './live/useLiveEdit.js';
 import { useZoomToggle } from './note-editor/useZoomToggle.js';
+import { useOverviewRail } from './overview-rail/useOverviewRail.js';
 
 export interface NoteEditorHandle {
   /** Inserts `text` at `at`, or at the caret; no-op while the session is locked. */
@@ -287,6 +288,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
       else if (!session.isSaving) void actions.onCommit?.();
     },
   });
+  // Find reads the note's body; the collab editor's text has the frontmatter's lines before it.
+  const overviewRail = useOverviewRail(frame, session.content, docPanel.isFindOpen ? docPanel.matches : null, shared ? liveFrontmatter.lineOffset : 0);
   // The active editor is the file the agent panel names to Pi, with the line its caret is on.
   const contentRef = useRef(session.content);
   useEffect(() => {
@@ -469,7 +472,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
     <div ref={rootRef} className='note-editor' data-frame={frame} data-source-notebook={note.notebookId} data-phone-bar={phone ? barOverlay ? 'overlay' : 'flow' : undefined} data-bar-hidden={barHidden || undefined} style={noteViewStyle(viewPreferences)}>
       <NoteEditorNotices session={session} notePath={note.path} />
       <div className='editor-notices'>{liveEdit.notices}</div>
-      {live && liveEdit.checkout ? live.editor.kind === 'builtin' ? <LiveCollabEditor renderToolbar={renderToolbar} beforeLeaveRef={liveLeave} checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onDismissRecovery={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} noteLang={noteLang} showLineNumbers={lineNumbersShown} mode={isMarkdown ? editorMode : 'raw'} body={liveBody}>{shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}</LiveCollabEditor> : <LiveEditorFrame renderToolbar={renderToolbar} beforeLeaveRef={liveLeave} checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} /> : renderToolbar()}
+      {live && liveEdit.checkout ? live.editor.kind === 'builtin' ? <LiveCollabEditor renderToolbar={renderToolbar} beforeLeaveRef={liveLeave} checkout={liveEdit.checkout} editor={live.editor} title={session.title} scope={draftScope} onRefetch={liveEdit.refetch} onDismissRecovery={liveEdit.close} onCheckedIn={liveEdit.checkedIn} onReleased={liveEdit.released} onDiscarded={liveEdit.discarded} onMergeConflict={live.onMergeConflict} onUnsavedChange={liveEdit.unsavedChange} onLive={setLiveSession} editorRef={collabEditorRef} slides={isSlideNote(session.metadata)} noteLang={noteLang} showLineNumbers={lineNumbersShown} overviewRail={overviewRail} mode={isMarkdown ? editorMode : 'raw'} body={liveBody}>{shared && <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />}</LiveCollabEditor> : <LiveEditorFrame renderToolbar={renderToolbar} beforeLeaveRef={liveLeave} checkout={liveEdit.checkout} editor={live.editor} theme={liveTheme} title={session.title} onRefetch={liveEdit.refetch} onCheckedIn={liveEdit.checkedIn} onDiscarded={liveEdit.discarded} /> : renderToolbar()}
       {formatToolbarShown && !liveEdit.checkout && <div ref={setToolbarSlot} className='note-format-toolbar' />}
       {!liveEdit.checkout && (
         <div ref={setBody} className='note-editor-body'>
@@ -493,6 +496,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
             carry={carry}
             slides={isSlideNote(session.metadata)}
             noteLang={noteLang}
+            overviewRail={overviewRail}
           />
           <NoteEditorDocumentPanel frame={frame} target={documentPanel?.target} notePanel={docPanel.notePanel} panel={panel} />
         </div>

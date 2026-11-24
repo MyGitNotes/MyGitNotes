@@ -42,13 +42,14 @@ const isParagraphEnd = (state: EditorState, number: number) => number === state.
  * Reads the note in the editor line by line, the way the renderer's directive pass does: the slide directive lines it holds and, for a
  * slide note, the block that ends at each `---` and the slide and page each heading heads (the numbering itself is
  * `HeadingStructureReader`'s). `blocks` are the container directive blocks, whose lines are content, or notes for a `:::summary`.
+ * `tree` is the Markdown parse to read, the editor's own by default; a reader without a view (the source editor's overview) passes a whole one.
  */
-export function editorSlideStructure(state: EditorState, blocks: readonly { from: number; to: number; type?: string; }[]): EditorSlideStructure {
+export function editorSlideStructure(state: EditorState, blocks: readonly { from: number; to: number; type?: string; }[], tree = syntaxTree(state)): EditorSlideStructure {
   const slides = state.facet(slideNote);
   // The Markdown parser knows which `---` is a thematic break (not a heading's underline) and where the top-level headings are.
   const rules = new Set<number>(), comments = new Set<number>(), levels = new Map<number, { level: number; to: number; }>();
   if (slides) {
-    syntaxTree(state).iterate({
+    tree.iterate({
       enter({ name, from, to, node }) {
         if (name === 'HorizontalRule' && node.parent?.name === 'Document') rules.add(state.doc.lineAt(from).from);
         // An HTML comment at the top level is no content: contour-deck makes no slide of it, nor a block. Text after its `-->` on the

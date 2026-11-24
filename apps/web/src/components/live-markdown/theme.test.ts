@@ -44,15 +44,15 @@ it('keeps room on the right for the gutter, out of the margin beside the text, s
   });
   try {
     view = new EditorView({ state: EditorState.create({ doc: 'a', extensions: [theme, lineNumbers(), gutterWidth] }), parent: document.body });
-    expect(getComputedStyle(view.scrollDOM).paddingRight).toBe('calc(16px + min(var(--cm-gutter-width, 0px), max(0px, (100% - 32px - var(--note-content-width, 880px)) / 2)))');
+    expect(getComputedStyle(view.scrollDOM).paddingRight).toBe('calc(16px + var(--overview-rail-space, 0px) + min(var(--cm-gutter-width, 0px), max(0px, (100% - 32px - var(--note-content-width, 880px)) / 2)))');
     await new Promise(resolve => requestAnimationFrame(resolve));
     await Promise.resolve();
     expect(view.dom.style.getPropertyValue('--cm-gutter-width')).toBe('26px');
     view.destroy();
-    // Without a gutter the scroller keeps its own padding and the editor writes no width.
+    // Without a gutter the scroller keeps its own padding (and the overview rail's room) and the editor writes no width.
     view = new EditorView({ state: EditorState.create({ doc: 'a', extensions: [theme, gutterWidth] }), parent: document.body });
     await new Promise(resolve => requestAnimationFrame(resolve));
-    expect(getComputedStyle(view.scrollDOM).paddingRight).toBe('16px');
+    expect(getComputedStyle(view.scrollDOM).paddingRight).toBe('calc(16px + var(--overview-rail-space, 0px))');
     expect(view.dom.style.getPropertyValue('--cm-gutter-width')).toBe('');
   } finally {
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidth);

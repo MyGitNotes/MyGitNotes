@@ -384,6 +384,15 @@ tr:hover .status-cell:not(:disabled) .select-chevron, .status-cell:not(:disabled
 .note-view-options button[aria-pressed='true'] { background: var(--color-surface); color: var(--color-text); font-weight: 600; box-shadow: 0 1px 3px color-mix(in srgb, var(--color-scrim) 12%, transparent); }
 .note-view-theme { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 4px; }
 .note-view-hint { color: var(--color-muted); font-size: 11px; line-height: 1.5; }
+.note-view-switch-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-top: 16px; border-top: 1px solid var(--color-line); }
+.note-view-switch-text { display: grid; gap: 6px; min-width: 0; }
+.note-view-switch-text > span { color: var(--color-text); font-size: 13px; font-weight: 600; }
+.note-view-switch-text > small { color: var(--color-muted); font-size: 11px; line-height: 1.5; }
+.note-view-switch { position: relative; flex-shrink: 0; width: 44px; height: 24px; border-radius: 999px; background: var(--color-line-strong); transition: background-color 150ms; }
+.note-view-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-surface); box-shadow: var(--shadow-sm); transition: transform 150ms; }
+.note-view-switch[aria-checked='true'] { background: var(--color-primary); }
+.note-view-switch[aria-checked='true']::after { transform: translateX(20px); }
+.note-view-switch:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 @media (max-width: 767px) { .note-view-width { display: none; } }
 .note-info-panel { padding: 14px; }
 .note-frontmatter-panel { padding: 14px; }

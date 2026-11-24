@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Tooltip } from '../Tooltip.js';
 import { NOTE_CONTENT_WIDTHS, NOTE_FONT_SIZES, type NoteContentWidth, useNoteViewPreferences, writeNoteViewPreferences } from '../../lib/editor-preferences.js';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -5,14 +6,17 @@ import { getFamily, listFamilies, setThemeChoice, type ThemeMode } from '../../l
 import { useThemeView } from '../../app/useTheme.js';
 import { Select } from '../Select.js';
 import { familyLabel } from '../ThemeSelector.js';
+import { usePhone } from '../../lib/use-phone.js';
 
 const WIDTH_LABELS = { standard: 'editor.widthStandard', wide: 'editor.widthWide', full: 'editor.widthFull' } as const;
 const THEME_MODES: ThemeMode[] = ['light', 'dark', 'system'];
 
-/** The document panel's view section: theme and body text size everywhere, page width on desktop only. */
+/** The document panel's view section: theme and body text size everywhere, page width and the scroll overview on desktop only. */
 export function NoteViewPanel() {
   const { t } = useTranslation();
-  const { fontSize, contentWidth } = useNoteViewPreferences();
+  const { fontSize, contentWidth, overviewRail } = useNoteViewPreferences();
+  const phone = usePhone();
+  const overviewLabel = useId();
   const { choice: theme, familyId: shownFamily, auto } = useThemeView();
   const fixedMode = getFamily(shownFamily).fixedMode;
   return (
@@ -44,6 +48,15 @@ export function NoteViewPanel() {
         <legend>{t('editor.pageWidth')}</legend>
         <div className='note-view-options'>{(Object.keys(NOTE_CONTENT_WIDTHS) as NoteContentWidth[]).map(width => <button key={width} type='button' aria-pressed={contentWidth === width} onClick={() => writeNoteViewPreferences({ contentWidth: width })}>{t(WIDTH_LABELS[width])}</button>)}</div>
       </fieldset>
+      {!phone && (
+        <div className='note-view-switch-row'>
+          <div className='note-view-switch-text'>
+            <span id={overviewLabel}>{t('editor.overviewRail')}</span>
+            <small>{t('editor.overviewRailHint')}</small>
+          </div>
+          <button type='button' role='switch' className='note-view-switch' aria-checked={overviewRail} aria-labelledby={overviewLabel} onClick={() => writeNoteViewPreferences({ overviewRail: !overviewRail })} />
+        </div>
+      )}
       <p className='note-view-hint'>{t('editor.viewHint')}</p>
     </section>
   );

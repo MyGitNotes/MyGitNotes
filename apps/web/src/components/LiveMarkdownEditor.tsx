@@ -1,4 +1,4 @@
-import { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Compartment, EditorState, type Extension, Facet, Prec, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { type DecorationSet, drawSelection, EditorView, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view';
 import { yUndoManagerKeymap } from 'y-codemirror.next';
@@ -50,6 +50,8 @@ import { scrollbarPressGuard } from './live-markdown/scrollbar-press.js';
 import type { OutlineCommand } from '../lib/outline-editing.js';
 import { textChange } from '../lib/text-change.js';
 import { blockInsertion } from '../lib/directive-editing.js';
+import { codeMirrorRail } from './overview-rail/codemirror-adapter.js';
+import { OverviewRail, type OverviewRailOptions } from './overview-rail/OverviewRail.js';
 
 export interface LiveMarkdownHandle {
   /** Inserts `text` at `at`, or in place of the selection. */
@@ -112,6 +114,8 @@ interface Props {
    * `content`, and carries nothing to or from another view. Read once, when the view is created.
    */
   collab?: { extension: Extension; text: string; };
+  /** Shows the scroll overview beside the scrollbar, with find's matches; left out, there is none. */
+  overviewRail?: OverviewRailOptions;
 }
 const focusChanged = StateEffect.define<boolean>();
 const languageTag = Facet.define<string | undefined, string | undefined>({ combine: values => values[0] });
@@ -119,7 +123,7 @@ let youtubeEditorSequence = 0;
 /** An outline note's keys and drag handles; nothing for any other note. */
 const outlineExtensions = (path: string, t: ReturnType<typeof useTranslation>['t']): Extension => isOutlinePath(path) ? [outlineKeymap, outlineDrag({ move: t('outline.move'), before: t('outline.dropBefore'), after: t('outline.dropAfter'), child: t('outline.dropChild') })] : [];
 
-export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, noteLang, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry: givenCarry, slides, collab }, ref) => {
+export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, noteLang, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry: givenCarry, slides, collab, overviewRail }, ref) => {
   // The shared text is the binding's: a carried state would hold another text and another history.
   const carry = collab ? undefined : givenCarry;
   const { t } = useTranslation();
@@ -179,6 +183,12 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   currentPath.current = notePath;
   /* eslint-enable react/refs */
   const outlineMode = useRef(new Compartment());
+  // The overview rail hears every view this editor builds; its labels are read when it reads the note.
+  const railLabels = useRef({ page: pageLabel, block: (key: Parameters<typeof t>[0], params: Record<string, number>) => t(key, params) });
+  /* eslint-disable react/refs -- The persistent CodeMirror view reads current callbacks and options through refs. */
+  railLabels.current = { page: pageLabel, block: (key, params) => t(key, params) };
+  /* eslint-enable react/refs */
+  const [rail] = useState(() => codeMirrorRail({ labels: () => railLabels.current, bodyFrom: state => collab ? frontmatterEnd(state) : 0 }));
   const viewPath = collab ? '' : notePath;
   useImperativeHandle(ref, () => ({
     ready: () => Boolean(editor.current),
@@ -331,6 +341,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           inlineIconAtomicRanges(view => view.state.field(field).decorations),
           EditorView.atomicRanges.of(view => view.state.field(field).decorations.update({ filter: (_from, _to, decoration) => decoration.spec.widget instanceof LiveMarkdownTable })),
           scrollbarPressGuard,
+          rail.extension,
           collab
             ? collabFrontmatterGuard(view => view.state.field(field).decorations)
             : [],
@@ -425,5 +436,10 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
     });
     return () => cancelAnimationFrame(frame);
   }, [location.hash, notePath, content]);
-  return <div ref={host} className='flex-1 min-h-0 min-w-0 overflow-hidden' data-live-markdown data-continuous={continuous || undefined} />;
+  return (
+    <>
+      <div ref={host} className='flex-1 min-h-0 min-w-0 overflow-hidden' data-live-markdown data-continuous={continuous || undefined} />
+      {overviewRail && <OverviewRail adapter={rail.adapter} matches={overviewRail.matches} />}
+    </>
+  );
 });

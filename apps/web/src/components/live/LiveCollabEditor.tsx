@@ -15,6 +15,7 @@ import { noteLanguageTag } from '../../lib/note-language.js';
 import { onReachable } from '../../lib/live-reachability.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
+import type { OverviewRailOptions } from '../overview-rail/OverviewRail.js';
 import { LiveMarkdownEditor, type LiveMarkdownHandle } from '../LiveMarkdownEditor.js';
 import type { MarkdownEditorMode } from '../MarkdownEditor.js';
 import { SplitView } from '../SplitView.js';
@@ -68,6 +69,8 @@ export interface LiveCollabEditorProps {
   body?: string;
   /** Beside the editor in its body: the note's document panel. */
   children?: ReactNode;
+  /** Shows the scroll overview beside the scrollbar, in Live and Source alike; left out, there is none. */
+  overviewRail?: OverviewRailOptions;
 }
 
 /** A running collab session as the note's panel sees it. */
@@ -181,7 +184,7 @@ const downloadName = (title: string | undefined, path: string) => `${(title || p
  * typed on) when that document ended; offline meanwhile, it shows the kept text read-only. A conflicting merge goes to
  * `onMergeConflict`; a live editor that cannot merge leaves the copy or download.
  */
-export function LiveCollabEditor({ checkout, editor, onRefetch, renderToolbar, beforeLeaveRef, onDismissRecovery, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange, onLive, editorRef, slides, noteLang, showLineNumbers, mode = 'live', body = '', children }: LiveCollabEditorProps) {
+export function LiveCollabEditor({ checkout, editor, onRefetch, renderToolbar, beforeLeaveRef, onDismissRecovery, onCheckedIn, onReleased, onDiscarded, title, scope = '', onMergeConflict, onUnsavedChange, onLive, editorRef, slides, noteLang, showLineNumbers, mode = 'live', body = '', children, overviewRail }: LiveCollabEditorProps) {
   const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ kind: 'open' });
   // Each session is one document and one provider; going back to the editor after a check-in that left it open starts a new one.
@@ -727,7 +730,7 @@ export function LiveCollabEditor({ checkout, editor, onRefetch, renderToolbar, b
             <KeptText text={kept} path={checkout.path} notebookId={checkout.notebookId} label={t('live.editor')} />
           </div>
         )}
-        {live && collab && <div className='note-editor-body live-collab-body'>{mode === 'live' ? <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={liveBinding ?? undefined} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.editor')} slides={slides} noteLang={noteLang} showLineNumbers={showLineNumbers} /> : mode === 'split' ? <SplitView source={<CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} scroller={sourceScroller} />} sourceScroller={sourceScroller} content={body} path={checkout.path} notebookId={checkout.notebookId} slides={slides} noteLang={noteLang} /> : <CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} />}{children}</div>}
+        {live && collab && <div className='note-editor-body live-collab-body'>{mode === 'live' ? <LiveMarkdownEditor ref={editorRef} content={collab.text} collab={liveBinding ?? undefined} notePath={checkout.path} notebookId={checkout.notebookId} readOnly={false} onChange={() => {}} ariaLabel={t('live.editor')} slides={slides} noteLang={noteLang} showLineNumbers={showLineNumbers} overviewRail={overviewRail} /> : mode === 'split' ? <SplitView source={<CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} scroller={sourceScroller} />} sourceScroller={sourceScroller} content={body} path={checkout.path} notebookId={checkout.notebookId} slides={slides} noteLang={noteLang} /> : <CollabSourceEditor ref={editorRef} text={collab.shared} awareness={collab.awareness} undoManager={collab.undoManager} showLineNumbers={showLineNumbers} ariaLabel={t('live.source')} overviewRail={overviewRail} />}{children}</div>}
         {phase.kind === 'checking' && <LoadingStatus className='live-editor-notice'>{t('live.checkingIn')}</LoadingStatus>}
         {phase.kind === 'discarding' && <LoadingStatus className='live-editor-notice'>{t('live.discarding')}</LoadingStatus>}
         {phase.kind === 'released' && <p role='status' className='live-editor-notice'>{t('live.checkedIn')}</p>}

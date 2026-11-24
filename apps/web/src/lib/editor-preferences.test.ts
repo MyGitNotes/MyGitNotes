@@ -55,12 +55,12 @@ describe('Show-line-numbers preference', () => {
 });
 
 describe('Note view preferences', () => {
-  it('defaults to the standard size and width, and ignores unknown stored values', () => {
-    expect(readNoteViewPreferences()).toEqual({ fontSize: 16, contentWidth: 'standard' });
-    localStorage.setItem(NOTE_VIEW_STORAGE_KEY, JSON.stringify({ fontSize: 13, contentWidth: 'huge' }));
-    expect(readNoteViewPreferences()).toEqual({ fontSize: 16, contentWidth: 'standard' });
+  it('defaults to the standard size and width with the scroll overview on, and ignores unknown stored values', () => {
+    expect(readNoteViewPreferences()).toEqual({ fontSize: 16, contentWidth: 'standard', overviewRail: true });
+    localStorage.setItem(NOTE_VIEW_STORAGE_KEY, JSON.stringify({ fontSize: 13, contentWidth: 'huge', overviewRail: 'no' }));
+    expect(readNoteViewPreferences()).toEqual({ fontSize: 16, contentWidth: 'standard', overviewRail: true });
     localStorage.setItem(NOTE_VIEW_STORAGE_KEY, '{not json');
-    expect(readNoteViewPreferences()).toEqual({ fontSize: 16, contentWidth: 'standard' });
+    expect(readNoteViewPreferences()).toEqual({ fontSize: 16, contentWidth: 'standard', overviewRail: true });
   });
 
   it('stores a change on this device and notifies every open editor', () => {
@@ -68,15 +68,16 @@ describe('Note view preferences', () => {
     const unsubscribe = subscribeNoteViewPreferences(listener);
     writeNoteViewPreferences({ fontSize: 20 });
     writeNoteViewPreferences({ contentWidth: 'full' });
+    writeNoteViewPreferences({ overviewRail: false });
     unsubscribe();
-    expect(listener).toHaveBeenCalledTimes(2);
-    expect(getNoteViewPreferences()).toEqual({ fontSize: 20, contentWidth: 'full' });
-    expect(readNoteViewPreferences()).toEqual({ fontSize: 20, contentWidth: 'full' });
-    writeNoteViewPreferences({ fontSize: 16, contentWidth: 'standard' });
+    expect(listener).toHaveBeenCalledTimes(3);
+    expect(getNoteViewPreferences()).toEqual({ fontSize: 20, contentWidth: 'full', overviewRail: false });
+    expect(readNoteViewPreferences()).toEqual({ fontSize: 20, contentWidth: 'full', overviewRail: false });
+    writeNoteViewPreferences({ fontSize: 16, contentWidth: 'standard', overviewRail: true });
   });
 
   it('maps preferences to the CSS variables the editor theme reads', () => {
-    expect(noteViewStyle({ fontSize: 18, contentWidth: 'wide' })).toEqual({ '--note-font-size': '18px', '--note-content-width': '1200px' });
-    expect(noteViewStyle({ fontSize: 22, contentWidth: 'full' })).toEqual({ '--note-font-size': '22px', '--note-content-width': 'none' });
+    expect(noteViewStyle({ fontSize: 18, contentWidth: 'wide', overviewRail: true })).toEqual({ '--note-font-size': '18px', '--note-content-width': '1200px' });
+    expect(noteViewStyle({ fontSize: 22, contentWidth: 'full', overviewRail: false })).toEqual({ '--note-font-size': '22px', '--note-content-width': 'none' });
   });
 });

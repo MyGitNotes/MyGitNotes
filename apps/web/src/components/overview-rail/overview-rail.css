@@ -1,0 +1,30 @@
+/* The overview rail beside an editor's native scrollbar (OverviewRail.tsx), and its popover of nearby headings. */
+.overview-rail { position: absolute; z-index: 6; touch-action: none; cursor: pointer; user-select: none; }
+.overview-rail-marks { display: block; overflow: visible; }
+.overview-rail-track { fill: color-mix(in srgb, var(--color-text) 4%, var(--color-bg)); stroke: var(--color-line-strong); stroke-width: 1; }
+.overview-rail:hover .overview-rail-track, .overview-rail[data-dragging] .overview-rail-track { stroke: color-mix(in srgb, var(--color-text) 30%, transparent); }
+.overview-rail-break { stroke: color-mix(in srgb, var(--color-text) 38%, transparent); stroke-width: 1; }
+.overview-rail-heading { stroke: color-mix(in srgb, var(--color-text) 70%, transparent); stroke-width: 1; stroke-linecap: butt; }
+.overview-rail-heading[data-depth='1'] { stroke: var(--color-text); stroke-width: 2; }
+.overview-rail-heading[data-depth='3'] { stroke: var(--color-muted); }
+.overview-rail-heading[data-active] { stroke: var(--color-primary); stroke-width: 2; }
+.overview-rail-match { fill: var(--color-warning); }
+.overview-rail-visible { fill: color-mix(in srgb, var(--color-primary) 6%, transparent); stroke: var(--color-primary); stroke-width: 1.5; }
+.overview-rail-cursor { stroke: var(--color-primary); stroke-width: 2; }
+.overview-rail-target { fill: var(--color-primary); }
+
+.overview-rail-popover { position: fixed; z-index: 60; width: 228px; padding: 0 8px 10px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-md); color: var(--color-text); font-family: var(--font-body); font-size: 13px; }
+.overview-rail-popover-head { display: flex; align-items: center; gap: 12px; margin: 0 4px 8px; padding: 12px 2px 8px; border-bottom: 1px solid var(--color-line); color: var(--color-muted); font-size: 11px; }
+.overview-rail-popover ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.overview-rail-popover button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 32px; padding: 0 8px; border-radius: var(--radius-control); color: var(--color-text); text-align: left; }
+.overview-rail-popover[data-dragging] ul { gap: 12px; }
+.overview-rail-popover button:hover, .overview-rail-popover button[data-active] { background: var(--color-primary-soft); }
+.overview-rail-popover button[data-active] .overview-rail-label { font-weight: 600; }
+.overview-rail-depth { display: inline-flex; flex: none; align-items: center; width: 20px; color: var(--color-muted); font-size: 11px; }
+.overview-rail-popover button[data-active] .overview-rail-depth { color: var(--color-primary); }
+.overview-rail-depth svg { width: 9px; height: 9px; fill: var(--color-primary); }
+.overview-rail-label { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+.overview-rail-popover-foot { margin: 10px 4px 0; overflow: hidden; color: var(--color-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.overview-rail-connectors { position: fixed; inset: 0; z-index: 59; width: 100vw; height: 100vh; overflow: visible; pointer-events: none; }
+.overview-rail-connectors line { stroke: color-mix(in srgb, var(--color-primary) 55%, transparent); stroke-width: 1; }
+.overview-rail-connectors line[data-active] { stroke: var(--color-primary); stroke-width: 1.5; }

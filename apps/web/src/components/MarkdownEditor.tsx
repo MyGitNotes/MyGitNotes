@@ -33,6 +33,8 @@ import { keyEnvironment } from '../lib/keyboard/platform.js';
 import { IconPickerDialog } from './IconPickerDialog.js';
 import { SplitView } from './SplitView.js';
 import type { EditorMode } from '../lib/editor-mode-url.js';
+import type { OverviewRailOptions } from './overview-rail/OverviewRail.js';
+import { SourceOverviewRail } from './overview-rail/SourceOverviewRail.js';
 
 const LiveMarkdownEditor = React.lazy(() => import('./LiveMarkdownEditor.js').then(module => ({ default: module.LiveMarkdownEditor })));
 /** `split` is the source editor beside the rendered note, for a Markdown note; any other file shows its source. */
@@ -81,6 +83,8 @@ interface Props {
   carry?: MutableRefObject<LiveEditorCarry | null>;
   /** Set for a `type: slide` note: the live editor draws its `---`, its headings and its slide directives as a deck reads them. */
   slides?: boolean;
+  /** Shows the scroll overview beside the scrollbar in live and source modes alike; left out, there is none. */
+  overviewRail?: OverviewRailOptions;
 }
 
 /** The formatting toolbar's groups; a format with a KEYMAP entry shows its key in the button's label. */
@@ -107,7 +111,7 @@ export function MarkdownEditorModeSwitch({ mode, onChange }: { mode: MarkdownEdi
   );
 }
 
-export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, noteLang, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage, carry, slides }, ref) => {
+export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, noteLang, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage, carry, slides, overviewRail }, ref) => {
   const { t } = useTranslation();
   const [caret, setCaret] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -779,9 +783,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
           }}
           wrap='off'
           className={`flex-1 min-w-0 min-h-0 px-4 py-4 font-mono text-sm text-fg ${sourceFill} resize-none focus:outline-none`}
-          style={{ lineHeight: '1.421875rem' }}
+          style={{ lineHeight: '1.421875rem', paddingRight: overviewRail ? 'calc(1rem + var(--overview-rail-space, 0px))' : undefined }}
           spellCheck={false}
         />
+        {overviewRail && <SourceOverviewRail area={source} slides={Boolean(slides)} content={content} matches={overviewRail.matches} />}
       </div>
     </div>
   );
@@ -819,7 +824,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       {mode === 'live' && isMarkdown
         ? (
           <React.Suspense fallback={<LoadingStatus className='p-6 text-sm text-muted'>{t('editor.loadingEditor')}</LoadingStatus>}>
-            <LiveMarkdownEditor key={path} ref={live} content={content} notePath={path} notebookId={notebookId} readOnly={readOnly} onChange={onChange} onCaret={onCaret} ariaLabel={ariaLabel} showLineNumbers={showLineNumbers} lineNumberOffset={lineNumberOffset} onCopyLines={copyLines} continuous={continuous} carry={carry} slides={slides} noteLang={noteLang} />
+            <LiveMarkdownEditor key={path} ref={live} content={content} notePath={path} notebookId={notebookId} readOnly={readOnly} onChange={onChange} onCaret={onCaret} ariaLabel={ariaLabel} showLineNumbers={showLineNumbers} lineNumberOffset={lineNumberOffset} onCopyLines={copyLines} continuous={continuous} carry={carry} slides={slides} noteLang={noteLang} overviewRail={overviewRail} />
           </React.Suspense>
         )
         : mode === 'split' && isMarkdown

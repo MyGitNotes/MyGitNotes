@@ -47,13 +47,15 @@ export type NoteContentWidth = keyof typeof NOTE_CONTENT_WIDTHS;
 export interface NoteViewPreferences {
   fontSize: NoteFontSize;
   contentWidth: NoteContentWidth;
+  /** The scroll overview beside a desktop editor's scrollbar, in live and source modes alike; phones never show it. */
+  overviewRail: boolean;
 }
-const DEFAULT_NOTE_VIEW: NoteViewPreferences = { fontSize: 16, contentWidth: 'standard' };
+const DEFAULT_NOTE_VIEW: NoteViewPreferences = { fontSize: 16, contentWidth: 'standard', overviewRail: true };
 
 export function readNoteViewPreferences(storage?: Pick<Storage, 'getItem'>): NoteViewPreferences {
   try {
     const saved = JSON.parse((storage ?? globalThis.localStorage).getItem(NOTE_VIEW_STORAGE_KEY) || '{}');
-    return { fontSize: NOTE_FONT_SIZES.includes(saved.fontSize) ? saved.fontSize : DEFAULT_NOTE_VIEW.fontSize, contentWidth: Object.hasOwn(NOTE_CONTENT_WIDTHS, saved.contentWidth) ? saved.contentWidth : DEFAULT_NOTE_VIEW.contentWidth };
+    return { fontSize: NOTE_FONT_SIZES.includes(saved.fontSize) ? saved.fontSize : DEFAULT_NOTE_VIEW.fontSize, contentWidth: Object.hasOwn(NOTE_CONTENT_WIDTHS, saved.contentWidth) ? saved.contentWidth : DEFAULT_NOTE_VIEW.contentWidth, overviewRail: typeof saved.overviewRail === 'boolean' ? saved.overviewRail : DEFAULT_NOTE_VIEW.overviewRail };
   } catch {
     return DEFAULT_NOTE_VIEW;
   }
