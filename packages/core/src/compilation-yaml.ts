@@ -30,6 +30,9 @@ function nodeShape(node: unknown): unknown {
   return node ?? null;
 }
 
+/** The shape of all extension entries together, for files whose entries cannot be matched one by one. */
+export const extensionsShape = (extensions: CompilationYamlExtensions | undefined): unknown => (extensions?.entries ?? []).map(nodeShape);
+
 /** The extension entries by the shape of their key; undefined when a key is not a scalar or repeats, as such entries cannot be matched across files. */
 export function extensionEntries(extensions: CompilationYamlExtensions | undefined): Map<string, ExtensionEntry> | undefined {
   const entries = new Map<string, ExtensionEntry>();

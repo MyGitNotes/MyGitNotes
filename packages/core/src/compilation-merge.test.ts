@@ -171,9 +171,16 @@ describe('compilation merge by entry', () => {
     expect((mergeCompilationText(tagged, retitled, edit(tagged, ['!internal', '!published'])) as { text: string; }).text).toContain('external: !published value\n');
     const combined = mergeCompilationText(tagged, edit(retitled, ['other: x', 'other: y']), edit(tagged, ['!draft', '!final']));
     expect((combined as { text: string; }).text).toContain('external: !internal value\nnested: { state: !final x }\nother: y\n');
-    // An external field holding an anchor is not combined with the other side's fields: the line merge takes it.
-    const anchored = `${example}shared: &s { a: 1 }\nother: x\n`;
-    expect(mergeCompilationText(anchored, edit(anchored, ['other: x', 'other: y']), edit(anchored, ['a: 1', 'a: 2']))).toBeUndefined();
+    // An external field holding an anchor or alias is not combined with the other side's fields: the edits conflict.
+    const anchored = `${example}shared: &s { a: 1, self: *s }\nother: x\n`;
+    expect(mergeCompilationText(anchored, edit(anchored, ['other: x', 'other: y']), edit(anchored, ['a: 1', 'a: 2']))).toEqual({ conflict: true });
+    // Left as one side has them, they stand.
+    expect(mergeCompilationText(anchored, edit(anchored, [n1, '    - { item: n1, x: 48, y: 80 }\n']), edit(anchored, ['other: x', 'other: y']))).toEqual({ conflict: false, text: edit(anchored, [n1, '    - { item: n1, x: 48, y: 80 }\n'], ['other: x', 'other: y']) });
+    // External fields with a key that is not a scalar merge as a whole.
+    const complex = `${example}? [ a, b ]\n: pair\nother: x\n`;
+    const moved = edit(complex, [n1, '    - { item: n1, x: 48, y: 80 }\n']);
+    expect(mergeCompilationText(complex, moved, edit(complex, ['other: x', 'other: y']))).toEqual({ conflict: false, text: edit(moved, ['other: x', 'other: y']) });
+    expect(mergeCompilationText(complex, edit(complex, [': pair', ': two']), edit(complex, ['other: x', 'other: y']))).toEqual({ conflict: true });
   });
   it('keeps an empty board one side added, and an emptied list the side that emptied it still writes', () => {
     const lane = 'version: 1\nid: c\ntitle: C\narrangement: lane\nitems:\n' + item('a', 'notes/a.md');

@@ -1,6 +1,6 @@
 import { type CompilationFile, type CompilationFileItem, parseCompilation, serializeCompilation } from './compilation.js';
 import type { BoardArrow, BoardCard, BoardSection, BoardText, CompilationBoard } from './compilation-board.js';
-import { compilationExtensions, type CompilationYamlExtensions, extensionEntries, extensionsFromPairs } from './compilation-yaml.js';
+import { compilationExtensions, type CompilationYamlExtensions, extensionEntries, extensionsFromPairs, extensionsShape } from './compilation-yaml.js';
 
 const plain = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 
@@ -167,12 +167,16 @@ function mergeBoard(base: CompilationBoard | undefined, local: CompilationBoard 
 /**
  * The external fields of the merge, each merged whole by `winner`. A side's own entries are kept as written (style,
  * comments, anchors) when the merge leaves that side's external fields as they are; otherwise the standing entries of
- * both sides are combined, local's order first. Undefined when that cannot be done without loss: a key that is not a
- * scalar, or an alias or anchor in an entry that would be combined with the other side's.
+ * both sides are combined, local's order first. Where that cannot be done without loss, the edits conflict: entries
+ * with a key that is not a scalar, which merge only as a whole, or an alias or anchor in an entry that would be combined
+ * with the other side's.
  */
-function mergeExtensions(sides: (CompilationYamlExtensions | undefined)[]): Merged<CompilationYamlExtensions> | undefined {
+function mergeExtensions(sides: (CompilationYamlExtensions | undefined)[]): Merged<CompilationYamlExtensions> {
   const entries = sides.map(extensionEntries);
-  if (entries.some(side => side === undefined)) return undefined;
+  if (entries.some(side => side === undefined)) {
+    const side = winner(...(sides.map(extensionsShape) as [unknown, unknown, unknown]));
+    return side ? { conflict: false, value: side === 'local' ? sides[1] : sides[2] } : CONFLICT;
+  }
   const [base, local, remote] = entries as NonNullable<(typeof entries)[number]>[];
   const kept: { key: string; from: 'local' | 'remote'; }[] = [];
   for (const key of new Set([...local.keys(), ...remote.keys(), ...base.keys()])) {
@@ -185,7 +189,7 @@ function mergeExtensions(sides: (CompilationYamlExtensions | undefined)[]): Merg
   if (whole(local)) return { conflict: false, value: sides[1] };
   if (whole(remote)) return { conflict: false, value: sides[2] };
   const pairs = kept.map(({ key, from }) => (from === 'local' ? local : remote).get(key)!);
-  if (pairs.some(pair => pair.linked)) return undefined;
+  if (pairs.some(pair => pair.linked)) return CONFLICT;
   return { conflict: false, value: extensionsFromPairs(pairs.map(pair => pair.pair), sides[1] ?? sides[2]) };
 }
 
@@ -195,11 +199,11 @@ const FIELDS = ['version', 'id', 'title', 'description', 'arrangement', 'size', 
 /**
  * Merges two compilations made from `base` by entry: items by id; board cards by item or path, sections by heading or
  * folder, texts and arrows by id; every other field, and each external field, as a value. One side's change wins, equal
- * changes agree, and different changes of one entry or field conflict. Undefined when the external fields cannot be
- * merged without loss (`mergeExtensions`). The result is not validated: a merge of valid files can still name what the
- * other side removed.
+ * changes agree, and different changes of one entry or field conflict, as do external fields that cannot be merged
+ * without loss (`mergeExtensions`). The result is not validated: a merge of valid files can still name what the other
+ * side removed.
  */
-export function mergeCompilationFiles(base: CompilationFile, local: CompilationFile, remote: CompilationFile): { conflict: true; } | { conflict: false; file: CompilationFile; } | undefined {
+export function mergeCompilationFiles(base: CompilationFile, local: CompilationFile, remote: CompilationFile): { conflict: true; } | { conflict: false; file: CompilationFile; } {
   const file: Record<string | symbol, unknown> = {};
   for (const field of FIELDS) {
     const merged = mergeFields(base[field], local[field], remote[field]);
@@ -216,7 +220,7 @@ export function mergeCompilationFiles(base: CompilationFile, local: CompilationF
   if (board.conflict) return CONFLICT;
   if (board.value) file.board = board.value;
   const extensions = mergeExtensions([base, local, remote].map(side => side[compilationExtensions]));
-  if (!extensions || extensions.conflict) return extensions;
+  if (extensions.conflict) return CONFLICT;
   if (extensions.value) file[compilationExtensions] = extensions.value;
   return { conflict: false, file: file as unknown as CompilationFile };
 }
@@ -228,8 +232,7 @@ const writtenItem = (item: CompilationFileItem): CompilationFileItem => item.kin
  * Merges two edits of one compilation file made from `base` by entry (`mergeCompilationFiles`), so two people moving
  * cards on neighbouring lines both keep their move. The merged file is written in the normal order, with the board's
  * one-line entries, and must read as a valid compilation, else the edits conflict; a result equal to one side keeps
- * that side's text. Undefined when a side is not a valid compilation or its external fields cannot be merged: the
- * caller merges lines then.
+ * that side's text. Undefined when a side is not a valid compilation: the caller merges lines then.
  */
 export function mergeCompilationText(base: string, local: string, remote: string): { conflict: true; } | { conflict: false; text: string; } | undefined {
   let files: CompilationFile[];
@@ -239,7 +242,7 @@ export function mergeCompilationText(base: string, local: string, remote: string
     return undefined;
   }
   const merged = mergeCompilationFiles(files[0], files[1], files[2]);
-  if (!merged || merged.conflict) return merged;
+  if (merged.conflict) return CONFLICT;
   const equal = (side: CompilationFile) => sameCompilationValue(merged.file, side) && merged.file[compilationExtensions] === side[compilationExtensions];
   if (equal(files[1])) return { conflict: false, text: local };
   if (equal(files[2])) return { conflict: false, text: remote };

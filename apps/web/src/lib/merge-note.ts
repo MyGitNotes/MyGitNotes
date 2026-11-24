@@ -49,13 +49,14 @@ export function mergeNote(base: NoteDraft, local: NoteDraft, remote: NoteDraft):
  */
 export function mergeCompilation(path: string, base: NoteDraft, local: NoteDraft, remote: NoteDraft): { conflict: true; } | { conflict: false; draft: NoteDraft; } {
   const stored = (draft: NoteDraft) => serializeNoteFile(path, draft.metadata, draft.content, false, new Date());
-  let merged: ReturnType<typeof mergeCompilationText>;
+  let sides: string[];
   try {
-    merged = mergeCompilationText(stored(base), stored(local), stored(remote));
+    sides = [base, local, remote].map(stored);
   } catch {
     // YAML that cannot even take its metadata, such as one with an alias to no anchor, is not a valid compilation either.
-    merged = undefined;
+    return mergeNote(base, local, remote);
   }
+  const merged = mergeCompilationText(sides[0], sides[1], sides[2]);
   if (!merged) return mergeNote(base, local, remote);
   if (merged.conflict) return merged;
   const { title, tags, status } = compilationFields(merged.text, path);
