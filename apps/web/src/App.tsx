@@ -36,12 +36,13 @@ import { useChangeDialog } from './app/useChangeDialog.js';
 import { useQuickNoteCommit } from './app/useQuickNoteCommit.js';
 import { useShortcutSurface } from './app/useShortcutSurface.js';
 import { useAppCommands } from './app/useAppCommands.js';
-import { type NoteListItem, noteQueryStatuses, type NoteRef, noteRefKey, sameNote } from '@mygitnotes/core/note-query';
+import { useWorkspaceOverview } from './app/useWorkspaceOverview.js';
+import { type NoteListItem, sameNote } from '@mygitnotes/core/note-query';
 import { useWorkspaceSync } from './lib/use-workspace-sync.js';
 import { discardDocumentDraft } from './lib/use-workspace-document.js';
 import { documentClientOf } from './lib/workspace-document-clients.js';
 import { WorkspaceLinks } from './components/WorkspaceLinks.js';
-import { type NoteLocation, noteLocation, NoteLocationProvider } from './lib/note-location.js';
+import { NoteLocationProvider } from './lib/note-location.js';
 import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
 import { hasStoredFocusView, isEmptyFocus } from './lib/focus-view.js';
@@ -55,10 +56,9 @@ import { DemoBanner } from './components/DemoBanner.js';
 import { demoFocusesOf, useDemoScenario } from './app/useDemoScenario.js';
 import { forgetNoteDrafts } from './lib/storage.js';
 import { sameValue } from './lib/merge-note.js';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchFileDiff, fetchGitStatus, readNote } from './lib/api.js';
+import React, { useEffect, useMemo, useState } from 'react';
+import { fetchGitStatus, readNote } from './lib/api.js';
 import { builtinNoteTemplates } from './lib/builtin-templates.js';
-import { workingDiff } from './lib/working-notes.js';
 import { NoteListSentinel } from './components/NoteListSentinel.js';
 import type { NotebookConfig, NoteItem } from './lib/types.js';
 import { useTagWorkspaceOperations } from './app/useTagWorkspaceOperations.js';
@@ -69,6 +69,8 @@ import { FolderPickerDialog } from './components/FolderPickerDialog.js';
 import { useAssetOperations } from './app/useAssetOperations.js';
 import { useRoutedNote } from './app/useRoutedNote.js';
 import { followMovedNote } from './app/follow-moved-note.js';
+import { noteEditorProps } from './app/note-editor-props.js';
+import { useNoteSearchFocus } from './app/useNoteSearchFocus.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { UNTITLED_STEM, useCreateNote } from './app/useCreateNote.js';
 import { useNoteMove } from './app/useNoteMove.js';
@@ -83,7 +85,6 @@ import { WorkspaceGitSyncProvider } from './lib/workspace-git-sync.js';
 import { PhoneFilterSheet, PhoneListBar } from './components/PhoneListBar.js';
 import { PhoneNotesProvider, phoneNotesScreen } from './lib/phone-notes.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
-import type { NoteSearchHandle } from './components/note-list-search.js';
 import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
 import { SidebarProvider, WorkspaceSidebarPortal, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
 import type { NewNoteActions } from './components/NewNoteMenu.js';
@@ -105,7 +106,6 @@ import { FocusNoteList } from './components/FocusNoteList.js';
 import { noteFolderGrouping } from './lib/note-groups.js';
 import { KanbanView } from './components/KanbanView.js';
 import { EditorModal } from './components/EditorModal.js';
-import type { NoteEditorSharedProps } from './components/note-editor/types.js';
 import { NoteEditingProvider, useNoteEditorRegistry } from './lib/note-editing.js';
 import { FocusArea } from './components/FocusArea.js';
 import { FoldedNoteDots } from './components/FoldedNoteDots.js';
@@ -138,9 +138,7 @@ import { FolderLinks } from './components/FolderLinks.js';
 import { I18nProvider, useTranslation } from './lib/i18n/index.js';
 import { AlertCircle, AlertTriangle, PanelLeft, X } from 'lucide-react';
 import { LoadingStatus } from './components/LoadingStatus.js';
-import { liveEditableKind, type LiveNoteEditing } from './lib/live-api.js';
-import { LIVE_MERGE_CONFLICT, noteFileText } from './lib/live-handover.js';
-import { parseNoteFile } from '@mygitnotes/core/note-file';
+import { liveEditableKind } from './lib/live-api.js';
 import { useLiveHandover } from './app/useLiveHandover.js';
 import type { LivePathPrompt } from './lib/new-note.js';
 import { LiveNewNoteDialog } from './components/live/LiveNewNoteDialog.js';
@@ -189,34 +187,7 @@ export const AppContent: React.FC = () => {
   // The Focus file is read for the open notebook's repository, which is the demo repository's; a file that fails to load names no Focus.
   const demoFocuses = demoFocusesOf(focusPage);
   useDemoScenario({ config, loading, pathname: location.pathname, navigate, hasGuide: async (notebookId, path) => (await queryClient.fetchQuery(noteLookupOptions(queryScope, [{ notebookId, path }], false))).notes.length > 0, hasRestoredView: notebookKey => hasStoredFocusView(repositoryFor(notebookKey)?.id ?? '', notebookKey), focuses: demoFocuses });
-  /** Where a note lives, for the note Info tab: the repository and branch of its notebook, and why it is read-only. */
-  const locateNote = (note: NoteRef): NoteLocation | undefined => {
-    const repository = repositoryFor(note.notebookId);
-    const notebook = config?.notebooks.find(nb => nb.id === note.notebookId);
-    if (!notebook) return undefined;
-    return noteLocation(notebook.title, repository, note.path);
-  };
-  /** Pending changes across repositories; a path names a file only within its repository, so each repository counts its own. */
-  // A remote deletion is a working change held in the trash, which the Changes panel lists and counts apart.
-  const remoteTrash = useMemo(() => Object.values(activeWorkingNotes).flatMap(entry => entry.deleted && entry.base ? [entry.base] : []), [activeWorkingNotes]);
-  const changeCount = remote ? Object.keys(activeWorkingNotes).length + pendingDocuments.length : repositories.filter(repository => !repository.unavailable).reduce((sum, repository) => {
-    const status = repository.id === sourceId ? gitStatus : repository.gitStatus;
-    return sum + (status ? new Set([...status.staged, ...status.modified, ...status.untracked]).size : 0);
-  }, 0);
-  /** With several repositories, Changes groups entries under each repository and its branch. */
-  const repositoryHeading = repositories.length > 1
-    ? (id: string | undefined) => {
-      const repository = repositories.find(candidate => candidate.id === id);
-      const name = repository?.title ?? (id?.startsWith('local:') ? id.slice('local:'.length) : id ?? '');
-      return repository?.branch ? `${name} · ${repository.branch}` : name;
-    }
-    : undefined;
-  /** Why the selected notebook's repository cannot serve it; its notebook views show this instead. */
-  const notebookUnavailable = repositoryFor(selectedNotebookId)?.unavailable;
-  /** Whether the default repository, when it keeps no manifest, can create one from its derived layout. */
-  const manifestWritable = Boolean(defaultRepository?.write);
-  // A workspace-wide tag change commits to every repository that serves a notebook.
-  const canManageTags = repositories.some(repository => repository.notebooks.length) && repositories.every(repository => repository.write || !repository.notebooks.length);
+  const { locateNote, remoteTrash, changeCount, repositoryHeading, notebookUnavailable, manifestWritable, canManageTags, notebookGroups, unavailableNotebooks, syncTargets } = useWorkspaceOverview({ config, remote, repositories, defaultRepository, repositoryFor, sourceId, gitStatus, activeWorkingNotes, pendingDocuments, selectedNotebookId });
   const editorRegistry = useNoteEditorRegistry();
 
   const { queryClient, queryScope, invalidateNotes, refreshNotes, staleNotice, findCommittedNote, listCommittedPaths, readCommittedNote, readNoteForChange } = useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, remote, refreshWorkspace, readDraft, t });
@@ -229,8 +200,6 @@ export const AppContent: React.FC = () => {
 
   /** The repository the header names: the shown notebook's, else the default repository's. */
   const currentRepository = pageRepository(repositories, sourceId, { tab: activeTab, allNotebooks: route.allNotebooks, notebookId: selectedNotebookId });
-  /** With several repositories, the notebooks column and the notebook switchers group notebooks under each repository's title. */
-  const notebookGroups = repositories.length > 1 ? repositories.filter(repository => repository.notebooks.length).map(repository => ({ label: repository.title, notebooks: repository.notebooks })) : undefined;
 
   const { facetsQuery, notebookFacets, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, searchQuery, viewMode, folderless } = useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route });
 
@@ -262,6 +231,8 @@ export const AppContent: React.FC = () => {
 
   useSourceReset({ sourceId, setEditingNote, setDeletedNotes });
 
+  /** A note this page shows lies elsewhere now: its Focus tabs, the address when it names the note, and the lists follow it there. */
+  const followMoved = (note: { notebookId: string; path: string; }, to: string, routedFrom: string | null | undefined) => followMovedNote({ note, to, notebook: config?.notebooks.find(nb => nb.id === note.notebookId), routedPath: routedFrom, search: location.search, state: followedState(), link: noteLink, relocatePaths: noteFocus.relocatePaths, navigate, refresh: () => void refreshWorkspace(true).then(invalidateNotes) });
   const { routedNote, routedPath, routedCommitted, routedLoading, routeError } = useRoutedNote({
     config,
     editorRoute,
@@ -271,7 +242,7 @@ export const AppContent: React.FC = () => {
     sourceId,
     setEditingNote,
     // The note the address names lies elsewhere now: the address, a note link still waiting for the Focus and the Focus tabs follow it there.
-    onFiled: (notebookId, path, from) => followMovedNote({ note: { notebookId, path: from }, to: path, notebook: config?.notebooks.find(nb => nb.id === notebookId), routedPath: from, search: location.search, state: followedState(), link: noteLink, relocatePaths: noteFocus.relocatePaths, navigate, refresh: () => void refreshWorkspace(true).then(invalidateNotes) }),
+    onFiled: (notebookId, path, from) => followMoved({ notebookId, path: from }, path, from),
   });
   /** Whether a note is one of its notebook's template files, which is edited in zoom and never opens in a Focus pane. */
   const isTemplate = (note: { notebookId: string; path: string; }) => isTemplatePath(config?.notebooks.find(nb => nb.id === note.notebookId), note.path);
@@ -360,95 +331,7 @@ export const AppContent: React.FC = () => {
   const liveEditTarget = liveEditLinkTarget({ search: location.search, state: location.state, routedNote, zoomOpen: noteEditorOpen, inFocus: noteLink.inFocus, focusPending: noteLink.pending, activeNotePath });
 
   // Every editor of a note, in zoom or in a Focus pane, is wired to the same handlers and per-path state.
-  const editorProps = (note: NoteItem, committed?: NoteItem): NoteEditorSharedProps => {
-    // The note's repository decides whether it may be written and where its drafts are kept.
-    const repository = repositoryFor(note.notebookId);
-    // A demo note is edited and committed in this browser; its assets and files are changes only the server makes.
-    const editableNote = editable(repository);
-    const writable = Boolean(repository?.write);
-    // A live note's conflict draft is offered beside the live note (collab-first A3.1), never as the note's own draft.
-    const stored = activeWorkingNotes[noteRefKey(note)];
-    const liveConflict = stored?.blocked === LIVE_MERGE_CONFLICT ? stored : undefined;
-    const draft = liveConflict ? undefined : stored;
-    const repositoryStatus = repository?.id === sourceId ? gitStatus : repository?.gitStatus ?? null;
-    // A repository with a live editor opens its Markdown notes read-only, edited there; outlines and templates keep the direct editor.
-    const live: LiveNoteEditing | undefined = repository?.live && repository.write && liveEditableKind(note.path) && !isTemplate(note)
-      ? {
-        editor: repository.live,
-        onRefetch: invalidateNotes,
-        openZoom: () => void handleOpenNote(note),
-        onCheckedIn: answer => {
-          // The check-in moved the repository's head; a pending note now lives at the path it was filed at. The lists are
-          // read again once the workspace has the new revision, not before, when the server would refuse the old one.
-          void refreshWorkspace(true).then(invalidateNotes);
-          const notebook = config?.notebooks.find(nb => nb.id === note.notebookId);
-          if (answer?.filed && answer.path && notebook && answer.path.startsWith(`${notebook.root}/`)) navigate(noteRoute(notebook.id, answer.path.slice(notebook.root.length + 1)) + location.search, { replace: true });
-        },
-        // Checked in by someone else while this page still offers its unsaved text: the workspace first, then the lists.
-        onReleased: () => void refreshWorkspace(true).then(invalidateNotes),
-        // A discarded pending note is gone: the lists read it again and the view goes back to the notebook.
-        onDiscarded: () => {
-          invalidateNotes();
-          closeZoom();
-        },
-        // Collab-first (A7): the note's own editor moves or renames it while it stays open, the server recording where its
-        // check-in moves it (§20.4); a deletion follows a check-in, against the revision the check-in made.
-        // Offline handover (A3): a draft the direct editor made offline goes to the live note once online; what the collab
-        // editor kept but could not merge becomes a conflict draft, which the editor offers to compare, copy or discard.
-        handOver: () => liveHandover.handOver(note),
-        // A second conflict never takes the place of one the person has not dealt with: the editor offers it to copy instead.
-        onMergeConflict: mine => {
-          const parsed = parseNoteFile(mine, note.path);
-          try {
-            stageWorkingNote({ ...note, content: parsed.content, metadata: parsed.metadata }, note, LIVE_MERGE_CONFLICT);
-            return true;
-          } catch {
-            return false;
-          }
-        },
-        ...(liveConflict ? { mergeConflict: { mine: noteFileText(liveConflict.note), discard: () => updateDraft(note.notebookId, note.path, null) } } : {}),
-        fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined, editing: true })?.(), rename: (_revision, title) => noteMove.renameNote({ ...note, live: undefined, editing: true }, undefined, title || undefined)?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
-      }
-      : undefined;
-    return {
-      statuses: noteQueryStatuses(config?.notebooks || [], note.notebookId, Object.keys(facetsQuery.facets?.[note.notebookId]?.statuses || {})),
-      metadataFields: config?.notebooks.find(nb => nb.id === note.notebookId)?.metadata,
-      onSave: params => handleSaveNote({ ...params, notebookId: note.notebookId }),
-      onRestoreFile: path => handleRestoreNoteFile(path, note.notebookId),
-      onCommitFile: editableNote ? (path, version) => commitNoteFile(path, note.notebookId, version) : undefined,
-      // The same diff the Changes panel shows: a remote note's draft against its base, a local note's worktree against HEAD.
-      readDiff: remote ? draft && (async () => workingDiff({ [note.path]: draft })) : () => fetchFileDiff({ path: note.path, repository: repository?.id }, 'current'),
-      // A path names a file only within its repository: a remote note is dirty when it holds a draft, a local one when its worktree reports it.
-      isDirty: remote ? Boolean(draft) : Boolean(repositoryStatus && [...repositoryStatus.modified, ...repositoryStatus.staged, ...repositoryStatus.untracked].includes(note.path)),
-      availableTags,
-      assets,
-      onUploadAsset: !writable ? undefined : handleUploadAsset,
-      onDeleteAsset: !writable ? undefined : handleDeleteAsset,
-      onMoveAsset: !writable ? undefined : handleMoveAsset,
-      beforeFileChange: !writable ? undefined : beforeFileChange,
-      onFilesChanged: !writable ? undefined : onFilesChanged,
-      readOnly: !editableNote,
-      zoomNavigation: { open: mode => handleOpenNote(note, '', { mode }), returnToFocus, selection: frameSelection },
-      autoSave: true,
-      draftMode: remote,
-      remoteBase: draft?.base || (committed && typeof committed.content === 'string' ? committed : undefined),
-      conflictReason: draft?.blocked,
-      onMarkConflict: remote
-        ? (reason, draft, base) => {
-          stageWorkingNote(draft, base, reason);
-        }
-        : undefined,
-      onReadRemote: remote && draft?.base === null ? undefined : (path: string) => readNote(path, note.notebookId),
-      // A live note another person moved: its tabs, the address and the lists follow it (§20.4 of the built-in editor spec).
-      onMoved: to => followMovedNote({ note, to, notebook: config?.notebooks.find(nb => nb.id === note.notebookId), routedPath, search: location.search, state: followedState(), link: noteLink, relocatePaths: noteFocus.relocatePaths, navigate, refresh: () => void refreshWorkspace(true).then(invalidateNotes) }),
-      branch: repository?.branch ?? '',
-      draftScope: repository ? draftScope(repository) : '',
-      template: isTemplate(note),
-      // Save as template writes a file of the note's own notebook, so it follows that notebook's write access.
-      onSaveAsTemplate: editableNote && !isTemplate(note) ? edited => void templateActions.saveAsTemplate({ notebookId: note.notebookId, ...edited }).catch(error => setActionError((error as Error).message)) : undefined,
-      live,
-    };
-  };
+  const editorProps = noteEditorProps({ config, remote, sourceId, gitStatus, assets, activeWorkingNotes, repositoryFor, refreshWorkspace, stageWorkingNote, updateDraft, setActionError, navigate, search: location.search, facets: facetsQuery.facets, availableTags, invalidateNotes, isTemplate, handleOpenNote, closeZoom, handleSaveNote, handleRestoreNoteFile, handleDeleteNote, commitNoteFile, handleUploadAsset, handleDeleteAsset, handleMoveAsset, beforeFileChange, onFilesChanged, returnToFocus, frameSelection, liveHandover, noteMove, templateActions, followMoved, routedPath });
 
   const phoneNotes = phone && activeTab === 'notes' && !route.study;
   const phoneNoteScreen = phoneNotes && phoneNotesScreen({ hasFocus: Boolean(noteFocus.layout), hasActiveTab, view: focusNarrowView }) === 'note';
@@ -463,30 +346,7 @@ export const AppContent: React.FC = () => {
   const notesColumns = !phone && activeTab === 'notes' && !route.study && !notebookUnavailable;
   const columns = useBrowseColumns({ panes: paneColumns(focusDisplay?.root) });
   const { focusCommands, shortcutMode, setShortcutMode } = useShortcutSurface({ noteFocus, focusDisplay, t, showFocus, requestClear, zoomFocusNote, focusCapacity });
-  const noteSearch = useRef<NoteSearchHandle>(null);
-  // Searching from another page opens Notes, then focuses the search once it has rendered.
-  const noteSearchPending = useRef(false);
-  const focusNoteSearch = () => {
-    // The search sits at the top of the notebooks column: a folded column opens first, then the field takes the cursor once it is back.
-    if (notesColumns && columns.layout.notebooks !== 'open') {
-      noteSearchPending.current = true;
-      return columns.toggleNotebooks();
-    }
-    if (noteSearch.current) return noteSearch.current.focus();
-    if (activeTab === 'notes' && !phoneNoteScreen) return;
-    noteSearchPending.current = true;
-    void setActiveTab('notes');
-  };
-  useEffect(() => {
-    if (!noteSearchPending.current || activeTab !== 'notes') return;
-    // A phone's search is on the list screen, which a note screen has to give way to first.
-    if (!noteSearch.current) {
-      setFocusNarrowView('browse');
-      return;
-    }
-    noteSearchPending.current = false;
-    noteSearch.current.focus();
-  }, [activeTab, phoneNoteScreen, columns.layout.notebooks, setFocusNarrowView]);
+  const { noteSearch, focusNoteSearch } = useNoteSearchFocus({ notesColumns, columns, activeTab, phoneNoteScreen, setActiveTab, setFocusNarrowView });
   useAppCommands({ t, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch, noteEditorOpen, pageCommands: notesColumns ? [...focusCommands, ...browseColumnCommands(columns, t, presentation)] : focusCommands });
 
   const browseFocusMode = noteFocus.layout || phone || presentation === 'list' ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, rowMeta: !phone && presentation === 'list', openPath: activeNotePath, readNote: readNoteForChange } : undefined;
@@ -650,7 +510,6 @@ export const AppContent: React.FC = () => {
   /** A phone's drawer of notebooks and filters; its filter sheet shows only the status and tags, and its list screen beside a Focus the folders. */
   const renderSidebar = (filtersOnly = false, dock?: 'folders') => <Sidebar selectedNotebookId={selectedNotebookId} folders={folders} foldersLoading={foldersLoading} onManageFiles={openFileManager} foldersWritable={canWriteFiles} filters={filterProps} facets={facetsQuery.facets} facetsLoading={facetsQuery.loading} facetsError={facetsQuery.error} workspaceTagNames={workspaceTagNames} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onDropNote={dropNoteOnFolder} canManageTags={canWriteFiles} onPreviewTagUsage={previewTagUsage} onRenameTag={handleRenameTag} onMergeTag={handleMergeTag} onDeleteTag={handleDeleteTag} filtersOnly={filtersOnly} dock={dock} />;
 
-  const syncTargets = useMemo(() => remote ? [] : repositories.filter(repository => !repository.unavailable).map(repository => ({ id: repository.id, label: repository.repository ?? repository.id.replace(/^local:/, ''), writable: repository.write, gitStatus: repository.id === sourceId ? gitStatus : repository.gitStatus ?? null })), [remote, repositories, sourceId, gitStatus]);
   if (loading || loadError) return <ConnectionState loading={loading} error={loadError} onRetry={refreshWorkspace} />;
   if (route.legacyScreen) return <LegacyScreenRedirect laneId={route.legacyLane} notebooks={config?.notebooks || []} onMissing={setActionError} />;
 
@@ -660,7 +519,6 @@ export const AppContent: React.FC = () => {
   const focusControls = notesActions ? <FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} /> : undefined;
   // A read-only notebook shows neither the New button nor its menu.
   const newNote: NewNoteActions | undefined = notesActions && canWrite ? { onNewNote: () => void createNote(), onNewOutline: () => void createNote({ kind: 'outline' }), onNewCompilation: () => void createUntitledCompilation(), templates: [...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)], onManageTemplates: selectedNotebook ? () => setManageTemplatesOpen(true) : undefined, onNewFromTemplate: templateId => void createNote({ templateId }), onImportLegacy: legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined } : undefined;
-  const unavailableNotebooks = repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks);
   const refreshAfterSync = async () => {
     await refreshWorkspace();
     await refreshDocuments().catch(error => setActionError(error instanceof Error ? error.message : String(error)));
